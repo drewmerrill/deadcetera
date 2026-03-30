@@ -7,7 +7,7 @@
 
 ## Session Focus
 
-Data integrity + stabilization pass (2026-03-30). Found and fixed 4 bugs during structural cleanup. Queue is clean.
+Data integrity + stabilization + rehearsal intelligence sprint (2026-03-30). Found and fixed 5 bugs during structural cleanup. Built full intelligence pipeline. Queue is clean.
 
 ### Bugs Fixed This Session (2026-03-30)
 

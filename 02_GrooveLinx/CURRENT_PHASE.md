@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-30 (Data Integrity Pass + Stabilization — 188 E2E tests, 4 SYSTEM LOCKs)_
+_Updated: 2026-03-30 (Rehearsal Intelligence + GLInsights + GrooveMate Coach + Unified Home)_
 
 ## Active Phase: Founder UAT + Real User Testing
 
@@ -131,6 +131,33 @@ Production URL: **https://app.groovelinx.com**
 **Firebase Error Filtering (SYSTEM LOCK):**
 - Suppresses only `.lp` long-poll disconnect noise
 
+### Rehearsal Intelligence V1 (2026-03-30)
+
+**Analysis Pipeline** (`js/core/rehearsal-analysis-pipeline.js`):
+- Notes → timestamps, song refs, player mentions, issues, positives
+- Automatic trigger after session save and "Recreate from Recording"
+- Persists to `bands/{slug}/rehearsal_sessions/{id}/analysis`
+- Re-run with `force: true` + UI button in session report
+
+**GLInsights** (`js/core/gl-insights.js`):
+- Persistent Firebase issue store: `bands/{slug}/intelligence/issues/` and `sessions/`
+- Action plans: 7 types × 2 severity levels, bandmate voice, anchors + stop conditions
+- Focus boost: +1 to +4 in getNowFocus() based on rehearsal issues
+- Explainability: `getFocusExplanation(title)` with reasons + details
+- Trend detection, bulk re-analysis utility
+
+**GrooveMate Intelligence** (`js/core/gl-avatar-guide.js`):
+- 5 intelligence triggers wired into existing guidance system
+- `getNextBestAction()` uses GLInsights for song-specific coaching
+- buildContext() enriched with issue data from analysis pipeline
+
+**Unified Guided Home** (`js/features/home-dashboard.js`):
+- Single hero card: intelligence → schedule → default (priority cascade)
+- High confidence: hero only, no competing actions
+- Inline justification + "Quick plan ▼" expandable depth
+- Progress + momentum signals inside expansion
+- Removed: session plan, what to do next, last rehearsal issues (redundant)
+
 ### Core Product Loop
 1. **Build Set** → "Build Your Set" with guided flow
 2. **Start Rehearsal** → guardrail confirms real session, GrooveMate listens
@@ -140,7 +167,9 @@ Production URL: **https://app.groovelinx.com**
 6. **Practice** → zero-friction song detail with Play Along / Learn / Harmonies / Lyrics
 
 ### Intelligence Layer
-- **GLProductBrain**: unified insight API — sole source for all rehearsal UI
+- **GLProductBrain**: unified insight API — sole source for rehearsal UI
+- **RehearsalAnalysis**: notes parsing → structured insights → per-song issues → recommendations
+- **GLInsights**: persistent issue store, action plans, focus boost, trend detection, explainability
 - **Event Segmentation v2**: 12 event types, rhythm detection
 - **Story Engine**: timeline grouping, plan vs actual, coaching
 - **Narrative Engine**: headline, biggestIssue, strongestMoment, nextAction
@@ -185,21 +214,21 @@ Production URL: **https://app.groovelinx.com**
 ## Key Architecture Files
 
 ```
-js/core/groovelinx_store.js         — GLStore: ACTIVE_STATUSES, isActiveSong, avgReadiness, getNowFocus, focusChanged
-js/features/home-dashboard.js      — State-driven Home (Next Up + Intent + focusChanged subscriber)
-js/features/setlists.js            — "Build Your Set" with guided flow
-js/features/rehearsal.js            — Rehearsal Plan (draft badge, guardrail, charts-only, focusChanged subscriber)
-js/features/calendar.js             — Schedule (Next Up, availability, risk, locations)
-js/features/song-detail.js          — Practice This Song (band chart + band love + GLStore.setStatus)
-js/features/songs.js                — Work on this next (focus engine, focus mode, focusChanged subscriber)
-js/ui/gl-left-rail.js               — Simplified nav (5 primary + collapsed secondary)
-js/ui/gl-avatar-ui.js               — Avatar: photorealistic portraits, action plans, task engine, settings
-js/core/gl-avatar-guide.js          — Context-aware text messages (no CTAs, cluster-adaptive)
-js/core/gl-voice-coach.js           — TTS: locked Web Speech + configurable ElevenLabs
-rehearsal-mode.js                    — Rehearsal mode + Reveal (4-block + contextual CTA)
-js/ui/navigation.js                 — GL_PAGE_READY lifecycle (_navSeq guard, SYSTEM LOCK)
-worker.js                            — Cloudflare Worker: /tts, /fetch-chart, API proxies
-tests/helpers.js                     — Shared E2E helpers (flag-based waits)
-tests/chaos.spec.js                  — Chaos stability tests (46 tests)
-tests/burn-in.spec.js                — Burn-in stability tests
+js/core/groovelinx_store.js             — GLStore: ACTIVE_STATUSES, getNowFocus (+issue boost), focusChanged
+js/core/rehearsal-analysis-pipeline.js  — Notes → insights → issues → recommendations → Firebase
+js/core/gl-insights.js                  — Persistent intelligence: issue store, action plans, trends, explainability
+js/core/gl-avatar-guide.js             — GrooveMate: 5 intelligence triggers, context-aware coaching
+js/features/home-dashboard.js          — Unified hero card: directive, intelligence-driven, zero-hesitation
+js/features/rehearsal.js                — Rehearsal Plan + "Start Here" directive + session report + re-analyze
+js/features/songs.js                    — Focus engine + explainability dots + focusChanged subscriber
+js/features/setlists.js                — "Build Your Set" with guided flow
+js/features/calendar.js                 — Schedule (Next Up, availability, risk, locations)
+js/features/song-detail.js             — Practice This Song (band chart + band love + GLStore.setStatus)
+js/ui/gl-left-rail.js                  — Simplified nav (5 primary + collapsed secondary)
+js/ui/gl-avatar-ui.js                  — Avatar: photorealistic portraits, action plans, settings
+js/ui/navigation.js                     — GL_PAGE_READY lifecycle (_navSeq guard, SYSTEM LOCK)
+rehearsal-mode.js                        — Rehearsal mode + Reveal + analysis pipeline trigger
+worker.js                               — Cloudflare Worker: /tts, /fetch-chart, API proxies
+tests/chaos.spec.js                      — Chaos stability tests (46 tests)
+tests/burn-in.spec.js                   — Burn-in stability tests
 ```

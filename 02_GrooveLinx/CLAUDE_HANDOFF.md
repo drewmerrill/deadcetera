@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-03-30 (Data Integrity Pass + Stabilization — 188 E2E tests, 4 SYSTEM LOCKs)_
+_Last updated: 2026-03-30 (Rehearsal Intelligence + GLInsights + GrooveMate Coach — unified guided Home)_
 
 ## Read This First
 
@@ -406,7 +406,85 @@ Race condition fixes — timing and synchronization.
 
 **Chaos Test Suite:**
 - `tests/chaos.spec.js` — 46 tests covering rapid navigation, state mutation stress, cross-surface consistency, data edge cases, rehearsal lifecycle, calendar stability, console error audit, boot readiness
-- Total: 188 E2E tests (142 core + 46 chaos), 0 failed
+
+### Repo Hygiene (2026-03-30)
+
+- Deleted 13 items: Archive.zip, NEXT_SESSION.md, fix_cover_me.py, test-results 2-6/, empty dirs, uat054_patch/
+- Archived 12 items: ARCHIVED_learning_resources.js, deploy.sh, outputs/, html audits, old session notes
+- Moved: docs/song_record_schema.md → 02_GrooveLinx/specs/
+- Root directory: 71 → 58 items
+- .gitignore: added test-results*/, playwright-report/, archive/
+
+### Rehearsal Analysis Pipeline (2026-03-30)
+
+New module: `js/core/rehearsal-analysis-pipeline.js` (window.RehearsalAnalysis)
+
+- **`run(sessionId, opts)`** — full pipeline: load session → parse notes → segment audio → build story → generate insights → persist to Firebase → emit event
+- **`parseNotes(text, songs, members)`** — extracts timestamps, song references, player mentions, issues, positives (word-boundary matching)
+- **`generateInsights(params)`** — per-song issues, player feedback, actionable recommendations with type detection (timing/pitch/transition/lyrics/section)
+- Triggers: rehearsal-mode.js (after session save), rehearsal.js (after "Recreate from Recording")
+- Data stored: `bands/{slug}/rehearsal_sessions/{id}/analysis`
+- Session report: structured insights replace raw notes, 0m time breakdown hidden
+- Re-run: `run(sessionId, { force: true })` + UI button in session report
+
+### GLInsights — Band Intelligence Engine (2026-03-30)
+
+New module: `js/core/gl-insights.js` (window.GLInsights)
+
+**Persistent Issue Store (Firebase):**
+- `bands/{slug}/intelligence/issues/{song}`: totalCount, recentCount, types, sessions, lastSeenAt
+- `bands/{slug}/intelligence/sessions/{id}`: analyzedAt, issueCount, songs
+- `recordSessionIssues(analysis)` aggregates across sessions
+- `loadIssues()` with 30s cache, lazy-loads 5s after boot
+
+**Explainability:**
+- `getFocusExplanation(title)` — `{ reason, details[], score }` combining readiness, setlist, issues, priority
+- Songs page: explanation dots under "Work on this next"
+
+**Action Engine:**
+- `buildActionPlan(title)` — `{ song, problemType, recommendation, actionPlan[], estimatedTime, severity }`
+- 7 templates × 2 severity levels (low/high) with bandmate-voice guidance
+- Starting anchors, stop conditions, goal lines, conditional branches
+- `getFixBlock(limit)` — top N plans for rehearsal agenda
+- `getNextAction()` — `{ headline, detail, song, plan, cta }` for Home hero card
+
+**Trend Detection:**
+- `getTrend(title)` — improving/flat/worsening across sessions
+
+**Bulk Utility:**
+- `reanalyzeAll(onProgress)` — retroactive pipeline for all past sessions
+
+### GrooveMate Intelligence (2026-03-30)
+
+Wired GLInsights into existing GrooveMate guidance system (no new module).
+
+- `buildContext()` enriched with: topIssueSong, topIssueSongCount, topIssueSongTypes, insightAction, weakSongs from focus engine
+- 5 new GUIDANCE entries: `insight_top_issue`, `insight_post_rehearsal`, `insight_improving`, `insight_persistent_issue`, `insight_rehearsal_start`
+- `getNextBestAction()` upgraded: intelligence-first with type-specific hints
+- 4 new triggers: `has_rehearsal_issues`, `just_finished_with_issues`, `trend_improving_with_data`, `persistent_issue`
+- Message functions receive context for dynamic personalization
+
+### Unified Guided Home (2026-03-30)
+
+**Single hero card — one message, one CTA, zero competing surfaces:**
+- Priority cascade: Setup → Gig today → Intelligence-driven → Schedule urgency → Default
+- `_highConfidence` flag: when true, secondary intent buttons hidden entirely
+- GLInsights.getNextAction() feeds BOTH hero card AND avatar messages (always match)
+
+**Hero card structure (high confidence):**
+- Title: directive headline ("Fix Estimated Prophet")
+- Justification: inline reason ("fell apart · gig in 2 days")
+- "Quick plan ▼": expandable depth (sub detail → progress → momentum → action plan)
+- CTA: single action with time estimate ("▶ Practice Now · ~15 min")
+
+**Hero card structure (low confidence):**
+- Directive default messaging ("Run your set to stay tight")
+- Intent buttons shown as fallback discovery
+
+**Progress signals:** improving (green) / mixed (amber) / needs work (red)
+**Momentum signals:** consecutive session streaks ("🔥 3 solid sessions in a row")
+
+**Removed from Home (redundant):** _renderSessionPlan, _renderWhatToDoNext, _renderLastRehearsalIssues
 
 ## Restart Prompt
 
@@ -421,22 +499,15 @@ I'm continuing GrooveLinx development. Read these files first:
 - CLAUDE.md
 
 Current state:
-- 130+ deploys + data integrity pass + stabilization, 188 E2E tests (0 failed)
-- ALL PHASES COMPLETE + UX/COPY PASS + FOCUS ENGINE + BAND LOVE + CLEANUP + STABILIZATION
-- 4 SYSTEM LOCKs in CLAUDE.md rule 7: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
-- GLStore.ACTIVE_STATUSES: canonical 6-status set, GLStore.isActiveSong(), GLStore.avgReadiness()
-- Focus Engine: GLStore.getNowFocus() + focusChanged event → reactive Home/Songs/Rehearsal
-- GL_PAGE_READY: _navSeq guard prevents stale async renders from corrupting flag
-- 20+ inline status definitions consolidated, 3 duplicate weak-song calculators removed
-- Home: state-driven "Next up for your band" — rehearsal always primary when set exists
-- Nav: 5 primary items (Home/Songs/Rehearsal/Schedule/Setlists), secondary collapsed
-- Band Love: 1-5 heart rating per song with derived status (Core Song, Worth the Work, etc.)
-- Setlists: "Build Your Set" → "Lock This Set" → "Set locked. You're ready to rehearse."
-- Rehearsal: Draft badge + guardrail modal + charts-only practice mode
-- Songs: practice-first ("Work on this next"), focus mode, band chart primary on detail
-- Schedule: "Next Up" with locations, availability, risk signals
-- Chart import: /fetch-chart Worker endpoint + "Make this your chart"
-- Chaos test suite: 46 tests for rapid nav, state mutation, cross-surface consistency
+- Rehearsal Intelligence V1 live — analysis pipeline + GLInsights + GrooveMate coaching
+- Home: single directive hero card, intelligence-driven when issues exist
+- GLInsights: persistent Firebase issue store, action plans, trend detection
+- RehearsalAnalysis: notes parsing → insights → per-song issues → recommendations
+- GrooveMate: 5 intelligence triggers wired into existing guidance system
+- 4 SYSTEM LOCKs: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
+- Data integrity pass: 20+ status definitions consolidated, duplicates removed
+- Repo hygiene: 71 → 58 root items, stale files archived/deleted
+- E2E tests: 120 core passing, 0 failed
 
 **Knowledge + Guidance V1 (2026-03-28):**
 - Feature registry: 10 features with purpose, actions, troubleshooting, contextual hints (JSON files + bundled runtime)
