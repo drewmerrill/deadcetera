@@ -1,128 +1,169 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-25 (Avatar Guide + Unified Player + Band Mode + Scorecard)_
+_Updated: 2026-03-29 (Focus Engine + Band Love + Calendar Locations + Chart Import — 130+ deploys)_
 
-## Active Phase: Guided Band Operating System
+## Active Phase: UX Refinement + Founder UAT
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
-Deploy: **Vercel** (auto-deploy on push to main)
+Deploy: **Vercel** (auto-deploy on push to main) + `push.py` for GitHub Pages
 Production URL: **https://app.groovelinx.com**
 
 ---
 
-## Shipped This Session (2026-03-24 → 2026-03-25)
+## What's Live (2026-03-29)
 
-### Unified Player Engine
-- GLPlayerEngine: state machine (IDLE→LOADING→RESOLVING→PLAYING→FALLBACK→ERROR)
-- GLSourceResolver: curation + YouTube/Spotify/Archive resolution
-- GLPlayerUI: overlay, float, bar modes
-- Per-play token race guard, 4s terminal state guarantee
-- Progressive status: "Finding best version..." → "Checking YouTube..."
-- Confidence messaging: "✔ Playing: Song Title · Best available version"
-- Completion screen: reflection + streak + band signal + next actions
-- "Coming up →" momentum language
+### UX Overhaul (This Session — 15+ deploys)
 
-### Spotify Web Playback SDK
-- gl-spotify-player.js: full SDK subsystem
-- Creates "GrooveLinx" device in Spotify Connect
-- Premium: full-track in-app playback
-- iOS: "Tap play to start" CTA
-- Fallback chain: SDK → embed → external
-- Scopes: streaming, user-read-playback-state, user-modify-playback-state
+**Home — State-Driven Single Action:**
+- Dynamic "Next up for your band" card based on state detection
+- Priority: no songs → no setlist → gig imminent → has setlist (rehearsal always primary)
+- Weak songs demoted to secondary amber bar, not primary hero
+- Intent section: Practice Solo / Rehearse / Play a Gig (smaller, secondary)
+- Zero post-click friction: rehearsal starts directly, practice opens first weak song, play launches live mode
+- Avatar hidden when generic (`display:none`), only shows with actionable insight
 
-### GrooveMate (Avatar Guide)
-- gl-avatar-guide.js: 15 triggers, 3 stages (Fan → Bandmate → Coach)
-- gl-avatar-ui.js: floating 🎸 button + slide-in panel
-- Intent layer: setup / first_run / improve / prepare / rehearse / idle
-- Next Best Action engine: ONE primary action always
-- "▶ Run What Matters" universal CTA
-- Auto-launch: ≥3 songs → Play dashboard → "Let's run one" nudge
-- Magic moment: first completion → "That already sounded tighter"
-- Max 2 tips/day, cooldowns, dismiss
+**Navigation — Simplified:**
+- Primary nav: Home, Songs, Rehearsal, Schedule, Setlists
+- Secondary (collapsed): Tools, Band, More
+- Mode switcher (Sharpen/Lock In/Play) removed from nav
+- Calendar → Schedule (throughout)
 
-### Band Mode (wired, not rebuilt)
-- Play dashboard: Next Action + Scorecard (same components as Sharpen)
-- Go Live + float audio: 🎧 toggles GLPlayerUI.showFloat() over charts
-- Bidirectional sync: Live Gig nav ↔ audio player
-- Quick notes in Go Live → Firebase
-- Player conflict fix: gigPlaySetlist uses unified engine first
+**Setlists — "Build Your Set":**
+- Page title "Build Your Set" with supporting copy
+- "Lock This Set" save label
+- "Add a song..." placeholder, "✂ add a break"
+- 3-song inline assist: "That's a solid start. Want me to round this into a full set?"
+- Post-save: "Set locked. You're ready to rehearse." + [Start Rehearsal] [Done]
 
-### Band Scorecard
-- Health headline with coach line
-- Top Focus callout
-- "✔ What's Working" / "▶ Focus Here"
-- Rating dots + trend (Getting Better / Holding Steady / Needs Focus)
-- Song movement with timeframe
-- On all 3 dashboards
+**Rehearsal — Plan vs Session Clarity:**
+- Page title "Rehearsal Plan" with blue Draft badge
+- Two-button CTA: "Start Band Rehearsal" (guardrail modal) + "Open Charts to Practice" (no session)
+- Guardrail: "Start a real band rehearsal? This will create a dated session."
+- GrooveMate toast at rehearsal start
+- "Rehearsal saved." end screen
+- Separator between draft plan and saved rehearsals
+- "Recreate from Recording" for recovering past sessions
 
-### Rehearsal System
-- Session lifecycle: Plan → Active → Summary → Save
-- Summary screen: rating, reflection, notes, mixdown attachment
-- Headline insights per session
-- Trend indicator
-- Delete + bulk delete
-- Micro-session filtering
+**Reveal — 4-Block Emotional Payoff:**
+- Headline → Proof → Directive → Confidence Close
+- Contextual CTA: "Run That Transition Again" / "Practice That Ending" / "Lock In the Tempo"
+- Varied confidence close phrases
+- No raw scores or confidence values
 
-### Rehearsal Mixdowns
-- Session-level recording archive
-- Upload MP3 / paste Drive link
-- In-app audio player
-- Chopper integration
+**Songs — Practice-First:**
+- "Work on this next" recommendation card with "▶ Practice Now"
+- "What to fix" items on recommendation
+- Simplified chips (max 2 per row: lifecycle + needs work/setlist)
+- "Practice This Song" section on Song Detail (4 buttons with GrooveMate guidance)
+- Band chart always primary on Song Detail (external links under "References")
 
-### Band Feed Cleanup
-- Post types: note, link, photo + pin to Band Room + edit
-- Single + bulk delete (creator/admin permissions)
-- System filter + auto-post suppression
-- Type filters: Links, Photos, Pinned
+**Schedule — Action-Driving:**
+- "Next Up" section at top: next rehearsal + next gig
+- Availability warnings, readiness warnings, risk signals
+- "Who's in" member roster with status icons
+- Action buttons: "Open Rehearsal Plan" / "View Setlist"
 
-### Progression Tracking
-- Action log (14-day localStorage)
-- Completion-aware Next Action Card
-- Practice streaks + milestones
-- Band activity signals + momentum visual
-- Top Songs to Work card
+**Focus Engine (Single Source of Truth):**
+- `GLStore.getNowFocus()` — top 5 priority songs with composite scoring
+- Scoring: readiness gap × setlist membership × gig urgency × band love × active status
+- All UI consumers wired (Home, Songs, Rehearsal) — replaces scattered weak-song logic
 
-### Fixes
-- Song picker crash (undeclared _slPickerShowLibrary in strict mode)
-- Setlist player race condition (launch token guard)
-- Index mismatch in slPlaySetlist (removed re-sort)
-- Spotify popup blocked (synchronous window.open)
-- Back to Feed button hidden (z-index + safe-area)
-- Spotify/Archive embeds not rendering (missing embedReady emit)
+**Band Love + Song Value Model:**
+- 1-5 heart rating per song (`GLStore.saveBandLove()` / `getBandLove()`)
+- Derived status: Core Song, Worth the Work, Utility, Shelve Candidate, Solid, Growing, Developing
+- Priority scoring: `(love * 0.6) + ((5 - readiness) * 0.4)`
+- Song Detail: heart rating widget + derived status badge
+
+**Calendar Locations:**
+- Location fields on events: name, address (Google Maps directions link), venue, meeting link
+- Reusable location picker (`GLStore.getRehearsalLocations()` / `createRehearsalLocation()`)
+- Inline "add new location" form + Meet/Zoom link field
+
+**Chart Import:**
+- `/fetch-chart` Worker endpoint — external chart fetch with HTML stripping (5KB cap)
+- "Make this your chart" on external tab links → imports into band chart
+
+**Songs — Focus Mode:**
+- "Get Better" button enters focus mode (`_glFocusMode=true`)
+- Filters songs to focus list only with "What to work on right now" banner
+
+**Voice Coach:**
+- Locked Web Speech voice (never changes mid-session)
+- Configurable ElevenLabs voice with localStorage persistence
+
+**Test Stabilization:**
+- Deterministic readiness flags: `GL_APP_READY`, `GL_PAGE_READY`, `GL_REHEARSAL_READY`
+- Shared `tests/helpers.js` with condition-based waits
+- Burn-in test suite (`tests/burn-in.spec.js`) — repeated critical flows with timing capture
+- 141 tests total, 0 failed, 0-7 flaky (down from 8 failed + 26 flaky)
+
+### Core Product Loop
+1. **Build Set** → "Build Your Set" with guided flow
+2. **Start Rehearsal** → guardrail confirms real session, GrooveMate listens
+3. **Run Rehearsal** → rehearsal mode with charts, timer, chart notes banner
+4. **End + Rate** → Smart Rating Assist, "Rehearsal saved." confirmation
+5. **Reveal** → 4-block emotional payoff with contextual CTA
+6. **Practice** → zero-friction song detail with Play Along / Learn / Harmonies / Lyrics
+
+### Intelligence Layer
+- **GLProductBrain**: unified insight API — sole source for all rehearsal UI
+- **Event Segmentation v2**: 12 event types, rhythm detection
+- **Story Engine**: timeline grouping, plan vs actual, coaching
+- **Narrative Engine**: headline, biggestIssue, strongestMoment, nextAction
+- **Smart Rating**: 5-signal scoring
+
+### Reliability
+- **Never Blank Screen**: GLRenderState (loading/error/empty/degraded states)
+- **Lazy Loading**: 15 scripts (967KB) deferred
+- **Boot Staging**: Stage 1 (render) → Stage 2 (Firebase) → Stage 3 (idle preloads)
+- **Deterministic test flags**: GL_APP_READY, GL_PAGE_READY, GL_REHEARSAL_READY
+
+### Data Architecture (SYSTEM LOCK)
+- **Firebase-only**: all band data from `/bands/{slug}/`
+- **Band-scoped songs**: non-DC bands start empty
+- **GLStore.ready()**: dependency gating (firebase/members/songs/statuses/setlists)
+- **GLStore.isBootReady()**: true when firebase + songs + members resolved
 
 ---
 
 ## Pending Work
 
 ### HIGH
-1. Test GrooveMate avatar flow end-to-end
-2. Test unified player across setlists + listening bundles
-3. Test Spotify SDK with Premium account
-4. Test Go Live + float audio sync
-5. Wire curation UI (choose version / set North Star / reset to auto)
+1. Founder Test Manual (Sections 2-10)
+2. Brian's 4/1 rehearsal test
+3. Demo video clips for website
+4. Real user testing with non-founder bands
 
 ### MEDIUM
-6. Decommission legacy setlist-player.js once unified engine stable
-7. GrooveMate Phase 2: Claude API conversational guide
-8. Archive.org in-app embed improvements
-9. YouTube OAuth playlists (Phase 2)
-10. Push notification Cloud Function
+5. Stripe payment integration
+6. Venue Google Places autocomplete
+7. Push notifications for rehearsal reminders
+8. Calendar page header → "Schedule" (cosmetic — nav already says Schedule)
 
 ### LOW
-11. GrooveMate Phase 3: passive capture + automation
-12. Stoner Mode → Go Live alias
-13. Scroll position restoration on feed return
+9. BrowserStack real-device testing
+10. Legacy code cleanup (home-dashboard-cc.js)
+11. Re-enable mode switcher in Settings if needed
 
 ---
 
 ## Key Architecture Files
 
 ```
-js/core/gl-player-engine.js    — Unified Player Engine (state machine)
-js/core/gl-source-resolver.js  — Source Resolution + Curation
-js/core/gl-spotify-player.js   — Spotify Web Playback SDK
-js/core/gl-avatar-guide.js     — GrooveMate Engine (guidance + triggers)
-js/ui/gl-player-ui.js          — Player UI (overlay/float/bar)
-js/ui/gl-avatar-ui.js          — GrooveMate UI (button/panel)
-js/features/rehearsal-mixdowns.js — Mixdown archive
+js/core/groovelinx_store.js         — GLStore: getNowFocus(), saveBandLove(), deriveSongStatus(), isBootReady()
+js/features/home-dashboard.js      — State-driven Home (Next Up + Intent + Focus Engine)
+js/features/setlists.js            — "Build Your Set" with guided flow
+js/features/rehearsal.js            — Rehearsal Plan (draft badge, guardrail, charts-only, focus songs)
+js/features/calendar.js             — Schedule (Next Up, availability, risk, locations)
+js/features/song-detail.js          — Practice This Song (4 buttons + band chart + band love + chart import)
+js/features/songs.js                — Work on this next (focus engine, focus mode)
+js/ui/gl-left-rail.js               — Simplified nav (5 primary + collapsed secondary)
+js/ui/gl-avatar-ui.js               — Avatar: photorealistic portraits, action plans, task engine, settings
+js/core/gl-avatar-guide.js          — Context-aware text messages (no CTAs, cluster-adaptive)
+js/core/gl-voice-coach.js           — TTS: locked Web Speech + configurable ElevenLabs
+rehearsal-mode.js                    — Rehearsal mode + Reveal (4-block + contextual CTA)
+js/ui/navigation.js                 — GL_PAGE_READY flag
+worker.js                            — Cloudflare Worker: /tts, /fetch-chart, API proxies
+tests/helpers.js                     — Shared E2E helpers (flag-based waits)
+tests/burn-in.spec.js                — Burn-in stability tests
 ```

@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-03-25 (Avatar Guide + Unified Player + Band Mode + Scorecard)_
+_Last updated: 2026-03-29 (Focus Engine + Band Love + Calendar Locations + Chart Import — 130+ deploys)_
 
 ## Read This First
 
@@ -145,6 +145,213 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 - "Last song — finish strong"
 - Fallback = choice: "Couldn't find a perfect match — Choose how to listen"
 
+### Massive Session (2026-03-25 → 2026-03-27, 63 deploys)
+
+**Infrastructure:**
+- Auth race fix, band switcher, lazy loading (967KB removed from boot)
+- Data canonicalization: bandMembers from Firebase only, bandKnowledgeBase removed
+- GLRenderState: never-blank-screen system with loading/error/empty/degraded states
+- Boot staging with requestIdleCallback, polling reduced 5x
+- 59 Playwright E2E tests across 4 files
+- **GLStore.ready()** dependency gating (markReady for firebase/members/songs/statuses/setlists)
+- **Global error capture** (window.onerror/onunhandledrejection → GLRenderState)
+- **[RenderStart]/[RenderSuccess]/[RenderError]** logging on all pages
+
+**Band-Scoped Song System (SYSTEM LOCK):**
+- `loadBandSongLibrary()` — loads from Firebase, mutates allSongs in-place (263 refs auto-update)
+- `ensureBandSong(title)` — implicit song creation from setlist adds
+- Non-DC bands: allSongs cleared at boot → empty library → songs created via setlists
+- Deadcetera migration: one-time copy of 585 songs + statuses to Firebase
+- localStorage fallback blocked for non-DC bands
+- Firebase failure: retry after 3s + toast notification
+- Song search uses `GLStore.getSongs()` + shows "+ Add new song" option
+
+**Band Creation (8 types + subtypes):**
+- Jam Band → GD/Phish/WSP/ABB/Goose/DMB/JGB/Mixed
+- Cover Band → 60s/70s/80s/90s/2000s/Mixed
+- Tribute Band → Beatles/Dead/Billy Joel/Elton John/Taylor Swift/Fleetwood/Zeppelin/Other
+- Church/Worship → Contemporary/Gospel/Traditional/Mixed
+- Wedding/Event → Dance Floor/Cocktail/Classics/Modern Pop
+- Campfire/Acoustic → Singalong/Country/Classic Rock/Easy Guitar
+- Piano Songbook → Billy Joel/Elton John/Singer-Songwriter/Standards
+- Original Band → starts blank
+
+**Product:**
+- GLProductBrain: unified insight API wrapping segmentation + story + narrative engines
+- Event-based rehearsal segmentation v2 (12 event types, rhythm detection, manual annotations)
+- Rehearsal Story Engine: timeline, coaching, highlights, plan vs actual
+- Rehearsal Reveal Screen: headline + ONE insight + next action + auto chart note
+- Smart Rating Assist: auto-suggest + auto-confirm at 3s
+- Chart Overlay V1: chart URLs, overlay notes, Reveal→Chart integration
+- Voice Coach V1: TTS for insights, ask-anything via Claude, stage-based personality
+- Improvement attribution: cross-session comparison with what/why/focus
+
+**UX:**
+- 3-step onboarding flow (Step 1/3, 2/3, 3/3 with "Step X of 3" label)
+- Quick-start rehearsal (one tap from avatar)
+- Sticky Save Setlist button, styled modals (break picker, rename)
+- Song search with implicit creation ("+ Add as new song")
+- Empty library states (songs page, song picker, QuickFill)
+- Band switch: clears hash + onboarding + sets Lock In mode
+- Delete band with double confirmation (type name)
+- Contentsquare + GLUXTracker (rage clicks, dead clicks, rapid nav)
+
+**Experience Pass (2026-03-28):**
+- Song seeding: 30+ starter catalogs, auto-populates on band creation
+- Auto first setlist: "BandName — First Set" created with starter songs
+- Onboarding Step 1 auto-done → Home shows Step 2 immediately
+- Conversational avatar: 3-5 phrase variations per trigger, tone tags (calm/energetic/neutral)
+- Avatar visual V1: SVG human face with 5 expressions (neutral/encouraging/focused/concerned/celebratory)
+- CSS animations: blink (4s), breathe (4s), talk (0.35s mouth), ring pulse
+- Expression changes on: onboarding, insight reveal, improvement/decline, post-speech
+- ElevenLabs TTS via Worker proxy (`/tts` route) — natural voice, tone-mapped settings
+- Web Speech fallback with enhanced voice selection (prioritizes premium voices)
+- Voice input: mic button with browser Speech Recognition, auto-submit after speech ends
+- **Photorealistic AI portraits**: 5 expressions × 2 characters (male + female coach), generated via Flux/Cloudflare Workers AI
+- **Avatar customization**: gear icon → pick voice (8 ElevenLabs voices) + avatar image (male/female), persists in localStorage
+- Photo upload in Band Feed (Firebase Storage + preview + progress)
+- Rehearsal planner data cleared on band switch (no more data leaks)
+- Floating admin button removed
+- Voice Coach API fixed (case mismatch + Anthropic message format + model ID)
+- Cloudflare Worker: `/tts` route, Workers AI binding, `wrangler.toml` added
+
+**Feedback Intelligence V1 (2026-03-28):**
+- 5 new modules: gl-user-identity, avatar_feedback_classifier/context/service/summarizer
+- Avatar detects feedback keywords → conversational acknowledgment + auto-submit with full context
+- Auto-capture: render failure, 3x repeated failure, onboarding stall (deduped per session)
+- Admin inbox in Settings → Bugs (list + detail + status management + notes)
+- Storage: `/product_feedback/{reportId}` in Firebase
+- `GLStore.saveProductFeedback()` API
+
+**Feedback Intelligence V2 (2026-03-28):**
+- Issue grouping by `clusterKey` (type + page + keyword) — reduces 10 reports to 1 issue
+- Scoring: `(frequency × 2) + severity + flow criticality`, founder reports × 2
+- Flow break detection: `startFlow()`/`completeFlow()` → auto-report if not completed in 60s
+- Trend indicators: ↑↓→ based on 24h vs previous 24h
+- Grouped admin inbox: sorted by score, count badges, founder stars, trends
+
+**Feedback Intelligence V3 (2026-03-28):**
+- Keyword normalization with synonym map (30+ synonyms)
+- Root cause analysis via Claude (non-blocking, stored in `/feedback_clusters/`)
+- "Create Fix" actions (bug/UX fix/feature) stored in `/product_actions/`
+- Fix verification: count_before vs count_after → improving/same/worse
+- Avatar learning loop: reads cluster insights → proactive guidance per page
+- Settings → Plan & Billing tab (current plan, founder badge, upgrade CTA, founder code entry)
+
+**Brian's bugs fixed:** Encore picker, rehearsal plan, home→blank, input contrast, setlist save
+
+### UX/Copy Pass (2026-03-29 — 15+ deploys)
+
+**Home — State-Driven:**
+- Dynamic "Next up for your band" card: detects no songs / no setlist / gig imminent / has setlist
+- Rehearsal ALWAYS primary when setlist exists (weak songs demoted to secondary)
+- Intent buttons (Practice Solo / Rehearse / Play a Gig) are secondary, smaller
+- Zero friction: rehearsal starts directly, practice opens first weak song, play launches live
+- Avatar hidden when generic, text-only guidance when shown
+- No mode-specific dashboards (Sharpen/Lock In/Play unified into one Home)
+- `_renderNextUpCard()` + `_renderIntentSection()` + state machine in `_renderNextActionCard()`
+
+**Navigation:**
+- Primary: Home, Songs, Rehearsal, Schedule, Setlists (left rail + mobile menu)
+- Secondary (collapsed `<details>`): Tools, Band, More
+- Mode switcher removed from nav (modes still work internally)
+- Calendar → Schedule everywhere
+
+**Setlists — "Build Your Set":**
+- All labels updated (Lock This Set, Build a New Set, Add a song, etc.)
+- 3-song inline assist, post-save confirmation, "Add to this band" for new songs
+
+**Rehearsal — Plan vs Session:**
+- Draft badge, two-button split (Start Band Rehearsal + Open Charts to Practice)
+- Guardrail modal before creating real session
+- Charts-only practice mode (no session saved)
+- "Recreate from Recording" for recovering past sessions
+- Separator between draft plan and saved rehearsal history
+
+**Reveal — 4-Block:**
+- Headline → Proof → Directive → Confidence Close
+- Contextual CTA: detects transition/ending/tempo in issue text
+- "Practice That Next" / "Run That Transition Again" / "Practice That Ending"
+
+**Songs — Practice-First:**
+- "Work on this next" recommendation with "Practice Now" CTA
+- Simplified chips (max 2 per row)
+- Band chart primary on Song Detail (external links under "References")
+- "Practice This Song" section: Play Along, Learn the Parts, Practice Harmonies, Learn the Lyrics
+
+**Schedule:**
+- "Next Up" section: next rehearsal + next gig with availability, readiness, risk
+- Action buttons per event type
+- All existing calendar/availability features intact
+
+**Test Stabilization:**
+- Deterministic flags: `GL_APP_READY`, `GL_PAGE_READY`, `GL_REHEARSAL_READY`
+- `GLStore.isBootReady()` added to groovelinx_store.js
+- Shared `tests/helpers.js` with `signIn`, `navigateAndWait`, `waitForGlobal`
+- Burn-in test suite (`tests/burn-in.spec.js`) — repeated critical flow execution with timing + flag verification
+- 0 failed (was 8), 0-7 flaky (was 26), 141 tests total
+
+**Production code changed for tests (minimal):**
+- `js/core/groovelinx_store.js`: `isBootReady()` + `GL_APP_READY` flag
+- `js/ui/navigation.js`: `GL_PAGE_READY` flag set after renderer completes
+- `js/features/rehearsal.js`: `GL_REHEARSAL_READY` flag
+
+### Focus Engine (2026-03-29)
+
+Single source of truth for "what should we work on?" — replaces scattered weak-song calculations.
+
+- **`GLStore.getNowFocus()`** — returns `{ primary, list, reason, count }` (top 5 priority songs)
+- Composite scoring: readiness gap × setlist membership × gig urgency × band love priority × active status
+- 30-second cache for performance
+- All UI consumers wired: Home dashboard (Next Action, Session Plan, Top Songs), Songs page (needs_work filter, suggested next), Rehearsal page (focus songs header)
+- Replaces `PracticeAttention` and individual weak-song calculations everywhere
+
+### Band Love + Song Value Model (2026-03-29)
+
+Heart-based song rating (1-5) with derived intelligence — how much the band loves a song vs how ready they are.
+
+- **`GLStore.saveBandLove(songId, value)`** / `getBandLove()` / `getAllBandLove()` — Firebase-persisted
+- **`deriveSongStatus(songId)`** — labels: Core Song, Worth the Work, Utility, Shelve Candidate, Solid, Growing, Developing
+- **`getSongPriority(songId)`** — `(love * 0.6) + ((5 - readiness) * 0.4)`
+- **`getSongGap(songId)`** — emotional gap (love minus readiness) for triage
+- **`getSongSignals(songId)`** — full signal bundle for avatar/NBA engine
+- **`getRehearsalPriorities(limit)`** — ranked list for rehearsal planning
+- **`getBandPreferences()`** — lovedSongs, lowEnergySongs, growthSongs for Band DNA integration
+- Song Detail page: `_sdRenderBandLove()` widget with heart rating + derived status badge
+- Preloaded 8 seconds after boot via `requestIdleCallback`
+
+### Calendar Locations (2026-03-29)
+
+- Location fields on events: name, address (with Google Maps directions link), venue, meeting link
+- **`GLStore.getRehearsalLocations()`** / **`createRehearsalLocation()`** — reusable location picker
+- Inline "add new location" form in event creation
+- Meet/Zoom link field for virtual rehearsals
+
+### Chart Import (2026-03-29)
+
+- **`/fetch-chart` Worker endpoint** — fetches external chart pages, strips HTML, returns plain text (5KB cap, CORS bypass)
+- "Make this your chart" button on external tab links → imports into band chart
+- `_sdImportTabAsChart()` opens rehearsal mode with guidance toast
+
+### Songs — Focus Mode (2026-03-29)
+
+- "Get Better" intent button sets `window._glFocusMode=true`
+- Songs page filters to focus songs only, shows "What to work on right now" banner
+- Exits focus mode on navigation away
+
+### Voice Coach Improvements (2026-03-29)
+
+- Locked Web Speech voice — caches selected voice, never changes mid-session (priority: Samantha, Google US English, Karen, Tessa, Fiona)
+- Configurable ElevenLabs voice — `setVoiceId()` / `getVoiceId()` with localStorage persistence
+- Async voice preloading for Chrome (`onvoiceschanged` handler)
+
+### New Active Work Docs (2026-03-29)
+
+- `02_GrooveLinx/Active_Work/ChatGPT_UAT_Handoff.md` — ChatGPT UX review handoff (screenshots, prompts, page-by-page eval)
+- `02_GrooveLinx/Active_Work/Knowledge_Sync_Protocol.md` — Keeping feature registry + UI contracts in sync after deploys
+- `02_GrooveLinx/Active_Work/Video_Recording_Guide.md` — 5 demo clip recording guide (setup, setlist, rehearsal, reveal, avatar)
+- `02_GrooveLinx/Active_Work/Website_Rewrite.md` — Full website copy rewrite (8-section structure, removing jam-band language)
+
 ## Restart Prompt
 
 Paste this to resume:
@@ -153,14 +360,137 @@ Paste this to resume:
 I'm continuing GrooveLinx development. Read these files first:
 - 02_GrooveLinx/CLAUDE_HANDOFF.md
 - 02_GrooveLinx/CURRENT_PHASE.md
+- 02_GrooveLinx/Product_Brain.md
+- 02_GrooveLinx/Active_Work/Current_Sprint.md
 - CLAUDE.md
 
-Current priorities:
-1. Test GrooveMate avatar flow end-to-end
-2. Test unified player across setlists + listening bundles
-3. Test Spotify SDK with Premium account
-4. Test Go Live + float audio sync
-5. Wire curation UI (choose version / set North Star)
+Current state:
+- 130+ deploys shipped over 5 days, 141 E2E tests passing (0 failed, deterministic flags)
+- ALL PHASES COMPLETE + UX/COPY PASS + FOCUS ENGINE + BAND LOVE
+- Home: state-driven "Next up for your band" — rehearsal always primary when set exists
+- Nav: 5 primary items (Home/Songs/Rehearsal/Schedule/Setlists), secondary collapsed
+- Focus Engine: GLStore.getNowFocus() — single source of truth for "what to work on"
+- Band Love: 1-5 heart rating per song with derived status (Core Song, Worth the Work, etc.)
+- Setlists: "Build Your Set" → "Lock This Set" → "Set locked. You're ready to rehearse."
+- Rehearsal: Draft badge + guardrail modal + charts-only practice mode
+- Reveal: 4-block (Headline/Proof/Directive/Close) with contextual CTA
+- Songs: practice-first ("Work on this next"), focus mode, band chart primary on detail
+- Schedule: "Next Up" with availability warnings + risk signals + locations
+- Calendar: location picker, Google Maps directions, meet/zoom links
+- Chart import: /fetch-chart Worker endpoint + "Make this your chart" on external tabs
+- Avatar: hidden when generic, text-only when shown, no duplicate CTAs
+- Voice: locked Web Speech voice + configurable ElevenLabs voice
+- Test flags: GL_APP_READY, GL_PAGE_READY, GL_REHEARSAL_READY
+- New docs: ChatGPT UAT Handoff, Knowledge Sync Protocol, Video Recording Guide, Website Rewrite
+
+**Knowledge + Guidance V1 (2026-03-28):**
+- Feature registry: 10 features with purpose, actions, troubleshooting, contextual hints (JSON files + bundled runtime)
+- Task recipes: 4 step-by-step flows with friction points and GrooveMate action fallbacks
+- UI contracts: 3 pages with CTA labels, selectors, empty states (for validation)
+- Knowledge resolver: answers help questions from registry/recipes BEFORE Claude (instant, verified)
+- Hint engine: 3 types (rescue/unlock/optimization), max 3 per session, context-aware
+- Help validator: compares UI contracts vs live DOM, flags stale help
+- Help manifest: `help_manifest.json` tracks all help files + verification status
+- Avatar flow: Actions → Knowledge → Feedback → Claude (priority order)
+
+**Knowledge V2 (2026-03-28):**
+- Action-first responses: every help answer includes action offer ("I can do this for you")
+- Confidence scoring: high → direct, medium → with fallback, low → exploratory
+- "What usually goes wrong" shown per page from COMMON_MISTAKES map
+- Help outcome tracking: `/help_outcomes/{id}` — helpful/not_helpful/wrong/took_action
+- Founder feedback: "Was this helpful?" + "This is wrong" buttons on every help response
+- Flagged help stored in `/help_feedback/{id}` for review
+- Cluster-driven hints: feedback clusters inject rescue hints on relevant pages
+- Source indicators: "verified" / "recipe" / "inferred" shown on every response
+
+**Autonomous Operator (2026-03-28):**
+- Action chaining: import → songs + setlist + sections in one command
+- Rehearsal co-pilot: contextual nudges on rehearsal page + post-session note prompt
+- Band-specific learning: `getBandInsights()` analyzes last 10 sessions for trend/rating
+- Knowledge self-healing: `isStale()` checks build version + effectiveness data, reduces confidence for stale help
+- Effectiveness aggregation: loads last 50 help outcomes, identifies weak patterns
+- `getEffectivenessReport()` for admin review
+
+**Trust + Transparency (2026-03-28):**
+- Action plan display: shows numbered steps BEFORE execution
+- Step-by-step progress: circles → hourglass → checkmark/cross per step
+- Preview mode: impactful actions (imports, bulk ops) show "Do it" / "Cancel" before executing
+- Auto-retry: 1 retry on failure, clear message if still fails
+- Action history: `/avatar_actions/{bandId}/{id}` stores every action with timestamp
+- Standardized tool results: all tools return `{ success, message, retryable }`
+- Result summary: green/red card with what changed + next suggested action
+
+**Self-Improving Loop (2026-03-28):**
+- Fix validation: `markClusterFixed()` snapshots count → `validateFix()` compares post-fix reports → resolved/improving/regressed
+- Product health API: `getProductHealth()` returns total/open/clusters/flowBreaks/topIssues
+- UAT Dashboard: Settings → UAT tab — summary cards + top issues + system status
+- GLPlans: added `getCurrentPlan()`, `isFounder()`, `activateFounderCode()` (were missing)
+- Billing: Plan tab visible, founder code entry works, plan badge correct
+
+**GLOrchestrator (2026-03-28):**
+- `gl-orchestrator.js` — central control engine for user experience
+- `getNextAction(ctx)` — determines next best action based on onboarding state, songs, setlists, page
+- `shouldIntervene(ctx)` — checks if avatar should proactively help
+- `getMessage(ctx)` — personality-adjusted message with action + urgency
+- 4 personality modes: guide (supportive), coach (prescriptive), analyst (data-driven), fixer (action-first)
+- Mode auto-selected from avatar stage + friction clusters
+- Autopilot: checks on page change, shows toast for high-urgency suggestions
+- Avatar panel: falls back to orchestrator when no guidance tip available
+
+**GLTaskEngine (2026-03-28):**
+- `gl-task-engine.js` — strict execution pipeline replacing direct tool calls
+- Pipeline: `plan(intent)` → `needsConfirmation(plan)` → `execute(plan)` → `verify(result)` → `explain(result)`
+- Plan templates for all 9 intents with risk assessment (low/medium) + base confidence
+- Auto-retry on failure (1 retry per step)
+- Partial success supported (some steps succeed, others fail)
+- Verification: confirms each step result is valid
+- Explanation: structured summary + next action suggestion
+- All tasks logged to Firebase `/avatar_tasks/{bandId}/{taskId}`
+- Avatar wired: TaskEngine used when available, falls back to old ActionRouter
+
+**Trusted Operator (2026-03-28):**
+- Dynamic confidence: `getDynamicConfidence(intent)` adjusts based on success rate + undo rate from localStorage history
+- Undo system: `_snapshotBeforeTask()` captures song IDs + setlist state → `undoLastTask()` rolls back
+- Undo button shown on medium/high risk completed actions
+- Task learning: every run records `{ runs, success, failures, undos }` per intent
+- Confidence formula: `base * 0.4 + successRate * 0.5 - undoRate * 0.3` (range 0.3-0.98)
+- After 3+ runs of an intent, confidence is data-driven instead of static
+
+**Anticipatory Bandmate (2026-03-28):**
+- Band DNA: persistent profile `{ strengths, weaknesses, tendencies, improvementVelocity, ratings, sessionCount }`
+- Updated after every rehearsal via `GLStore.on('agendaSessionCompleted')`
+- Stored in localStorage + mirrored to Firebase `/bands/{slug}/band_dna`
+- Anticipation engine: checks on every page change
+  - Post-rehearsal → suggests scheduling next rehearsal
+  - Songs but no setlist → suggests building one
+  - Improvement velocity > 0.3 → acknowledges progress
+  - Velocity < -0.3 → suggests focus on weakest song
+- Auto-workflow: rehearsal completion auto-updates Band DNA + completes flow tracking
+- All anticipation actions deduped per session (no spam)
+
+**GrooveMate Actions V1 (2026-03-28):**
+- Action router: 10 intents detected from voice/text (add_song, import_artist_pack, create_setlist, add_chart_note, etc.)
+- Tool registry: 9 deterministic tools (addSong, bulkAddSongs, importArtistPack, createSetlist, addChartNote, suggestSections, attachChartSource, saveRehearsalNote)
+- 13 curated artist packs (Billy Joel, Elton John, Dead, Phish, Beatles, Wedding, WSP, Allman, Goose, DMB, Campfire, Worship, Standards)
+- Chart notes with auto-typed categories (arrangement, vocal, instrumental, transition, performance)
+- Section assistant: standard structure suggestions (Intro→Verse→Chorus→Bridge→Solo→Outro)
+- Source link attachment with auto-detected labels (UG, Chordify, YouTube, etc.)
+- Action receipts: success summary + next action suggestion button
+- No protected chart content copying — links and annotations only
+- ElevenLabs TTS live (Worker proxy), Cloudflare AI binding active (Flux)
+- Product feedback system live — users can report via avatar, auto-capture on friction
+- Band creation has 8 types with subtypes (multi-step wizard)
+- GLStore.ready() dependency gating deployed
+- Global error capture + render logging on all pages
+- Founder UAT in progress — Drew walking through test manual
+
+Priorities:
+1. Founder UAT — test remaining sections (2-10) in Founder Test Manual
+2. Brian's 4/1 rehearsal test — fix any issues reported
+3. Demo video clips for website
+4. Real user testing with non-founder bands
+5. Venue Google Places autocomplete
+6. Stripe payment integration
 ```
 
 ## Firebase Paths
