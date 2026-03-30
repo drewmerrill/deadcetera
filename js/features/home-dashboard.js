@@ -1174,6 +1174,8 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         _renderNextActionCard(bundle, wf),
         // ── Single focus section (replaces duplicate weak songs + session plan) ──
         _renderSessionPlan(bundle),
+        // ── Last rehearsal issues (from analysis pipeline) ──
+        _renderLastRehearsalIssues(),
         // ── Collapsed sections ──
         '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Your Band Right Now</summary>',
         _renderBandScorecard(bundle),
@@ -1395,6 +1397,40 @@ function _computeScorecard(bundle) {
 function _capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
 
 function _hdEsc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ── Last Rehearsal Issues (from analysis pipeline) ────────────────────────────
+function _renderLastRehearsalIssues() {
+  if (typeof RehearsalAnalysis === 'undefined' || !RehearsalAnalysis.getIssueIndex) return '';
+  var index = RehearsalAnalysis.getIssueIndex();
+  var songs = Object.keys(index);
+  if (!songs.length) return '';
+
+  // Sort by issue count descending, take top 3
+  songs.sort(function(a, b) { return (index[b].count || 0) - (index[a].count || 0); });
+  var top = songs.slice(0, 3);
+
+  var html = '<div style="margin-bottom:12px;padding:12px 14px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.15);border-radius:12px">';
+  html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Last Rehearsal Issues</div>';
+
+  top.forEach(function(song) {
+    var entry = index[song];
+    var typeLabels = (entry.types || []).map(function(t) {
+      return { timing: 'timing', pitch: 'pitch', transition: 'transition', lyrics: 'lyrics', stability: 'fell apart' }[t] || t;
+    });
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:0.82em">';
+    html += '<span style="color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _hdEsc(song) + '</span>';
+    html += '<span style="color:#f87171;flex-shrink:0;font-size:0.78em">' + entry.count + ' issue' + (entry.count > 1 ? 's' : '');
+    if (typeLabels.length) html += ' \u00B7 ' + typeLabels.join(', ');
+    html += '</span></div>';
+  });
+
+  if (songs.length > 3) {
+    html += '<div style="font-size:0.72em;color:var(--text-dim);padding-top:4px">+ ' + (songs.length - 3) + ' more</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
 
 // ── Session-level rehearsal plan from PracticeAttention engine ───────────────
 function _renderSessionPlan(bundle) {

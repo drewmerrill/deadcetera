@@ -241,20 +241,59 @@
       }
     }
 
-    // ── Generate recommendations ──
-    if (insights.issues.length > 0 && insights.recommendations.length === 0) {
-      // Find the most-mentioned problem song
-      var issueSongs = {};
-      insights.issues.forEach(function(iss) {
-        if (iss.song) issueSongs[iss.song] = (issueSongs[iss.song] || 0) + 1;
+    // ── Generate actionable recommendations ──
+    var issueSongs = {};
+    insights.issues.forEach(function(iss) {
+      if (iss.song) issueSongs[iss.song] = (issueSongs[iss.song] || 0) + (iss.count || 1);
+    });
+
+    // Sort songs by issue count descending
+    var rankedIssueSongs = Object.keys(issueSongs).sort(function(a, b) { return issueSongs[b] - issueSongs[a]; });
+
+    // Detect issue types from note text for specific recommendations
+    var issueTypes = { timing: /timing|late|early|rushed|dragged|tempo|downbeat/i, key: /key|sharp|flat|pitch|tune/i, transition: /transition|segue|into|out of/i, lyrics: /lyric|forgot|words|verse|bridge/i, section: /intro|verse|chorus|bridge|solo|outro|ending|coda/i };
+
+    rankedIssueSongs.forEach(function(song) {
+      var songIssues = insights.issues.filter(function(i) { return i.song === song; });
+      var allText = songIssues.map(function(i) { return i.text; }).join(' ');
+      var count = issueSongs[song];
+      var rec = '';
+
+      // Detect what specifically went wrong
+      var detected = [];
+      Object.keys(issueTypes).forEach(function(type) {
+        if (issueTypes[type].test(allText)) detected.push(type);
       });
-      var topIssueSong = null;
-      var topCount = 0;
-      Object.keys(issueSongs).forEach(function(s) {
-        if (issueSongs[s] > topCount) { topCount = issueSongs[s]; topIssueSong = s; }
-      });
-      if (topIssueSong) {
-        insights.recommendations.push('Focus next rehearsal on "' + topIssueSong + '" — it had the most issues (' + topCount + ')');
+
+      // Build specific recommendation
+      if (detected.indexOf('transition') !== -1) {
+        rec = 'Run the transition into/out of "' + song + '" 3 times at half tempo, then full speed';
+      } else if (detected.indexOf('timing') !== -1) {
+        rec = 'Practice "' + song + '" with a click track — ' + count + ' timing issue' + (count > 1 ? 's' : '') + ' flagged';
+      } else if (detected.indexOf('key') !== -1) {
+        rec = 'Check the key for "' + song + '" — pitch/key issues noted. Confirm all players are in the same key';
+      } else if (detected.indexOf('lyrics') !== -1) {
+        rec = 'Run "' + song + '" vocals-only or do a lyric read-through before next rehearsal';
+      } else if (detected.indexOf('section') !== -1) {
+        // Extract which section
+        var sectionMatch = allText.match(/\b(intro|verse|chorus|bridge|solo|outro|ending|coda)\b/i);
+        var sectionName = sectionMatch ? sectionMatch[1].toLowerCase() : 'the problem section';
+        rec = 'Isolate the ' + sectionName + ' of "' + song + '" — run it ' + Math.max(3, count * 2) + ' times until locked';
+      } else if (count >= 2) {
+        rec = 'Dedicate a full block to "' + song + '" next rehearsal — ' + count + ' separate issues identified. Run it start to finish ' + Math.max(3, count) + ' times';
+      } else {
+        rec = 'Give "' + song + '" extra attention next rehearsal — run it twice, focusing on the flagged issue';
+      }
+
+      if (rec) insights.recommendations.push(rec);
+    });
+
+    // Segmentation-derived recommendations
+    if (story && story.coaching) {
+      if (story.coaching.talkPercent > 40) {
+        insights.recommendations.push('Discussion took ' + Math.round(story.coaching.talkPercent) + '% of the session — set a 5-minute timer for talk breaks');
+      } else if (story.coaching.talkPercent > 25) {
+        insights.recommendations.push('Keep discussion under 20% next time (was ' + Math.round(story.coaching.talkPercent) + '%)');
       }
     }
 
@@ -282,7 +321,19 @@
    */
   async function run(sessionId, opts) {
     opts = opts || {};
-    console.log('[RehearsalAnalysis] Starting pipeline for session:', sessionId);
+    console.log('[RehearsalAnalysis] Starting pipeline for session:', sessionId, opts.force ? '(forced)' : '');
+
+    // ── Step 0: Check for existing analysis (skip if force) ──
+    if (!opts.force) {
+      try {
+        var existing = await loadAnalysis(sessionId);
+        if (existing && existing.version) {
+          console.log('[RehearsalAnalysis] Existing analysis found (v' + existing.version + '), skipping. Use force:true to reprocess.');
+          _updateIssueIndex(existing);
+          return { sessionId: sessionId, status: 'cached', analysis: existing };
+        }
+      } catch(e) { /* proceed with fresh analysis */ }
+    }
 
     // ── Step 1: Load session data ──
     var session = null;
@@ -383,18 +434,37 @@
       }
     };
 
+    // ── Step 7b: Mark timing source ──
+    if (!v2Result && session.blocks) {
+      analysis.timingSource = 'block_estimates';
+      analysis.timingNote = 'Timing from session blocks (no audio segmentation)';
+    } else if (v2Result) {
+      analysis.timingSource = 'audio_segmentation';
+      analysis.timingNote = null;
+    } else {
+      analysis.timingSource = 'none';
+      analysis.timingNote = 'No timing data available';
+    }
+
     // ── Step 8: Persist to Firebase ──
     try {
-      var slug = (typeof GLStore !== 'undefined' && GLStore.getCurrentBand)
+      var slug2 = (typeof GLStore !== 'undefined' && GLStore.getCurrentBand)
         ? GLStore.getCurrentBand() : (localStorage.getItem('deadcetera_current_band') || 'deadcetera');
-      await firebase.database().ref('bands/' + slug + '/rehearsal_sessions/' + sessionId + '/analysis').set(analysis);
+      await firebase.database().ref('bands/' + slug2 + '/rehearsal_sessions/' + sessionId + '/analysis').set(analysis);
       console.log('[RehearsalAnalysis] Analysis persisted to Firebase');
     } catch(e) {
       console.warn('[RehearsalAnalysis] Failed to persist analysis:', e);
-      // Non-fatal — analysis still returned in-memory
     }
 
-    // ── Step 9: Emit event ──
+    // ── Step 9: Update issue index for feedback loop ──
+    _updateIssueIndex(analysis);
+
+    // ── Step 10: Invalidate focus cache (issues may change priorities) ──
+    if (typeof GLStore !== 'undefined' && GLStore.invalidateFocusCache) {
+      GLStore.invalidateFocusCache();
+    }
+
+    // ── Step 11: Emit event ──
     if (typeof GLStore !== 'undefined' && GLStore.emit) {
       GLStore.emit('rehearsalAnalysisComplete', { sessionId: sessionId, analysis: analysis });
     }
@@ -420,13 +490,162 @@
     }
   }
 
+  // ── Issue Signal Index ─────────────────────────────────────────────────
+  // Aggregates issue counts from the latest session analysis for use by
+  // getNowFocus(), rehearsal agenda, and practice recommendations.
+  // Cached in localStorage for cross-page access.
+
+  var _issueIndex = null;
+  var _issueIndexTime = 0;
+  var ISSUE_INDEX_TTL = 60000; // 1 minute cache
+
+  /**
+   * Get per-song issue counts from the most recent session analysis.
+   * Returns { songTitle: { count, types, lastSession } }
+   */
+  function getIssueIndex() {
+    if (_issueIndex && (Date.now() - _issueIndexTime < ISSUE_INDEX_TTL)) return _issueIndex;
+
+    // Try localStorage first (fast, cross-page)
+    try {
+      var cached = localStorage.getItem('gl_rehearsal_issue_index');
+      if (cached) {
+        var parsed = JSON.parse(cached);
+        if (parsed && parsed.ts && (Date.now() - parsed.ts < 300000)) { // 5 min from localStorage
+          _issueIndex = parsed.index;
+          _issueIndexTime = Date.now();
+          return _issueIndex;
+        }
+      }
+    } catch(e) {}
+
+    return _issueIndex || {};
+  }
+
+  /**
+   * Build issue index from a completed analysis and persist.
+   * Called automatically at end of run().
+   */
+  function _updateIssueIndex(analysis) {
+    if (!analysis || !analysis.insights || !analysis.insights.issues) return;
+
+    var index = {};
+    analysis.insights.issues.forEach(function(iss) {
+      if (!iss.song) return;
+      if (!index[iss.song]) index[iss.song] = { count: 0, types: [], lastSession: analysis.sessionId };
+      index[iss.song].count += (iss.count || 1);
+      // Detect issue types
+      var text = iss.text || '';
+      if (/timing|late|early|rushed|dragged|tempo/i.test(text)) index[iss.song].types.push('timing');
+      if (/key|sharp|flat|pitch|tune/i.test(text)) index[iss.song].types.push('pitch');
+      if (/transition|segue/i.test(text)) index[iss.song].types.push('transition');
+      if (/lyric|forgot.*word|forgot.*lyric/i.test(text)) index[iss.song].types.push('lyrics');
+      if (/restart|fell apart|crash/i.test(text)) index[iss.song].types.push('stability');
+      // Dedupe types
+      index[iss.song].types = index[iss.song].types.filter(function(v, i, a) { return a.indexOf(v) === i; });
+    });
+
+    _issueIndex = index;
+    _issueIndexTime = Date.now();
+
+    // Persist to localStorage for cross-page access
+    try {
+      localStorage.setItem('gl_rehearsal_issue_index', JSON.stringify({ ts: Date.now(), index: index }));
+    } catch(e) {}
+
+    console.log('[RehearsalAnalysis] Issue index updated — ' + Object.keys(index).length + ' songs with issues');
+  }
+
+  /**
+   * Get the focus score boost for a song based on rehearsal issues.
+   * Returns 0-4 (higher = more issues = needs more focus).
+   */
+  function getIssueFocusBoost(songTitle) {
+    var index = getIssueIndex();
+    var entry = index[songTitle];
+    if (!entry) return 0;
+    // 1 issue = +1, 2 issues = +2, 3+ = +3, stability issues = +1 extra
+    var boost = Math.min(entry.count, 3);
+    if (entry.types && entry.types.indexOf('stability') !== -1) boost += 1;
+    return Math.min(boost, 4);
+  }
+
+  /**
+   * Get targeted practice blocks for songs with issues.
+   * Returns array of { song, block, reason, runCount } for agenda injection.
+   */
+  function getTargetedPracticeBlocks() {
+    var index = getIssueIndex();
+    var blocks = [];
+
+    Object.keys(index).forEach(function(song) {
+      var entry = index[song];
+      if (entry.count === 0) return;
+
+      var block = { song: song, reason: '', runCount: 2, types: entry.types || [] };
+
+      if (entry.types.indexOf('transition') !== -1) {
+        block.reason = 'Transition issues — run at half tempo then full';
+        block.runCount = 3;
+      } else if (entry.types.indexOf('timing') !== -1) {
+        block.reason = 'Timing issues — practice with click track';
+        block.runCount = 3;
+      } else if (entry.types.indexOf('stability') !== -1) {
+        block.reason = 'Fell apart last time — run start to finish';
+        block.runCount = Math.max(3, entry.count);
+      } else if (entry.types.indexOf('lyrics') !== -1) {
+        block.reason = 'Lyric issues — do a read-through first';
+        block.runCount = 2;
+      } else {
+        block.reason = entry.count + ' issue' + (entry.count > 1 ? 's' : '') + ' flagged last rehearsal';
+        block.runCount = Math.max(2, entry.count);
+      }
+
+      blocks.push(block);
+    });
+
+    // Sort by issue count descending
+    blocks.sort(function(a, b) {
+      var ac = index[a.song] ? index[a.song].count : 0;
+      var bc = index[b.song] ? index[b.song].count : 0;
+      return bc - ac;
+    });
+
+    return blocks;
+  }
+
+  /**
+   * Load the latest session analysis for the "last rehearsal" dashboard card.
+   * Returns the analysis object or null.
+   */
+  async function getLatestAnalysis() {
+    try {
+      var slug = (typeof GLStore !== 'undefined' && GLStore.getCurrentBand)
+        ? GLStore.getCurrentBand() : (localStorage.getItem('deadcetera_current_band') || 'deadcetera');
+      var snap = await firebase.database().ref('bands/' + slug + '/rehearsal_sessions')
+        .orderByChild('date').limitToLast(1).once('value');
+      var sessions = snap.val();
+      if (!sessions) return null;
+      var keys = Object.keys(sessions);
+      var latest = sessions[keys[0]];
+      return latest && latest.analysis ? latest.analysis : null;
+    } catch(e) {
+      console.warn('[RehearsalAnalysis] Failed to load latest analysis:', e);
+      return null;
+    }
+  }
+
   // ── Public API ──────────────────────────────────────────────────────────
 
   window.RehearsalAnalysis = {
     run: run,
     loadAnalysis: loadAnalysis,
+    getLatestAnalysis: getLatestAnalysis,
     parseNotes: parseNotes,
-    generateInsights: generateInsights
+    generateInsights: generateInsights,
+    getIssueIndex: getIssueIndex,
+    getIssueFocusBoost: getIssueFocusBoost,
+    getTargetedPracticeBlocks: getTargetedPracticeBlocks
   };
 
   console.log('[RehearsalAnalysis] Pipeline loaded');

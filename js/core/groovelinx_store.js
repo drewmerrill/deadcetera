@@ -927,6 +927,10 @@
       // Priority boost (love × gap)
       var pri = getSongPriority(s.title);
       if (pri > 0) focusScore += pri * 0.5;
+      // Rehearsal issue boost (from analysis pipeline)
+      if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueFocusBoost) {
+        focusScore += RehearsalAnalysis.getIssueFocusBoost(s.title);
+      }
 
       if (avg < 4) { // only include songs that actually need work
         candidates.push({ title: s.title, avg: avg, focusScore: focusScore, inSetlist: !!setlistSongs[s.title] });
@@ -1836,6 +1840,10 @@
       rehearsalSessionSignals: _buildRehearsalSessionSignals(),
       attemptSignalsBySongId: _buildAttemptSignalIndex(),
       transitionsBySongPair: transitionsBySongPair,
+      targetedPracticeBlocks: (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getTargetedPracticeBlocks)
+        ? RehearsalAnalysis.getTargetedPracticeBlocks() : [],
+      issueIndex: (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex)
+        ? RehearsalAnalysis.getIssueIndex() : {},
       memberKeys: memberKeys,
       currentSongId: getSelectedSong(),
       nowPlayingSongId: _state.nowPlayingSongId,

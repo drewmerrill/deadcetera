@@ -1068,6 +1068,25 @@ async function _rhRenderSessionHistory() {
 }
 
 // ── Session Report Modal ─────────────────────────────────────────────────────
+window._rhRerunAnalysis = function(sessionId) {
+    if (typeof RehearsalAnalysis === 'undefined') return;
+    if (typeof showToast === 'function') showToast('Analyzing rehearsal...');
+    RehearsalAnalysis.run(sessionId, { force: true }).then(function(result) {
+        if (result.status === 'complete') {
+            if (typeof showToast === 'function') showToast('\u2705 Analysis updated');
+            // Re-open the report modal with fresh data
+            var modal = document.getElementById('rhReportModal');
+            if (modal) modal.remove();
+            setTimeout(function() { _rhShowSessionReport(sessionId); }, 300);
+        } else {
+            if (typeof showToast === 'function') showToast('Analysis returned: ' + result.status);
+        }
+    }).catch(function(e) {
+        console.warn('[Rehearsal] Re-analysis failed:', e);
+        if (typeof showToast === 'function') showToast('Analysis failed');
+    });
+};
+
 window._rhShowSessionReport = function(sessionId) {
     _rhLoadSessions().then(function(sessions) {
         var s = sessions.find(function(x) { return x.sessionId === sessionId; });
@@ -1117,6 +1136,11 @@ window._rhShowSessionReport = function(sessionId) {
                 });
                 html += '<div style="height:12px"></div>';
             }
+        }
+
+        // Timing source indicator
+        if (s.analysis && s.analysis.timingNote) {
+            html += '<div style="font-size:0.68em;color:#94a3b8;font-style:italic;margin-bottom:8px">\u23F1 ' + escHtml(s.analysis.timingNote) + '</div>';
         }
 
         // Analysis insights (if pipeline has run)
@@ -1212,6 +1236,11 @@ window._rhShowSessionReport = function(sessionId) {
             html += '<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em">No data captured for this rehearsal yet.</div>';
         }
 
+        // Re-run analysis button
+        if (typeof RehearsalAnalysis !== 'undefined') {
+            var rerunLabel = s.analysis ? '\uD83D\uDD04 Re-analyze' : '\uD83D\uDD0D Analyze Rehearsal';
+            html += '<button onclick="_rhRerunAnalysis(\'' + escHtml(sessionId) + '\')" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:none;background:rgba(165,180,252,0.1);color:#a5b4fc;cursor:pointer;font-size:0.82em">' + rerunLabel + '</button>';
+        }
         html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em">Close</button>';
         html += '</div>';
 
