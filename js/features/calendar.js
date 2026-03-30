@@ -347,11 +347,10 @@ function renderCalendarInner() {
                         other:     { icon:'\uD83D\uDCCC', bg:'rgba(148,163,184,0.1)', border:'1px solid rgba(148,163,184,0.3)', radius:'3px' }
                     };
                     var _pc = _pillCfg[ev.type||'other'] || _pillCfg.other;
-                    var _pillName = (ev.title||'').substring(0,8) + ((ev.title||'').length > 8 ? '\u2026' : '');
                     const evIdx = ev._idx !== undefined ? ev._idx : ei;
-                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;gap:2px;background:${_pc.bg};border:${_pc.border};border-radius:${_pc.radius};padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
-                        <span style="font-size:0.65em;flex-shrink:0">${_pc.icon}</span>
-                        <span style="font-size:0.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white">${_pillName}</span>
+                    // Month view: icon only — title on hover. Fast recognition, no clutter.
+                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;justify-content:center;background:${_pc.bg};border:${_pc.border};border-radius:${_pc.radius};padding:2px;margin-top:1px;cursor:pointer;width:100%;min-height:16px" title="${ev.title||'Untitled'}">
+                        <span style="font-size:0.72em;line-height:1">${_pc.icon}</span>
                     </div>`;
                 }).join('')
                 : '';
@@ -1095,9 +1094,13 @@ async function calAddEvent(date, editIdx, existing) {
         </select></div>
         <div class="form-row" id="calRepeatEndRow" style="${repeatVal==='none'?'display:none':''}">
             <label class="form-label">Ends</label>
-            <div style="display:flex;gap:8px;align-items:center">
-                <input class="app-input" id="calRepeatEnd" type="date" value="${(ev.repeatRule&&ev.repeatRule.endsAt)||''}" style="flex:1;color-scheme:dark" placeholder="End date">
-                <span style="font-size:0.72em;color:var(--text-dim)">or leave blank for ongoing</span>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <select class="app-select" id="calRepeatEndType" onchange="var dr=document.getElementById('calRepeatEndDate');var dc=document.getElementById('calRepeatEndCount');if(dr)dr.style.display=this.value==='date'?'':'none';if(dc)dc.style.display=this.value==='count'?'':'none'" style="flex:1;min-width:120px">
+                    <option value="date" ${(ev.repeatRule&&ev.repeatRule.endsAt)?'selected':''}>On a date</option>
+                    <option value="count" ${(ev.repeatRule&&ev.repeatRule.endsAfter)?'selected':''}>After # times</option>
+                </select>
+                <input class="app-input" id="calRepeatEndDate" type="date" value="${(ev.repeatRule&&ev.repeatRule.endsAt)||''}" style="flex:1;color-scheme:dark;${(ev.repeatRule&&ev.repeatRule.endsAfter)?'display:none':''}">
+                <input class="app-input" id="calRepeatEndCount" type="number" min="2" max="52" value="${(ev.repeatRule&&ev.repeatRule.endsAfter)||'12'}" placeholder="# of times" style="flex:1;width:80px;${(ev.repeatRule&&ev.repeatRule.endsAfter)?'':'display:none'}">
             </div>
         </div>
         <div class="form-row calGigOnly" id="calSetlistRow" style="${showSetlist?'':'display:none'}">
@@ -1346,10 +1349,21 @@ async function calSaveEvent(editIdx) {
     }
     // Recurrence rule
     var repeatVal = (document.getElementById('calRepeat') || {}).value || 'none';
-    var _repeatEnd = (document.getElementById('calRepeatEnd') || {}).value || null;
-    if (repeatVal === 'weekly') ev.repeatRule = { frequency: 'weekly', interval: 1, endsAt: _repeatEnd };
-    else if (repeatVal === 'biweekly') ev.repeatRule = { frequency: 'weekly', interval: 2, endsAt: _repeatEnd };
-    else if (repeatVal === 'monthly') ev.repeatRule = { frequency: 'monthly', interval: 1, endsAt: _repeatEnd };
+    var _repeatEndType = (document.getElementById('calRepeatEndType') || {}).value || 'date';
+    var _repeatEndDate = (document.getElementById('calRepeatEndDate') || {}).value || null;
+    var _repeatEndCount = parseInt((document.getElementById('calRepeatEndCount') || {}).value) || null;
+    var _endsAt = (_repeatEndType === 'date') ? _repeatEndDate : null;
+    var _endsAfter = (_repeatEndType === 'count') ? _repeatEndCount : null;
+    // Auto-compute endsAt from count if date not provided
+    if (_endsAfter && !_endsAt && ev.date && repeatVal !== 'none') {
+        var _interval = repeatVal === 'biweekly' ? 14 : repeatVal === 'monthly' ? 30 : 7;
+        var _endDate = new Date(ev.date + 'T12:00:00');
+        _endDate.setDate(_endDate.getDate() + (_interval * _endsAfter));
+        _endsAt = _endDate.toISOString().split('T')[0];
+    }
+    if (repeatVal === 'weekly') ev.repeatRule = { frequency: 'weekly', interval: 1, endsAt: _endsAt, endsAfter: _endsAfter };
+    else if (repeatVal === 'biweekly') ev.repeatRule = { frequency: 'weekly', interval: 2, endsAt: _endsAt, endsAfter: _endsAfter };
+    else if (repeatVal === 'monthly') ev.repeatRule = { frequency: 'monthly', interval: 1, endsAt: _endsAt, endsAfter: _endsAfter };
     else ev.repeatRule = null;
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
     var dateErr = _calValidateDate(ev.date, 'Event date');
