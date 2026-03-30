@@ -392,40 +392,59 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 // ── Next Up Card — dynamic primary action ────────────────────────────────────
 function _renderNextUpCard(msg, sub, cta, highConfidence) {
     var _hasDateContext = msg.indexOf('day') !== -1 || msg.indexOf('today') !== -1 || msg.indexOf('Gig') !== -1 || msg.indexOf('Rehearsal') !== -1 || msg.indexOf('Showtime') !== -1;
-    var _scheduleLink = _hasDateContext ? '<div style="margin-top:8px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
+    var _scheduleLink = _hasDateContext ? '<div style="margin-top:6px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
 
-    // ── Inline justification (always visible, no click needed) ──
-    var _justification = '';
-    if (highConfidence) {
-        _justification = _buildJustification();
-    }
+    // ── Inline justification (always visible — no click needed) ──
+    var _justification = highConfidence ? _buildJustification() : '';
 
-    // ── Progress signal (visible when historical data exists) ──
-    var _progressHtml = '';
-    if (highConfidence) {
-        _progressHtml = _buildProgressSignal();
-    }
-
-    // ── Expandable detail (optional depth) ──
+    // ── Expandable depth (sub detail + progress + plan + momentum) ──
     var _expandHtml = '';
-    if (highConfidence && typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
-        var ia = GLInsights.getNextAction();
-        if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length > 1) {
-            _expandHtml = '<details style="margin-top:4px;margin-bottom:4px"><summary style="font-size:0.72em;color:#475569;cursor:pointer">See the plan \u25BC</summary>'
-                + '<div style="padding:6px 0;font-size:0.78em;color:var(--text-dim);line-height:1.5">';
-            ia.plan.actionPlan.forEach(function(step, i) {
-                _expandHtml += '<div>' + (i + 1) + '. ' + _escHtml(step) + '</div>';
-            });
-            if (ia.plan.estimatedTime) _expandHtml += '<div style="margin-top:4px;font-style:italic">\u23F1 ~' + ia.plan.estimatedTime + ' min</div>';
-            _expandHtml += '</div></details>';
+    if (highConfidence) {
+        var _innerParts = [];
+
+        // Sub detail (moved behind expansion)
+        if (sub) {
+            _innerParts.push('<div style="font-size:0.85em;color:#94a3b8;line-height:1.4;margin-bottom:6px">' + _escHtml(sub) + '</div>');
         }
+
+        // Progress signal
+        var _progress = _buildProgressSignal();
+        if (_progress) _innerParts.push(_progress);
+
+        // Momentum signal
+        var _momentum = _buildMomentumSignal();
+        if (_momentum) _innerParts.push(_momentum);
+
+        // Action plan steps
+        if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
+            var ia = GLInsights.getNextAction();
+            if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length > 1) {
+                var _planHtml = '<div style="margin-top:4px">';
+                ia.plan.actionPlan.forEach(function(step, i) {
+                    _planHtml += '<div style="font-size:0.78em;color:var(--text-dim);padding:1px 0">' + (i + 1) + '. ' + _escHtml(step) + '</div>';
+                });
+                if (ia.plan.estimatedTime) _planHtml += '<div style="margin-top:4px;font-size:0.72em;font-style:italic;color:var(--text-dim)">\u23F1 ~' + ia.plan.estimatedTime + ' min</div>';
+                _planHtml += '</div>';
+                _innerParts.push(_planHtml);
+            }
+        }
+
+        if (_innerParts.length) {
+            _expandHtml = '<details style="margin-bottom:12px"><summary style="font-size:0.75em;color:#64748b;cursor:pointer;margin-bottom:4px">How to fix it \u25BC</summary>'
+                + '<div style="padding:4px 0">' + _innerParts.join('') + '</div></details>';
+        }
+    }
+
+    // Low confidence: sub detail stays visible (no expansion needed)
+    var _subHtml = '';
+    if (!highConfidence && sub) {
+        _subHtml = '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>';
     }
 
     return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
         + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
-        + (_justification ? '<div style="font-size:0.75em;color:#64748b;margin-bottom:8px">' + _justification + '</div>' : '')
-        + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:' + (_progressHtml ? '8' : '16') + 'px;line-height:1.4">' + _escHtml(sub) + '</div>'
-        + _progressHtml
+        + (_justification ? '<div style="font-size:0.75em;color:#64748b;margin-bottom:12px">' + _justification + '</div>' : '')
+        + _subHtml
         + _expandHtml
         + '<button onclick="' + cta.onclick + '" style="padding:16px 36px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
         + _scheduleLink
@@ -463,37 +482,61 @@ function _buildJustification() {
     return parts.join(' \u00B7 ');
 }
 
-// ── Progress signal — shows improvement when data exists ──────────────────────
+// ── Progress signal — bandmate-voice improvement indicator ────────────────────
 function _buildProgressSignal() {
-    // Try GLInsights trend for the top issue song
     if (typeof GLInsights === 'undefined' || !GLInsights.getNextAction) return '';
     var ia = GLInsights.getNextAction();
     if (!ia || !ia.song) return '';
 
-    // Check issue index for count context
     var issueIndex = {};
     if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex) {
         issueIndex = RehearsalAnalysis.getIssueIndex();
     }
     var songIssues = issueIndex[ia.song];
+    var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(ia.song) : 0;
 
-    // Check readiness trend
-    var avg = 0;
-    if (typeof GLStore !== 'undefined' && GLStore.avgReadiness) {
-        avg = GLStore.avgReadiness(ia.song);
-    }
-
-    // Build signal from available data
     if (songIssues && songIssues.count === 1 && avg >= 3) {
-        return '<div style="font-size:0.75em;color:#34d399;margin-bottom:12px">\u2191 Only 1 issue left \u2014 almost there</div>';
+        return '<div style="font-size:0.78em;color:#34d399;margin-bottom:6px">\u2191 Almost there \u2014 one last thing to clean up</div>';
     }
-    if (avg >= 3.5 && songIssues && songIssues.count > 0) {
-        return '<div style="font-size:0.75em;color:#fbbf24;margin-bottom:12px">\u2192 Readiness is OK (' + avg.toFixed(1) + ') but issues persist</div>';
+    if (songIssues && songIssues.count === 1 && avg >= 2) {
+        return '<div style="font-size:0.78em;color:#34d399;margin-bottom:6px">\u2191 Getting close \u2014 finish strong</div>';
+    }
+    if (avg >= 3.5 && songIssues && songIssues.count > 1) {
+        return '<div style="font-size:0.78em;color:#fbbf24;margin-bottom:6px">\u2192 Readiness is decent but the issues keep coming back</div>';
+    }
+    if (avg > 0 && avg < 2.5 && songIssues && songIssues.count >= 2) {
+        return '<div style="font-size:0.78em;color:#f87171;margin-bottom:6px">\u2193 This one needs real work \u2014 slow it down and lock it in</div>';
     }
     if (avg > 0 && avg < 2.5) {
-        return '<div style="font-size:0.75em;color:#f87171;margin-bottom:12px">\u2193 Low readiness (' + avg.toFixed(1) + ') \u2014 needs focused work</div>';
+        return '<div style="font-size:0.78em;color:#f87171;margin-bottom:6px">\u2193 Not there yet \u2014 give it a focused block</div>';
     }
 
+    return '';
+}
+
+// ── Momentum signal — tracks consistency across sessions ──────────────────────
+function _buildMomentumSignal() {
+    // Check rehearsal session history for consistency signals
+    try {
+        if (typeof _rhSessionsCache === 'undefined' || !_rhSessionsCache || _rhSessionsCache.length < 2) return '';
+        var recent = _rhSessionsCache.slice(0, 5);
+        var rated = recent.filter(function(s) { return s.rating; });
+        if (rated.length < 2) return '';
+
+        // Count consecutive "great" or "solid" ratings
+        var streak = 0;
+        for (var i = 0; i < rated.length; i++) {
+            if (rated[i].rating === 'great' || rated[i].rating === 'solid') streak++;
+            else break;
+        }
+
+        if (streak >= 3) {
+            return '<div style="font-size:0.78em;color:#34d399;margin-bottom:6px">\uD83D\uDD25 ' + streak + ' solid sessions in a row \u2014 the band is locked in</div>';
+        }
+        if (streak === 2) {
+            return '<div style="font-size:0.78em;color:#86efac;margin-bottom:6px">\u2714 2 good sessions running \u2014 keep the momentum</div>';
+        }
+    } catch(e) {}
     return '';
 }
 
