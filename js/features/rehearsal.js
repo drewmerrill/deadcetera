@@ -298,31 +298,21 @@ async function _rhRenderCommandFlow(el) {
     }
     html += '</div>';
 
-    // ── "Fix What Broke" block from GLInsights ──
+    // ── "Start Here" directive from GLInsights ──
     if (typeof GLInsights !== 'undefined' && GLInsights.getFixBlock) {
         var fixBlock = GLInsights.getFixBlock(3);
         if (fixBlock.length > 0) {
-            html += '<div style="margin-bottom:16px;padding:12px 14px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.15);border-radius:12px">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">\uD83D\uDD27 Fix What Broke Last Time</div>';
-            fixBlock.forEach(function(plan) {
-                html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03)">';
-                html += '<div style="display:flex;align-items:center;gap:8px">';
-                html += '<span style="font-size:0.88em;font-weight:700;color:var(--text);flex:1">' + escHtml(plan.song) + '</span>';
-                html += '<span style="font-size:0.68em;color:#f87171;background:rgba(248,113,113,0.1);padding:2px 6px;border-radius:4px">' + escHtml(plan.problemType) + '</span>';
-                html += '</div>';
-                html += '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">' + escHtml(plan.recommendation) + '</div>';
-                if (plan.actionPlan && plan.actionPlan.length) {
-                    html += '<div style="margin-top:4px;padding-left:8px">';
-                    plan.actionPlan.forEach(function(step, i) {
-                        html += '<div style="font-size:0.72em;color:var(--text-dim);padding:1px 0">' + (i + 1) + '. ' + escHtml(step) + '</div>';
-                    });
-                    html += '</div>';
+            var topFix = fixBlock[0];
+            html += '<div style="margin-bottom:16px;padding:14px 16px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.15);border-radius:12px;border-left:4px solid #f87171">';
+            html += '<div style="font-size:1em;font-weight:800;color:var(--text)">Start with \u201C' + escHtml(topFix.song) + '\u201D</div>';
+            html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:2px">' + escHtml(topFix.recommendation) + '</div>';
+            if (fixBlock.length > 1) {
+                html += '<details style="margin-top:8px"><summary style="font-size:0.72em;color:#64748b;cursor:pointer">+ ' + (fixBlock.length - 1) + ' more to fix</summary>';
+                for (var fi = 1; fi < fixBlock.length; fi++) {
+                    html += '<div style="font-size:0.82em;color:var(--text-dim);padding:4px 0">\u2022 ' + escHtml(fixBlock[fi].song) + ' \u2014 ' + escHtml(fixBlock[fi].recommendation) + '</div>';
                 }
-                if (plan.estimatedTime) {
-                    html += '<div style="font-size:0.65em;color:var(--text-dim);margin-top:2px;font-style:italic">\u23F1 ~' + plan.estimatedTime + ' min</div>';
-                }
-                html += '</div>';
-            });
+                html += '</details>';
+            }
             html += '</div>';
         }
     }

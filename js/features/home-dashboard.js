@@ -391,13 +391,31 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 
 // ── Next Up Card — dynamic primary action ────────────────────────────────────
 function _renderNextUpCard(msg, sub, cta) {
-    // Show schedule link when message mentions a date/gig/rehearsal proximity
     var _hasDateContext = msg.indexOf('day') !== -1 || msg.indexOf('today') !== -1 || msg.indexOf('Gig') !== -1 || msg.indexOf('Rehearsal') !== -1 || msg.indexOf('Showtime') !== -1;
     var _scheduleLink = _hasDateContext ? '<div style="margin-top:8px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
+
+    // Check if this is an intelligence-driven action (has specific issue data)
+    var _isIntelDriven = typeof GLInsights !== 'undefined' && GLInsights.getNextAction && !!GLInsights.getNextAction();
+
+    // Expandable explanation (only when intelligence is driving)
+    var _expandHtml = '';
+    if (_isIntelDriven) {
+        var ia = GLInsights.getNextAction();
+        if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length > 1) {
+            _expandHtml = '<details style="margin-top:8px;margin-bottom:4px"><summary style="font-size:0.72em;color:#64748b;cursor:pointer">Why this? \u25BC</summary>'
+                + '<div style="padding:6px 0;font-size:0.78em;color:var(--text-dim);line-height:1.5">';
+            ia.plan.actionPlan.forEach(function(step, i) {
+                _expandHtml += '<div>' + (i + 1) + '. ' + _escHtml(step) + '</div>';
+            });
+            if (ia.plan.estimatedTime) _expandHtml += '<div style="margin-top:4px;font-style:italic">\u23F1 ~' + ia.plan.estimatedTime + ' min</div>';
+            _expandHtml += '</div></details>';
+        }
+    }
+
     return '<div style="padding:20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
-        + '<div style="font-size:0.68em;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Next up for your band</div>'
-        + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:4px">' + _escHtml(msg) + '</div>'
-        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>'
+        + '<div style="font-size:1.15em;font-weight:900;color:#f1f5f9;margin-bottom:4px">' + _escHtml(msg) + '</div>'
+        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:12px;line-height:1.4">' + _escHtml(sub) + '</div>'
+        + _expandHtml
         + '<button onclick="' + cta.onclick + '" style="padding:14px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
         + _scheduleLink
         + '</div>';
@@ -420,19 +438,16 @@ function _renderIntentSection() {
 function _renderNextActionCard(bundle, wf) {
     var hasSongs = (typeof allSongs !== 'undefined') && allSongs.length > 0;
     var hasSetlist = bundle.setlists && bundle.setlists.length > 0;
-    // Single source of truth for focus songs
     var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { primary: null, list: [], reason: '', count: 0 };
     var weakCount = focus.count;
-    var firstWeakTitle = focus.primary ? focus.primary.title : null;
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
     var dna = (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.getBandDNA) ? GLOrchestrator.getBandDNA() : {};
     var sessionCount = dna.sessionCount || 0;
 
-    // ── State detection: schedule urgency → rehearsal → setup ──
     var _msg = '', _sub = '', _cta = null;
 
-    // Load upcoming rehearsal event for schedule-aware messaging
+    // Load upcoming rehearsal event
     var _upcomingRehearsal = null;
     try {
         var _calEvents = (typeof GLStore !== 'undefined' && GLStore.getCalendarEvents) ? GLStore.getCalendarEvents() : [];
@@ -442,6 +457,7 @@ function _renderNextActionCard(bundle, wf) {
     } catch(e) {}
     var _rehearsalDays = _upcomingRehearsal ? _dayDiff(_todayStr(), _upcomingRehearsal.date) : 999;
 
+    // ── Priority 1: Setup (no songs or setlist) ──
     if (!hasSongs && !hasSetlist) {
         _msg = 'Pick a few songs to get started';
         _sub = 'I\u2019ll shape them into a rehearsal set.';
@@ -450,39 +466,49 @@ function _renderNextActionCard(bundle, wf) {
         _msg = 'Build your set';
         _sub = 'You\u2019ve got songs. Let\u2019s turn them into a rehearsal set.';
         _cta = { label: 'Build Set \u2192', onclick: "showPage('setlists');setTimeout(function(){if(typeof createNewSetlist==='function')createNewSetlist();},300)" };
+
+    // ── Priority 2: Gig today ──
     } else if (daysOut === 0) {
-        // Gig TODAY — play is primary
         _msg = 'Showtime';
         _sub = (nextGig.venue || 'Gig') + ' is today. You\u2019re ready.';
         _cta = { label: '\u25B6 Play Set', onclick: "hdPlayBundle('gig')" };
+
+    // ── Priority 3: Intelligence-driven — specific song + issue ──
+    } else if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction && GLInsights.getNextAction()) {
+        var ia = GLInsights.getNextAction();
+        _msg = ia.headline;
+        _sub = ia.detail || '';
+        if (ia.cta === 'Start Practice' && ia.song) {
+            _cta = { label: '\u25B6 Practice Now', onclick: "selectSong('" + _escHtml(ia.song).replace(/'/g, "\\'") + "')" };
+        } else {
+            _cta = { label: '\uD83C\uDFB8 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        }
+
+    // ── Priority 4: Schedule urgency ──
     } else if (daysOut <= 3 && daysOut > 0 && weakCount > 0) {
-        // Gig soon + weak songs — tighten
         _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 tighten these songs';
         _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work before ' + (nextGig.venue || 'the gig') + '.';
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     } else if (daysOut <= 3 && daysOut > 0) {
-        // Gig soon, no weak songs — run the set
         _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 run your set';
         _sub = (nextGig.venue || 'Gig') + '. Run it once more.';
         _cta = { label: '\u25B6 Run the Set', onclick: "hdPlayBundle('gig')" };
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0 && weakCount > 0) {
-        // Rehearsal soon + weak songs
-        _msg = 'Rehearsal in ' + (_rehearsalDays === 0 ? 'today' : _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten these songs';
+        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten these songs';
         _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work.';
-        _cta = { label: '\u25B6 Get Better', onclick: "window._glFocusMode=true;showPage('songs')" };
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
-        // Rehearsal soon, set is tight
         _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : ''));
         _sub = 'Your set is ready. Run it.';
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+
+    // ── Priority 5: Default ──
     } else {
-        // Default: has setlist, rehearsal is primary
         _msg = 'Your set is ready';
-        _sub = sessionCount === 0 ? 'You haven\u2019t rehearsed this set yet.' : 'Keep it tight. We\u2019ll show you what matters after.';
+        _sub = sessionCount === 0 ? 'You haven\u2019t rehearsed this set yet.' : 'Keep it tight.';
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     }
 
-    // No separate weak note — focus section below handles it
     return _renderNextUpCard(_msg, _sub, _cta)
         + _renderIntentSection();
 
@@ -1172,12 +1198,6 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         '<div style="font-size:0.78em;color:var(--text-dim);padding:0 4px 8px">' + dateStr + '</div>',
         // ── Above the fold: ONE primary action only ──
         _renderNextActionCard(bundle, wf),
-        // ── Single focus section (replaces duplicate weak songs + session plan) ──
-        _renderSessionPlan(bundle),
-        // ── What To Do Next (from GLInsights) ──
-        _renderWhatToDoNext(),
-        // ── Last rehearsal issues (from analysis pipeline) ──
-        _renderLastRehearsalIssues(),
         // ── Collapsed sections ──
         '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Your Band Right Now</summary>',
         _renderBandScorecard(bundle),
