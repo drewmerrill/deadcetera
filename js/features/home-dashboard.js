@@ -391,11 +391,15 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 
 // ── Next Up Card — dynamic primary action ────────────────────────────────────
 function _renderNextUpCard(msg, sub, cta) {
+    // Show schedule link when message mentions a date/gig/rehearsal proximity
+    var _hasDateContext = msg.indexOf('day') !== -1 || msg.indexOf('today') !== -1 || msg.indexOf('Gig') !== -1 || msg.indexOf('Rehearsal') !== -1 || msg.indexOf('Showtime') !== -1;
+    var _scheduleLink = _hasDateContext ? '<div style="margin-top:8px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
     return '<div style="padding:20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
         + '<div style="font-size:0.68em;font-weight:800;color:#475569;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Next up for your band</div>'
         + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:4px">' + _escHtml(msg) + '</div>'
         + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>'
         + '<button onclick="' + cta.onclick + '" style="padding:14px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
+        + _scheduleLink
         + '</div>';
 }
 
@@ -465,7 +469,7 @@ function _renderNextActionCard(bundle, wf) {
         // Rehearsal soon + weak songs
         _msg = 'Rehearsal in ' + (_rehearsalDays === 0 ? 'today' : _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten these songs';
         _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work.';
-        _cta = { label: '\u25B6 Get Better', onclick: "showPage('songs')" };
+        _cta = { label: '\u25B6 Get Better', onclick: "window._glFocusMode=true;showPage('songs')" };
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
         // Rehearsal soon, set is tight
         _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : ''));
