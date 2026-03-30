@@ -9,6 +9,11 @@
     <!-- Contentsquare (Hotjar) — session replay, heatmaps, frustration detection -->
     <script src="https://t.contentsquare.net/uxa/6a9eda5501cfe.js"></script>
 
+    <!-- Suppress Firebase long-poll disconnect noise (transport-level, not app errors) -->
+    <script>window.addEventListener('error', function(e) {
+      if (e.message && e.message.indexOf('firebaseio.com/.lp') !== -1) { e.preventDefault(); }
+    });</script>
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
 

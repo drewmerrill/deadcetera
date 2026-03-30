@@ -877,7 +877,11 @@
   var _focusCache = null;
   var _focusCacheTime = 0;
 
-  function invalidateFocusCache() { _focusCache = null; _focusCacheTime = 0; }
+  function invalidateFocusCache() {
+    _focusCache = null;
+    _focusCacheTime = 0;
+    emit('focusChanged');
+  }
 
   function getNowFocus() {
     // Cache for 30s to avoid re-computing on every render

@@ -1259,4 +1259,13 @@ window._glDoAddSong = async function() {
     renderSongs();
 };
 
+// ── Focus change listener — re-render Songs when focus data changes ──────────
+if (typeof GLStore !== 'undefined' && GLStore.on) {
+  GLStore.on('focusChanged', function() {
+    if (typeof currentPage !== 'undefined' && currentPage === 'songs') {
+      renderSongs();
+    }
+  });
+}
+
 console.log('✅ songs.js loaded');

@@ -4855,3 +4855,12 @@ function _riStyles() {
     return '';
 }
 
+// ── Focus change listener — re-render Rehearsal when focus data changes ──────
+if (typeof GLStore !== 'undefined' && GLStore.on) {
+  GLStore.on('focusChanged', function() {
+    if (typeof currentPage !== 'undefined' && currentPage === 'rehearsal') {
+      var el = document.getElementById('page-rehearsal');
+      if (el) renderRehearsalPage(el);
+    }
+  });
+}

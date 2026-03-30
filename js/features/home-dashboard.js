@@ -4890,3 +4890,12 @@ function _scheduleWeakSongsFill(bundle) {
   ].join('');
   document.head.appendChild(s);
 })();
+
+// ── Focus change listener — re-render Home when focus data changes ──────────
+if (typeof GLStore !== 'undefined' && GLStore.on) {
+  GLStore.on('focusChanged', function() {
+    if (typeof currentPage !== 'undefined' && currentPage === 'home') {
+      invalidateHomeCache();
+    }
+  });
+}

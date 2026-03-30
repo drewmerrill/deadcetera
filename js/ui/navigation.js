@@ -17,6 +17,7 @@
 'use strict';
 
 var currentPage = 'songs';
+var _navSeq = 0; // Navigation sequence counter — prevents stale async renders from setting GL_PAGE_READY
 
 /**
  * Navigate to a named page.
@@ -87,6 +88,7 @@ window.showPage = function showPage(page) {
     });
 
     // Show target page
+    var _thisNav = ++_navSeq; // Capture sequence for this navigation
     window.GL_PAGE_READY = null; // Reset until renderer completes
     var el = document.getElementById('page-' + page);
     if (el) {
@@ -132,7 +134,7 @@ window.showPage = function showPage(page) {
     // Run renderer (songs page is rendered by selectSong / renderSongs, not here)
     if (el && page === 'songs') {
         // Songs page skips renderer — mark ready immediately (content managed by renderSongs)
-        window.GL_PAGE_READY = page;
+        if (_thisNav === _navSeq) window.GL_PAGE_READY = page;
     }
     if (el && page !== 'songs') {
         if (_glPageScripts[page]) {
@@ -144,8 +146,9 @@ window.showPage = function showPage(page) {
             }
             // Lazy-load page scripts, then render
             var _lazyStart = performance.now();
-            _glLazyLoadPage(page, function() {
+            _glLazyLoadPage(page, (function(_seq) { return function() {
                 console.log('[DependenciesReady] Page "' + page + '" scripts loaded in ' + Math.round(performance.now() - _lazyStart) + 'ms');
+                if (_seq !== _navSeq) { console.log('[Navigation] Stale render skipped for "' + page + '"'); return; }
                 var renderer = pageRenderers[page];
                 if (typeof renderer === 'function') {
                     console.log('[RenderStart] ' + page);
@@ -154,20 +157,20 @@ window.showPage = function showPage(page) {
                         console.log('[RenderSuccess] ' + page);
                         // Set page-ready flag after async renderers resolve
                         if (_renderResult && typeof _renderResult.then === 'function') {
-                            _renderResult.then(function() { window.GL_PAGE_READY = page; }).catch(function() { window.GL_PAGE_READY = page; });
+                            _renderResult.then(function() { if (_seq === _navSeq) window.GL_PAGE_READY = page; }).catch(function() { if (_seq === _navSeq) window.GL_PAGE_READY = page; });
                         } else {
-                            window.GL_PAGE_READY = page;
+                            if (_seq === _navSeq) window.GL_PAGE_READY = page;
                         }
                     }
                     catch(renderErr) {
                         console.error('[RenderError] ' + page + ':', renderErr);
-                        window.GL_PAGE_READY = page;
+                        if (_seq === _navSeq) window.GL_PAGE_READY = page;
                         if (typeof GLRenderState !== 'undefined') {
                             GLRenderState.set(page, { status: 'error', title: 'Render failed', message: renderErr.message, retry: "showPage('" + page + "')" });
                         }
                     }
                 }
-            });
+            }; })(_thisNav));
         } else {
             var renderer = pageRenderers[page];
             if (typeof renderer === 'function') {
@@ -176,14 +179,16 @@ window.showPage = function showPage(page) {
                     var _renderResult2 = renderer(el);
                     console.log('[RenderSuccess] ' + page);
                     if (_renderResult2 && typeof _renderResult2.then === 'function') {
-                        _renderResult2.then(function() { window.GL_PAGE_READY = page; }).catch(function() { window.GL_PAGE_READY = page; });
+                        (function(_seq) {
+                            _renderResult2.then(function() { if (_seq === _navSeq) window.GL_PAGE_READY = page; }).catch(function() { if (_seq === _navSeq) window.GL_PAGE_READY = page; });
+                        })(_thisNav);
                     } else {
-                        window.GL_PAGE_READY = page;
+                        if (_thisNav === _navSeq) window.GL_PAGE_READY = page;
                     }
                 }
                 catch(renderErr) {
                     console.error('[RenderError] ' + page + ':', renderErr);
-                    window.GL_PAGE_READY = page;
+                    if (_thisNav === _navSeq) window.GL_PAGE_READY = page;
                     if (typeof GLRenderState !== 'undefined') {
                         GLRenderState.set(page, { status: 'error', title: 'Render failed', message: renderErr.message, retry: "showPage('" + page + "')" });
                     }
