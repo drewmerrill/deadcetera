@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-03-29 (Focus Engine + Band Love + Calendar Locations + Chart Import — 130+ deploys)_
+_Last updated: 2026-03-30 (Data Integrity Pass + Stabilization — 188 E2E tests, 4 SYSTEM LOCKs)_
 
 ## Read This First
 
@@ -352,6 +352,62 @@ Heart-based song rating (1-5) with derived intelligence — how much the band lo
 - `02_GrooveLinx/Active_Work/Video_Recording_Guide.md` — 5 demo clip recording guide (setup, setlist, rehearsal, reveal, avatar)
 - `02_GrooveLinx/Active_Work/Website_Rewrite.md` — Full website copy rewrite (8-section structure, removing jam-band language)
 
+### Data Integrity + Dead Code Cleanup (2026-03-30)
+
+Full structural pass — read-path refactor, zero Firebase schema changes.
+
+**Active Status Centralization:**
+- `GLStore.ACTIVE_STATUSES` — canonical 6-status set (prospect/learning/rotation/wip/active/gig_ready)
+- `GLStore.isActiveSong(title)` — boolean check
+- `GLStore.avgReadiness(title)` — exposed (was private)
+- Replaced 20+ inline status definitions across 8 files
+- **Bug fix:** 4 files had 4-status variant missing `wip`/`active` — songs now visible everywhere
+
+**Duplicate Logic Removed:**
+- 3 duplicate weak-song calculators in home-dashboard.js → `GLStore.getNowFocus()`
+- 4 inline avg readiness computations → `GLStore.avgReadiness()`
+- 10+ direct `statusCache`/`readinessCache` reads in songs.js, song-detail.js → GLStore wrappers
+
+**Critical Fixes:**
+- bestshot.js: removed `song.status` mutation on shared `allSongs` object
+- song-detail.js: `statusCache` direct mutation → `GLStore.setStatus()` (event bus now fires)
+- rehearsal.js: added array bounds check on `item.songs[0]/[1]` access
+
+**Dead Code Removed:**
+- app.js: 4 unreachable functions (97 lines) after return in `showBandResources()`
+- utils.js: dead `bandKnowledgeBase` code path
+- version-hub.js: dead `bandKnowledgeBase` reference
+
+**Silent Failures Fixed:**
+- 13 empty catch blocks → `console.warn` with `[Module]` prefix across 6 files
+
+**Infrastructure:**
+- index-dev.html: added 12 missing script tags (dev parity with prod)
+- Restored playwright.config.js + proper test files (removed " 2" file duplicates)
+
+### Stabilization Pass (2026-03-30)
+
+Race condition fixes — timing and synchronization.
+
+**GL_PAGE_READY Lifecycle (SYSTEM LOCK):**
+- `_navSeq` counter in navigation.js prevents stale async renders from setting `GL_PAGE_READY`
+- All 7 assignment sites guarded by sequence check
+- Stale renders logged: `[Navigation] Stale render skipped`
+
+**focusChanged Event Model (SYSTEM LOCK):**
+- `invalidateFocusCache()` emits `'focusChanged'` on GLStore event bus
+- Home → `invalidateHomeCache()` when visible
+- Songs → `renderSongs()` when visible
+- Rehearsal → `renderRehearsalPage()` when visible
+
+**Firebase Error Filtering (SYSTEM LOCK):**
+- Suppresses only `firebaseio.com/.lp` long-poll disconnect noise in index.html
+- Does NOT suppress real Firebase errors
+
+**Chaos Test Suite:**
+- `tests/chaos.spec.js` — 46 tests covering rapid navigation, state mutation stress, cross-surface consistency, data edge cases, rehearsal lifecycle, calendar stability, console error audit, boot readiness
+- Total: 188 E2E tests (142 core + 46 chaos), 0 failed
+
 ## Restart Prompt
 
 Paste this to resume:
@@ -365,23 +421,22 @@ I'm continuing GrooveLinx development. Read these files first:
 - CLAUDE.md
 
 Current state:
-- 130+ deploys shipped over 5 days, 141 E2E tests passing (0 failed, deterministic flags)
-- ALL PHASES COMPLETE + UX/COPY PASS + FOCUS ENGINE + BAND LOVE
+- 130+ deploys + data integrity pass + stabilization, 188 E2E tests (0 failed)
+- ALL PHASES COMPLETE + UX/COPY PASS + FOCUS ENGINE + BAND LOVE + CLEANUP + STABILIZATION
+- 4 SYSTEM LOCKs in CLAUDE.md rule 7: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
+- GLStore.ACTIVE_STATUSES: canonical 6-status set, GLStore.isActiveSong(), GLStore.avgReadiness()
+- Focus Engine: GLStore.getNowFocus() + focusChanged event → reactive Home/Songs/Rehearsal
+- GL_PAGE_READY: _navSeq guard prevents stale async renders from corrupting flag
+- 20+ inline status definitions consolidated, 3 duplicate weak-song calculators removed
 - Home: state-driven "Next up for your band" — rehearsal always primary when set exists
 - Nav: 5 primary items (Home/Songs/Rehearsal/Schedule/Setlists), secondary collapsed
-- Focus Engine: GLStore.getNowFocus() — single source of truth for "what to work on"
 - Band Love: 1-5 heart rating per song with derived status (Core Song, Worth the Work, etc.)
 - Setlists: "Build Your Set" → "Lock This Set" → "Set locked. You're ready to rehearse."
 - Rehearsal: Draft badge + guardrail modal + charts-only practice mode
-- Reveal: 4-block (Headline/Proof/Directive/Close) with contextual CTA
 - Songs: practice-first ("Work on this next"), focus mode, band chart primary on detail
-- Schedule: "Next Up" with availability warnings + risk signals + locations
-- Calendar: location picker, Google Maps directions, meet/zoom links
-- Chart import: /fetch-chart Worker endpoint + "Make this your chart" on external tabs
-- Avatar: hidden when generic, text-only when shown, no duplicate CTAs
-- Voice: locked Web Speech voice + configurable ElevenLabs voice
-- Test flags: GL_APP_READY, GL_PAGE_READY, GL_REHEARSAL_READY
-- New docs: ChatGPT UAT Handoff, Knowledge Sync Protocol, Video Recording Guide, Website Rewrite
+- Schedule: "Next Up" with locations, availability, risk signals
+- Chart import: /fetch-chart Worker endpoint + "Make this your chart"
+- Chaos test suite: 46 tests for rapid nav, state mutation, cross-surface consistency
 
 **Knowledge + Guidance V1 (2026-03-28):**
 - Feature registry: 10 features with purpose, actions, troubleshooting, contextual hints (JSON files + bundled runtime)

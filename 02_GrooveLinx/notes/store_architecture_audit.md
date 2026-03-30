@@ -2,6 +2,7 @@
 
 Audit of state management centralization around `js/core/groovelinx_store.js`.
 Conducted 2026-03-21 against build `20260321-142328`.
+**Updated 2026-03-30** after data integrity + stabilization pass.
 
 ---
 
@@ -43,10 +44,13 @@ However, significant shared app state still lives outside the store in window gl
 **PASS** — Songs, readiness, status, rehearsals, practice stats, shell state, band sync, transition intelligence are well-managed with proper getters, setters, event emission, and persistence.
 
 ### Direct Cache Reads (readinessCache, statusCache)
-**WARNING** — Multiple feature files read `readinessCache` and `statusCache` directly instead of using `GLStore.getAllReadiness()` / `GLStore.getAllStatus()`. Found in songs.js, song-pitch.js, stoner-mode.js, rehearsal.js. Creates stale data risk if cache is updated but consumers aren't notified.
+**IMPROVED (2026-03-30)** — songs.js, song-detail.js, and stoner-mode.js now use `GLStore.getReadiness()` / `GLStore.getStatus()` / `GLStore.avgReadiness()`. Remaining direct readers: song-pitch.js, app.js (40+ sites). Low risk since GLStore wrappers are passthroughs today.
 
 ### Direct Cache Writes
-**FAIL** — `song-detail.js` line 528 writes directly to `statusCache[title]` bypassing the store. `song-detail.js` line 567 mutates the `allSongs` array directly. `bulk-import.js` and `song-pitch.js` push directly to `allSongs`. These bypass store event emission and can cause silent state divergence.
+**IMPROVED (2026-03-30)** — `song-detail.js` statusCache write now routed through `GLStore.setStatus()` (event bus fires). `allSongs` array mutation in `bulk-import.js` and `song-pitch.js` still bypasses store.
+
+### Active Status Definitions
+**FIXED (2026-03-30)** — Was FAIL: 20+ inline `{ prospect:1, learning:1, ... }` definitions, some with only 4 statuses. Now: single `GLStore.ACTIVE_STATUSES` constant, `GLStore.isActiveSong()` check. All 8 files consolidated.
 
 ### Setlist State
 **FAIL** — Dual cache keys exist: `window._glCachedSetlists` and `window._cachedSetlists`. Read by 5+ files (setlists.js, gigs.js, song-pitch.js, home-dashboard.js, rehearsal.js). No store ownership, no change events, no invalidation.
@@ -87,11 +91,12 @@ Consolidate `_glCachedSetlists` and `_cachedSetlists` into `GLStore.getSetlists(
 **Impact:** High — most cross-file state dependency in the codebase.
 
 ### 2. Fix Direct allSongs / statusCache Writes
-**Status: Safe next implementation candidate**
+**Status: PARTIALLY DONE (2026-03-30)**
 
-Route `song-detail.js` line 528 (statusCache write) and line 567 (allSongs mutation) through `GLStore.updateSongField()`. Route `bulk-import.js` and `song-pitch.js` array pushes through a store method.
+`song-detail.js` statusCache write → routed through `GLStore.setStatus()`. ✅
+`song-detail.js` allSongs mutation + `bulk-import.js` / `song-pitch.js` array pushes still bypass store.
 
-**Impact:** High — eliminates the most dangerous dual-source-of-truth writes.
+**Remaining impact:** Medium — store passthrough means no functional divergence today, but blocks future internalization.
 
 ### 3. Migrate Gig Cache to GLStore
 **Status: Safe next implementation candidate**

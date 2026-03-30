@@ -1,6 +1,18 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-03-19 — Build 20260319-163417_
+_Last updated: 2026-03-30 — Data Integrity + Stabilization Pass_
+
+---
+
+## Bugs Fixed (2026-03-30 — Data Integrity Pass)
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| Songs with `wip`/`active` status invisible in 4 files | 4-status inline set `{ prospect, learning, rotation, gig_ready }` missing `wip` and `active` | Replaced 20+ inline sets with `GLStore.ACTIVE_STATUSES` (6 statuses) | 20260330 |
+| bestshot.js corrupts in-memory song data | `song.status = 'This Week'` mutates shared `allSongs` object directly | Removed mutation — no functional impact (status persisted via separate saveBandDataToDrive) | 20260330 |
+| song-detail.js status change skips event bus | Direct `statusCache[title] = v` bypasses `GLStore.setStatus()` | Replaced with `GLStore.setStatus(title, v)` — event bus now fires | 20260330 |
+| rehearsal.js crash on transition items with < 2 songs | `item.songs[0].title` and `item.songs[1].title` accessed without bounds check | Added `&& item.songs.length >= 2` guard | 20260330 |
+| GL_PAGE_READY set for wrong page during rapid navigation | Stale async render callback sets flag after user navigated away | `_navSeq` counter — only sets flag if navigation hasn't advanced | 20260330 |
 
 ---
 

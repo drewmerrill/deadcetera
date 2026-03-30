@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-29 (Focus Engine + Band Love + Calendar Locations + Chart Import — 130+ deploys)_
+_Updated: 2026-03-30 (Data Integrity Pass + Stabilization — 188 E2E tests, 4 SYSTEM LOCKs)_
 
-## Active Phase: UX Refinement + Founder UAT
+## Active Phase: Founder UAT + Real User Testing
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main) + `push.py` for GitHub Pages
@@ -95,7 +95,41 @@ Production URL: **https://app.groovelinx.com**
 - Deterministic readiness flags: `GL_APP_READY`, `GL_PAGE_READY`, `GL_REHEARSAL_READY`
 - Shared `tests/helpers.js` with condition-based waits
 - Burn-in test suite (`tests/burn-in.spec.js`) — repeated critical flows with timing capture
-- 141 tests total, 0 failed, 0-7 flaky (down from 8 failed + 26 flaky)
+- Chaos test suite (`tests/chaos.spec.js`) — 46 tests: rapid nav, state mutation, cross-surface, edge cases
+- 188 tests total (142 core + 46 chaos), 0 failed
+
+### Data Integrity Pass (2026-03-30)
+
+**Active Status Centralization (SYSTEM LOCK):**
+- `GLStore.ACTIVE_STATUSES` — single canonical 6-status set
+- `GLStore.isActiveSong(title)` / `GLStore.avgReadiness(title)` — public API
+- 20+ inline status definitions replaced across 8 files
+- Bug fix: 4 files had 4-status variant missing `wip`/`active`
+
+**Duplicate Logic Removed:**
+- 3 weak-song calculators → `GLStore.getNowFocus()`
+- 4 inline readiness computations → `GLStore.avgReadiness()`
+- `statusCache`/`readinessCache` direct access → GLStore wrappers
+
+**Critical Fixes:**
+- bestshot.js `song.status` mutation on shared object — removed
+- song-detail.js `statusCache` bypass — routed through `GLStore.setStatus()`
+- rehearsal.js unguarded `item.songs[0]/[1]` — bounds check added
+
+**Dead Code:** 4 unreachable functions (97 lines) in app.js + dead bandKnowledgeBase paths
+
+### Stabilization Pass (2026-03-30)
+
+**GL_PAGE_READY Lifecycle (SYSTEM LOCK):**
+- `_navSeq` counter guards all GL_PAGE_READY assignments
+- Stale async renders detected and skipped
+
+**focusChanged Event Model (SYSTEM LOCK):**
+- `invalidateFocusCache()` emits `'focusChanged'`
+- Home, Songs, Rehearsal subscribe and re-render when visible
+
+**Firebase Error Filtering (SYSTEM LOCK):**
+- Suppresses only `.lp` long-poll disconnect noise
 
 ### Core Product Loop
 1. **Build Set** → "Build Your Set" with guided flow
@@ -116,7 +150,9 @@ Production URL: **https://app.groovelinx.com**
 - **Never Blank Screen**: GLRenderState (loading/error/empty/degraded states)
 - **Lazy Loading**: 15 scripts (967KB) deferred
 - **Boot Staging**: Stage 1 (render) → Stage 2 (Firebase) → Stage 3 (idle preloads)
-- **Deterministic test flags**: GL_APP_READY, GL_PAGE_READY, GL_REHEARSAL_READY
+- **Deterministic test flags**: GL_APP_READY, GL_PAGE_READY (_navSeq guarded), GL_REHEARSAL_READY
+- **Reactive focus**: focusChanged event → auto re-render on visible pages
+- **Firebase noise filter**: long-poll disconnect suppressed
 
 ### Data Architecture (SYSTEM LOCK)
 - **Firebase-only**: all band data from `/bands/{slug}/`
@@ -138,32 +174,32 @@ Production URL: **https://app.groovelinx.com**
 5. Stripe payment integration
 6. Venue Google Places autocomplete
 7. Push notifications for rehearsal reminders
-8. Calendar page header → "Schedule" (cosmetic — nav already says Schedule)
 
 ### LOW
-9. BrowserStack real-device testing
-10. Legacy code cleanup (home-dashboard-cc.js)
-11. Re-enable mode switcher in Settings if needed
+8. BrowserStack real-device testing
+9. Migrate remaining `allSongs` / `statusCache` / `readinessCache` global refs through GLStore (85+ sites, low risk)
+10. Remove `bandKnowledgeBase = {}` stub + 15 app.js comment references
 
 ---
 
 ## Key Architecture Files
 
 ```
-js/core/groovelinx_store.js         — GLStore: getNowFocus(), saveBandLove(), deriveSongStatus(), isBootReady()
-js/features/home-dashboard.js      — State-driven Home (Next Up + Intent + Focus Engine)
+js/core/groovelinx_store.js         — GLStore: ACTIVE_STATUSES, isActiveSong, avgReadiness, getNowFocus, focusChanged
+js/features/home-dashboard.js      — State-driven Home (Next Up + Intent + focusChanged subscriber)
 js/features/setlists.js            — "Build Your Set" with guided flow
-js/features/rehearsal.js            — Rehearsal Plan (draft badge, guardrail, charts-only, focus songs)
+js/features/rehearsal.js            — Rehearsal Plan (draft badge, guardrail, charts-only, focusChanged subscriber)
 js/features/calendar.js             — Schedule (Next Up, availability, risk, locations)
-js/features/song-detail.js          — Practice This Song (4 buttons + band chart + band love + chart import)
-js/features/songs.js                — Work on this next (focus engine, focus mode)
+js/features/song-detail.js          — Practice This Song (band chart + band love + GLStore.setStatus)
+js/features/songs.js                — Work on this next (focus engine, focus mode, focusChanged subscriber)
 js/ui/gl-left-rail.js               — Simplified nav (5 primary + collapsed secondary)
 js/ui/gl-avatar-ui.js               — Avatar: photorealistic portraits, action plans, task engine, settings
 js/core/gl-avatar-guide.js          — Context-aware text messages (no CTAs, cluster-adaptive)
 js/core/gl-voice-coach.js           — TTS: locked Web Speech + configurable ElevenLabs
 rehearsal-mode.js                    — Rehearsal mode + Reveal (4-block + contextual CTA)
-js/ui/navigation.js                 — GL_PAGE_READY flag
+js/ui/navigation.js                 — GL_PAGE_READY lifecycle (_navSeq guard, SYSTEM LOCK)
 worker.js                            — Cloudflare Worker: /tts, /fetch-chart, API proxies
 tests/helpers.js                     — Shared E2E helpers (flag-based waits)
+tests/chaos.spec.js                  — Chaos stability tests (46 tests)
 tests/burn-in.spec.js                — Burn-in stability tests
 ```

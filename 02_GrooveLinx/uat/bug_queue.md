@@ -1,13 +1,21 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260322-155826 (approx)
-**Last Updated:** 2026-03-22
+**Build Under Test:** 20260330 (auto-stamped)
+**Last Updated:** 2026-03-30
 
 ---
 
 ## Session Focus
 
-Rehearsal system buildout, calendar fixes, store centralization, lesson bridge, spotlight/onboarding, system hardening. All bugs from this session fixed and deployed. Queue is clean.
+Data integrity + stabilization pass (2026-03-30). Found and fixed 4 bugs during structural cleanup. Queue is clean.
+
+### Bugs Fixed This Session (2026-03-30)
+
+- [x] **4-status active set missing `wip`/`active`** — songs with these statuses were invisible in dashboard metrics, weak song lists, listening bundles, and stoner mode (4 files). Fixed: all now use `GLStore.ACTIVE_STATUSES` (6 statuses).
+- [x] **bestshot.js mutated `song.status` on shared allSongs object** — bypassed statusCache, corrupted in-memory data. Fixed: mutation removed.
+- [x] **song-detail.js mutated `statusCache` directly** — bypassed GLStore event bus, subscribers never notified. Fixed: routed through `GLStore.setStatus()`.
+- [x] **rehearsal.js unguarded `item.songs[0]/[1]` access** — crash risk on transition items with < 2 songs. Fixed: bounds check added.
+- [x] **GL_PAGE_READY race condition** — stale async renders could set flag for wrong page during rapid navigation. Fixed: `_navSeq` counter guards all assignments.
 
 
 
