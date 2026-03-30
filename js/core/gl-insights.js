@@ -296,127 +296,126 @@
     if (types.indexOf('stability') !== -1) {
       plan.problemType = 'stability';
       if (severity === 'high') {
-        plan.recommendation = 'This keeps falling apart \u2014 needs real attention';
+        plan.recommendation = 'Keeps falling apart \u2014 rebuild it';
         plan.actionPlan = [
-          'Last time through, this one fell apart \u2014 and it\u2019s happened before. Time to rebuild it:',
-          'Start by talking through the arrangement \u2014 figure out where it keeps breaking before you play a note',
-          'Walk it at half tempo, all the way through \u2014 no stopping, no matter what',
-          'If it holds (it might not the first time), bring it up to 75%, then full speed',
-          'If it falls apart again, isolate exactly where it breaks and loop that section until it\u2019s automatic',
-          'You\u2019re done when the band can play it at full tempo twice without falling apart',
-          'This might take most of the session \u2014 that\u2019s fine. It\u2019s the one holding the set back.'
+          'This is where it keeps breaking down.',
+          'Goal: play it clean at full tempo, twice.',
+          'Talk through the arrangement \u2014 find where it breaks before anyone plays',
+          'Walk it at half tempo, all the way through \u2014 no stopping',
+          'If it holds, bring it to 75%, then full speed',
+          'If it falls apart (it might), isolate the break point and loop it',
+          'Done when: two clean runs at full tempo, back to back',
+          'This might take most of the session \u2014 it\u2019s the one holding the set back.'
         ];
         plan.estimatedTime = 20;
       } else {
-        plan.recommendation = 'Came apart last time \u2014 let\u2019s get a clean run';
+        plan.recommendation = 'Came apart last time \u2014 get a clean run';
         plan.actionPlan = [
-          'Last time through, this one came off the rails:',
-          'Start with a quick talk-through \u2014 make sure everyone\u2019s aligned on the arrangement',
-          'Begin at half tempo and play all the way through, no matter what happens',
-          'If it holds together, bring it up to full speed',
-          'If it falls apart again (it might), isolate the section that broke and loop it',
-          'You\u2019re done when you get one clean run at full tempo. That\u2019s all it takes.'
+          'This is where it fell apart last time.',
+          'Talk through the arrangement \u2014 get everyone aligned',
+          'Start at half tempo, play all the way through',
+          'If it holds, bring it up to full speed',
+          'If it falls apart again (it might), loop the section that broke',
+          'Done when: one clean run at full tempo.'
         ];
         plan.estimatedTime = 15;
       }
     } else if (types.indexOf('transition') !== -1) {
       plan.problemType = 'transition';
-      plan.recommendation = severity === 'high' ? 'The transition keeps breaking \u2014 drill it until it\u2019s automatic' : 'The handoff was rough last time \u2014 tighten it up';
+      plan.recommendation = severity === 'high' ? 'Transition keeps breaking \u2014 make it automatic' : 'Handoff was rough \u2014 tighten it';
       plan.actionPlan = severity === 'high' ? [
-        'Last time through, the transition tripped everyone up \u2014 and it\u2019s been an issue before:',
-        'Go straight to the handoff \u2014 just the last 8 bars into the first 8 of the next section',
-        'Loop it at 60% until everyone\u2019s making the switch without thinking about it',
-        'Bring it up to tempo and run it a few more times',
-        'Then play through the full song \u2014 if the transition still drifts, count the new section in together',
-        'You\u2019re done when the transition feels automatic \u2014 no one hesitates, no one looks up',
-        'This has been the weak link. Nail it and the whole song flows.'
+        'The transition keeps tripping everyone up.',
+        'Goal: make the handoff automatic.',
+        'Go straight to it \u2014 last 8 bars into first 8 of the next section',
+        'Loop at 60% until the switch happens without thinking',
+        'Bring it to tempo, run it a few more times',
+        'Play the full song \u2014 if it still drifts, count the new section in together',
+        'Done when: the transition flows and no one hesitates',
+        'This has been the weak link. Nail it and the song flows.'
       ] : [
-        'Last time through, the handoff was messy \u2014 quick fix:',
-        'Go straight to the transition \u2014 last 8 bars into the first 8',
-        'Loop it a few times at 70% until the band\u2019s moving together',
-        'Run the full song without stopping and see if the transition holds',
-        'If it still drifts, try counting in the new section together out loud',
-        'You\u2019re done when it flows through without anyone thinking about it. Ten minutes, tops.'
+        'The handoff was messy last time \u2014 quick fix.',
+        'Go straight to the transition \u2014 last 8 into the first 8',
+        'Loop at 70% until the band\u2019s moving together',
+        'Run the full song \u2014 see if the transition holds',
+        'If it drifts, count the new section in together',
+        'Done when: it flows without anyone thinking about it.'
       ];
       plan.estimatedTime = severity === 'high' ? 15 : 10;
     } else if (types.indexOf('timing') !== -1) {
       plan.problemType = 'timing';
-      plan.recommendation = severity === 'high' ? 'Timing keeps drifting \u2014 slow down and rebuild the pocket' : 'Timing drifted last time \u2014 get the band back in the pocket';
+      plan.recommendation = severity === 'high' ? 'Timing keeps drifting \u2014 rebuild the pocket' : 'Timing drifted \u2014 lock it in';
       plan.actionPlan = severity === 'high' ? [
-        'Last time through, the timing was all over the place \u2014 and it\u2019s happened before:',
-        'Start with the click on, but bring the tempo down 10\u201315 BPM from the target',
-        'Play the section where it drifts \u2014 stay locked to the click until everyone\u2019s together',
-        'Gradually bring the tempo up \u2014 don\u2019t rush it',
-        'Run the full song with the click, then without',
-        'You\u2019re done when it grooves without the click \u2014 that\u2019s the real test. If the pocket holds, you\u2019re there.'
+        'The timing was off \u2014 and it\u2019s happened before.',
+        'Goal: groove without the click.',
+        'Click on, tempo down 10\u201315 BPM from the target',
+        'Play the trouble section locked to the click until everyone\u2019s together',
+        'Bring the tempo up gradually \u2014 don\u2019t rush it',
+        'Full song with click, then drop it',
+        'Done when: it grooves without the click. If the pocket holds, you\u2019re there.'
       ] : [
-        'Last time through, the timing drifted a bit:',
-        'Start with the click on at the song\u2019s tempo',
-        'Focus on the section where it drifted \u2014 play it a few times with the click',
-        'Run the whole song with the click on',
-        'Then drop it and see if the feel stays',
-        'You\u2019re done when it feels right without the click. Quick tighten \u2014 shouldn\u2019t take long.'
+        'Timing drifted a bit last time.',
+        'Click on at the song\u2019s tempo',
+        'Focus on where it drifted \u2014 play it a few times with the click',
+        'Full song with click, then drop it',
+        'Done when: it holds together clean without the click.'
       ];
       plan.estimatedTime = severity === 'high' ? 15 : 10;
     } else if (types.indexOf('pitch') !== -1) {
       plan.problemType = 'pitch';
-      plan.recommendation = 'Pitch was off \u2014 make sure everyone\u2019s in the same key';
+      plan.recommendation = 'Pitch was off \u2014 get everyone in the same key';
       plan.actionPlan = [
-        'Last time through, something was off with the pitch:',
-        'Start by confirming the key out loud \u2014 everyone says it before a note gets played',
-        'Play through the chord changes slowly together \u2014 listen for the blend',
-        'If someone\u2019s in a different spot, fix it now \u2014 it only gets harder to break later',
-        'Run the song once all the way through and listen for how it sits together',
-        'You\u2019re done when the whole band sounds like one instrument on the changes',
-        severity === 'high' ? 'This keeps coming up \u2014 get it locked so you stop losing rehearsal time to it.' : 'Once everyone\u2019s in the same place, the whole song opens up.'
+        severity === 'high' ? 'The pitch keeps being off.' : 'Something was off with the pitch last time.',
+        'Confirm the key out loud \u2014 everyone says it before playing',
+        'Play the chord changes slowly together \u2014 listen for the blend',
+        'If someone\u2019s in a different spot, fix it now',
+        'Run the song all the way through \u2014 listen for how it sits',
+        'Done when: the band sounds like one instrument on the changes',
+        severity === 'high' ? 'This keeps coming up \u2014 lock it so you stop losing time to it.' : 'Quick fix. Once everyone\u2019s aligned, the song opens up.'
       ];
       plan.estimatedTime = 10;
     } else if (types.indexOf('lyrics') !== -1) {
       plan.problemType = 'lyrics';
-      plan.recommendation = severity === 'high' ? 'Lyrics keep getting lost \u2014 time to actually learn them' : 'Words got away last time \u2014 quick read-through';
+      plan.recommendation = severity === 'high' ? 'Lyrics keep getting lost \u2014 learn them' : 'Words slipped \u2014 quick read-through';
       plan.actionPlan = severity === 'high' ? [
-        'Last time through, the lyrics got lost again \u2014 this keeps happening:',
-        'Start with the lyrics printed out \u2014 read them out loud together, no music',
-        'Sing it vocals-only twice \u2014 feel where each line lands in the rhythm',
-        'Then run it with the full band \u2014 try without the lyric sheet if you can',
-        'You\u2019re done when the singer can get through it without looking down',
-        'The words need to be in your body, not on a page. That\u2019s when it sounds real.'
+        'The lyrics got lost again.',
+        'Goal: sing it without looking down.',
+        'Read the lyrics out loud together \u2014 no music',
+        'Sing vocals-only twice \u2014 feel where each line lands',
+        'Run it with the band \u2014 no lyric sheets if possible',
+        'Done when: the singer gets through without looking down',
+        'The words need to be in your body, not on paper.'
       ] : [
-        'Last time through, the words slipped a bit \u2014 easy fix:',
-        'Start with a quick read-through \u2014 just the words, out loud, no music',
-        'Sing it through once vocals-only \u2014 feel where the words land',
-        'Then run it with the full band',
-        'You\u2019re done when it feels natural. Quick win \u2014 a few minutes and you\u2019re good.'
+        'Words slipped a bit last time \u2014 easy fix.',
+        'Read-through out loud \u2014 just words, no music',
+        'Sing once vocals-only',
+        'Run it with the band',
+        'Done when: it flows naturally. A few minutes, tops.'
       ];
       plan.estimatedTime = severity === 'high' ? 12 : 8;
     } else if (types.indexOf('section') !== -1) {
       plan.problemType = 'section';
-      plan.recommendation = severity === 'high' ? 'A section keeps breaking \u2014 isolate it and rebuild' : 'A section was shaky \u2014 isolate and clean it up';
+      plan.recommendation = severity === 'high' ? 'A section keeps breaking \u2014 isolate and rebuild' : 'One section was shaky \u2014 clean it up';
       plan.actionPlan = [
-        severity === 'high'
-          ? 'Last time through, there\u2019s a section that keeps tripping the band up:'
-          : 'Last time through, one section felt shaky:',
-        'Start by identifying exactly which part it is \u2014 that\u2019s where all your time goes',
-        'Loop just that section at a comfortable tempo until the whole band feels solid on it',
-        'Then connect it to what comes before and after \u2014 the seams are what matter',
-        'Run the full song and don\u2019t stop, even if it\u2019s not perfect',
-        'You\u2019re done when the full song plays through and that section doesn\u2019t make anyone flinch',
-        severity === 'high' ? 'Don\u2019t let one section hold the whole song hostage.' : 'You\u2019re close \u2014 one focused pass should do it.'
+        severity === 'high' ? 'Same section keeps tripping the band up.' : 'One section felt shaky last time.',
+        'Find exactly which part \u2014 that\u2019s where all the time goes',
+        'Loop it at a comfortable tempo until the band feels solid',
+        'Connect it to what comes before and after \u2014 the seams matter',
+        'Run the full song without stopping',
+        'Done when: the full song plays through and that section doesn\u2019t make anyone flinch',
+        severity === 'high' ? 'Don\u2019t let one section hold the whole song hostage.' : 'One focused pass should do it.'
       ];
       plan.estimatedTime = severity === 'high' ? 15 : 10;
     } else {
       plan.problemType = 'general';
-      plan.recommendation = severity === 'high' ? 'Multiple issues last time \u2014 give this one real time' : 'Had a rough spot \u2014 worth another pass';
+      plan.recommendation = severity === 'high' ? 'Multiple issues \u2014 give it real time' : 'Had a rough spot \u2014 another pass';
       plan.actionPlan = [
-        severity === 'high'
-          ? 'Last time through, a few things were off on this one:'
-          : 'Last time through, something felt off:',
-        'Start with a quick check-in \u2014 what did the band notice? Get specific',
-        'Run it start to finish without stopping \u2014 focus on the weak spots but commit to finishing',
+        severity === 'high' ? 'A few things were off last time.' : 'Something felt off last time.',
+        'Quick check-in \u2014 what did the band notice?',
+        'Run it start to finish \u2014 don\u2019t stop',
         'Run it again right away \u2014 the second pass is always tighter',
         severity === 'high'
-          ? 'You\u2019re done when two consecutive runs feel solid. This one needs the time \u2014 put in the reps now and it pays off at the gig.'
-          : 'You\u2019re done when one clean run feels right. That\u2019s all you need.'
+          ? 'Done when: two solid runs back to back. Put in the reps now \u2014 pays off at the gig.'
+          : 'Done when: one clean run feels right.'
       ];
       plan.estimatedTime = severity === 'high' ? 12 : 8;
     }
