@@ -394,12 +394,24 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
     var _hasDateContext = msg.indexOf('day') !== -1 || msg.indexOf('today') !== -1 || msg.indexOf('Gig') !== -1 || msg.indexOf('Rehearsal') !== -1 || msg.indexOf('Showtime') !== -1;
     var _scheduleLink = _hasDateContext ? '<div style="margin-top:8px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
 
-    // Expandable explanation (only when intelligence is driving)
+    // ── Inline justification (always visible, no click needed) ──
+    var _justification = '';
+    if (highConfidence) {
+        _justification = _buildJustification();
+    }
+
+    // ── Progress signal (visible when historical data exists) ──
+    var _progressHtml = '';
+    if (highConfidence) {
+        _progressHtml = _buildProgressSignal();
+    }
+
+    // ── Expandable detail (optional depth) ──
     var _expandHtml = '';
     if (highConfidence && typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
         var ia = GLInsights.getNextAction();
         if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length > 1) {
-            _expandHtml = '<details style="margin-top:8px;margin-bottom:4px"><summary style="font-size:0.72em;color:#64748b;cursor:pointer">Why this? \u25BC</summary>'
+            _expandHtml = '<details style="margin-top:4px;margin-bottom:4px"><summary style="font-size:0.72em;color:#475569;cursor:pointer">See the plan \u25BC</summary>'
                 + '<div style="padding:6px 0;font-size:0.78em;color:var(--text-dim);line-height:1.5">';
             ia.plan.actionPlan.forEach(function(step, i) {
                 _expandHtml += '<div>' + (i + 1) + '. ' + _escHtml(step) + '</div>';
@@ -409,23 +421,80 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         }
     }
 
-    // Confidence badge (subtle, only for intelligence-driven or schedule-urgent)
-    var _badge = '';
-    if (highConfidence) {
-        var _isIntel = typeof GLInsights !== 'undefined' && GLInsights.getNextAction && !!GLInsights.getNextAction();
-        _badge = '<div style="font-size:0.65em;color:#64748b;margin-bottom:8px">'
-            + (_isIntel ? 'Based on your last rehearsal' : 'Based on your schedule')
-            + '</div>';
-    }
-
     return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
-        + _badge
-        + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:6px;line-height:1.25">' + _escHtml(msg) + '</div>'
-        + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>'
+        + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
+        + (_justification ? '<div style="font-size:0.75em;color:#64748b;margin-bottom:8px">' + _justification + '</div>' : '')
+        + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:' + (_progressHtml ? '8' : '16') + 'px;line-height:1.4">' + _escHtml(sub) + '</div>'
+        + _progressHtml
         + _expandHtml
         + '<button onclick="' + cta.onclick + '" style="padding:16px 36px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
         + _scheduleLink
         + '</div>';
+}
+
+// ── Inline justification — one plain-language line explaining why ─────────────
+function _buildJustification() {
+    var parts = [];
+
+    // Issue count from intelligence
+    if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
+        var ia = GLInsights.getNextAction();
+        if (ia && ia.plan) {
+            var types = ia.plan.types || [];
+            var typeLabel = { stability: 'fell apart', timing: 'timing issues', pitch: 'pitch problems', transition: 'rough transition', lyrics: 'lyric gaps' };
+            var readable = types.map(function(t) { return typeLabel[t] || t; }).slice(0, 2);
+            if (readable.length) parts.push(readable.join(' + '));
+            else if (ia.plan.problemType && typeLabel[ia.plan.problemType]) parts.push(typeLabel[ia.plan.problemType]);
+        }
+    }
+
+    // Schedule pressure
+    try {
+        var _calEvents = (typeof GLStore !== 'undefined' && GLStore.getCalendarEvents) ? GLStore.getCalendarEvents() : [];
+        var _today = _todayStr();
+        var nextGig = _calEvents.filter(function(e) { return e.type === 'gig' && (e.date || '') >= _today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
+        if (nextGig) {
+            var days = _dayDiff(_today, nextGig.date);
+            if (days <= 7 && days >= 0) parts.push('gig in ' + (days === 0 ? 'today' : days + ' day' + (days > 1 ? 's' : '')));
+        }
+    } catch(e) {}
+
+    if (!parts.length) return '';
+    return parts.join(' \u00B7 ');
+}
+
+// ── Progress signal — shows improvement when data exists ──────────────────────
+function _buildProgressSignal() {
+    // Try GLInsights trend for the top issue song
+    if (typeof GLInsights === 'undefined' || !GLInsights.getNextAction) return '';
+    var ia = GLInsights.getNextAction();
+    if (!ia || !ia.song) return '';
+
+    // Check issue index for count context
+    var issueIndex = {};
+    if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex) {
+        issueIndex = RehearsalAnalysis.getIssueIndex();
+    }
+    var songIssues = issueIndex[ia.song];
+
+    // Check readiness trend
+    var avg = 0;
+    if (typeof GLStore !== 'undefined' && GLStore.avgReadiness) {
+        avg = GLStore.avgReadiness(ia.song);
+    }
+
+    // Build signal from available data
+    if (songIssues && songIssues.count === 1 && avg >= 3) {
+        return '<div style="font-size:0.75em;color:#34d399;margin-bottom:12px">\u2191 Only 1 issue left \u2014 almost there</div>';
+    }
+    if (avg >= 3.5 && songIssues && songIssues.count > 0) {
+        return '<div style="font-size:0.75em;color:#fbbf24;margin-bottom:12px">\u2192 Readiness is OK (' + avg.toFixed(1) + ') but issues persist</div>';
+    }
+    if (avg > 0 && avg < 2.5) {
+        return '<div style="font-size:0.75em;color:#f87171;margin-bottom:12px">\u2193 Low readiness (' + avg.toFixed(1) + ') \u2014 needs focused work</div>';
+    }
+
+    return '';
 }
 
 // ── Collapsed secondary actions (shown below hero when high confidence) ──────
