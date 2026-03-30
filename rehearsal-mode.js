@@ -1438,6 +1438,13 @@ window._rmSummarySave = async function(sessionId) {
     _rmSummaryRating = null;
     _rmSuggestionAccepted = null;
 
+    // Trigger analysis pipeline (non-blocking — Reveal still shows immediately)
+    if (typeof RehearsalAnalysis !== 'undefined' && sessionId) {
+        RehearsalAnalysis.run(sessionId, {
+            recordingUrl: audioUrl || driveUrl || null
+        }).catch(function(e) { console.warn('[Rehearsal] Analysis pipeline failed:', e); });
+    }
+
     // Brief pause to show "Saved!", then transition to Reveal Screen
     setTimeout(function() {
         var ov = document.getElementById('rmSessionSummaryOverlay');

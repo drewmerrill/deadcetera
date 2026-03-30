@@ -169,9 +169,11 @@ window._rhSaveRecreatedSession = async function() {
 
     var modal = document.getElementById('rhRecreateModal');
     if (modal) modal.remove();
-    // Try to generate Reveal insights if Product Brain is available
-    if (typeof GLProductBrain !== 'undefined' && GLProductBrain.getInsightFromSession) {
-        try { GLProductBrain.getInsightFromSession(session.sessionId); } catch(e) {}
+    // Trigger analysis pipeline for the recovered session
+    if (typeof RehearsalAnalysis !== 'undefined') {
+        RehearsalAnalysis.run(session.sessionId, {
+            recordingUrl: session.recording_url || null
+        }).catch(function(e) { console.warn('[Rehearsal] Analysis pipeline failed:', e); });
     }
     _rhRenderSessionHistory();
 };
@@ -1099,15 +1101,85 @@ window._rhShowSessionReport = function(sessionId) {
 
         // Blocks detail
         if (s.blocks && s.blocks.length) {
-            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Time Breakdown</div>';
-            s.blocks.forEach(function(b) {
-                if (!b.title) return;
-                html += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em;padding:3px 0">'
-                    + '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(b.title) + '</span>'
-                    + '<span style="color:var(--text-dim);flex-shrink:0">' + (b.actualMin || 0) + 'm' + (b.budgetMin ? '/' + b.budgetMin + 'm' : '') + '</span>'
-                    + '</div>';
-            });
-            html += '<div style="height:12px"></div>';
+            // Check if all blocks have 0m — if so, skip the breakdown (failsafe)
+            var hasAnyTime = s.blocks.some(function(b) { return (b.actualMin || 0) > 0; });
+            if (hasAnyTime) {
+                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Time Breakdown</div>';
+                s.blocks.forEach(function(b) {
+                    if (!b.title) return;
+                    var timeLabel = (b.actualMin || 0) > 0
+                        ? (b.actualMin + 'm' + (b.budgetMin ? '/' + b.budgetMin + 'm' : ''))
+                        : '\u2014'; // em dash for untimed blocks
+                    html += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em;padding:3px 0">'
+                        + '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(b.title) + '</span>'
+                        + '<span style="color:var(--text-dim);flex-shrink:0">' + timeLabel + '</span>'
+                        + '</div>';
+                });
+                html += '<div style="height:12px"></div>';
+            }
+        }
+
+        // Analysis insights (if pipeline has run)
+        if (s.analysis && s.analysis.insights) {
+            var ai = s.analysis.insights;
+
+            // Story headline
+            if (s.analysis.story && s.analysis.story.headline) {
+                html += '<div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:10px;padding:10px 12px;background:rgba(165,180,252,0.08);border-radius:10px;border-left:3px solid #a5b4fc">' + escHtml(s.analysis.story.headline) + '</div>';
+            }
+
+            // Narrative
+            if (s.analysis.story && s.analysis.story.narrative) {
+                var narr = s.analysis.story.narrative;
+                if (narr.whatHappened) {
+                    html += '<div style="font-size:0.82em;color:var(--text);margin-bottom:6px">' + escHtml(narr.whatHappened) + '</div>';
+                }
+                if (narr.nextAction) {
+                    html += '<div style="font-size:0.82em;color:#fbbf24;margin-bottom:10px">\u25B6 ' + escHtml(narr.nextAction) + '</div>';
+                }
+            }
+
+            // Issues
+            if (ai.issues && ai.issues.length) {
+                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Issues Identified</div>';
+                ai.issues.forEach(function(iss) {
+                    html += '<div style="font-size:0.82em;color:#f87171;padding:3px 0">'
+                        + (iss.song ? '<strong>' + escHtml(iss.song) + ':</strong> ' : '')
+                        + escHtml(iss.text)
+                        + '</div>';
+                });
+                html += '<div style="height:8px"></div>';
+            }
+
+            // Recommendations
+            if (ai.recommendations && ai.recommendations.length) {
+                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Recommendations</div>';
+                ai.recommendations.forEach(function(rec) {
+                    html += '<div style="font-size:0.82em;color:#34d399;padding:3px 0">\u2192 ' + escHtml(rec) + '</div>';
+                });
+                html += '<div style="height:8px"></div>';
+            }
+
+            // Player feedback
+            if (ai.playerFeedback && ai.playerFeedback.length) {
+                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Player Notes</div>';
+                ai.playerFeedback.forEach(function(pf) {
+                    var parts = [];
+                    if (pf.positives && pf.positives.length) parts.push('\u2714 ' + pf.positives.join(', '));
+                    if (pf.issues && pf.issues.length) parts.push('\u26A0 ' + pf.issues.join(', '));
+                    html += '<div style="font-size:0.82em;color:var(--text);padding:3px 0"><strong>' + escHtml(pf.player) + ':</strong> ' + escHtml(parts.join(' | ')) + '</div>';
+                });
+                html += '<div style="height:8px"></div>';
+            }
+
+            // What improved
+            if (ai.improved && ai.improved.length) {
+                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">What Went Well</div>';
+                ai.improved.forEach(function(imp) {
+                    html += '<div style="font-size:0.82em;color:#34d399;padding:3px 0">\u2714 ' + escHtml(imp.text) + '</div>';
+                });
+                html += '<div style="height:12px"></div>';
+            }
         }
 
         // Recording
@@ -1122,11 +1194,17 @@ window._rhShowSessionReport = function(sessionId) {
             html += '<div style="height:12px"></div>';
         }
 
-        // Notes
+        // Notes — show structured if analysis ran, raw as fallback
         if (s.notes) {
-            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Notes</div>';
-            html += '<div style="font-size:0.82em;color:#94a3b8;line-height:1.4">' + escHtml(s.notes) + '</div>';
-            html += '<div style="height:12px"></div>';
+            var hasStructured = s.analysis && s.analysis.structuredNotes &&
+                (s.analysis.structuredNotes.issues.length || s.analysis.structuredNotes.positives.length);
+            if (!hasStructured) {
+                // Fallback: raw notes
+                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Notes</div>';
+                html += '<div style="font-size:0.82em;color:#94a3b8;line-height:1.4;white-space:pre-wrap">' + escHtml(s.notes) + '</div>';
+                html += '<div style="height:12px"></div>';
+            }
+            // If structured, the insights section above already rendered the parsed data
         }
 
         // Empty state
