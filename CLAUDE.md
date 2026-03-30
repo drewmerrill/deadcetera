@@ -64,6 +64,28 @@ Claude must follow these rules when modifying the project.
 
 6. Claude must follow the UI architecture rules defined in: 02_GrooveLinx/specs/groovelinx-ui-principles.md
 
+7. **SYSTEM LOCK — Do not modify these stabilized subsystems without explicit review:**
+
+   a. **GL_PAGE_READY lifecycle** (`js/ui/navigation.js`)
+      `_navSeq` counter guards all 7 `GL_PAGE_READY` assignments.
+      Stale async renders are detected and skipped.
+      Do not add new `GL_PAGE_READY = ...` assignments without the sequence guard.
+
+   b. **focusChanged event model** (`js/core/groovelinx_store.js`)
+      `invalidateFocusCache()` emits `'focusChanged'`. Home, Songs, and Rehearsal
+      subscribe and re-render when visible. Do not bypass `getNowFocus()` with
+      inline weak-song calculations. Do not add new focus consumers without
+      subscribing to this event.
+
+   c. **Firebase error filtering** (`index.html`)
+      Suppresses only `firebaseio.com/.lp` long-poll disconnect noise.
+      Do not broaden this filter to suppress real Firebase errors.
+
+   d. **Active status centralization** (`js/core/groovelinx_store.js`)
+      `GLStore.ACTIVE_STATUSES` is the single definition of active song statuses.
+      `GLStore.isActiveSong(title)` is the canonical check.
+      Do not create inline `{ prospect:1, learning:1, ... }` objects anywhere.
+
 ---
 
 UI MODEL
