@@ -39,8 +39,17 @@ async function calShowEvent(idx, occDate) {
         ${repeatLbl ? `<span style="color:var(--accent-light)">\uD83D\uDD04 ${repeatLbl}</span>` : ''}
     </div>
     ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
+    <div style="margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">
+        <div style="font-size:0.68em;font-weight:700;color:var(--text-dim);margin-bottom:6px">Are you in?</div>
+        <div style="display:flex;gap:6px" id="calAvailBtns_${idx}">
+            <button onclick="_calSetAvail('${ev.id||''}','${displayDate}','yes')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac;font-weight:700;font-size:0.78em;cursor:pointer">\u2705 In</button>
+            <button onclick="_calSetAvail('${ev.id||''}','${displayDate}','no')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#fca5a5;font-weight:700;font-size:0.78em;cursor:pointer">\u274C Out</button>
+            <button onclick="_calSetAvail('${ev.id||''}','${displayDate}','maybe')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">\u2753 Maybe</button>
+        </div>
+        <div id="calAvailStatus_${idx}" style="font-size:0.72em;color:var(--text-dim);margin-top:4px"></div>
+    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${displayDate}';showPage('rehearsal')" class="btn btn-primary btn-sm">📅 Rehearsal Plan</button>` : ''}
+        ${isRehearsal ? `<button onclick="practicePlanActiveDate='${displayDate}';showPage('rehearsal')" class="btn btn-primary btn-sm">\uD83D\uDCC5 Rehearsal Plan</button>` : ''}
         <button onclick="calEditEventById('${ev.id||''}')" class="btn btn-ghost btn-sm">${isRecurring ? '✏️ Edit Series' : '✏️ Edit'}</button>
         <button onclick="calDeleteEventById('${ev.id||''}')" class="btn btn-danger btn-sm">${isRecurring ? '✕ Delete Series' : '✕ Delete'}</button>
         <button onclick="document.getElementById('calEventFormArea').innerHTML=''" class="btn btn-ghost btn-sm">Close</button>
@@ -330,17 +339,19 @@ function renderCalendarInner() {
             // For each event show icon + truncated name
             const eventPills = hasEvent
                 ? dayEvents.slice(0,2).map((ev,ei) => {
-                    // Accessible pills: prefix + icon + border style + color (redundant cues)
+                    // Accessible pills: icon + border style (no abbreviations)
                     var _pillCfg = {
-                        rehearsal: { prefix:'REH', icon:'\uD83C\uDFB8', bg:'rgba(34,197,94,0.2)', border:'1px solid rgba(34,197,94,0.5)', radius:'3px' },
-                        gig:       { prefix:'GIG', icon:'\uD83C\uDFA4', bg:'rgba(245,158,11,0.2)', border:'2px solid rgba(245,158,11,0.6)', radius:'8px' },
-                        meeting:   { prefix:'MTG', icon:'\uD83D\uDC65', bg:'rgba(99,102,241,0.15)', border:'1px dashed rgba(99,102,241,0.4)', radius:'3px' },
-                        other:     { prefix:'EVT', icon:'\uD83D\uDCCC', bg:'rgba(148,163,184,0.1)', border:'1px solid rgba(148,163,184,0.3)', radius:'3px' }
+                        rehearsal: { icon:'\uD83C\uDFB8', bg:'rgba(34,197,94,0.2)', border:'1px solid rgba(34,197,94,0.5)', radius:'3px' },
+                        gig:       { icon:'\uD83C\uDFA4', bg:'rgba(245,158,11,0.2)', border:'2px solid rgba(245,158,11,0.6)', radius:'8px' },
+                        meeting:   { icon:'\uD83D\uDC65', bg:'rgba(99,102,241,0.15)', border:'1px dashed rgba(99,102,241,0.4)', radius:'3px' },
+                        other:     { icon:'\uD83D\uDCCC', bg:'rgba(148,163,184,0.1)', border:'1px solid rgba(148,163,184,0.3)', radius:'3px' }
                     };
                     var _pc = _pillCfg[ev.type||'other'] || _pillCfg.other;
+                    var _pillName = (ev.title||'').substring(0,8) + ((ev.title||'').length > 8 ? '\u2026' : '');
                     const evIdx = ev._idx !== undefined ? ev._idx : ei;
                     return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;gap:2px;background:${_pc.bg};border:${_pc.border};border-radius:${_pc.radius};padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
-                        <span style="font-size:0.5em;font-weight:800;letter-spacing:0.04em;color:white;flex-shrink:0">${_pc.prefix}</span>
+                        <span style="font-size:0.65em;flex-shrink:0">${_pc.icon}</span>
+                        <span style="font-size:0.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white">${_pillName}</span>
                     </div>`;
                 }).join('')
                 : '';
@@ -412,7 +423,7 @@ async function loadCalendarEvents() {
             // Cannot reference `upcoming` inside onclick — it's out of scope once innerHTML is set
             var wk = '_calEv_' + i; window[wk] = e;
             const typeIcon = {rehearsal:'\uD83C\uDFB8',gig:'\uD83C\uDFA4',meeting:'\uD83D\uDC65',other:'\uD83D\uDCCC'}[e.type]||'\uD83D\uDCCC';
-            var _typePrefix = {rehearsal:'REH',gig:'GIG',meeting:'MTG',other:'EVT'}[e.type]||'EVT';
+            var _typeLabel = {rehearsal:'Rehearsal',gig:'Gig',meeting:'Meeting',other:'Event'}[e.type]||'Event';
             const isRehearsal = e.type === 'rehearsal';
             var repeatLbl = _calRepeatLabel(e.repeatRule);
             var evtId = e._baseEventId || e.id || '';
@@ -420,7 +431,7 @@ async function loadCalendarEvents() {
             var _evDirLink = e.locationAddress ? ' <a href="https://www.google.com/maps/search/' + encodeURIComponent(e.locationAddress) + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-light);text-decoration:none;font-size:0.9em">\uD83D\uDDFA\uFE0F</a>' : '';
             var _evMeetLink = e.meetingLink ? ' <a href="' + e.meetingLink + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-light);text-decoration:none;font-size:0.9em">\uD83D\uDD17</a>' : '';
             return `<div class="list-item" style="padding:10px 12px;gap:10px">
-                <span style="font-size:0.65em;font-weight:800;letter-spacing:0.04em;color:var(--text-dim);min-width:32px;text-align:center;flex-shrink:0">${_typePrefix}</span>
+                <span style="font-size:0.65em;font-weight:700;color:var(--text-dim);min-width:55px;flex-shrink:0">${typeIcon} ${_typeLabel}</span>
                 <span style="font-size:0.8em;color:var(--text-dim);min-width:85px">${e.date||''}</span>
                 <div style="flex:1;min-width:0">
                     <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${typeIcon} ${e.title||'Untitled'}</div>
@@ -1076,12 +1087,19 @@ async function calAddEvent(date, editIdx, existing) {
             <label class="form-label">Meeting Link</label>
             <input class="app-input" id="calMeetingLink" placeholder="Zoom, Google Meet, etc." value="${ev.meetingLink||''}">
         </div>
-        <div class="form-row"><label class="form-label">Repeat</label><select class="app-select" id="calRepeat">
+        <div class="form-row"><label class="form-label">Repeat</label><select class="app-select" id="calRepeat" onchange="var er=document.getElementById('calRepeatEndRow');if(er)er.style.display=this.value==='none'?'none':''">
             <option value="none" ${repeatVal==='none'?'selected':''}>None</option>
             <option value="weekly" ${repeatVal==='weekly'?'selected':''}>Weekly</option>
             <option value="biweekly" ${repeatVal==='biweekly'?'selected':''}>Every 2 Weeks</option>
             <option value="monthly" ${repeatVal==='monthly'?'selected':''}>Monthly</option>
         </select></div>
+        <div class="form-row" id="calRepeatEndRow" style="${repeatVal==='none'?'display:none':''}">
+            <label class="form-label">Ends</label>
+            <div style="display:flex;gap:8px;align-items:center">
+                <input class="app-input" id="calRepeatEnd" type="date" value="${(ev.repeatRule&&ev.repeatRule.endsAt)||''}" style="flex:1;color-scheme:dark" placeholder="End date">
+                <span style="font-size:0.72em;color:var(--text-dim)">or leave blank for ongoing</span>
+            </div>
+        </div>
         <div class="form-row calGigOnly" id="calSetlistRow" style="${showSetlist?'':'display:none'}">
             <label class="form-label">\uD83D\uDCCB Linked Setlist</label>
             <select class="app-select" id="calLinkedSetlist">
@@ -1102,6 +1120,28 @@ async function calAddEvent(date, editIdx, existing) {
     _calInitVenuePicker(venues, calPreselected);
     area.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+
+// ── Inline availability ──────────────────────────────────────────────────────
+window._calSetAvail = async function(eventId, date, status) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var memberKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+    if (!memberKey) { if (typeof showToast === 'function') showToast('Sign in first'); return; }
+    var safeDateKey = (date || '').replace(/-/g, '');
+    try {
+        await db.ref(bandPath('event_availability/' + safeDateKey + '/' + memberKey)).set({
+            status: status,
+            respondedAt: new Date().toISOString(),
+            eventId: eventId || null
+        });
+        if (typeof showToast === 'function') {
+            var labels = { yes: '\u2705 You\u2019re in!', no: '\u274C Marked as out', maybe: '\u2753 Marked as maybe' };
+            showToast(labels[status] || 'Response saved', 2000);
+        }
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Could not save \u2014 check connection');
+    }
+};
 
 // ── Rehearsal location handlers ──────────────────────────────────────────────
 window._calLocationChanged = function(sel) {
@@ -1306,9 +1346,10 @@ async function calSaveEvent(editIdx) {
     }
     // Recurrence rule
     var repeatVal = (document.getElementById('calRepeat') || {}).value || 'none';
-    if (repeatVal === 'weekly') ev.repeatRule = { frequency: 'weekly', interval: 1, endsAt: null };
-    else if (repeatVal === 'biweekly') ev.repeatRule = { frequency: 'weekly', interval: 2, endsAt: null };
-    else if (repeatVal === 'monthly') ev.repeatRule = { frequency: 'monthly', interval: 1, endsAt: null };
+    var _repeatEnd = (document.getElementById('calRepeatEnd') || {}).value || null;
+    if (repeatVal === 'weekly') ev.repeatRule = { frequency: 'weekly', interval: 1, endsAt: _repeatEnd };
+    else if (repeatVal === 'biweekly') ev.repeatRule = { frequency: 'weekly', interval: 2, endsAt: _repeatEnd };
+    else if (repeatVal === 'monthly') ev.repeatRule = { frequency: 'monthly', interval: 1, endsAt: _repeatEnd };
     else ev.repeatRule = null;
     if (!ev.date || !ev.title) { alert('Date and title required'); return; }
     var dateErr = _calValidateDate(ev.date, 'Event date');
