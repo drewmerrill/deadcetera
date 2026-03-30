@@ -293,70 +293,70 @@
     // Prioritize: stability > transition > timing > pitch > lyrics > section
     if (types.indexOf('stability') !== -1) {
       plan.problemType = 'stability';
-      plan.recommendation = 'Fell apart — needs a clean run-through';
+      plan.recommendation = 'Fell apart last time \u2014 let\u2019s get a clean run';
       plan.actionPlan = [
-        'Talk through the arrangement (2 min)',
-        'Walk through at 50% tempo, no stops',
-        'Full run-through at tempo — commit to finishing',
-        'If clean: one more run for confidence'
+        'Talk through the arrangement first \u2014 make sure everyone\u2019s on the same page',
+        'Start at half tempo and play it all the way through, no matter what',
+        'If it holds together, bring it up to full speed',
+        'If it falls apart again, isolate the section that broke and loop it'
       ];
       plan.estimatedTime = 15;
     } else if (types.indexOf('transition') !== -1) {
       plan.problemType = 'transition';
-      plan.recommendation = 'Transition needs drilling';
+      plan.recommendation = 'The transition was rough \u2014 drill the handoff';
       plan.actionPlan = [
-        'Isolate the transition (last 8 bars → first 8 bars)',
-        'Loop 3x at 70% tempo',
-        'Loop 3x at full tempo',
-        'Run full song including transition'
+        'Start with just the transition \u2014 last 8 bars into the first 8',
+        'Loop it a few times at 70% until it\u2019s automatic',
+        'Then run the full song without stopping \u2014 see if the transition holds',
+        'If it still drags, try counting in the new section together'
       ];
       plan.estimatedTime = 10;
     } else if (types.indexOf('timing') !== -1) {
       plan.problemType = 'timing';
-      plan.recommendation = 'Timing is off — lock in with the click';
+      plan.recommendation = 'Timing drifted \u2014 lock it in with a click';
       plan.actionPlan = [
-        'Set click track to song tempo',
-        'Play through problem section with click (3x)',
-        'Full run with click',
-        'Full run without click — internalize the pocket'
+        'Put the click on at the song\u2019s tempo',
+        'Play the trouble section 3x with the click \u2014 no fudging it',
+        'Run the whole song with the click',
+        'Then drop the click and see if the feel stays \u2014 that\u2019s the real test'
       ];
       plan.estimatedTime = 12;
     } else if (types.indexOf('pitch') !== -1) {
       plan.problemType = 'pitch';
-      plan.recommendation = 'Key/pitch issues — confirm and drill';
+      plan.recommendation = 'Pitch was off \u2014 get everyone in the same key';
       plan.actionPlan = [
-        'Confirm the key with all players',
-        'Play the chord progression together slowly',
-        'Run the problem section at tempo',
-        'Full run-through'
+        'Confirm the key out loud \u2014 everyone say it',
+        'Play through the chord changes slowly together',
+        'If someone\u2019s in a different key, fix it now before it becomes a habit',
+        'Run the song once \u2014 listen for the blend'
       ];
       plan.estimatedTime = 10;
     } else if (types.indexOf('lyrics') !== -1) {
       plan.problemType = 'lyrics';
-      plan.recommendation = 'Lyric gaps — read then sing';
+      plan.recommendation = 'Lyrics got lost \u2014 do a quick read-through';
       plan.actionPlan = [
-        'Read lyrics aloud together (1 min)',
-        'Sing through vocals-only (no instruments)',
-        'Full run with band'
+        'Read the lyrics out loud together \u2014 just the words, no music',
+        'Sing it through once vocals-only',
+        'Then run it with the full band \u2014 the words should feel locked in'
       ];
       plan.estimatedTime = 8;
     } else if (types.indexOf('section') !== -1) {
       plan.problemType = 'section';
-      plan.recommendation = 'Section work needed';
+      plan.recommendation = 'A specific section needs work \u2014 isolate it';
       plan.actionPlan = [
-        'Identify the weak section',
-        'Loop the section 5x at reduced tempo',
-        'Connect it to the preceding and following sections',
-        'Full run-through'
+        'Figure out which section keeps breaking \u2014 that\u2019s where you start',
+        'Loop just that section at a comfortable tempo until it\u2019s solid',
+        'Then connect it to what comes before and after',
+        'Run the full song \u2014 don\u2019t stop even if it\u2019s not perfect'
       ];
       plan.estimatedTime = 10;
     } else {
       plan.problemType = 'general';
-      plan.recommendation = issueEntry.totalCount + ' issue' + (issueEntry.totalCount > 1 ? 's' : '') + ' — needs attention';
+      plan.recommendation = 'Had issues last time \u2014 worth another pass';
       plan.actionPlan = [
-        'Discuss what went wrong',
-        'Run the song start to finish (focus on weak spots)',
-        'Run again immediately — lock in the fix'
+        'Quick check-in \u2014 what felt off last time?',
+        'Run it start to finish \u2014 focus on the weak spots but don\u2019t stop',
+        'Run it again right away \u2014 the second pass is where it locks in'
       ];
       plan.estimatedTime = 8;
     }

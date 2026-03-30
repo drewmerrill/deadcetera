@@ -415,22 +415,22 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         var _momentum = _buildMomentumSignal();
         if (_momentum) _innerParts.push(_momentum);
 
-        // Action plan steps
+        // Action plan steps (conversational, not numbered)
         if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
             var ia = GLInsights.getNextAction();
             if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length > 1) {
-                var _planHtml = '<div style="margin-top:4px">';
-                ia.plan.actionPlan.forEach(function(step, i) {
-                    _planHtml += '<div style="font-size:0.78em;color:var(--text-dim);padding:1px 0">' + (i + 1) + '. ' + _escHtml(step) + '</div>';
+                var _planHtml = '<div style="margin-top:6px">';
+                ia.plan.actionPlan.forEach(function(step) {
+                    _planHtml += '<div style="font-size:0.78em;color:var(--text-dim);padding:2px 0;padding-left:12px;text-indent:-12px">\u2192 ' + _escHtml(step) + '</div>';
                 });
-                if (ia.plan.estimatedTime) _planHtml += '<div style="margin-top:4px;font-size:0.72em;font-style:italic;color:var(--text-dim)">\u23F1 ~' + ia.plan.estimatedTime + ' min</div>';
+                if (ia.plan.estimatedTime) _planHtml += '<div style="margin-top:6px;font-size:0.72em;color:#64748b">\u23F1 About ' + ia.plan.estimatedTime + ' minutes</div>';
                 _planHtml += '</div>';
                 _innerParts.push(_planHtml);
             }
         }
 
         if (_innerParts.length) {
-            _expandHtml = '<details style="margin-bottom:12px"><summary style="font-size:0.75em;color:#64748b;cursor:pointer;margin-bottom:4px">How to fix it \u25BC</summary>'
+            _expandHtml = '<details style="margin-bottom:12px"><summary style="font-size:0.75em;color:#64748b;cursor:pointer;margin-bottom:4px">Quick plan \u25BC</summary>'
                 + '<div style="padding:4px 0">' + _innerParts.join('') + '</div></details>';
         }
     }
