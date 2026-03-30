@@ -292,7 +292,84 @@ window.GLAvatarGuide = (function() {
             var tip = _getAdaptiveTip();
             return tip || 'If anything feels off, just tell me.';
           },
-          cooldown: 86400000, dismissible: true }
+          cooldown: 86400000, dismissible: true },
+
+        // ── INTELLIGENCE: rehearsal-issue-driven guidance ──
+        { id: 'insight_top_issue', stage: 'bandmate', trigger: 'has_rehearsal_issues', page: 'home',
+          message: function(ctx) {
+            var song = ctx.topIssueSong;
+            var count = ctx.topIssueSongCount || 0;
+            var types = ctx.topIssueSongTypes || [];
+            if (!song) return null;
+            var typeHint = '';
+            if (types.indexOf('stability') !== -1) typeHint = ' \u2014 it fell apart last time';
+            else if (types.indexOf('transition') !== -1) typeHint = ' \u2014 the transition was rough';
+            else if (types.indexOf('timing') !== -1) typeHint = ' \u2014 the timing was off';
+            else if (types.indexOf('lyrics') !== -1) typeHint = ' \u2014 lyrics got lost';
+            else if (types.indexOf('pitch') !== -1) typeHint = ' \u2014 key issues';
+            return _pick([
+              '\u201C' + song + '\u201D needs work' + typeHint + '. Let\u2019s clean that up.',
+              'Start with \u201C' + song + '\u201D today' + typeHint + '.',
+              '\u201C' + song + '\u201D had ' + count + ' issue' + (count > 1 ? 's' : '') + ' last rehearsal' + typeHint + '. Worth a focused run.'
+            ]);
+          },
+          coach: function(ctx) {
+            return ctx.insightAction ? ctx.insightAction.detail : null;
+          },
+          cooldown: 14400000, dismissible: true }, // 4 hours
+
+        { id: 'insight_post_rehearsal', stage: 'bandmate', trigger: 'just_finished_with_issues', page: 'home',
+          message: function(ctx) {
+            var song = ctx.topIssueSong;
+            if (!song) return _pick([
+              'Good run. I\u2019ll have notes ready for your next session.',
+              'Session tracked. Check back \u2014 I\u2019ll tell you what to fix.'
+            ]);
+            return _pick([
+              'That was solid overall, but \u201C' + song + '\u201D still needs attention.',
+              'Good session. \u201C' + song + '\u201D was the weak spot \u2014 let\u2019s nail it next time.',
+              'Tracked. \u201C' + song + '\u201D came up again \u2014 I\u2019ll put it first on the next plan.'
+            ]);
+          },
+          cooldown: 7200000, dismissible: true }, // 2 hours
+
+        { id: 'insight_improving', stage: 'coach', trigger: 'trend_improving_with_data', page: 'home',
+          message: function(ctx) {
+            var song = ctx.topIssueSong;
+            return _pick([
+              'The band is getting tighter. Keep showing up.',
+              song ? '\u201C' + song + '\u201D is improving \u2014 one more focused run and it\u2019s locked.' : 'Things are coming together. Trust the process.',
+              'You\u2019re making real progress. The reps are paying off.'
+            ]);
+          },
+          cooldown: 86400000, dismissible: true }, // 1 day
+
+        { id: 'insight_persistent_issue', stage: 'coach', trigger: 'persistent_issue', page: 'home',
+          message: function(ctx) {
+            var song = ctx.topIssueSong;
+            var types = ctx.topIssueSongTypes || [];
+            if (!song) return null;
+            if (types.indexOf('timing') !== -1) {
+              return '\u201C' + song + '\u201D keeps having timing issues. Try it with a click track next rehearsal.';
+            }
+            if (types.indexOf('stability') !== -1) {
+              return 'We keep losing \u201C' + song + '\u201D. Slow it down to 70% and lock in the arrangement.';
+            }
+            return '\u201C' + song + '\u201D keeps coming up. Dedicate a full block to it next rehearsal.';
+          },
+          cooldown: 172800000, dismissible: true }, // 2 days
+
+        { id: 'insight_rehearsal_start', stage: 'bandmate', trigger: 'has_rehearsal_issues', page: 'rehearsal',
+          message: function(ctx) {
+            var song = ctx.topIssueSong;
+            if (!song) return 'You\u2019ve got a plan. Let\u2019s lock it in.';
+            return _pick([
+              'Start with \u201C' + song + '\u201D \u2014 it was the weakest last time.',
+              '\u201C' + song + '\u201D first. Get it out of the way while the energy is fresh.',
+              'I\u2019d hit \u201C' + song + '\u201D first today. It needs the most work.'
+            ]);
+          },
+          cooldown: 7200000, dismissible: true }
     ];
 
     // ── Adaptive tip from feedback clusters ──────────────────────────────────
@@ -377,8 +454,8 @@ window.GLAvatarGuide = (function() {
             // Evaluate trigger
             if (_checkTrigger(g.trigger, context)) {
                 // Resolve message/coach (may be string or function for dynamic content)
-                var rawMsg = typeof g.message === 'function' ? g.message() : g.message;
-                var rawCoach = typeof g.coach === 'function' ? g.coach() : (g.coach || '');
+                var rawMsg = typeof g.message === 'function' ? g.message(context) : g.message;
+                var rawCoach = typeof g.coach === 'function' ? g.coach(context) : (g.coach || '');
                 // Template with context vars
                 var msg = _template(rawMsg, context);
                 var coach = rawCoach ? _template(rawCoach, context) : '';
@@ -414,6 +491,12 @@ window.GLAvatarGuide = (function() {
             case 'practiced_but_weak_remain': return ctx.practicedToday && (ctx.weakCount || 0) > 0;
             case 'recent_session_no_mixdown': return ctx.recentSessionNoMixdown;
             case 'has_feedback_cluster': return !!_getAdaptiveTip();
+
+            // Intelligence-driven triggers
+            case 'has_rehearsal_issues': return (ctx.issueCount || 0) > 0 && !!ctx.topIssueSong;
+            case 'just_finished_with_issues': return ctx.justFinishedRehearsal && (ctx.issueCount || 0) > 0;
+            case 'trend_improving_with_data': return ctx.trend === 'improving' && (ctx.issueCount || 0) > 0;
+            case 'persistent_issue': return (ctx.topIssueSongCount || 0) >= 3;
             default: return false;
         }
     }
@@ -533,6 +616,38 @@ window.GLAvatarGuide = (function() {
             }
         } catch(e) { ctx.topIssue = ''; }
 
+        // ── Intelligence data (from GLInsights + RehearsalAnalysis) ──
+        try {
+            if (typeof GLInsights !== 'undefined') {
+                var nextAction = GLInsights.getNextAction();
+                ctx.insightAction = nextAction; // { headline, detail, song, plan, cta } or null
+                ctx.insightSong = nextAction ? nextAction.song : null;
+                ctx.insightIssueCount = nextAction && nextAction.plan ? nextAction.plan.song : 0;
+            }
+            if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex) {
+                var idx = RehearsalAnalysis.getIssueIndex();
+                ctx.issueCount = Object.keys(idx).length;
+                ctx.topIssueSong = null;
+                ctx.topIssueSongCount = 0;
+                ctx.topIssueSongTypes = [];
+                var topC = 0;
+                Object.keys(idx).forEach(function(s) {
+                    if (idx[s].count > topC) {
+                        topC = idx[s].count;
+                        ctx.topIssueSong = s;
+                        ctx.topIssueSongCount = idx[s].count;
+                        ctx.topIssueSongTypes = idx[s].types || [];
+                    }
+                });
+            }
+            // Focus engine data
+            if (typeof GLStore !== 'undefined' && GLStore.getNowFocus) {
+                var focus = GLStore.getNowFocus();
+                ctx.weakCount = focus.count;
+                ctx.weakSongs = focus.list.map(function(s) { return s.title; });
+            }
+        } catch(e) {}
+
         return ctx;
     }
 
@@ -572,9 +687,20 @@ window.GLAvatarGuide = (function() {
             return { intent: intent, message: 'Good session. Log notes while it\u2019s fresh.' };
         }
         if (intent === INTENT.IMPROVE) {
+            // Intelligence-first: if GLInsights has a specific action, use it
+            if (ctx.insightAction && ctx.insightAction.headline) {
+                var ia = ctx.insightAction;
+                var songHint = ia.song ? '\u201C' + ia.song + '\u201D' : 'the weak spots';
+                var types = ctx.topIssueSongTypes || [];
+                var typeHint = '';
+                if (types.indexOf('stability') !== -1) typeHint = ' \u2014 it fell apart';
+                else if (types.indexOf('transition') !== -1) typeHint = ' \u2014 the transition was off';
+                else if (types.indexOf('timing') !== -1) typeHint = ' \u2014 timing needs work';
+                return { intent: intent, message: songHint + ' needs work' + typeHint + '. Let\u2019s clean it up.' };
+            }
             var wc = ctx.weakCount || 0;
             var weakName = (ctx.weakSongs && ctx.weakSongs.length) ? ctx.weakSongs[0] : null;
-            if (weakName) return { intent: intent, message: '\u2019' + weakName + '\u2019 needs work. Want to tighten it?' };
+            if (weakName) return { intent: intent, message: '\u201C' + weakName + '\u201D needs work. Want to tighten it?' };
             if (wc > 0) return { intent: intent, message: wc + ' song' + (wc > 1 ? 's' : '') + ' need reps.' };
             return { intent: intent, message: 'You\u2019ve got a set. Let\u2019s run it once and see where it breaks.' };
         }
