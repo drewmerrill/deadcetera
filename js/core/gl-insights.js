@@ -295,68 +295,82 @@
       plan.problemType = 'stability';
       plan.recommendation = 'Fell apart last time \u2014 let\u2019s get a clean run';
       plan.actionPlan = [
-        'Talk through the arrangement first \u2014 make sure everyone\u2019s on the same page',
-        'Start at half tempo and play it all the way through, no matter what',
+        'This one came off the rails last rehearsal \u2014 here\u2019s how to fix it:',
+        'Talk through the arrangement first \u2014 make sure everyone knows where the tricky parts are',
+        'Begin at half tempo and commit to playing all the way through, no matter what happens',
         'If it holds together, bring it up to full speed',
-        'If it falls apart again, isolate the section that broke and loop it'
+        'If it falls apart again, isolate the exact section that broke and loop it until it\u2019s muscle memory',
+        'Lock this in and the whole set gets stronger.'
       ];
       plan.estimatedTime = 15;
     } else if (types.indexOf('transition') !== -1) {
       plan.problemType = 'transition';
-      plan.recommendation = 'The transition was rough \u2014 drill the handoff';
+      plan.recommendation = 'The transition dragged \u2014 tighten the handoff';
       plan.actionPlan = [
-        'Start with just the transition \u2014 last 8 bars into the first 8',
-        'Loop it a few times at 70% until it\u2019s automatic',
-        'Then run the full song without stopping \u2014 see if the transition holds',
-        'If it still drags, try counting in the new section together'
+        'The handoff was messy last time \u2014 quick fix:',
+        'Go straight to the transition \u2014 just the last 8 bars into the first 8 of the next section',
+        'Loop it a few times at 70% until it feels automatic',
+        'Then run the full song without stopping and see if the transition holds',
+        'If it still drags, try counting in the new section together out loud',
+        'This is a 10-minute fix. Once it clicks, the whole flow opens up.'
       ];
       plan.estimatedTime = 10;
     } else if (types.indexOf('timing') !== -1) {
       plan.problemType = 'timing';
-      plan.recommendation = 'Timing drifted \u2014 lock it in with a click';
+      plan.recommendation = 'Timing drifted \u2014 get back in the pocket';
       plan.actionPlan = [
+        'Timing was off last rehearsal \u2014 time to lock it in:',
         'Put the click on at the song\u2019s tempo',
-        'Play the trouble section 3x with the click \u2014 no fudging it',
+        'Focus on the trouble section \u2014 play it 3x with the click, no fudging it',
         'Run the whole song with the click',
-        'Then drop the click and see if the feel stays \u2014 that\u2019s the real test'
+        'Then drop the click and see if the feel stays \u2014 that\u2019s the real test',
+        'When the pocket is there without the click, you\u2019re gig-ready.'
       ];
       plan.estimatedTime = 12;
     } else if (types.indexOf('pitch') !== -1) {
       plan.problemType = 'pitch';
       plan.recommendation = 'Pitch was off \u2014 get everyone in the same key';
       plan.actionPlan = [
-        'Confirm the key out loud \u2014 everyone say it',
-        'Play through the chord changes slowly together',
-        'If someone\u2019s in a different key, fix it now before it becomes a habit',
-        'Run the song once \u2014 listen for the blend'
+        'Key issues came up last time \u2014 let\u2019s sort it out:',
+        'Confirm the key out loud \u2014 everyone say it before you play a note',
+        'Play through the chord changes slowly together and listen for the blend',
+        'If someone\u2019s in a different spot, fix it now before it becomes a habit',
+        'Run the song once all the way through \u2014 it should sound like one instrument',
+        'This is where great bands separate \u2014 everyone locked into the same key.'
       ];
       plan.estimatedTime = 10;
     } else if (types.indexOf('lyrics') !== -1) {
       plan.problemType = 'lyrics';
-      plan.recommendation = 'Lyrics got lost \u2014 do a quick read-through';
+      plan.recommendation = 'Lyrics got lost \u2014 quick read-through';
       plan.actionPlan = [
-        'Read the lyrics out loud together \u2014 just the words, no music',
-        'Sing it through once vocals-only',
-        'Then run it with the full band \u2014 the words should feel locked in'
+        'The words got away from you last time \u2014 easy fix:',
+        'Read the lyrics out loud together \u2014 just the words, no music, no pressure',
+        'Sing it through once vocals-only \u2014 feel where the words land',
+        'Then run it with the full band \u2014 the words should feel locked in',
+        'Quick win \u2014 this should only take a few minutes.'
       ];
       plan.estimatedTime = 8;
     } else if (types.indexOf('section') !== -1) {
       plan.problemType = 'section';
-      plan.recommendation = 'A specific section needs work \u2014 isolate it';
+      plan.recommendation = 'A section keeps breaking \u2014 isolate and drill it';
       plan.actionPlan = [
-        'Figure out which section keeps breaking \u2014 that\u2019s where you start',
-        'Loop just that section at a comfortable tempo until it\u2019s solid',
-        'Then connect it to what comes before and after',
-        'Run the full song \u2014 don\u2019t stop even if it\u2019s not perfect'
+        'There\u2019s a specific section that keeps tripping you up:',
+        'Figure out exactly which part it is \u2014 that\u2019s where you spend your time',
+        'Loop just that section at a comfortable tempo until it feels solid',
+        'Connect it to what comes before and after \u2014 the transitions matter',
+        'Run the full song and don\u2019t stop, even if it\u2019s not perfect \u2014 build the confidence to push through',
+        'You\u2019re close \u2014 don\u2019t let one section hold you back.'
       ];
       plan.estimatedTime = 10;
     } else {
       plan.problemType = 'general';
       plan.recommendation = 'Had issues last time \u2014 worth another pass';
       plan.actionPlan = [
-        'Quick check-in \u2014 what felt off last time?',
-        'Run it start to finish \u2014 focus on the weak spots but don\u2019t stop',
-        'Run it again right away \u2014 the second pass is where it locks in'
+        'Something was off last rehearsal \u2014 let\u2019s clean it up:',
+        'Quick check-in \u2014 what felt off? Get specific',
+        'Run it start to finish without stopping \u2014 focus on the weak spots but commit to finishing',
+        'Run it again right away \u2014 the second pass is where it locks in',
+        'If this clicks, you\u2019re in great shape for the next gig.'
       ];
       plan.estimatedTime = 8;
     }
