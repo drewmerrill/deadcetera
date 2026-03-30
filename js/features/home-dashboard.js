@@ -390,16 +390,13 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 }
 
 // ── Next Up Card — dynamic primary action ────────────────────────────────────
-function _renderNextUpCard(msg, sub, cta) {
+function _renderNextUpCard(msg, sub, cta, highConfidence) {
     var _hasDateContext = msg.indexOf('day') !== -1 || msg.indexOf('today') !== -1 || msg.indexOf('Gig') !== -1 || msg.indexOf('Rehearsal') !== -1 || msg.indexOf('Showtime') !== -1;
-    var _scheduleLink = _hasDateContext ? '<div style="margin-top:8px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
-
-    // Check if this is an intelligence-driven action (has specific issue data)
-    var _isIntelDriven = typeof GLInsights !== 'undefined' && GLInsights.getNextAction && !!GLInsights.getNextAction();
+    var _scheduleLink = _hasDateContext ? '<div style="margin-top:8px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
 
     // Expandable explanation (only when intelligence is driving)
     var _expandHtml = '';
-    if (_isIntelDriven) {
+    if (highConfidence && typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
         var ia = GLInsights.getNextAction();
         if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length > 1) {
             _expandHtml = '<details style="margin-top:8px;margin-bottom:4px"><summary style="font-size:0.72em;color:#64748b;cursor:pointer">Why this? \u25BC</summary>'
@@ -412,12 +409,34 @@ function _renderNextUpCard(msg, sub, cta) {
         }
     }
 
-    return '<div style="padding:20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
-        + '<div style="font-size:1.15em;font-weight:900;color:#f1f5f9;margin-bottom:4px">' + _escHtml(msg) + '</div>'
-        + '<div style="font-size:0.82em;color:#94a3b8;margin-bottom:12px;line-height:1.4">' + _escHtml(sub) + '</div>'
+    // Confidence badge (subtle, only for intelligence-driven or schedule-urgent)
+    var _badge = '';
+    if (highConfidence) {
+        var _isIntel = typeof GLInsights !== 'undefined' && GLInsights.getNextAction && !!GLInsights.getNextAction();
+        _badge = '<div style="font-size:0.65em;color:#64748b;margin-bottom:8px">'
+            + (_isIntel ? 'Based on your last rehearsal' : 'Based on your schedule')
+            + '</div>';
+    }
+
+    return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
+        + _badge
+        + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:6px;line-height:1.25">' + _escHtml(msg) + '</div>'
+        + '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>'
         + _expandHtml
-        + '<button onclick="' + cta.onclick + '" style="padding:14px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;min-width:200px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
+        + '<button onclick="' + cta.onclick + '" style="padding:16px 36px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
         + _scheduleLink
+        + '</div>';
+}
+
+// ── Collapsed secondary actions (shown below hero when high confidence) ──────
+function _renderIntentCollapsed() {
+    var _practiceClick = "window._glFocusMode=true;showPage('songs')";
+    return '<div style="display:flex;justify-content:center;gap:16px;margin-bottom:12px;padding:4px 0">'
+        + '<button onclick="' + _practiceClick + '" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em">\uD83C\uDFB8 Practice</button>'
+        + '<span style="color:#334155">\u00B7</span>'
+        + '<button onclick="showPage(\'rehearsal\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em">\uD83E\uDD41 Rehearsal</button>'
+        + '<span style="color:#334155">\u00B7</span>'
+        + '<button onclick="showPage(\'gigs\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em">\uD83C\uDFA4 Gig</button>'
         + '</div>';
 }
 
@@ -446,6 +465,7 @@ function _renderNextActionCard(bundle, wf) {
     var sessionCount = dna.sessionCount || 0;
 
     var _msg = '', _sub = '', _cta = null;
+    var _highConfidence = false; // true when hero card has a specific, directive action
 
     // Load upcoming rehearsal event
     var _upcomingRehearsal = null;
@@ -472,6 +492,7 @@ function _renderNextActionCard(bundle, wf) {
         _msg = 'Showtime';
         _sub = (nextGig.venue || 'Gig') + ' is today. You\u2019re ready.';
         _cta = { label: '\u25B6 Play Set', onclick: "hdPlayBundle('gig')" };
+        _highConfidence = true;
 
     // ── Priority 3: Intelligence-driven — specific song + issue ──
     } else if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction && GLInsights.getNextAction()) {
@@ -483,24 +504,29 @@ function _renderNextActionCard(bundle, wf) {
         } else {
             _cta = { label: '\uD83C\uDFB8 Start Rehearsal', onclick: "showPage('rehearsal')" };
         }
+        _highConfidence = true;
 
     // ── Priority 4: Schedule urgency ──
     } else if (daysOut <= 3 && daysOut > 0 && weakCount > 0) {
         _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 tighten these songs';
         _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work before ' + (nextGig.venue || 'the gig') + '.';
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        _highConfidence = true;
     } else if (daysOut <= 3 && daysOut > 0) {
         _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 run your set';
         _sub = (nextGig.venue || 'Gig') + '. Run it once more.';
         _cta = { label: '\u25B6 Run the Set', onclick: "hdPlayBundle('gig')" };
+        _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0 && weakCount > 0) {
         _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten these songs';
         _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work.';
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
         _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : ''));
         _sub = 'Your set is ready. Run it.';
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        _highConfidence = true;
 
     // ── Priority 5: Default ──
     } else {
@@ -509,8 +535,8 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     }
 
-    return _renderNextUpCard(_msg, _sub, _cta)
-        + _renderIntentSection();
+    return _renderNextUpCard(_msg, _sub, _cta, _highConfidence)
+        + (_highConfidence ? _renderIntentCollapsed() : _renderIntentSection());
 
     // ── Below: retained for gig-day override (not shown by default) ──────
     if (false) { // gig-day logic preserved but disabled — can re-enable later
