@@ -28,33 +28,34 @@
 
   // Primary nav: the 5 pages users need most
   // Secondary: everything else, collapsed by default
+  // Primary: core workflows only. Everything else collapsed.
   var NAV_SECTIONS = [
     { title: '', primary: true, items: [
-      { page: 'songs',     icon: '\uD83C\uDFB5', label: 'Songs',     tip: 'Your song library, charts, and song details' },
+      { page: 'songs',     icon: '\uD83C\uDFB5', label: 'Songs',     tip: 'Your song library and charts' },
       { page: 'rehearsal', icon: '\uD83C\uDFB8', label: 'Rehearsal', tip: 'Plan and run your next rehearsal' },
-      { page: 'calendar',  icon: '\uD83D\uDCC5', label: 'Schedule',  tip: 'Gigs, rehearsals, and band events' },
+      { page: 'calendar',  icon: '\uD83D\uDCC5', label: 'Schedule',  tip: 'Gigs, rehearsals, and events' },
       { page: 'setlists',  icon: '\uD83D\uDCCB', label: 'Setlists',  tip: 'Build and organize setlists' },
+    ]},
+    { title: 'Band', items: [
+      { page: 'gigs',      icon: '\uD83C\uDFA4', label: 'Gigs',       tip: 'Manage gigs and performances' },
+      { page: 'ideas',     icon: '\uD83D\uDCAC', label: 'Band Room',  tip: 'Pitch songs, vote, and decisions' },
+      { page: 'feed',      icon: '\uD83D\uDCE1', label: 'Feed',       tip: 'Band notes and discussions' },
+      { page: 'admin',     icon: '\u2699\uFE0F', label: 'Settings',    tip: 'Band members and settings' },
     ]},
     { title: 'Tools', items: [
       { page: 'practice',    icon: '\uD83C\uDFAF', label: 'Practice',     tip: 'Practice songs and track progress' },
-      { page: 'playlists',   icon: '\uD83C\uDFA7', label: 'Playlists',    tip: 'Playlists for practice and learning' },
-      { page: 'pocketmeter', icon: '\uD83C\uDF9A\uFE0F', label: 'Pocket Meter', tip: 'Measure timing and groove' },
+      { page: 'playlists',   icon: '\uD83C\uDFA7', label: 'Playlists',    tip: 'Practice and learning playlists' },
+      { page: 'pocketmeter', icon: '\uD83C\uDF9A\uFE0F', label: 'Pocket Meter', tip: 'Timing and groove' },
       { page: 'tuner',       icon: '\uD83D\uDD31', label: 'Tuner',        tip: 'Tune your instrument' },
-      { page: 'metronome',   icon: '\uD83E\uDD41', label: 'Metronome',    tip: 'Tempo and click track' },
-    ]},
-    { title: 'Band', items: [
-      { page: 'ideas',     icon: '\uD83D\uDCAC', label: 'Band Room',  tip: 'Pitch songs, vote, and make band decisions' },
-      { page: 'feed',      icon: '\uD83D\uDCE1', label: 'Feed',       tip: 'Band notes, ideas, and decisions' },
-      { page: 'gigs',      icon: '\uD83C\uDFA4', label: 'Gigs',       tip: 'Manage gigs and performances' },
-      { page: 'venues',    icon: '\uD83C\uDFDB\uFE0F', label: 'Venues', tip: 'Venue details and logistics' },
-      { page: 'stageplot', icon: '\uD83C\uDFAD', label: 'Stage Plot',  tip: 'Stage layouts and band setup' },
-      { page: 'admin',     icon: '\u2699\uFE0F', label: 'Settings',    tip: 'Band members, settings, and admin' },
+      { page: 'metronome',   icon: '\uD83E\uDD41', label: 'Metronome',    tip: 'Tempo and click' },
+      { page: 'stageplot',   icon: '\uD83C\uDFAD', label: 'Stage Plot',   tip: 'Stage layouts' },
+      { page: 'venues',      icon: '\uD83C\uDFDB\uFE0F', label: 'Venues', tip: 'Venue details and logistics' },
+      { page: 'equipment',   icon: '\uD83C\uDF9B\uFE0F', label: 'Equipment', tip: 'Gear and setups' },
     ]},
     { title: 'More', items: [
-      { page: 'bestshot',      icon: '\uD83C\uDFC6', label: 'Best Shot',     tip: 'Best performances' },
-      { page: 'social',        icon: '\uD83D\uDCE3', label: 'Social Media',  tip: 'Posts and promotion' },
       { page: 'finances',      icon: '\uD83D\uDCB0', label: 'Finances',      tip: 'Income, expenses, payouts' },
-      { page: 'equipment',     icon: '\uD83C\uDF9B\uFE0F', label: 'Equipment', tip: 'Gear and setups' },
+      { page: 'social',        icon: '\uD83D\uDCE3', label: 'Social Media',  tip: 'Posts and promotion' },
+      { page: 'bestshot',      icon: '\uD83C\uDFC6', label: 'Best Shot',     tip: 'Best performances' },
       { page: 'contacts',      icon: '\uD83D\uDC65', label: 'Contacts',      tip: 'Band and venue contacts' },
       { page: 'notifications', icon: '\uD83D\uDD14', label: 'Notifications', tip: 'Updates and alerts' },
       { page: 'help',          icon: '\u2753', label: 'Help',                 tip: 'Help and guides' },
