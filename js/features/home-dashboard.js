@@ -499,10 +499,11 @@ function _renderNextActionCard(bundle, wf) {
         var ia = GLInsights.getNextAction();
         _msg = ia.headline;
         _sub = ia.detail || '';
+        var _timeHint = (ia.plan && ia.plan.estimatedTime) ? ' \u00B7 ~' + ia.plan.estimatedTime + ' min' : '';
         if (ia.cta === 'Start Practice' && ia.song) {
-            _cta = { label: '\u25B6 Practice Now', onclick: "selectSong('" + _escHtml(ia.song).replace(/'/g, "\\'") + "')" };
+            _cta = { label: '\u25B6 Practice Now' + _timeHint, onclick: "selectSong('" + _escHtml(ia.song).replace(/'/g, "\\'") + "')" };
         } else {
-            _cta = { label: '\uD83C\uDFB8 Start Rehearsal', onclick: "showPage('rehearsal')" };
+            _cta = { label: '\uD83C\uDFB8 Start Rehearsal' + _timeHint, onclick: "showPage('rehearsal')" };
         }
         _highConfidence = true;
 
@@ -528,15 +529,25 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
 
-    // ── Priority 5: Default ──
+    // ── Priority 5: Default (still directive, not passive) ──
     } else {
-        _msg = 'Your set is ready';
-        _sub = sessionCount === 0 ? 'You haven\u2019t rehearsed this set yet.' : 'Keep it tight.';
+        if (sessionCount === 0) {
+            _msg = 'Run your set for the first time';
+            _sub = 'One run-through and you\u2019ll know exactly what to work on.';
+        } else if (weakCount > 0) {
+            _msg = 'Stay sharp \u2014 ' + weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need reps';
+            _sub = 'A quick run keeps everything locked in.';
+        } else {
+            _msg = 'Run your set to stay tight';
+            _sub = 'Everything\u2019s solid. One more run keeps it there.';
+        }
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     }
 
+    // High confidence: hero only, no secondary actions
+    // Low confidence: hero + full intent section for discovery
     return _renderNextUpCard(_msg, _sub, _cta, _highConfidence)
-        + (_highConfidence ? _renderIntentCollapsed() : _renderIntentSection());
+        + (_highConfidence ? '' : _renderIntentSection());
 
     // ── Below: retained for gig-day override (not shown by default) ──────
     if (false) { // gig-day logic preserved but disabled — can re-enable later
