@@ -1838,37 +1838,6 @@ function showBandResources(songTitle) {
     const step2 = document.getElementById('step2');
     if (!step2) return;
     step2.classList.add('hidden');
-    return;
-    
-    // Update title with song name
-    const titleEl = document.getElementById('step2Title');
-    if (titleEl) titleEl.innerHTML = 'Song DNA: <span style="color:var(--accent-light,#818cf8)">' + songTitle + '</span>';
-    const subtitleEl = document.getElementById('bandResourcesSubtitle');
-    if (subtitleEl) subtitleEl.textContent = `Everything your band needs at a glance`;
-    
-    // Get band data from data.js if available
-    const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
-    
-    // Render each section IN PARALLEL for fast loading
-    Promise.all([
-        renderChartSection(songTitle),
-        renderRefVersions(songTitle, bandData),
-        renderPersonalTabs(songTitle),
-        renderMoisesStems(songTitle, bandData),
-        renderPracticeTracks(songTitle, bandData),
-        renderHarmoniesEnhanced(songTitle, bandData),
-        renderRehearsalNotesWithStorage(songTitle),
-        renderSongStructure(songTitle),
-        renderGigNotes(songTitle, bandData),
-        renderCoverMe(songTitle),
-        renderSongInPlaylists(songTitle),
-        populateSongMetadata(songTitle),
-        renderReadinessSection(songTitle),
-        renderWoodshedChecklist(songTitle),
-        renderMomentsSection(songTitle)
-    ]).catch(error => {
-        console.error('Error rendering sections:', error);
-    });
 }
 
 
@@ -2505,78 +2474,12 @@ async function loadMoisesStems(songTitle) {
 console.log('🎵 Moises stems editor loaded');
 
 // ============================================================================
-// PRACTICE TRACKS
-// ============================================================================
-
-async function renderPracticeTracks(songTitle, bandData) {
-    // Use the Google Drive version instead
-    await renderPracticeTracksSimplified(songTitle);
-}
-
-
-// ============================================================================
 // REHEARSAL NOTES
 // ============================================================================
-
-function renderRehearsalNotes(songTitle, bandData) {
-    const container = document.getElementById('rehearsalNotesContainer');
-    const notes = bandData.rehearsalNotes;
-    
-    if (!notes || notes.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="padding: 20px;">No rehearsal notes yet</div>';
-        return;
-    }
-    
-    container.innerHTML = `
-        <div class="rehearsal-notes-list">
-            ${notes.map(note => `
-                <div class="rehearsal-note-card ${note.priority === 'high' ? 'high' : ''}">
-                    <div class="note-header">
-                        <span>${note.author} - ${note.date}</span>
-                        <span style="color: ${note.priority === 'high' ? '#ef4444' : '#667eea'}; font-weight: 600;">
-                            ${note.priority.toUpperCase()} PRIORITY
-                        </span>
-                    </div>
-                    <div class="note-content">${note.note}</div>
-                </div>
-            `).join('')}
-        </div>
-    `;
-}
 
 // ============================================================================
 // GIG NOTES
 // ============================================================================
-
-// ── SONG IN PLAYLISTS ─────────────────────────────────────────────────────────
-
-async function renderSongInPlaylists(songTitle) {
-    const container = document.getElementById('songPlaylistsContainer');
-    if (!container) return;
-    const playlists = await loadPlaylists();
-    const inPlaylists = playlists.filter(pl => 
-        Array.isArray(pl.songs) && pl.songs.some(s => (s.title || s) === songTitle)
-    );
-    if (!inPlaylists.length) {
-        container.innerHTML = '<p style="color:var(--text-dim,#64748b);font-size:0.85em;padding:4px 0">Not in any playlists yet</p>';
-        return;
-    }
-    const typeInfo = PLAYLIST_TYPES;
-    container.innerHTML = inPlaylists.map(pl => {
-        const t = typeInfo[pl.type] || typeInfo.custom;
-        return `<span onclick="openPlaylistFromSong('${pl.id}')" 
-            style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
-                   background:${t.bg};border:1px solid ${t.border};border-radius:12px;
-                   color:${t.color};font-size:0.8em;font-weight:600;cursor:pointer;margin:2px">
-            ${t.label.split(' ')[0]} ${pl.name}
-        </span>`;
-    }).join('');
-}
-
-function openPlaylistFromSong(playlistId) {
-    navigateTo('playlists');
-    setTimeout(() => plOpenEditor(playlistId), 400);
-}
 
 // ── COVER ME ──────────────────────────────────────────────────────────────────
 

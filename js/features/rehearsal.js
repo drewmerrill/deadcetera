@@ -2498,9 +2498,7 @@ async function rhGenerateSuggestions(eventId) {
 
     allSongs.forEach(function(song) {
         var title = song.title;
-        var scores = ((typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : (readinessCache || {}))[title] || {};
-        var setScores = BAND_MEMBERS_ORDERED.map(function(m) { return scores[m.key]; }).filter(function(s) { return s && s > 0; });
-        var avgReadiness = setScores.length ? (setScores.reduce(function(a, b) { return a + b; }, 0) / setScores.length) : 0;
+        var avgReadiness = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
 
         // Section ratings from cache (loaded earlier in Best Shot)
         var sectionRatings = {}; // we'll pass empty; ratings loaded inline below
@@ -3147,7 +3145,7 @@ function _rpRenderPlan(container) {
             out += '<div style="font-size:0.75em;color:var(--text-dim);opacity:0.5">No songs assigned</div>';
         } else {
             items.forEach(function(item, i) {
-                if (item.isLinked && item.songs) {
+                if (item.isLinked && item.songs && item.songs.length >= 2) {
                     // Linked unit: show as pair with focus reason and per-song status
                     var focusReason = item._focusReason || 'Transition Focus';
                     var guidance = item._guidance || 'Rehearse segue, timing, and entry';

@@ -795,8 +795,7 @@ async function vhSendTo(dest) {
             console.log('[vh] Saving', versions.length, 'versions for:', songTitle);
             if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
             if (typeof renderRefVersions === 'function') {
-                var bd = (typeof bandKnowledgeBase !== 'undefined' ? bandKnowledgeBase[songTitle] : null) || {};
-                await renderRefVersions(songTitle, bd);
+                await renderRefVersions(songTitle, {});
             }
             if (typeof showToast === 'function') showToast('⭐ Added to North Star!');
             closeVersionHub();

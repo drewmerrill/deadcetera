@@ -216,13 +216,11 @@ function _stonerBuildQueue() {
         }
     }
     // 3. Fallback: all rated ACTIVE songs
-    if (typeof readinessCache !== 'undefined') {
-        var _smSc = (typeof statusCache !== 'undefined') ? statusCache : {};
-        var _smActive = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
-        Object.keys(readinessCache).forEach(function(title) {
+    {
+        var _smRc = (typeof GLStore !== 'undefined' && GLStore.getAllReadiness) ? GLStore.getAllReadiness() : ((typeof readinessCache !== 'undefined') ? readinessCache : {});
+        Object.keys(_smRc).forEach(function(title) {
             if (seen[title]) return;
-            var st = (_smSc && _smSc[title]) || '';
-            if (!_smActive[st]) return;
+            if (!GLStore.isActiveSong(title)) return;
             _stonerQueue.push(title); seen[title] = true;
         });
     }
@@ -237,9 +235,8 @@ function _stonerRenderCockpit() {
 
     // Song indicators
     var indicators = '';
-    if (song && typeof readinessCache !== 'undefined' && readinessCache[song]) {
-        var vals = Object.values(readinessCache[song]).filter(function(v) { return typeof v === 'number' && v > 0; });
-        var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+    if (song) {
+        var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(song) : 0;
         if (avg < 3 && avg > 0) indicators += '<span style="color:#f59e0b;font-size:0.7em;font-weight:700">&#x26A0; Needs Work</span> ';
     }
     if (song && typeof window.northStarCache !== 'undefined' && window.northStarCache[song]) {

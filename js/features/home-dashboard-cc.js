@@ -283,12 +283,9 @@ function _ccRenderReadinessRadar() {
   var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
   var sc = (typeof statusCache !== 'undefined') ? statusCache
       : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
-  var _activeStatuses = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
-
   // Score every ACTIVE song only
   var scored = songs.filter(function(song) {
-    var st = (sc && sc[song.title]) || '';
-    return !!_activeStatuses[st];
+    return GLStore.isActiveSong(song.title);
   }).map(function(song) {
     var scores = rc[song.title] || {};
     var vals = Object.values(scores).filter(function(v) { return typeof v === 'number'; });

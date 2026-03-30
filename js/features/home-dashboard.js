@@ -501,7 +501,7 @@ function _renderNextActionCard(bundle, wf) {
         } else if (wf && wf.nextActionLabel && wf.nextActionTarget) {
             action = { icon: '\uD83C\uDFAF', title: wf.nextActionLabel, sub: wf.nextActionDescription || '', cta: 'Go', onclick: 'showPage(\'' + wf.nextActionTarget + '\')' };
         } else {
-            var weakCount2 = _countWeakSongs(bundle);
+            var weakCount2 = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus().count : 0;
             if (weakCount2 > 0) {
                 action = { icon: '\uD83D\uDD25', title: weakCount2 + ' song' + (weakCount2 > 1 ? 's' : '') + ' need work', sub: 'Focus on your weakest songs first', cta: 'Start Practicing', onclick: 'hdPlayBundle(\'focus\')' };
             } else {
@@ -605,17 +605,12 @@ function _renderProgressionSignal(bundle) {
     try {
         var rc2 = bundle.readinessCache || {};
         var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
-        var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
-        var statusCache = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore : null;
         var aboveThreshold = 0;
         var totalActive = 0;
         allSongsList.forEach(function(s) {
-            var st = statusCache ? statusCache.getStatus(s.title) : null;
-            if (!st || !activeStatuses[st]) return;
+            if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
             totalActive++;
-            var scores = rc2[s.title] || {};
-            var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-            var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+            var avg = GLStore.avgReadiness(s.title);
             if (avg >= 4) aboveThreshold++;
         });
         if (totalActive > 0 && aboveThreshold >= totalActive * 0.8 && aboveThreshold > 5) {
@@ -694,31 +689,7 @@ function _renderTopSongsToWork(bundle) {
     return html;
 }
 
-function _getWeakSongs(bundle, limit) {
-    var rc = bundle.readinessCache || {};
-    var memberKey = bundle.memberKey || '';
-    var statusCache = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore : null;
-    var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
-    var songs = [];
-    var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
-
-    allSongsList.forEach(function(s) {
-        var st = statusCache ? statusCache.getStatus(s.title) : null;
-        if (!st || !activeStatuses[st]) return;
-        var scores = rc[s.title] || {};
-        var myScore = memberKey ? (scores[memberKey] || 0) : 0;
-        var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-        var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
-        if (myScore <= 3 || avg <= 3) songs.push({ title: s.title, myScore: myScore, avg: avg });
-    });
-
-    songs.sort(function(a, b) { return (a.myScore || 0) - (b.myScore || 0) || (a.avg || 0) - (b.avg || 0); });
-    return songs.slice(0, limit || 5);
-}
-
-function _countWeakSongs(bundle) {
-    return _getWeakSongs(bundle, 100).length;
-}
+// _getWeakSongs / _countWeakSongs removed — use GLStore.getNowFocus()
 
 // ── Listening Card ──────────────────────────────────────────────────────────
 // One-tap listening bundle launcher. Shows destination chooser if multiple
@@ -1125,24 +1096,11 @@ function _renderSharpenPracticeCard(bundle) {
     var html = '<div class="app-card home-anim-cards">';
     html += '<h3 style="margin:0 0 12px">\uD83C\uDFAF What to Practice</h3>';
 
-    // Find songs where user's readiness is lowest (active songs only)
-    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-    var _sc = (typeof statusCache !== 'undefined') ? statusCache
-        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
-    var _activeSet = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
-    var weakest = [];
-    songs.forEach(function(s) {
-        var st = (_sc && _sc[s.title]) || '';
-        if (!_activeSet[st]) return; // skip removed/shelved/unknown songs
-        var scores = rc[s.title] || {};
-        var myScore = myKey ? (scores[myKey] || 0) : 0;
-        if (myScore > 0 && myScore <= 3) {
-            weakest.push({ title: s.title, score: myScore, band: s.band });
-        }
+    // Find songs where readiness is lowest (active songs only) — via GLStore.getNowFocus()
+    var _focusData = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var top3 = (_focusData.list || []).slice(0, 3).map(function(s) {
+        return { title: s.title, score: Math.round(s.avg), band: '' };
     });
-    weakest.sort(function(a, b) { return a.score - b.score; });
-    var top3 = weakest.slice(0, 3);
 
     if (top3.length === 0) {
         html += '<div style="color:var(--text-dim);font-size:0.88em;padding:8px 0">No weak songs found \u2014 rate your readiness on a few songs to get started.</div>';
@@ -1315,8 +1273,6 @@ function _computeScorecard(bundle) {
     } catch(e) {}
 
     var rc = bundle.readinessCache || {};
-    var statusCache = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore : null;
-    var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
     var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
 
     var hasSessions = sessions.length > 0;
@@ -1377,12 +1333,9 @@ function _computeScorecard(bundle) {
     // ── Readiness analysis ──
     var totalActive = 0, highReady = 0, lowReady = 0, midReady = 0;
     allSongsList.forEach(function(s) {
-        var st = statusCache ? statusCache.getStatus(s.title) : null;
-        if (!st || !activeStatuses[st]) return;
+        if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
         totalActive++;
-        var scores = rc[s.title] || {};
-        var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-        var avg = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
+        var avg = GLStore.avgReadiness(s.title);
         if (avg >= 4) highReady++;
         else if (avg <= 2 && avg > 0) lowReady++;
         else if (avg > 0) midReady++;
@@ -1476,14 +1429,9 @@ function _renderBandReadinessSnapshot(bundle) {
     var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
-    var _sc = (typeof statusCache !== 'undefined') ? statusCache
-        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
-    var _activeSet = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
-
     var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
     songs.forEach(function(s) {
-        var st = (_sc && _sc[s.title]) || '';
-        if (!_activeSet[st]) return; // skip removed/shelved songs
+        if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
         var scores = rc[s.title] || {};
         var vals = members.map(function(m) { return scores[m.key] || 0; }).filter(function(v) { return v > 0; });
         if (vals.length === 0) return;
@@ -2236,10 +2184,9 @@ function _detectImpactFeedback() {
         // Find songs where avg >= 4 but status was not gig_ready — implies recent improvement
         var newlyReady = [];
         Object.entries(rc).forEach(function(e) {
-            var title = e[0], scores = e[1] || {};
-            var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-            if (!vals.length) return;
-            var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+            var title = e[0];
+            var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
+            if (!avg) return;
             var status = statusMap[title] || '';
             // High readiness but status hasn't caught up yet
             if (avg >= 4 && status === 'wip') {
@@ -4648,80 +4595,8 @@ function _triggerDashboardEntrance() {
 }());
 
 // ── Weak Songs ────────────────────────────────────────────────────────────────
-
-var _weakSongsCache    = null;
-var _weakSongsTime     = 0;
-var _WEAK_SONGS_TTL    = 120000;
-var _RECENCY_DAYS      = 21;
-var _READINESS_THRESH  = 3;
+// _weakScore, _buildRecencyMap, _computeWeakSongs removed — use GLStore.getNowFocus()
 var _WEAK_DISPLAY      = 3;
-
-function _weakScore(bandAvg, daysSinceActivity, inGig) {
-    var readinessGap = Math.max(0, _READINESS_THRESH - bandAvg) * 2;
-    var recencyPenalty = 0;
-    if (daysSinceActivity === null) {
-        recencyPenalty = 3;
-    } else if (daysSinceActivity > _RECENCY_DAYS) {
-        recencyPenalty = Math.min(3, Math.floor(daysSinceActivity / 7));
-    }
-    var gigBoost = inGig ? 2 : 0;
-    return readinessGap + recencyPenalty + gigBoost;
-}
-
-function _buildRecencyMap(activityLog) {
-    var PRACTICE_ACTIONS = {
-        practice_track: true, readiness_set: true,
-        rehearsal_note: true, harmony_add: true,
-        harmony_edit: true,   harmony_recording: true,
-        song_structure: true, part_notes: true
-    };
-    var lastSeen = {};
-    var now = Date.now();
-    (Array.isArray(activityLog) ? activityLog : []).forEach(function(e) {
-        if (!e || !e.song || !e.time || !PRACTICE_ACTIONS[e.action]) return;
-        var t = new Date(e.time).getTime();
-        if (!isNaN(t) && (!lastSeen[e.song] || t > lastSeen[e.song])) {
-            lastSeen[e.song] = t;
-        }
-    });
-    var result = {};
-    Object.keys(lastSeen).forEach(function(title) {
-        result[title] = Math.floor((now - lastSeen[title]) / 86400000);
-    });
-    return result;
-}
-
-function _computeWeakSongs(readinessCache, recencyMap, limit, gigTitles) {
-    var rc = readinessCache || {};
-    var gigSet = gigTitles || new Set();
-    var candidates = [];
-    // Active statuses — only show songs the band is actually working on
-    var _activeStatuses = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
-    var sc = (typeof statusCache !== 'undefined') ? statusCache
-        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
-
-    Object.entries(rc).forEach(function(entry) {
-        var title   = entry[0];
-        // Skip songs that aren't active (removed, shelved, or never added)
-        var songStatus = (sc && sc[title]) || '';
-        if (!_activeStatuses[songStatus]) return;
-
-        var ratings = entry[1] || {};
-        var keys    = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
-        if (!keys.length) return;
-
-        var bandAvg = keys.reduce(function(sum, k) { return sum + ratings[k]; }, 0) / keys.length;
-        if (bandAvg >= _READINESS_THRESH) return;
-
-        var daysSince = (recencyMap && recencyMap[title] !== undefined) ? recencyMap[title] : null;
-        var inGig     = gigSet.has(title);
-        var score     = _weakScore(bandAvg, daysSince, inGig);
-        candidates.push({ title: title, bandAvg: bandAvg, daysSince: daysSince, score: score, inGig: inGig, raterCount: keys.length });
-    });
-
-    candidates.sort(function(a, b) { return b.score - a.score; });
-    return candidates.slice(0, limit || _WEAK_DISPLAY);
-}
 
 window.homeGoWeakSongs = function homeGoWeakSongs(titles) {
     if (!titles || !titles.length) { showPage('songs'); return; }
@@ -4746,51 +4621,12 @@ window.homeGoWeakSongs = function homeGoWeakSongs(titles) {
     }, 200);
 };
 
-async function _fillWeakSongs(bundle) {
+function _fillWeakSongs(bundle) {
     var el = document.getElementById('home-weak-songs') || document.getElementById('hdWeakSongsCard');
     if (!el) return;
 
-    var activityLog = [];
-    try {
-        if (_weakSongsCache && (Date.now() - _weakSongsTime < _WEAK_SONGS_TTL)) {
-            activityLog = _weakSongsCache;
-        } else {
-            activityLog = await window.loadMasterFile('_master_activity_log.json') || [];
-            _weakSongsCache = activityLog;
-            _weakSongsTime  = Date.now();
-        }
-    } catch(e) { activityLog = []; }
-
-    var recencyMap = _buildRecencyMap(activityLog);
-
-    var gigTitles = new Set();
-    try {
-        var upcomingGigs = bundle.gigs || [];
-        if (upcomingGigs.length) {
-            var nextGig = upcomingGigs[0];
-            var setlistName = nextGig.linkedSetlist || nextGig.setlist || '';
-            if (setlistName && typeof window.loadBandDataFromDrive === 'function') {
-                if (!window._homeSetlistCache) {
-                    window._homeSetlistCache = await window.loadBandDataFromDrive('_band', 'setlists').catch(function(){ return []; });
-                }
-                var allSetlists = window._homeSetlistCache || [];
-                var sl = (Array.isArray(allSetlists) ? allSetlists : Object.values(allSetlists))
-                    .find(function(s) { return s && (s.name === setlistName || s.title === setlistName); });
-                if (sl) {
-                    var sets = sl.sets || sl.songs || [];
-                    (Array.isArray(sets) ? sets : Object.values(sets)).forEach(function(set) {
-                        var songs = Array.isArray(set) ? set : (set.songs || []);
-                        songs.forEach(function(song) {
-                            var t = typeof song === 'string' ? song : (song.title || song.song || '');
-                            if (t) gigTitles.add(t);
-                        });
-                    });
-                }
-            }
-        }
-    } catch(e) {}
-
-    var weak = _computeWeakSongs(bundle.readinessCache, recencyMap, _WEAK_DISPLAY, gigTitles);
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [], count: 0 };
+    var weak = (focus.list || []).slice(0, _WEAK_DISPLAY);
 
     if (!weak.length) {
         el.innerHTML = '<div class="app-card home-anim-cards">'
@@ -4802,38 +4638,22 @@ async function _fillWeakSongs(bundle) {
 
     var titles    = weak.map(function(s) { return s.title; });
     var titlesEsc = JSON.stringify(titles).replace(/'/g, "\\'");
-    var hasGigSongs = weak.some(function(s) { return s.inGig; });
+    var hasGigSongs = weak.some(function(s) { return s.inSetlist; });
 
     var rows = weak.map(function(s) {
-        var avg    = s.bandAvg.toFixed(1);
-        var color  = s.bandAvg < 2.0 ? 'var(--red,#ef4444)' : 'var(--yellow,#f59e0b)';
-        var dot    = s.bandAvg < 2.0 ? '\uD83D\uDD34' : '\uD83D\uDFE1';
-        var age    = s.daysSince === null ? 'Never practiced'
-                   : s.daysSince === 0   ? 'Today'
-                   : s.daysSince === 1   ? 'Yesterday'
-                   : s.daysSince + 'd ago';
+        var avg    = s.avg.toFixed(1);
+        var color  = s.avg < 2.0 ? 'var(--red,#ef4444)' : 'var(--yellow,#f59e0b)';
+        var dot    = s.avg < 2.0 ? '\uD83D\uDD34' : '\uD83D\uDFE1';
         return '<div class="home-weak__row" onclick="homeGoWeakSongs([\'' + s.title.replace(/'/g, "\\'") + '\'])" title="Practice this song">'
             + '<span class="home-weak__dot">' + dot + '</span>'
-            + '<span class="home-weak__title">' + _escHtml(s.title) + (s.inGig ? '<span class="home-weak__gig-badge">\uD83C\uDFA4 Next Gig</span>' : '') + '</span>'
+            + '<span class="home-weak__title">' + _escHtml(s.title) + (s.inSetlist ? '<span class="home-weak__gig-badge">\uD83C\uDFA4 Next Gig</span>' : '') + '</span>'
             + '<span class="home-weak__meta">'
             +   '<span style="color:' + color + ';font-weight:700">' + avg + '/5</span>'
-            +   '<span class="home-weak__age">' + age + '</span>'
             + '</span>'
             + '</div>';
     }).join('');
 
-    var _twSc = (typeof statusCache !== 'undefined') ? statusCache
-        : (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
-    var _twActive = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
-    var totalWeak = Object.entries(bundle.readinessCache || {}).filter(function(entry) {
-        var st = (_twSc && _twSc[entry[0]]) || '';
-        if (!_twActive[st]) return false;
-        var ratings = entry[1] || {};
-        var keys    = Object.keys(ratings).filter(function(k) { return typeof ratings[k] === 'number' && ratings[k] > 0; });
-        if (!keys.length) return false;
-        var avg     = keys.reduce(function(sum, k) { return sum + ratings[k]; }, 0) / keys.length;
-        return avg < _READINESS_THRESH;
-    }).length;
+    var totalWeak = focus.count || 0;
 
     var moreLabel = totalWeak > _WEAK_DISPLAY
         ? '<span class="home-weak__more">+' + (totalWeak - _WEAK_DISPLAY) + ' more below threshold</span>'

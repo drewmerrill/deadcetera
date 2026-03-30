@@ -237,7 +237,7 @@
       timestamp: new Date().toISOString()
     };
     var _hoBand = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
-    try { db.ref('bands/' + _hoBand + '/help_outcomes/' + id).set(record); } catch(e) {}
+    try { db.ref('bands/' + _hoBand + '/help_outcomes/' + id).set(record); } catch(e) { console.warn('[KnowledgeResolver] Help outcome write failed', e); }
   }
 
   // ── Founder Help Feedback ──────────────────────────────────────────────
@@ -255,7 +255,7 @@
       timestamp: new Date().toISOString()
     };
     var _hfBand = (typeof window.currentBandSlug !== 'undefined') ? window.currentBandSlug : 'deadcetera';
-    try { db.ref('bands/' + _hfBand + '/help_feedback/' + id).set(record); } catch(e) {}
+    try { db.ref('bands/' + _hfBand + '/help_feedback/' + id).set(record); } catch(e) { console.warn('[KnowledgeResolver] Help feedback write failed', e); }
   }
 
   // ── Knowledge Self-Healing ──────────────────────────────────────────────

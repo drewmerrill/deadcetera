@@ -227,7 +227,7 @@ async function _sdPopulateBandLens(title) {
         // Status: prefer statusCache (master file, migrated) over per-song Firebase
         // to avoid stale legacy values. Fall back to Firebase if cache is empty.
         var _fbStatus = (res[1] && res[1].status) ? res[1].status : (typeof res[1]==='string' ? res[1] : '');
-        var _cacheStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(title) || '') : ((typeof statusCache !== 'undefined' && statusCache[title]) ? statusCache[title] : '');
+        var _cacheStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(title) || '') : '';
         status = _cacheStatus || _fbStatus;
         songMeta=res[2]||{};
         cribData=res[3]; rehearsalNotes=res[4]; sectionRatings=res[5]||{};
@@ -664,8 +664,8 @@ function _sdGetRehearsalMemory(title) {
 function _sdBuildReadinessTrend(title) {
     var myKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
     if (!myKey) return '';
-    var rc = (typeof GLStore !== 'undefined' && GLStore.getAllReadiness) ? GLStore.getAllReadiness() : (typeof readinessCache !== 'undefined' ? readinessCache : {});
-    var current = (rc[title] || {})[myKey] || 0;
+    var scores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
+    var current = scores[myKey] || 0;
     if (!current) return '';
     var stats = (typeof GLStore !== 'undefined' && GLStore.getSongPracticeStats) ? GLStore.getSongPracticeStats(title) : null;
     var practiced = stats && stats.practiceCount ? stats.practiceCount : 0;
@@ -774,8 +774,7 @@ function _sdRenderRehearsalNotes(notesData) {
 function _sdRenderFirstRunCard(title, status) {
     if (status !== 'prospect') return '';
     // Only show if song has no readiness data (never been run through)
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-    var scores = rc[title] || {};
+    var scores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
     var hasRating = Object.values(scores).some(function(v) { return typeof v === 'number' && v > 0; });
     if (hasRating) {
         // Song has been rated — offer transition to Learning
@@ -890,9 +889,8 @@ window.sdToggleAnon = function(checked) {
 };
 
 function _sdRenderReadinessInner(title, safeSong) {
-    var rc=(typeof GLStore!=='undefined')?GLStore.getAllReadiness():(typeof readinessCache!=='undefined'?readinessCache:{});
+    var songScores=(typeof GLStore!=='undefined'&&GLStore.getReadiness)?(GLStore.getReadiness(title)||{}):{};
     var members=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
-    var songScores=rc[title]||{};
     var myKey=typeof getCurrentMemberKey==='function'?getCurrentMemberKey():null;
     if (!members.length) return '<div style="color:var(--text-dim);font-size:0.85em">Loading…</div>';
     var isAnon = window._sdAnonMode;
@@ -926,9 +924,8 @@ function _sdRenderReadinessBlock(title, safeSong) {
 function _sdBuildReadinessStrip(title) {
     var strip=(_sdContainer||document).querySelector('#sd-readiness-strip');
     if (!strip) return;
-    var rc=(typeof GLStore!=='undefined')?GLStore.getAllReadiness():(typeof readinessCache!=='undefined'?readinessCache:{});
+    var songScores=(typeof GLStore!=='undefined'&&GLStore.getReadiness)?(GLStore.getReadiness(title)||{}):{};
     var members=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
-    var songScores=rc[title]||{};
     var pills=members.map(function(m){
         var key=m.key||m, name=m.name||(key.charAt(0).toUpperCase()+key.slice(1));
         var score=songScores[key];
@@ -962,11 +959,14 @@ window.sdUpdateSongStatus = function(v) {
     } else if (typeof saveBandDataToDrive === 'function') {
         saveBandDataToDrive(_sdCurrentSong, 'song_status', { status: v, updatedAt: new Date().toISOString() });
     }
-    // Additional status-specific cache sync (GLStore.updateSongField handles statusCache for us,
-    // but master file persist needs explicit call)
-    if (typeof statusCache !== 'undefined') statusCache[_sdCurrentSong] = v;
-    if (typeof statusCache !== 'undefined' && typeof saveMasterFile === 'function') {
-        saveMasterFile('_master_song_statuses.json', statusCache).catch(function(){});
+    // Sync canonical status cache via GLStore (emits event bus notification)
+    if (typeof GLStore !== 'undefined' && GLStore.setStatus) {
+        GLStore.setStatus(_sdCurrentSong, v);
+    }
+    if (typeof GLStore !== 'undefined' && GLStore.getStatus && typeof saveMasterFile === 'function') {
+        // Master file persist uses the full status cache from GLStore
+        var _allStatuses = (typeof statusCache !== 'undefined') ? statusCache : {};
+        saveMasterFile('_master_song_statuses.json', _allStatuses).catch(function(){});
     }
     // Re-render song list to update filter counts
     if (typeof renderSongs === 'function') requestAnimationFrame(function(){ renderSongs(); });

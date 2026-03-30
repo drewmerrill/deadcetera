@@ -30,6 +30,18 @@
 
   var DEBUG = false;
 
+  // ── Canonical active statuses (SINGLE SOURCE OF TRUTH) ──────────────────
+  var ACTIVE_STATUSES = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+
+  function isActiveSong(title) {
+    var st = (typeof statusCache !== 'undefined' && statusCache[title]) ? statusCache[title] : '';
+    return !!ACTIVE_STATUSES[st];
+  }
+
+  function getActiveStatuses() {
+    return ACTIVE_STATUSES;
+  }
+
   // ── Internal state ────────────────────────────────────────────────────────
 
   var _state = {
@@ -628,7 +640,7 @@
         if (_state.songDetailCache[songId] && _state.songDetailCache[songId].readiness) {
           delete _state.songDetailCache[songId].readiness[memberKey];
         }
-        try { db.ref(_bp('meta/readinessIndex/' + k + '/' + memberKey)).remove(); } catch(ei) {}
+        try { db.ref(_bp('meta/readinessIndex/' + k + '/' + memberKey)).remove(); } catch(ei) { console.warn('[GLStore] Readiness removal failed', ei); }
         // Persist cleared score to master file so it doesn't revert on reload
         if (typeof saveMasterFile === 'function' && typeof MASTER_READINESS_FILE !== 'undefined') {
           saveMasterFile(MASTER_READINESS_FILE, readinessCache).catch(function() {});
@@ -873,7 +885,6 @@
 
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-    var activeStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
 
     // Setlist songs (current set)
     var setlistSongs = {};
@@ -897,7 +908,7 @@
     var candidates = [];
     songs.forEach(function(s) {
       var st = (typeof statusCache !== 'undefined' && statusCache[s.title]) ? statusCache[s.title] : '';
-      if (!activeStatuses[st]) return;
+      if (!ACTIVE_STATUSES[st]) return;
       var scores = rc[s.title] || {};
       var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
       var avg = vals.length ? vals.reduce(function(a,b) { return a + b; }, 0) / vals.length : 0;
@@ -4074,6 +4085,12 @@
     // Focus Engine — single source of truth for "what to work on"
     getNowFocus:       getNowFocus,
     invalidateFocusCache: invalidateFocusCache,
+
+    // Active status (canonical)
+    ACTIVE_STATUSES:   ACTIVE_STATUSES,
+    isActiveSong:      isActiveSong,
+    getActiveStatuses: getActiveStatuses,
+    avgReadiness:      _avgReadiness,
 
     // Rehearsals
     loadRehearsal:     loadRehearsal,

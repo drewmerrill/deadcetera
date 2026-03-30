@@ -645,7 +645,7 @@ async function sendToPracticePlan(songTitle) {
         return;
     }
     var oldStatus = currentStatus;
-    song.status = 'This Week';
+    // Don't mutate shared allSongs object — persist via store only
     if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
         await GLStore.updateSongField(songTitle, 'status', 'This Week');
     } else {

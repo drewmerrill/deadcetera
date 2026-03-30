@@ -299,7 +299,7 @@
 
     // Store to Firebase
     if (db) {
-      try { await _bandRef(db, 'feedback_clusters/' + clusterKey.replace(/[.#$/\[\]]/g, '_')).set(localInsight); } catch(e) {}
+      try { await _bandRef(db, 'feedback_clusters/' + clusterKey.replace(/[.#$/\[\]]/g, '_')).set(localInsight); } catch(e) { console.warn('[FeedbackService] Cluster write failed', e); }
     }
     return localInsight;
   }
@@ -329,7 +329,7 @@
       countAtCreation: reports.length
     };
 
-    try { await _bandRef(db, 'product_actions/' + id).set(action); } catch(e) {}
+    try { await _bandRef(db, 'product_actions/' + id).set(action); } catch(e) { console.warn('[FeedbackService] Product action write failed', e); }
     return action;
   }
 

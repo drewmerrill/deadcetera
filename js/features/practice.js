@@ -62,7 +62,7 @@ window.pmSwitchTab = function pmSwitchTab(tab) {
 };
 
 // ── Active filter — canonical check for practice-eligible songs ───────────────
-var _pmActiveStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+var _pmActiveStatuses = GLStore.ACTIVE_STATUSES;
 function _pmIsActiveStatus(st) { return !!_pmActiveStatuses[st]; }
 
 function _pmIsActive(title) {

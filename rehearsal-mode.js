@@ -1423,7 +1423,7 @@ window._rmSummarySave = async function(sessionId) {
         if (window._rmLastSuggestedRating) updates.ratingSuggested = window._rmLastSuggestedRating;
         if (autoSummary) updates.summary = autoSummary;
         if (Object.keys(updates).length) {
-            try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates); } catch(e) {}
+            try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates); } catch(e) { console.warn('[Rehearsal] Session update failed', e); }
         }
     }
 
@@ -2025,8 +2025,8 @@ function rmApplyBrainTrainer() {
 // ── Load BPM/Key for tools bar ───────────────────────────────────────────────
 async function rmLoadChartTools(songTitle) {
     rmSongBpm = 120; rmSongKey = '';
-    try { rmSongBpm = await loadSongBpm(songTitle) || 120; } catch(e) {}
-    try { rmSongKey = await loadSongKey(songTitle) || ''; } catch(e) {}
+    try { rmSongBpm = await loadSongBpm(songTitle) || 120; } catch(e) { console.warn('[Rehearsal] BPM load failed for ' + songTitle, e); }
+    try { rmSongKey = await loadSongKey(songTitle) || ''; } catch(e) { console.warn('[Rehearsal] Key load failed for ' + songTitle, e); }
     document.getElementById('rmBpmDisplay').textContent = rmSongBpm;
     // Load saved transpose
     rmTransposeSemitones = parseInt(localStorage.getItem('rm_transpose_' + songTitle) || '0');
@@ -2122,11 +2122,11 @@ async function rmGeneratePalace(songTitle, band) {
     
     // Gather song content we already have (chart text, song meaning)
     let chartText = '';
-    try { const cd = await loadBandDataFromDrive(songTitle, 'chart'); if (cd?.text?.trim()) chartText = cd.text; } catch(e) {}
-    if (!chartText) { try { chartText = await loadBandDataFromDrive(songTitle, 'rehearsal_crib') || ''; } catch(e) {} }
+    try { const cd = await loadBandDataFromDrive(songTitle, 'chart'); if (cd?.text?.trim()) chartText = cd.text; } catch(e) { console.warn('[Rehearsal] Chart data load failed', e); }
+    if (!chartText) { try { chartText = await loadBandDataFromDrive(songTitle, 'rehearsal_crib') || ''; } catch(e) { console.warn('[Rehearsal] Crib sheet load failed', e); } }
     
     let meaning = '';
-    try { const m = await loadBandDataFromDrive(songTitle, 'song_meaning'); if (m) meaning = typeof m === 'string' ? m : m.text || m.meaning || JSON.stringify(m); } catch(e) {}
+    try { const m = await loadBandDataFromDrive(songTitle, 'song_meaning'); if (m) meaning = typeof m === 'string' ? m : m.text || m.meaning || JSON.stringify(m); } catch(e) { console.warn('[Rehearsal] Song meaning load failed', e); }
     
     // Build context from what we have
     let songContext = '';
@@ -2171,7 +2171,7 @@ Return EXACTLY 4 scenes as a JSON array:
         el.innerHTML = '<div class="rm-loading">🎨 Generating AI artwork\u2026<div id="rmImageProgress" style="color:#64748b;font-size:0.82em;margin-top:8px"></div></div>';
         for (let i=0;i<scenes.length;i++) {
             const p=document.getElementById('rmImageProgress'); if(p) p.textContent=`Scene ${i+1} of ${scenes.length}\u2026`;
-            try { const ir=await fetch(PROXY+'/generate-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:scenes[i].imagePrompt||scenes[i].description,steps:6})}); if(ir.ok){const id=await ir.json(); if(id.image)scenes[i].imageBase64=id.image;} } catch(e){}
+            try { const ir=await fetch(PROXY+'/generate-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:scenes[i].imagePrompt||scenes[i].description,steps:6})}); if(ir.ok){const id=await ir.json(); if(id.image)scenes[i].imageBase64=id.image;} } catch(e){ console.warn('[Rehearsal] AI image generation failed', e); }
         }
         pmPalaceScenes = scenes;
         const scenesToSave = scenes.map(s => { const {imageBase64, ...rest} = s; return rest; });

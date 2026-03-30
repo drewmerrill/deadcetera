@@ -699,7 +699,7 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
 
         // Re-render songs page if visible
         if (typeof renderSongs === 'function') {
-            try { renderSongs(); } catch(e) {}
+            try { renderSongs(); } catch(e) { console.warn('[Firebase] renderSongs failed after sync', e); }
         }
     } catch(e) {
         console.error('[SongLib] Load failed:', e.message);

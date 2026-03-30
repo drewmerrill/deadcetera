@@ -117,13 +117,11 @@ window.ListeningBundles = (function() {
 
     function _getFocusSongs() {
         // Weak songs from readiness data
-        var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-        var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
-        var active = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
+        var rc = (typeof GLStore !== 'undefined' && GLStore.getAllReadiness) ? GLStore.getAllReadiness() : ((typeof readinessCache !== 'undefined') ? readinessCache : {});
         var weak = [];
         Object.entries(rc).forEach(function(entry) {
             var title = entry[0];
-            if (!active[sc[title] || '']) return;
+            if (!GLStore.isActiveSong(title)) return;
             var ratings = entry[1] || {};
             var vals = Object.values(ratings).filter(function(v) { return typeof v === 'number' && v > 0; });
             if (!vals.length) return;
@@ -137,12 +135,10 @@ window.ListeningBundles = (function() {
     async function _getNorthStarSongs() {
         // Songs that have a voted North Star version
         var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-        var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
-        var active = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
         var results = [];
         for (var i = 0; i < songs.length && results.length < 15; i++) {
             var s = songs[i];
-            if (!active[sc[s.title] || '']) continue;
+            if (!GLStore.isActiveSong(s.title)) continue;
             try {
                 var versions = (typeof loadBandDataFromDrive === 'function')
                     ? await loadBandDataFromDrive(s.title, 'spotify_versions') : null;

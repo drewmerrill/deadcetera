@@ -1528,8 +1528,8 @@ window.slToggleLock = slToggleLock;
 // ── Song Picker Modal ────────────────────────────────────────────────────────
 // Checkbox-based song selection for fast setlist building.
 
-// Active statuses: canonical + legacy values that haven't been migrated yet
-var _slActiveStatuses = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+// Active statuses: canonical definition from GLStore
+var _slActiveStatuses = GLStore.ACTIVE_STATUSES;
 var _slInactiveStatuses = { shelved:1, parked:1, retired:1 };
 
 function _slIsActive(title) {

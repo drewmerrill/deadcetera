@@ -318,20 +318,7 @@ window.getSongRuntimeSec = function(title) {
         if (cached && cached.durationSec && cached.durationSec > 0) return cached.durationSec;
     }
 
-    // 2. Seed data from bandKnowledgeBase
-    if (typeof bandKnowledgeBase !== 'undefined' && bandKnowledgeBase[title]) {
-        var kb = bandKnowledgeBase[title];
-        // Check spotifyVersions[0].length first (most likely to have it)
-        var versions = kb.spotifyVersions || [];
-        for (var i = 0; i < versions.length; i++) {
-            if (versions[i].length) {
-                var parsed = _parseTimeStr(versions[i].length);
-                if (parsed > 0) return parsed;
-            }
-        }
-    }
-
-    // 3. Structural titles = 0 runtime (they're not songs)
+    // 2. Structural titles = 0 runtime (they're not songs)
     if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return 0;
 
     // 4. Fallback default

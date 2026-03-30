@@ -571,7 +571,7 @@
       if (typeof GLStore !== 'undefined' && GLStore.getBandPreferences) {
         dna.preferences = GLStore.getBandPreferences();
       }
-    } catch(e) {}
+    } catch(e) { console.warn('[Orchestrator] Band preferences load failed', e); }
 
     _saveBandDNA(dna);
     return dna;
@@ -768,7 +768,7 @@
           candidates.push({ id: 'song_' + top.title.replace(/\s/g, '_').substring(0, 20), action: null, message: songMsg, score: songScore, why: ['Priority: ' + top.priority.toFixed(1), 'Gap: ' + top.signals.gap.toFixed(1)], targetSongs: priorities.slice(0, 3).map(function(p) { return p.title; }), targetFlow: 'rehearsal' });
         }
       }
-    } catch(e) {}
+    } catch(e) { console.warn('[Orchestrator] NBA song candidate failed', e); }
 
     // Candidate 3: Band DNA insight
     if (dna.improvementVelocity && Math.abs(dna.improvementVelocity) > 0.2) {
@@ -1021,7 +1021,7 @@
         data: data || {},
         timestamp: new Date().toISOString()
       });
-    } catch(e) {}
+    } catch(e) { console.warn('[Orchestrator] Timeline event write failed', e); }
   }
 
   async function getTimeline(limit) {

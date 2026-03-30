@@ -42,10 +42,9 @@ window._sqSelected = {}; // { title: true }
 
 // Derive scope from lifecycle status: prospect/learning/rotation = active, shelved/none = library
 window.getSongScope = function(title) {
-    var status = (typeof statusCache !== 'undefined') ? statusCache[title] : '';
+    var status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(title) : '';
     // Canonical + legacy active statuses
-    if (status === 'prospect' || status === 'learning' || status === 'rotation' ||
-        status === 'wip' || status === 'active' || status === 'gig_ready') return 'active';
+    if (typeof GLStore !== 'undefined' && GLStore.ACTIVE_STATUSES && GLStore.ACTIVE_STATUSES[status]) return 'active';
     if (status === 'shelved' || status === 'parked' || status === 'retired') return 'library';
     return 'library'; // no status = library (default for imports)
 };
@@ -104,7 +103,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         // Multi-pick status filter (from column header)
         var _sf = window._sqStatusFilter || [];
         if (!isSearching && _sf.length > 0) {
-            var songStatus = (typeof statusCache !== 'undefined') ? (statusCache[song.title] || '') : '';
+            var songStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(song.title) || '') : '';
             if (_sf.indexOf(songStatus) === -1) return false;
         }
 
@@ -144,7 +143,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 if (song.bpm) return false;
             }
             if (tf === 'no_status') {
-                var _ts = (typeof statusCache !== 'undefined') ? statusCache[song.title] : null;
+                var _ts = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(song.title) : null;
                 if (_ts) return false;
             }
             if (tf === 'no_lead') {
@@ -163,7 +162,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 if (!_nwMatch) return false;
             }
             if (tf === 'not_rotation') {
-                var _nrStatus = (typeof statusCache !== 'undefined') ? statusCache[song.title] : '';
+                var _nrStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(song.title) : '';
                 if (_nrStatus === 'rotation') return false;
             }
             if (tf === 'no_structure') {
@@ -210,19 +209,21 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // Sort: user-selected or triage auto-sort
     var _sortMode = window._sqSongSort || 'default';
     if (!window._sqTriageFilter && _sortMode !== 'default' && filtered.length > 1) {
-        var _sRc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-        var _sSc = (typeof statusCache !== 'undefined') ? statusCache : {};
         filtered.sort(function(a, b) {
             if (_sortMode === 'readiness_asc' || _sortMode === 'readiness_desc') {
-                var aS = _sRc[a.title] || {}, bS = _sRc[b.title] || {};
-                var aV = Object.values(aS).filter(function(v){return typeof v==='number'&&v>0;}), bV = Object.values(bS).filter(function(v){return typeof v==='number'&&v>0;});
-                var aA = aV.length ? aV.reduce(function(x,y){return x+y;},0)/aV.length : (_sortMode === 'readiness_asc' ? 99 : -1);
-                var bA = bV.length ? bV.reduce(function(x,y){return x+y;},0)/bV.length : (_sortMode === 'readiness_asc' ? 99 : -1);
+                var aA = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(a.title) : -1;
+                var bA = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(b.title) : -1;
+                if (aA < 0) aA = (_sortMode === 'readiness_asc' ? 99 : -1);
+                if (bA < 0) bA = (_sortMode === 'readiness_asc' ? 99 : -1);
                 return _sortMode === 'readiness_asc' ? aA - bA : bA - aA;
             }
             if (_sortMode === 'title_asc') return (a.title||'').localeCompare(b.title||'');
             if (_sortMode === 'title_desc') return (b.title||'').localeCompare(a.title||'');
-            if (_sortMode === 'status') return ((_sSc[a.title]||'').localeCompare(_sSc[b.title]||''));
+            if (_sortMode === 'status') {
+                var _aS = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(a.title)||'') : '';
+                var _bS = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(b.title)||'') : '';
+                return _aS.localeCompare(_bS);
+            }
             if (_sortMode === 'band') return ((a.band||'').localeCompare(b.band||''));
             return 0;
         });
@@ -230,7 +231,6 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Triage priority sort: when triage active, surface the most important songs first
     if (window._sqTriageFilter && filtered.length > 1) {
-        var _sortRc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
         var _sortUpcoming = (typeof window._glCachedSetlists !== 'undefined') ? {} : null;
         if (_sortUpcoming) {
             try {
@@ -250,12 +250,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             var aInSet = _sortUpcoming && _sortUpcoming[a.title] ? 1 : 0;
             var bInSet = _sortUpcoming && _sortUpcoming[b.title] ? 1 : 0;
             if (aInSet !== bInSet) return bInSet - aInSet; // setlist first
-            var aScores = _sortRc[a.title] || {};
-            var bScores = _sortRc[b.title] || {};
-            var aVals = Object.values(aScores).filter(function(v) { return typeof v === 'number' && v > 0; });
-            var bVals = Object.values(bScores).filter(function(v) { return typeof v === 'number' && v > 0; });
-            var aAvg = aVals.length ? aVals.reduce(function(x,y){return x+y;},0) / aVals.length : -1;
-            var bAvg = bVals.length ? bVals.reduce(function(x,y){return x+y;},0) / bVals.length : -1;
+            var aAvg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(a.title) : -1;
+            var bAvg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(b.title) : -1;
             // Unrated (avg=-1) after rated-low, before rated-high
             if (aAvg < 0 && bAvg >= 0) return bAvg < 3 ? 1 : -1;
             if (bAvg < 0 && aAvg >= 0) return aAvg < 3 ? -1 : 1;
@@ -278,8 +274,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // All rich data lives in the song detail view (Song Assets card).
     // ────────────────────────────────────────────────────────────────────────
     // Precompute readiness + status + priority signals for simplified rows
-    var _rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-    var _sc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    var _hasGLStore = (typeof GLStore !== 'undefined');
     var _statusDisplay = { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
     var _statusColor = { prospect:'#7c3aed', learning:'#2563eb', rotation:'#059669', shelved:'#6b7280', wip:'#2563eb', active:'#2563eb', gig_ready:'#2563eb', parked:'#6b7280', retired:'#6b7280' };
 
@@ -461,16 +456,14 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var customClass = song.isCustom ? ' custom-song' : '';
 
         // Average readiness (compute FIRST — needed by signal logic)
-        var scores = _rc[song.title] || {};
-        var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-        var avg = vals.length ? (vals.reduce(function(a,b){return a+b;},0) / vals.length) : 0;
+        var avg = (_hasGLStore && GLStore.avgReadiness) ? GLStore.avgReadiness(song.title) : 0;
         var barPct = avg ? Math.round((avg / 5) * 100) : 0;
         var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)';
         // Combined readiness display: "3.0/5" (not "3.0" + "3/5" separately)
         var readinessText = avg > 0 ? avg.toFixed(1) + '/5' : '—';
 
         // Focus chips — STATUS (identity) first, CONDITION (action) second
-        var status = _sc[song.title] || '';
+        var status = (_hasGLStore && GLStore.getStatus) ? (GLStore.getStatus(song.title) || '') : '';
         var statusText = _statusDisplay[status] || '';
         var chips = [];
         // 1. Lifecycle status — what the song IS (primary identity)
@@ -546,7 +539,6 @@ window._sqToggleRow = function(title) {
 };
 
 window._sqToggleAll = function() {
-    var sc = (typeof statusCache !== 'undefined') ? statusCache : {};
     var librarySongs = (typeof allSongs !== 'undefined') ? allSongs.filter(function(s) {
         return getSongScope(s.title) === 'library';
     }) : [];
@@ -921,7 +913,7 @@ function _renderTriageBar(dropdown, count) {
             // allSongs[].key and .bpm are single source after preload promotion
             if (!s.key) _missingCounts.no_key++;
             if (!s.bpm) _missingCounts.no_bpm++;
-            if (typeof statusCache !== 'undefined' && !statusCache[s.title]) _missingCounts.no_status++;
+            if (typeof GLStore !== 'undefined' && GLStore.getStatus && !GLStore.getStatus(s.title)) _missingCounts.no_status++;
         });
     }
     var _totalMissing = _missingCounts.no_key + _missingCounts.no_bpm + _missingCounts.no_status;
@@ -1060,7 +1052,7 @@ window.songQuickSetup = function songQuickSetup(title) {
     var songObj = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
     var currentKey = (songObj && songObj.key) || '';
     var currentBpm = (songObj && songObj.bpm) ? String(songObj.bpm) : '';
-    var currentStatus = (typeof statusCache !== 'undefined' && statusCache[title]) || '';
+    var currentStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(title) || '') : '';
     // Also check GLStore detail cache for Firebase-sourced key/bpm
     var _dc = (typeof GLStore !== 'undefined' && GLStore._getDetailCache) ? GLStore._getDetailCache(title) : null;
     if (_dc) {
