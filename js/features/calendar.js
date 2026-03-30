@@ -29,10 +29,13 @@ async function calShowEvent(idx, occDate) {
         <button onclick="document.getElementById('calEventFormArea').innerHTML=''" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.1em">✕</button>
     </div>
     <div style="font-size:0.85em;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:12px;margin-bottom:12px">
-        <span>📅 ${displayDate}</span>
-        ${ev.time ? `<span>⏰ ${ev.time}</span>` : ''}
-        <span style="text-transform:capitalize">📂 ${ev.type||'other'}</span>
-        ${repeatLbl ? `<span style="color:var(--accent-light)">🔄 ${repeatLbl}</span>` : ''}
+        <span>\uD83D\uDCC5 ${displayDate}</span>
+        ${ev.time ? `<span>\u23F0 ${ev.time}</span>` : ''}
+        <span style="text-transform:capitalize">\uD83D\uDCC2 ${ev.type||'other'}</span>
+        ${ev.location ? `<span>\uD83D\uDCCD ${ev.location}</span>` : ''}
+        ${ev.venue ? `<span>\uD83C\uDFDB\uFE0F ${ev.venue}</span>` : ''}
+        ${ev.meetingLink ? `<a href="${ev.meetingLink}" target="_blank" style="color:var(--accent-light);text-decoration:none">\uD83D\uDD17 Meeting Link</a>` : ''}
+        ${repeatLbl ? `<span style="color:var(--accent-light)">\uD83D\uDD04 ${repeatLbl}</span>` : ''}
     </div>
     ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
     <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -326,10 +329,11 @@ function renderCalendarInner() {
             // For each event show icon + truncated name
             const eventPills = hasEvent
                 ? dayEvents.slice(0,2).map((ev,ei) => {
-                    const icon = {rehearsal:'🎸',gig:'🎤',meeting:'👥',other:'📌'}[ev.type||'other']||'📌';
-                    const name = (ev.title||'').substring(0,10) + ((ev.title||'').length > 10 ? '…' : '');
+                    const icon = {rehearsal:'\uD83C\uDFB8',gig:'\uD83C\uDFA4',meeting:'\uD83D\uDC65',other:'\uD83D\uDCCC'}[ev.type||'other']||'\uD83D\uDCCC';
+                    const _pillBg = {rehearsal:'rgba(34,197,94,0.3)',gig:'rgba(245,158,11,0.35)',meeting:'rgba(99,102,241,0.25)',other:'rgba(148,163,184,0.2)'}[ev.type||'other']||'rgba(102,126,234,0.25)';
+                    const name = (ev.title||'').substring(0,10) + ((ev.title||'').length > 10 ? '\u2026' : '');
                     const evIdx = ev._idx !== undefined ? ev._idx : ei;
-                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;gap:2px;background:rgba(102,126,234,0.25);border-radius:3px;padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
+                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;gap:2px;background:${_pillBg};border-radius:3px;padding:1px 4px;margin-top:1px;cursor:pointer;overflow:hidden;width:100%" title="${ev.title||''}">
                         <span style="font-size:0.75em;flex-shrink:0">${icon}</span>
                         <span style="font-size:0.6em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:white">${name}</span>
                     </div>`;
@@ -1015,26 +1019,40 @@ async function calAddEvent(date, editIdx, existing) {
     window._calSelectedVenueName = ev.venue || null;
     const showSetlist = ev.type === 'gig';
     const showVenue   = ev.type === 'gig';
+    const showLocation = (ev.type || 'rehearsal') === 'rehearsal';
     var repeatVal = _calRepeatRuleToValue(ev.repeatRule);
     window._calEditEventId = isEdit ? (ev.id || null) : null;
     var isRecurringEdit = isEdit && ev.repeatRule && ev.repeatRule.frequency;
+    // Title placeholder based on type
+    var _titlePlaceholder = (ev.type === 'gig') ? 'e.g. HighTower Drinks' : 'e.g. DeadCetera Rehearsal';
     area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'\u270f\ufe0f Edit Event':'\u2795 Add Event'}</h3>
-    ${isRecurringEdit ? '<div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:0.82em;color:var(--accent-light)">🔄 Editing this recurring event updates all future occurrences.</div>' : ''}
+    ${isRecurringEdit ? '<div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:0.82em;color:var(--accent-light)">\uD83D\uDD04 Editing this recurring event updates all future occurrences.</div>' : ''}
     <div class="form-grid">
-        <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}"></div>
         <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType" onchange="calTypeChanged(this)">
-            <option value="rehearsal" ${(ev.type||'rehearsal')==='rehearsal'?'selected':''}>&#127928; Rehearsal</option>
-            <option value="gig" ${ev.type==='gig'?'selected':''}>&#127908; Gig</option>
-            <option value="meeting" ${ev.type==='meeting'?'selected':''}>&#128101; Meeting</option>
-            <option value="other" ${ev.type==='other'?'selected':''}>&#128204; Other</option>
-            <option value="_conflict">&#128683; Conflict / Blocked</option>
+            <option value="rehearsal" ${(ev.type||'rehearsal')==='rehearsal'?'selected':''}>\uD83C\uDFB8 Rehearsal</option>
+            <option value="gig" ${ev.type==='gig'?'selected':''}>\uD83C\uDFA4 Gig</option>
+            <option value="meeting" ${ev.type==='meeting'?'selected':''}>\uD83D\uDC65 Meeting</option>
+            <option value="other" ${ev.type==='other'?'selected':''}>\uD83D\uDCCC Other</option>
+            <option value="_conflict">\uD83D\uDEAB Conflict / Blocked</option>
         </select></div>
+        <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="${_titlePlaceholder}" value="${ev.title||''}"></div>
+        <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark"></div>
+        <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark"></div>
         <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
             <label class="form-label">Venue</label>
             <div id="calVenuePicker"></div>
         </div>
-        <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="e.g. Practice at Drew's" value="${ev.title||''}"></div>
-        <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}"></div>
+        <div class="form-row calRehearsalOnly" id="calLocationRow" style="${showLocation?'':'display:none'}">
+            <label class="form-label">Location</label>
+            <input class="app-input" id="calLocation" placeholder="e.g. Drew's garage, studio, virtual" value="${ev.location||''}">
+            <div style="display:flex;gap:6px;margin-top:4px">
+                <button onclick="document.getElementById('calLocation').value='Virtual';document.getElementById('calVirtualRow').style.display=''" type="button" style="font-size:0.68em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;cursor:pointer">Virtual</button>
+            </div>
+        </div>
+        <div class="form-row" id="calVirtualRow" style="${ev.meetingLink?'':'display:none'}">
+            <label class="form-label">Meeting Link</label>
+            <input class="app-input" id="calMeetingLink" placeholder="Zoom, Google Meet, etc." value="${ev.meetingLink||''}">
+        </div>
         <div class="form-row"><label class="form-label">Repeat</label><select class="app-select" id="calRepeat">
             <option value="none" ${repeatVal==='none'?'selected':''}>None</option>
             <option value="weekly" ${repeatVal==='weekly'?'selected':''}>Weekly</option>
@@ -1077,9 +1095,17 @@ function calTypeChanged(sel) {
     }
     var slRow = document.getElementById('calSetlistRow');
     var vRow  = document.getElementById('calVenueRow');
+    var locRow = document.getElementById('calLocationRow');
+    var virtualRow = document.getElementById('calVirtualRow');
+    var titleInput = document.getElementById('calTitle');
     var isGig = sel.value === 'gig';
+    var isRehearsal = sel.value === 'rehearsal';
     if (slRow) slRow.style.display = isGig ? '' : 'none';
     if (vRow)  vRow.style.display  = isGig ? '' : 'none';
+    if (locRow) locRow.style.display = isRehearsal ? '' : 'none';
+    if (virtualRow && !isRehearsal) virtualRow.style.display = 'none';
+    // Update title placeholder
+    if (titleInput) titleInput.placeholder = isGig ? 'e.g. HighTower Drinks' : isRehearsal ? 'e.g. DeadCetera Rehearsal' : 'e.g. Band meeting';
     // Init venue picker if switching to gig and picker not yet initialized
     if (isGig && !window._calVenuePicker && document.getElementById('calVenuePicker')) {
         GLStore.getVenues().then(function(venues) {
@@ -1188,6 +1214,8 @@ async function calSaveEvent(editIdx) {
         linkedSetlist: document.getElementById('calLinkedSetlist')?.value || null,
         venueId: window._calSelectedVenueId || null,
         venue: window._calSelectedVenueName || null,
+        location: (document.getElementById('calLocation') || {}).value || null,
+        meetingLink: (document.getElementById('calMeetingLink') || {}).value || null,
     };
     // Recurrence rule
     var repeatVal = (document.getElementById('calRepeat') || {}).value || 'none';
