@@ -90,10 +90,12 @@ window.GLPlayerUI = (function() {
             + '<div id="glpFallback" style="display:none;text-align:center;margin-top:12px;width:100%;max-width:400px"></div>'
             + '</div>'
             // Controls
-            + '<div style="display:flex;align-items:center;justify-content:center;gap:24px;padding:20px;flex-shrink:0">'
-            + '<button onclick="GLPlayerEngine.prev()" style="width:60px;height:60px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.5em">\u23EE</button>'
+            + '<div style="display:flex;align-items:center;justify-content:center;gap:16px;padding:20px;flex-shrink:0">'
+            + '<button onclick="GLPlayerEngine.prev()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em" title="Previous song">\u23EE</button>'
+            + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.65em;font-weight:700" title="Back 10s">-10s</button>'
             + '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em">\u23F8</button>'
-            + '<button onclick="GLPlayerEngine.next()" style="width:60px;height:60px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.5em">\u23ED</button>'
+            + '<button onclick="GLPlayerEngine.seekRelative(10)" style="width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.65em;font-weight:700" title="Forward 10s">+10s</button>'
+            + '<button onclick="GLPlayerEngine.next()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em" title="Next song">\u23ED</button>'
             + '</div>'
             // Up next
             + '<div id="glpUpNext" style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;font-size:0.82em;color:#64748b;text-align:center"></div>';
@@ -310,11 +312,14 @@ window.GLPlayerUI = (function() {
                 + '</div>';
         }
 
-        // Spotify embed fallback (iframe)
+        // Spotify embed fallback (iframe — 30s preview without Premium SDK)
         if (d.source === 'spotify' && d.trackId) {
             if (container) container.innerHTML = '<iframe src="https://open.spotify.com/embed/track/' + d.trackId + '?utm_source=generator&theme=0" width="100%" height="100%" frameBorder="0" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:8px"></iframe>';
             var fb = document.getElementById('glpFallback');
-            if (fb) { fb.style.display = ''; fb.innerHTML = '<div style="font-size:0.78em;color:#1ed760;margin-top:6px">Tap play in Spotify to start</div>'; }
+            if (fb) {
+                fb.style.display = '';
+                fb.innerHTML = '<div style="font-size:0.78em;color:#fbbf24;margin-top:6px">\u26A0\uFE0F Preview only \u2014 <a href="https://open.spotify.com/track/' + d.trackId + '" target="_blank" style="color:#1ed760;text-decoration:underline">open in Spotify</a> for full track</div>';
+            }
         }
 
         if (d.source === 'archive' && d.identifier) {

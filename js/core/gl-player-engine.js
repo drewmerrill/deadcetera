@@ -197,6 +197,15 @@ window.GLPlayerEngine = (function() {
         }
     }
 
+    function seekRelative(deltaSec) {
+        if (_activeSource === 'youtube' && _ytPlayer && _ytPlayer.getCurrentTime && _ytPlayer.seekTo) {
+            var current = _ytPlayer.getCurrentTime();
+            var target = Math.max(0, current + deltaSec);
+            _ytPlayer.seekTo(target, true);
+        }
+        // Spotify SDK seek not supported in embed mode
+    }
+
     function stop() {
         if (_ytPlayer && _ytPlayer.destroy) { try { _ytPlayer.destroy(); } catch(e) {} }
         _ytPlayer = null;
@@ -220,7 +229,7 @@ window.GLPlayerEngine = (function() {
     async function _resolveAndPlay(song, myToken) {
         if (myToken === undefined) myToken = _token;
 
-        // Quick path: cached IDs (instant — no async)
+        // Quick path: cached IDs — ONLY use if matching preference
         var pref = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver.getPreferred() : 'youtube';
         if (pref === 'youtube' && song.youtubeId && _ytReady) {
             if (myToken !== _token) return;
@@ -232,16 +241,8 @@ window.GLPlayerEngine = (function() {
             _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
             return;
         }
-        if (song.youtubeId && _ytReady) {
-            if (myToken !== _token) return;
-            _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song);
-            return;
-        }
-        if (song.spotifyTrackId) {
-            if (myToken !== _token) return;
-            _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
-            return;
-        }
+        // Do NOT fall through to non-preferred cached sources — go to full resolver instead
+        // This ensures "YouTube first" actually searches YouTube, not just uses a cached Spotify ID
 
         // Full resolution via GLSourceResolver
         var R = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver : null;
@@ -460,6 +461,7 @@ window.GLPlayerEngine = (function() {
         next: next,
         prev: prev,
         togglePlay: togglePlay,
+        seekRelative: seekRelative,
         stop: stop,
         destroy: destroy,
 
