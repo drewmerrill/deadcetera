@@ -26,7 +26,10 @@
   }
 
   function _ref(path) {
-    return firebase.database().ref('bands/' + _getBandSlug() + '/intelligence/' + path);
+    var db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database()
+           : (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db) throw new Error('Firebase not initialized');
+    return db.ref('bands/' + _getBandSlug() + '/intelligence/' + path);
   }
 
   // ── Phase 1: Persistent Issue Store ───────────────────────────────────────
@@ -593,11 +596,19 @@
 
   // ── Init: Load on boot ────────────────────────────────────────────────────
 
-  // Lazy-load persistent issues 5s after boot (non-blocking)
+  // Lazy-load persistent issues after Firebase is ready (non-blocking)
+  function _initWhenReady() {
+    if (typeof GLStore !== 'undefined' && GLStore.ready) {
+      GLStore.ready(['firebase']).then(function() { loadIssues(); });
+    } else {
+      // Fallback: retry after 5s if GLStore not available yet
+      setTimeout(function() { loadIssues().catch(function() {}); }, 8000);
+    }
+  }
   if (typeof requestIdleCallback !== 'undefined') {
-    requestIdleCallback(function() { loadIssues(); }, { timeout: 5000 });
+    requestIdleCallback(_initWhenReady, { timeout: 5000 });
   } else {
-    setTimeout(function() { loadIssues(); }, 5000);
+    setTimeout(_initWhenReady, 3000);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────

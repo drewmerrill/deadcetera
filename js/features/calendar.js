@@ -258,6 +258,20 @@ async function _calRenderNextUp() {
             html += '</div>';
         }
 
+        // ── Your RSVP (In / Out / Maybe buttons) ──
+        var myKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+        if (myKey) {
+            var myStatus = (matchGig && matchGig.availability && matchGig.availability[myKey]) ? matchGig.availability[myKey].status : null;
+            var _evId = ev.id || '';
+            var _evDate = ev.date || '';
+            var _rsvpBtnStyle = 'padding:6px 12px;border-radius:8px;font-size:0.78em;font-weight:700;cursor:pointer;border:1px solid ';
+            html += '<div style="display:flex;gap:6px;margin-bottom:8px">';
+            html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'yes\',\'' + _evId + '\')" style="' + _rsvpBtnStyle + (myStatus === 'yes' ? 'rgba(34,197,94,0.4);background:rgba(34,197,94,0.15);color:#86efac' : 'rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-dim)') + '">\u2705 In</button>';
+            html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'maybe\',\'' + _evId + '\')" style="' + _rsvpBtnStyle + (myStatus === 'maybe' ? 'rgba(245,158,11,0.4);background:rgba(245,158,11,0.15);color:#fbbf24' : 'rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-dim)') + '">\u2753 Maybe</button>';
+            html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'no\',\'' + _evId + '\')" style="' + _rsvpBtnStyle + (myStatus === 'no' ? 'rgba(239,68,68,0.4);background:rgba(239,68,68,0.15);color:#f87171' : 'rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-dim)') + '">\u274C Out</button>';
+            html += '</div>';
+        }
+
         html += actionBtn;
         html += '</div>';
     });
@@ -1144,6 +1158,31 @@ window._calSetAvail = async function(eventId, date, status) {
     } catch(e) {
         if (typeof showToast === 'function') showToast('Could not save \u2014 check connection');
     }
+};
+
+// ── Set availability AND write to gig Drive data for display consistency ──────
+window._calSetAvailAndRefresh = async function(date, status, eventId) {
+    // Write to Firebase event_availability (canonical)
+    await _calSetAvail(date, status, eventId);
+
+    // Also write to gig Drive data so "Next Up" reads it back
+    var memberKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+    if (memberKey) {
+        try {
+            var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+            var gig = gigs.find(function(g) { return g.date === date; });
+            if (gig) {
+                if (!gig.availability) gig.availability = {};
+                gig.availability[memberKey] = { status: status, respondedAt: new Date().toISOString() };
+                await saveBandDataToDrive('_band', 'gigs', gigs);
+            }
+        } catch(e) {
+            console.warn('[Calendar] Gig availability sync failed:', e);
+        }
+    }
+
+    // Refresh the Next Up cards to show updated status
+    _calRenderNextUp();
 };
 
 // ── Rehearsal location handlers ──────────────────────────────────────────────
