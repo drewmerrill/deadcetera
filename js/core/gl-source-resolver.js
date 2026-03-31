@@ -149,19 +149,41 @@ window.GLSourceResolver = (function() {
         }).filter(function(r) { return r.videoId; });
     }
 
-    function _raceYouTube(q, songTitle, bandName, timeoutMs) {
+    async function _raceYouTube(q, songTitle, bandName, timeoutMs) {
+        var tm = timeoutMs || 2500;
+
+        // ── Primary: Worker proxy (scrapes YouTube directly, most reliable) ──
+        var workerUrl = (typeof WORKER_URL !== 'undefined') ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev';
+        try {
+            var wRes = await fetch(workerUrl + '/youtube-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: decodeURIComponent(q) }),
+                signal: AbortSignal.timeout(tm)
+            });
+            if (wRes.ok) {
+                var wData = await wRes.json();
+                if (wData.results && wData.results.length) {
+                    var best = _pickBestWorkerResult(wData.results, songTitle, bandName);
+                    if (best) {
+                        console.log('[SourceResolver] YouTube found via Worker:', best);
+                        return best;
+                    }
+                }
+            }
+        } catch(e) {
+            console.warn('[SourceResolver] Worker YouTube search failed:', e.message);
+        }
+
+        // ── Fallback: Invidious + Piped (free proxies, less reliable) ──
         var urls = [
             'https://vid.puffyan.us/api/v1/search?q=' + q + '&type=video&sort_by=relevance',
             'https://invidious.fdn.fr/api/v1/search?q=' + q + '&type=video&sort_by=relevance',
-            'https://inv.nadeko.net/api/v1/search?q=' + q + '&type=video&sort_by=relevance',
-            'https://invidious.nerdvpn.de/api/v1/search?q=' + q + '&type=video&sort_by=relevance',
-            'https://invidious.privacyredirect.com/api/v1/search?q=' + q + '&type=video&sort_by=relevance'
+            'https://inv.nadeko.net/api/v1/search?q=' + q + '&type=video&sort_by=relevance'
         ];
         var piped = [
-            'https://pipedapi.kavin.rocks/search?q=' + q + '&filter=videos',
-            'https://pipedapi.adminforge.de/search?q=' + q + '&filter=videos'
+            'https://pipedapi.kavin.rocks/search?q=' + q + '&filter=videos'
         ];
-        var tm = timeoutMs || 2500;
         return new Promise(function(resolve) {
             var done = false, pending = urls.length + piped.length;
             function fin(id) { if (done) return; if (id) { done = true; resolve(id); return; } pending--; if (pending <= 0) resolve(null); }
@@ -176,6 +198,28 @@ window.GLSourceResolver = (function() {
             });
             setTimeout(function() { fin(null); }, tm + 500);
         });
+    }
+
+    // Pick best result from Worker's /youtube-search response format
+    function _pickBestWorkerResult(results, songTitle, bandName) {
+        if (!results || !results.length) return null;
+        var titleLower = (songTitle || '').toLowerCase();
+        var bandLower = (bandName || '').toLowerCase();
+        // Prefer results that contain the song title AND band name
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            var rTitle = (r.title || '').toLowerCase();
+            if (rTitle.indexOf(titleLower) !== -1 && bandLower && rTitle.indexOf(bandLower) !== -1) {
+                return r.videoId;
+            }
+        }
+        // Fallback: any result with the song title
+        for (var j = 0; j < results.length; j++) {
+            var r2 = results[j];
+            if ((r2.title || '').toLowerCase().indexOf(titleLower) !== -1) return r2.videoId;
+        }
+        // Last resort: first result
+        return results[0].videoId || null;
     }
 
     async function resolveYouTube(songTitle, bandName, opts) {
