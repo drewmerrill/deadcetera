@@ -1849,8 +1849,18 @@ function _sdPopulateSingLens(title) {
     if (typeof renderHarmonyLab==='function') {
         panel.innerHTML='<div class="sd-panel-inner"><div id="sd-harmony-lab-mount"></div></div>';
         renderHarmonyLab(title,'sd-harmony-lab-mount');
+    } else if (typeof glLazy==='function') {
+        panel.innerHTML='<div class="sd-panel-inner" style="text-align:center;padding:20px;color:var(--text-dim)">Loading Harmony Lab\u2026</div>';
+        glLazy('js/features/harmony-lab.js').then(function() {
+            if (typeof renderHarmonyLab==='function') {
+                panel.innerHTML='<div class="sd-panel-inner"><div id="sd-harmony-lab-mount"></div></div>';
+                renderHarmonyLab(title,'sd-harmony-lab-mount');
+            }
+        }).catch(function() {
+            panel.innerHTML='<div class="sd-panel-inner"><div class="sd-card sd-coming-soon"><div class="sd-cs-icon">\uD83C\uDFA4</div><div class="sd-cs-title">Harmony Lab</div><div class="sd-cs-desc">Could not load</div></div></div>';
+        });
     } else {
-        panel.innerHTML='<div class="sd-panel-inner"><div class="sd-card sd-coming-soon"><div class="sd-cs-icon">🎤</div><div class="sd-cs-title">Harmony Lab</div><div class="sd-cs-desc">Coming soon</div></div></div>';
+        panel.innerHTML='<div class="sd-panel-inner"><div class="sd-card sd-coming-soon"><div class="sd-cs-icon">\uD83C\uDFA4</div><div class="sd-cs-title">Harmony Lab</div><div class="sd-cs-desc">Coming soon</div></div></div>';
     }
 }
 

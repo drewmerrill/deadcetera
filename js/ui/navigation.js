@@ -268,7 +268,7 @@ var _glPageScripts = {
     notifications:   ['js/features/notifications.js'],
     playlists:       ['js/features/playlists.js'],
     calendar:        ['js/features/calendar.js', 'js/core/calendar-export.js'],
-    ideas:           ['js/features/band-comms.js'],
+    ideas:           ['js/features/band-comms.js', 'js/features/song-pitch.js'],
     feed:            ['js/features/band-feed.js'],
     'rehearsal-mode': ['rehearsal-mode.js'],
     help:            ['help.js', 'js/ui/gl-help-v2.js']

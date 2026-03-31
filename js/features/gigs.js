@@ -1464,7 +1464,7 @@ window.gigPlaySetlist = async function(setlistId) {
         var slData = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'setlists') : null;
         if (!slData) { showToast('Could not load setlists'); return; }
         var all = Array.isArray(slData) ? slData : Object.values(slData);
-        var sl = all.find(function(s) { return s && (s.id === setlistId || s.name === setlistId || s.title === setlistId); });
+        var sl = all.find(function(s) { return s && (s.setlistId === setlistId || s.name === setlistId || s.title === setlistId); });
         if (!sl) { showToast('Setlist not found'); return; }
         var name = sl.name || sl.title || 'Setlist';
         // Use unified engine if available (prevents z-index conflict with SetlistPlayer)

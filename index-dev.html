@@ -1,10 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta name="build-version" content="20260330-010746">
+    <meta name="build-version" content="20260330-200247">
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GrooveLinx DEV — app-dev.js</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>GrooveLinx™ — Where Bands Lock In</title>
+
+    <!-- Contentsquare (Hotjar) — session replay, heatmaps, frustration detection -->
+<!-- Suppress Firebase long-poll disconnect noise (transport-level, not app errors) -->
+    <script>window.addEventListener('error', function(e) {
+      if (e.message && e.message.indexOf('firebaseio.com/.lp') !== -1) { e.preventDefault(); }
+    });</script>
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
@@ -13,23 +19,26 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="GrooveLinx">
-    <link rel="apple-touch-icon" href="icon-180.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=20260330-200247">
+    <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png?v=20260330-200247">
 
     <!-- Android / Chrome -->
     <meta name="theme-color" content="#6366f1">
     <meta name="mobile-web-app-capable" content="yes">
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
-    <link rel="shortcut icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png?v=20260330-200247">
+    <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png?v=20260330-200247">
+    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png?v=20260330-200247">
+    <link rel="shortcut icon" href="favicon.ico?v=20260330-200247">
 
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="app-shell.css">
     <link rel="stylesheet" href="rehearsal-mode.css">
     <link rel="stylesheet" href="version-hub.css">
-    <link rel="stylesheet" href="css/gl-shell.css"><!-- Phase B: 3-pane shell — dev only -->
+    <link rel="stylesheet" href="css/gl-shell.css">
+<!-- Google Maps: bootstrap shim only (actual JS downloads on first importLibrary call) -->
 <script>(g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]);for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.googleapis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" already loaded"):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({key:"AIzaSyBDADFjoqqLvkmJgevpkIZxf-GTwc9RxI0",v:"weekly"});</script>
     <style>
         /* ⓘ Section help tooltip icons */
@@ -55,8 +64,6 @@
             color: #818cf8;
             border-color: rgba(99,102,241,0.5);
         }
-
-        /* DEV MODE banner removed — Phase H */
     </style>
 <style>
 @media(max-width:640px){
@@ -64,11 +71,10 @@
   #calendarInner .app-card:first-child{padding:12px 2px!important;border-radius:8px!important;width:calc(100% + 10px)!important;box-sizing:border-box!important;}
 }
 </style>
+    <!-- GENERATED FROM index.html — DO NOT EDIT DIRECTLY -->
+    <!-- Run: node scripts/generate-dev-html.js -->
 </head>
 <body>
-
-    <!-- DEV MODE BANNER removed — Phase H -->
-
     <!-- Overlay root — top-level stacking context for persistent UI (Now Playing bar) -->
     <div id="gl-overlay-root" style="position:fixed;inset:0;pointer-events:none;z-index:99999">
         <div id="gl-now-playing" style="position:absolute;bottom:0;left:0;right:0;height:48px;background:linear-gradient(135deg,#1e293b 0%,#252d4a 100%);border-top:1px solid rgba(99,102,241,0.3);pointer-events:auto;align-items:center;padding:0 16px;gap:12px;box-shadow:0 -4px 24px rgba(0,0,0,0.5)"></div>
@@ -80,10 +86,11 @@
             <button class="hamburger" onclick="toggleMenu()" aria-label="Menu">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
             </button>
-            <span class="topbar-brand" onclick="showPage('home')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx</span></span>
+            <span class="topbar-brand" onclick="showPage('home')" style="cursor:pointer"><img src="logo.png" alt=""><span class="topbar-brand-text">GrooveLinx<sup style="font-size:0.45em;font-weight:400;opacity:0.6;vertical-align:super;margin-left:1px">™</sup></span></span>
         </div>
         <div class="topbar-right">
             <button id="googleDriveAuthBtn" class="topbar-btn" onclick="handleGoogleDriveAuth()" title="Sign in to sync">👤</button>
+            <button class="topbar-btn" onclick="showPage('calendar')" title="Schedule" style="padding:6px 8px">📅</button>
             <button class="topbar-btn" onclick="glHelpCurrentPage()" title="Help for this page" id="glHelpBtn" style="padding:6px 8px">❓</button>
             <button class="topbar-btn" onclick="showPage('admin')" title="Settings &amp; Admin" style="padding:6px 8px">⚙️</button>
         </div>
@@ -92,49 +99,61 @@
     <!-- SLIDE-OUT MENU -->
     <div class="menu-overlay" id="menuOverlay" onclick="toggleMenu()"></div>
     <nav class="slide-menu" id="slideMenu">
-        <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx</div>
+        <div class="menu-brand" style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="width:28px;height:28px"> GrooveLinx<sup style="font-size:0.4em;font-weight:400;opacity:0.5">™</sup></div>
+        <button id="glMenuBandBtn" onclick="if(typeof _showBandSwitcherDropdown==='function'){toggleMenu();_showBandSwitcherDropdown(document.getElementById('glMenuBandBtn'))}" style="display:flex;align-items:center;gap:6px;width:calc(100% - 24px);margin:4px 12px 8px;padding:8px 12px;border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:8px;background:rgba(255,255,255,0.03);color:var(--text-muted,#94a3b8);cursor:pointer;font-family:inherit;font-size:0.78em;text-align:left;transition:background 0.15s" onmouseenter="this.style.background='rgba(255,255,255,0.06)'" onmouseleave="this.style.background='rgba(255,255,255,0.03)'">
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="glMenuBandName">Band</span>
+            <span style="font-size:0.8em;opacity:0.5">&#9660;</span>
+        </button>
+        <script>
+        // Populate band name in menu on load
+        document.addEventListener('DOMContentLoaded', function() {
+            var bn = localStorage.getItem('deadcetera_band_name') || 'GrooveLinx';
+            var el = document.getElementById('glMenuBandName');
+            if (el) el.textContent = bn;
+        });
+        </script>
+        <!-- Mode Switcher (mobile) -->
         <div class="menu-section">
-            <div class="menu-section-title">Music</div>
             <button class="menu-item active" data-page="home" onclick="showPage('home')"><span class="menu-icon">🏠</span> Home</button>
             <button class="menu-item" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Songs</button>
-            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
-            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
             <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">🎸</span> Rehearsal</button>
-            <button class="menu-item" data-page="ideas" onclick="showPage('ideas')"><span class="menu-icon">💬</span> Band Room</button>
+            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📅</span> Schedule</button>
+            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
-            <div class="menu-section-title">Gigs</div>
+            <div class="menu-section-title">Band</div>
             <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
-            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📆</span> Calendar</button>
-            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues & Contacts</button>
-            <button class="menu-item" data-page="stageplot" onclick="showPage('stageplot')"><span class="menu-icon">🎭</span> Stage Plot</button>
+            <button class="menu-item" data-page="ideas" onclick="showPage('ideas')"><span class="menu-icon">💬</span> Band Room</button>
+            <button class="menu-item" data-page="feed" onclick="showPage('feed')"><span class="menu-icon">📡</span> Feed</button>
+            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
             <div class="menu-section-title">Tools</div>
+            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
             <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
             <button class="menu-item" data-page="pocketmeter" onclick="showPage('pocketmeter')"><span class="menu-icon">🎚️</span> Pocket Meter</button>
-            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🔱</span> Guitar Tuner</button>
+            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🔱</span> Tuner</button>
             <button class="menu-item" data-page="metronome" onclick="showPage('metronome')"><span class="menu-icon">🥁</span> Metronome</button>
+            <button class="menu-item" data-page="stageplot" onclick="showPage('stageplot')"><span class="menu-icon">🎭</span> Stage Plot</button>
+            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues</button>
+            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
         </div>
         <div class="menu-divider"></div>
         <div class="menu-section">
             <div class="menu-section-title">More</div>
-            <button class="menu-item" data-page="bestshot" onclick="showPage('bestshot')"><span class="menu-icon">🏆</span> Best Shot</button>
-            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
             <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
-            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
+            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
+            <button class="menu-item" data-page="bestshot" onclick="showPage('bestshot')"><span class="menu-icon">🏆</span> Best Shot</button>
             <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
             <button class="menu-item" data-page="notifications" onclick="showPage('notifications')"><span class="menu-icon">🔔</span> Notifications</button>
-            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings & Admin</button>
             <div class="menu-divider"></div>
-            <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help & Guide</button>
+            <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help</button>
         </div>
     </nav>
 
     <!-- MAIN CONTENT AREA -->
-    <!-- Milestone 4: #gl-shell wraps left rail + center workspace + right context panel -->
     <div id="gl-shell">
     <nav id="gl-left-rail"></nav>
     <div class="main-content" id="mainContent">
@@ -152,7 +171,7 @@
                     ➕ <span id="customSongCount" style="background:var(--accent);color:white;border-radius:10px;padding:1px 5px;font-size:0.85em;display:none"></span>
                 </button>
                 <button onclick="if(typeof showBulkImportModal==='function')showBulkImportModal()" class="btn btn-ghost btn-sm" title="Bulk import songs by artist" style="margin-left:4px;font-size:0.75em;padding:4px 8px">
-                    📋
+                    📥
                 </button>
                 <button onclick="glShowOnboarding('songs',true)" class="btn btn-ghost btn-sm" title="What can I do here?" style="margin-left:4px;font-size:0.75em;padding:4px 8px;color:var(--text-dim)" aria-label="Help for Songs page">
                     ❓
@@ -167,7 +186,6 @@
                     class="search-input"
                 >
             </div>
-            <!-- COMPACT FILTERS ROW -->
             <!-- Filters now in column headers (PL-13c) -->
             <div id="songActiveFilters" style="display:none;margin:8px 0"></div>
             
@@ -201,11 +219,10 @@
             <div class="meta-item">
                 <span style="font-weight:600;color:var(--text-muted,#94a3b8);margin-right:6px">🎯 Status:</span>
                 <select id="songStatusSelect" onchange="updateSongStatus(this.value)" class="app-select" style="width:auto;min-width:120px;padding:5px 8px;font-size:0.85em;font-weight:600">
-                    <option value="">— Select —</option>
+                    <option value="">— Not on Radar —</option>
                     <option value="prospect">👀 Prospect</option>
-                    <option value="learning">📖 Learning</option>
-                    <option value="rotation">🔄 In Rotation</option>
-                    <option value="shelved">📦 Shelved</option>
+                    <option value="wip">🔧 Work in Progress</option>
+                    <option value="gig_ready">✅ Gig Ready</option>
                 </select>
             </div>
             <div class="meta-item">
@@ -247,11 +264,11 @@
                         <span>▾</span>
                     </button>
                     <div id="singersDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:8px;z-index:500;padding:6px;margin-top:4px;box-shadow:0 4px 20px rgba(0,0,0,0.4)">
-                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
-                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
-                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
-                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
-                        <label style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
+                        <label for="harmony-cb-drew" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-drew" name="harmony-drew" class="harmony-member-cb" value="drew" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Drew</label>
+                        <label for="harmony-cb-chris" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-chris" name="harmony-chris" class="harmony-member-cb" value="chris" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Chris</label>
+                        <label for="harmony-cb-brian" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-brian" name="harmony-brian" class="harmony-member-cb" value="brian" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Brian</label>
+                        <label for="harmony-cb-pierce" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-pierce" name="harmony-pierce" class="harmony-member-cb" value="pierce" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Pierce</label>
+                        <label for="harmony-cb-jay" style="display:flex;align-items:center;gap:8px;padding:6px 8px;cursor:pointer;border-radius:4px;color:var(--text,#f1f5f9);font-size:0.85em"><input type="checkbox" id="harmony-cb-jay" name="harmony-jay" class="harmony-member-cb" value="jay" onchange="updateHarmonyMembers()" style="accent-color:var(--accent)"> Jay</label>
                     </div>
                 </div>
             </div>
@@ -591,12 +608,12 @@
 
 
         <!-- Hero: shown to signed-out users only, hidden once authenticated -->
-        <div id="page-hero" class="app-page hidden">
+        <div id="page-hero" class="app-page hidden" data-testid="hero-page">
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80vh;padding:32px 24px;text-align:center;">
                 <img src="hero-logo.png" alt="GrooveLinx" style="width:200px;height:200px;border-radius:20px;box-shadow:0 8px 40px rgba(102,126,234,0.35);margin-bottom:28px;">
-                <h1 style="font-size:2.2em;font-weight:800;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 10px;">GrooveLinx</h1>
+                <h1 style="font-size:2.2em;font-weight:800;background:linear-gradient(135deg,#667eea,#f59e0b);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:0 0 10px;">GrooveLinx<sup style="font-size:0.35em;font-weight:400;-webkit-text-fill-color:rgba(255,255,255,0.4);margin-left:2px">™</sup></h1>
                 <p style="font-size:1.15em;font-weight:600;color:var(--text-main,#e2e8f0);margin:0 0 10px;">Where Bands Lock In.</p>
-                <p style="font-size:0.95em;color:var(--text-muted,#94a3b8);max-width:340px;line-height:1.6;margin:0 0 36px;">GrooveLinx helps bands rehearse smarter, build setlists faster, and walk on stage ready.</p>
+                <p style="font-size:0.95em;color:var(--text-muted,#94a3b8);max-width:340px;line-height:1.6;margin:0 0 36px;">GrooveLinx™ helps bands rehearse smarter, build setlists faster, and walk on stage ready.</p>
                 <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:280px;">
                     <button onclick="handleGoogleDriveAuth()" style="background:var(--accent,#667eea);color:white;border:none;padding:14px 24px;border-radius:10px;font-size:1em;font-weight:700;cursor:pointer;letter-spacing:0.02em;">
                         👤 Sign In
@@ -609,16 +626,17 @@
         </div>
 
         <!-- Home Dashboard -->
-        <div id="page-home" class="app-page hidden"></div>
+        <div id="page-home" class="app-page hidden" data-testid="home-page"></div>
 
         <!-- Dynamic pages rendered by JS -->
-        <div id="page-setlists" class="app-page hidden"></div>
-        <div id="page-rehearsal" class="app-page hidden"></div>
+        <div id="page-setlists" class="app-page hidden" data-testid="setlists-page"></div>
+        <div id="page-rehearsal" class="app-page hidden" data-testid="rehearsal-page"></div>
         <div id="page-rehearsal-intel" class="app-page hidden"></div>
         <div id="page-playlists" class="app-page hidden"></div>
         <div id="page-practice" class="app-page hidden"></div>
         <div id="page-calendar" class="app-page hidden"></div>
         <div id="page-gigs" class="app-page hidden"></div>
+        <div id="page-feed" class="app-page hidden"></div>
         <div id="page-pocketmeter" class="app-page hidden"></div>
         <div id="page-venues" class="app-page hidden"></div>
         <div id="page-finances" class="app-page hidden"></div>
@@ -634,90 +652,122 @@
         <div id="page-bestshot" class="app-page hidden"></div>
         <div id="page-stoner" class="app-page hidden"></div>
         <div id="page-help" class="app-page hidden"></div>
-        <!-- page-songdetail removed Phase F.2 — handled by gl-right-panel -->
     </div>
 
-    <!-- Phase B: right context panel — sibling of #mainContent inside #gl-shell -->
+    <!-- Right context panel — sibling of #mainContent inside #gl-shell -->
     <aside id="gl-right-panel" aria-label="Song context panel">
         <div class="gl-rp-header">
             <span id="gl-rp-title" class="gl-rp-title"></span>
             <button class="gl-rp-close-btn" id="gl-rp-close" title="Close panel">✕</button>
         </div>
         <div id="gl-right-panel-content" class="gl-rp-content">
-            <!-- Phase C: renderSongDetail() renders here via gl-right-panel.js -->
         </div>
     </aside>
 
     </div><!-- /#gl-shell -->
 
-
     <footer style="text-align:center;padding:20px;font-size:0.8em;">
-        <p style="margin-bottom:4px">GrooveLinx — Where Bands Lock In 🤘</p>
+        <p style="margin-bottom:4px">GrooveLinx™ — Where Bands Lock In 🤘</p>
         <p style="font-size:0.72em;color:var(--text-dim,#64748b)">© 2025–2026 Drew Merrill. All rights reserved.</p>
     </footer>
 
-    <script src="js/core/utils.js?v=20260321-142328"></script>
-    <script src="js/core/firebase-service.js?v=20260321-142328"></script>
-    <script src="js/core/song-intelligence.js?v=20260321-142328"></script>
-    <script src="js/core/rehearsal_agenda_engine.js?v=20260321-142328"></script>
-    <script src="js/core/rehearsal_scorecard_engine.js?v=20260321-142328"></script>
-    <script src="js/core/rehearsal_segmentation_engine.js?v=20260321-142328"></script>
-    <script src="js/core/rehearsal-analysis-pipeline.js?v=20260321-142328"></script>
-    <script src="js/core/gl-insights.js?v=20260321-142328"></script>
-    <script src="js/core/groovelinx_store.js?v=20260321-142328"></script>
-    <script src="js/core/worker-api.js?v=20260321-142328"></script>
-    <script src="js/core/wake-lock.js?v=20260321-142328"></script>
-    <script src="js/core/gl-user-identity.js?v=20260321-142328"></script>
-    <script src="js/core/avatar_feedback_classifier.js?v=20260321-142328"></script>
-    <script src="js/core/avatar_feedback_context.js?v=20260321-142328"></script>
-    <script src="js/core/avatar_feedback_service.js?v=20260321-142328"></script>
-    <script src="js/core/avatar_feedback_summarizer.js?v=20260321-142328"></script>
-    <script src="js/core/groovemate_tools.js?v=20260321-142328"></script>
-    <script src="js/core/groovemate_action_router.js?v=20260321-142328"></script>
-    <script src="js/core/groovemate_knowledge_resolver.js?v=20260321-142328"></script>
-    <script src="js/core/groovemate_hint_engine.js?v=20260321-142328"></script>
-    <script src="js/core/groovemate_help_validator.js?v=20260321-142328"></script>
-    <script src="js/core/gl-orchestrator.js?v=20260321-142328"></script>
-    <script src="js/core/gl-task-engine.js?v=20260321-142328"></script>
-    <script src="js/ui/navigation.js?v=20260321-142328"></script>
-    <script src="js/ui/gl-right-panel.js?v=20260321-142328"></script><!-- Phase C: right panel controller — dev only -->
-    <script src="js/ui/gl-left-rail.js?v=20260321-142328"></script><!-- Milestone 4: persistent left rail -->
-    <script src="js/ui/gl-now-playing.js?v=20260321-142328"></script><!-- Milestone 4: now playing bar -->
-    <script src="js/ui/gl-context-bar.js?v=20260321-142328"></script><!-- Navigation stability: persistent context bar -->
-    <script src="js/ui/gl-entity-picker.js?v=20260321-142328"></script><!-- Phase 1: venue picker + entity combobox -->
-    <script src="js/ui/gl-inline-help.js?v=20260321-142328"></script><!-- Help Layer 1: inline guidance -->
-    <script src="js/features/songs.js?v=20260321-142328"></script>
-    <script src="data.js?v=20260321-142328"></script>
-    <script src="data/starter_packs.js?v=20260321-142328"></script>
-    <script src="js/features/gigs.js?v=20260321-142328"></script>
-    <script src="js/features/rehearsal.js?v=20260321-142328"></script>
-    <script src="js/features/setlists.js?v=20260321-142328"></script>
-    <script src="js/features/live-gig.js?v=20260321-142328"></script>
-    <script src="js/features/practice.js?v=20260321-142328"></script>
-    <script src="js/features/calendar.js?v=20260321-142328"></script>
-    <script src="js/core/calendar-export.js?v=20260321-142328"></script>
-    <script src="js/features/notifications.js?v=20260321-142328"></script>
-    <script src="js/features/social.js?v=20260321-142328"></script>
-    <script src="js/features/finances.js?v=20260321-142328"></script>
-    <script src="js/features/bestshot.js?v=20260321-142328"></script>
-    <script src="js/features/playlists.js?v=20260321-142328"></script>
-    <script src="js/features/stoner-mode.js?v=20260321-142328"></script>
-    <script src="js/features/home-dashboard.js?v=20260321-142328"></script>
-    <script src="js/features/song-detail.js?v=20260321-142328"></script>
-    <script src="js/features/song-drawer.js?v=20260321-142328"></script>
-    <script src="js/features/harmony-lab.js?v=20260321-142328"></script>
-    <script src="js/features/home-dashboard-cc.js?v=20260321-142328"></script>
-    <script src="js/features/chart-import.js?v=20260321-142328"></script>
-    <script src="js/features/song-pitch.js?v=20260321-142328"></script>
-    <script src="js/features/bulk-import.js?v=20260321-142328"></script>
-    <script src="js/features/band-comms.js?v=20260321-142328"></script>
-    <script src="js/features/stage-plot.js?v=20260321-142328"></script>
-    <script src="app-dev.js?v=20260321-142328"></script><!-- ← DEV: loads app-dev.js instead of app.js -->
-    <script src="rehearsal-mode.js?v=20260321-142328"></script>
-    <script src="version-hub.js?v=20260321-142328"></script>
-    <script src="pocket-meter.js?v=20260321-142328"></script>
-    <script src="help.js?v=20260321-142328"></script>
-    <script src="js/ui/gl-help-v2.js?v=20260321-142328"></script>
+<script src="js/core/utils.js?v=20260330-200247"></script>
+    <script src="js/core/firebase-service.js?v=20260330-200247"></script>
+    <script src="js/core/song-intelligence.js?v=20260330-200247"></script>
+    <script src="js/core/rehearsal_agenda_engine.js?v=20260330-200247"></script>
+    <script src="js/core/rehearsal_scorecard_engine.js?v=20260330-200247"></script>
+    <script src="js/core/rehearsal_segmentation_engine.js?v=20260330-200247"></script>
+    <script src="js/core/rehearsal_story_engine.js?v=20260330-200247"></script>
+    <script src="js/core/groovelinx_store.js?v=20260330-200247"></script>
+    <script src="js/core/rehearsal-analysis-pipeline.js?v=20260330-200247"></script>
+    <script src="js/core/gl-insights.js?v=20260330-200247"></script>
+    <script src="js/core/groovelinx_product_brain.js?v=20260330-200247"></script>
+    <script src="js/core/gl-voice-coach.js?v=20260330-200247"></script>
+    <script src="js/core/gl-plans.js?v=20260330-200247"></script>
+    <script src="js/core/feed-action-state.js?v=20260330-200247"></script>
+    <script src="js/core/feed-metrics.js?v=20260330-200247"></script>
+    <script src="js/core/listening-bundles.js?v=20260330-200247"></script>
+    <script src="js/core/gl-source-resolver.js?v=20260330-200247"></script>
+    <script src="js/core/gl-player-engine.js?v=20260330-200247"></script>
+    <script src="js/core/gl-spotify-player.js?v=20260330-200247"></script>
+    <script src="js/core/playback-session.js?v=20260330-200247"></script>
+    <script src="js/core/worker-api.js?v=20260330-200247"></script>
+    <script src="js/core/wake-lock.js?v=20260330-200247"></script>
+    <script src="js/core/gl_render_state.js?v=20260330-200247"></script>
+    <script src="js/core/gl-ux-tracker.js?v=20260330-200247"></script>
+    <script src="js/core/gl-user-identity.js?v=20260330-200247"></script>
+    <script src="js/core/avatar_feedback_classifier.js?v=20260330-200247"></script>
+    <script src="js/core/avatar_feedback_context.js?v=20260330-200247"></script>
+    <script src="js/core/avatar_feedback_service.js?v=20260330-200247"></script>
+    <script src="js/core/avatar_feedback_summarizer.js?v=20260330-200247"></script>
+    <script src="js/core/groovemate_tools.js?v=20260330-200247"></script>
+    <script src="js/core/groovemate_action_router.js?v=20260330-200247"></script>
+    <script src="js/core/groovemate_knowledge_resolver.js?v=20260330-200247"></script>
+    <script src="js/core/groovemate_hint_engine.js?v=20260330-200247"></script>
+    <script src="js/core/groovemate_help_validator.js?v=20260330-200247"></script>
+    <script src="js/core/gl-orchestrator.js?v=20260330-200247"></script>
+    <script src="js/core/gl-task-engine.js?v=20260330-200247"></script>
+    <script src="js/ui/navigation.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-right-panel.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-left-rail.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-now-playing.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-context-bar.js?v=20260330-200247"></script><!-- Navigation stability: persistent context bar -->
+    <script src="js/ui/gl-entity-picker.js?v=20260330-200247"></script><!-- Phase 1: venue picker + entity combobox -->
+    <script src="js/ui/gl-inline-help.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-spotlight.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-player-ui.js?v=20260330-200247"></script>
+    <script src="js/core/gl-guidance-engine.js?v=20260330-200247"></script>
+    <script src="js/core/gl-avatar-guide.js?v=20260330-200247"></script>
+    <script src="js/core/gl-flow-engine.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-avatar-ui.js?v=20260330-200247"></script>
+    <script src="js/features/songs.js?v=20260330-200247"></script>
+    <script src="data.js?v=20260330-200247"></script>
+    <script src="data/starter_packs.js?v=20260330-200247"></script>
+    <script src="version-hub.js?v=20260330-200247"></script>
+    
+    <!-- ── DEV: Eagerly loaded (lazy in production) ── -->
+    <script src="js/features/rehearsal.js?v=20260330-200247"></script>
+    <script src="js/features/rehearsal-mixdowns.js?v=20260330-200247"></script>
+    <script src="js/features/gigs.js?v=20260330-200247"></script>
+    <script src="js/features/stoner-mode.js?v=20260330-200247"></script>
+    <script src="js/features/live-gig.js?v=20260330-200247"></script>
+    <script src="js/features/bestshot.js?v=20260330-200247"></script>
+    <script src="js/features/practice.js?v=20260330-200247"></script>
+    <script src="pocket-meter.js?v=20260330-200247"></script>
+    <script src="js/features/stage-plot.js?v=20260330-200247"></script>
+    <script src="js/features/finances.js?v=20260330-200247"></script>
+    <script src="js/features/social.js?v=20260330-200247"></script>
+    <script src="js/features/notifications.js?v=20260330-200247"></script>
+    <script src="js/features/playlists.js?v=20260330-200247"></script>
+    <script src="js/features/calendar.js?v=20260330-200247"></script>
+    <script src="js/core/calendar-export.js?v=20260330-200247"></script>
+    <script src="js/features/band-comms.js?v=20260330-200247"></script>
+    <script src="js/features/song-pitch.js?v=20260330-200247"></script>
+    <script src="js/features/band-feed.js?v=20260330-200247"></script>
+    <script src="rehearsal-mode.js?v=20260330-200247"></script>
+    <script src="help.js?v=20260330-200247"></script>
+    <script src="js/ui/gl-help-v2.js?v=20260330-200247"></script>
+    <script src="js/features/chart-import.js?v=20260330-200247"></script>
+<!-- ── LAZY-LOADED: These scripts load on-demand via glLazy() when their page is navigated to ── -->
+    <!-- Removed from boot: rehearsal.js (262KB), gigs.js (83KB), bestshot.js (137KB), band-feed.js (94KB), -->
+    <!-- calendar.js (72KB), notifications.js (75KB), stage-plot.js (49KB), finances.js (9KB), social.js (20KB), -->
+    <!-- playlists.js (23KB), band-comms.js (34KB), rehearsal-mixdowns.js (16KB), calendar-export.js (20KB), -->
+    <!-- help.js (64KB), gl-help-v2.js (9KB) = ~967KB removed from boot -->
+
+    <!-- ── KEPT AT BOOT: needed for home/songs/setlists ── -->
+    <script src="js/features/setlists.js?v=20260330-200247"></script>
+    <!-- live-gig (31KB), practice (38KB) deferred to lazy loading -->
+    <script src="js/features/home-dashboard.js?v=20260330-200247"></script>
+    <script src="js/features/song-detail.js?v=20260330-200247"></script>
+    <script src="js/features/song-drawer.js?v=20260330-200247"></script>
+    <script src="js/features/home-dashboard-cc.js?v=20260330-200247"></script>
+    <script src="js/features/bulk-import.js?v=20260330-200247"></script>
+    <script src="js/features/setlist-player.js?v=20260330-200247"></script>
+    <script src="js/features/charts.js?v=20260330-200247"></script>
+    <script src="groovelinx_test_env.js"></script>
+    <script src="app-dev.js?v=20260330-200247"></script>
+    <script src="rehearsal-mode.js?v=20260330-200247"></script>
+    <!-- pocket-meter.js (116KB) deferred — loaded on pocketmeter page -->
 
     <script>
     // Hero gate — fires immediately on load, before Firebase resolves
@@ -748,7 +798,24 @@
     };
     </script>
     <script>
-    // Service Worker registration handled by app-dev.js (single owner — PL-9.2)
+    // Force SW update + cache purge on every load
+    // Fixes stuck PWA installs (especially iOS Safari)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(r) { r.update(); });
+        });
+        // Nuclear: if ?purge=1 in URL, unregister all SWs and clear caches
+        if (new URLSearchParams(window.location.search).get('purge') === '1') {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+                regs.forEach(function(r) { r.unregister(); });
+            });
+            caches.keys().then(function(keys) {
+                keys.forEach(function(k) { caches.delete(k); });
+            });
+            window.history.replaceState({}, '', window.location.pathname);
+            setTimeout(function() { location.reload(); }, 500);
+        }
+    }
     </script>
     <script>
     // Strip stale share params (?playlist=, ?pack=) from URL on every load.
@@ -758,6 +825,37 @@
         if (p.has('playlist') || p.has('pack')) {
             window.history.replaceState({}, document.title, window.location.pathname);
         }
+    })();
+    </script>
+    <script>
+    // ── Boot Watchdog: last-resort blank-screen prevention ──────────────────
+    // If no page becomes visible within 5s of DOMContentLoaded, force-show home.
+    // This catches ALL edge cases: failed Firebase init, failed GIS load,
+    // stale localStorage, race conditions between restore timers and auth.
+    (function() {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                // Check if any app-page is visible
+                var pages = document.querySelectorAll('.app-page');
+                var anyVisible = false;
+                for (var i = 0; i < pages.length; i++) {
+                    if (!pages[i].classList.contains('hidden')) { anyVisible = true; break; }
+                }
+                // Also check if hero is showing (that counts as "not blank")
+                var hero = document.getElementById('page-hero');
+                var heroVisible = hero && !hero.classList.contains('hidden');
+                if (!anyVisible && !heroVisible) {
+                    console.warn('🚨 Boot watchdog: no page visible after 5s — forcing home');
+                    if (typeof showPage === 'function') {
+                        showPage('home');
+                    } else {
+                        // Absolute fallback: un-hide home manually
+                        var home = document.getElementById('page-home');
+                        if (home) home.classList.remove('hidden');
+                    }
+                }
+            }, 5000);
+        });
     })();
     </script>
 </body>
