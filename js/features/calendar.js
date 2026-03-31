@@ -150,11 +150,123 @@ function _generateOccurrenceDates(baseDate, frequency, interval, rangeStart, ran
 }
 
 function renderCalendarPage(el) {
-    el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCC5 Schedule</h1><p>Rehearsals, gigs, and band availability</p></div>'
+    el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCC5 Schedule</h1></div>'
+        + '<div id="calIntelBanner"></div>'
+        + '<div id="calBestRehearsalHero"></div>'
         + '<div id="calNextUpSection"></div>'
         + '<div id="calendarInner"></div>';
+    _calRenderIntelBanner();
+    _calRenderBestRehearsalHero();
     _calRenderNextUp();
     renderCalendarInner();
+}
+
+// ── Intelligence Banner — time since last rehearsal, days to gig ─────────────
+async function _calRenderIntelBanner() {
+    var el = document.getElementById('calIntelBanner');
+    if (!el) return;
+    var parts = [];
+
+    // Time since last rehearsal
+    try {
+        var sessions = (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache) ? _rhSessionsCache : [];
+        if (!sessions.length && typeof loadBandDataFromDrive === 'function') {
+            var raw = await loadBandDataFromDrive('_band', 'rehearsal_sessions');
+            sessions = raw ? toArray(raw).sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); }) : [];
+        }
+        if (sessions.length) {
+            var lastDate = sessions[0].date;
+            if (lastDate) {
+                var daysSince = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000);
+                if (daysSince <= 1) parts.push('Rehearsed yesterday');
+                else if (daysSince <= 7) parts.push('Last rehearsal ' + daysSince + ' days ago');
+                else if (daysSince <= 14) parts.push('\u26A0\uFE0F ' + daysSince + ' days since last rehearsal');
+                else parts.push('\u26A0\uFE0F ' + daysSince + ' days since last rehearsal \u2014 time to schedule one');
+            }
+        }
+    } catch(e) {}
+
+    // Days to next gig
+    try {
+        var today = new Date().toISOString().split('T')[0];
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var nextGig = events.filter(function(e) { return e.type === 'gig' && (e.date || '') >= today; })
+            .sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
+        if (nextGig) {
+            var daysToGig = Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+            if (daysToGig <= 7) parts.push('\uD83C\uDFA4 Gig in ' + daysToGig + ' day' + (daysToGig > 1 ? 's' : '') + ' \u2014 ' + (nextGig.title || nextGig.venue || ''));
+            else if (daysToGig <= 14) parts.push('\uD83C\uDFA4 Next gig in ' + daysToGig + ' days');
+        }
+    } catch(e) {}
+
+    if (!parts.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div style="padding:10px 14px;margin-bottom:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);font-size:0.82em;color:var(--text-dim)">'
+        + parts.join(' \u00B7 ') + '</div>';
+}
+
+// ── Best Next Rehearsal Hero Card ────────────────────────────────────────────
+async function _calRenderBestRehearsalHero() {
+    var el = document.getElementById('calBestRehearsalHero');
+    if (!el) return;
+
+    // Get members + blocked ranges
+    var members = [];
+    if (typeof bandMembers !== 'undefined') {
+        Object.entries(bandMembers).forEach(function(e) { members.push({ key: e[0], name: e[1].name || e[0] }); });
+    }
+    if (members.length < 2) { el.innerHTML = ''; return; } // no point suggesting with solo
+
+    var blockedRanges = [];
+    try {
+        var result = await loadCalendarEvents();
+        blockedRanges = result ? (result.blockedRanges || []) : [];
+    } catch(e) {}
+
+    // Find best day in next 14 days
+    var today = new Date();
+    var candidates = [];
+    for (var d = 1; d <= 14; d++) {
+        var dt = new Date(today.getTime() + d * 86400000);
+        var ds = dt.toISOString().split('T')[0];
+        var freeCount = 0;
+        members.forEach(function(m) {
+            var blocked = blockedRanges.some(function(b) {
+                return (b.person === m.name || b.person === m.key) && b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate;
+            });
+            if (!blocked) freeCount++;
+        });
+        candidates.push({ date: ds, dt: dt, freeCount: freeCount, day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
+            dayNum: dt.getDate(), month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()] });
+    }
+
+    candidates.sort(function(a, b) { return b.freeCount - a.freeCount || a.date.localeCompare(b.date); });
+    var best = candidates[0];
+    if (!best || best.freeCount === 0) { el.innerHTML = ''; return; }
+
+    var allIn = best.freeCount === members.length;
+    var _bdParsed = glParseDate(best.date);
+    var _bdArgs = _bdParsed ? _bdParsed.getFullYear() + ',' + _bdParsed.getMonth() + ',' + _bdParsed.getDate() : '';
+
+    var alts = candidates.filter(function(c) { return c.date !== best.date && c.freeCount >= members.length - 1; }).slice(0, 2);
+    var altsHtml = '';
+    if (alts.length) {
+        altsHtml = '<div style="margin-top:8px;font-size:0.75em;color:var(--text-dim)">Also works: '
+            + alts.map(function(a) { return a.day + ' ' + a.month + ' ' + a.dayNum + ' (' + a.freeCount + '/' + members.length + ')'; }).join(', ')
+            + '</div>';
+    }
+
+    el.innerHTML = '<div style="padding:16px 18px;margin-bottom:12px;border-radius:12px;border:2px solid rgba(34,197,94,0.3);background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
+        + '<div style="font-size:0.68em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Best Next Rehearsal</div>'
+        + '<div style="font-size:1.15em;font-weight:900;color:var(--text)">' + best.day + ', ' + best.month + ' ' + best.dayNum + '</div>'
+        + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">'
+        + (allIn ? '\u2705 Everyone\u2019s free' : best.freeCount + '/' + members.length + ' available')
+        + '</div>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        + '<button onclick="calDayClick(' + _bdArgs + ')" style="padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer">Lock This Rehearsal</button>'
+        + '<button onclick="document.getElementById(\'calAvailabilityMatrix\').scrollIntoView({behavior:\'smooth\'})" style="padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">See Alternatives</button>'
+        + '</div>'
+        + altsHtml
+        + '</div>';
 }
 
 // ── "Next Up" section — upcoming rehearsal + gig with availability/readiness ──
@@ -304,32 +416,38 @@ function renderCalendarInner() {
     const monthPrefix = `${year}-${String(month+1).padStart(2,'0')}-`;
 
     // Render shell immediately, then load events async and paint dots
-    el.innerHTML = `
-    <div class="app-card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-            <button class="btn btn-ghost btn-sm" onclick="calNavMonth(-1)">← Prev</button>
-            <h3 style="margin:0;font-size:1.05em;font-weight:700">${mNames[month]} ${year}</h3>
-            <button class="btn btn-ghost btn-sm" onclick="calNavMonth(1)">Next →</button>
-        </div>
-        <div id="calGrid"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="calAddEvent()">+ Add Event</button>
-        <button class="btn btn-ghost" onclick="calBlockDates()" style="color:var(--red)">🚫 Add Conflict</button>
-        <button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||'deadcetera')" style="color:var(--accent-light)" title="Subscribe to band calendar in Google/Apple Calendar">📅 Subscribe</button>
-    </div>
-    <div class="app-card" id="calEventFormArea"></div>
-    <div class="app-card"><h3>\uD83D\uDCC5 Upcoming Events</h3>
-        <div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading\u2026</div></div>
-    </div>
-    <div class="app-card"><h3>📊 Availability Matrix</h3>
-        <div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">See when the band is free to rehearse. Click a column to see conflicts.</div>
-        <div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading…</div></div>
-        <div id="calConflictResolver" style="display:none"></div>
-    </div>
-    <div class="app-card"><h3 id="calBlockedHeader">🚫 Conflicts &amp; Blocked Dates</h3>
-        <div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>
-    </div>`;
+    el.innerHTML =
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
+        '<button class="btn btn-primary" onclick="calAddEvent()" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;font-weight:700">\uD83C\uDFB8 Schedule Rehearsal</button>' +
+        '<button class="btn btn-ghost" onclick="calBlockDates()" style="color:#f87171">\uD83D\uDEAB Block Date</button>' +
+        '<button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="color:var(--accent-light)" title="Subscribe to band calendar in Google/Apple Calendar">\uD83D\uDCC5 Subscribe</button>' +
+    '</div>' +
+    '<div class="app-card" id="calEventFormArea"></div>' +
+    '<div class="app-card"><h3>\uD83D\uDCC5 Upcoming Schedule</h3>' +
+        '<div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading\u2026</div></div>' +
+    '</div>' +
+    '<div class="app-card"><h3>\uD83D\uDCCA Smart Scheduling</h3>' +
+        '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Best days for the band to rehearse. Tap a date to lock it in.</div>' +
+        '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
+        '<div id="calConflictResolver" style="display:none"></div>' +
+    '</div>' +
+    '<details style="margin-bottom:12px">' +
+        '<summary class="app-card" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h3 style="margin:0" id="calBlockedHeader">\uD83D\uDEAB Conflicts</h3><span style="font-size:0.72em;color:var(--text-dim)">tap to expand</span></summary>' +
+        '<div class="app-card" style="margin-top:-1px;border-top:none;border-top-left-radius:0;border-top-right-radius:0">' +
+            '<div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>' +
+        '</div>' +
+    '</details>' +
+    '<details style="margin-bottom:12px">' +
+        '<summary class="app-card" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h3 style="margin:0">\uD83D\uDCC5 Monthly Calendar</h3><span style="font-size:0.72em;color:var(--text-dim)">tap to expand</span></summary>' +
+        '<div class="app-card" style="margin-top:-1px;border-top:none;border-top-left-radius:0;border-top-right-radius:0">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+                '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(-1)">\u2190 Prev</button>' +
+                '<h3 style="margin:0;font-size:1.05em;font-weight:700">' + mNames[month] + ' ' + year + '</h3>' +
+                '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(1)">Next \u2192</button>' +
+            '</div>' +
+            '<div id="calGrid"></div>' +
+        '</div>' +
+    '</details>';
 
     // Load events, then build calendar grid with dots and blocked ranges
     loadCalendarEvents().then(result => {
