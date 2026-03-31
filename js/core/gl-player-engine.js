@@ -285,6 +285,7 @@ window.GLPlayerEngine = (function() {
     }
 
     function _playSource(result, song) {
+        console.log('[GLPlayer] Source resolved:', result.source, result.confidence || '', result.trackId || result.videoId || '');
         _activeSource = result.source;
         _activeResult = result;
         _emit('sourceResolved', { source: result.source, confidence: result.confidence, song: song });
@@ -327,6 +328,8 @@ window.GLPlayerEngine = (function() {
         }
 
         // Fallback: Spotify embed iframe
+        console.log('[GLPlayer] Falling back to Spotify embed for:', trackId);
+        _isPlaying = true;
         _setState(State.PLAYING, { source: 'spotify', method: 'embed' });
         _emit('embedReady', { source: 'spotify', trackId: trackId });
     }

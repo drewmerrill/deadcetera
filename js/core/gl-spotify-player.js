@@ -370,7 +370,7 @@ window.GLSpotifyPlayer = (function() {
     function getLastError() { return _lastError; }
     function isReady() { return _state === State.READY || _state === State.PLAYING || _state === State.PAUSED; }
     function isPlaying() { return _state === State.PLAYING; }
-    function isAvailable() { return _state !== State.UNAVAILABLE; }
+    function isAvailable() { return _state !== State.UNAVAILABLE && _state !== State.ERROR; }
 
     // ── User-Facing Messages ─────────────────────────────────────────────────
 

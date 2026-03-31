@@ -17,6 +17,7 @@
 window.GLPlayerUI = (function() {
 
     var _mode = null; // 'overlay' | 'float' | 'bar' | null
+    var _loadingTimer = null; // setTimeout ID for "Finding best version..." — cleared when embed arrives
     var _overlayEl = null;
     var _floatEl = null;
     var _barEl = null;
@@ -200,8 +201,10 @@ window.GLPlayerUI = (function() {
         var progressEl = document.getElementById('glpProgress');
         if (progressEl) progressEl.innerHTML = '<span style="color:#a5b4fc;font-weight:700">Now Playing</span> \u00B7 ' + (d.idx + 1) + ' of ' + d.total;
         // Clear video container — smooth transition to loading
+        // Guard: cancel any pending loading-text timer to prevent overwriting an embed that loaded fast
+        if (_loadingTimer) clearTimeout(_loadingTimer);
         var vc = document.getElementById('glpVideoContainer');
-        if (vc) { vc.style.transition = 'opacity 0.2s ease'; vc.style.opacity = '0.5'; setTimeout(function() { vc.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>'; vc.style.opacity = '1'; }, 150); }
+        if (vc) { vc.style.transition = 'opacity 0.2s ease'; vc.style.opacity = '0.5'; _loadingTimer = setTimeout(function() { _loadingTimer = null; var _vc = document.getElementById('glpVideoContainer'); if (_vc && !_vc.querySelector('iframe')) { _vc.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>'; _vc.style.opacity = '1'; } }, 150); }
         // Clear fallback
         var fb = document.getElementById('glpFallback');
         if (fb) { fb.style.display = 'none'; fb.innerHTML = ''; }
@@ -278,6 +281,9 @@ window.GLPlayerUI = (function() {
     }
 
     function _createEmbed(d) {
+        // Cancel pending loading-text timer — embed is arriving
+        if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
+        console.log('[GLPlayerUI] Embed created:', d.source, d.trackId || d.videoId || '');
         var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
         var container = document.getElementById(containerId);
 
