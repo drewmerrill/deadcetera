@@ -161,11 +161,11 @@ function renderCalendarPage(el) {
     renderCalendarInner();
 }
 
-// ── Intelligence Banner — time since last rehearsal, days to gig ─────────────
+// ── Intelligence Banner — smart scheduling recommendation ────────────────────
 async function _calRenderIntelBanner() {
     var el = document.getElementById('calIntelBanner');
     if (!el) return;
-    var parts = [];
+    var daysSince = null, daysToGig = null, gigName = '';
 
     // Time since last rehearsal
     try {
@@ -174,15 +174,8 @@ async function _calRenderIntelBanner() {
             var raw = await loadBandDataFromDrive('_band', 'rehearsal_sessions');
             sessions = raw ? toArray(raw).sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); }) : [];
         }
-        if (sessions.length) {
-            var lastDate = sessions[0].date;
-            if (lastDate) {
-                var daysSince = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000);
-                if (daysSince <= 1) parts.push('Rehearsed yesterday');
-                else if (daysSince <= 7) parts.push('Last rehearsal ' + daysSince + ' days ago');
-                else if (daysSince <= 14) parts.push('\u26A0\uFE0F ' + daysSince + ' days since last rehearsal');
-                else parts.push('\u26A0\uFE0F ' + daysSince + ' days since last rehearsal \u2014 time to schedule one');
-            }
+        if (sessions.length && sessions[0].date) {
+            daysSince = Math.floor((Date.now() - new Date(sessions[0].date).getTime()) / 86400000);
         }
     } catch(e) {}
 
@@ -193,15 +186,39 @@ async function _calRenderIntelBanner() {
         var nextGig = events.filter(function(e) { return e.type === 'gig' && (e.date || '') >= today; })
             .sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
         if (nextGig) {
-            var daysToGig = Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
-            if (daysToGig <= 7) parts.push('\uD83C\uDFA4 Gig in ' + daysToGig + ' day' + (daysToGig > 1 ? 's' : '') + ' \u2014 ' + (nextGig.title || nextGig.venue || ''));
-            else if (daysToGig <= 14) parts.push('\uD83C\uDFA4 Next gig in ' + daysToGig + ' days');
+            daysToGig = Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+            gigName = nextGig.title || nextGig.venue || 'your gig';
         }
     } catch(e) {}
 
-    if (!parts.length) { el.innerHTML = ''; return; }
-    el.innerHTML = '<div style="padding:10px 14px;margin-bottom:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);font-size:0.82em;color:var(--text-dim)">'
-        + parts.join(' \u00B7 ') + '</div>';
+    // Generate smart recommendation
+    var msg = '', urgency = 'info'; // info | warning | urgent
+    if (daysSince !== null && daysSince > 7 && daysToGig !== null && daysToGig <= 21) {
+        var rehearsalsNeeded = Math.max(1, Math.ceil((daysToGig - 1) / 7));
+        if (daysToGig <= 7) {
+            msg = '\uD83D\uDEA8 ' + gigName + ' is in ' + daysToGig + ' day' + (daysToGig > 1 ? 's' : '') + ' and you haven\u2019t rehearsed in ' + daysSince + ' days. Schedule one now.';
+            urgency = 'urgent';
+        } else {
+            msg = 'You should get ' + rehearsalsNeeded + ' rehearsal' + (rehearsalsNeeded > 1 ? 's' : '') + ' in before ' + gigName + ' (' + daysToGig + ' days). Last rehearsal was ' + daysSince + ' days ago.';
+            urgency = 'warning';
+        }
+    } else if (daysSince !== null && daysSince > 14) {
+        msg = '\u26A0\uFE0F ' + daysSince + ' days since your last rehearsal \u2014 the band is getting rusty.';
+        urgency = 'warning';
+    } else if (daysSince !== null && daysSince > 7) {
+        msg = 'Last rehearsal ' + daysSince + ' days ago.' + (daysToGig ? ' Next gig in ' + daysToGig + ' days.' : '');
+        urgency = 'info';
+    } else if (daysToGig !== null && daysToGig <= 7) {
+        msg = '\uD83C\uDFA4 ' + gigName + ' in ' + daysToGig + ' day' + (daysToGig > 1 ? 's' : '') + '.';
+        urgency = daysToGig <= 3 ? 'warning' : 'info';
+    }
+
+    if (!msg) { el.innerHTML = ''; return; }
+    var colors = { info: { bg: 'rgba(99,102,241,0.06)', border: 'rgba(99,102,241,0.15)', text: 'var(--text-dim)' },
+                   warning: { bg: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.2)', text: '#fbbf24' },
+                   urgent: { bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.2)', text: '#f87171' } };
+    var c = colors[urgency];
+    el.innerHTML = '<div style="padding:10px 14px;margin-bottom:12px;border-radius:10px;background:' + c.bg + ';border:1px solid ' + c.border + ';font-size:0.82em;color:' + c.text + '">' + msg + '</div>';
 }
 
 // ── Best Next Rehearsal Hero Card ────────────────────────────────────────────
@@ -222,9 +239,27 @@ async function _calRenderBestRehearsalHero() {
         blockedRanges = result ? (result.blockedRanges || []) : [];
     } catch(e) {}
 
-    // Find best day in next 14 days
+    // Find best day in next 14 days with confidence scoring
     var today = new Date();
+    var todayStr = today.toISOString().split('T')[0];
     var candidates = [];
+
+    // Load gig dates for spacing calculation
+    var nextGigDate = null;
+    try {
+        var allEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var nextGig = allEvents.filter(function(e) { return e.type === 'gig' && (e.date || '') >= todayStr; })
+            .sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
+        if (nextGig) nextGigDate = nextGig.date;
+    } catch(e) {}
+
+    // Check existing rehearsals
+    var existingRehearsals = [];
+    try {
+        var evts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        existingRehearsals = evts.filter(function(e) { return e.type === 'rehearsal' && (e.date || '') >= todayStr; });
+    } catch(e) {}
+
     for (var d = 1; d <= 14; d++) {
         var dt = new Date(today.getTime() + d * 86400000);
         var ds = dt.toISOString().split('T')[0];
@@ -235,39 +270,116 @@ async function _calRenderBestRehearsalHero() {
             });
             if (!blocked) freeCount++;
         });
-        candidates.push({ date: ds, dt: dt, freeCount: freeCount, day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
-            dayNum: dt.getDate(), month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()] });
+
+        // Confidence scoring: availability + conflict score + gig spacing
+        var availPct = Math.round((freeCount / members.length) * 100);
+        var conflictScore = members.length - freeCount; // 0 = no conflicts
+        var gigSpacing = nextGigDate ? Math.ceil((new Date(nextGigDate + 'T12:00:00') - new Date(ds + 'T12:00:00')) / 86400000) : 999;
+        var spacingBonus = (gigSpacing >= 2 && gigSpacing <= 14) ? 10 : (gigSpacing >= 1 ? 5 : 0);
+        var confidence = availPct - (conflictScore * 15) + spacingBonus;
+        confidence = Math.max(0, Math.min(100, confidence));
+
+        var quality = confidence >= 85 ? 'Best' : confidence >= 60 ? 'Good' : 'Backup';
+
+        candidates.push({
+            date: ds, dt: dt, freeCount: freeCount, availPct: availPct,
+            conflictScore: conflictScore, gigSpacing: gigSpacing, confidence: confidence, quality: quality,
+            day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
+            dayNum: dt.getDate(),
+            month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()]
+        });
     }
 
-    candidates.sort(function(a, b) { return b.freeCount - a.freeCount || a.date.localeCompare(b.date); });
+    candidates.sort(function(a, b) { return b.confidence - a.confidence || a.date.localeCompare(b.date); });
     var best = candidates[0];
     if (!best || best.freeCount === 0) { el.innerHTML = ''; return; }
 
-    var allIn = best.freeCount === members.length;
     var _bdParsed = glParseDate(best.date);
     var _bdArgs = _bdParsed ? _bdParsed.getFullYear() + ',' + _bdParsed.getMonth() + ',' + _bdParsed.getDate() : '';
+    var _bdSafe = best.date.replace(/'/g, "\\'");
 
-    var alts = candidates.filter(function(c) { return c.date !== best.date && c.freeCount >= members.length - 1; }).slice(0, 2);
+    // Alternatives as actionable cards
+    var alts = candidates.filter(function(c) { return c.date !== best.date && c.confidence >= 40; }).slice(0, 3);
     var altsHtml = '';
     if (alts.length) {
-        altsHtml = '<div style="margin-top:8px;font-size:0.75em;color:var(--text-dim)">Also works: '
-            + alts.map(function(a) { return a.day + ' ' + a.month + ' ' + a.dayNum + ' (' + a.freeCount + '/' + members.length + ')'; }).join(', ')
-            + '</div>';
+        altsHtml = '<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.04);padding-top:10px">';
+        alts.forEach(function(a) {
+            var _aParsed = glParseDate(a.date);
+            var _aArgs = _aParsed ? _aParsed.getFullYear() + ',' + _aParsed.getMonth() + ',' + _aParsed.getDate() : '';
+            var qColor = a.quality === 'Good' ? '#84cc16' : '#fbbf24';
+            altsHtml += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0">'
+                + '<span style="flex:1;font-size:0.82em;color:var(--text)">' + a.day + ', ' + a.month + ' ' + a.dayNum
+                + ' <span style="color:var(--text-dim)">(' + a.freeCount + '/' + members.length + ')</span></span>'
+                + '<span style="font-size:0.65em;font-weight:700;padding:2px 6px;border-radius:4px;color:' + qColor + ';background:rgba(255,255,255,0.04)">' + a.quality + '</span>'
+                + '<button onclick="calDayClick(' + _aArgs + ')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Use This</button>'
+                + '</div>';
+        });
+        altsHtml += '</div>';
+    }
+
+    // Next Up validation: check if existing rehearsal is suboptimal
+    var validationHtml = '';
+    if (existingRehearsals.length > 0) {
+        var nextReh = existingRehearsals.sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
+        var rehCandidate = candidates.find(function(c) { return c.date === nextReh.date; });
+        if (rehCandidate && rehCandidate.confidence < best.confidence - 20) {
+            validationHtml = '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);font-size:0.78em;color:#fbbf24">'
+                + '\u26A0\uFE0F Your scheduled rehearsal (' + (typeof glFormatDate === 'function' ? glFormatDate(nextReh.date) : nextReh.date) + ') isn\u2019t the best option. '
+                + '<button onclick="calDayClick(' + _bdArgs + ')" style="background:none;border:none;color:#22c55e;cursor:pointer;font-weight:700;padding:0;text-decoration:underline">Move to ' + best.day + ' ' + best.month + ' ' + best.dayNum + '</button>'
+                + '</div>';
+        }
     }
 
     el.innerHTML = '<div style="padding:16px 18px;margin-bottom:12px;border-radius:12px;border:2px solid rgba(34,197,94,0.3);background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
-        + '<div style="font-size:0.68em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Best Next Rehearsal</div>'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<span style="font-size:0.68em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.08em">Best Next Rehearsal</span>'
+        + '<span style="font-size:0.62em;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,0.12);color:#22c55e">' + best.quality + ' (' + best.confidence + '%)</span>'
+        + '</div>'
         + '<div style="font-size:1.15em;font-weight:900;color:var(--text)">' + best.day + ', ' + best.month + ' ' + best.dayNum + '</div>'
         + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">'
-        + (allIn ? '\u2705 Everyone\u2019s free' : best.freeCount + '/' + members.length + ' available')
+        + (best.availPct === 100 ? '\u2705 Everyone\u2019s free' : best.availPct + '% available')
+        + (best.gigSpacing <= 14 ? ' \u00B7 ' + best.gigSpacing + ' days before gig' : '')
         + '</div>'
         + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        + '<button onclick="calDayClick(' + _bdArgs + ')" style="padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer">Lock This Rehearsal</button>'
+        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer">\uD83C\uDFB8 Lock + Create Rehearsal Plan</button>'
         + '<button onclick="document.getElementById(\'calAvailabilityMatrix\').scrollIntoView({behavior:\'smooth\'})" style="padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">See Alternatives</button>'
         + '</div>'
+        + validationHtml
         + altsHtml
         + '</div>';
 }
+
+// ── Lock rehearsal + create plan + navigate ──────────────────────────────────
+window._calLockAndPlan = async function(dateStr) {
+    // 1. Create rehearsal event
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function' && typeof loadBandDataFromDrive === 'function') {
+            var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+            var existing = events.find(function(e) { return e.type === 'rehearsal' && e.date === dateStr; });
+            if (!existing) {
+                var newEvent = {
+                    id: 'ev_' + Date.now().toString(36),
+                    type: 'rehearsal',
+                    title: 'Band Rehearsal',
+                    date: dateStr,
+                    time: '19:00',
+                    notes: '',
+                    created: new Date().toISOString()
+                };
+                events.push(newEvent);
+                await saveBandDataToDrive('_band', 'calendar_events', events);
+            }
+        }
+        if (typeof showToast === 'function') showToast('\u2705 Rehearsal locked for ' + dateStr);
+    } catch(e) {
+        console.warn('[Calendar] Failed to create rehearsal event:', e);
+    }
+
+    // 2. Set the practice plan date and navigate to rehearsal page
+    window.practicePlanActiveDate = dateStr;
+    showPage('rehearsal');
+};
 
 // ── "Next Up" section — upcoming rehearsal + gig with availability/readiness ──
 async function _calRenderNextUp() {
