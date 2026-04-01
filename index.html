@@ -112,43 +112,45 @@
             if (el) el.textContent = bn;
         });
         </script>
-        <!-- Mode Switcher (mobile) -->
-        <div class="menu-section">
-            <button class="menu-item active" data-page="home" onclick="showPage('home')"><span class="menu-icon">🏠</span> Home</button>
-            <button class="menu-item" data-page="songs" onclick="showPage('songs')"><span class="menu-icon">🎵</span> Songs</button>
-            <button class="menu-item" data-page="rehearsal" onclick="showPage('rehearsal')"><span class="menu-icon">🎸</span> Rehearsal</button>
-            <button class="menu-item" data-page="calendar" onclick="showPage('calendar')"><span class="menu-icon">📅</span> Schedule</button>
-            <button class="menu-item" data-page="setlists" onclick="showPage('setlists')"><span class="menu-icon">📋</span> Setlists</button>
-        </div>
+        <!-- Mobile nav — icons generated from gl-left-rail.js ICONS map at runtime -->
+        <div class="menu-section" id="glMobileNavCore"></div>
         <div class="menu-divider"></div>
-        <div class="menu-section">
-            <div class="menu-section-title">Band</div>
-            <button class="menu-item" data-page="gigs" onclick="showPage('gigs')"><span class="menu-icon">🎤</span> Gigs</button>
-            <button class="menu-item" data-page="ideas" onclick="showPage('ideas')"><span class="menu-icon">💬</span> Band Room</button>
-            <button class="menu-item" data-page="feed" onclick="showPage('feed')"><span class="menu-icon">📡</span> Feed</button>
-            <button class="menu-item" data-page="admin" onclick="showPage('admin')"><span class="menu-icon">⚙️</span> Settings</button>
-        </div>
+        <div class="menu-section" id="glMobileNavBand"><div class="menu-section-title">Band</div></div>
         <div class="menu-divider"></div>
-        <div class="menu-section">
-            <div class="menu-section-title">Tools</div>
-            <button class="menu-item" data-page="practice" onclick="showPage('practice')"><span class="menu-icon">🎯</span> Practice</button>
-            <button class="menu-item" data-page="playlists" onclick="showPage('playlists')"><span class="menu-icon">🎧</span> Playlists</button>
-            <button class="menu-item" data-page="pocketmeter" onclick="showPage('pocketmeter')"><span class="menu-icon">🎚️</span> Pocket Meter</button>
-            <button class="menu-item" data-page="tuner" onclick="showPage('tuner')"><span class="menu-icon">🔱</span> Tuner</button>
-            <button class="menu-item" data-page="metronome" onclick="showPage('metronome')"><span class="menu-icon">🥁</span> Metronome</button>
-            <button class="menu-item" data-page="stageplot" onclick="showPage('stageplot')"><span class="menu-icon">🎭</span> Stage Plot</button>
-            <button class="menu-item" data-page="venues" onclick="showPage('venues')"><span class="menu-icon">🏛️</span> Venues</button>
-            <button class="menu-item" data-page="equipment" onclick="showPage('equipment')"><span class="menu-icon">🎛️</span> Equipment</button>
-        </div>
+        <div class="menu-section" id="glMobileNavTools"><div class="menu-section-title">Tools</div></div>
         <div class="menu-divider"></div>
-        <div class="menu-section">
-            <div class="menu-section-title">More</div>
-            <button class="menu-item" data-page="finances" onclick="showPage('finances')"><span class="menu-icon">💰</span> Finances</button>
-            <button class="menu-item" data-page="social" onclick="showPage('social')"><span class="menu-icon">📣</span> Social Media</button>
-            <button class="menu-item" data-page="bestshot" onclick="showPage('bestshot')"><span class="menu-icon">🏆</span> Best Shot</button>
-            <button class="menu-item" data-page="contacts" onclick="showPage('contacts')"><span class="menu-icon">👥</span> Contacts</button>
-            <button class="menu-item" data-page="notifications" onclick="showPage('notifications')"><span class="menu-icon">🔔</span> Notifications</button>
-            <div class="menu-divider"></div>
+        <div class="menu-section" id="glMobileNavMore"><div class="menu-section-title">More</div></div>
+        <script>
+        // Populate mobile nav from gl-left-rail.js config (runs after DOMContentLoaded)
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof glLeftRail === 'undefined') return;
+            // Defer until gl-left-rail.js has loaded
+            setTimeout(function() {
+                // Use the same SVG icon strings as the left rail
+                var _mi = function(page, icon, label) {
+                    return '<button class="menu-item" data-page="' + page + '" onclick="toggleMenu();showPage(\'' + page + '\')"><span class="menu-icon" style="display:inline-flex;vertical-align:middle;margin-right:6px">' + icon + '</span> ' + label + '</button>';
+                };
+                var sections = { core: '', band: '', tools: '', more: '' };
+                var rail = window.glLeftRail;
+                if (!rail || !rail.ICONS) return;
+                // Home always first
+                sections.core = _mi('home', rail.NAV_TOP.icon, 'Home');
+                // Build from NAV_SECTIONS
+                rail.NAV_SECTIONS.forEach(function(sec) {
+                    var target = sec.primary ? 'core' : (sec.title === 'Band' ? 'band' : (sec.title === 'Tools' ? 'tools' : 'more'));
+                    sec.items.forEach(function(item) {
+                        sections[target] += _mi(item.page, item.icon, item.label);
+                    });
+                });
+                var el;
+                el = document.getElementById('glMobileNavCore'); if (el) el.innerHTML = sections.core;
+                el = document.getElementById('glMobileNavBand'); if (el) el.innerHTML = '<div class="menu-section-title">Band</div>' + sections.band;
+                el = document.getElementById('glMobileNavTools'); if (el) el.innerHTML = '<div class="menu-section-title">Tools</div>' + sections.tools;
+                el = document.getElementById('glMobileNavMore'); if (el) el.innerHTML = '<div class="menu-section-title">More</div>' + sections.more;
+            }, 100);
+        });
+        </script>
+        <div class="menu-divider"></div>
             <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help</button>
         </div>
     </nav>
