@@ -714,6 +714,11 @@ window.ensureBandSong = async function ensureBandSong(title) {
  */
 function _addSongToLocalCache(record) {
     if (typeof allSongs === 'undefined') return;
+    // Enforce songId invariant — no song without songId
+    if (!record.songId) {
+        record.songId = window.generateSongId ? window.generateSongId(record.title || 'unknown') : ('auto_' + Date.now().toString(36));
+        console.warn('[songId] Missing songId — auto-generated for "' + (record.title || '?') + '" →', record.songId);
+    }
     // Avoid duplicates
     var exists = allSongs.some(function(s) { return s.songId === record.songId; });
     if (exists) return;
@@ -753,11 +758,19 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
         var data = snap.val();
         if (data && typeof data === 'object') {
             var songs = [];
+            var _repaired = 0;
             Object.keys(data).forEach(function(id) {
                 var s = data[id];
                 if (!s || !s.title) return;
+                var songId = s.songId || id;
+                // Enforce songId invariant
+                if (!songId || songId === 'undefined') {
+                    songId = window.generateSongId ? window.generateSongId(s.title) : ('lib_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,6));
+                    _repaired++;
+                    console.warn('[song_library] Repaired missing songId for "' + s.title + '" →', songId);
+                }
                 songs.push({
-                    songId: s.songId || id,
+                    songId: songId,
                     title: s.title,
                     artist: s.artist || '',
                     band: s.band || '',
@@ -766,6 +779,7 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
                     status: s.status || ''
                 });
             });
+            if (_repaired > 0) console.warn('[song_library] Repaired ' + _repaired + ' songs with missing songIds');
             songs.sort(function(a, b) { return (a.title || '').localeCompare(b.title || ''); });
 
             // Replace allSongs contents in-place (all 263 references auto-update)
@@ -784,6 +798,20 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
 
         _GL_SONG_LIB_LOADED = true;
         if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
+
+        // Runtime integrity check: every song MUST have a songId
+        if (typeof allSongs !== 'undefined') {
+            var _noId = allSongs.filter(function(s) { return !s.songId; });
+            if (_noId.length > 0) {
+                console.error('[CRITICAL] ' + _noId.length + ' songs without songId after library load:', _noId.map(function(s) { return s.title; }).slice(0, 10));
+                // Auto-repair: generate songIds for any that slipped through
+                _noId.forEach(function(s) {
+                    s.songId = window.generateSongId ? window.generateSongId(s.title || 'unknown') : ('fix_' + Date.now().toString(36));
+                    console.warn('[songId] Emergency repair:', s.title, '→', s.songId);
+                });
+                if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
+            }
+        }
 
         // Re-render songs page if visible
         if (typeof renderSongs === 'function') {
