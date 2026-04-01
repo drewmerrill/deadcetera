@@ -14547,10 +14547,15 @@ async function preloadReadinessCache() {
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
 
-    // Auto-migrate if not yet done (runs once, sets flag in Firebase)
+    // Auto-migrate if not yet done (non-blocking — runs in background, re-renders when done)
     if (typeof _autoMigrateSongDataToV2 === 'function' && !window._songV2MigrationRunning) {
         window._songV2MigrationRunning = true;
-        await _autoMigrateSongDataToV2();
+        _autoMigrateSongDataToV2().then(function() {
+            // Re-run preload and re-render after migration completes
+            _preloadSongDNA().then(function() {
+                if (typeof renderSongs === 'function') try { renderSongs(); } catch(e) {}
+            });
+        }).catch(function(e) { console.warn('[Migration] Background migration failed:', e); });
     }
 
     // songs_v2 is the ONLY source for key/bpm/lead/structure/status.
