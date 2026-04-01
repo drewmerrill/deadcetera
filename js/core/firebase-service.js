@@ -92,26 +92,102 @@ window.bandPath = function bandPath(subpath) {
 
 /**
  * Full path to a per-song data node.
- * Routes v2-enabled data types through songs_v2/{songId} when available.
- * Falls back to legacy songs/{sanitizedTitle} for non-v2 types or missing songIds.
+ * V2-enabled types ALWAYS route to songs_v2/{songId}.
+ * Non-v2 types (readiness, woodshed, moments, etc.) use legacy songs/{title}.
  */
 var _SONG_V2_TYPES = { song_bpm:1, key:1, lead_singer:1, song_status:1, chart:1,
     personal_tabs:1, rehearsal_notes:1, spotify_versions:1, practice_tracks:1,
     cover_me:1, song_votes:1, song_structure:1 };
 
+// Fallback tracking — logs when legacy path is used for a v2-enabled type
+var _songPathFallbackLog = {};
+
 window.songPath = function songPath(songTitle, dataType) {
-    // For v2-enabled types, use songs_v2/{songId} if songId is available
-    if (_SONG_V2_TYPES[dataType] && typeof GLStore !== 'undefined' && GLStore.getSongIdByTitle) {
-        var songId = GLStore.getSongIdByTitle(songTitle);
+    if (_SONG_V2_TYPES[dataType]) {
+        // V2 type: MUST use songs_v2. No fallback.
+        var songId = null;
+        if (typeof GLStore !== 'undefined' && GLStore.getSongIdByTitle) {
+            songId = GLStore.getSongIdByTitle(songTitle);
+        }
         if (songId) {
             return window.bandPath('songs_v2/' + songId + '/' + window.sanitizeFirebasePath(dataType));
         }
+        // Missing songId for a v2 type — log it and use legacy as last resort
+        var logKey = songTitle + ':' + dataType;
+        if (!_songPathFallbackLog[logKey]) {
+            _songPathFallbackLog[logKey] = true;
+            console.warn('[songPath] LEGACY FALLBACK: "' + songTitle + '" / ' + dataType + ' — missing songId. Run songId repair.');
+        }
     }
-    // Legacy path for non-v2 types or songs without songId
+    // Non-v2 types or fallback: legacy path
     return window.bandPath(
         'songs/' + window.sanitizeFirebasePath(songTitle) +
         '/' + window.sanitizeFirebasePath(dataType)
     );
+};
+
+/**
+ * Audit all songs for missing or duplicate songIds.
+ * Call from console: songIdAudit()
+ */
+window.songIdAudit = function() {
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var missing = [];
+    var ids = {};
+    var dupes = [];
+
+    songs.forEach(function(s) {
+        if (!s || !s.title) return;
+        if (!s.songId) {
+            missing.push(s.title);
+            return;
+        }
+        if (ids[s.songId]) {
+            dupes.push({ songId: s.songId, titles: [ids[s.songId], s.title] });
+        }
+        ids[s.songId] = s.title;
+    });
+
+    console.log('=== SONG ID AUDIT ===');
+    console.log('Total songs:', songs.length);
+    console.log('With songId:', Object.keys(ids).length);
+    console.log('Missing songId:', missing.length);
+    if (missing.length) console.log('  Missing:', missing.slice(0, 20).join(', ') + (missing.length > 20 ? '...' : ''));
+    console.log('Duplicate songIds:', dupes.length);
+    if (dupes.length) console.table(dupes);
+    return { total: songs.length, withId: Object.keys(ids).length, missing: missing, dupes: dupes };
+};
+
+/**
+ * Repair missing songIds by generating them.
+ * Call from console: songIdRepair() for dry run, songIdRepair(false) to execute.
+ */
+window.songIdRepair = function(dryRun) {
+    if (typeof dryRun === 'undefined') dryRun = true;
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var fixed = 0;
+
+    songs.forEach(function(s) {
+        if (!s || !s.title || s.songId) return;
+        // Generate songId from band + title (same pattern as data.js)
+        var band = (s.band || 'xx').toLowerCase().replace(/[^a-z]/g, '');
+        var title = s.title.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+        var newId = band + '_' + title;
+        if (dryRun) {
+            console.log('  Would assign:', s.title, '→', newId);
+        } else {
+            s.songId = newId;
+        }
+        fixed++;
+    });
+
+    console.log((dryRun ? 'DRY RUN: ' : 'DONE: ') + fixed + ' songIds ' + (dryRun ? 'would be' : '') + ' assigned');
+    if (!dryRun && fixed > 0) {
+        // Rebuild indexes
+        if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
+        console.log('Song indexes rebuilt');
+    }
+    return fixed;
 };
 
 /**
