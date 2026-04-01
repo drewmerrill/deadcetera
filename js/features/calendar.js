@@ -661,36 +661,74 @@ async function loadCalendarEvents() {
     if (upcoming.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">No upcoming events. Click a date or + Add Event.</div>';
     } else {
+        // Resolve setlist names from IDs
+        var _slCache = {};
+        try {
+            var _allSl = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? (GLStore.getSetlists() || []) : (window._glCachedSetlists || []);
+            _allSl.forEach(function(sl) { if (sl.setlistId) _slCache[sl.setlistId] = sl.name || sl.title || sl.setlistId; if (sl.name) _slCache[sl.name] = sl.name; });
+        } catch(e2) {}
+
         el.innerHTML = upcoming.map((e,i) => {
-            // Stamp event onto window now (at render time) so onclick can safely reference it
-            // Cannot reference `upcoming` inside onclick — it's out of scope once innerHTML is set
             var wk = '_calEv_' + i; window[wk] = e;
             const typeIcon = {rehearsal:'\uD83C\uDFB8',gig:'\uD83C\uDFA4',meeting:'\uD83D\uDC65',other:'\uD83D\uDCCC'}[e.type]||'\uD83D\uDCCC';
-            var _typeLabel = {rehearsal:'Rehearsal',gig:'Gig',meeting:'Meeting',other:'Event'}[e.type]||'Event';
+            var _typeColor = {rehearsal:'#22c55e',gig:'#fbbf24',meeting:'#818cf8',other:'#64748b'}[e.type]||'#64748b';
             const isRehearsal = e.type === 'rehearsal';
             var repeatLbl = _calRepeatLabel(e.repeatRule);
             var evtId = e._baseEventId || e.id || '';
+
+            // Human-readable date: "Fri, Apr 3, 2026"
+            var _dParsed = glParseDate ? glParseDate(e.date) : null;
+            var _dateHuman = _dParsed ? _dParsed.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' }) : (e.date || '');
+
+            // Format time: "6:00 PM" from "18:00"
+            var _timeHuman = '';
+            if (e.time) {
+                var _tp = e.time.split(':');
+                var _h = parseInt(_tp[0],10), _m = _tp[1] || '00';
+                _timeHuman = (_h > 12 ? _h - 12 : (_h === 0 ? 12 : _h)) + ':' + _m + ' ' + (_h >= 12 ? 'PM' : 'AM');
+            }
+
+            // Location
             var _evLocLine = e.location ? '\uD83D\uDCCD ' + e.location : (e.venue ? '\uD83C\uDFDB\uFE0F ' + e.venue : '');
-            var _evDirLink = e.locationAddress ? ' <a href="https://www.google.com/maps/search/' + encodeURIComponent(e.locationAddress) + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-light);text-decoration:none;font-size:0.9em">\uD83D\uDDFA\uFE0F</a>' : '';
-            var _evMeetLink = e.meetingLink ? ' <a href="' + e.meetingLink + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-light);text-decoration:none;font-size:0.9em">\uD83D\uDD17</a>' : '';
-            return `<div class="list-item" style="padding:10px 12px;gap:10px">
-                <span style="font-size:0.65em;font-weight:700;color:var(--text-dim);min-width:55px;flex-shrink:0">${typeIcon} ${_typeLabel}</span>
-                <span style="font-size:0.8em;color:var(--text-dim);min-width:85px">${e.date||''}</span>
-                <div style="flex:1;min-width:0">
-                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${typeIcon} ${e.title||'Untitled'}</div>
-                    ${_evLocLine?`<div style="font-size:0.75em;color:var(--text-muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${_evLocLine}${_evDirLink}${_evMeetLink}</div>`:''}
-                    ${e.linkedSetlist?`<div style="font-size:0.72em;color:var(--accent-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">\uD83D\uDCCB ${e.linkedSetlist}</div>`:''}
-                    ${repeatLbl?`<div style="font-size:0.68em;color:var(--accent-light);margin-top:1px">\uD83D\uDD04 ${repeatLbl}</div>`:''}
-                </div>
-                ${e.time?`<span style="font-size:0.75em;color:var(--text-muted);flex-shrink:0">${e.time}</span>`:''}
-                <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:nowrap;align-items:center">
-                    ${isRehearsal ? `<button onclick="practicePlanActiveDate='${e.date}';showPage('rehearsal')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">📋</button>` : ''}
-                    <button onclick="var u=calExportGoogleLink(window['_calEv_${i}']);if(u!=='#')window.open(u,'_blank')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Add to Google Calendar">📅</button>
-                    <button onclick="calExportICS(window['_calEv_${i}'])" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;" title="Download .ics">⬇️</button>
-                    <button onclick="calEditEventById('${evtId}')" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">✏️</button>
-                    <button onclick="calDeleteEventById('${evtId}')" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;font-weight:700;">✕</button>
-                </div>
-            </div>`;
+            var _evDirLink = e.locationAddress ? ' <a href="https://www.google.com/maps/search/' + encodeURIComponent(e.locationAddress) + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent-light);text-decoration:none">\uD83D\uDDFA\uFE0F</a>' : '';
+
+            // Setlist name resolution (ID → display name)
+            var _slDisplay = '';
+            if (e.linkedSetlist) {
+                var _slName = _slCache[e.linkedSetlist] || e.linkedSetlist;
+                // If it still looks like an ID (no spaces, short), try to find it
+                if (_slName === e.linkedSetlist && _slName.length < 20 && _slName.indexOf(' ') === -1) {
+                    _slName = _slCache[e.linkedSetlist] || 'Linked Setlist';
+                }
+                _slDisplay = '<span style="font-size:0.75em;color:var(--accent-light);cursor:pointer" onclick="event.stopPropagation();showPage(\'setlists\')" title="View setlist: ' + _slName + '">\uD83D\uDCCB ' + _slName + '</span>';
+            }
+
+            // First event gets "NEXT" badge
+            var _nextBadge = i === 0 ? '<span style="font-size:0.6em;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.15);color:#22c55e;margin-left:6px;vertical-align:middle">NEXT</span>' : '';
+
+            return '<div class="list-item" style="padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">'
+                // Left: event info
+                + '<div style="min-width:0">'
+                + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+                + '<span style="font-size:1.05em;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (e.title || 'Untitled') + '</span>'
+                + _nextBadge
+                + '</div>'
+                + '<div style="font-size:0.78em;color:var(--text-dim);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center">'
+                + '<span style="color:' + _typeColor + ';font-weight:600">' + typeIcon + ' ' + ({rehearsal:'Rehearsal',gig:'Gig',meeting:'Meeting',other:'Event'}[e.type]||'Event') + '</span>'
+                + '<span>' + _dateHuman + '</span>'
+                + (_timeHuman ? '<span>' + _timeHuman + '</span>' : '')
+                + '</div>'
+                + (_evLocLine ? '<div style="font-size:0.75em;color:var(--text-muted);margin-top:3px">' + _evLocLine + _evDirLink + '</div>' : '')
+                + (_slDisplay ? '<div style="margin-top:3px">' + _slDisplay + '</div>' : '')
+                + (repeatLbl ? '<div style="font-size:0.68em;color:var(--accent-light);margin-top:2px">\uD83D\uDD04 ' + repeatLbl + '</div>' : '')
+                + '</div>'
+                // Right: actions (aligned top-right)
+                + '<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'
+                + (isRehearsal ? '<button onclick="practicePlanActiveDate=\'' + e.date + '\';showPage(\'rehearsal\')" style="background:rgba(34,197,94,0.1);color:#86efac;border:1px solid rgba(34,197,94,0.2);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px" title="Open rehearsal plan">\uD83D\uDCCB</button>' : '')
+                + '<button onclick="calEditEventById(\'' + evtId + '\')" style="background:rgba(255,255,255,0.04);color:var(--text-dim);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px" title="Edit event">\u270F\uFE0F</button>'
+                + '<button onclick="calDeleteEventById(\'' + evtId + '\')" style="background:rgba(239,68,68,0.08);color:#f87171;border:1px solid rgba(239,68,68,0.15);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px" title="Delete event">\u2715</button>'
+                + '</div>'
+                + '</div>';
         }).join('');
     }
     // Schedule blocks (unified: new model + legacy blocked_dates)
