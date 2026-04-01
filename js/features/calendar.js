@@ -260,9 +260,15 @@ async function _calRenderBestRehearsalHero() {
         existingRehearsals = evts.filter(function(e) { return e.type === 'rehearsal' && (e.date || '') >= todayStr; });
     } catch(e) {}
 
+    // Load existing rehearsal dates to exclude from suggestions
+    var _existingRehDates = {};
+    existingRehearsals.forEach(function(r) { if (r.date) _existingRehDates[r.date] = true; });
+
     for (var d = 1; d <= 14; d++) {
-        var dt = new Date(today.getTime() + d * 86400000);
-        var ds = dt.toISOString().split('T')[0];
+        var dt = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+        var ds = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+        // Skip dates that already have a rehearsal scheduled
+        if (_existingRehDates[ds]) continue;
         var freeCount = 0;
         members.forEach(function(m) {
             var blocked = blockedRanges.some(function(b) {
@@ -650,6 +656,13 @@ function calNavMonth(dir) {
     if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
     if (calViewMonth < 0)  { calViewMonth = 11; calViewYear--; }
     renderCalendarInner();
+    // Re-open the calendar details element (it was open when user clicked nav)
+    setTimeout(function() {
+        var details = document.querySelectorAll('#calendarInner details');
+        details.forEach(function(d) {
+            if (d.querySelector('#calGrid')) d.open = true;
+        });
+    }, 50);
 }
 
 
@@ -816,9 +829,10 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
     var days = [];
     var _monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     for (var d = 0; d < numDays; d++) {
-        var dt = new Date(today.getTime() + d * 86400000);
+        var dt = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+        var _dStr = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
         days.push({
-            date: dt.toISOString().split('T')[0],
+            date: _dStr,
             label: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
             dayNum: dt.getDate(),
             month: _monthNames[dt.getMonth()],
@@ -1468,8 +1482,8 @@ window._calSetAvailAndRefresh = async function(date, status, eventId) {
         }
     }
 
-    // Refresh the Next Up cards to show updated status
-    _calRenderNextUp();
+    // Refresh the Next Up cards to show updated status (slight delay for Firebase propagation)
+    setTimeout(function() { _calRenderNextUp(); }, 300);
 };
 
 // ── Rehearsal location handlers ──────────────────────────────────────────────
