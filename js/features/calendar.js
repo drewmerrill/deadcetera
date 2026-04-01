@@ -399,11 +399,20 @@ async function _calRenderNextUp() {
         return;
     }
 
-    // Load members + gigs for availability
+    // Load members + gigs + event availability for RSVP display
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     var gigs = [];
     try { gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []); } catch(e) {}
+    // Load Firebase event_availability for rehearsals (gigs use gig.availability)
+    var _eventAvail = {};
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            var _eaSnap = await db.ref(bandPath('event_availability')).once('value');
+            _eventAvail = _eaSnap.val() || {};
+        }
+    } catch(e) {}
 
     var html = '<div style="margin-bottom:12px">';
     html += '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Next Up</div>';
@@ -417,14 +426,24 @@ async function _calRenderNextUp() {
         var daysAway = (typeof glDaysAway === 'function') ? glDaysAway(ev.date) : null;
         var daysLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : (daysAway !== null ? daysAway + ' days' : '');
 
-        // Availability warnings
+        // Availability — merge gig data + event_availability (Firebase)
         var warnings = [];
         var matchGig = gigs.find(function(g) { return g.date === ev.date; });
-        if (matchGig && matchGig.availability && members.length > 0) {
+        var _safeDateKey = (ev.date || '').replace(/-/g, '');
+        var _eaForDate = _eventAvail[_safeDateKey] || {};
+        // Merge: gig availability takes precedence, event_availability fills gaps
+        var _mergedAvail = {};
+        if (matchGig && matchGig.availability) {
+            Object.keys(matchGig.availability).forEach(function(k) { _mergedAvail[k] = matchGig.availability[k]; });
+        }
+        Object.keys(_eaForDate).forEach(function(k) { if (!_mergedAvail[k]) _mergedAvail[k] = _eaForDate[k]; });
+
+        var _hasAnyResponse = Object.keys(_mergedAvail).length > 0;
+        if (_hasAnyResponse && members.length > 0) {
             var confirmed = 0, missing = 0;
             members.forEach(function(ref) {
                 var k = (typeof ref === 'object') ? ref.key : ref;
-                var a = matchGig.availability[k];
+                var a = _mergedAvail[k];
                 if (a && a.status === 'yes') confirmed++;
                 else missing++;
             });
@@ -467,14 +486,14 @@ async function _calRenderNextUp() {
             html += '</div>';
         }
 
-        // Who's in (if availability data exists)
-        if (matchGig && matchGig.availability && members.length > 0) {
+        // Who's in (if any availability data exists from either source)
+        if (_hasAnyResponse && members.length > 0) {
             html += '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:6px">Who\u2019s in:</div>';
             html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
             members.forEach(function(ref) {
                 var k = (typeof ref === 'object') ? ref.key : ref;
                 var name = bm[k] ? (bm[k].name || k).split(' ')[0] : k;
-                var a = matchGig.availability[k];
+                var a = _mergedAvail[k];
                 var status = a ? a.status : null;
                 var icon2 = status === 'yes' ? '\u2705' : status === 'maybe' ? '\u2753' : status === 'no' ? '\u274C' : '\u23F3';
                 html += '<span style="font-size:0.78em;color:var(--text-dim)">' + name + ' ' + icon2 + '</span>';
@@ -485,7 +504,7 @@ async function _calRenderNextUp() {
         // ── Your RSVP (In / Out / Maybe buttons) ──
         var myKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
         if (myKey) {
-            var myStatus = (matchGig && matchGig.availability && matchGig.availability[myKey]) ? matchGig.availability[myKey].status : null;
+            var myStatus = _mergedAvail[myKey] ? _mergedAvail[myKey].status : null;
             var _evId = ev.id || '';
             var _evDate = ev.date || '';
             var _rsvpBtnStyle = 'padding:6px 12px;border-radius:8px;font-size:0.78em;font-weight:700;cursor:pointer;border:1px solid ';
