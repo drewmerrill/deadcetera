@@ -14563,11 +14563,20 @@ async function _preloadSongDNA() {
         var snap = await firebaseDB.ref(bandPath('songs_v2')).once('value');
         var allDataV2 = (snap && snap.val()) || {};
         var populated = 0, noSongId = 0, noV2Data = 0;
+        var _v2Keys = Object.keys(allDataV2);
+        console.log('[DNA] v2 has ' + _v2Keys.length + ' records. Sample keys:', _v2Keys.slice(0, 5));
         allSongs.forEach(function(song) {
             if (!song || !song.title) return;
             if (!song.songId) { noSongId++; return; }
             var v2 = allDataV2[song.songId];
-            if (!v2) { noV2Data++; return; }
+            if (!v2) {
+                noV2Data++;
+                // Check if the data exists under a different key format
+                var altKey = song.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_');
+                var altV2 = allDataV2[altKey];
+                if (altV2 && noV2Data <= 3) console.log('[DNA] Mismatch: songId=' + song.songId + ' but data at key=' + altKey + ' for "' + song.title + '"');
+                return;
+            }
             // Key
             if (v2.key) {
                 song.key = typeof v2.key === 'object' ? v2.key.key || v2.key : v2.key;
