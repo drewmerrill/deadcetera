@@ -919,6 +919,14 @@ async function _autoMigrateSongDataToV2() {
     } catch(e) { return; }
 
     console.log('[Migration] Auto-migrating legacy song data to songs_v2...');
+
+    // Schema enforcement: verify all v2-routed types are covered by migration
+    var _migratedTypes = ['key', 'song_bpm', 'lead_singer', 'song_status', 'song_structure',
+        'readiness', 'readiness_history', 'chart', 'chart_band', 'chart_master', 'chart_url',
+        'personal_tabs', 'rehearsal_notes', 'spotify_versions', 'practice_tracks', 'cover_me', 'song_votes'];
+    var _missing = Object.keys(_SONG_V2_TYPES).filter(function(t) { return _migratedTypes.indexOf(t) === -1; });
+    if (_missing.length) console.error('[Migration] SCHEMA GAP: v2-routed types not in migration:', _missing);
+
     var sanitize = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath : function(s) { return s.replace(/[.#$/\[\]]/g, '_'); };
 
     try {
@@ -968,7 +976,31 @@ async function _autoMigrateSongDataToV2() {
             var fRead = legacy.readiness || v2.readiness || null;
             var fReadH = legacy.readiness_history || v2.readiness_history || null;
 
-            if (!fk && !fb && !fl && !fst && !fstr && !fRead) continue;
+            // Migrate ALL remaining v2-routed types (generic pass)
+            // chart_band, chart_master, chart_url, chart, personal_tabs,
+            // rehearsal_notes, spotify_versions, practice_tracks, cover_me, song_votes
+            var _allV2Fields = ['chart', 'chart_band', 'chart_master', 'chart_url',
+                'personal_tabs', 'rehearsal_notes', 'spotify_versions',
+                'practice_tracks', 'cover_me', 'song_votes'];
+            var _extraFields = {};
+            _allV2Fields.forEach(function(field) {
+                // v2 takes precedence, then legacy, then localStorage
+                var val = v2[field] || legacy[field] || null;
+                if (!val) {
+                    try {
+                        var _lsv = localStorage.getItem('deadcetera_' + field + '_' + song.title);
+                        if (_lsv) val = JSON.parse(_lsv);
+                    } catch(e4) {}
+                }
+                if (val) _extraFields[field] = val;
+            });
+            // Map legacy 'chart' to 'chart_band' if chart_band doesn't exist
+            if (_extraFields.chart && !_extraFields.chart_band) {
+                _extraFields.chart_band = _extraFields.chart;
+            }
+
+            var hasAnyData = fk || fb || fl || fst || fstr || fRead || Object.keys(_extraFields).length > 0;
+            if (!hasAnyData) continue;
 
             var rec = {};
             var now = new Date().toISOString();
@@ -979,6 +1011,8 @@ async function _autoMigrateSongDataToV2() {
             if (fstr) rec.song_structure = fstr;
             if (fRead) rec.readiness = fRead;
             if (fReadH) rec.readiness_history = fReadH;
+            // Add all extra v2 fields
+            Object.keys(_extraFields).forEach(function(f) { rec[f] = _extraFields[f]; });
 
             try {
                 await firebaseDB.ref(bp + 'songs_v2/' + song.songId).update(rec);

@@ -352,6 +352,7 @@ async function _sdPopulateBandLens(title) {
             '<span style="color:var(--text-dim)">\uD83D\uDD11</span><select class="app-select sd-select" style="width:70px;font-size:0.9em" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select>'+
             '<span style="color:var(--text-dim)">\uD83E\uDD41</span><input type="number" class="app-input sd-bpm-input" style="width:65px;font-size:0.9em" min="40" max="240" placeholder="BPM" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)">'+
             '<span style="color:var(--text-dim)">\uD83C\uDFA4</span><select class="app-select sd-select" style="width:90px;font-size:0.9em" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select>'+
+            '<span style="color:var(--text-dim)">\uD83C\uDFAF</span><select class="app-select sd-select" style="width:110px;font-size:0.9em" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select>'+
             '</div></div>'+
             // How We Play It
             '<div class="sd-card" style="padding:10px 14px">' +
