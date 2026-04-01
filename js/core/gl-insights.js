@@ -596,20 +596,25 @@
 
   // ── Init: Load on boot ────────────────────────────────────────────────────
 
-  // Lazy-load persistent issues after Firebase is ready (non-blocking)
+  // Lazy-load persistent issues after Firebase is actually available (non-blocking)
+  var _initAttempts = 0;
   function _initWhenReady() {
-    if (typeof GLStore !== 'undefined' && GLStore.ready) {
-      GLStore.ready(['firebase']).then(function() { loadIssues(); });
-    } else {
-      // Fallback: retry after 5s if GLStore not available yet
-      setTimeout(function() { loadIssues().catch(function() {}); }, 8000);
+    _initAttempts++;
+    // Check if Firebase is actually initialized
+    var db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database()
+           : (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db) {
+      loadIssues().catch(function(e) { console.warn('[GLInsights] Init load failed:', e.message); });
+      return;
     }
+    // Not ready — retry up to 6 times (3s intervals = 18s total)
+    if (_initAttempts < 6) {
+      setTimeout(_initWhenReady, 3000);
+    }
+    // After 6 attempts, give up silently — Firebase may not be available in this session
   }
-  if (typeof requestIdleCallback !== 'undefined') {
-    requestIdleCallback(_initWhenReady, { timeout: 5000 });
-  } else {
-    setTimeout(_initWhenReady, 3000);
-  }
+  // First attempt after 4s (Firebase typically ready by ~15s per boot logs)
+  setTimeout(_initWhenReady, 4000);
 
   // ── Public API ──────────────────────────────────────────────────────────
 
