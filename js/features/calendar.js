@@ -1464,7 +1464,8 @@ window._calSetAvail = async function(eventId, date, status) {
 // ── Set availability AND write to gig Drive data for display consistency ──────
 window._calSetAvailAndRefresh = async function(date, status, eventId) {
     // Write to Firebase event_availability (canonical)
-    await _calSetAvail(date, status, eventId);
+    // _calSetAvail signature: (eventId, date, status)
+    await _calSetAvail(eventId, date, status);
 
     // Also write to gig Drive data so "Next Up" reads it back
     var memberKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
