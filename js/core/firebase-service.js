@@ -980,13 +980,7 @@ async function _autoMigrateSongDataToV2() {
         await firebaseDB.ref(bp + 'meta/songs_v2_migrated').set({ completedAt: new Date().toISOString(), migratedCount: migrated, totalSongs: total });
         console.log('[Migration] ✅ Migrated ' + migrated + '/' + total + ' songs to songs_v2 (including readiness)');
 
-        // Re-run preload to pick up the newly migrated data
-        if (typeof _preloadSongDNA === 'function') {
-            await _preloadSongDNA();
-            console.log('[Migration] Preload re-run with migrated data');
-        }
-
-        // Re-render if visible
+        // Re-render if visible (preload will re-run after migration returns)
         if (typeof renderSongs === 'function') try { renderSongs(); } catch(e) {}
     } catch(e) {
         console.error('[Migration] Failed:', e.message);

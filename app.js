@@ -14546,8 +14546,14 @@ async function preloadReadinessCache() {
 // GLStore (one-time write). Filters and intelligence only check allSongs[].
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
+
+    // Auto-migrate if not yet done (runs once, sets flag in Firebase)
+    if (typeof _autoMigrateSongDataToV2 === 'function' && !window._songV2MigrationRunning) {
+        window._songV2MigrationRunning = true;
+        await _autoMigrateSongDataToV2();
+    }
+
     // songs_v2 is the ONLY source for key/bpm/lead/structure/status.
-    // No legacy fallback — run migration if data is missing.
     try {
         var snap = await firebaseDB.ref(bandPath('songs_v2')).once('value');
         var allDataV2 = (snap && snap.val()) || {};
