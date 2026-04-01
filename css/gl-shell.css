@@ -99,12 +99,9 @@
   margin: 0;
   overflow: hidden;
 }
-/* When collapsed, force secondary sections open so icons are visible */
-#gl-shell.gl-shell--nav-collapsed .gl-rail-section--collapsible {
-  /* Override <details> closed state — show all items as icon-only */
-}
-#gl-shell.gl-shell--nav-collapsed .gl-rail-section--collapsible > .gl-rail-item {
-  display: flex;
+/* Chevron rotates when section is open */
+details[open] > .gl-rail-section-title .gl-rail-chevron {
+  transform: rotate(90deg);
 }
 
 /* Nav item */

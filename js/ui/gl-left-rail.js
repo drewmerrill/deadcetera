@@ -54,38 +54,38 @@
 
   // ── Nav structure — centralized config ──
   // Each item: { page, icon (SVG string), label, tip, section }
-  var NAV_TOP = { page: 'home', icon: ICONS.home, label: 'Home', tip: 'Your band dashboard' };
+  var NAV_TOP = { page: 'home', icon: ICONS.home, label: 'Home', tip: 'Your band dashboard', color: '#a5b4fc' };
 
   var NAV_SECTIONS = [
     { title: '', primary: true, items: [
-      { page: 'songs',     icon: ICONS.music,    label: 'Songs',     tip: 'Your song library and charts' },
-      { page: 'rehearsal', icon: ICONS.guitar,   label: 'Rehearsal', tip: 'Plan and run your next rehearsal' },
-      { page: 'calendar',  icon: ICONS.calendar, label: 'Schedule',  tip: 'Gigs, rehearsals, and events' },
-      { page: 'setlists',  icon: ICONS.list,     label: 'Setlists',  tip: 'Build and organize setlists' },
+      { page: 'songs',     icon: ICONS.music,    label: 'Songs',     tip: 'Your song library and charts',       color: '#c084fc' },
+      { page: 'rehearsal', icon: ICONS.guitar,   label: 'Rehearsal', tip: 'Plan and run your next rehearsal',   color: '#22c55e' },
+      { page: 'calendar',  icon: ICONS.calendar, label: 'Schedule',  tip: 'Gigs, rehearsals, and events',      color: '#60a5fa' },
+      { page: 'setlists',  icon: ICONS.list,     label: 'Setlists',  tip: 'Build and organize setlists',       color: '#f59e0b' },
     ]},
     { title: 'Band', items: [
-      { page: 'gigs',      icon: ICONS.mic,       label: 'Gigs',       tip: 'Manage gigs and performances' },
-      { page: 'ideas',     icon: ICONS.vote,      label: 'Band Room',  tip: 'Pitch songs, vote, and decisions' },
-      { page: 'feed',      icon: ICONS.newspaper, label: 'Feed',       tip: 'Band notes and discussions' },
-      { page: 'admin',     icon: ICONS.settings,  label: 'Settings',   tip: 'Band members and settings' },
+      { page: 'gigs',      icon: ICONS.mic,       label: 'Gigs',       tip: 'Manage gigs and performances',    color: '#fbbf24' },
+      { page: 'ideas',     icon: ICONS.vote,      label: 'Band Room',  tip: 'Pitch songs, vote, and decisions', color: '#34d399' },
+      { page: 'feed',      icon: ICONS.newspaper, label: 'Feed',       tip: 'Band notes and discussions',       color: '#fb923c' },
+      { page: 'admin',     icon: ICONS.settings,  label: 'Settings',   tip: 'Band members and settings',        color: '#94a3b8' },
     ]},
     { title: 'Tools', items: [
-      { page: 'practice',    icon: ICONS.target,     label: 'Practice',     tip: 'Practice songs and track progress' },
-      { page: 'playlists',   icon: ICONS.headphones, label: 'Playlists',    tip: 'Practice and learning playlists' },
-      { page: 'pocketmeter', icon: ICONS.gauge,      label: 'Pocket Meter', tip: 'Timing and groove' },
-      { page: 'tuner',       icon: ICONS.tuner,      label: 'Tuner',        tip: 'Tune your instrument' },
-      { page: 'metronome',   icon: ICONS.drum,       label: 'Metronome',    tip: 'Tempo and click' },
-      { page: 'stageplot',   icon: ICONS.sliders,    label: 'Stage Plot',   tip: 'Stage layouts' },
-      { page: 'venues',      icon: ICONS.mapPin,     label: 'Venues',       tip: 'Venue details and logistics' },
-      { page: 'equipment',   icon: ICONS.box,        label: 'Equipment',    tip: 'Gear and setups' },
+      { page: 'practice',    icon: ICONS.target,     label: 'Practice',     tip: 'Practice songs and track progress', color: '#f87171' },
+      { page: 'playlists',   icon: ICONS.headphones, label: 'Playlists',    tip: 'Practice and learning playlists',   color: '#a78bfa' },
+      { page: 'pocketmeter', icon: ICONS.gauge,      label: 'Pocket Meter', tip: 'Timing and groove',                color: '#2dd4bf' },
+      { page: 'tuner',       icon: ICONS.tuner,      label: 'Tuner',        tip: 'Tune your instrument',             color: '#38bdf8' },
+      { page: 'metronome',   icon: ICONS.drum,       label: 'Metronome',    tip: 'Tempo and click',                  color: '#fb7185' },
+      { page: 'stageplot',   icon: ICONS.sliders,    label: 'Stage Plot',   tip: 'Stage layouts',                    color: '#818cf8' },
+      { page: 'venues',      icon: ICONS.mapPin,     label: 'Venues',       tip: 'Venue details and logistics',      color: '#4ade80' },
+      { page: 'equipment',   icon: ICONS.box,        label: 'Equipment',    tip: 'Gear and setups',                  color: '#a8a29e' },
     ]},
     { title: 'More', items: [
-      { page: 'finances',      icon: ICONS.dollar,    label: 'Finances',      tip: 'Income, expenses, payouts' },
-      { page: 'social',        icon: ICONS.megaphone, label: 'Social Media',  tip: 'Posts and promotion' },
-      { page: 'bestshot',      icon: ICONS.trophy,    label: 'Best Shot',     tip: 'Best performances' },
-      { page: 'contacts',      icon: ICONS.users,     label: 'Contacts',      tip: 'Band and venue contacts' },
-      { page: 'notifications', icon: ICONS.bell,      label: 'Notifications', tip: 'Updates and alerts' },
-      { page: 'help',          icon: ICONS.helpCircle, label: 'Help',         tip: 'Help and guides' },
+      { page: 'finances',      icon: ICONS.dollar,    label: 'Finances',      tip: 'Income, expenses, payouts',  color: '#34d399' },
+      { page: 'social',        icon: ICONS.megaphone, label: 'Social Media',  tip: 'Posts and promotion',        color: '#f472b6' },
+      { page: 'bestshot',      icon: ICONS.trophy,    label: 'Best Shot',     tip: 'Best performances',          color: '#fbbf24' },
+      { page: 'contacts',      icon: ICONS.users,     label: 'Contacts',      tip: 'Band and venue contacts',    color: '#60a5fa' },
+      { page: 'notifications', icon: ICONS.bell,      label: 'Notifications', tip: 'Updates and alerts',         color: '#fb923c' },
+      { page: 'help',          icon: ICONS.helpCircle, label: 'Help',         tip: 'Help and guides',            color: '#94a3b8' },
     ]},
   ];
 
@@ -182,10 +182,11 @@
 
   function _renderNavItem(vitem) {
     var tooltip = vitem.tip || vitem.label;
+    var iconColor = vitem.color || 'currentColor';
     return '<button class="gl-rail-item" data-page="' + vitem.page + '"'
       + ' onclick="showPage(\'' + vitem.page + '\')"'
       + ' title="' + tooltip + '">'
-      + '<span class="gl-rail-icon" style="position:relative">' + vitem.icon
+      + '<span class="gl-rail-icon" style="position:relative;color:' + iconColor + '">' + vitem.icon
       + (vitem.page === 'ideas' ? '<span class="gl-rail-badge" id="glRailBandRoomBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#fbbf24;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
       + (vitem.page === 'feed' ? '<span class="gl-rail-badge" id="glRailFeedBadge" style="display:none;position:absolute;top:-4px;right:-6px;background:#f59e0b;color:#000;font-size:0.5em;font-weight:800;border-radius:50%;min-width:14px;height:14px;line-height:14px;text-align:center;padding:0 3px;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></span>' : '')
       + '</span>'
@@ -232,9 +233,12 @@
         continue;
       }
 
-      // Secondary sections: collapsible with divider
+      // Secondary sections: collapsible with clear heading
       html += '<details class="gl-rail-section gl-rail-section--collapsible">';
-      html += '<summary class="gl-rail-section-title" style="cursor:pointer;user-select:none;border-top:1px solid rgba(255,255,255,0.04);margin-top:4px;padding-top:8px">' + section.title + '</summary>';
+      html += '<summary class="gl-rail-section-title" style="cursor:pointer;user-select:none;border-top:1px solid rgba(255,255,255,0.06);margin-top:6px;padding-top:10px;display:flex;align-items:center;gap:4px">'
+        + '<span>' + section.title + '</span>'
+        + '<span style="font-size:0.7em;opacity:0.4;transition:transform 0.15s" class="gl-rail-chevron">\u25B8</span>'
+        + '</summary>';
       for (var vi = 0; vi < visibleItems.length; vi++) {
         html += _renderNavItem(visibleItems[vi]);
       }
@@ -323,12 +327,15 @@
     }
     shell.classList.toggle('gl-shell--nav-collapsed', collapsed);
     // When collapsed: force secondary <details> open so icon-only items are visible
-    // When expanded: close them (user can open manually)
+    // When expanded: close them so the rail isn't overwhelming
     if (_rail) {
       var detailsEls = _rail.querySelectorAll('.gl-rail-section--collapsible');
       detailsEls.forEach(function(d) {
-        if (collapsed) d.setAttribute('open', '');
-        // Don't force-close when expanded — respect user's choice
+        if (collapsed) {
+          d.setAttribute('open', '');
+        } else {
+          d.removeAttribute('open');
+        }
       });
     }
     // Update toggle icon
