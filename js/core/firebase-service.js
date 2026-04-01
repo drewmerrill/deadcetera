@@ -943,10 +943,21 @@ async function _autoMigrateSongDataToV2() {
             if (legacy.song_status) lst = (typeof legacy.song_status === 'object') ? legacy.song_status.status : legacy.song_status;
             if (legacy.song_structure && legacy.song_structure.sections) ls = legacy.song_structure;
 
-            // Merge: v2 takes precedence
-            var fk = (v2.key ? (typeof v2.key === 'object' ? v2.key.key : v2.key) : null) || lk;
-            var fb = (v2.song_bpm ? (typeof v2.song_bpm === 'object' ? v2.song_bpm.bpm : v2.song_bpm) : null) || lb;
-            var fl = (v2.lead_singer ? (typeof v2.lead_singer === 'object' ? v2.lead_singer.singer : v2.lead_singer) : null) || ll;
+            // Also check localStorage (data may have been saved locally but not to Firebase)
+            var _lsKey = null, _lsBpm = null, _lsLead = null;
+            try {
+                var _lsk = localStorage.getItem('deadcetera_key_' + song.title);
+                if (_lsk) { var _lskp = JSON.parse(_lsk); _lsKey = (typeof _lskp === 'object' && _lskp.key) ? _lskp.key : (typeof _lskp === 'string' ? _lskp : null); }
+                var _lsb = localStorage.getItem('deadcetera_song_bpm_' + song.title);
+                if (_lsb) { var _lsbp = JSON.parse(_lsb); _lsBpm = (typeof _lsbp === 'object' && _lsbp.bpm) ? _lsbp.bpm : _lsbp; }
+                var _lsl = localStorage.getItem('deadcetera_lead_singer_' + song.title);
+                if (_lsl) { var _lslp = JSON.parse(_lsl); _lsLead = (typeof _lslp === 'object' && _lslp.singer) ? _lslp.singer : (typeof _lslp === 'string' ? _lslp : null); }
+            } catch(e3) {}
+
+            // Merge: v2 > legacy > localStorage
+            var fk = (v2.key ? (typeof v2.key === 'object' ? v2.key.key : v2.key) : null) || lk || _lsKey;
+            var fb = (v2.song_bpm ? (typeof v2.song_bpm === 'object' ? v2.song_bpm.bpm : v2.song_bpm) : null) || lb || _lsBpm;
+            var fl = (v2.lead_singer ? (typeof v2.lead_singer === 'object' ? v2.lead_singer.singer : v2.lead_singer) : null) || ll || _lsLead;
             var fst = v2.song_status ? (typeof v2.song_status === 'object' ? v2.song_status.status : v2.song_status) : null || lst;
             var fstr = v2.song_structure || ls;
 
