@@ -77,6 +77,54 @@ function _calRepeatRuleToValue(rule) {
     return 'none';
 }
 
+// ── Shared RSVP row builder — used by both "Upcoming Schedule" and "Next Up" ──
+function _buildEventRsvpRow(ev, idx, eventAvail, gigs, members, bm, myKey) {
+    if (!members || members.length < 2) return '';
+    var _safeDk = (ev.date || '').replace(/-/g, '');
+    var _eaForDate = eventAvail[_safeDk] || {};
+    var _matchGig = gigs.find(function(g) { return g.date === ev.date; });
+    var _merged = {};
+    if (_matchGig && _matchGig.availability) {
+        Object.keys(_matchGig.availability).forEach(function(k) { _merged[k] = _matchGig.availability[k]; });
+    }
+    Object.keys(_eaForDate).forEach(function(k) { if (!_merged[k]) _merged[k] = _eaForDate[k]; });
+    var _hasAny = Object.keys(_merged).length > 0;
+
+    var html = '<div style="margin-top:6px">';
+
+    // Member status chips (compact)
+    if (_hasAny) {
+        var _confirmed = 0;
+        html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">';
+        members.forEach(function(ref) {
+            var k = (typeof ref === 'object') ? ref.key : ref;
+            var name = bm[k] ? (bm[k].name || k).split(' ')[0] : k;
+            var a = _merged[k];
+            var st = a ? a.status : null;
+            if (st === 'yes') _confirmed++;
+            var icon = st === 'yes' ? '\u2705' : st === 'maybe' ? '\u2753' : st === 'no' ? '\u274C' : '\u23F3';
+            html += '<span style="font-size:0.72em;color:var(--text-dim)">' + name + '\u00A0' + icon + '</span>';
+        });
+        html += '</div>';
+    }
+
+    // RSVP buttons (compact inline)
+    if (myKey) {
+        var _myStatus = _merged[myKey] ? _merged[myKey].status : null;
+        var _evId = ev.id || '';
+        var _evDate = ev.date || '';
+        var _bStyle = 'padding:3px 8px;border-radius:5px;font-size:0.68em;font-weight:600;cursor:pointer;border:1px solid ';
+        html += '<div style="display:flex;gap:4px">';
+        html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'yes\',\'' + _evId + '\')" style="' + _bStyle + (_myStatus === 'yes' ? 'rgba(34,197,94,0.4);background:rgba(34,197,94,0.15);color:#86efac' : 'rgba(255,255,255,0.06);background:none;color:var(--text-dim)') + '">\u2705 In</button>';
+        html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'maybe\',\'' + _evId + '\')" style="' + _bStyle + (_myStatus === 'maybe' ? 'rgba(245,158,11,0.4);background:rgba(245,158,11,0.15);color:#fbbf24' : 'rgba(255,255,255,0.06);background:none;color:var(--text-dim)') + '">\u2753 Maybe</button>';
+        html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'no\',\'' + _evId + '\')" style="' + _bStyle + (_myStatus === 'no' ? 'rgba(239,68,68,0.4);background:rgba(239,68,68,0.15);color:#f87171' : 'rgba(255,255,255,0.06);background:none;color:var(--text-dim)') + '">\u274C Out</button>';
+        html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
 function _calRepeatLabel(rule) {
     if (!rule || !rule.frequency) return '';
     if (rule.frequency === 'weekly' && (rule.interval || 1) === 1) return 'Repeats weekly';
@@ -700,6 +748,21 @@ async function loadCalendarEvents() {
             _allSl.forEach(function(sl) { if (sl.setlistId) _slCache[sl.setlistId] = sl.name || sl.title || sl.setlistId; if (sl.name) _slCache[sl.name] = sl.name; });
         } catch(e2) {}
 
+        // Load event_availability + gig availability for RSVP display
+        var _upEventAvail = {};
+        var _upGigs = [];
+        var _upMembers = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+        var _upBm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        var _upMyKey = (typeof getCurrentMemberReadinessKey === 'function') ? getCurrentMemberReadinessKey() : null;
+        try {
+            var _uDb = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (_uDb && typeof bandPath === 'function') {
+                var _uSnap = await _uDb.ref(bandPath('event_availability')).once('value');
+                _upEventAvail = _uSnap.val() || {};
+            }
+            _upGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        } catch(e3) {}
+
         el.innerHTML = upcoming.map((e,i) => {
             var wk = '_calEv_' + i; window[wk] = e;
             const typeIcon = {rehearsal:'\uD83C\uDFB8',gig:'\uD83C\uDFA4',meeting:'\uD83D\uDC65',other:'\uD83D\uDCCC'}[e.type]||'\uD83D\uDCCC';
@@ -753,6 +816,7 @@ async function loadCalendarEvents() {
                 + (_evLocLine ? '<div style="font-size:0.75em;color:var(--text-muted);margin-top:3px">' + _evLocLine + _evDirLink + '</div>' : '')
                 + (_slDisplay ? '<div style="margin-top:3px">' + _slDisplay + '</div>' : '')
                 + (repeatLbl ? '<div style="font-size:0.68em;color:var(--accent-light);margin-top:2px">\uD83D\uDD04 ' + repeatLbl + '</div>' : '')
+                + _buildEventRsvpRow(e, i, _upEventAvail, _upGigs, _upMembers, _upBm, _upMyKey)
                 + '</div>'
                 // Right: actions (aligned top-right)
                 + '<div style="display:flex;gap:6px;flex-shrink:0;align-items:center">'
@@ -1483,8 +1547,11 @@ window._calSetAvailAndRefresh = async function(date, status, eventId) {
         }
     }
 
-    // Refresh the Next Up cards to show updated status (slight delay for Firebase propagation)
-    setTimeout(function() { _calRenderNextUp(); }, 300);
+    // Refresh both Next Up cards and Upcoming Schedule list (slight delay for Firebase propagation)
+    setTimeout(function() {
+        _calRenderNextUp();
+        loadCalendarEvents(); // re-renders the Upcoming Schedule list with fresh RSVP data
+    }, 300);
 };
 
 // ── Rehearsal location handlers ──────────────────────────────────────────────
