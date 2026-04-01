@@ -909,10 +909,12 @@ async function _autoMigrateSongDataToV2() {
     if (!slug) return;
     var bp = 'bands/' + slug + '/';
 
-    // Check migration flag
+    // Check migration flag — re-run if new songs have been added since last migration
     try {
         var flagSnap = await firebaseDB.ref(bp + 'meta/songs_v2_migrated').once('value');
-        if (flagSnap.val()) return; // Already migrated
+        var flag = flagSnap.val();
+        if (flag && flag.migratedCount && flag.migratedCount >= allSongs.length * 0.8) return; // Already migrated enough
+        if (flag) console.log('[Migration] Previous migration covered ' + (flag.migratedCount || 0) + '/' + allSongs.length + ' songs — re-running');
     } catch(e) { return; }
 
     console.log('[Migration] Auto-migrating legacy song data to songs_v2...');
