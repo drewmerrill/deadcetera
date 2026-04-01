@@ -1259,6 +1259,11 @@ window._glDoAddSong = async function() {
     var artist = artistEl ? artistEl.value.trim() : '';
     if (typeof ensureBandSong === 'function') await ensureBandSong(title);
 
+    // Set default status to 'prospect' so the song appears in Active view
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        await GLStore.updateSongField(title, 'status', 'prospect');
+    }
+
     // Set artist if provided
     if (artist && typeof firebaseDB !== 'undefined' && firebaseDB) {
         var songId = (typeof generateSongId === 'function') ? generateSongId(title) : title.toLowerCase().replace(/\s+/g, '_');
