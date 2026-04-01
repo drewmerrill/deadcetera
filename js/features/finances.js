@@ -62,7 +62,7 @@ async function setStartingBalance() {
     var current = meta.startingBalance || '';
     var el = document.getElementById('finStartBalDisplay');
     if (!el) return;
-    el.innerHTML = '<div style="padding:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;margin-bottom:10px"><div style="font-weight:600;font-size:0.9em;margin-bottom:8px">💵 Set Starting Balance</div><div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Enter the amount your band fund started with before tracking transactions here.</div><div class="form-grid"><div class="form-row"><label class="form-label">Amount ($)</label><input class="app-input" id="finStartBal" type="number" step="0.01" placeholder="0.00" value="' + current + '"></div></div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-success" onclick="saveStartingBalance()">💾 Save</button><button class="btn btn-ghost" onclick="loadFinances()">Cancel</button></div></div>';
+    el.innerHTML = '<div style="padding:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;margin-bottom:10px"><div style="font-weight:600;font-size:0.9em;margin-bottom:8px">💵 Set Starting Balance</div><div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Enter the amount your band fund started with before tracking transactions here.</div><div class="form-grid"><div class="form-row"><span class="form-label">Amount ($)</span><input class="app-input" id="finStartBal" type="number" step="0.01" placeholder="0.00" value="' + current + '"></div></div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-success" onclick="saveStartingBalance()">💾 Save</button><button class="btn btn-ghost" onclick="loadFinances()">Cancel</button></div></div>';
 }
 
 async function saveStartingBalance() {
@@ -94,12 +94,12 @@ function addTransaction() {
     const el = document.getElementById('finTransactions');
     el.innerHTML = `<div style="margin-bottom:16px;padding:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px">
         <div class="form-grid">
-            <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="finType"><option value="income">💵 Income</option><option value="expense">💸 Expense</option></select></div>
-            <div class="form-row"><label class="form-label">Amount ($)</label><input class="app-input" id="finAmount" type="number" step="0.01" placeholder="0.00"></div>
-            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="finDate" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
-            <div class="form-row"><label class="form-label">Category</label><select class="app-select" id="finCategory"><option value="gig_pay">Gig Pay</option><option value="merch">Merch</option><option value="tips">Tips</option><option value="equipment">Equipment</option><option value="rehearsal">Rehearsal Space</option><option value="promo">Promotion</option><option value="travel">Travel</option><option value="other">Other</option></select></div>
+            <div class="form-row"><span class="form-label">Type</span><select class="app-select" id="finType"><option value="income">💵 Income</option><option value="expense">💸 Expense</option></select></div>
+            <div class="form-row"><span class="form-label">Amount ($)</span><input class="app-input" id="finAmount" type="number" step="0.01" placeholder="0.00"></div>
+            <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="finDate" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
+            <div class="form-row"><span class="form-label">Category</span><select class="app-select" id="finCategory"><option value="gig_pay">Gig Pay</option><option value="merch">Merch</option><option value="tips">Tips</option><option value="equipment">Equipment</option><option value="rehearsal">Rehearsal Space</option><option value="promo">Promotion</option><option value="travel">Travel</option><option value="other">Other</option></select></div>
         </div>
-        <div class="form-row"><label class="form-label">Description</label><input class="app-input" id="finDesc" placeholder="e.g. Buckhead Theatre gig pay"></div>
+        <div class="form-row"><span class="form-label">Description</span><input class="app-input" id="finDesc" placeholder="e.g. Buckhead Theatre gig pay"></div>
         <div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-success" onclick="saveTransaction()">💾 Save</button><button class="btn btn-ghost" onclick="loadFinances()">Cancel</button></div>
     </div>` + el.innerHTML;
 }

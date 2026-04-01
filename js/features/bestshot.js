@@ -414,13 +414,13 @@ async function editBestShotTake(songTitle, index) {
     form.style.cssText = 'background:rgba(102,126,234,0.05);border:1px solid rgba(102,126,234,0.2);border-radius:12px;padding:16px;margin-bottom:12px';
     form.innerHTML = '<div style="font-weight:700;font-size:0.9em;margin-bottom:10px">✏️ Edit Take #' + (index + 1) + '</div>' +
         '<div class="form-grid">' +
-        '<div class="form-row"><label class="form-label">Label</label><input class="app-input" id="editTakeLabel" value="' + (take.label || '').replace(/"/g, '&quot;') + '"></div>' +
-        '<div class="form-row"><label class="form-label">Recorded By</label><select class="app-select" id="editTakeBy">' + memberOpts + '</select></div>' +
-        '<div class="form-row"><label class="form-label">Recording Date</label><input type="date" class="app-input" id="editTakeDate" value="' + (take.recordedDate || (take.uploadedAt ? take.uploadedAt.slice(0,10) : '')) + '"></div>' +
-        '<div class="form-row"><label class="form-label">Audio URL</label><input class="app-input" id="editTakeUrl" value="' + (take.audioUrl || '').replace(/"/g, '&quot;') + '"></div>' +
-        '<div class="form-row"><label class="form-label">External Link</label><input class="app-input" id="editTakeExtUrl" value="' + (take.externalUrl || '').replace(/"/g, '&quot;') + '"></div>' +
+        '<div class="form-row"><span class="form-label">Label</span><input class="app-input" id="editTakeLabel" value="' + (take.label || '').replace(/"/g, '&quot;') + '"></div>' +
+        '<div class="form-row"><span class="form-label">Recorded By</span><select class="app-select" id="editTakeBy">' + memberOpts + '</select></div>' +
+        '<div class="form-row"><span class="form-label">Recording Date</span><input type="date" class="app-input" id="editTakeDate" value="' + (take.recordedDate || (take.uploadedAt ? take.uploadedAt.slice(0,10) : '')) + '"></div>' +
+        '<div class="form-row"><span class="form-label">Audio URL</span><input class="app-input" id="editTakeUrl" value="' + (take.audioUrl || '').replace(/"/g, '&quot;') + '"></div>' +
+        '<div class="form-row"><span class="form-label">External Link</span><input class="app-input" id="editTakeExtUrl" value="' + (take.externalUrl || '').replace(/"/g, '&quot;') + '"></div>' +
         '</div>' +
-        '<div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="editTakeNotes">' + (take.notes || '') + '</textarea></div>' +
+        '<div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="editTakeNotes">' + (take.notes || '') + '</textarea></div>' +
         '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-success" id="editTakeSaveBtn">💾 Save</button><button class="btn btn-ghost" id="editTakeCancelBtn">Cancel</button></div>';
     container.insertBefore(form, container.firstChild);
     document.getElementById('editTakeSaveBtn').addEventListener('click', async function() {
@@ -457,11 +457,11 @@ function addBestShotTake(songTitle) {
     form.style.cssText = 'background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.2);border-radius:12px;padding:16px;margin-bottom:12px';
     var h = '<div style="font-weight:700;font-size:0.9em;margin-bottom:10px">📤 Upload Take for ' + songTitle + '</div>';
     h += '<div class="form-grid">';
-    h += '<div class="form-row"><label class="form-label">Label</label><input class="app-input" id="bstLabel" placeholder="e.g. 3/1 rehearsal take 2"></div>';
-    h += '<div class="form-row"><label class="form-label">Recorded By</label><select class="app-select" id="bstBy">' + memberOpts + '</select></div>';
-    h += '<div class="form-row"><label class="form-label">Recording Date</label><input type="date" class="app-input" id="bstRecDate" value="' + new Date().toISOString().slice(0,10) + '"></div>';
+    h += '<div class="form-row"><span class="form-label">Label</span><input class="app-input" id="bstLabel" placeholder="e.g. 3/1 rehearsal take 2"></div>';
+    h += '<div class="form-row"><span class="form-label">Recorded By</span><select class="app-select" id="bstBy">' + memberOpts + '</select></div>';
+    h += '<div class="form-row"><span class="form-label">Recording Date</span><input type="date" class="app-input" id="bstRecDate" value="' + new Date().toISOString().slice(0,10) + '"></div>';
     h += '</div>';
-    h += '<div class="form-row"><label class="form-label">Audio</label>';
+    h += '<div class="form-row"><span class="form-label">Audio</span>';
     h += '<div id="bstDropZone" style="border:2px dashed rgba(245,158,11,0.3);border-radius:10px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:8px">';
     h += '<div style="font-size:1.5em;margin-bottom:4px">🎵</div>';
     h += '<div style="font-size:0.82em;color:var(--text-muted)">Drag & drop MP3 here</div>';
@@ -471,8 +471,8 @@ function addBestShotTake(songTitle) {
     h += '<input type="file" id="bstFileInput" accept=".mp3,.m4a,.wav,.aac,.ogg,.flac,audio/*" style="display:none">';
     h += '<button class="btn btn-ghost btn-sm" style="font-size:0.78em;margin-bottom:8px" id="bstBrowseBtn">📁 Browse files</button>';
     h += '</div>';
-    h += '<div class="form-row"><label class="form-label">External Link (opt)</label><input class="app-input" id="bstExtUrl" placeholder="YouTube, SoundCloud, etc."></div>';
-    h += '<div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="bstNotes" placeholder="How did it go?"></textarea></div>';
+    h += '<div class="form-row"><span class="form-label">External Link (opt)</span><input class="app-input" id="bstExtUrl" placeholder="YouTube, SoundCloud, etc."></div>';
+    h += '<div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="bstNotes" placeholder="How did it go?"></textarea></div>';
     h += '<div id="bstUploadStatus" style="display:none;font-size:0.78em;color:#f59e0b;margin:4px 0"></div>';
     h += '<div style="font-size:0.75em;color:var(--text-dim);margin:4px 0">💡 Drag MP3 here, browse files, or paste a Google Drive/Dropbox link</div>';
     h += '<div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-success" id="bstSaveBtn">💾 Save Take</button><button class="btn btn-ghost" id="bstCancelBtn">Cancel</button></div>';

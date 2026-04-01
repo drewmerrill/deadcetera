@@ -954,11 +954,11 @@ function showAddCustomSongModal() {
             <button onclick="document.getElementById('customSongModal').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
         </div>
         <div class="form-row">
-            <label class="form-label">Song Title</label>
+            <span class="form-label">Song Title</span>
             <input class="app-input" id="csTitle" placeholder="e.g. Brown Eyed Girl" autofocus>
         </div>
         <div class="form-row" style="margin-top:10px">
-            <label class="form-label">Artist / Band</label>
+            <span class="form-label">Artist / Band</span>
             <div style="display:flex;gap:8px">
                 <select class="app-select" id="csBand" style="flex:1">
                     <option value="Other">Other / Custom</option>
@@ -973,7 +973,7 @@ function showAddCustomSongModal() {
             </div>
         </div>
         <div class="form-row" style="margin-top:10px">
-            <label class="form-label">Notes (optional)</label>
+            <span class="form-label">Notes (optional)</span>
             <input class="app-input" id="csNotes" placeholder="e.g. Van Morrison cover, key of G">
         </div>
         <div style="display:flex;gap:8px;margin-top:16px">
@@ -1249,7 +1249,7 @@ function songQuickFill(title, e) {
     popup.style.cssText = 'position:fixed;bottom:70px;left:12px;right:12px;background:#1e293b;border:1px solid rgba(102,126,234,0.3);border-radius:14px;padding:14px;z-index:4000;box-shadow:0 8px 32px rgba(0,0,0,0.6)';
     var st = title.replace(/'/g, "\\'");
     popup.innerHTML = '<div style="font-size:0.8em;font-weight:700;color:#818cf8;margin-bottom:10px">🎵 Quick Fill: ' + title + '</div>';
-    popup.innerHTML += '<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1"><label style="font-size:0.72em;color:#64748b;display:block;margin-bottom:3px">Key</label><input id="qfKey" class="app-input" placeholder="e.g. G" value="' + (songData.key||'')+'" style="font-size:0.88em;padding:6px 10px"></div><div style="flex:1"><label style="font-size:0.72em;color:#64748b;display:block;margin-bottom:3px">BPM</label><input id="qfBpm" class="app-input" placeholder="e.g. 120" value="' + (songData.bpm||'')+'" type="number" style="font-size:0.88em;padding:6px 10px"></div></div>';
+    popup.innerHTML += '<div style="display:flex;gap:8px;margin-bottom:10px"><div style="flex:1"><label style="font-size:0.72em;color:#64748b;display:block;margin-bottom:3px">Key</span><input id="qfKey" class="app-input" placeholder="e.g. G" value="' + (songData.key||'')+'" style="font-size:0.88em;padding:6px 10px"></div><div style="flex:1"><label style="font-size:0.72em;color:#64748b;display:block;margin-bottom:3px">BPM</span><input id="qfBpm" class="app-input" placeholder="e.g. 120" value="' + (songData.bpm||'')+'" type="number" style="font-size:0.88em;padding:6px 10px"></div></div>';
     popup.innerHTML += '<div style="display:flex;gap:8px"><button onclick="songQuickFillSave()´+JSON.stringify(title)+´)" style="background:rgba(102,126,234,0.2);border:1px solid rgba(102,126,234,0.4);color:#a5b4fc;padding:7px 16px;border-radius:8px;font-size:0.85em;font-weight:700;cursor:pointer;flex:1">💾 Save</button><button onclick="qfCancel()" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);color:#64748b;padding:7px 14px;border-radius:8px;font-size:0.85em;cursor:pointer">Cancel</button></div>';
     // fix the onclick with proper title injection
     popup.querySelector('button').onclick = function() { songQuickFillSave(title); };
@@ -2213,18 +2213,18 @@ function showMoisesUploadForm() {
             <h4 style="margin: 0 0 15px 0; color: #667eea;">📤 Upload Moises Stems</h4>
             
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
+                <span style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
                     Source Version (optional)
-                </label>
+                </span>
                 <input type="text" id="stemsSourceInput" 
                     placeholder="e.g., Cornell 5/8/77, Studio version, etc."
                     style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit;">
             </div>
             
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
+                <span style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
                     Select Stem Files
-                </label>
+                </span>
                 <p style="font-size: 0.85em; color: #6b7280; margin-bottom: 10px;">
                     Select all your Moises-separated tracks (bass.mp3, drums.mp3, etc.)
                 </p>
@@ -2236,9 +2236,9 @@ function showMoisesUploadForm() {
             </div>
             
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
+                <span style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
                     Notes (optional)
-                </label>
+                </span>
                 <textarea id="stemsNotesInput" 
                     placeholder="e.g., Bass is really clear in this version"
                     style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
@@ -2403,12 +2403,12 @@ async function editMoisesStems() {
             </div>
             <div style="display:flex;flex-direction:column;gap:12px">
                 <div>
-                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Google Drive folder URL</label>
+                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Google Drive folder URL</span>
                     <input id="msFolderUrl" class="app-input" placeholder="https://drive.google.com/drive/folders/..."
                         value="${stems.folderUrl || ''}" autocomplete="off">
                 </div>
                 <div>
-                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Source version</label>
+                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Source version</span>
                     <input id="msSourceVersion" class="app-input" placeholder='e.g. "11/3/1985 Richmond"'
                         value="${stems.sourceVersion || ''}" autocomplete="off">
                 </div>
@@ -2416,13 +2416,13 @@ async function editMoisesStems() {
                     <p style="color:#9ca3af;font-size:0.8em;margin:0 0 10px">Individual stem URLs (from Moises):</p>
                     ${fields.map(f => `
                         <div style="margin-bottom:10px">
-                            <label style="display:block;font-size:0.78em;color:#6b7280;margin-bottom:4px">${f.label}</label>
+                            <span style="display:block;font-size:0.78em;color:#6b7280;margin-bottom:4px">${f.label}</span>
                             <input id="${f.id}" class="app-input" placeholder="https://..." value="${f.val}" autocomplete="off">
                         </div>
                     `).join('')}
                 </div>
                 <div>
-                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Notes</label>
+                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Notes</span>
                     <textarea id="msNotes" class="app-input" placeholder="Any notes about this version..."
                         style="min-height:70px;resize:vertical;font-family:inherit">${stems.notes || ''}</textarea>
                 </div>
@@ -3255,15 +3255,15 @@ async function addRefVersion() {
             <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Paste any link — Spotify, YouTube, Archive.org, SoundCloud, MP3, or any URL.</p>
             <div id="refUrlDetect" style="height:24px;margin-bottom:6px;font-size:0.8em;color:var(--text-muted)"></div>
             <div class="form-row">
-                <label class="form-label">URL</label>
+                <span class="form-label">URL</span>
                 <input class="app-input" id="refUrl" placeholder="https://..." oninput="detectRefPlatform(this.value)" autofocus>
             </div>
             <div class="form-row" style="margin-top:10px">
-                <label class="form-label">Version Title (optional)</label>
+                <span class="form-label">Version Title (optional)</span>
                 <input class="app-input" id="refTitle" placeholder="e.g. Live at Red Rocks 1987, Cornell '77...">
             </div>
             <div class="form-row" style="margin-top:10px">
-                <label class="form-label">Notes (optional)</label>
+                <span class="form-label">Notes (optional)</span>
                 <input class="app-input" id="refNotes" placeholder="Why this version? What makes it special?">
             </div>
             <div style="display:flex;gap:8px;margin-top:16px">
@@ -3275,17 +3275,17 @@ async function addRefVersion() {
         <div id="refPanelUpload" style="display:none">
             <p style="color:var(--text-dim);font-size:0.82em;margin-bottom:10px">Upload an MP3, M4A, or WAV — stored in Firebase and shared with the whole band.</p>
             <div class="form-row">
-                <label class="form-label">Audio File</label>
+                <span class="form-label">Audio File</span>
                 <input type="file" id="refAudioFile" accept="audio/*,.mp3,.m4a,.wav,.aac"
                     style="width:100%;padding:8px;background:var(--bg-input,rgba(255,255,255,0.05));border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.88em">
                 <div style="font-size:0.78em;color:var(--text-dim);margin-top:4px">MP3, M4A, WAV · max 20MB</div>
             </div>
             <div class="form-row" style="margin-top:10px">
-                <label class="form-label">Version Title</label>
+                <span class="form-label">Version Title</span>
                 <input class="app-input" id="refUploadTitle" placeholder="e.g. Studio demo, Live rehearsal 3/15...">
             </div>
             <div class="form-row" style="margin-top:10px">
-                <label class="form-label">Notes (optional)</label>
+                <span class="form-label">Notes (optional)</span>
                 <input class="app-input" id="refUploadNotes" placeholder="What makes this version useful?">
             </div>
             <div id="refUploadProgress" style="display:none;margin-top:10px">
@@ -3684,7 +3684,7 @@ function showRehearsalNoteForm() {
             <h4 style="margin: 0 0 15px 0;">Add Rehearsal Note</h4>
             
             <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Band Member:</label>
+                <span style="display: block; margin-bottom: 5px; font-weight: 600;">Band Member:</span>
                 <select id="rehearsalNoteAuthor" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
                     <option value="">-- Who's saying this? --</option>
                     ${Object.entries(bandMembers).map(([key, member]) => `
@@ -3694,7 +3694,7 @@ function showRehearsalNoteForm() {
             </div>
             
             <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Priority:</label>
+                <span style="display: block; margin-bottom: 5px; font-weight: 600;">Priority:</span>
                 <select id="rehearsalNotePriority" style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
                     <option value="low">🟢 Low - Nice to have</option>
                     <option value="medium" selected>🟡 Medium - Should address</option>
@@ -3703,7 +3703,7 @@ function showRehearsalNoteForm() {
             </div>
             
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Note:</label>
+                <span style="display: block; margin-bottom: 5px; font-weight: 600;">Note:</span>
                 <textarea id="rehearsalNoteText" placeholder="E.g., Need to work on harmony entries - Chris coming in too early"
                     style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px; min-height: 80px; font-family: inherit; font-size: 0.95em;"></textarea>
             </div>
@@ -3881,7 +3881,7 @@ function showHarmonyAudioUploadForm(sectionIndex) {
             <h4 style="margin: 0 0 15px 0;">Upload Harmony Audio Snippet</h4>
             
             <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Audio File:</label>
+                <span style="display: block; margin-bottom: 5px; font-weight: 600;">Audio File:</span>
                 <input type="file" id="harmonyAudioFile" accept="audio/*"
                     style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
                 <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
@@ -3890,14 +3890,14 @@ function showHarmonyAudioUploadForm(sectionIndex) {
             </div>
             
             <div style="margin-bottom: 12px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Snippet Name:</label>
+                <span style="display: block; margin-bottom: 5px; font-weight: 600;">Snippet Name:</span>
                 <input type="text" id="harmonySnippetName" 
                     placeholder="E.g., Drew lead vocal - first try"
                     style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
             </div>
             
             <div style="margin-bottom: 15px;">
-                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Notes:</label>
+                <span style="display: block; margin-bottom: 5px; font-weight: 600;">Notes:</span>
                 <input type="text" id="harmonySnippetNotes" 
                     placeholder="E.g., Recorded on iPhone after practice"
                     style="width: 100%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 8px;">
@@ -4371,7 +4371,7 @@ async function renderHarmonyPartsWithMetadata(songTitle, sectionIndex, parts) {
                                 onchange="updatePartMetadata('${songTitle}', ${sectionIndex}, '${part.singer}', 'isLead', this.checked)"
                                 style="width: 16px; height: 16px; cursor: pointer;">
                             <span style="font-size: 0.9em; color: #6b7280; font-weight: 600;">🎤 Lead</span>
-                        </label>
+                        </span>
                         
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span style="font-size: 0.9em; color: #6b7280; font-weight: 600;">Starting Note:</span>
@@ -4593,7 +4593,7 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
             <div style="flex: 1; overflow: auto; padding: 25px; display: flex; gap: 20px; flex-wrap: wrap;">
                 <!-- Left: Editor -->
                 <div style="flex: 1; min-width: 280px; display: flex; flex-direction: column;">
-                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">📝 ABC Notation:</label>
+                    <span style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">📝 ABC Notation:</span>
                     <textarea id="abcEditorTextarea" 
                         style="flex: 1; min-height: 200px; font-family: 'Courier New', monospace; font-size: 0.95em; padding: 15px; border: 2px solid #e2e8f0; border-radius: 8px; resize: none;"
                     >${initialAbc}</textarea>
@@ -4611,7 +4611,7 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                 
                 <!-- Right: Preview -->
                 <div style="flex: 1; min-width: 280px; display: flex; flex-direction: column;">
-                    <label style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">👁️ Preview:</label>
+                    <span style="font-weight: 600; margin-bottom: 8px; color: #2d3748;">👁️ Preview:</span>
                     <div id="abcPreviewContainer" style="flex: 1; min-height: 300px; background: #f9fafb; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; overflow: auto; -webkit-overflow-scrolling: touch;">
                         <p style="color: #9ca3af; text-align: center; margin-top: 40px;">Click "Preview" to render sheet music</p>
                     </div>
@@ -4721,7 +4721,7 @@ async function renderABCPreview(abc, container) {
                                 <input type="checkbox" class="voice-checkbox" data-voice="${voice.index}" checked 
                                     style="width: 18px; height: 18px; cursor: pointer;">
                                 <span style="color: #4b5563; font-weight: 500;">${voice.name}</span>
-                            </label>
+                            </span>
                         `).join('')}
                     </div>
                     <button onclick="updateVoiceSelection()" 
@@ -5087,7 +5087,7 @@ async function importABCFromMuseScore(songTitle, sectionIndex) {
                     <label style="background:#0369a1;color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
                         📄 Upload MusicXML File
                         <input type="file" accept=".xml,.mxl,.musicxml" style="display:none" onchange="handleMusicXmlUpload(event, ${sectionIndex})">
-                    </label>
+                    </span>
                     <button onclick="convertMusicXmlToABC(document.getElementById('musicXmlPaste').value, ${sectionIndex})"
                         style="background:#065f46;color:white;border:none;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
                         🔄 Convert Pasted XML → ABC
@@ -5194,11 +5194,11 @@ async function importABCFromAudio(sectionIndex) {
             </div>
             
             <div style="margin-bottom:16px">
-                <label style="display:block;font-size:0.85em;color:#9ca3af;margin-bottom:8px">Upload isolated vocal audio (MP3, WAV, M4A):</label>
+                <span style="display:block;font-size:0.85em;color:#9ca3af;margin-bottom:8px">Upload isolated vocal audio (MP3, WAV, M4A):</span>
                 <label style="display:flex;align-items:center;justify-content:center;gap:10px;background:rgba(255,255,255,0.05);border:2px dashed rgba(255,255,255,0.15);border-radius:10px;padding:24px;cursor:pointer;color:#9ca3af;font-size:0.9em">
                     🎤 Click to select audio file
                     <input type="file" accept="audio/*" style="display:none" onchange="processAudioForABC(event, ${sectionIndex})">
-                </label>
+                </span>
             </div>
             
             <div id="audioImportProgress" style="display:none;text-align:center;padding:16px;color:#818cf8"></div>
@@ -5325,7 +5325,7 @@ async function importHarmoniesFromFadr(songTitle) {
                 <span style="color:#9ca3af;font-size:0.9em">⏱ Takes 1–5 minutes depending on song length</span>
             </div>
             <div style="margin-bottom:16px">
-                <label style="display:block;font-size:0.85em;color:#9ca3af;margin-bottom:6px">Audio URL:</label>
+                <span style="display:block;font-size:0.85em;color:#9ca3af;margin-bottom:6px">Audio URL:</span>
                 <input id="fadrArchiveUrl" type="url" placeholder="https://archive.org/download/... or any audio URL"
                     value="${defaultUrl}"
                     style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 12px;color:white;font-size:0.9em;outline:none">
@@ -5798,7 +5798,7 @@ function showAvatarMenu() {
         + '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85em;color:#94a3b8;padding:7px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07)">'
         +   '🖼️ Upload profile photo'
         +   '<input type="file" accept="image/*" style="display:none" onchange="avatarUploadPhoto(this)">'
-        + '</label>'
+        + '</span>'
         + '<button onclick="avatarClearCustom()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);color:#64748b;padding:7px 10px;border-radius:8px;font-size:0.85em;cursor:pointer;text-align:left">🔄 Use Google photo instead</button>'
         + '<button onclick="avatarSignOut()" style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;padding:7px 10px;border-radius:8px;font-size:0.85em;cursor:pointer;text-align:left">🚪 Sign Out</button>'
         + '</div>';
@@ -6301,7 +6301,7 @@ async function harmonyFetchLyrics(songTitle) {
                     <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--green,#10b981)">
                         <input type="checkbox" class="harmSectionCheck" value="${sectionName}" checked style="accent-color:var(--green)">
                         ${sectionName}
-                    </label>`);
+                    </span>`);
             }
         }
     });
@@ -6328,7 +6328,7 @@ async function addFirstHarmonySection(songTitle) {
         
         <div class="form-row" style="margin-bottom:10px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                <label class="form-label" style="margin:0">Song Lyrics</label>
+                <span class="form-label" style="margin:0">Song Lyrics</span>
                 <div style="display:flex;gap:6px;align-items:center">
                     <button class="btn btn-sm btn-primary" onclick="harmonyFetchLyrics(this.dataset.song)" data-song="${songTitle.replace(/"/g,'&quot;')}">
                         🎵 Fetch from Genius
@@ -6346,14 +6346,14 @@ async function addFirstHarmonySection(songTitle) {
         </div>
         
         <div style="margin-bottom:12px">
-            <label class="form-label" style="margin-bottom:6px;display:block">Tag Sections with Harmonies</label>
+            <span class="form-label" style="margin-bottom:6px;display:block">Tag Sections with Harmonies</span>
             <p style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Check each section that has vocal harmonies. These will become harmony recording sections.</p>
             <div id="harmSectionTags" style="display:flex;flex-wrap:wrap;gap:6px">
                 ${['Verse 1','Verse 2','Verse 3','Verse 4','Verse 5','Chorus','Bridge','Coda','Intro','Outro','Pre-Chorus','Tag'].map(s => `
                     <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--text-muted)">
                         <input type="checkbox" class="harmSectionCheck" value="${s}" style="accent-color:var(--accent);width:14px;height:14px">
                         ${s}
-                    </label>
+                    </span>
                 `).join('')}
             </div>
             <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
@@ -6363,13 +6363,13 @@ async function addFirstHarmonySection(songTitle) {
         </div>
         
         <div style="margin-bottom:12px">
-            <label class="form-label" style="margin-bottom:6px;display:block">Singing Assignments (optional)</label>
+            <span class="form-label" style="margin-bottom:6px;display:block">Singing Assignments (optional)</span>
             <div class="form-grid">
                 ${Object.entries(bandMembers).filter(([k,m]) => m.sings || m.leadVocals || m.harmonies).map(([k,m]) => `
                     <label style="display:flex;align-items:center;gap:6px;font-size:0.85em;color:var(--text-muted)">
                         <input type="checkbox" class="harmSingerCheck" value="${k}" checked style="accent-color:var(--accent)">
                         ${m.name} — ${m.leadVocals?'Lead/Harmony':m.harmonies?'Harmony':'Vocals'}
-                    </label>
+                    </span>
                 `).join('')}
             </div>
         </div>
@@ -6390,7 +6390,7 @@ function addCustomHarmSection() {
         <label style="display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;cursor:pointer;font-size:0.82em;color:var(--green,#10b981)">
             <input type="checkbox" class="harmSectionCheck" value="${val}" checked style="accent-color:var(--green)">
             ${val}
-        </label>`);
+        </span>`);
     input.value = '';
 }
 
@@ -7319,25 +7319,25 @@ async function editSongStructure() {
             </div>
             <div style="display:flex;flex-direction:column;gap:14px">
                 <div>
-                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Who starts the song?</label>
+                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Who starts the song?</span>
                     <input id="ssWhoStarts" class="app-input" placeholder="e.g. Jay, Drew"
                         value="${whoStartsCurrent}" autocomplete="off">
                     <p style="color:#6b7280;font-size:0.75em;margin-top:4px">Comma-separated names</p>
                 </div>
                 <div>
-                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">How does it start?</label>
+                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">How does it start?</span>
                     <input id="ssHowStarts" class="app-input" placeholder="e.g. Count off, Cold start, Guitar intro"
                         value="${structure.howStarts || ''}" autocomplete="off">
                 </div>
                 <div>
-                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Who cues the ending?</label>
+                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Who cues the ending?</span>
                     <select id="ssWhoCues" class="app-select">
                         <option value="">— Nobody specific —</option>
                         ${memberOptions}
                     </select>
                 </div>
                 <div>
-                    <label style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">How does it end?</label>
+                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">How does it end?</span>
                     <input id="ssHowEnds" class="app-input" placeholder="e.g. Big finish, Fade out, Abrupt stop"
                         value="${structure.howEnds || ''}" autocomplete="off">
                 </div>
@@ -7402,30 +7402,30 @@ function showSongStructureForm() {
                 <div style="margin-bottom:16px">
                     <strong style="display:block;margin-bottom:8px;color:var(--text-muted,#94a3b8);font-size:0.9em">🎤 Who Starts the Song?</strong>
                     <div style="display:flex;flex-wrap:wrap;gap:8px">
-                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="whole_band" ${structure.whoStarts?.includes('whole_band')?'checked':''} class="who-starts-checkbox" style="accent-color:var(--accent)"> Whole Band</label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="whole_band" ${structure.whoStarts?.includes('whole_band')?'checked':''} class="who-starts-checkbox" style="accent-color:var(--accent)"> Whole Band</span>
                         ${Object.keys(bandMembers).map(key => 
-                            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="'+key+'" '+(structure.whoStarts?.includes(key)?'checked':'')+' class="who-starts-checkbox" style="accent-color:var(--accent)"> '+bandMembers[key].name+'</label>'
+                            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="'+key+'" '+(structure.whoStarts?.includes(key)?'checked':'')+' class="who-starts-checkbox" style="accent-color:var(--accent)"> '+bandMembers[key].name+'</span>'
                         ).join('')}
                     </div>
                 </div>
                 
                 <div style="margin-bottom:16px">
-                    <label style="display:block;margin-bottom:6px;color:var(--text-muted,#94a3b8);font-size:0.9em;font-weight:600">🎵 How Does It Start?</label>
+                    <span style="display:block;margin-bottom:6px;color:var(--text-muted,#94a3b8);font-size:0.9em;font-weight:600">🎵 How Does It Start?</span>
                     <textarea id="howStartsInput" class="app-textarea" rows="2" placeholder="Count off by Drew, Cold start, Guitar intro...">${structure.howStarts||''}</textarea>
                 </div>
                 
                 <div style="margin-bottom:16px">
                     <strong style="display:block;margin-bottom:8px;color:var(--text-muted,#94a3b8);font-size:0.9em">🎤 Who Cues the Ending?</strong>
                     <div style="display:flex;flex-wrap:wrap;gap:8px">
-                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="whole_band" ${structure.whoCuesEnding?.includes?.('whole_band')||(structure.whoCuesEnding==='whole_band')?'checked':''} class="who-ends-checkbox" style="accent-color:var(--accent)"> Whole Band</label>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="whole_band" ${structure.whoCuesEnding?.includes?.('whole_band')||(structure.whoCuesEnding==='whole_band')?'checked':''} class="who-ends-checkbox" style="accent-color:var(--accent)"> Whole Band</span>
                         ${Object.keys(bandMembers).map(key => 
-                            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="'+key+'" '+(Array.isArray(structure.whoCuesEnding)?structure.whoCuesEnding.includes(key):(structure.whoCuesEnding===key)?true:false?'checked':'')+' class="who-ends-checkbox" style="accent-color:var(--accent)"> '+bandMembers[key].name+'</label>'
+                            '<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.9em"><input type="checkbox" value="'+key+'" '+(Array.isArray(structure.whoCuesEnding)?structure.whoCuesEnding.includes(key):(structure.whoCuesEnding===key)?true:false?'checked':'')+' class="who-ends-checkbox" style="accent-color:var(--accent)"> '+bandMembers[key].name+'</span>'
                         ).join('')}
                     </div>
                 </div>
                 
                 <div style="margin-bottom:20px">
-                    <label style="display:block;margin-bottom:6px;color:var(--text-muted,#94a3b8);font-size:0.9em;font-weight:600">🎵 How Does It End?</label>
+                    <span style="display:block;margin-bottom:6px;color:var(--text-muted,#94a3b8);font-size:0.9em;font-weight:600">🎵 How Does It End?</span>
                     <textarea id="howEndsInput" class="app-textarea" rows="2" placeholder="Big finish on 1, Fade out, Abrupt stop...">${structure.howEnds||''}</textarea>
                 </div>
                 
@@ -8011,7 +8011,7 @@ ${hasAbc?`
                 <span style="font-size:0.65em;color:rgba(255,255,255,0.3)">bars</span>
                 <label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer">
                     <input type="checkbox" id="mtTrainerOn_${sectionIndex}" style="accent-color:#667eea"> On
-                </label>
+                </span>
             </div>
         </div>
     </div>
@@ -8026,7 +8026,7 @@ ${hasAbc?`
         <div style="display:flex;gap:5px;align-items:center">
             <label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer">
                 <input type="checkbox" id="mtLoop_${sectionIndex}" onchange="mtLooping=this.checked" style="accent-color:#667eea"> Loop
-            </label>
+            </span>
             <button onclick="mtPlayAllTracks('${ss}',${sectionIndex})" style="background:#10b981;color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-weight:600;font-size:0.8em">▶ Play Mix</button>
             <button onclick="mtStopAllTracks()" style="background:rgba(255,255,255,0.1);color:white;border:none;padding:5px 12px;border-radius:5px;cursor:pointer;font-size:0.8em">⏹ Stop</button>
             <button onclick="mtExportMix('${ss}',${sectionIndex})" title="Export mix" style="background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);padding:5px 8px;border-radius:5px;cursor:pointer;font-size:0.75em">💾</button>
@@ -8075,7 +8075,7 @@ ${hasAbc?`
             [`mtCountIn_${sectionIndex}`,'checked','Count-in','countIn'],
             [`mtMetronomeDuringRec_${sectionIndex}`,'','Click','clickDuring'],
             [`mtShowPitch_${sectionIndex}`,'','Pitch','pitch']
-        ].map(([id,chk,label,hk])=>`<label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer"><input type="checkbox" id="${id}" ${chk} ${id.includes('Pitch')?`onchange="mtTogglePitchMonitor(${sectionIndex},this.checked)"`:''} style="accent-color:#667eea"> ${label} ${mtHelp(hk)}</label>`).join('')}</div>
+        ].map(([id,chk,label,hk])=>`<label style="display:flex;align-items:center;gap:3px;font-size:0.7em;color:rgba(255,255,255,0.4);cursor:pointer"><input type="checkbox" id="${id}" ${chk} ${id.includes('Pitch')?`onchange="mtTogglePitchMonitor(${sectionIndex},this.checked)"`:''} style="accent-color:#667eea"> ${label} ${mtHelp(hk)}</span>`).join('')}</div>
     </div>
 </div>
 
@@ -9114,17 +9114,17 @@ function mtShowPreview(songTitle, si, base64Audio, fileSize, mimeType) {
             <audio controls src="${base64Audio}" style="width:100%;margin-bottom:10px"></audio>
             <p style="font-size:0.7em;color:rgba(255,255,255,0.35);margin:0 0 10px">${ext.toUpperCase()} · ${(fileSize/1024).toFixed(1)} KB</p>
             <div style="margin-bottom:8px">
-                <label style="display:block;margin-bottom:3px;font-size:0.8em">Who recorded?</label>
+                <span style="display:block;margin-bottom:3px;font-size:0.8em">Who recorded?</span>
                 <select id="mtRecAuthor_${si}" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15)">
                     ${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}" style="color:black">${m.name}</option>`).join('')}
                 </select>
             </div>
             <div style="margin-bottom:8px">
-                <label style="display:block;margin-bottom:3px;font-size:0.8em">Name:</label>
+                <span style="display:block;margin-bottom:3px;font-size:0.8em">Name:</span>
                 <input type="text" id="mtRecName_${si}" placeholder="E.g. Drew - high harmony" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);box-sizing:border-box">
             </div>
             <div style="margin-bottom:10px">
-                <label style="display:block;margin-bottom:3px;font-size:0.8em">Notes:</label>
+                <span style="display:block;margin-bottom:3px;font-size:0.8em">Notes:</span>
                 <input type="text" id="mtRecNotes_${si}" placeholder="Optional" style="width:100%;padding:7px;border-radius:5px;background:rgba(255,255,255,0.08);color:white;border:1px solid rgba(255,255,255,0.15);box-sizing:border-box">
             </div>
             <div style="display:flex;gap:8px">
@@ -9419,22 +9419,22 @@ async function editVenue(idx) {
     el.innerHTML = `<div class="app-card">
         <h3>✏️ Edit Venue</h3>
         <div class="form-grid">
-            <div class="form-row" style="grid-column:1/-1"><label class="form-label">Name</label><input class="app-input" id="vName" value="${(v.name||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row" style="grid-column:1/-1"><label class="form-label">Address</label><input class="app-input" id="vAddress" value="${(v.address||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Phone</label><input class="app-input" id="vPhone" value="${(v.phone||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="vEmail" value="${(v.email||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Website</label><input class="app-input" id="vWebsite" value="${(v.website||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Capacity</label><input class="app-input" id="vCapacity" value="${(v.capacity||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Stage</label><input class="app-input" id="vStage" value="${(v.stage||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">PA System</label><input class="app-input" id="vPA" value="${(v.pA||v.pa||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="vSoundPerson" value="${(v.soundPerson||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Sound Phone</label><input class="app-input" id="vSoundPhone" value="${(v.soundPhone||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="vContactName" value="${(v.contactName||v.contact||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Load-In</label><input class="app-input" id="vLoadIn" value="${(v.loadIn||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Parking</label><input class="app-input" id="vParking" value="${(v.parking||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Pay</label><input class="app-input" id="vPay" value="${(v.pay||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row" style="grid-column:1/-1"><span class="form-label">Name</span><input class="app-input" id="vName" value="${(v.name||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row" style="grid-column:1/-1"><span class="form-label">Address</span><input class="app-input" id="vAddress" value="${(v.address||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Phone</span><input class="app-input" id="vPhone" value="${(v.phone||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Email</span><input class="app-input" id="vEmail" value="${(v.email||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Website</span><input class="app-input" id="vWebsite" value="${(v.website||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Capacity</span><input class="app-input" id="vCapacity" value="${(v.capacity||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Stage</span><input class="app-input" id="vStage" value="${(v.stage||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">PA System</span><input class="app-input" id="vPA" value="${(v.pA||v.pa||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Sound Person</span><input class="app-input" id="vSoundPerson" value="${(v.soundPerson||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Sound Phone</span><input class="app-input" id="vSoundPhone" value="${(v.soundPhone||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Venue Contact</span><input class="app-input" id="vContactName" value="${(v.contactName||v.contact||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Load-In</span><input class="app-input" id="vLoadIn" value="${(v.loadIn||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Parking</span><input class="app-input" id="vParking" value="${(v.parking||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Pay</span><input class="app-input" id="vPay" value="${(v.pay||'').replace(/"/g,'&quot;')}"></div>
         </div>
-        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="vNotes">${v.notes||''}</textarea></div>
+        <div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="vNotes">${v.notes||''}</textarea></div>
         <div style="display:flex;gap:8px">
             <button class="btn btn-success" onclick="saveVenueEdit(${idx})">💾 Save</button>
             <button class="btn btn-ghost" onclick="loadVenues()">Cancel</button>
@@ -9494,28 +9494,28 @@ function addVenue() {
     el.innerHTML = `<div class="app-card" id="addVenueCard">
         <h3>🏛️ Add Venue</h3>
         <div style="margin-bottom:14px;padding:12px;background:rgba(102,126,234,0.07);border:1px solid rgba(102,126,234,0.2);border-radius:10px">
-            <label class="form-label" style="margin-bottom:6px;display:block">🔍 Search Google Places (autofills everything)</label>
+            <span class="form-label" style="margin-bottom:6px;display:block">🔍 Search Google Places (autofills everything)</span>
             <input class="app-input" id="vPlacesSearch" placeholder="Start typing a venue name or address…" autocomplete="off" style="width:100%;box-sizing:border-box">
             <div style="font-size:0.72em;color:#64748b;margin-top:4px">Powered by Google Places — tap a suggestion to autofill the form below</div>
         </div>
         <div class="form-grid">
-            <div class="form-row"><label class="form-label">Venue Name</label><input class="app-input" id="vName"></div>
-            <div class="form-row"><label class="form-label">Address</label><input class="app-input" id="vAddress"></div>
-            <div class="form-row"><label class="form-label">Phone</label><input class="app-input" id="vPhone"></div>
-            <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="vEmail"></div>
-            <div class="form-row"><label class="form-label">Website</label><input class="app-input" id="vWebsite" placeholder="https://..."></div>
-            <div class="form-row"><label class="form-label">Capacity</label><input class="app-input" id="vCapacity" placeholder="e.g. 200"></div>
-            <div class="form-row"><label class="form-label">Stage Size</label><input class="app-input" id="vStage" placeholder="e.g. 20x12 ft"></div>
-            <div class="form-row"><label class="form-label">PA System</label><input class="app-input" id="vPA" placeholder="e.g. JBL PRX, 2 monitors"></div>
-            <div class="form-row"><label class="form-label">Booking Contact</label><input class="app-input" id="vContact"></div>
-            <div class="form-row"><label class="form-label">Band Contact Owner</label><select class="app-select" id="vOwner"><option value="">Select...</option>${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}">${m.name}</option>`).join('')}</select></div>
-            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="vSoundPerson"></div>
-            <div class="form-row"><label class="form-label">Sound Phone</label><input class="app-input" id="vSoundPhone"></div>
-            <div class="form-row"><label class="form-label">Typical Pay</label><input class="app-input" id="vPay" placeholder="e.g. $500/night"></div>
-            <div class="form-row"><label class="form-label">Load-in Info</label><input class="app-input" id="vLoadIn" placeholder="e.g. Back door, 5pm"></div>
-            <div class="form-row"><label class="form-label">Parking</label><input class="app-input" id="vParking" placeholder="e.g. Street parking, lot behind"></div>
+            <div class="form-row"><span class="form-label">Venue Name</span><input class="app-input" id="vName"></div>
+            <div class="form-row"><span class="form-label">Address</span><input class="app-input" id="vAddress"></div>
+            <div class="form-row"><span class="form-label">Phone</span><input class="app-input" id="vPhone"></div>
+            <div class="form-row"><span class="form-label">Email</span><input class="app-input" id="vEmail"></div>
+            <div class="form-row"><span class="form-label">Website</span><input class="app-input" id="vWebsite" placeholder="https://..."></div>
+            <div class="form-row"><span class="form-label">Capacity</span><input class="app-input" id="vCapacity" placeholder="e.g. 200"></div>
+            <div class="form-row"><span class="form-label">Stage Size</span><input class="app-input" id="vStage" placeholder="e.g. 20x12 ft"></div>
+            <div class="form-row"><span class="form-label">PA System</span><input class="app-input" id="vPA" placeholder="e.g. JBL PRX, 2 monitors"></div>
+            <div class="form-row"><span class="form-label">Booking Contact</span><input class="app-input" id="vContact"></div>
+            <div class="form-row"><span class="form-label">Band Contact Owner</span><select class="app-select" id="vOwner"><option value="">Select...</option>${Object.entries(bandMembers).map(([k,m])=>`<option value="${k}">${m.name}</option>`).join('')}</select></div>
+            <div class="form-row"><span class="form-label">Sound Person</span><input class="app-input" id="vSoundPerson"></div>
+            <div class="form-row"><span class="form-label">Sound Phone</span><input class="app-input" id="vSoundPhone"></div>
+            <div class="form-row"><span class="form-label">Typical Pay</span><input class="app-input" id="vPay" placeholder="e.g. $500/night"></div>
+            <div class="form-row"><span class="form-label">Load-in Info</span><input class="app-input" id="vLoadIn" placeholder="e.g. Back door, 5pm"></div>
+            <div class="form-row"><span class="form-label">Parking</span><input class="app-input" id="vParking" placeholder="e.g. Street parking, lot behind"></div>
         </div>
-        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="vNotes" placeholder="Load-in, parking, stage size, PA info..."></textarea></div>
+        <div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="vNotes" placeholder="Load-in, parking, stage size, PA info..."></textarea></div>
         <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveVenue()">💾 Save</button><button class="btn btn-ghost" onclick="loadVenues()">Cancel</button></div>
     </div>` + el.innerHTML;
     // Init Places Autocomplete after render
@@ -9897,7 +9897,7 @@ function renderMetronomePage(el) {
     html.push("<div style=\"font-size:0.55em;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.07em\">Trainer</div>");
     html.push("<div style=\"display:flex;align-items:center;gap:3px\"><input id=\"mtTrainerAmt_9999\" type=\"number\" value=\"5\" min=\"1\" max=\"20\" style=\"width:32px;text-align:center;background:#1a1a1a;color:#e0e0e0;border:1px solid #444;border-radius:4px;padding:3px;font-size:0.72em\"><span style=\"font-size:0.6em;color:rgba(255,255,255,0.25)\">BPM</span></div>");
     html.push("<div style=\"display:flex;align-items:center;gap:3px\"><input id=\"mtTrainerBars_9999\" type=\"number\" value=\"4\" min=\"1\" max=\"32\" style=\"width:32px;text-align:center;background:#1a1a1a;color:#e0e0e0;border:1px solid #444;border-radius:4px;padding:3px;font-size:0.72em\"><span style=\"font-size:0.6em;color:rgba(255,255,255,0.25)\">bars</span></div>");
-    html.push("<label style=\"display:flex;align-items:center;gap:3px;font-size:0.68em;color:rgba(255,255,255,0.35);cursor:pointer\"><input type=\"checkbox\" id=\"mtTrainerOn_9999\" style=\"accent-color:#c8ff00\"> On</label>");
+    html.push("<label style=\"display:flex;align-items:center;gap:3px;font-size:0.68em;color:rgba(255,255,255,0.35);cursor:pointer\"><input type=\"checkbox\" id=\"mtTrainerOn_9999\" style=\"accent-color:#c8ff00\"> On</span>");
     html.push("</div>");
     html.push("</div>");
     html.push("<div style=\"text-align:center;margin-top:6px;position:relative;z-index:1;opacity:0.6;filter:grayscale(1) brightness(4) contrast(1.3)\">");
@@ -10055,18 +10055,18 @@ function settingsTab(tab, btn) {
     profile: `
         <div class="app-card"><h3>👤 Your Profile</h3>
             <div class="form-grid">
-                <div class="form-row"><label class="form-label">Who are you?</label>
+                <div class="form-row"><span class="form-label">Who are you?</span>
                     <select class="app-select" id="settingsUser" onchange="localStorage.setItem('deadcetera_current_user',this.value);(function(r){var map={'Lead Guitar':'leadGuitar','Rhythm Guitar':'rhythmGuitar','Bass':'bass','Bass Guitar':'bass','Keys':'keys','Keyboard':'keys','Drums':'drums','Vocals':'vocals'};var m=bandMembers[document.getElementById('settingsUser').value];if(m&&m.role){var inst=map[m.role];if(inst){localStorage.setItem('deadcetera_instrument',inst);var si=document.getElementById('settingsInst');if(si)si.value=inst;}}})(this.value)">
                         <option value="">Select your name...</option>
                         ${Object.entries(bandMembers).map(([k,m])=>'<option value="'+k+'"'+(cu===k?' selected':'')+'>'+m.name+' — '+m.role+'</option>').join('')}
                     </select></div>
-                <div class="form-row"><label class="form-label">Your Role</label>
+                <div class="form-row"><span class="form-label">Your Role</span>
                     <div style="padding:6px 10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;font-size:0.88em;color:var(--text-muted)">
                         ${(function(){var m=bandMembers[cu];if(!m)return'<span style="color:var(--text-dim)">Select your name above to see your role</span>';return typeof _memberDisplayRole==='function'?_memberDisplayRole(m):(m.role+(m.sings?' · Vocals':'')+(m.leadVocals?' (Lead)':''));})()}
                     </div>
                     <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Instrument and vocal role are managed in the Band tab.</div>
                 </div>
-                <div class="form-row"><label class="form-label">🏠 Home Address</label>
+                <div class="form-row"><span class="form-label">🏠 Home Address</span>
                     <div id="addressSection">
                         ${(function(){
                             var addr = localStorage.getItem('deadcetera_home_address') || '';
@@ -10090,36 +10090,36 @@ function settingsTab(tab, btn) {
         <div class="app-card"><h3>🔔 Preferences</h3>
             <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
                 <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px" checked> Auto-save recordings to Google Drive
-            </label>
+            </span>
             <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
                 <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px" checked> Show status badges in song list
-            </label>
+            </span>
             <label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;font-size:0.88em;color:var(--text-muted)">
                 <input type="checkbox" style="accent-color:var(--accent);width:16px;height:16px"> Enable metronome count-in by default
-            </label>
+            </span>
         </div>
         <div class="app-card"><h3>\uD83E\uDD16 GrooveMate Behavior</h3>
             <div style="font-size:0.82em;color:var(--text-muted);margin-bottom:12px">How hands-on do you want GrooveMate to be?</div>
             <div style="display:flex;flex-direction:column;gap:6px" id="glAutopilotControl">
                 <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-size:0.85em;border:1px solid rgba(255,255,255,0.06);border-radius:8px;background:rgba(255,255,255,0.02)" onclick="_glSetAutopilot('suggest')">
                     <input type="radio" name="glAutopilot" value="suggest" style="accent-color:var(--accent)"> <div><strong>Hands-on</strong><div style="font-size:0.8em;color:var(--text-dim)">You make all the decisions. GrooveMate just suggests.</div></div>
-                </label>
+                </span>
                 <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-size:0.85em;border:1px solid rgba(255,255,255,0.06);border-radius:8px;background:rgba(255,255,255,0.02)" onclick="_glSetAutopilot('assist')">
                     <input type="radio" name="glAutopilot" value="assist" style="accent-color:var(--accent)"> <div><strong>Balanced</strong><div style="font-size:0.8em;color:var(--text-dim)">GrooveMate helps but checks with you first.</div></div>
-                </label>
+                </span>
                 <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;font-size:0.85em;border:1px solid rgba(99,102,241,0.3);border-radius:8px;background:rgba(99,102,241,0.05)" onclick="_glSetAutopilot('auto')">
                     <input type="radio" name="glAutopilot" value="auto" style="accent-color:var(--accent)" checked> <div><strong>Hands-off</strong><div style="font-size:0.8em;color:var(--text-dim)">GrooveMate runs things. You can always undo.</div></div>
-                </label>
+                </span>
             </div>
         </div>`,
         
     band: `
         <div class="app-card"><h3>🎸 Band Configuration</h3>
-            <div class="form-row"><label class="form-label">Band Name</label>
+            <div class="form-row"><span class="form-label">Band Name</span>
                 <div style="display:flex;gap:8px"><input class="app-input" id="setBandName" value="${bn}">
                 <button class="btn btn-sm btn-primary" id="saveBandNameBtn" onclick="_saveBandName(this)">Save</button></div>
                 <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Used across your band workspace. Band ID: <code style="color:var(--accent-light)">${currentBandSlug}</code></div></div>
-            <div class="form-row" style="margin-top:12px"><label class="form-label">Band Logo</label>
+            <div class="form-row" style="margin-top:12px"><span class="form-label">Band Logo</span>
                 <div style="display:flex;align-items:center;gap:12px">
                     <div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border)">🎸</div>
                     <div><input type="file" accept="image/*" class="app-input" style="padding:6px;font-size:0.82em">
@@ -10127,7 +10127,7 @@ function settingsTab(tab, btn) {
                 </div></div>
         </div>
         <div class="app-card"><h3>🎧 Playback Preference</h3>
-            <div class="form-row"><label class="form-label">Preferred playback source</label>
+            <div class="form-row"><span class="form-label">Preferred playback source</span>
                 <select class="app-select" id="settingsSourcePref" onchange="if(typeof SetlistPlayer!=='undefined')SetlistPlayer.setSourcePref(this.value)" style="max-width:240px">
                     <option value="youtube"${(typeof SetlistPlayer !== 'undefined' && SetlistPlayer.getSourcePref() === 'youtube') || (!typeof SetlistPlayer !== 'undefined' && (localStorage.getItem('gl_player_source_pref')||'youtube') === 'youtube') ? ' selected' : ''}>YouTube (default)</option>
                     <option value="spotify"${(localStorage.getItem('gl_player_source_pref')) === 'spotify' ? ' selected' : ''}>Spotify</option>
@@ -10150,10 +10150,10 @@ function settingsTab(tab, btn) {
             <div style="margin-top:12px;padding:12px;background:rgba(255,255,255,0.03);border:1px dashed var(--border);border-radius:8px">
                 <div style="font-weight:600;font-size:0.85em;margin-bottom:8px;color:var(--text-muted)">+ Add New Member</div>
                 <div class="form-grid">
-                    <div class="form-row"><label class="form-label">Name</label><input class="app-input" id="newMemberName" placeholder="First name"></div>
-                    <div class="form-row"><label class="form-label">Primary Instrument</label><select class="app-select" id="newMemberRole"><option value="">Select...</option><option value="Lead Guitar">Lead Guitar</option><option value="Rhythm Guitar">Rhythm Guitar</option><option value="Bass">Bass</option><option value="Keys">Keys</option><option value="Drums">Drums</option><option value="Percussion">Percussion</option><option value="Other">Other</option></select></div>
-                    <div class="form-row"><label class="form-label">Email</label><input class="app-input" id="newMemberEmail" placeholder="google@email.com"></div>
-                    <div class="form-row"><label class="form-label">Vocal Role</label><select class="app-select" id="newMemberSings"><option value="none">None</option><option value="backing">Backing</option><option value="co-lead">Co-Lead</option><option value="lead">Lead</option></select></div>
+                    <div class="form-row"><span class="form-label">Name</span><input class="app-input" id="newMemberName" placeholder="First name"></div>
+                    <div class="form-row"><span class="form-label">Primary Instrument</span><select class="app-select" id="newMemberRole"><option value="">Select...</option><option value="Lead Guitar">Lead Guitar</option><option value="Rhythm Guitar">Rhythm Guitar</option><option value="Bass">Bass</option><option value="Keys">Keys</option><option value="Drums">Drums</option><option value="Percussion">Percussion</option><option value="Other">Other</option></select></div>
+                    <div class="form-row"><span class="form-label">Email</span><input class="app-input" id="newMemberEmail" placeholder="google@email.com"></div>
+                    <div class="form-row"><span class="form-label">Vocal Role</span><select class="app-select" id="newMemberSings"><option value="none">None</option><option value="backing">Backing</option><option value="co-lead">Co-Lead</option><option value="lead">Lead</option></select></div>
                 </div>
                 <button class="btn btn-success btn-sm" onclick="addNewMember()" style="margin-top:8px">+ Add Member</button>
             </div>
@@ -10967,11 +10967,11 @@ async function editMember(key) {
     form.id = formId;
     form.style.cssText = 'padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)';
     form.innerHTML = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">'
-        + '<div style="flex:1;min-width:120px"><label style="font-size:0.68em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:2px">Instrument</label>'
+        + '<div style="flex:1;min-width:120px"><label style="font-size:0.68em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:2px">Instrument</span>'
         + '<select id="editInstrument_' + key + '" class="app-select" style="width:100%;font-size:0.82em">'
         + instruments.map(function(inst) { return '<option value="' + inst + '"' + (curInstrument === inst ? ' selected' : '') + '>' + inst + '</option>'; }).join('')
         + '</select></div>'
-        + '<div style="flex:1;min-width:120px"><label style="font-size:0.68em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:2px">Vocal Role</label>'
+        + '<div style="flex:1;min-width:120px"><label style="font-size:0.68em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:2px">Vocal Role</span>'
         + '<select id="editVocal_' + key + '" class="app-select" style="width:100%;font-size:0.82em">'
         + '<option value="none"' + (curVocal === 'none' ? ' selected' : '') + '>None</option>'
         + '<option value="backing"' + (curVocal === 'backing' ? ' selected' : '') + '>Backing</option>'
@@ -11073,7 +11073,7 @@ function _showBackupPlayerModal(existing) {
             + '<select data-role-strength="' + r.id + '" style="margin-left:auto;font-size:0.78em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:3px;color:var(--text-dim)">'
             + '<option value="confident"' + (ns === 'confident' ? ' selected' : '') + '>Confident</option>'
             + '<option value="can_sub"' + (ns === 'can_sub' ? ' selected' : '') + '>Can Sub</option>'
-            + '</select></label>';
+            + '</select></span>';
     }).join('');
 
     var modal = document.createElement('div');
@@ -11081,18 +11081,18 @@ function _showBackupPlayerModal(existing) {
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
     modal.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:420px;width:100%;color:var(--text)">'
         + '<h3 style="margin:0 0 12px">' + (existing ? 'Edit' : 'Add') + ' Backup Player</h3>'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Name</label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Name</span>'
         + '<input id="bpName" value="' + (p.name || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Phone</label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Phone</span>'
         + '<input id="bpPhone" value="' + (p.phone || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box" placeholder="555-123-4567">'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Email</label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Email</span>'
         + '<input id="bpEmail" value="' + (p.email || '') + '" class="app-input" style="width:100%;margin-bottom:8px;box-sizing:border-box">'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Notes</label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Notes</span>'
         + '<input id="bpNotes" value="' + (p.notes || '').replace(/"/g, '&quot;') + '" class="app-input" style="width:100%;margin-bottom:10px;box-sizing:border-box" placeholder="e.g. available weekends only">'
-        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:2px">Roles They Can Cover <span style="font-weight:400;color:var(--text-dim)">(* = critical for your band)</span></label>'
+        + '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:2px">Roles They Can Cover <span style="font-weight:400;color:var(--text-dim)">(* = critical for your band)</span></span>'
         + '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:6px">How well can they cover this role? <strong style="color:#22c55e">Confident</strong> = can perform reliably in a gig. <strong style="color:#f59e0b">Can Sub</strong> = can step in if needed but not primary strength.</div>'
         + '<div id="bpRoleChecks" style="margin-bottom:10px">' + roleCheckboxes + '</div>'
-        + '<label style="display:flex;align-items:center;gap:6px;font-size:0.82em;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="bpActive"' + (p.active !== false ? ' checked' : '') + ' style="accent-color:var(--accent)"> Active</label>'
+        + '<label style="display:flex;align-items:center;gap:6px;font-size:0.82em;margin-bottom:12px;cursor:pointer"><input type="checkbox" id="bpActive"' + (p.active !== false ? ' checked' : '') + ' style="accent-color:var(--accent)"> Active</span>'
         + '<div style="display:flex;gap:8px">'
         + '<button id="bpSaveBtn" onclick="_saveBackupPlayer(' + (existing ? "'" + p.id + "'" : 'null') + ')" class="btn btn-primary" style="flex:1">Save</button>'
         + '<button onclick="document.getElementById(\'bpModal\').remove()" class="btn btn-ghost">Cancel</button>'
@@ -11269,9 +11269,9 @@ function showCreateBandModal() {
         + '</div>'
         // Step 1: Band Name + Type
         + '<div id="cbStep1">'
-        +   '<label class="form-label" style="margin-bottom:6px;display:block">Band Name</label>'
+        +   '<span class="form-label" style="margin-bottom:6px;display:block">Band Name</span>'
         +   '<input id="cbName" class="app-input" placeholder="e.g. The Groove Machine" style="width:100%;margin-bottom:16px" autocomplete="off">'
-        +   '<label class="form-label" style="margin-bottom:8px;display:block">What kind of band?</label>'
+        +   '<label class="form-label" style="margin-bottom:8px;display:block">What kind of band?</span>'
         +   '<div id="cbTypeGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">' + _cbRenderTypes() + '</div>'
         +   '<button class="btn btn-primary" onclick="_cbGoStep2()" style="width:100%;padding:14px;font-size:1em;font-weight:700" id="cbStep1Btn" disabled>Next →</button>'
         + '</div>'
@@ -11287,9 +11287,9 @@ function showCreateBandModal() {
         + '</div>'
         // Step 3: Your Info
         + '<div id="cbStep3Info" style="display:none">'
-        +   '<label class="form-label" style="margin-bottom:6px;display:block">Your Name</label>'
+        +   '<span class="form-label" style="margin-bottom:6px;display:block">Your Name</span>'
         +   '<input id="cbOwnerName" class="app-input" placeholder="Your first name" style="width:100%;margin-bottom:10px" autocomplete="off">'
-        +   '<label class="form-label" style="margin-bottom:6px;display:block">Your Role</label>'
+        +   '<span class="form-label" style="margin-bottom:6px;display:block">Your Role</span>'
         +   '<input id="cbOwnerRole" class="app-input" placeholder="e.g. Guitar, Vocals, Drums" style="width:100%;margin-bottom:20px" autocomplete="off">'
         +   '<div style="display:flex;gap:8px">'
         +     '<button class="btn btn-ghost" onclick="_cbBackStep2()" style="flex:1;padding:12px;font-size:0.9em">← Back</button>'
@@ -11352,7 +11352,7 @@ function _cbGoStep2() {
     }
 
     var typeLabel = (_CB_BAND_TYPES.find(function(t) { return t.id === _cbSelectedType; }) || {}).label || '';
-    document.getElementById('cbSubtypeHeader').innerHTML = '<label class="form-label" style="margin-bottom:4px;display:block">What does your ' + typeLabel.toLowerCase() + ' focus on?</label>';
+    document.getElementById('cbSubtypeHeader').innerHTML = '<label class="form-label" style="margin-bottom:4px;display:block">What does your ' + typeLabel.toLowerCase() + ' focus on?</span>';
 
     document.getElementById('cbSubtypeGrid').innerHTML = subs.map(function(s) {
         return '<button onclick="_cbToggleSubtype(\'' + s.id + '\',this)" data-sub="' + s.id + '" style="padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s;font-weight:600;font-size:0.85em;color:var(--text);text-align:left">'
@@ -11980,9 +11980,9 @@ function showJoinBandForm(slug, bandName) {
     overlay.innerHTML = '<div style="background:var(--card-bg,#1a2340);border:1px solid var(--border);border-radius:16px;width:100%;max-width:400px;padding:24px">' +
         '<h2 style="margin:0 0 8px 0;font-size:1.15em">Join ' + bandName + '</h2>' +
         '<p style="color:var(--text-muted);font-size:0.88em;margin-bottom:16px">Tell us who you are:</p>' +
-        '<label class="form-label" style="display:block;margin-bottom:4px">Your Name</label>' +
+        '<label class="form-label" style="display:block;margin-bottom:4px">Your Name</span>' +
         '<input id="jbName" class="app-input" placeholder="First name" style="width:100%;margin-bottom:12px" autocomplete="off">' +
-        '<label class="form-label" style="display:block;margin-bottom:4px">Your Role</label>' +
+        '<label class="form-label" style="display:block;margin-bottom:4px">Your Role</span>' +
         '<input id="jbRole" class="app-input" placeholder="e.g. Guitar, Bass, Drums" style="width:100%;margin-bottom:16px" autocomplete="off">' +
         '<button class="btn btn-primary" onclick="confirmJoinBand(\'' + slug + '\')" style="width:100%;padding:12px;font-weight:700">Join Band</button>' +
         '<button onclick="document.getElementById(\'joinBandOverlay\').remove()" class="btn btn-ghost" style="width:100%;margin-top:8px">Cancel</button>' +
@@ -12040,10 +12040,10 @@ function equipFormHtml(item) {
     var it = item || {};
     return '<div class="form-grid">' + [['Name','eqN',it.name||'',''],['Category','eqC',it.category||'other','select:amp,guitar,pedal,mic,cable,pa,drum,keys,other'],['Brand','eqB',it.brand||'',''],['Model','eqM',it.model||'',''],['Owner','eqO',it.owner||'','members'],['Serial #','eqS',it.serial||'',''],['Manual URL','eqU',it.manualUrl||'',''],['Value ($)','eqV',it.value||'','number'],['Photo URL','eqP',it.photoUrl||'','']].map(function(f) {
         var l=f[0], id=f[1], val=f[2], t=f[3];
-        if(t==='members') return '<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'"><option value="">Shared</option>'+Object.entries(bandMembers).map(function(e){return'<option value="'+e[0]+'"'+(val===e[0]?' selected':'')+'>'+e[1].name+'</option>';}).join('')+'</select></div>';
-        if(t.startsWith('select:')) return '<div class="form-row"><label class="form-label">'+l+'</label><select class="app-select" id="'+id+'">'+t.slice(7).split(',').map(function(v){return'<option value="'+v+'"'+(val===v?' selected':'')+'>'+v+'</option>';}).join('')+'</select></div>';
-        return '<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" '+(t==='number'?'type="number"':'')+' placeholder="'+l+'" value="'+(val||'').replace(/"/g,'&quot;')+'"></div>';
-    }).join('') + '</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="eqNotes">' + (it.notes || '') + '</textarea></div>' +
+        if(t==='members') return '<div class="form-row"><span class="form-label">'+l+'</span><select class="app-select" id="'+id+'"><option value="">Shared</option>'+Object.entries(bandMembers).map(function(e){return'<option value="'+e[0]+'"'+(val===e[0]?' selected':'')+'>'+e[1].name+'</option>';}).join('')+'</select></div>';
+        if(t.startsWith('select:')) return '<div class="form-row"><span class="form-label">'+l+'</span><select class="app-select" id="'+id+'">'+t.slice(7).split(',').map(function(v){return'<option value="'+v+'"'+(val===v?' selected':'')+'>'+v+'</option>';}).join('')+'</select></div>';
+        return '<div class="form-row"><span class="form-label">'+l+'</span><input class="app-input" id="'+id+'" '+(t==='number'?'type="number"':'')+' placeholder="'+l+'" value="'+(val||'').replace(/"/g,'&quot;')+'"></div>';
+    }).join('') + '</div><div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="eqNotes">' + (it.notes || '') + '</textarea></div>' +
     '<div style="margin-top:6px;display:flex;align-items:center;gap:8px">' +
     '<button type="button" onclick="equipPickPhoto()" class="btn btn-ghost btn-sm" style="font-size:0.78em">📸 Take/Choose Photo</button>' +
     '<span id="eqPhotoPreview">' + (it.photoUrl ? '<img src="' + it.photoUrl + '" style="width:40px;height:40px;border-radius:6px;object-fit:cover">' : '') + '</span>' +
@@ -12139,9 +12139,9 @@ function equipPickPhoto() {
 // ---- CONTACTS (#27) ----
 function renderContactsPage(el){el.innerHTML=`<div class="page-header"><h1>👥 Contacts</h1><p>Booking agents, sound engineers, venue contacts</p></div><button class="btn btn-primary" onclick="addContact()" style="margin-bottom:12px">+ Add Contact</button><div id="ctList"></div>`;loadContacts();}
 async function loadContacts(){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const el=document.getElementById('ctList');if(!el)return;if(!d.length){el.innerHTML='<div class="app-card" style="text-align:center;color:var(--text-dim);padding:40px">No contacts yet.</div>';return;}el.innerHTML=d.map((c,i)=>`<div class="list-item" style="padding:10px 12px"><div style="flex:1"><div style="font-weight:600;font-size:0.9em">${c.firstName||''} ${c.lastName||''}</div><div style="font-size:0.78em;color:var(--text-muted)">${c.title||''} ${c.company?'@ '+c.company:''}</div></div><div style="display:flex;gap:10px;font-size:0.8em;color:var(--text-muted);flex-wrap:wrap">${c.email?'<span>📧 '+c.email+'</span>':''}${c.cell?'<span>📱 '+c.cell+'</span>':''}</div><div style="display:flex;gap:4px;flex-shrink:0"><button onclick="editContact(${i})" class="btn btn-sm btn-ghost">✏️</button><button onclick="deleteContact(${i})" class="btn btn-sm btn-ghost" style="color:#ef4444">🗑️</button></div></div>`).join('');}
-function addContact(){const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Add Contact</h3><div class="form-grid">${[['First Name','ctF'],['Last Name','ctL'],['Email','ctE'],['Cell','ctP'],['Title','ctT'],['Company/Venue','ctC']].map(([l,id])=>'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'"></div>').join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="ctN"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCt()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
+function addContact(){const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Add Contact</h3><div class="form-grid">${[['First Name','ctF'],['Last Name','ctL'],['Email','ctE'],['Cell','ctP'],['Title','ctT'],['Company/Venue','ctC']].map(([l,id])=>'<div class="form-row"><span class="form-label">'+l+'</span><input class="app-input" id="'+id+'"></div>').join('')}</div><div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="ctN"></textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCt()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
 async function saveCt(){const c={firstName:document.getElementById('ctF')?.value,lastName:document.getElementById('ctL')?.value,email:document.getElementById('ctE')?.value,cell:document.getElementById('ctP')?.value,title:document.getElementById('ctT')?.value,company:document.getElementById('ctC')?.value,notes:document.getElementById('ctN')?.value};if(!c.firstName&&!c.lastName){alert('Name required');return;}const ex=toArray(await loadBandDataFromDrive('_band','contacts')||[]);ex.push(c);await saveBandDataToDrive('_band','contacts',ex);alert('✅ Saved!');loadContacts();}
-async function editContact(idx){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const c=d[idx];if(!c)return;const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Edit Contact</h3><div class="form-grid">${[['First Name','ctF',c.firstName],['Last Name','ctL',c.lastName],['Email','ctE',c.email],['Cell','ctP',c.cell],['Title','ctT',c.title],['Company/Venue','ctC',c.company]].map(([l,id,v])=>'<div class="form-row"><label class="form-label">'+l+'</label><input class="app-input" id="'+id+'" value="'+(v||'').replace(/"/g,'&quot;')+ '">\</div>').join('')}</div><div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="ctN">${c.notes||''}</textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCtEdit()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
+async function editContact(idx){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);const c=d[idx];if(!c)return;const el=document.getElementById('ctList');el.innerHTML=`<div class="app-card"><h3>Edit Contact</h3><div class="form-grid">${[['First Name','ctF',c.firstName],['Last Name','ctL',c.lastName],['Email','ctE',c.email],['Cell','ctP',c.cell],['Title','ctT',c.title],['Company/Venue','ctC',c.company]].map(([l,id,v])=>'<div class="form-row"><span class="form-label">'+l+'</span><input class="app-input" id="'+id+'" value="'+(v||'').replace(/"/g,'&quot;')+ '">\</div>').join('')}</div><div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="ctN">${c.notes||''}</textarea></div><div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveCtEdit()">💾 Save</button><button class="btn btn-ghost" onclick="loadContacts()">Cancel</button></div></div>`+el.innerHTML;}
 async function saveCtEdit(idx){const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);d[idx]={...d[idx],firstName:document.getElementById('ctF')?.value,lastName:document.getElementById('ctL')?.value,email:document.getElementById('ctE')?.value,cell:document.getElementById('ctP')?.value,title:document.getElementById('ctT')?.value,company:document.getElementById('ctC')?.value,notes:document.getElementById('ctN')?.value};await saveBandDataToDrive('_band','contacts',d);showToast('✅ Contact updated!');loadContacts();}
 async function deleteContact(idx){if(!confirm('Delete this contact?'))return;const d=toArray(await loadBandDataFromDrive('_band','contacts')||[]);d.splice(idx,1);await saveBandDataToDrive('_band','contacts',d);showToast('🗑️ Contact deleted');loadContacts();}
 
@@ -12165,9 +12165,9 @@ function moisesAddYouTube() {
     container.innerHTML = `
     <div class="app-card" style="background:rgba(255,255,255,0.03)">
         <h4 style="color:var(--accent-light);margin-bottom:10px">📺 Add YouTube Link for Stem Separation</h4>
-        <div class="form-row"><label class="form-label">YouTube URL</label>
+        <div class="form-row"><span class="form-label">YouTube URL</span>
             <input class="app-input" id="moisesYTUrl" placeholder="https://youtube.com/watch?v=..."></div>
-        <div class="form-row"><label class="form-label">Version Description</label>
+        <div class="form-row"><span class="form-label">Version Description</span>
             <input class="app-input" id="moisesYTDesc" placeholder="e.g. Grateful Dead 5/8/77 Cornell"></div>
         <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
             <b>Workflow:</b> Copy the YouTube link → Go to <a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">moises.ai</a> → 
@@ -12207,11 +12207,11 @@ function moisesShowSplitter() {
         <p style="font-size:0.85em;color:var(--text-muted);margin-bottom:12px">
             Moises.ai has a <b>20-minute limit</b>. If you have a full show recording, you need to split it into sections first.
         </p>
-        <div class="form-row"><label class="form-label">Source URL or File</label>
+        <div class="form-row"><span class="form-label">Source URL or File</span>
             <input class="app-input" id="splitterSource" placeholder="YouTube URL or archive.org link"></div>
-        <div class="form-row"><label class="form-label">Song start time</label>
+        <div class="form-row"><span class="form-label">Song start time</span>
             <input class="app-input" id="splitterStart" placeholder="e.g. 45:30 (minutes:seconds)"></div>
-        <div class="form-row"><label class="form-label">Song end time</label>
+        <div class="form-row"><span class="form-label">Song end time</span>
             <input class="app-input" id="splitterEnd" placeholder="e.g. 52:15"></div>
         <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
             <b>How to split:</b><br>
@@ -12901,20 +12901,20 @@ async function plRenderEditor(pl) {
         <!-- Metadata -->
         <div class="form-grid" style="margin-bottom:12px">
             <div class="form-row">
-                <label class="form-label">Name</label>
+                <span class="form-label">Name</span>
                 <input class="app-input" id="plEdName" placeholder="e.g. Pre-Gig Prep — March 1st" value="${(pl?.name || '').replace(/"/g,'&quot;')}">
             </div>
             <div class="form-row">
-                <label class="form-label">Type</label>
+                <span class="form-label">Type</span>
                 <select class="app-select" id="plEdType">${typeOptions}</select>
             </div>
         </div>
         <div class="form-row" style="margin-bottom:12px">
-            <label class="form-label">Description</label>
+            <span class="form-label">Description</span>
             <input class="app-input" id="plEdDesc" placeholder="Optional — what's this playlist for?" value="${(pl?.description || '').replace(/"/g,'&quot;')}">
         </div>
         <div class="form-row" style="margin-bottom:16px">
-            <label class="form-label">🔗 Link to Setlist (optional — songs will live-sync)</label>
+            <span class="form-label">🔗 Link to Setlist (optional — songs will live-sync)</span>
             <select class="app-select" id="plEdSetlist" onchange="plHandleSetlistLink(this.value)">${setlistOptions}</select>
         </div>
 

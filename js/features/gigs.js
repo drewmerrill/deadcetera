@@ -66,25 +66,25 @@ async function editGig(idx) {
         <h3>🎤 Edit Gig</h3>
         <div class="form-grid">
             <div class="form-row" style="grid-column:1/-1">
-                <label class="form-label">Venue</label>
+                <span class="form-label">Venue</span>
                 <div id="gigVenuePicker"></div>
             </div>
-            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date" value="${g.date||''}"></div>
-            <div class="form-row"><label class="form-label">Pay / Guarantee</label><input class="app-input" id="gigPay" value="${(g.pay||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Arrival Time</label><input class="app-input" id="gigArrival" type="time" value="${g.arrivalTime||''}"></div>
-            <div class="form-row"><label class="form-label">Soundcheck Time</label><input class="app-input" id="gigSoundcheck" type="time" value="${g.soundcheckTime||''}"></div>
-            <div class="form-row"><label class="form-label">Start Time</label><input class="app-input" id="gigStartTime" type="time" value="${g.startTime||''}"></div>
-            <div class="form-row"><label class="form-label">End Time</label><input class="app-input" id="gigEndTime" type="time" value="${g.endTime||''}"></div>
-            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" value="${(g.soundPerson||'').replace(/"/g,'&quot;')}"></div>
-            <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="gigContact" value="${(g.contact||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="gigDate" type="date" value="${g.date||''}"></div>
+            <div class="form-row"><span class="form-label">Pay / Guarantee</span><input class="app-input" id="gigPay" value="${(g.pay||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Arrival Time</span><input class="app-input" id="gigArrival" type="time" value="${g.arrivalTime||''}"></div>
+            <div class="form-row"><span class="form-label">Soundcheck Time</span><input class="app-input" id="gigSoundcheck" type="time" value="${g.soundcheckTime||''}"></div>
+            <div class="form-row"><span class="form-label">Start Time</span><input class="app-input" id="gigStartTime" type="time" value="${g.startTime||''}"></div>
+            <div class="form-row"><span class="form-label">End Time</span><input class="app-input" id="gigEndTime" type="time" value="${g.endTime||''}"></div>
+            <div class="form-row"><span class="form-label">Sound Person</span><input class="app-input" id="gigSound" value="${(g.soundPerson||'').replace(/"/g,'&quot;')}"></div>
+            <div class="form-row"><span class="form-label">Venue Contact</span><input class="app-input" id="gigContact" value="${(g.contact||'').replace(/"/g,'&quot;')}"></div>
         </div>
-        <div class="form-row" style="margin-top:10px"><label class="form-label">📋 Linked Setlist</label>
+        <div class="form-row" style="margin-top:10px"><span class="form-label">📋 Linked Setlist</span>
             <select class="app-select" id="gigLinkedSetlist">
                 <option value="">-- None --</option>
                 ${(window._cachedSetlists||[]).map(sl => `<option value="${sl.setlistId||''}" ${sl.setlistId&&g.setlistId===sl.setlistId?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
             </select>
         </div>
-        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
+        <div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="gigNotes">${g.notes||''}</textarea></div>
         <div style="display:flex;gap:8px">
             <button class="btn btn-success" onclick="saveGigEdit(${idx})">💾 Save</button>
             <button class="btn btn-ghost" onclick="loadGigs()">Cancel</button>
@@ -486,26 +486,26 @@ async function addGig() {
         <h3>🎤 Add New Gig</h3>
         <div class="form-grid">
             <div class="form-row" style="grid-column:1/-1">
-                <label class="form-label">Venue</label>
+                <span class="form-label">Venue</span>
                 <div id="gigVenuePicker"></div>
             </div>
-            <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="gigDate" type="date"></div>
-            <div class="form-row"><label class="form-label">Pay / Guarantee</label><input class="app-input" id="gigPay" placeholder="e.g. $500 + tips"></div>
-            <div class="form-row"><label class="form-label">Arrival Time</label><input class="app-input" id="gigArrival" type="time"></div>
-            <div class="form-row"><label class="form-label">Soundcheck Time</label><input class="app-input" id="gigSoundcheck" type="time"></div>
-            <div class="form-row"><label class="form-label">Start Time</label><input class="app-input" id="gigStartTime" type="time"></div>
-            <div class="form-row"><label class="form-label">End Time</label><input class="app-input" id="gigEndTime" type="time"></div>
-            <div class="form-row"><label class="form-label">Sound Person</label><input class="app-input" id="gigSound" placeholder="Who's doing sound?"></div>
-            <div class="form-row"><label class="form-label">Venue Contact</label><input class="app-input" id="gigContact" placeholder="Booking contact name"></div>
+            <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="gigDate" type="date"></div>
+            <div class="form-row"><span class="form-label">Pay / Guarantee</span><input class="app-input" id="gigPay" placeholder="e.g. $500 + tips"></div>
+            <div class="form-row"><span class="form-label">Arrival Time</span><input class="app-input" id="gigArrival" type="time"></div>
+            <div class="form-row"><span class="form-label">Soundcheck Time</span><input class="app-input" id="gigSoundcheck" type="time"></div>
+            <div class="form-row"><span class="form-label">Start Time</span><input class="app-input" id="gigStartTime" type="time"></div>
+            <div class="form-row"><span class="form-label">End Time</span><input class="app-input" id="gigEndTime" type="time"></div>
+            <div class="form-row"><span class="form-label">Sound Person</span><input class="app-input" id="gigSound" placeholder="Who's doing sound?"></div>
+            <div class="form-row"><span class="form-label">Venue Contact</span><input class="app-input" id="gigContact" placeholder="Booking contact name"></div>
         </div>
         </div>
-        <div class="form-row" style="margin-top:10px"><label class="form-label">📋 Linked Setlist</label>
+        <div class="form-row" style="margin-top:10px"><span class="form-label">📋 Linked Setlist</span>
             <select class="app-select" id="gigLinkedSetlist">
                 <option value="">-- None --</option>
                 ${(window._cachedSetlists||[]).map(sl => `<option value="${sl.setlistId||(sl.name||'').replace(/"/g,'&quot;')}">${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`).join('')}
             </select>
         </div>
-        <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="gigNotes" placeholder="Parking, load-in door, set length, gear needed…"></textarea></div>
+        <div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="gigNotes" placeholder="Parking, load-in door, set length, gear needed…"></textarea></div>
         <div style="display:flex;gap:8px"><button class="btn btn-success" onclick="saveGig()">💾 Save</button><button class="btn btn-ghost" onclick="loadGigs()">Cancel</button></div>
     </div>` + el.innerHTML;
     _gigInitVenuePicker(venues, null);
@@ -1149,7 +1149,7 @@ async function loadGigPayouts(gigIdx) {
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">'
         + '<h3 style="flex:1;margin:0">\uD83D\uDCB0 Payout \u2014 '+(gig.venue||'Gig')+'</h3>'
         + '<button class="btn btn-sm btn-ghost" onclick="loadGigs()">\u2715 Close</button></div>'
-        + '<div class="form-row" style="margin-bottom:10px"><label class="form-label">Guarantee / Door ($)</label>'
+        + '<div class="form-row" style="margin-bottom:10px"><span class="form-label">Guarantee / Door ($)</span>'
         + '<input class="app-input" id="gpGuarantee" type="number" min="0" step="0.01" value="'+guarantee+'" placeholder="0.00"></div>'
         + '<div style="margin-bottom:10px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
         + '<label class="form-label" style="margin:0">Expenses</label>'

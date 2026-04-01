@@ -427,13 +427,13 @@ function _pmShowEditor() {
         '<div class="app-card" style="margin-top:16px;border:1px solid rgba(102,126,234,0.3)">'+
         '<div style="font-weight:700;font-size:0.9em;margin-bottom:12px">'+(_pmEditingMix.id?'✏️ Edit Mix':'➕ New Mix')+'</div>'+
 
-        '<label style="display:block;margin-bottom:10px">'+
+        '<span style="display:block;margin-bottom:10px">'+
         '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Mix Name</div>'+
         '<input type="text" id="pm-mix-title" value="'+_pmEsc(_pmEditingMix.title||'')+'" placeholder="e.g. Pre-Rehearsal Brush-Up" '+
         'style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px 10px;font-size:0.88em;font-family:inherit" '+
         'onclick="event.stopPropagation()"></label>'+
 
-        '<label style="display:block;margin-bottom:12px">'+
+        '<span style="display:block;margin-bottom:12px">'+
         '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Type</div>'+
         '<select id="pm-mix-type" class="app-select" style="font-size:0.88em">'+typeOpts+'</select>'+
         '</label>'+

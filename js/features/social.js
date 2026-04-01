@@ -122,7 +122,7 @@ function socialEditProfiles() {
         area.innerHTML = `<h3 style="margin-bottom:12px">✏️ Edit Profile Links</h3>
         <div class="form-grid">
             ${platforms.map(p=>`<div class="form-row">
-                <label class="form-label">${icons[p]} ${p.charAt(0).toUpperCase()+p.slice(1)}</label>
+                <span class="form-label">${icons[p]} ${p.charAt(0).toUpperCase()+p.slice(1)}</span>
                 <input class="app-input" id="sp_${p}" placeholder="@handle or full URL" value="${profiles[p]||''}">
             </div>`).join('')}
         </div>
@@ -186,22 +186,22 @@ function socialAddPost(editIdx) {
     const ev = isEdit ? (_socialPosts[editIdx]||{}) : {};
     area.innerHTML = `<h3 style="margin-bottom:12px">${isEdit?'✏️ Edit Post':'📝 Draft New Post'}</h3>
     <div class="form-grid">
-        <div class="form-row"><label class="form-label">Title / Internal Name</label><input class="app-input" id="sp_title" placeholder="e.g. Post-gig recap Sat 3/1" value="${ev.title||''}"></div>
-        <div class="form-row"><label class="form-label">Platform</label><select class="app-select" id="sp_platform">
+        <div class="form-row"><span class="form-label">Title / Internal Name</span><input class="app-input" id="sp_title" placeholder="e.g. Post-gig recap Sat 3/1" value="${ev.title||''}"></div>
+        <div class="form-row"><span class="form-label">Platform</span><select class="app-select" id="sp_platform">
             ${[['all','📣 All Platforms'],['instagram','📸 Instagram'],['tiktok','🎵 TikTok'],['facebook','👥 Facebook'],['youtube','▶️ YouTube'],['twitter','🐦 X / Twitter']].map(([v,l])=>`<option value="${v}" ${(ev.platform||'all')===v?'selected':''}>${l}</option>`).join('')}
         </select></div>
-        <div class="form-row"><label class="form-label">Status</label><select class="app-select" id="sp_status">
+        <div class="form-row"><span class="form-label">Status</span><select class="app-select" id="sp_status">
             <option value="draft" ${(ev.status||'draft')==='draft'?'selected':''}>✏️ Draft</option>
             <option value="ready" ${ev.status==='ready'?'selected':''}>✅ Ready to Post</option>
             <option value="posted" ${ev.status==='posted'?'selected':''}>📤 Posted</option>
         </select></div>
-        <div class="form-row"><label class="form-label">Scheduled Date (optional)</label><input class="app-input" id="sp_date" type="date" value="${ev.scheduledDate||''}"></div>
+        <div class="form-row"><span class="form-label">Scheduled Date (optional)</span><input class="app-input" id="sp_date" type="date" value="${ev.scheduledDate||''}"></div>
     </div>
-    <div class="form-row" style="margin-top:8px"><label class="form-label">Caption / Copy</label>
+    <div class="form-row" style="margin-top:8px"><span class="form-label">Caption / Copy</span>
         <textarea class="app-textarea" id="sp_caption" placeholder="Write your post caption here…
 Hashtags, emojis, links — the whole thing." style="height:100px;white-space:pre-wrap">${ev.caption||''}</textarea>
     </div>
-    <div class="form-row" style="margin-top:8px"><label class="form-label">Notes (internal only)</label>
+    <div class="form-row" style="margin-top:8px"><span class="form-label">Notes (internal only)</span>
         <input class="app-input" id="sp_notes" placeholder="e.g. Need photo from Jay" value="${ev.notes||''}">
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">

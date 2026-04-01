@@ -334,7 +334,7 @@ async function renderNotificationsPage(el) {
         <h3 style="margin-bottom:6px">📋 Share Practice Plan</h3>
         <p style="color:var(--text-dim);font-size:0.85em;margin-bottom:14px">Send a rehearsal plan to the whole band</p>
         <div class="form-row" style="margin-bottom:12px">
-            <label class="form-label">Select Rehearsal</label>
+            <span class="form-label">Select Rehearsal</span>
             <select class="app-select" id="notifRehearsalPicker" style="width:100%">
                 <option value="">Loading...</option>
             </select>
@@ -519,13 +519,13 @@ function notifAddMember() {
             <h3 style="margin:0;color:var(--accent-light)">➕ Add Member</h3>
             <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
         </div>
-        <div class="form-row"><label class="form-label">Name *</label>
+        <div class="form-row"><span class="form-label">Name *</span>
             <input class="app-input" id="newMemberName" placeholder="e.g. Alex" autofocus></div>
-        <div class="form-row" style="margin-top:8px"><label class="form-label">Role / Instrument</label>
+        <div class="form-row" style="margin-top:8px"><span class="form-label">Role / Instrument</span>
             <input class="app-input" id="newMemberRole" placeholder="e.g. Keyboards"></div>
-        <div class="form-row" style="margin-top:8px"><label class="form-label">📞 Phone</label>
+        <div class="form-row" style="margin-top:8px"><span class="form-label">📞 Phone</span>
             <input class="app-input" id="newMemberPhone" type="tel" placeholder="+1 404 555 0123"></div>
-        <div class="form-row" style="margin-top:8px"><label class="form-label">✉️ Email</label>
+        <div class="form-row" style="margin-top:8px"><span class="form-label">✉️ Email</span>
             <input class="app-input" id="newMemberEmail" type="email" placeholder="alex@email.com"></div>
         <div style="display:flex;gap:8px;margin-top:16px">
             <button class="btn btn-primary" style="flex:1" onclick="notifConfirmAddMember()">Add Member</button>

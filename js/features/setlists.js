@@ -299,13 +299,13 @@ async function createNewSetlist() {
     container.innerHTML = `<div class="app-card"><h3>Build Your Set</h3>
         <div style="margin-bottom:12px">
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-                <div style="flex:2;min-width:150px"><label class="form-label">Set Name</label><input class="app-input" id="slName" value="" placeholder="e.g. GrizzFest 2026, Friday Rehearsal, Acoustic Set" title="Name your setlist by event, date, or theme"></div>
-                <div style="flex:1;min-width:120px"><label class="form-label">Date</label><input class="app-input" id="slDate" type="date" value="${_today}" style="color-scheme:dark"></div>
+                <div style="flex:2;min-width:150px"><span class="form-label">Set Name</span><input class="app-input" id="slName" value="" placeholder="e.g. GrizzFest 2026, Friday Rehearsal, Acoustic Set" title="Name your setlist by event, date, or theme"></div>
+                <div style="flex:1;min-width:120px"><span class="form-label">Date</span><input class="app-input" id="slDate" type="date" value="${_today}" style="color-scheme:dark"></div>
             </div>
             <details style="font-size:0.82em;color:var(--text-dim)"><summary style="cursor:pointer;padding:4px 0">More options</summary>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-                    <div style="flex:1;min-width:120px"><label class="form-label">Venue</label><div id="slVenuePicker"></div></div>
-                    <div style="flex:1;min-width:120px"><label class="form-label">Notes</label><input class="app-input" id="slNotes" placeholder="e.g. Theme, special requests..." title="Notes saved with this setlist"></div>
+                    <div style="flex:1;min-width:120px"><span class="form-label">Venue</span><div id="slVenuePicker"></div></div>
+                    <div style="flex:1;min-width:120px"><span class="form-label">Notes</span><input class="app-input" id="slNotes" placeholder="e.g. Theme, special requests..." title="Notes saved with this setlist"></div>
                 </div>
             </details>
         </div>

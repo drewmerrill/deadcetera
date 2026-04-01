@@ -1077,11 +1077,11 @@ function calBlockDates() {
     var memberOpts = Object.entries(bandMembers).map(function(e) { return '<option value="'+e[1].name+'" data-key="'+e[0]+'">'+e[1].name+'</option>'; }).join('');
     area.innerHTML = '<h3 style="font-size:0.9em;color:var(--red);margin-bottom:12px">🚫 Add Conflict</h3>'
         + '<div class="form-grid">'
-        + '<div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date"></div>'
-        + '<div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date"></div>'
-        + '<div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">' + memberOpts + '</select></div>'
-        + '<div class="form-row"><label class="form-label">Type</label><select class="app-select" id="blockStatus">' + statusOpts + '</select></div>'
-        + '<div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>'
+        + '<div class="form-row"><span class="form-label">Start Date</span><input class="app-input" id="blockStart" type="date"></div>'
+        + '<div class="form-row"><span class="form-label">End Date</span><input class="app-input" id="blockEnd" type="date"></div>'
+        + '<div class="form-row"><span class="form-label">Who</span><select class="app-select" id="blockPerson">' + memberOpts + '</select></div>'
+        + '<div class="form-row"><span class="form-label">Type</span><select class="app-select" id="blockStatus">' + statusOpts + '</select></div>'
+        + '<div class="form-row"><span class="form-label">Reason</span><input class="app-input" id="blockReason" placeholder="e.g. Family vacation"></div>'
         + '</div>'
         + '<div style="display:flex;gap:8px;margin-top:8px">'
         + '<button class="btn btn-danger" onclick="saveBlockedDates()">🚫 Save Conflict</button>'
@@ -1176,10 +1176,10 @@ async function calEditBlocked(idx) {
     if (!area) return;
     area.innerHTML = `<h3 style="font-size:0.9em;color:var(--red);margin-bottom:12px">✏️ Edit Blocked Dates</h3>
     <div class="form-grid">
-        <div class="form-row"><label class="form-label">Start Date</label><input class="app-input" id="blockStart" type="date" value="${b.startDate||''}"></div>
-        <div class="form-row"><label class="form-label">End Date</label><input class="app-input" id="blockEnd" type="date" value="${b.endDate||''}"></div>
-        <div class="form-row"><label class="form-label">Who</label><select class="app-select" id="blockPerson">${Object.entries(bandMembers).map(([k,m])=>`<option value="${m.name}" ${m.name===b.person?'selected':''}>${m.name}</option>`).join('')}</select></div>
-        <div class="form-row"><label class="form-label">Reason</label><input class="app-input" id="blockReason" placeholder="e.g. Family vacation" value="${b.reason||''}"></div>
+        <div class="form-row"><span class="form-label">Start Date</span><input class="app-input" id="blockStart" type="date" value="${b.startDate||''}"></div>
+        <div class="form-row"><span class="form-label">End Date</span><input class="app-input" id="blockEnd" type="date" value="${b.endDate||''}"></div>
+        <div class="form-row"><span class="form-label">Who</span><select class="app-select" id="blockPerson">${Object.entries(bandMembers).map(([k,m])=>`<option value="${m.name}" ${m.name===b.person?'selected':''}>${m.name}</option>`).join('')}</select></div>
+        <div class="form-row"><span class="form-label">Reason</span><input class="app-input" id="blockReason" placeholder="e.g. Family vacation" value="${b.reason||''}"></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn btn-danger" onclick="saveBlockedDatesEdit(${idx})">💾 Update</button>
@@ -1432,22 +1432,22 @@ async function calAddEvent(date, editIdx, existing) {
     area.innerHTML = `<h3 style="margin-bottom:12px;font-size:0.95em">${isEdit?'\u270f\ufe0f Edit Event':'\u2795 Add Event'}</h3>
     ${isRecurringEdit ? '<div style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:0.82em;color:var(--accent-light)">\uD83D\uDD04 Editing this recurring event updates all future occurrences.</div>' : ''}
     <div class="form-grid">
-        <div class="form-row"><label class="form-label">Type</label><select class="app-select" id="calType" onchange="calTypeChanged(this)">
+        <div class="form-row"><span class="form-label">Type</span><select class="app-select" id="calType" onchange="calTypeChanged(this)">
             <option value="rehearsal" ${(ev.type||'rehearsal')==='rehearsal'?'selected':''}>\uD83C\uDFB8 Rehearsal</option>
             <option value="gig" ${ev.type==='gig'?'selected':''}>\uD83C\uDFA4 Gig</option>
             <option value="meeting" ${ev.type==='meeting'?'selected':''}>\uD83D\uDC65 Meeting</option>
             <option value="other" ${ev.type==='other'?'selected':''}>\uD83D\uDCCC Other</option>
             <option value="_conflict">\uD83D\uDEAB Conflict / Blocked</option>
         </select></div>
-        <div class="form-row"><label class="form-label">Title</label><input class="app-input" id="calTitle" placeholder="${_titlePlaceholder}" value="${ev.title||''}"></div>
-        <div class="form-row"><label class="form-label">Date</label><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark"></div>
-        <div class="form-row"><label class="form-label">Time</label><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark"></div>
+        <div class="form-row"><span class="form-label">Title</span><input class="app-input" id="calTitle" placeholder="${_titlePlaceholder}" value="${ev.title||''}"></div>
+        <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark"></div>
+        <div class="form-row"><span class="form-label">Time</span><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark"></div>
         <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
-            <label class="form-label">Venue</label>
+            <span class="form-label">Venue</span>
             <div id="calVenuePicker"></div>
         </div>
         <div class="form-row calRehearsalOnly" id="calLocationRow" style="${showLocation?'':'display:none'}">
-            <label class="form-label">Rehearsal Location</label>
+            <span class="form-label">Rehearsal Location</span>
             <select class="app-select" id="calLocationSelect" onchange="_calLocationChanged(this)">
                 <option value="">-- Select Location --</option>
                 ${_locOpts}
@@ -1462,17 +1462,17 @@ async function calAddEvent(date, editIdx, existing) {
             </div>
         </div>
         <div class="form-row" id="calVirtualRow" style="${ev.meetingLink?'':'display:none'}">
-            <label class="form-label">Meeting Link</label>
+            <span class="form-label">Meeting Link</span>
             <input class="app-input" id="calMeetingLink" placeholder="Zoom, Google Meet, etc." value="${ev.meetingLink||''}">
         </div>
-        <div class="form-row"><label class="form-label">Repeat</label><select class="app-select" id="calRepeat" onchange="var er=document.getElementById('calRepeatEndRow');if(er)er.style.display=this.value==='none'?'none':''">
+        <div class="form-row"><span class="form-label">Repeat</span><select class="app-select" id="calRepeat" onchange="var er=document.getElementById('calRepeatEndRow');if(er)er.style.display=this.value==='none'?'none':''">
             <option value="none" ${repeatVal==='none'?'selected':''}>None</option>
             <option value="weekly" ${repeatVal==='weekly'?'selected':''}>Weekly</option>
             <option value="biweekly" ${repeatVal==='biweekly'?'selected':''}>Every 2 Weeks</option>
             <option value="monthly" ${repeatVal==='monthly'?'selected':''}>Monthly</option>
         </select></div>
         <div class="form-row" id="calRepeatEndRow" style="${repeatVal==='none'?'display:none':''}">
-            <label class="form-label">Ends</label>
+            <span class="form-label">Ends</span>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <select class="app-select" id="calRepeatEndType" onchange="var dr=document.getElementById('calRepeatEndDate');var dc=document.getElementById('calRepeatEndCount');if(dr)dr.style.display=this.value==='date'?'':'none';if(dc)dc.style.display=this.value==='count'?'':'none'" style="flex:1;min-width:120px">
                     <option value="date" ${(ev.repeatRule&&ev.repeatRule.endsAt)?'selected':''}>On a date</option>
@@ -1483,14 +1483,14 @@ async function calAddEvent(date, editIdx, existing) {
             </div>
         </div>
         <div class="form-row calGigOnly" id="calSetlistRow" style="${showSetlist?'':'display:none'}">
-            <label class="form-label">\uD83D\uDCCB Linked Setlist</label>
+            <span class="form-label">\uD83D\uDCCB Linked Setlist</span>
             <select class="app-select" id="calLinkedSetlist">
                 <option value="">-- None --</option>
                 ${setlistOpts}
             </select>
         </div>
     </div>
-    <div class="form-row"><label class="form-label">Notes</label><textarea class="app-textarea" id="calNotes" placeholder="Optional notes" style="height:60px">${ev.notes||''}</textarea></div>
+    <div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="calNotes" placeholder="Optional notes" style="height:60px">${ev.notes||''}</textarea></div>
     <div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn-success" onclick="calSaveEvent(${isEdit?editIdx:'undefined'})">${isEdit?'\uD83D\uDCBE Update':'\uD83D\uDCBE Save Event'}</button>
         <button class="btn btn-ghost" onclick="document.getElementById('calEventFormArea').innerHTML=''">Cancel</button>
