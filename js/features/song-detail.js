@@ -11,28 +11,28 @@ var _sdLensPopulated = {};
 var _sdContainer     = null;
 
 var SD_LENSES_FULL = [
-    { id:'band',    icon:'🎸', label:'Band'    },
-    { id:'listen',  icon:'📻', label:'Listen'  },
-    { id:'learn',   icon:'📖', label:'Learn'   },
-    { id:'sing',    icon:'🎤', label:'Sing'    },
-    { id:'inspire', icon:'✨', label:'Inspire' },
+    { id:'band',     icon:'\uD83C\uDFB8', label:'Play'     },
+    { id:'learn',    icon:'\uD83D\uDCDA', label:'Improve'  },
+    { id:'listen',   icon:'\uD83C\uDFA7', label:'Versions' },
+    { id:'sing',     icon:'\uD83C\uDFA4', label:'Sing'     },
+    { id:'inspire',  icon:'\u2728', label:'Inspire' },
 ];
 
-// Mode-specific lens sets — Play strips to just what's needed on stage
+// All modes now use the same 4 primary lenses
 var SD_LENSES_BY_MODE = {
     sharpen: [
-        { id:'band',   icon:'🎸', label:'Overview' },
-        { id:'learn',  icon:'📖', label:'Learn'    },
-        { id:'listen', icon:'📻', label:'Listen'   },
+        { id:'band',   icon:'\uD83C\uDFB8', label:'Play'     },
+        { id:'learn',  icon:'\uD83D\uDCDA', label:'Improve'  },
+        { id:'listen', icon:'\uD83C\uDFA7', label:'Versions' },
     ],
     lockin: [
-        { id:'band',    icon:'🎸', label:'Band'    },
-        { id:'listen',  icon:'📻', label:'Listen'  },
-        { id:'learn',   icon:'📖', label:'Learn'   },
-        { id:'sing',    icon:'🎤', label:'Sing'    },
+        { id:'band',   icon:'\uD83C\uDFB8', label:'Play'     },
+        { id:'learn',  icon:'\uD83D\uDCDA', label:'Improve'  },
+        { id:'listen', icon:'\uD83C\uDFA7', label:'Versions' },
+        { id:'sing',   icon:'\uD83C\uDFA4', label:'Sing'     },
     ],
     play: [
-        { id:'band',   icon:'📊', label:'Chart'   },
+        { id:'band',   icon:'\uD83D\uDCCA', label:'Chart'   },
     ],
 };
 
@@ -61,6 +61,7 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
     _sdInjectStyles();
     _sdActivateTab('band');
     _sdPopulateBandLens(title);
+    _sdPopulateRightPanel(title);
     requestAnimationFrame(function() { container.classList.add('sd-entered'); });
 };
 
@@ -127,17 +128,29 @@ function _sdShellHTML(title) {
         action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >📖 Open Chart</button>';
     }
 
-    return '<div class="song-detail-page">'+
+    // Persistent right panel: readiness, song info, structure, north star, best shot
+    var rightPanel = '<div class="sd-right-panel" id="sdRightPanel">'
+        + '<div id="sd-readiness-strip" class="sd-readiness-strip"></div>'
+        + '<div id="sd-right-info"></div>'  // Song Info (Key/BPM/Lead/Status) — populated async
+        + '<div id="sd-right-structure"></div>'  // How We Play It — populated async
+        + '<div id="sd-right-extras"></div>'  // North Star, Best Shot, quick links — populated async
+        + '</div>';
+
+    return '<div class="song-detail-page sd-dual-layout">'+
            '<div class="sd-header">'+
            '  <div class="sd-header-top">'+
-           '    <button class="sd-back-btn" onclick="glSongDetailBack()">← Songs</button>'+
+           '    <button class="sd-back-btn" onclick="glSongDetailBack()">\u2190 Songs</button>'+
            '    <div class="sd-header-meta">'+pills+'</div>'+
            '  </div>'+
            '  <h1 class="sd-title">'+_sdEsc(title)+'</h1>'+
-           '  <div id="sd-readiness-strip" class="sd-readiness-strip"></div>'+
            '</div>'+
-           '<nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
-           '<div class="sd-panels">'+panels+'</div>'+
+           '<div class="sd-workspace-row">'+
+           '  <div class="sd-left-workspace">'+
+           '    <nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
+           '    <div class="sd-panels">'+panels+'</div>'+
+           '  </div>'+
+           rightPanel+
+           '</div>'+
            '<div class="sd-mobile-bar">'+action+'</div>'+
            '</div>';
 }
@@ -1895,6 +1908,129 @@ if (typeof pageRenderers!=='undefined') {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
+// ── Right Panel: persistent song context (always visible on desktop) ──────────
+async function _sdPopulateRightPanel(title) {
+    var infoEl = (_sdContainer || document).querySelector('#sd-right-info');
+    var structEl = (_sdContainer || document).querySelector('#sd-right-structure');
+    var extrasEl = (_sdContainer || document).querySelector('#sd-right-extras');
+    if (!infoEl) return; // not in dual layout (mobile fallback)
+
+    var safeSong = _sdEsc(title).replace(/'/g, "\\'");
+
+    // Load song data
+    var song = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
+    var metaKey = '', metaBpm = '', lead = '', status = '';
+    try {
+        var res = await Promise.all([
+            loadBandDataFromDrive(title, 'key').catch(function() { return null; }),
+            loadBandDataFromDrive(title, 'song_bpm').catch(function() { return null; }),
+            loadBandDataFromDrive(title, 'lead_singer').catch(function() { return null; }),
+            loadBandDataFromDrive(title, 'song_status').catch(function() { return null; }),
+        ]);
+        metaKey = (res[0] && typeof res[0] === 'object') ? (res[0].key || '') : (res[0] || '');
+        metaBpm = (res[1] && typeof res[1] === 'object') ? (res[1].bpm || '') : (res[1] || '');
+        lead = (res[2] && res[2].singer) ? res[2].singer : (typeof res[2] === 'string' ? res[2] : '');
+        status = (res[3] && res[3].status) ? res[3].status : (typeof res[3] === 'string' ? res[3] : '');
+        // Also check in-memory
+        if (!metaKey && song && song.key) metaKey = song.key;
+        if (!metaBpm && song && song.bpm) metaBpm = song.bpm;
+        if (!lead && song && song.lead) lead = song.lead;
+        if (!status) status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(title) : '';
+    } catch(e) {}
+
+    // Build key options
+    var keys = ['', 'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B',
+        'Am', 'A#m', 'Bbm', 'Bm', 'Cm', 'C#m', 'Dm', 'D#m', 'Ebm', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Abm'];
+    var keyOpts = keys.map(function(k) { return '<option value="' + k + '"' + (k === metaKey ? ' selected' : '') + '>' + (k || '\u2014') + '</option>'; }).join('');
+
+    // Build status options
+    var statuses = [['', '\u2014 Select \u2014'], ['prospect', '\uD83D\uDC40 Prospect'], ['learning', '\uD83D\uDCD6 Learning'], ['rotation', '\uD83D\uDD04 In Rotation'], ['gig_ready', '\u2705 Gig Ready'], ['shelved', '\uD83D\uDCE6 Shelved']];
+    var statusOpts = statuses.map(function(s) { return '<option value="' + s[0] + '"' + (s[0] === status ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('');
+
+    // Build lead options
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var leadOpts = '<option value="">\u2014</option>' + members.map(function(m) {
+        var name = (typeof m === 'object') ? m.name : m;
+        var val = name.toLowerCase();
+        return '<option value="' + val + '"' + (val === lead.toLowerCase() ? ' selected' : '') + '>' + _sdEsc(name) + '</option>';
+    }).join('');
+
+    // Song Info card
+    infoEl.innerHTML = '<div class="sd-card" style="padding:10px 14px">'
+        + '<div class="sd-card-title" style="margin-bottom:6px">\uD83E\uDDEC Song Info</div>'
+        + '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:0.82em;align-items:center">'
+        + '<span style="color:var(--text-dim)">\uD83D\uDD11 Key</span><select class="app-select sd-select" style="font-size:0.9em" onchange="sdUpdateSongKey(this.value)">' + keyOpts + '</select>'
+        + '<span style="color:var(--text-dim)">\uD83E\uDD41 BPM</span><input type="number" class="app-input sd-bpm-input" style="width:70px;font-size:0.9em" min="40" max="240" placeholder="BPM" value="' + _sdEsc(metaBpm) + '" onchange="sdUpdateSongBpm(this.value)">'
+        + '<span style="color:var(--text-dim)">\uD83C\uDFA4 Lead</span><select class="app-select sd-select" style="font-size:0.9em" onchange="sdUpdateLeadSinger(this.value)">' + leadOpts + '</select>'
+        + '<span style="color:var(--text-dim)">\uD83C\uDFAF Status</span><select class="app-select sd-select" style="font-size:0.9em" onchange="sdUpdateSongStatus(this.value)">' + statusOpts + '</select>'
+        + '</div></div>';
+
+    // How We Play It (structure)
+    structEl.innerHTML = '<div class="sd-card" style="padding:10px 14px">'
+        + '<div class="sd-card-title" style="margin-bottom:4px">\uD83C\uDFBC How We Play It</div>'
+        + '<div id="sd-right-struct-inner" style="font-size:0.82em;color:var(--text-dim)">Loading...</div>'
+        + '</div>';
+    // Load structure async
+    if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+        GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
+            var el = (_sdContainer || document).querySelector('#sd-right-struct-inner');
+            if (!el) return;
+            if (data && data.sections && data.sections.length) {
+                el.innerHTML = data.sections.map(function(sec) {
+                    return '<div style="padding:2px 0">' + _sdEsc(sec.name || sec.label || sec) + '</div>';
+                }).join('');
+            } else {
+                el.innerHTML = '<span style="color:var(--text-dim);font-size:0.85em">No structure added yet</span>';
+            }
+        }).catch(function() {});
+    }
+
+    // Extras: North Star + Best Shot + quick links
+    var extrasHtml = '';
+
+    // North Star
+    try {
+        var spVersions = await loadBandDataFromDrive(title, 'spotify_versions').catch(function() { return null; });
+        if (spVersions) {
+            var arr = Array.isArray(spVersions) ? spVersions : Object.values(spVersions);
+            var primary = arr.find(function(v) { return v && v.isPrimary; });
+            if (primary) {
+                extrasHtml += '<div class="sd-card" style="padding:10px 14px">'
+                    + '<div class="sd-card-title" style="margin-bottom:4px">\u2B50 North Star</div>'
+                    + '<div style="font-size:0.82em;color:var(--text)">' + _sdEsc(primary.title || primary.name || 'Reference Version') + '</div>'
+                    + (primary.url ? '<a href="' + _sdEsc(primary.url) + '" target="_blank" style="font-size:0.75em;color:var(--accent-light);text-decoration:none">\u25B6 Listen</a>' : '')
+                    + '</div>';
+            }
+        }
+    } catch(e) {}
+
+    // Best Shot
+    try {
+        var bestShot = await loadBandDataFromDrive(title, 'best_shot_takes').catch(function() { return null; });
+        if (bestShot) {
+            var takes = Array.isArray(bestShot) ? bestShot : Object.values(bestShot);
+            var best = takes.find(function(t) { return t && t.tag === 'best'; });
+            if (best) {
+                extrasHtml += '<div class="sd-card" style="padding:10px 14px">'
+                    + '<div class="sd-card-title" style="margin-bottom:4px">\uD83C\uDFC6 Best Shot</div>'
+                    + '<div style="font-size:0.82em;color:var(--text)">' + _sdEsc(best.title || best.label || 'Best Take') + '</div>'
+                    + '</div>';
+            }
+        }
+    } catch(e) {}
+
+    // Quick links
+    extrasHtml += '<div class="sd-card" style="padding:10px 14px">'
+        + '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD17 Quick Links</div>'
+        + '<div style="display:flex;flex-direction:column;gap:4px;font-size:0.78em">'
+        + '<button onclick="switchLens(\'learn\')" style="text-align:left;background:none;border:none;color:var(--accent-light);cursor:pointer;padding:2px 0">\uD83D\uDCDA Tabs & References</button>'
+        + '<button onclick="switchLens(\'listen\')" style="text-align:left;background:none;border:none;color:var(--accent-light);cursor:pointer;padding:2px 0">\uD83C\uDFA7 Find Versions</button>'
+        + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="text-align:left;background:none;border:none;color:#86efac;cursor:pointer;padding:2px 0">\uD83C\uDFB8 Practice This Song</button>'
+        + '</div></div>';
+
+    if (extrasEl) extrasEl.innerHTML = extrasHtml;
+}
+
 function _sdInjectStyles(){
     if((_sdContainer||document).querySelector('#sd-styles')) return;
     var s=document.createElement('style');
@@ -1964,7 +2100,14 @@ function _sdInjectStyles(){
     '.sd-mobile-bar{display:none;position:fixed;bottom:0;left:0;right:0;padding:8px 16px;background:var(--bg-card,#1e293b);border-top:1px solid var(--border,rgba(255,255,255,0.08));z-index:60;gap:8px;justify-content:center}'+
     '.sd-mobile-bar__btn{flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text,#f1f5f9);font-size:0.82em;font-weight:700;cursor:pointer;text-align:center}'+
     '.sd-mobile-bar__btn--primary{background:rgba(99,102,241,0.15);border-color:rgba(99,102,241,0.3);color:#a5b4fc}'+
-    '@media(max-width:768px){.sd-mobile-bar{display:flex}.song-detail-page{padding-bottom:120px}}';
+    '@media(max-width:768px){.sd-mobile-bar{display:flex}.song-detail-page{padding-bottom:120px}}'+
+    // Dual-layout: left workspace + right persistent panel
+    '.sd-dual-layout{max-width:1200px}'+
+    '.sd-workspace-row{display:flex;gap:16px;align-items:flex-start}'+
+    '.sd-left-workspace{flex:1;min-width:0}'+
+    '.sd-right-panel{width:300px;flex-shrink:0;position:sticky;top:60px;max-height:calc(100vh - 80px);overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 0}'+
+    '.sd-right-panel::-webkit-scrollbar{width:4px}.sd-right-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}'+
+    '@media(max-width:900px){.sd-workspace-row{flex-direction:column}.sd-right-panel{width:100%;position:static;max-height:none}}';
     document.head.appendChild(s);
 }
 
