@@ -318,10 +318,7 @@ body[data-gl-mode="play"] .gl-rail-section-title { display: none; }
   .hamburger { display: none; }
 }
 
-/* ── Medium screens: hide rail toggle (rail is locked collapsed) ──────────── */
-@media (max-width: 1199px) and (min-width: 901px) {
-  .gl-rail-toggle { display: none; }
-}
+/* ── Medium screens: toggle is visible (rail can be expanded/collapsed) ── */
 
 /* ── Medium screens: cap panel width to protect center workspace ───────────── */
 @media (max-width: 1199px) and (min-width: 901px) {

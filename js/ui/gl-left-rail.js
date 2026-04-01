@@ -311,10 +311,12 @@
    */
   function _isCollapsed() {
     var w = window.innerWidth;
-    if (w >= 901 && w < 1200) return true; // medium: always collapsed
-    // large (>=1200): check user preference, default expanded
+    if (w < 901) return true; // mobile: rail hidden, hamburger menu
+    // Desktop (>=901): check user preference, default collapsed for medium, expanded for large
     var userPref = localStorage.getItem('glNavCollapsed');
-    return userPref === '1';
+    if (userPref !== null) return userPref === '1';
+    // Default: collapsed under 1200px, expanded at 1200+
+    return w < 1200;
   }
 
   function _applyCollapsedState() {
