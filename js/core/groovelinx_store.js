@@ -236,7 +236,7 @@
     'lead_singer': true, 'song_status': true, 'chart': true,
     'personal_tabs': true, 'rehearsal_notes': true,
     'spotify_versions': true, 'practice_tracks': true, 'cover_me': true,
-    'song_votes': true
+    'song_votes': true, 'song_structure': true
   };
 
   /** Build the v2 Firebase path: bands/{slug}/songs_v2/{songId}/{dataType} */

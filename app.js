@@ -14575,14 +14575,14 @@ async function preloadReadinessCache() {
 // GLStore (one-time write). Filters and intelligence only check allSongs[].
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
-    // Bulk read: fetch BOTH legacy + v2 song nodes, extract key/bpm from each
+    // songs_v2 is the canonical source (post-migration). Legacy checked as fallback.
     try {
-        var snap = await firebaseDB.ref(bandPath('songs')).once('value');
-        var allData = snap.val() || {};
-        // Also load songs_v2 (new songId-keyed path)
-        var snap2 = null;
-        try { snap2 = await firebaseDB.ref(bandPath('songs_v2')).once('value'); } catch(e2) {}
+        var snap2 = await firebaseDB.ref(bandPath('songs_v2')).once('value');
         var allDataV2 = (snap2 && snap2.val()) || {};
+        // Legacy fallback — will be removed after full migration verification
+        var snap = null;
+        try { snap = await firebaseDB.ref(bandPath('songs')).once('value'); } catch(e2) {}
+        var allData = (snap && snap.val()) || {};
         var populated = 0;
         allSongs.forEach(function(song) {
             if (!song || !song.title) return;
@@ -14620,9 +14620,10 @@ async function _preloadSongDNA() {
                 var ls = songData.lead_singer;
                 song.lead = (typeof ls === 'object' && ls.singer) ? ls.singer : (typeof ls === 'string' ? ls : '');
             }
-            // Structure (for "No Structure" filter)
-            if (songData.song_structure) {
-                var st = songData.song_structure;
+            // Structure: check v2 first, then legacy
+            var _structData = v2Data.song_structure || songData.song_structure;
+            if (_structData) {
+                var st = _structData;
                 if (st.sections && st.sections.length > 0) {
                     song._hasStructure = true;
                 }
