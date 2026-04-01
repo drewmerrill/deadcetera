@@ -990,4 +990,57 @@ async function _autoMigrateSongDataToV2() {
 // Also expose for manual use
 window.runSongMigration = _autoMigrateSongDataToV2;
 
+// Force re-run migration (resets flag first)
+window.runSongMigrationForce = async function() {
+    if (!firebaseDB) { console.error('Firebase not ready'); return; }
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    // Clear the migration flag
+    await firebaseDB.ref('bands/' + slug + '/meta/songs_v2_migrated').remove();
+    window._songV2MigrationRunning = false;
+    console.log('[Migration] Flag cleared — running migration...');
+    await _autoMigrateSongDataToV2();
+    // Re-run preload
+    if (typeof _preloadSongDNA === 'function') await _preloadSongDNA();
+    // Re-render
+    if (typeof renderSongs === 'function') try { renderSongs(); } catch(e) {}
+    console.log('[Migration] Done. Reload page to verify.');
+};
+
+// Diagnose songs still showing as "missing" key/BPM
+window.diagnoseMissingSongData = async function() {
+    if (!firebaseDB || typeof allSongs === 'undefined') { console.error('Not ready'); return; }
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var bp = 'bands/' + slug + '/';
+    var sanitize = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath : function(s) { return s.replace(/[.#$/\[\]]/g, '_'); };
+
+    var missing = allSongs.filter(function(s) { return s.songId && (!s.key || !s.bpm); });
+    console.log('Songs missing key or BPM in memory:', missing.length);
+
+    for (var i = 0; i < Math.min(missing.length, 5); i++) {
+        var s = missing[i];
+        var titleKey = sanitize(s.title);
+        console.log('\n--- ' + s.title + ' (songId: ' + s.songId + ', titleKey: ' + titleKey + ') ---');
+        console.log('  In-memory: key=' + (s.key || 'EMPTY') + ', bpm=' + (s.bpm || 'EMPTY'));
+
+        // Check v2
+        try {
+            var v2Snap = await firebaseDB.ref(bp + 'songs_v2/' + s.songId).once('value');
+            var v2 = v2Snap.val();
+            console.log('  songs_v2/' + s.songId + ':', v2 ? JSON.stringify(Object.keys(v2)) : 'NULL');
+            if (v2 && v2.key) console.log('    v2.key:', JSON.stringify(v2.key));
+            if (v2 && v2.song_bpm) console.log('    v2.song_bpm:', JSON.stringify(v2.song_bpm));
+        } catch(e) { console.log('  v2 read failed:', e.message); }
+
+        // Check legacy
+        try {
+            var legSnap = await firebaseDB.ref(bp + 'songs/' + titleKey).once('value');
+            var leg = legSnap.val();
+            console.log('  songs/' + titleKey + ':', leg ? JSON.stringify(Object.keys(leg)) : 'NULL');
+            if (leg && leg.key) console.log('    legacy.key:', JSON.stringify(leg.key));
+            if (leg && leg.song_bpm) console.log('    legacy.song_bpm:', JSON.stringify(leg.song_bpm));
+            if (leg && leg.song_key) console.log('    legacy.song_key:', JSON.stringify(leg.song_key));
+        } catch(e) { console.log('  legacy read failed:', e.message); }
+    }
+};
+
 console.log('✅ firebase-service.js loaded');
