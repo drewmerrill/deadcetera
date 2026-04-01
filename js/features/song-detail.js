@@ -320,42 +320,74 @@ async function _sdPopulateBandLens(title) {
         return;
     }
 
-    // ── IMPROVE MODE: practice-focused, no chart (chart lives in Play) ──
+    // ── IMPROVE MODE: ONE JOB — help the user practice the song ──
     if (mode === 'sharpen') {
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
-            // Primary CTA
-            '<button class="sd-pm-btn sd-pm-btn--hero" style="width:100%;margin-bottom:12px;padding:14px;font-size:0.95em" onclick="openRehearsalMode(\''+safeSong+'\')">\uD83C\uDFB8 Start Practice Session</button>'+
-            // Open Chart button (switches to Play mode)
-            '<button class="sd-pm-btn" style="width:100%;margin-bottom:16px;font-size:0.82em" onclick="switchLens(\'band\')">\uD83D\uDCCA Open Chart</button>'+
-            // Practice workflow — 3-step guided flow
-            '<div class="sd-card" style="border-color:rgba(99,102,241,0.15)">'+
-            '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD25 Practice Flow</div>'+
-            '<div style="display:flex;flex-direction:column;gap:8px">'+
-            '<div id="sd-listen-step" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;cursor:pointer" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">'+
-            '<span style="font-size:0.75em;font-weight:800;color:#818cf8">1</span>'+
-            '<span style="font-size:0.82em;color:var(--text)">Listen First</span>'+
-            '<span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">\u25B6</span>'+
+
+            // ── SECTION 1: PRIMARY (dominant CTA — only card on the page) ──
+            '<div style="text-align:center;padding:28px 20px;margin-bottom:20px;background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(34,197,94,0.06));border:2px solid rgba(99,102,241,0.2);border-radius:14px">'+
+            '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:1.1em;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,0.3);min-width:240px">\uD83C\uDFB8 Start Practice Session</button>'+
+            '<div style="font-size:0.78em;color:var(--text-dim);margin-top:8px">Train this song in 3 steps</div>'+
             '</div>'+
-            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);border-radius:8px;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
-            '<span style="font-size:0.75em;font-weight:800;color:#a5b4fc">2</span>'+
-            '<span style="font-size:0.82em;color:var(--text)">Play Through</span>'+
-            '<span style="margin-left:auto;color:var(--accent-light);font-size:0.8em">\u2192</span>'+
+
+            // ── SECTION 2: QUICK ACTIONS (horizontal row, no cards) ──
+            '<div style="display:flex;gap:8px;margin-bottom:20px">'+
+            '<button onclick="switchLens(\'band\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83D\uDCDA View Chart</button>'+
+            '<button id="sd-listen-step" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFA7 Listen</button>'+
+            '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac;cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFB8 Practice</button>'+
             '</div>'+
-            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;cursor:pointer" onclick="switchLens(\'band\')">'+
-            '<span style="font-size:0.75em;font-weight:800;color:var(--text-muted)">3</span>'+
-            '<span style="font-size:0.82em;color:var(--text)">Rate Yourself</span>'+
-            '<span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">\u2193</span>'+
+
+            // ── SECTION 3: PRACTICE FLOW (flat, no card border) ──
+            '<div style="margin-bottom:16px">'+
+            '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:8px">Practice Flow</div>'+
+            '<div style="display:flex;flex-direction:column;gap:6px">'+
+            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #818cf8;background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0;cursor:pointer" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">'+
+            '<span style="font-size:0.72em;font-weight:800;color:#818cf8;width:16px">1</span>'+
+            '<span style="font-size:0.82em;color:var(--text)">Listen to the reference version</span>'+
+            '</div>'+
+            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #a5b4fc;background:rgba(99,102,241,0.02);border-radius:0 6px 6px 0;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
+            '<span style="font-size:0.72em;font-weight:800;color:#a5b4fc;width:16px">2</span>'+
+            '<span style="font-size:0.82em;color:var(--text)">Play it all the way through</span>'+
+            '</div>'+
+            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid var(--text-dim);background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0;cursor:pointer" onclick="switchLens(\'band\')">'+
+            '<span style="font-size:0.72em;font-weight:800;color:var(--text-dim);width:16px">3</span>'+
+            '<span style="font-size:0.82em;color:var(--text)">Rate yourself honestly</span>'+
             '</div>'+
             '</div></div>'+
-            // Tools section — grouped tabs, tracks, references
-            '<details class="sd-details" open><summary class="sd-details-summary">\uD83D\uDEE0\uFE0F Tools</summary>'+
-            '<div style="padding:8px 0">'+
-            _sdRenderPracticeSection(title, safeSong, ytQuery)+
-            '</div></details>'+
+
+            // ── SECTION 4: TOOLS (collapsed by default) ──
+            '<details class="sd-details"><summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">\uD83D\uDEE0\uFE0F Tabs, Tracks & References</summary>'+
+            '<div style="padding:8px 4px" id="sd-improve-tools">Loading...</div>'+
+            '</details>'+
+
             '</div>';
         _sdBuildReadinessStrip(title);
-        setTimeout(function() { _sdUpgradeListenStep(title); }, 300);
+        // Populate tools lazily (only when expanded)
+        setTimeout(function() {
+            _sdUpgradeListenStep(title);
+            var toolsEl = (_sdContainer || document).querySelector('#sd-improve-tools');
+            if (toolsEl) {
+                // Load tabs, tracks, references into the tools section
+                var toolsHtml = '';
+                if (typeof loadBandDataFromDrive === 'function') {
+                    Promise.all([
+                        loadBandDataFromDrive(title, 'personal_tabs').catch(function() { return null; }),
+                        loadBandDataFromDrive(title, 'practice_tracks').catch(function() { return null; }),
+                        loadBandDataFromDrive(title, 'spotify_versions').catch(function() { return null; })
+                    ]).then(function(res) {
+                        var tabs = res[0], tracks = res[1], versions = res[2];
+                        var html = '';
+                        if (tabs && Object.keys(tabs).length) html += '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">\uD83D\uDCCB ' + Object.keys(tabs).length + ' personal tab(s) saved</div>';
+                        if (tracks && (Array.isArray(tracks) ? tracks.length : Object.keys(tracks).length)) html += '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">\uD83C\uDFA7 Practice tracks available</div>';
+                        if (versions && (Array.isArray(versions) ? versions.length : Object.keys(versions).length)) html += '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">\uD83C\uDFB5 Reference versions saved</div>';
+                        if (!html) html = '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">No tools saved yet. Add tabs or tracks from the Learn lens.</div>';
+                        html += '<div style="margin-top:8px"><button onclick="switchLens(\'listen\')" class="sd-pm-btn" style="font-size:0.78em;padding:6px 12px">\uD83C\uDFA7 Find Versions</button></div>';
+                        if (toolsEl) toolsEl.innerHTML = html;
+                    });
+                }
+            }
+        }, 400);
         return;
     }
 
