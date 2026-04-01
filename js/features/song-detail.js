@@ -345,13 +345,13 @@ async function _sdPopulateBandLens(title) {
             _sdRenderReadinessBlock(title,safeSong)+
             _sdBuildReadinessTrend(title)+
             '</div>'+
-            // Song Info
+            // Song Info — directly editable
             '<div class="sd-card" style="padding:10px 14px">'+
             '<div class="sd-card-title" style="margin-bottom:8px">\uD83E\uDDEC Song Info</div>'+
-            '<div style="display:flex;gap:16px;font-size:0.88em;color:var(--text-muted)">'+
-            (metaKey?'<span>\uD83D\uDD11 '+_sdEsc(metaKey)+'</span>':'')+
-            (metaBpm?'<span>\uD83E\uDD41 '+_sdEsc(metaBpm)+' BPM</span>':'')+
-            (lead?'<span>\uD83C\uDFA4 '+_sdEsc(lead.charAt(0).toUpperCase()+lead.slice(1))+'</span>':'')+
+            '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:0.82em">'+
+            '<span style="color:var(--text-dim)">\uD83D\uDD11</span><select class="app-select sd-select" style="width:70px;font-size:0.9em" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select>'+
+            '<span style="color:var(--text-dim)">\uD83E\uDD41</span><input type="number" class="app-input sd-bpm-input" style="width:65px;font-size:0.9em" min="40" max="240" placeholder="BPM" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)">'+
+            '<span style="color:var(--text-dim)">\uD83C\uDFA4</span><select class="app-select sd-select" style="width:90px;font-size:0.9em" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select>'+
             '</div></div>'+
             // How We Play It
             '<div class="sd-card" style="padding:10px 14px">' +

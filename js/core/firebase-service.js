@@ -95,7 +95,8 @@ window.bandPath = function bandPath(subpath) {
  * V2-enabled types ALWAYS route to songs_v2/{songId}.
  * Non-v2 types (readiness, woodshed, moments, etc.) use legacy songs/{title}.
  */
-var _SONG_V2_TYPES = { song_bpm:1, key:1, lead_singer:1, song_status:1, chart:1,
+var _SONG_V2_TYPES = { song_bpm:1, key:1, lead_singer:1, song_status:1,
+    chart:1, chart_band:1, chart_master:1, chart_url:1,
     personal_tabs:1, rehearsal_notes:1, spotify_versions:1, practice_tracks:1,
     cover_me:1, song_votes:1, song_structure:1, readiness:1, readiness_history:1 };
 

@@ -233,7 +233,8 @@
 
   var _V2_ENABLED_TYPES = {
     'song_bpm': true, 'key': true,
-    'lead_singer': true, 'song_status': true, 'chart': true,
+    'lead_singer': true, 'song_status': true,
+    'chart': true, 'chart_band': true, 'chart_master': true, 'chart_url': true,
     'personal_tabs': true, 'rehearsal_notes': true,
     'spotify_versions': true, 'practice_tracks': true, 'cover_me': true,
     'song_votes': true, 'song_structure': true,
