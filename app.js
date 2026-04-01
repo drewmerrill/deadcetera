@@ -14575,33 +14575,48 @@ async function preloadReadinessCache() {
 // GLStore (one-time write). Filters and intelligence only check allSongs[].
 async function _preloadSongDNA() {
     if (!allSongs || !allSongs.length || typeof firebaseDB === 'undefined' || !firebaseDB) return;
-    // Single bulk read: fetch ALL song nodes at once, extract key/bpm from each
+    // Bulk read: fetch BOTH legacy + v2 song nodes, extract key/bpm from each
     try {
         var snap = await firebaseDB.ref(bandPath('songs')).once('value');
-        var allData = snap.val();
-        if (!allData || typeof allData !== 'object') return;
+        var allData = snap.val() || {};
+        // Also load songs_v2 (new songId-keyed path)
+        var snap2 = null;
+        try { snap2 = await firebaseDB.ref(bandPath('songs_v2')).once('value'); } catch(e2) {}
+        var allDataV2 = (snap2 && snap2.val()) || {};
         var populated = 0;
         allSongs.forEach(function(song) {
             if (!song || !song.title) return;
             var key = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(song.title) : song.title;
-            var songData = allData[key] || allData[song.title];
-            if (!songData) return;
-            // Key: stored as { key: "Am", ... } under /key
-            if (songData.key && typeof songData.key === 'object' && songData.key.key) {
+            var songData = allData[key] || allData[song.title] || {};
+            // Merge v2 data (songId-keyed) — takes precedence
+            var v2Data = song.songId ? (allDataV2[song.songId] || {}) : {};
+            // Key: check v2 first, then legacy nested, then legacy string, then song_key
+            if (v2Data.key) {
+                song.key = typeof v2Data.key === 'object' ? v2Data.key.key || v2Data.key : v2Data.key;
+                populated++;
+            } else if (songData.key && typeof songData.key === 'object' && songData.key.key) {
                 song.key = songData.key.key;
                 populated++;
             } else if (songData.key && typeof songData.key === 'string') {
                 song.key = songData.key;
                 populated++;
+            } else if (songData.song_key) {
+                song.key = typeof songData.song_key === 'object' ? songData.song_key.key || songData.song_key : songData.song_key;
+                populated++;
             }
-            // BPM: stored as { bpm: 120, ... } under /song_bpm
-            if (songData.song_bpm && typeof songData.song_bpm === 'object' && songData.song_bpm.bpm) {
+            // BPM: check v2 first, then legacy song_bpm, then flat bpm
+            if (v2Data.bpm) {
+                song.bpm = typeof v2Data.bpm === 'object' ? v2Data.bpm.bpm || v2Data.bpm : v2Data.bpm;
+            } else if (songData.song_bpm && typeof songData.song_bpm === 'object' && songData.song_bpm.bpm) {
                 song.bpm = songData.song_bpm.bpm;
             } else if (songData.bpm) {
                 song.bpm = songData.bpm;
             }
-            // Lead singer
-            if (songData.lead_singer) {
+            // Lead singer: check v2 first, then legacy
+            if (v2Data.lead_singer) {
+                var ls2 = v2Data.lead_singer;
+                song.lead = (typeof ls2 === 'object' && ls2.singer) ? ls2.singer : (typeof ls2 === 'string' ? ls2 : '');
+            } else if (songData.lead_singer) {
                 var ls = songData.lead_singer;
                 song.lead = (typeof ls === 'object' && ls.singer) ? ls.singer : (typeof ls === 'string' ? ls : '');
             }
