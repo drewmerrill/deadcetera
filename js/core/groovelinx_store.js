@@ -285,11 +285,12 @@
    * @param {*} data
    */
   function _saveDual(title, songId, dataType, data) {
-    var legacyWrite = _sbdf(title, dataType, data);
+    // For v2-enabled types with songId: write to v2 only (songPath already routes there)
     if (_V2_ENABLED_TYPES[dataType] && songId) {
-      return Promise.all([legacyWrite, _saveV2(songId, dataType, data)]);
+      return _saveV2(songId, dataType, data);
     }
-    return legacyWrite;
+    // Non-v2 types: legacy path only
+    return _sbdf(title, dataType, data);
   }
 
   // ── Songs ─────────────────────────────────────────────────────────────────

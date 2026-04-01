@@ -92,10 +92,22 @@ window.bandPath = function bandPath(subpath) {
 
 /**
  * Full path to a per-song data node.
- * e.g. songPath('Friend of the Devil', 'spotify_versions')
- *   → 'bands/deadcetera/songs/Friend_of_the_Devil/spotify_versions'
+ * Routes v2-enabled data types through songs_v2/{songId} when available.
+ * Falls back to legacy songs/{sanitizedTitle} for non-v2 types or missing songIds.
  */
+var _SONG_V2_TYPES = { song_bpm:1, key:1, lead_singer:1, song_status:1, chart:1,
+    personal_tabs:1, rehearsal_notes:1, spotify_versions:1, practice_tracks:1,
+    cover_me:1, song_votes:1, song_structure:1 };
+
 window.songPath = function songPath(songTitle, dataType) {
+    // For v2-enabled types, use songs_v2/{songId} if songId is available
+    if (_SONG_V2_TYPES[dataType] && typeof GLStore !== 'undefined' && GLStore.getSongIdByTitle) {
+        var songId = GLStore.getSongIdByTitle(songTitle);
+        if (songId) {
+            return window.bandPath('songs_v2/' + songId + '/' + window.sanitizeFirebasePath(dataType));
+        }
+    }
+    // Legacy path for non-v2 types or songs without songId
     return window.bandPath(
         'songs/' + window.sanitizeFirebasePath(songTitle) +
         '/' + window.sanitizeFirebasePath(dataType)
