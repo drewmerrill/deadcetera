@@ -1955,78 +1955,75 @@ async function _sdPopulateRightPanel(title) {
         return '<option value="' + val + '"' + (val === lead.toLowerCase() ? ' selected' : '') + '>' + _sdEsc(name) + '</option>';
     }).join('');
 
-    // Song Info card
-    infoEl.innerHTML = '<div class="sd-card" style="padding:10px 14px">'
-        + '<div class="sd-card-title" style="margin-bottom:6px">\uD83E\uDDEC Song Info</div>'
-        + '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:0.82em;align-items:center">'
-        + '<span style="color:var(--text-dim)">\uD83D\uDD11 Key</span><select class="app-select sd-select" style="font-size:0.9em" onchange="sdUpdateSongKey(this.value)">' + keyOpts + '</select>'
-        + '<span style="color:var(--text-dim)">\uD83E\uDD41 BPM</span><input type="number" class="app-input sd-bpm-input" style="width:70px;font-size:0.9em" min="40" max="240" placeholder="BPM" value="' + _sdEsc(metaBpm) + '" onchange="sdUpdateSongBpm(this.value)">'
-        + '<span style="color:var(--text-dim)">\uD83C\uDFA4 Lead</span><select class="app-select sd-select" style="font-size:0.9em" onchange="sdUpdateLeadSinger(this.value)">' + leadOpts + '</select>'
-        + '<span style="color:var(--text-dim)">\uD83C\uDFAF Status</span><select class="app-select sd-select" style="font-size:0.9em" onchange="sdUpdateSongStatus(this.value)">' + statusOpts + '</select>'
+    // Song Info — compact grid, no card border
+    infoEl.innerHTML = '<div style="padding:8px 12px">'
+        + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Song Info</div>'
+        + '<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:0.8em;align-items:center">'
+        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83D\uDD11</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongKey(this.value)">' + keyOpts + '</select>'
+        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83E\uDD41</span><input type="number" class="app-input sd-bpm-input" style="width:60px;font-size:0.85em;padding:3px 6px" min="40" max="240" placeholder="\u2014" value="' + _sdEsc(metaBpm) + '" onchange="sdUpdateSongBpm(this.value)">'
+        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83C\uDFA4</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateLeadSinger(this.value)">' + leadOpts + '</select>'
+        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83C\uDFAF</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongStatus(this.value)">' + statusOpts + '</select>'
         + '</div></div>';
 
-    // How We Play It (structure)
-    structEl.innerHTML = '<div class="sd-card" style="padding:10px 14px">'
-        + '<div class="sd-card-title" style="margin-bottom:4px">\uD83C\uDFBC How We Play It</div>'
-        + '<div id="sd-right-struct-inner" style="font-size:0.82em;color:var(--text-dim)">Loading...</div>'
-        + '</div>';
-    // Load structure async
-    if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
-        GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
-            var el = (_sdContainer || document).querySelector('#sd-right-struct-inner');
-            if (!el) return;
-            if (data && data.sections && data.sections.length) {
-                el.innerHTML = data.sections.map(function(sec) {
-                    return '<div style="padding:2px 0">' + _sdEsc(sec.name || sec.label || sec) + '</div>';
-                }).join('');
-            } else {
-                el.innerHTML = '<span style="color:var(--text-dim);font-size:0.85em">No structure added yet</span>';
-            }
-        }).catch(function() {});
-    }
-
-    // Extras: North Star + Best Shot + quick links
+    // Extras: North Star (priority), Best Shot, then Structure (compact)
     var extrasHtml = '';
 
-    // North Star
+    // North Star — prominent if exists
     try {
         var spVersions = await loadBandDataFromDrive(title, 'spotify_versions').catch(function() { return null; });
         if (spVersions) {
             var arr = Array.isArray(spVersions) ? spVersions : Object.values(spVersions);
             var primary = arr.find(function(v) { return v && v.isPrimary; });
             if (primary) {
-                extrasHtml += '<div class="sd-card" style="padding:10px 14px">'
-                    + '<div class="sd-card-title" style="margin-bottom:4px">\u2B50 North Star</div>'
-                    + '<div style="font-size:0.82em;color:var(--text)">' + _sdEsc(primary.title || primary.name || 'Reference Version') + '</div>'
-                    + (primary.url ? '<a href="' + _sdEsc(primary.url) + '" target="_blank" style="font-size:0.75em;color:var(--accent-light);text-decoration:none">\u25B6 Listen</a>' : '')
-                    + '</div>';
+                extrasHtml += '<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                    + '<div style="display:flex;align-items:center;gap:6px">'
+                    + '<span style="font-size:0.75em">\u2B50</span>'
+                    + '<span style="font-size:0.8em;font-weight:700;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(primary.title || primary.name || 'North Star') + '</span>'
+                    + (primary.url ? '<a href="' + _sdEsc(primary.url) + '" target="_blank" style="font-size:0.72em;color:#1ed760;text-decoration:none;flex-shrink:0">\u25B6 Play</a>' : '')
+                    + '</div></div>';
             }
         }
     } catch(e) {}
 
-    // Best Shot
+    // Best Shot — compact
     try {
         var bestShot = await loadBandDataFromDrive(title, 'best_shot_takes').catch(function() { return null; });
         if (bestShot) {
             var takes = Array.isArray(bestShot) ? bestShot : Object.values(bestShot);
             var best = takes.find(function(t) { return t && t.tag === 'best'; });
             if (best) {
-                extrasHtml += '<div class="sd-card" style="padding:10px 14px">'
-                    + '<div class="sd-card-title" style="margin-bottom:4px">\uD83C\uDFC6 Best Shot</div>'
-                    + '<div style="font-size:0.82em;color:var(--text)">' + _sdEsc(best.title || best.label || 'Best Take') + '</div>'
-                    + '</div>';
+                extrasHtml += '<div style="padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                    + '<div style="display:flex;align-items:center;gap:6px">'
+                    + '<span style="font-size:0.75em">\uD83C\uDFC6</span>'
+                    + '<span style="font-size:0.78em;color:var(--text)">' + _sdEsc(best.title || best.label || 'Best Take') + '</span>'
+                    + '</div></div>';
             }
         }
     } catch(e) {}
 
-    // Quick links
-    extrasHtml += '<div class="sd-card" style="padding:10px 14px">'
-        + '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD17 Quick Links</div>'
-        + '<div style="display:flex;flex-direction:column;gap:4px;font-size:0.78em">'
-        + '<button onclick="switchLens(\'learn\')" style="text-align:left;background:none;border:none;color:var(--accent-light);cursor:pointer;padding:2px 0">\uD83D\uDCDA Tabs & References</button>'
-        + '<button onclick="switchLens(\'listen\')" style="text-align:left;background:none;border:none;color:var(--accent-light);cursor:pointer;padding:2px 0">\uD83C\uDFA7 Find Versions</button>'
-        + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="text-align:left;background:none;border:none;color:#86efac;cursor:pointer;padding:2px 0">\uD83C\uDFB8 Practice This Song</button>'
-        + '</div></div>';
+    // Structure — compact, collapsed if long
+    structEl.innerHTML = '';
+    if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
+        GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
+            if (!data || !data.sections || !data.sections.length) return;
+            var sections = data.sections;
+            var compact = sections.length <= 6;
+            var html = '<div style="padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04)">'
+                + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px">Structure</div>'
+                + '<div style="font-size:0.75em;color:var(--text-dim);line-height:1.6">'
+                + sections.slice(0, compact ? 99 : 4).map(function(sec) { return _sdEsc(sec.name || sec.label || sec); }).join(' \u00B7 ');
+            if (!compact && sections.length > 4) html += ' <span style="color:var(--text-dim);opacity:0.5">+' + (sections.length - 4) + ' more</span>';
+            html += '</div></div>';
+            if (structEl) structEl.innerHTML = html;
+        }).catch(function() {});
+    }
+
+    // Action row — compact icon buttons instead of full quick links
+    extrasHtml += '<div style="padding:8px 12px;display:flex;gap:6px">'
+        + '<button onclick="switchLens(\'learn\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;text-align:center" title="Tabs & References">\uD83D\uDCDA Improve</button>'
+        + '<button onclick="switchLens(\'listen\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;text-align:center" title="Find Versions">\uD83C\uDFA7 Versions</button>'
+        + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac;cursor:pointer;font-size:0.7em;text-align:center" title="Practice">\uD83C\uDFB8 Practice</button>'
+        + '</div>';
 
     if (extrasEl) extrasEl.innerHTML = extrasHtml;
 }
@@ -2103,11 +2100,11 @@ function _sdInjectStyles(){
     '@media(max-width:768px){.sd-mobile-bar{display:flex}.song-detail-page{padding-bottom:120px}}'+
     // Dual-layout: left workspace + right persistent panel
     '.sd-dual-layout{max-width:1200px}'+
-    '.sd-workspace-row{display:flex;gap:16px;align-items:flex-start}'+
+    '.sd-workspace-row{display:flex;gap:12px;align-items:flex-start}'+
     '.sd-left-workspace{flex:1;min-width:0}'+
-    '.sd-right-panel{width:300px;flex-shrink:0;position:sticky;top:60px;max-height:calc(100vh - 80px);overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 0}'+
-    '.sd-right-panel::-webkit-scrollbar{width:4px}.sd-right-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:4px}'+
-    '@media(max-width:900px){.sd-workspace-row{flex-direction:column}.sd-right-panel{width:100%;position:static;max-height:none}}';
+    '.sd-right-panel{width:260px;flex-shrink:0;position:sticky;top:60px;max-height:calc(100vh - 80px);overflow-y:auto;background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.06));border-radius:10px}'+
+    '.sd-right-panel::-webkit-scrollbar{width:3px}.sd-right-panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:3px}'+
+    '@media(max-width:900px){.sd-workspace-row{flex-direction:column}.sd-right-panel{width:100%;position:static;max-height:none;border-radius:10px}}';
     document.head.appendChild(s);
 }
 
