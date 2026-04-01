@@ -192,6 +192,12 @@ window.GLPlayerUI = (function() {
 
     function _renderSong(d) {
         var song = d.song;
+        // Restore elements that completion screen may have hidden
+        var vc = document.getElementById('glpVideoContainer');
+        if (vc) vc.style.display = '';
+        var ppBtn = document.getElementById('glpPlayPause');
+        if (ppBtn && ppBtn.parentElement) ppBtn.parentElement.style.display = '';
+
         // Overlay elements — smooth transition
         var titleEl = document.getElementById('glpSongTitle');
         if (titleEl) { titleEl.style.opacity = '0'; titleEl.textContent = song.title; titleEl.style.transition = 'opacity 0.25s ease'; requestAnimationFrame(function() { titleEl.style.opacity = '1'; }); }
@@ -205,7 +211,6 @@ window.GLPlayerUI = (function() {
         // Clear video container — smooth transition to loading
         // Guard: cancel any pending loading-text timer to prevent overwriting an embed that loaded fast
         if (_loadingTimer) clearTimeout(_loadingTimer);
-        var vc = document.getElementById('glpVideoContainer');
         if (vc) { vc.style.transition = 'opacity 0.2s ease'; vc.style.opacity = '0.5'; _loadingTimer = setTimeout(function() { _loadingTimer = null; var _vc = document.getElementById('glpVideoContainer'); if (_vc && !_vc.querySelector('iframe')) { _vc.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">Finding best version\u2026</div>'; _vc.style.opacity = '1'; } }, 150); }
         // Clear fallback
         var fb = document.getElementById('glpFallback');
@@ -430,15 +435,23 @@ window.GLPlayerUI = (function() {
         var streak = _getStreakForCompletion();
         var bandSignal = _getBandSignalForCompletion();
 
-        // Clear song info areas
+        // Clear song info areas and hide non-completion elements
         var vc = document.getElementById('glpVideoContainer');
-        if (vc) vc.innerHTML = '';
+        if (vc) { vc.innerHTML = ''; vc.style.display = 'none'; }
         _setText('glpSongTitle', '');
         _setText('glpSongArtist', '');
         var sourceEl = document.getElementById('glpSourceLabel');
         if (sourceEl) sourceEl.innerHTML = '';
         var progressEl = document.getElementById('glpProgress');
         if (progressEl) progressEl.innerHTML = '';
+        // Hide player controls on completion (not needed)
+        var controls = _overlayEl ? _overlayEl.querySelector('[style*="gap:16px"][style*="padding:20px"]') : null;
+        if (!controls && _overlayEl) {
+            // Find the controls row by looking for the play/pause button's parent
+            var ppBtn = document.getElementById('glpPlayPause');
+            if (ppBtn) controls = ppBtn.parentElement;
+        }
+        if (controls) controls.style.display = 'none';
 
         var fb = document.getElementById('glpFallback');
         if (!fb) return;
