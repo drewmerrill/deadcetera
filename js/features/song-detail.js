@@ -320,61 +320,42 @@ async function _sdPopulateBandLens(title) {
         return;
     }
 
-    // ── SHARPEN MODE: guided practice workflow ──
+    // ── IMPROVE MODE: practice-focused, no chart (chart lives in Play) ──
     if (mode === 'sharpen') {
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
-            // ── Band Chart (primary — always first if exists) ──
-            _sdRenderBandChart(title, safeSong, chartText)+
+            // Primary CTA
+            '<button class="sd-pm-btn sd-pm-btn--hero" style="width:100%;margin-bottom:12px;padding:14px;font-size:0.95em" onclick="openRehearsalMode(\''+safeSong+'\')">\uD83C\uDFB8 Start Practice Session</button>'+
+            // Open Chart button (switches to Play mode)
+            '<button class="sd-pm-btn" style="width:100%;margin-bottom:16px;font-size:0.82em" onclick="switchLens(\'band\')">\uD83D\uDCCA Open Chart</button>'+
             // Practice workflow — 3-step guided flow
             '<div class="sd-card" style="border-color:rgba(99,102,241,0.15)">'+
-            '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD25 Your Practice Session</div>'+
-            '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:14px;font-style:italic">Three steps. That\'s all it takes to get better.</div>'+
-            '<div style="display:flex;flex-direction:column;gap:10px">'+
-            // Step 1: Listen — use North Star if available, else YouTube
-            '<div id="sd-listen-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">'+
-            '<div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.12);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:#818cf8;flex-shrink:0">1</div>'+
-            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Listen First</div><div style="font-size:0.75em;color:var(--text-dim)" id="sd-listen-sub">Get the feel in your head before your hands</div></div>'+
-            '<span style="color:var(--text-dim);font-size:0.85em">▶</span>'+
+            '<div class="sd-card-title" style="margin-bottom:4px">\uD83D\uDD25 Practice Flow</div>'+
+            '<div style="display:flex;flex-direction:column;gap:8px">'+
+            '<div id="sd-listen-step" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;cursor:pointer" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">'+
+            '<span style="font-size:0.75em;font-weight:800;color:#818cf8">1</span>'+
+            '<span style="font-size:0.82em;color:var(--text)">Listen First</span>'+
+            '<span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">\u25B6</span>'+
             '</div>'+
-            // Step 2: Play
-            '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);border-radius:10px;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
-            '<div style="width:28px;height:28px;border-radius:50%;background:rgba(99,102,241,0.15);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:#a5b4fc;flex-shrink:0">2</div>'+
-            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Play Through</div><div style="font-size:0.75em;color:var(--text-dim)">Chart up, instrument in hand. Don\'t stop.</div></div>'+
-            '<span style="color:var(--accent-light);font-size:0.85em">→</span>'+
+            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.15);border-radius:8px;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
+            '<span style="font-size:0.75em;font-weight:800;color:#a5b4fc">2</span>'+
+            '<span style="font-size:0.82em;color:var(--text)">Play Through</span>'+
+            '<span style="margin-left:auto;color:var(--accent-light);font-size:0.8em">\u2192</span>'+
             '</div>'+
-            // Step 3: Rate
-            '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:10px;cursor:pointer" onclick="var el=document.querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">'+
-            '<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:0.82em;font-weight:800;color:var(--text-muted);flex-shrink:0">3</div>'+
-            '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Rate Yourself</div><div style="font-size:0.75em;color:var(--text-dim)">Honest check-in — where are you right now?</div></div>'+
-            '<span style="color:var(--text-dim);font-size:0.85em">↓</span>'+
+            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px;cursor:pointer" onclick="switchLens(\'band\')">'+
+            '<span style="font-size:0.75em;font-weight:800;color:var(--text-muted)">3</span>'+
+            '<span style="font-size:0.82em;color:var(--text)">Rate Yourself</span>'+
+            '<span style="margin-left:auto;color:var(--text-dim);font-size:0.8em">\u2193</span>'+
             '</div>'+
             '</div></div>'+
-            // Practice This Song
+            // Tools section — grouped tabs, tracks, references
+            '<details class="sd-details" open><summary class="sd-details-summary">\uD83D\uDEE0\uFE0F Tools</summary>'+
+            '<div style="padding:8px 0">'+
             _sdRenderPracticeSection(title, safeSong, ytQuery)+
-            // Readiness + trend
-            '<div class="sd-card" id="sd-readiness-card">'+
-            '<div class="sd-card-title">\uD83D\uDCCA Your Readiness</div>'+
-            _sdRenderReadinessBlock(title,safeSong)+
-            _sdBuildReadinessTrend(title)+
-            '</div>'+
-            // Song Info — directly editable
-            '<div class="sd-card" style="padding:10px 14px">'+
-            '<div class="sd-card-title" style="margin-bottom:8px">\uD83E\uDDEC Song Info</div>'+
-            '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:0.82em">'+
-            '<span style="color:var(--text-dim)">\uD83D\uDD11</span><select class="app-select sd-select" style="width:70px;font-size:0.9em" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select>'+
-            '<span style="color:var(--text-dim)">\uD83E\uDD41</span><input type="number" class="app-input sd-bpm-input" style="width:65px;font-size:0.9em" min="40" max="240" placeholder="BPM" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)">'+
-            '<span style="color:var(--text-dim)">\uD83C\uDFA4</span><select class="app-select sd-select" style="width:90px;font-size:0.9em" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select>'+
-            '<span style="color:var(--text-dim)">\uD83C\uDFAF</span><select class="app-select sd-select" style="width:110px;font-size:0.9em" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select>'+
-            '</div></div>'+
-            // How We Play It
-            '<div class="sd-card" style="padding:10px 14px">' +
-            '<div class="sd-card-title" style="margin-bottom:0">\uD83C\uDFBC How We Play It</div>' +
-            '<div id="sd-structure" style="font-size:0.82em;color:var(--text-dim);margin-top:6px">Loading...</div>' +
-            '</div>' +
+            '</div></details>'+
             '</div>';
         _sdBuildReadinessStrip(title);
-        setTimeout(function() { _sdLoadStructure(title); _sdUpgradeListenStep(title); }, 300);
+        setTimeout(function() { _sdUpgradeListenStep(title); }, 300);
         return;
     }
 
@@ -402,18 +383,12 @@ async function _sdPopulateBandLens(title) {
         }).join('') : '<div style="font-size:0.85em;color:var(--text-dim);padding:4px">Looking good \u2014 no critical gaps. Run it once to stay sharp.</div>') +
         '<div style="margin-top:12px;display:flex;gap:8px">'+
         '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">\uD83D\uDCCB Run Through</button>'+
+        '<button class="sd-pm-btn" style="margin-left:8px" onclick="switchLens(\'learn\')">\uD83D\uDCDA Improve</button>'+
         '</div></div>'+
-        // Practice This Song
-        _sdRenderPracticeSection(title, safeSong, ytQuery)+
-        // ── Band Love ──
+        // Band Love (unique to this mode)
         '<div class="sd-card" id="sd-love-card">'+
         '<div class="sd-card-title">\u2764\uFE0F Love Playing</div>'+
         _sdRenderBandLove(title, safeSong)+
-        '</div>'+
-        // ── Readiness ──
-        '<div class="sd-card" id="sd-readiness-card">'+
-        '<div class="sd-card-title">📊 Band Readiness</div>'+
-        _sdRenderReadinessBlock(title,safeSong)+
         '</div>'+
         // ── Collapsed detail sections ──
         '<details class="sd-details"><summary class="sd-details-summary">\uD83C\uDFBC Structure & DNA <span style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">tap to expand</span></summary>'+
