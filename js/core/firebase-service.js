@@ -97,7 +97,7 @@ window.bandPath = function bandPath(subpath) {
  */
 var _SONG_V2_TYPES = { song_bpm:1, key:1, lead_singer:1, song_status:1, chart:1,
     personal_tabs:1, rehearsal_notes:1, spotify_versions:1, practice_tracks:1,
-    cover_me:1, song_votes:1, song_structure:1 };
+    cover_me:1, song_votes:1, song_structure:1, readiness:1, readiness_history:1 };
 
 // Fallback tracking — logs when legacy path is used for a v2-enabled type
 var _songPathFallbackLog = {};
@@ -813,6 +813,9 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
             }
         }
 
+        // Auto-migrate legacy song data to songs_v2 (one-time, non-blocking)
+        _autoMigrateSongDataToV2();
+
         // Re-render songs page if visible
         if (typeof renderSongs === 'function') {
             try { renderSongs(); } catch(e) { console.warn('[Firebase] renderSongs failed after sync', e); }
@@ -898,5 +901,99 @@ window.onunhandledrejection = function(event) {
     var msg = (reason && reason.message) ? reason.message : String(reason);
     console.error('[UnhandledRejection]', msg);
 };
+
+// ── Auto-migrate legacy song data to songs_v2 (one-time) ────────────────────
+async function _autoMigrateSongDataToV2() {
+    if (!firebaseDB || typeof allSongs === 'undefined' || !allSongs.length) return;
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : '';
+    if (!slug) return;
+    var bp = 'bands/' + slug + '/';
+
+    // Check migration flag
+    try {
+        var flagSnap = await firebaseDB.ref(bp + 'meta/songs_v2_migrated').once('value');
+        if (flagSnap.val()) return; // Already migrated
+    } catch(e) { return; }
+
+    console.log('[Migration] Auto-migrating legacy song data to songs_v2...');
+    var sanitize = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath : function(s) { return s.replace(/[.#$/\[\]]/g, '_'); };
+
+    try {
+        var legacySnap = await firebaseDB.ref(bp + 'songs').once('value');
+        var legacyData = legacySnap.val() || {};
+        var v2Snap = await firebaseDB.ref(bp + 'songs_v2').once('value');
+        var v2Data = v2Snap.val() || {};
+
+        var migrated = 0, total = 0;
+        for (var i = 0; i < allSongs.length; i++) {
+            var song = allSongs[i];
+            if (!song || !song.title || !song.songId) continue;
+            total++;
+            var titleKey = sanitize(song.title);
+            var legacy = legacyData[titleKey] || legacyData[song.title] || {};
+            var v2 = v2Data[song.songId] || {};
+
+            // Extract from legacy
+            var lk = null, lb = null, ll = null, ls = null, lst = null;
+            if (legacy.key) lk = (typeof legacy.key === 'object' && legacy.key.key) ? legacy.key.key : (typeof legacy.key === 'string' ? legacy.key : null);
+            if (!lk && legacy.song_key) lk = (typeof legacy.song_key === 'object') ? legacy.song_key.key : legacy.song_key;
+            if (legacy.song_bpm) lb = (typeof legacy.song_bpm === 'object') ? legacy.song_bpm.bpm : legacy.song_bpm;
+            if (!lb && legacy.bpm) lb = legacy.bpm;
+            if (legacy.lead_singer) ll = (typeof legacy.lead_singer === 'object') ? legacy.lead_singer.singer : legacy.lead_singer;
+            if (legacy.song_status) lst = (typeof legacy.song_status === 'object') ? legacy.song_status.status : legacy.song_status;
+            if (legacy.song_structure && legacy.song_structure.sections) ls = legacy.song_structure;
+
+            // Merge: v2 takes precedence
+            var fk = (v2.key ? (typeof v2.key === 'object' ? v2.key.key : v2.key) : null) || lk;
+            var fb = (v2.song_bpm ? (typeof v2.song_bpm === 'object' ? v2.song_bpm.bpm : v2.song_bpm) : null) || lb;
+            var fl = (v2.lead_singer ? (typeof v2.lead_singer === 'object' ? v2.lead_singer.singer : v2.lead_singer) : null) || ll;
+            var fst = v2.song_status ? (typeof v2.song_status === 'object' ? v2.song_status.status : v2.song_status) : null || lst;
+            var fstr = v2.song_structure || ls;
+
+            // Also migrate readiness + readiness_history
+            var fRead = legacy.readiness || v2.readiness || null;
+            var fReadH = legacy.readiness_history || v2.readiness_history || null;
+
+            if (!fk && !fb && !fl && !fst && !fstr && !fRead) continue;
+
+            var rec = {};
+            var now = new Date().toISOString();
+            if (fk) rec.key = { key: fk, updatedAt: now, source: 'migration' };
+            if (fb) rec.song_bpm = { bpm: Number(fb), updatedAt: now, source: 'migration' };
+            if (fl) rec.lead_singer = { singer: fl, updatedAt: now, source: 'migration' };
+            if (fst) rec.song_status = { status: fst, updatedAt: now, source: 'migration' };
+            if (fstr) rec.song_structure = fstr;
+            if (fRead) rec.readiness = fRead;
+            if (fReadH) rec.readiness_history = fReadH;
+
+            try {
+                await firebaseDB.ref(bp + 'songs_v2/' + song.songId).update(rec);
+                migrated++;
+                // Also update in-memory
+                if (fk) song.key = fk;
+                if (fb) song.bpm = fb;
+                if (fl) song.lead = fl;
+            } catch(e) { console.warn('[Migration] Write failed for', song.title, e.message); }
+        }
+
+        // Set migration flag
+        await firebaseDB.ref(bp + 'meta/songs_v2_migrated').set({ completedAt: new Date().toISOString(), migratedCount: migrated, totalSongs: total });
+        console.log('[Migration] ✅ Migrated ' + migrated + '/' + total + ' songs to songs_v2 (including readiness)');
+
+        // Re-run preload to pick up the newly migrated data
+        if (typeof _preloadSongDNA === 'function') {
+            await _preloadSongDNA();
+            console.log('[Migration] Preload re-run with migrated data');
+        }
+
+        // Re-render if visible
+        if (typeof renderSongs === 'function') try { renderSongs(); } catch(e) {}
+    } catch(e) {
+        console.error('[Migration] Failed:', e.message);
+    }
+}
+
+// Also expose for manual use
+window.runSongMigration = _autoMigrateSongDataToV2;
 
 console.log('✅ firebase-service.js loaded');
