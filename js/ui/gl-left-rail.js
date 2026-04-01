@@ -232,9 +232,9 @@
         continue;
       }
 
-      // Secondary sections: collapsible
+      // Secondary sections: collapsible with divider
       html += '<details class="gl-rail-section gl-rail-section--collapsible">';
-      html += '<summary class="gl-rail-section-title" style="cursor:pointer;user-select:none">' + section.title + '</summary>';
+      html += '<summary class="gl-rail-section-title" style="cursor:pointer;user-select:none;border-top:1px solid rgba(255,255,255,0.04);margin-top:4px;padding-top:8px">' + section.title + '</summary>';
       for (var vi = 0; vi < visibleItems.length; vi++) {
         html += _renderNavItem(visibleItems[vi]);
       }
@@ -322,6 +322,15 @@
       GLStore._setNavCollapsedInternal(collapsed);
     }
     shell.classList.toggle('gl-shell--nav-collapsed', collapsed);
+    // When collapsed: force secondary <details> open so icon-only items are visible
+    // When expanded: close them (user can open manually)
+    if (_rail) {
+      var detailsEls = _rail.querySelectorAll('.gl-rail-section--collapsible');
+      detailsEls.forEach(function(d) {
+        if (collapsed) d.setAttribute('open', '');
+        // Don't force-close when expanded — respect user's choice
+      });
+    }
     // Update toggle icon
     if (_rail) {
       var toggle = _rail.querySelector('.gl-rail-toggle');

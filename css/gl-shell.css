@@ -99,6 +99,13 @@
   margin: 0;
   overflow: hidden;
 }
+/* When collapsed, force secondary sections open so icons are visible */
+#gl-shell.gl-shell--nav-collapsed .gl-rail-section--collapsible {
+  /* Override <details> closed state — show all items as icon-only */
+}
+#gl-shell.gl-shell--nav-collapsed .gl-rail-section--collapsible > .gl-rail-item {
+  display: flex;
+}
 
 /* Nav item */
 .gl-rail-item {
