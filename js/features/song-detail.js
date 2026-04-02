@@ -2091,7 +2091,7 @@ function _sdInjectStyles(){
     s.id='sd-styles';
     s.textContent='.song-detail-page{max-width:800px;margin:0 auto;padding:0 0 80px;opacity:0;transform:translateY(12px);transition:opacity 0.25s ease,transform 0.25s ease}'+
     '.sd-entered .song-detail-page{opacity:1;transform:none}'+
-    '.sd-header{padding:14px 16px 0;background:var(--bg-card,#1e293b);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);border-radius:12px 12px 0 0}'+
+    '.sd-header{padding:14px 16px 0;background:var(--bg-card,#1e293b);border-bottom:1px solid var(--border,rgba(255,255,255,0.08));z-index:50;border-radius:12px 12px 0 0}'+
     '.sd-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}'+
     '.sd-back-btn{background:transparent;border:1px solid rgba(255,255,255,0.1);color:var(--text-muted,#94a3b8);padding:5px 12px;border-radius:20px;font-size:0.82em;font-weight:600;cursor:pointer;transition:all 0.15s}'+
     '.sd-back-btn:hover{background:rgba(255,255,255,0.06);color:var(--text,#f1f5f9)}'+
