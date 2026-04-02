@@ -618,6 +618,20 @@
       this._bindEvents();
       this._bindSettingsUI();
       this._subscribeFirebase();
+      // Safety: verify styles actually applied after render — force re-inject if missing
+      var self = this;
+      requestAnimationFrame(function() {
+        if (self.el) {
+          var root = self.el.querySelector('.pm-root') || self.el;
+          var bg = getComputedStyle(root).backgroundColor;
+          if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') {
+            console.warn('[PocketMeter] Styles missing after mount — re-injecting');
+            var stale = document.getElementById('pm-styles');
+            if (stale) stale.remove();
+            self._injectStyles();
+          }
+        }
+      });
     }
 
     destroy() {
@@ -1825,7 +1839,9 @@
     // ── Styles ─────────────────────────────────────────────────────────────────
 
     _injectStyles() {
-      if (document.getElementById('pm-styles')) return;
+      var existing = document.getElementById('pm-styles');
+      if (existing && existing.textContent && existing.textContent.length > 100) return;
+      if (existing) existing.remove();
       const s = document.createElement('style');
       s.id = 'pm-styles';
       s.textContent = `
