@@ -149,14 +149,24 @@ window.hlSaveRecording = async function hlSaveRecording(visibility) {
 function _hlShellHTML(title) {
   var key = _hlGetSongKey();
   var bpm = _hlGetSongBpm();
+  var safeSong = _hlEsc(title).replace(/'/g, "\\'");
 
   return [
     '<div class="hl-root">',
 
-    // Header
+    // ── HERO: Create Harmony Parts (dominant) ──
+    '<div style="text-align:center;padding:24px 16px;margin-bottom:16px;background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(236,72,153,0.06));border:2px solid rgba(99,102,241,0.2);border-radius:14px">',
+    '  <div style="font-size:1.1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:12px">🎤 Create Harmony Parts</div>',
+    '  <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">',
+    '    <button onclick="hlShowGenerateGuide(\'lead\',\'lead\')" style="padding:12px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.88em;cursor:pointer;box-shadow:0 4px 12px rgba(99,102,241,0.3)">✨ Generate from Song</button>',
+    '    <button onclick="hlSwitchMode(\'record\')" style="padding:12px 20px;border-radius:10px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.08);color:#f87171;font-weight:700;font-size:0.88em;cursor:pointer">⏺ Record Manually</button>',
+    '    <button onclick="hlToggleImportForm()" style="padding:12px 20px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.03);color:var(--text-muted,#94a3b8);font-weight:700;font-size:0.88em;cursor:pointer">📁 Import Stems</button>',
+    '  </div>',
+    '</div>',
+
+    // Header — song info + mode switcher
     '<div class="hl-header">',
     '  <div class="hl-header-left">',
-    '    <div class="hl-header-song">' + _hlEsc(title) + '</div>',
     '    <div class="hl-header-meta">',
     key ? '<span class="hl-meta-badge">🔑 ' + _hlEsc(key) + '</span>' : '',
     bpm ? '<span class="hl-meta-badge">🥁 ' + _hlEsc(String(bpm)) + ' BPM</span>' : '',
@@ -169,7 +179,7 @@ function _hlShellHTML(title) {
     '  </div>',
     '</div>',
 
-    // Body: left rail + main content + right panel
+    // Body
     '<div class="hl-body">',
 
     // Left rail — sections
@@ -185,13 +195,29 @@ function _hlShellHTML(title) {
 
     // ── Learn mode ──
     '<div class="hl-mode-panel" data-mode="learn">',
+
+    // Harmony Parts
     '  <div class="hl-parts-grid" id="hl-parts-grid">',
     '    <div class="hl-loading">Loading harmony parts…</div>',
     '  </div>',
+
+    // My Takes + Band Reference (moved up, under parts)
+    '  <div style="display:flex;gap:12px;margin:16px 0;flex-wrap:wrap">',
+    '    <div style="flex:1;min-width:180px">',
+    '      <div class="hl-rail-title">My Takes</div>',
+    '      <div id="hl-my-takes" class="hl-takes-list"><div class="hl-rail-empty">No takes yet</div></div>',
+    '    </div>',
+    '    <div style="flex:1;min-width:180px">',
+    '      <div class="hl-rail-title">Band Reference</div>',
+    '      <div id="hl-band-takes" class="hl-takes-list"><div class="hl-rail-empty">No reference take</div></div>',
+    '    </div>',
+    '  </div>',
+
+    // Guide Tracks (simplified — button reveals form)
     '  <div class="hl-section-title" style="margin-top:16px">Guide Tracks</div>',
-    '  <div id="hl-asset-player" class="hl-asset-player"><div class="hl-asset-empty">Loading…</div></div>',
-    '  <div id="hl-import-panel" class="hl-import-panel" ondragover="event.preventDefault();this.classList.add(\"hl-import-drag\")" ondragleave="this.classList.remove(\"hl-import-drag\")" ondrop="hlHandleImportDrop(event)">',
-    '    <div class="hl-import-title">Import Guide Track</div>',
+    '  <div id="hl-asset-player" class="hl-asset-player"><div class="hl-asset-empty">No guide tracks yet</div></div>',
+    '  <button id="hl-add-guide-btn" onclick="hlToggleImportForm()" style="margin-top:8px;padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted,#94a3b8);cursor:pointer;font-size:0.78em;font-weight:600;width:100%">+ Add Guide Track</button>',
+    '  <div id="hl-import-panel" class="hl-import-panel" style="display:none" ondragover="event.preventDefault();this.classList.add(\'hl-import-drag\')" ondragleave="this.classList.remove(\'hl-import-drag\')" ondrop="hlHandleImportDrop(event)">',
     '    <div class="hl-import-row">',
     '      <input id="hl-import-label-input" class="hl-import-input" type="text" placeholder="Label (e.g. High Harmony)" style="max-width:160px">',
     '      <input id="hl-import-url-input" class="hl-import-input" type="url" placeholder="Paste direct audio URL (.mp3, .wav…)" style="flex:1">',
@@ -202,13 +228,17 @@ function _hlShellHTML(title) {
     '      <label class="hl-import-file-label">📁 Upload or Drop File (max 20MB)<input type="file" accept="audio/*" style="display:none" onchange="hlImportAssetFromFile(this)"></label>',
     '    </div>',
     '  </div>',
-    '  <div class="hl-notation-area">',
-    '    <div class="hl-notation-label">Notation</div>',
-    '    <div id="hl-abc-container" class="hl-abc-placeholder">',
-    '      <div class="hl-abc-icon">𝄞</div>',
-    '      <div class="hl-abc-msg">ABC notation will appear here once abcjs is loaded (Phase 4)</div>',
+
+    // Notation (collapsed, labeled as Advanced)
+    '  <details class="sd-details" style="margin-top:16px">',
+    '    <summary style="padding:8px 12px;font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim,#475569);cursor:pointer">🎼 Notation — Advanced (Coming Soon)</summary>',
+    '    <div style="padding:8px 12px">',
+    '      <div id="hl-abc-container" class="hl-abc-placeholder">',
+    '        <div class="hl-abc-icon">𝄞</div>',
+    '        <div class="hl-abc-msg">ABC notation will appear here once abcjs is loaded</div>',
+    '      </div>',
     '    </div>',
-    '  </div>',
+    '  </details>',
     '</div>',
 
     // ── Practice mode ──
@@ -248,7 +278,6 @@ function _hlShellHTML(title) {
 
     // ── Record mode ──
     '<div class="hl-mode-panel" data-mode="record" style="display:none">',
-    '  <!-- Headphone gate (shown until user confirms) -->',
     '  <div id="hl-headphone-gate" class="hl-gate">',
     '    <div class="hl-gate-icon">🎧</div>',
     '    <div class="hl-gate-title">Headphones Required</div>',
@@ -261,8 +290,6 @@ function _hlShellHTML(title) {
     '      Continue →',
     '    </button>',
     '  </div>',
-
-    '  <!-- Recorder (shown after headphone gate) -->',
     '  <div id="hl-recorder-ready" class="hl-hidden">',
     '    <div class="hl-rec-header">',
     '      <div class="hl-rec-part" id="hl-rec-part-label">Select your part below to record</div>',
@@ -274,8 +301,6 @@ function _hlShellHTML(title) {
     '        ⏺ Record',
     '      </button>',
     '    </div>',
-
-    '    <!-- Playback (shown after recording stops) -->',
     '    <div id="hl-playback-panel" class="hl-hidden">',
     '      <div class="hl-playback-title">Review Take</div>',
     '      <audio id="hl-playback-audio" controls class="hl-playback-audio"></audio>',
@@ -291,19 +316,16 @@ function _hlShellHTML(title) {
     '</div>',
 
     '</div>', // hl-center
-
-    // Right panel — takes
-    '<div class="hl-right-panel">',
-    '  <div class="hl-rail-title">My Takes</div>',
-    '  <div id="hl-my-takes" class="hl-takes-list"><div class="hl-rail-empty">No takes yet</div></div>',
-    '  <div class="hl-rail-title" style="margin-top:16px">Band Reference</div>',
-    '  <div id="hl-band-takes" class="hl-takes-list"><div class="hl-rail-empty">No reference take</div></div>',
-    '</div>',
-
     '</div>', // hl-body
     '</div>', // hl-root
   ].join('');
 }
+
+// Toggle import guide track form
+window.hlToggleImportForm = function hlToggleImportForm() {
+  var panel = document.getElementById('hl-import-panel');
+  if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+};
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 
@@ -407,7 +429,7 @@ function _hlRenderSections(data) {
   _hlSections = sections;
 
   if (!sections.length) {
-    list.innerHTML = '<div class="hl-rail-empty">Add sections in Band tab</div>';
+    list.innerHTML = '<div class="hl-rail-empty">No sections yet</div>';
     return;
   }
 
@@ -440,12 +462,12 @@ function _hlRenderParts(data) {
   // If no harmony data yet, show default part cards
   if (!singers.length) {
     var defaultParts = [
-      { name: 'Lead',         role: 'lead',  icon: '🎤', singer: '—' },
-      { name: 'High Harmony', role: 'high',  icon: '⬆️', singer: '—' },
-      { name: 'Low Harmony',  role: 'low',   icon: '⬇️', singer: '—' },
+      { name: 'Lead',         role: 'lead',  icon: '🎤', singer: '—', hasData: false },
+      { name: 'High Harmony', role: 'high',  icon: '⬆️', singer: '—', hasData: false },
+      { name: 'Low Harmony',  role: 'low',   icon: '⬇️', singer: '—', hasData: false },
     ];
     grid.innerHTML = defaultParts.map(_hlPartCardHTML).join('') +
-      '<div class="hl-parts-hint">Add harmony parts in the Band tab to see them here</div>';
+      '<div class="hl-parts-hint" style="font-size:0.78em;color:var(--text-dim,#475569);padding:8px 0;text-align:center">No harmony parts yet — start by generating or recording</div>';
     if (practiceGrid) practiceGrid.innerHTML = grid.innerHTML;
     return;
   }
@@ -467,14 +489,25 @@ function _hlRenderParts(data) {
 function _hlPartCardHTML(part) {
   var roleColors = { lead:'#667eea', high:'#10b981', mid:'#f59e0b', low:'#ec4899', optional:'#64748b' };
   var color = roleColors[part.role] || '#667eea';
+  var isLead = part.role === 'lead';
+  var borderStyle = isLead ? 'border:2px solid ' + color : 'border:1px solid rgba(255,255,255,0.08)';
+  var bgStyle = isLead ? 'background:rgba(99,102,241,0.06)' : 'background:rgba(255,255,255,0.02)';
+  var hasData = part.hasData !== false; // default true for populated parts
+  var actions = '';
+  if (hasData) {
+    actions = '<button class="hl-part-guide-btn" onclick="hlPlayGuide(\'' + _hlEsc(part.singer) + '\')">▶ Play</button>'
+            + '<button class="hl-part-gen-btn" style="background:rgba(255,255,255,0.06);color:var(--text-muted,#94a3b8)" onclick="hlShowGenerateGuide(\'' + _hlEsc(part.singer) + '\',\'' + _hlEsc(part.role) + '\')">✏️ Edit</button>';
+  } else {
+    actions = '<button class="hl-part-gen-btn" onclick="hlShowGenerateGuide(\'' + _hlEsc(part.singer) + '\',\'' + _hlEsc(part.role) + '\')">✨ Generate</button>'
+            + '<button class="hl-part-guide-btn" onclick="hlSwitchMode(\'record\')" style="background:rgba(239,68,68,0.1);color:#f87171;border-color:rgba(239,68,68,0.2)">⏺ Record</button>';
+  }
   return [
-    '<div class="hl-part-card">',
+    '<div class="hl-part-card" style="' + borderStyle + ';' + bgStyle + '">',
     '  <div class="hl-part-icon">' + part.icon + '</div>',
-    '  <div class="hl-part-name">' + _hlEsc(part.name) + '</div>',
-    '  <div class="hl-part-role" style="color:' + color + '">' + _hlEsc(part.role) + '</div>',
+    '  <div class="hl-part-name"' + (isLead ? ' style="font-size:1.1em"' : '') + '>' + _hlEsc(part.name) + '</div>',
+    '  <div class="hl-part-role" style="color:' + color + '">' + _hlEsc(part.role.toUpperCase()) + '</div>',
     '  <div class="hl-part-singer">' + _hlEsc(part.singer) + '</div>',
-    '  <button class="hl-part-guide-btn" onclick="hlPlayGuide(\'' + _hlEsc(part.singer) + '\')">▶ Guide</button>',
-    '  <button class="hl-part-gen-btn" onclick="hlShowGenerateGuide(\'' + _hlEsc(part.singer) + '\',\'' + _hlEsc(part.role) + '\')">✨ Generate</button>',
+    actions,
     '</div>',
   ].join('');
 }
