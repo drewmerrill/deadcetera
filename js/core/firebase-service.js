@@ -485,6 +485,22 @@ window.loadBandDataFromDrive = async function loadBandDataFromDrive(songTitle, d
             var data = snapshot.val();
             if (data !== null) return data;
 
+            // Legacy fallback: if v2 path returned null, check legacy path
+            // This handles data not yet migrated to songs_v2
+            if (songTitle !== '_band' && _SONG_V2_TYPES[dataType]) {
+                var legacySongPath = window.bandPath(
+                    'songs/' + window.sanitizeFirebasePath(songTitle) +
+                    '/' + window.sanitizeFirebasePath(dataType));
+                if (legacySongPath !== path) {
+                    var legacySongSnap = await firebaseDB.ref(legacySongPath).once('value');
+                    if (legacySongSnap.val() !== null) {
+                        console.warn('⚠️ [legacy-read] Loaded ' + dataType + ' for "' + songTitle + '" from legacy songs/ path');
+                        window._glLegacyReads = (window._glLegacyReads || 0) + 1;
+                        return legacySongSnap.val();
+                    }
+                }
+            }
+
             // Legacy fallback for _band data that hasn't been migrated yet
             if (songTitle === '_band') {
                 var legacyPath = window.songPath(songTitle, dataType);
