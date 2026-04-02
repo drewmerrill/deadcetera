@@ -762,13 +762,17 @@ document.addEventListener('DOMContentLoaded', function() {
         (typeof loadBandSongLibrary === 'function' ? loadBandSongLibrary() : Promise.resolve()).then(function() {
             console.log('[Startup] Band song library loaded at ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songLibReady = performance.now();
-            // Load custom songs and render (always — both Deadcetera and other bands need this)
             return loadCustomSongs();
         }).then(function() {
             renderSongs();
             console.log('[Startup] Songs rendered at ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songsRendered = performance.now();
             if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('songs');
+            // Preload key/bpm/lead AFTER song library is loaded (allSongs is final)
+            return Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]);
+        }).then(function() {
+            // Re-render with DNA data filled in
+            if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
         });
 
         // ── STAGE 3: Deferred preloads (idle/background) ──
@@ -794,9 +798,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
             if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
-        // Preload key/bpm/lead from Firebase, then re-render for accurate triage
-        Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]).then(function() {
-            if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
+        // DNA preload now runs after loadBandSongLibrary (see above)
+        // This block is kept for the DNA bulk load timing log only
+        Promise.resolve().then(function() {
         });
         // Preload setlists + blocked dates for lifecycle suggestions + availability checks
         loadBandDataFromDrive('_band', 'setlists').then(function(data) {
