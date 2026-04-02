@@ -1691,38 +1691,63 @@ async function _sdPopulateLearnLens(title) {
     var _learnChart = null;
     try { var _lc = await loadBandDataFromDrive(title, 'chart').catch(function(){ return null; }); _learnChart = (_lc && _lc.text && _lc.text.trim()) ? _lc.text : null; } catch(e) {}
 
+    // Build readiness context for progress messaging
+    var _prAvg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
+    var _prHasChart = !!_learnChart;
+    var _prHasRefs = (tracks && tracks.length) || (tabs && tabs.length);
+    var _prProgress = '';
+    if (_prAvg >= 4) _prProgress = '<span style="color:#10b981">Sounding tight</span>';
+    else if (_prAvg >= 2.5) _prProgress = 'Getting there \u2014 keep running it';
+    else if (_prAvg > 0) _prProgress = 'Needs work \u2014 start with a run-through';
+    else _prProgress = 'Listen first, then play along';
+
     panel.innerHTML=
-        '<div class="sd-panel-inner">'+
+        '<div class="sd-panel-inner" style="max-width:640px;margin:0 auto">'+
 
-        // ── HERO: Start Practice Session (dominant) ──
-        '<div style="text-align:center;padding:28px 20px;margin-bottom:20px;background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(34,197,94,0.06));border:2px solid rgba(99,102,241,0.2);border-radius:14px">'+
-        '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:1.1em;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,0.3);min-width:240px">\uD83C\uDFB8 Start Practice Session</button>'+
-        '<div style="font-size:0.78em;color:var(--text-dim);margin-top:8px">Open charts and play along</div>'+
-        '</div>'+
-
-        // ── Quick Actions (secondary row) ──
-        '<div style="display:flex;gap:8px;margin-bottom:16px">'+
-        '<button onclick="sdShowChart(\''+safeSong+'\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83D\uDCDA Chart</button>'+
-        '<button onclick="switchLens(\'listen\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFA7 Listen</button>'+
-        '<button onclick="switchLens(\'sing\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFA4 Harmony</button>'+
+        // ── HERO: Start Practice (dominant, tighter than before) ──
+        '<div style="text-align:center;padding:18px 16px;margin-bottom:14px;background:linear-gradient(135deg,rgba(99,102,241,0.05),rgba(34,197,94,0.03));border:1px solid rgba(99,102,241,0.15);border-radius:12px">'+
+        '<div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:10px">\uD83C\uDFB8 Practice This Song</div>'+
+        '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="padding:12px 32px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.92em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.2);min-width:200px">Start Practice Session</button>'+
+        '<div style="font-size:0.75em;color:var(--text-dim);margin-top:8px">Open chart and play along</div>'+
         '</div>'+
 
-        // ── Practice Flow (collapsed) ──
-        '<details class="sd-details"><summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">Practice Flow</summary>'+
-        '<div style="padding:8px 12px;display:flex;flex-direction:column;gap:6px">'+
-        '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #818cf8;background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0;cursor:pointer" onclick="switchLens(\'listen\')">'+
-        '<span style="font-size:0.72em;font-weight:800;color:#818cf8;width:16px">1</span>'+
-        '<span style="font-size:0.82em;color:var(--text)">Listen to the reference version</span>'+
+        // ── Progress indicator ──
+        '<div style="text-align:center;font-size:0.75em;font-weight:600;color:var(--text-dim,#475569);margin-bottom:14px;letter-spacing:0.02em">'+_prProgress+'</div>'+
+
+        // ── Practice Flow (always visible, guided steps) ──
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">'+
+
+        // Step 1: Listen
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:pointer" onclick="switchLens(\'listen\')">'+
+        '<div style="width:28px;height:28px;border-radius:50%;background:rgba(129,140,248,0.12);display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:#818cf8;flex-shrink:0">1</div>'+
+        '<div style="flex:1">'+
+        '<div style="font-size:0.85em;font-weight:600;color:var(--text,#f1f5f9)">Listen to the reference</div>'+
+        '<div style="font-size:0.7em;color:var(--text-dim,#475569)">Hear how it should sound</div>'+
         '</div>'+
-        '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #a5b4fc;background:rgba(99,102,241,0.02);border-radius:0 6px 6px 0;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
-        '<span style="font-size:0.72em;font-weight:800;color:#a5b4fc;width:16px">2</span>'+
-        '<span style="font-size:0.82em;color:var(--text)">Play it all the way through</span>'+
+        '<span style="font-size:0.82em;color:var(--text-dim)">\uD83C\uDFA7</span>'+
         '</div>'+
-        '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid var(--text-dim);background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0">'+
-        '<span style="font-size:0.72em;font-weight:800;color:var(--text-dim);width:16px">3</span>'+
-        '<span style="font-size:0.82em;color:var(--text)">Rate yourself honestly</span>'+
+
+        // Step 2: Play Along (primary — emphasized)
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
+        '<div style="width:28px;height:28px;border-radius:50%;background:rgba(129,140,248,0.2);display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:#a5b4fc;flex-shrink:0">2</div>'+
+        '<div style="flex:1">'+
+        '<div style="font-size:0.85em;font-weight:600;color:var(--text,#f1f5f9)">Play it all the way through</div>'+
+        '<div style="font-size:0.7em;color:var(--text-dim,#475569)">Open chart and run the song</div>'+
         '</div>'+
-        '</div></details>'+
+        '<span style="font-size:0.82em;color:var(--accent-light,#818cf8)">\uD83C\uDFB8</span>'+
+        '</div>'+
+
+        // Step 3: Review
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.01)">'+
+        '<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:var(--text-dim,#475569);flex-shrink:0">3</div>'+
+        '<div style="flex:1">'+
+        '<div style="font-size:0.85em;font-weight:600;color:var(--text,#f1f5f9)">Rate yourself honestly</div>'+
+        '<div style="font-size:0.7em;color:var(--text-dim,#475569)">Update readiness in the right panel</div>'+
+        '</div>'+
+        '<span style="font-size:0.82em;color:var(--text-dim)">\u2B50</span>'+
+        '</div>'+
+
+        '</div>'+
 
         // ── My Lessons (if any) ──
         lessonsHtml+
