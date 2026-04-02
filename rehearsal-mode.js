@@ -2426,9 +2426,7 @@ function rmLoadHarmony() {
                 + '</div>'
                 + '</div>';
         } else {
-            html += '<div style="padding:8px 12px;background:rgba(102,126,234,0.04);border:1px solid rgba(102,126,234,0.1);border-radius:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px">'
-                + '<span style="font-size:1em">⭐</span>'
-                + '<span style="font-size:0.78em;color:#64748b">No North Star set — find a reference version below</span></div>';
+            html += '<div style="padding:6px 12px;margin-bottom:6px;font-size:0.72em;color:#475569">\u2B50 No reference version set \u2014 find one below</div>';
         }
 
         // ── Best Shot card ──
@@ -2448,13 +2446,8 @@ function rmLoadHarmony() {
                 html += '<button onclick="window.open(\'' + bsUrl + '\',\'_blank\')" style="padding:6px 14px;background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.3);border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">▶ Play</button>';
             }
             html += '</div></div>';
-        } else {
-            html += '<div style="padding:8px 12px;background:rgba(245,158,11,0.03);border:1px solid rgba(245,158,11,0.1);border-radius:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px">'
-                + '<span style="font-size:1em">🏆</span>'
-                + '<span style="font-size:0.78em;color:#64748b">No Best Shot yet</span>'
-                + '<button onclick="closeRehearsalMode();setTimeout(function(){if(typeof showPage===\'function\')showPage(\'songs\');if(typeof GLStore!==\'undefined\')GLStore.selectSong(\'' + _songTitle + '\');},300)" style="margin-left:auto;padding:3px 10px;background:none;border:1px solid rgba(245,158,11,0.3);color:#fbbf24;border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600">Upload a Take →</button>'
-                + '</div>';
         }
+        // Best Shot empty state — just a subtle line, not a card
 
         // ── Lessons & Tutorials section (always visible, per-user) ──
         html += '<div style="padding:8px 12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.15);border-radius:10px;margin-bottom:8px">'
@@ -2499,9 +2492,9 @@ function rmLoadHarmony() {
     extLinks += '<a href="https://play.nugs.net/#/search/' + nugsQ + '" target="_blank" style="padding:4px 8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;color:#94a3b8;font-size:0.7em;text-decoration:none">🎧 nugs.net</a></div>';
 
     el.innerHTML = quickListenPlaceholder +
+        // ── Find a Version ──
+        '<div style="font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim,#64748b);margin:12px 0 6px">Find a Version</div>' +
         '<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">' + srcTabs + '</div>' +
-        '<button onclick="rmSearchAllSources()" style="width:100%;padding:8px;background:linear-gradient(135deg,rgba(102,126,234,0.2),rgba(118,75,162,0.2));color:#c4b5fd;border:1px solid rgba(102,126,234,0.3);border-radius:8px;cursor:pointer;font-size:0.82em;font-weight:600;margin-bottom:10px">🔍 Search All Sources</button>' +
-        filterPills + extLinks +
         '<div id="rmSrcArchive"><div style="display:flex;gap:6px;margin-bottom:8px">' +
             '<input id="rmArchiveQuery" type="text" placeholder="Search Archive.org..." value="' + rmArchiveQuery(song.title, song.band).replace(/"/g,'&quot;') + '" style="flex:1;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px;font-size:13px;font-family:inherit" onkeydown="if(event.key===\'Enter\')rmSearchArchive()">' +
             '<button onclick="rmSearchArchive()" style="padding:8px 14px;background:rgba(102,126,234,0.2);color:#818cf8;border:none;border-radius:8px;cursor:pointer">🔍</button></div>' +
@@ -2526,12 +2519,17 @@ function rmLoadHarmony() {
         '<div id="rmSelectedSource" style="display:none;background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.3);border-radius:8px;padding:10px;margin:12px 0">' +
             '<div style="color:#818cf8;font-size:0.78em;font-weight:600">Selected:</div>' +
             '<div id="rmSelectedSourceText" style="color:#e2e8f0;font-size:0.82em;word-break:break-all"></div></div>' +
-        '<button id="rmFadrGoBtn" onclick="rmRunFadr(\'' + ss + '\')" style="width:100%;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:10px;font-weight:700;font-size:0.95em;cursor:pointer;margin-top:12px" disabled>🤖 Send to Fadr AI</button>' +
-        '<div id="rmFadrProgress" style="display:none;margin-top:12px;background:rgba(255,255,255,0.03);border-radius:8px;padding:12px">' +
-            '<div id="rmFadrProgressText" style="color:#e2e8f0;font-size:0.85em"></div>' +
-            '<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;margin-top:8px"><div id="rmFadrProgressBar" style="height:100%;background:#667eea;border-radius:4px;width:0;transition:width 0.3s"></div></div></div>' +
-        '<div style="margin-top:16px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">' +
-            '<button onclick="importHarmoniesFromFadr(\'' + ss + '\')" style="width:100%;padding:10px;background:rgba(5,150,105,0.15);color:#6ee7b7;border:1px solid rgba(5,150,105,0.3);border-radius:8px;cursor:pointer;font-size:0.85em">🎵 Open Full Fadr Import Modal</button></div>';
+        // ── Advanced Tools (collapsed by default) ──
+        '<details style="margin-top:16px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden">' +
+            '<summary style="padding:10px 12px;cursor:pointer;font-size:0.78em;font-weight:600;color:var(--text-dim,#64748b);background:rgba(255,255,255,0.02);list-style:none;display:flex;align-items:center;gap:6px">' +
+            '\uD83D\uDEE0\uFE0F Advanced Tools <span style="font-size:0.85em;opacity:0.5">\u25B8</span></summary>' +
+            '<div style="padding:12px">' +
+            '<button id="rmFadrGoBtn" onclick="rmRunFadr(\'' + ss + '\')" style="width:100%;padding:10px;background:linear-gradient(135deg,rgba(102,126,234,0.15),rgba(118,75,162,0.15));color:#c4b5fd;border:1px solid rgba(102,126,234,0.2);border-radius:8px;font-weight:600;font-size:0.82em;cursor:pointer;margin-bottom:8px" disabled>\uD83E\uDD16 Send to Fadr AI</button>' +
+            '<div id="rmFadrProgress" style="display:none;margin-bottom:8px;background:rgba(255,255,255,0.03);border-radius:8px;padding:10px">' +
+                '<div id="rmFadrProgressText" style="color:#e2e8f0;font-size:0.82em"></div>' +
+                '<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:4px;margin-top:6px"><div id="rmFadrProgressBar" style="height:100%;background:#667eea;border-radius:4px;width:0;transition:width 0.3s"></div></div></div>' +
+            '<button onclick="importHarmoniesFromFadr(\'' + ss + '\')" style="width:100%;padding:8px;background:rgba(5,150,105,0.08);color:#6ee7b7;border:1px solid rgba(5,150,105,0.15);border-radius:8px;cursor:pointer;font-size:0.78em">\uD83C\uDFB5 Fadr Import Modal</button>' +
+            '</div></details>';
 
     if (isPhish) rmFetchJamCharts(song.title);
 }
