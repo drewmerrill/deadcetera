@@ -89,12 +89,17 @@ window.sdShowChart = async function sdShowChart(title) {
         var chartData = await loadBandDataFromDrive(title, 'chart').catch(function() { return null; });
         var chartText = (chartData && chartData.text && chartData.text.trim()) ? chartData.text : null;
         panel.innerHTML = '<div class="sd-panel-inner">'
-            + '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button onclick="_sdLensPopulated.band=false;switchLens(\'learn\')" style="font-size:0.78em;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer">✕ Close Chart</button></div>'
+            + '<div style="display:flex;justify-content:flex-end;margin-bottom:8px"><button onclick="sdCloseChart()" style="font-size:0.78em;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer">✕ Close Chart</button></div>'
             + _sdRenderBandChart(title, safeSong, chartText)
             + '</div>';
     } catch(e) {
         panel.innerHTML = '<div class="sd-panel-inner"><div style="padding:24px;text-align:center;color:var(--text-dim)">Failed to load chart</div></div>';
     }
+};
+
+window.sdCloseChart = function sdCloseChart() {
+    _sdLensPopulated.band = false;
+    _sdPopulateBandLens(_sdCurrentSong);
 };
 
 window.glSongDetailBack = function glSongDetailBack() {
