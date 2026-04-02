@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-03-30 (Rehearsal Intelligence + GLInsights + GrooveMate Coach — unified guided Home)_
+_Last updated: 2026-04-02 (Song Data Consolidation + Product Capability Audit + UI Fixes)_
 
 ## Read This First
 
@@ -19,7 +19,8 @@ If memory conflicts with repo docs, **repo docs win**.
 
 GrooveLinx is a **Band Operating System** for practice, rehearsal, setlist building, and live performance.
 
-Three modes: 🔥 Sharpen (personal), 🎯 Lock In (band), 🎤 Play (live).
+Three modes: 🔥 Improve (personal), 🎯 Lock In (band), 🎤 Play (live).
+**NOTE:** Mode switcher has no UI — app is permanently in Improve mode. Lock In and Play features are inaccessible. Product consolidation audit completed 2026-04-02; un-gating planned.
 Band Feed is the central action hub. Listening Bundles are the fastest path to hearing.
 **GrooveMate** is the contextual guide avatar (Fan → Bandmate → Coach).
 
@@ -53,6 +54,7 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 | `js/features/rehearsal-mixdowns.js` | Rehearsal recordings — upload, playback, Chopper integration |
 | `js/features/live-gig.js` | Go Live — stage charts + float audio player |
 | `js/features/charts.js` | Chord chart system — master/band charts, inline editing |
+| `js/core/firebase-service.js` | Firebase CRUD, songPath() routing, songs_v2 migration, legacy fallback |
 | `rehearsal-mode.js` | Rehearsal mode — 5 tabs, session summary, mixdown attachment |
 | `service-worker.js` | PWA — network-first, push handling |
 | `worker.js` | Cloudflare Worker — API proxies, Spotify config |
@@ -486,6 +488,76 @@ Wired GLInsights into existing GrooveMate guidance system (no new module).
 
 **Removed from Home (redundant):** _renderSessionPlan, _renderWhatToDoNext, _renderLastRehearsalIssues
 
+### Song Data Consolidation — songs_v2 (2026-03-31 → 2026-04-02)
+
+**Migration Architecture:**
+- All song data migrating from `songs/{sanitizedTitle}/` to `songs_v2/{songId}/`
+- `songPath()` in firebase-service.js routes v2 types via `_SONG_V2_TYPES` registry
+- `_autoMigrateSongDataToV2()` runs on boot — copies legacy data to v2 path
+- Schema versioning: `_MIGRATION_SCHEMA_VERSION = 2` — auto re-runs when new types added
+- `loadBandDataFromDrive()` has legacy fallback — reads v2 first, falls back to legacy songs/ path
+- 17 v2-routed types: key, song_bpm, lead_singer, song_status, chart, chart_band, chart_master, chart_url, personal_tabs, rehearsal_notes, spotify_versions, practice_tracks, cover_me, song_votes, song_structure, readiness, readiness_history
+
+**Key Fixes:**
+- Chart data stuck in legacy path — v2 read returned null, no fallback existed
+- Added legacy fallback in `loadBandDataFromDrive()` for all v2 types
+- "View Chart" button in Improve mode called `switchLens('band')` — no-op since band panel was already populated with Improve content; replaced with `sdShowChart()` function
+- Song Info (Key/BPM/Lead/Status) dropdowns added to Improve mode as collapsible `<details>` section (auto-opens when Key+BPM missing)
+- songId invariant enforcement at all insertion points
+
+**Firebase Paths:**
+```
+bands/{slug}/songs_v2/{songId}/{dataType}  — canonical v2 path (all new writes)
+bands/{slug}/songs/{sanitizedTitle}/        — legacy path (read fallback only)
+bands/{slug}/meta/songs_v2_migrated        — migration flag with schemaVersion
+```
+
+**Pending cleanup (after migration verified complete):**
+- Remove legacy fallback in loadBandDataFromDrive
+- Remove localStorage recovery bridge in _preloadSongDNA
+- Remove migration function itself
+- Remove loadFromLocalStorageFallback
+
+### Product Capability Audit (2026-04-02)
+
+Full 50+ feature inventory with duplication analysis and consolidation plan.
+
+**Critical Findings:**
+- **No mode switcher UI exists** — app permanently in Improve mode
+- **5 major features inaccessible**: Band Love, Prospect Voting, Song Structure editor, Band Discussion, Play mode (stage-ready charts, set navigation, transition hints)
+- **Harmony Lab (Sing lens)** only in Lock In tab bar — inaccessible
+- **"Sharpen" still user-visible** in dashboard header (should be "Improve")
+- **Dead code**: `_renderSharpenDashboard` + 3 helpers (never called), entire home-dashboard-cc.js (no-op)
+- **Broken pages**: Feed (no renderer), Equipment/Contacts (minimal/empty)
+- **Buried features**: Rehearsal Recordings (3+ clicks into collapsed section), Chart Queue (only from triage bar)
+- **Song Info rendered 3x**: Improve collapsible + Right Panel + Lock In DNA card
+
+**Recommended Priority Actions:**
+1. Un-gate Band Love, Structure, Discussion, Prospect Vote from Lock In mode
+2. Fix "Sharpen" → "Improve" in user-facing labels
+3. Add Harmony Lab tab to Improve mode
+4. Promote Chart Queue to Songs page
+5. Promote Rehearsal Recordings out of collapsed section
+6. Fix/remove Feed page from nav
+7. Delete dead dashboard code (~200 lines)
+8. Delete home-dashboard-cc.js (entire file is no-op)
+
+**Naming Drift Matrix:**
+- Internal mode key `sharpen` → user label should be "Improve" (P1 fix)
+- `_sdPopulateBandLens` → should be `_sdPopulatePlayLens` (P3)
+- `_sdPopulateLearnLens` → should be `_sdPopulateImproveLens` (P3)
+- `_sdPopulateListenLens` → should be `_sdPopulateVersionsLens` (P3)
+- Tooltip text "from the Learn lens" → "from the Improve lens" (P1)
+
+### Player & UI Fixes (2026-03-31 → 2026-04-02)
+
+- Spotify embed "Preview only" label with open-in-Spotify link
+- YouTube search via Worker proxy, seek buttons (-10s/+10s/±30s)
+- Mini player: draggable, A-B loop, speed control (0.5x-1.5x)
+- Archive.org collection name fixes: JGB, moe., Phish, ABB, DMB
+- Schedule page: RSVP buttons, confidence-scored best rehearsal dates, intelligence banner
+- Left rail: emoji icons restored, collapsible sections with chevrons
+
 ## Restart Prompt
 
 Paste this to resume:
@@ -494,141 +566,43 @@ Paste this to resume:
 I'm continuing GrooveLinx development. Read these files first:
 - 02_GrooveLinx/CLAUDE_HANDOFF.md
 - 02_GrooveLinx/CURRENT_PHASE.md
-- 02_GrooveLinx/Product_Brain.md
-- 02_GrooveLinx/Active_Work/Current_Sprint.md
 - CLAUDE.md
 
-Current state:
-- Rehearsal Intelligence V1 live — analysis pipeline + GLInsights + GrooveMate coaching
-- Home: single directive hero card, intelligence-driven when issues exist
-- GLInsights: persistent Firebase issue store, action plans, trend detection
-- RehearsalAnalysis: notes parsing → insights → per-song issues → recommendations
-- GrooveMate: 5 intelligence triggers wired into existing guidance system
+Current state (2026-04-02):
+- Song data consolidation: songs_v2/{songId} is canonical, legacy fallback in place
+- Product capability audit completed — 50+ features inventoried, consolidation plan ready
+- Mode switcher has NO UI — app permanently in Improve mode, Lock In/Play features inaccessible
+- 5 major features locked behind mode gates: Band Love, Prospect Voting, Structure editor, Discussion, Play mode
+- "Sharpen" still appears as user-facing label (should be "Improve")
+- Dead code identified: _renderSharpenDashboard, home-dashboard-cc.js (entire file no-op)
+- Broken pages: Feed (no renderer), Equipment/Contacts (empty)
+- View Chart fixed (sdShowChart), Song Info added to Improve mode
 - 4 SYSTEM LOCKs: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
-- Data integrity pass: 20+ status definitions consolidated, duplicates removed
-- Repo hygiene: 71 → 58 root items, stale files archived/deleted
-- E2E tests: 120 core passing, 0 failed
 
-**Knowledge + Guidance V1 (2026-03-28):**
-- Feature registry: 10 features with purpose, actions, troubleshooting, contextual hints (JSON files + bundled runtime)
-- Task recipes: 4 step-by-step flows with friction points and GrooveMate action fallbacks
-- UI contracts: 3 pages with CTA labels, selectors, empty states (for validation)
-- Knowledge resolver: answers help questions from registry/recipes BEFORE Claude (instant, verified)
-- Hint engine: 3 types (rescue/unlock/optimization), max 3 per session, context-aware
-- Help validator: compares UI contracts vs live DOM, flags stale help
-- Help manifest: `help_manifest.json` tracks all help files + verification status
-- Avatar flow: Actions → Knowledge → Feedback → Claude (priority order)
-
-**Knowledge V2 (2026-03-28):**
-- Action-first responses: every help answer includes action offer ("I can do this for you")
-- Confidence scoring: high → direct, medium → with fallback, low → exploratory
-- "What usually goes wrong" shown per page from COMMON_MISTAKES map
-- Help outcome tracking: `/help_outcomes/{id}` — helpful/not_helpful/wrong/took_action
-- Founder feedback: "Was this helpful?" + "This is wrong" buttons on every help response
-- Flagged help stored in `/help_feedback/{id}` for review
-- Cluster-driven hints: feedback clusters inject rescue hints on relevant pages
-- Source indicators: "verified" / "recipe" / "inferred" shown on every response
-
-**Autonomous Operator (2026-03-28):**
-- Action chaining: import → songs + setlist + sections in one command
-- Rehearsal co-pilot: contextual nudges on rehearsal page + post-session note prompt
-- Band-specific learning: `getBandInsights()` analyzes last 10 sessions for trend/rating
-- Knowledge self-healing: `isStale()` checks build version + effectiveness data, reduces confidence for stale help
-- Effectiveness aggregation: loads last 50 help outcomes, identifies weak patterns
-- `getEffectivenessReport()` for admin review
-
-**Trust + Transparency (2026-03-28):**
-- Action plan display: shows numbered steps BEFORE execution
-- Step-by-step progress: circles → hourglass → checkmark/cross per step
-- Preview mode: impactful actions (imports, bulk ops) show "Do it" / "Cancel" before executing
-- Auto-retry: 1 retry on failure, clear message if still fails
-- Action history: `/avatar_actions/{bandId}/{id}` stores every action with timestamp
-- Standardized tool results: all tools return `{ success, message, retryable }`
-- Result summary: green/red card with what changed + next suggested action
-
-**Self-Improving Loop (2026-03-28):**
-- Fix validation: `markClusterFixed()` snapshots count → `validateFix()` compares post-fix reports → resolved/improving/regressed
-- Product health API: `getProductHealth()` returns total/open/clusters/flowBreaks/topIssues
-- UAT Dashboard: Settings → UAT tab — summary cards + top issues + system status
-- GLPlans: added `getCurrentPlan()`, `isFounder()`, `activateFounderCode()` (were missing)
-- Billing: Plan tab visible, founder code entry works, plan badge correct
-
-**GLOrchestrator (2026-03-28):**
-- `gl-orchestrator.js` — central control engine for user experience
-- `getNextAction(ctx)` — determines next best action based on onboarding state, songs, setlists, page
-- `shouldIntervene(ctx)` — checks if avatar should proactively help
-- `getMessage(ctx)` — personality-adjusted message with action + urgency
-- 4 personality modes: guide (supportive), coach (prescriptive), analyst (data-driven), fixer (action-first)
-- Mode auto-selected from avatar stage + friction clusters
-- Autopilot: checks on page change, shows toast for high-urgency suggestions
-- Avatar panel: falls back to orchestrator when no guidance tip available
-
-**GLTaskEngine (2026-03-28):**
-- `gl-task-engine.js` — strict execution pipeline replacing direct tool calls
-- Pipeline: `plan(intent)` → `needsConfirmation(plan)` → `execute(plan)` → `verify(result)` → `explain(result)`
-- Plan templates for all 9 intents with risk assessment (low/medium) + base confidence
-- Auto-retry on failure (1 retry per step)
-- Partial success supported (some steps succeed, others fail)
-- Verification: confirms each step result is valid
-- Explanation: structured summary + next action suggestion
-- All tasks logged to Firebase `/avatar_tasks/{bandId}/{taskId}`
-- Avatar wired: TaskEngine used when available, falls back to old ActionRouter
-
-**Trusted Operator (2026-03-28):**
-- Dynamic confidence: `getDynamicConfidence(intent)` adjusts based on success rate + undo rate from localStorage history
-- Undo system: `_snapshotBeforeTask()` captures song IDs + setlist state → `undoLastTask()` rolls back
-- Undo button shown on medium/high risk completed actions
-- Task learning: every run records `{ runs, success, failures, undos }` per intent
-- Confidence formula: `base * 0.4 + successRate * 0.5 - undoRate * 0.3` (range 0.3-0.98)
-- After 3+ runs of an intent, confidence is data-driven instead of static
-
-**Anticipatory Bandmate (2026-03-28):**
-- Band DNA: persistent profile `{ strengths, weaknesses, tendencies, improvementVelocity, ratings, sessionCount }`
-- Updated after every rehearsal via `GLStore.on('agendaSessionCompleted')`
-- Stored in localStorage + mirrored to Firebase `/bands/{slug}/band_dna`
-- Anticipation engine: checks on every page change
-  - Post-rehearsal → suggests scheduling next rehearsal
-  - Songs but no setlist → suggests building one
-  - Improvement velocity > 0.3 → acknowledges progress
-  - Velocity < -0.3 → suggests focus on weakest song
-- Auto-workflow: rehearsal completion auto-updates Band DNA + completes flow tracking
-- All anticipation actions deduped per session (no spam)
-
-**GrooveMate Actions V1 (2026-03-28):**
-- Action router: 10 intents detected from voice/text (add_song, import_artist_pack, create_setlist, add_chart_note, etc.)
-- Tool registry: 9 deterministic tools (addSong, bulkAddSongs, importArtistPack, createSetlist, addChartNote, suggestSections, attachChartSource, saveRehearsalNote)
-- 13 curated artist packs (Billy Joel, Elton John, Dead, Phish, Beatles, Wedding, WSP, Allman, Goose, DMB, Campfire, Worship, Standards)
-- Chart notes with auto-typed categories (arrangement, vocal, instrumental, transition, performance)
-- Section assistant: standard structure suggestions (Intro→Verse→Chorus→Bridge→Solo→Outro)
-- Source link attachment with auto-detected labels (UG, Chordify, YouTube, etc.)
-- Action receipts: success summary + next action suggestion button
-- No protected chart content copying — links and annotations only
-- ElevenLabs TTS live (Worker proxy), Cloudflare AI binding active (Flux)
-- Product feedback system live — users can report via avatar, auto-capture on friction
-- Band creation has 8 types with subtypes (multi-step wizard)
-- GLStore.ready() dependency gating deployed
-- Global error capture + render logging on all pages
-- Founder UAT in progress — Drew walking through test manual
-
-Priorities:
-1. Founder UAT — test remaining sections (2-10) in Founder Test Manual
-2. Brian's 4/1 rehearsal test — fix any issues reported
-3. Demo video clips for website
-4. Real user testing with non-founder bands
-5. Venue Google Places autocomplete
-6. Stripe payment integration
+Next recommended action:
+Execute Phase A of consolidation plan:
+1. Un-gate hidden features from Lock In mode (Band Love, Structure, Discussion, Voting)
+2. Fix "Sharpen" → "Improve" in all user-facing labels
+3. Add Harmony Lab tab to Improve mode
+4. Delete dead code (~200 lines dashboard + entire cc.js)
+5. Fix/remove broken nav items (Feed, Equipment, Contacts)
 ```
 
 ## Firebase Paths
 
 ```
-bands/{slug}/feed_meta/{type:id}         — feed overlay (archive, resolved, tags, notes, pinned)
-bands/{slug}/push_subscriptions/{key}     — push subscription per member
-bands/{slug}/metrics/{key}/{date}         — daily usage rollup per member
-bands/{slug}/rehearsal_sessions/{id}      — session summaries (rating, notes, mixdown_id, blocks)
-bands/{slug}/rehearsal_mixdowns/{id}      — mixdown recordings (audio_url, drive_url)
-bands/{slug}/live_gig_notes/{setlistId}   — quick notes from Go Live
-bands/{slug}/songs/{title}/curation       — per-song version curation (spotify/youtube/archive)
+bands/{slug}/songs_v2/{songId}/{type}     — canonical song data (v2, all new writes)
+bands/{slug}/songs/{sanitizedTitle}/       — legacy song data (read fallback only)
+bands/{slug}/meta/songs_v2_migrated       — migration flag with schemaVersion
+bands/{slug}/feed_meta/{type:id}          — feed overlay (archive, resolved, tags, notes, pinned)
+bands/{slug}/push_subscriptions/{key}      — push subscription per member
+bands/{slug}/metrics/{key}/{date}          — daily usage rollup per member
+bands/{slug}/rehearsal_sessions/{id}       — session summaries (rating, notes, mixdown_id, blocks)
+bands/{slug}/rehearsal_mixdowns/{id}       — mixdown recordings (audio_url, drive_url)
+bands/{slug}/live_gig_notes/{setlistId}    — quick notes from Go Live
+bands/{slug}/songs/{title}/curation        — per-song version curation (spotify/youtube/archive)
+bands/{slug}/intelligence/issues/{song}    — persistent issue store (GLInsights)
+bands/{slug}/intelligence/sessions/{id}    — session analysis metadata
 ```
 
 ## Product Principles

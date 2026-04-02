@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-03-30 (Rehearsal Intelligence + GLInsights + GrooveMate Coach + Unified Home)_
+_Updated: 2026-04-02 (Song Data Consolidation + Product Capability Audit + UI Fixes)_
 
-## Active Phase: Founder UAT + Real User Testing
+## Active Phase: Product Consolidation + Founder UAT
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main) + `push.py` for GitHub Pages
@@ -10,9 +10,59 @@ Production URL: **https://app.groovelinx.com**
 
 ---
 
-## What's Live (2026-03-29)
+## What's Live (2026-04-02)
 
-### UX Overhaul (This Session — 15+ deploys)
+### Song Data Consolidation — songs_v2 (2026-03-31 → 2026-04-02)
+
+**Architecture:**
+- All song data migrating from `songs/{sanitizedTitle}/` to `songs_v2/{songId}/`
+- `songPath()` routes 17 v2 types via `_SONG_V2_TYPES` registry
+- `_autoMigrateSongDataToV2()` runs on boot with schema versioning (v2)
+- `loadBandDataFromDrive()` reads v2 first, falls back to legacy songs/ path
+- songId invariant enforced at all insertion points
+
+**Key Bug Fixes (2026-04-02):**
+- Chart data stuck in legacy path — added legacy fallback for all v2 type reads
+- "View Chart" button was no-op in Improve mode — replaced with `sdShowChart()` inline chart loader
+- Song Info (Key/BPM/Lead/Status) missing in Improve mode — added collapsible `<details>` section
+
+### Product Capability Audit (2026-04-02)
+
+Full inventory of 50+ features across all pages and modes. Key findings:
+
+**CRITICAL — No mode switcher UI exists.** App permanently in Improve (sharpen) mode. These features are built but inaccessible:
+- Band Love rating (5 hearts) — Lock In mode only
+- Prospect Voting — Lock In mode only
+- Song Structure editor — Lock In mode only
+- Band Discussion (per-song) — Lock In mode only
+- Play mode (stage-ready charts, set navigation, transition hints, performance confidence)
+- Harmony Lab (Sing lens) — Lock In tab bar only
+
+**Naming drift:** "Sharpen" still user-visible in dashboard header. "Learn lens" in tooltip.
+
+**Dead code:** `_renderSharpenDashboard` + 3 helpers (never called). Entire `home-dashboard-cc.js` is a no-op.
+
+**Broken pages:** Feed (no renderer), Equipment/Contacts (empty/minimal).
+
+**Recommended consolidation plan (4 phases):**
+- Phase A: Quick wins — naming fixes, dead code deletion, broken page fixes
+- Phase B: Un-gate hidden features from mode locks
+- Phase C: Structural cleanup — mode model decision, duplication reduction
+- Phase D: Internal naming normalization (function names, CSS comments)
+
+### Player & UI Fixes (2026-03-31 → 2026-04-02)
+
+- Spotify embed "Preview only" label with open-in-Spotify link
+- YouTube search via Worker proxy, seek buttons (-10s/+10s/±30s), completion screen
+- Mini player: draggable YouTube player with transport controls, A-B loop, speed control
+- Archive.org collection name fixes: JGB, moe., Phish, ABB, DMB
+- Schedule page: RSVP buttons, confidence-scored best rehearsal dates, intelligence banner
+- Left rail: emoji icons restored, collapsible sections with chevrons
+- Calendar: date off-by-one fix, month nav collapse fix, event row redesign
+
+---
+
+### UX Overhaul (2026-03-29 — 15+ deploys)
 
 **Home — State-Driven Single Action:**
 - Dynamic "Next up for your band" card based on state detection
@@ -228,7 +278,34 @@ js/ui/gl-left-rail.js                  — Simplified nav (5 primary + collapsed
 js/ui/gl-avatar-ui.js                  — Avatar: photorealistic portraits, action plans, settings
 js/ui/navigation.js                     — GL_PAGE_READY lifecycle (_navSeq guard, SYSTEM LOCK)
 rehearsal-mode.js                        — Rehearsal mode + Reveal + analysis pipeline trigger
+js/core/firebase-service.js             — Firebase CRUD, songPath(), songs_v2 migration, legacy fallback
 worker.js                               — Cloudflare Worker: /tts, /fetch-chart, API proxies
 tests/chaos.spec.js                      — Chaos stability tests (46 tests)
 tests/burn-in.spec.js                   — Burn-in stability tests
 ```
+
+### Pending Work (Priority — Updated 2026-04-02)
+
+**HIGH — Product Consolidation:**
+1. Un-gate Band Love, Structure, Discussion, Prospect Vote from Lock In mode
+2. Fix "Sharpen" → "Improve" in all user-facing labels
+3. Add Harmony Lab tab to Improve mode tab bar
+4. Delete dead dashboard code + home-dashboard-cc.js
+5. Fix/remove broken nav items (Feed, Equipment, Contacts)
+6. Decide: add mode switcher UI vs remove mode gating entirely
+
+**HIGH — Data Cleanup:**
+7. Verify songs_v2 migration complete (check for `[legacy-read]` warnings in console)
+8. Remove legacy fallback + localStorage bridge once verified
+9. Remove migration function once all data in v2
+
+**MEDIUM:**
+10. Founder Test Manual (Sections 2-10)
+11. Demo video clips for website
+12. Real user testing with non-founder bands
+13. Stripe payment integration
+
+**LOW:**
+14. Internal function naming normalization (P3 items from audit)
+15. CSS comment drift cleanup
+16. BrowserStack real-device testing
