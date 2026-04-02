@@ -2997,10 +2997,11 @@ window.rmRemoveLesson = async function(songTitle, idx) {
     } catch(e) {}
 };
 
-// ── Inline mini-player for North Star / YouTube (draggable, with transport) ──
+// ── Inline mini-player with explicit capability model ──────────────────────
 window._rmInlineYT = null;
 window._rmInlineMinimized = false;
 window._rmInlineSpeed = 1;
+window._rmInlineState = 'unknown'; // 'yt_api_ready' | 'yt_iframe_only' | 'unknown'
 
 window.rmPlayInline = function(url) {
     var existing = document.getElementById('rmInlinePlayer');
@@ -3008,6 +3009,9 @@ window.rmPlayInline = function(url) {
     window._rmInlineYT = null;
     window._rmInlineMinimized = false;
     window._rmInlineSpeed = 1;
+    window._rmInlineState = 'unknown';
+    window._rmLoopA = null; window._rmLoopB = null;
+    if (window._rmLoopInterval) clearInterval(window._rmLoopInterval);
 
     var videoId = null;
     var m = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/) || url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
@@ -3018,131 +3022,139 @@ window.rmPlayInline = function(url) {
     player.id = 'rmInlinePlayer';
     player.style.cssText = 'position:fixed;bottom:60px;right:16px;width:90%;max-width:420px;z-index:9998;background:#0f172a;border:1px solid rgba(99,102,241,0.3);border-radius:12px;overflow:hidden;box-shadow:0 -8px 30px rgba(0,0,0,0.6)';
 
-    // Drag handle + header
+    // Header with drag handle
     var header = '<div id="rmInlineDragHandle" style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:rgba(0,0,0,0.5);cursor:grab;user-select:none">'
         + '<span style="font-size:0.65em;color:#475569;cursor:grab">\u2630</span>'
-        + '<span style="font-size:0.7em;color:#a5b4fc;font-weight:600;flex:1">\u25B6 Now Playing</span>'
+        + '<span style="font-size:0.7em;color:#a5b4fc;font-weight:600;flex:1" id="rmInlineStatus">\u231B Loading...</span>'
         + '<button onclick="rmInlineToggleSize()" id="rmInlineMinBtn" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;cursor:pointer;font-size:0.68em;padding:2px 6px;border-radius:4px">\u2013 Mini</button>'
         + '<button onclick="rmInlineClose()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;cursor:pointer;font-size:0.68em;padding:2px 6px;border-radius:4px">\u2715</button>'
         + '</div>';
 
-    // Video (YouTube native controls enabled — always works)
+    // Video mount (YT API creates its own iframe here)
     var video = '<div id="rmInlineVideo" style="position:relative;padding-bottom:56.25%;height:0">'
-        + '<iframe id="rmInlineIframe" src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&origin=' + encodeURIComponent(location.origin) + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media"></iframe>'
+        + '<div id="rmInlineYTMount" style="position:absolute;top:0;left:0;width:100%;height:100%"></div>'
         + '</div>';
 
-    // Transport: seek, play/pause, replay, speed, loop
+    // Transport — initially hidden until player is ready
     var _bs = 'background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px';
-    var transport = '<div style="display:flex;align-items:center;justify-content:center;gap:3px;padding:5px 8px;background:rgba(0,0,0,0.3);flex-wrap:wrap">'
+    var transport = '<div id="rmInlineTransport" style="display:none;align-items:center;justify-content:center;gap:3px;padding:5px 8px;background:rgba(0,0,0,0.3);flex-wrap:wrap">'
         + '<button onclick="rmInlineSeek(-30)" style="' + _bs + ';color:#94a3b8;font-size:0.6em" title="Back 30s">-30s</button>'
         + '<button onclick="rmInlineSeek(-10)" style="' + _bs + ';color:#e2e8f0;font-size:0.72em" title="Back 10s">-10s</button>'
-        + '<button onclick="rmInlineRestart()" style="' + _bs + ';color:#e2e8f0;font-size:0.85em" title="Restart from beginning">\u23EE</button>'
+        + '<button onclick="rmInlineRestart()" style="' + _bs + ';color:#e2e8f0;font-size:0.85em" title="Restart">\u23EE</button>'
         + '<button onclick="rmInlinePlayPause()" id="rmInlinePPBtn" style="' + _bs + ';color:#e2e8f0;font-size:1.1em" title="Play/Pause">\u23F8</button>'
         + '<button onclick="rmInlineSeek(10)" style="' + _bs + ';color:#e2e8f0;font-size:0.72em" title="Forward 10s">+10s</button>'
         + '<button onclick="rmInlineSeek(30)" style="' + _bs + ';color:#94a3b8;font-size:0.6em" title="Forward 30s">+30s</button>'
         + '<span style="color:#334155;margin:0 2px">\u00B7</span>'
-        + '<button onclick="rmInlineCycleSpeed()" id="rmInlineSpeedBtn" style="' + _bs + ';color:#fbbf24;font-size:0.68em;font-weight:700;border:1px solid rgba(251,191,36,0.2)" title="Playback speed">1x</button>'
-        + '<button onclick="rmInlineSetLoopA()" id="rmInlineLoopABtn" style="' + _bs + ';color:#94a3b8;font-size:0.65em;border:1px solid rgba(255,255,255,0.06)" title="Set loop start">A\u2192</button>'
-        + '<button onclick="rmInlineSetLoopB()" id="rmInlineLoopBBtn" style="' + _bs + ';color:#94a3b8;font-size:0.65em;border:1px solid rgba(255,255,255,0.06)" title="Set loop end">\u2192B</button>'
+        + '<button onclick="rmInlineCycleSpeed()" id="rmInlineSpeedBtn" style="' + _bs + ';color:#fbbf24;font-size:0.68em;font-weight:700;border:1px solid rgba(251,191,36,0.2)" title="Speed">1x</button>'
+        + '<button onclick="rmInlineSetLoopA()" id="rmInlineLoopABtn" style="' + _bs + ';color:#94a3b8;font-size:0.65em;border:1px solid rgba(255,255,255,0.06)" title="Loop start">A\u2192</button>'
+        + '<button onclick="rmInlineSetLoopB()" id="rmInlineLoopBBtn" style="' + _bs + ';color:#94a3b8;font-size:0.65em;border:1px solid rgba(255,255,255,0.06)" title="Loop end">\u2192B</button>'
         + '</div>';
 
     player.innerHTML = header + video + transport;
     document.body.appendChild(player);
 
-    // ── Make draggable ──
-    var _dragHandle = document.getElementById('rmInlineDragHandle');
-    if (_dragHandle) {
-        var _dragging = false, _dx = 0, _dy = 0;
-        _dragHandle.addEventListener('mousedown', function(e) {
-            _dragging = true;
-            _dx = e.clientX - player.getBoundingClientRect().left;
-            _dy = e.clientY - player.getBoundingClientRect().top;
-            _dragHandle.style.cursor = 'grabbing';
-            e.preventDefault();
+    // ── Draggable ──
+    (function() {
+        var handle = document.getElementById('rmInlineDragHandle');
+        if (!handle) return;
+        var dragging = false, dx = 0, dy = 0;
+        function onStart(cx, cy) { dragging = true; var r = player.getBoundingClientRect(); dx = cx - r.left; dy = cy - r.top; handle.style.cursor = 'grabbing'; }
+        function onMove(cx, cy) { if (!dragging) return; player.style.left = (cx - dx) + 'px'; player.style.top = (cy - dy) + 'px'; player.style.right = 'auto'; player.style.bottom = 'auto'; player.style.transform = 'none'; }
+        function onEnd() { dragging = false; handle.style.cursor = 'grab'; }
+        handle.addEventListener('mousedown', function(e) { onStart(e.clientX, e.clientY); e.preventDefault(); });
+        document.addEventListener('mousemove', function(e) { onMove(e.clientX, e.clientY); });
+        document.addEventListener('mouseup', onEnd);
+        handle.addEventListener('touchstart', function(e) { var t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: true });
+        document.addEventListener('touchmove', function(e) { if (!dragging) return; var t = e.touches[0]; onMove(t.clientX, t.clientY); }, { passive: true });
+        document.addEventListener('touchend', onEnd);
+    })();
+
+    // ── Create player via YT IFrame API (proper — API creates its own iframe) ──
+    function _createAPIPlayer() {
+        window._rmInlineYT = new YT.Player('rmInlineYTMount', {
+            width: '100%', height: '100%', videoId: videoId,
+            playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0, playsinline: 1 },
+            events: {
+                onReady: function() {
+                    window._rmInlineState = 'yt_api_ready';
+                    // Show transport controls — they work now
+                    var t = document.getElementById('rmInlineTransport');
+                    if (t) t.style.display = 'flex';
+                    var s = document.getElementById('rmInlineStatus');
+                    if (s) s.textContent = '\u25B6 Now Playing';
+                    console.log('[MiniPlayer] YT API ready — full controls active');
+                },
+                onStateChange: function(e) {
+                    var btn = document.getElementById('rmInlinePPBtn');
+                    if (btn) btn.textContent = (e.data === YT.PlayerState.PLAYING) ? '\u23F8' : '\u25B6';
+                }
+            }
         });
-        document.addEventListener('mousemove', function(e) {
-            if (!_dragging) return;
-            player.style.left = (e.clientX - _dx) + 'px';
-            player.style.top = (e.clientY - _dy) + 'px';
-            player.style.right = 'auto';
-            player.style.bottom = 'auto';
-            player.style.transform = 'none';
-        });
-        document.addEventListener('mouseup', function() { _dragging = false; _dragHandle.style.cursor = 'grab'; });
-        // Touch support
-        _dragHandle.addEventListener('touchstart', function(e) {
-            _dragging = true;
-            var t = e.touches[0];
-            _dx = t.clientX - player.getBoundingClientRect().left;
-            _dy = t.clientY - player.getBoundingClientRect().top;
-        }, { passive: true });
-        document.addEventListener('touchmove', function(e) {
-            if (!_dragging) return;
-            var t = e.touches[0];
-            player.style.left = (t.clientX - _dx) + 'px';
-            player.style.top = (t.clientY - _dy) + 'px';
-            player.style.right = 'auto';
-            player.style.bottom = 'auto';
-            player.style.transform = 'none';
-        }, { passive: true });
-        document.addEventListener('touchend', function() { _dragging = false; });
     }
 
-    // ── YouTube IFrame API (for seek/speed/loop) ──
-    function _initYTAPI() {
-        var iframe = document.getElementById('rmInlineIframe');
-        if (!iframe) return;
-        // Use postMessage API for basic control
-        window._rmInlineIframe = iframe;
-        // Also try YT.Player wrapper if API loaded
-        if (typeof YT !== 'undefined' && YT.Player) {
-            try {
-                window._rmInlineYT = new YT.Player('rmInlineIframe', {
-                    events: {
-                        onStateChange: function(e) {
-                            var btn = document.getElementById('rmInlinePPBtn');
-                            if (btn) btn.textContent = (e.data === YT.PlayerState.PLAYING) ? '\u23F8' : '\u25B6';
-                        }
-                    }
-                });
-            } catch(e) {}
-        }
+    function _createFallbackIframe() {
+        // Degraded mode: iframe with native YT controls, no custom transport
+        window._rmInlineState = 'yt_iframe_only';
+        var mount = document.getElementById('rmInlineYTMount');
+        if (mount) mount.innerHTML = '<iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0&modestbranding=1&controls=1" style="width:100%;height:100%;border:none" allow="autoplay;encrypted-media"></iframe>';
+        var s = document.getElementById('rmInlineStatus');
+        if (s) s.textContent = '\u25B6 Playing (basic mode)';
+        // Transport stays hidden — native YT controls are the interface
+        console.log('[MiniPlayer] Fallback iframe — native controls only');
     }
-    setTimeout(_initYTAPI, 1500);
+
+    // Try API first, fall back if not available
+    if (typeof YT !== 'undefined' && YT.Player) {
+        _createAPIPlayer();
+    } else {
+        // Load YT API
+        if (!document.querySelector('script[src*="youtube.com/iframe_api"]')) {
+            var tag = document.createElement('script');
+            tag.src = 'https://www.youtube.com/iframe_api';
+            document.head.appendChild(tag);
+        }
+        var _attempts = 0;
+        var _waitYT = setInterval(function() {
+            _attempts++;
+            if (typeof YT !== 'undefined' && YT.Player) {
+                clearInterval(_waitYT);
+                _createAPIPlayer();
+            } else if (_attempts >= 15) { // 3 seconds
+                clearInterval(_waitYT);
+                _createFallbackIframe();
+            }
+        }, 200);
+    }
 
     // Auto-switch to Chart tab
     if (typeof rmSwitchTab === 'function') rmSwitchTab('chart', document.querySelector('.rm-tab[data-tab="chart"]'));
 };
 
 window.rmInlinePlayPause = function() {
+    if (window._rmInlineState !== 'yt_api_ready') return;
     var p = window._rmInlineYT;
-    if (p && p.getPlayerState) {
-        if (p.getPlayerState() === YT.PlayerState.PLAYING) p.pauseVideo();
-        else p.playVideo();
-        return;
-    }
-    // Fallback: postMessage
-    var iframe = window._rmInlineIframe || document.getElementById('rmInlineIframe');
-    if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-    }
+    if (!p || !p.getPlayerState) return;
+    if (p.getPlayerState() === YT.PlayerState.PLAYING) p.pauseVideo();
+    else p.playVideo();
 };
 
 window.rmInlineRestart = function() {
+    if (window._rmInlineState !== 'yt_api_ready') return;
     var p = window._rmInlineYT;
     if (p && p.seekTo) { p.seekTo(0, true); p.playVideo(); }
 };
 
 window.rmInlineSeek = function(delta) {
+    if (window._rmInlineState !== 'yt_api_ready') return;
     var p = window._rmInlineYT;
     if (p && p.getCurrentTime && p.seekTo) {
         p.seekTo(Math.max(0, p.getCurrentTime() + delta), true);
-        return;
     }
 };
 
 window.rmInlineCycleSpeed = function() {
-    var speeds = [0.5, 0.75, 1, 1.25, 1.5];
+    if (window._rmInlineState !== 'yt_api_ready') return;
+    var speeds = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5];
     var idx = speeds.indexOf(window._rmInlineSpeed);
     window._rmInlineSpeed = speeds[(idx + 1) % speeds.length];
     var p = window._rmInlineYT;
@@ -3157,6 +3169,7 @@ window._rmLoopB = null;
 window._rmLoopInterval = null;
 
 window.rmInlineSetLoopA = function() {
+    if (window._rmInlineState !== 'yt_api_ready') return;
     var p = window._rmInlineYT;
     if (!p || !p.getCurrentTime) return;
     window._rmLoopA = p.getCurrentTime();
@@ -3166,6 +3179,7 @@ window.rmInlineSetLoopA = function() {
 };
 
 window.rmInlineSetLoopB = function() {
+    if (window._rmInlineState !== 'yt_api_ready') return;
     var p = window._rmInlineYT;
     if (!p || !p.getCurrentTime) return;
     window._rmLoopB = p.getCurrentTime();
