@@ -57,11 +57,12 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
     var container = containerOverride || document.getElementById('page-songdetail');
     if (!container) return;
     _sdContainer = container;
+    window._sdPanelMode = !!_sdOpts.panelMode;
     container.innerHTML = _sdShellHTML(title);
     _sdInjectStyles();
     _sdActivateTab('band');
     _sdPopulateBandLens(title);
-    _sdPopulateRightPanel(title);
+    if (!window._sdPanelMode) _sdPopulateRightPanel(title);
     requestAnimationFrame(function() { container.classList.add('sd-entered'); });
 };
 
@@ -128,12 +129,32 @@ function _sdShellHTML(title) {
         action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >📖 Open Chart</button>';
     }
 
-    // Persistent right panel: readiness, song info, structure, north star, best shot
+    // Panel mode (inside gl-right-panel): single column, no dual layout
+    var _isPanelMode = !!window._sdPanelMode;
+
+    if (_isPanelMode) {
+        // Single-column layout for right panel rendering
+        return '<div class="song-detail-page">'+
+               '<div class="sd-header">'+
+               '  <div class="sd-header-top">'+
+               '    <button class="sd-back-btn" onclick="glSongDetailBack()">\u2190 Songs</button>'+
+               '    <div class="sd-header-meta">'+pills+'</div>'+
+               '  </div>'+
+               '  <h1 class="sd-title">'+_sdEsc(title)+'</h1>'+
+               '  <div id="sd-readiness-strip" class="sd-readiness-strip"></div>'+
+               '</div>'+
+               '<nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
+               '<div class="sd-panels">'+panels+'</div>'+
+               '<div class="sd-mobile-bar">'+action+'</div>'+
+               '</div>';
+    }
+
+    // Full-page mode: dual layout with persistent right panel
     var rightPanel = '<div class="sd-right-panel" id="sdRightPanel">'
         + '<div id="sd-readiness-strip" class="sd-readiness-strip"></div>'
-        + '<div id="sd-right-info"></div>'  // Song Info (Key/BPM/Lead/Status) — populated async
-        + '<div id="sd-right-structure"></div>'  // How We Play It — populated async
-        + '<div id="sd-right-extras"></div>'  // North Star, Best Shot, quick links — populated async
+        + '<div id="sd-right-info"></div>'
+        + '<div id="sd-right-structure"></div>'
+        + '<div id="sd-right-extras"></div>'
         + '</div>';
 
     return '<div class="song-detail-page sd-dual-layout">'+
