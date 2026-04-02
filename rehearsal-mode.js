@@ -46,7 +46,7 @@ var _rmScrollSyncEnabled = false; // True when chart has anchored sections
 function rmArchiveQuery(title, bandCode) {
     const collections = {
         'GD': 'GratefulDead', 'Grateful Dead': 'GratefulDead',
-        'JGB': 'JerryGarciaBand', 'Jerry Garcia Band': 'JerryGarciaBand',
+        'JGB': 'JGB', 'Jerry Garcia Band': 'JGB',
         'Phish': 'Phish',
         'WSP': 'WidespreadPanic', 'Widespread Panic': 'WidespreadPanic',
         'ABB': 'AllmanBrothersBand', 'Allman Brothers': 'AllmanBrothersBand',
