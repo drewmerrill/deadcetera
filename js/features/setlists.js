@@ -357,7 +357,7 @@ function slSearchSong(input, setIdx) {
     const q = input.value.toLowerCase();
     const results = document.getElementById('slSongResults' + setIdx);
     if (!results || q.length < 2) { if(results) results.innerHTML=''; return; }
-    const _activeStatuses = ['prospect','wip','gig_ready'];
+    const _activeStatuses = (typeof GLStore !== 'undefined' && GLStore.ACTIVE_STATUSES) ? Object.keys(GLStore.ACTIVE_STATUSES) : ['prospect','learning','rotation','wip','active','gig_ready'];
     const songSource = (typeof GLStore !== 'undefined' && GLStore.getSongs) ? GLStore.getSongs() : (typeof allSongs !== 'undefined' ? allSongs : []);
     const matches = songSource
         .filter(s => s.title.toLowerCase().includes(q))
@@ -372,6 +372,7 @@ function slSearchSong(input, setIdx) {
         html += '<div class="list-item" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddNewSongToSet(' + setIdx + ')" ontouchstart="slAddNewSongToSet(' + setIdx + ')">+ Add &quot;' + safeVal + '&quot; to this band</div>';
     }
     results.innerHTML = html;
+    results.style.cssText = 'position:relative;z-index:100000';
 }
 
 function slAddNewSongToSet(setIdx) {
