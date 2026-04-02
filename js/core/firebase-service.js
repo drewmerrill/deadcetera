@@ -910,12 +910,14 @@ async function _autoMigrateSongDataToV2() {
     if (!slug) return;
     var bp = 'bands/' + slug + '/';
 
-    // Check migration flag — only re-run if total scanned songs is significantly less than current count
+    // Check migration flag — re-run if song count grew OR schema version changed (new v2 types added)
+    var _MIGRATION_SCHEMA_VERSION = 2; // bump when new types are added to _SONG_V2_TYPES
     try {
         var flagSnap = await firebaseDB.ref(bp + 'meta/songs_v2_migrated').once('value');
         var flag = flagSnap.val();
-        if (flag && flag.totalSongs && flag.totalSongs >= allSongs.length * 0.9) return; // Full scan already done
-        if (flag) console.log('[Migration] Previous scan covered ' + (flag.totalSongs || 0) + '/' + allSongs.length + ' songs — re-running');
+        if (flag && flag.totalSongs && flag.totalSongs >= allSongs.length * 0.9
+            && flag.schemaVersion && flag.schemaVersion >= _MIGRATION_SCHEMA_VERSION) return;
+        if (flag) console.log('[Migration] Re-running — schema v' + (flag.schemaVersion || 1) + '→' + _MIGRATION_SCHEMA_VERSION + ', songs ' + (flag.totalSongs || 0) + '/' + allSongs.length);
     } catch(e) { return; }
 
     console.log('[Migration] Auto-migrating legacy song data to songs_v2...');
@@ -1025,7 +1027,7 @@ async function _autoMigrateSongDataToV2() {
         }
 
         // Set migration flag
-        await firebaseDB.ref(bp + 'meta/songs_v2_migrated').set({ completedAt: new Date().toISOString(), migratedCount: migrated, totalSongs: total });
+        await firebaseDB.ref(bp + 'meta/songs_v2_migrated').set({ completedAt: new Date().toISOString(), migratedCount: migrated, totalSongs: total, schemaVersion: _MIGRATION_SCHEMA_VERSION });
         console.log('[Migration] ✅ Migrated ' + migrated + '/' + total + ' songs to songs_v2 (including readiness)');
 
         // Re-render if visible (preload will re-run after migration returns)
