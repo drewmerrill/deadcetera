@@ -156,7 +156,7 @@ function _hlShellHTML(title) {
 
     // ── HERO: Create Harmony Parts ──
     '<div style="text-align:center;padding:18px 16px;margin-bottom:14px;background:linear-gradient(135deg,rgba(99,102,241,0.05),rgba(236,72,153,0.03));border:1px solid rgba(99,102,241,0.15);border-radius:12px">',
-    '  <div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:10px">🎤 Create Harmony Parts</div>',
+    '  <div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:10px">🎤 Create Harmony</div>',
     '  <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">',
     '    <button onclick="hlShowGenerateGuide(\'lead\',\'lead\')" style="padding:10px 22px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.85em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.2)">✨ Generate from Song</button>',
     '    <button onclick="hlSwitchMode(\'record\')" style="padding:10px 18px;border-radius:10px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03);color:var(--text-muted,#94a3b8);font-weight:600;font-size:0.85em;cursor:pointer">⏺ Record Manually</button>',
@@ -445,7 +445,7 @@ function _hlRenderParts(data) {
     ];
     grid.innerHTML = defaultParts.map(_hlPartCardHTML).join('');
     if (practiceGrid) practiceGrid.innerHTML = grid.innerHTML;
-    if (progressEl) progressEl.textContent = 'Start with Lead \u2192 then add High + Low';
+    if (progressEl) progressEl.textContent = 'Start with Lead';
     return;
   }
 
@@ -467,10 +467,13 @@ function _hlRenderParts(data) {
   if (progressEl) {
     var ready = Math.min(singers.length, 3);
     if (ready >= 3) {
-      progressEl.innerHTML = '<span style="color:#10b981">All 3 parts created</span>';
+      progressEl.innerHTML = '<span style="color:#10b981">All parts ready</span>';
+    } else if (ready === 2) {
+      progressEl.innerHTML = 'Next: <span style="color:#818cf8">Add Low</span>';
+    } else if (ready === 1) {
+      progressEl.innerHTML = 'Next: <span style="color:#818cf8">Add High</span>';
     } else {
-      var nextPart = partNames[ready] || 'Harmony';
-      progressEl.innerHTML = ready + ' / 3 parts created \u2014 <span style="color:#818cf8">Next: Create ' + nextPart + '</span>';
+      progressEl.textContent = 'Start with Lead';
     }
   }
 }
@@ -480,9 +483,11 @@ function _hlPartCardHTML(part) {
   var color = roleColors[part.role] || '#667eea';
   var isLead = part.role === 'lead';
   var hasData = part.hasData !== false;
+  var cardPad = '16px';
   var cardStyle = isLead
-    ? 'border:2px solid ' + color + ';background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(99,102,241,0.03));padding:20px 16px;box-shadow:0 0 20px rgba(99,102,241,0.08)'
-    : 'border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);padding:14px 16px';
+    ? 'border:2px solid ' + color + ';background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(99,102,241,0.03));padding:' + cardPad + ';box-shadow:0 0 20px rgba(99,102,241,0.08)'
+    : 'border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);padding:' + cardPad;
+  var genPulse = (isLead && !hasData) ? ' hl-pulse-glow' : '';
   var actions = '';
   if (hasData) {
     actions = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">'
@@ -491,15 +496,15 @@ function _hlPartCardHTML(part) {
             + '</div>';
   } else {
     actions = '<div style="display:flex;flex-direction:column;gap:6px;margin-top:10px">'
-            + '<button class="hl-part-gen-btn" style="width:100%;text-align:center;padding:8px" onclick="hlShowGenerateGuide(\'' + _hlEsc(part.singer) + '\',\'' + _hlEsc(part.role) + '\')">✨ Generate</button>'
-            + '<button class="hl-part-guide-btn" style="width:100%;text-align:center;padding:8px;background:rgba(255,255,255,0.03);color:var(--text-muted,#94a3b8);border-color:rgba(255,255,255,0.1)" onclick="hlSwitchMode(\'record\')">⏺ Record</button>'
+            + '<button class="hl-part-gen-btn' + genPulse + '" style="width:100%;text-align:center;padding:8px" onclick="hlShowGenerateGuide(\'' + _hlEsc(part.singer) + '\',\'' + _hlEsc(part.role) + '\')">✨ Generate</button>'
+            + '<button class="hl-part-guide-btn" style="width:100%;text-align:center;padding:8px;background:rgba(255,255,255,0.05);color:var(--text,#cbd5e1);border-color:rgba(255,255,255,0.12)" onclick="hlSwitchMode(\'record\')">⏺ Record</button>'
             + '</div>';
   }
   var microcopy = isLead && !hasData ? '<div style="font-size:0.72em;color:var(--text-dim,#475569);margin-top:4px">Start here — generate or record your lead</div>' : '';
   return [
     '<div class="hl-part-card" style="border-radius:12px;' + cardStyle + '">',
-    '  <div style="display:flex;align-items:center;gap:10px">',
-    '    <div style="font-size:' + (isLead ? '1.6em' : '1.3em') + '">' + part.icon + '</div>',
+    '  <div style="display:flex;align-items:center;gap:12px">',
+    '    <div style="font-size:1.4em;width:32px;text-align:center;flex-shrink:0">' + part.icon + '</div>',
     '    <div style="flex:1">',
     '      <div style="font-weight:700;font-size:' + (isLead ? '1em' : '0.88em') + ';color:var(--text,#f1f5f9)">' + _hlEsc(part.name) + '</div>',
     '      <div style="font-size:0.7em;font-weight:700;color:' + color + ';text-transform:uppercase;letter-spacing:0.05em">' + _hlEsc(part.role.toUpperCase()) + '</div>',
@@ -1070,6 +1075,11 @@ function _hlInjectStyles() {
   s.id = 'hl-styles';
   s.textContent = `
 /* ── Harmony Lab ─────────────────────────────────────────────── */
+@keyframes hlPulseGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(99,102,241,0.15); }
+  50% { box-shadow: 0 0 12px rgba(99,102,241,0.3); }
+}
+.hl-pulse-glow { animation: hlPulseGlow 3s ease-in-out infinite; }
 .hl-root {
   display: flex;
   flex-direction: column;
