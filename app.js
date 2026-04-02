@@ -14565,6 +14565,25 @@ async function _preloadSongDNA() {
         var populated = 0, noSongId = 0, noV2Data = 0;
         var _v2Keys = Object.keys(allDataV2);
         console.log('[DNA] v2 has ' + _v2Keys.length + ' records. Sample keys:', _v2Keys.slice(0, 5));
+        // Debug: show what v2 records contain for songs without key
+        var _dbgC = 0;
+        allSongs.forEach(function(_ds) {
+            if (!_ds.songId || _dbgC >= 3) return;
+            var _dv = allDataV2[_ds.songId];
+            if (_dv && !_dv.key && !_ds.key) {
+                console.log('[DNA-DEBUG] "' + _ds.title + '" v2 fields:', Object.keys(_dv));
+                _dbgC++;
+            }
+        });
+        // Also check: does localStorage have key data for these songs?
+        var _lsHits = 0;
+        allSongs.forEach(function(_ds) {
+            if (!_ds.songId || _ds.key || _lsHits >= 3) return;
+            try {
+                var _lsk = localStorage.getItem('deadcetera_key_' + _ds.title);
+                if (_lsk) { console.log('[DNA-DEBUG] "' + _ds.title + '" has key in localStorage:', _lsk.substring(0, 50)); _lsHits++; }
+            } catch(e) {}
+        });
         allSongs.forEach(function(song) {
             if (!song || !song.title) return;
             if (!song.songId) { noSongId++; return; }
