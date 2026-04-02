@@ -2863,10 +2863,15 @@ function rmOpenPocketMeter() {
     var song = rmQueue[rmIndex] || {};
     var bpm  = rmSongBpm || 120;
     var key  = (typeof rmSongKey !== 'undefined' ? rmSongKey : '') || '';
-    if (typeof openGigPocketMeter === 'function') {
-        openGigPocketMeter(song.title || '', bpm, key);
+    function _launch() { openGigPocketMeter(song.title || '', bpm, key); }
+    if (typeof PocketMeter === 'function') {
+        _launch();
+    } else if (typeof glLazy === 'function') {
+        glLazy('pocket-meter.js').then(_launch).catch(function() {
+            if (typeof showToast === 'function') showToast('Could not load Pocket Meter');
+        });
     } else {
-        showToast('Pocket Meter not loaded yet');
+        if (typeof showToast === 'function') showToast('Pocket Meter not available');
     }
 }
 function rmOpenMoises(){window.open('https://studio.moises.ai/library/','_blank');}
