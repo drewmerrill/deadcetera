@@ -461,6 +461,8 @@ function closeRehearsalMode() {
     const overlay = document.getElementById('rmOverlay');
     if (!overlay) return;
     overlay.classList.remove('rm-visible');
+    // Signal Practice tab to advance to Step 3 (rate readiness)
+    window._sdPracticeJustEnded = true;
     // Save session timing summary
     if (_rmSessionStart > 0) _rmSaveSessionSummary();
     if (_rmTimingInterval) { clearInterval(_rmTimingInterval); _rmTimingInterval = null; }

@@ -1503,6 +1503,14 @@ window.sdSaveConfidence = function(songTitle, value) {
     if (typeof showToast === 'function') showToast('Confidence saved privately');
 };
 
+window.sdScrollToReadiness = function() {
+    var el = (_sdContainer || document).querySelector('#sd-readiness-card');
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    // Fallback: try right panel readiness
+    var rp = document.querySelector('#sd-right-info');
+    if (rp) rp.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 window.sdSaveReadiness = function(songTitle, memberKey, val) {
     if (typeof GLStore === 'undefined') { console.warn('[song-detail] GLStore not available'); return; }
     var prevVal = 0;
@@ -1691,60 +1699,88 @@ async function _sdPopulateLearnLens(title) {
     var _learnChart = null;
     try { var _lc = await loadBandDataFromDrive(title, 'chart').catch(function(){ return null; }); _learnChart = (_lc && _lc.text && _lc.text.trim()) ? _lc.text : null; } catch(e) {}
 
-    // Build readiness context for progress messaging
+    // Determine current step based on state
     var _prAvg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
-    var _prHasChart = !!_learnChart;
-    var _prHasRefs = (tracks && tracks.length) || (tabs && tabs.length);
+    var _justPracticed = !!window._sdPracticeJustEnded;
+    window._sdPracticeJustEnded = false; // consume flag
+    var _currentStep = _justPracticed ? 3 : (_prAvg > 0 ? 2 : 1);
+
+    // Progress message — directional
     var _prProgress = '';
-    if (_prAvg >= 4) _prProgress = '<span style="color:#10b981">Sounding tight</span>';
-    else if (_prAvg >= 2.5) _prProgress = 'Getting there \u2014 keep running it';
-    else if (_prAvg > 0) _prProgress = 'Needs work \u2014 start with a run-through';
-    else _prProgress = 'Listen first, then play along';
+    if (_justPracticed) _prProgress = '<span style="color:#10b981">Nice \u2014 now rate your readiness</span>';
+    else if (_currentStep === 1) _prProgress = 'Start with the reference';
+    else if (_currentStep === 2) _prProgress = 'Next: Play it through';
+    else _prProgress = 'Next: Rate your readiness';
+    if (_prAvg >= 4 && !_justPracticed) _prProgress = '<span style="color:#10b981">All parts ready</span>';
+
+    // Step styling helpers
+    var _stepActive = function(step) { return step === _currentStep; };
+    var _stepDone = function(step) { return step < _currentStep; };
+    var _circleBg = function(step) {
+        if (_stepDone(step)) return 'background:#10b981';
+        if (_stepActive(step)) return 'background:rgba(129,140,248,0.25)';
+        return 'background:rgba(255,255,255,0.06)';
+    };
+    var _circleColor = function(step) {
+        if (_stepDone(step)) return 'color:white';
+        if (_stepActive(step)) return 'color:#a5b4fc';
+        return 'color:var(--text-dim,#475569)';
+    };
+    var _circleContent = function(step) { return _stepDone(step) ? '\u2713' : String(step); };
+    var _cardBorder = function(step) {
+        if (_stepActive(step)) return 'border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.04)';
+        if (_stepDone(step)) return 'border:1px solid rgba(16,185,129,0.15);background:rgba(16,185,129,0.02)';
+        return 'border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)';
+    };
+    var _arrowColor = function(step) {
+        if (_stepActive(step)) return 'color:var(--accent-light,#818cf8)';
+        return 'color:var(--text-dim,#475569)';
+    };
 
     panel.innerHTML=
         '<div class="sd-panel-inner" style="max-width:640px;margin:0 auto">'+
 
-        // ── HERO: Start Practice (dominant, tighter than before) ──
+        // ── HERO ──
         '<div style="text-align:center;padding:18px 16px;margin-bottom:14px;background:linear-gradient(135deg,rgba(99,102,241,0.05),rgba(34,197,94,0.03));border:1px solid rgba(99,102,241,0.15);border-radius:12px">'+
         '<div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:10px">\uD83C\uDFB8 Practice This Song</div>'+
         '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="padding:12px 32px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.92em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.2);min-width:200px">Start Practice Session</button>'+
-        '<div style="font-size:0.75em;color:var(--text-dim);margin-top:8px">Open chart and play along</div>'+
+        '<div style="font-size:0.75em;color:var(--text-dim);margin-top:8px">Start a guided practice run</div>'+
         '</div>'+
 
-        // ── Progress indicator ──
+        // ── Progress ──
         '<div style="text-align:center;font-size:0.75em;font-weight:600;color:var(--text-dim,#475569);margin-bottom:14px;letter-spacing:0.02em">'+_prProgress+'</div>'+
 
-        // ── Practice Flow (always visible, guided steps) ──
+        // ── Guided Steps ──
         '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">'+
 
         // Step 1: Listen
-        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:pointer" onclick="switchLens(\'listen\')">'+
-        '<div style="width:28px;height:28px;border-radius:50%;background:rgba(129,140,248,0.12);display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:#818cf8;flex-shrink:0">1</div>'+
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;'+_cardBorder(1)+';cursor:pointer;transition:background 0.15s" onclick="switchLens(\'listen\')" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">'+
+        '<div style="width:28px;height:28px;border-radius:50%;'+_circleBg(1)+';display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;'+_circleColor(1)+';flex-shrink:0">'+_circleContent(1)+'</div>'+
         '<div style="flex:1">'+
         '<div style="font-size:0.85em;font-weight:600;color:var(--text,#f1f5f9)">Listen to the reference</div>'+
         '<div style="font-size:0.7em;color:var(--text-dim,#475569)">Hear how it should sound</div>'+
         '</div>'+
-        '<span style="font-size:0.82em;color:var(--text-dim)">\uD83C\uDFA7</span>'+
+        '<span style="font-size:0.78em;'+_arrowColor(1)+'">\uD83C\uDFA7 \u203A</span>'+
         '</div>'+
 
-        // Step 2: Play Along (primary — emphasized)
-        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
-        '<div style="width:28px;height:28px;border-radius:50%;background:rgba(129,140,248,0.2);display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:#a5b4fc;flex-shrink:0">2</div>'+
+        // Step 2: Play Along
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;'+_cardBorder(2)+';cursor:pointer;transition:background 0.15s" onclick="openRehearsalMode(\''+safeSong+'\')" onmouseover="this.style.background=\'rgba(99,102,241,0.06)\'" onmouseout="this.style.background=\'\'">'+
+        '<div style="width:28px;height:28px;border-radius:50%;'+_circleBg(2)+';display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;'+_circleColor(2)+';flex-shrink:0">'+_circleContent(2)+'</div>'+
         '<div style="flex:1">'+
         '<div style="font-size:0.85em;font-weight:600;color:var(--text,#f1f5f9)">Play it all the way through</div>'+
         '<div style="font-size:0.7em;color:var(--text-dim,#475569)">Open chart and run the song</div>'+
         '</div>'+
-        '<span style="font-size:0.82em;color:var(--accent-light,#818cf8)">\uD83C\uDFB8</span>'+
+        '<span style="font-size:0.78em;'+_arrowColor(2)+'">\uD83C\uDFB8 \u203A</span>'+
         '</div>'+
 
-        // Step 3: Review
-        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.01)">'+
-        '<div style="width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;color:var(--text-dim,#475569);flex-shrink:0">3</div>'+
+        // Step 3: Rate
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;'+_cardBorder(3)+';cursor:pointer;transition:background 0.15s" onclick="sdScrollToReadiness()" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">'+
+        '<div style="width:28px;height:28px;border-radius:50%;'+_circleBg(3)+';display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;'+_circleColor(3)+';flex-shrink:0">'+_circleContent(3)+'</div>'+
         '<div style="flex:1">'+
         '<div style="font-size:0.85em;font-weight:600;color:var(--text,#f1f5f9)">Rate yourself honestly</div>'+
-        '<div style="font-size:0.7em;color:var(--text-dim,#475569)">Update readiness in the right panel</div>'+
+        '<div style="font-size:0.7em;color:var(--text-dim,#475569)">Slide your readiness score</div>'+
         '</div>'+
-        '<span style="font-size:0.82em;color:var(--text-dim)">\u2B50</span>'+
+        '<span style="font-size:0.78em;'+_arrowColor(3)+'">\u2B50 \u203A</span>'+
         '</div>'+
 
         '</div>'+
