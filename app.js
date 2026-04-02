@@ -14563,84 +14563,50 @@ async function _preloadSongDNA() {
         var snap = await firebaseDB.ref(bandPath('songs_v2')).once('value');
         var allDataV2 = (snap && snap.val()) || {};
         var populated = 0, noSongId = 0, noV2Data = 0;
-        var _lsPromotions = []; // localStorage data to promote to v2
-        var _v2Keys = Object.keys(allDataV2);
-        console.log('[DNA] v2 has ' + _v2Keys.length + ' records. Sample keys:', _v2Keys.slice(0, 5));
-        // Debug: show what v2 records contain for songs without key
-        var _dbgC = 0;
-        allSongs.forEach(function(_ds) {
-            if (!_ds.songId || _dbgC >= 3) return;
-            var _dv = allDataV2[_ds.songId];
-            if (_dv && !_dv.key && !_ds.key) {
-                console.log('[DNA-DEBUG] "' + _ds.title + '" v2 fields:', Object.keys(_dv));
-                _dbgC++;
-            }
-        });
-        // Also check: does localStorage have key data for these songs?
-        var _lsHits = 0;
-        allSongs.forEach(function(_ds) {
-            if (!_ds.songId || _ds.key || _lsHits >= 3) return;
+        // ── TEMP: localStorage recovery bridge ──────────────────────────────
+        // Repairs stranded key/bpm/lead data from localStorage into songs_v2.
+        // ONLY runs when songs_v2 is missing the field. Does NOT apply to other fields.
+        // REMOVE THIS BLOCK when recovery logs stop appearing (all data promoted).
+        var _repairs = [];
+        function _recoverFromLS(song, memField, lsPrefix, extractor, v2Field) {
             try {
-                var _lsk = localStorage.getItem('deadcetera_key_' + _ds.title);
-                if (_lsk) { console.log('[DNA-DEBUG] "' + _ds.title + '" has key in localStorage:', _lsk.substring(0, 50)); _lsHits++; }
-            } catch(e) {}
-        });
+                var raw = localStorage.getItem(lsPrefix + song.title);
+                if (!raw) return false;
+                var parsed = JSON.parse(raw);
+                var val = extractor(parsed);
+                if (!val) return false;
+                song[memField] = val;
+                _repairs.push({ songId: song.songId, field: v2Field || memField, data: parsed, title: song.title });
+                return true;
+            } catch(e) { return false; }
+        }
+        // ── END TEMP ────────────────────────────────────────────────────────
+        var _v2Keys = Object.keys(allDataV2);
+        // (debug logging removed — recovery bridge handles localStorage)
         allSongs.forEach(function(song) {
             if (!song || !song.title) return;
             if (!song.songId) { noSongId++; return; }
             var v2 = allDataV2[song.songId];
-            if (!v2) {
-                noV2Data++;
-                // Check if the data exists under a different key format
-                var altKey = song.title.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '_');
-                var altV2 = allDataV2[altKey];
-                if (altV2 && noV2Data <= 3) console.log('[DNA] Mismatch: songId=' + song.songId + ' but data at key=' + altKey + ' for "' + song.title + '"');
-                return;
-            }
-            // Key — v2 first, then localStorage
+            if (!v2) { noV2Data++; return; }
+            // Key
             if (v2.key) {
                 song.key = typeof v2.key === 'object' ? v2.key.key || v2.key : v2.key;
                 populated++;
-            } else {
-                try {
-                    var _lsk = localStorage.getItem('deadcetera_key_' + song.title);
-                    if (_lsk) {
-                        var _lskp = JSON.parse(_lsk);
-                        song.key = (typeof _lskp === 'object' && _lskp.key) ? _lskp.key : (typeof _lskp === 'string' ? _lskp : '');
-                        if (song.key) {
-                            populated++;
-                            // Promote to v2 so this doesn't happen again
-                            _lsPromotions.push({ songId: song.songId, field: 'key', data: _lskp });
-                        }
-                    }
-                } catch(e4) {}
+            } else if (_recoverFromLS(song, 'key', 'deadcetera_key_', function(d) { return (typeof d === 'object' && d.key) ? d.key : (typeof d === 'string' ? d : ''); })) {
+                populated++;
             }
-            // BPM — v2 first, then localStorage
+            // BPM
             if (v2.song_bpm) {
                 song.bpm = typeof v2.song_bpm === 'object' ? v2.song_bpm.bpm || v2.song_bpm : v2.song_bpm;
             } else {
-                try {
-                    var _lsb = localStorage.getItem('deadcetera_song_bpm_' + song.title);
-                    if (_lsb) {
-                        var _lsbp = JSON.parse(_lsb);
-                        song.bpm = (typeof _lsbp === 'object' && _lsbp.bpm) ? _lsbp.bpm : _lsbp;
-                        if (song.bpm) _lsPromotions.push({ songId: song.songId, field: 'song_bpm', data: _lsbp });
-                    }
-                } catch(e5) {}
+                _recoverFromLS(song, 'bpm', 'deadcetera_song_bpm_', function(d) { return (typeof d === 'object' && d.bpm) ? d.bpm : d; }, 'song_bpm');
             }
-            // Lead — v2 first, then localStorage
+            // Lead
             if (v2.lead_singer) {
                 var ls = v2.lead_singer;
                 song.lead = (typeof ls === 'object' && ls.singer) ? ls.singer : (typeof ls === 'string' ? ls : '');
             } else {
-                try {
-                    var _lsl = localStorage.getItem('deadcetera_lead_singer_' + song.title);
-                    if (_lsl) {
-                        var _lslp = JSON.parse(_lsl);
-                        song.lead = (typeof _lslp === 'object' && _lslp.singer) ? _lslp.singer : (typeof _lslp === 'string' ? _lslp : '');
-                        if (song.lead) _lsPromotions.push({ songId: song.songId, field: 'lead_singer', data: _lslp });
-                    }
-                } catch(e6) {}
+                _recoverFromLS(song, 'lead', 'deadcetera_lead_singer_', function(d) { return (typeof d === 'object' && d.singer) ? d.singer : (typeof d === 'string' ? d : ''); }, 'lead_singer');
             }
             // Structure
             if (v2.song_structure && v2.song_structure.sections && v2.song_structure.sections.length > 0) {
@@ -14655,23 +14621,27 @@ async function _preloadSongDNA() {
                 }
             }
         });
-        console.log('[DNA] Loaded from songs_v2: ' + populated + ' songs with data' + (_lsPromotions.length ? ', ' + _lsPromotions.length + ' from localStorage' : '') + ', ' + Object.keys(allDataV2).length + ' v2 records total');
+        console.log('[DNA] Loaded from songs_v2: ' + populated + ' songs with data, ' + Object.keys(allDataV2).length + ' v2 records total');
+        if (_repairs.length > 0) console.warn('[DNA-RECOVERY] Recovered ' + _repairs.length + ' stranded key/bpm/lead entries from localStorage');
         if (noSongId > 0) console.warn('[DNA] ' + noSongId + ' songs missing songId');
         if (noV2Data > 0 && noV2Data < 50) console.log('[DNA] ' + noV2Data + ' songs with songId but no v2 data');
 
-        // Promote localStorage data to v2 (one-time, non-blocking)
-        if (_lsPromotions.length > 0 && firebaseDB && typeof bandPath === 'function') {
-            console.log('[DNA] Promoting ' + _lsPromotions.length + ' localStorage entries to songs_v2...');
-            var _promoteAsync = async function() {
-                for (var pi = 0; pi < _lsPromotions.length; pi++) {
-                    var p = _lsPromotions[pi];
+        // ── TEMP: Write recovered localStorage data to songs_v2 (one-time repair) ──
+        // This promotes stranded data so the recovery bridge is not needed on future boots.
+        // REMOVE when [DNA-RECOVERY] logs stop appearing.
+        if (_repairs.length > 0 && firebaseDB && typeof bandPath === 'function') {
+            console.log('[DNA-RECOVERY] Writing ' + _repairs.length + ' repaired entries to songs_v2...');
+            (async function() {
+                var wrote = 0;
+                for (var ri = 0; ri < _repairs.length; ri++) {
+                    var r = _repairs[ri];
                     try {
-                        await firebaseDB.ref(bandPath('songs_v2/' + p.songId + '/' + p.field)).set(p.data);
+                        await firebaseDB.ref(bandPath('songs_v2/' + r.songId + '/' + r.field)).set(r.data);
+                        wrote++;
                     } catch(e7) {}
                 }
-                console.log('[DNA] Promoted ' + _lsPromotions.length + ' entries to v2');
-            };
-            _promoteAsync();
+                console.log('[DNA-RECOVERY] \u2705 Repaired ' + wrote + '/' + _repairs.length + ' entries into songs_v2. This should not appear again.');
+            })();
         }
     } catch(e) {
         console.warn('[DNA] songs_v2 bulk load failed:', e.message);
