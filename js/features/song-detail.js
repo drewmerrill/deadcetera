@@ -89,7 +89,6 @@ window.sdShowChart = async function sdShowChart(title) {
         var chartData = await loadBandDataFromDrive(title, 'chart').catch(function() { return null; });
         var chartText = (chartData && chartData.text && chartData.text.trim()) ? chartData.text : null;
         panel.innerHTML = '<div class="sd-panel-inner">'
-            + '<div style="margin-bottom:12px"><button onclick="_sdLensPopulated.band=false;switchLens(\'band\')" style="font-size:0.78em;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer">\u2190 Back</button></div>'
             + _sdRenderBandChart(title, safeSong, chartText)
             + '</div>';
     } catch(e) {
