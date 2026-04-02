@@ -11,25 +11,26 @@ var _sdLensPopulated = {};
 var _sdContainer     = null;
 
 var SD_LENSES_FULL = [
-    { id:'band',     icon:'\uD83C\uDFB8', label:'Play'     },
-    { id:'learn',    icon:'\uD83D\uDCDA', label:'Improve'  },
+    { id:'learn',    icon:'\uD83C\uDFB8', label:'Practice' },
+    { id:'band',     icon:'\uD83D\uDCCA', label:'Play'     },
     { id:'listen',   icon:'\uD83C\uDFA7', label:'Versions' },
-    { id:'sing',     icon:'\uD83C\uDFA4', label:'Sing'     },
+    { id:'sing',     icon:'\uD83C\uDFA4', label:'Harmony'  },
     { id:'inspire',  icon:'\u2728', label:'Inspire' },
 ];
 
 // All modes now use the same 4 primary lenses
 var SD_LENSES_BY_MODE = {
     sharpen: [
-        { id:'band',   icon:'\uD83C\uDFB8', label:'Play'     },
-        { id:'learn',  icon:'\uD83D\uDCDA', label:'Improve'  },
+        { id:'learn',  icon:'\uD83C\uDFB8', label:'Practice' },
+        { id:'band',   icon:'\uD83D\uDCCA', label:'Play'     },
         { id:'listen', icon:'\uD83C\uDFA7', label:'Versions' },
+        { id:'sing',   icon:'\uD83C\uDFA4', label:'Harmony'  },
     ],
     lockin: [
-        { id:'band',   icon:'\uD83C\uDFB8', label:'Play'     },
-        { id:'learn',  icon:'\uD83D\uDCDA', label:'Improve'  },
+        { id:'learn',  icon:'\uD83C\uDFB8', label:'Practice' },
+        { id:'band',   icon:'\uD83D\uDCCA', label:'Play'     },
         { id:'listen', icon:'\uD83C\uDFA7', label:'Versions' },
-        { id:'sing',   icon:'\uD83C\uDFA4', label:'Sing'     },
+        { id:'sing',   icon:'\uD83C\uDFA4', label:'Harmony'  },
     ],
     play: [
         { id:'band',   icon:'\uD83D\uDCCA', label:'Chart'   },
@@ -60,8 +61,10 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
     window._sdPanelMode = !!_sdOpts.panelMode;
     container.innerHTML = _sdShellHTML(title);
     _sdInjectStyles();
-    _sdActivateTab('band');
+    var _defaultTab = (_sdGetMode() === 'play') ? 'band' : 'learn';
+    _sdActivateTab(_defaultTab);
     _sdPopulateBandLens(title);
+    if (_defaultTab === 'learn') { _sdLensPopulated.learn = true; _sdPopulateLearnLens(title); }
     if (!window._sdPanelMode) _sdPopulateRightPanel(title);
     requestAnimationFrame(function() { container.classList.add('sd-entered'); });
 };
@@ -364,85 +367,13 @@ async function _sdPopulateBandLens(title) {
         return;
     }
 
-    // ── IMPROVE MODE: ONE JOB — help the user practice the song ──
+    // ── SHARPEN MODE: band lens shows chart + band context (Song Info lives in right panel) ──
     if (mode === 'sharpen') {
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
-
-            // ── SECTION 1: PRIMARY (dominant CTA — only card on the page) ──
-            '<div style="text-align:center;padding:28px 20px;margin-bottom:20px;background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(34,197,94,0.06));border:2px solid rgba(99,102,241,0.2);border-radius:14px">'+
-            '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:1.1em;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,0.3);min-width:240px">\uD83C\uDFB8 Start Practice Session</button>'+
-            '<div style="font-size:0.78em;color:var(--text-dim);margin-top:8px">Train this song in 3 steps</div>'+
-            '</div>'+
-
-            // ── SECTION 2: QUICK ACTIONS (horizontal row, no cards) ──
-            '<div style="display:flex;gap:8px;margin-bottom:20px">'+
-            '<button onclick="sdShowChart(\''+safeSong+'\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83D\uDCDA View Chart</button>'+
-            '<button id="sd-listen-step" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFA7 Listen</button>'+
-            '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac;cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFB8 Practice</button>'+
-            '</div>'+
-
-            // ── SECTION 3: PRACTICE FLOW (flat, no card border) ──
-            '<div style="margin-bottom:16px">'+
-            '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:8px">Practice Flow</div>'+
-            '<div style="display:flex;flex-direction:column;gap:6px">'+
-            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #818cf8;background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0;cursor:pointer" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')">'+
-            '<span style="font-size:0.72em;font-weight:800;color:#818cf8;width:16px">1</span>'+
-            '<span style="font-size:0.82em;color:var(--text)">Listen to the reference version</span>'+
-            '</div>'+
-            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #a5b4fc;background:rgba(99,102,241,0.02);border-radius:0 6px 6px 0;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
-            '<span style="font-size:0.72em;font-weight:800;color:#a5b4fc;width:16px">2</span>'+
-            '<span style="font-size:0.82em;color:var(--text)">Play it all the way through</span>'+
-            '</div>'+
-            '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid var(--text-dim);background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0;cursor:pointer" onclick="switchLens(\'band\')">'+
-            '<span style="font-size:0.72em;font-weight:800;color:var(--text-dim);width:16px">3</span>'+
-            '<span style="font-size:0.82em;color:var(--text)">Rate yourself honestly</span>'+
-            '</div>'+
-            '</div></div>'+
-
-            // ── SECTION 4: SONG INFO (Key, BPM, Lead, Status) ──
-            '<details class="sd-details"'+((!metaKey&&!metaBpm)?' open':'')+'>'+
-            '<summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">\uD83D\uDD11 Song Info</summary>'+
-            '<div style="padding:8px 12px">'+
-            '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:0.82em;align-items:center">'+
-            '<span style="color:var(--text-dim)">\uD83D\uDD11 Key</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select>'+
-            '<span style="color:var(--text-dim)">\uD83E\uDD41 BPM</span><input type="number" class="app-input sd-bpm-input" style="width:80px;font-size:0.85em;padding:3px 6px" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)">'+
-            '<span style="color:var(--text-dim)">\uD83C\uDFA4 Lead</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select>'+
-            '<span style="color:var(--text-dim)">\uD83C\uDFAF Status</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select>'+
-            '</div></div></details>'+
-
-            // ── SECTION 5: TOOLS (collapsed by default) ──
-            '<details class="sd-details"><summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">\uD83D\uDEE0\uFE0F Tabs, Tracks & References</summary>'+
-            '<div style="padding:8px 4px" id="sd-improve-tools">Loading...</div>'+
-            '</details>'+
-
+            _sdRenderBandChart(title, safeSong, chartText)+
             '</div>';
         _sdBuildReadinessStrip(title);
-        // Populate tools lazily (only when expanded)
-        setTimeout(function() {
-            _sdUpgradeListenStep(title);
-            var toolsEl = (_sdContainer || document).querySelector('#sd-improve-tools');
-            if (toolsEl) {
-                // Load tabs, tracks, references into the tools section
-                var toolsHtml = '';
-                if (typeof loadBandDataFromDrive === 'function') {
-                    Promise.all([
-                        loadBandDataFromDrive(title, 'personal_tabs').catch(function() { return null; }),
-                        loadBandDataFromDrive(title, 'practice_tracks').catch(function() { return null; }),
-                        loadBandDataFromDrive(title, 'spotify_versions').catch(function() { return null; })
-                    ]).then(function(res) {
-                        var tabs = res[0], tracks = res[1], versions = res[2];
-                        var html = '';
-                        if (tabs && Object.keys(tabs).length) html += '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">\uD83D\uDCCB ' + Object.keys(tabs).length + ' personal tab(s) saved</div>';
-                        if (tracks && (Array.isArray(tracks) ? tracks.length : Object.keys(tracks).length)) html += '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">\uD83C\uDFA7 Practice tracks available</div>';
-                        if (versions && (Array.isArray(versions) ? versions.length : Object.keys(versions).length)) html += '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">\uD83C\uDFB5 Reference versions saved</div>';
-                        if (!html) html = '<div style="font-size:0.78em;color:var(--text-dim);padding:4px 0">No tools saved yet. Add tabs or tracks from the Learn lens.</div>';
-                        html += '<div style="margin-top:8px"><button onclick="switchLens(\'listen\')" class="sd-pm-btn" style="font-size:0.78em;padding:6px 12px">\uD83C\uDFA7 Find Versions</button></div>';
-                        if (toolsEl) toolsEl.innerHTML = html;
-                    });
-                }
-            }
-        }, 400);
         return;
     }
 
@@ -470,7 +401,7 @@ async function _sdPopulateBandLens(title) {
         }).join('') : '<div style="font-size:0.85em;color:var(--text-dim);padding:4px">Looking good \u2014 no critical gaps. Run it once to stay sharp.</div>') +
         '<div style="margin-top:12px;display:flex;gap:8px">'+
         '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">\uD83D\uDCCB Run Through</button>'+
-        '<button class="sd-pm-btn" style="margin-left:8px" onclick="switchLens(\'learn\')">\uD83D\uDCDA Improve</button>'+
+        '<button class="sd-pm-btn" style="margin-left:8px" onclick="switchLens(\'learn\')">\uD83C\uDFB8 Practice</button>'+
         '</div></div>'+
         // Band Love (unique to this mode)
         '<div class="sd-card" id="sd-love-card">'+
@@ -1762,11 +1693,43 @@ async function _sdPopulateLearnLens(title) {
 
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
-        // ── Band Chart (primary) ──
-        _sdRenderBandChart(title, safeSong, _learnChart)+
+
+        // ── HERO: Start Practice Session (dominant) ──
+        '<div style="text-align:center;padding:28px 20px;margin-bottom:20px;background:linear-gradient(135deg,rgba(99,102,241,0.08),rgba(34,197,94,0.06));border:2px solid rgba(99,102,241,0.2);border-radius:14px">'+
+        '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="padding:16px 40px;border-radius:12px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:1.1em;cursor:pointer;box-shadow:0 4px 16px rgba(99,102,241,0.3);min-width:240px">\uD83C\uDFB8 Start Practice Session</button>'+
+        '<div style="font-size:0.78em;color:var(--text-dim);margin-top:8px">Open charts and play along</div>'+
+        '</div>'+
+
+        // ── Quick Actions (secondary row) ──
+        '<div style="display:flex;gap:8px;margin-bottom:16px">'+
+        '<button onclick="sdShowChart(\''+safeSong+'\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83D\uDCDA Chart</button>'+
+        '<button onclick="switchLens(\'listen\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFA7 Listen</button>'+
+        '<button onclick="switchLens(\'sing\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFA4 Harmony</button>'+
+        '</div>'+
+
+        // ── Practice Flow (collapsed) ──
+        '<details class="sd-details"><summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">Practice Flow</summary>'+
+        '<div style="padding:8px 12px;display:flex;flex-direction:column;gap:6px">'+
+        '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #818cf8;background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0;cursor:pointer" onclick="switchLens(\'listen\')">'+
+        '<span style="font-size:0.72em;font-weight:800;color:#818cf8;width:16px">1</span>'+
+        '<span style="font-size:0.82em;color:var(--text)">Listen to the reference version</span>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid #a5b4fc;background:rgba(99,102,241,0.02);border-radius:0 6px 6px 0;cursor:pointer" onclick="openRehearsalMode(\''+safeSong+'\')">'+
+        '<span style="font-size:0.72em;font-weight:800;color:#a5b4fc;width:16px">2</span>'+
+        '<span style="font-size:0.82em;color:var(--text)">Play it all the way through</span>'+
+        '</div>'+
+        '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-left:3px solid var(--text-dim);background:rgba(255,255,255,0.01);border-radius:0 6px 6px 0">'+
+        '<span style="font-size:0.72em;font-weight:800;color:var(--text-dim);width:16px">3</span>'+
+        '<span style="font-size:0.82em;color:var(--text)">Rate yourself honestly</span>'+
+        '</div>'+
+        '</div></details>'+
+
+        // ── My Lessons (if any) ──
         lessonsHtml+
-        // ── References (external links — secondary) ──
-        '<div style="font-size:0.68em;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;padding:12px 0 6px">\uD83D\uDD17 References</div>'+
+
+        // ── References (collapsed) ──
+        '<details class="sd-details"><summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">\uD83D\uDD17 Tabs, Tracks & References</summary>'+
+        '<div style="padding:8px 4px">'+
         '<div class="sd-card"><div class="sd-card-title">\uD83C\uDFA7 Practice Tracks</div>'+
             _sdLinkList(tracks,'\uD83C\uDFA7','')+
             ((!tracks||!tracks.length)?_sdEmptyAdd('No practice tracks yet','_sdAddTrackForm',''+safeSong+''):'')+
@@ -1776,7 +1739,6 @@ async function _sdPopulateLearnLens(title) {
             _sdLinkList(tabs,'\uD83D\uDCCE','')+
             ((!tabs||!tabs.length)?_sdEmptyAdd('No external tabs yet','_sdAddTabForm',''+safeSong+''):'')+
             '<div id="sd-learn-tab-form"></div>'+
-            // "Use as band chart" CTA for each external tab
             ((tabs && tabs.length) ? '<button onclick="_sdImportTabAsChart(\'' + safeSong + '\')" style="margin-top:6px;width:100%;padding:8px;border-radius:8px;border:1px dashed rgba(34,197,94,0.3);background:none;color:#86efac;cursor:pointer;font-size:0.72em;font-weight:600">Make this your chart</button>' : '') +
         '</div>'+
         '<div class="sd-card"><div class="sd-card-title">\uD83C\uDFB5 Cover Versions to Study</div>'+
@@ -1784,6 +1746,8 @@ async function _sdPopulateLearnLens(title) {
             ((!covers||!covers.length)?_sdEmptyAdd('No cover versions yet','_sdAddCoverForm',''+safeSong+''):'')+
             '<div id="sd-learn-cover-form"></div>'+
         '</div>'+
+        '</div></details>'+
+
         '</div>';
 }
 
@@ -2017,7 +1981,7 @@ async function _sdPopulateRightPanel(title) {
         return '<option value="' + val + '"' + (val === lead.toLowerCase() ? ' selected' : '') + '>' + _sdEsc(name) + '</option>';
     }).join('');
 
-    // Song Info — compact grid, no card border
+    // ── ALWAYS VISIBLE: Song Info ──
     infoEl.innerHTML = '<div style="padding:8px 12px">'
         + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Song Info</div>'
         + '<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:0.8em;align-items:center">'
@@ -2027,67 +1991,72 @@ async function _sdPopulateRightPanel(title) {
         + '<span style="color:var(--text-dim);font-size:0.85em">\uD83C\uDFAF</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongStatus(this.value)">' + statusOpts + '</select>'
         + '</div></div>';
 
-    // Extras: North Star (priority), Best Shot, then Structure (compact)
-    var extrasHtml = '';
+    // ── ALWAYS VISIBLE: Readiness (full card) ──
+    var songScores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
+    var rpMembers = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var readinessHtml = '<div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)">'
+        + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Readiness</div>'
+        + '<div style="display:flex;flex-direction:column;gap:4px">';
+    rpMembers.forEach(function(m) {
+        var key = m.key || m, name = m.name || (key.charAt(0).toUpperCase() + key.slice(1));
+        var score = songScores[key];
+        var color = score ? (score >= 4 ? '#10b981' : score >= 3 ? '#f59e0b' : '#ef4444') : '#475569';
+        var barPct = score ? (score / 5 * 100) : 0;
+        readinessHtml += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em">'
+            + '<span style="color:var(--text-dim);min-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(name) + '</span>'
+            + '<div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden"><div style="width:' + barPct + '%;height:100%;background:' + color + ';border-radius:3px"></div></div>'
+            + '<span style="color:' + color + ';font-weight:700;min-width:16px;text-align:right">' + (score || '\u2014') + '</span>'
+            + '</div>';
+    });
+    readinessHtml += '</div></div>';
 
-    // North Star — prominent if exists
-    try {
-        var spVersions = await loadBandDataFromDrive(title, 'spotify_versions').catch(function() { return null; });
-        if (spVersions) {
-            var arr = Array.isArray(spVersions) ? spVersions : Object.values(spVersions);
-            var primary = arr.find(function(v) { return v && v.isPrimary; });
-            if (primary) {
-                extrasHtml += '<div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                    + '<div style="display:flex;align-items:center;gap:6px">'
-                    + '<span style="font-size:0.75em">\u2B50</span>'
-                    + '<span style="font-size:0.8em;font-weight:700;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(primary.title || primary.name || 'North Star') + '</span>'
-                    + (primary.url ? '<a href="' + _sdEsc(primary.url) + '" target="_blank" style="font-size:0.72em;color:#1ed760;text-decoration:none;flex-shrink:0">\u25B6 Play</a>' : '')
-                    + '</div></div>';
-            }
-        }
-    } catch(e) {}
+    // ── ALWAYS VISIBLE: Band Love ──
+    var loveHtml = '<div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)" id="sd-love-card">'
+        + _sdRenderBandLove(title, safeSong)
+        + '</div>';
 
-    // Best Shot — compact
-    try {
-        var bestShot = await loadBandDataFromDrive(title, 'best_shot_takes').catch(function() { return null; });
-        if (bestShot) {
-            var takes = Array.isArray(bestShot) ? bestShot : Object.values(bestShot);
-            var best = takes.find(function(t) { return t && t.tag === 'best'; });
-            if (best) {
-                extrasHtml += '<div style="padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                    + '<div style="display:flex;align-items:center;gap:6px">'
-                    + '<span style="font-size:0.75em">\uD83C\uDFC6</span>'
-                    + '<span style="font-size:0.78em;color:var(--text)">' + _sdEsc(best.title || best.label || 'Best Take') + '</span>'
-                    + '</div></div>';
-            }
-        }
-    } catch(e) {}
-
-    // Structure — compact, collapsed if long
+    // ── COLLAPSIBLE: Structure ──
     structEl.innerHTML = '';
     if (typeof GLStore !== 'undefined' && GLStore.loadFieldMeta) {
         GLStore.loadFieldMeta(title, 'song_structure').then(function(data) {
-            if (!data || !data.sections || !data.sections.length) return;
-            var sections = data.sections;
-            var compact = sections.length <= 6;
-            var html = '<div style="padding:6px 12px;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px">Structure</div>'
-                + '<div style="font-size:0.75em;color:var(--text-dim);line-height:1.6">'
-                + sections.slice(0, compact ? 99 : 4).map(function(sec) { return _sdEsc(sec.name || sec.label || sec); }).join(' \u00B7 ');
-            if (!compact && sections.length > 4) html += ' <span style="color:var(--text-dim);opacity:0.5">+' + (sections.length - 4) + ' more</span>';
-            html += '</div></div>';
-            if (structEl) structEl.innerHTML = html;
+            var sections = (data && data.sections && data.sections.length) ? data.sections : [];
+            var structHtml = '<details class="sd-details" style="border-top:1px solid rgba(255,255,255,0.04)">'
+                + '<summary style="padding:8px 12px;font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
+                + '\uD83C\uDFBC Structure <span style="font-size:0.9em;opacity:0.5">\u25B6</span></summary>'
+                + '<div style="padding:4px 12px 10px">';
+            if (sections.length) {
+                structHtml += '<div style="font-size:0.75em;color:var(--text-dim);line-height:1.6;margin-bottom:6px">'
+                    + sections.map(function(sec) { return _sdEsc(sec.name || sec.label || sec); }).join(' \u00B7 ')
+                    + '</div>';
+            }
+            structHtml += '<button class="sd-pm-btn" style="font-size:0.7em;padding:3px 8px" onclick="sdEditStructure(\'' + safeSong + '\')">Edit Structure</button>'
+                + '</div></details>';
+            if (structEl) structEl.innerHTML = structHtml;
         }).catch(function() {});
     }
 
-    // Action row — compact icon buttons instead of full quick links
-    extrasHtml += '<div style="padding:8px 12px;display:flex;gap:6px">'
-        + '<button onclick="switchLens(\'learn\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;text-align:center" title="Tabs & References">\uD83D\uDCDA Improve</button>'
-        + '<button onclick="switchLens(\'listen\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;text-align:center" title="Find Versions">\uD83C\uDFA7 Versions</button>'
-        + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac;cursor:pointer;font-size:0.7em;text-align:center" title="Practice">\uD83C\uDFB8 Practice</button>'
-        + '</div>';
+    // ── COLLAPSIBLE: Discussion + Prospect Voting ──
+    var extrasHtml = '<details class="sd-details" style="border-top:1px solid rgba(255,255,255,0.04)">'
+        + '<summary style="padding:8px 12px;font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
+        + '\uD83D\uDCCB Discussion <span style="font-size:0.9em;opacity:0.5">\u25B6</span></summary>'
+        + '<div style="padding:4px 12px 10px">'
+        + '<div id="sd-rp-discussion"><div style="font-size:0.78em;color:var(--text-dim)">Loading...</div></div>'
+        + '<div id="sd-rp-prospect-vote"></div>'
+        + '</div></details>';
 
-    if (extrasEl) extrasEl.innerHTML = extrasHtml;
+    if (extrasEl) {
+        extrasEl.innerHTML = readinessHtml + loveHtml + extrasHtml;
+        // Load discussion into right panel
+        setTimeout(function() {
+            var discMount = document.getElementById('sd-rp-discussion');
+            if (discMount && typeof renderSongDiscussion === 'function') renderSongDiscussion(title, discMount);
+            // Prospect voting (conditional — only shows for prospect status)
+            var voteMount = document.getElementById('sd-rp-prospect-vote');
+            if (voteMount && status === 'prospect') {
+                _sdRenderProspectVote(title);
+            }
+        }, 300);
+    }
 }
 
 function _sdInjectStyles(){
