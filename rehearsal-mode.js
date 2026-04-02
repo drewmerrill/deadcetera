@@ -44,28 +44,32 @@ var _rmScrollSyncEnabled = false; // True when chart has anchored sections
 
 // Archive.org optimized search query per band
 function rmArchiveQuery(title, bandCode) {
+    // Verified collection names (Archive.org) — checked 2026-04-02
     const collections = {
-        'GD': 'GratefulDead', 'Grateful Dead': 'GratefulDead',
-        'JGB': 'JGB', 'Jerry Garcia Band': 'JGB',
-        'Phish': 'Phish',
-        'WSP': 'WidespreadPanic', 'Widespread Panic': 'WidespreadPanic',
-        'ABB': 'AllmanBrothersBand', 'Allman Brothers': 'AllmanBrothersBand',
-        'DMB': 'DaveMatthewsBand', 'Dave Matthews Band': 'DaveMatthewsBand',
-        'SCI': 'StringCheeseIncident', 'String Cheese Incident': 'StringCheeseIncident',
-        'moe.': 'moeperiod',
-        'Umphrey\'s McGee': 'UmphreysMcGee',
-        'Tedeschi Trucks': 'TedeschiTrucksBand',
-        'Goose': 'GooseBand',
+        'GD': 'GratefulDead', 'Grateful Dead': 'GratefulDead',       // 18186 items
+        'JGB': 'JGB', 'Jerry Garcia Band': 'JGB',                     // 468 items
+        'WSP': 'WidespreadPanic', 'Widespread Panic': 'WidespreadPanic', // 3802 items
+        'SCI': 'StringCheeseIncident', 'String Cheese Incident': 'StringCheeseIncident', // 2063 items
+        'Umphrey\'s McGee': 'UmphreysMcGee', 'UM': 'UmphreysMcGee',   // 3360 items
+        'Tedeschi Trucks': 'TedeschiTrucksBand', 'TTB': 'TedeschiTrucksBand', // 1304 items
+        'Goose': 'GooseBand',                                          // 772 items
+        'moe.': 'moe', 'MOE': 'moe',                                  // 4548 items
     };
-    const col = collections[bandCode] || '';
+    // Bands in etree (no dedicated collection) — use creator filter
+    const etreeBands = {
+        'Phish': 'Phish', 'PHISH': 'Phish',                           // 153 items in etree
+        'ABB': 'Allman Brothers Band', 'Allman Brothers': 'Allman Brothers Band', // 86 items in etree
+        'DMB': 'Dave Matthews Band', 'Dave Matthews Band': 'Dave Matthews Band',
+    };
+    var col = collections[bandCode] || '';
+    var etreeCreator = etreeBands[bandCode] || '';
     // Clean song title - remove parenthetical notes
-    const clean = title.replace(/\s*\(.*?\)\s*/g, ' ').trim();
+    var clean = title.replace(/\s*\(.*?\)\s*/g, ' ').trim();
     if (col) {
-        // Use description: to search setlists, not title: (which is show name)
-        // Handle Phish collection split (pre-2017 vs post-2017)
-        if (col === 'Phish') return '(collection:Phish OR creator:"Phish") AND description:"' + clean + '"';
-        if (col === 'DaveMatthewsBand') return 'creator:"Dave Matthews Band" AND description:"' + clean + '"';
         return 'collection:' + col + ' AND description:"' + clean + '"';
+    }
+    if (etreeCreator) {
+        return 'collection:etree AND creator:"' + etreeCreator + '" AND description:"' + clean + '"';
     }
     return clean + ' AND format:MP3 AND mediatype:audio';
 }
