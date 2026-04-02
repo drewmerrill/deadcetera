@@ -2998,29 +2998,126 @@ window.rmRemoveLesson = async function(songTitle, idx) {
 };
 
 // Inline player for North Star and YouTube preview
+// Supports: expand (video visible) and minimize (compact transport bar)
+window._rmInlineYT = null; // YouTube player instance
+window._rmInlineMinimized = false;
+
 window.rmPlayInline = function(url) {
     var existing = document.getElementById('rmInlinePlayer');
     if (existing) existing.remove();
+    window._rmInlineYT = null;
+    window._rmInlineMinimized = false;
 
     var videoId = null;
     var m = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/) || url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
     if (m) videoId = m[1];
 
+    if (!videoId) { window.open(url, '_blank'); return; }
+
     var player = document.createElement('div');
     player.id = 'rmInlinePlayer';
     player.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);width:90%;max-width:480px;z-index:9998;background:#0f172a;border:1px solid rgba(99,102,241,0.3);border-radius:12px;overflow:hidden;box-shadow:0 -8px 30px rgba(0,0,0,0.6)';
 
-    if (videoId) {
-        player.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(0,0,0,0.5)">'
-            + '<span style="font-size:0.75em;color:#a5b4fc;font-weight:600">\u25B6 Now Playing</span>'
-            + '<button onclick="document.getElementById(\'rmInlinePlayer\').remove()" style="background:rgba(255,255,255,0.1);border:none;color:#e2e8f0;cursor:pointer;font-size:0.85em;padding:4px 10px;border-radius:6px;font-weight:700">\u2715 Close</button></div>'
-            + '<div style="position:relative;padding-bottom:56.25%;height:0"><iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0&modestbranding=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media"></iframe></div>';
-    } else {
-        // Non-YouTube URL — open in new tab as fallback
-        window.open(url, '_blank');
-        return;
-    }
+    // Header with minimize + close
+    var header = '<div style="display:flex;align-items:center;gap:8px;padding:6px 12px;background:rgba(0,0,0,0.5)">'
+        + '<span style="font-size:0.72em;color:#a5b4fc;font-weight:600;flex:1">\u25B6 Now Playing</span>'
+        + '<button onclick="rmInlineToggleSize()" id="rmInlineMinBtn" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;cursor:pointer;font-size:0.72em;padding:3px 8px;border-radius:4px" title="Minimize">\u2013 Mini</button>'
+        + '<button onclick="rmInlineClose()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;cursor:pointer;font-size:0.72em;padding:3px 8px;border-radius:4px">\u2715</button>'
+        + '</div>';
+
+    // Video container (hideable on minimize)
+    var video = '<div id="rmInlineVideo" style="position:relative;padding-bottom:56.25%;height:0">'
+        + '<div id="rmInlineYTMount"></div></div>';
+
+    // Transport controls (always visible)
+    var _bs = 'background:none;border:none;color:#e2e8f0;cursor:pointer;font-size:0.85em;padding:4px 8px';
+    var transport = '<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 12px;background:rgba(0,0,0,0.3)">'
+        + '<button onclick="rmInlineSeek(-30)" style="' + _bs + ';font-size:0.7em" title="Back 30s">-30s</button>'
+        + '<button onclick="rmInlineSeek(-10)" style="' + _bs + '" title="Back 10s">\u23EA</button>'
+        + '<button onclick="rmInlinePlayPause()" id="rmInlinePPBtn" style="' + _bs + ';font-size:1.2em" title="Play/Pause">\u23F8</button>'
+        + '<button onclick="rmInlineSeek(10)" style="' + _bs + '" title="Forward 10s">\u23E9</button>'
+        + '<button onclick="rmInlineSeek(30)" style="' + _bs + ';font-size:0.7em" title="Forward 30s">+30s</button>'
+        + '</div>';
+
+    player.innerHTML = header + video + transport;
     document.body.appendChild(player);
+
+    // Create YouTube player using IFrame API
+    function _createPlayer() {
+        if (typeof YT === 'undefined' || !YT.Player) {
+            // Fallback: use iframe embed if API not loaded
+            var mount = document.getElementById('rmInlineYTMount');
+            if (mount) mount.innerHTML = '<iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0&modestbranding=1&enablejsapi=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media"></iframe>';
+            return;
+        }
+        window._rmInlineYT = new YT.Player('rmInlineYTMount', {
+            width: '100%', height: '100%', videoId: videoId,
+            playerVars: { autoplay: 1, controls: 0, modestbranding: 1, rel: 0, playsinline: 1 },
+            events: {
+                onReady: function() {
+                    var mount = document.getElementById('rmInlineYTMount');
+                    if (mount) mount.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%';
+                },
+                onStateChange: function(e) {
+                    var btn = document.getElementById('rmInlinePPBtn');
+                    if (btn) btn.textContent = (e.data === YT.PlayerState.PLAYING) ? '\u23F8' : '\u25B6';
+                }
+            }
+        });
+    }
+    // Ensure YT API is loaded
+    if (typeof YT !== 'undefined' && YT.Player) { _createPlayer(); }
+    else {
+        // Load API then create
+        var tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(tag);
+        var _waitYT = setInterval(function() {
+            if (typeof YT !== 'undefined' && YT.Player) { clearInterval(_waitYT); _createPlayer(); }
+        }, 200);
+        setTimeout(function() { clearInterval(_waitYT); _createPlayer(); }, 5000);
+    }
+
+    // Auto-switch to Chart tab when playing
+    if (typeof rmSwitchTab === 'function') rmSwitchTab('chart', document.querySelector('.rm-tab[data-tab="chart"]'));
+};
+
+window.rmInlinePlayPause = function() {
+    var p = window._rmInlineYT;
+    if (!p || !p.getPlayerState) return;
+    if (p.getPlayerState() === YT.PlayerState.PLAYING) p.pauseVideo();
+    else p.playVideo();
+};
+
+window.rmInlineSeek = function(delta) {
+    var p = window._rmInlineYT;
+    if (!p || !p.getCurrentTime || !p.seekTo) return;
+    p.seekTo(Math.max(0, p.getCurrentTime() + delta), true);
+};
+
+window.rmInlineToggleSize = function() {
+    var vid = document.getElementById('rmInlineVideo');
+    var btn = document.getElementById('rmInlineMinBtn');
+    var container = document.getElementById('rmInlinePlayer');
+    if (!vid || !container) return;
+    window._rmInlineMinimized = !window._rmInlineMinimized;
+    if (window._rmInlineMinimized) {
+        vid.style.display = 'none';
+        container.style.maxWidth = '340px';
+        if (btn) btn.textContent = '\u25A1 Expand';
+    } else {
+        vid.style.display = '';
+        container.style.maxWidth = '480px';
+        if (btn) btn.textContent = '\u2013 Mini';
+    }
+};
+
+window.rmInlineClose = function() {
+    var p = window._rmInlineYT;
+    if (p && p.destroy) try { p.destroy(); } catch(e) {}
+    window._rmInlineYT = null;
+    var el = document.getElementById('rmInlinePlayer');
+    if (el) el.remove();
 };
 
 console.log('🎸 Practice Mode 5-Tab loaded (Chart · Know · Memory · Harmony · Record)');
