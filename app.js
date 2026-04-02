@@ -14563,6 +14563,7 @@ async function _preloadSongDNA() {
         var snap = await firebaseDB.ref(bandPath('songs_v2')).once('value');
         var allDataV2 = (snap && snap.val()) || {};
         var populated = 0, noSongId = 0, noV2Data = 0;
+        var _lsPromotions = []; // localStorage data to promote to v2
         var _v2Keys = Object.keys(allDataV2);
         console.log('[DNA] v2 has ' + _v2Keys.length + ' records. Sample keys:', _v2Keys.slice(0, 5));
         // Debug: show what v2 records contain for songs without key
@@ -14596,19 +14597,50 @@ async function _preloadSongDNA() {
                 if (altV2 && noV2Data <= 3) console.log('[DNA] Mismatch: songId=' + song.songId + ' but data at key=' + altKey + ' for "' + song.title + '"');
                 return;
             }
-            // Key
+            // Key — v2 first, then localStorage
             if (v2.key) {
                 song.key = typeof v2.key === 'object' ? v2.key.key || v2.key : v2.key;
                 populated++;
+            } else {
+                try {
+                    var _lsk = localStorage.getItem('deadcetera_key_' + song.title);
+                    if (_lsk) {
+                        var _lskp = JSON.parse(_lsk);
+                        song.key = (typeof _lskp === 'object' && _lskp.key) ? _lskp.key : (typeof _lskp === 'string' ? _lskp : '');
+                        if (song.key) {
+                            populated++;
+                            // Promote to v2 so this doesn't happen again
+                            _lsPromotions.push({ songId: song.songId, field: 'key', data: _lskp });
+                        }
+                    }
+                } catch(e4) {}
             }
-            // BPM
+            // BPM — v2 first, then localStorage
             if (v2.song_bpm) {
                 song.bpm = typeof v2.song_bpm === 'object' ? v2.song_bpm.bpm || v2.song_bpm : v2.song_bpm;
+            } else {
+                try {
+                    var _lsb = localStorage.getItem('deadcetera_song_bpm_' + song.title);
+                    if (_lsb) {
+                        var _lsbp = JSON.parse(_lsb);
+                        song.bpm = (typeof _lsbp === 'object' && _lsbp.bpm) ? _lsbp.bpm : _lsbp;
+                        if (song.bpm) _lsPromotions.push({ songId: song.songId, field: 'song_bpm', data: _lsbp });
+                    }
+                } catch(e5) {}
             }
-            // Lead
+            // Lead — v2 first, then localStorage
             if (v2.lead_singer) {
                 var ls = v2.lead_singer;
                 song.lead = (typeof ls === 'object' && ls.singer) ? ls.singer : (typeof ls === 'string' ? ls : '');
+            } else {
+                try {
+                    var _lsl = localStorage.getItem('deadcetera_lead_singer_' + song.title);
+                    if (_lsl) {
+                        var _lslp = JSON.parse(_lsl);
+                        song.lead = (typeof _lslp === 'object' && _lslp.singer) ? _lslp.singer : (typeof _lslp === 'string' ? _lslp : '');
+                        if (song.lead) _lsPromotions.push({ songId: song.songId, field: 'lead_singer', data: _lslp });
+                    }
+                } catch(e6) {}
             }
             // Structure
             if (v2.song_structure && v2.song_structure.sections && v2.song_structure.sections.length > 0) {
@@ -14623,9 +14655,24 @@ async function _preloadSongDNA() {
                 }
             }
         });
-        console.log('[DNA] Loaded from songs_v2: ' + populated + ' songs with data, ' + Object.keys(allDataV2).length + ' v2 records total');
-        if (noSongId > 0) console.warn('[DNA] ' + noSongId + ' songs missing songId — run songIdRepair() then runSongMigration(false)');
-        if (noV2Data > 0) console.log('[DNA] ' + noV2Data + ' songs with songId but no v2 data (may need migration)');
+        console.log('[DNA] Loaded from songs_v2: ' + populated + ' songs with data' + (_lsPromotions.length ? ', ' + _lsPromotions.length + ' from localStorage' : '') + ', ' + Object.keys(allDataV2).length + ' v2 records total');
+        if (noSongId > 0) console.warn('[DNA] ' + noSongId + ' songs missing songId');
+        if (noV2Data > 0 && noV2Data < 50) console.log('[DNA] ' + noV2Data + ' songs with songId but no v2 data');
+
+        // Promote localStorage data to v2 (one-time, non-blocking)
+        if (_lsPromotions.length > 0 && firebaseDB && typeof bandPath === 'function') {
+            console.log('[DNA] Promoting ' + _lsPromotions.length + ' localStorage entries to songs_v2...');
+            var _promoteAsync = async function() {
+                for (var pi = 0; pi < _lsPromotions.length; pi++) {
+                    var p = _lsPromotions[pi];
+                    try {
+                        await firebaseDB.ref(bandPath('songs_v2/' + p.songId + '/' + p.field)).set(p.data);
+                    } catch(e7) {}
+                }
+                console.log('[DNA] Promoted ' + _lsPromotions.length + ' entries to v2');
+            };
+            _promoteAsync();
+        }
     } catch(e) {
         console.warn('[DNA] songs_v2 bulk load failed:', e.message);
     }
