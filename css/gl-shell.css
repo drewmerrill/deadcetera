@@ -219,6 +219,7 @@ body[data-gl-mode="play"] .gl-rail-section-title { display: none; }
 @media (min-width: 901px) {
   #gl-shell > .main-content {
     min-height: 0;       /* let flex height control, not min-height */
+    height: 100%;        /* definite height so overflow-y: auto scrolls with mouse wheel */
   }
 }
 
