@@ -329,7 +329,7 @@ function rmEnsureOverlay() {
                      <span class="rm-tb-sep"></span>
                      <button class="rm-tb" onclick="rmOpenPocketMeter()" title="Pocket Meter — tap tempo &amp; metronome">🥁</button>
                  </div>
-                 <button class="rm-monkey-float" onclick="rmToggleToolbar()" id="rmMonkeyBtn" title="Hide/show toolbar">🙈</button>
+                 <button class="rm-monkey-float" onclick="rmToggleToolbar()" id="rmMonkeyBtn" title="Hide/show toolbar">🐵</button>
                 <div id="rmChartLoading" class="rm-loading">Loading chart…</div>
                 <pre class="rm-chart-text" id="rmChartText"></pre>
                 <div class="rm-no-chart hidden" id="rmNoChart">
@@ -1768,7 +1768,7 @@ function rmToggleToolbar() {
     const bar = document.getElementById('rmStickyBar');
     const btn = document.getElementById('rmMonkeyBtn');
     if (bar) bar.style.display = rmToolbarHidden ? 'none' : 'flex';
-    if (btn) btn.textContent = rmToolbarHidden ? '🐵' : '🙈';
+    if (btn) btn.textContent = rmToolbarHidden ? '🙈' : '🐵';
 }
 
 function rmToggleEdit() { if (rmEditing) rmCancelEdit(); else rmStartEdit(); }
