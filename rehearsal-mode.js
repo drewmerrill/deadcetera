@@ -3031,12 +3031,15 @@ window.rmPlayInline = function(url) {
         + '<iframe id="rmInlineIframe" src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0&modestbranding=1&enablejsapi=1&origin=' + encodeURIComponent(location.origin) + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media"></iframe>'
         + '</div>';
 
-    // Transport: -10s, play/pause, +10s, speed, loop marker
+    // Transport: seek, play/pause, replay, speed, loop
     var _bs = 'background:none;border:none;cursor:pointer;padding:4px 6px;border-radius:4px';
-    var transport = '<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:5px 8px;background:rgba(0,0,0,0.3);flex-wrap:wrap">'
-        + '<button onclick="rmInlineSeek(-10)" style="' + _bs + ';color:#e2e8f0;font-size:0.75em" title="Back 10s">\u23EA 10s</button>'
+    var transport = '<div style="display:flex;align-items:center;justify-content:center;gap:3px;padding:5px 8px;background:rgba(0,0,0,0.3);flex-wrap:wrap">'
+        + '<button onclick="rmInlineSeek(-30)" style="' + _bs + ';color:#94a3b8;font-size:0.6em" title="Back 30s">-30s</button>'
+        + '<button onclick="rmInlineSeek(-10)" style="' + _bs + ';color:#e2e8f0;font-size:0.72em" title="Back 10s">-10s</button>'
+        + '<button onclick="rmInlineRestart()" style="' + _bs + ';color:#e2e8f0;font-size:0.85em" title="Restart from beginning">\u23EE</button>'
         + '<button onclick="rmInlinePlayPause()" id="rmInlinePPBtn" style="' + _bs + ';color:#e2e8f0;font-size:1.1em" title="Play/Pause">\u23F8</button>'
-        + '<button onclick="rmInlineSeek(10)" style="' + _bs + ';color:#e2e8f0;font-size:0.75em" title="Forward 10s">10s \u23E9</button>'
+        + '<button onclick="rmInlineSeek(10)" style="' + _bs + ';color:#e2e8f0;font-size:0.72em" title="Forward 10s">+10s</button>'
+        + '<button onclick="rmInlineSeek(30)" style="' + _bs + ';color:#94a3b8;font-size:0.6em" title="Forward 30s">+30s</button>'
         + '<span style="color:#334155;margin:0 2px">\u00B7</span>'
         + '<button onclick="rmInlineCycleSpeed()" id="rmInlineSpeedBtn" style="' + _bs + ';color:#fbbf24;font-size:0.68em;font-weight:700;border:1px solid rgba(251,191,36,0.2)" title="Playback speed">1x</button>'
         + '<button onclick="rmInlineSetLoopA()" id="rmInlineLoopABtn" style="' + _bs + ';color:#94a3b8;font-size:0.65em;border:1px solid rgba(255,255,255,0.06)" title="Set loop start">A\u2192</button>'
@@ -3123,6 +3126,11 @@ window.rmInlinePlayPause = function() {
     if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
     }
+};
+
+window.rmInlineRestart = function() {
+    var p = window._rmInlineYT;
+    if (p && p.seekTo) { p.seekTo(0, true); p.playVideo(); }
 };
 
 window.rmInlineSeek = function(delta) {
