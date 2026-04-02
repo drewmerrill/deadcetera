@@ -3008,13 +3008,13 @@ window.rmPlayInline = function(url) {
 
     var player = document.createElement('div');
     player.id = 'rmInlinePlayer';
-    player.style.cssText = 'position:fixed;bottom:60px;left:8px;right:8px;z-index:9998;background:#0f172a;border:1px solid rgba(99,102,241,0.3);border-radius:12px;overflow:hidden;box-shadow:0 -8px 30px rgba(0,0,0,0.6)';
+    player.style.cssText = 'position:fixed;bottom:60px;left:50%;transform:translateX(-50%);width:90%;max-width:480px;z-index:9998;background:#0f172a;border:1px solid rgba(99,102,241,0.3);border-radius:12px;overflow:hidden;box-shadow:0 -8px 30px rgba(0,0,0,0.6)';
 
     if (videoId) {
-        player.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:rgba(0,0,0,0.4)">'
-            + '<span style="font-size:0.72em;color:#a5b4fc;font-weight:600">Now Playing</span>'
-            + '<button onclick="document.getElementById(\'rmInlinePlayer\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em">✕</button></div>'
-            + '<div style="position:relative;padding-bottom:56.25%;height:0"><iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media" allowfullscreen></iframe></div>';
+        player.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(0,0,0,0.5)">'
+            + '<span style="font-size:0.75em;color:#a5b4fc;font-weight:600">\u25B6 Now Playing</span>'
+            + '<button onclick="document.getElementById(\'rmInlinePlayer\').remove()" style="background:rgba(255,255,255,0.1);border:none;color:#e2e8f0;cursor:pointer;font-size:0.85em;padding:4px 10px;border-radius:6px;font-weight:700">\u2715 Close</button></div>'
+            + '<div style="position:relative;padding-bottom:56.25%;height:0"><iframe src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0&modestbranding=1" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none" allow="autoplay;encrypted-media"></iframe></div>';
     } else {
         // Non-YouTube URL — open in new tab as fallback
         window.open(url, '_blank');
