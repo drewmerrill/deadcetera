@@ -79,6 +79,24 @@ window.switchLens = function switchLens(lens) {
     }
 };
 
+// Show chart inline (used by "View Chart" button in sharpen mode)
+window.sdShowChart = async function sdShowChart(title) {
+    var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="band"]');
+    if (!panel) return;
+    var safeSong = (title || '').replace(/'/g, "\\'");
+    panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:24px;color:var(--text-dim)">Loading chart...</div></div>';
+    try {
+        var chartData = await loadBandDataFromDrive(title, 'chart').catch(function() { return null; });
+        var chartText = (chartData && chartData.text && chartData.text.trim()) ? chartData.text : null;
+        panel.innerHTML = '<div class="sd-panel-inner">'
+            + '<div style="margin-bottom:12px"><button onclick="_sdLensPopulated.band=false;switchLens(\'band\')" style="font-size:0.78em;padding:4px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer">\u2190 Back</button></div>'
+            + _sdRenderBandChart(title, safeSong, chartText)
+            + '</div>';
+    } catch(e) {
+        panel.innerHTML = '<div class="sd-panel-inner"><div style="padding:24px;text-align:center;color:var(--text-dim)">Failed to load chart</div></div>';
+    }
+};
+
 window.glSongDetailBack = function glSongDetailBack() {
     if (typeof showPage==='function') showPage('songs');
 };
@@ -354,7 +372,7 @@ async function _sdPopulateBandLens(title) {
 
             // ── SECTION 2: QUICK ACTIONS (horizontal row, no cards) ──
             '<div style="display:flex;gap:8px;margin-bottom:20px">'+
-            '<button onclick="switchLens(\'band\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83D\uDCDA View Chart</button>'+
+            '<button onclick="sdShowChart(\''+safeSong+'\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83D\uDCDA View Chart</button>'+
             '<button id="sd-listen-step" onclick="window.open(\'https://www.youtube.com/results?search_query='+ytQuery+'\',\'_blank\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-muted);cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFA7 Listen</button>'+
             '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);color:#86efac;cursor:pointer;font-size:0.78em;font-weight:600;text-align:center">\uD83C\uDFB8 Practice</button>'+
             '</div>'+
