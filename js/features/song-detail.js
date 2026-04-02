@@ -395,7 +395,18 @@ async function _sdPopulateBandLens(title) {
             '</div>'+
             '</div></div>'+
 
-            // ── SECTION 4: TOOLS (collapsed by default) ──
+            // ── SECTION 4: SONG INFO (Key, BPM, Lead, Status) ──
+            '<details class="sd-details"'+((!metaKey&&!metaBpm)?' open':'')+'>'+
+            '<summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">\uD83D\uDD11 Song Info</summary>'+
+            '<div style="padding:8px 12px">'+
+            '<div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:0.82em;align-items:center">'+
+            '<span style="color:var(--text-dim)">\uD83D\uDD11 Key</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select>'+
+            '<span style="color:var(--text-dim)">\uD83E\uDD41 BPM</span><input type="number" class="app-input sd-bpm-input" style="width:80px;font-size:0.85em;padding:3px 6px" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)">'+
+            '<span style="color:var(--text-dim)">\uD83C\uDFA4 Lead</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select>'+
+            '<span style="color:var(--text-dim)">\uD83C\uDFAF Status</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select>'+
+            '</div></div></details>'+
+
+            // ── SECTION 5: TOOLS (collapsed by default) ──
             '<details class="sd-details"><summary class="sd-details-summary" style="font-size:0.78em;padding:8px 12px">\uD83D\uDEE0\uFE0F Tabs, Tracks & References</summary>'+
             '<div style="padding:8px 4px" id="sd-improve-tools">Loading...</div>'+
             '</details>'+
