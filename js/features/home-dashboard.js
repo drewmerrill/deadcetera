@@ -441,12 +441,12 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         _subHtml = '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>';
     }
 
-    return '<div style="padding:24px 20px;margin-bottom:12px;border:2px solid rgba(34,197,94,0.3);border-radius:16px;background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
-        + '<div style="font-size:1.2em;font-weight:900;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
-        + (_justification ? '<div style="font-size:0.75em;color:#64748b;margin-bottom:12px">' + _justification + '</div>' : '')
+    return '<div style="padding:18px 16px;margin-bottom:12px;border:1px solid rgba(34,197,94,0.2);border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))">'
+        + '<div style="font-size:1.05em;font-weight:800;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
+        + (_justification ? '<div style="font-size:0.72em;color:#64748b;margin-bottom:10px">' + _justification + '</div>' : '')
         + _subHtml
         + _expandHtml
-        + '<button onclick="' + cta.onclick + '" style="padding:16px 36px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1.05em;cursor:pointer;min-width:220px;box-shadow:0 4px 16px rgba(34,197,94,0.3)">' + _escHtml(cta.label) + '</button>'
+        + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:200px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
         + _scheduleLink
         + '</div>';
 }
@@ -656,10 +656,8 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     }
 
-    // High confidence: hero only, no secondary actions
-    // Low confidence: hero + full intent section for discovery
-    return _renderNextUpCard(_msg, _sub, _cta, _highConfidence)
-        + (_highConfidence ? '' : _renderIntentSection());
+    // Hero card only — secondary suggestions handled by dashboard layout
+    return _renderNextUpCard(_msg, _sub, _cta, _highConfidence);
 
     // ── Below: retained for gig-day override (not shown by default) ──────
     if (false) { // gig-day logic preserved but disabled — can re-enable later
@@ -1342,23 +1340,74 @@ function _timeAgo(isoStr) {
 // ── LOCK IN dashboard: session-level rehearsal plan ───────────────────────────
 function _renderLockinDashboard(bundle, wf, isStoner) {
     var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+    // Build secondary suggestions (max 2)
+    var _secondaries = _buildSecondaryActions(bundle);
+
     return [
-        '<div class="home-dashboard hd-command-center">',
-        '<div style="font-size:0.78em;color:var(--text-dim);padding:0 4px 8px">' + dateStr + '</div>',
-        // ── Above the fold: ONE primary action only ──
+        '<div class="home-dashboard hd-command-center" style="max-width:640px;margin:0 auto">',
+        '<div style="font-size:0.75em;color:var(--text-dim);padding:0 4px 6px">' + dateStr + '</div>',
+
+        // ── Primary recommendation (ONE action) ──
         _renderNextActionCard(bundle, wf),
-        // ── Collapsed sections ──
-        '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Your Band Right Now</summary>',
+
+        // ── Secondary suggestions (max 2, minimal) ──
+        (_secondaries.length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">' + _secondaries.join('') + '</div>' : ''),
+
+        // ── Band context (collapsed) ──
+        '<details style="margin-bottom:10px"><summary style="font-size:0.72em;font-weight:700;color:var(--text-dim);cursor:pointer;padding:6px 0;letter-spacing:0.05em;text-transform:uppercase">Band Status</summary>',
+        '<div style="padding:4px 0">',
         _renderBandScorecard(bundle),
         _renderBandReadinessSnapshot(bundle),
-        '</details>',
-        '<details style="margin-bottom:12px"><summary style="font-size:0.78em;font-weight:800;color:var(--text-dim);cursor:pointer;padding:8px 0;letter-spacing:0.05em">Band Activity</summary>',
-        _renderActionOwedCard(),
-        _renderBandAlignmentCard(),
-        '</details>',
+        '</div></details>',
+
         '<div id="hdPollCard"></div>',
         '</div>'
     ].join('');
+}
+
+function _buildSecondaryActions(bundle) {
+    var items = [];
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { count: 0 };
+    var hasSongs = (typeof allSongs !== 'undefined') && allSongs.length > 0;
+
+    // Suggest weak song practice if not already the primary
+    if (focus.count > 0 && focus.primary) {
+        var avgR = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(focus.primary) : 0;
+        if (avgR < 4) {
+            items.push(_secondaryCard(
+                'Practice ' + _escHtml(focus.primary),
+                avgR > 0 ? 'Readiness: ' + avgR.toFixed(1) + '/5' : 'Not rated yet',
+                "selectSong('" + _escHtml(focus.primary).replace(/'/g, "\\'") + "')",
+                '\uD83C\uDFB8'
+            ));
+        }
+    }
+
+    // Suggest schedule if upcoming event
+    var nextGig = bundle.gigs && bundle.gigs[0];
+    var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
+    if (daysOut > 3 && daysOut < 30) {
+        items.push(_secondaryCard(
+            (nextGig.venue || 'Gig') + ' in ' + daysOut + ' days',
+            'Check your schedule',
+            "showPage('calendar')",
+            '\uD83D\uDCC5'
+        ));
+    }
+
+    return items.slice(0, 2);
+}
+
+function _secondaryCard(title, sub, onclick, icon) {
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:pointer;transition:background 0.15s" onclick="' + onclick + '" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">'
+        + '<span style="font-size:1.1em;flex-shrink:0">' + icon + '</span>'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-size:0.82em;font-weight:600;color:var(--text,#f1f5f9);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + '</div>'
+        + '<div style="font-size:0.68em;color:var(--text-dim,#475569)">' + sub + '</div>'
+        + '</div>'
+        + '<span style="font-size:0.72em;color:var(--text-dim)">\u203A</span>'
+        + '</div>';
 }
 
 // ============================================================================
