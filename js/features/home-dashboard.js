@@ -392,7 +392,7 @@ function _renderSharpenDashboard(bundle, wf, isStoner) {
 // ── Next Up Card — dynamic primary action ────────────────────────────────────
 function _renderNextUpCard(msg, sub, cta, highConfidence) {
     var _hasDateContext = msg.indexOf('day') !== -1 || msg.indexOf('today') !== -1 || msg.indexOf('Gig') !== -1 || msg.indexOf('Rehearsal') !== -1 || msg.indexOf('Showtime') !== -1;
-    var _scheduleLink = _hasDateContext ? '<div style="margin-top:6px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;text-decoration:underline">View schedule \u2192</button></div>' : '';
+    var _scheduleLink = _hasDateContext ? '<div style="margin-top:6px"><button onclick="showPage(\'calendar\')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;text-decoration:underline">View full schedule \u2192</button></div>' : '';
 
     // ── Inline justification (always visible — no click needed) ──
     var _justification = highConfidence ? _buildJustification() : '';
@@ -447,7 +447,7 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         + _subHtml
         + _expandHtml
         + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:200px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
-        + (highConfidence && !sub ? '<div style="font-size:0.68em;color:#475569;margin-top:8px">Based on your band\u2019s current state</div>' : '')
+        + _buildIntelSignal()
         + _scheduleLink
         + '</div>';
 }
@@ -481,6 +481,28 @@ function _buildJustification() {
 
     if (!parts.length) return '';
     return parts.join(' \u00B7 ');
+}
+
+// ── Intelligence signal — subtle one-line insight under hero CTA ──────────────
+function _buildIntelSignal() {
+    // Only show if meaningful data exists
+    try {
+        // Try readiness delta from last session
+        if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
+            var ia = GLInsights.getNextAction();
+            if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length) {
+                return '<div style="font-size:0.68em;color:#475569;margin-top:8px">\u2728 ' + _escHtml(ia.plan.actionPlan.length) + ' step plan ready</div>';
+            }
+        }
+        // Try session improvement count
+        if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex) {
+            var idx = RehearsalAnalysis.getIssueIndex();
+            var improving = 0;
+            if (idx) Object.keys(idx).forEach(function(k) { if (idx[k].trend === 'improving') improving++; });
+            if (improving > 0) return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">\u2191 ' + improving + ' song' + (improving > 1 ? 's' : '') + ' improved since last rehearsal</div>';
+        }
+    } catch(e) {}
+    return '';
 }
 
 // ── Progress signal — bandmate-voice improvement indicator ────────────────────
@@ -1434,37 +1456,38 @@ function _secondaryCard(title, sub, onclick, icon, emphasize) {
 
 function _renderBandStatusCompact(bundle) {
     var sc = _computeScorecard(bundle);
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
     songs.forEach(function(s) {
         if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
-        var scores = rc[s.title] || {};
-        var vals = members.map(function(m) { return scores[m.key] || 0; }).filter(function(v) { return v > 0; });
-        if (!vals.length) return;
-        var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+        var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(s.title) : 0;
+        if (avg === 0) return; // unrated
         totalScore += avg; ratedCount++;
         if (avg < 3) lowCount++;
         if (avg >= 4) lockedCount++;
     });
     var overallAvg = ratedCount > 0 ? (totalScore / ratedCount) : 0;
     var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
-    var barColor = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+    var barColor = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : (ratedCount > 0 ? '#ef4444' : '#475569');
+
+    // Headline: use scorecard summary if rated, otherwise specific empty state
+    var headline = sc.healthSummary;
+    if (ratedCount === 0) headline = 'No songs rated yet';
+    var scoreLabel = ratedCount > 0 ? overallAvg.toFixed(1) + '/5' : '\u2014';
 
     return '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:12px">'
         // Headline + score
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-        + '<span style="font-size:0.8em;font-weight:700;color:' + (sc.healthColor || '#94a3b8') + '">' + _escHtml(sc.healthSummary) + '</span>'
-        + '<span style="font-size:0.85em;font-weight:800;color:' + barColor + '">' + overallAvg.toFixed(1) + '/5</span>'
+        + '<span style="font-size:0.8em;font-weight:700;color:' + (ratedCount > 0 ? (sc.healthColor || '#94a3b8') : '#475569') + '">' + _escHtml(headline) + '</span>'
+        + '<span style="font-size:0.85em;font-weight:800;color:' + barColor + '">' + scoreLabel + '</span>'
         + '</div>'
         // Readiness bar
-        + '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px">'
+        + (ratedCount > 0 ? '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px">'
         + '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width 0.3s"></div>'
-        + '</div>'
+        + '</div>' : '')
         // Counts
         + '<div style="display:flex;gap:12px;font-size:0.7em;color:var(--text-dim)">'
-        + '<span>\uD83D\uDD12 ' + lockedCount + ' locked</span>'
+        + (lockedCount > 0 ? '<span>\uD83D\uDD12 ' + lockedCount + ' locked</span>' : '')
         + (lowCount > 0 ? '<span style="color:#fbbf24">\u26A0\uFE0F ' + lowCount + ' need work</span>' : '')
         + '<span>' + ratedCount + ' rated</span>'
         + '</div>'
