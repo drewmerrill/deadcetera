@@ -430,7 +430,7 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         }
 
         if (_innerParts.length) {
-            _expandHtml = '<details style="margin-bottom:12px"><summary style="font-size:0.75em;color:#64748b;cursor:pointer;margin-bottom:4px">Quick plan \u25BC</summary>'
+            _expandHtml = '<details style="margin-bottom:12px"><summary style="font-size:0.75em;color:#64748b;cursor:pointer;margin-bottom:4px">View plan \u25BC</summary>'
                 + '<div style="padding:4px 0">' + _innerParts.join('') + '</div></details>';
         }
     }
@@ -447,6 +447,7 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         + _subHtml
         + _expandHtml
         + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:200px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
+        + (highConfidence ? '<div style="font-size:0.68em;color:#475569;margin-top:8px">Based on ' + (_justification || 'your band\u2019s current state') + '</div>' : '')
         + _scheduleLink
         + '</div>';
 }
@@ -570,6 +571,8 @@ function _renderNextActionCard(bundle, wf) {
     var hasSongs = (typeof allSongs !== 'undefined') && allSongs.length > 0;
     var hasSetlist = bundle.setlists && bundle.setlists.length > 0;
     var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { primary: null, list: [], reason: '', count: 0 };
+    var _focusPrimary = focus.primary ? (typeof focus.primary === 'string' ? focus.primary : (focus.primary.title || 'Untitled Song')) : null;
+    var _focusList = (focus.list || []).map(function(s) { return typeof s === 'string' ? s : (s.title || 'Untitled Song'); });
     var weakCount = focus.count;
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
@@ -621,8 +624,9 @@ function _renderNextActionCard(bundle, wf) {
 
     // ── Priority 4: Schedule urgency ──
     } else if (daysOut <= 3 && daysOut > 0 && weakCount > 0) {
-        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 tighten these songs';
-        _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work before ' + (nextGig.venue || 'the gig') + '.';
+        var _songNames = _focusList.slice(0, 3).join(', ');
+        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 tighten ' + (weakCount <= 3 ? _songNames : weakCount + ' songs');
+        _sub = (weakCount > 3 ? _songNames + ' + ' + (weakCount - 3) + ' more' : '') + (nextGig.venue ? ' before ' + nextGig.venue : '');
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
     } else if (daysOut <= 3 && daysOut > 0) {
@@ -631,8 +635,9 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Run the Set', onclick: "hdPlayBundle('gig')" };
         _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0 && weakCount > 0) {
-        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten these songs';
-        _sub = weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work.';
+        var _rSongNames = _focusList.slice(0, 3).join(', ');
+        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten ' + (weakCount <= 3 ? _rSongNames : weakCount + ' songs');
+        _sub = (weakCount > 3 ? _rSongNames + ' + ' + (weakCount - 3) + ' more' : weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work');
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
@@ -647,8 +652,9 @@ function _renderNextActionCard(bundle, wf) {
             _msg = 'Run your set for the first time';
             _sub = 'One run-through and you\u2019ll know exactly what to work on.';
         } else if (weakCount > 0) {
-            _msg = 'Stay sharp \u2014 ' + weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need reps';
-            _sub = 'A quick run keeps everything locked in.';
+            var _defNames = _focusList.slice(0, 2).join(' + ');
+            _msg = weakCount <= 2 ? 'Work on ' + _defNames : 'Stay sharp \u2014 ' + weakCount + ' songs need reps';
+            _sub = weakCount > 2 ? _defNames + ' + ' + (weakCount - 2) + ' more' : 'A quick run keeps everything locked in.';
         } else {
             _msg = 'Run your set to stay tight';
             _sub = 'Everything\u2019s solid. One more run keeps it there.';
@@ -1372,14 +1378,16 @@ function _buildSecondaryActions(bundle) {
     var hasSongs = (typeof allSongs !== 'undefined') && allSongs.length > 0;
 
     // Suggest weak song practice if not already the primary
-    if (focus.count > 0 && focus.primary) {
-        var avgR = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(focus.primary) : 0;
+    var _focusTitle = focus.primary ? (typeof focus.primary === 'string' ? focus.primary : (focus.primary.title || null)) : null;
+    if (focus.count > 0 && _focusTitle) {
+        var avgR = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_focusTitle) : 0;
         if (avgR < 4) {
             items.push(_secondaryCard(
-                'Practice ' + _escHtml(focus.primary),
+                'Practice ' + _escHtml(_focusTitle),
                 avgR > 0 ? 'Readiness: ' + avgR.toFixed(1) + '/5' : 'Not rated yet',
-                "selectSong('" + _escHtml(focus.primary).replace(/'/g, "\\'") + "')",
-                '\uD83C\uDFB8'
+                "selectSong('" + _escHtml(_focusTitle).replace(/'/g, "\\'") + "')",
+                '\uD83C\uDFB8',
+                true
             ));
         }
     }
@@ -1399,8 +1407,9 @@ function _buildSecondaryActions(bundle) {
     return items.slice(0, 2);
 }
 
-function _secondaryCard(title, sub, onclick, icon) {
-    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:pointer;transition:background 0.15s" onclick="' + onclick + '" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">'
+function _secondaryCard(title, sub, onclick, icon, emphasize) {
+    var border = emphasize ? 'border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.03)' : 'border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;' + border + ';cursor:pointer;transition:background 0.15s" onclick="' + onclick + '" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">'
         + '<span style="font-size:1.1em;flex-shrink:0">' + icon + '</span>'
         + '<div style="flex:1;min-width:0">'
         + '<div style="font-size:0.82em;font-weight:600;color:var(--text,#f1f5f9);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + '</div>'
@@ -1602,7 +1611,7 @@ function _computeScorecard(bundle) {
         sc.coachLine = 'Not a crisis \u2014 just needs one focused rehearsal to turn it around.';
         sc.healthColor = '#fbbf24';
     } else if (totalActive > 0 && highReady > totalActive * 0.5) {
-        sc.healthSummary = 'Songs are coming together';
+        sc.healthSummary = highReady + ' song' + (highReady > 1 ? 's' : '') + ' locked' + (lowReady > 0 ? ' \u00B7 ' + lowReady + ' need' + (lowReady > 1 ? '' : 's') + ' attention' : '');
         sc.coachLine = 'Start tracking rehearsals to see the full picture.';
         sc.healthColor = '#94a3b8';
     } else {
