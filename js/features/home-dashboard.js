@@ -630,8 +630,8 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
     } else if (daysOut <= 3 && daysOut > 0) {
-        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 run your set';
-        _sub = (nextGig.venue || 'Gig') + '. Run it once more.';
+        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 your set is tight. Run it.';
+        _sub = '';
         _cta = { label: '\u25B6 Run the Set', onclick: "hdPlayBundle('gig')" };
         _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0 && weakCount > 0) {
@@ -641,8 +641,8 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
-        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : ''));
-        _sub = 'Your set is ready. Run it.';
+        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 your set is tight. Run it.';
+        _sub = '';
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
 
@@ -1389,6 +1389,18 @@ function _buildSecondaryActions(bundle) {
         }
     }
 
+    // Guarantee: if no practice card yet but songs exist, suggest first focus song anyway
+    if (!items.length && _focusTitle) {
+        var avgR2 = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_focusTitle) : 0;
+        items.push(_secondaryCard(
+            'Practice ' + _escHtml(_focusTitle),
+            avgR2 > 0 ? 'Readiness: ' + avgR2.toFixed(1) + '/5 \u2014 keep it sharp' : 'Not rated yet',
+            "selectSong('" + _escHtml(_focusTitle).replace(/'/g, "\\'") + "')",
+            '\uD83C\uDFB8',
+            true
+        ));
+    }
+
     // Suggest schedule if upcoming event
     var nextGig = bundle.gigs && bundle.gigs[0];
     var daysOut = nextGig ? _dayDiff(_todayStr(), nextGig.date) : 999;
@@ -1655,8 +1667,9 @@ function _computeScorecard(bundle) {
         sc.coachLine = 'Start tracking rehearsals to see the full picture.';
         sc.healthColor = '#94a3b8';
     } else {
-        sc.healthSummary = 'Just getting started';
-        sc.coachLine = 'Every rehearsal builds the foundation. Keep going.';
+        var _anyRated = (highReady + lowReady + midReady) > 0;
+        sc.healthSummary = _anyRated ? 'No songs dialed in yet' : 'No songs rated yet';
+        sc.coachLine = _anyRated ? 'Keep running songs to build readiness.' : 'Open a song and slide your readiness to get started.';
         sc.healthColor = '#64748b';
     }
 
@@ -2757,18 +2770,22 @@ async function _renderHdPollCard() {
         ideas.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
         var recentIdeas = ideas.filter(function(i) { return i.ts > cutoff; });
 
-        if (!recentPolls.length && !recentIdeas.length) { el.innerHTML = ''; return; }
+        var updateCount = recentPolls.length + recentIdeas.length;
+        if (!updateCount) { el.innerHTML = ''; return; }
 
-        // Build Band Room card
-        var html = '<div class="app-card" style="margin-top:12px">';
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-        html += '<h3 style="margin:0;font-size:0.95em">🎸 Band Room</h3>';
-        var badges = [];
-        if (unanswered > 0) badges.push('<span style="background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:12px;padding:2px 8px;font-size:0.7em;font-weight:700">' + unanswered + ' vote' + (unanswered > 1 ? 's' : '') + ' needed</span>');
-        if (recentIdeas.length > 0) badges.push('<span style="background:rgba(34,197,94,0.12);color:#86efac;border-radius:12px;padding:2px 8px;font-size:0.7em;font-weight:700">' + recentIdeas.length + ' idea' + (recentIdeas.length > 1 ? 's' : '') + '</span>');
-        html += '<div style="display:flex;gap:4px">' + badges.join('') + '</div>';
-        html += '</div>';
-        html += '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:10px">Polls, ideas, and band decisions</div>';
+        // Build compact Band Room summary
+        var _previewText = '';
+        if (recentPolls.length) _previewText = recentPolls[0].question || 'New poll';
+        else if (recentIdeas.length) _previewText = recentIdeas[0].text || recentIdeas[0].title || 'New idea';
+
+        var html = '<details style="margin-top:8px"><summary style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);cursor:pointer;list-style:none;font-size:0.78em">'
+            + '<span style="font-size:1em">🎸</span>'
+            + '<span style="font-weight:600;color:var(--text-muted,#94a3b8);flex:1">Band Room</span>'
+            + (unanswered > 0 ? '<span style="background:rgba(251,191,36,0.15);color:#fbbf24;border-radius:10px;padding:1px 7px;font-size:0.82em;font-weight:700">' + unanswered + '</span>' : '<span style="color:var(--text-dim);font-size:0.85em">' + updateCount + '</span>')
+            + '<span style="color:var(--text-dim);font-size:0.85em">\u25B6</span>'
+            + '</summary>'
+            + '<div style="padding:8px 14px">'
+            + '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(_previewText) + '</div>';
 
         // Polls section
         if (recentPolls.length) {
@@ -2806,8 +2823,8 @@ async function _renderHdPollCard() {
             html += '</div>';
         }
 
-        html += '<div style="text-align:center;padding:6px 0 0"><button onclick="showPage(\'ideas\')" class="btn btn-ghost btn-sm" style="font-size:0.75em">Open Band Room →</button></div>';
-        html += '</div>';
+        html += '<div style="text-align:center;padding:6px 0 0"><button onclick="showPage(\'ideas\')" class="btn btn-ghost btn-sm" style="font-size:0.75em">Open Band Room \u2192</button></div>';
+        html += '</div></details>';
         el.innerHTML = html;
     } catch(e) { el.innerHTML = ''; }
 }
