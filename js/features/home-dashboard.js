@@ -447,7 +447,7 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         + _subHtml
         + _expandHtml
         + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:200px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
-        + (highConfidence ? '<div style="font-size:0.68em;color:#475569;margin-top:8px">Based on ' + (_justification || 'your band\u2019s current state') + '</div>' : '')
+        + (highConfidence && !sub ? '<div style="font-size:0.68em;color:#475569;margin-top:8px">Based on your band\u2019s current state</div>' : '')
         + _scheduleLink
         + '</div>';
 }
@@ -625,8 +625,8 @@ function _renderNextActionCard(bundle, wf) {
     // ── Priority 4: Schedule urgency ──
     } else if (daysOut <= 3 && daysOut > 0 && weakCount > 0) {
         var _songNames = _focusList.slice(0, 3).join(', ');
-        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 tighten ' + (weakCount <= 3 ? _songNames : weakCount + ' songs');
-        _sub = (weakCount > 3 ? _songNames + ' + ' + (weakCount - 3) + ' more' : '') + (nextGig.venue ? ' before ' + nextGig.venue : '');
+        _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 focus on ' + (weakCount <= 3 ? _songNames : weakCount + ' songs');
+        _sub = 'Based on upcoming gig + weak songs' + (weakCount > 3 ? ' (' + _songNames + ' + ' + (weakCount - 3) + ' more)' : '');
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
     } else if (daysOut <= 3 && daysOut > 0) {
@@ -636,8 +636,8 @@ function _renderNextActionCard(bundle, wf) {
         _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0 && weakCount > 0) {
         var _rSongNames = _focusList.slice(0, 3).join(', ');
-        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 tighten ' + (weakCount <= 3 ? _rSongNames : weakCount + ' songs');
-        _sub = (weakCount > 3 ? _rSongNames + ' + ' + (weakCount - 3) + ' more' : weakCount + ' song' + (weakCount > 1 ? 's' : '') + ' need work');
+        _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 focus on ' + (weakCount <= 3 ? _rSongNames : weakCount + ' songs');
+        _sub = 'Based on upcoming rehearsal + weak songs' + (weakCount > 3 ? ' (' + _rSongNames + ' + ' + (weakCount - 3) + ' more)' : '');
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
         _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
@@ -1360,13 +1360,10 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         // ── Secondary suggestions (max 2, minimal) ──
         (_secondaries.length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">' + _secondaries.join('') + '</div>' : ''),
 
-        // ── Band context (collapsed) ──
-        '<details style="margin-bottom:10px"><summary style="font-size:0.72em;font-weight:700;color:var(--text-dim);cursor:pointer;padding:6px 0;letter-spacing:0.05em;text-transform:uppercase">Band Status</summary>',
-        '<div style="padding:4px 0">',
-        _renderBandScorecard(bundle),
-        _renderBandReadinessSnapshot(bundle),
-        '</div></details>',
+        // ── Band Status (compact, merged scorecard + readiness) ──
+        _renderBandStatusCompact(bundle),
 
+        // ── Band Room (demoted — collapsed) ──
         '<div id="hdPollCard"></div>',
         '</div>'
     ].join('');
@@ -1420,7 +1417,50 @@ function _secondaryCard(title, sub, onclick, icon, emphasize) {
 }
 
 // ============================================================================
-// BAND SCORECARD — "Are we getting better as a band?"
+// BAND STATUS COMPACT — merged scorecard headline + readiness bar + counts
+// ============================================================================
+
+function _renderBandStatusCompact(bundle) {
+    var sc = _computeScorecard(bundle);
+    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
+    songs.forEach(function(s) {
+        if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
+        var scores = rc[s.title] || {};
+        var vals = members.map(function(m) { return scores[m.key] || 0; }).filter(function(v) { return v > 0; });
+        if (!vals.length) return;
+        var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+        totalScore += avg; ratedCount++;
+        if (avg < 3) lowCount++;
+        if (avg >= 4) lockedCount++;
+    });
+    var overallAvg = ratedCount > 0 ? (totalScore / ratedCount) : 0;
+    var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
+    var barColor = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+
+    return '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:12px">'
+        // Headline + score
+        + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+        + '<span style="font-size:0.8em;font-weight:700;color:' + (sc.healthColor || '#94a3b8') + '">' + _escHtml(sc.healthSummary) + '</span>'
+        + '<span style="font-size:0.85em;font-weight:800;color:' + barColor + '">' + overallAvg.toFixed(1) + '/5</span>'
+        + '</div>'
+        // Readiness bar
+        + '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px">'
+        + '<div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:2px;transition:width 0.3s"></div>'
+        + '</div>'
+        // Counts
+        + '<div style="display:flex;gap:12px;font-size:0.7em;color:var(--text-dim)">'
+        + '<span>\uD83D\uDD12 ' + lockedCount + ' locked</span>'
+        + (lowCount > 0 ? '<span style="color:#fbbf24">\u26A0\uFE0F ' + lowCount + ' need work</span>' : '')
+        + '<span>' + ratedCount + ' rated</span>'
+        + '</div>'
+        + '</div>';
+}
+
+// ============================================================================
+// BAND SCORECARD — "Are we getting better as a band?" (used by collapsed details)
 // ============================================================================
 
 function _renderBandScorecard(bundle) {
