@@ -373,16 +373,24 @@ window.RecordingAnalyzer = (function() {
     if (_planVsActual && _planVsActual.missing.length > 0) _summaryParts.push(_planVsActual.missing.length + ' missing from plan');
 
     var _segTypes = [['song','Song'],['restart','Restart'],['talking','Talking'],['jam','Jam / Improv'],['ignore','Ignore']];
+    var _confirmed = _currentSegments.filter(function(s) { return s.confirmed; }).length;
+    var _allConfirmed = _confirmed >= _currentSegments.length;
 
     var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
       + '<div>'
       + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9)">Recording Analysis</div>'
       + '<div style="font-size:0.7em;color:var(--text-dim,#475569)">' + _summaryParts.join(' \u00B7 ') + '</div>'
+      + '<div style="font-size:0.65em;color:' + (_allConfirmed ? '#10b981' : 'var(--text-dim)') + ';margin-top:2px">' + _confirmed + '/' + _currentSegments.length + ' reviewed' + (_allConfirmed ? ' \u2713' : '') + '</div>'
       + '</div>'
       + '<div style="display:flex;gap:6px;align-items:center">'
       + (_needsReview > 0 ? '<button onclick="RecordingAnalyzer._jumpToNextReview()" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(248,113,113,0.3);background:rgba(248,113,113,0.08);color:#f87171;cursor:pointer;font-weight:600">Next to review \u25BC</button>' : '')
       + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.1em;cursor:pointer">\u2715</button>'
       + '</div></div>';
+
+    // No-plan warning
+    if (_recordingContext && _recordingContext.noPlan) {
+      html += '<div style="padding:6px 10px;margin-bottom:8px;border-radius:6px;border:1px solid rgba(245,158,11,0.15);background:rgba(245,158,11,0.04);font-size:0.7em;color:#fbbf24">No rehearsal plan linked \u2014 song matching may be less accurate</div>';
+    }
 
     // Compute time per song
     var _songTime = {};
@@ -490,7 +498,8 @@ window.RecordingAnalyzer = (function() {
         + '<select onchange="RecordingAnalyzer._updateSegType(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;padding:3px 4px;color:var(--text-dim);font-size:0.65em;flex-shrink:0;font-family:inherit">'
         + _segTypes.map(function(t) { return '<option value="' + t[0] + '"' + (t[0] === segTypeVal ? ' selected' : '') + '>' + t[1] + '</option>'; }).join('')
         + '</select>'
-        // Row 1 actions: merge + remove
+        // Row 1 actions: confirm + merge + remove
+        + '<button onclick="RecordingAnalyzer._confirmSeg(' + i + ')" id="raConfBtn' + i + '" style="background:none;border:1px solid ' + (seg.confirmed ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)') + ';color:' + (seg.confirmed ? '#10b981' : '#475569') + ';cursor:pointer;font-size:0.6em;flex-shrink:0;padding:1px 5px;border-radius:4px" title="Confirm">' + (seg.confirmed ? '\u2713' : '\u2713') + '</button>'
         + '<button onclick="RecordingAnalyzer._mergeWithPrev(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.6em;flex-shrink:0;padding:2px" title="Merge with previous"' + (i === 0 ? ' disabled style="opacity:0.3"' : '') + '>\u2B06\uFE0F</button>'
         + '<button onclick="RecordingAnalyzer._removeSegment(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;flex-shrink:0;padding:2px" title="Remove">\u2715</button>'
         + '</div>';
@@ -511,9 +520,18 @@ window.RecordingAnalyzer = (function() {
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',5)" style="' + _tinyBtn + '">+5s</button>'
         + '</div>';
 
-      // Row 3: notes field for talking segments
+      // Row 3: talking segment — quick tags + notes
       if (segTypeVal === 'talking') {
-        html += '<div style="margin-top:4px"><input type="text" value="' + _escAttr(seg.notes || '') + '" onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:3px 6px;color:var(--text-dim);font-size:0.72em;font-family:inherit" placeholder="What was discussed..."></div>';
+        var _talkTags = ['tempo','transition','ending','arrangement','vocals'];
+        var _curTags = (seg.talkTags || []);
+        html += '<div style="margin-top:4px;display:flex;gap:3px;flex-wrap:wrap;margin-bottom:3px">';
+        _talkTags.forEach(function(tag) {
+          var active = _curTags.indexOf(tag) !== -1;
+          html += '<button onclick="RecordingAnalyzer._toggleTalkTag(' + i + ',\'' + tag + '\')" style="font-size:0.6em;padding:1px 6px;border-radius:3px;border:1px solid ' + (active ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#818cf8' : 'var(--text-dim)') + ';cursor:pointer;font-family:inherit">' + tag + '</button>';
+        });
+        html += '</div>';
+        html += '<input type="text" value="' + _escAttr(seg.notes || '') + '" onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:3px 6px;color:var(--text-dim);font-size:0.72em;font-family:inherit" placeholder="What was discussed...">';
+        if (_curTags.length) html += '<div style="font-size:0.58em;color:#818cf8;margin-top:2px">Tags will be included in report</div>';
       }
 
       html += '</div>';
@@ -523,21 +541,68 @@ window.RecordingAnalyzer = (function() {
     // Actions
     html += '<div style="display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--bg-card,#1e293b);padding:8px 0 0">'
       + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted,#94a3b8);cursor:pointer;font-size:0.82em;font-weight:600">Cancel</button>'
-      + '<button onclick="RecordingAnalyzer.confirmAndGenerate()" style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;cursor:pointer;font-size:0.82em;font-weight:700;box-shadow:0 2px 8px rgba(34,197,94,0.2)">Generate Report</button>'
+      + '<button onclick="RecordingAnalyzer.confirmAndGenerate()" style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;cursor:pointer;font-size:0.82em;font-weight:700;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + (_allConfirmed ? 'Review complete \u2713 \u2014 Generate Report' : 'Generate Report') + '</button>'
       + '</div>';
 
     modal.innerHTML = html;
     overlay.appendChild(modal);
     document.body.appendChild(overlay);
+
+    // Auto-focus first segment needing review
+    requestAnimationFrame(function() {
+      for (var fi = 0; fi < _currentSegments.length; fi++) {
+        if (_currentSegments[fi].confidence < 0.4 || _currentSegments[fi].unplanned) {
+          var fel = document.getElementById('raSeg' + fi);
+          if (fel) {
+            fel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            fel.style.transition = 'box-shadow 0.3s';
+            fel.style.boxShadow = '0 0 12px rgba(248,113,113,0.25)';
+            setTimeout(function() { if (fel) fel.style.boxShadow = ''; }, 2500);
+          }
+          break;
+        }
+      }
+    });
   }
 
   // ── UI Helpers ──────────────────────────────────────────────────────────────
+
+  function _confirmSeg(idx) {
+    if (!_currentSegments || !_currentSegments[idx]) return;
+    _currentSegments[idx].confirmed = true;
+    var btn = document.getElementById('raConfBtn' + idx);
+    if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
+    // Update review counter
+    var confirmed = _currentSegments.filter(function(s) { return s.confirmed; }).length;
+    // Auto-advance to next unconfirmed
+    for (var ni = idx + 1; ni < _currentSegments.length; ni++) {
+      if (!_currentSegments[ni].confirmed) {
+        var nel = document.getElementById('raSeg' + ni);
+        if (nel) nel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+    }
+  }
+
+  function _toggleTalkTag(idx, tag) {
+    if (!_currentSegments || !_currentSegments[idx]) return;
+    if (!_currentSegments[idx].talkTags) _currentSegments[idx].talkTags = [];
+    var tags = _currentSegments[idx].talkTags;
+    var pos = tags.indexOf(tag);
+    if (pos === -1) tags.push(tag);
+    else tags.splice(pos, 1);
+    // Re-render to update tag styling
+    showUI(_currentSessionId, _currentSegments);
+  }
 
   function _updateSegTitle(idx, value) {
     if (_currentSegments && _currentSegments[idx]) {
       _currentSegments[idx].songTitle = value;
       _currentSegments[idx].displayTitle = value;
       _currentSegments[idx].confidence = value ? 0.9 : 0.1;
+      _currentSegments[idx].confirmed = true; // auto-confirm on edit
+      var btn = document.getElementById('raConfBtn' + idx);
+      if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
     }
   }
 
@@ -576,6 +641,10 @@ window.RecordingAnalyzer = (function() {
   function _playSeg(idx) {
     if (!_currentAudioUrl || !_currentSegments || !_currentSegments[idx]) return;
     var seg = _currentSegments[idx];
+    // Auto-confirm on play
+    seg.confirmed = true;
+    var confBtn = document.getElementById('raConfBtn' + idx);
+    if (confBtn) { confBtn.style.color = '#10b981'; confBtn.style.borderColor = 'rgba(16,185,129,0.3)'; }
     var audio = document.getElementById('raPlaybackAudio');
     if (!audio) return;
 
@@ -972,6 +1041,12 @@ window.RecordingAnalyzer = (function() {
       } catch(e) {}
     } else if (sourceId === 'none') {
       songs = [];
+      _recordingContext = { type: 'rehearsal', referenceSongs: [], referenceId: sessionId, noPlan: true };
+      if (typeof showToast === 'function') showToast('No plan selected \u2014 matching against full catalog', 3000);
+      var overlay = document.getElementById('raOverlay');
+      if (overlay) overlay.remove();
+      _launchFilePicker(sessionId);
+      return;
     } else {
       // Load songs from a specific session
       try {
@@ -1041,29 +1116,48 @@ window.RecordingAnalyzer = (function() {
     var modal = overlay.querySelector('div');
     if (!modal) return;
 
-    // Store editable copy
     window._raExpectedSongs = songs.slice();
+    var safeSid = _escAttr(sessionId);
 
-    var html = '<div style="font-size:0.65em;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Optional</div>'
-      + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:4px">Expected songs</div>'
-      + '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-bottom:12px">Remove skipped songs or add extras. Or skip this step.</div>'
-      + '<div id="raExpectedList" style="display:flex;flex-direction:column;gap:4px;max-height:250px;overflow-y:auto;margin-bottom:12px">';
+    var html = '<div style="font-size:0.65em;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Optional \u2014 helps improve matching</div>'
+      + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:12px">Expected songs</div>'
+      + '<div id="raExpectedList" style="display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto;margin-bottom:8px">';
 
     songs.forEach(function(s, i) {
-      html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-        + '<span style="font-size:0.78em;color:var(--text-dim);min-width:16px">' + (i + 1) + '</span>'
-        + '<span style="flex:1;font-size:0.82em;color:var(--text)">' + _escAttr(s) + '</span>'
-        + '<button onclick="window._raExpectedSongs.splice(' + i + ',1);RecordingAnalyzer._showSongConfirmation(\'' + _escAttr(sessionId) + '\',window._raExpectedSongs)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em">\u2715</button>'
+      html += '<div style="display:flex;align-items:center;gap:4px;padding:3px 6px;border-radius:5px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);font-size:0.78em">'
+        + '<span style="color:var(--text-dim);min-width:14px">' + (i + 1) + '</span>'
+        + '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escAttr(s) + '</span>'
+        + (i > 0 ? '<button onclick="var a=window._raExpectedSongs;var t=a.splice(' + i + ',1)[0];a.splice(' + (i - 1) + ',0,t);RecordingAnalyzer._showSongConfirmation(\'' + safeSid + '\',a)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.65em;padding:0 2px" title="Move up">\u25B2</button>' : '')
+        + (i < songs.length - 1 ? '<button onclick="var a=window._raExpectedSongs;var t=a.splice(' + i + ',1)[0];a.splice(' + (i + 1) + ',0,t);RecordingAnalyzer._showSongConfirmation(\'' + safeSid + '\',a)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.65em;padding:0 2px" title="Move down">\u25BC</button>' : '')
+        + '<button onclick="window._raExpectedSongs.splice(' + i + ',1);RecordingAnalyzer._showSongConfirmation(\'' + safeSid + '\',window._raExpectedSongs)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.68em;padding:0 2px">\u2715</button>'
         + '</div>';
     });
 
     html += '</div>';
+    // Add song search
+    html += '<div style="margin-bottom:10px">'
+      + '<input id="raAddSongInput" type="text" placeholder="+ Add song..." oninput="RecordingAnalyzer._filterAddSong(this.value,\'' + safeSid + '\')" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text);font-size:0.78em;font-family:inherit">'
+      + '<div id="raAddSongResults" style="max-height:100px;overflow-y:auto"></div>'
+      + '</div>';
     html += '<div style="display:flex;gap:6px">'
-      + '<button onclick="RecordingAnalyzer._finalizeSongs(\'' + _escAttr(sessionId) + '\')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;cursor:pointer;font-size:0.85em;font-weight:700">Analyze with these songs</button>'
-      + '<button onclick="RecordingAnalyzer._skipConfirmation(\'' + _escAttr(sessionId) + '\')" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer;font-size:0.82em">Skip</button>'
+      + '<button onclick="RecordingAnalyzer._finalizeSongs(\'' + safeSid + '\')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;cursor:pointer;font-size:0.85em;font-weight:700">Analyze with these songs</button>'
+      + '<button onclick="RecordingAnalyzer._skipConfirmation(\'' + safeSid + '\')" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer;font-size:0.82em">Skip</button>'
       + '</div>';
 
     modal.innerHTML = html;
+  }
+
+  function _filterAddSong(query, sessionId) {
+    var results = document.getElementById('raAddSongResults');
+    if (!results) return;
+    if (!query || query.length < 2) { results.innerHTML = ''; return; }
+    var lower = query.toLowerCase();
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var existing = (window._raExpectedSongs || []).map(function(s) { return s.toLowerCase(); });
+    var matches = songs.filter(function(s) { return s.title.toLowerCase().indexOf(lower) !== -1 && existing.indexOf(s.title.toLowerCase()) === -1; }).slice(0, 5);
+    results.innerHTML = matches.map(function(s) {
+      return '<button onclick="window._raExpectedSongs.push(\'' + _escAttr(s.title) + '\');document.getElementById(\'raAddSongInput\').value=\'\';document.getElementById(\'raAddSongResults\').innerHTML=\'\';RecordingAnalyzer._showSongConfirmation(\'' + _escAttr(sessionId) + '\',window._raExpectedSongs)" style="display:block;width:100%;text-align:left;padding:4px 8px;border:none;background:rgba(255,255,255,0.03);color:var(--text-muted);cursor:pointer;font-size:0.75em;font-family:inherit;border-radius:4px;margin-top:2px">+ ' + _escAttr(s.title) + '</button>';
+    }).join('');
   }
 
   function _finalizeSongs(sessionId) {
@@ -1341,7 +1435,10 @@ window.RecordingAnalyzer = (function() {
     _finalizeSongs: _finalizeSongs,
     _skipConfirmation: _skipConfirmation,
     _seekSeg: _seekSeg,
-    _nudgeBoundary: _nudgeBoundary
+    _nudgeBoundary: _nudgeBoundary,
+    _confirmSeg: _confirmSeg,
+    _toggleTalkTag: _toggleTalkTag,
+    _filterAddSong: _filterAddSong
   };
 
 })();
