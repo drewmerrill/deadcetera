@@ -30,6 +30,8 @@ window.RecordingAnalyzer = (function() {
   var _currentSegments = null;
   var _currentSessionId = null;
   var _currentAudioBuffer = null;
+  var _currentAudioUrl = null; // blob URL for playback
+  var _currentAudioEl = null;  // shared <audio> element
 
   // ── Main Analysis Flow ──────────────────────────────────────────────────────
 
@@ -262,50 +264,91 @@ window.RecordingAnalyzer = (function() {
     overlay = document.createElement('div');
     overlay.id = 'raOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)';
-    // Don't auto-dismiss on backdrop click — user must use Cancel or Generate
 
     var durLabel = duration ? _formatTime(duration) : '';
     var modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--bg-card,#1e293b);border:2px solid rgba(99,102,241,0.3);border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6)';
+    modal.style.cssText = 'background:var(--bg-card,#1e293b);border:2px solid rgba(99,102,241,0.3);border-radius:16px;padding:20px;max-width:700px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6)';
 
-    // Notify user the review is ready (toast + audio chime)
-    if (typeof showToast === 'function') showToast('Analysis ready \u2014 review segments and generate report', 5000);
+    if (typeof showToast === 'function') showToast('Analysis ready \u2014 review and generate report', 5000);
     _playNotificationChime();
 
-    // Build smart summary
+    // Auto-label duplicate songs as "Song (Attempt N)"
+    var _songCounts = {};
+    _currentSegments.forEach(function(seg) {
+      if (seg.songTitle && seg.segType !== 'talking' && seg.segType !== 'ignore') {
+        _songCounts[seg.songTitle] = (_songCounts[seg.songTitle] || 0) + 1;
+      }
+    });
+    var _songSeen = {};
+    _currentSegments.forEach(function(seg) {
+      if (seg.songTitle && _songCounts[seg.songTitle] > 1 && seg.segType !== 'talking' && seg.segType !== 'ignore') {
+        _songSeen[seg.songTitle] = (_songSeen[seg.songTitle] || 0) + 1;
+        seg.displayTitle = seg.songTitle + ' (Attempt ' + _songSeen[seg.songTitle] + ')';
+      } else {
+        seg.displayTitle = seg.songTitle || '';
+      }
+    });
+
+    // Summary
     var _needsReview = _currentSegments.filter(function(s) { return s.confidence < 0.4; }).length;
-    var _confident = _currentSegments.filter(function(s) { return s.confidence >= 0.7; }).length;
-    var _summaryParts = [_currentSegments.length + ' segments detected'];
+    var _songs = _currentSegments.filter(function(s) { return !s.segType || s.segType === 'song'; }).length;
+    var _summaryParts = [_currentSegments.length + ' segments'];
     if (durLabel) _summaryParts[0] += ' \u00B7 ' + durLabel;
-    if (_confident > 0) _summaryParts.push(_confident + ' songs matched');
+    _summaryParts.push(_songs + ' songs');
     if (_needsReview > 0) _summaryParts.push(_needsReview + ' need review');
 
-    var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+    var _segTypes = [['song','Song'],['restart','Restart'],['talking','Talking'],['jam','Jam / Improv'],['ignore','Ignore']];
+
+    var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
       + '<div>'
-      + '<div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9)">Recording Analysis</div>'
-      + '<div style="font-size:0.72em;color:var(--text-dim,#475569)">' + _summaryParts.join(' \u00B7 ') + '</div>'
+      + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9)">Recording Analysis</div>'
+      + '<div style="font-size:0.7em;color:var(--text-dim,#475569)">' + _summaryParts.join(' \u00B7 ') + '</div>'
       + '</div>'
-      + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.2em;cursor:pointer">\u2715</button>'
-      + '</div>';
+      + '<div style="display:flex;gap:6px;align-items:center">'
+      + (_needsReview > 0 ? '<button onclick="RecordingAnalyzer._jumpToNextReview()" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(248,113,113,0.3);background:rgba(248,113,113,0.08);color:#f87171;cursor:pointer;font-weight:600">Next to review \u25BC</button>' : '')
+      + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.1em;cursor:pointer">\u2715</button>'
+      + '</div></div>';
+
+    // Hidden audio element for playback
+    html += '<audio id="raPlaybackAudio" src="' + _escAttr(_currentAudioUrl || '') + '" preload="metadata" style="display:none"></audio>';
 
     // Segment list
-    html += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">';
+    html += '<div id="raSegList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">';
     _currentSegments.forEach(function(seg, i) {
-      var confLabel = seg.confidence >= 0.7 ? '\u2713 confident' : seg.confidence >= 0.4 ? 'check name' : 'needs review';
-      var confColor = seg.confidence >= 0.7 ? '#10b981' : seg.confidence >= 0.4 ? '#f59e0b' : '#f87171';
-      html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)" data-seg-idx="' + i + '">'
-        + '<div style="font-size:0.72em;color:var(--text-dim);min-width:90px;flex-shrink:0">[' + _formatTime(seg.startSec) + ' \u2013 ' + _formatTime(seg.endSec) + ']</div>'
-        + '<input type="text" value="' + _escAttr(seg.songTitle || '') + '" onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 8px;color:var(--text,#f1f5f9);font-size:0.82em;font-family:inherit" placeholder="Song name...">'
-        + '<span style="font-size:0.65em;color:' + confColor + ';flex-shrink:0;min-width:50px;text-align:right">' + confLabel + '</span>'
-        + '<button onclick="RecordingAnalyzer._removeSegment(' + i + ')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.78em;flex-shrink:0" title="Remove">\u2715</button>'
+      var needsReview = seg.confidence < 0.4;
+      var borderColor = needsReview ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.06)';
+      var bgColor = needsReview ? 'rgba(248,113,113,0.03)' : 'rgba(255,255,255,0.02)';
+      var durMin = Math.round(seg.duration / 60);
+      var durLabel2 = seg.duration >= 60 ? durMin + 'm' : Math.round(seg.duration) + 's';
+      var segTypeVal = seg.segType || 'song';
+
+      html += '<div id="raSeg' + i + '" style="padding:8px 10px;border-radius:8px;border:1px solid ' + borderColor + ';background:' + bgColor + '">'
+        // Row 1: play + time + name input + type dropdown
+        + '<div style="display:flex;align-items:center;gap:6px">'
+        + '<button onclick="RecordingAnalyzer._playSeg(' + i + ')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.9em;flex-shrink:0;padding:2px" title="Play this segment" id="raPlayBtn' + i + '">\u25B6</button>'
+        + '<div style="font-size:0.65em;color:var(--text-dim);min-width:80px;flex-shrink:0">' + _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec) + '<br>' + durLabel2 + '</div>'
+        + '<input type="text" value="' + _escAttr(seg.displayTitle || '') + '" onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 6px;color:var(--text,#f1f5f9);font-size:0.78em;font-family:inherit;min-width:0" placeholder="Song name...">'
+        + '<select onchange="RecordingAnalyzer._updateSegType(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;padding:3px 4px;color:var(--text-dim);font-size:0.65em;flex-shrink:0;font-family:inherit">'
+        + _segTypes.map(function(t) { return '<option value="' + t[0] + '"' + (t[0] === segTypeVal ? ' selected' : '') + '>' + t[1] + '</option>'; }).join('')
+        + '</select>'
+        // Row 1 actions: merge + remove
+        + '<button onclick="RecordingAnalyzer._mergeWithPrev(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.6em;flex-shrink:0;padding:2px" title="Merge with previous"' + (i === 0 ? ' disabled style="opacity:0.3"' : '') + '>\u2B06\uFE0F</button>'
+        + '<button onclick="RecordingAnalyzer._removeSegment(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;flex-shrink:0;padding:2px" title="Remove">\u2715</button>'
         + '</div>';
+
+      // Row 2: notes field for talking segments
+      if (segTypeVal === 'talking') {
+        html += '<div style="margin-top:4px"><input type="text" value="' + _escAttr(seg.notes || '') + '" onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:3px 6px;color:var(--text-dim);font-size:0.72em;font-family:inherit" placeholder="What was discussed..."></div>';
+      }
+
+      html += '</div>';
     });
     html += '</div>';
 
     // Actions
-    html += '<div style="display:flex;gap:8px;justify-content:flex-end">'
-      + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted,#94a3b8);cursor:pointer;font-size:0.85em;font-weight:600">Cancel</button>'
-      + '<button onclick="RecordingAnalyzer.confirmAndGenerate()" style="padding:10px 24px;border-radius:8px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;cursor:pointer;font-size:0.85em;font-weight:700;box-shadow:0 2px 8px rgba(34,197,94,0.2)">Generate Report</button>'
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;position:sticky;bottom:0;background:var(--bg-card,#1e293b);padding:8px 0 0">'
+      + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted,#94a3b8);cursor:pointer;font-size:0.82em;font-weight:600">Cancel</button>'
+      + '<button onclick="RecordingAnalyzer.confirmAndGenerate()" style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;cursor:pointer;font-size:0.82em;font-weight:700;box-shadow:0 2px 8px rgba(34,197,94,0.2)">Generate Report</button>'
       + '</div>';
 
     modal.innerHTML = html;
@@ -318,7 +361,22 @@ window.RecordingAnalyzer = (function() {
   function _updateSegTitle(idx, value) {
     if (_currentSegments && _currentSegments[idx]) {
       _currentSegments[idx].songTitle = value;
-      _currentSegments[idx].confidence = value ? 0.9 : 0.1; // user-confirmed = high
+      _currentSegments[idx].displayTitle = value;
+      _currentSegments[idx].confidence = value ? 0.9 : 0.1;
+    }
+  }
+
+  function _updateSegType(idx, type) {
+    if (_currentSegments && _currentSegments[idx]) {
+      _currentSegments[idx].segType = type;
+      // Re-render to show/hide notes field for talking
+      showUI(_currentSessionId, _currentSegments);
+    }
+  }
+
+  function _updateSegNotes(idx, notes) {
+    if (_currentSegments && _currentSegments[idx]) {
+      _currentSegments[idx].notes = notes;
     }
   }
 
@@ -326,6 +384,73 @@ window.RecordingAnalyzer = (function() {
     if (_currentSegments) {
       _currentSegments.splice(idx, 1);
       showUI(_currentSessionId, _currentSegments);
+    }
+  }
+
+  function _mergeWithPrev(idx) {
+    if (!_currentSegments || idx <= 0) return;
+    var prev = _currentSegments[idx - 1];
+    var curr = _currentSegments[idx];
+    prev.endSec = curr.endSec;
+    prev.duration = prev.endSec - prev.startSec;
+    if (!prev.songTitle && curr.songTitle) prev.songTitle = curr.songTitle;
+    _currentSegments.splice(idx, 1);
+    showUI(_currentSessionId, _currentSegments);
+  }
+
+  function _playSeg(idx) {
+    if (!_currentAudioUrl || !_currentSegments || !_currentSegments[idx]) return;
+    var seg = _currentSegments[idx];
+    var audio = document.getElementById('raPlaybackAudio');
+    if (!audio) return;
+
+    // Stop if already playing this segment
+    if (_currentPlayingIdx === idx && !audio.paused) {
+      audio.pause();
+      var btn = document.getElementById('raPlayBtn' + idx);
+      if (btn) btn.textContent = '\u25B6';
+      _currentPlayingIdx = -1;
+      return;
+    }
+
+    // Reset previous playing button
+    if (_currentPlayingIdx >= 0) {
+      var prevBtn = document.getElementById('raPlayBtn' + _currentPlayingIdx);
+      if (prevBtn) prevBtn.textContent = '\u25B6';
+    }
+
+    audio.currentTime = seg.startSec;
+    audio.play();
+    _currentPlayingIdx = idx;
+    var btn = document.getElementById('raPlayBtn' + idx);
+    if (btn) btn.textContent = '\u23F8';
+
+    // Stop at segment end
+    var _stopCheck = function() {
+      if (audio.currentTime >= seg.endSec || audio.paused) {
+        audio.pause();
+        if (btn) btn.textContent = '\u25B6';
+        _currentPlayingIdx = -1;
+        audio.removeEventListener('timeupdate', _stopCheck);
+      }
+    };
+    audio.addEventListener('timeupdate', _stopCheck);
+  }
+  var _currentPlayingIdx = -1;
+
+  function _jumpToNextReview() {
+    if (!_currentSegments) return;
+    for (var i = 0; i < _currentSegments.length; i++) {
+      if (_currentSegments[i].confidence < 0.4) {
+        var el = document.getElementById('raSeg' + i);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.transition = 'box-shadow 0.3s';
+          el.style.boxShadow = '0 0 12px rgba(248,113,113,0.3)';
+          setTimeout(function() { el.style.boxShadow = ''; }, 2000);
+        }
+        return;
+      }
     }
   }
 
@@ -360,9 +485,20 @@ window.RecordingAnalyzer = (function() {
     }
 
     try {
-      // Build notes text from segments (for the analysis pipeline)
-      var notesLines = _currentSegments.map(function(seg) {
+      // Filter out ignored segments; build notes from the rest
+      var activeSegs = _currentSegments.filter(function(s) { return s.segType !== 'ignore'; });
+      var notesLines = activeSegs.map(function(seg) {
         var timeLabel = _formatTime(seg.startSec) + ' - ' + _formatTime(seg.endSec);
+        var type = seg.segType || 'song';
+        if (type === 'talking') {
+          return timeLabel + ' [Discussion]' + (seg.notes ? ' ' + seg.notes : '');
+        }
+        if (type === 'restart') {
+          return timeLabel + ' [Restart] ' + (seg.songTitle || '');
+        }
+        if (type === 'jam') {
+          return timeLabel + ' [Jam] ' + (seg.songTitle || 'Improv');
+        }
         var songLabel = seg.songTitle || 'Unknown';
         var durMin = Math.round(seg.duration / 60);
         return timeLabel + ' ' + songLabel + ' (' + durMin + ' min)';
@@ -431,6 +567,10 @@ window.RecordingAnalyzer = (function() {
     input.onchange = async function() {
       if (!input.files || !input.files[0]) return;
       var file = input.files[0];
+
+      // Create blob URL for segment playback
+      if (_currentAudioUrl) try { URL.revokeObjectURL(_currentAudioUrl); } catch(e) {}
+      _currentAudioUrl = URL.createObjectURL(file);
 
       // Show progress overlay
       var overlay = document.createElement('div');
@@ -644,7 +784,12 @@ window.RecordingAnalyzer = (function() {
     confirmAndGenerate: confirmAndGenerate,
     launchForSession: launchForSession,
     _updateSegTitle: _updateSegTitle,
-    _removeSegment: _removeSegment
+    _updateSegType: _updateSegType,
+    _updateSegNotes: _updateSegNotes,
+    _removeSegment: _removeSegment,
+    _mergeWithPrev: _mergeWithPrev,
+    _playSeg: _playSeg,
+    _jumpToNextReview: _jumpToNextReview
   };
 
 })();
