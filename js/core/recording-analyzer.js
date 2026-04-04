@@ -195,12 +195,27 @@ window.RecordingAnalyzer = (function() {
           endSec: e.end_time || e.endSec || 0,
           duration: dur,
           type: e.type || e._originalKind || 'unknown',
-          songTitle: e.song || _guessSong(e, i, songCatalog),
-          confidence: e.confidence || (e.song ? 0.8 : 0.3),
-          grooveMetrics: null, // populated per-segment if available
+          songTitle: e.song || null,
+          confidence: e.confidence || 0.3,
+          grooveMetrics: null,
           tags: e.tags || []
         };
       });
+
+    // Run Song Matching Engine (multi-signal scoring)
+    if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.run) {
+      var matchContext = {
+        type: (_recordingContext && _recordingContext.type) || 'rehearsal',
+        referenceSongs: (_recordingContext && _recordingContext.referenceSongs) || [],
+        allSongs: songCatalog
+      };
+      segments = SongMatchingEngine.run(segments, matchContext);
+    } else {
+      // Fallback: use legacy plan-order matching
+      segments.forEach(function(seg, i) {
+        if (!seg.songTitle) seg.songTitle = _guessSong({}, i, songCatalog);
+      });
+    }
 
     // Label segments without song matches + compute quality scores
     var songNum = 1;
@@ -557,6 +572,15 @@ window.RecordingAnalyzer = (function() {
         + (seg.improvementNote ? '<br><span style="color:#818cf8;font-style:italic">' + seg.improvementNote + '</span>' : '')
         + '</div>'
         + '<input type="text" value="' + _escAttr(seg.displayTitle || '') + '" onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 6px;color:var(--text,#f1f5f9);font-size:0.78em;font-family:inherit;min-width:0" placeholder="Song name...">'
+        // Candidate dropdown + confidence indicator (from SongMatchingEngine)
+        + (seg.songMatch && seg.songMatch.candidates && seg.songMatch.candidates.length > 1
+          ? '<select onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 3px;color:var(--text-dim);font-size:0.6em;flex-shrink:0;font-family:inherit;max-width:70px">'
+            + seg.songMatch.candidates.map(function(c) { return '<option value="' + _escAttr(c.title) + '"' + (c.title === seg.songTitle ? ' selected' : '') + '>' + _escAttr(c.title.length > 15 ? c.title.slice(0, 15) + '\u2026' : c.title) + ' (' + Math.round(c.score * 100) + '%)</option>'; }).join('')
+            + '</select>'
+          : '')
+        + (seg.songMatch && seg.songMatch.explanation && seg.songMatch.explanation.length
+          ? '<span title="' + _escAttr(seg.songMatch.explanation.join(' \u00B7 ')) + '" style="font-size:0.55em;color:' + (seg.songMatch.confidence === 'high' ? '#10b981' : seg.songMatch.confidence === 'medium' ? '#f59e0b' : '#64748b') + ';cursor:help;flex-shrink:0">why?</span>'
+          : '')
         + '<select onchange="RecordingAnalyzer._updateSegType(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;padding:3px 4px;color:var(--text-dim);font-size:0.65em;flex-shrink:0;font-family:inherit">'
         + _segTypes.map(function(t) { return '<option value="' + t[0] + '"' + (t[0] === segTypeVal ? ' selected' : '') + '>' + t[1] + '</option>'; }).join('')
         + '</select>'
