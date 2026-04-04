@@ -1046,6 +1046,7 @@ async function _rhRenderSessionHistory() {
         html += '<div style="display:flex;gap:6px;align-items:center">';
         if (isLatest) html += '<span style="font-size:0.6em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase">LATEST</span>';
         html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">View Report</button>';
+        html += '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(s.sessionId) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#818cf8">\uD83D\uDD0D Analyze Recording</button>';
         if (s.mixdown_id) {
             html += '<button onclick="_rhToggleMixdownPlayer(\'' + s.sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Mixdown</button>';
             // Mixdown tag
@@ -1053,6 +1054,7 @@ async function _rhRenderSessionHistory() {
             var mxTagLabels = { best_take: '\u2B50 Best Take', needs_work: '\uD83D\uDD27 Needs Work' };
             html += '<button onclick="_rhCycleMixdownTag(\'' + s.sessionId + '\')" style="font-size:0.6em;font-weight:600;padding:2px 6px;border-radius:4px;cursor:pointer;border:1px solid ' + (mxTag === 'best_take' ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (mxTag === 'best_take' ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (mxTag === 'best_take' ? '#fbbf24' : mxTag === 'needs_work' ? '#f87171' : '#475569') + '">' + (mxTagLabels[mxTag] || '\uD83C\uDFF7 Tag') + '</button>';
             html += '<button onclick="if(typeof RehearsalMixdowns!==\'undefined\')RehearsalMixdowns.openInChopper(\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b">\u2702\uFE0F Chopper</button>';
+            html += '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(s.sessionId) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#818cf8">\uD83D\uDD0D Analyze</button>';
         }
         html += '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b;margin-left:auto">\uD83D\uDDD1\uFE0F</button>';
         html += '</div>';
