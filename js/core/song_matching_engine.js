@@ -175,10 +175,11 @@ window.SongMatchingEngine = (function() {
       }
 
       // Build adjacent labels with trust metadata
+      // Strong anchors get highest continuity; confirmed-but-not-anchor gets standard confirmed tier
       var prevSeg = i > 0 ? segments[i - 1] : null;
       var nextSeg = i < segments.length - 1 ? segments[i + 1] : null;
       adjacentLabels.prev = prevSeg && prevSeg.songTitle ? prevSeg.songTitle : null;
-      adjacentLabels.prevConfirmed = prevSeg && prevSeg.confirmed;
+      adjacentLabels.prevConfirmed = prevSeg && (prevSeg._isAnchor || prevSeg.confirmed);
       adjacentLabels.prevConfidence = prevSeg && prevSeg.songMatch ? prevSeg.songMatch.confidence : null;
       adjacentLabels.next = nextSeg && nextSeg.songTitle ? nextSeg.songTitle : null;
       adjacentLabels.nextConfirmed = nextSeg && nextSeg.confirmed;
@@ -560,57 +561,93 @@ window.SongMatchingEngine = (function() {
 
   var _accuracyLog = []; // dev-only: { predicted, confirmed, confidence, signals, correct }
 
+  // ── Strong anchor rules ──────────────────────────────────────────────────────
+  var _ANCHOR_MIN_DURATION = 60;
+  var _ANCHOR_MIN_QUALITY = 2;
+
+  function _isStrongAnchor(segment) {
+    if (!segment || !segment.confirmed) return false;
+    if (segment.segType && segment.segType !== 'song') return false;
+    if (segment.duration && segment.duration < _ANCHOR_MIN_DURATION) return false;
+    if (segment.qualityScore && segment.qualityScore < _ANCHOR_MIN_QUALITY) return false;
+    if (segment.type === 'false_start' || segment.type === 'retry') return false;
+    return true;
+  }
+
   /**
    * Record that a user confirmed (or corrected) a segment's song label.
-   * Logs prediction accuracy and stores embedding if available.
+   * Expanded logging for per-signal diagnostics and accuracy by confidence tier.
    */
   function recordConfirmation(segment, confirmedTitle) {
     if (!segment) return;
-    var predicted = segment.songMatch && segment.songMatch.bestMatch ? segment.songMatch.bestMatch.title : null;
+    var match = segment.songMatch || {};
+    var predicted = match.bestMatch ? match.bestMatch.title : null;
+    var predictedId = match.bestMatch ? match.bestMatch.songId : null;
+    var confirmedId = _resolveSongId(confirmedTitle);
     var correct = predicted && confirmedTitle && predicted.toLowerCase() === confirmedTitle.toLowerCase();
+    var confidence = match.confidence || 'none';
+    var activeSignals = match.activeSignals || [];
+
+    // Find strongest signal
+    var strongestSignal = '';
+    var strongestVal = 0;
+    if (match.bestMatch && match.bestMatch.signals) {
+      // Not stored on bestMatch directly — use first explanation as proxy
+    }
+    if (activeSignals.length) strongestSignal = activeSignals[0];
 
     var entry = {
       segmentId: segment.id,
+      predictedId: predictedId,
       predicted: predicted,
+      confirmedId: confirmedId,
       confirmed: confirmedTitle,
       correct: correct,
-      confidence: segment.songMatch ? segment.songMatch.confidence : 'none',
-      activeSignals: segment.songMatch ? segment.songMatch.activeSignals : [],
+      confidence: confidence,
+      activeSignals: activeSignals,
+      strongestSignal: strongestSignal,
+      signalsDisagree: match.signalsDisagree || false,
+      limitedEvidence: match.limitedEvidence || false,
+      duration: segment.duration || 0,
+      qualityScore: segment.qualityScore || 0,
+      isStrongAnchor: false,
       timestamp: Date.now()
     };
+
+    // Determine anchor status
+    segment.confirmed = true;
+    if (_isStrongAnchor(segment)) {
+      segment._isAnchor = true;
+      entry.isStrongAnchor = true;
+    } else {
+      segment._isAnchor = false;
+    }
+
     _accuracyLog.push(entry);
 
     // Dev logging
     if (window._glDebugMatching) {
-      console.log('[SongMatch] Confirmation: ' + (correct ? '\u2713' : '\u2717') +
-        ' predicted=' + predicted + ' confirmed=' + confirmedTitle +
-        ' confidence=' + entry.confidence + ' signals=' + (entry.activeSignals || []).join(','));
+      console.log('[SongMatch] ' + (correct ? '\u2713' : '\u2717') +
+        ' pred=' + predicted + ' conf=' + confirmedTitle +
+        ' tier=' + confidence + ' signals=' + activeSignals.join(',') +
+        ' disagree=' + entry.signalsDisagree + ' anchor=' + entry.isStrongAnchor);
     }
 
-    // Store embedding for the confirmed song (using songId as key)
-    if (segment.audioEmbedding && segment.audioEmbedding.length && confirmedTitle) {
-      var sid = _resolveSongId(confirmedTitle);
-      storeConfirmedEmbedding(sid, confirmedTitle, segment.audioEmbedding, {
+    // Store embedding only from strong anchors
+    if (entry.isStrongAnchor && segment.audioEmbedding && segment.audioEmbedding.length && confirmedTitle) {
+      storeConfirmedEmbedding(confirmedId, confirmedTitle, segment.audioEmbedding, {
         segType: segment.segType,
         duration: segment.duration,
         qualityScore: segment.qualityScore,
         groove: segment.groove
       });
     }
-
-    // Mark segment as strong continuity anchor
-    segment.confirmed = true;
-    segment._isAnchor = true;
   }
 
-  /**
-   * Get accuracy log for debugging/tuning.
-   */
+  // ── Dev summary helpers ─────────────────────────────────────────────────────
+
   function getAccuracyLog() { return _accuracyLog; }
 
-  /**
-   * Get accuracy summary.
-   */
   function getAccuracySummary() {
     if (!_accuracyLog.length) return { total: 0, correct: 0, accuracy: 0 };
     var correct = _accuracyLog.filter(function(e) { return e.correct; }).length;
@@ -619,6 +656,42 @@ window.SongMatchingEngine = (function() {
       correct: correct,
       accuracy: Math.round(correct / _accuracyLog.length * 100)
     };
+  }
+
+  function getConfidenceBreakdown() {
+    var result = { high: { correct: 0, incorrect: 0 }, medium: { correct: 0, incorrect: 0 }, low: { correct: 0, incorrect: 0 } };
+    _accuracyLog.forEach(function(e) {
+      var tier = result[e.confidence] || result.low;
+      if (e.correct) tier.correct++;
+      else tier.incorrect++;
+    });
+    return result;
+  }
+
+  function getSignalContributionSummary() {
+    var signals = {};
+    _accuracyLog.forEach(function(e) {
+      (e.activeSignals || []).forEach(function(sig) {
+        if (!signals[sig]) signals[sig] = { total: 0, correct: 0 };
+        signals[sig].total++;
+        if (e.correct) signals[sig].correct++;
+      });
+    });
+    // Add accuracy % per signal
+    Object.keys(signals).forEach(function(sig) {
+      signals[sig].accuracy = signals[sig].total > 0 ? Math.round(signals[sig].correct / signals[sig].total * 100) : 0;
+    });
+    return signals;
+  }
+
+  function getMostConfusedSongs() {
+    var confusions = {};
+    _accuracyLog.filter(function(e) { return !e.correct && e.predicted && e.confirmed; }).forEach(function(e) {
+      var key = e.predicted + ' \u2192 ' + e.confirmed;
+      confusions[key] = (confusions[key] || 0) + 1;
+    });
+    return Object.keys(confusions).map(function(k) { return { pair: k, count: confusions[k] }; })
+      .sort(function(a, b) { return b.count - a.count; }).slice(0, 10);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -631,6 +704,9 @@ window.SongMatchingEngine = (function() {
     recordConfirmation: recordConfirmation,
     getAccuracyLog: getAccuracyLog,
     getAccuracySummary: getAccuracySummary,
+    getConfidenceBreakdown: getConfidenceBreakdown,
+    getSignalContributionSummary: getSignalContributionSummary,
+    getMostConfusedSongs: getMostConfusedSongs,
     WEIGHTS: WEIGHTS
   };
 
