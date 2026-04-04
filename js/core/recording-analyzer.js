@@ -384,20 +384,87 @@ window.RecordingAnalyzer = (function() {
       + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.1em;cursor:pointer">\u2715</button>'
       + '</div></div>';
 
-    // Plan vs Actual banner (if data exists)
+    // Compute time per song
+    var _songTime = {};
+    _currentSegments.forEach(function(s) {
+      if (s.songTitle && s.segType !== 'ignore' && s.segType !== 'talking') {
+        _songTime[s.songTitle] = (_songTime[s.songTitle] || 0) + (s.duration || 0);
+      }
+    });
+    var _totalMusicTime = Object.values(_songTime).reduce(function(a, b) { return a + b; }, 0);
+
+    // Plan vs Actual (interactive)
     if (_planVsActual) {
       var pva = _planVsActual;
-      var pvaHtml = '<div style="padding:8px 10px;border-radius:8px;margin-bottom:10px;font-size:0.72em;'
+      var pvaHtml = '<div style="padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:0.72em;'
         + (pva.missing.length > 0 ? 'border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04)' : 'border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04)')
         + '">';
-      pvaHtml += '<div style="font-weight:700;color:var(--text-muted);margin-bottom:4px">Plan vs Actual</div>';
-      pvaHtml += '<div style="color:var(--text-dim);line-height:1.5">';
+      pvaHtml += '<div style="font-weight:700;color:var(--text-muted);margin-bottom:6px">Plan vs Actual</div>';
       pvaHtml += '<span style="color:#10b981">' + pva.played.length + '/' + pva.planned.length + ' played</span>';
-      if (pva.repeated.length) pvaHtml += ' \u00B7 ' + pva.repeated.map(function(r) { return r.title + ' \u00D7' + r.attempts; }).join(', ');
-      if (pva.missing.length) pvaHtml += '<br><span style="color:#fbbf24">Missing: ' + pva.missing.join(', ') + '</span>';
-      if (pva.unplanned.length) pvaHtml += '<br><span style="color:#818cf8">Unplanned: ' + pva.unplanned.join(', ') + '</span>';
-      pvaHtml += '</div></div>';
+
+      // Repeated songs with time (clickable → jump between attempts)
+      if (pva.repeated.length) {
+        pvaHtml += '<div style="margin-top:4px">';
+        pva.repeated.forEach(function(r) {
+          var timeMin = Math.round((_songTime[r.title] || 0) / 60);
+          pvaHtml += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">'
+            + '<span onclick="RecordingAnalyzer._jumpToSong(\'' + _escAttr(r.title) + '\')" style="color:var(--text);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">' + _escAttr(r.title) + ' \u00D7' + r.attempts + '</span>'
+            + '<span style="color:var(--text-dim)">' + timeMin + ' min</span>'
+            + '</div>';
+        });
+        pvaHtml += '</div>';
+      }
+
+      // Missing songs (clickable actions)
+      if (pva.missing.length) {
+        pvaHtml += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
+        pvaHtml += '<div style="color:#fbbf24;font-weight:600;margin-bottom:3px">Missing from plan:</div>';
+        pva.missing.forEach(function(song) {
+          pvaHtml += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">'
+            + '<span style="color:var(--text)">' + _escAttr(song) + '</span>'
+            + '<button onclick="RecordingAnalyzer._addToNextPlan(\'' + _escAttr(song) + '\')" style="font-size:0.85em;padding:1px 6px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;cursor:pointer" title="Add to next rehearsal">+ next plan</button>'
+            + '<button onclick="this.parentElement.style.opacity=\'0.3\';this.disabled=true" style="font-size:0.85em;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer" title="Intentionally skipped">skipped</button>'
+            + '</div>';
+        });
+        pvaHtml += '</div>';
+      }
+
+      // Unplanned songs (clickable → jump + actions)
+      if (pva.unplanned.length) {
+        pvaHtml += '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
+        pvaHtml += '<div style="color:#818cf8;font-weight:600;margin-bottom:3px">Not in plan:</div>';
+        pva.unplanned.forEach(function(song) {
+          pvaHtml += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0">'
+            + '<span onclick="RecordingAnalyzer._jumpToSong(\'' + _escAttr(song) + '\')" style="color:var(--text);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px">' + _escAttr(song) + '</span>'
+            + '<button onclick="RecordingAnalyzer._addToNextPlan(\'' + _escAttr(song) + '\')" style="font-size:0.85em;padding:1px 6px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;cursor:pointer">+ next plan</button>'
+            + '<button onclick="this.parentElement.style.opacity=\'0.3\';this.disabled=true" style="font-size:0.85em;padding:1px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer">ignore</button>'
+            + '</div>';
+        });
+        pvaHtml += '</div>';
+      }
+
+      pvaHtml += '</div>';
       html += pvaHtml;
+    }
+
+    // Behavior insights (1-2 lines, only when meaningful)
+    var _insights = _buildBehaviorInsights(_songTime, _totalMusicTime);
+    if (_insights.length) {
+      html += '<div style="padding:6px 10px;margin-bottom:10px;font-size:0.7em;color:var(--text-dim);border-left:3px solid rgba(99,102,241,0.3)">';
+      _insights.forEach(function(ins) { html += '<div style="padding:1px 0">' + ins + '</div>'; });
+      html += '</div>';
+    }
+
+    // Practice mode metrics (if applicable)
+    if (_recordingContext && _recordingContext.type === 'practice') {
+      var _practiceSegs = _currentSegments.filter(function(s) { return s.segType !== 'ignore' && s.segType !== 'talking'; });
+      var _longestRun = 0;
+      _practiceSegs.forEach(function(s) { if (s.duration > _longestRun) _longestRun = s.duration; });
+      html += '<div style="display:flex;gap:12px;padding:8px 10px;margin-bottom:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);font-size:0.72em">'
+        + '<div style="text-align:center;flex:1"><div style="font-weight:700;color:var(--text)">' + Math.round(_totalMusicTime / 60) + 'm</div><div style="color:var(--text-dim)">practice time</div></div>'
+        + '<div style="text-align:center;flex:1"><div style="font-weight:700;color:var(--text)">' + _practiceSegs.length + '</div><div style="color:var(--text-dim)">run-throughs</div></div>'
+        + '<div style="text-align:center;flex:1"><div style="font-weight:700;color:var(--text)">' + Math.round(_longestRun / 60) + 'm</div><div style="color:var(--text-dim)">longest run</div></div>'
+        + '</div>';
     }
 
     // Hidden audio element for playback
@@ -529,6 +596,77 @@ window.RecordingAnalyzer = (function() {
     audio.addEventListener('timeupdate', _stopCheck);
   }
   var _currentPlayingIdx = -1;
+
+  function _jumpToSong(title) {
+    if (!_currentSegments) return;
+    var lower = title.toLowerCase();
+    for (var i = 0; i < _currentSegments.length; i++) {
+      if (_currentSegments[i].songTitle && _currentSegments[i].songTitle.toLowerCase() === lower) {
+        var el = document.getElementById('raSeg' + i);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.style.transition = 'box-shadow 0.3s';
+          el.style.boxShadow = '0 0 12px rgba(99,102,241,0.3)';
+          setTimeout(function() { el.style.boxShadow = ''; }, 2000);
+        }
+        return;
+      }
+    }
+  }
+
+  function _addToNextPlan(title) {
+    // Add song to rehearsal planner queue
+    try {
+      if (typeof window.glPlannerQueue !== 'undefined') {
+        var exists = window.glPlannerQueue.some(function(item) {
+          var t = typeof item === 'string' ? item : (item.title || '');
+          return t.toLowerCase() === title.toLowerCase();
+        });
+        if (!exists) {
+          window.glPlannerQueue.push({ title: title });
+          if (typeof showToast === 'function') showToast(title + ' added to next rehearsal plan');
+        } else {
+          if (typeof showToast === 'function') showToast(title + ' already in plan');
+        }
+      } else {
+        window.glPlannerQueue = [{ title: title }];
+        if (typeof showToast === 'function') showToast(title + ' added to next rehearsal plan');
+      }
+    } catch(e) {
+      if (typeof showToast === 'function') showToast('Could not add to plan');
+    }
+  }
+
+  function _buildBehaviorInsights(songTime, totalTime) {
+    var insights = [];
+    if (!totalTime || totalTime < 60) return insights;
+
+    // Top time hogs
+    var sorted = Object.keys(songTime).map(function(k) { return { title: k, time: songTime[k] }; });
+    sorted.sort(function(a, b) { return b.time - a.time; });
+    if (sorted.length >= 3) {
+      var topTwo = sorted.slice(0, 2);
+      var topPct = Math.round((topTwo[0].time + topTwo[1].time) / totalTime * 100);
+      if (topPct >= 35) {
+        insights.push('You spent ' + topPct + '% of rehearsal on ' + topTwo[0].title + ' and ' + topTwo[1].title);
+      }
+    }
+
+    // Skipped songs
+    if (_planVsActual && _planVsActual.missing.length > 0) {
+      insights.push('You skipped ' + _planVsActual.missing.length + ' planned song' + (_planVsActual.missing.length > 1 ? 's' : ''));
+    }
+
+    // Many restarts on one song
+    if (_planVsActual && _planVsActual.repeated.length) {
+      var mostRepeated = _planVsActual.repeated.sort(function(a, b) { return b.attempts - a.attempts; })[0];
+      if (mostRepeated.attempts >= 3) {
+        insights.push(mostRepeated.title + ' took ' + mostRepeated.attempts + ' attempts \u2014 might need focused practice');
+      }
+    }
+
+    return insights.slice(0, 2);
+  }
 
   function _jumpToNextReview() {
     if (!_currentSegments) return;
@@ -981,6 +1119,8 @@ window.RecordingAnalyzer = (function() {
     _mergeWithPrev: _mergeWithPrev,
     _playSeg: _playSeg,
     _jumpToNextReview: _jumpToNextReview,
+    _jumpToSong: _jumpToSong,
+    _addToNextPlan: _addToNextPlan,
     _selectContext: _selectContext
   };
 
