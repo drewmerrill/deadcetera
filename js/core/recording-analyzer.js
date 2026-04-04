@@ -189,10 +189,18 @@ window.RecordingAnalyzer = (function() {
     var modal = document.createElement('div');
     modal.style.cssText = 'background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6)';
 
-    var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+    // Build smart summary
+    var _needsReview = _currentSegments.filter(function(s) { return s.confidence < 0.4; }).length;
+    var _confident = _currentSegments.filter(function(s) { return s.confidence >= 0.7; }).length;
+    var _summaryParts = [_currentSegments.length + ' segments detected'];
+    if (durLabel) _summaryParts[0] += ' \u00B7 ' + durLabel;
+    if (_confident > 0) _summaryParts.push(_confident + ' songs matched');
+    if (_needsReview > 0) _summaryParts.push(_needsReview + ' need review');
+
+    var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
       + '<div>'
       + '<div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9)">Recording Analysis</div>'
-      + '<div style="font-size:0.75em;color:var(--text-dim,#475569)">' + _currentSegments.length + ' segments detected' + (durLabel ? ' \u00B7 ' + durLabel : '') + '</div>'
+      + '<div style="font-size:0.72em;color:var(--text-dim,#475569)">' + _summaryParts.join(' \u00B7 ') + '</div>'
       + '</div>'
       + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.2em;cursor:pointer">\u2715</button>'
       + '</div>';
@@ -200,8 +208,8 @@ window.RecordingAnalyzer = (function() {
     // Segment list
     html += '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">';
     _currentSegments.forEach(function(seg, i) {
-      var confLabel = seg.confidence >= 0.7 ? 'high' : seg.confidence >= 0.4 ? 'medium' : 'low';
-      var confColor = seg.confidence >= 0.7 ? '#10b981' : seg.confidence >= 0.4 ? '#f59e0b' : '#64748b';
+      var confLabel = seg.confidence >= 0.7 ? '\u2713 confident' : seg.confidence >= 0.4 ? 'check name' : 'needs review';
+      var confColor = seg.confidence >= 0.7 ? '#10b981' : seg.confidence >= 0.4 ? '#f59e0b' : '#f87171';
       html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)" data-seg-idx="' + i + '">'
         + '<div style="font-size:0.72em;color:var(--text-dim);min-width:90px;flex-shrink:0">[' + _formatTime(seg.startSec) + ' \u2013 ' + _formatTime(seg.endSec) + ']</div>'
         + '<input type="text" value="' + _escAttr(seg.songTitle || '') + '" onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 8px;color:var(--text,#f1f5f9);font-size:0.82em;font-family:inherit" placeholder="Song name...">'
@@ -247,12 +255,25 @@ window.RecordingAnalyzer = (function() {
     }
 
     var overlay = document.getElementById('raOverlay');
+    var _genMsgs = ['Building your report...', 'Analyzing each song...', 'Generating insights...', 'Almost done...'];
+    var _genMsgIdx = 0;
+    var _genMsgTimer = null;
     if (overlay) {
-      overlay.querySelector('div').innerHTML = '<div style="text-align:center;padding:40px">'
-        + '<div style="font-size:1.2em;margin-bottom:12px">\uD83D\uDD0D</div>'
-        + '<div style="font-size:0.92em;font-weight:700;color:var(--text,#f1f5f9);margin-bottom:8px">Generating report...</div>'
-        + '<div style="font-size:0.78em;color:var(--text-dim,#475569)">Analyzing segments and building insights</div>'
-        + '</div>';
+      var _genModal = overlay.querySelector('div');
+      if (_genModal) {
+        _genModal.innerHTML = '<div style="text-align:center;padding:40px">'
+          + '<div style="font-size:1.2em;margin-bottom:12px">\uD83D\uDD0D</div>'
+          + '<div id="raGenLabel" style="font-size:0.92em;font-weight:700;color:var(--text,#f1f5f9);margin-bottom:8px">Building your report...</div>'
+          + '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-top:12px;max-width:200px;margin-left:auto;margin-right:auto"><div id="raGenBar" style="height:100%;width:10%;background:#22c55e;border-radius:2px;transition:width 0.5s"></div></div>'
+          + '</div>';
+        _genMsgTimer = setInterval(function() {
+          _genMsgIdx = (_genMsgIdx + 1) % _genMsgs.length;
+          var lbl = document.getElementById('raGenLabel');
+          if (lbl) lbl.textContent = _genMsgs[_genMsgIdx];
+          var bar = document.getElementById('raGenBar');
+          if (bar) bar.style.width = Math.min(20 + _genMsgIdx * 25, 90) + '%';
+        }, 1500);
+      }
     }
 
     try {
@@ -270,19 +291,29 @@ window.RecordingAnalyzer = (function() {
         // Save segment notes to session
         if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
           await firebaseDB.ref(bandPath('rehearsal_sessions/' + _currentSessionId + '/notes')).set(notesText);
-          // Save structured segments
           await firebaseDB.ref(bandPath('rehearsal_sessions/' + _currentSessionId + '/audio_segments')).set(_currentSegments);
         }
 
-        // Run analysis pipeline with audio data
         var result = await RehearsalAnalysis.run(_currentSessionId, {
           audioBuffer: _currentAudioBuffer,
           force: true
         });
 
+        if (_genMsgTimer) clearInterval(_genMsgTimer);
+
+        // Count issues for result message
+        var _issueCount = 0;
+        if (result && result.analysis && result.analysis.insights) {
+          _issueCount = (result.analysis.insights.issues || []).length;
+        }
+        var _resultMsg = 'Report ready';
+        if (_issueCount > 0) _resultMsg += ' \u2014 ' + _issueCount + ' song' + (_issueCount > 1 ? 's' : '') + ' need attention';
+
+        if (typeof showToast === 'function') showToast(_resultMsg, 3000);
         if (overlay) overlay.remove();
 
-        if (typeof showToast === 'function') showToast('Report generated \u2014 ' + _currentSegments.length + ' segments analyzed');
+        // Close the loop: refresh Home data so hero/practice/status update
+        _refreshHomeAfterAnalysis();
 
         // Show the report
         if (typeof _rhShowSessionReport === 'function') {
@@ -292,11 +323,12 @@ window.RecordingAnalyzer = (function() {
         return result;
       }
 
-      // No session — create a lightweight report
+      if (_genMsgTimer) clearInterval(_genMsgTimer);
       if (overlay) overlay.remove();
       if (typeof showToast === 'function') showToast('Analysis complete \u2014 ' + _currentSegments.length + ' segments');
 
     } catch(e) {
+      if (_genMsgTimer) clearInterval(_genMsgTimer);
       console.error('[RecordingAnalyzer] Generate failed:', e);
       if (overlay) overlay.remove();
       if (typeof showToast === 'function') showToast('Analysis failed: ' + e.message);
@@ -330,9 +362,15 @@ window.RecordingAnalyzer = (function() {
       overlay.appendChild(progress);
       document.body.appendChild(overlay);
 
-      var stageLabels = { decoding: 'Decoding audio...', segmenting: 'Detecting segments...', groove: 'Analyzing groove...', matching: 'Matching songs...' };
+      var stageMessages = {
+        decoding:   ['Decoding audio...', 'Reading your recording...', 'Loading audio data...'],
+        segmenting: ['Finding your songs...', 'Detecting transitions...', 'Splitting segments...'],
+        groove:     ['Measuring tempo stability...', 'Checking groove...', 'Analyzing rhythm...'],
+        matching:   ['Matching songs to your catalog...', 'Identifying songs...', 'Building your rehearsal report...']
+      };
       var stageWeights = { decoding: 0.2, segmenting: 0.4, groove: 0.3, matching: 0.1 };
       var stageOffsets = { decoding: 0, segmenting: 0.2, groove: 0.6, matching: 0.9 };
+      var _msgIdx = {};
 
       try {
         var result = await analyze(file, {
@@ -341,7 +379,13 @@ window.RecordingAnalyzer = (function() {
           onProgress: function(stage, pct) {
             var label = document.getElementById('raProgressLabel');
             var bar = document.getElementById('raProgressBar');
-            if (label) label.textContent = stageLabels[stage] || stage;
+            if (label) {
+              var msgs = stageMessages[stage] || [stage];
+              if (!_msgIdx[stage]) _msgIdx[stage] = 0;
+              // Rotate messages every 30% progress within stage
+              var idx = Math.min(Math.floor(pct / 35), msgs.length - 1);
+              label.textContent = msgs[idx];
+            }
             var totalPct = Math.round(((stageOffsets[stage] || 0) + (stageWeights[stage] || 0.25) * (pct / 100)) * 100);
             if (bar) bar.style.width = Math.min(totalPct, 100) + '%';
           }
@@ -357,6 +401,27 @@ window.RecordingAnalyzer = (function() {
       }
     };
     input.click();
+  }
+
+  // ── Close the Loop: Refresh Home after analysis ─────────────────────────────
+
+  function _refreshHomeAfterAnalysis() {
+    try {
+      // Invalidate focus cache so Home hero recalculates
+      if (typeof GLStore !== 'undefined' && GLStore.invalidateFocusCache) {
+        GLStore.invalidateFocusCache();
+      }
+      // Refresh Home dashboard if it's the current page
+      if (typeof GLStore !== 'undefined' && GLStore.getActivePage && GLStore.getActivePage() === 'home') {
+        if (typeof refreshHomeDashboard === 'function') refreshHomeDashboard();
+      }
+      // Refresh rehearsal page (re-render session list with updated analysis)
+      if (typeof renderRehearsalPage === 'function') {
+        setTimeout(function() { renderRehearsalPage(); }, 500);
+      }
+    } catch(e) {
+      console.warn('[RecordingAnalyzer] Home refresh failed:', e.message);
+    }
   }
 
   // ── Utilities ───────────────────────────────────────────────────────────────
