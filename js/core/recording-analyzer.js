@@ -618,8 +618,16 @@ window.RecordingAnalyzer = (function() {
 
         // Show minimal message when user requested but result was unusable
         if (_requestedButUnavailable) {
-          var _unavailMsg = seg.chordHints.error || 'Harmonic movement unclear \u2014 review against chart';
+          var _retryCount = seg._chordRetryCount || 0;
+          var _unavailMsg = _retryCount >= 2
+            ? 'Still unclear \u2014 try a longer segment or full run'
+            : (seg.chordHints.error || 'Harmonic movement unclear \u2014 review against chart');
           html += '<div style="font-size:0.55em;color:var(--text-dim);margin-top:2px;font-style:italic">' + _escAttr(_unavailMsg) + '</div>';
+        }
+
+        // First-use tooltip (shown once)
+        if (!seg._chordRequested && !window._raChordTooltipShown) {
+          html += '<div style="font-size:0.5em;color:var(--text-dim);margin-top:1px;opacity:0.5">Works best on full song runs (60\u2013180s)</div>';
         }
       }
 
@@ -661,7 +669,11 @@ window.RecordingAnalyzer = (function() {
             html += '</div></details>';
           }
         }
-        html += '<div style="font-size:0.9em;color:var(--text-dim);margin-top:2px;font-style:italic">' + _escAttr(ch.reviewGuidance ? ch.reviewGuidance.message : 'Review to confirm') + '</div>';
+        // Practice suggestion (actionable, 1 line)
+        if (ch.summary && ch.summary.practiceSuggestion) {
+          html += '<div style="margin-top:4px;padding:3px 6px;border-radius:4px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.1);font-size:0.95em;color:#a5b4fc">\uD83C\uDFAF ' + _escAttr(ch.summary.practiceSuggestion) + '</div>';
+        }
+        html += '<div style="font-size:0.85em;color:var(--text-dim);margin-top:3px;font-style:italic">' + _escAttr(ch.reviewGuidance ? ch.reviewGuidance.message : 'Review to confirm') + '</div>';
         html += '<div style="font-size:0.8em;color:var(--text-dim);margin-top:1px;opacity:0.5">Based on this segment\u2019s audio</div>';
         html += '</div></details>';
       }
@@ -1077,6 +1089,11 @@ window.RecordingAnalyzer = (function() {
     // Check cache (invalidates when boundaries change)
     var cacheKey = _chordCacheKey(seg);
     if (_chordCache[cacheKey] && seg.chordHints && seg._chordCacheKey === cacheKey) return;
+
+    // Track retry count for escalating messages
+    seg._chordRetryCount = (seg._chordRetryCount || 0) + 1;
+    // Mark first-use tooltip as shown
+    window._raChordTooltipShown = true;
 
     var btn = document.getElementById('raChordBtn' + idx);
     if (btn) { btn.textContent = 'Analyzing...'; btn.disabled = true; }

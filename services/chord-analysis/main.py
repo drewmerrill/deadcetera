@@ -126,6 +126,7 @@ def _serialize_result(r: ChordAnalysisResult) -> dict:
             "topProgressionHint": r.summary.top_progression_hint,
             "changeCount": r.summary.change_count,
             "notes": r.summary.notes,
+            "practiceSuggestion": r.summary.practice_suggestion,
         } if r.summary else None,
         "timeline": [
             {

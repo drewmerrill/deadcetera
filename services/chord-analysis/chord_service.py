@@ -55,6 +55,7 @@ class ChordSummary:
     top_progression_hint: str
     change_count: int
     notes: list[str]
+    practice_suggestion: str = ""
 
 
 @dataclass
@@ -269,6 +270,11 @@ def _run_analysis(
     # Determine usability
     usable = confidence in ("high", "medium") and len(named_regions) >= 2
 
+    # Build practice suggestion
+    practice_suggestion = _build_practice_suggestion(
+        len(change_points), named_regions, confidence
+    )
+
     # Build summary
     summary = ChordSummary(
         opening_chord=opening,
@@ -276,7 +282,8 @@ def _run_analysis(
         top_chords=top_chords,
         top_progression_hint=progression_hint,
         change_count=len(change_points),
-        notes=notes
+        notes=notes,
+        practice_suggestion=practice_suggestion
     )
 
     # Confidence-driven output: only include timeline for high confidence
@@ -437,6 +444,38 @@ def _derive_progression(
             break
 
     return " \u2192 ".join(seen_chords[:4])
+
+
+def _build_practice_suggestion(
+    change_count: int,
+    named_events: list[dict],
+    confidence: str,
+) -> str:
+    """Generate one short, actionable practice suggestion from chord data."""
+    if confidence == "low":
+        return "Review chart and confirm chord structure before practicing"
+
+    # Many changes = focus on transitions
+    if change_count > 10:
+        return "Focus on clean chord transitions \u2014 lots of harmonic movement here"
+
+    # Few changes with long stable regions = lock in timing
+    if change_count <= 4 and named_events:
+        long_regions = [e for e in named_events if (e["end"] - e["start"]) >= 8.0]
+        if len(long_regions) >= 2:
+            return "Lock in timing between the main chord changes"
+
+    # Short unstable regions = work on consistency
+    if named_events:
+        short = [e for e in named_events if (e["end"] - e["start"]) < 2.0]
+        if len(short) > len(named_events) * 0.3:
+            return "Work on holding each chord cleanly \u2014 some changes sound rushed"
+
+    # Default: moderate changes
+    if change_count >= 5:
+        return "Run the progression slowly and nail each change point"
+
+    return "Play through the changes and check against your chart"
 
 
 def _build_notes(
