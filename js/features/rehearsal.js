@@ -1124,7 +1124,8 @@ window._rhShowSessionReport = async function(sessionId) {
         s = sessions.find(function(x) { return x.sessionId === sessionId; });
     }
     if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
-    {
+    console.log('[RehearsalReport] Session loaded:', sessionId, 'keys:', Object.keys(s), 'hasAnalysis:', !!s.analysis, 'hasNotes:', !!s.notes, 'hasSongs:', !!(s.songsWorked && s.songsWorked.length));
+    try {
 
         var dateStr = s.date ? new Date(s.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
         var durMin = s.totalActualMin || 0;
@@ -1286,6 +1287,9 @@ window._rhShowSessionReport = async function(sessionId) {
         ov.innerHTML = html;
         ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
         document.body.appendChild(ov);
+    } catch(reportErr) {
+        console.error('[RehearsalReport] Failed to render:', reportErr);
+        if (typeof showToast === 'function') showToast('Report error: ' + reportErr.message);
     }
 };
 
