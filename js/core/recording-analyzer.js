@@ -777,7 +777,8 @@ window.RecordingAnalyzer = (function() {
     if (_embedCacheLocal[cacheKey]) {
       seg.audioEmbedding = _embedCacheLocal[cacheKey];
       if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.storeConfirmedEmbedding) {
-        SongMatchingEngine.storeConfirmedEmbedding(seg.songTitle, seg.audioEmbedding);
+        var _sid = seg.songMatch && seg.songMatch.bestMatch ? seg.songMatch.bestMatch.songId : null;
+          SongMatchingEngine.storeConfirmedEmbedding(_sid || seg.songTitle, seg.songTitle, seg.audioEmbedding, { segType: seg.segType, duration: seg.duration, qualityScore: seg.qualityScore });
       }
       return;
     }
@@ -805,7 +806,8 @@ window.RecordingAnalyzer = (function() {
         _embedCacheLocal[cacheKey] = result.embedding;
         // Store in the matching engine's bank
         if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.storeConfirmedEmbedding) {
-          SongMatchingEngine.storeConfirmedEmbedding(seg.songTitle, seg.audioEmbedding);
+          var _sid = seg.songMatch && seg.songMatch.bestMatch ? seg.songMatch.bestMatch.songId : null;
+          SongMatchingEngine.storeConfirmedEmbedding(_sid || seg.songTitle, seg.songTitle, seg.audioEmbedding, { segType: seg.segType, duration: seg.duration, qualityScore: seg.qualityScore });
         }
         console.log('[RecordingAnalyzer] Embedding stored for ' + seg.songTitle + ' (' + result.dimension + 'd)');
       }
