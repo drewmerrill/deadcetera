@@ -83,9 +83,15 @@ window.SongMatchingEngine = (function() {
         continue;
       }
 
-      // Build adjacent labels from already-processed segments
-      adjacentLabels.prev = (i > 0 && segments[i - 1].songTitle) ? segments[i - 1].songTitle : null;
-      adjacentLabels.next = (i < segments.length - 1 && segments[i + 1].songTitle) ? segments[i + 1].songTitle : null;
+      // Build adjacent labels with trust metadata
+      var prevSeg = i > 0 ? segments[i - 1] : null;
+      var nextSeg = i < segments.length - 1 ? segments[i + 1] : null;
+      adjacentLabels.prev = prevSeg && prevSeg.songTitle ? prevSeg.songTitle : null;
+      adjacentLabels.prevConfirmed = prevSeg && prevSeg.confirmed;
+      adjacentLabels.prevConfidence = prevSeg && prevSeg.songMatch ? prevSeg.songMatch.confidence : null;
+      adjacentLabels.next = nextSeg && nextSeg.songTitle ? nextSeg.songTitle : null;
+      adjacentLabels.nextConfirmed = nextSeg && nextSeg.confirmed;
+      adjacentLabels.nextConfidence = nextSeg && nextSeg.songMatch ? nextSeg.songMatch.confidence : null;
 
       var result = scoreSegment(seg, candidates, context, adjacentLabels);
       seg.songMatch = result;
@@ -166,24 +172,50 @@ window.SongMatchingEngine = (function() {
 
     var scored = candidates.map(function(cand) {
       var signals = _computeSignals(segment, cand, context, adjacentLabels);
-      var totalScore = 0;
       var explanationParts = [];
 
-      // Weighted sum
+      // Determine which signals are active (non-zero for at least one candidate)
+      // and normalize weights across only active signals
+      var activeWeightSum = 0;
+      var activeSignals = {};
       Object.keys(WEIGHTS).forEach(function(key) {
-        var val = signals[key] || 0;
-        totalScore += val * WEIGHTS[key];
-        if (val > 0.3) {
-          explanationParts.push(_explainSignal(key, val, cand));
+        var val = signals[key];
+        // Signal is "available" if it returned a non-null value
+        // audioSimilar is always unavailable until embeddings exist
+        var available = (val !== null && val !== undefined);
+        if (key === 'audioSimilar' && !segment.audioEmbedding) available = false;
+        if (key === 'chordSimilar' && (!segment.chordHints || !segment.chordHints.summary)) available = false;
+        if (key === 'tempoProx' && !segment.bpm && !(segment.groove)) available = false;
+        if (key === 'lyricsMatch' && !segment.transcript) available = false;
+        if (key === 'continuity' && !adjacentLabels) available = false;
+
+        if (available) {
+          activeWeightSum += WEIGHTS[key];
+          activeSignals[key] = true;
         }
       });
+
+      // Normalized weighted sum (only active signals contribute)
+      var totalScore = 0;
+      if (activeWeightSum > 0) {
+        Object.keys(WEIGHTS).forEach(function(key) {
+          if (!activeSignals[key]) return;
+          var val = signals[key] || 0;
+          var normalizedWeight = WEIGHTS[key] / activeWeightSum;
+          totalScore += val * normalizedWeight;
+          if (val > 0.3) {
+            explanationParts.push(_explainSignal(key, val, cand));
+          }
+        });
+      }
 
       return {
         title: cand.title,
         songId: cand.song ? cand.song.songId : null,
         score: Math.round(totalScore * 100) / 100,
         explanation: explanationParts,
-        signals: signals
+        signals: signals,
+        activeSignalCount: Object.keys(activeSignals).length
       };
     });
 
@@ -194,10 +226,12 @@ window.SongMatchingEngine = (function() {
     var second = scored[1] || { score: 0 };
     var gap = best.score - second.score;
 
-    // Confidence
+    // Confidence — adjusted for how many signals were active
     var confidence = 'low';
     if (best.score >= 0.75 && gap >= 0.1) confidence = 'high';
     else if (best.score >= 0.5) confidence = 'medium';
+    // Downgrade confidence if only 1 signal was active (plan-only match)
+    if (best.activeSignalCount <= 1 && confidence === 'high') confidence = 'medium';
 
     // Needs review if signals conflict or confidence weak
     var needsReview = confidence !== 'high';
@@ -300,10 +334,18 @@ window.SongMatchingEngine = (function() {
   }
 
   // Signal 6: Continuity with adjacent segments
+  // Guardrail: only apply when neighbor label is confirmed or medium+ confidence
   function _signalContinuity(candidate, adjacentLabels) {
     if (!adjacentLabels) return 0;
-    if (adjacentLabels.prev === candidate.title) return 0.8;
-    if (adjacentLabels.next === candidate.title) return 0.5;
+    // Check prev neighbor: must be confirmed or medium+/high confidence
+    if (adjacentLabels.prev === candidate.title) {
+      var prevTrusted = adjacentLabels.prevConfirmed || adjacentLabels.prevConfidence === 'high' || adjacentLabels.prevConfidence === 'medium';
+      return prevTrusted ? 0.8 : 0;
+    }
+    if (adjacentLabels.next === candidate.title) {
+      var nextTrusted = adjacentLabels.nextConfirmed || adjacentLabels.nextConfidence === 'high' || adjacentLabels.nextConfidence === 'medium';
+      return nextTrusted ? 0.5 : 0;
+    }
     return 0;
   }
 

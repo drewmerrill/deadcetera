@@ -575,7 +575,7 @@ window.RecordingAnalyzer = (function() {
         // Candidate dropdown + confidence indicator (from SongMatchingEngine)
         + (seg.songMatch && seg.songMatch.candidates && seg.songMatch.candidates.length > 1
           ? '<select onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:2px 3px;color:var(--text-dim);font-size:0.6em;flex-shrink:0;font-family:inherit;max-width:70px">'
-            + seg.songMatch.candidates.map(function(c) { return '<option value="' + _escAttr(c.title) + '"' + (c.title === seg.songTitle ? ' selected' : '') + '>' + _escAttr(c.title.length > 15 ? c.title.slice(0, 15) + '\u2026' : c.title) + ' (' + Math.round(c.score * 100) + '%)</option>'; }).join('')
+            + seg.songMatch.candidates.map(function(c) { return '<option value="' + _escAttr(c.title) + '"' + (c.title === seg.songTitle ? ' selected' : '') + '>' + _escAttr(c.title.length > 15 ? c.title.slice(0, 15) + '\u2026' : c.title) + '</option>'; }).join('')
             + '</select>'
           : '')
         + (seg.songMatch && seg.songMatch.explanation && seg.songMatch.explanation.length
