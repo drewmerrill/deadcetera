@@ -605,13 +605,21 @@ window.RecordingAnalyzer = (function() {
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',5)" style="' + _tinyBtn + '">+5s</button>'
         + '</div></details>';
 
-      // Chord analysis: button or refresh indicator
+      // Chord analysis: button, refresh, or unavailable message
       if (segTypeVal === 'song' && seg.duration >= 30) {
         var _hasCachedHints = seg.chordHints && seg.chordHints.usable;
         var _cacheStale = seg.chordHints && seg._chordCacheKey !== _chordCacheKey(seg);
+        var _requestedButUnavailable = seg._chordRequested && seg.chordHints && !seg.chordHints.usable && !_cacheStale;
+
         if (!_hasCachedHints || _cacheStale) {
-          var _btnLabel = _cacheStale ? '\uD83C\uDFB5 Refresh chord hints' : '\uD83C\uDFB5 Get chord hints';
+          var _btnLabel = _cacheStale ? '\uD83C\uDFB5 Refresh chord hints' : (_requestedButUnavailable ? '\uD83C\uDFB5 Retry' : '\uD83C\uDFB5 Get chord hints');
           html += '<button id="raChordBtn' + i + '" onclick="RecordingAnalyzer._fetchChordHints(' + i + ')" style="font-size:0.55em;padding:2px 6px;border-radius:4px;border:1px solid rgba(129,140,248,0.15);background:rgba(129,140,248,0.04);color:#818cf8;cursor:pointer;font-family:inherit;margin-top:3px">' + _btnLabel + '</button>';
+        }
+
+        // Show minimal message when user requested but result was unusable
+        if (_requestedButUnavailable) {
+          var _unavailMsg = seg.chordHints.error || 'Harmonic movement unclear \u2014 review against chart';
+          html += '<div style="font-size:0.55em;color:var(--text-dim);margin-top:2px;font-style:italic">' + _escAttr(_unavailMsg) + '</div>';
         }
       }
 
@@ -654,6 +662,7 @@ window.RecordingAnalyzer = (function() {
           }
         }
         html += '<div style="font-size:0.9em;color:var(--text-dim);margin-top:2px;font-style:italic">' + _escAttr(ch.reviewGuidance ? ch.reviewGuidance.message : 'Review to confirm') + '</div>';
+        html += '<div style="font-size:0.8em;color:var(--text-dim);margin-top:1px;opacity:0.5">Based on this segment\u2019s audio</div>';
         html += '</div></details>';
       }
 
@@ -1031,6 +1040,8 @@ window.RecordingAnalyzer = (function() {
   // ── Chord hints (on-demand per segment) ──────────────────────────────────────
 
   var _chordCache = {}; // keyed by composite key
+  // Bump this when: smoothing thresholds change, confidence rules change,
+  // progression logic changes, or chord service API changes.
   var _CHORD_ANALYSIS_VERSION = 1;
 
   function _chordCacheKey(seg) {
@@ -1085,23 +1096,22 @@ window.RecordingAnalyzer = (function() {
       var res = await fetch(serviceUrl + '/analyze-chords', { method: 'POST', body: formData });
       var result = await res.json();
 
-      if (result.error) {
-        if (typeof showToast === 'function') showToast('Chord analysis: ' + result.error);
-        if (btn) { btn.textContent = '\uD83C\uDFB5 Chords'; btn.disabled = false; }
-        return;
-      }
-
-      // Attach to segment + cache (keyed by boundaries + version)
+      // Always attach result (even if unusable) + mark that user requested it
       seg.chordHints = result;
+      seg._chordRequested = true; // user explicitly asked for hints
       seg._chordCacheKey = cacheKey;
       _chordCache[cacheKey] = result;
 
-      if (typeof showToast === 'function') {
+      if (result.error) {
+        if (typeof showToast === 'function') showToast('Chord analysis: ' + result.error);
+      } else if (!result.usable) {
+        if (typeof showToast === 'function') showToast('Harmonic movement unclear for this segment');
+      } else {
         var hint = result.summary && result.summary.topProgressionHint ? result.summary.topProgressionHint : 'Analysis complete';
-        showToast('Chord hints: ' + hint);
+        if (typeof showToast === 'function') showToast('Chord hints: ' + hint);
       }
 
-      // Re-render to show hints
+      // Re-render to show hints or unavailable message
       showUI(_currentSessionId, _currentSegments);
 
     } catch(e) {
