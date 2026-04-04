@@ -217,7 +217,8 @@ window.SongMatchingEngine = (function() {
     // Build adjacency map for continuity signal
     var adjacentLabels = {};
 
-    // Score each segment
+    // Score each segment — track song-type index for plan position matching
+    var _songSegIdx = 0;
     for (var i = 0; i < segments.length; i++) {
       var seg = segments[i];
 
@@ -226,6 +227,8 @@ window.SongMatchingEngine = (function() {
         seg.songMatch = null;
         continue;
       }
+      seg._matchIndex = _songSegIdx;
+      _songSegIdx++;
 
       // Short segments → low confidence
       if (seg.duration < MIN_SEGMENT_DURATION) {
@@ -467,7 +470,7 @@ window.SongMatchingEngine = (function() {
 
   function _computeSignals(segment, candidate, context, adjacentLabels) {
     return {
-      planMatch:    _signalPlanMatch(candidate, context),
+      planMatch:    _signalPlanMatch(candidate, context, segment._matchIndex),
       audioSimilar: _signalAudioSimilar(segment, candidate, context),
       chordSimilar: _signalChordSimilar(segment, candidate),
       tempoProx:    _signalTempoProx(segment, candidate),
@@ -476,12 +479,26 @@ window.SongMatchingEngine = (function() {
     };
   }
 
-  // Signal 1: Plan/setlist match
-  function _signalPlanMatch(candidate, context) {
-    if (candidate.inPlan) return 1.0;
-    // Check if in setlist (lower weight)
-    if (context.type === 'gig') return candidate.inPlan ? 1.0 : 0;
-    return 0;
+  // Signal 1: Plan/setlist match (POSITION-AWARE)
+  // Segment at position N should match plan song at position N best.
+  // Songs at nearby positions get partial credit. Distant positions get less.
+  // Songs not in plan get 0.
+  function _signalPlanMatch(candidate, context, segmentIndex) {
+    if (!candidate.inPlan) return 0;
+    if (segmentIndex === undefined || segmentIndex === null) return 0.5; // no index → generic plan membership
+
+    var planPos = candidate.planOrder;
+    if (planPos < 0) return 0;
+
+    // Exact position match = full score
+    if (planPos === segmentIndex) return 1.0;
+
+    // Nearby positions get diminishing credit
+    var distance = Math.abs(planPos - segmentIndex);
+    if (distance === 1) return 0.5;  // adjacent in plan
+    if (distance === 2) return 0.3;
+    if (distance <= 4) return 0.15;
+    return 0.05; // in plan but very far from expected position
   }
 
   // Signal 2: Audio embedding similarity (CLAP)
