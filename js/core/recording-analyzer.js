@@ -212,15 +212,19 @@ window.RecordingAnalyzer = (function() {
       }
       if (!seg.segType) seg.segType = 'song';
 
-      // Quality score: based on duration (completeness) + type (full vs partial vs restart)
+      // Quality score + label + explanation
       var q = 0;
-      if (seg.type === 'song_full' || seg.duration >= 120) q += 3;
-      else if (seg.type === 'song_partial' || seg.duration >= 30) q += 2;
-      else q += 1;
-      if (seg.type === 'false_start' || seg.type === 'retry') q = 1;
-      if (seg.tags && seg.tags.indexOf('strong_moment') !== -1) q += 1;
-      seg.qualityScore = Math.min(q, 4); // 1-4 scale
+      var qWhy = '';
+      if (seg.type === 'song_full' || seg.duration >= 120) { q += 3; qWhy = 'Full-length attempt'; }
+      else if (seg.type === 'song_partial' || seg.duration >= 30) { q += 2; qWhy = 'Partial attempt'; }
+      else { q += 1; qWhy = 'Short attempt'; }
+      if (seg.type === 'false_start' || seg.type === 'retry') { q = 1; qWhy = 'Early stop'; }
+      if (seg.tags && seg.tags.indexOf('strong_moment') !== -1) { q += 1; qWhy += ' with stable energy'; }
+      seg.qualityScore = Math.min(q, 4);
       seg.qualityLabel = q >= 4 ? 'Strong finish' : q >= 3 ? 'Solid run' : q >= 2 ? 'Needs another pass' : 'Incomplete';
+      seg.qualityWhy = qWhy;
+      // Duration context label
+      seg.durContext = seg.type === 'false_start' ? 'false start' : (seg.duration >= 120 ? 'full run' : (seg.duration >= 30 ? 'partial' : 'fragment'));
     });
 
     // Per-segment groove feedback (normal files only, using onset timestamps)
@@ -246,12 +250,15 @@ window.RecordingAnalyzer = (function() {
         var inPocket = filtered.filter(function(v) { return Math.abs(v - targetMs) <= 15; }).length;
         var pctInPocket = Math.round(inPocket / filtered.length * 100);
 
+        var _stabLabel = stability >= 80 ? 'Locked in' : stability >= 50 ? 'Getting there' : 'Unsteady';
+        var _driftLabel = Math.abs(pocketOffset) < 5 ? 'Centered' : (pocketOffset > 0 ? 'Dragging' : 'Rushing');
         seg.groove = {
           stability: stability,
           pocketOffsetMs: Math.round(pocketOffset * 10) / 10,
           pctInPocket: pctInPocket,
-          label: stability >= 80 ? 'Locked in' : stability >= 50 ? 'Getting there' : 'Unsteady',
-          drift: Math.abs(pocketOffset) < 5 ? 'Centered' : (pocketOffset > 0 ? 'Dragging' : 'Rushing')
+          stabilityLabel: _stabLabel,
+          drift: _driftLabel,
+          label: _stabLabel + ' \u00B7 ' + _driftLabel
         };
       });
     }
@@ -537,9 +544,12 @@ window.RecordingAnalyzer = (function() {
         // Row 1: play + time + name input + type dropdown
         + '<div style="display:flex;align-items:center;gap:6px">'
         + '<button onclick="RecordingAnalyzer._playSeg(' + i + ')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.9em;flex-shrink:0;padding:2px" title="Play this segment" id="raPlayBtn' + i + '">\u25B6</button>'
-        + '<div style="font-size:0.65em;color:var(--text-dim);min-width:80px;flex-shrink:0">' + _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec) + '<br>' + durLabel2
-        + (seg.qualityLabel && segTypeVal === 'song' ? '<br><span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : seg.qualityScore >= 2 ? '#f59e0b' : '#64748b') + '">' + seg.qualityLabel + '</span>' : '')
-        + (seg.groove ? '<br><span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">' + seg.groove.drift + '</span>' : '')
+        + '<div style="font-size:0.65em;color:var(--text-dim);min-width:85px;flex-shrink:0">'
+        + _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec)
+        + '<br>' + durLabel2 + (seg.durContext ? ' \u00B7 ' + seg.durContext : '')
+        + (seg.qualityLabel && segTypeVal === 'song' ? '<br><span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : seg.qualityScore >= 2 ? '#f59e0b' : '#64748b') + '" title="' + _escAttr(seg.qualityWhy || '') + '">' + seg.qualityLabel + '</span>' : '')
+        + (seg.groove ? '<br><span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '" title="Stability: ' + seg.groove.stability + '% \u00B7 Pocket: ' + seg.groove.pctInPocket + '%">' + seg.groove.label + '</span>' : '')
+        + (seg.improvementNote ? '<br><span style="color:#818cf8;font-style:italic">' + seg.improvementNote + '</span>' : '')
         + '</div>'
         + '<input type="text" value="' + _escAttr(seg.displayTitle || '') + '" onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 6px;color:var(--text,#f1f5f9);font-size:0.78em;font-family:inherit;min-width:0" placeholder="Song name...">'
         + '<select onchange="RecordingAnalyzer._updateSegType(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;padding:3px 4px;color:var(--text-dim);font-size:0.65em;flex-shrink:0;font-family:inherit">'
@@ -848,7 +858,7 @@ window.RecordingAnalyzer = (function() {
         if (lockedPct >= 60) insights.push('Locked in on ' + lockedPct + '% of songs \u2014 the groove is there');
       }
 
-      // Best attempt detection
+      // Best attempt + improvement detection
       var songAttempts = {};
       _currentSegments.forEach(function(s) {
         if (s.songTitle && s.qualityScore) {
@@ -859,12 +869,31 @@ window.RecordingAnalyzer = (function() {
       Object.keys(songAttempts).forEach(function(title) {
         var attempts = songAttempts[title];
         if (attempts.length < 2) return;
-        var best = attempts.reduce(function(a, b) {
-          var scoreA = a.qualityScore + (a.groove ? a.groove.stability / 25 : 0);
-          var scoreB = b.qualityScore + (b.groove ? b.groove.stability / 25 : 0);
-          return scoreA >= scoreB ? a : b;
+
+        // Score each attempt
+        var scores = attempts.map(function(a) {
+          return a.qualityScore + (a.groove ? a.groove.stability / 25 : 0);
         });
-        best.qualityLabel = 'Best attempt';
+
+        // Find best
+        var bestIdx = 0;
+        for (var ai = 1; ai < scores.length; ai++) {
+          if (scores[ai] > scores[bestIdx]) bestIdx = ai;
+        }
+        attempts[bestIdx].qualityLabel = 'Best attempt';
+        attempts[bestIdx].qualityWhy = 'Highest combined quality + groove stability';
+
+        // Detect improvement/decline trend
+        if (scores.length >= 2) {
+          var last = scores[scores.length - 1];
+          var first = scores[0];
+          if (last > first + 0.5) {
+            attempts[attempts.length - 1].improvementNote = 'Improved on later attempt';
+            insights.push(title + ': improved on second pass');
+          } else if (first > last + 0.5) {
+            attempts[attempts.length - 1].improvementNote = 'Dropped off after first run';
+          }
+        }
       });
     }
 
