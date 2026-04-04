@@ -1127,10 +1127,15 @@ window._rhShowSessionReport = async function(sessionId) {
     console.log('[RehearsalReport] Session loaded:', sessionId, 'keys:', Object.keys(s), 'hasAnalysis:', !!s.analysis, 'hasNotes:', !!s.notes, 'hasSongs:', !!(s.songsWorked && s.songsWorked.length));
     try {
 
+        // Safely convert Firebase objects to arrays
+        var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
+
         var dateStr = s.date ? new Date(s.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
         var durMin = s.totalActualMin || 0;
         var durLabel = durMin >= 60 ? Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm' : durMin + 'm';
-        var songList = (s.songsWorked || []).length ? s.songsWorked : (s.blocks || []).map(function(b) { return b.title; }).filter(Boolean);
+        var _songsWorked = _toArr(s.songsWorked);
+        var _blocks = _toArr(s.blocks);
+        var songList = _songsWorked.length ? _songsWorked : _blocks.map(function(b) { return b && b.title ? b.title : ''; }).filter(Boolean);
         var ratingLabels = { great: 'Great', solid: 'Solid', needs_work: 'Needs Work' };
         var isRecovered = s.recovered;
 
@@ -1154,12 +1159,11 @@ window._rhShowSessionReport = async function(sessionId) {
         }
 
         // Blocks detail
-        if (s.blocks && s.blocks.length) {
-            // Check if all blocks have 0m — if so, skip the breakdown (failsafe)
-            var hasAnyTime = s.blocks.some(function(b) { return (b.actualMin || 0) > 0; });
+        if (_blocks.length) {
+            var hasAnyTime = _blocks.some(function(b) { return b && (b.actualMin || 0) > 0; });
             if (hasAnyTime) {
                 html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Time Breakdown</div>';
-                s.blocks.forEach(function(b) {
+                _blocks.forEach(function(b) {
                     if (!b.title) return;
                     var timeLabel = (b.actualMin || 0) > 0
                         ? (b.actualMin + 'm' + (b.budgetMin ? '/' + b.budgetMin + 'm' : ''))
@@ -1255,8 +1259,8 @@ window._rhShowSessionReport = async function(sessionId) {
 
         // Notes — show structured if analysis ran, raw as fallback
         if (s.notes) {
-            var hasStructured = s.analysis && s.analysis.structuredNotes &&
-                (s.analysis.structuredNotes.issues.length || s.analysis.structuredNotes.positives.length);
+            var _sn = s.analysis && s.analysis.structuredNotes ? s.analysis.structuredNotes : {};
+            var hasStructured = (_sn.issues && _sn.issues.length) || (_sn.positives && _sn.positives.length);
             if (!hasStructured) {
                 // Fallback: raw notes
                 html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Notes</div>';
@@ -1267,7 +1271,7 @@ window._rhShowSessionReport = async function(sessionId) {
         }
 
         // Empty state
-        if (!songList.length && !s.blocks && !s.notes && !s.recording_url && !s.mixdown_id) {
+        if (!songList.length && !_blocks.length && !s.notes && !s.recording_url && !s.mixdown_id) {
             html += '<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em">No data captured for this rehearsal yet.</div>';
         }
 
