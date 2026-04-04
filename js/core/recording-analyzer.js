@@ -605,7 +605,44 @@ window.RecordingAnalyzer = (function() {
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',5)" style="' + _tinyBtn + '">+5s</button>'
         + '</div></details>';
 
-      // Row 3: talking segment — quick tags + notes
+      // Chord analysis button (Song segments ≥30s, no hints yet)
+      if (segTypeVal === 'song' && seg.duration >= 30 && !seg.chordHints) {
+        html += '<button id="raChordBtn' + i + '" onclick="RecordingAnalyzer._fetchChordHints(' + i + ')" style="font-size:0.55em;padding:2px 6px;border-radius:4px;border:1px solid rgba(129,140,248,0.15);background:rgba(129,140,248,0.04);color:#818cf8;cursor:pointer;font-family:inherit;margin-top:3px">\uD83C\uDFB5 Get chord hints</button>';
+      }
+
+      // Row 3: Harmonic hints (Song segments only, when usable)
+      if (segTypeVal === 'song' && seg.chordHints && seg.chordHints.usable) {
+        var ch = seg.chordHints;
+        var chConf = ch.confidence || 'low';
+        var chColor = chConf === 'high' ? '#10b981' : chConf === 'medium' ? '#f59e0b' : '#64748b';
+        html += '<details style="margin-top:3px;border:1px solid rgba(255,255,255,0.04);border-radius:5px">'
+          + '<summary style="padding:3px 6px;font-size:0.58em;color:' + chColor + ';cursor:pointer;list-style:none;user-select:none">'
+          + '\uD83C\uDFB5 Harmonic hints (' + chConf + ')</summary>'
+          + '<div style="padding:4px 6px;font-size:0.62em;color:var(--text-dim);line-height:1.5">';
+        if (ch.summary) {
+          if (ch.summary.openingChord && ch.summary.openingChord !== 'N') {
+            html += '<div>Likely starts in <span style="color:var(--text)">' + _escAttr(ch.summary.openingChord) + '</span></div>';
+          }
+          if (ch.summary.topProgressionHint) {
+            html += '<div>Movement: <span style="color:var(--text)">' + _escAttr(ch.summary.topProgressionHint) + '</span></div>';
+          }
+          if (ch.summary.changeCount > 0) {
+            html += '<div>' + ch.summary.changeCount + ' likely chord changes</div>';
+          }
+        }
+        // Timeline (high confidence only)
+        if (chConf === 'high' && ch.timeline && ch.timeline.length) {
+          html += '<details style="margin-top:3px"><summary style="cursor:pointer;color:var(--text-dim)">Show timeline</summary><div style="margin-top:2px">';
+          ch.timeline.forEach(function(t) {
+            html += '<div style="display:flex;gap:6px"><span style="min-width:70px">[' + t.startSec.toFixed(1) + '\u2013' + t.endSec.toFixed(1) + ']</span><span style="color:var(--text)">' + _escAttr(t.chord) + '</span><span style="color:var(--text-dim)">(' + Math.round(t.confidence * 100) + '%)</span></div>';
+          });
+          html += '</div></details>';
+        }
+        html += '<div style="font-size:0.9em;color:var(--text-dim);margin-top:2px;font-style:italic">' + _escAttr(ch.reviewGuidance ? ch.reviewGuidance.message : 'Review to confirm') + '</div>';
+        html += '</div></details>';
+      }
+
+      // Row 4: talking segment — quick tags + notes
       if (segTypeVal === 'talking') {
         var _talkTags = ['tempo','transition','ending','arrangement','vocals'];
         var _curTags = (seg.talkTags || []);
@@ -923,6 +960,82 @@ window.RecordingAnalyzer = (function() {
     return buffer;
   }
 
+  // ── Chord hints (on-demand per segment) ──────────────────────────────────────
+
+  var _chordCache = {}; // keyed by segmentId
+
+  async function _fetchChordHints(idx) {
+    if (!_currentSegments || !_currentSegments[idx] || !_currentAudioUrl) return;
+    var seg = _currentSegments[idx];
+
+    // Skip ineligible
+    if (seg.segType && seg.segType !== 'song') {
+      if (typeof showToast === 'function') showToast('Chord hints only available for Song segments');
+      return;
+    }
+    if (seg.duration < 30) {
+      if (typeof showToast === 'function') showToast('Segment too short for chord analysis');
+      return;
+    }
+
+    // Check cache
+    if (_chordCache[seg.id] && seg.chordHints) return;
+
+    var btn = document.getElementById('raChordBtn' + idx);
+    if (btn) { btn.textContent = 'Analyzing...'; btn.disabled = true; }
+
+    try {
+      // Extract segment audio as WAV
+      var response = await fetch(_currentAudioUrl);
+      var fullBuffer = await response.arrayBuffer();
+      var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var decoded = await audioCtx.decodeAudioData(fullBuffer);
+
+      var startSample = Math.floor(seg.startSec * decoded.sampleRate);
+      var endSample = Math.min(Math.floor(seg.endSec * decoded.sampleRate), decoded.length);
+      var channel = decoded.getChannelData(0);
+      var segData = channel.slice(startSample, endSample);
+      var wavBuffer = _encodeWAV(segData, decoded.sampleRate);
+      audioCtx.close();
+
+      // Build form data
+      var formData = new FormData();
+      formData.append('file', new Blob([wavBuffer], { type: 'audio/wav' }), 'segment.wav');
+      formData.append('segment_id', seg.id);
+      formData.append('song_name', seg.songTitle || '');
+      formData.append('segment_type', seg.segType || 'song');
+      formData.append('duration_sec', String(seg.duration));
+
+      // Call chord service
+      var serviceUrl = window._glChordServiceUrl || 'http://localhost:8100';
+      var res = await fetch(serviceUrl + '/analyze-chords', { method: 'POST', body: formData });
+      var result = await res.json();
+
+      if (result.error) {
+        if (typeof showToast === 'function') showToast('Chord analysis: ' + result.error);
+        if (btn) { btn.textContent = '\uD83C\uDFB5 Chords'; btn.disabled = false; }
+        return;
+      }
+
+      // Attach to segment + cache
+      seg.chordHints = result;
+      _chordCache[seg.id] = result;
+
+      if (typeof showToast === 'function') {
+        var hint = result.summary && result.summary.topProgressionHint ? result.summary.topProgressionHint : 'Analysis complete';
+        showToast('Chord hints: ' + hint);
+      }
+
+      // Re-render to show hints
+      showUI(_currentSessionId, _currentSegments);
+
+    } catch(e) {
+      console.error('[RecordingAnalyzer] Chord analysis failed:', e);
+      if (btn) { btn.textContent = '\uD83C\uDFB5 Retry'; btn.disabled = false; }
+      if (typeof showToast === 'function') showToast('Chord analysis failed: ' + e.message);
+    }
+  }
+
   function _jumpToSong(title) {
     if (!_currentSegments) return;
     var lower = title.toLowerCase();
@@ -1117,7 +1230,14 @@ window.RecordingAnalyzer = (function() {
         }
         var songLabel = seg.songTitle || 'Unknown';
         var durMin = Math.round(seg.duration / 60);
-        return timeLabel + ' ' + songLabel + ' (' + durMin + ' min)';
+        var line = timeLabel + ' ' + songLabel + ' (' + durMin + ' min)';
+        // Append chord hint if available and usable
+        if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary) {
+          var ch = seg.chordHints.summary;
+          if (ch.topProgressionHint) line += ' [Likely movement: ' + ch.topProgressionHint + ']';
+          if (ch.changeCount > 5) line += ' [' + ch.changeCount + ' harmonic changes]';
+        }
+        return line;
       });
       var notesText = notesLines.join('\n');
 
@@ -1715,7 +1835,8 @@ window.RecordingAnalyzer = (function() {
     _toggleTalkTag: _toggleTalkTag,
     _filterAddSong: _filterAddSong,
     _transcribeSeg: _transcribeSeg,
-    _updateTranscript: _updateTranscript
+    _updateTranscript: _updateTranscript,
+    _fetchChordHints: _fetchChordHints
   };
 
 })();
