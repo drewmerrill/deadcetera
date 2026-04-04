@@ -491,7 +491,8 @@ function _buildIntelSignal() {
         if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
             var ia = GLInsights.getNextAction();
             if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length) {
-                return '<div style="font-size:0.68em;color:#475569;margin-top:8px">\u2728 ' + _escHtml(ia.plan.actionPlan.length) + ' step plan ready</div>';
+                var _songCount = (ia.plan.songs && ia.plan.songs.length) || ia.plan.actionPlan.length;
+                return '<div style="font-size:0.68em;color:#475569;margin-top:8px">\u2728 ' + _songCount + '-song rehearsal plan ready</div>';
             }
         }
         // Try session improvement count
@@ -671,7 +672,7 @@ function _renderNextActionCard(bundle, wf) {
     // ── Priority 5: Default (still directive, not passive) ──
     } else {
         if (sessionCount === 0) {
-            _msg = 'Run your set for the first time';
+            _msg = 'Run your full set end-to-end for the first time';
             _sub = 'One run-through and you\u2019ll know exactly what to work on.';
         } else if (weakCount > 0) {
             var _defNames = _focusList.slice(0, 2).join(' + ');
@@ -1398,13 +1399,22 @@ function _buildSecondaryActions(bundle) {
 
     // Suggest weak song practice if not already the primary
     var _focusTitle = focus.primary ? (typeof focus.primary === 'string' ? focus.primary : (focus.primary.title || null)) : null;
+    var _readinessTone = function(avg) {
+        if (avg <= 0) return 'not rated yet';
+        if (avg < 2) return 'needs work (' + avg.toFixed(1) + '/5)';
+        if (avg <= 3.5) return 'getting there (' + avg.toFixed(1) + '/5)';
+        return 'almost ready (' + avg.toFixed(1) + '/5)';
+    };
+    var _selectAndHighlight = function(title) {
+        return "selectSong('" + _escHtml(title).replace(/'/g, "\\'") + "');setTimeout(function(){var p=document.querySelector('.song-detail-page');if(p){p.style.transition='box-shadow 0.3s';p.style.boxShadow='0 0 20px rgba(99,102,241,0.15)';setTimeout(function(){p.style.boxShadow='';},1500);}},600)";
+    };
     if (focus.count > 0 && _focusTitle) {
         var avgR = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_focusTitle) : 0;
         if (avgR < 4) {
             items.push(_secondaryCard(
                 'Practice ' + _escHtml(_focusTitle),
-                avgR > 0 ? 'Readiness: ' + avgR.toFixed(1) + '/5' : 'Not rated yet',
-                "selectSong('" + _escHtml(_focusTitle).replace(/'/g, "\\'") + "')",
+                _readinessTone(avgR),
+                _selectAndHighlight(_focusTitle),
                 '\uD83C\uDFB8',
                 true
             ));
@@ -1416,8 +1426,8 @@ function _buildSecondaryActions(bundle) {
         var avgR2 = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_focusTitle) : 0;
         items.push(_secondaryCard(
             'Practice ' + _escHtml(_focusTitle),
-            avgR2 > 0 ? 'Readiness: ' + avgR2.toFixed(1) + '/5 \u2014 keep it sharp' : 'Not rated yet',
-            "selectSong('" + _escHtml(_focusTitle).replace(/'/g, "\\'") + "')",
+            avgR2 >= 4 ? 'keep it sharp (' + avgR2.toFixed(1) + '/5)' : _readinessTone(avgR2),
+            _selectAndHighlight(_focusTitle),
             '\uD83C\uDFB8',
             true
         ));
@@ -1491,6 +1501,21 @@ function _renderBandStatusCompact(bundle) {
         + (lowCount > 0 ? '<span style="color:#fbbf24">\u26A0\uFE0F ' + lowCount + ' need work</span>' : '')
         + '<span>' + ratedCount + ' rated</span>'
         + '</div>'
+        // Micro-guidance: rehearsal pressure when few weak songs
+        + (function() {
+            if (lowCount > 0 && lowCount <= 2) {
+                try {
+                    var _calEvts = (typeof GLStore !== 'undefined' && GLStore.getCalendarEvents) ? GLStore.getCalendarEvents() : [];
+                    var _td = new Date().toISOString().split('T')[0];
+                    var _nextReh = _calEvts.filter(function(e) { return e.type === 'rehearsal' && (e.date || '') >= _td; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
+                    if (_nextReh) {
+                        var _rd = Math.ceil((new Date(_nextReh.date + 'T12:00:00') - new Date(_td + 'T12:00:00')) / 86400000);
+                        if (_rd <= 3) return '<div style="font-size:0.68em;color:#fbbf24;margin-top:6px">\u2192 fix before rehearsal</div>';
+                    }
+                } catch(e) {}
+            }
+            return '';
+        })()
         + '</div>';
 }
 
