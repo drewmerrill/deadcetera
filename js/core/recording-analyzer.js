@@ -495,7 +495,23 @@ window.RecordingAnalyzer = (function() {
         + '<button onclick="RecordingAnalyzer._removeSegment(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;flex-shrink:0;padding:2px" title="Remove">\u2715</button>'
         + '</div>';
 
-      // Row 2: notes field for talking segments
+      // Row 2: playback controls + boundary nudge
+      var _tinyBtn = 'background:none;border:1px solid rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.6em;padding:1px 4px;border-radius:3px;font-family:inherit';
+      html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap">'
+        // Transport controls
+        + '<button onclick="RecordingAnalyzer._seekSeg(' + i + ',-10)" style="' + _tinyBtn + '" title="Back 10s">-10s</button>'
+        + '<button onclick="RecordingAnalyzer._seekSeg(' + i + ',10)" style="' + _tinyBtn + '" title="Forward 10s">+10s</button>'
+        + '<span style="width:1px;height:12px;background:rgba(255,255,255,0.06);margin:0 2px"></span>'
+        // Boundary nudge
+        + '<span style="font-size:0.58em;color:var(--text-dim)">start:</span>'
+        + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'start\',-5)" style="' + _tinyBtn + '">-5s</button>'
+        + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'start\',5)" style="' + _tinyBtn + '">+5s</button>'
+        + '<span style="font-size:0.58em;color:var(--text-dim);margin-left:4px">end:</span>'
+        + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',-5)" style="' + _tinyBtn + '">-5s</button>'
+        + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',5)" style="' + _tinyBtn + '">+5s</button>'
+        + '</div>';
+
+      // Row 3: notes field for talking segments
       if (segTypeVal === 'talking') {
         html += '<div style="margin-top:4px"><input type="text" value="' + _escAttr(seg.notes || '') + '" onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:3px 6px;color:var(--text-dim);font-size:0.72em;font-family:inherit" placeholder="What was discussed..."></div>';
       }
@@ -596,6 +612,38 @@ window.RecordingAnalyzer = (function() {
     audio.addEventListener('timeupdate', _stopCheck);
   }
   var _currentPlayingIdx = -1;
+
+  function _seekSeg(idx, deltaSec) {
+    var audio = document.getElementById('raPlaybackAudio');
+    if (!audio || !_currentSegments || !_currentSegments[idx]) return;
+    var seg = _currentSegments[idx];
+    var newTime = Math.max(seg.startSec, Math.min(audio.currentTime + deltaSec, seg.endSec));
+    audio.currentTime = newTime;
+    // Auto-play if not already playing this segment
+    if (audio.paused || _currentPlayingIdx !== idx) {
+      _playSeg(idx);
+    }
+  }
+
+  function _nudgeBoundary(idx, which, deltaSec) {
+    if (!_currentSegments || !_currentSegments[idx]) return;
+    var seg = _currentSegments[idx];
+    if (which === 'start') {
+      seg.startSec = Math.max(0, seg.startSec + deltaSec);
+    } else {
+      seg.endSec = Math.max(seg.startSec + 1, seg.endSec + deltaSec);
+    }
+    seg.duration = seg.endSec - seg.startSec;
+    // Re-render just the time display (avoid full re-render)
+    var el = document.getElementById('raSeg' + idx);
+    if (el) {
+      var timeDiv = el.querySelector('div > div:nth-child(2)');
+      if (timeDiv) {
+        var durLabel = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
+        timeDiv.innerHTML = _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec) + '<br>' + durLabel;
+      }
+    }
+  }
 
   function _jumpToSong(title) {
     if (!_currentSegments) return;
@@ -801,6 +849,8 @@ window.RecordingAnalyzer = (function() {
     _showContextPicker(sessionId);
   }
 
+  // ── Step 1: Recording Type ──────────────────────────────────────────────────
+
   function _showContextPicker(sessionId) {
     var existing = document.getElementById('raOverlay');
     if (existing) existing.remove();
@@ -809,28 +859,16 @@ window.RecordingAnalyzer = (function() {
     overlay.id = 'raOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)';
 
-    // Build setlist options for gig picker
-    var setlistOpts = '';
-    try {
-      var setlists = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : [];
-      setlists.forEach(function(sl) { setlistOpts += '<option value="' + _escAttr(sl.name || sl.setlistId || '') + '">' + _escAttr(sl.name || 'Setlist') + '</option>'; });
-    } catch(e) {}
-
-    // Build song options for practice picker
-    var songOpts = '';
-    try {
-      var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-      songs.slice(0, 100).forEach(function(s) { songOpts += '<option value="' + _escAttr(s.title) + '">' + _escAttr(s.title) + '</option>'; });
-    } catch(e) {}
-
+    var _btn = 'padding:12px 16px;border-radius:10px;color:var(--text,#f1f5f9);cursor:pointer;text-align:left;font-family:inherit;width:100%';
     var modal = document.createElement('div');
     modal.style.cssText = 'background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:24px;max-width:400px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.6)';
-    modal.innerHTML = '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:4px">What is this recording?</div>'
+    modal.innerHTML = '<div style="font-size:0.65em;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Step 1 of 2</div>'
+      + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:4px">What is this recording?</div>'
       + '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-bottom:16px">This helps match songs accurately</div>'
       + '<div style="display:flex;flex-direction:column;gap:8px">'
-      + '<button onclick="RecordingAnalyzer._selectContext(\'rehearsal\',\'' + _escAttr(sessionId) + '\')" style="padding:12px 16px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:var(--text,#f1f5f9);cursor:pointer;text-align:left;font-family:inherit"><div style="font-weight:700;font-size:0.88em">\uD83E\uDD41 Band Rehearsal</div><div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Match against rehearsal plan</div></button>'
-      + '<button onclick="RecordingAnalyzer._selectContext(\'gig\',\'' + _escAttr(sessionId) + '\')" style="padding:12px 16px;border-radius:10px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);color:var(--text,#f1f5f9);cursor:pointer;text-align:left;font-family:inherit"><div style="font-weight:700;font-size:0.88em">\uD83C\uDFA4 Live Gig</div><div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Match against setlist</div></button>'
-      + '<button onclick="RecordingAnalyzer._selectContext(\'practice\',\'' + _escAttr(sessionId) + '\')" style="padding:12px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text,#f1f5f9);cursor:pointer;text-align:left;font-family:inherit"><div style="font-weight:700;font-size:0.88em">\uD83C\uDFB8 Individual Practice</div><div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Single song focus</div></button>'
+      + '<button onclick="RecordingAnalyzer._selectContext(\'rehearsal\',\'' + _escAttr(sessionId) + '\')" style="' + _btn + ';border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06)"><div style="font-weight:700;font-size:0.88em">\uD83E\uDD41 Band Rehearsal</div><div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Match against rehearsal plan</div></button>'
+      + '<button onclick="RecordingAnalyzer._selectContext(\'gig\',\'' + _escAttr(sessionId) + '\')" style="' + _btn + ';border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04)"><div style="font-weight:700;font-size:0.88em">\uD83C\uDFA4 Live Gig</div><div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Match against setlist</div></button>'
+      + '<button onclick="RecordingAnalyzer._selectContext(\'practice\',\'' + _escAttr(sessionId) + '\')" style="' + _btn + ';border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02)"><div style="font-weight:700;font-size:0.88em">\uD83C\uDFB8 Individual Practice</div><div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Single song focus</div></button>'
       + '</div>'
       + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="margin-top:12px;width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em">Cancel</button>';
 
@@ -838,35 +876,208 @@ window.RecordingAnalyzer = (function() {
     document.body.appendChild(overlay);
   }
 
-  function _selectContext(type, sessionId) {
-    // Build reference song list based on context
-    var referenceSongs = [];
+  // ── Step 2: Rehearsal Plan Selection + Song Confirmation ────────────────────
 
+  function _selectContext(type, sessionId) {
     if (type === 'rehearsal') {
-      // Get songs from rehearsal plan (saved planner queue)
-      try {
-        var plan = (typeof window.glPlannerQueue !== 'undefined') ? window.glPlannerQueue : [];
-        referenceSongs = plan.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
-      } catch(e) {}
-      // Fallback to setlist if no plan
-      if (!referenceSongs.length) referenceSongs = _getSetlistSongs();
+      _showRehearsalPlanPicker(sessionId);
     } else if (type === 'gig') {
-      referenceSongs = _getSetlistSongs();
+      var songs = _getSetlistSongs();
+      _recordingContext = { type: 'gig', referenceSongs: songs, referenceId: sessionId };
+      _showSongConfirmation(sessionId, songs);
     } else if (type === 'practice') {
-      // Use currently selected song or focus song
+      _showPracticeSongPicker(sessionId);
+    }
+  }
+
+  function _showRehearsalPlanPicker(sessionId) {
+    var overlay = document.getElementById('raOverlay');
+    if (!overlay) return;
+    var modal = overlay.querySelector('div');
+    if (!modal) return;
+
+    // Load past sessions for plan options
+    var sessions = [];
+    try {
+      if (typeof _rhLoadSessions === 'function') {
+        // Can't await from here — use cached data
+        // Sessions are typically cached from page render
+      }
+      // Use Firebase direct read for session list
+      if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+        firebaseDB.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(10).once('value').then(function(snap) {
+          var data = snap.val();
+          if (data) {
+            sessions = Object.keys(data).map(function(k) {
+              var s = data[k]; s.sessionId = k; return s;
+            }).filter(function(s) { return s.date && s.songsWorked && s.songsWorked.length; })
+            .sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+          }
+          _renderPlanPicker(modal, sessionId, sessions);
+        }).catch(function() { _renderPlanPicker(modal, sessionId, []); });
+        return;
+      }
+    } catch(e) {}
+    _renderPlanPicker(modal, sessionId, []);
+  }
+
+  function _renderPlanPicker(modal, sessionId, sessions) {
+    // Get current planner queue
+    var planSongs = [];
+    try {
+      var q = (typeof window.glPlannerQueue !== 'undefined') ? window.glPlannerQueue : [];
+      planSongs = q.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
+    } catch(e) {}
+
+    var html = '<div style="font-size:0.65em;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Step 2 of 2</div>'
+      + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:4px">Which rehearsal?</div>'
+      + '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-bottom:12px">Select a plan to match songs against</div>'
+      + '<div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto">';
+
+    // Current plan (if exists)
+    if (planSongs.length) {
+      html += '<button onclick="RecordingAnalyzer._confirmPlanSongs(\'' + _escAttr(sessionId) + '\',\'current\')" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:var(--text);cursor:pointer;text-align:left;font-family:inherit;width:100%">'
+        + '<div style="font-weight:700;font-size:0.82em">Current Plan (' + planSongs.length + ' songs)</div>'
+        + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + planSongs.slice(0, 5).join(', ') + (planSongs.length > 5 ? '...' : '') + '</div>'
+        + '</button>';
+    }
+
+    // Past sessions
+    sessions.slice(0, 5).forEach(function(s) {
+      var dateLabel = s.date ? new Date(s.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unknown date';
+      var songList = (s.songsWorked || []).slice(0, 4).join(', ');
+      html += '<button onclick="RecordingAnalyzer._confirmPlanSongs(\'' + _escAttr(sessionId) + '\',\'' + _escAttr(s.sessionId) + '\')" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:var(--text);cursor:pointer;text-align:left;font-family:inherit;width:100%">'
+        + '<div style="font-weight:600;font-size:0.82em">' + dateLabel + ' \u00B7 ' + (s.songsWorked || []).length + ' songs</div>'
+        + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + songList + '</div>'
+        + '</button>';
+    });
+
+    // No plan option
+    html += '<button onclick="RecordingAnalyzer._confirmPlanSongs(\'' + _escAttr(sessionId) + '\',\'none\')" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:none;color:var(--text-dim);cursor:pointer;text-align:left;font-family:inherit;width:100%;font-size:0.78em">'
+      + 'No rehearsal plan \u2014 match against full catalog'
+      + '</button>';
+
+    html += '</div>';
+    html += '<button onclick="RecordingAnalyzer._showContextPicker(\'' + _escAttr(sessionId) + '\')" style="margin-top:10px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">\u2190 Back</button>';
+
+    modal.innerHTML = html;
+  }
+
+  function _confirmPlanSongs(sessionId, sourceId) {
+    var songs = [];
+    if (sourceId === 'current') {
       try {
-        if (typeof GLStore !== 'undefined' && GLStore.getActiveSong && GLStore.getActiveSong()) {
-          referenceSongs = [GLStore.getActiveSong()];
-        } else if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title) {
-          referenceSongs = [selectedSong.title];
+        var q = (typeof window.glPlannerQueue !== 'undefined') ? window.glPlannerQueue : [];
+        songs = q.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
+      } catch(e) {}
+    } else if (sourceId === 'none') {
+      songs = [];
+    } else {
+      // Load songs from a specific session
+      try {
+        if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+          firebaseDB.ref(bandPath('rehearsal_sessions/' + sourceId + '/songsWorked')).once('value').then(function(snap) {
+            songs = snap.val() || [];
+            _recordingContext = { type: 'rehearsal', referenceSongs: songs, referenceId: sessionId, sourceSessionId: sourceId };
+            _showSongConfirmation(sessionId, songs);
+          });
+          return;
         }
       } catch(e) {}
     }
 
-    _recordingContext = { type: type, referenceSongs: referenceSongs, referenceId: sessionId };
-    console.log('[RecordingAnalyzer] Context: ' + type + ', reference songs: ' + referenceSongs.length);
+    _recordingContext = { type: 'rehearsal', referenceSongs: songs, referenceId: sessionId, sourceSessionId: sourceId };
+    if (songs.length) {
+      _showSongConfirmation(sessionId, songs);
+    } else {
+      // No songs to confirm — go straight to file picker
+      var overlay = document.getElementById('raOverlay');
+      if (overlay) overlay.remove();
+      _launchFilePicker(sessionId);
+    }
+  }
 
-    // Remove context picker and proceed to file selection
+  function _showPracticeSongPicker(sessionId) {
+    var overlay = document.getElementById('raOverlay');
+    if (!overlay) return;
+    var modal = overlay.querySelector('div');
+    if (!modal) return;
+
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var html = '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:8px">Which song?</div>'
+      + '<input id="raPracticeSongInput" type="text" placeholder="Type song name..." style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text);font-size:0.85em;font-family:inherit;margin-bottom:8px" oninput="RecordingAnalyzer._filterPracticeSongs(this.value)">'
+      + '<div id="raPracticeSongList" style="max-height:250px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">';
+    songs.slice(0, 30).forEach(function(s) {
+      html += '<button onclick="RecordingAnalyzer._selectPracticeSong(\'' + _escAttr(sessionId) + '\',\'' + _escAttr(s.title) + '\')" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:none;color:var(--text-muted);cursor:pointer;text-align:left;font-family:inherit;font-size:0.78em" data-song="' + _escAttr(s.title.toLowerCase()) + '">' + _escAttr(s.title) + '</button>';
+    });
+    html += '</div>'
+      + '<button onclick="RecordingAnalyzer._showContextPicker(\'' + _escAttr(sessionId) + '\')" style="margin-top:10px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">\u2190 Back</button>';
+
+    modal.innerHTML = html;
+    modal.querySelector('#raPracticeSongInput').focus();
+  }
+
+  function _filterPracticeSongs(query) {
+    var lower = query.toLowerCase();
+    var list = document.getElementById('raPracticeSongList');
+    if (!list) return;
+    list.querySelectorAll('button').forEach(function(btn) {
+      btn.style.display = (!lower || btn.dataset.song.indexOf(lower) !== -1) ? 'block' : 'none';
+    });
+  }
+
+  function _selectPracticeSong(sessionId, title) {
+    _recordingContext = { type: 'practice', referenceSongs: [title], referenceId: sessionId };
+    var overlay = document.getElementById('raOverlay');
+    if (overlay) overlay.remove();
+    _launchFilePicker(sessionId);
+  }
+
+  // ── Song Confirmation (optional step) ──────────────────────────────────────
+
+  function _showSongConfirmation(sessionId, songs) {
+    var overlay = document.getElementById('raOverlay');
+    if (!overlay) return;
+    var modal = overlay.querySelector('div');
+    if (!modal) return;
+
+    // Store editable copy
+    window._raExpectedSongs = songs.slice();
+
+    var html = '<div style="font-size:0.65em;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Optional</div>'
+      + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:4px">Expected songs</div>'
+      + '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-bottom:12px">Remove skipped songs or add extras. Or skip this step.</div>'
+      + '<div id="raExpectedList" style="display:flex;flex-direction:column;gap:4px;max-height:250px;overflow-y:auto;margin-bottom:12px">';
+
+    songs.forEach(function(s, i) {
+      html += '<div style="display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
+        + '<span style="font-size:0.78em;color:var(--text-dim);min-width:16px">' + (i + 1) + '</span>'
+        + '<span style="flex:1;font-size:0.82em;color:var(--text)">' + _escAttr(s) + '</span>'
+        + '<button onclick="window._raExpectedSongs.splice(' + i + ',1);RecordingAnalyzer._showSongConfirmation(\'' + _escAttr(sessionId) + '\',window._raExpectedSongs)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.72em">\u2715</button>'
+        + '</div>';
+    });
+
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px">'
+      + '<button onclick="RecordingAnalyzer._finalizeSongs(\'' + _escAttr(sessionId) + '\')" style="flex:1;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;cursor:pointer;font-size:0.85em;font-weight:700">Analyze with these songs</button>'
+      + '<button onclick="RecordingAnalyzer._skipConfirmation(\'' + _escAttr(sessionId) + '\')" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer;font-size:0.82em">Skip</button>'
+      + '</div>';
+
+    modal.innerHTML = html;
+  }
+
+  function _finalizeSongs(sessionId) {
+    if (window._raExpectedSongs) {
+      _recordingContext.referenceSongs = window._raExpectedSongs;
+    }
+    console.log('[RecordingAnalyzer] Confirmed ' + (_recordingContext.referenceSongs || []).length + ' expected songs');
+    var overlay = document.getElementById('raOverlay');
+    if (overlay) overlay.remove();
+    _launchFilePicker(sessionId);
+  }
+
+  function _skipConfirmation(sessionId) {
+    console.log('[RecordingAnalyzer] Skipped song confirmation');
     var overlay = document.getElementById('raOverlay');
     if (overlay) overlay.remove();
     _launchFilePicker(sessionId);
@@ -1121,7 +1332,16 @@ window.RecordingAnalyzer = (function() {
     _jumpToNextReview: _jumpToNextReview,
     _jumpToSong: _jumpToSong,
     _addToNextPlan: _addToNextPlan,
-    _selectContext: _selectContext
+    _selectContext: _selectContext,
+    _showContextPicker: _showContextPicker,
+    _confirmPlanSongs: _confirmPlanSongs,
+    _selectPracticeSong: _selectPracticeSong,
+    _filterPracticeSongs: _filterPracticeSongs,
+    _showSongConfirmation: _showSongConfirmation,
+    _finalizeSongs: _finalizeSongs,
+    _skipConfirmation: _skipConfirmation,
+    _seekSeg: _seekSeg,
+    _nudgeBoundary: _nudgeBoundary
   };
 
 })();
