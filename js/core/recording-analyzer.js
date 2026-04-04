@@ -579,7 +579,7 @@ window.RecordingAnalyzer = (function() {
             + '</select>'
           : '')
         + (seg.songMatch && seg.songMatch.explanation && seg.songMatch.explanation.length
-          ? '<span title="' + _escAttr(seg.songMatch.explanation.join(' \u00B7 ')) + '" style="font-size:0.55em;color:' + (seg.songMatch.confidence === 'high' ? '#10b981' : seg.songMatch.confidence === 'medium' ? '#f59e0b' : '#64748b') + ';cursor:help;flex-shrink:0">why?</span>'
+          ? '<span title="' + _escAttr('Confidence: ' + seg.songMatch.confidence + (seg.songMatch.limitedEvidence ? ' (limited evidence)' : '') + (seg.songMatch.activeSignals ? ' \u00B7 Signals: ' + seg.songMatch.activeSignals.join(', ') : '') + '\n' + seg.songMatch.explanation.join(' \u00B7 ')) + '" style="font-size:0.55em;color:' + (seg.songMatch.confidence === 'high' ? '#10b981' : seg.songMatch.confidence === 'medium' ? '#f59e0b' : '#64748b') + ';cursor:help;flex-shrink:0">' + (seg.songMatch.limitedEvidence ? 'limited' : 'why?') + '</span>'
           : '')
         + '<select onchange="RecordingAnalyzer._updateSegType(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;padding:3px 4px;color:var(--text-dim);font-size:0.65em;flex-shrink:0;font-family:inherit">'
         + _segTypes.map(function(t) { return '<option value="' + t[0] + '"' + (t[0] === segTypeVal ? ' selected' : '') + '>' + t[1] + '</option>'; }).join('')

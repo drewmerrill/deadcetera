@@ -226,16 +226,33 @@ window.SongMatchingEngine = (function() {
     var second = scored[1] || { score: 0 };
     var gap = best.score - second.score;
 
-    // Confidence — adjusted for how many signals were active
+    // Confidence — strict rules for trust
     var confidence = 'low';
-    if (best.score >= 0.75 && gap >= 0.1) confidence = 'high';
-    else if (best.score >= 0.5) confidence = 'medium';
-    // Downgrade confidence if only 1 signal was active (plan-only match)
-    if (best.activeSignalCount <= 1 && confidence === 'high') confidence = 'medium';
+    var limitedEvidence = best.activeSignalCount <= 1;
 
-    // Needs review if signals conflict or confidence weak
+    // High confidence requires: score ≥ 0.75 + gap ≥ 0.12 + ≥2 active signals
+    if (best.score >= 0.75 && gap >= 0.12 && best.activeSignalCount >= 2) {
+      confidence = 'high';
+    } else if (best.score >= 0.5) {
+      confidence = 'medium';
+    }
+
+    // Cap at medium when limited evidence (single signal)
+    if (limitedEvidence && confidence === 'high') confidence = 'medium';
+
+    // Needs review if not high, or if signals are thin
     var needsReview = confidence !== 'high';
     if (best.explanation.length <= 1 && best.score < 0.7) needsReview = true;
+
+    // Build explanation with confidence context
+    var activeSignalNames = [];
+    Object.keys(WEIGHTS).forEach(function(key) {
+      if (best.signals && best.signals[key] > 0) {
+        activeSignalNames.push({ planMatch: 'plan', audioSimilar: 'audio', chordSimilar: 'chords', tempoProx: 'tempo', lyricsMatch: 'lyrics', continuity: 'continuity' }[key] || key);
+      }
+    });
+    var explanationFull = best.explanation.slice();
+    if (limitedEvidence) explanationFull.push('Limited evidence \u2014 only ' + (activeSignalNames[0] || '1 signal') + ' available');
 
     return {
       bestMatch: { title: best.title, songId: best.songId, score: best.score },
@@ -243,7 +260,9 @@ window.SongMatchingEngine = (function() {
         return { title: s.title, songId: s.songId, score: s.score };
       }),
       confidence: confidence,
-      explanation: best.explanation,
+      limitedEvidence: limitedEvidence,
+      explanation: explanationFull,
+      activeSignals: activeSignalNames,
       needsReview: needsReview
     };
   }
@@ -334,19 +353,22 @@ window.SongMatchingEngine = (function() {
   }
 
   // Signal 6: Continuity with adjacent segments
-  // Guardrail: only apply when neighbor label is confirmed or medium+ confidence
+  // Graduated bonus by neighbor trust level — prevents low-confidence propagation
+  var _CONTINUITY_PREV = { confirmed: 0.8, high: 0.7, medium: 0.4, low: 0 };
+  var _CONTINUITY_NEXT = { confirmed: 0.5, high: 0.4, medium: 0.2, low: 0 };
+
   function _signalContinuity(candidate, adjacentLabels) {
     if (!adjacentLabels) return 0;
-    // Check prev neighbor: must be confirmed or medium+/high confidence
+    var bonus = 0;
     if (adjacentLabels.prev === candidate.title) {
-      var prevTrusted = adjacentLabels.prevConfirmed || adjacentLabels.prevConfidence === 'high' || adjacentLabels.prevConfidence === 'medium';
-      return prevTrusted ? 0.8 : 0;
+      var prevLevel = adjacentLabels.prevConfirmed ? 'confirmed' : (adjacentLabels.prevConfidence || 'low');
+      bonus = Math.max(bonus, _CONTINUITY_PREV[prevLevel] || 0);
     }
     if (adjacentLabels.next === candidate.title) {
-      var nextTrusted = adjacentLabels.nextConfirmed || adjacentLabels.nextConfidence === 'high' || adjacentLabels.nextConfidence === 'medium';
-      return nextTrusted ? 0.5 : 0;
+      var nextLevel = adjacentLabels.nextConfirmed ? 'confirmed' : (adjacentLabels.nextConfidence || 'low');
+      bonus = Math.max(bonus, _CONTINUITY_NEXT[nextLevel] || 0);
     }
-    return 0;
+    return bonus;
   }
 
   // ── Explanation text ────────────────────────────────────────────────────────
