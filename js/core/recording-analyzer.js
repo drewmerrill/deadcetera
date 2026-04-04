@@ -42,55 +42,137 @@ window.RecordingAnalyzer = (function() {
    *   - onProgress: function(stage, pct) — progress callback
    * @returns {Promise<object>} { segments, grooveMetrics, duration, songMatches }
    */
+  // Max file size for full decode (100MB) — larger files use downsampled path
+  var _MAX_FULL_DECODE_BYTES = 100 * 1024 * 1024;
+  // Downsample rate for large files — 22050 Hz mono = 1/4 memory of 44100 stereo
+  var _DOWNSAMPLE_RATE = 22050;
+
   async function analyze(source, opts) {
     opts = opts || {};
     var onProgress = opts.onProgress || function() {};
 
-    // Stage 1: Decode audio
+    // Stage 1: Decode audio (memory-safe for large files)
     onProgress('decoding', 0);
     var arrayBuffer = source instanceof ArrayBuffer ? source : await source.arrayBuffer();
-    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    var audioBuffer = await _audioCtx.decodeAudioData(arrayBuffer.slice(0));
-    _currentAudioBuffer = audioBuffer;
+    var fileSize = arrayBuffer.byteLength;
+    var isLargeFile = fileSize > _MAX_FULL_DECODE_BYTES;
+
+    console.log('[RecordingAnalyzer] File size: ' + Math.round(fileSize / 1024 / 1024) + 'MB' + (isLargeFile ? ' (large file mode)' : ''));
+
+    var channelData, sampleRate, duration;
+
+    if (isLargeFile) {
+      // Large file: decode in chunks to avoid OOM crash
+      // Strategy: decode small slices, extract RMS energy, build a lightweight
+      // energy timeline that the segmentation engine can process
+      try {
+        var CHUNK_DURATION = 30; // seconds per chunk
+        var tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Decode first 2MB to estimate bitrate and duration
+        var probeSize = Math.min(arrayBuffer.byteLength, 2 * 1024 * 1024);
+        var probeBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0, probeSize));
+        var bitrate = (probeSize * 8) / probeBuffer.duration;
+        var estDuration = (arrayBuffer.byteLength * 8) / bitrate;
+        var probeSR = probeBuffer.sampleRate;
+        onProgress('decoding', 10);
+
+        // Build downsampled mono channel from chunks
+        // Target: 1 sample per 100ms = 10 Hz effective rate (tiny memory footprint)
+        var RMS_WINDOW_SEC = 0.1; // 100ms windows
+        var rmsTimeline = [];
+        var chunkBytes = Math.ceil(bitrate * CHUNK_DURATION / 8);
+        var totalChunks = Math.ceil(arrayBuffer.byteLength / chunkBytes);
+
+        for (var ci = 0; ci < totalChunks; ci++) {
+          var start = ci * chunkBytes;
+          var end = Math.min(start + chunkBytes + 4096, arrayBuffer.byteLength); // overlap for decoder
+          try {
+            var chunkAudio = await tempCtx.decodeAudioData(arrayBuffer.slice(start, end));
+            var chunkSamples = chunkAudio.getChannelData(0);
+            var windowSize = Math.floor(chunkAudio.sampleRate * RMS_WINDOW_SEC);
+
+            for (var wi = 0; wi < chunkSamples.length - windowSize; wi += windowSize) {
+              var sum = 0;
+              for (var si = 0; si < windowSize; si++) {
+                var sample = chunkSamples[wi + si];
+                sum += sample * sample;
+              }
+              rmsTimeline.push(Math.sqrt(sum / windowSize));
+            }
+          } catch(chunkErr) {
+            // Some chunks may fail at boundaries — fill with silence
+            var expectedWindows = Math.floor(CHUNK_DURATION / RMS_WINDOW_SEC);
+            for (var fi = 0; fi < expectedWindows; fi++) rmsTimeline.push(0);
+          }
+          onProgress('decoding', 10 + Math.round((ci / totalChunks) * 80));
+        }
+
+        tempCtx.close();
+
+        // Convert RMS timeline to a fake channelData at 10 Hz
+        sampleRate = Math.round(1 / RMS_WINDOW_SEC); // 10 Hz
+        duration = estDuration;
+        channelData = new Float32Array(rmsTimeline);
+        _currentAudioBuffer = null; // no full buffer for large files
+
+        console.log('[RecordingAnalyzer] Large file: built RMS timeline (' + rmsTimeline.length + ' windows, ~' + Math.round(estDuration) + 's)');
+      } catch(e) {
+        console.warn('[RecordingAnalyzer] Chunked decode failed:', e.message);
+        throw new Error('Recording too large to process (' + Math.round(fileSize / 1024 / 1024) + 'MB). Try a shorter recording or lower bitrate.');
+      }
+    } else {
+      // Normal file: full decode
+      if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var audioBuffer = await _audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      channelData = audioBuffer.getChannelData(0);
+      sampleRate = audioBuffer.sampleRate;
+      duration = audioBuffer.duration;
+      _currentAudioBuffer = audioBuffer;
+    }
+
+    // Release the raw ArrayBuffer — we only need channelData now
+    arrayBuffer = null;
     onProgress('decoding', 100);
+
+    console.log('[RecordingAnalyzer] Decoded: ' + Math.round(duration) + 's at ' + sampleRate + 'Hz (' + Math.round(channelData.length / 1024 / 1024) + 'M samples)');
 
     // Stage 2: Segmentation
     onProgress('segmenting', 0);
-    var channelData = audioBuffer.getChannelData(0);
     var segResult = null;
     if (typeof RehearsalSegmentationEngine !== 'undefined' && RehearsalSegmentationEngine.segmentAudioV2) {
       segResult = RehearsalSegmentationEngine.segmentAudioV2({
         channelData: channelData,
-        sampleRate: audioBuffer.sampleRate,
-        duration: audioBuffer.duration
+        sampleRate: sampleRate,
+        duration: duration
       });
     } else if (typeof RehearsalSegmentationEngine !== 'undefined' && RehearsalSegmentationEngine.segmentAudio) {
       segResult = RehearsalSegmentationEngine.segmentAudio({
         channelData: channelData,
-        sampleRate: audioBuffer.sampleRate
+        sampleRate: sampleRate
       });
     }
     onProgress('segmenting', 100);
 
-    // Stage 3: BPM / groove analysis (on full recording)
+    // Stage 3: BPM / groove analysis (skip on large files to save memory)
     onProgress('groove', 0);
     var grooveMetrics = null;
-    try {
-      if (typeof PocketMeter !== 'undefined') {
-        var pm = new PocketMeter(document.createElement('div'), {});
-        if (pm._offlineAnalyser || (typeof OfflineAnalyser !== 'undefined')) {
-          // Use the OfflineAnalyser directly if available
+    if (!isLargeFile) {
+      try {
+        if (typeof OfflineAnalyser !== 'undefined') {
           var analyser = new OfflineAnalyser();
           grooveMetrics = await analyser.analyse(
-            arrayBuffer.slice(0),
+            channelData.buffer.slice(0),
             opts.targetBPM || 120,
             'recording',
             function(pct) { onProgress('groove', Math.round(pct * 100)); }
           );
         }
+      } catch(e) {
+        console.warn('[RecordingAnalyzer] Groove analysis failed:', e.message);
       }
-    } catch(e) {
-      console.warn('[RecordingAnalyzer] Groove analysis failed:', e.message);
+    } else {
+      console.log('[RecordingAnalyzer] Skipping full groove analysis (large file)');
     }
     onProgress('groove', 100);
 
