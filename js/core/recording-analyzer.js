@@ -590,14 +590,31 @@ window.RecordingAnalyzer = (function() {
         // Transcript (from Deepgram) or manual notes
         if (seg.transcript) {
           html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(99,102,241,0.15);border-radius:4px;padding:4px 6px;margin-top:3px">'
-            + '<div style="font-size:0.58em;color:#818cf8;margin-bottom:2px">Transcribed</div>'
-            + '<textarea onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="width:100%;min-height:40px;background:none;border:none;color:var(--text-dim);font-size:0.72em;font-family:inherit;resize:vertical">' + _escAttr(seg.transcript) + '</textarea>'
+            + '<div style="display:flex;align-items:center;justify-content:space-between">'
+            + '<span style="font-size:0.58em;color:#818cf8">Transcribed</span>'
+            + '<button onclick="RecordingAnalyzer._transcribeSeg(' + i + ')" id="raTransBtn' + i + '" style="font-size:0.55em;padding:1px 5px;border-radius:3px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit">Retranscribe</button>'
+            + '</div>'
+            + '<textarea onchange="RecordingAnalyzer._updateTranscript(' + i + ',this.value)" style="width:100%;min-height:40px;background:none;border:none;color:var(--text-dim);font-size:0.72em;font-family:inherit;resize:vertical">' + _escAttr(seg.transcript) + '</textarea>'
             + '</div>';
         } else {
           html += '<div style="display:flex;gap:4px;align-items:center;margin-top:3px">'
             + '<input type="text" value="' + _escAttr(seg.notes || '') + '" onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:3px 6px;color:var(--text-dim);font-size:0.72em;font-family:inherit" placeholder="What was discussed...">'
             + '<button id="raTransBtn' + i + '" onclick="RecordingAnalyzer._transcribeSeg(' + i + ')" style="font-size:0.6em;padding:2px 6px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer;flex-shrink:0;font-family:inherit;white-space:nowrap">\uD83C\uDFA4 Transcribe</button>'
             + '</div>';
+        }
+        // Suggested tags from transcript content
+        if (seg.transcript && !seg._tagsSuggested) {
+          var _suggestMap = { tempo: /tempo|bpm|speed|slow|fast/i, transition: /transition|change|bridge|move/i, ending: /ending|outro|finish|close/i, arrangement: /arrange|part|section|structure/i, vocals: /vocal|sing|harmony|lyric/i };
+          var _suggested = [];
+          Object.keys(_suggestMap).forEach(function(tag) {
+            if (_suggestMap[tag].test(seg.transcript) && (!seg.talkTags || seg.talkTags.indexOf(tag) === -1)) _suggested.push(tag);
+          });
+          if (_suggested.length) {
+            html += '<div style="font-size:0.55em;color:var(--text-dim);margin-top:2px">Suggested tags: '
+              + _suggested.map(function(t) { return '<button onclick="RecordingAnalyzer._toggleTalkTag(' + i + ',\'' + t + '\')" style="color:#818cf8;background:none;border:none;cursor:pointer;text-decoration:underline;font-family:inherit;font-size:1em">+' + t + '</button>'; }).join(' ')
+              + '</div>';
+          }
+          seg._tagsSuggested = true;
         }
         if (_curTags.length) html += '<div style="font-size:0.58em;color:#818cf8;margin-top:2px">Tags + transcript will be included in report</div>';
       }
@@ -661,6 +678,14 @@ window.RecordingAnalyzer = (function() {
     else tags.splice(pos, 1);
     // Re-render to update tag styling
     showUI(_currentSessionId, _currentSegments);
+  }
+
+  function _updateTranscript(idx, value) {
+    if (_currentSegments && _currentSegments[idx]) {
+      _currentSegments[idx].transcript = value;
+      _currentSegments[idx].notes = value; // keep in sync for report
+      _currentSegments[idx]._userEdited = true; // flag to prevent overwrite
+    }
   }
 
   function _updateSegTitle(idx, value) {
@@ -825,11 +850,13 @@ window.RecordingAnalyzer = (function() {
         return;
       }
 
-      // Save transcript to segment
+      // Save transcript to segment (respect user edits unless retranscribing)
       seg.transcript = result.transcript || '';
-      seg.notes = seg.transcript; // also set as notes for report
+      if (!seg._userEdited) seg.notes = seg.transcript;
       seg.speakers = result.speakers || [];
       seg.confirmed = true;
+      seg._tagsSuggested = false; // re-suggest tags from new transcript
+      seg._userEdited = false; // reset edit flag after explicit retranscribe
 
       if (typeof showToast === 'function') showToast('Transcribed: ' + (seg.transcript.length > 50 ? seg.transcript.slice(0, 50) + '...' : seg.transcript));
 
@@ -1653,7 +1680,8 @@ window.RecordingAnalyzer = (function() {
     _confirmSeg: _confirmSeg,
     _toggleTalkTag: _toggleTalkTag,
     _filterAddSong: _filterAddSong,
-    _transcribeSeg: _transcribeSeg
+    _transcribeSeg: _transcribeSeg,
+    _updateTranscript: _updateTranscript
   };
 
 })();
