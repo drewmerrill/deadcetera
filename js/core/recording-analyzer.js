@@ -748,6 +748,11 @@ window.RecordingAnalyzer = (function() {
     var btn = document.getElementById('raConfBtn' + idx);
     if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
 
+    // Record confirmation for accuracy tracking + embedding bank
+    if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.recordConfirmation && seg.songTitle) {
+      SongMatchingEngine.recordConfirmation(seg, seg.songTitle);
+    }
+
     // Non-blocking: fetch embedding for confirmed Song segment (for future matching)
     if (seg.segType === 'song' && seg.songTitle && seg.duration >= 30 && !seg.audioEmbedding && _currentAudioUrl) {
       _fetchEmbeddingForSeg(idx).catch(function() {}); // fire-and-forget
@@ -832,10 +837,15 @@ window.RecordingAnalyzer = (function() {
 
   function _updateSegTitle(idx, value) {
     if (_currentSegments && _currentSegments[idx]) {
-      _currentSegments[idx].songTitle = value;
-      _currentSegments[idx].displayTitle = value;
-      _currentSegments[idx].confidence = value ? 0.9 : 0.1;
-      _currentSegments[idx].confirmed = true; // auto-confirm on edit
+      var seg = _currentSegments[idx];
+      // Record correction (before updating title)
+      if (value && seg.songTitle && value !== seg.songTitle && typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.recordConfirmation) {
+        SongMatchingEngine.recordConfirmation(seg, value);
+      }
+      seg.songTitle = value;
+      seg.displayTitle = value;
+      seg.confidence = value ? 0.9 : 0.1;
+      seg.confirmed = true;
       var btn = document.getElementById('raConfBtn' + idx);
       if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
     }

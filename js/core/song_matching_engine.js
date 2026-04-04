@@ -287,9 +287,33 @@ window.SongMatchingEngine = (function() {
     // Cap at medium when limited evidence (single signal)
     if (limitedEvidence && confidence === 'high') confidence = 'medium';
 
-    // Needs review if not high, or if signals are thin
+    // Signal disagreement detection: strong signals pointing at different songs
+    var signalsDisagree = false;
+    if (best.signals && best.activeSignalCount >= 2) {
+      // Check if the top-scoring signal points to a different candidate than overall best
+      var signalBests = {};
+      scored.forEach(function(s) {
+        Object.keys(s.signals || {}).forEach(function(key) {
+          if (s.signals[key] > (signalBests[key] || { val: 0 }).val) {
+            signalBests[key] = { val: s.signals[key], title: s.title };
+          }
+        });
+      });
+      var disagreements = 0;
+      Object.keys(signalBests).forEach(function(key) {
+        if (signalBests[key].val >= 0.5 && signalBests[key].title !== best.title) disagreements++;
+      });
+      if (disagreements >= 2) {
+        signalsDisagree = true;
+        // Reduce confidence by one tier when strong signals conflict
+        if (confidence === 'high') confidence = 'medium';
+      }
+    }
+
+    // Needs review if not high, signals are thin, or signals disagree
     var needsReview = confidence !== 'high';
     if (best.explanation.length <= 1 && best.score < 0.7) needsReview = true;
+    if (signalsDisagree) needsReview = true;
 
     // Build explanation with confidence context
     var activeSignalNames = [];
@@ -300,6 +324,7 @@ window.SongMatchingEngine = (function() {
     });
     var explanationFull = best.explanation.slice();
     if (limitedEvidence) explanationFull.push('Limited evidence \u2014 only ' + (activeSignalNames[0] || '1 signal') + ' available');
+    if (signalsDisagree) explanationFull.push('Signals disagree \u2014 review recommended');
 
     return {
       bestMatch: { title: best.title, songId: best.songId, score: best.score },
@@ -308,6 +333,7 @@ window.SongMatchingEngine = (function() {
       }),
       confidence: confidence,
       limitedEvidence: limitedEvidence,
+      signalsDisagree: signalsDisagree,
       explanation: explanationFull,
       activeSignals: activeSignalNames,
       needsReview: needsReview
@@ -423,8 +449,10 @@ window.SongMatchingEngine = (function() {
     return 0;
   }
 
-  // Signal 6: Continuity with adjacent segments
-  // Graduated bonus by neighbor trust level — prevents low-confidence propagation
+  // Signal 6: Continuity with IMMEDIATE neighbors only (±1 segment)
+  // No chaining: a segment's continuity score comes only from direct neighbors,
+  // never from neighbors-of-neighbors. This prevents long-range propagation errors.
+  // Graduated bonus by neighbor trust level:
   var _CONTINUITY_PREV = { confirmed: 0.8, high: 0.7, medium: 0.4, low: 0 };
   var _CONTINUITY_NEXT = { confirmed: 0.5, high: 0.4, medium: 0.2, low: 0 };
 
@@ -459,6 +487,65 @@ window.SongMatchingEngine = (function() {
     return explanations[key] || key;
   }
 
+  // ── Confirmation feedback + accuracy tracking ────────────────────────────────
+
+  var _accuracyLog = []; // dev-only: { predicted, confirmed, confidence, signals, correct }
+
+  /**
+   * Record that a user confirmed (or corrected) a segment's song label.
+   * Logs prediction accuracy and stores embedding if available.
+   */
+  function recordConfirmation(segment, confirmedTitle) {
+    if (!segment) return;
+    var predicted = segment.songMatch && segment.songMatch.bestMatch ? segment.songMatch.bestMatch.title : null;
+    var correct = predicted && confirmedTitle && predicted.toLowerCase() === confirmedTitle.toLowerCase();
+
+    var entry = {
+      segmentId: segment.id,
+      predicted: predicted,
+      confirmed: confirmedTitle,
+      correct: correct,
+      confidence: segment.songMatch ? segment.songMatch.confidence : 'none',
+      activeSignals: segment.songMatch ? segment.songMatch.activeSignals : [],
+      timestamp: Date.now()
+    };
+    _accuracyLog.push(entry);
+
+    // Dev logging
+    if (window._glDebugMatching) {
+      console.log('[SongMatch] Confirmation: ' + (correct ? '\u2713' : '\u2717') +
+        ' predicted=' + predicted + ' confirmed=' + confirmedTitle +
+        ' confidence=' + entry.confidence + ' signals=' + (entry.activeSignals || []).join(','));
+    }
+
+    // Store embedding for the confirmed song
+    if (segment.audioEmbedding && segment.audioEmbedding.length && confirmedTitle) {
+      storeConfirmedEmbedding(confirmedTitle, segment.audioEmbedding);
+    }
+
+    // Mark segment as strong continuity anchor
+    segment.confirmed = true;
+    segment._isAnchor = true;
+  }
+
+  /**
+   * Get accuracy log for debugging/tuning.
+   */
+  function getAccuracyLog() { return _accuracyLog; }
+
+  /**
+   * Get accuracy summary.
+   */
+  function getAccuracySummary() {
+    if (!_accuracyLog.length) return { total: 0, correct: 0, accuracy: 0 };
+    var correct = _accuracyLog.filter(function(e) { return e.correct; }).length;
+    return {
+      total: _accuracyLog.length,
+      correct: correct,
+      accuracy: Math.round(correct / _accuracyLog.length * 100)
+    };
+  }
+
   // ── Public API ──────────────────────────────────────────────────────────────
 
   return {
@@ -466,6 +553,9 @@ window.SongMatchingEngine = (function() {
     scoreSegment: scoreSegment,
     storeConfirmedEmbedding: storeConfirmedEmbedding,
     getEmbeddingBank: getEmbeddingBank,
+    recordConfirmation: recordConfirmation,
+    getAccuracyLog: getAccuracyLog,
+    getAccuracySummary: getAccuracySummary,
     WEIGHTS: WEIGHTS
   };
 
