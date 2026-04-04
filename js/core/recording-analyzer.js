@@ -587,8 +587,19 @@ window.RecordingAnalyzer = (function() {
           html += '<button onclick="RecordingAnalyzer._toggleTalkTag(' + i + ',\'' + tag + '\')" style="font-size:0.6em;padding:1px 6px;border-radius:3px;border:1px solid ' + (active ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#818cf8' : 'var(--text-dim)') + ';cursor:pointer;font-family:inherit">' + tag + '</button>';
         });
         html += '</div>';
-        html += '<input type="text" value="' + _escAttr(seg.notes || '') + '" onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:3px 6px;color:var(--text-dim);font-size:0.72em;font-family:inherit" placeholder="What was discussed...">';
-        if (_curTags.length) html += '<div style="font-size:0.58em;color:#818cf8;margin-top:2px">Tags will be included in report</div>';
+        // Transcript (from Deepgram) or manual notes
+        if (seg.transcript) {
+          html += '<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(99,102,241,0.15);border-radius:4px;padding:4px 6px;margin-top:3px">'
+            + '<div style="font-size:0.58em;color:#818cf8;margin-bottom:2px">Transcribed</div>'
+            + '<textarea onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="width:100%;min-height:40px;background:none;border:none;color:var(--text-dim);font-size:0.72em;font-family:inherit;resize:vertical">' + _escAttr(seg.transcript) + '</textarea>'
+            + '</div>';
+        } else {
+          html += '<div style="display:flex;gap:4px;align-items:center;margin-top:3px">'
+            + '<input type="text" value="' + _escAttr(seg.notes || '') + '" onchange="RecordingAnalyzer._updateSegNotes(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:3px 6px;color:var(--text-dim);font-size:0.72em;font-family:inherit" placeholder="What was discussed...">'
+            + '<button id="raTransBtn' + i + '" onclick="RecordingAnalyzer._transcribeSeg(' + i + ')" style="font-size:0.6em;padding:2px 6px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer;flex-shrink:0;font-family:inherit;white-space:nowrap">\uD83C\uDFA4 Transcribe</button>'
+            + '</div>';
+        }
+        if (_curTags.length) html += '<div style="font-size:0.58em;color:#818cf8;margin-top:2px">Tags + transcript will be included in report</div>';
       }
 
       html += '</div>';
@@ -769,6 +780,92 @@ window.RecordingAnalyzer = (function() {
         timeDiv.innerHTML = _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec) + '<br>' + durLabel;
       }
     }
+  }
+
+  async function _transcribeSeg(idx) {
+    if (!_currentSegments || !_currentSegments[idx] || !_currentAudioUrl) return;
+    var seg = _currentSegments[idx];
+    var btn = document.getElementById('raTransBtn' + idx);
+    if (btn) { btn.textContent = 'Transcribing...'; btn.disabled = true; }
+
+    try {
+      // Extract segment audio as WAV by fetching the blob and decoding a slice
+      var response = await fetch(_currentAudioUrl);
+      var fullBuffer = await response.arrayBuffer();
+      var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var decoded = await audioCtx.decodeAudioData(fullBuffer);
+
+      // Extract segment range
+      var startSample = Math.floor(seg.startSec * decoded.sampleRate);
+      var endSample = Math.min(Math.floor(seg.endSec * decoded.sampleRate), decoded.length);
+      var numSamples = endSample - startSample;
+      if (numSamples < decoded.sampleRate) { // less than 1 second
+        if (btn) { btn.textContent = 'Too short'; btn.disabled = false; }
+        return;
+      }
+
+      // Build mono WAV
+      var channel = decoded.getChannelData(0);
+      var segData = channel.slice(startSample, endSample);
+      var wavBuffer = _encodeWAV(segData, decoded.sampleRate);
+      audioCtx.close();
+
+      // Send to Worker
+      var workerUrl = (typeof WORKER_URL !== 'undefined') ? WORKER_URL : 'https://groovelinx-worker.drewmerrill.workers.dev';
+      var res = await fetch(workerUrl + '/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'audio/wav' },
+        body: wavBuffer
+      });
+
+      var result = await res.json();
+      if (result.error) {
+        if (typeof showToast === 'function') showToast('Transcription: ' + result.error);
+        if (btn) { btn.textContent = '\uD83C\uDFA4 Transcribe'; btn.disabled = false; }
+        return;
+      }
+
+      // Save transcript to segment
+      seg.transcript = result.transcript || '';
+      seg.notes = seg.transcript; // also set as notes for report
+      seg.speakers = result.speakers || [];
+      seg.confirmed = true;
+
+      if (typeof showToast === 'function') showToast('Transcribed: ' + (seg.transcript.length > 50 ? seg.transcript.slice(0, 50) + '...' : seg.transcript));
+
+      // Re-render to show transcript
+      showUI(_currentSessionId, _currentSegments);
+
+    } catch(e) {
+      console.error('[RecordingAnalyzer] Transcription failed:', e);
+      if (btn) { btn.textContent = '\uD83C\uDFA4 Retry'; btn.disabled = false; }
+      if (typeof showToast === 'function') showToast('Transcription failed: ' + e.message);
+    }
+  }
+
+  // Encode Float32Array to WAV ArrayBuffer
+  function _encodeWAV(samples, sampleRate) {
+    var buffer = new ArrayBuffer(44 + samples.length * 2);
+    var view = new DataView(buffer);
+    function writeStr(offset, str) { for (var i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); }
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + samples.length * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, 1, true); // mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+    for (var i = 0; i < samples.length; i++) {
+      var s = Math.max(-1, Math.min(1, samples[i]));
+      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    return buffer;
   }
 
   function _jumpToSong(title) {
@@ -953,7 +1050,9 @@ window.RecordingAnalyzer = (function() {
         var timeLabel = _formatTime(seg.startSec) + ' - ' + _formatTime(seg.endSec);
         var type = seg.segType || 'song';
         if (type === 'talking') {
-          return timeLabel + ' [Discussion]' + (seg.notes ? ' ' + seg.notes : '');
+          var talkContent = seg.transcript || seg.notes || '';
+          var talkTags = (seg.talkTags && seg.talkTags.length) ? ' [' + seg.talkTags.join(', ') + ']' : '';
+          return timeLabel + ' [Discussion]' + talkTags + (talkContent ? ' ' + talkContent : '');
         }
         if (type === 'restart') {
           return timeLabel + ' [Restart] ' + (seg.songTitle || '');
@@ -1553,7 +1652,8 @@ window.RecordingAnalyzer = (function() {
     _nudgeBoundary: _nudgeBoundary,
     _confirmSeg: _confirmSeg,
     _toggleTalkTag: _toggleTalkTag,
-    _filterAddSong: _filterAddSong
+    _filterAddSong: _filterAddSong,
+    _transcribeSeg: _transcribeSeg
   };
 
 })();

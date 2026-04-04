@@ -66,6 +66,8 @@ export default {
       return handleTTS(request, env);
     if (path === '/fetch-chart' && request.method === 'POST')
       return handleFetchChart(request);
+    if (path === '/transcribe' && request.method === 'POST')
+      return handleTranscribe(request, env);
     return new Response('Not found', { status: 404 });
   }
 };
@@ -119,6 +121,80 @@ async function handleTTS(request, env) {
     return new Response(audioData, { status: 200, headers });
   } catch (e) {
     return jsonResp({ error: e.message }, 500);
+  }
+}
+
+// ── Deepgram Transcription Proxy ─────────────────────────────────────────────
+async function handleTranscribe(request, env) {
+  try {
+    const apiKey = env.DEEPGRAM_API_KEY;
+    if (!apiKey) return jsonResp({ error: 'Transcription not configured — add DEEPGRAM_API_KEY to Worker secrets' }, 503);
+
+    // Accept raw audio binary (WAV/MP3) in request body
+    const contentType = request.headers.get('Content-Type') || 'audio/wav';
+    const audioData = await request.arrayBuffer();
+
+    if (!audioData || audioData.byteLength < 1000) {
+      return jsonResp({ error: 'No audio data provided' }, 400);
+    }
+
+    // Cap at 25MB to prevent abuse
+    if (audioData.byteLength > 25 * 1024 * 1024) {
+      return jsonResp({ error: 'Audio too large (max 25MB)' }, 413);
+    }
+
+    const dgRes = await fetch('https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&punctuate=true&diarize=true', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Token ' + apiKey,
+        'Content-Type': contentType
+      },
+      body: audioData
+    });
+
+    if (!dgRes.ok) {
+      const errText = await dgRes.text();
+      return jsonResp({ error: 'Deepgram error: ' + dgRes.status, detail: errText.substring(0, 300) }, dgRes.status);
+    }
+
+    const result = await dgRes.json();
+
+    // Extract transcript + speaker segments
+    const channel = result.results?.channels?.[0];
+    const alt = channel?.alternatives?.[0];
+    const transcript = alt?.transcript || '';
+    const words = alt?.words || [];
+
+    // Build speaker segments from diarization
+    const speakers = [];
+    let currentSpeaker = null;
+    let currentText = '';
+    let currentStart = 0;
+    words.forEach(w => {
+      if (w.speaker !== currentSpeaker) {
+        if (currentSpeaker !== null && currentText.trim()) {
+          speakers.push({ speaker: currentSpeaker, text: currentText.trim(), start: currentStart, end: w.start });
+        }
+        currentSpeaker = w.speaker;
+        currentText = w.punctuated_word || w.word || '';
+        currentStart = w.start;
+      } else {
+        currentText += ' ' + (w.punctuated_word || w.word || '');
+      }
+    });
+    if (currentSpeaker !== null && currentText.trim()) {
+      speakers.push({ speaker: currentSpeaker, text: currentText.trim(), start: currentStart, end: words[words.length - 1]?.end || 0 });
+    }
+
+    return jsonResp({
+      transcript: transcript,
+      speakers: speakers,
+      confidence: alt?.confidence || 0,
+      duration: result.metadata?.duration || 0
+    });
+
+  } catch (e) {
+    return jsonResp({ error: 'Transcription failed: ' + e.message }, 500);
   }
 }
 
