@@ -265,11 +265,15 @@ window.RecordingAnalyzer = (function() {
     overlay = document.createElement('div');
     overlay.id = 'raOverlay';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(2px)';
-    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+    // Don't auto-dismiss on backdrop click — user must use Cancel or Generate
 
     var durLabel = duration ? _formatTime(duration) : '';
     var modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6)';
+    modal.style.cssText = 'background:var(--bg-card,#1e293b);border:2px solid rgba(99,102,241,0.3);border-radius:16px;padding:24px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.6)';
+
+    // Notify user the review is ready (toast + audio chime)
+    if (typeof showToast === 'function') showToast('Analysis ready \u2014 review segments and generate report', 5000);
+    _playNotificationChime();
 
     // Build smart summary
     var _needsReview = _currentSegments.filter(function(s) { return s.confidence < 0.4; }).length;
@@ -473,13 +477,27 @@ window.RecordingAnalyzer = (function() {
           }
         });
 
-        // Show segment review UI
-        showUI(sessionId, result.segments, result.duration);
+        if (result.segments && result.segments.length > 0) {
+          // Show segment review UI
+          showUI(sessionId, result.segments, result.duration);
+        } else {
+          // No segments detected — show completion with manual option
+          if (overlay) {
+            progress.innerHTML = '<div style="font-size:1.2em;margin-bottom:12px">\u2705</div>'
+              + '<div style="font-size:0.92em;font-weight:700;color:var(--text,#f1f5f9);margin-bottom:8px">Analysis complete</div>'
+              + '<div style="font-size:0.78em;color:var(--text-dim,#475569);margin-bottom:16px">No clear song segments detected. This can happen with long jam sessions or continuous recordings.</div>'
+              + '<div style="display:flex;gap:8px;justify-content:center">'
+              + '<button onclick="document.getElementById(\'raOverlay\').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-muted);cursor:pointer;font-size:0.82em">Close</button>'
+              + '<button onclick="document.getElementById(\'raOverlay\').remove();if(typeof _rhRecreateFromRecording===\'function\')_rhRecreateFromRecording()" style="padding:8px 16px;border-radius:8px;border:none;background:rgba(99,102,241,0.15);color:#818cf8;cursor:pointer;font-size:0.82em;font-weight:600">Add Notes Manually</button>'
+              + '</div>';
+          }
+          if (typeof showToast === 'function') showToast('Analysis complete \u2014 add notes manually for a detailed report', 5000);
+        }
 
       } catch(e) {
         console.error('[RecordingAnalyzer] Analysis failed:', e);
-        overlay.remove();
-        if (typeof showToast === 'function') showToast('Analysis failed: ' + e.message);
+        if (overlay) overlay.remove();
+        if (typeof showToast === 'function') showToast('Analysis failed: ' + e.message, 5000);
       }
     };
     input.click();
@@ -504,6 +522,25 @@ window.RecordingAnalyzer = (function() {
     } catch(e) {
       console.warn('[RecordingAnalyzer] Home refresh failed:', e.message);
     }
+  }
+
+  // ── Audio notification chime (Web Audio API, no file needed) ─────────────────
+
+  function _playNotificationChime() {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+      osc.frequency.setValueAtTime(1047, ctx.currentTime + 0.1); // C6
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    } catch(e) {}
   }
 
   // ── Utilities ───────────────────────────────────────────────────────────────
