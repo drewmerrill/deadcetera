@@ -486,28 +486,41 @@ function _buildJustification() {
 // ── Intelligence signal — subtle one-line insight under hero CTA ──────────────
 function _buildIntelSignal() {
     try {
-        // Priority 1: Readiness improvement from last session
-        if (typeof GLStore !== 'undefined' && GLStore.getSessionReadinessDelta) {
-            var delta = GLStore.getSessionReadinessDelta();
-            if (delta && delta.avg > 0.1) {
-                return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">\u2191 Last rehearsal: +' + delta.avg.toFixed(1) + ' readiness</div>';
+        // Priority 1: Improvement streak across sessions
+        if (typeof GLStore !== 'undefined' && GLStore.getRecentSessionRatings) {
+            var ratings = GLStore.getRecentSessionRatings();
+            if (ratings && ratings.length >= 2) {
+                var streak = 0;
+                for (var ri = 0; ri < ratings.length - 1; ri++) {
+                    if (ratings[ri] >= ratings[ri + 1]) streak++;
+                    else break;
+                }
+                if (streak >= 2) return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">On a ' + (streak + 1) + '-session improvement streak</div>';
             }
         }
 
-        // Priority 2: Songs improved since last session
+        // Priority 2: Readiness improvement from last session
+        if (typeof GLStore !== 'undefined' && GLStore.getSessionReadinessDelta) {
+            var delta = GLStore.getSessionReadinessDelta();
+            if (delta && delta.avg > 0.1) {
+                return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">Last rehearsal: +' + delta.avg.toFixed(1) + ' readiness</div>';
+            }
+        }
+
+        // Priority 3: Songs improved since last session
         if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex) {
             var idx = RehearsalAnalysis.getIssueIndex();
             var improving = 0;
             if (idx) Object.keys(idx).forEach(function(k) { if (idx[k].trend === 'improving') improving++; });
-            if (improving > 0) return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">\u2191 You improved ' + improving + ' song' + (improving > 1 ? 's' : '') + ' last session</div>';
+            if (improving > 0) return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">You improved ' + improving + ' song' + (improving > 1 ? 's' : '') + ' last session</div>';
         }
 
-        // Priority 3: Rehearsal plan ready
+        // Priority 4: Rehearsal plan ready
         if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
             var ia = GLInsights.getNextAction();
             if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length) {
                 var _songCount = (ia.plan.songs && ia.plan.songs.length) || ia.plan.actionPlan.length;
-                return '<div style="font-size:0.68em;color:#475569;margin-top:8px">\u2728 ' + _songCount + '-song rehearsal plan ready</div>';
+                return '<div style="font-size:0.68em;color:#475569;margin-top:8px">' + _songCount + '-song rehearsal plan ready</div>';
             }
         }
     } catch(e) {}
@@ -1408,49 +1421,66 @@ function _buildSecondaryActions(bundle) {
     // Suggest weak song practice if not already the primary
     var _focusTitle = focus.primary ? (typeof focus.primary === 'string' ? focus.primary : (focus.primary.title || null)) : null;
     var _readinessTone = function(avg, songTitle) {
-        var tone = '';
-        if (avg <= 0) tone = 'not rated yet';
-        else if (avg < 2) tone = 'needs work (' + avg.toFixed(1) + '/5)';
-        else if (avg <= 3.5) tone = 'getting there (' + avg.toFixed(1) + '/5)';
-        else tone = 'almost ready (' + avg.toFixed(1) + '/5)';
-        // Append top issue if analysis data exists
-        if (songTitle && avg > 0) {
+        // Build "[status] → [action]" pattern
+        var status = '';
+        if (avg <= 0) return 'not rated yet';
+        else if (avg < 2) status = 'needs work';
+        else if (avg <= 3.5) status = 'getting there';
+        else status = 'almost ready';
+        // Get top issue for the action part
+        var action = '';
+        if (songTitle) {
             try {
                 if (typeof GLInsights !== 'undefined' && GLInsights.buildActionPlan) {
                     var plan = GLInsights.buildActionPlan(songTitle);
                     if (plan && plan.recommendation) {
-                        var issue = plan.recommendation.toLowerCase();
-                        if (issue.length > 30) issue = issue.slice(0, 30) + '\u2026';
-                        tone += ' \u2192 ' + issue;
+                        action = plan.recommendation.toLowerCase();
+                        if (action.length > 28) action = action.slice(0, 28) + '\u2026';
                     }
                 }
             } catch(e) {}
         }
-        return tone;
+        return action ? status + ' \u2192 ' + action : status + ' (' + avg.toFixed(1) + '/5)';
     };
     var _selectAndHighlight = function(title) {
         return "selectSong('" + _escHtml(title).replace(/'/g, "\\'") + "');setTimeout(function(){var p=document.querySelector('.song-detail-page');if(p){p.style.transition='box-shadow 0.3s';p.style.boxShadow='0 0 20px rgba(99,102,241,0.15)';setTimeout(function(){p.style.boxShadow='';},1500);}},600)";
     };
-    if (focus.count > 0 && _focusTitle) {
-        var avgR = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_focusTitle) : 0;
+    // Check if hero already targets this song (avoid repeating the same instruction)
+    var _heroSong = null;
+    try {
+        if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
+            var _ia = GLInsights.getNextAction();
+            if (_ia && _ia.song) _heroSong = _ia.song;
+        }
+    } catch(e) {}
+
+    // Use second focus song if hero already covers the primary
+    var _practiceSong = _focusTitle;
+    if (_heroSong && _focusTitle && _heroSong.toLowerCase() === _focusTitle.toLowerCase()) {
+        var _focusList2 = (focus.list || []).map(function(s) { return typeof s === 'string' ? s : (s.title || ''); });
+        _practiceSong = _focusList2[1] || _focusTitle; // fall back if only one
+    }
+
+    if (focus.count > 0 && _practiceSong) {
+        var avgR = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_practiceSong) : 0;
         if (avgR < 4) {
             items.push(_secondaryCard(
-                'Practice ' + _escHtml(_focusTitle),
-                _readinessTone(avgR, _focusTitle),
-                _selectAndHighlight(_focusTitle),
+                'Practice ' + _escHtml(_practiceSong),
+                _readinessTone(avgR, _practiceSong),
+                _selectAndHighlight(_practiceSong),
                 '\uD83C\uDFB8',
                 true
             ));
         }
     }
 
-    // Guarantee: if no practice card yet but songs exist, suggest first focus song anyway
-    if (!items.length && _focusTitle) {
-        var avgR2 = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_focusTitle) : 0;
+    // Guarantee: if no practice card yet but songs exist, suggest a song anyway
+    if (!items.length && _practiceSong) {
+        var avgR2 = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_practiceSong) : 0;
         items.push(_secondaryCard(
-            'Practice ' + _escHtml(_focusTitle),
-            avgR2 >= 4 ? 'keep it sharp (' + avgR2.toFixed(1) + '/5)' : _readinessTone(avgR2, _focusTitle),
-            _selectAndHighlight(_focusTitle),
+            'Practice ' + _escHtml(_practiceSong),
+            avgR2 >= 4 ? 'keep it sharp' : _readinessTone(avgR2, _practiceSong),
+            _selectAndHighlight(_practiceSong),
             '\uD83C\uDFB8',
             true
         ));
