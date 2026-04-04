@@ -50,34 +50,55 @@ window.SongMatchingEngine = (function() {
    * @param {number[]} embedding — L2-normalized vector
    * @param {object} segMeta — { segType, duration, qualityScore, groove }
    */
+  // ── Embedding event log (add / reject / evict) ───────────────────────────────
+  var _embedEventLog = [];
+
+  function _logEmbedEvent(action, songId, title, meta) {
+    var entry = { action: action, songId: songId, title: title, timestamp: Date.now() };
+    if (meta) Object.keys(meta).forEach(function(k) { entry[k] = meta[k]; });
+    _embedEventLog.push(entry);
+    if (window._glDebugEmbeddings) {
+      console.log('[EmbedBank] ' + action + ': songId=' + songId + ' title=' + title +
+        Object.keys(meta || {}).map(function(k) { return ' ' + k + '=' + meta[k]; }).join(''));
+    }
+  }
+
   function storeConfirmedEmbedding(songId, songTitle, embedding, segMeta) {
     if (!songId || !embedding || !embedding.length) return;
     segMeta = segMeta || {};
 
     // Quality filter: reject ineligible segments
     if (segMeta.segType && segMeta.segType !== 'song') {
-      if (window._glDebugEmbeddings) console.log('[EmbedBank] Rejected: type=' + segMeta.segType);
+      _logEmbedEvent('rejected', songId, songTitle, { reason: 'type=' + segMeta.segType });
       return;
     }
     if (segMeta.duration && segMeta.duration < _MIN_EMBED_DURATION) {
-      if (window._glDebugEmbeddings) console.log('[EmbedBank] Rejected: too short (' + Math.round(segMeta.duration) + 's)');
+      _logEmbedEvent('rejected', songId, songTitle, { reason: 'short', duration: Math.round(segMeta.duration) });
       return;
     }
-    // Prefer quality segments: full runs or solid groove
     var qualityOk = true;
     if (segMeta.qualityScore && segMeta.qualityScore < 2) qualityOk = false;
     if (!qualityOk) {
-      if (window._glDebugEmbeddings) console.log('[EmbedBank] Rejected: low quality (' + segMeta.qualityScore + ')');
+      _logEmbedEvent('rejected', songId, songTitle, { reason: 'low_quality', qualityScore: segMeta.qualityScore });
       return;
     }
 
     if (!_embeddingBank[songId]) _embeddingBank[songId] = { title: songTitle, embeddings: [] };
-    _embeddingBank[songId].title = songTitle; // update display title
+    _embeddingBank[songId].title = songTitle;
 
     var bank = _embeddingBank[songId].embeddings;
+
+    // Compute similarity to existing bank before adding
+    var simToBank = bank.length > 0
+      ? bank.map(function(e) { return _cosineSimilarity(embedding, e.vec); })
+      : [];
+    var avgSimToBank = simToBank.length ? (simToBank.reduce(function(a, b) { return a + b; }, 0) / simToBank.length) : 0;
+    var maxSimToBank = simToBank.length ? Math.max.apply(null, simToBank) : 0;
+
     bank.push({ vec: embedding, addedAt: Date.now() });
 
-    // Evict if over limit — remove weakest (lowest avg similarity to others)
+    // Evict if over limit — remove weakest
+    var evictedInfo = null;
     if (bank.length > MAX_EMBEDDINGS_PER_SONG) {
       var weakestIdx = 0;
       var weakestScore = Infinity;
@@ -89,20 +110,64 @@ window.SongMatchingEngine = (function() {
         avgSim /= (bank.length - 1);
         if (avgSim < weakestScore) { weakestScore = avgSim; weakestIdx = ei; }
       }
+      evictedInfo = { idx: weakestIdx, avgSim: weakestScore.toFixed(3) };
       bank.splice(weakestIdx, 1);
     }
 
-    if (window._glDebugEmbeddings) {
-      console.log('[EmbedBank] Added: songId=' + songId + ' title=' + songTitle +
-        ' bank=' + bank.length + '/' + MAX_EMBEDDINGS_PER_SONG +
-        ' dur=' + Math.round(segMeta.duration || 0) + 's quality=' + (segMeta.qualityScore || '?'));
-    }
+    _logEmbedEvent('added', songId, songTitle, {
+      bankSize: bank.length,
+      duration: Math.round(segMeta.duration || 0),
+      qualityScore: segMeta.qualityScore || '?',
+      avgSimToBank: avgSimToBank.toFixed(3),
+      maxSimToBank: maxSimToBank.toFixed(3),
+      evicted: evictedInfo ? 'idx=' + evictedInfo.idx + ' avgSim=' + evictedInfo.avgSim : 'none'
+    });
   }
 
   /**
-   * Get the embedding bank for inspection/debugging.
+   * Get the raw embedding bank.
    */
   function getEmbeddingBank() { return _embeddingBank; }
+
+  /**
+   * Get a summary of the embedding bank (dev inspection).
+   * @param {string} songId — optional, filter to one song
+   */
+  function getEmbeddingBankSummary(songId) {
+    var ids = songId ? [songId] : Object.keys(_embeddingBank);
+    return ids.map(function(id) {
+      var entry = _embeddingBank[id];
+      if (!entry) return { songId: id, title: '?', count: 0 };
+      var bank = entry.embeddings;
+      // Compute intra-bank similarity
+      var pairSims = [];
+      for (var i = 0; i < bank.length; i++) {
+        for (var j = i + 1; j < bank.length; j++) {
+          pairSims.push(_cosineSimilarity(bank[i].vec, bank[j].vec));
+        }
+      }
+      var avgIntraSim = pairSims.length ? (pairSims.reduce(function(a, b) { return a + b; }, 0) / pairSims.length) : 0;
+      var minIntraSim = pairSims.length ? Math.min.apply(null, pairSims) : 0;
+      return {
+        songId: id,
+        title: entry.title,
+        count: bank.length,
+        avgIntraSim: avgIntraSim.toFixed(3),
+        minIntraSim: minIntraSim.toFixed(3),
+        oldest: bank.length ? new Date(bank[0].addedAt).toISOString() : null,
+        newest: bank.length ? new Date(bank[bank.length - 1].addedAt).toISOString() : null
+      };
+    });
+  }
+
+  /**
+   * Get the full event log for inspection.
+   */
+  function getRejectedEmbeddingLog() {
+    return _embedEventLog.filter(function(e) { return e.action === 'rejected'; });
+  }
+
+  function getEmbedEventLog() { return _embedEventLog; }
 
   /**
    * Resolve songId for a title (helper for callers that only have title).
@@ -460,6 +525,14 @@ window.SongMatchingEngine = (function() {
     if (topSim >= 0.88 && score < 1.0) score = Math.max(score, 0.85);
     else if (topSim >= 0.82 && score < 0.7) score = Math.max(score, 0.6);
 
+    // Calibration: log final signal outcome for threshold tuning
+    if (window._glDebugEmbeddings) {
+      console.log('[SongMatch] audioSimilar result: seg=' + (segment.id || '?') +
+        ' song=' + candidate.title + ' topSim=' + topSim.toFixed(3) +
+        ' avgTop3=' + avgTop3.toFixed(3) + ' finalSignal=' + score.toFixed(2) +
+        ' bank=' + bank.length);
+    }
+
     return score;
   }
 
@@ -701,6 +774,9 @@ window.SongMatchingEngine = (function() {
     scoreSegment: scoreSegment,
     storeConfirmedEmbedding: storeConfirmedEmbedding,
     getEmbeddingBank: getEmbeddingBank,
+    getEmbeddingBankSummary: getEmbeddingBankSummary,
+    getRejectedEmbeddingLog: getRejectedEmbeddingLog,
+    getEmbedEventLog: getEmbedEventLog,
     recordConfirmation: recordConfirmation,
     getAccuracyLog: getAccuracyLog,
     getAccuracySummary: getAccuracySummary,
