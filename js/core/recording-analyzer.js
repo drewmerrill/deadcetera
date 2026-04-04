@@ -605,13 +605,18 @@ window.RecordingAnalyzer = (function() {
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',5)" style="' + _tinyBtn + '">+5s</button>'
         + '</div></details>';
 
-      // Chord analysis button (Song segments ≥30s, no hints yet)
-      if (segTypeVal === 'song' && seg.duration >= 30 && !seg.chordHints) {
-        html += '<button id="raChordBtn' + i + '" onclick="RecordingAnalyzer._fetchChordHints(' + i + ')" style="font-size:0.55em;padding:2px 6px;border-radius:4px;border:1px solid rgba(129,140,248,0.15);background:rgba(129,140,248,0.04);color:#818cf8;cursor:pointer;font-family:inherit;margin-top:3px">\uD83C\uDFB5 Get chord hints</button>';
+      // Chord analysis: button or refresh indicator
+      if (segTypeVal === 'song' && seg.duration >= 30) {
+        var _hasCachedHints = seg.chordHints && seg.chordHints.usable;
+        var _cacheStale = seg.chordHints && seg._chordCacheKey !== _chordCacheKey(seg);
+        if (!_hasCachedHints || _cacheStale) {
+          var _btnLabel = _cacheStale ? '\uD83C\uDFB5 Refresh chord hints' : '\uD83C\uDFB5 Get chord hints';
+          html += '<button id="raChordBtn' + i + '" onclick="RecordingAnalyzer._fetchChordHints(' + i + ')" style="font-size:0.55em;padding:2px 6px;border-radius:4px;border:1px solid rgba(129,140,248,0.15);background:rgba(129,140,248,0.04);color:#818cf8;cursor:pointer;font-family:inherit;margin-top:3px">' + _btnLabel + '</button>';
+        }
       }
 
-      // Row 3: Harmonic hints (Song segments only, when usable)
-      if (segTypeVal === 'song' && seg.chordHints && seg.chordHints.usable) {
+      // Harmonic hints display (Song segments only, when usable + cache valid)
+      if (segTypeVal === 'song' && seg.chordHints && seg.chordHints.usable && seg._chordCacheKey === _chordCacheKey(seg)) {
         var ch = seg.chordHints;
         var chConf = ch.confidence || 'low';
         var chColor = chConf === 'high' ? '#10b981' : chConf === 'medium' ? '#f59e0b' : '#64748b';
@@ -620,23 +625,33 @@ window.RecordingAnalyzer = (function() {
           + '\uD83C\uDFB5 Harmonic hints (' + chConf + ')</summary>'
           + '<div style="padding:4px 6px;font-size:0.62em;color:var(--text-dim);line-height:1.5">';
         if (ch.summary) {
-          if (ch.summary.openingChord && ch.summary.openingChord !== 'N') {
-            html += '<div>Likely starts in <span style="color:var(--text)">' + _escAttr(ch.summary.openingChord) + '</span></div>';
-          }
           if (ch.summary.topProgressionHint) {
-            html += '<div>Movement: <span style="color:var(--text)">' + _escAttr(ch.summary.topProgressionHint) + '</span></div>';
+            html += '<div>Likely movement: <span style="color:var(--text)">' + _escAttr(ch.summary.topProgressionHint) + '</span></div>';
+          }
+          if (ch.summary.openingChord && ch.summary.openingChord !== 'N') {
+            html += '<div>Starts on <span style="color:var(--text)">' + _escAttr(ch.summary.openingChord) + '</span>';
+            if (ch.summary.endingChord && ch.summary.endingChord !== ch.summary.openingChord && ch.summary.endingChord !== 'N') {
+              html += ' \u2192 ends on <span style="color:var(--text)">' + _escAttr(ch.summary.endingChord) + '</span>';
+            }
+            html += '</div>';
           }
           if (ch.summary.changeCount > 0) {
-            html += '<div>' + ch.summary.changeCount + ' likely chord changes</div>';
+            html += '<div>' + ch.summary.changeCount + ' likely changes</div>';
           }
         }
-        // Timeline (high confidence only)
+        // Timeline (high confidence only, capped at 8 rows)
         if (chConf === 'high' && ch.timeline && ch.timeline.length) {
-          html += '<details style="margin-top:3px"><summary style="cursor:pointer;color:var(--text-dim)">Show timeline</summary><div style="margin-top:2px">';
-          ch.timeline.forEach(function(t) {
-            html += '<div style="display:flex;gap:6px"><span style="min-width:70px">[' + t.startSec.toFixed(1) + '\u2013' + t.endSec.toFixed(1) + ']</span><span style="color:var(--text)">' + _escAttr(t.chord) + '</span><span style="color:var(--text-dim)">(' + Math.round(t.confidence * 100) + '%)</span></div>';
-          });
-          html += '</div></details>';
+          var _maxRows = 8;
+          if (ch.timeline.length > _maxRows + 2) {
+            html += '<div style="margin-top:3px;color:var(--text-dim);font-style:italic">Frequent harmonic movement \u2014 review against chart</div>';
+          } else {
+            html += '<details style="margin-top:3px"><summary style="cursor:pointer;color:var(--text-dim)">Show timeline (' + ch.timeline.length + ')</summary><div style="margin-top:2px">';
+            ch.timeline.slice(0, _maxRows).forEach(function(t) {
+              html += '<div style="display:flex;gap:6px"><span style="min-width:70px;color:var(--text-dim)">[' + t.startSec.toFixed(1) + '\u2013' + t.endSec.toFixed(1) + ']</span><span style="color:var(--text)">' + _escAttr(t.chord) + '</span></div>';
+            });
+            if (ch.timeline.length > _maxRows) html += '<div style="color:var(--text-dim)">+' + (ch.timeline.length - _maxRows) + ' more regions</div>';
+            html += '</div></details>';
+          }
         }
         html += '<div style="font-size:0.9em;color:var(--text-dim);margin-top:2px;font-style:italic">' + _escAttr(ch.reviewGuidance ? ch.reviewGuidance.message : 'Review to confirm') + '</div>';
         html += '</div></details>';
@@ -962,7 +977,12 @@ window.RecordingAnalyzer = (function() {
 
   // ── Chord hints (on-demand per segment) ──────────────────────────────────────
 
-  var _chordCache = {}; // keyed by segmentId
+  var _chordCache = {}; // keyed by composite key
+  var _CHORD_ANALYSIS_VERSION = 1;
+
+  function _chordCacheKey(seg) {
+    return seg.id + '|' + seg.startSec.toFixed(1) + '|' + seg.endSec.toFixed(1) + '|v' + _CHORD_ANALYSIS_VERSION;
+  }
 
   async function _fetchChordHints(idx) {
     if (!_currentSegments || !_currentSegments[idx] || !_currentAudioUrl) return;
@@ -978,8 +998,9 @@ window.RecordingAnalyzer = (function() {
       return;
     }
 
-    // Check cache
-    if (_chordCache[seg.id] && seg.chordHints) return;
+    // Check cache (invalidates when boundaries change)
+    var cacheKey = _chordCacheKey(seg);
+    if (_chordCache[cacheKey] && seg.chordHints && seg._chordCacheKey === cacheKey) return;
 
     var btn = document.getElementById('raChordBtn' + idx);
     if (btn) { btn.textContent = 'Analyzing...'; btn.disabled = true; }
@@ -1017,9 +1038,10 @@ window.RecordingAnalyzer = (function() {
         return;
       }
 
-      // Attach to segment + cache
+      // Attach to segment + cache (keyed by boundaries + version)
       seg.chordHints = result;
-      _chordCache[seg.id] = result;
+      seg._chordCacheKey = cacheKey;
+      _chordCache[cacheKey] = result;
 
       if (typeof showToast === 'function') {
         var hint = result.summary && result.summary.topProgressionHint ? result.summary.topProgressionHint : 'Analysis complete';
@@ -1231,11 +1253,13 @@ window.RecordingAnalyzer = (function() {
         var songLabel = seg.songTitle || 'Unknown';
         var durMin = Math.round(seg.duration / 60);
         var line = timeLabel + ' ' + songLabel + ' (' + durMin + ' min)';
-        // Append chord hint if available and usable
-        if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary) {
+        // Append chord hint only when confidence is medium+ and adds value
+        if (seg.chordHints && seg.chordHints.usable && seg.chordHints.confidence !== 'low' && seg.chordHints.summary) {
           var ch = seg.chordHints.summary;
-          if (ch.topProgressionHint) line += ' [Likely movement: ' + ch.topProgressionHint + ']';
-          if (ch.changeCount > 5) line += ' [' + ch.changeCount + ' harmonic changes]';
+          // Only include if progression hint exists (skip trivial "1 change" cases)
+          if (ch.topProgressionHint && ch.changeCount >= 3) {
+            line += ' [Likely: ' + ch.topProgressionHint + ']';
+          }
         }
         return line;
       });
