@@ -31,8 +31,47 @@ window.SongMatchingEngine = (function() {
     continuity:     0.05
   };
 
-  var MIN_SEGMENT_DURATION = 20; // seconds — below this, always low confidence
+  var MIN_SEGMENT_DURATION = 20;
   var MAX_CATALOG_CANDIDATES = 20;
+  var MAX_EMBEDDINGS_PER_SONG = 10;
+  var EMBED_SERVICE_URL = window._glEmbedServiceUrl || 'http://localhost:8200';
+
+  // ── Trusted embedding bank: { songTitle: [embedding[], ...] } ───────────────
+  var _embeddingBank = {};
+  var _embedCache = {}; // keyed by segId|start|end|v1
+
+  function _embedCacheKey(seg) {
+    return (seg.id || '') + '|' + (seg.startSec || 0).toFixed(1) + '|' + (seg.endSec || 0).toFixed(1) + '|ev1';
+  }
+
+  /**
+   * Store a confirmed segment's embedding in the per-song bank.
+   * Called after user confirms a segment label.
+   */
+  function storeConfirmedEmbedding(songTitle, embedding) {
+    if (!songTitle || !embedding || !embedding.length) return;
+    if (!_embeddingBank[songTitle]) _embeddingBank[songTitle] = [];
+    _embeddingBank[songTitle].push(embedding);
+    // Cap at MAX_EMBEDDINGS_PER_SONG (keep most recent)
+    if (_embeddingBank[songTitle].length > MAX_EMBEDDINGS_PER_SONG) {
+      _embeddingBank[songTitle] = _embeddingBank[songTitle].slice(-MAX_EMBEDDINGS_PER_SONG);
+    }
+  }
+
+  /**
+   * Get the embedding bank for inspection/debugging.
+   */
+  function getEmbeddingBank() { return _embeddingBank; }
+
+  /**
+   * Cosine similarity between two L2-normalized vectors (= dot product).
+   */
+  function _cosineSimilarity(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    var dot = 0;
+    for (var i = 0; i < a.length; i++) dot += a[i] * b[i];
+    return dot;
+  }
 
   // ── Main entry point ────────────────────────────────────────────────────────
 
@@ -103,6 +142,14 @@ window.SongMatchingEngine = (function() {
         }
       }
     }
+
+    // Post-scoring: store confirmed segment embeddings into the bank
+    // This builds the trusted embedding bank for future audioSimilar scoring
+    segments.forEach(function(seg) {
+      if (seg.confirmed && seg.songTitle && seg.audioEmbedding && seg.audioEmbedding.length) {
+        storeConfirmedEmbedding(seg.songTitle, seg.audioEmbedding);
+      }
+    });
 
     return segments;
   }
@@ -288,13 +335,37 @@ window.SongMatchingEngine = (function() {
     return 0;
   }
 
-  // Signal 2: Audio embedding similarity (stub — requires CLAP/OpenL3)
+  // Signal 2: Audio embedding similarity (CLAP)
+  // Compares segment embedding against trusted bank for the candidate song.
   function _signalAudioSimilar(segment, candidate, context) {
-    // Future: compare segment.audioEmbedding vs embeddings of other
-    // segments already labeled as this song
-    // For now: return 0 (no embeddings available)
-    if (!segment.audioEmbedding) return 0;
-    // TODO: implement cosine similarity when embeddings exist
+    if (!segment.audioEmbedding || !segment.audioEmbedding.length) return 0;
+
+    var bank = _embeddingBank[candidate.title];
+    if (!bank || !bank.length) return 0; // no trusted examples — signal unavailable
+
+    // Compute similarity against each trusted embedding, take top-3 average
+    var sims = bank.map(function(trusted) {
+      return _cosineSimilarity(segment.audioEmbedding, trusted);
+    });
+    sims.sort(function(a, b) { return b - a; });
+    var topK = sims.slice(0, Math.min(3, sims.length));
+    var avgSim = topK.reduce(function(a, b) { return a + b; }, 0) / topK.length;
+
+    // Calibration logging (developer debug)
+    if (window._glDebugEmbeddings) {
+      console.log('[SongMatch] audioSimilar: seg=' + (segment.id || '?') + ' candidate=' + candidate.title +
+        ' bank=' + bank.length + ' topSim=' + sims[0].toFixed(3) + ' avgTop3=' + avgSim.toFixed(3));
+    }
+
+    // Map similarity to 0-1 signal score
+    // Thresholds calibrated for CLAP on live rehearsal recordings:
+    //   > 0.80 = very likely same song (strong signal)
+    //   > 0.65 = probably same song (moderate)
+    //   > 0.50 = possibly same (weak)
+    //   < 0.50 = different
+    if (avgSim >= 0.80) return 1.0;
+    if (avgSim >= 0.65) return 0.7;
+    if (avgSim >= 0.50) return 0.4;
     return 0;
   }
 
@@ -374,9 +445,12 @@ window.SongMatchingEngine = (function() {
   // ── Explanation text ────────────────────────────────────────────────────────
 
   function _explainSignal(key, value, candidate) {
+    if (key === 'audioSimilar') {
+      var bankSize = (_embeddingBank[candidate.title] || []).length;
+      return 'Similar audio to ' + bankSize + ' confirmed ' + candidate.title + ' segment' + (bankSize > 1 ? 's' : '');
+    }
     var explanations = {
       planMatch:    'In rehearsal plan',
-      audioSimilar: 'Sounds similar to other ' + candidate.title + ' segments',
       chordSimilar: 'Chord pattern aligns with known key',
       tempoProx:    'Tempo close to typical BPM for ' + candidate.title,
       lyricsMatch:  'Transcript contains song title words',
@@ -390,6 +464,8 @@ window.SongMatchingEngine = (function() {
   return {
     run: run,
     scoreSegment: scoreSegment,
+    storeConfirmedEmbedding: storeConfirmedEmbedding,
+    getEmbeddingBank: getEmbeddingBank,
     WEIGHTS: WEIGHTS
   };
 

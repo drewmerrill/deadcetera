@@ -734,11 +734,16 @@ window.RecordingAnalyzer = (function() {
 
   function _confirmSeg(idx) {
     if (!_currentSegments || !_currentSegments[idx]) return;
-    _currentSegments[idx].confirmed = true;
+    var seg = _currentSegments[idx];
+    seg.confirmed = true;
     var btn = document.getElementById('raConfBtn' + idx);
     if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
-    // Update review counter
-    var confirmed = _currentSegments.filter(function(s) { return s.confirmed; }).length;
+
+    // Non-blocking: fetch embedding for confirmed Song segment (for future matching)
+    if (seg.segType === 'song' && seg.songTitle && seg.duration >= 30 && !seg.audioEmbedding && _currentAudioUrl) {
+      _fetchEmbeddingForSeg(idx).catch(function() {}); // fire-and-forget
+    }
+
     // Auto-advance to next unconfirmed
     for (var ni = idx + 1; ni < _currentSegments.length; ni++) {
       if (!_currentSegments[ni].confirmed) {
@@ -748,6 +753,54 @@ window.RecordingAnalyzer = (function() {
       }
     }
   }
+
+  // Non-blocking embedding fetch for a confirmed segment
+  async function _fetchEmbeddingForSeg(idx) {
+    var seg = _currentSegments[idx];
+    if (!seg || !_currentAudioUrl) return;
+
+    var cacheKey = (seg.id || '') + '|' + seg.startSec.toFixed(1) + '|' + seg.endSec.toFixed(1) + '|emb1';
+    if (_embedCacheLocal[cacheKey]) {
+      seg.audioEmbedding = _embedCacheLocal[cacheKey];
+      if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.storeConfirmedEmbedding) {
+        SongMatchingEngine.storeConfirmedEmbedding(seg.songTitle, seg.audioEmbedding);
+      }
+      return;
+    }
+
+    try {
+      var response = await fetch(_currentAudioUrl);
+      var fullBuffer = await response.arrayBuffer();
+      var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var decoded = await audioCtx.decodeAudioData(fullBuffer);
+      var startSample = Math.floor(seg.startSec * decoded.sampleRate);
+      var endSample = Math.min(Math.floor(seg.endSec * decoded.sampleRate), decoded.length);
+      var channel = decoded.getChannelData(0);
+      var segData = channel.slice(startSample, endSample);
+      var wavBuffer = _encodeWAV(segData, decoded.sampleRate);
+      audioCtx.close();
+
+      var serviceUrl = window._glEmbedServiceUrl || 'http://localhost:8200';
+      var formData = new FormData();
+      formData.append('file', new Blob([wavBuffer], { type: 'audio/wav' }), 'segment.wav');
+      var res = await fetch(serviceUrl + '/embed', { method: 'POST', body: formData });
+      var result = await res.json();
+
+      if (result.embedding && result.embedding.length) {
+        seg.audioEmbedding = result.embedding;
+        _embedCacheLocal[cacheKey] = result.embedding;
+        // Store in the matching engine's bank
+        if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.storeConfirmedEmbedding) {
+          SongMatchingEngine.storeConfirmedEmbedding(seg.songTitle, seg.audioEmbedding);
+        }
+        console.log('[RecordingAnalyzer] Embedding stored for ' + seg.songTitle + ' (' + result.dimension + 'd)');
+      }
+    } catch(e) {
+      // Silent failure — embedding is a supporting signal, not critical
+      console.warn('[RecordingAnalyzer] Embedding fetch failed for seg ' + idx + ':', e.message);
+    }
+  }
+  var _embedCacheLocal = {};
 
   function _toggleTalkTag(idx, tag) {
     if (!_currentSegments || !_currentSegments[idx]) return;
