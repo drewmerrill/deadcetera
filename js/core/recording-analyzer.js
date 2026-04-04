@@ -140,7 +140,10 @@ window.RecordingAnalyzer = (function() {
     // Stage 2: Segmentation
     onProgress('segmenting', 0);
     var segResult = null;
-    if (typeof RehearsalSegmentationEngine !== 'undefined' && RehearsalSegmentationEngine.segmentAudioV2) {
+    if (isLargeFile) {
+      // Large file: use simple RMS-based segmentation on the energy timeline
+      segResult = _segmentFromRMS(channelData, duration);
+    } else if (typeof RehearsalSegmentationEngine !== 'undefined' && RehearsalSegmentationEngine.segmentAudioV2) {
       segResult = RehearsalSegmentationEngine.segmentAudioV2({
         channelData: channelData,
         sampleRate: sampleRate,
@@ -522,6 +525,89 @@ window.RecordingAnalyzer = (function() {
     } catch(e) {
       console.warn('[RecordingAnalyzer] Home refresh failed:', e.message);
     }
+  }
+
+  // ── Simple RMS-based segmenter for large files ───────────────────────────────
+  // Works on the 10Hz energy timeline (one RMS value per 100ms window).
+  // Detects music vs silence by comparing energy to a rolling baseline.
+
+  function _segmentFromRMS(rmsData, totalDuration) {
+    var RMS_WINDOW_SEC = 0.1; // each sample = 100ms
+    var SILENCE_THRESHOLD = 0.3; // fraction of median energy below which = silence
+    var MIN_SILENCE_WINDOWS = 30; // 3 seconds minimum silence gap
+    var MIN_MUSIC_WINDOWS = 300; // 30 seconds minimum for a "song" segment
+
+    // Compute median energy (ignoring zeros)
+    var nonZero = [];
+    for (var i = 0; i < rmsData.length; i++) {
+      if (rmsData[i] > 0.0001) nonZero.push(rmsData[i]);
+    }
+    nonZero.sort(function(a, b) { return a - b; });
+    var median = nonZero.length > 0 ? nonZero[Math.floor(nonZero.length / 2)] : 0.01;
+    var threshold = median * SILENCE_THRESHOLD;
+
+    // Walk through timeline, classify each window
+    var segments = [];
+    var inMusic = false;
+    var segStart = 0;
+    var silenceCount = 0;
+
+    for (var wi = 0; wi < rmsData.length; wi++) {
+      var isSilent = rmsData[wi] < threshold;
+
+      if (inMusic) {
+        if (isSilent) {
+          silenceCount++;
+          if (silenceCount >= MIN_SILENCE_WINDOWS) {
+            // End of music segment
+            var endWindow = wi - silenceCount;
+            var segDuration = endWindow - segStart;
+            if (segDuration >= MIN_MUSIC_WINDOWS) {
+              segments.push({
+                start_time: segStart * RMS_WINDOW_SEC,
+                end_time: endWindow * RMS_WINDOW_SEC,
+                type: segDuration >= 1200 ? 'song_full' : (segDuration >= 300 ? 'song_partial' : 'section_work'),
+                _originalKind: 'music'
+              });
+            }
+            inMusic = false;
+            silenceCount = 0;
+          }
+        } else {
+          silenceCount = 0;
+        }
+      } else {
+        if (!isSilent) {
+          inMusic = true;
+          segStart = wi;
+          silenceCount = 0;
+        }
+      }
+    }
+
+    // Close final segment
+    if (inMusic) {
+      var finalDuration = rmsData.length - segStart;
+      if (finalDuration >= MIN_MUSIC_WINDOWS) {
+        segments.push({
+          start_time: segStart * RMS_WINDOW_SEC,
+          end_time: rmsData.length * RMS_WINDOW_SEC,
+          type: finalDuration >= 1200 ? 'song_full' : 'song_partial',
+          _originalKind: 'music'
+        });
+      }
+    }
+
+    console.log('[RecordingAnalyzer] RMS segmentation: ' + segments.length + ' segments from ' + rmsData.length + ' windows (median energy: ' + median.toFixed(4) + ', threshold: ' + threshold.toFixed(4) + ')');
+
+    return {
+      events: segments,
+      summary: {
+        totalEvents: segments.length,
+        songFull: segments.filter(function(s) { return s.type === 'song_full'; }).length,
+        songPartial: segments.filter(function(s) { return s.type === 'song_partial'; }).length
+      }
+    };
   }
 
   // ── Audio notification chime (Web Audio API, no file needed) ─────────────────
