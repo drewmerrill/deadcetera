@@ -452,13 +452,18 @@ window.RecordingAnalyzer = (function() {
     });
     var _totalMusicTime = Object.values(_songTime).reduce(function(a, b) { return a + b; }, 0);
 
-    // Plan vs Actual (interactive)
+    // Plan vs Actual (collapsed — compact summary visible, detail on expand)
     if (_planVsActual) {
       var pva = _planVsActual;
-      var pvaHtml = '<div style="padding:10px 12px;border-radius:8px;margin-bottom:10px;font-size:0.72em;'
+      var _pvaSummary = pva.played.length + '/' + pva.planned.length + ' played';
+      if (pva.missing.length) _pvaSummary += ' \u00B7 ' + pva.missing.length + ' missing';
+      if (pva.unplanned.length) _pvaSummary += ' \u00B7 ' + pva.unplanned.length + ' unplanned';
+      var pvaHtml = '<details style="margin-bottom:10px;border-radius:8px;font-size:0.72em;'
         + (pva.missing.length > 0 ? 'border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04)' : 'border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04)')
-        + '">';
-      pvaHtml += '<div style="font-weight:700;color:var(--text-muted);margin-bottom:6px">Plan vs Actual</div>';
+        + '"><summary style="padding:8px 10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;list-style:none">'
+        + '<span style="font-weight:700;color:var(--text-muted)">Plan vs Actual</span>'
+        + '<span style="color:' + (pva.missing.length ? '#fbbf24' : '#10b981') + '">' + _pvaSummary + '</span>'
+        + '</summary><div style="padding:4px 10px 10px">';
       pvaHtml += '<span style="color:#10b981">' + pva.played.length + '/' + pva.planned.length + ' played</span>';
 
       // Repeated songs with time (clickable → jump between attempts)
@@ -502,7 +507,7 @@ window.RecordingAnalyzer = (function() {
         pvaHtml += '</div>';
       }
 
-      pvaHtml += '</div>';
+      pvaHtml += '</div></details>';
       html += pvaHtml;
     }
 
@@ -547,7 +552,7 @@ window.RecordingAnalyzer = (function() {
         + '<div style="font-size:0.65em;color:var(--text-dim);min-width:85px;flex-shrink:0">'
         + _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec)
         + '<br>' + durLabel2 + (seg.durContext ? ' \u00B7 ' + seg.durContext : '')
-        + (seg.qualityLabel && segTypeVal === 'song' ? '<br><span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : seg.qualityScore >= 2 ? '#f59e0b' : '#64748b') + '" title="' + _escAttr(seg.qualityWhy || '') + '">' + seg.qualityLabel + '</span>' : '')
+        + (seg.qualityLabel && segTypeVal === 'song' && (seg.groove || seg.qualityScore >= 3) ? '<br><span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : seg.qualityScore >= 2 ? '#f59e0b' : '#64748b') + '" title="' + _escAttr(seg.qualityWhy || '') + '">' + seg.qualityLabel + '</span>' : '')
         + (seg.groove ? '<br><span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '" title="Stability: ' + seg.groove.stability + '% \u00B7 Pocket: ' + seg.groove.pctInPocket + '%">' + seg.groove.label + '</span>' : '')
         + (seg.improvementNote ? '<br><span style="color:#818cf8;font-style:italic">' + seg.improvementNote + '</span>' : '')
         + '</div>'
@@ -561,21 +566,20 @@ window.RecordingAnalyzer = (function() {
         + '<button onclick="RecordingAnalyzer._removeSegment(' + i + ')" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;flex-shrink:0;padding:2px" title="Remove">\u2715</button>'
         + '</div>';
 
-      // Row 2: playback controls + boundary nudge
+      // Row 2: playback controls (collapsed to keep rows compact)
       var _tinyBtn = 'background:none;border:1px solid rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.6em;padding:1px 4px;border-radius:3px;font-family:inherit';
-      html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap">'
-        // Transport controls
-        + '<button onclick="RecordingAnalyzer._seekSeg(' + i + ',-10)" style="' + _tinyBtn + '" title="Back 10s">-10s</button>'
-        + '<button onclick="RecordingAnalyzer._seekSeg(' + i + ',10)" style="' + _tinyBtn + '" title="Forward 10s">+10s</button>'
+      html += '<details style="margin-top:3px"><summary style="font-size:0.55em;color:var(--text-dim);cursor:pointer;list-style:none;user-select:none">controls \u25B8</summary>'
+        + '<div style="display:flex;align-items:center;gap:4px;margin-top:2px;flex-wrap:wrap">'
+        + '<button onclick="RecordingAnalyzer._seekSeg(' + i + ',-10)" style="' + _tinyBtn + '">-10s</button>'
+        + '<button onclick="RecordingAnalyzer._seekSeg(' + i + ',10)" style="' + _tinyBtn + '">+10s</button>'
         + '<span style="width:1px;height:12px;background:rgba(255,255,255,0.06);margin:0 2px"></span>'
-        // Boundary nudge
         + '<span style="font-size:0.58em;color:var(--text-dim)">start:</span>'
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'start\',-5)" style="' + _tinyBtn + '">-5s</button>'
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'start\',5)" style="' + _tinyBtn + '">+5s</button>'
         + '<span style="font-size:0.58em;color:var(--text-dim);margin-left:4px">end:</span>'
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',-5)" style="' + _tinyBtn + '">-5s</button>'
         + '<button onclick="RecordingAnalyzer._nudgeBoundary(' + i + ',\'end\',5)" style="' + _tinyBtn + '">+5s</button>'
-        + '</div>';
+        + '</div></details>';
 
       // Row 3: talking segment — quick tags + notes
       if (segTypeVal === 'talking') {
@@ -1377,7 +1381,10 @@ window.RecordingAnalyzer = (function() {
     html += '</div>';
     // Add song search
     html += '<div style="margin-bottom:10px">'
-      + '<input id="raAddSongInput" type="text" placeholder="+ Add song..." oninput="RecordingAnalyzer._filterAddSong(this.value,\'' + safeSid + '\')" style="width:100%;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text);font-size:0.78em;font-family:inherit">'
+      + '<div style="display:flex;gap:4px;align-items:center">'
+      + '<input id="raAddSongInput" type="text" placeholder="+ Add song..." oninput="RecordingAnalyzer._filterAddSong(this.value,\'' + safeSid + '\')" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text);font-size:0.78em;font-family:inherit">'
+      + '<label style="font-size:0.65em;color:var(--text-dim);white-space:nowrap">at #<input id="raInsertPos" type="number" min="0" max="' + songs.length + '" value="0" style="width:32px;padding:2px 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text);font-size:1em;font-family:inherit;text-align:center"></label>'
+      + '</div>'
       + '<div id="raAddSongResults" style="max-height:100px;overflow-y:auto"></div>'
       + '</div>';
     html += '<div style="display:flex;gap:6px">'
@@ -1396,8 +1403,11 @@ window.RecordingAnalyzer = (function() {
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var existing = (window._raExpectedSongs || []).map(function(s) { return s.toLowerCase(); });
     var matches = songs.filter(function(s) { return s.title.toLowerCase().indexOf(lower) !== -1 && existing.indexOf(s.title.toLowerCase()) === -1; }).slice(0, 5);
+    var insertPos = parseInt(document.getElementById('raInsertPos')?.value || '0', 10);
     results.innerHTML = matches.map(function(s) {
-      return '<button onclick="window._raExpectedSongs.push(\'' + _escAttr(s.title) + '\');document.getElementById(\'raAddSongInput\').value=\'\';document.getElementById(\'raAddSongResults\').innerHTML=\'\';RecordingAnalyzer._showSongConfirmation(\'' + _escAttr(sessionId) + '\',window._raExpectedSongs)" style="display:block;width:100%;text-align:left;padding:4px 8px;border:none;background:rgba(255,255,255,0.03);color:var(--text-muted);cursor:pointer;font-size:0.75em;font-family:inherit;border-radius:4px;margin-top:2px">+ ' + _escAttr(s.title) + '</button>';
+      var safeTitle = _escAttr(s.title);
+      var safeSid = _escAttr(sessionId);
+      return '<button onclick="var pos=parseInt(document.getElementById(\'raInsertPos\')?.value||\'0\',10);window._raExpectedSongs.splice(pos,0,\'' + safeTitle + '\');document.getElementById(\'raAddSongInput\').value=\'\';document.getElementById(\'raAddSongResults\').innerHTML=\'\';RecordingAnalyzer._showSongConfirmation(\'' + safeSid + '\',window._raExpectedSongs)" style="display:block;width:100%;text-align:left;padding:4px 8px;border:none;background:rgba(255,255,255,0.03);color:var(--text-muted);cursor:pointer;font-size:0.75em;font-family:inherit;border-radius:4px;margin-top:2px">+ ' + _escAttr(s.title) + '</button>';
     }).join('');
   }
 
