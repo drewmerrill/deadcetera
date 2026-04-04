@@ -116,22 +116,52 @@ Response:
 
 ### When to call
 
-Only call for:
-- Confirmed **Song** segments (not Talking, Ignore, or false starts)
-- Segments longer than 30 seconds
-- After user has confirmed segment labels
+Only call for segments where ALL of these are true:
+- `segment_type === "song"` (not talking, ignore, false_start, restart)
+- `duration >= 30` seconds
+- User has confirmed the segment label
+- Segment is not a duplicate attempt (only analyze best or first attempt)
+
+The service enforces guardrails server-side — it will return `usable: false` for
+ineligible segments. But checking client-side avoids unnecessary requests.
+
+### When to suppress display
+
+Do NOT show chord hints in the UI when:
+- `usable === false` — the analysis is not fit for display
+- `confidence === "low"` — show only if user explicitly requests it
+- `error` field is present — show error message instead
+
+### When to show
+
+| Confidence | Show in review | Show in report | Include timeline |
+|------------|---------------|----------------|-----------------|
+| **high** | Summary + timeline expandable | Full summary | Yes |
+| **medium** | Summary only + "review to confirm" | Summary with caveat | No |
+| **low** | Hidden (or "Harmonic content unclear") | Omit or caveat | No |
 
 ### Segment review UI
 
-Under each qualifying segment row, show:
+For `usable === true` segments:
 
 ```
 Harmonic hints (medium confidence)
-  Starts on G · Moves mostly G → C → D · 7 likely changes
-  [Expand timeline ▼]
+  Likely movement: G → C → D
+  Starts on G · 7 likely changes
+  [Review to confirm]
 ```
 
-The expanded view can show the chord timeline entries.
+For high confidence, add expandable timeline:
+
+```
+Harmonic hints (high confidence) ✓
+  Likely movement: G → C → D
+  Starts on G · Ends on D · 7 changes
+  ▸ Show chord timeline
+    [0:00–6:40]  G  (71%)
+    [6:40–12:90] C  (64%)
+    [12:90–18:20] D (68%)
+```
 
 ### Report integration
 

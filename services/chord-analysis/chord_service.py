@@ -8,11 +8,15 @@ Confidence mapping:
   high   = ≥70% of frames agree with smoothed chord, ≥5 distinct stable regions
   medium = ≥50% agreement OR ≥3 stable regions
   low    = everything else
+
+Confidence-driven output:
+  high   → summary + timeline + change points
+  medium → summary + review guidance (no timeline)
+  low    → summary only + stronger uncertainty message
 """
 
 from __future__ import annotations
 
-import io
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +34,11 @@ except ImportError:
     pass
 
 
+# Segment types that should NOT be analyzed
+_SKIP_TYPES = {"talking", "ignore", "false_start", "restart"}
+_MIN_DURATION_SEC = 30
+
+
 @dataclass
 class ChordEvent:
     start_sec: float
@@ -43,6 +52,7 @@ class ChordSummary:
     opening_chord: str
     ending_chord: str
     top_chords: list[str]
+    top_progression_hint: str
     change_count: int
     notes: list[str]
 
@@ -51,6 +61,7 @@ class ChordSummary:
 class ChordAnalysisResult:
     segment_id: str
     song_name: str
+    usable: bool = False
     analysis_type: str = "harmonic_hints"
     confidence: str = "low"
     summary: Optional[ChordSummary] = None
@@ -73,12 +84,35 @@ def analyze_chords(
     song_name: str = "",
     start_sec: float = 0.0,
     end_sec: float = 0.0,
+    segment_type: str = "song",
+    duration_sec: float = 0.0,
 ) -> ChordAnalysisResult:
     """
     Run harmonic analysis on an audio segment.
 
-    Returns chord hints with confidence — never implies exact recognition.
+    Guardrails:
+    - Skips non-song segments (talking, ignore, false_start, restart)
+    - Skips segments under 30 seconds
+    - Returns usable=false when confidence is too low
     """
+    # Guardrail: skip non-song types
+    if segment_type in _SKIP_TYPES:
+        return ChordAnalysisResult(
+            segment_id=segment_id,
+            song_name=song_name,
+            usable=False,
+            error=f"Segment type '{segment_type}' not eligible for chord analysis"
+        )
+
+    # Guardrail: skip short segments
+    if duration_sec > 0 and duration_sec < _MIN_DURATION_SEC:
+        return ChordAnalysisResult(
+            segment_id=segment_id,
+            song_name=song_name,
+            usable=False,
+            error=f"Segment too short ({duration_sec:.0f}s) — minimum {_MIN_DURATION_SEC}s"
+        )
+
     if not _essentia_loaded:
         return ChordAnalysisResult(
             segment_id=segment_id,
@@ -115,7 +149,7 @@ def _run_analysis(
     loader = es.MonoLoader(filename=audio_path, sampleRate=44100)
     audio = loader()
 
-    if len(audio) < 44100:  # less than 1 second
+    if len(audio) < 44100:
         return ChordAnalysisResult(
             segment_id=segment_id,
             song_name=song_name,
@@ -124,13 +158,22 @@ def _run_analysis(
 
     duration = len(audio) / 44100.0
 
-    # 2. Compute HPCP (Harmonic Pitch Class Profile) frame-by-frame
+    # Duration guardrail on actual audio
+    if duration < _MIN_DURATION_SEC:
+        return ChordAnalysisResult(
+            segment_id=segment_id,
+            song_name=song_name,
+            usable=False,
+            error=f"Audio too short ({duration:.0f}s) — minimum {_MIN_DURATION_SEC}s"
+        )
+
+    # 2. Compute HPCP frame-by-frame
     frame_size = 4096
     hop_size = 2048
     sample_rate = 44100
 
     windowing = es.Windowing(type="blackmanharris62")
-    spectrum = es.Spectrum(size=frame_size)
+    spectrum_algo = es.Spectrum(size=frame_size)
     spectral_peaks = es.SpectralPeaks(
         sampleRate=sample_rate,
         magnitudeThreshold=0.00001,
@@ -156,7 +199,7 @@ def _run_analysis(
     hpcp_frames = []
     for frame in es.FrameGenerator(audio, frameSize=frame_size, hopSize=hop_size):
         win = windowing(frame)
-        spec = spectrum(win)
+        spec = spectrum_algo(win)
         freqs, mags = spectral_peaks(spec)
         hpcp_frame = hpcp(freqs, mags)
         hpcp_frames.append(hpcp_frame)
@@ -170,7 +213,7 @@ def _run_analysis(
 
     hpcp_array = np.array(hpcp_frames)
 
-    # 3. Run chord detection using ChordsDetection
+    # 3. Run chord detection
     chords_detection = es.ChordsDetection(
         hopSize=hop_size,
         sampleRate=sample_rate,
@@ -185,80 +228,109 @@ def _run_analysis(
             error="No chords detected"
         )
 
-    # 4. Build raw chord timeline
+    # 4. Build raw events
     frame_duration = hop_size / sample_rate
     raw_events: list[dict] = []
     for i, (chord, strength) in enumerate(zip(chords, strengths)):
-        t = i * frame_duration
         raw_events.append({
-            "time": t,
+            "time": i * frame_duration,
             "chord": chord,
             "strength": float(strength)
         })
 
-    # 5. Smooth: merge adjacent identical chords, drop blips < 0.5s
-    smoothed = _smooth_chords(raw_events, frame_duration, min_duration=0.5)
+    # 5. Aggressive smoothing — merge identical, drop blips < 1.5s
+    smoothed = _smooth_chords(raw_events, frame_duration, min_duration=1.5)
 
-    # 6. Build timeline and summary
-    timeline: list[ChordEvent] = []
-    change_points: list[float] = []
+    # 6. Compute confidence
+    confidence = _compute_confidence(smoothed, raw_events)
 
-    for i, ev in enumerate(smoothed):
-        timeline.append(ChordEvent(
-            start_sec=round(ev["start"], 1),
-            end_sec=round(ev["end"], 1),
-            chord=ev["chord"],
-            confidence=round(ev["avg_strength"], 2)
-        ))
-        if i > 0:
-            change_points.append(round(ev["start"], 1))
-
-    # Filter out "N" (no chord) from summary stats
-    named_chords = [e for e in smoothed if e["chord"] != "N"]
+    # Filter out "N" (no chord)
+    named_regions = [e for e in smoothed if e["chord"] != "N"]
 
     # Top chords by total duration
     chord_durations: dict[str, float] = {}
-    for ev in named_chords:
+    for ev in named_regions:
         dur = ev["end"] - ev["start"]
         chord_durations[ev["chord"]] = chord_durations.get(ev["chord"], 0) + dur
     top_chords = sorted(chord_durations, key=chord_durations.get, reverse=True)[:5]
 
-    opening = named_chords[0]["chord"] if named_chords else "N"
-    ending = named_chords[-1]["chord"] if named_chords else "N"
+    opening = named_regions[0]["chord"] if named_regions else "N"
+    ending = named_regions[-1]["chord"] if named_regions else "N"
 
-    # Build human-readable notes
-    notes = _build_notes(opening, ending, top_chords, len(change_points), named_chords)
+    # Derive top progression hint
+    progression_hint = _derive_progression(named_regions, top_chords)
 
-    # 7. Compute confidence tier
-    confidence = _compute_confidence(smoothed, raw_events)
+    # Change points (named regions only)
+    change_points = [round(ev["start"], 1) for ev in named_regions[1:]]
 
+    # Build notes
+    notes = _build_notes(opening, ending, top_chords, len(change_points), named_regions, progression_hint)
+
+    # Determine usability
+    usable = confidence in ("high", "medium") and len(named_regions) >= 2
+
+    # Build summary
     summary = ChordSummary(
         opening_chord=opening,
         ending_chord=ending,
         top_chords=top_chords,
+        top_progression_hint=progression_hint,
         change_count=len(change_points),
         notes=notes
     )
 
+    # Confidence-driven output: only include timeline for high confidence
+    timeline: list[ChordEvent] = []
+    if confidence == "high":
+        timeline = [
+            ChordEvent(
+                start_sec=round(ev["start"], 1),
+                end_sec=round(ev["end"], 1),
+                chord=ev["chord"],
+                confidence=round(ev["avg_strength"], 2)
+            )
+            for ev in smoothed if ev["chord"] != "N"
+        ]
+
+    # Adjust review guidance by confidence
+    if confidence == "low":
+        guidance = {
+            "suggestedLabel": "Harmonic content unclear",
+            "message": "Could not determine reliable chord hints. Review manually against your chart."
+        }
+    elif confidence == "medium":
+        guidance = {
+            "suggestedLabel": "Likely chord movement detected",
+            "message": "Chord hints may be approximate. Review to confirm key changes."
+        }
+    else:
+        guidance = {
+            "suggestedLabel": "Chord hints available",
+            "message": "Harmonic analysis looks stable. Review to confirm."
+        }
+
     return ChordAnalysisResult(
         segment_id=segment_id,
         song_name=song_name,
+        usable=usable,
         confidence=confidence,
         summary=summary,
         timeline=timeline,
-        change_points=change_points,
+        change_points=change_points if confidence in ("high", "medium") else [],
+        review_guidance=guidance,
     )
 
 
 def _smooth_chords(
     raw_events: list[dict],
     frame_duration: float,
-    min_duration: float = 0.5,
+    min_duration: float = 1.5,
 ) -> list[dict]:
-    """Merge adjacent identical chords and drop blips shorter than min_duration."""
+    """Merge adjacent identical chords and drop noisy micro-regions."""
     if not raw_events:
         return []
 
+    # Pass 1: Merge adjacent identical
     merged: list[dict] = []
     current = {
         "chord": raw_events[0]["chord"],
@@ -284,13 +356,12 @@ def _smooth_chords(
     current["avg_strength"] = float(np.mean(current["strengths"]))
     merged.append(current)
 
-    # Drop blips shorter than min_duration
+    # Pass 2: Drop micro-regions shorter than min_duration
     filtered = [m for m in merged if (m["end"] - m["start"]) >= min_duration]
-
-    # Re-merge after filtering (adjacent same chords may now be neighbors)
     if not filtered:
-        return merged  # keep original if filtering removed everything
+        return merged  # keep original if all too short
 
+    # Pass 3: Re-merge after filtering
     final: list[dict] = [filtered[0]]
     for m in filtered[1:]:
         if m["chord"] == final[-1]["chord"]:
@@ -307,16 +378,13 @@ def _compute_confidence(
     raw_events: list[dict],
 ) -> str:
     """
-    Confidence tiers based on smoothing stability.
-
-    high   = ≥70% of raw frames match their smoothed chord + ≥5 stable regions
-    medium = ≥50% match OR ≥3 stable regions
+    high   = ≥70% of raw frames match smoothed + ≥5 stable named regions (≥2s each)
+    medium = ≥50% match OR ≥3 stable named regions
     low    = everything else
     """
     if not smoothed or not raw_events:
         return "low"
 
-    # Count raw frames that agree with their smoothed region
     agree_count = 0
     for ev in raw_events:
         t = ev["time"]
@@ -327,14 +395,48 @@ def _compute_confidence(
                 break
 
     agreement_pct = agree_count / len(raw_events) if raw_events else 0
-    stable_regions = len([s for s in smoothed if s["chord"] != "N" and (s["end"] - s["start"]) >= 2.0])
+    stable_named = len([
+        s for s in smoothed
+        if s["chord"] != "N" and (s["end"] - s["start"]) >= 2.0
+    ])
 
-    if agreement_pct >= 0.70 and stable_regions >= 5:
+    if agreement_pct >= 0.70 and stable_named >= 5:
         return "high"
-    elif agreement_pct >= 0.50 or stable_regions >= 3:
+    elif agreement_pct >= 0.50 or stable_named >= 3:
         return "medium"
     else:
         return "low"
+
+
+def _derive_progression(
+    named_regions: list[dict],
+    top_chords: list[str],
+) -> str:
+    """Derive dominant chord movement pattern from smoothed regions."""
+    if len(named_regions) < 2:
+        return top_chords[0] if top_chords else ""
+
+    # Find the most common chord-to-chord transition
+    transitions: dict[str, int] = {}
+    for i in range(len(named_regions) - 1):
+        pair = named_regions[i]["chord"] + " \u2192 " + named_regions[i + 1]["chord"]
+        transitions[pair] = transitions.get(pair, 0) + 1
+
+    if not transitions:
+        return " \u2192 ".join(top_chords[:3])
+
+    # Build progression from top transitions (max 4 chords)
+    sorted_trans = sorted(transitions.items(), key=lambda x: -x[1])
+    seen_chords: list[str] = []
+    for pair_str, _count in sorted_trans:
+        parts = pair_str.split(" \u2192 ")
+        for p in parts:
+            if p not in seen_chords:
+                seen_chords.append(p)
+        if len(seen_chords) >= 4:
+            break
+
+    return " \u2192 ".join(seen_chords[:4])
 
 
 def _build_notes(
@@ -343,6 +445,7 @@ def _build_notes(
     top_chords: list[str],
     change_count: int,
     named_events: list[dict],
+    progression_hint: str,
 ) -> list[str]:
     """Build human-readable chord hint notes."""
     notes: list[str] = []
@@ -350,9 +453,8 @@ def _build_notes(
     if opening and opening != "N":
         notes.append(f"Likely starts in {opening}")
 
-    if len(top_chords) >= 2:
-        movement = " \u2192 ".join(top_chords[:3])
-        notes.append(f"Frequent movement between {movement}")
+    if progression_hint:
+        notes.append(f"Likely movement: {progression_hint}")
 
     if change_count > 10:
         notes.append(f"Frequent harmonic changes ({change_count} detected)")
@@ -362,9 +464,10 @@ def _build_notes(
     if ending and ending != opening and ending != "N":
         notes.append(f"Likely ends on {ending}")
 
-    # Check for unstable regions (many short segments)
-    short_regions = [e for e in named_events if (e["end"] - e["start"]) < 1.5]
-    if len(short_regions) > len(named_events) * 0.4:
-        notes.append("Some sections harmonically unclear \u2014 review against chart")
+    # Flag unstable regions
+    if named_events:
+        short_regions = [e for e in named_events if (e["end"] - e["start"]) < 2.0]
+        if len(short_regions) > len(named_events) * 0.4:
+            notes.append("Some sections harmonically unclear \u2014 review against chart")
 
     return notes

@@ -50,6 +50,8 @@ async def analyze(
     song_name: str = Form(""),
     start_sec: float = Form(0.0),
     end_sec: float = Form(0.0),
+    segment_type: str = Form("song"),
+    duration_sec: float = Form(0.0),
 ) -> JSONResponse:
     """
     Upload an audio file (WAV or MP3) and receive harmonic hints.
@@ -91,6 +93,8 @@ async def analyze(
         song_name=song_name,
         start_sec=start_sec,
         end_sec=end_sec,
+        segment_type=segment_type,
+        duration_sec=duration_sec,
     )
 
     # Build response
@@ -112,12 +116,14 @@ def _serialize_result(r: ChordAnalysisResult) -> dict:
     return {
         "segmentId": r.segment_id,
         "songName": r.song_name,
+        "usable": r.usable,
         "analysisType": r.analysis_type,
         "confidence": r.confidence,
         "summary": {
             "openingChord": r.summary.opening_chord,
             "endingChord": r.summary.ending_chord,
             "topChords": r.summary.top_chords,
+            "topProgressionHint": r.summary.top_progression_hint,
             "changeCount": r.summary.change_count,
             "notes": r.summary.notes,
         } if r.summary else None,
