@@ -485,22 +485,30 @@ function _buildJustification() {
 
 // ── Intelligence signal — subtle one-line insight under hero CTA ──────────────
 function _buildIntelSignal() {
-    // Only show if meaningful data exists
     try {
-        // Try readiness delta from last session
+        // Priority 1: Readiness improvement from last session
+        if (typeof GLStore !== 'undefined' && GLStore.getSessionReadinessDelta) {
+            var delta = GLStore.getSessionReadinessDelta();
+            if (delta && delta.avg > 0.1) {
+                return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">\u2191 Last rehearsal: +' + delta.avg.toFixed(1) + ' readiness</div>';
+            }
+        }
+
+        // Priority 2: Songs improved since last session
+        if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex) {
+            var idx = RehearsalAnalysis.getIssueIndex();
+            var improving = 0;
+            if (idx) Object.keys(idx).forEach(function(k) { if (idx[k].trend === 'improving') improving++; });
+            if (improving > 0) return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">\u2191 You improved ' + improving + ' song' + (improving > 1 ? 's' : '') + ' last session</div>';
+        }
+
+        // Priority 3: Rehearsal plan ready
         if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
             var ia = GLInsights.getNextAction();
             if (ia && ia.plan && ia.plan.actionPlan && ia.plan.actionPlan.length) {
                 var _songCount = (ia.plan.songs && ia.plan.songs.length) || ia.plan.actionPlan.length;
                 return '<div style="font-size:0.68em;color:#475569;margin-top:8px">\u2728 ' + _songCount + '-song rehearsal plan ready</div>';
             }
-        }
-        // Try session improvement count
-        if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueIndex) {
-            var idx = RehearsalAnalysis.getIssueIndex();
-            var improving = 0;
-            if (idx) Object.keys(idx).forEach(function(k) { if (idx[k].trend === 'improving') improving++; });
-            if (improving > 0) return '<div style="font-size:0.68em;color:#10b981;margin-top:8px">\u2191 ' + improving + ' song' + (improving > 1 ? 's' : '') + ' improved since last rehearsal</div>';
         }
     } catch(e) {}
     return '';
@@ -1399,11 +1407,26 @@ function _buildSecondaryActions(bundle) {
 
     // Suggest weak song practice if not already the primary
     var _focusTitle = focus.primary ? (typeof focus.primary === 'string' ? focus.primary : (focus.primary.title || null)) : null;
-    var _readinessTone = function(avg) {
-        if (avg <= 0) return 'not rated yet';
-        if (avg < 2) return 'needs work (' + avg.toFixed(1) + '/5)';
-        if (avg <= 3.5) return 'getting there (' + avg.toFixed(1) + '/5)';
-        return 'almost ready (' + avg.toFixed(1) + '/5)';
+    var _readinessTone = function(avg, songTitle) {
+        var tone = '';
+        if (avg <= 0) tone = 'not rated yet';
+        else if (avg < 2) tone = 'needs work (' + avg.toFixed(1) + '/5)';
+        else if (avg <= 3.5) tone = 'getting there (' + avg.toFixed(1) + '/5)';
+        else tone = 'almost ready (' + avg.toFixed(1) + '/5)';
+        // Append top issue if analysis data exists
+        if (songTitle && avg > 0) {
+            try {
+                if (typeof GLInsights !== 'undefined' && GLInsights.buildActionPlan) {
+                    var plan = GLInsights.buildActionPlan(songTitle);
+                    if (plan && plan.recommendation) {
+                        var issue = plan.recommendation.toLowerCase();
+                        if (issue.length > 30) issue = issue.slice(0, 30) + '\u2026';
+                        tone += ' \u2192 ' + issue;
+                    }
+                }
+            } catch(e) {}
+        }
+        return tone;
     };
     var _selectAndHighlight = function(title) {
         return "selectSong('" + _escHtml(title).replace(/'/g, "\\'") + "');setTimeout(function(){var p=document.querySelector('.song-detail-page');if(p){p.style.transition='box-shadow 0.3s';p.style.boxShadow='0 0 20px rgba(99,102,241,0.15)';setTimeout(function(){p.style.boxShadow='';},1500);}},600)";
@@ -1413,7 +1436,7 @@ function _buildSecondaryActions(bundle) {
         if (avgR < 4) {
             items.push(_secondaryCard(
                 'Practice ' + _escHtml(_focusTitle),
-                _readinessTone(avgR),
+                _readinessTone(avgR, _focusTitle),
                 _selectAndHighlight(_focusTitle),
                 '\uD83C\uDFB8',
                 true
@@ -1426,7 +1449,7 @@ function _buildSecondaryActions(bundle) {
         var avgR2 = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(_focusTitle) : 0;
         items.push(_secondaryCard(
             'Practice ' + _escHtml(_focusTitle),
-            avgR2 >= 4 ? 'keep it sharp (' + avgR2.toFixed(1) + '/5)' : _readinessTone(avgR2),
+            avgR2 >= 4 ? 'keep it sharp (' + avgR2.toFixed(1) + '/5)' : _readinessTone(avgR2, _focusTitle),
             _selectAndHighlight(_focusTitle),
             '\uD83C\uDFB8',
             true
@@ -1482,7 +1505,7 @@ function _renderBandStatusCompact(bundle) {
 
     // Headline: use scorecard summary if rated, otherwise specific empty state
     var headline = sc.healthSummary;
-    if (ratedCount === 0) headline = 'No songs rated yet';
+    if (ratedCount === 0) headline = 'Open a song and rate your readiness';
     var scoreLabel = ratedCount > 0 ? overallAvg.toFixed(1) + '/5' : '\u2014';
 
     return '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:12px">'
@@ -1716,8 +1739,8 @@ function _computeScorecard(bundle) {
         sc.healthColor = '#94a3b8';
     } else {
         var _anyRated = (highReady + lowReady + midReady) > 0;
-        sc.healthSummary = _anyRated ? 'No songs dialed in yet' : 'No songs rated yet';
-        sc.coachLine = _anyRated ? 'Keep running songs to build readiness.' : 'Open a song and slide your readiness to get started.';
+        sc.healthSummary = _anyRated ? 'No songs dialed in yet' : 'Open a song and rate your readiness';
+        sc.coachLine = _anyRated ? 'Keep running songs to build readiness.' : 'Slide the readiness bar on any song page to get started.';
         sc.healthColor = '#64748b';
     }
 
