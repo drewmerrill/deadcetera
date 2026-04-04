@@ -62,64 +62,44 @@ window.RecordingAnalyzer = (function() {
     var channelData, sampleRate, duration;
 
     if (isLargeFile) {
-      // Large file: decode in chunks to avoid OOM crash
-      // Strategy: decode small slices, extract RMS energy, build a lightweight
-      // energy timeline that the segmentation engine can process
+      // Large file: decode full but immediately extract RMS and release buffer.
+      // decodeAudioData handles the full MP3 correctly (unlike chunk slicing).
+      // Memory spike is unavoidable but we release ASAP.
+      console.log('[RecordingAnalyzer] Large file — full decode with immediate RMS extraction');
       try {
-        var CHUNK_DURATION = 30; // seconds per chunk
-        var tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        onProgress('decoding', 20);
 
-        // Decode first 2MB to estimate bitrate and duration
-        var probeSize = Math.min(arrayBuffer.byteLength, 2 * 1024 * 1024);
-        var probeBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0, probeSize));
-        var bitrate = (probeSize * 8) / probeBuffer.duration;
-        var estDuration = (arrayBuffer.byteLength * 8) / bitrate;
-        var probeSR = probeBuffer.sampleRate;
-        onProgress('decoding', 10);
+        var fullBuffer = await _audioCtx.decodeAudioData(arrayBuffer.slice(0));
+        var rawChannel = fullBuffer.getChannelData(0);
+        var fullSR = fullBuffer.sampleRate;
+        duration = fullBuffer.duration;
+        onProgress('decoding', 70);
 
-        // Build downsampled mono channel from chunks
-        // Target: 1 sample per 100ms = 10 Hz effective rate (tiny memory footprint)
-        var RMS_WINDOW_SEC = 0.1; // 100ms windows
+        // Immediately extract RMS energy at 100ms windows — then release the full buffer
+        var RMS_WINDOW_SEC = 0.1;
+        var windowSize = Math.floor(fullSR * RMS_WINDOW_SEC);
         var rmsTimeline = [];
-        var chunkBytes = Math.ceil(bitrate * CHUNK_DURATION / 8);
-        var totalChunks = Math.ceil(arrayBuffer.byteLength / chunkBytes);
-
-        for (var ci = 0; ci < totalChunks; ci++) {
-          var start = ci * chunkBytes;
-          var end = Math.min(start + chunkBytes + 4096, arrayBuffer.byteLength); // overlap for decoder
-          try {
-            var chunkAudio = await tempCtx.decodeAudioData(arrayBuffer.slice(start, end));
-            var chunkSamples = chunkAudio.getChannelData(0);
-            var windowSize = Math.floor(chunkAudio.sampleRate * RMS_WINDOW_SEC);
-
-            for (var wi = 0; wi < chunkSamples.length - windowSize; wi += windowSize) {
-              var sum = 0;
-              for (var si = 0; si < windowSize; si++) {
-                var sample = chunkSamples[wi + si];
-                sum += sample * sample;
-              }
-              rmsTimeline.push(Math.sqrt(sum / windowSize));
-            }
-          } catch(chunkErr) {
-            // Some chunks may fail at boundaries — fill with silence
-            var expectedWindows = Math.floor(CHUNK_DURATION / RMS_WINDOW_SEC);
-            for (var fi = 0; fi < expectedWindows; fi++) rmsTimeline.push(0);
+        for (var wi = 0; wi + windowSize <= rawChannel.length; wi += windowSize) {
+          var sum = 0;
+          for (var si = 0; si < windowSize; si++) {
+            var sample = rawChannel[wi + si];
+            sum += sample * sample;
           }
-          onProgress('decoding', 10 + Math.round((ci / totalChunks) * 80));
+          rmsTimeline.push(Math.sqrt(sum / windowSize));
         }
 
-        tempCtx.close();
+        // Release the huge buffer — we only keep the tiny RMS timeline
+        rawChannel = null;
+        fullBuffer = null;
+        _currentAudioBuffer = null;
 
-        // Convert RMS timeline to a fake channelData at 10 Hz
         sampleRate = Math.round(1 / RMS_WINDOW_SEC); // 10 Hz
-        duration = estDuration;
         channelData = new Float32Array(rmsTimeline);
-        _currentAudioBuffer = null; // no full buffer for large files
-
-        console.log('[RecordingAnalyzer] Large file: built RMS timeline (' + rmsTimeline.length + ' windows, ~' + Math.round(estDuration) + 's)');
+        console.log('[RecordingAnalyzer] Extracted RMS timeline: ' + rmsTimeline.length + ' windows from ' + Math.round(duration) + 's');
       } catch(e) {
-        console.warn('[RecordingAnalyzer] Chunked decode failed:', e.message);
-        throw new Error('Recording too large to process (' + Math.round(fileSize / 1024 / 1024) + 'MB). Try a shorter recording or lower bitrate.');
+        console.error('[RecordingAnalyzer] Large file decode failed:', e);
+        throw new Error('Recording too large (' + Math.round(fileSize / 1024 / 1024) + 'MB). Try "Recreate from Recording" with manual notes instead.');
       }
     } else {
       // Normal file: full decode
@@ -221,7 +201,7 @@ window.RecordingAnalyzer = (function() {
     return {
       segments: segments,
       grooveMetrics: grooveMetrics,
-      duration: audioBuffer.duration,
+      duration: duration,
       summary: segResult ? segResult.summary : null,
       songMatches: segments.filter(function(s) { return s.confidence >= 0.5; }).length
     };
