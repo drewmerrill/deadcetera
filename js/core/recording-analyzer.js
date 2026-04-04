@@ -202,7 +202,7 @@ window.RecordingAnalyzer = (function() {
         };
       });
 
-    // Label segments without song matches
+    // Label segments without song matches + compute quality scores
     var songNum = 1;
     segments.forEach(function(seg) {
       if (!seg.songTitle && seg.duration >= 60) {
@@ -210,9 +210,51 @@ window.RecordingAnalyzer = (function() {
         seg.confidence = 0.1;
         songNum++;
       }
-      // Default segment type
       if (!seg.segType) seg.segType = 'song';
+
+      // Quality score: based on duration (completeness) + type (full vs partial vs restart)
+      var q = 0;
+      if (seg.type === 'song_full' || seg.duration >= 120) q += 3;
+      else if (seg.type === 'song_partial' || seg.duration >= 30) q += 2;
+      else q += 1;
+      if (seg.type === 'false_start' || seg.type === 'retry') q = 1;
+      if (seg.tags && seg.tags.indexOf('strong_moment') !== -1) q += 1;
+      seg.qualityScore = Math.min(q, 4); // 1-4 scale
+      seg.qualityLabel = q >= 4 ? 'Strong finish' : q >= 3 ? 'Solid run' : q >= 2 ? 'Needs another pass' : 'Incomplete';
     });
+
+    // Per-segment groove feedback (normal files only, using onset timestamps)
+    if (grooveMetrics && grooveMetrics.onsets && grooveMetrics.onsets.length > 10) {
+      var onsets = grooveMetrics.onsets; // ms timestamps
+      segments.forEach(function(seg) {
+        var startMs = seg.startSec * 1000;
+        var endMs = seg.endSec * 1000;
+        var segOnsets = onsets.filter(function(t) { return t >= startMs && t <= endMs; });
+        if (segOnsets.length < 4) return;
+        // Compute per-segment IOIs
+        var iois = [];
+        for (var oi = 1; oi < segOnsets.length; oi++) iois.push(segOnsets[oi] - segOnsets[oi - 1]);
+        var targetMs = grooveMetrics.metrics ? grooveMetrics.metrics.targetBeatMs : 500;
+        // Filter outliers (0.4x to 3x target)
+        var filtered = iois.filter(function(v) { return v > targetMs * 0.4 && v < targetMs * 3; });
+        if (filtered.length < 3) return;
+        var mean = filtered.reduce(function(a, b) { return a + b; }, 0) / filtered.length;
+        var variance = filtered.reduce(function(a, v) { return a + (v - mean) * (v - mean); }, 0) / filtered.length;
+        var stdDev = Math.sqrt(variance);
+        var stability = Math.max(0, Math.round(100 - (stdDev / 50) * 100));
+        var pocketOffset = mean - targetMs;
+        var inPocket = filtered.filter(function(v) { return Math.abs(v - targetMs) <= 15; }).length;
+        var pctInPocket = Math.round(inPocket / filtered.length * 100);
+
+        seg.groove = {
+          stability: stability,
+          pocketOffsetMs: Math.round(pocketOffset * 10) / 10,
+          pctInPocket: pctInPocket,
+          label: stability >= 80 ? 'Locked in' : stability >= 50 ? 'Getting there' : 'Unsteady',
+          drift: Math.abs(pocketOffset) < 5 ? 'Centered' : (pocketOffset > 0 ? 'Dragging' : 'Rushing')
+        };
+      });
+    }
 
     // Flag segments not in plan
     if (_recordingContext && _recordingContext.referenceSongs && _recordingContext.referenceSongs.length) {
@@ -366,10 +408,11 @@ window.RecordingAnalyzer = (function() {
     // Summary
     var _needsReview = _currentSegments.filter(function(s) { return s.confidence < 0.4; }).length;
     var _songs = _currentSegments.filter(function(s) { return !s.segType || s.segType === 'song'; }).length;
+    var _matchSource = _recordingContext ? (_recordingContext.type === 'rehearsal' ? 'Matched from rehearsal plan' : _recordingContext.type === 'gig' ? 'Matched from setlist' : 'Single song focus') : 'Matched from catalog';
     var _summaryParts = [_currentSegments.length + ' segments'];
     if (durLabel) _summaryParts[0] += ' \u00B7 ' + durLabel;
     _summaryParts.push(_songs + ' songs');
-    if (_needsReview > 0) _summaryParts.push(_needsReview + ' need review');
+    if (_needsReview > 0) _summaryParts.push(_needsReview + ' to confirm');
     if (_planVsActual && _planVsActual.missing.length > 0) _summaryParts.push(_planVsActual.missing.length + ' missing from plan');
 
     var _segTypes = [['song','Song'],['restart','Restart'],['talking','Talking'],['jam','Jam / Improv'],['ignore','Ignore']];
@@ -380,7 +423,8 @@ window.RecordingAnalyzer = (function() {
       + '<div>'
       + '<div style="font-size:1em;font-weight:800;color:var(--text,#f1f5f9)">Recording Analysis</div>'
       + '<div style="font-size:0.7em;color:var(--text-dim,#475569)">' + _summaryParts.join(' \u00B7 ') + '</div>'
-      + '<div style="font-size:0.65em;color:' + (_allConfirmed ? '#10b981' : 'var(--text-dim)') + ';margin-top:2px">' + _confirmed + '/' + _currentSegments.length + ' reviewed' + (_allConfirmed ? ' \u2713' : '') + '</div>'
+      + '<div style="font-size:0.62em;color:var(--text-dim);margin-top:2px">' + _matchSource + ' \u00B7 review to confirm song names</div>'
+      + '<div style="font-size:0.65em;color:' + (_allConfirmed ? '#10b981' : 'var(--text-dim)') + ';margin-top:1px">' + _confirmed + '/' + _currentSegments.length + ' reviewed' + (_allConfirmed ? ' \u2713' : '') + '</div>'
       + '</div>'
       + '<div style="display:flex;gap:6px;align-items:center">'
       + (_needsReview > 0 ? '<button onclick="RecordingAnalyzer._jumpToNextReview()" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(248,113,113,0.3);background:rgba(248,113,113,0.08);color:#f87171;cursor:pointer;font-weight:600">Next to review \u25BC</button>' : '')
@@ -493,7 +537,10 @@ window.RecordingAnalyzer = (function() {
         // Row 1: play + time + name input + type dropdown
         + '<div style="display:flex;align-items:center;gap:6px">'
         + '<button onclick="RecordingAnalyzer._playSeg(' + i + ')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.9em;flex-shrink:0;padding:2px" title="Play this segment" id="raPlayBtn' + i + '">\u25B6</button>'
-        + '<div style="font-size:0.65em;color:var(--text-dim);min-width:80px;flex-shrink:0">' + _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec) + '<br>' + durLabel2 + '</div>'
+        + '<div style="font-size:0.65em;color:var(--text-dim);min-width:80px;flex-shrink:0">' + _formatTime(seg.startSec) + '\u2013' + _formatTime(seg.endSec) + '<br>' + durLabel2
+        + (seg.qualityLabel && segTypeVal === 'song' ? '<br><span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : seg.qualityScore >= 2 ? '#f59e0b' : '#64748b') + '">' + seg.qualityLabel + '</span>' : '')
+        + (seg.groove ? '<br><span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">' + seg.groove.drift + '</span>' : '')
+        + '</div>'
         + '<input type="text" value="' + _escAttr(seg.displayTitle || '') + '" onchange="RecordingAnalyzer._updateSegTitle(' + i + ',this.value)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 6px;color:var(--text,#f1f5f9);font-size:0.78em;font-family:inherit;min-width:0" placeholder="Song name...">'
         + '<select onchange="RecordingAnalyzer._updateSegType(' + i + ',this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;padding:3px 4px;color:var(--text-dim);font-size:0.65em;flex-shrink:0;font-family:inherit">'
         + _segTypes.map(function(t) { return '<option value="' + t[0] + '"' + (t[0] === segTypeVal ? ' selected' : '') + '>' + t[1] + '</option>'; }).join('')
@@ -758,7 +805,7 @@ window.RecordingAnalyzer = (function() {
     var insights = [];
     if (!totalTime || totalTime < 60) return insights;
 
-    // Top time hogs
+    // Time distribution
     var sorted = Object.keys(songTime).map(function(k) { return { title: k, time: songTime[k] }; });
     sorted.sort(function(a, b) { return b.time - a.time; });
     if (sorted.length >= 3) {
@@ -768,13 +815,16 @@ window.RecordingAnalyzer = (function() {
         insights.push('You spent ' + topPct + '% of rehearsal on ' + topTwo[0].title + ' and ' + topTwo[1].title);
       }
     }
+    if (sorted.length > 0 && sorted[0].time / totalTime >= 0.25) {
+      insights.push(sorted[0].title + ' dominated rehearsal time (' + Math.round(sorted[0].time / 60) + ' min)');
+    }
 
     // Skipped songs
     if (_planVsActual && _planVsActual.missing.length > 0) {
       insights.push('You skipped ' + _planVsActual.missing.length + ' planned song' + (_planVsActual.missing.length > 1 ? 's' : ''));
     }
 
-    // Many restarts on one song
+    // Restarts
     if (_planVsActual && _planVsActual.repeated.length) {
       var mostRepeated = _planVsActual.repeated.sort(function(a, b) { return b.attempts - a.attempts; })[0];
       if (mostRepeated.attempts >= 3) {
@@ -782,7 +832,43 @@ window.RecordingAnalyzer = (function() {
       }
     }
 
-    return insights.slice(0, 2);
+    // Groove insights (from per-segment groove data)
+    if (_currentSegments) {
+      var rushingSegs = _currentSegments.filter(function(s) { return s.groove && s.groove.drift === 'Rushing'; });
+      var draggingSegs = _currentSegments.filter(function(s) { return s.groove && s.groove.drift === 'Dragging'; });
+      var lockedSegs = _currentSegments.filter(function(s) { return s.groove && s.groove.stability >= 80; });
+
+      if (rushingSegs.length >= 3) {
+        insights.push('Rushing in ' + rushingSegs.length + ' sections \u2014 try with a click track');
+      } else if (draggingSegs.length >= 3) {
+        insights.push('Dragging in ' + draggingSegs.length + ' sections \u2014 push the energy');
+      }
+      if (lockedSegs.length > 0 && _currentSegments.length > 0) {
+        var lockedPct = Math.round(lockedSegs.length / _currentSegments.filter(function(s) { return s.groove; }).length * 100);
+        if (lockedPct >= 60) insights.push('Locked in on ' + lockedPct + '% of songs \u2014 the groove is there');
+      }
+
+      // Best attempt detection
+      var songAttempts = {};
+      _currentSegments.forEach(function(s) {
+        if (s.songTitle && s.qualityScore) {
+          if (!songAttempts[s.songTitle]) songAttempts[s.songTitle] = [];
+          songAttempts[s.songTitle].push(s);
+        }
+      });
+      Object.keys(songAttempts).forEach(function(title) {
+        var attempts = songAttempts[title];
+        if (attempts.length < 2) return;
+        var best = attempts.reduce(function(a, b) {
+          var scoreA = a.qualityScore + (a.groove ? a.groove.stability / 25 : 0);
+          var scoreB = b.qualityScore + (b.groove ? b.groove.stability / 25 : 0);
+          return scoreA >= scoreB ? a : b;
+        });
+        best.qualityLabel = 'Best attempt';
+      });
+    }
+
+    return insights.slice(0, 3);
   }
 
   function _jumpToNextReview() {
