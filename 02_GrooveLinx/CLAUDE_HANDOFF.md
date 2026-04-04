@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-02 (Song Data Consolidation + Product Capability Audit + UI Fixes)_
+_Last updated: 2026-04-04 (Song Page Restructure + Home Redesign + Recording Analysis + Audio Intelligence)_
 
 ## Read This First
 
@@ -558,6 +558,129 @@ Full 50+ feature inventory with duplication analysis and consolidation plan.
 - Schedule page: RSVP buttons, confidence-scored best rehearsal dates, intelligence banner
 - Left rail: emoji icons restored, collapsible sections with chevrons
 
+### Song Page Restructure (2026-04-02 → 2026-04-04)
+
+**Tab system redesigned:**
+- Improve → **Practice** (with hero CTA + guided 3-step flow)
+- Sing → **Harmony** (with "Create Harmony" hero + guided workflow)
+- Tab order: Practice, Play, Versions, Harmony
+- Default tab is Practice (was Play)
+- All features un-gated from Lock In mode (Band Love, Structure, Discussion, Voting)
+- Song Info removed from main content — lives only in right panel
+- Right panel: Song Info → Readiness (full bars) → Band Love → collapsible Structure/Discussion
+
+**Practice tab (guided workflow):**
+- Hero: "Practice This Song" with "Start Practice Session" CTA
+- 3 steps: Listen → Play Along → Rate (state-tracked, visual emphasis shifts)
+- Progress: readiness-aware messaging ("Start with the reference" → "Nice — now rate your readiness")
+- Step 2 emphasized with accent border; completed steps show green checkmarks
+- Feedback loop: closing rehearsal mode triggers Step 3 emphasis
+
+**Harmony tab (guided workflow):**
+- Hero: "Create Harmony" with Generate/Record/Import actions
+- Part cards: Lead (primary, pulsing glow on Generate), High, Low
+- Progress: "Start with Lead" → "Next: Add High" → "All parts ready"
+- Single-column layout, collapsed notation section
+- Motivational toasts on generation
+
+### Home Redesign (2026-04-02 → 2026-04-04)
+
+**Decision engine — one primary action:**
+- Hero card: tighter (18px pad, 1px border), readiness-state-aware
+- NOT READY: "Rehearsal in 1 day — focus on [song names]" + "Based on upcoming rehearsal + weak songs"
+- READY: "your set is tight. Run it." (no sub text)
+- Intelligence signal: "Last rehearsal: +0.4 readiness" or "On a 3-session improvement streak"
+- Intent section (3 competing buttons) REMOVED
+- Band Activity section REMOVED
+
+**Secondary suggestions (max 2):**
+- Practice card: "Practice [Song] — getting there → tighten transitions"
+- Gig card: "[Venue] in N days"
+- Practice card gets accent border; hero and practice deduplicated (different songs)
+
+**Band Status compact:** merged scorecard + readiness bar + counts (was two separate collapsed sections)
+**Band Room:** collapsed `<details>` with preview line (was full card)
+**[object Object] bug fixed:** focus.primary is an object, not a string
+
+### Recording Analysis System (2026-04-04, NEW)
+
+New module: `js/core/recording-analyzer.js` (RecordingAnalyzer)
+
+**Flow:**
+1. Context picker: "What is this recording?" (Rehearsal / Gig / Practice)
+2. Rehearsal plan selection: link to specific session or current plan
+3. Optional expected-song confirmation (add/remove/reorder)
+4. File upload → chunked decode for large files (>100MB)
+5. RMS segmentation: 8s silence gap, 60s min segment, 15s merge gap
+6. Song Matching Engine scoring (multi-signal)
+7. Segment review UI: playback, type dropdown, confirm, merge, boundary nudge
+8. Generate Report → feeds into RehearsalAnalysis pipeline
+
+**Segment review features:**
+- Per-segment playback (▶ play/pause, -10s/+10s skip)
+- Segment type: Song / Restart / Talking / Jam / Ignore
+- Duplicate labeling: "Bird Song (Attempt 1)", "(Attempt 2)"
+- Boundary nudge: start/end ±5s
+- Quick confirm: ✓ button, auto-confirms on play/edit
+- Plan vs Actual: collapsed summary with missing/unplanned song actions
+- Behavior insights: time distribution, groove patterns, improvement detection
+- Quality labels: Strong finish / Solid run / Needs another pass
+- Groove per segment: Locked in · Centered / Unsteady · Rushing
+
+### Song Matching Engine (2026-04-04, NEW)
+
+New module: `js/core/song_matching_engine.js` (SongMatchingEngine)
+
+**6 scoring signals (weighted, normalized):**
+- planMatch (0.40) — position-aware: segment N → plan song N (with decay)
+- audioSimilar (0.30) — CLAP cosine similarity vs confirmed embedding bank
+- chordSimilar (0.10) — song key vs segment chord hints
+- tempoProx (0.10) — BPM proximity (±5% = 1.0, ±15% = 0.4)
+- lyricsMatch (0.05) — Deepgram transcript keyword match
+- continuity (0.05) — graduated by neighbor trust level
+
+**Confidence rules:**
+- high: score ≥ 0.75, gap ≥ 0.12, ≥2 active signals
+- medium: score ≥ 0.5
+- low: < 0.5
+- Single-signal matches capped at medium ("Limited evidence")
+- Signal disagreement: reduces confidence, flags for review
+
+**Learning loop:**
+- Confirmed segments stored as strong anchors (if quality rules pass)
+- Embedding bank: per-songId, max 10, weakest-evicted
+- Accuracy logging: predicted vs confirmed, per-signal contribution
+- Dev helpers: getConfidenceBreakdown(), getSignalContributionSummary(), getMostConfusedSongs()
+
+### Audio Intelligence Microservices (2026-04-04, NEW)
+
+**Chord Analysis Service** (`services/chord-analysis/`, port 8100):
+- Essentia HPCP + ChordsDetection → chord timeline + progression hints
+- Smoothing: merge identical, drop blips < 1.5s
+- Confidence: high/medium/low based on frame agreement
+- Practice suggestions: "Focus on clean chord transitions"
+- Honest language: "Likely movement" never "Detected chords"
+
+**Audio Embedding Service** (`services/audio-embeddings/`, port 8200):
+- CLAP (laion/clap-htsat-unfused) → 512-dim normalized embeddings
+- Cosine similarity for segment comparison
+- Quality-filtered bank: only strong anchors stored
+
+**Deepgram Transcription** (Cloudflare Worker `/transcribe`):
+- Per-segment talking transcription
+- Speaker diarization, smart formatting
+- Editable transcripts, tag suggestions (tempo/transition/ending)
+
+### Bug Fixes (2026-04-02 → 2026-04-04)
+
+- Song detail header sticky removed (CleanShot scrolling fix)
+- Chart close button: returns to Play tab (was switching to Improve)
+- Pocket Meter: lazy-loads pocket-meter.js on rehearsal toolbar click
+- Mouse wheel scroll: explicit height on main-content for wheel events
+- Setlist song dropdown: z-index above now-playing bar (Encore selection fix)
+- Monkey emoji logic: 🐵 = visible, 🙈 = hidden (was reversed)
+- Pocket Meter CSS injection: validates content length, re-injects if empty
+
 ## Restart Prompt
 
 Paste this to resume:
@@ -568,24 +691,26 @@ I'm continuing GrooveLinx development. Read these files first:
 - 02_GrooveLinx/CURRENT_PHASE.md
 - CLAUDE.md
 
-Current state (2026-04-02):
-- Song data consolidation: songs_v2/{songId} is canonical, legacy fallback in place
-- Product capability audit completed — 50+ features inventoried, consolidation plan ready
-- Mode switcher has NO UI — app permanently in Improve mode, Lock In/Play features inaccessible
-- 5 major features locked behind mode gates: Band Love, Prospect Voting, Structure editor, Discussion, Play mode
-- "Sharpen" still appears as user-facing label (should be "Improve")
-- Dead code identified: _renderSharpenDashboard, home-dashboard-cc.js (entire file no-op)
-- Broken pages: Feed (no renderer), Equipment/Contacts (empty)
-- View Chart fixed (sdShowChart), Song Info added to Improve mode
-- 4 SYSTEM LOCKs: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
+Current state (2026-04-04):
+- Song Page restructured: Practice/Play/Versions/Harmony tabs (guided workflows)
+- Home redesigned as decision engine (one hero + secondary cards + compact band status)
+- Recording Analysis system built: upload MP3 → segment → match → review → report
+- Song Matching Engine: 6-signal weighted scoring with learning loop
+- Chord Analysis microservice running (Essentia, port 8100)
+- Audio Embedding microservice running (CLAP, port 8200)
+- Deepgram transcription wired via Cloudflare Worker
+- RMS segmenter tuned for real rehearsals (8s silence, 60s min, 15s merge)
+- Post-match merge + BPM validation pass
+- All features un-gated from Lock In mode
+- [object Object] bug fixed on Home
+- 4 SYSTEM LOCKs intact: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
 
-Next recommended action:
-Execute Phase A of consolidation plan:
-1. Un-gate hidden features from Lock In mode (Band Love, Structure, Discussion, Voting)
-2. Fix "Sharpen" → "Improve" in all user-facing labels
-3. Add Harmony Lab tab to Improve mode
-4. Delete dead code (~200 lines dashboard + entire cc.js)
-5. Fix/remove broken nav items (Feed, Equipment, Contacts)
+Next recommended actions:
+1. Test recording analysis end-to-end with chord/embedding services running
+2. Calibrate song matching thresholds on real rehearsal data
+3. Wire chord hints into automatic post-segmentation flow (currently on-demand)
+4. Persist embedding bank to Firebase for cross-session learning
+5. Add waveform visualization to segment review
 ```
 
 ## Firebase Paths

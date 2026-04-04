@@ -87,10 +87,24 @@ def generate_embedding(audio_bytes: bytes) -> dict:
 
     try:
         import torch
-        import librosa
+        import soundfile as sf
 
-        # Load audio: mono, 48kHz (CLAP expects 48kHz)
-        audio, sr = librosa.load(tmp_path, sr=48000, mono=True)
+        # Load audio: mono — then resample to 48kHz if needed
+        audio, sr = sf.read(tmp_path, dtype='float32')
+        # Convert stereo to mono if needed
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        # Simple resample to 48kHz if needed (linear interpolation)
+        if sr != 48000:
+            import numpy as _np
+            duration = len(audio) / sr
+            new_len = int(duration * 48000)
+            audio = _np.interp(
+                _np.linspace(0, len(audio) - 1, new_len),
+                _np.arange(len(audio)),
+                audio
+            ).astype(_np.float32)
+            sr = 48000
 
         if len(audio) < 48000:  # less than 1 second
             return {"error": "Audio too short (< 1 second)"}

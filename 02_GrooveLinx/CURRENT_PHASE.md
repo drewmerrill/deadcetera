@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-02 (Song Data Consolidation + Product Capability Audit + UI Fixes)_
+_Updated: 2026-04-04 (Song Page Restructure + Home Redesign + Recording Analysis + Audio Intelligence)_
 
-## Active Phase: Product Consolidation + Founder UAT
+## Active Phase: Recording Intelligence + Founder UAT
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main) + `push.py` for GitHub Pages
@@ -279,33 +279,51 @@ js/ui/gl-avatar-ui.js                  — Avatar: photorealistic portraits, act
 js/ui/navigation.js                     — GL_PAGE_READY lifecycle (_navSeq guard, SYSTEM LOCK)
 rehearsal-mode.js                        — Rehearsal mode + Reveal + analysis pipeline trigger
 js/core/firebase-service.js             — Firebase CRUD, songPath(), songs_v2 migration, legacy fallback
-worker.js                               — Cloudflare Worker: /tts, /fetch-chart, API proxies
+worker.js                               — Cloudflare Worker: /tts, /fetch-chart, /transcribe, API proxies
+js/core/recording-analyzer.js          — Upload → segment → match → review → report (NEW)
+js/core/song_matching_engine.js        — 6-signal weighted scoring + learning loop (NEW)
+services/chord-analysis/               — Essentia chord hints microservice, port 8100 (NEW)
+services/audio-embeddings/             — CLAP embedding microservice, port 8200 (NEW)
 tests/chaos.spec.js                      — Chaos stability tests (46 tests)
 tests/burn-in.spec.js                   — Burn-in stability tests
 ```
 
-### Pending Work (Priority — Updated 2026-04-02)
+### Completed (2026-04-02 → 2026-04-04)
 
-**HIGH — Product Consolidation:**
-1. Un-gate Band Love, Structure, Discussion, Prospect Vote from Lock In mode
-2. Fix "Sharpen" → "Improve" in all user-facing labels
-3. Add Harmony Lab tab to Improve mode tab bar
-4. Delete dead dashboard code + home-dashboard-cc.js
-5. Fix/remove broken nav items (Feed, Equipment, Contacts)
-6. Decide: add mode switcher UI vs remove mode gating entirely
+- ✅ Un-gated Band Love, Structure, Discussion, Voting from Lock In mode
+- ✅ Fixed "Sharpen" → "Improve" → renamed to "Practice"
+- ✅ Added Harmony Lab tab to all modes (renamed "Harmony")
+- ✅ Song Page restructured: Practice/Play/Versions/Harmony guided workflows
+- ✅ Home redesigned: decision engine, one hero, no competing actions
+- ✅ Recording Analysis: upload → segment → match → review → report
+- ✅ Song Matching Engine: 6-signal weighted scoring
+- ✅ Chord Analysis microservice (Essentia)
+- ✅ Audio Embedding microservice (CLAP)
+- ✅ Deepgram transcription for talking segments
+- ✅ [object Object] bug fixed, sticky header fixed, monkey emoji fixed
+
+### Pending Work (Priority — Updated 2026-04-04)
+
+**HIGH — Recording Intelligence:**
+1. Calibrate song matching on real rehearsal recordings (threshold tuning)
+2. Wire chord hints into automatic post-segmentation flow
+3. Persist embedding bank to Firebase for cross-session learning
+4. Add waveform visualization to segment review
+5. Test Deepgram transcription end-to-end
 
 **HIGH — Data Cleanup:**
-7. Verify songs_v2 migration complete (check for `[legacy-read]` warnings in console)
-8. Remove legacy fallback + localStorage bridge once verified
-9. Remove migration function once all data in v2
+6. Verify songs_v2 migration complete (check for `[legacy-read]` warnings)
+7. Remove legacy fallback + localStorage bridge once verified
+8. Delete dead dashboard code + home-dashboard-cc.js
 
 **MEDIUM:**
-10. Founder Test Manual (Sections 2-10)
-11. Demo video clips for website
-12. Real user testing with non-founder bands
-13. Stripe payment integration
+9. Founder Test Manual (Sections 2-10)
+10. Demo video clips for website
+11. Real user testing with non-founder bands
+12. Stripe payment integration
+13. iPad/mobile nav testing (mode gating on old cached versions)
 
 **LOW:**
-14. Internal function naming normalization (P3 items from audit)
+14. Internal function naming normalization
 15. CSS comment drift cleanup
 16. BrowserStack real-device testing
