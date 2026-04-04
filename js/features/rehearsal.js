@@ -1108,10 +1108,23 @@ window._rhRerunAnalysis = function(sessionId) {
     });
 };
 
-window._rhShowSessionReport = function(sessionId) {
-    _rhLoadSessions().then(function(sessions) {
-        var s = sessions.find(function(x) { return x.sessionId === sessionId; });
-        if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
+window._rhShowSessionReport = async function(sessionId) {
+    // Load fresh from Firebase to get latest analysis data (not stale cache)
+    var s = null;
+    try {
+        if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+            var snap = await firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value');
+            s = snap.val();
+            if (s) s.sessionId = sessionId;
+        }
+    } catch(e) {}
+    // Fallback to cached sessions
+    if (!s) {
+        var sessions = await _rhLoadSessions();
+        s = sessions.find(function(x) { return x.sessionId === sessionId; });
+    }
+    if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
+    {
 
         var dateStr = s.date ? new Date(s.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
         var durMin = s.totalActualMin || 0;
@@ -1273,7 +1286,7 @@ window._rhShowSessionReport = function(sessionId) {
         ov.innerHTML = html;
         ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
         document.body.appendChild(ov);
-    });
+    }
 };
 
 // ── Headline Insight ────────────────────────────────────────────────────────
