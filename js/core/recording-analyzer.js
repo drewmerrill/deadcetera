@@ -217,6 +217,62 @@ window.RecordingAnalyzer = (function() {
       });
     }
 
+    // ── Post-match: merge adjacent same-song segments ──────────────────────────
+    // If two adjacent segments got the same song label (or one is unlabeled),
+    // and the gap between them is small, merge them into one segment.
+    if (segments.length > 1) {
+      var _merged = [segments[0]];
+      for (var mi = 1; mi < segments.length; mi++) {
+        var prev = _merged[_merged.length - 1];
+        var curr = segments[mi];
+        var gap = curr.startSec - prev.endSec;
+        var sameLabel = prev.songTitle && curr.songTitle && prev.songTitle === curr.songTitle;
+        var oneUnlabeled = (!curr.songTitle || curr.songTitle.indexOf('Song ') === 0) && prev.songTitle;
+
+        // Merge if: same song OR one unlabeled + gap < 20s
+        if ((sameLabel || oneUnlabeled) && gap < 20) {
+          prev.endSec = curr.endSec;
+          prev.duration = prev.endSec - prev.startSec;
+          if (oneUnlabeled && !sameLabel) {
+            // Keep the labeled segment's title
+          }
+          console.log('[RecordingAnalyzer] Merged segments: ' + prev.songTitle + ' (' + _formatTime(prev.startSec) + '-' + _formatTime(prev.endSec) + ')');
+        } else {
+          _merged.push(curr);
+        }
+      }
+      if (_merged.length < segments.length) {
+        console.log('[RecordingAnalyzer] Post-match merge: ' + segments.length + ' → ' + _merged.length + ' segments');
+        segments = _merged;
+      }
+    }
+
+    // ── Post-match: validate labels using BPM when available ─────────────────
+    // If a segment has groove data (BPM) and the assigned song has a known BPM,
+    // check if they're wildly different. If so, look for a better candidate.
+    segments.forEach(function(seg) {
+      if (!seg.songTitle || !seg.groove) return;
+      var song = songCatalog.find(function(s) { return s.title === seg.songTitle; });
+      if (!song || !song.bpm) return;
+
+      // Estimate BPM from groove median IOI if available
+      var segBpm = seg.bpm || (seg.groove && seg.groove.pocketOffsetMs ? 60000 / (500 + seg.groove.pocketOffsetMs) : 0);
+      if (!segBpm) return;
+
+      var diff = Math.abs(segBpm - song.bpm) / song.bpm;
+      if (diff > 0.30) { // >30% BPM mismatch — likely wrong song
+        seg._bpmMismatch = true;
+        seg.confidence = Math.min(seg.confidence || 1, 0.3);
+        if (seg.songMatch) {
+          seg.songMatch.confidence = 'low';
+          seg.songMatch.needsReview = true;
+          seg.songMatch.explanation = seg.songMatch.explanation || [];
+          seg.songMatch.explanation.push('BPM mismatch: segment ~' + Math.round(segBpm) + ' vs song ' + song.bpm);
+        }
+        console.log('[RecordingAnalyzer] BPM mismatch: ' + seg.songTitle + ' (seg ~' + Math.round(segBpm) + ' vs song ' + song.bpm + ')');
+      }
+    });
+
     // Label segments without song matches + compute quality scores
     var songNum = 1;
     segments.forEach(function(seg) {
