@@ -1813,8 +1813,9 @@ window.RecordingAnalyzer = (function() {
   function _segmentFromRMS(rmsData, totalDuration) {
     var RMS_WINDOW_SEC = 0.1; // each sample = 100ms
     var SILENCE_THRESHOLD = 0.3; // fraction of median energy below which = silence
-    var MIN_SILENCE_WINDOWS = 30; // 3 seconds minimum silence gap
-    var MIN_MUSIC_WINDOWS = 300; // 30 seconds minimum for a "song" segment
+    var MIN_SILENCE_WINDOWS = 80; // 8 seconds — real between-song breaks (was 3s)
+    var MIN_MUSIC_WINDOWS = 600; // 60 seconds minimum for a song segment (was 30s)
+    var MERGE_GAP_WINDOWS = 150; // 15 seconds — merge segments closer than this
 
     // Compute median energy (ignoring zeros)
     var nonZero = [];
@@ -1825,8 +1826,8 @@ window.RecordingAnalyzer = (function() {
     var median = nonZero.length > 0 ? nonZero[Math.floor(nonZero.length / 2)] : 0.01;
     var threshold = median * SILENCE_THRESHOLD;
 
-    // Walk through timeline, classify each window
-    var segments = [];
+    // Pass 1: Find all music regions (even short ones)
+    var rawSegments = [];
     var inMusic = false;
     var segStart = 0;
     var silenceCount = 0;
@@ -1838,17 +1839,8 @@ window.RecordingAnalyzer = (function() {
         if (isSilent) {
           silenceCount++;
           if (silenceCount >= MIN_SILENCE_WINDOWS) {
-            // End of music segment
             var endWindow = wi - silenceCount;
-            var segDuration = endWindow - segStart;
-            if (segDuration >= MIN_MUSIC_WINDOWS) {
-              segments.push({
-                start_time: segStart * RMS_WINDOW_SEC,
-                end_time: endWindow * RMS_WINDOW_SEC,
-                type: segDuration >= 1200 ? 'song_full' : (segDuration >= 300 ? 'song_partial' : 'section_work'),
-                _originalKind: 'music'
-              });
-            }
+            rawSegments.push({ start: segStart, end: endWindow });
             inMusic = false;
             silenceCount = 0;
           }
@@ -1863,21 +1855,39 @@ window.RecordingAnalyzer = (function() {
         }
       }
     }
+    if (inMusic) rawSegments.push({ start: segStart, end: rmsData.length });
 
-    // Close final segment
-    if (inMusic) {
-      var finalDuration = rmsData.length - segStart;
-      if (finalDuration >= MIN_MUSIC_WINDOWS) {
-        segments.push({
-          start_time: segStart * RMS_WINDOW_SEC,
-          end_time: rmsData.length * RMS_WINDOW_SEC,
-          type: finalDuration >= 1200 ? 'song_full' : 'song_partial',
-          _originalKind: 'music'
-        });
+    // Pass 2: Merge segments separated by gaps < MERGE_GAP_WINDOWS
+    // This prevents mid-song quiet sections from splitting a single song
+    var merged = [];
+    if (rawSegments.length) {
+      merged.push(rawSegments[0]);
+      for (var mi = 1; mi < rawSegments.length; mi++) {
+        var gap = rawSegments[mi].start - merged[merged.length - 1].end;
+        if (gap < MERGE_GAP_WINDOWS) {
+          // Merge: extend previous segment to include this one
+          merged[merged.length - 1].end = rawSegments[mi].end;
+        } else {
+          merged.push(rawSegments[mi]);
+        }
       }
     }
 
-    console.log('[RecordingAnalyzer] RMS segmentation: ' + segments.length + ' segments from ' + rmsData.length + ' windows (median energy: ' + median.toFixed(4) + ', threshold: ' + threshold.toFixed(4) + ')');
+    // Pass 3: Filter to minimum duration
+    var segments = [];
+    merged.forEach(function(seg) {
+      var segDuration = seg.end - seg.start;
+      if (segDuration >= MIN_MUSIC_WINDOWS) {
+        segments.push({
+          start_time: seg.start * RMS_WINDOW_SEC,
+          end_time: seg.end * RMS_WINDOW_SEC,
+          type: segDuration >= 1200 ? 'song_full' : 'song_partial',
+          _originalKind: 'music'
+        });
+      }
+    });
+
+    console.log('[RecordingAnalyzer] RMS segmentation: ' + segments.length + ' segments from ' + rmsData.length + ' windows (raw=' + rawSegments.length + ' merged=' + merged.length + ' minSilence=' + (MIN_SILENCE_WINDOWS * RMS_WINDOW_SEC) + 's minSong=' + (MIN_MUSIC_WINDOWS * RMS_WINDOW_SEC) + 's)');
 
     return {
       events: segments,
