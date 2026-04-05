@@ -3403,28 +3403,35 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
 
     var html = '';
 
-    // Cadence info
+    // Cadence + preferred day info
     var cadenceLabel = recs.cadence.detected.detected
-        ? 'Based on your pattern: every ~' + recs.cadence.effectiveDays + ' days'
+        ? 'Your pattern: every ~' + recs.cadence.effectiveDays + ' days'
         : 'Assuming weekly rehearsals';
+    if (recs.preferredDays && recs.preferredDays.detected) {
+        cadenceLabel += ' \u00B7 usually ' + recs.preferredDays.preferred.map(function(p) { return p.name + 's'; }).join(' or ');
+    }
     html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:6px">' + cadenceLabel + '</div>';
 
-    // Primary recommendation
+    // Primary recommendation — with 2-3 reason lines
     var p = recs.primary;
     var pDate = new Date(p.date + 'T12:00:00');
     var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-    html += '<div onclick="_rhPickRecommendedDate(\'' + p.date + '\')" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);cursor:pointer;margin-bottom:6px">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between">';
-    html += '<div>';
+    html += '<div id="rhRecPrimary" onclick="_rhPickRecommendedDate(\'' + p.date + '\',this)" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);cursor:pointer;margin-bottom:6px;transition:border-color 0.2s,background 0.2s">';
+    html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">';
+    html += '<div style="flex:1">';
     html += '<div style="font-size:0.85em;font-weight:700;color:var(--text)">' + pLabel + '</div>';
-    html += '<div style="font-size:0.65em;color:var(--text-dim);margin-top:2px">';
-    if (p.reasons.length) html += p.reasons[0];
-    else html += p.availability.available + '/' + p.availability.total + ' available';
+    // Show up to 3 reasons
+    var pReasons = p.reasons.slice(0, 3);
+    if (pReasons.length) {
+        html += '<div style="margin-top:3px">';
+        pReasons.forEach(function(r) {
+            html += '<div style="font-size:0.62em;color:var(--text-dim);line-height:1.4">\u2022 ' + escHtml(r) + '</div>';
+        });
+        html += '</div>';
+    }
     html += '</div>';
-    html += '</div>';
-    html += '<div style="display:flex;align-items:center;gap:6px">';
-    html += '<span style="font-size:0.65em;font-weight:700;color:' + p.color + '">' + p.label + '</span>';
-    html += '<span style="font-size:0.72em;color:#22c55e">Use this date</span>';
+    html += '<div style="text-align:right;flex-shrink:0">';
+    html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">Use this date \u2192</span>';
     html += '</div>';
     html += '</div></div>';
 
@@ -3435,36 +3442,57 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
         recs.alternatives.forEach(function(alt) {
             var aDate = new Date(alt.date + 'T12:00:00');
             var aLabel = aDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-            var aInfo = alt.tooClose ? 'Close to existing rehearsal' : (alt.availability.available + '/' + alt.availability.total + ' available');
-            html += '<div onclick="_rhPickRecommendedDate(\'' + alt.date + '\')" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;margin-top:3px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02)">';
-            html += '<div>';
-            html += '<span style="font-size:0.78em;color:var(--text)">' + aLabel + '</span>';
-            html += '<span style="font-size:0.62em;color:var(--text-dim);margin-left:6px">' + aInfo + '</span>';
+            // Build concise reason
+            var aReason = alt.reasons.length ? alt.reasons[0] : (alt.availability.available + ' of ' + alt.availability.total + ' available');
+            if (alt.tooClose && alt.penalties.length) aReason = alt.penalties[0];
+            html += '<div onclick="_rhPickRecommendedDate(\'' + alt.date + '\',this)" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;margin-top:3px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02);transition:border-color 0.2s,background 0.2s">';
+            html += '<div style="min-width:0">';
+            html += '<div style="font-size:0.78em;color:var(--text)">' + aLabel + '</div>';
+            html += '<div style="font-size:0.58em;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(aReason) + '</div>';
             html += '</div>';
-            html += '<span style="font-size:0.62em;font-weight:600;color:' + alt.color + '">' + alt.label + '</span>';
+            html += '<span style="font-size:0.62em;font-weight:600;color:' + alt.color + ';flex-shrink:0;margin-left:6px">' + alt.label + '</span>';
             html += '</div>';
         });
         html += '</details>';
     }
 
-    // Too-close dates warning
+    // Too-close dates warning — specific messaging
     var tooCloseNotShown = recs.tooClose.filter(function(c) {
         return !recs.alternatives.some(function(a) { return a.date === c.date; }) && c.date !== recs.primary.date;
     });
     if (tooCloseNotShown.length > 0 && !overrideSpacing) {
-        html += '<div style="font-size:0.62em;color:#f59e0b;margin-top:4px">';
-        html += tooCloseNotShown.length + ' date' + (tooCloseNotShown.length > 1 ? 's' : '') + ' skipped (too close to existing rehearsal). ';
-        html += '<span onclick="_rhRenderDateRecommendations(true)" style="color:#818cf8;cursor:pointer;text-decoration:underline">Allow extra this week</span>';
+        // Show the most relevant penalty text
+        var skipReason = tooCloseNotShown[0].penalties.length ? tooCloseNotShown[0].penalties[0] : 'Doesn\u2019t fit your usual schedule';
+        html += '<div style="font-size:0.62em;color:#f59e0b;margin-top:4px;line-height:1.4">';
+        html += tooCloseNotShown.length + ' date' + (tooCloseNotShown.length > 1 ? 's' : '') + ' skipped \u2014 ' + escHtml(skipReason) + '. ';
+        html += '<span onclick="_rhRenderDateRecommendations(true)" style="color:#818cf8;cursor:pointer;text-decoration:underline">Show anyway</span>';
         html += '</div>';
     }
 
     el.innerHTML = html;
 }
 
-// Pick a recommended date — fill into the date input
-window._rhPickRecommendedDate = function(dateStr) {
+// Pick a recommended date — fill into the date input + visual feedback
+window._rhPickRecommendedDate = function(dateStr, clickedEl) {
     var input = document.getElementById('rhDate');
-    if (input) input.value = dateStr;
+    if (input) {
+        input.value = dateStr;
+        // Flash the input to confirm
+        input.style.borderColor = '#22c55e';
+        input.style.boxShadow = '0 0 0 2px rgba(34,197,94,0.3)';
+        setTimeout(function() { input.style.borderColor = ''; input.style.boxShadow = ''; }, 1200);
+    }
+    // Highlight the clicked card
+    if (clickedEl) {
+        clickedEl.style.borderColor = '#22c55e';
+        clickedEl.style.background = 'rgba(34,197,94,0.08)';
+        // Show confirmation text
+        var confirmEl = document.createElement('div');
+        confirmEl.style.cssText = 'font-size:0.65em;color:#22c55e;font-weight:600;text-align:center;margin-top:4px;animation:fadeIn 0.2s ease';
+        confirmEl.textContent = '\u2714 Date selected';
+        clickedEl.appendChild(confirmEl);
+        setTimeout(function() { if (confirmEl.parentNode) confirmEl.remove(); }, 2000);
+    }
 };
 
 async function rhSaveEvent(eventId) {

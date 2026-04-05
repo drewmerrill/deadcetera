@@ -3622,10 +3622,10 @@
   // Cadence settings — persisted in Firebase meta
   var _defaultCadenceDays = 7; // once per week
   var CADENCE_PRESETS = {
-    weekly:     { label: 'Once a week',     days: 7 },
-    biweekly:   { label: 'Twice a week',    days: 3.5 },
-    every2weeks:{ label: 'Every 2 weeks',   days: 14 },
-    custom:     { label: 'Custom',          days: null }
+    weekly:      { label: 'Once a week',     days: 7 },
+    twice_week:  { label: 'Twice a week',    days: 3.5 },
+    biweekly:    { label: 'Every 2 weeks',   days: 14 },
+    custom:      { label: 'Custom',          days: null }
   };
 
   async function getRehearsalCadence() {
@@ -3659,17 +3659,46 @@
     return { detected: true, avgDays: avg, gaps: gaps, sampleSize: gaps.length };
   }
 
+  // Detect preferred rehearsal day(s) from history
+  function detectPreferredDays(rehearsalDates) {
+    if (!rehearsalDates || rehearsalDates.length < 3) return { detected: false, preferred: [], dayCounts: {} };
+    var dayCounts = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    rehearsalDates.forEach(function(d) {
+      var dow = new Date(d + 'T12:00:00').getDay();
+      dayCounts[dow]++;
+    });
+    var total = rehearsalDates.length;
+    // A day is "preferred" if it accounts for >= 30% of rehearsals
+    var preferred = [];
+    for (var d = 0; d < 7; d++) {
+      if (dayCounts[d] >= total * 0.3 && dayCounts[d] >= 2) {
+        preferred.push({ day: d, name: dayNames[d], count: dayCounts[d], pct: Math.round((dayCounts[d] / total) * 100) });
+      }
+    }
+    preferred.sort(function(a, b) { return b.count - a.count; });
+    return { detected: preferred.length > 0, preferred: preferred, dayCounts: dayCounts };
+  }
+
   // Score a candidate date for scheduling
   function scoreRehearsalDate(candidateDateStr, opts) {
-    // opts: { blocks, members, existingRehearsalDates, nextGigDate, cadenceDays, overrideSpacing }
+    // opts: { blocks, members, existingRehearsalDates, nextGigDate, cadenceDays, overrideSpacing, preferredDays }
     var score = 0;
     var reasons = [];
     var penalties = [];
 
+    var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var dow = new Date(candidateDateStr + 'T12:00:00').getDay();
+    var cadenceDays = opts.cadenceDays || _defaultCadenceDays;
+    var cadenceLabel = cadenceDays <= 5 ? 'twice-a-week' : cadenceDays <= 10 ? 'weekly' : 'every-two-weeks';
+
     // 1. Availability (0-100)
     var strength = computeDateStrength(opts.blocks, opts.members, candidateDateStr);
     var availScore = strength.score; // 0-100
-    score += availScore * 0.40; // 40% weight
+    score += availScore * 0.35; // 35% weight
+    // Build availability reason
+    if (strength.label === 'Strong') reasons.push('Everyone\u2019s free');
+    else if (strength.available > 0) reasons.push(strength.available + ' of ' + strength.total + ' available');
 
     // 2. Spacing penalty — distance from nearest existing rehearsal
     var candidateMs = new Date(candidateDateStr + 'T12:00:00').getTime();
@@ -3681,42 +3710,52 @@
         if (gap < minGapDays) { minGapDays = gap; nearestDate = d; }
       });
     }
-    var cadenceDays = opts.cadenceDays || _defaultCadenceDays;
     var minAcceptableGap = Math.max(2, Math.floor(cadenceDays * 0.6)); // 60% of cadence as minimum
     var spacingScore = 0;
     if (!opts.overrideSpacing && minGapDays < minAcceptableGap) {
-      // Too close — heavy penalty
       spacingScore = 0;
-      penalties.push('Too close to rehearsal on ' + _fmtDateShort(nearestDate) + ' (' + Math.round(minGapDays) + ' days)');
+      penalties.push('Too close to your rehearsal on ' + _fmtDateShort(nearestDate));
     } else if (minGapDays <= cadenceDays * 1.5) {
-      // Within normal range — good
       spacingScore = 100;
+      reasons.push('Fits your ' + cadenceLabel + ' schedule');
     } else {
-      // Overdue — still good but slightly less ideal than on-cadence
       spacingScore = 80;
-      reasons.push('Overdue \u2014 last rehearsal was ' + Math.round(minGapDays) + ' days ago');
+      reasons.push('It\u2019s been ' + Math.round(minGapDays) + ' days since the last rehearsal');
     }
-    score += spacingScore * 0.30; // 30% weight
+    score += spacingScore * 0.25; // 25% weight
 
     // 3. Gig proximity bonus (0-100)
     var gigScore = 50; // neutral default
     if (opts.nextGigDate) {
       var daysToGig = (new Date(opts.nextGigDate + 'T12:00:00').getTime() - candidateMs) / 86400000;
       if (daysToGig >= 2 && daysToGig <= 14) {
-        gigScore = 100; // sweet spot: rehearse 2-14 days before gig
-        reasons.push('Good timing \u2014 ' + Math.round(daysToGig) + ' days before gig');
+        gigScore = 100;
+        reasons.push(Math.round(daysToGig) + ' days before your next gig');
       } else if (daysToGig >= 0 && daysToGig < 2) {
-        gigScore = 60; // day-of or day-before: possible but not ideal
+        gigScore = 60;
       } else if (daysToGig > 14 && daysToGig <= 30) {
         gigScore = 70;
       }
     }
     score += gigScore * 0.20; // 20% weight
 
-    // 4. Day-of-week preference (weekday evenings are typical)
-    var dow = new Date(candidateDateStr + 'T12:00:00').getDay();
-    var dayScore = (dow >= 1 && dow <= 4) ? 80 : (dow === 0 || dow === 5) ? 60 : 40; // Mon-Thu best, Fri/Sun ok, Sat less
-    score += dayScore * 0.10; // 10% weight
+    // 4. Day-of-week preference — uses detected preferred days or defaults
+    var dayScore = 50; // neutral default
+    var preferredDays = opts.preferredDays || [];
+    var isPreferred = preferredDays.some(function(p) { return p.day === dow; });
+    if (preferredDays.length > 0) {
+      // Data-driven: preferred days get a big boost
+      if (isPreferred) {
+        dayScore = 100;
+        reasons.push('You usually rehearse on ' + dayNames[dow] + 's');
+      } else {
+        dayScore = 30;
+      }
+    } else {
+      // Fallback: weekday evenings typical for bands
+      dayScore = (dow >= 1 && dow <= 4) ? 80 : (dow === 0 || dow === 5) ? 60 : 40;
+    }
+    score += dayScore * 0.20; // 20% weight
 
     // Build label
     var label = 'Good';
@@ -3737,7 +3776,9 @@
       nearestRehearsal: nearestDate,
       penalties: penalties,
       reasons: reasons,
-      tooClose: penalties.length > 0
+      tooClose: penalties.length > 0,
+      isPreferredDay: isPreferred,
+      dayOfWeek: dayNames[dow]
     };
   }
 
@@ -3794,13 +3835,13 @@
       if (futureGigs.length) nextGigDate = futureGigs[0].date;
     } catch (e) {}
 
-    // Get cadence
+    // Get cadence + preferred days
     var cadence = await getRehearsalCadence();
     var detectedCadence = detectCadenceFromHistory(existingDates);
     var effectiveCadenceDays = cadence.days || detectedCadence.avgDays || _defaultCadenceDays;
+    var dayPrefs = detectPreferredDays(existingDates);
 
     // Score each day in the next 21 days
-    var todayStr = new Date().toISOString().split('T')[0];
     var candidates = [];
     for (var i = 1; i <= 21; i++) {
       var d = new Date();
@@ -3812,7 +3853,8 @@
         existingRehearsalDates: existingDates,
         nextGigDate: nextGigDate,
         cadenceDays: effectiveCadenceDays,
-        overrideSpacing: opts.overrideSpacing || false
+        overrideSpacing: opts.overrideSpacing || false,
+        preferredDays: dayPrefs.preferred
       });
       candidates.push(scored);
     }
@@ -3828,6 +3870,7 @@
       tooClose: tooClose,
       allCandidates: candidates,
       cadence: { setting: cadence, detected: detectedCadence, effectiveDays: effectiveCadenceDays },
+      preferredDays: dayPrefs,
       nextGigDate: nextGigDate,
       existingRehearsalCount: existingDates.length
     };
@@ -4540,6 +4583,7 @@
     getRehearsalCadence:              getRehearsalCadence,
     setRehearsalCadence:              setRehearsalCadence,
     detectCadenceFromHistory:         detectCadenceFromHistory,
+    detectPreferredDays:              detectPreferredDays,
     scoreRehearsalDate:               scoreRehearsalDate,
     getRehearsalDateRecommendations:  getRehearsalDateRecommendations,
 
