@@ -1239,13 +1239,28 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             html += '<span style="font-size:0.62em;color:var(--text-dim)">' + durLabel2 + '</span>';
             html += '</summary>';
             // Expanded detail
+            var _sSafe = escHtml(sessionId);
+            var _songSafe = escHtml(seg.songTitle || '').replace(/'/g, "\\'");
             html += '<div style="padding:6px 10px 10px 32px;font-size:0.72em;color:var(--text-dim);line-height:1.5">';
             html += '<div>' + _rhFmt(seg.startSec) + ' \u2013 ' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2 + '</div>';
             if (seg.groove && seg.groove.label) html += '<div style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">Groove: ' + escHtml(seg.groove.label) + '</div>';
             if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary && seg.chordHints.summary.topProgressionHint) {
                 html += '<div>\uD83C\uDFB5 ' + escHtml(seg.chordHints.summary.topProgressionHint) + '</div>';
             }
-            if (hasAudio) html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="margin-top:4px;padding:4px 12px;border-radius:5px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer;font-size:0.9em">\u25B6 Play segment</button>';
+            // Action buttons
+            var _abtn = 'padding:4px 10px;border-radius:5px;cursor:pointer;font-size:0.88em;font-family:inherit;';
+            html += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px">';
+            if (hasAudio) {
+                html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + _sSafe + '\',' + si + ')" style="' + _abtn + 'border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8">\u25B6 Play</button>';
+                html += '<button onclick="_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + _sSafe + '\',' + si + ')" style="' + _abtn + 'border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24">\uD83D\uDD01 Loop</button>';
+            }
+            // Compare: only if multiple attempts of this song
+            var _attemptCount = data.songGroups[seg.songTitle] ? data.songGroups[seg.songTitle].segments.length : 0;
+            if (_attemptCount >= 2) {
+                html += '<button onclick="_rhCompareAttempts(\'' + _songSafe + '\')" style="' + _abtn + 'border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981">\uD83C\uDD9A Compare</button>';
+            }
+            html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _songSafe + '\')" style="' + _abtn + 'border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83C\uDFAF Practice</button>';
+            html += '</div>';
             html += '</div></details>';
 
         } else if (isTalk) {
@@ -1292,11 +1307,24 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         if (_prioritySongs.length) {
             _prioritySongs.forEach(function(g) {
                 var reason = g.segments.length >= 3 ? 'multiple attempts, needs focused practice' : 'incomplete run';
-                html += '<div style="font-size:0.75em;padding:3px 0;display:flex;align-items:center;gap:6px">'
+                var _gSafe = escHtml(g.title).replace(/'/g, "\\'");
+                var firstSeg = g.segments[0];
+                html += '<div style="font-size:0.75em;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)">'
+                    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
                     + '<span style="color:#fbbf24">\uD83C\uDFAF</span>'
                     + '<span style="color:var(--text);font-weight:600">' + escHtml(g.title) + '</span>'
                     + '<span style="color:var(--text-dim)">\u2014 ' + reason + '</span>'
-                    + '</div>';
+                    + '</div>'
+                    + '<div style="display:flex;gap:4px;padding-left:20px">';
+                // Action buttons for this priority song
+                if (firstSeg && hasAudio) {
+                    html += '<button onclick="_rhLoopSegment(' + firstSeg.startSec + ',' + firstSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-family:inherit">\uD83D\uDD01 Loop</button>';
+                }
+                if (g.segments.length >= 2) {
+                    html += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">\uD83C\uDD9A Compare</button>';
+                }
+                html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit">\uD83C\uDFAF Practice</button>';
+                html += '</div></div>';
             });
         }
 
@@ -1312,6 +1340,21 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
     }
 
     container.innerHTML = html;
+
+    // Double-click-to-loop on segment rows
+    container.querySelectorAll('.rh-seg-row[id^="rhSeg_"]').forEach(function(row) {
+        row.addEventListener('dblclick', function(e) {
+            // Find play button data
+            var playBtn = row.querySelector('button[onclick*="_rhPlaySegment"]');
+            if (!playBtn) return;
+            var onclickStr = playBtn.getAttribute('onclick') || '';
+            var match = onclickStr.match(/_rhPlaySegment\(([0-9.]+),([0-9.]+)/);
+            if (match) {
+                e.preventDefault();
+                _rhLoopSegment(parseFloat(match[1]), parseFloat(match[2]), sessionId);
+            }
+        });
+    });
 }
 
 // ── Shared data preparation (single source of truth) ────────────────────────
@@ -1672,6 +1715,95 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
         }
     };
     audio.addEventListener('timeupdate', check);
+};
+
+// ── Loop segment (plays repeatedly until stopped) ────────────────────────────
+window._rhLoopSegment = function(startSec, endSec, sessionId, segIdx) {
+    var audio = document.getElementById('rhTimelineAudio') || document.getElementById('rhReportAudio');
+    if (!audio) return;
+    if (!audio.src && typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
+        audio.src = RecordingAnalyzer._currentAudioUrl;
+        audio.dataset.sessId = sessionId;
+    }
+    if (!audio.src) { if (typeof showToast === 'function') showToast('Load recording first'); return; }
+
+    // Clear previous state
+    document.querySelectorAll('.rh-playing').forEach(function(el) { el.classList.remove('rh-playing'); });
+    if (window._rhLoopActive) { window._rhLoopActive = false; audio.pause(); if (typeof showToast === 'function') showToast('Loop stopped'); return; }
+
+    window._rhLoopActive = true;
+    if (segIdx !== undefined) {
+        var row = document.getElementById('rhSeg_' + segIdx);
+        if (row) row.classList.add('rh-playing');
+    }
+    if (typeof showToast === 'function') showToast('\uD83D\uDD01 Looping ' + _rhFmt(startSec) + '\u2013' + _rhFmt(endSec) + ' (click Loop again to stop)', 3000);
+
+    audio.currentTime = startSec;
+    audio.play();
+    var _loopCheck = function() {
+        if (!window._rhLoopActive) { audio.removeEventListener('timeupdate', _loopCheck); return; }
+        if (audio.currentTime >= endSec) { audio.currentTime = startSec; }
+    };
+    audio.addEventListener('timeupdate', _loopCheck);
+};
+
+// ── Compare attempts side-by-side ────────────────────────────────────────────
+window._rhCompareAttempts = function(songTitle) {
+    // Find all segments for this song from the timeline data
+    var allSegs = document.querySelectorAll('[data-song="' + songTitle + '"]');
+    if (allSegs.length < 2) { if (typeof showToast === 'function') showToast('Only one attempt found'); return; }
+
+    // Build comparison overlay
+    var ov = document.createElement('div');
+    ov.id = 'rhCompareModal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+    ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
+
+    var html = '<div style="max-width:420px;width:100%;background:#1e293b;border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.08)">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<div style="font-size:1em;font-weight:800;color:var(--text)">\uD83C\uDD9A ' + escHtml(songTitle) + ' \u2014 Attempts</div>';
+    html += '<button onclick="document.getElementById(\'rhCompareModal\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1em">\u2715</button>';
+    html += '</div>';
+
+    // Get segment data from the DOM data attributes or from cached data
+    // For now, display what we can read from the timeline elements
+    allSegs.forEach(function(segEl, idx) {
+        var summary = segEl.querySelector('summary');
+        var detail = segEl.querySelector('div');
+        var isOpen = segEl.open;
+
+        html += '<div style="padding:10px 12px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)">';
+        html += '<div style="font-size:0.82em;font-weight:700;color:var(--text);margin-bottom:4px">Attempt ' + (idx + 1) + '</div>';
+
+        // Extract visible text from summary
+        if (summary) {
+            var spans = summary.querySelectorAll('span');
+            var timeText = spans.length >= 1 ? spans[0].textContent : '';
+            var qualText = '';
+            var durText = '';
+            for (var si = 0; si < spans.length; si++) {
+                var t = spans[si].textContent.trim();
+                if (t.match(/^\d+m$/)) durText = t;
+                if (t.match(/Solid|Strong|Needs|Best|Locked|Unsteady/)) qualText = t;
+            }
+            html += '<div style="font-size:0.72em;color:var(--text-dim)">' + timeText + (durText ? ' \u00B7 ' + durText : '') + '</div>';
+            if (qualText) {
+                var qColor = qualText.match(/Solid|Strong|Best|Locked/) ? '#10b981' : '#f59e0b';
+                html += '<div style="font-size:0.72em;color:' + qColor + ';font-weight:600;margin-top:2px">' + qualText + '</div>';
+            }
+        }
+        html += '</div>';
+    });
+
+    // Improvement indicator
+    if (allSegs.length >= 2) {
+        html += '<div style="text-align:center;font-size:0.75em;color:#818cf8;padding:4px 0">Compare groove scores and quality to track improvement</div>';
+    }
+
+    html += '<button onclick="document.getElementById(\'rhCompareModal\').remove()" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:none;background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em">Close</button>';
+    html += '</div>';
+    ov.innerHTML = html;
+    document.body.appendChild(ov);
 };
 
 window._rhShowSessionReport = async function(sessionId) {
