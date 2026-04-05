@@ -1000,7 +1000,16 @@ async function _rhRenderLastRehearsalTimeline() {
 
     // Load sessions to find the most recent
     var sessions = await _rhLoadSessions();
-    if (!sessions || !sessions.length) return;
+    if (!sessions || !sessions.length) {
+        // Empty state — no rehearsals yet
+        timelineEl.innerHTML = '<div style="padding:24px 16px;text-align:center;border-radius:12px;border:1px dashed rgba(99,102,241,0.2);background:rgba(99,102,241,0.02);margin:8px 0">'
+            + '<div style="font-size:1.2em;margin-bottom:8px">\uD83C\uDFA4</div>'
+            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:6px">No rehearsals yet</div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);line-height:1.5;margin-bottom:12px;max-width:320px;margin-left:auto;margin-right:auto">Record a rehearsal and analyze it here. You\u2019ll see every song, how tight the band was, and exactly what to work on next.</div>'
+            + '<button onclick="rhStartRehearsalSession ? rhStartRehearsalSession() : _rhConfirmStartRehearsal()" style="padding:10px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.82em;cursor:pointer">Start a Rehearsal</button>'
+            + '</div>';
+        return;
+    }
     var latest = sessions[0]; // sorted by date desc
     if (!latest) return;
 
@@ -1097,7 +1106,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
     }
 
     var html = '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">What Happened</div>';
-    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:8px">Tap any song to see details. Double-tap to loop it.</div>';
+    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:8px;line-height:1.4">Listen back to each song, see where the band was tight and where it got rough. Tap a song for details, double-tap to loop.</div>';
 
     // Audio state — prompt to load recording for playback
     if (!hasAudio) {
@@ -1217,7 +1226,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
     // ── Coaching Insights (merged, actionable) ──
     var _hasInsights = data.recommendations.length > 0 || data.songList.some(function(g) { return g.bestQuality < 2 || g.segments.length >= 3; });
     if (_hasInsights) {
-        html += '<div style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.12);background:rgba(245,158,11,0.03)">';
+        html += '<div id="rhCoachingPanel" style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.12);background:rgba(245,158,11,0.03);position:sticky;bottom:48px;z-index:50">';
         html += '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">What to Work On</div>';
 
         // Priority songs
@@ -1243,7 +1252,8 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 if (g.segments.length >= 2) {
                     html += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">\uD83C\uDD9A Compare</button>';
                 }
-                html += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700;min-height:28px" title="Jump to the rough spot, loop it, and get coaching tips">\uD83D\uDD27 Work on This</button>';
+                var _fixLabel = g.segments.length >= 3 ? 'Drill the Transitions' : 'Work the Rough Spot';
+                html += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700;min-height:28px" title="Jump to the rough spot, loop it, and get tips">\uD83D\uDD27 ' + _fixLabel + '</button>';
                 html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _gSafe + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit;min-height:28px" title="Open chart and practice this song">Practice</button>';
                 html += '</div></div>';
             });
@@ -1604,10 +1614,14 @@ function _rhShowTransport(startSec, endSec, sessionId, segIdx) {
     if (!bar) {
         bar = document.createElement('div');
         bar.id = 'rhTransportBar';
-        bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:4000;background:#1e293b;border-top:1px solid rgba(99,102,241,0.2);padding:10px 16px;padding-bottom:max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;font-family:inherit;box-shadow:0 -4px 20px rgba(0,0,0,0.4)';
+        bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:4500;background:#1e293b;border-top:1px solid rgba(99,102,241,0.2);padding:10px 16px;padding-bottom:max(10px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;font-family:inherit;box-shadow:0 -4px 20px rgba(0,0,0,0.4)';
         document.body.appendChild(bar);
     }
     bar.style.display = 'flex';
+
+    // Add bottom padding to page so content isn't hidden behind transport
+    var main = document.getElementById('rhMain');
+    if (main) main.style.paddingBottom = '56px';
 
     var html = '';
     // Song title + loop indicator
@@ -1674,6 +1688,8 @@ function _rhUpdateTransport() {
 function _rhHideTransport() {
     var bar = document.getElementById('rhTransportBar');
     if (bar) bar.style.display = 'none';
+    var main = document.getElementById('rhMain');
+    if (main) main.style.paddingBottom = '';
 }
 
 // Click-to-seek on the transport progress bar
@@ -1826,15 +1842,22 @@ window._rhCompareAttempts = function(songTitle) {
         var qualColor = (seg.qualityScore >= 3) ? '#10b981' : (seg.qualityScore >= 2) ? '#f59e0b' : '#64748b';
         var isBest = idx === bestIdx && group.segments.length > 1;
 
-        html += '<div class="' + (isBest ? 'rh-compare-best' : '') + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.02);border-left:3px solid ' + grooveColor + '">';
-        html += '<div style="flex:1;min-width:0">';
-        html += '<div style="display:flex;align-items:center;gap:6px">';
+        html += '<div class="' + (isBest ? 'rh-compare-best' : '') + '" style="padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.02);border-left:3px solid ' + grooveColor + '">';
+        // Header row: take label + best badge + time
+        html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
         html += '<span style="font-size:0.78em;font-weight:700;color:var(--text)">Take ' + (idx + 1) + '</span>';
         if (isBest) html += '<span style="font-size:0.58em;font-weight:700;color:#10b981;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2)">Best take</span>';
         html += '<span style="font-size:0.65em;color:var(--text-dim)">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel + '</span>';
+        // Action buttons — inline on desktop, wrap on mobile
+        if (hasAudio) {
+            html += '<span style="margin-left:auto;display:flex;gap:3px;flex-shrink:0">';
+            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + _abtn + 'border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8">\u25B6</button>';
+            html += '<button onclick="_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + _abtn + 'border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24">\uD83D\uDD01</button>';
+            html += '</span>';
+        }
         html += '</div>';
         // Quality + groove + delta indicators
-        html += '<div style="display:flex;gap:8px;font-size:0.65em;margin-top:2px;align-items:center">';
+        html += '<div style="display:flex;gap:8px;font-size:0.65em;margin-top:3px;align-items:center;flex-wrap:wrap">';
         if (seg.qualityLabel) html += '<span style="color:' + qualColor + '">' + escHtml(seg.qualityLabel) + '</span>';
         if (seg.groove && seg.groove.label) html += '<span style="color:' + grooveColor + '">' + escHtml(seg.groove.label) + '</span>';
         // Delta vs previous attempt
@@ -1852,14 +1875,6 @@ window._rhCompareAttempts = function(songTitle) {
                 var gCol = gDelta > 0 ? '#10b981' : '#f59e0b';
                 html += '<span style="color:' + gCol + '">' + gLabel + '</span>';
             }
-        }
-        html += '</div>';
-        html += '</div>';
-        // Action buttons
-        html += '<div style="display:flex;gap:3px;flex-shrink:0">';
-        if (hasAudio) {
-            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + _abtn + 'border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8">\u25B6</button>';
-            html += '<button onclick="_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + _abtn + 'border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24">\uD83D\uDD01</button>';
         }
         html += '</div>';
         html += '</div>';
