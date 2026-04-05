@@ -3722,9 +3722,14 @@
     var minAcceptableGap = Math.max(2, Math.floor(cadenceDays * 0.6));
     var spacingScore = 0;
     var offPatternNotes = []; // capped to 2 max, spacing issues first
+    var _nearestIsFuture = nearestDate && (new Date(nearestDate + 'T12:00:00').getTime() > candidateMs);
     if (!opts.overrideSpacing && minGapDays < minAcceptableGap) {
       spacingScore = 0;
-      penalties.push('Too close \u2014 you rehearsed ' + Math.round(minGapDays) + ' day' + (Math.round(minGapDays) !== 1 ? 's' : '') + ' ago (' + _fmtDateShort(nearestDate) + ')');
+      var _gapDaysRound = Math.round(minGapDays);
+      var _penaltyText = _nearestIsFuture
+        ? 'Too close to your rehearsal on ' + _fmtDateShort(nearestDate) + ' (' + _gapDaysRound + ' day' + (_gapDaysRound !== 1 ? 's' : '') + ' away)'
+        : 'Too close \u2014 you rehearsed ' + _gapDaysRound + ' day' + (_gapDaysRound !== 1 ? 's' : '') + ' ago (' + _fmtDateShort(nearestDate) + ')';
+      penalties.push(_penaltyText);
     } else if (minGapDays <= cadenceDays * 1.5) {
       spacingScore = 100;
       reasons.push('Right on your usual schedule');
@@ -3876,15 +3881,19 @@
       candidates.push(scored);
     }
 
-    // Sort by score desc, filter out non-viable
+    // Sort by score desc, filter out non-viable AND too-close dates
     candidates.sort(function(a, b) { return b.score - a.score; });
-    var viable = candidates.filter(function(c) { return c.availability.label !== 'Not viable'; });
     var tooClose = candidates.filter(function(c) { return c.tooClose; });
+    var viable = candidates.filter(function(c) {
+      return c.availability.label !== 'Not viable' && !c.tooClose;
+    });
 
-    // Momentum detection — streak vs gap awareness
+    // Momentum detection — streak vs gap awareness (past dates only)
     var momentum = { label: null, type: 'neutral' };
-    if (existingDates.length >= 3 && detectedCadence.detected) {
-      var sorted = existingDates.slice().sort();
+    var todayStr = new Date().toISOString().split('T')[0];
+    var pastDates = existingDates.filter(function(d) { return d <= todayStr; });
+    if (pastDates.length >= 3 && detectedCadence.detected) {
+      var sorted = pastDates.slice().sort();
       var lastDate = sorted[sorted.length - 1];
       var daysSinceLast = Math.round((Date.now() - new Date(lastDate + 'T12:00:00').getTime()) / 86400000);
       // Check recent consistency: are the last 3 gaps all within 1.5x cadence?
@@ -3897,7 +3906,7 @@
       } else if (daysSinceLast > effectiveCadenceDays * 1.8) {
         momentum = { label: '\u23F0 ' + daysSinceLast + ' days since last rehearsal \u2014 don\u2019t let it slip', type: 'nudge' };
       }
-    } else if (existingDates.length === 0) {
+    } else if (pastDates.length === 0) {
       momentum = { label: '\uD83C\uDFAF First rehearsal \u2014 this is where it starts', type: 'first' };
     }
 
