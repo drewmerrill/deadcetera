@@ -217,6 +217,9 @@ window.RecordingAnalyzer = (function() {
       });
     }
 
+    // ── Apply saved user overrides from previous analyses ──
+    _applyUserOverrides(segments, opts.sessionId);
+
     // ── Post-match: merge adjacent same-song segments ──────────────────────────
     // If two adjacent segments got the same song label (or one is unlabeled),
     // and the gap between them is small, merge them into one segment.
@@ -905,10 +908,13 @@ window.RecordingAnalyzer = (function() {
     }
   }
 
+  // ── User label overrides (persist across re-analyses) ──────────────────────
+  var _userOverrides = {}; // segmentIndex → confirmedTitle
+
   function _updateSegTitle(idx, value) {
     if (_currentSegments && _currentSegments[idx]) {
       var seg = _currentSegments[idx];
-      // Record correction (before updating title)
+      // Record correction
       if (value && seg.songTitle && value !== seg.songTitle && typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.recordConfirmation) {
         SongMatchingEngine.recordConfirmation(seg, value);
       }
@@ -918,6 +924,53 @@ window.RecordingAnalyzer = (function() {
       seg.confirmed = true;
       var btn = document.getElementById('raConfBtn' + idx);
       if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
+
+      // Save override for future re-analyses (keyed by time range for stability)
+      var overrideKey = Math.round(seg.startSec) + '_' + Math.round(seg.endSec);
+      _userOverrides[overrideKey] = value;
+      // Persist to Firebase
+      if (_currentSessionId && typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+        firebaseDB.ref(bandPath('rehearsal_sessions/' + _currentSessionId + '/label_overrides/' + overrideKey)).set(value).catch(function() {});
+      }
+    }
+  }
+
+  /**
+   * Apply saved user overrides to segments after matching.
+   * Called during analyze() after SongMatchingEngine.run().
+   */
+  function _applyUserOverrides(segments, sessionId) {
+    if (!segments || !segments.length) return;
+    // Load overrides from Firebase if not already loaded
+    if (Object.keys(_userOverrides).length === 0 && sessionId && typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+      firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId + '/label_overrides')).once('value').then(function(snap) {
+        var overrides = snap.val();
+        if (overrides && typeof overrides === 'object') {
+          _userOverrides = overrides;
+          // Apply to current segments
+          segments.forEach(function(seg) {
+            var key = Math.round(seg.startSec) + '_' + Math.round(seg.endSec);
+            if (_userOverrides[key]) {
+              seg.songTitle = _userOverrides[key];
+              seg.displayTitle = _userOverrides[key];
+              seg.confidence = 0.95;
+              seg.confirmed = true;
+              console.log('[RecordingAnalyzer] Applied override: ' + key + ' → ' + _userOverrides[key]);
+            }
+          });
+        }
+      }).catch(function() {});
+    } else {
+      // Apply from memory
+      segments.forEach(function(seg) {
+        var key = Math.round(seg.startSec) + '_' + Math.round(seg.endSec);
+        if (_userOverrides[key]) {
+          seg.songTitle = _userOverrides[key];
+          seg.displayTitle = _userOverrides[key];
+          seg.confidence = 0.95;
+          seg.confirmed = true;
+        }
+      });
     }
   }
 
@@ -1128,7 +1181,31 @@ window.RecordingAnalyzer = (function() {
     return seg.id + '|' + seg.startSec.toFixed(1) + '|' + seg.endSec.toFixed(1) + '|v' + _CHORD_ANALYSIS_VERSION;
   }
 
+  // Queue chord analysis to prevent concurrent full-file decodes (causes OOM)
+  var _chordQueue = [];
+  var _chordProcessing = false;
+
   async function _fetchChordHints(idx) {
+    // Add to queue if already processing
+    if (_chordProcessing) {
+      _chordQueue.push(idx);
+      if (typeof showToast === 'function') showToast('Queued \u2014 analyzing one at a time to prevent crashes');
+      return;
+    }
+    _chordProcessing = true;
+    try {
+      await _fetchChordHintsInner(idx);
+    } finally {
+      _chordProcessing = false;
+      // Process next in queue
+      if (_chordQueue.length > 0) {
+        var next = _chordQueue.shift();
+        _fetchChordHints(next);
+      }
+    }
+  }
+
+  async function _fetchChordHintsInner(idx) {
     if (!_currentSegments || !_currentSegments[idx] || !_currentAudioUrl) return;
     var seg = _currentSegments[idx];
 
@@ -1699,7 +1776,7 @@ window.RecordingAnalyzer = (function() {
     html += '<div style="margin-bottom:10px">'
       + '<div style="display:flex;gap:4px;align-items:center">'
       + '<input id="raAddSongInput" type="text" placeholder="+ Add song..." oninput="RecordingAnalyzer._filterAddSong(this.value,\'' + safeSid + '\')" style="flex:1;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text);font-size:0.78em;font-family:inherit">'
-      + '<label style="font-size:0.65em;color:var(--text-dim);white-space:nowrap">at #<input id="raInsertPos" type="number" min="0" max="' + songs.length + '" value="0" style="width:32px;padding:2px 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text);font-size:1em;font-family:inherit;text-align:center"></label>'
+      + '<label style="font-size:0.65em;color:var(--text-dim);white-space:nowrap">at #<input id="raInsertPos" type="number" min="0" max="' + songs.length + '" value="0" style="width:48px;padding:2px 4px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text);font-size:1em;font-family:inherit;text-align:center;-moz-appearance:textfield" class="ra-pos-input"></label>'
       + '</div>'
       + '<div id="raAddSongResults" style="max-height:100px;overflow-y:auto"></div>'
       + '</div>';
