@@ -3881,6 +3881,26 @@
     var viable = candidates.filter(function(c) { return c.availability.label !== 'Not viable'; });
     var tooClose = candidates.filter(function(c) { return c.tooClose; });
 
+    // Momentum detection — streak vs gap awareness
+    var momentum = { label: null, type: 'neutral' };
+    if (existingDates.length >= 3 && detectedCadence.detected) {
+      var sorted = existingDates.slice().sort();
+      var lastDate = sorted[sorted.length - 1];
+      var daysSinceLast = Math.round((Date.now() - new Date(lastDate + 'T12:00:00').getTime()) / 86400000);
+      // Check recent consistency: are the last 3 gaps all within 1.5x cadence?
+      var recentGaps = detectedCadence.gaps ? detectedCadence.gaps.slice(-3) : [];
+      var allOnCadence = recentGaps.length >= 2 && recentGaps.every(function(g) { return g <= effectiveCadenceDays * 1.5; });
+      if (allOnCadence && daysSinceLast <= effectiveCadenceDays * 1.3) {
+        momentum = { label: 'You\u2019ve been consistent \u2014 keep it rolling', type: 'streak' };
+      } else if (daysSinceLast > effectiveCadenceDays * 2.5) {
+        momentum = { label: 'It\u2019s been a while \u2014 good time to get back together', type: 'gap' };
+      } else if (daysSinceLast > effectiveCadenceDays * 1.8) {
+        momentum = { label: 'Getting close to overdue \u2014 lock something in', type: 'nudge' };
+      }
+    } else if (existingDates.length === 0) {
+      momentum = { label: 'Schedule your first rehearsal and start building momentum', type: 'first' };
+    }
+
     return {
       primary: viable.length > 0 ? viable[0] : null,
       alternatives: viable.slice(1, 4),
@@ -3889,7 +3909,8 @@
       cadence: { setting: cadence, detected: detectedCadence, effectiveDays: effectiveCadenceDays },
       preferredDays: dayPrefs,
       nextGigDate: nextGigDate,
-      existingRehearsalCount: existingDates.length
+      existingRehearsalCount: existingDates.length,
+      momentum: momentum
     };
   }
 

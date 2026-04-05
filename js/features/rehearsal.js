@@ -3546,6 +3546,13 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
 
     var html = '';
 
+    // Momentum message (streak / gap / first time)
+    if (recs.momentum && recs.momentum.label) {
+        var mColor = recs.momentum.type === 'streak' ? '#22c55e' : recs.momentum.type === 'gap' ? '#f59e0b' : recs.momentum.type === 'nudge' ? '#f59e0b' : '#818cf8';
+        var mIcon = recs.momentum.type === 'streak' ? '\uD83D\uDD25' : recs.momentum.type === 'first' ? '\uD83C\uDFAF' : '\u23F0';
+        html += '<div style="font-size:0.65em;color:' + mColor + ';margin-bottom:6px;font-weight:600">' + mIcon + ' ' + recs.momentum.label + '</div>';
+    }
+
     // Cadence + preferred day info
     var cadenceLabel = recs.cadence.detected.detected
         ? 'Your pattern: every ~' + recs.cadence.effectiveDays + ' days'
@@ -3553,36 +3560,32 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
     if (recs.preferredDays && recs.preferredDays.detected) {
         cadenceLabel += ' \u00B7 usually ' + recs.preferredDays.preferred.map(function(p) { return p.name + 's'; }).join(' or ');
     }
-    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:6px">' + cadenceLabel + '</div>';
+    html += '<div style="font-size:0.58em;color:var(--text-dim);margin-bottom:6px">' + cadenceLabel + '</div>';
 
-    // Primary recommendation — confidence label + icon-enhanced reasons
+    // Primary recommendation — decisive tone
     var p = recs.primary;
     var pDate = new Date(p.date + 'T12:00:00');
     var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-    var confLabel = p.score >= 70 ? 'Best next rehearsal' : 'Recommended for your band';
-    html += '<div style="font-size:0.6em;font-weight:700;color:#22c55e;margin-bottom:3px;letter-spacing:0.03em">' + confLabel + '</div>';
+    // Tie-break detection: if runner-up is within 3 points, soften the confidence
+    var hasCloseRunner = recs.alternatives.length > 0 && (p.score - recs.alternatives[0].score) <= 3;
+    var confLabel = hasCloseRunner ? 'Top pick for your band' : (p.score >= 70 ? 'Best next rehearsal' : 'Recommended for your band');
+    html += '<div style="font-size:0.62em;font-weight:700;color:#22c55e;margin-bottom:3px">' + confLabel + '</div>';
     html += '<div id="rhRecPrimary" onclick="_rhPickRecommendedDate(\'' + p.date + '\',this)" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);cursor:pointer;margin-bottom:6px;transition:border-color 0.2s,background 0.2s">';
     html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">';
     html += '<div style="flex:1">';
     html += '<div style="font-size:0.85em;font-weight:700;color:var(--text)">' + pLabel + '</div>';
     // Show up to 3 reasons with icons
     var pReasons = p.reasons.slice(0, 3);
-    var _reasonIcons = {
-      free: '\u2705', available: '\uD83D\uDC65', schedule: '\uD83D\uDCC5',
-      days: '\uD83D\uDCC6', gig: '\uD83C\uDFB8', rehearse: '\uD83D\uDD01',
-      been: '\u23F3'
-    };
     if (pReasons.length) {
         html += '<div style="margin-top:3px">';
         pReasons.forEach(function(r) {
-            // Pick icon based on keywords
             var icon = '\u2022';
-            if (r.match(/free/i)) icon = _reasonIcons.free;
-            else if (r.match(/available/i)) icon = _reasonIcons.available;
-            else if (r.match(/schedule|fits/i)) icon = _reasonIcons.schedule;
-            else if (r.match(/gig/i)) icon = _reasonIcons.gig;
-            else if (r.match(/usually|rehearse on/i)) icon = _reasonIcons.rehearse;
-            else if (r.match(/been|days since/i)) icon = _reasonIcons.been;
+            if (r.match(/free/i)) icon = '\u2705';
+            else if (r.match(/available/i)) icon = '\uD83D\uDC65';
+            else if (r.match(/usual schedule/i)) icon = '\uD83D\uDC4D';
+            else if (r.match(/gig/i)) icon = '\uD83C\uDFB8';
+            else if (r.match(/typical|matches/i)) icon = '\uD83D\uDCC5';
+            else if (r.match(/been|days since/i)) icon = '\u23F3';
             html += '<div style="font-size:0.62em;color:var(--text-dim);line-height:1.5">' + icon + ' ' + escHtml(r) + '</div>';
         });
         html += '</div>';
@@ -3598,9 +3601,11 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
     html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">Use this \u2192</span>';
     html += '</div>';
     html += '</div>';
-    // Reinforcement line below the card content
-    if (p.score >= 60) {
-        html += '<div style="font-size:0.58em;color:var(--text-dim);text-align:center;margin-top:4px">This is your best option this week</div>';
+    // Reinforcement line — cohesive with confidence label
+    if (p.score >= 60 && !hasCloseRunner) {
+        html += '<div style="font-size:0.56em;color:var(--text-dim);text-align:center;margin-top:4px">Everything lines up for this one</div>';
+    } else if (hasCloseRunner) {
+        html += '<div style="font-size:0.56em;color:var(--text-dim);text-align:center;margin-top:4px">Close call \u2014 check the alternatives too</div>';
     }
     html += '</div>';
 
@@ -3673,17 +3678,31 @@ window._rhPickRecommendedDate = function(dateStr, clickedEl) {
 function _rhShowPlanningHook(dateStr) {
     var hookEl = document.getElementById('rhPlanningHook');
     if (hookEl) hookEl.remove();
-    var recs = document.getElementById('rhDateRecs');
-    if (!recs) return;
+    var recsEl = document.getElementById('rhDateRecs');
+    if (!recsEl) return;
 
     var d = new Date(dateStr + 'T12:00:00');
     var dayLabel = d.toLocaleDateString('en-US', { weekday: 'long' });
+
+    // Build specific outcome text based on available data
+    var focusSongs = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var hookText = '';
+    if (focusSongs.list.length > 0) {
+        var topSong = focusSongs.list[0].title;
+        var count = focusSongs.list.length;
+        hookText = 'We\u2019ll build a plan focused on <strong>' + escHtml(topSong) + '</strong>'
+            + (count > 1 ? ' and ' + (count - 1) + ' more' : '')
+            + ' \u2014 the songs that need the most work right now.';
+    } else {
+        hookText = 'We\u2019ll suggest which songs to tighten up based on your last rehearsal.';
+    }
+
     var hook = document.createElement('div');
     hook.id = 'rhPlanningHook';
     hook.style.cssText = 'margin-top:8px;padding:8px 12px;border-radius:8px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.03);animation:fadeIn 0.2s ease';
-    hook.innerHTML = '<div style="font-size:0.65em;font-weight:700;color:#a5b4fc;margin-bottom:2px">Up next for ' + dayLabel + '</div>'
-        + '<div style="font-size:0.6em;color:var(--text-dim);line-height:1.4">After you schedule, we\u2019ll suggest what to work on based on your last rehearsal.</div>';
-    recs.appendChild(hook);
+    hook.innerHTML = '<div style="font-size:0.65em;font-weight:700;color:#a5b4fc;margin-bottom:2px">\uD83C\uDFAF What to work on ' + dayLabel + '</div>'
+        + '<div style="font-size:0.6em;color:var(--text-dim);line-height:1.4">' + hookText + '</div>';
+    recsEl.appendChild(hook);
 }
 
 async function rhSaveEvent(eventId) {
