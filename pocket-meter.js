@@ -667,38 +667,36 @@
       var vDelta = previous.variance - current.variance; // positive = tighter
       var sDelta = current.stability - previous.stability; // positive = steadier
       var label = '';
-      var tier = 'same'; // 'big_gain' | 'gain' | 'same' | 'slip' | 'big_slip'
+      var tier = 'same';
       var improved = false;
 
-      // Primary: variance change (drift reduction)
+      // Primary: variance change (max 1 label + optional 1 clause)
       if (vDelta > 1.5) {
         tier = 'big_gain'; improved = true;
-        label = 'Much tighter \u2014 great progress';
+        label = 'Much tighter';
       } else if (vDelta > 0.5) {
         tier = 'gain'; improved = true;
-        label = 'Tighter \u2014 improving';
+        label = 'Tighter';
       } else if (vDelta < -1.5) {
         tier = 'big_slip';
-        label = 'Looser \u2014 needs attention';
+        label = 'Looser \u2014 tighten it up';
       } else if (vDelta < -0.5) {
         tier = 'slip';
-        label = 'Slightly looser \u2014 keep pushing';
+        label = 'Slightly looser \u2014 tighten it up';
       } else {
         tier = 'same';
         label = 'About the same';
       }
 
-      // Stability enrichment: if variance is flat but stability shifted meaningfully
+      // Optional supporting clause (max 1, stability-based)
       if (tier === 'same' && sDelta > 8) {
         tier = 'gain'; improved = true;
-        label = 'Steadier \u2014 timing more consistent';
+        label = 'Steadier timing';
       } else if (tier === 'same' && sDelta < -8) {
         tier = 'slip';
-        label = 'Less steady \u2014 timing more erratic';
-      } else if (tier === 'gain' && sDelta > 5) {
-        label += ' \u2014 and steadier too';
-      } else if (tier === 'big_gain' && sDelta > 5) {
-        label += ' \u2014 and more locked in';
+        label = 'Less steady \u2014 tighten it up';
+      } else if ((tier === 'gain' || tier === 'big_gain') && sDelta > 5) {
+        label += ' and steadier';
       }
 
       return {
@@ -708,6 +706,27 @@
         varianceDelta: Math.round(vDelta * 10) / 10,
         stabilityDelta: sDelta
       };
+    },
+
+    /**
+     * Detect trend from fingerprint history (last 3+ entries).
+     * @param {Array} history - array of fingerprint objects (oldest first)
+     * @returns {{ trend: string, label: string }|null}
+     */
+    detectTrend(history) {
+      if (!history || history.length < 3) return null;
+      var recent = history.slice(-3);
+      // Check if variance is consistently decreasing (tightening) or increasing (loosening)
+      var tightening = 0;
+      var loosening = 0;
+      for (var i = 1; i < recent.length; i++) {
+        var vDiff = recent[i - 1].variance - recent[i].variance;
+        if (vDiff > 0.3) tightening++;
+        else if (vDiff < -0.3) loosening++;
+      }
+      if (tightening >= 2) return { trend: 'improving', label: 'Trending tighter over recent rehearsals' };
+      if (loosening >= 2) return { trend: 'slipping', label: 'Timing slipping over last few sessions' };
+      return { trend: 'stable', label: null };
     }
   };
 

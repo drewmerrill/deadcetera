@@ -259,10 +259,20 @@ window.SongMatchingEngine = (function() {
       var result = scoreSegment(seg, candidates, context, adjacentLabels);
       seg.songMatch = result;
 
-      // Apply best match as song title if confidence is reasonable
-      if (result.bestMatch && result.confidence !== 'low') {
-        if (!seg.songTitle || seg.confidence < 0.5) {
+      // Confidence-based assignment behavior:
+      // High → auto-assign silently (confirmed feel)
+      // Medium → assign + needsReview stays true (show alternatives)
+      // Low → don't assign (require user confirmation)
+      if (result.bestMatch) {
+        if (result.confidence === 'high') {
           seg.songTitle = result.bestMatch.title;
+          result.needsReview = false;
+        } else if (result.confidence === 'medium') {
+          if (!seg.songTitle || seg.confidence < 0.5) seg.songTitle = result.bestMatch.title;
+          result.needsReview = true;
+        } else {
+          // Low: keep existing title if any, mark for review
+          result.needsReview = true;
         }
       }
 
@@ -841,9 +851,13 @@ window.SongMatchingEngine = (function() {
       });
     }
 
-    // Store harmonic fingerprint from confirmed segments with chord data
+    // Store harmonic fingerprint — guardrail: only from medium+ confidence or user-confirmed
     if (confirmedTitle && segment.chordHints && segment.chordHints.summary) {
-      storeHarmonicFingerprint(confirmedId, confirmedTitle, segment.chordHints);
+      var chordConf = segment.chordHints.confidence;
+      var matchConf = (segment.songMatch && segment.songMatch.confidence) || 'low';
+      if (segment.confirmed || chordConf === 'high' || chordConf === 'medium' || matchConf === 'high' || matchConf === 'medium') {
+        storeHarmonicFingerprint(confirmedId, confirmedTitle, segment.chordHints);
+      }
     }
   }
 

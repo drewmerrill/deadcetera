@@ -1105,6 +1105,8 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             + '.rh-seg-row summary:active{transform:scale(0.995);transition:transform 0.1s}'
             + '.rh-compare-best{border-left-color:#10b981!important;background:rgba(16,185,129,0.04)!important}'
             + '.rh-fix-mode{border:1px solid rgba(245,158,11,0.3)!important;background:rgba(245,158,11,0.04)!important}'
+            + '.rh-active-focus{box-shadow:0 0 0 2px rgba(245,158,11,0.3)!important}'
+            + '.rh-active-focus::after{content:"WORKING ON THIS";position:absolute;top:4px;right:8px;font-size:0.5em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;opacity:0.7}'
             + '@keyframes rhZonePulse{0%{opacity:0.3}50%{opacity:0.8}100%{opacity:0.3}}'
             + '.rh-zone-pulse{animation:rhZonePulse 1.5s ease-in-out 1}';
         document.head.appendChild(_ts);
@@ -1184,22 +1186,25 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             if (seg.songMatch) {
                 var _mc = seg.songMatch;
                 var _confColor = _mc.confidence === 'high' ? '#10b981' : _mc.confidence === 'medium' ? '#f59e0b' : '#64748b';
-                var _confLabel = _mc.confidence === 'high' ? 'Strong match' : _mc.confidence === 'medium' ? 'Likely match' : 'Uncertain';
-                html += '<div style="display:flex;align-items:center;gap:6px;margin:2px 0">';
-                html += '<span style="font-size:0.85em;color:' + _confColor + ';font-weight:600">' + _confLabel + '</span>';
+                var _confLabel = _mc.confidence === 'high' ? 'High confidence' : _mc.confidence === 'medium' ? 'Likely match' : 'Needs review';
+                html += '<div style="display:flex;align-items:center;gap:6px;margin:2px 0;flex-wrap:wrap">';
+                html += '<span style="font-size:0.82em;color:' + _confColor + ';font-weight:600">' + _confLabel + '</span>';
                 if (_mc.explanation && _mc.explanation.length) {
-                    html += '<span style="font-size:0.82em;color:var(--text-dim)">\u2014 ' + escHtml(_mc.explanation[0]) + '</span>';
+                    html += '<span style="font-size:0.78em;color:var(--text-dim)">\u2014 ' + escHtml(_mc.explanation[0]) + '</span>';
                 }
                 if (_mc.rerankedByChords) {
-                    html += '<span style="font-size:0.75em;color:#818cf8;margin-left:4px">chord-confirmed</span>';
+                    html += '<span style="font-size:0.68em;color:#818cf8;padding:1px 5px;border-radius:3px;background:rgba(129,140,248,0.1);border:1px solid rgba(129,140,248,0.2)">adjusted by chords</span>';
                 }
                 html += '</div>';
-                // Quick alternatives (if low/medium confidence and alternatives exist)
+                // Quick alternatives with ranking cues (medium/low confidence only)
                 if (_mc.confidence !== 'high' && _mc.candidates && _mc.candidates.length > 1) {
-                    html += '<div style="font-size:0.78em;color:var(--text-dim);margin:2px 0">Also possible: ';
+                    html += '<div style="font-size:0.75em;color:var(--text-dim);margin:2px 0">';
+                    html += (_mc.confidence === 'low' ? 'Could be: ' : 'Also possible: ');
                     _mc.candidates.slice(1, 3).forEach(function(alt, ai) {
                         if (ai > 0) html += ', ';
-                        html += '<span onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer._updateSegTitle(' + si + ',\'' + escHtml(alt.title).replace(/'/g, "\\'") + '\')" style="color:#818cf8;cursor:pointer;text-decoration:underline">' + escHtml(alt.title) + '</span>';
+                        var gap = _mc.bestMatch ? _mc.bestMatch.score - alt.score : 0;
+                        var closeTag = gap < 0.1 ? ' <span style="font-size:0.85em;color:#f59e0b">(close)</span>' : '';
+                        html += '<span onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer._updateSegTitle(' + si + ',\'' + escHtml(alt.title).replace(/'/g, "\\'") + '\')" style="color:#818cf8;cursor:pointer;text-decoration:underline">' + escHtml(alt.title) + '</span>' + closeTag;
                     });
                     html += '</div>';
                 }
@@ -1229,7 +1234,16 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                             var _cmpIcon = _cmp.improved ? '\u2191' : (_cmp.tier === 'slip' || _cmp.tier === 'big_slip') ? '\u2193' : '\u2192';
                             var _cmpBg = _cmp.improved ? 'rgba(16,185,129,0.06)' : (_cmp.tier === 'same' ? 'transparent' : 'rgba(245,158,11,0.06)');
                             html += '<div style="padding:3px 8px;margin:2px 0;font-size:0.6em;color:' + _cmpColor + ';font-weight:600;border-radius:4px;background:' + _cmpBg + '">'
-                                + _cmpIcon + ' vs last rehearsal: ' + escHtml(_cmp.label) + '</div>';
+                                + _cmpIcon + ' ' + escHtml(_cmp.label) + '</div>';
+                        }
+                    }
+                    // Trend from history (last 3+ sessions)
+                    var _fpHistory = _rhFingerprintCache[seg.songTitle] && _rhFingerprintCache[seg.songTitle].history;
+                    if (_fpHistory && _fpHistory.length >= 3 && typeof PocketMeterTimeSeries !== 'undefined' && PocketMeterTimeSeries.detectTrend) {
+                        var _trend = PocketMeterTimeSeries.detectTrend(_fpHistory);
+                        if (_trend && _trend.label) {
+                            var _tColor = _trend.trend === 'improving' ? '#10b981' : '#f59e0b';
+                            html += '<div style="padding:1px 8px;font-size:0.55em;color:' + _tColor + '">\uD83D\uDCC8 ' + escHtml(_trend.label) + '</div>';
                         }
                     }
                     // Save current fingerprint for next session comparison
@@ -1480,7 +1494,11 @@ window._rhFixThisNow = function(songTitle, sessionId) {
         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (row.tagName === 'DETAILS' && !row.open) row.open = true;
         row.classList.add('rh-fix-mode');
+        row.classList.add('rh-active-focus');
     }
+
+    // Clear previous focus states
+    document.querySelectorAll('.rh-active-focus').forEach(function(el) { if (el !== row) el.classList.remove('rh-active-focus'); });
 
     // Show fix mode overlay on the segment
     var existingFix = document.getElementById('rhFixPanel');
@@ -1491,7 +1509,7 @@ window._rhFixThisNow = function(songTitle, sessionId) {
     panel.style.cssText = 'margin:4px 0 8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04)';
     var ph = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
     ph += '<div style="font-size:0.75em;font-weight:800;color:#fbbf24">\u25B6 Start here \u2014 ' + escHtml(songTitle) + '</div>';
-    ph += '<button onclick="document.getElementById(\'rhFixPanel\').remove();document.querySelectorAll(\'.rh-fix-mode\').forEach(function(e){e.classList.remove(\'rh-fix-mode\')})" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em">\u2715</button>';
+    ph += '<button onclick="document.getElementById(\'rhFixPanel\').remove();document.querySelectorAll(\'.rh-fix-mode,.rh-active-focus\').forEach(function(e){e.classList.remove(\'rh-fix-mode\');e.classList.remove(\'rh-active-focus\')})" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em">\u2715</button>';
     ph += '</div>';
     guidance.forEach(function(g) {
         ph += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0;line-height:1.4">\u2022 ' + escHtml(g) + '</div>';
