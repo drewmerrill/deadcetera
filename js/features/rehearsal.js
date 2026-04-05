@@ -633,7 +633,11 @@ async function _rhRenderCommandFlow(el) {
             + '<div id="rhSnapshots"></div>';
     }
 
-    // ── Rehearsal History (collapsed by default) ──
+    // ── Last Rehearsal Snapshot + Timeline (PRIMARY CONTENT) ──
+    html += '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>';
+    html += '<div id="rhTimelineSection" style="margin-bottom:16px"></div>';
+
+    // ── Rehearsal History (collapsed) ──
     html += '<details style="border-top:2px solid rgba(255,255,255,0.06);margin:16px 0;padding-top:12px">';
     html += '<summary style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0">'
         + '<span style="font-size:0.72em;color:var(--text-dim);transition:transform 0.2s">\u25B6</span>'
@@ -666,8 +670,9 @@ async function _rhRenderCommandFlow(el) {
         setTimeout(function() { glSpotlight.run('rehearsal-plan-v3'); }, 800);
     }
 
-    // Render last rehearsal session review + history
-    // Unified Past Rehearsals (includes most recent — no separate "Last Rehearsal" card)
+    // Render last rehearsal snapshot + inline timeline
+    _rhRenderLastRehearsalTimeline();
+    // Render full history list
     _rhRenderSessionHistory();
 
     // Show AI focus below the saved plan (complementary, not competing)
@@ -1108,6 +1113,160 @@ window._rhRerunAnalysis = function(sessionId) {
         if (typeof showToast === 'function') showToast('Analysis failed');
     });
 };
+
+// ── Last Rehearsal Snapshot + Auto-loaded Timeline ───────────────────────────
+async function _rhRenderLastRehearsalTimeline() {
+    var snapEl = document.getElementById('rhLastRehearsalSnapshot');
+    var timelineEl = document.getElementById('rhTimelineSection');
+    if (!snapEl || !timelineEl) return;
+
+    // Load sessions to find the most recent
+    var sessions = await _rhLoadSessions();
+    if (!sessions || !sessions.length) return;
+    var latest = sessions[0]; // sorted by date desc
+    if (!latest) return;
+
+    var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
+    var segments = _toArr(latest.audio_segments);
+    var dateStr = latest.date ? new Date(latest.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    var durMin = latest.totalActualMin || 0;
+    var durLabel = durMin >= 60 ? Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm' : durMin + 'm';
+
+    // ── Snapshot card ──
+    var songCount = 0;
+    var talkCount = 0;
+    if (segments.length) {
+        var data = _rhPrepareSegmentData(latest, segments);
+        songCount = data.songList.length;
+        talkCount = data.talkSegs.length;
+    } else {
+        songCount = _toArr(latest.songsWorked).length || _toArr(latest.blocks).length;
+    }
+
+    var snapHtml = '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.03);margin-bottom:4px">';
+    snapHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+    snapHtml += '<div style="font-size:0.82em;font-weight:700;color:var(--text)">Last Rehearsal</div>';
+    snapHtml += '<div style="font-size:0.68em;color:var(--text-dim)">' + dateStr + '</div>';
+    snapHtml += '</div>';
+    snapHtml += '<div style="display:flex;gap:12px;font-size:0.75em;color:var(--text-dim)">';
+    snapHtml += '<span>' + durLabel + '</span>';
+    if (songCount) snapHtml += '<span>' + songCount + ' songs</span>';
+    if (talkCount) snapHtml += '<span>' + talkCount + ' discussions</span>';
+    snapHtml += '</div>';
+
+    // Quick insight from recommendations
+    if (segments.length) {
+        var data2 = _rhPrepareSegmentData(latest, segments);
+        if (data2.recommendations.length) {
+            snapHtml += '<div style="font-size:0.7em;color:#fbbf24;margin-top:6px">\u25B6 ' + escHtml(data2.recommendations[0].text) + '</div>';
+        }
+    }
+
+    if (!segments.length) {
+        snapHtml += '<div style="margin-top:8px"><button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(latest.sessionId) + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer">\uD83D\uDD0D Analyze Recording</button></div>';
+    }
+    snapHtml += '</div>';
+    snapEl.innerHTML = snapHtml;
+
+    // ── Auto-render timeline for latest session (if segments exist) ──
+    if (segments.length) {
+        _rhRenderInlineTimelineDirectly(timelineEl, latest.sessionId, latest, segments);
+    }
+}
+
+// Render timeline directly into a container (not toggled via session card)
+function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments) {
+    var data = _rhPrepareSegmentData(session, segments);
+    var hasAudio = _rhHasAudio();
+    var playBtnStyle = hasAudio
+        ? 'background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em'
+        : 'background:none;border:none;color:#334155;cursor:default;font-size:0.85em';
+
+    var html = '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Rehearsal Timeline</div>';
+
+    // Audio state
+    html += '<audio id="rhTimelineAudio" style="display:none"></audio>';
+    if (!hasAudio) {
+        html += '<div style="padding:5px 10px;margin-bottom:8px;border-radius:6px;border:1px solid rgba(245,158,11,0.12);background:rgba(245,158,11,0.03);font-size:0.68em;color:#fbbf24;display:flex;align-items:center;justify-content:space-between">'
+            + '<span>Load recording to enable playback</span>'
+            + '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(sessionId) + '\')" style="font-size:0.9em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;font-family:inherit">Load</button>'
+            + '</div>';
+    }
+
+    // Visual strip
+    var totalDur = segments[segments.length - 1] ? (segments[segments.length - 1].endSec || 1) : 1;
+    html += '<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:10px;background:rgba(255,255,255,0.03)">';
+    segments.forEach(function(seg) {
+        var pct = ((seg.duration || 0) / totalDur * 100).toFixed(1);
+        var color = (!seg.segType || seg.segType === 'song') ? '#667eea' : (seg.segType === 'talking' ? '#a5b4fc' : (seg.segType === 'jam' ? '#f59e0b' : '#334155'));
+        if (seg.segType === 'ignore') return;
+        html += '<div style="width:' + pct + '%;background:' + color + ';min-width:1px" title="' + escHtml(seg.songTitle || seg.segType || '') + '"></div>';
+    });
+    html += '</div>';
+
+    // Segment list
+    segments.forEach(function(seg) {
+        if (seg.segType === 'ignore') return;
+        var isSong = !seg.segType || seg.segType === 'song';
+        var isTalk = seg.segType === 'talking';
+        var durLabel2 = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
+        var borderColor = isSong ? 'rgba(99,102,241,0.1)' : (isTalk ? 'rgba(165,180,252,0.1)' : 'rgba(255,255,255,0.03)');
+
+        html += '<div style="margin-bottom:5px;padding:7px 10px;border-radius:7px;border-left:3px solid ' + borderColor + ';background:rgba(255,255,255,0.015)">';
+        html += '<div style="display:flex;align-items:center;gap:8px">';
+        html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
+        html += '<span style="font-size:0.65em;color:var(--text-dim);min-width:72px">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + '</span>';
+
+        if (isSong) {
+            html += '<span style="flex:1;font-size:0.8em;font-weight:600;color:var(--text)">' + escHtml(seg.songTitle || 'Unknown') + '</span>';
+        } else if (isTalk) {
+            html += '<span style="flex:1;font-size:0.75em;color:#a5b4fc">\uD83D\uDCAC Discussion</span>';
+        } else {
+            html += '<span style="flex:1;font-size:0.75em;color:var(--text-dim)">' + escHtml(seg.segType || '') + '</span>';
+        }
+        html += '<span style="font-size:0.65em;color:var(--text-dim)">' + durLabel2 + '</span>';
+        html += '</div>';
+
+        if (isSong && (seg.qualityLabel || (seg.groove && seg.groove.label))) {
+            html += '<div style="display:flex;gap:8px;font-size:0.6em;padding:1px 0 0 28px">';
+            if (seg.qualityLabel && (seg.qualityScore >= 3 || seg.groove)) html += '<span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
+            if (seg.groove && seg.groove.label) html += '<span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">' + escHtml(seg.groove.label) + '</span>';
+            html += '</div>';
+        }
+        if (isTalk && (seg.transcript || seg.notes)) {
+            html += '<div style="font-size:0.7em;color:var(--text-muted);padding:3px 0 0 28px;line-height:1.35">' + escHtml((seg.transcript || seg.notes).substring(0, 120)) + ((seg.transcript || seg.notes).length > 120 ? '...' : '') + '</div>';
+            if (seg.talkTags && seg.talkTags.length) html += '<div style="font-size:0.58em;color:#818cf8;padding:1px 0 0 28px">' + seg.talkTags.join(' \u00B7 ') + '</div>';
+        }
+        html += '</div>';
+    });
+
+    // Song summary
+    if (data.songList.length) {
+        html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 5px">Songs</div>';
+        data.songList.forEach(function(g) {
+            var min = Math.round(g.totalTime / 60);
+            html += '<div style="display:flex;align-items:center;gap:6px;padding:3px 6px;font-size:0.75em">';
+            html += '<span style="flex:1;color:var(--text);font-weight:500">' + escHtml(g.title) + '</span>';
+            html += '<span style="color:var(--text-dim)">' + min + 'm</span>';
+            if (g.segments.length > 1) html += '<span style="color:var(--text-dim)">\u00D7' + g.segments.length + '</span>';
+            if (g.bestQuality < 2 || g.segments.length >= 3) html += '<span style="color:#fbbf24;font-size:0.85em">\u26A0</span>';
+            html += '</div>';
+        });
+    }
+
+    // Recommendations
+    if (data.recommendations.length) {
+        html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:10px 0 5px">What to Work On</div>';
+        data.recommendations.forEach(function(r) {
+            html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0;border-left:2px solid rgba(245,158,11,0.25);padding-left:8px;margin-bottom:3px">' + escHtml(r.text) + '</div>';
+        });
+    }
+
+    // Link to full report
+    html += '<div style="text-align:center;margin-top:10px"><button onclick="_rhShowSessionReport(\'' + escHtml(sessionId) + '\')" style="font-size:0.7em;padding:5px 14px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer">View Full Report</button></div>';
+
+    container.innerHTML = html;
+}
 
 // ── Shared data preparation (single source of truth) ────────────────────────
 var _rhFmt = function(sec) { if (!sec && sec !== 0) return '0:00'; var m = Math.floor(sec / 60); var s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; };
