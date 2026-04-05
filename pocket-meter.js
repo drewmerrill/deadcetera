@@ -399,16 +399,64 @@
         });
       }
 
+      // Stability category
+      var stabilityLabel = stability >= 90 ? 'Locked in' : stability >= 75 ? 'Solid' : stability >= 60 ? 'Drifting' : 'Unstable';
+      var stabilityColor = stability >= 90 ? '#10b981' : stability >= 75 ? '#22c55e' : stability >= 60 ? '#f59e0b' : '#ef4444';
+
+      // Musician-friendly direction label
+      var directionLabel = '';
+      if (Math.abs(avgDeviation) <= 2) directionLabel = 'Steady';
+      else if (rushing) directionLabel = 'Speeding up (+' + Math.abs(Math.round(avgDeviation * 10) / 10) + ' BPM)';
+      else directionLabel = 'Slowing down (' + Math.round(avgDeviation * 10) / 10 + ' BPM)';
+
+      // Rank problem zones by severity (duration × deviation)
+      problemZones.forEach(function(z) {
+        z.durationSec = z.endSec - z.startSec;
+        z.severity = z.durationSec * Math.abs(z.avgBPM - targetBPM);
+        z.label = z.avgBPM > targetBPM
+          ? 'Speeding up (+' + Math.round(Math.abs(z.avgBPM - targetBPM)) + ' BPM)'
+          : 'Slowing down (-' + Math.round(Math.abs(z.avgBPM - targetBPM)) + ' BPM)';
+      });
+      problemZones.sort(function(a, b) { return b.severity - a.severity; });
+      var worstZone = problemZones.length > 0 ? problemZones[0] : null;
+
+      // Generate coaching insights from pattern analysis
+      var coachingInsights = [];
+      if (points.length >= 6) {
+        // Check if tempo rises toward the end (common: speeding up in choruses/endings)
+        var firstHalf = points.slice(0, Math.floor(points.length / 2));
+        var secondHalf = points.slice(Math.floor(points.length / 2));
+        var avgFirst = firstHalf.reduce(function(a, p) { return a + p.bpm; }, 0) / firstHalf.length;
+        var avgSecond = secondHalf.reduce(function(a, p) { return a + p.bpm; }, 0) / secondHalf.length;
+        var halfDelta = avgSecond - avgFirst;
+        if (halfDelta > 3) coachingInsights.push('Tempo speeds up toward the end');
+        else if (halfDelta < -3) coachingInsights.push('Tempo drags toward the end');
+
+        // Check for a sudden jump (transition breakdown)
+        for (var ci = 1; ci < points.length; ci++) {
+          if (Math.abs(points[ci].bpm - points[ci - 1].bpm) > targetBPM * 0.08) {
+            coachingInsights.push('Timing breaks at ' + _fmtSec(points[ci].timeSec) + ' \u2014 possible transition issue');
+            break; // only report the first big jump
+          }
+        }
+      }
+      if (variance > 3 && !coachingInsights.length) coachingInsights.push('Tempo wanders throughout \u2014 try playing to a click');
+
       return {
         points: points,
         avgBPM: avgBPM,
         variance: variance,
         stability: stability,
+        stabilityLabel: stabilityLabel,
+        stabilityColor: stabilityColor,
         rushing: rushing,
         dragging: dragging,
         deviation: Math.round(avgDeviation * 10) / 10,
+        directionLabel: directionLabel,
         targetBPM: targetBPM,
-        problemZones: problemZones
+        problemZones: problemZones,
+        worstZone: worstZone,
+        coachingInsights: coachingInsights
       };
     },
 
@@ -442,11 +490,18 @@
 
       var svg = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" style="display:block">';
 
+      // Acceptable range band (±3% of target, shaded green)
+      var bandWidth = Math.max(3, ts.targetBPM * 0.03);
+      var bandTop = y(ts.targetBPM + bandWidth);
+      var bandBot = y(ts.targetBPM - bandWidth);
+      svg += '<rect x="' + pad.left + '" y="' + bandTop + '" width="' + w + '" height="' + Math.max(1, bandBot - bandTop) + '" fill="rgba(16,185,129,0.06)" rx="1"/>';
+
       // Problem zone highlights
-      ts.problemZones.forEach(function(z) {
+      ts.problemZones.forEach(function(z, zi) {
         var zx1 = x(z.startSec);
         var zx2 = x(z.endSec);
-        var color = z.type === 'rushing' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)';
+        var isWorst = ts.worstZone && z === ts.worstZone;
+        var color = z.type === 'rushing' ? (isWorst ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)') : (isWorst ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.08)');
         svg += '<rect x="' + zx1 + '" y="' + pad.top + '" width="' + Math.max(2, zx2 - zx1) + '" height="' + h + '" fill="' + color + '" rx="2"/>';
       });
 
@@ -465,15 +520,17 @@
       // Gradient: green when near target, shifts to amber/red on deviation
       svg += '<path d="' + pathD + '" fill="none" stroke="#667eea" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>';
 
-      // Clickable problem zone markers
+      // Clickable problem zone markers — worst zone gets larger marker
       ts.problemZones.forEach(function(z, zi) {
         var zx = x((z.startSec + z.endSec) / 2);
         var zy = pad.top + 4;
+        var isWorst = ts.worstZone && z === ts.worstZone;
         var markerColor = z.type === 'rushing' ? '#ef4444' : '#f59e0b';
         var label = z.type === 'rushing' ? '\u2191' : '\u2193';
-        svg += '<circle cx="' + zx + '" cy="' + zy + '" r="5" fill="' + markerColor + '" opacity="0.8" style="cursor:pointer" '
+        var r = isWorst ? 7 : 5;
+        svg += '<circle cx="' + zx + '" cy="' + zy + '" r="' + r + '" fill="' + markerColor + '" opacity="' + (isWorst ? '1' : '0.7') + '" style="cursor:pointer" '
           + 'onclick="_rhJumpToTime(' + z.startSec.toFixed(1) + ')" />';
-        svg += '<text x="' + zx + '" y="' + (zy + 3) + '" fill="white" font-size="7" text-anchor="middle" style="pointer-events:none">' + label + '</text>';
+        svg += '<text x="' + zx + '" y="' + (zy + 3) + '" fill="white" font-size="' + (isWorst ? '8' : '7') + '" text-anchor="middle" style="pointer-events:none">' + label + '</text>';
       });
 
       // Y-axis labels
@@ -520,6 +577,12 @@
       function y(bpm) { return pad.top + h - ((bpm - minBPM) / bpmRange) * h; }
 
       var svg = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" style="display:block">';
+
+      // Acceptable range band
+      var cBandW = Math.max(3, targetBPM * 0.03);
+      var cBandTop = y(targetBPM + cBandW);
+      var cBandBot = y(targetBPM - cBandW);
+      svg += '<rect x="' + pad.left + '" y="' + cBandTop + '" width="' + w + '" height="' + Math.max(1, cBandBot - cBandTop) + '" fill="rgba(16,185,129,0.06)" rx="1"/>';
 
       // Target line
       var ty = y(targetBPM);

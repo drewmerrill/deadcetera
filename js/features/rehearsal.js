@@ -1157,10 +1157,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             if (seg.groove && seg.groove.iois && seg.groove.iois.length >= 8 && _segTargetBPM && typeof PocketMeterTimeSeries !== 'undefined') {
                 var _ts = PocketMeterTimeSeries.compute(seg.groove, seg.startSec, _segTargetBPM);
                 if (_ts) {
-                    var _bpmDelta = _ts.deviation > 0 ? '+' + _ts.deviation : '' + _ts.deviation;
-                    var _bpmColor = Math.abs(_ts.deviation) <= 2 ? '#10b981' : (_ts.rushing ? '#ef4444' : '#f59e0b');
-                    var _bpmLabel = _ts.rushing ? 'rushing' : (_ts.dragging ? 'dragging' : 'steady');
-                    html += ' \u00B7 <span style="color:' + _bpmColor + '">' + _ts.avgBPM + ' BPM (' + _bpmDelta + ') \u2014 ' + _bpmLabel + '</span>';
+                    html += ' \u00B7 <span style="color:' + _ts.stabilityColor + '">' + _ts.avgBPM + ' BPM \u2014 ' + _ts.directionLabel + '</span>';
                 }
             }
             html += '</div></div>';
@@ -1188,18 +1185,30 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 var _pmTs = PocketMeterTimeSeries.compute(seg.groove, seg.startSec, _pmTargetBPM);
                 if (_pmTs && _pmTs.points.length >= 3) {
                     html += '<div style="margin:6px 0 4px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.04)">';
+                    // Header with stability label
                     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px">';
-                    html += '<span style="font-size:0.62em;font-weight:700;color:var(--text-dim)">Pocket Meter</span>';
-                    html += '<span style="font-size:0.58em;color:var(--text-dim)">Target: ' + _pmTargetBPM + ' BPM</span>';
+                    html += '<span style="font-size:0.62em;font-weight:700;color:var(--text-dim)">Pocket Meter \u00B7 <span style="color:' + _pmTs.stabilityColor + '">' + _pmTs.stabilityLabel + '</span></span>';
+                    html += '<span style="font-size:0.58em;color:var(--text-dim)">Target: ' + _pmTargetBPM + ' BPM \u00B7 Avg: ' + _pmTs.avgBPM + '</span>';
                     html += '</div>';
                     html += PocketMeterTimeSeries.renderSVG(_pmTs, 280, 80);
-                    // Problem zone callouts
+                    // Problem zone callouts — worst zone emphasized
                     if (_pmTs.problemZones.length > 0) {
                         html += '<div style="padding:3px 8px 5px;font-size:0.58em;color:var(--text-dim)">';
-                        _pmTs.problemZones.forEach(function(z) {
+                        _pmTs.problemZones.slice(0, 3).forEach(function(z, zi) {
+                            var isWorst = zi === 0;
                             var zColor = z.type === 'rushing' ? '#ef4444' : '#f59e0b';
-                            var zIcon = z.type === 'rushing' ? '\u2191' : '\u2193';
-                            html += '<span onclick="_rhJumpToTime(' + z.startSec.toFixed(1) + ')" style="cursor:pointer;color:' + zColor + ';margin-right:8px">' + zIcon + ' ' + z.type + ' at ' + _rhFmt(z.startSec) + ' (' + z.avgBPM + ' BPM)</span>';
+                            html += '<div onclick="_rhJumpToTime(' + z.startSec.toFixed(1) + ')" style="cursor:pointer;color:' + zColor + ';padding:1px 0' + (isWorst ? ';font-weight:700' : '') + '">'
+                                + (isWorst ? '\u25B6 ' : '') + escHtml(z.label) + ' at ' + _rhFmt(z.startSec)
+                                + (isWorst ? ' \u2014 tap to listen' : '')
+                                + '</div>';
+                        });
+                        html += '</div>';
+                    }
+                    // Coaching insights
+                    if (_pmTs.coachingInsights && _pmTs.coachingInsights.length) {
+                        html += '<div style="padding:3px 8px 5px;border-top:1px solid rgba(255,255,255,0.04)">';
+                        _pmTs.coachingInsights.forEach(function(ci) {
+                            html += '<div style="font-size:0.58em;color:#a5b4fc;line-height:1.4">\uD83D\uDCA1 ' + escHtml(ci) + '</div>';
                         });
                         html += '</div>';
                     }
@@ -2017,11 +2026,28 @@ window._rhCompareAttempts = function(songTitle) {
         });
         if (compareSeries.length >= 2) {
             html += '<div style="margin-top:6px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.04)">';
-            html += '<div style="padding:4px 8px;font-size:0.62em;font-weight:700;color:var(--text-dim)">BPM Comparison \u2014 which take was tighter?</div>';
+            html += '<div style="padding:4px 8px;font-size:0.62em;font-weight:700;color:var(--text-dim)">Tempo Comparison</div>';
             html += PocketMeterTimeSeries.renderCompareSVG(compareSeries, 300, 100);
-            // Summary: which take had lowest variance
+            // Best take + improvement metrics
             var bestTake = compareSeries.reduce(function(best, s, i) { return s.ts.variance < best.v ? { i: i, v: s.ts.variance } : best; }, { i: 0, v: 999 });
-            html += '<div style="padding:3px 8px 5px;font-size:0.58em;color:#10b981;text-align:center">Take ' + (bestTake.i + 1) + ' had the steadiest tempo (\u00B1' + compareSeries[bestTake.i].ts.variance + ' BPM)</div>';
+            html += '<div style="padding:3px 8px;font-size:0.58em;color:#10b981;text-align:center">';
+            html += 'Take ' + (bestTake.i + 1) + ' was tightest \u2014 ' + compareSeries[bestTake.i].ts.stabilityLabel + ' (\u00B1' + compareSeries[bestTake.i].ts.variance + ' BPM)';
+            html += '</div>';
+            // Improvement from first to last take
+            var firstTs = compareSeries[0].ts;
+            var lastTs = compareSeries[compareSeries.length - 1].ts;
+            if (compareSeries.length >= 2 && firstTs.variance > 0) {
+                var improvPct = Math.round(((firstTs.variance - lastTs.variance) / firstTs.variance) * 100);
+                var driftFrom = firstTs.variance;
+                var driftTo = lastTs.variance;
+                if (improvPct > 0) {
+                    html += '<div style="padding:0 8px 5px;font-size:0.55em;color:var(--text-dim);text-align:center">'
+                        + improvPct + '% tighter from take 1 to ' + compareSeries.length + ' \u00B7 drift \u00B1' + driftFrom + ' \u2192 \u00B1' + driftTo + ' BPM</div>';
+                } else if (improvPct < -5) {
+                    html += '<div style="padding:0 8px 5px;font-size:0.55em;color:#f59e0b;text-align:center">'
+                        + 'Timing loosened from take 1 to ' + compareSeries.length + ' \u00B7 drift \u00B1' + driftFrom + ' \u2192 \u00B1' + driftTo + ' BPM</div>';
+                }
+            }
             html += '</div>';
         }
     }
