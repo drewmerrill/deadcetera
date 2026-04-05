@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-04 (Song Page Restructure + Home Redesign + Recording Analysis + Audio Intelligence)_
+_Updated: 2026-04-05 (Timeline-Driven Rehearsal System + Playback + Page Consolidation)_
 
-## Active Phase: Recording Intelligence + Founder UAT
+## Active Phase: Timeline Intelligence + Performance Coaching
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main) + `push.py` for GitHub Pages
@@ -288,42 +288,50 @@ tests/chaos.spec.js                      — Chaos stability tests (46 tests)
 tests/burn-in.spec.js                   — Burn-in stability tests
 ```
 
-### Completed (2026-04-02 → 2026-04-04)
+### Completed (2026-04-02 → 2026-04-05)
 
 - ✅ Un-gated Band Love, Structure, Discussion, Voting from Lock In mode
-- ✅ Fixed "Sharpen" → "Improve" → renamed to "Practice"
-- ✅ Added Harmony Lab tab to all modes (renamed "Harmony")
 - ✅ Song Page restructured: Practice/Play/Versions/Harmony guided workflows
 - ✅ Home redesigned: decision engine, one hero, no competing actions
 - ✅ Recording Analysis: upload → segment → match → review → report
-- ✅ Song Matching Engine: 6-signal weighted scoring
-- ✅ Chord Analysis microservice (Essentia)
-- ✅ Audio Embedding microservice (CLAP)
-- ✅ Deepgram transcription for talking segments
-- ✅ [object Object] bug fixed, sticky header fixed, monkey emoji fixed
+- ✅ Song Matching Engine: 6-signal weighted scoring + learning loop
+- ✅ Chord Analysis microservice (Essentia, port 8100) installed + running
+- ✅ Audio Embedding microservice (CLAP, port 8200) installed + running
+- ✅ Deepgram transcription wired via Cloudflare Worker
+- ✅ Rehearsal page: timeline-driven command center (not dashboard)
+- ✅ Timeline: expandable segments, groove colors, hover actions, loop, compare, practice
+- ✅ Band Notes: topic labels, transcripts, "Applies to" song links
+- ✅ Coaching Insights: priority songs + specific fixes + action buttons
+- ✅ Lightweight playback: stream-only blob URL (no OOM on 337MB files)
+- ✅ Auto-split oversized segments (>15min) via energy dip detection
+- ✅ Persistent label overrides across re-analyses
+- ✅ Page consolidation: removed duplicate CTAs, collapsed plan, removed legacy sections
+- ✅ Segment-based report: single source of truth from reviewed segments
+- ✅ Multiple OOM crash fixes (playback, chord analysis queue, file loading)
 
-### Pending Work (Priority — Updated 2026-04-04)
+### Pending Work (Priority — Updated 2026-04-05)
 
 **HIGH — Recording Intelligence:**
-1. Calibrate song matching on real rehearsal recordings (threshold tuning)
-2. Wire chord hints into automatic post-segmentation flow
+1. Calibrate song matching on real rehearsal data (threshold tuning with debug tools)
+2. Wire chord hints into automatic post-segmentation (currently on-demand per segment)
 3. Persist embedding bank to Firebase for cross-session learning
-4. Add waveform visualization to segment review
-5. Test Deepgram transcription end-to-end
+4. Test Deepgram transcription end-to-end on real talking segments
+5. Auto-start chord/embedding services (Docker or systemd)
 
-**HIGH — Data Cleanup:**
-6. Verify songs_v2 migration complete (check for `[legacy-read]` warnings)
-7. Remove legacy fallback + localStorage bridge once verified
-8. Delete dead dashboard code + home-dashboard-cc.js
+**HIGH — Timeline Enhancement:**
+6. Waveform visualization in timeline strip
+7. "Build next rehearsal from insights" flow (connect coaching → plan builder)
+8. Inline A/B comparison (replace modal with inline expansion)
+9. Progress bar inside playing row
 
 **MEDIUM:**
-9. Founder Test Manual (Sections 2-10)
-10. Demo video clips for website
-11. Real user testing with non-founder bands
-12. Stripe payment integration
-13. iPad/mobile nav testing (mode gating on old cached versions)
+10. Founder Test Manual (Sections 2-10)
+11. Demo video clips for website
+12. Real user testing with non-founder bands
+13. Stripe payment integration
+14. iPad/mobile responsive testing
 
 **LOW:**
-14. Internal function naming normalization
-15. CSS comment drift cleanup
-16. BrowserStack real-device testing
+15. Delete dead dashboard code + home-dashboard-cc.js
+16. Internal function naming normalization
+17. BrowserStack real-device testing

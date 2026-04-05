@@ -602,10 +602,17 @@ async function _rhRenderCommandFlow(el) {
 
     // ── Rehearsal History (collapsed) ──
     html += '<details style="border-top:2px solid rgba(255,255,255,0.06);margin:16px 0;padding-top:12px">';
-    html += '<summary style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0">'
-        + '<span style="font-size:0.72em;color:var(--text-dim);transition:transform 0.2s">\u25B6</span>'
+    html += '<summary style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0;list-style:none">'
+        + '<span class="rh-chevron" style="font-size:0.72em;color:var(--text-dim);transition:transform 0.2s;display:inline-block">\u25B6</span>'
         + '<span style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">Rehearsal History</span>'
         + '</summary>';
+    // Inject chevron rotation CSS if not done
+    if (!document.getElementById('rh-chevron-style')) {
+        var _cs = document.createElement('style');
+        _cs.id = 'rh-chevron-style';
+        _cs.textContent = 'details[open] > summary .rh-chevron{transform:rotate(90deg)}';
+        document.head.appendChild(_cs);
+    }
     html += '<div style="margin-top:8px">';
     html += '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>';
     html += '<div id="rhSessionReview"></div>';

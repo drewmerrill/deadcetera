@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-04 (Song Page Restructure + Home Redesign + Recording Analysis + Audio Intelligence)_
+_Last updated: 2026-04-05 (Timeline-Driven Rehearsal System + Playback + Coaching Insights + Page Consolidation)_
 
 ## Read This First
 
@@ -681,6 +681,58 @@ New module: `js/core/song_matching_engine.js` (SongMatchingEngine)
 - Monkey emoji logic: 🐵 = visible, 🙈 = hidden (was reversed)
 - Pocket Meter CSS injection: validates content length, re-injects if empty
 
+### Timeline-Driven Rehearsal System (2026-04-05)
+
+**Rehearsal page restructured as timeline command center:**
+- Next Up (ONE primary CTA) → Plan (collapsed) → Snapshot → Timeline → Coaching → History
+- Legacy clutter removed: duplicate CTAs, "Start Here" directive, gig context section, tab content area
+- Plan section collapsed by default (shows song count + duration only)
+
+**Timeline as primary experience:**
+- Auto-loads latest rehearsal timeline on page render (no click required)
+- Expandable song segments with groove/quality badges
+- Groove-coded borders: green (stable) / amber (unstable) / gray (incomplete)
+- Hover quick actions: 🔁 Loop + 🎯 Practice appear on hover
+- Double-click-to-loop on any segment row
+- Band Notes: "💬 BAND NOTE — {topic}" with transcript, tags, "Applies to: {song}" links
+- Clickable timeline strip (mini-map) — jump to any segment
+
+**Action hooks:**
+- Per-segment: [▶ Play] [🔁 Loop] [🆚 Compare] [🎯 Practice]
+- Coaching Insights: action buttons per priority song + "Loop hardest section" CTA
+- "Build Next Rehearsal From This" button in coaching section
+- Compare Attempts modal (side-by-side groove/quality)
+
+**Playback:**
+- Lightweight file loader: creates blob URL without decoding (prevents OOM on 337MB)
+- Shared audio element: never re-set src (stream-only, preload=none)
+- Active playback state: row highlight + pulsing button + auto-cleanup
+
+**Segment-based report:**
+- Report built from confirmed segments only (no legacy data mixing)
+- Per-song grouping with attempts, groove, chords, playback
+- Discussion section with transcripts + tags
+- Both modal report and inline timeline share _rhPrepareSegmentData()
+
+**Auto-split oversized segments:**
+- Segments > 15 min auto-split using internal energy dip detection
+- Finds energy drops < 25% of median lasting ≥ 3 seconds
+- Sub-segments tagged ['auto-split'] for transparency
+
+**Persistent label overrides:**
+- User corrections saved to Firebase (label_overrides/{startSec_endSec})
+- Applied automatically on re-analysis — never need to re-enter
+
+### Bug Fixes (2026-04-05)
+
+- Playback OOM crash: stream-only blob URL, preload=none, shared audio element
+- View Report empty: loads session fresh from Firebase (not stale cache)
+- Report crash: Firebase objects converted to arrays safely (songsWorked, blocks)
+- Chord analysis queue: sequential processing prevents concurrent OOM
+- Position input: widened to 48px for double-digit numbers
+- History chevron: rotates 90° on details open (CSS transform)
+- "Delta Blue ×46" bug: position-aware planMatch scoring
+
 ## Restart Prompt
 
 Paste this to resume:
@@ -691,26 +743,37 @@ I'm continuing GrooveLinx development. Read these files first:
 - 02_GrooveLinx/CURRENT_PHASE.md
 - CLAUDE.md
 
-Current state (2026-04-04):
-- Song Page restructured: Practice/Play/Versions/Harmony tabs (guided workflows)
-- Home redesigned as decision engine (one hero + secondary cards + compact band status)
-- Recording Analysis system built: upload MP3 → segment → match → review → report
-- Song Matching Engine: 6-signal weighted scoring with learning loop
-- Chord Analysis microservice running (Essentia, port 8100)
-- Audio Embedding microservice running (CLAP, port 8200)
-- Deepgram transcription wired via Cloudflare Worker
-- RMS segmenter tuned for real rehearsals (8s silence, 60s min, 15s merge)
-- Post-match merge + BPM validation pass
-- All features un-gated from Lock In mode
-- [object Object] bug fixed on Home
+Current state (2026-04-05):
+- Rehearsal page is now a TIMELINE-DRIVEN COMMAND CENTER
+- Page hierarchy: Next Up → Plan (collapsed) → Snapshot → Timeline (primary) → Coaching → History
+- Timeline is the center of experience: expandable segments, playback, loop, compare, practice
+- Song segments: groove-coded borders (green/amber/gray), hover quick actions (🔁 🎯)
+- Band Notes: "💬 BAND NOTE — {topic}" with transcript, tags, "Applies to: {song}" clickable links
+- Coaching Insights: priority songs with specific fixes + action buttons + "Loop hardest section"
+- Playback: lightweight file loader (no analysis, stream-only) — prevents 337MB OOM crash
+- Recording Analysis: upload → segment → match → review → report (full pipeline)
+- Song Matching Engine: 6-signal weighted scoring, position-aware planMatch, learning loop
+- Auto-split oversized segments (>15min) using internal energy dips
+- User label overrides persist across re-analyses (Firebase)
+- Chord analysis + audio embeddings services (ports 8100/8200) installed and running
+- Deepgram transcription via Cloudflare Worker
+- Home: decision engine with one hero + secondary cards + compact band status
+- Song Page: Practice/Play/Versions/Harmony tabs (guided workflows)
 - 4 SYSTEM LOCKs intact: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
 
+Known issues:
+- Large file playback may still crash on some machines (337MB MP3 + Chrome memory limits)
+- Song matching accuracy depends on plan order — no audio-based song identification yet
+- Chord/embedding services need to be started manually (not auto-deployed)
+
 Next recommended actions:
-1. Test recording analysis end-to-end with chord/embedding services running
-2. Calibrate song matching thresholds on real rehearsal data
-3. Wire chord hints into automatic post-segmentation flow (currently on-demand)
-4. Persist embedding bank to Firebase for cross-session learning
-5. Add waveform visualization to segment review
+1. Calibrate song matching thresholds on real rehearsal recordings
+2. Wire chord hints into automatic post-segmentation flow (currently on-demand per segment)
+3. Persist embedding bank to Firebase for cross-session learning
+4. Add waveform visualization to timeline strip
+5. Auto-start chord/embedding services (Docker or systemd)
+6. Test Deepgram transcription on talking segments
+7. Build "next rehearsal plan from insights" flow
 ```
 
 ## Firebase Paths
