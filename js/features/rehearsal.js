@@ -1045,8 +1045,9 @@ async function _rhRenderSessionHistory() {
         // Actions
         html += '<div style="display:flex;gap:6px;align-items:center">';
         if (isLatest) html += '<span style="font-size:0.6em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase">LATEST</span>';
-        html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">View Report</button>';
-        html += '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(s.sessionId) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#818cf8">\uD83D\uDD0D Analyze Recording</button>';
+        html += '<button onclick="_rhShowInlineTimeline(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc">\uD83D\uDCCA Timeline</button>';
+        html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Report</button>';
+        html += '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(s.sessionId) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#818cf8">\uD83D\uDD0D Analyze</button>';
         if (s.mixdown_id) {
             html += '<button onclick="_rhToggleMixdownPlayer(\'' + s.sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Mixdown</button>';
             // Mixdown tag
@@ -1108,33 +1109,188 @@ window._rhRerunAnalysis = function(sessionId) {
     });
 };
 
-// ── Segment-based report (built from confirmed recording analysis) ──────────
-function _rhRenderSegmentReport(sessionId, session, segments) {
-    var _fmt = function(sec) { if (!sec && sec !== 0) return '0:00'; var m = Math.floor(sec / 60); var s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; };
+// ── Shared data preparation (single source of truth) ────────────────────────
+var _rhFmt = function(sec) { if (!sec && sec !== 0) return '0:00'; var m = Math.floor(sec / 60); var s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; };
+
+function _rhPrepareSegmentData(session, segments) {
     var dateStr = session.date ? new Date(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
     var totalDur = session.totalActualMin || 0;
     var durLabel = totalDur >= 60 ? Math.floor(totalDur / 60) + 'h ' + (totalDur % 60) + 'm' : totalDur + 'm';
 
-    // Filter segments by type
     var songSegs = segments.filter(function(s) { return !s.segType || s.segType === 'song'; });
     var talkSegs = segments.filter(function(s) { return s.segType === 'talking'; });
     var restartSegs = segments.filter(function(s) { return s.segType === 'restart'; });
     var jamSegs = segments.filter(function(s) { return s.segType === 'jam'; });
 
-    // Group songs by title
     var songGroups = {};
     songSegs.forEach(function(seg) {
         var title = seg.songTitle || 'Unknown';
-        if (!songGroups[title]) songGroups[title] = { title: title, segments: [], totalTime: 0 };
+        if (!songGroups[title]) songGroups[title] = { title: title, segments: [], totalTime: 0, bestQuality: 0 };
         songGroups[title].segments.push(seg);
         songGroups[title].totalTime += seg.duration || 0;
+        if ((seg.qualityScore || 0) > songGroups[title].bestQuality) songGroups[title].bestQuality = seg.qualityScore;
     });
     var songList = Object.values(songGroups).sort(function(a, b) {
         return (a.segments[0].startSec || 0) - (b.segments[0].startSec || 0);
     });
 
-    // Plan vs actual (if available)
-    var pva = session.plan_vs_actual || null;
+    // Derive recommendations from segment data
+    var recommendations = [];
+    songList.forEach(function(g) {
+        if (g.segments.length >= 3) recommendations.push({ text: g.title + ' took ' + g.segments.length + ' attempts \u2014 work on the trouble spots', song: g.title });
+        if (g.bestQuality < 2 && g.segments.length > 0) recommendations.push({ text: g.title + ' was incomplete \u2014 try a full run next time', song: g.title });
+    });
+    var totalSongTime = songSegs.reduce(function(a, s) { return a + (s.duration || 0); }, 0);
+    var totalTalkTime = talkSegs.reduce(function(a, s) { return a + (s.duration || 0); }, 0);
+    if (totalTalkTime > totalSongTime * 0.4 && talkSegs.length > 2) recommendations.push({ text: 'Spent a lot of time discussing \u2014 try running songs first next rehearsal' });
+
+    return {
+        dateStr: dateStr, durLabel: durLabel,
+        songSegs: songSegs, talkSegs: talkSegs, restartSegs: restartSegs, jamSegs: jamSegs,
+        songGroups: songGroups, songList: songList,
+        pva: session.plan_vs_actual || null,
+        recommendations: recommendations.slice(0, 3),
+        allSegments: segments
+    };
+}
+
+function _rhHasAudio() {
+    return typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl;
+}
+
+// ── Inline Timeline (rendered inside session card on rehearsal page) ─────────
+window._rhShowInlineTimeline = async function(sessionId) {
+    var container = document.getElementById('rhSessDetail_' + sessionId);
+    if (!container) return;
+
+    // Toggle: if already showing, hide
+    if (container.style.display === 'block' && container.innerHTML) {
+        container.style.display = 'none';
+        return;
+    }
+
+    // Load session data
+    var s = null;
+    try {
+        if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+            var snap = await firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value');
+            s = snap.val();
+        }
+    } catch(e) {}
+    if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
+
+    var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
+    var segments = _toArr(s.audio_segments);
+
+    if (!segments.length) {
+        container.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:0.78em">No recording analysis available. Use <strong>Analyze Recording</strong> to see the timeline.</div>';
+        container.style.display = 'block';
+        return;
+    }
+
+    var data = _rhPrepareSegmentData(s, segments);
+    var hasAudio = _rhHasAudio();
+    var playBtnStyle = hasAudio
+        ? 'background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em'
+        : 'background:none;border:none;color:#334155;cursor:default;font-size:0.85em';
+
+    var html = '';
+
+    // Audio state
+    html += '<audio id="rhTimelineAudio_' + sessionId + '" style="display:none"></audio>';
+    if (!hasAudio) {
+        html += '<div style="padding:6px 10px;margin-bottom:8px;border-radius:6px;border:1px solid rgba(245,158,11,0.15);background:rgba(245,158,11,0.04);font-size:0.7em;color:#fbbf24;display:flex;align-items:center;justify-content:space-between">'
+            + '<span>Load recording to enable playback</span>'
+            + '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit">Load</button>'
+            + '</div>';
+    }
+
+    // Timeline strip (visual overview)
+    var totalDur = segments[segments.length - 1] ? (segments[segments.length - 1].endSec || 0) : 1;
+    html += '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:12px;background:rgba(255,255,255,0.03)">';
+    segments.forEach(function(seg) {
+        var pct = ((seg.duration || 0) / totalDur * 100).toFixed(1);
+        var color = (!seg.segType || seg.segType === 'song') ? '#667eea' : (seg.segType === 'talking' ? '#818cf8' : (seg.segType === 'jam' ? '#f59e0b' : '#334155'));
+        if (seg.segType === 'ignore') return;
+        html += '<div style="width:' + pct + '%;background:' + color + ';min-width:2px" title="' + escHtml(seg.songTitle || seg.segType || '') + ' (' + _rhFmt(seg.startSec) + ')"></div>';
+    });
+    html += '</div>';
+
+    // Chronological segment list
+    segments.forEach(function(seg, i) {
+        if (seg.segType === 'ignore') return;
+        var isSong = !seg.segType || seg.segType === 'song';
+        var isTalk = seg.segType === 'talking';
+        var durLabel2 = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
+        var borderColor = isSong ? 'rgba(99,102,241,0.12)' : (isTalk ? 'rgba(129,140,248,0.1)' : 'rgba(255,255,255,0.04)');
+
+        html += '<div style="margin-bottom:6px;padding:8px 10px;border-radius:8px;border-left:3px solid ' + borderColor + ';background:rgba(255,255,255,0.02)">';
+        html += '<div style="display:flex;align-items:center;gap:8px">';
+        // Play
+        html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled title="Load recording first"') + '>\u25B6</button>';
+        // Time
+        html += '<span style="font-size:0.68em;color:var(--text-dim);min-width:75px">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + '</span>';
+        // Title/type
+        if (isSong) {
+            html += '<span style="flex:1;font-size:0.82em;font-weight:600;color:var(--text)">' + escHtml(seg.songTitle || 'Unknown') + '</span>';
+        } else if (isTalk) {
+            html += '<span style="flex:1;font-size:0.78em;color:#a5b4fc">\uD83D\uDCAC Discussion</span>';
+        } else {
+            html += '<span style="flex:1;font-size:0.78em;color:var(--text-dim)">' + escHtml(seg.segType || seg.songTitle || '') + '</span>';
+        }
+        html += '<span style="font-size:0.68em;color:var(--text-dim)">' + durLabel2 + '</span>';
+        html += '</div>';
+
+        // Song details
+        if (isSong && (seg.qualityLabel || (seg.groove && seg.groove.label))) {
+            html += '<div style="display:flex;gap:8px;font-size:0.62em;padding:2px 0 0 28px">';
+            if (seg.qualityLabel) html += '<span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
+            if (seg.groove && seg.groove.label) html += '<span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">' + escHtml(seg.groove.label) + '</span>';
+            html += '</div>';
+        }
+        // Talking content
+        if (isTalk && (seg.transcript || seg.notes)) {
+            html += '<div style="font-size:0.72em;color:var(--text-muted);padding:4px 0 0 28px;line-height:1.4">' + escHtml((seg.transcript || seg.notes).substring(0, 150)) + (((seg.transcript || seg.notes).length > 150) ? '...' : '') + '</div>';
+            if (seg.talkTags && seg.talkTags.length) html += '<div style="font-size:0.6em;color:#818cf8;padding:2px 0 0 28px">' + seg.talkTags.join(', ') + '</div>';
+        }
+        html += '</div>';
+    });
+
+    // Song summary cards
+    if (data.songList.length) {
+        html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">Song Summary</div>';
+        data.songList.forEach(function(group) {
+            var attempts = group.segments.length;
+            var totalMin = Math.round(group.totalTime / 60);
+            var needsWork = group.bestQuality < 2 || attempts >= 3;
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:rgba(255,255,255,0.02);margin-bottom:3px;font-size:0.78em">';
+            html += '<span style="flex:1;font-weight:600;color:var(--text)">' + escHtml(group.title) + '</span>';
+            html += '<span style="color:var(--text-dim)">' + totalMin + 'm</span>';
+            if (attempts > 1) html += '<span style="color:var(--text-dim)">\u00D7' + attempts + '</span>';
+            if (needsWork) html += '<span style="color:#fbbf24;font-size:0.85em">\u26A0</span>';
+            html += '</div>';
+        });
+    }
+
+    // Recommendations
+    if (data.recommendations.length) {
+        html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">What to Work On</div>';
+        data.recommendations.forEach(function(r) {
+            html += '<div style="font-size:0.75em;color:var(--text-muted);padding:3px 0;border-left:2px solid rgba(245,158,11,0.3);padding-left:8px;margin-bottom:4px">' + escHtml(r.text) + '</div>';
+        });
+    }
+
+    container.innerHTML = html;
+    container.style.display = 'block';
+};
+
+// ── Segment-based report modal (uses shared data prep) ──────────────────────
+function _rhRenderSegmentReport(sessionId, session, segments) {
+    var data = _rhPrepareSegmentData(session, segments);
+    var songList = data.songList;
+    var talkSegs = data.talkSegs;
+    var jamSegs = data.jamSegs;
+    var pva = data.pva;
 
     var html = '<div style="max-width:500px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:85vh;overflow-y:auto">';
 
@@ -1143,7 +1299,7 @@ function _rhRenderSegmentReport(sessionId, session, segments) {
     html += '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9">Rehearsal Report</div>';
     html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1em">\u2715</button>';
     html += '</div>';
-    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:14px">' + dateStr + (durLabel ? ' \u00B7 ' + durLabel : '') + ' \u00B7 ' + songList.length + ' songs' + (talkSegs.length ? ' \u00B7 ' + talkSegs.length + ' discussions' : '') + '</div>';
+    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:14px">' + data.dateStr + (data.durLabel ? ' \u00B7 ' + data.durLabel : '') + ' \u00B7 ' + songList.length + ' songs' + (talkSegs.length ? ' \u00B7 ' + talkSegs.length + ' discussions' : '') + '</div>';
 
     // Hidden audio for playback
     html += '<audio id="rhReportAudio" style="display:none"></audio>';
