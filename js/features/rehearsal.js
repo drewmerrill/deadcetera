@@ -591,7 +591,7 @@ async function _rhRenderCommandFlow(el) {
         // No saved plan — show planner CTA + snapshots for restore
         html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
             + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Plan Next Rehearsal</button>'
-            + '<button onclick="rhShowTab(\'history\')" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
+            + '<button onclick="var h=document.querySelector(\'#rhMain details:last-of-type\');if(h){h.open=true;h.scrollIntoView({behavior:\'smooth\'})}" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
             + '</div>'
             + '<div id="rhSnapshots"></div>';
     }
@@ -615,12 +615,9 @@ async function _rhRenderCommandFlow(el) {
     }
     html += '<div style="margin-top:8px">';
     html += '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>';
-    html += '<div id="rhSessionReview"></div>';
     html += '<div id="rhSessionHistory"></div>';
     html += '<div id="rhMixdownsContainer" style="margin-top:12px"></div>';
     html += '</div></details>';
-
-    // (Tab content / AI suggestions area removed — consolidated into coaching insights)
 
     main.innerHTML = html;
     window.GL_REHEARSAL_READY = true;
@@ -639,22 +636,10 @@ async function _rhRenderCommandFlow(el) {
         setTimeout(function() { glSpotlight.run('rehearsal-plan-v3'); }, 800);
     }
 
-    // Render last rehearsal snapshot + inline timeline
+    // Render last rehearsal snapshot + inline timeline (primary content)
     _rhRenderLastRehearsalTimeline();
-    // Render full history list
+    // Render full history list (inside collapsed History section)
     _rhRenderSessionHistory();
-
-    // Show AI focus below the saved plan (complementary, not competing)
-    if (hasSavedPlan) {
-        // When plan exists, show a collapsed AI suggestions section
-        var tabEl = document.getElementById('rhTabContent');
-        if (tabEl) {
-            tabEl.innerHTML = '<details style="margin-top:4px"><summary style="font-size:0.68em;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:6px 0">Broader Analysis (not current focus)</summary><div id="rhAISuggestions"></div></details>';
-            _rhRenderTonightTab_inner(document.getElementById('rhAISuggestions'));
-        }
-    } else {
-        _rhRenderTonightTab();
-    }
 }
 
 // Clear saved rehearsal plan (explicit user action — auto-snapshots first)
@@ -1016,40 +1001,15 @@ async function _rhRenderSessionHistory() {
         // Notes
         if (notesPreview) html += '<div style="font-size:0.72em;color:#475569;margin-bottom:3px">' + notesPreview + '</div>';
 
-        // Actions
+        // Actions — single primary CTA: View Timeline
         html += '<div style="display:flex;gap:6px;align-items:center">';
         if (isLatest) html += '<span style="font-size:0.6em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase">LATEST</span>';
-        html += '<button onclick="_rhShowInlineTimeline(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc">\uD83D\uDCCA Timeline</button>';
-        html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Report</button>';
-        html += '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(s.sessionId) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#818cf8">\uD83D\uDD0D Analyze</button>';
+        html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc">\u25B6 View Timeline</button>';
         if (s.mixdown_id) {
             html += '<button onclick="_rhToggleMixdownPlayer(\'' + s.sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Mixdown</button>';
-            // Mixdown tag
-            var mxTag = s.mixdown_tag || '';
-            var mxTagLabels = { best_take: '\u2B50 Best Take', needs_work: '\uD83D\uDD27 Needs Work' };
-            html += '<button onclick="_rhCycleMixdownTag(\'' + s.sessionId + '\')" style="font-size:0.6em;font-weight:600;padding:2px 6px;border-radius:4px;cursor:pointer;border:1px solid ' + (mxTag === 'best_take' ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (mxTag === 'best_take' ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (mxTag === 'best_take' ? '#fbbf24' : mxTag === 'needs_work' ? '#f87171' : '#475569') + '">' + (mxTagLabels[mxTag] || '\uD83C\uDFF7 Tag') + '</button>';
-            html += '<button onclick="if(typeof RehearsalMixdowns!==\'undefined\')RehearsalMixdowns.openInChopper(\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b">\u2702\uFE0F Chopper</button>';
-            html += '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(s.sessionId) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#818cf8">\uD83D\uDD0D Analyze</button>';
         }
         html += '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b;margin-left:auto">\uD83D\uDDD1\uFE0F</button>';
         html += '</div>';
-
-        // Expandable block detail
-        if (s.blocks && s.blocks.length) {
-            html += '<div style="padding:4px 0 2px 4px;display:none;margin-top:4px;border-top:1px solid rgba(255,255,255,0.04)" id="rhSessDetail_' + s.sessionId + '">';
-            s.blocks.forEach(function(b) {
-                if (!b.budgetMin && !b.actualMin) return;
-                var over = b.budgetMin > 0 && b.actualMin > b.budgetMin;
-                var pct = b.budgetMin > 0 ? Math.min(Math.round((b.actualMin / b.budgetMin) * 100), 200) : 100;
-                var barColor = pct <= 100 ? '#22c55e' : '#ef4444';
-                html += '<div style="display:flex;align-items:center;gap:6px;padding:1px 0;font-size:0.68em">'
-                    + '<span style="min-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + (over ? '#fca5a5' : 'var(--text-dim)') + '">' + escHtml(b.title) + '</span>'
-                    + '<div style="flex:1;height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden"><div style="width:' + Math.min(pct, 100) + '%;height:100%;background:' + barColor + ';border-radius:2px"></div></div>'
-                    + '<span style="color:' + (over ? '#ef4444' : 'var(--text-dim)') + ';white-space:nowrap">' + b.actualMin + 'm' + (b.budgetMin ? '/' + b.budgetMin + 'm' : '') + '</span>'
-                    + '</div>';
-            });
-            html += '</div>';
-        }
 
         // Inline mixdown player area (hidden until toggled)
         if (s.mixdown_id) {
@@ -1070,9 +1030,7 @@ window._rhRerunAnalysis = function(sessionId) {
     RehearsalAnalysis.run(sessionId, { force: true }).then(function(result) {
         if (result.status === 'complete') {
             if (typeof showToast === 'function') showToast('\u2705 Analysis updated');
-            // Re-open the report modal with fresh data
-            var modal = document.getElementById('rhReportModal');
-            if (modal) modal.remove();
+            // Re-render inline timeline with fresh data
             setTimeout(function() { _rhShowSessionReport(sessionId); }, 300);
         } else {
             if (typeof showToast === 'function') showToast('Analysis returned: ' + result.status);
@@ -1151,6 +1109,9 @@ async function _rhRenderLastRehearsalTimeline() {
 // Render timeline directly into a container (not toggled via session card)
 function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments) {
     var data = _rhPrepareSegmentData(session, segments);
+    // Cache for inline compare and other consumers
+    window._rhLastTimelineData = data;
+    window._rhLastTimelineSessionId = sessionId;
     var hasAudio = _rhHasAudio();
     var playBtnStyle = hasAudio
         ? 'background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em'
@@ -1410,261 +1371,9 @@ function _rhHasAudio() {
     return false;
 }
 
-// ── Inline Timeline (rendered inside session card on rehearsal page) ─────────
-window._rhShowInlineTimeline = async function(sessionId) {
-    var container = document.getElementById('rhSessDetail_' + sessionId);
-    if (!container) return;
+// _rhShowInlineTimeline removed — consolidated into _rhRenderInlineTimelineDirectly
 
-    // Toggle: if already showing, hide
-    if (container.style.display === 'block' && container.innerHTML) {
-        container.style.display = 'none';
-        return;
-    }
-
-    // Load session data
-    var s = null;
-    try {
-        if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
-            var snap = await firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value');
-            s = snap.val();
-        }
-    } catch(e) {}
-    if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
-
-    var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
-    var segments = _toArr(s.audio_segments);
-
-    if (!segments.length) {
-        container.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-dim);font-size:0.78em">No recording analysis available. Use <strong>Analyze Recording</strong> to see the timeline.</div>';
-        container.style.display = 'block';
-        return;
-    }
-
-    var data = _rhPrepareSegmentData(s, segments);
-    var hasAudio = _rhHasAudio();
-    var playBtnStyle = hasAudio
-        ? 'background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em'
-        : 'background:none;border:none;color:#334155;cursor:default;font-size:0.85em';
-
-    var html = '';
-
-    // Audio state
-    html += '<audio id="rhTimelineAudio_' + sessionId + '" style="display:none"></audio>';
-    if (!hasAudio) {
-        html += '<div style="padding:6px 10px;margin-bottom:8px;border-radius:6px;border:1px solid rgba(245,158,11,0.15);background:rgba(245,158,11,0.04);font-size:0.7em;color:#fbbf24;display:flex;align-items:center;justify-content:space-between">'
-            + '<span>Load recording to enable playback</span>'
-            + '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit">Load</button>'
-            + '</div>';
-    }
-
-    // Timeline strip (visual overview)
-    var totalDur = segments[segments.length - 1] ? (segments[segments.length - 1].endSec || 0) : 1;
-    html += '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:12px;background:rgba(255,255,255,0.03)">';
-    segments.forEach(function(seg) {
-        var pct = ((seg.duration || 0) / totalDur * 100).toFixed(1);
-        var color = (!seg.segType || seg.segType === 'song') ? '#667eea' : (seg.segType === 'talking' ? '#818cf8' : (seg.segType === 'jam' ? '#f59e0b' : '#334155'));
-        if (seg.segType === 'ignore') return;
-        html += '<div style="width:' + pct + '%;background:' + color + ';min-width:2px" title="' + escHtml(seg.songTitle || seg.segType || '') + ' (' + _rhFmt(seg.startSec) + ')"></div>';
-    });
-    html += '</div>';
-
-    // Chronological segment list
-    segments.forEach(function(seg, i) {
-        if (seg.segType === 'ignore') return;
-        var isSong = !seg.segType || seg.segType === 'song';
-        var isTalk = seg.segType === 'talking';
-        var durLabel2 = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
-        var borderColor = isSong ? 'rgba(99,102,241,0.12)' : (isTalk ? 'rgba(129,140,248,0.1)' : 'rgba(255,255,255,0.04)');
-
-        html += '<div style="margin-bottom:6px;padding:8px 10px;border-radius:8px;border-left:3px solid ' + borderColor + ';background:rgba(255,255,255,0.02)">';
-        html += '<div style="display:flex;align-items:center;gap:8px">';
-        // Play
-        html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled title="Load recording first"') + '>\u25B6</button>';
-        // Time
-        html += '<span style="font-size:0.68em;color:var(--text-dim);min-width:75px">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + '</span>';
-        // Title/type
-        if (isSong) {
-            html += '<span style="flex:1;font-size:0.82em;font-weight:600;color:var(--text)">' + escHtml(seg.songTitle || 'Unknown') + '</span>';
-        } else if (isTalk) {
-            html += '<span style="flex:1;font-size:0.78em;color:#a5b4fc">\uD83D\uDCAC Discussion</span>';
-        } else {
-            html += '<span style="flex:1;font-size:0.78em;color:var(--text-dim)">' + escHtml(seg.segType || seg.songTitle || '') + '</span>';
-        }
-        html += '<span style="font-size:0.68em;color:var(--text-dim)">' + durLabel2 + '</span>';
-        html += '</div>';
-
-        // Song details
-        if (isSong && (seg.qualityLabel || (seg.groove && seg.groove.label))) {
-            html += '<div style="display:flex;gap:8px;font-size:0.62em;padding:2px 0 0 28px">';
-            if (seg.qualityLabel) html += '<span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
-            if (seg.groove && seg.groove.label) html += '<span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">' + escHtml(seg.groove.label) + '</span>';
-            html += '</div>';
-        }
-        // Talking content
-        if (isTalk && (seg.transcript || seg.notes)) {
-            html += '<div style="font-size:0.72em;color:var(--text-muted);padding:4px 0 0 28px;line-height:1.4">' + escHtml((seg.transcript || seg.notes).substring(0, 150)) + (((seg.transcript || seg.notes).length > 150) ? '...' : '') + '</div>';
-            if (seg.talkTags && seg.talkTags.length) html += '<div style="font-size:0.6em;color:#818cf8;padding:2px 0 0 28px">' + seg.talkTags.join(', ') + '</div>';
-        }
-        html += '</div>';
-    });
-
-    // Song summary cards
-    if (data.songList.length) {
-        html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">Song Summary</div>';
-        data.songList.forEach(function(group) {
-            var attempts = group.segments.length;
-            var totalMin = Math.round(group.totalTime / 60);
-            var needsWork = group.bestQuality < 2 || attempts >= 3;
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:rgba(255,255,255,0.02);margin-bottom:3px;font-size:0.78em">';
-            html += '<span style="flex:1;font-weight:600;color:var(--text)">' + escHtml(group.title) + '</span>';
-            html += '<span style="color:var(--text-dim)">' + totalMin + 'm</span>';
-            if (attempts > 1) html += '<span style="color:var(--text-dim)">\u00D7' + attempts + '</span>';
-            if (needsWork) html += '<span style="color:#fbbf24;font-size:0.85em">\u26A0</span>';
-            html += '</div>';
-        });
-    }
-
-    // Recommendations
-    if (data.recommendations.length) {
-        html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 6px">What to Work On</div>';
-        data.recommendations.forEach(function(r) {
-            html += '<div style="font-size:0.75em;color:var(--text-muted);padding:3px 0;border-left:2px solid rgba(245,158,11,0.3);padding-left:8px;margin-bottom:4px">' + escHtml(r.text) + '</div>';
-        });
-    }
-
-    container.innerHTML = html;
-    container.style.display = 'block';
-};
-
-// ── Segment-based report modal (uses shared data prep) ──────────────────────
-function _rhRenderSegmentReport(sessionId, session, segments) {
-    var data = _rhPrepareSegmentData(session, segments);
-    var songList = data.songList;
-    var talkSegs = data.talkSegs;
-    var jamSegs = data.jamSegs;
-    var pva = data.pva;
-
-    var html = '<div style="max-width:500px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:85vh;overflow-y:auto">';
-
-    // Header
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
-    html += '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9">Rehearsal Report</div>';
-    html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1em">\u2715</button>';
-    html += '</div>';
-    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:14px">' + data.dateStr + (data.durLabel ? ' \u00B7 ' + data.durLabel : '') + ' \u00B7 ' + songList.length + ' songs' + (talkSegs.length ? ' \u00B7 ' + talkSegs.length + ' discussions' : '') + '</div>';
-
-    // Hidden audio for playback
-    html += '<audio id="rhReportAudio" style="display:none"></audio>';
-
-    // ── Plan vs Actual ──
-    if (pva) {
-        var _pvaArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; return Object.values(v); };
-        var played = _pvaArr(pva.played);
-        var missing = _pvaArr(pva.missing);
-        var unplanned = _pvaArr(pva.unplanned);
-        if (played.length || missing.length || unplanned.length) {
-            html += '<details style="margin-bottom:12px;border:1px solid rgba(255,255,255,0.06);border-radius:8px">'
-                + '<summary style="padding:8px 10px;font-size:0.72em;font-weight:700;color:var(--text-dim);cursor:pointer;list-style:none">'
-                + 'Plan vs Actual \u00B7 ' + played.length + ' played'
-                + (missing.length ? ' \u00B7 ' + missing.length + ' missed' : '')
-                + (unplanned.length ? ' \u00B7 ' + unplanned.length + ' unplanned' : '')
-                + '</summary><div style="padding:4px 10px 10px;font-size:0.75em;color:var(--text-dim)">';
-            if (missing.length) html += '<div style="color:#fbbf24;margin-bottom:4px">Missed: ' + missing.join(', ') + '</div>';
-            if (unplanned.length) html += '<div style="color:#818cf8">Unplanned: ' + unplanned.join(', ') + '</div>';
-            html += '</div></details>';
-        }
-    }
-
-    // ── Song-by-song report ──
-    html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Song Report</div>';
-    songList.forEach(function(group) {
-        var attempts = group.segments.length;
-        var totalMin = Math.round(group.totalTime / 60);
-
-        html += '<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)">';
-
-        // Song header
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
-        html += '<div style="font-weight:700;font-size:0.92em;color:var(--text)">' + escHtml(group.title) + '</div>';
-        html += '<div style="font-size:0.72em;color:var(--text-dim)">' + totalMin + ' min' + (attempts > 1 ? ' \u00B7 ' + attempts + ' attempts' : '') + '</div>';
-        html += '</div>';
-
-        // Per-attempt details
-        group.segments.forEach(function(seg, ai) {
-            var durLabel2 = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
-            var label = attempts > 1 ? 'Attempt ' + (ai + 1) : '';
-
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.78em;border-bottom:1px solid rgba(255,255,255,0.03)">';
-            // Play button
-            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.95em">\u25B6</button>';
-            // Time range
-            html += '<span style="color:var(--text-dim);min-width:85px">' + _fmt(seg.startSec) + '\u2013' + _fmt(seg.endSec) + '</span>';
-            // Label + duration
-            html += '<span style="flex:1;color:var(--text)">' + (label || durLabel2) + '</span>';
-            html += '<span style="color:var(--text-dim)">' + durLabel2 + '</span>';
-            html += '</div>';
-
-            // Quality + groove (if available)
-            if (seg.qualityLabel || seg.groove) {
-                html += '<div style="display:flex;gap:8px;font-size:0.68em;padding:2px 0 2px 28px">';
-                if (seg.qualityLabel) html += '<span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
-                if (seg.groove && seg.groove.label) html += '<span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">' + escHtml(seg.groove.label) + '</span>';
-                html += '</div>';
-            }
-
-            // Chord hints (if available)
-            if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary && seg.chordHints.summary.topProgressionHint) {
-                html += '<div style="font-size:0.68em;color:var(--text-dim);padding:2px 0 2px 28px">\uD83C\uDFB5 Likely: ' + escHtml(seg.chordHints.summary.topProgressionHint) + '</div>';
-            }
-        });
-
-        html += '</div>';
-    });
-
-    // ── Discussions ──
-    if (talkSegs.length) {
-        html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px">Discussions</div>';
-        talkSegs.forEach(function(seg) {
-            var content = seg.transcript || seg.notes || '';
-            var tags = seg.talkTags ? seg.talkTags.join(', ') : '';
-            html += '<div style="margin-bottom:8px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.01)">';
-            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em">\u25B6</button>';
-            html += '<span style="font-size:0.72em;color:var(--text-dim)">' + _fmt(seg.startSec) + '\u2013' + _fmt(seg.endSec) + '</span>';
-            if (tags) html += '<span style="font-size:0.65em;color:#818cf8">' + escHtml(tags) + '</span>';
-            html += '</div>';
-            if (content) html += '<div style="font-size:0.78em;color:var(--text-muted);line-height:1.4">' + escHtml(content) + '</div>';
-            html += '</div>';
-        });
-    }
-
-    // ── Jams ──
-    if (jamSegs.length) {
-        html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px">Jams / Improv</div>';
-        jamSegs.forEach(function(seg) {
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.78em">';
-            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="background:none;border:none;color:#818cf8;cursor:pointer">\u25B6</button>';
-            html += '<span style="color:var(--text-dim)">' + _fmt(seg.startSec) + '\u2013' + _fmt(seg.endSec) + '</span>';
-            html += '<span style="color:var(--text)">' + escHtml(seg.songTitle || 'Jam') + '</span>';
-            html += '<span style="color:var(--text-dim)">' + Math.round(seg.duration / 60) + 'm</span>';
-            html += '</div>';
-        });
-    }
-
-    // Actions
-    html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="width:100%;margin-top:12px;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em">Close</button>';
-    html += '</div>';
-
-    // Show modal
-    var existing = document.getElementById('rhReportModal');
-    if (existing) existing.remove();
-    var ov = document.createElement('div');
-    ov.id = 'rhReportModal';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
-    ov.innerHTML = html;
-    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
-    document.body.appendChild(ov);
-}
+// _rhRenderSegmentReport removed — all review now renders inline via _rhRenderInlineTimelineDirectly
 
 // Playback for report segments — uses the session's recording if available
 // Single shared audio element — NEVER re-set src if already loaded (prevents OOM on large files)
@@ -1820,66 +1529,101 @@ window._rhLoopSegment = function(startSec, endSec, sessionId, segIdx) {
 };
 
 // ── Compare attempts side-by-side ────────────────────────────────────────────
+// ── Inline Compare (data-driven, no modal, no DOM scraping) ──────────────────
 window._rhCompareAttempts = function(songTitle) {
-    // Find all segments for this song from the timeline data
-    var allSegs = document.querySelectorAll('[data-song="' + songTitle + '"]');
-    if (allSegs.length < 2) { if (typeof showToast === 'function') showToast('Only one attempt found'); return; }
+    // Find the inline compare container in the timeline
+    var containerId = 'rhCompare_' + songTitle.replace(/[^a-zA-Z0-9]/g, '_');
+    var existing = document.getElementById(containerId);
+    if (existing) {
+        // Toggle off
+        existing.remove();
+        return;
+    }
 
-    // Build comparison overlay
-    var ov = document.createElement('div');
-    ov.id = 'rhCompareModal';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
-    ov.onclick = function(e) { if (e.target === ov) ov.remove(); };
+    // Find the first segment row for this song to insert after
+    var anchor = document.querySelector('[data-song="' + songTitle.replace(/"/g, '') + '"]');
+    if (!anchor) { if (typeof showToast === 'function') showToast('Song not found in timeline'); return; }
 
-    var html = '<div style="max-width:420px;width:100%;background:#1e293b;border-radius:16px;padding:20px;border:1px solid rgba(255,255,255,0.08)">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
-    html += '<div style="font-size:1em;font-weight:800;color:var(--text)">\uD83C\uDD9A ' + escHtml(songTitle) + ' \u2014 Attempts</div>';
-    html += '<button onclick="document.getElementById(\'rhCompareModal\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1em">\u2715</button>';
+    // Get segment data from the cached prepare call
+    var _cachedData = window._rhLastTimelineData;
+    if (!_cachedData || !_cachedData.songGroups || !_cachedData.songGroups[songTitle]) {
+        if (typeof showToast === 'function') showToast('No compare data available');
+        return;
+    }
+    var group = _cachedData.songGroups[songTitle];
+    if (group.segments.length < 2) { if (typeof showToast === 'function') showToast('Only one attempt found'); return; }
+
+    var hasAudio = _rhHasAudio();
+    var sessionId = window._rhLastTimelineSessionId || '';
+    var _abtn = 'padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.82em;font-family:inherit;';
+
+    // Build inline compare panel
+    var panel = document.createElement('div');
+    panel.id = containerId;
+    panel.style.cssText = 'margin:4px 0 8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(16,185,129,0.15);background:rgba(16,185,129,0.03);animation:fadeIn 0.15s ease';
+
+    var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="font-size:0.75em;font-weight:800;color:#10b981">\uD83C\uDD9A ' + escHtml(songTitle) + ' \u2014 ' + group.segments.length + ' Attempts</div>';
+    html += '<button onclick="document.getElementById(\'' + containerId + '\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.85em">\u2715</button>';
     html += '</div>';
 
-    // Get segment data from the DOM data attributes or from cached data
-    // For now, display what we can read from the timeline elements
-    allSegs.forEach(function(segEl, idx) {
-        var summary = segEl.querySelector('summary');
-        var detail = segEl.querySelector('div');
-        var isOpen = segEl.open;
+    // Render each attempt with real data
+    group.segments.forEach(function(seg, idx) {
+        var durLabel = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
+        var grooveColor = seg.groove ? (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') : '#64748b';
+        var qualColor = (seg.qualityScore >= 3) ? '#10b981' : (seg.qualityScore >= 2) ? '#f59e0b' : '#64748b';
 
-        html += '<div style="padding:10px 12px;margin-bottom:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)">';
-        html += '<div style="font-size:0.82em;font-weight:700;color:var(--text);margin-bottom:4px">Attempt ' + (idx + 1) + '</div>';
-
-        // Extract visible text from summary
-        if (summary) {
-            var spans = summary.querySelectorAll('span');
-            var timeText = spans.length >= 1 ? spans[0].textContent : '';
-            var qualText = '';
-            var durText = '';
-            for (var si = 0; si < spans.length; si++) {
-                var t = spans[si].textContent.trim();
-                if (t.match(/^\d+m$/)) durText = t;
-                if (t.match(/Solid|Strong|Needs|Best|Locked|Unsteady/)) qualText = t;
-            }
-            html += '<div style="font-size:0.72em;color:var(--text-dim)">' + timeText + (durText ? ' \u00B7 ' + durText : '') + '</div>';
-            if (qualText) {
-                var qColor = qualText.match(/Solid|Strong|Best|Locked/) ? '#10b981' : '#f59e0b';
-                html += '<div style="font-size:0.72em;color:' + qColor + ';font-weight:600;margin-top:2px">' + qualText + '</div>';
-            }
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.02);border-left:3px solid ' + grooveColor + '">';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="display:flex;align-items:center;gap:6px">';
+        html += '<span style="font-size:0.78em;font-weight:700;color:var(--text)">Attempt ' + (idx + 1) + '</span>';
+        html += '<span style="font-size:0.65em;color:var(--text-dim)">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel + '</span>';
+        html += '</div>';
+        html += '<div style="display:flex;gap:8px;font-size:0.65em;margin-top:2px">';
+        if (seg.qualityLabel) html += '<span style="color:' + qualColor + '">' + escHtml(seg.qualityLabel) + '</span>';
+        if (seg.groove && seg.groove.label) html += '<span style="color:' + grooveColor + '">' + escHtml(seg.groove.label) + '</span>';
+        if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary && seg.chordHints.summary.topProgressionHint) {
+            html += '<span style="color:var(--text-dim)">\uD83C\uDFB5 ' + escHtml(seg.chordHints.summary.topProgressionHint) + '</span>';
         }
+        html += '</div></div>';
+        // Action buttons
+        html += '<div style="display:flex;gap:3px;flex-shrink:0">';
+        if (hasAudio) {
+            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + _abtn + 'border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8">\u25B6</button>';
+            html += '<button onclick="_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + _abtn + 'border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24">\uD83D\uDD01</button>';
+        }
+        html += '</div>';
         html += '</div>';
     });
 
-    // Improvement indicator
-    if (allSegs.length >= 2) {
-        html += '<div style="text-align:center;font-size:0.75em;color:#818cf8;padding:4px 0">Compare groove scores and quality to track improvement</div>';
+    // Trend indicator
+    var first = group.segments[0];
+    var last = group.segments[group.segments.length - 1];
+    if (first.qualityScore !== undefined && last.qualityScore !== undefined) {
+        var delta = last.qualityScore - first.qualityScore;
+        var trendIcon = delta > 0 ? '\u2191' : delta < 0 ? '\u2193' : '\u2192';
+        var trendColor = delta > 0 ? '#10b981' : delta < 0 ? '#f59e0b' : '#94a3b8';
+        var trendLabel = delta > 0 ? 'Improving across attempts' : delta < 0 ? 'Quality dropped — may need targeted practice' : 'Consistent across attempts';
+        html += '<div style="text-align:center;font-size:0.72em;font-weight:600;color:' + trendColor + ';padding:4px 0;margin-top:2px">' + trendIcon + ' ' + trendLabel + '</div>';
     }
 
-    html += '<button onclick="document.getElementById(\'rhCompareModal\').remove()" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:none;background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em">Close</button>';
-    html += '</div>';
-    ov.innerHTML = html;
-    document.body.appendChild(ov);
+    panel.innerHTML = html;
+
+    // Insert after the last segment row for this song
+    var allSongSegs = document.querySelectorAll('[data-song="' + songTitle.replace(/"/g, '') + '"]');
+    var lastSeg = allSongSegs[allSongSegs.length - 1];
+    if (lastSeg && lastSeg.nextSibling) {
+        lastSeg.parentNode.insertBefore(panel, lastSeg.nextSibling);
+    } else if (lastSeg) {
+        lastSeg.parentNode.appendChild(panel);
+    } else {
+        anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+    }
 };
 
+// ── View Session Timeline (replaces old modal report — loads session and renders inline timeline) ──
 window._rhShowSessionReport = async function(sessionId) {
-    // Load fresh from Firebase to get latest analysis data (not stale cache)
+    // Load session from Firebase
     var s = null;
     try {
         if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
@@ -1888,189 +1632,29 @@ window._rhShowSessionReport = async function(sessionId) {
             if (s) s.sessionId = sessionId;
         }
     } catch(e) {}
-    // Fallback to cached sessions
     if (!s) {
         var sessions = await _rhLoadSessions();
         s = sessions.find(function(x) { return x.sessionId === sessionId; });
     }
     if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
-    console.log('[RehearsalReport] Session loaded:', sessionId, 'keys:', Object.keys(s), 'hasAnalysis:', !!s.analysis, 'hasNotes:', !!s.notes, 'hasSegments:', !!s.audio_segments);
 
-    // ── NEW: Segment-based report (when recording analysis has been done) ──
     var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
-    var _segs = _toArr(s.audio_segments);
-    if (_segs.length > 0) {
-        _rhRenderSegmentReport(sessionId, s, _segs);
-        return;
-    }
+    var segments = _toArr(s.audio_segments);
 
-    // ── LEGACY: Original report (no recording analysis) ──
-    try {
+    // Render into the main timeline section
+    var timelineEl = document.getElementById('rhTimelineSection');
+    if (!timelineEl) return;
 
-        var dateStr = s.date ? new Date(s.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
-        var durMin = s.totalActualMin || 0;
-        var durLabel = durMin >= 60 ? Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm' : durMin + 'm';
-        var _songsWorked = _toArr(s.songsWorked);
-        var _blocks = _toArr(s.blocks);
-        var songList = _songsWorked.length ? _songsWorked : _blocks.map(function(b) { return b && b.title ? b.title : ''; }).filter(Boolean);
-        var ratingLabels = { great: 'Great', solid: 'Solid', needs_work: 'Needs Work' };
-        var isRecovered = s.recovered;
-
-        var html = '<div style="max-width:440px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:85vh;overflow-y:auto">';
-        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">';
-        html += '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9">Rehearsal Report</div>';
-        html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1em">\u2715</button>';
-        html += '</div>';
-
-        // Meta
-        html += '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:12px">' + dateStr + ' \u00B7 ' + durLabel + (s.rating ? ' \u00B7 ' + (ratingLabels[s.rating] || s.rating) : '') + '</div>';
-        if (isRecovered) html += '<div style="font-size:0.68em;color:#fbbf24;margin-bottom:8px;font-style:italic">Recovered from recording</div>';
-
-        // Songs played
-        if (songList.length) {
-            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Songs Played</div>';
-            songList.forEach(function(title, i) {
-                html += '<div style="font-size:0.85em;color:var(--text);padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.03)">' + (i + 1) + '. ' + escHtml(title) + '</div>';
-            });
-            html += '<div style="height:12px"></div>';
-        }
-
-        // Blocks detail
-        if (_blocks.length) {
-            var hasAnyTime = _blocks.some(function(b) { return b && (b.actualMin || 0) > 0; });
-            if (hasAnyTime) {
-                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Time Breakdown</div>';
-                _blocks.forEach(function(b) {
-                    if (!b.title) return;
-                    var timeLabel = (b.actualMin || 0) > 0
-                        ? (b.actualMin + 'm' + (b.budgetMin ? '/' + b.budgetMin + 'm' : ''))
-                        : '\u2014'; // em dash for untimed blocks
-                    html += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em;padding:3px 0">'
-                        + '<span style="flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(b.title) + '</span>'
-                        + '<span style="color:var(--text-dim);flex-shrink:0">' + timeLabel + '</span>'
-                        + '</div>';
-                });
-                html += '<div style="height:12px"></div>';
-            }
-        }
-
-        // Timing source indicator
-        if (s.analysis && s.analysis.timingNote) {
-            html += '<div style="font-size:0.68em;color:#94a3b8;font-style:italic;margin-bottom:8px">\u23F1 ' + escHtml(s.analysis.timingNote) + '</div>';
-        }
-
-        // Analysis insights (if pipeline has run)
-        if (s.analysis && s.analysis.insights) {
-            var ai = s.analysis.insights;
-
-            // Story headline
-            if (s.analysis.story && s.analysis.story.headline) {
-                html += '<div style="font-size:0.88em;font-weight:700;color:#a5b4fc;margin-bottom:10px;padding:10px 12px;background:rgba(165,180,252,0.08);border-radius:10px;border-left:3px solid #a5b4fc">' + escHtml(s.analysis.story.headline) + '</div>';
-            }
-
-            // Narrative
-            if (s.analysis.story && s.analysis.story.narrative) {
-                var narr = s.analysis.story.narrative;
-                if (narr.whatHappened) {
-                    html += '<div style="font-size:0.82em;color:var(--text);margin-bottom:6px">' + escHtml(narr.whatHappened) + '</div>';
-                }
-                if (narr.nextAction) {
-                    html += '<div style="font-size:0.82em;color:#fbbf24;margin-bottom:10px">\u25B6 ' + escHtml(narr.nextAction) + '</div>';
-                }
-            }
-
-            // Issues
-            if (ai.issues && ai.issues.length) {
-                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Issues Identified</div>';
-                ai.issues.forEach(function(iss) {
-                    html += '<div style="font-size:0.82em;color:#f87171;padding:3px 0">'
-                        + (iss.song ? '<strong>' + escHtml(iss.song) + ':</strong> ' : '')
-                        + escHtml(iss.text)
-                        + '</div>';
-                });
-                html += '<div style="height:8px"></div>';
-            }
-
-            // Recommendations
-            if (ai.recommendations && ai.recommendations.length) {
-                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Recommendations</div>';
-                ai.recommendations.forEach(function(rec) {
-                    html += '<div style="font-size:0.82em;color:#34d399;padding:3px 0">\u2192 ' + escHtml(rec) + '</div>';
-                });
-                html += '<div style="height:8px"></div>';
-            }
-
-            // Player feedback
-            if (ai.playerFeedback && ai.playerFeedback.length) {
-                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Player Notes</div>';
-                ai.playerFeedback.forEach(function(pf) {
-                    var parts = [];
-                    if (pf.positives && pf.positives.length) parts.push('\u2714 ' + pf.positives.join(', '));
-                    if (pf.issues && pf.issues.length) parts.push('\u26A0 ' + pf.issues.join(', '));
-                    html += '<div style="font-size:0.82em;color:var(--text);padding:3px 0"><strong>' + escHtml(pf.player) + ':</strong> ' + escHtml(parts.join(' | ')) + '</div>';
-                });
-                html += '<div style="height:8px"></div>';
-            }
-
-            // What improved
-            if (ai.improved && ai.improved.length) {
-                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">What Went Well</div>';
-                ai.improved.forEach(function(imp) {
-                    html += '<div style="font-size:0.82em;color:#34d399;padding:3px 0">\u2714 ' + escHtml(imp.text) + '</div>';
-                });
-                html += '<div style="height:12px"></div>';
-            }
-        }
-
-        // Recording
-        if (s.recording_url) {
-            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Recording</div>';
-            html += '<a href="' + escHtml(s.recording_url) + '" target="_blank" style="font-size:0.82em;color:#a5b4fc;text-decoration:none">\uD83C\uDFA4 Open Recording \u2192</a>';
-            html += '<div style="height:12px"></div>';
-        }
-        if (s.mixdown_id) {
-            html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Recording</div>';
-            html += '<button onclick="document.getElementById(\'rhReportModal\').remove();_rhToggleMixdownPlayer(\'' + sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.82em;color:#fbbf24;background:none;border:none;cursor:pointer">\uD83C\uDFA4 Play Recording</button>';
-            html += '<div style="height:12px"></div>';
-        }
-
-        // Notes — show structured if analysis ran, raw as fallback
-        if (s.notes) {
-            var _sn = s.analysis && s.analysis.structuredNotes ? s.analysis.structuredNotes : {};
-            var hasStructured = (_sn.issues && _sn.issues.length) || (_sn.positives && _sn.positives.length);
-            if (!hasStructured) {
-                // Fallback: raw notes
-                html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Notes</div>';
-                html += '<div style="font-size:0.82em;color:#94a3b8;line-height:1.4;white-space:pre-wrap">' + escHtml(s.notes) + '</div>';
-                html += '<div style="height:12px"></div>';
-            }
-            // If structured, the insights section above already rendered the parsed data
-        }
-
-        // Empty state
-        if (!songList.length && !_blocks.length && !s.notes && !s.recording_url && !s.mixdown_id) {
-            html += '<div style="text-align:center;padding:20px;color:var(--text-dim);font-size:0.85em">No data captured for this rehearsal yet.</div>';
-        }
-
-        // Re-run analysis button
-        if (typeof RehearsalAnalysis !== 'undefined') {
-            var rerunLabel = s.analysis ? '\uD83D\uDD04 Re-analyze' : '\uD83D\uDD0D Analyze Rehearsal';
-            html += '<button onclick="_rhRerunAnalysis(\'' + escHtml(sessionId) + '\')" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:none;background:rgba(165,180,252,0.1);color:#a5b4fc;cursor:pointer;font-size:0.82em">' + rerunLabel + '</button>';
-        }
-        html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em">Close</button>';
-        html += '</div>';
-
-        var existing = document.getElementById('rhReportModal');
-        if (existing) existing.remove();
-        var ov = document.createElement('div');
-        ov.id = 'rhReportModal';
-        ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
-        ov.innerHTML = html;
-        ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
-        document.body.appendChild(ov);
-    } catch(reportErr) {
-        console.error('[RehearsalReport] Failed to render:', reportErr);
-        if (typeof showToast === 'function') showToast('Report error: ' + reportErr.message);
+    if (segments.length > 0) {
+        _rhRenderInlineTimelineDirectly(timelineEl, sessionId, s, segments);
+        timelineEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+        // No segments — offer to analyze
+        timelineEl.innerHTML = '<div style="padding:16px;text-align:center;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)">'
+            + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:8px">No recording analysis for this session yet.</div>'
+            + '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(sessionId) + '\')" style="padding:8px 16px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer;font-size:0.82em">\uD83D\uDD0D Analyze Recording</button>'
+            + '</div>';
+        timelineEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 };
 
@@ -2778,102 +2362,7 @@ window._rhUpdateSaveStatus = function(text) {
     }
 };
 
-async function _rhRenderTonightTab() {
-    var content = document.getElementById('rhTabContent');
-    if (!content) return;
-    _rhRenderTonightTab_inner(content);
-}
-
-async function _rhRenderTonightTab_inner(content) {
-    if (!content) return;
-
-    var ctx = window._riLastCtx;
-    var focusSongs = window._riLastFocusSongs || [];
-
-    // Focus songs (already scoped to Active by buildRiContext — linked units included)
-    var activeFocus = focusSongs;
-
-    var html = '';
-
-    // Focus songs / deep work recommendations
-    if (activeFocus.length > 0) {
-        html += '<div style="margin-bottom:14px">'
-            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">Deep Work Focus</div>';
-        activeFocus.slice(0, 6).forEach(function(s, i) {
-            var avg = s.readiness || s.avg || 0;
-            var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : '#64748b';
-            var reasonChips = (s.reasons || []).map(function(r) {
-                var chipColor = r === 'Transition focus' ? '#818cf8' : r === 'Setlist priority' ? '#a5b4fc' : r === 'Low readiness' || r === 'Critical' ? '#f59e0b' : '#64748b';
-                return '<span style="font-size:0.6em;padding:1px 5px;border-radius:3px;background:' + chipColor + '15;color:' + chipColor + ';border:1px solid ' + chipColor + '30">' + r + '</span>';
-            }).join(' ');
-
-            if (s.isLinked) {
-                // Linked unit display
-                html += '<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);border-left:3px solid #818cf8;padding-left:8px;margin:2px 0">'
-                    + '<div style="display:flex;align-items:center;gap:8px">'
-                    + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
-                    + '<span style="font-size:0.85em;font-weight:600;color:var(--text);flex:1">' + s.title + '</span>'
-                    + '<span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>'
-                    + '</div>'
-                    + '<div style="display:flex;gap:4px;margin-top:3px;margin-left:24px;flex-wrap:wrap">' + reasonChips + '</div>'
-                    + '</div>';
-            } else {
-                html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">'
-                    + '<span style="font-size:0.72em;color:var(--text-dim);min-width:16px">' + (i+1) + '</span>'
-                    + '<div style="flex:1;min-width:0">'
-                    + '<div style="font-size:0.85em;font-weight:600;color:var(--text)">' + s.title + '</div>'
-                    + '<div style="display:flex;gap:4px;margin-top:2px;flex-wrap:wrap">' + reasonChips + '</div>'
-                    + '</div>'
-                    + '<span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + (avg > 0 ? avg.toFixed(1) : '—') + '</span>'
-                    + '</div>';
-            }
-        });
-        html += '</div>';
-    } else {
-        html += '<div style="font-size:0.82em;color:var(--text-dim);padding:12px 0">No focus areas identified — all active songs are solid.</div>';
-    }
-
-    // Readiness breakdown (collapsed)
-    if (ctx) {
-        html += '<details style="margin-bottom:14px"><summary style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:6px 0">Readiness Breakdown</summary>';
-        html += renderRiReadinessBreakdown(ctx);
-        html += '</details>';
-    }
-
-    content.innerHTML = html;
-}
-
-// Tab router for secondary views
-async function rhShowTab(tab) {
-    _rhActiveTab = tab;
-    try { localStorage.setItem('glRhLastTab', tab); } catch(e) {}
-    var content = document.getElementById('rhTabContent');
-    if (!content) return;
-
-    if (tab === 'sessions') {
-        content.innerHTML = '<div style="display:flex;gap:8px;margin-bottom:14px">'
-            + '<button class="btn btn-primary" onclick="rhOpenCreateModal()">+ New Rehearsal</button></div>'
-            + '<div id="rhEventList"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
-        await rhLoadEvents();
-    } else if (tab === 'history') {
-        content.innerHTML = '<div style="color:var(--text-dim);padding:20px;text-align:center">Session history coming soon.</div>';
-        // Future: completion history
-        if (typeof GLStore !== 'undefined' && GLStore.getRehearsalCompletionHistory) {
-            var history = GLStore.getRehearsalCompletionHistory();
-            if (history && history.length > 0) {
-                content.innerHTML = '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Past Sessions</div>'
-                    + history.slice(0, 10).map(function(h) {
-                        return '<div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.82em;color:var(--text-dim)">'
-                            + (h.completedAt ? new Date(h.completedAt).toLocaleDateString() : '—')
-                            + ' · ' + (h.songsCompleted || 0) + ' songs · ' + (h.totalMinutes || 0) + ' min'
-                            + '</div>';
-                    }).join('');
-            }
-        }
-    } else {
-        _rhRenderTonightTab();
-    }
-}
+// _rhRenderTonightTab / _rhRenderTonightTab_inner / rhShowTab removed — consolidated into timeline coaching insights
 
 async function rhShowPlansTab(container) {
     container.innerHTML = '<div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div>';
