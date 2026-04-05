@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-05 (Timeline-Driven Rehearsal System + Playback + Coaching Insights + Page Consolidation)_
+_Last updated: 2026-04-05 (Hard Consolidation — timeline-first architecture, legacy review/report/tab systems removed)_
 
 ## Read This First
 
@@ -50,7 +50,7 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 | `js/features/band-feed.js` | Band Feed v5 — links, photos, notes, pin, delete, bulk delete |
 | `js/features/setlist-player.js` | Legacy setlist player (being superseded by GLPlayerEngine) |
 | `js/features/home-dashboard.js` | Mode dashboards, Next Action, Scorecard, Top Songs, progression |
-| `js/features/rehearsal.js` | Rehearsal planner, session history, delete, bulk delete |
+| `js/features/rehearsal.js` | Rehearsal planner, timeline-first review, inline compare, coaching, playback |
 | `js/features/rehearsal-mixdowns.js` | Rehearsal recordings — upload, playback, Chopper integration |
 | `js/features/live-gig.js` | Go Live — stage charts + float audio player |
 | `js/features/charts.js` | Chord chart system — master/band charts, inline editing |
@@ -761,10 +761,20 @@ Current state (2026-04-05):
 - Song Page: Practice/Play/Versions/Harmony tabs (guided workflows)
 - 4 SYSTEM LOCKs intact: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
 
+Hard Consolidation (2026-04-05):
+- Removed: _rhShowInlineTimeline, _rhRenderSegmentReport, legacy _rhShowSessionReport, _rhCompareAttempts modal, _rhRenderTonightTab, rhShowTab review routing, Song Summary block, #rhSessionReview
+- Replaced: _rhCompareAttempts → inline data-driven compare (no modal, no DOM scraping)
+- Replaced: session cards Timeline/Report/Analyze trio → single "View Timeline" CTA
+- _rhRenderInlineTimelineDirectly is now the ONE canonical review renderer
+- _rhPrepareSegmentData is the single data source for all review UI
+- Timeline data cached in window._rhLastTimelineData for inline compare
+- Net: -511 lines removed, 5 render paths → 1
+
 Known issues:
 - Large file playback may still crash on some machines (337MB MP3 + Chrome memory limits)
 - Song matching accuracy depends on plan order — no audio-based song identification yet
 - Chord/embedding services need to be started manually (not auto-deployed)
+- Rehearsal planner still references rhTabContent as render target (works via fallback — not part of review system)
 
 Next recommended actions:
 1. Calibrate song matching thresholds on real rehearsal recordings
@@ -774,6 +784,7 @@ Next recommended actions:
 5. Auto-start chord/embedding services (Docker or systemd)
 6. Test Deepgram transcription on talking segments
 7. Build "next rehearsal plan from insights" flow
+8. Migrate rehearsal planner render target from rhTabContent to a dedicated container
 ```
 
 ## Firebase Paths
