@@ -3120,8 +3120,12 @@ async function rhOpenEvent(eventId) {
         '</div>';
 
     if (ev.notes) {
-        html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:0.85em;color:var(--text-muted);font-style:italic">' + ev.notes + '</div>';
+        html += '<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:0.85em;color:var(--text-muted);font-style:italic">' + ev.notes + '</div>';
     }
+
+    // ── Add to Google Calendar ──
+    var _rhGcalPlan = planSongs.length ? 'Focus: ' + planSongs.slice(0, 3).join(', ') + (planSongs.length > 3 ? ' + ' + (planSongs.length - 3) + ' more' : '') : '';
+    html += '<button onclick="(function(){if(typeof calBuildRehearsalGoogleLink===\'function\'){var u=calBuildRehearsalGoogleLink(' + JSON.stringify({ date: ev.date, time: ev.time || '', location: ev.location || '', notes: ev.notes || '' }) + ',' + JSON.stringify(_rhGcalPlan) + ');if(u!==\'#\')window.open(u,\'_blank\')}})()" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(66,133,244,0.25);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;font-size:0.78em;font-weight:600;font-family:inherit;margin-bottom:16px;min-height:36px">\uD83D\uDCC5 Add to Google Calendar</button>';
 
     // ── RSVP Section ──
     html += '<div class="app-card" style="margin-bottom:16px">';
@@ -3841,6 +3845,35 @@ window._rhPickRecommendedDate = function(dateStr, clickedEl) {
     _rhShowPlanningHook(dateStr);
 };
 
+// ── Add to Google Calendar from scheduling flow ──────────────────────────────
+window._rhAddToGoogleCal = function(dateStr, planSummary) {
+    // Get time from the modal input if available
+    var timeEl = document.getElementById('rhTime');
+    var time = (timeEl && timeEl.value) ? timeEl.value.trim() : '7:00 PM';
+    // Normalize time: "7:00 PM" → "19:00"
+    var normalized = time;
+    var pmMatch = time.match(/^(\d{1,2}):(\d{2})\s*(PM|AM)/i);
+    if (pmMatch) {
+        var h = parseInt(pmMatch[1]);
+        if (pmMatch[3].toUpperCase() === 'PM' && h < 12) h += 12;
+        if (pmMatch[3].toUpperCase() === 'AM' && h === 12) h = 0;
+        normalized = (h < 10 ? '0' : '') + h + ':' + pmMatch[2];
+    }
+
+    var locEl = document.getElementById('rhLocation');
+    var location = (locEl && locEl.value) ? locEl.value.trim() : '';
+    var notesEl = document.getElementById('rhNotes');
+    var notes = (notesEl && notesEl.value) ? notesEl.value.trim() : '';
+
+    if (typeof calBuildRehearsalGoogleLink === 'function') {
+        var url = calBuildRehearsalGoogleLink({ date: dateStr, time: normalized, location: location, notes: notes }, planSummary);
+        if (url && url !== '#') window.open(url, '_blank');
+        else if (typeof showToast === 'function') showToast('Could not build calendar link \u2014 check the date');
+    } else {
+        if (typeof showToast === 'function') showToast('Calendar export not available');
+    }
+};
+
 // Planning handoff — immediate transition from scheduling to rehearsal prep
 function _rhShowPlanningHook(dateStr) {
     var hookEl = document.getElementById('rhPlanningHook');
@@ -3864,15 +3897,24 @@ function _rhShowPlanningHook(dateStr) {
         hookAction = '';
     }
 
+    // Build plan summary for calendar description
+    var planSummary = '';
+    if (focusSongs.list.length > 0) {
+        planSummary = 'Focus: ' + focusSongs.list.slice(0, 3).map(function(s) { return s.title; }).join(', ');
+        if (focusSongs.list.length > 3) planSummary += ' + ' + (focusSongs.list.length - 3) + ' more';
+    }
+
     var hook = document.createElement('div');
     hook.id = 'rhPlanningHook';
     hook.style.cssText = 'margin-top:6px;padding:8px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.04)';
-    var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+    var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">';
     h += '<div style="font-size:0.62em;color:var(--text-dim)">\uD83C\uDFAF ' + hookText + '</div>';
     if (hookAction) {
         h += '<span onclick="document.getElementById(\'rhModal\')?.querySelector(\'.btn-primary\')?.click()" style="font-size:0.6em;color:#818cf8;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">' + hookAction + '</span>';
     }
     h += '</div>';
+    // Add to Google Calendar button
+    h += '<button onclick="_rhAddToGoogleCal(\'' + escHtml(dateStr) + '\',\'' + escHtml(planSummary).replace(/'/g, "\\'") + '\')" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(66,133,244,0.25);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit;min-height:36px">\uD83D\uDCC5 Add to Google Calendar</button>';
     hook.innerHTML = h;
     recsEl.appendChild(hook);
 }

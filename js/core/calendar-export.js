@@ -257,15 +257,26 @@ function _downloadICS(icsString, filename) {
  * Opens in new tab — user clicks Save in their own Google Calendar.
  * This is a ONE-TIME ADD. It does not subscribe or auto-update.
  */
-function calExportGoogleLink(ev) {
+/**
+ * Generate a prefilled Google Calendar link for an event.
+ * Opens in the user's browser — no API access needed.
+ *
+ * @param {object} ev - Event with: date, time, title, type, venue/location, notes
+ * @param {object} [opts] - Optional: { attendees: string[], planSummary: string, bandName: string }
+ * @returns {string} Google Calendar URL or '#' if no date
+ */
+function calExportGoogleLink(ev, opts) {
     var times = _calParseEventTime(ev);
     if (!times) return '#';
+    opts = opts || {};
 
     var typeLabel = { rehearsal: 'Rehearsal', gig: 'Gig', meeting: 'Meeting', other: 'Event' };
-    var title = (typeLabel[ev.type] ? '[' + typeLabel[ev.type] + '] ' : '') + (ev.title || 'Untitled');
+    var bandPrefix = opts.bandName ? opts.bandName + ' ' : '';
+    var title = bandPrefix + (typeLabel[ev.type] ? typeLabel[ev.type] : 'Event') + (ev.title ? ' \u2014 ' + ev.title : '');
 
     var descParts = [];
-    if (ev.venue) descParts.push('Venue: ' + ev.venue);
+    if (ev.venue || ev.location) descParts.push('Location: ' + (ev.venue || ev.location));
+    if (opts.planSummary) descParts.push('Plan: ' + opts.planSummary);
     if (ev.linkedSetlist) descParts.push('Setlist: ' + ev.linkedSetlist);
     if (ev.notes) descParts.push(ev.notes);
     descParts.push('Added from GrooveLinx');
@@ -278,9 +289,71 @@ function calExportGoogleLink(ev) {
         text:     title,
         dates:    fmt(times.start) + '/' + fmt(times.end),
         details:  descParts.join('\n'),
-        location: ev.venue || '',
+        location: ev.venue || ev.location || '',
     });
+
+    // Add attendees (band member emails)
+    if (opts.attendees && opts.attendees.length) {
+        params.set('add', opts.attendees.join(','));
+    }
+
     return 'https://calendar.google.com/calendar/render?' + params.toString();
+}
+
+/**
+ * Build a Google Calendar link specifically for a rehearsal event.
+ * Pulls band name and member emails automatically.
+ *
+ * @param {object} ev - Rehearsal event { date, time, location, notes }
+ * @param {string} [planSummary] - Short plan description (e.g. "Focus on Jack Straw + 2 more")
+ * @returns {string} Google Calendar URL
+ */
+function calBuildRehearsalGoogleLink(ev, planSummary) {
+    var bandName = '';
+    if (typeof currentBandName !== 'undefined' && currentBandName) bandName = currentBandName;
+    else if (typeof window.currentBandSlug !== 'undefined') bandName = window.currentBandSlug;
+
+    var attendees = _calGetBandEmails();
+
+    return calExportGoogleLink(
+        { date: ev.date, time: ev.time || '19:00', type: 'rehearsal', title: ev.title || '', venue: ev.location || ev.venue || '', notes: ev.notes || '', linkedSetlist: ev.linkedSetlist || '' },
+        { attendees: attendees, planSummary: planSummary || '', bandName: bandName }
+    );
+}
+
+/**
+ * Build a Google Calendar link for a gig.
+ */
+function calBuildGigGoogleLink(gig) {
+    var bandName = '';
+    if (typeof currentBandName !== 'undefined' && currentBandName) bandName = currentBandName;
+    else if (typeof window.currentBandSlug !== 'undefined') bandName = window.currentBandSlug;
+
+    var attendees = _calGetBandEmails();
+
+    var notes = [];
+    if (gig.soundPerson) notes.push('Sound: ' + gig.soundPerson);
+    if (gig.contact) notes.push('Contact: ' + gig.contact);
+    if (gig.pay) notes.push('Pay: ' + gig.pay);
+    if (gig.notes) notes.push(gig.notes);
+
+    return calExportGoogleLink(
+        { date: gig.date, time: gig.startTime || gig.arrivalTime || '19:00', type: 'gig', title: gig.venue || '', venue: gig.venue || '', notes: notes.join('\n'), linkedSetlist: gig.setlistId || '' },
+        { attendees: attendees, bandName: bandName }
+    );
+}
+
+/**
+ * Get band member emails for calendar invites.
+ * Reads from bandMembers global, filters out empty/missing emails.
+ */
+function _calGetBandEmails() {
+    var emails = [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    Object.keys(bm).forEach(function(k) {
+        if (bm[k] && bm[k].email) emails.push(bm[k].email);
+    });
+    return emails;
 }
 
 /**
@@ -340,8 +413,8 @@ function calSubscribeURL(bandSlug) {
 function calExportButtonsHTML(ev, key) {
     var k = key || ('_calExp_' + Date.now());
     window[k] = ev;
-    return '<button onclick="(function(){var u=calExportGoogleLink(window[\'' + k + '\']);if(u!==\'#\')window.open(u,\'_blank\');})()" class="btn btn-ghost btn-sm" title="Add this event to your Google Calendar (one-time)">📅 Add to Google Cal</button>' +
-           '<button onclick="calExportICS(window[\'' + k + '\'])" class="btn btn-ghost btn-sm" title="Download .ics file — import into any calendar app (one-time)">⬇️ Download .ics</button>';
+    return '<button onclick="(function(){var u=calExportGoogleLink(window[\'' + k + '\']);if(u!==\'#\')window.open(u,\'_blank\');})()" class="btn btn-ghost btn-sm" title="Add this event to your Google Calendar">\uD83D\uDCC5 Add to Google Calendar</button>' +
+           '<button onclick="calExportICS(window[\'' + k + '\'])" class="btn btn-ghost btn-sm" title="Download .ics file for any calendar app">\u2B07\uFE0F Download .ics</button>';
 }
 
 /**

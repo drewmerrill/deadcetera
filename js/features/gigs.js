@@ -377,6 +377,7 @@ async function loadGigs() {
     else window._cachedGigs = rawData;
     if (!rawData.length) { el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:40px"><div style="font-size:1.5em;margin-bottom:8px">\uD83C\uDFA4</div><div style="font-weight:600;margin-bottom:4px">No gigs yet</div><div style="font-size:0.85em">Add your first gig to start tracking shows.</div></div>'; return; }
     var data = rawData.map(function(g, origIdx) { return Object.assign({}, g, { _origIdx: origIdx }); });
+    window._loadedGigs = data;
 
     // Filter tabs
     var filterBar = document.getElementById('gigFilterBar');
@@ -435,9 +436,10 @@ function _gigRenderCard(g, isUpcoming) {
         + '<button class="btn btn-sm btn-ghost" onclick="deleteGig(' + idx + ')" title="Delete" style="color:var(--red);font-size:0.78em">🗑️</button>'
         + '</div></div>'
         + (g.notes ? '<div style="font-size:0.78em;color:var(--text-muted);margin-top:4px">' + g.notes + '</div>' : '')
-        + ((g.setlistId || g.linkedSetlist) ? '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:0.75em;color:var(--accent-light)">📋 ' + (g.linkedSetlist || 'linked') + '</span>'
+        + ((g.setlistId || g.linkedSetlist) ? '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:0.75em;color:var(--accent-light)">\uD83D\uDCCB ' + (g.linkedSetlist || 'linked') + '</span>'
             + '<button onclick="gigLaunchLinkedSetlist(\'' + (g.setlistId || '').replace(/'/g,'\\\'') + '\')" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;color:white;padding:3px 10px;border-radius:5px;font-size:0.7em;font-weight:700;cursor:pointer">\uD83C\uDFA4 Go Live</button>'
             + '<button onclick="gigPlaySetlist(\'' + (g.setlistId || '').replace(/'/g,'\\\'') + '\')" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:3px 10px;border-radius:5px;font-size:0.7em;font-weight:700;cursor:pointer">\u25B6\uFE0F Play Setlist</button></div>' : '')
+        + (isUpcoming && typeof calBuildGigGoogleLink === 'function' ? '<button onclick="_gigAddToGoogleCal(' + idx + ')" style="margin-top:6px;width:100%;padding:6px;border-radius:5px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.7em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Add to Google Calendar</button>' : '')
         + _gigRenderAvailability(g)
         + '</div>';
 }
@@ -1487,4 +1489,19 @@ window.gigsMapSetFilter = gigsMapSetFilter;
 window.renderGigsPage = renderGigsPage;
 window.loadGigHistory = loadGigHistory;
 
-console.log('✅ gigs.js loaded');
+// ── Add to Google Calendar for gigs ──────────────────────────────────────────
+window._gigAddToGoogleCal = function(gigIdx) {
+    if (typeof calBuildGigGoogleLink !== 'function') {
+        if (typeof showToast === 'function') showToast('Calendar export not available');
+        return;
+    }
+    // Find the gig by index from the loaded gigs cache
+    var gigs = window._loadedGigs || [];
+    var g = gigs[gigIdx];
+    if (!g) { if (typeof showToast === 'function') showToast('Gig not found'); return; }
+    var url = calBuildGigGoogleLink(g);
+    if (url && url !== '#') window.open(url, '_blank');
+    else if (typeof showToast === 'function') showToast('Could not build calendar link');
+};
+
+console.log('\u2705 gigs.js loaded');
