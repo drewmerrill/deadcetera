@@ -1181,6 +1181,21 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         ? 'background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em'
         : 'background:none;border:none;color:#334155;cursor:default;font-size:0.85em';
 
+    // Inject timeline styles (once)
+    if (!document.getElementById('rh-timeline-styles')) {
+        var _ts = document.createElement('style');
+        _ts.id = 'rh-timeline-styles';
+        _ts.textContent = '.rh-seg-row{transition:background 0.15s,box-shadow 0.15s}'
+            + '.rh-seg-row:hover{background:rgba(255,255,255,0.03)!important}'
+            + '.rh-seg-row.rh-playing{background:rgba(99,102,241,0.06)!important;box-shadow:inset 3px 0 0 #667eea}'
+            + '.rh-seg-row summary:hover{background:rgba(255,255,255,0.02)}'
+            + '.rh-strip-seg{cursor:pointer;transition:opacity 0.15s}'
+            + '.rh-strip-seg:hover{opacity:0.7}'
+            + '@keyframes rhPulsePlay{0%,100%{opacity:1}50%{opacity:0.5}}'
+            + '.rh-playing-btn{animation:rhPulsePlay 1.5s ease infinite}';
+        document.head.appendChild(_ts);
+    }
+
     var html = '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Rehearsal Timeline</div>';
 
     // Audio state
@@ -1192,14 +1207,14 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             + '</div>';
     }
 
-    // Visual strip
+    // Visual strip (clickable mini-map)
     var totalDur = segments[segments.length - 1] ? (segments[segments.length - 1].endSec || 1) : 1;
-    html += '<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;margin-bottom:10px;background:rgba(255,255,255,0.03)">';
-    segments.forEach(function(seg) {
+    html += '<div id="rhTimelineStrip" style="display:flex;height:10px;border-radius:4px;overflow:hidden;margin-bottom:10px;background:rgba(255,255,255,0.03);cursor:pointer">';
+    segments.forEach(function(seg, si) {
         var pct = ((seg.duration || 0) / totalDur * 100).toFixed(1);
         var color = (!seg.segType || seg.segType === 'song') ? '#667eea' : (seg.segType === 'talking' ? '#a5b4fc' : (seg.segType === 'jam' ? '#f59e0b' : '#334155'));
         if (seg.segType === 'ignore') return;
-        html += '<div style="width:' + pct + '%;background:' + color + ';min-width:1px" title="' + escHtml(seg.songTitle || seg.segType || '') + '"></div>';
+        html += '<div class="rh-strip-seg" onclick="var el=document.getElementById(\'rhSeg_' + si + '\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="width:' + pct + '%;background:' + color + ';min-width:2px" title="' + escHtml(seg.songTitle || seg.segType || '') + ' (' + _rhFmt(seg.startSec) + ')"></div>';
     });
     html += '</div>';
 
@@ -1214,9 +1229,9 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         if (isSong) {
             // Song segment — expandable on click
             var borderColor = 'rgba(99,102,241,0.12)';
-            html += '<details style="margin-bottom:5px;border-radius:7px;border-left:3px solid ' + borderColor + ';background:rgba(255,255,255,0.015)">';
+            html += '<details id="rhSeg_' + si + '" class="rh-seg-row" data-song="' + escHtml(seg.songTitle || '') + '" style="margin-bottom:5px;border-radius:7px;border-left:3px solid ' + borderColor + ';background:rgba(255,255,255,0.015)">';
             html += '<summary style="padding:7px 10px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px">';
-            html += '<button onclick="event.stopPropagation();_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
+            html += '<button id="rhPlayBtn_' + si + '" onclick="event.stopPropagation();_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
             html += '<span style="font-size:0.65em;color:var(--text-dim);min-width:40px">' + _rhFmt(seg.startSec) + '</span>';
             html += '<span style="flex:1;font-size:0.8em;font-weight:600;color:var(--text)">' + escHtml(seg.songTitle || 'Unknown') + '</span>';
             // Inline quality/groove badges
@@ -1244,15 +1259,15 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 if (!segments[nsi].segType || segments[nsi].segType === 'song') { nearestSong = segments[nsi].songTitle || ''; break; }
             }
 
-            html += '<div style="margin-bottom:5px;padding:8px 10px;border-radius:7px;border-left:3px solid rgba(165,180,252,0.15);background:rgba(165,180,252,0.02)">';
+            html += '<div id="rhSeg_' + si + '" class="rh-seg-row" style="margin-bottom:5px;padding:8px 10px;border-radius:7px;border-left:3px solid rgba(165,180,252,0.15);background:rgba(165,180,252,0.02)">';
             html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
+            html += '<button id="rhPlayBtn_' + si + '" onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
             html += '<span style="font-size:0.68em;font-weight:700;color:#a5b4fc">\uD83D\uDCAC Band Note</span>';
             if (tagLabel) html += '<span style="font-size:0.6em;color:#818cf8">' + escHtml(tagLabel) + '</span>';
             html += '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto">' + _rhFmt(seg.startSec) + '</span>';
             html += '</div>';
             if (content) html += '<div style="font-size:0.75em;color:var(--text-muted);line-height:1.4;padding-left:28px">\u201C' + escHtml(content.substring(0, 200)) + (content.length > 200 ? '...' : '') + '\u201D</div>';
-            if (nearestSong) html += '<div style="font-size:0.62em;color:var(--text-dim);padding-left:28px;margin-top:2px">\u2192 About: ' + escHtml(nearestSong) + '</div>';
+            if (nearestSong) html += '<div style="font-size:0.62em;color:var(--text-dim);padding-left:28px;margin-top:2px;cursor:pointer" onclick="var el=document.querySelector(\'[data-song=\\\'' + escHtml(nearestSong).replace(/'/g, '') + '\\\']\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">\u2192 Applies to: <span style="color:#818cf8;text-decoration:underline dotted">' + escHtml(nearestSong) + '</span></div>';
             html += '</div>';
 
         } else {
@@ -1291,6 +1306,8 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0">\uD83D\uDD01 ' + escHtml(r.text) + '</div>';
         });
 
+        // Build Next Rehearsal CTA
+        html += '<button onclick="showPage(\'rehearsal\');setTimeout(function(){renderRehearsalPlanner();},300)" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(34,197,94,0.1));color:#a5b4fc;cursor:pointer;font-size:0.75em;font-weight:700">Build Next Rehearsal From This</button>';
         html += '</div>';
     }
 
@@ -1603,13 +1620,18 @@ function _rhRenderSegmentReport(sessionId, session, segments) {
 }
 
 // Playback for report segments — uses the session's recording if available
-window._rhPlaySegment = function(startSec, endSec, sessionId) {
-    var audio = document.getElementById('rhReportAudio');
-    if (!audio) return;
+window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
+    // Try multiple audio elements
+    var audio = document.getElementById('rhTimelineAudio') || document.getElementById('rhReportAudio');
+    if (!audio) {
+        audio = document.createElement('audio');
+        audio.id = 'rhTimelineAudio';
+        audio.style.display = 'none';
+        document.body.appendChild(audio);
+    }
 
-    // Try to get recording URL from mixdowns or recording analyzer cache
+    // Try to get recording URL
     if (!audio.src || audio.dataset.sessId !== sessionId) {
-        // Try RecordingAnalyzer's cached blob URL
         if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
             audio.src = RecordingAnalyzer._currentAudioUrl;
         } else {
@@ -1619,13 +1641,34 @@ window._rhPlaySegment = function(startSec, endSec, sessionId) {
         audio.dataset.sessId = sessionId;
     }
 
+    // Clear previous playback highlights
+    document.querySelectorAll('.rh-playing').forEach(function(el) { el.classList.remove('rh-playing'); });
+    document.querySelectorAll('.rh-playing-btn').forEach(function(el) { el.classList.remove('rh-playing-btn'); el.textContent = '\u25B6'; });
+
+    // Highlight active row
+    if (segIdx !== undefined) {
+        var row = document.getElementById('rhSeg_' + segIdx);
+        if (row) row.classList.add('rh-playing');
+        var btn = document.getElementById('rhPlayBtn_' + segIdx);
+        if (btn) { btn.classList.add('rh-playing-btn'); btn.textContent = '\u23F8'; }
+    }
+
     audio.currentTime = startSec;
     audio.play();
-    // Stop at end
+
+    // Stop at end + clean up highlights
+    var _segIdx = segIdx;
     var check = function() {
         if (audio.currentTime >= endSec || audio.paused) {
             audio.pause();
             audio.removeEventListener('timeupdate', check);
+            // Remove highlights
+            if (_segIdx !== undefined) {
+                var row = document.getElementById('rhSeg_' + _segIdx);
+                if (row) row.classList.remove('rh-playing');
+                var btn = document.getElementById('rhPlayBtn_' + _segIdx);
+                if (btn) { btn.classList.remove('rh-playing-btn'); btn.textContent = '\u25B6'; }
+            }
         }
     };
     audio.addEventListener('timeupdate', check);
