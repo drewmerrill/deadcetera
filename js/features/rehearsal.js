@@ -1086,9 +1086,13 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             + '.rh-groove-strong{border-left-color:#10b981!important}'
             + '.rh-groove-unstable{border-left-color:#f59e0b!important}'
             + '.rh-groove-incomplete{border-left-color:#64748b!important}'
-            + '@keyframes rhFocusFlash{0%{box-shadow:0 0 0 2px rgba(251,191,36,0.5)}100%{box-shadow:none}}'
-            + '.rh-focus-flash{animation:rhFocusFlash 1.2s ease-out}'
-            + '.rh-seg-row.rh-jump-highlight{background:rgba(99,102,241,0.08)!important;transition:background 0.6s}';
+            + '@keyframes rhFocusFlash{0%{box-shadow:0 0 0 3px rgba(251,191,36,0.5)}50%{box-shadow:0 0 0 6px rgba(251,191,36,0.15)}100%{box-shadow:none}}'
+            + '.rh-focus-flash{animation:rhFocusFlash 1.5s cubic-bezier(0.4,0,0.2,1)}'
+            + '@keyframes rhJumpIn{0%{background:rgba(99,102,241,0.15)}100%{background:transparent}}'
+            + '.rh-seg-row.rh-jump-highlight{animation:rhJumpIn 1s cubic-bezier(0.4,0,0.2,1)}'
+            + '.rh-seg-row summary:active{transform:scale(0.995);transition:transform 0.1s}'
+            + '.rh-compare-best{border-left-color:#10b981!important;background:rgba(16,185,129,0.04)!important}'
+            + '.rh-fix-mode{border:1px solid rgba(245,158,11,0.3)!important;background:rgba(245,158,11,0.04)!important}';
         document.head.appendChild(_ts);
     }
 
@@ -1234,6 +1238,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 if (g.segments.length >= 2) {
                     html += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">\uD83C\uDD9A Compare</button>';
                 }
+                html += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700">\uD83D\uDD27 Fix This Now</button>';
                 html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit">\uD83C\uDFAF Practice</button>';
                 html += '</div></div>';
             });
@@ -1282,17 +1287,79 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
 window._rhFocusSegment = function(segIdx, startSec, endSec, sessionId) {
     var row = document.getElementById('rhSeg_' + segIdx);
     if (row) {
-        // Scroll into view with highlight
         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        // Expand if it's a <details> element
         if (row.tagName === 'DETAILS' && !row.open) row.open = true;
-        // Flash highlight
         row.classList.add('rh-focus-flash');
-        setTimeout(function() { row.classList.remove('rh-focus-flash'); }, 1200);
+        setTimeout(function() { row.classList.remove('rh-focus-flash'); }, 1500);
     }
     // Start loop playback
     if (startSec !== undefined && endSec !== undefined) {
         _rhLoopSegment(startSec, endSec, sessionId, segIdx);
+    }
+};
+
+// ── Fix This Now mode: isolate section + loop + coaching guidance ─────────────
+window._rhFixThisNow = function(songTitle, sessionId) {
+    var tl = (typeof GLStore !== 'undefined' && GLStore.getCurrentTimeline) ? GLStore.getCurrentTimeline() : {};
+    var data = tl.data;
+    if (!data || !data.songGroups || !data.songGroups[songTitle]) return;
+    var group = data.songGroups[songTitle];
+    // Use worst attempt (last one, typically where they gave up)
+    var seg = group.segments[group.segments.length - 1];
+    if (!seg) return;
+
+    // Find segment index
+    var segIdx = null;
+    for (var i = 0; i < data.allSegments.length; i++) {
+        if (data.allSegments[i] === seg) { segIdx = i; break; }
+    }
+
+    // Build coaching guidance based on segment data
+    var guidance = [];
+    if (group.segments.length >= 3) guidance.push('You took ' + group.segments.length + ' attempts. Focus on the transition into this section.');
+    if (seg.groove && seg.groove.stability < 50) guidance.push('Groove was unsteady \u2014 lock in the tempo before playing through.');
+    if (seg.duration < 60) guidance.push('Short run \u2014 try playing all the way through without stopping.');
+    if (seg.qualityScore < 2) guidance.push('This was incomplete. Start slow, get the changes right, then speed up.');
+    if (!guidance.length) guidance.push('Loop this section and focus on consistency.');
+
+    // Scroll to segment and expand
+    var row = document.getElementById('rhSeg_' + segIdx);
+    if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (row.tagName === 'DETAILS' && !row.open) row.open = true;
+        row.classList.add('rh-fix-mode');
+    }
+
+    // Show fix mode overlay on the segment
+    var existingFix = document.getElementById('rhFixPanel');
+    if (existingFix) existingFix.remove();
+
+    var panel = document.createElement('div');
+    panel.id = 'rhFixPanel';
+    panel.style.cssText = 'margin:4px 0 8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04)';
+    var ph = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+    ph += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24">\uD83D\uDD27 Fix This Now \u2014 ' + escHtml(songTitle) + '</div>';
+    ph += '<button onclick="document.getElementById(\'rhFixPanel\').remove();document.querySelectorAll(\'.rh-fix-mode\').forEach(function(e){e.classList.remove(\'rh-fix-mode\')})" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em">\u2715</button>';
+    ph += '</div>';
+    guidance.forEach(function(g) {
+        ph += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0;line-height:1.4">\u2022 ' + escHtml(g) + '</div>';
+    });
+    ph += '<div style="display:flex;gap:6px;margin-top:8px">';
+    ph += '<button onclick="_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId || tl.sessionId || '') + '\',' + (segIdx || 0) + ')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">\uD83D\uDD01 Loop This Section</button>';
+    ph += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:600">\uD83C\uDFAF Open Practice Mode</button>';
+    ph += '</div>';
+    panel.innerHTML = ph;
+
+    // Insert after the segment row
+    if (row && row.nextSibling) {
+        row.parentNode.insertBefore(panel, row.nextSibling);
+    } else if (row) {
+        row.parentNode.appendChild(panel);
+    }
+
+    // Start loop automatically
+    if (_rhHasAudio()) {
+        _rhLoopSegment(seg.startSec, seg.endSec, sessionId || tl.sessionId || '', segIdx || 0);
     }
 };
 
@@ -1459,8 +1526,12 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
     _rhTimeUpdateFn = function() {
         _rhUpdateTransport();
         if (audio.currentTime >= endSec) {
-            audio.pause();
-            _rhClearPlayState();
+            if (window._rhLoopActive) {
+                audio.currentTime = startSec; // loop back
+            } else {
+                audio.pause();
+                _rhClearPlayState();
+            }
         }
     };
     audio.addEventListener('timeupdate', _rhTimeUpdateFn);
@@ -1503,16 +1574,26 @@ window._rhStopPlayback = function() {
 var _rhTransportStart = 0;
 var _rhTransportEnd = 0;
 
+var _rhTransportSessionId = '';
+var _rhTransportSegIdx = null;
+
 function _rhShowTransport(startSec, endSec, sessionId, segIdx) {
     _rhTransportStart = startSec;
     _rhTransportEnd = endSec;
+    _rhTransportSessionId = sessionId || '';
+    _rhTransportSegIdx = segIdx;
 
-    // Get song title from timeline data
+    // Get song title + segment type from timeline data
     var title = '';
+    var segType = '';
     var tl = (typeof GLStore !== 'undefined' && GLStore.getCurrentTimeline) ? GLStore.getCurrentTimeline() : {};
     if (tl.data && tl.data.allSegments && segIdx !== undefined && tl.data.allSegments[segIdx]) {
-        title = tl.data.allSegments[segIdx].songTitle || tl.data.allSegments[segIdx].segType || '';
+        var _seg = tl.data.allSegments[segIdx];
+        title = _seg.songTitle || '';
+        segType = _seg.segType || 'song';
     }
+    var isLooping = !!window._rhLoopActive;
+    var label = title || (segType === 'talking' ? 'Discussion' : segType === 'jam' ? 'Jam' : 'Segment');
 
     var bar = document.getElementById('rhTransportBar');
     if (!bar) {
@@ -1524,24 +1605,52 @@ function _rhShowTransport(startSec, endSec, sessionId, segIdx) {
     bar.style.display = 'flex';
 
     var html = '';
-    // Song title
-    html += '<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78em;font-weight:600;color:var(--text)">' + escHtml(title) + '</div>';
+    // Song title + loop indicator
+    html += '<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">';
+    html += '<span style="font-size:0.78em;font-weight:600;color:var(--text)">' + escHtml(label) + '</span>';
+    if (isLooping) html += ' <span style="font-size:0.6em;font-weight:700;color:#fbbf24;padding:1px 4px;border-radius:3px;background:rgba(245,158,11,0.1)">LOOP</span>';
+    html += '</div>';
     // Time
     html += '<span id="rhTransportTime" style="font-size:0.68em;color:var(--text-dim);min-width:80px;text-align:center">' + _rhFmt(startSec) + ' / ' + _rhFmt(endSec) + '</span>';
     // Controls
-    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<div style="display:flex;align-items:center;gap:4px">';
     html += '<button onclick="_rhSkip(-10)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;padding:4px" title="Back 10s">\u23EA</button>';
-    html += '<button id="rhTransportPlayBtn" onclick="_rhTogglePause()" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:1.2em;padding:4px">\u23F8</button>';
+    html += '<button id="rhTransportPlayBtn" onclick="_rhTogglePause()" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:1.3em;padding:4px 6px">\u23F8</button>';
     html += '<button onclick="_rhSkip(10)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;padding:4px" title="Forward 10s">\u23E9</button>';
+    // Loop toggle
+    html += '<button id="rhTransportLoopBtn" onclick="_rhToggleLoop()" style="background:none;border:none;color:' + (isLooping ? '#fbbf24' : '#475569') + ';cursor:pointer;font-size:0.82em;padding:4px" title="' + (isLooping ? 'Stop loop' : 'Enable loop') + '">\uD83D\uDD01</button>';
     html += '<button onclick="_rhStopPlayback()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em;padding:4px" title="Stop">\u23F9</button>';
     html += '</div>';
-    // Progress bar
-    html += '<div id="rhTransportProgress" onclick="_rhSeekTransport(event)" style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,0.06);cursor:pointer">';
-    html += '<div id="rhTransportFill" style="height:100%;width:0%;background:#667eea;border-radius:0 2px 2px 0;transition:width 0.25s"></div>';
+    // Progress bar (click to seek)
+    html += '<div id="rhTransportProgress" onclick="_rhSeekTransport(event)" style="position:absolute;bottom:0;left:0;right:0;height:4px;background:rgba(255,255,255,0.06);cursor:pointer">';
+    html += '<div id="rhTransportFill" style="height:100%;width:0%;background:' + (isLooping ? '#fbbf24' : '#667eea') + ';border-radius:0 2px 2px 0;pointer-events:none"></div>';
     html += '</div>';
 
     bar.innerHTML = html;
 }
+
+// Toggle loop mode from transport bar
+window._rhToggleLoop = function() {
+    if (window._rhLoopActive) {
+        // Turn off loop — convert to single play
+        window._rhLoopActive = false;
+        var loopBtn = document.getElementById('rhTransportLoopBtn');
+        if (loopBtn) loopBtn.style.color = '#475569';
+        var fill = document.getElementById('rhTransportFill');
+        if (fill) fill.style.background = '#667eea';
+        // Remove LOOP badge
+        _rhShowTransport(_rhTransportStart, _rhTransportEnd, _rhTransportSessionId, _rhTransportSegIdx);
+    } else {
+        // Turn on loop
+        window._rhLoopActive = true;
+        var loopBtn2 = document.getElementById('rhTransportLoopBtn');
+        if (loopBtn2) loopBtn2.style.color = '#fbbf24';
+        var fill2 = document.getElementById('rhTransportFill');
+        if (fill2) fill2.style.background = '#fbbf24';
+        _rhShowTransport(_rhTransportStart, _rhTransportEnd, _rhTransportSessionId, _rhTransportSegIdx);
+        if (typeof showToast === 'function') showToast('\uD83D\uDD01 Loop enabled');
+    }
+};
 
 function _rhUpdateTransport() {
     if (!_rhSharedAudio) return;
@@ -1694,25 +1803,53 @@ window._rhCompareAttempts = function(songTitle) {
     html += '<button onclick="document.getElementById(\'' + containerId + '\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.85em">\u2715</button>';
     html += '</div>';
 
-    // Render each attempt with real data
+    // Identify best attempt (highest qualityScore, then longest duration as tiebreak)
+    var bestIdx = 0;
+    var bestScore = -1;
+    group.segments.forEach(function(seg, idx) {
+        var score = (seg.qualityScore || 0) * 100 + (seg.groove ? seg.groove.stability || 0 : 0);
+        if (score > bestScore || (score === bestScore && (seg.duration || 0) > (group.segments[bestIdx].duration || 0))) {
+            bestScore = score;
+            bestIdx = idx;
+        }
+    });
+
+    // Render each attempt with real data + deltas + best highlight
     group.segments.forEach(function(seg, idx) {
         var durLabel = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
         var grooveColor = seg.groove ? (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') : '#64748b';
         var qualColor = (seg.qualityScore >= 3) ? '#10b981' : (seg.qualityScore >= 2) ? '#f59e0b' : '#64748b';
+        var isBest = idx === bestIdx && group.segments.length > 1;
 
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.02);border-left:3px solid ' + grooveColor + '">';
+        html += '<div class="' + (isBest ? 'rh-compare-best' : '') + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.02);border-left:3px solid ' + grooveColor + '">';
         html += '<div style="flex:1;min-width:0">';
         html += '<div style="display:flex;align-items:center;gap:6px">';
         html += '<span style="font-size:0.78em;font-weight:700;color:var(--text)">Attempt ' + (idx + 1) + '</span>';
+        if (isBest) html += '<span style="font-size:0.58em;font-weight:700;color:#10b981;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2)">BEST</span>';
         html += '<span style="font-size:0.65em;color:var(--text-dim)">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel + '</span>';
         html += '</div>';
-        html += '<div style="display:flex;gap:8px;font-size:0.65em;margin-top:2px">';
+        // Quality + groove + delta indicators
+        html += '<div style="display:flex;gap:8px;font-size:0.65em;margin-top:2px;align-items:center">';
         if (seg.qualityLabel) html += '<span style="color:' + qualColor + '">' + escHtml(seg.qualityLabel) + '</span>';
         if (seg.groove && seg.groove.label) html += '<span style="color:' + grooveColor + '">' + escHtml(seg.groove.label) + '</span>';
-        if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary && seg.chordHints.summary.topProgressionHint) {
-            html += '<span style="color:var(--text-dim)">\uD83C\uDFB5 ' + escHtml(seg.chordHints.summary.topProgressionHint) + '</span>';
+        // Delta vs previous attempt
+        if (idx > 0) {
+            var prev = group.segments[idx - 1];
+            var qDelta = (seg.qualityScore || 0) - (prev.qualityScore || 0);
+            var gDelta = (seg.groove ? seg.groove.stability : 0) - (prev.groove ? prev.groove.stability : 0);
+            if (qDelta !== 0) {
+                var dIcon = qDelta > 0 ? '\u2191' : '\u2193';
+                var dColor = qDelta > 0 ? '#10b981' : '#f59e0b';
+                html += '<span style="color:' + dColor + ';font-weight:700">' + dIcon + '</span>';
+            }
+            if (gDelta !== 0 && seg.groove && prev.groove) {
+                var gIcon = gDelta > 0 ? '\u2191' : '\u2193';
+                var gCol = gDelta > 0 ? '#10b981' : '#f59e0b';
+                html += '<span style="color:' + gCol + '">' + gIcon + ' groove</span>';
+            }
         }
-        html += '</div></div>';
+        html += '</div>';
+        html += '</div>';
         // Action buttons
         html += '<div style="display:flex;gap:3px;flex-shrink:0">';
         if (hasAudio) {
@@ -1723,16 +1860,34 @@ window._rhCompareAttempts = function(songTitle) {
         html += '</div>';
     });
 
-    // Trend indicator
+    // Trend + "why" explanation
     var first = group.segments[0];
     var last = group.segments[group.segments.length - 1];
+    var trendHtml = '';
     if (first.qualityScore !== undefined && last.qualityScore !== undefined) {
         var delta = last.qualityScore - first.qualityScore;
         var trendIcon = delta > 0 ? '\u2191' : delta < 0 ? '\u2193' : '\u2192';
         var trendColor = delta > 0 ? '#10b981' : delta < 0 ? '#f59e0b' : '#94a3b8';
-        var trendLabel = delta > 0 ? 'Improving across attempts' : delta < 0 ? 'Quality dropped — may need targeted practice' : 'Consistent across attempts';
-        html += '<div style="text-align:center;font-size:0.72em;font-weight:600;color:' + trendColor + ';padding:4px 0;margin-top:2px">' + trendIcon + ' ' + trendLabel + '</div>';
+        // Build "why" explanation from data
+        var reasons = [];
+        if (delta > 0) {
+            if (last.duration > first.duration * 1.2) reasons.push('longer run (more of the song completed)');
+            if (last.groove && first.groove && last.groove.stability > first.groove.stability) reasons.push('tighter groove');
+            if (!reasons.length) reasons.push('better overall performance');
+        } else if (delta < 0) {
+            if (last.duration < first.duration * 0.7) reasons.push('shorter run (may have stopped early)');
+            if (last.groove && first.groove && last.groove.stability < first.groove.stability) reasons.push('less stable timing');
+            if (!reasons.length) reasons.push('performance dipped');
+        } else {
+            reasons.push('consistent quality across takes');
+        }
+        var trendLabel = delta > 0 ? 'Improving' : delta < 0 ? 'Declined' : 'Steady';
+        trendHtml = '<div style="text-align:center;font-size:0.72em;padding:4px 8px;margin-top:2px;border-radius:4px;background:' + trendColor + '08">'
+            + '<span style="font-weight:700;color:' + trendColor + '">' + trendIcon + ' ' + trendLabel + '</span>'
+            + '<span style="color:var(--text-dim)"> \u2014 ' + reasons.join(', ') + '</span>'
+            + '</div>';
     }
+    html += trendHtml;
 
     panel.innerHTML = html;
 
