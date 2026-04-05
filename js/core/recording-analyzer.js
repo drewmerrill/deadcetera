@@ -2018,7 +2018,8 @@ window.RecordingAnalyzer = (function() {
     _filterAddSong: _filterAddSong,
     _transcribeSeg: _transcribeSeg,
     _updateTranscript: _updateTranscript,
-    _fetchChordHints: _fetchChordHints
+    _fetchChordHints: _fetchChordHints,
+    get _currentAudioUrl() { return _currentAudioUrl; }
   };
 
 })();

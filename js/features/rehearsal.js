@@ -1108,6 +1108,185 @@ window._rhRerunAnalysis = function(sessionId) {
     });
 };
 
+// ── Segment-based report (built from confirmed recording analysis) ──────────
+function _rhRenderSegmentReport(sessionId, session, segments) {
+    var _fmt = function(sec) { if (!sec && sec !== 0) return '0:00'; var m = Math.floor(sec / 60); var s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; };
+    var dateStr = session.date ? new Date(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
+    var totalDur = session.totalActualMin || 0;
+    var durLabel = totalDur >= 60 ? Math.floor(totalDur / 60) + 'h ' + (totalDur % 60) + 'm' : totalDur + 'm';
+
+    // Filter segments by type
+    var songSegs = segments.filter(function(s) { return !s.segType || s.segType === 'song'; });
+    var talkSegs = segments.filter(function(s) { return s.segType === 'talking'; });
+    var restartSegs = segments.filter(function(s) { return s.segType === 'restart'; });
+    var jamSegs = segments.filter(function(s) { return s.segType === 'jam'; });
+
+    // Group songs by title
+    var songGroups = {};
+    songSegs.forEach(function(seg) {
+        var title = seg.songTitle || 'Unknown';
+        if (!songGroups[title]) songGroups[title] = { title: title, segments: [], totalTime: 0 };
+        songGroups[title].segments.push(seg);
+        songGroups[title].totalTime += seg.duration || 0;
+    });
+    var songList = Object.values(songGroups).sort(function(a, b) {
+        return (a.segments[0].startSec || 0) - (b.segments[0].startSec || 0);
+    });
+
+    // Plan vs actual (if available)
+    var pva = session.plan_vs_actual || null;
+
+    var html = '<div style="max-width:500px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:85vh;overflow-y:auto">';
+
+    // Header
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
+    html += '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9">Rehearsal Report</div>';
+    html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1.1em">\u2715</button>';
+    html += '</div>';
+    html += '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:14px">' + dateStr + (durLabel ? ' \u00B7 ' + durLabel : '') + ' \u00B7 ' + songList.length + ' songs' + (talkSegs.length ? ' \u00B7 ' + talkSegs.length + ' discussions' : '') + '</div>';
+
+    // Hidden audio for playback
+    html += '<audio id="rhReportAudio" style="display:none"></audio>';
+
+    // ── Plan vs Actual ──
+    if (pva) {
+        var _pvaArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; return Object.values(v); };
+        var played = _pvaArr(pva.played);
+        var missing = _pvaArr(pva.missing);
+        var unplanned = _pvaArr(pva.unplanned);
+        if (played.length || missing.length || unplanned.length) {
+            html += '<details style="margin-bottom:12px;border:1px solid rgba(255,255,255,0.06);border-radius:8px">'
+                + '<summary style="padding:8px 10px;font-size:0.72em;font-weight:700;color:var(--text-dim);cursor:pointer;list-style:none">'
+                + 'Plan vs Actual \u00B7 ' + played.length + ' played'
+                + (missing.length ? ' \u00B7 ' + missing.length + ' missed' : '')
+                + (unplanned.length ? ' \u00B7 ' + unplanned.length + ' unplanned' : '')
+                + '</summary><div style="padding:4px 10px 10px;font-size:0.75em;color:var(--text-dim)">';
+            if (missing.length) html += '<div style="color:#fbbf24;margin-bottom:4px">Missed: ' + missing.join(', ') + '</div>';
+            if (unplanned.length) html += '<div style="color:#818cf8">Unplanned: ' + unplanned.join(', ') + '</div>';
+            html += '</div></details>';
+        }
+    }
+
+    // ── Song-by-song report ──
+    html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">Song Report</div>';
+    songList.forEach(function(group) {
+        var attempts = group.segments.length;
+        var totalMin = Math.round(group.totalTime / 60);
+
+        html += '<div style="margin-bottom:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)">';
+
+        // Song header
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+        html += '<div style="font-weight:700;font-size:0.92em;color:var(--text)">' + escHtml(group.title) + '</div>';
+        html += '<div style="font-size:0.72em;color:var(--text-dim)">' + totalMin + ' min' + (attempts > 1 ? ' \u00B7 ' + attempts + ' attempts' : '') + '</div>';
+        html += '</div>';
+
+        // Per-attempt details
+        group.segments.forEach(function(seg, ai) {
+            var durLabel2 = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
+            var label = attempts > 1 ? 'Attempt ' + (ai + 1) : '';
+
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.78em;border-bottom:1px solid rgba(255,255,255,0.03)">';
+            // Play button
+            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.95em">\u25B6</button>';
+            // Time range
+            html += '<span style="color:var(--text-dim);min-width:85px">' + _fmt(seg.startSec) + '\u2013' + _fmt(seg.endSec) + '</span>';
+            // Label + duration
+            html += '<span style="flex:1;color:var(--text)">' + (label || durLabel2) + '</span>';
+            html += '<span style="color:var(--text-dim)">' + durLabel2 + '</span>';
+            html += '</div>';
+
+            // Quality + groove (if available)
+            if (seg.qualityLabel || seg.groove) {
+                html += '<div style="display:flex;gap:8px;font-size:0.68em;padding:2px 0 2px 28px">';
+                if (seg.qualityLabel) html += '<span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
+                if (seg.groove && seg.groove.label) html += '<span style="color:' + (seg.groove.stability >= 80 ? '#10b981' : seg.groove.stability >= 50 ? '#f59e0b' : '#ef4444') + '">' + escHtml(seg.groove.label) + '</span>';
+                html += '</div>';
+            }
+
+            // Chord hints (if available)
+            if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary && seg.chordHints.summary.topProgressionHint) {
+                html += '<div style="font-size:0.68em;color:var(--text-dim);padding:2px 0 2px 28px">\uD83C\uDFB5 Likely: ' + escHtml(seg.chordHints.summary.topProgressionHint) + '</div>';
+            }
+        });
+
+        html += '</div>';
+    });
+
+    // ── Discussions ──
+    if (talkSegs.length) {
+        html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px">Discussions</div>';
+        talkSegs.forEach(function(seg) {
+            var content = seg.transcript || seg.notes || '';
+            var tags = seg.talkTags ? seg.talkTags.join(', ') : '';
+            html += '<div style="margin-bottom:8px;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.01)">';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em">\u25B6</button>';
+            html += '<span style="font-size:0.72em;color:var(--text-dim)">' + _fmt(seg.startSec) + '\u2013' + _fmt(seg.endSec) + '</span>';
+            if (tags) html += '<span style="font-size:0.65em;color:#818cf8">' + escHtml(tags) + '</span>';
+            html += '</div>';
+            if (content) html += '<div style="font-size:0.78em;color:var(--text-muted);line-height:1.4">' + escHtml(content) + '</div>';
+            html += '</div>';
+        });
+    }
+
+    // ── Jams ──
+    if (jamSegs.length) {
+        html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin:12px 0 8px">Jams / Improv</div>';
+        jamSegs.forEach(function(seg) {
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.78em">';
+            html += '<button onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\')" style="background:none;border:none;color:#818cf8;cursor:pointer">\u25B6</button>';
+            html += '<span style="color:var(--text-dim)">' + _fmt(seg.startSec) + '\u2013' + _fmt(seg.endSec) + '</span>';
+            html += '<span style="color:var(--text)">' + escHtml(seg.songTitle || 'Jam') + '</span>';
+            html += '<span style="color:var(--text-dim)">' + Math.round(seg.duration / 60) + 'm</span>';
+            html += '</div>';
+        });
+    }
+
+    // Actions
+    html += '<button onclick="document.getElementById(\'rhReportModal\').remove()" style="width:100%;margin-top:12px;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em">Close</button>';
+    html += '</div>';
+
+    // Show modal
+    var existing = document.getElementById('rhReportModal');
+    if (existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'rhReportModal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+    ov.innerHTML = html;
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+}
+
+// Playback for report segments — uses the session's recording if available
+window._rhPlaySegment = function(startSec, endSec, sessionId) {
+    var audio = document.getElementById('rhReportAudio');
+    if (!audio) return;
+
+    // Try to get recording URL from mixdowns or recording analyzer cache
+    if (!audio.src || audio.dataset.sessId !== sessionId) {
+        // Try RecordingAnalyzer's cached blob URL
+        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
+            audio.src = RecordingAnalyzer._currentAudioUrl;
+        } else {
+            if (typeof showToast === 'function') showToast('Load the recording first via Analyze Recording');
+            return;
+        }
+        audio.dataset.sessId = sessionId;
+    }
+
+    audio.currentTime = startSec;
+    audio.play();
+    // Stop at end
+    var check = function() {
+        if (audio.currentTime >= endSec || audio.paused) {
+            audio.pause();
+            audio.removeEventListener('timeupdate', check);
+        }
+    };
+    audio.addEventListener('timeupdate', check);
+};
+
 window._rhShowSessionReport = async function(sessionId) {
     // Load fresh from Firebase to get latest analysis data (not stale cache)
     var s = null;
@@ -1124,11 +1303,18 @@ window._rhShowSessionReport = async function(sessionId) {
         s = sessions.find(function(x) { return x.sessionId === sessionId; });
     }
     if (!s) { if (typeof showToast === 'function') showToast('Session not found'); return; }
-    console.log('[RehearsalReport] Session loaded:', sessionId, 'keys:', Object.keys(s), 'hasAnalysis:', !!s.analysis, 'hasNotes:', !!s.notes, 'hasSongs:', !!(s.songsWorked && s.songsWorked.length));
-    try {
+    console.log('[RehearsalReport] Session loaded:', sessionId, 'keys:', Object.keys(s), 'hasAnalysis:', !!s.analysis, 'hasNotes:', !!s.notes, 'hasSegments:', !!s.audio_segments);
 
-        // Safely convert Firebase objects to arrays
-        var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
+    // ── NEW: Segment-based report (when recording analysis has been done) ──
+    var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
+    var _segs = _toArr(s.audio_segments);
+    if (_segs.length > 0) {
+        _rhRenderSegmentReport(sessionId, s, _segs);
+        return;
+    }
+
+    // ── LEGACY: Original report (no recording analysis) ──
+    try {
 
         var dateStr = s.date ? new Date(s.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
         var durMin = s.totalActualMin || 0;
