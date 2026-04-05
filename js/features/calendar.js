@@ -337,16 +337,25 @@ async function _calRenderBestRehearsalHero() {
         momHtml = '<div style="font-size:0.68em;color:' + mColor + ';font-weight:600;margin-bottom:6px">' + recs.momentum.label + '</div>';
     }
 
-    var confLabel = p.score >= 70 ? 'Best next rehearsal' : 'Good option';
+    var confLabel = p.score >= 70 ? 'This is your best next rehearsal' : 'Good option for the band';
+
+    // Stats bar: attendance + spacing + gig proximity
+    var statsHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.72em;color:var(--text-dim);margin:6px 0 10px">';
+    if (p.availability) statsHtml += '<span>\uD83D\uDC65 ' + p.availability.available + '/' + p.availability.total + ' free</span>';
+    if (p.spacingDays !== null) statsHtml += '<span>\uD83D\uDCC5 ' + p.spacingDays + 'd since last</span>';
+    if (recs.nextGigDate) {
+        var _gDays = Math.round((new Date(recs.nextGigDate + 'T12:00:00') - new Date(p.date + 'T12:00:00')) / 86400000);
+        if (_gDays > 0 && _gDays <= 30) statsHtml += '<span>\uD83C\uDFB8 ' + _gDays + 'd to gig</span>';
+    }
+    statsHtml += '</div>';
 
     el.innerHTML = '<div style="padding:16px 18px;margin-bottom:12px;border-radius:12px;border:2px solid rgba(34,197,94,0.3);background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
         + momHtml
         + '<div style="font-size:0.62em;font-weight:700;color:#22c55e;margin-bottom:3px">' + confLabel + '</div>'
-        + '<div style="font-size:1.15em;font-weight:900;color:var(--text);margin-bottom:4px">' + pLabel + '</div>'
+        + '<div style="font-size:1.15em;font-weight:900;color:var(--text);margin-bottom:2px">' + pLabel + '</div>'
+        + statsHtml
         + reasonHtml
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'
-        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="flex:2;padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer;min-height:44px">\uD83C\uDFB8 Lock + Create Plan</button>'
-        + '</div>'
+        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer;min-height:44px;margin-top:6px">\uD83C\uDFB8 Lock This In</button>'
         + gcalHtml
         + skipHtml
         + altsHtml
@@ -856,7 +865,7 @@ window.calMatrixRange = function(n) {
     _calRenderAvailabilityMatrix(_calCachedBlockedRanges);
 };
 
-function _calRenderAvailabilityMatrix(blockedRanges) {
+async function _calRenderAvailabilityMatrix(blockedRanges) {
     var el = document.getElementById('calAvailabilityMatrix');
     if (!el) return;
 
@@ -917,47 +926,20 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
         return { day: day, freeCount: freeCount, allFree: freeCount === members.length, strength: null };
     });
 
-    // Best rehearsal days — prioritize Strong, then Workable
-    var allFreeDays = dayAvail.filter(function(d) { return d.allFree || (d.strength && d.strength.label === 'Strong'); });
-    var bestHtml = '';
-    if (allFreeDays.length > 0) {
-        var bestList = allFreeDays.slice(0, 5).map(function(d) {
-            var _bd = glParseDate(d.day.date);
-            return '<span style="background:rgba(34,197,94,0.15);color:#22c55e;padding:2px 8px;border-radius:4px;font-weight:700;cursor:pointer" onclick="calDayClick(' +
-                (_bd ? _bd.getFullYear() + ',' + _bd.getMonth() + ',' + _bd.getDate() : '') + ')">' +
-                d.day.label + ' ' + d.day.month + ' ' + d.day.dayNum + '</span>';
-        }).join(' ');
-        var firstBest = allFreeDays[0].day;
-        var _fbd = glParseDate(firstBest.date);
-        bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:8px;font-size:0.85em">' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">' +
-            '<div><span style="color:#22c55e;font-weight:700">Best rehearsal days:</span> ' + bestList + '</div>' +
-            '<button onclick="calDayClick(' + (_fbd ? _fbd.getFullYear() + ',' + _fbd.getMonth() + ',' + _fbd.getDate() : '') + ')" ' +
-            'style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:6px;padding:4px 12px;font-size:0.82em;font-weight:700;cursor:pointer;white-space:nowrap">+ Create Rehearsal</button>' +
-            '</div></div>';
-    } else {
-        // Try Workable days first (soft conflicts only)
-        var workableDays = dayAvail.filter(function(d) { return d.strength && d.strength.label === 'Workable'; });
-        if (workableDays.length > 0) {
-            var wkList = workableDays.slice(0, 4).map(function(d) {
-                return '<span style="background:rgba(132,204,22,0.12);color:#84cc16;padding:2px 8px;border-radius:4px;font-weight:700">' +
-                    d.day.label + ' ' + d.day.month + ' ' + d.day.dayNum + ' <span style="font-size:0.8em;opacity:0.7">' + d.strength.label + '</span></span>';
-            }).join(' ');
-            bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(132,204,22,0.06);border:1px solid rgba(132,204,22,0.15);border-radius:8px;font-size:0.85em">' +
-                '<span style="color:#84cc16;font-weight:700">Workable days (soft conflicts only):</span> ' + wkList + '</div>';
-        } else {
-            var maxFree = Math.max.apply(null, dayAvail.map(function(d) { return d.freeCount; }));
-            if (maxFree > 0) {
-                var mostAvail = dayAvail.filter(function(d) { return d.freeCount === maxFree; }).slice(0, 3);
-                var mostList = mostAvail.map(function(d) {
-                    var strengthLabel = d.strength ? ' · ' + d.strength.label : '';
-                    return '<span style="background:rgba(251,191,36,0.12);color:#fbbf24;padding:2px 8px;border-radius:4px;font-weight:700">' +
-                        d.day.label + ' ' + d.day.month + ' ' + d.day.dayNum + ' (' + d.freeCount + '/' + members.length + strengthLabel + ')</span>';
-                }).join(' ');
-                bestHtml = '<div style="margin-bottom:10px;padding:8px 10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);border-radius:8px;font-size:0.85em">' +
-                    '<span style="color:#fbbf24;font-weight:700">Most available:</span> ' + mostList + '</div>';
+    // Load recommendation data for grid annotations (no duplicate "best days" — hero handles that)
+    var _recData = null;
+    var _tooCloseDates = {};
+    var _primaryDate = null;
+    var _altDates = {};
+    if (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations) {
+        try {
+            _recData = await GLStore.getRehearsalDateRecommendations();
+            if (_recData) {
+                if (_recData.primary) _primaryDate = _recData.primary.date;
+                (_recData.alternatives || []).forEach(function(a) { _altDates[a.date] = true; });
+                (_recData.tooClose || []).forEach(function(c) { _tooCloseDates[c.date] = c.penalties && c.penalties[0] ? c.penalties[0] : 'Too close'; });
             }
-        }
+        } catch(e) {}
     }
 
     // Range controls
@@ -996,12 +978,21 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
     html += '<tr><th style="text-align:left;padding:4px 6px;color:var(--text-dim);font-weight:600;border-bottom:1px solid rgba(255,255,255,0.08);position:sticky;left:0;background:#0f172a;z-index:1"></th>';
     days.forEach(function(day) {
         var allFree = dayAvail.find(function(d) { return d.day.date === day.date; });
-        var bg = allFree && allFree.allFree ? 'rgba(34,197,94,0.1)' : '';
+        // Color-code by recommendation status
+        var isPrimary = day.date === _primaryDate;
+        var isAlt = _altDates[day.date];
+        var isTooClose = _tooCloseDates[day.date];
+        var bg = isPrimary ? 'rgba(34,197,94,0.15)' : isAlt ? 'rgba(34,197,94,0.06)' : isTooClose ? 'rgba(245,158,11,0.06)' : (allFree && allFree.allFree ? 'rgba(34,197,94,0.04)' : '');
+        var headerColor = isPrimary ? '#22c55e' : isTooClose ? '#f59e0b' : (day.isWeekend ? 'var(--accent-light)' : 'var(--text-dim)');
         var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:3px solid rgba(99,102,241,0.5);' : '';
-        html += '<th style="text-align:center;padding:4px 2px;color:' + (day.isWeekend ? 'var(--accent-light)' : 'var(--text-dim)') +
-            ';font-weight:600;font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg + ';' + monthBorder +
-            'cursor:pointer" onclick="calShowDateConflicts(\'' + day.date + '\')">' +
-            day.label.charAt(0) + '<br><span style="font-size:0.9em">' + day.dayNum + '</span></th>';
+        var topBorder = isPrimary ? 'border-top:2px solid #22c55e;' : isTooClose ? 'border-top:2px solid rgba(245,158,11,0.3);' : '';
+        var title = isPrimary ? 'Best date' : isTooClose ? (typeof _tooCloseDates[day.date] === 'string' ? _tooCloseDates[day.date] : 'Too close') : '';
+        html += '<th style="text-align:center;padding:4px 2px;color:' + headerColor +
+            ';font-weight:' + (isPrimary ? '800' : '600') + ';font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg + ';' + monthBorder + topBorder +
+            'cursor:pointer" onclick="calShowDateConflicts(\'' + day.date + '\')"' + (title ? ' title="' + title + '"' : '') + '>' +
+            day.label.charAt(0) + '<br><span style="font-size:0.9em">' + day.dayNum + '</span>' +
+            (isPrimary ? '<br><span style="font-size:0.5em;color:#22c55e">\u2605</span>' : '') +
+            '</th>';
     });
     html += '</tr>';
 
@@ -1029,18 +1020,25 @@ function _calRenderAvailabilityMatrix(blockedRanges) {
         html += '</tr>';
     });
 
-    // Footer row: strength label or free count
+    // Footer row: spacing-aware status
     html += '<tr><td style="padding:4px 6px;color:var(--text-dim);font-size:0.8em;font-weight:600;position:sticky;left:0;background:#0f172a;z-index:1">Status</td>';
-    dayAvail.forEach(function(d, di) {
+    dayAvail.forEach(function(d) {
         var mb = d.day.isFirstOfMonth && d.day.dayNum === 1 ? 'border-left:3px solid rgba(99,102,241,0.5);' : '';
-        if (d.strength) {
-            var s = d.strength;
-            var shortLabel = { 'Strong':'\u2714', 'Workable':'~', 'Risky':'!', 'Not viable':'\u2716' }[s.label] || '?';
-            html += '<td style="text-align:center;padding:4px 2px;font-size:0.75em;font-weight:800;color:' + s.color + ';' + mb + '" title="' + s.label + ': ' + s.available + ' free, ' + s.softConflictCount + ' soft, ' + s.hardConflictCount + ' hard">' + shortLabel + '</td>';
+        var isPrimary = d.day.date === _primaryDate;
+        var isTooClose = !!_tooCloseDates[d.day.date];
+        var footerLabel = '';
+        var footerColor = '';
+        if (isPrimary) { footerLabel = '\u2605'; footerColor = '#22c55e'; }
+        else if (isTooClose) { footerLabel = '\u26A0'; footerColor = '#f59e0b'; }
+        else if (d.strength) {
+            footerLabel = { 'Strong':'\u2714', 'Workable':'~', 'Risky':'!', 'Not viable':'\u2716' }[d.strength.label] || '?';
+            footerColor = d.strength.color;
         } else {
-            var color = d.allFree ? '#22c55e' : d.freeCount >= members.length - 1 ? '#fbbf24' : 'var(--text-dim)';
-            html += '<td style="text-align:center;padding:4px 2px;font-size:0.8em;font-weight:700;color:' + color + ';' + mb + '">' + d.freeCount + '</td>';
+            footerLabel = '' + d.freeCount;
+            footerColor = d.allFree ? '#22c55e' : d.freeCount >= members.length - 1 ? '#fbbf24' : 'var(--text-dim)';
         }
+        var title = isPrimary ? 'Recommended' : isTooClose ? 'Too close to existing rehearsal' : (d.strength ? d.strength.label : d.freeCount + ' free');
+        html += '<td style="text-align:center;padding:4px 2px;font-size:0.75em;font-weight:800;color:' + footerColor + ';' + mb + '" title="' + title + '">' + footerLabel + '</td>';
     });
     html += '</tr>';
 
