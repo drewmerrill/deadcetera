@@ -3571,7 +3571,12 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
     html += '<div style="text-align:right;flex-shrink:0">';
     html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">Use this \u2192</span>';
     html += '</div>';
-    html += '</div></div>';
+    html += '</div>';
+    // Reinforcement line below the card content
+    if (p.score >= 60) {
+        html += '<div style="font-size:0.58em;color:var(--text-dim);text-align:center;margin-top:4px">This is your best option this week</div>';
+    }
+    html += '</div>';
 
     // Alternatives (collapsed)
     if (recs.alternatives.length) {
@@ -3613,12 +3618,11 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
     el.innerHTML = html;
 }
 
-// Pick a recommended date — fill into the date input + visual feedback
+// Pick a recommended date — fill into the date input + visual feedback + planning hook
 window._rhPickRecommendedDate = function(dateStr, clickedEl) {
     var input = document.getElementById('rhDate');
     if (input) {
         input.value = dateStr;
-        // Flash the input to confirm
         input.style.borderColor = '#22c55e';
         input.style.boxShadow = '0 0 0 2px rgba(34,197,94,0.3)';
         setTimeout(function() { input.style.borderColor = ''; input.style.boxShadow = ''; }, 1200);
@@ -3627,14 +3631,34 @@ window._rhPickRecommendedDate = function(dateStr, clickedEl) {
     if (clickedEl) {
         clickedEl.style.borderColor = '#22c55e';
         clickedEl.style.background = 'rgba(34,197,94,0.08)';
-        // Show confirmation text
         var confirmEl = document.createElement('div');
         confirmEl.style.cssText = 'font-size:0.65em;color:#22c55e;font-weight:600;text-align:center;margin-top:4px;animation:fadeIn 0.2s ease';
         confirmEl.textContent = '\u2714 Date selected';
         clickedEl.appendChild(confirmEl);
         setTimeout(function() { if (confirmEl.parentNode) confirmEl.remove(); }, 2000);
     }
+    // Planning handoff hook — show prep teaser after date is picked
+    _rhShowPlanningHook(dateStr);
 };
+
+// ── Planning handoff placeholder ─────────────────────────────────────────────
+// Triggered when a recommended date is selected. Future: will populate with
+// specific song recommendations based on rehearsal intelligence.
+function _rhShowPlanningHook(dateStr) {
+    var hookEl = document.getElementById('rhPlanningHook');
+    if (hookEl) hookEl.remove();
+    var recs = document.getElementById('rhDateRecs');
+    if (!recs) return;
+
+    var d = new Date(dateStr + 'T12:00:00');
+    var dayLabel = d.toLocaleDateString('en-US', { weekday: 'long' });
+    var hook = document.createElement('div');
+    hook.id = 'rhPlanningHook';
+    hook.style.cssText = 'margin-top:8px;padding:8px 12px;border-radius:8px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.03);animation:fadeIn 0.2s ease';
+    hook.innerHTML = '<div style="font-size:0.65em;font-weight:700;color:#a5b4fc;margin-bottom:2px">Up next for ' + dayLabel + '</div>'
+        + '<div style="font-size:0.6em;color:var(--text-dim);line-height:1.4">After you schedule, we\u2019ll suggest what to work on based on your last rehearsal.</div>';
+    recs.appendChild(hook);
+}
 
 async function rhSaveEvent(eventId) {
     if (!requireSignIn()) return;

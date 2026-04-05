@@ -3699,15 +3699,17 @@
     var cadenceDays = opts.cadenceDays || _defaultCadenceDays;
     var cadenceLabel = cadenceDays <= 5 ? 'twice-a-week' : cadenceDays <= 10 ? 'weekly' : 'every-two-weeks';
 
-    // 1. Availability (0-100)
+    // Reasons are built in priority order: availability → cadence → gig → habit
+    // Each section appends to reasons[] in that order.
+
+    // 1. Availability (0-100) — HIGHEST PRIORITY reason
     var strength = computeDateStrength(opts.blocks, opts.members, candidateDateStr);
     var availScore = strength.score; // 0-100
     score += availScore * 0.35; // 35% weight
-    // Build availability reason
     if (strength.label === 'Strong') reasons.push('Everyone\u2019s free');
     else if (strength.available > 0) reasons.push(strength.available + ' of ' + strength.total + ' available');
 
-    // 2. Spacing penalty — distance from nearest existing rehearsal
+    // 2. Spacing / cadence fit — SECOND PRIORITY reason
     var candidateMs = new Date(candidateDateStr + 'T12:00:00').getTime();
     var minGapDays = 999;
     var nearestDate = null;
@@ -3717,28 +3719,27 @@
         if (gap < minGapDays) { minGapDays = gap; nearestDate = d; }
       });
     }
-    var minAcceptableGap = Math.max(2, Math.floor(cadenceDays * 0.6)); // 60% of cadence as minimum
+    var minAcceptableGap = Math.max(2, Math.floor(cadenceDays * 0.6));
     var spacingScore = 0;
-    var offPatternNotes = []; // subtle notes about deviations
+    var offPatternNotes = []; // capped to 2 max, spacing issues first
     if (!opts.overrideSpacing && minGapDays < minAcceptableGap) {
       spacingScore = 0;
       penalties.push('Too close \u2014 you rehearsed ' + Math.round(minGapDays) + ' day' + (Math.round(minGapDays) !== 1 ? 's' : '') + ' ago (' + _fmtDateShort(nearestDate) + ')');
     } else if (minGapDays <= cadenceDays * 1.5) {
       spacingScore = 100;
-      reasons.push('Fits your ' + cadenceLabel + ' schedule');
+      reasons.push('Right on your usual schedule');
     } else {
       spacingScore = 80;
       reasons.push('It\u2019s been ' + Math.round(minGapDays) + ' days since the last rehearsal');
       if (minGapDays > cadenceDays * 2) offPatternNotes.push('Overdue \u2014 longer than your usual gap');
     }
-    // Detect if this date is earlier than cadence suggests
     if (spacingScore > 0 && minGapDays < cadenceDays * 0.85 && minGapDays >= minAcceptableGap) {
       offPatternNotes.push('Earlier than your usual schedule');
     }
     score += spacingScore * 0.25; // 25% weight
 
-    // 3. Gig proximity bonus (0-100)
-    var gigScore = 50; // neutral default
+    // 3. Gig proximity — THIRD PRIORITY reason
+    var gigScore = 50;
     if (opts.nextGigDate) {
       var daysToGig = (new Date(opts.nextGigDate + 'T12:00:00').getTime() - candidateMs) / 86400000;
       if (daysToGig >= 2 && daysToGig <= 14) {
@@ -3752,24 +3753,25 @@
     }
     score += gigScore * 0.20; // 20% weight
 
-    // 4. Day-of-week preference — uses detected preferred days or defaults
-    var dayScore = 50; // neutral default
+    // 4. Day-of-week preference — FOURTH PRIORITY (habit) reason
+    var dayScore = 50;
     var preferredDays = opts.preferredDays || [];
     var isPreferred = preferredDays.some(function(p) { return p.day === dow; });
     if (preferredDays.length > 0) {
-      // Data-driven: preferred days get a big boost
       if (isPreferred) {
         dayScore = 100;
-        reasons.push('You usually rehearse on ' + dayNames[dow] + 's');
+        reasons.push('Matches your typical rehearsal day');
       } else {
         dayScore = 30;
         offPatternNotes.push('Not your usual ' + preferredDays[0].name);
       }
     } else {
-      // Fallback: weekday evenings typical for bands
       dayScore = (dow >= 1 && dow <= 4) ? 80 : (dow === 0 || dow === 5) ? 60 : 40;
     }
     score += dayScore * 0.20; // 20% weight
+
+    // Cap off-pattern notes to 2, spacing issues already added first
+    if (offPatternNotes.length > 2) offPatternNotes = offPatternNotes.slice(0, 2);
 
     // Build label
     var label = 'Good';
