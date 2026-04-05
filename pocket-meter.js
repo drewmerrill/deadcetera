@@ -442,6 +442,32 @@
       }
       if (variance > 3 && !coachingInsights.length) coachingInsights.push('Tempo wanders throughout \u2014 try playing to a click');
 
+      // Headline takeaway — single summary sentence
+      var headline = '';
+      if (stability >= 90 && Math.abs(avgDeviation) <= 2) {
+        headline = 'Tempo was locked in \u2014 right in the pocket';
+      } else if (stability >= 75 && Math.abs(avgDeviation) <= 2) {
+        headline = 'Solid timing overall \u2014 minor drift';
+      } else if (worstZone) {
+        var wzDir = worstZone.type === 'rushing' ? 'sped up' : 'slowed down';
+        var wzWhen = worstZone.startSec < (points[0].timeSec + (points[points.length - 1].timeSec - points[0].timeSec) * 0.3)
+          ? 'early on' : worstZone.endSec > (points[0].timeSec + (points[points.length - 1].timeSec - points[0].timeSec) * 0.7)
+          ? 'toward the end' : 'in the middle';
+        // Check if transition issue was detected
+        var hasTransition = coachingInsights.some(function(c) { return c.match(/transition/i); });
+        if (hasTransition) {
+          headline = 'You ' + wzDir + ' ' + wzWhen + ' and the timing broke at a transition \u2014 focus there';
+        } else {
+          headline = 'You ' + wzDir + ' ' + wzWhen + ' \u2014 that\u2019s the spot to work on';
+        }
+      } else if (rushing) {
+        headline = 'Running a bit hot \u2014 try pulling back the tempo slightly';
+      } else if (dragging) {
+        headline = 'Dragging a bit behind \u2014 keep the energy up';
+      } else {
+        headline = 'Timing is in decent shape \u2014 keep tightening';
+      }
+
       return {
         points: points,
         avgBPM: avgBPM,
@@ -456,7 +482,22 @@
         targetBPM: targetBPM,
         problemZones: problemZones,
         worstZone: worstZone,
-        coachingInsights: coachingInsights
+        coachingInsights: coachingInsights,
+        headline: headline,
+        // Cross-session comparison fingerprint (for future session-vs-session comparison)
+        // Contains the minimum data needed to compare this segment's groove profile
+        // against the same song in a previous rehearsal session.
+        fingerprint: {
+          songTitle: null, // set by caller — compute() doesn't know the song
+          avgBPM: avgBPM,
+          variance: variance,
+          stability: stability,
+          deviation: Math.round(avgDeviation * 10) / 10,
+          problemZoneCount: problemZones.length,
+          worstSeverity: worstZone ? Math.round(worstZone.severity * 10) / 10 : 0,
+          pointCount: points.length,
+          timestamp: null // set by caller — when this session occurred
+        }
       };
     },
 
@@ -496,13 +537,14 @@
       var bandBot = y(ts.targetBPM - bandWidth);
       svg += '<rect x="' + pad.left + '" y="' + bandTop + '" width="' + w + '" height="' + Math.max(1, bandBot - bandTop) + '" fill="rgba(16,185,129,0.06)" rx="1"/>';
 
-      // Problem zone highlights
+      // Problem zone highlights — worst zone gets pulse animation class
       ts.problemZones.forEach(function(z, zi) {
         var zx1 = x(z.startSec);
         var zx2 = x(z.endSec);
         var isWorst = ts.worstZone && z === ts.worstZone;
         var color = z.type === 'rushing' ? (isWorst ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)') : (isWorst ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.08)');
-        svg += '<rect x="' + zx1 + '" y="' + pad.top + '" width="' + Math.max(2, zx2 - zx1) + '" height="' + h + '" fill="' + color + '" rx="2"/>';
+        svg += '<rect x="' + zx1 + '" y="' + pad.top + '" width="' + Math.max(2, zx2 - zx1) + '" height="' + h + '" fill="' + color + '" rx="2"'
+          + (isWorst ? ' class="rh-zone-pulse"' : '') + '/>';
       });
 
       // Target BPM reference line
