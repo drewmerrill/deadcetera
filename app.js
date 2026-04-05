@@ -10768,7 +10768,7 @@ window._glQuickStartRehearsal = async function() {
             }
             // Fallback: open plan builder
             if (typeof practicePlanActiveDate !== 'undefined') practicePlanActiveDate = today;
-            if (typeof rhShowTab === 'function') rhShowTab('tonight');
+            showPage('rehearsal');
         }, 800);
     } catch(e) {
         showToast('Could not create rehearsal: ' + e.message);

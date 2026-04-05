@@ -181,7 +181,6 @@ window._rhSaveRecreatedSession = async function() {
 var rhCurrentEventId = null; // which event is open in detail view
 
 // ── Page entry point ──────────────────────────────────────────────────────────
-var _rhActiveTab = 'events';
 
 // Compact confidence badge for transition practice units (0–5 scale)
 function _renderTransitionConfBadge(confidence) {
@@ -198,7 +197,6 @@ async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     window.GL_REHEARSAL_READY = false;
     el.innerHTML = '<div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
-    _rhActiveTab = 'tonight';
     _rhRenderCommandFlow(el);
 }
 
@@ -927,96 +925,49 @@ async function _rhRenderSessionHistory() {
         var d = s.date ? new Date(s.date) : null;
         var dateStr = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
         var totalActual = s.totalActualMin || 0;
-        var totalBudget = s.totalBudgetMin || 0;
-        var blocksCompleted = s.blocksCompleted || (s.blocks ? s.blocks.length : 0);
-        var totalBlocks = s.totalBlocks || blocksCompleted;
 
         // Duration label
         var durLabel = '';
         if (totalActual >= 60) durLabel = Math.floor(totalActual / 60) + 'h ' + (totalActual % 60) + 'm';
         else durLabel = totalActual + ' min';
 
-        // Song list from blocks
-        var songList = '';
-        if (s.blocks && s.blocks.length) {
-            var songNames = s.blocks.map(function(b) { return b.title; }).filter(Boolean);
-            if (songNames.length > 3) songList = songNames.slice(0, 3).join(' \u00B7 ') + ' +' + (songNames.length - 3) + ' more';
-            else if (songNames.length) songList = songNames.join(' \u00B7 ');
-        }
-
-        // Verdict
-        var verdict = '', verdictColor = '';
-        if (!totalBudget) { verdict = ''; }
-        else {
-            var delta = totalActual - totalBudget;
-            if (Math.abs(delta) <= 3) { verdict = 'On track'; verdictColor = '#22c55e'; }
-            else if (delta > 0) { verdict = '+' + delta + 'm'; verdictColor = delta > 10 ? '#ef4444' : '#fbbf24'; }
-            else { verdict = delta + 'm'; verdictColor = '#60a5fa'; }
-        }
-
-        // Notes + summary
-        var notesPreview = s.notes ? escHtml(s.notes).substring(0, 60) + (s.notes.length > 60 ? '\u2026' : '') : '';
-        var summaryLine = s.summary || '';
-
         // Rating badge
         var ratingIcons = { great: '\uD83D\uDD25', solid: '\uD83D\uDCAA', needs_work: '\uD83D\uDD27' };
-        var ratingColors = { great: '#22c55e', solid: '#a5b4fc', needs_work: '#fbbf24' };
-        var ratingHtml = s.rating ? '<span style="font-size:0.68em;color:' + (ratingColors[s.rating] || '#94a3b8') + ';font-weight:700" title="' + (s.rating || '').replace('_', ' ') + '">' + (ratingIcons[s.rating] || '') + '</span>' : '';
+        var ratingHtml = s.rating ? ' ' + (ratingIcons[s.rating] || '') : '';
 
-        // Mixdown link
-        var mixdownHtml = '';
-        if (s.mixdown_id) {
-            mixdownHtml = '<span style="font-size:0.65em;color:#fbbf24" title="Has mixdown">\uD83C\uDFA4</span>';
-        }
-
-        html += '<div class="app-card" style="padding:8px 12px;margin-bottom:6px' + (isLatest ? ';border-left:3px solid #a5b4fc;background:rgba(99,102,241,0.04)' : '') + '">';
+        html += '<div class="app-card" style="padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px' + (isLatest ? ';border-left:3px solid #a5b4fc;background:rgba(99,102,241,0.04)' : '') + '">';
 
         // Bulk checkbox
         if (_rhBulkMode) {
-            html += '<div style="float:left;margin-right:8px;margin-top:2px">'
-                + '<input type="checkbox" id="rhBulkCb_' + s.sessionId + '" onchange="_rhBulkToggle(\'' + s.sessionId + '\')"' + (_rhBulkSelected[s.sessionId] ? ' checked' : '') + ' style="accent-color:#ef4444;width:14px;height:14px;cursor:pointer">'
-                + '</div>';
+            html += '<input type="checkbox" id="rhBulkCb_' + s.sessionId + '" onchange="_rhBulkToggle(\'' + s.sessionId + '\')"' + (_rhBulkSelected[s.sessionId] ? ' checked' : '') + ' style="accent-color:#ef4444;width:14px;height:14px;cursor:pointer;flex-shrink:0">';
         }
 
-        // Header: date + duration + verdict
-        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
-        html += '<span style="font-weight:700;font-size:0.85em;color:var(--text)">' + dateStr + '</span>';
-        html += '<span style="font-size:0.78em;color:var(--text-muted);font-weight:600">' + durLabel + '</span>';
-        if (verdict) html += '<span style="font-size:0.72em;font-weight:700;color:' + verdictColor + '">' + verdict + '</span>';
-        html += ratingHtml;
-        html += mixdownHtml;
-        html += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto">' + blocksCompleted + '/' + totalBlocks + ' songs</span>';
+        // Date + duration + 1 key insight
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="display:flex;align-items:center;gap:6px">';
+        html += '<span style="font-weight:700;font-size:0.82em;color:var(--text)">' + dateStr + '</span>';
+        html += '<span style="font-size:0.72em;color:var(--text-muted)">' + durLabel + ratingHtml + '</span>';
+        if (isLatest) html += '<span style="font-size:0.58em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase">LATEST</span>';
+        html += '</div>';
+        // One key insight line
+        var headline = _rhGetHeadline(s, _si, clean);
+        if (headline) {
+            html += '<div style="font-size:0.7em;font-weight:600;color:' + headline.color + ';margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + headline.icon + ' ' + headline.text + '</div>';
+        }
         html += '</div>';
 
-        // Headline insight
-        var headline = _rhGetHeadline(s, _si, clean);
-        if (headline) html += '<div style="font-size:0.78em;font-weight:700;color:' + headline.color + ';margin-bottom:3px">' + headline.icon + ' ' + headline.text + '</div>';
-
-        // Summary line (auto-generated or from session)
-        if (summaryLine && !headline) html += '<div style="font-size:0.72em;color:#94a3b8;margin-bottom:3px;line-height:1.4">' + escHtml(summaryLine) + '</div>';
-
-        // Songs preview
-        if (songList && !summaryLine && !headline) html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(songList) + '</div>';
-
-        // Notes
-        if (notesPreview) html += '<div style="font-size:0.72em;color:#475569;margin-bottom:3px">' + notesPreview + '</div>';
-
-        // Actions — single primary CTA: View Timeline
-        html += '<div style="display:flex;gap:6px;align-items:center">';
-        if (isLatest) html += '<span style="font-size:0.6em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase">LATEST</span>';
-        html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc">\u25B6 View Timeline</button>';
-        if (s.mixdown_id) {
-            html += '<button onclick="_rhToggleMixdownPlayer(\'' + s.sessionId + '\',\'' + escHtml(s.mixdown_id) + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:#fbbf24">\uD83C\uDFA4 Mixdown</button>';
+        // Actions — compact
+        html += '<button onclick="_rhShowSessionReport(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc;white-space:nowrap;flex-shrink:0">\u25B6 Timeline</button>';
+        if (!_rhBulkMode) {
+            html += '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.6em;padding:3px 6px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.12);background:none;color:#64748b;flex-shrink:0">\uD83D\uDDD1\uFE0F</button>';
         }
-        html += '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b;margin-left:auto">\uD83D\uDDD1\uFE0F</button>';
+
         html += '</div>';
 
         // Inline mixdown player area (hidden until toggled)
         if (s.mixdown_id) {
-            html += '<div id="rhMixdownPlayer_' + s.sessionId + '" style="display:none;margin-top:6px;padding:8px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:8px"></div>';
+            html += '<div id="rhMixdownPlayer_' + s.sessionId + '" style="display:none;margin-top:4px;padding:8px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:8px"></div>';
         }
-
-        html += '</div>';
     });
 
     html += '</div>';
@@ -1109,9 +1060,10 @@ async function _rhRenderLastRehearsalTimeline() {
 // Render timeline directly into a container (not toggled via session card)
 function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments) {
     var data = _rhPrepareSegmentData(session, segments);
-    // Cache for inline compare and other consumers
-    window._rhLastTimelineData = data;
-    window._rhLastTimelineSessionId = sessionId;
+    // Store in GLStore for inline compare and other consumers (no window globals)
+    if (typeof GLStore !== 'undefined' && GLStore.setCurrentTimeline) {
+        GLStore.setCurrentTimeline(sessionId, data);
+    }
     var hasAudio = _rhHasAudio();
     var playBtnStyle = hasAudio
         ? 'background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.85em'
@@ -1133,7 +1085,10 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             + '.rh-playing-btn{animation:rhPulsePlay 1.5s ease infinite}'
             + '.rh-groove-strong{border-left-color:#10b981!important}'
             + '.rh-groove-unstable{border-left-color:#f59e0b!important}'
-            + '.rh-groove-incomplete{border-left-color:#64748b!important}';
+            + '.rh-groove-incomplete{border-left-color:#64748b!important}'
+            + '@keyframes rhFocusFlash{0%{box-shadow:0 0 0 2px rgba(251,191,36,0.5)}100%{box-shadow:none}}'
+            + '.rh-focus-flash{animation:rhFocusFlash 1.2s ease-out}'
+            + '.rh-seg-row.rh-jump-highlight{background:rgba(99,102,241,0.08)!important;transition:background 0.6s}';
         document.head.appendChild(_ts);
     }
 
@@ -1154,7 +1109,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         var pct = ((seg.duration || 0) / totalDur * 100).toFixed(1);
         var color = (!seg.segType || seg.segType === 'song') ? '#667eea' : (seg.segType === 'talking' ? '#a5b4fc' : (seg.segType === 'jam' ? '#f59e0b' : '#334155'));
         if (seg.segType === 'ignore') return;
-        html += '<div class="rh-strip-seg" onclick="var el=document.getElementById(\'rhSeg_' + si + '\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="width:' + pct + '%;background:' + color + ';min-width:2px" title="' + escHtml(seg.songTitle || seg.segType || '') + ' (' + _rhFmt(seg.startSec) + ')"></div>';
+        html += '<div class="rh-strip-seg" onclick="var el=document.getElementById(\'rhSeg_' + si + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'center\'});el.classList.add(\'rh-jump-highlight\');setTimeout(function(){el.classList.remove(\'rh-jump-highlight\')},800);if(el.tagName===\'DETAILS\'&&!el.open)el.open=true}" style="width:' + pct + '%;background:' + color + ';min-width:2px" title="' + escHtml(seg.songTitle || seg.segType || '') + ' (' + _rhFmt(seg.startSec) + ')"></div>';
     });
     html += '</div>';
 
@@ -1270,9 +1225,11 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                     + '<span style="color:var(--text-dim)">\u2014 ' + reason + '</span>'
                     + '</div>'
                     + '<div style="display:flex;gap:4px;padding-left:20px">';
-                // Action buttons for this priority song
+                // Action buttons for this priority song — scroll + expand + loop
                 if (firstSeg && hasAudio) {
-                    html += '<button onclick="_rhLoopSegment(' + firstSeg.startSec + ',' + firstSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-family:inherit">\uD83D\uDD01 Loop</button>';
+                    var _segIdx = _rhFindSegIdx(g.title, true);
+                    var _focusSeg = _segIdx !== null ? g.segments[g.segments.length - 1] : firstSeg;
+                    html += '<button onclick="_rhFocusSegment(' + (_segIdx !== null ? _segIdx : 0) + ',' + _focusSeg.startSec + ',' + _focusSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-family:inherit">\uD83D\uDD01 Loop</button>';
                 }
                 if (g.segments.length >= 2) {
                     html += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">\uD83C\uDD9A Compare</button>';
@@ -1288,12 +1245,13 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0">\uD83D\uDD01 ' + escHtml(r.text) + '</div>';
         });
 
-        // Auto-loop weakest section
+        // Auto-loop weakest section — scroll to it, expand, and start loop
         if (hasAudio && _prioritySongs.length) {
             var _weakest = _prioritySongs[0];
             var _weakSeg = _weakest.segments[_weakest.segments.length - 1]; // last attempt (usually the one they gave up on)
             if (_weakSeg) {
-                html += '<button onclick="_rhLoopSegment(' + _weakSeg.startSec + ',' + _weakSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="width:100%;margin-top:6px;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">\uD83D\uDD01 Loop hardest section (' + escHtml(_weakest.title) + ')</button>';
+                var _weakIdx = _rhFindSegIdx(_weakest.title, true);
+                html += '<button onclick="_rhFocusSegment(' + (_weakIdx !== null ? _weakIdx : 0) + ',' + _weakSeg.startSec + ',' + _weakSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="width:100%;margin-top:6px;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">\uD83D\uDD01 Loop hardest section (' + escHtml(_weakest.title) + ')</button>';
             }
         }
 
@@ -1318,6 +1276,39 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             }
         });
     });
+}
+
+// ── Insight → Action: scroll to segment, expand it, prepare playback ─────────
+window._rhFocusSegment = function(segIdx, startSec, endSec, sessionId) {
+    var row = document.getElementById('rhSeg_' + segIdx);
+    if (row) {
+        // Scroll into view with highlight
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Expand if it's a <details> element
+        if (row.tagName === 'DETAILS' && !row.open) row.open = true;
+        // Flash highlight
+        row.classList.add('rh-focus-flash');
+        setTimeout(function() { row.classList.remove('rh-focus-flash'); }, 1200);
+    }
+    // Start loop playback
+    if (startSec !== undefined && endSec !== undefined) {
+        _rhLoopSegment(startSec, endSec, sessionId, segIdx);
+    }
+};
+
+// Find the segment index for a song title (first or worst attempt)
+function _rhFindSegIdx(songTitle, useWorst) {
+    var tl = (typeof GLStore !== 'undefined' && GLStore.getCurrentTimeline) ? GLStore.getCurrentTimeline() : {};
+    var data = tl.data;
+    if (!data || !data.songGroups || !data.songGroups[songTitle]) return null;
+    var segs = data.songGroups[songTitle].segments;
+    if (!segs.length) return null;
+    var target = useWorst ? segs[segs.length - 1] : segs[0];
+    // Find its index in allSegments
+    for (var i = 0; i < data.allSegments.length; i++) {
+        if (data.allSegments[i] === target) return i;
+    }
+    return null;
 }
 
 // ── Shared data preparation (single source of truth) ────────────────────────
@@ -1371,9 +1362,6 @@ function _rhHasAudio() {
     return false;
 }
 
-// _rhShowInlineTimeline removed — consolidated into _rhRenderInlineTimelineDirectly
-
-// _rhRenderSegmentReport removed — all review now renders inline via _rhRenderInlineTimelineDirectly
 
 // Playback for report segments — uses the session's recording if available
 // Single shared audio element — NEVER re-set src if already loaded (prevents OOM on large files)
@@ -1544,17 +1532,18 @@ window._rhCompareAttempts = function(songTitle) {
     var anchor = document.querySelector('[data-song="' + songTitle.replace(/"/g, '') + '"]');
     if (!anchor) { if (typeof showToast === 'function') showToast('Song not found in timeline'); return; }
 
-    // Get segment data from the cached prepare call
-    var _cachedData = window._rhLastTimelineData;
+    // Get segment data from GLStore (no dependency on render order)
+    var _tl = (typeof GLStore !== 'undefined' && GLStore.getCurrentTimeline) ? GLStore.getCurrentTimeline() : {};
+    var _cachedData = _tl.data;
     if (!_cachedData || !_cachedData.songGroups || !_cachedData.songGroups[songTitle]) {
-        if (typeof showToast === 'function') showToast('No compare data available');
+        if (typeof showToast === 'function') showToast('No compare data — open a timeline first');
         return;
     }
     var group = _cachedData.songGroups[songTitle];
     if (group.segments.length < 2) { if (typeof showToast === 'function') showToast('Only one attempt found'); return; }
 
     var hasAudio = _rhHasAudio();
-    var sessionId = window._rhLastTimelineSessionId || '';
+    var sessionId = _tl.sessionId || '';
     var _abtn = 'padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.82em;font-family:inherit;';
 
     // Build inline compare panel
@@ -2362,7 +2351,6 @@ window._rhUpdateSaveStatus = function(text) {
     }
 };
 
-// _rhRenderTonightTab / _rhRenderTonightTab_inner / rhShowTab removed — consolidated into timeline coaching insights
 
 async function rhShowPlansTab(container) {
     container.innerHTML = '<div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div>';
@@ -3141,8 +3129,6 @@ async function rhSaveEvent(eventId) {
                 // Open the planner for the new date
                 if (typeof renderRehearsalPlanner === 'function') {
                     renderRehearsalPlanner();
-                } else {
-                    rhShowTab('tonight');
                 }
             }, 300);
         }
@@ -4791,8 +4777,8 @@ function rhStartRehearsalMode(eventId) {
         enterLiveRehearsalMode(window._riLastCtx, window._riLastFocusSongs);
         return;
     }
-    if (!eventId) { rhShowTab('events'); return; }
-    rhShowTab('events');
+    if (!eventId) { showPage('rehearsal'); return; }
+    showPage('rehearsal');
     setTimeout(function() { rhOpenEvent(eventId); }, 120);
 }
 window.rhStartRehearsalMode = rhStartRehearsalMode;
@@ -5246,7 +5232,7 @@ function endRiSession() {
     // Milestone 6: clear active agenda if one was driving this session
     if (typeof GLStore !== 'undefined' && GLStore.clearRehearsalAgenda) GLStore.clearRehearsalAgenda();
     showToast('Session ended');
-    rhShowTab('intel');
+    showPage('rehearsal');
 }
 window.endRiSession = endRiSession;
 

@@ -82,6 +82,10 @@
     liveRehearsalSongId:  null,        // active song inside rehearsal/performance mode
     currentSnapshotRange: '7d',        // readiness/activity time window
 
+    // Current rehearsal timeline (set by _rhRenderInlineTimelineDirectly, read by compare/coaching)
+    currentTimelineSessionId: null,   // sessionId of the timeline currently rendered
+    currentTimelineData:      null,   // output of _rhPrepareSegmentData for the active timeline
+
     // Performance mode restore snapshot — captured on enter, applied on exit
     restoreState:         null,        // { page, songId, panelMode, scrollY } or null
 
@@ -958,6 +962,25 @@
     console.log('[FocusEngine] Songs=' + songs.length + ' Readiness=' + Object.keys(rc).length + ' Candidates=' + candidates.length + ' Setlist=' + Object.keys(setlistSongs).length);
     console.log('[FocusEngine] Top 5:', list.map(function(s) { return s.title + ' (' + s.focusScore.toFixed(1) + ', avg=' + s.avg.toFixed(1) + (s.inSetlist ? ', setlist' : '') + ')'; }).join(' | '));
     return _focusCache;
+  }
+
+  // ── Current Timeline (review state for Rehearsal page) ─────────────────────
+
+  /**
+   * Store the currently rendered timeline data so compare/coaching can access it
+   * without depending on render order or window globals.
+   */
+  function setCurrentTimeline(sessionId, data) {
+    _state.currentTimelineSessionId = sessionId;
+    _state.currentTimelineData = data;
+    emit('timelineChanged', { sessionId: sessionId });
+  }
+
+  function getCurrentTimeline() {
+    return {
+      sessionId: _state.currentTimelineSessionId,
+      data: _state.currentTimelineData
+    };
   }
 
   // ── Rehearsals ────────────────────────────────────────────────────────────
@@ -4184,6 +4207,10 @@
     getRecentRehearsalTrendSummary:    getRecentRehearsalTrendSummary,
     getSongPracticeStats:              getSongPracticeStats,
     getAllSongPracticeStats:           getAllSongPracticeStats,
+
+    // Current Timeline (review state)
+    setCurrentTimeline:                setCurrentTimeline,
+    getCurrentTimeline:                getCurrentTimeline,
 
     // Rehearsal Segmentation (Milestone 8)
     getRehearsalIntelligence:          getRehearsalIntelligence,
