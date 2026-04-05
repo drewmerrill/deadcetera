@@ -3442,26 +3442,47 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
     }
     html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:6px">' + cadenceLabel + '</div>';
 
-    // Primary recommendation — with 2-3 reason lines
+    // Primary recommendation — confidence label + icon-enhanced reasons
     var p = recs.primary;
     var pDate = new Date(p.date + 'T12:00:00');
     var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    var confLabel = p.score >= 70 ? 'Best next rehearsal' : 'Recommended for your band';
+    html += '<div style="font-size:0.6em;font-weight:700;color:#22c55e;margin-bottom:3px;letter-spacing:0.03em">' + confLabel + '</div>';
     html += '<div id="rhRecPrimary" onclick="_rhPickRecommendedDate(\'' + p.date + '\',this)" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);cursor:pointer;margin-bottom:6px;transition:border-color 0.2s,background 0.2s">';
     html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">';
     html += '<div style="flex:1">';
     html += '<div style="font-size:0.85em;font-weight:700;color:var(--text)">' + pLabel + '</div>';
-    // Show up to 3 reasons
+    // Show up to 3 reasons with icons
     var pReasons = p.reasons.slice(0, 3);
+    var _reasonIcons = {
+      free: '\u2705', available: '\uD83D\uDC65', schedule: '\uD83D\uDCC5',
+      days: '\uD83D\uDCC6', gig: '\uD83C\uDFB8', rehearse: '\uD83D\uDD01',
+      been: '\u23F3'
+    };
     if (pReasons.length) {
         html += '<div style="margin-top:3px">';
         pReasons.forEach(function(r) {
-            html += '<div style="font-size:0.62em;color:var(--text-dim);line-height:1.4">\u2022 ' + escHtml(r) + '</div>';
+            // Pick icon based on keywords
+            var icon = '\u2022';
+            if (r.match(/free/i)) icon = _reasonIcons.free;
+            else if (r.match(/available/i)) icon = _reasonIcons.available;
+            else if (r.match(/schedule|fits/i)) icon = _reasonIcons.schedule;
+            else if (r.match(/gig/i)) icon = _reasonIcons.gig;
+            else if (r.match(/usually|rehearse on/i)) icon = _reasonIcons.rehearse;
+            else if (r.match(/been|days since/i)) icon = _reasonIcons.been;
+            html += '<div style="font-size:0.62em;color:var(--text-dim);line-height:1.5">' + icon + ' ' + escHtml(r) + '</div>';
         });
         html += '</div>';
     }
+    // Off-pattern notes (subtle)
+    if (p.offPatternNotes && p.offPatternNotes.length) {
+        p.offPatternNotes.forEach(function(n) {
+            html += '<div style="font-size:0.58em;color:#f59e0b;margin-top:2px;font-style:italic">\u26A0 ' + escHtml(n) + '</div>';
+        });
+    }
     html += '</div>';
     html += '<div style="text-align:right;flex-shrink:0">';
-    html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">Use this date \u2192</span>';
+    html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">Use this \u2192</span>';
     html += '</div>';
     html += '</div></div>';
 
@@ -3479,6 +3500,9 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
             html += '<div style="min-width:0">';
             html += '<div style="font-size:0.78em;color:var(--text)">' + aLabel + '</div>';
             html += '<div style="font-size:0.58em;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(aReason) + '</div>';
+            if (alt.offPatternNotes && alt.offPatternNotes.length) {
+                html += '<div style="font-size:0.55em;color:#f59e0b;font-style:italic">\u26A0 ' + escHtml(alt.offPatternNotes[0]) + '</div>';
+            }
             html += '</div>';
             html += '<span style="font-size:0.62em;font-weight:600;color:' + alt.color + ';flex-shrink:0;margin-left:6px">' + alt.label + '</span>';
             html += '</div>';

@@ -3628,10 +3628,17 @@
     custom:      { label: 'Custom',          days: null }
   };
 
+  // Legacy preset mappings — old keys that may exist in Firebase
+  var _CADENCE_LEGACY = { every2weeks: 'biweekly' };
+
   async function getRehearsalCadence() {
     var meta = await _dbGet('_meta/rehearsal_cadence');
-    if (meta && meta.preset && CADENCE_PRESETS[meta.preset]) {
-      return { preset: meta.preset, days: meta.customDays || CADENCE_PRESETS[meta.preset].days || _defaultCadenceDays };
+    if (meta && meta.preset) {
+      // Resolve legacy key if needed
+      var resolved = _CADENCE_LEGACY[meta.preset] || meta.preset;
+      if (CADENCE_PRESETS[resolved]) {
+        return { preset: resolved, days: meta.customDays || CADENCE_PRESETS[resolved].days || _defaultCadenceDays };
+      }
     }
     return { preset: 'weekly', days: _defaultCadenceDays };
   }
@@ -3712,15 +3719,21 @@
     }
     var minAcceptableGap = Math.max(2, Math.floor(cadenceDays * 0.6)); // 60% of cadence as minimum
     var spacingScore = 0;
+    var offPatternNotes = []; // subtle notes about deviations
     if (!opts.overrideSpacing && minGapDays < minAcceptableGap) {
       spacingScore = 0;
-      penalties.push('Too close to your rehearsal on ' + _fmtDateShort(nearestDate));
+      penalties.push('Too close \u2014 you rehearsed ' + Math.round(minGapDays) + ' day' + (Math.round(minGapDays) !== 1 ? 's' : '') + ' ago (' + _fmtDateShort(nearestDate) + ')');
     } else if (minGapDays <= cadenceDays * 1.5) {
       spacingScore = 100;
       reasons.push('Fits your ' + cadenceLabel + ' schedule');
     } else {
       spacingScore = 80;
       reasons.push('It\u2019s been ' + Math.round(minGapDays) + ' days since the last rehearsal');
+      if (minGapDays > cadenceDays * 2) offPatternNotes.push('Overdue \u2014 longer than your usual gap');
+    }
+    // Detect if this date is earlier than cadence suggests
+    if (spacingScore > 0 && minGapDays < cadenceDays * 0.85 && minGapDays >= minAcceptableGap) {
+      offPatternNotes.push('Earlier than your usual schedule');
     }
     score += spacingScore * 0.25; // 25% weight
 
@@ -3750,6 +3763,7 @@
         reasons.push('You usually rehearse on ' + dayNames[dow] + 's');
       } else {
         dayScore = 30;
+        offPatternNotes.push('Not your usual ' + preferredDays[0].name);
       }
     } else {
       // Fallback: weekday evenings typical for bands
@@ -3778,7 +3792,8 @@
       reasons: reasons,
       tooClose: penalties.length > 0,
       isPreferredDay: isPreferred,
-      dayOfWeek: dayNames[dow]
+      dayOfWeek: dayNames[dow],
+      offPatternNotes: offPatternNotes
     };
   }
 
