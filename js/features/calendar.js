@@ -337,46 +337,73 @@ async function _calRenderBestRehearsalHero() {
         momHtml = '<div style="font-size:0.68em;color:' + mColor + ';font-weight:600;margin-bottom:6px">' + recs.momentum.label + '</div>';
     }
 
-    var confLabel = p.score >= 70 ? 'This is your best next rehearsal' : 'Good option for the band';
+    // Task 1: Confident header with "here's why"
+    var confLabel = p.score >= 70 ? 'This is your best next rehearsal \u2014 here\u2019s why' : 'Good option for the band';
 
-    // Stats bar: attendance + spacing + gig proximity
+    // Stats as justification — phrased as evidence
     var statsHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.72em;color:var(--text-dim);margin:6px 0 8px">';
-    if (p.availability) statsHtml += '<span>\uD83D\uDC65 ' + p.availability.available + '/' + p.availability.total + ' free</span>';
-    if (p.spacingDays !== null) statsHtml += '<span>\uD83D\uDCC5 ' + p.spacingDays + 'd since last</span>';
+    if (p.availability) {
+        var _pct = Math.round((p.availability.available / Math.max(1, p.availability.total)) * 100);
+        statsHtml += '<span>\uD83D\uDC65 ' + _pct + '% available</span>';
+    }
+    if (p.spacingDays !== null) statsHtml += '<span>\uD83D\uDCC5 ' + p.spacingDays + ' days since last</span>';
     if (recs.nextGigDate) {
         var _gDays = Math.round((new Date(recs.nextGigDate + 'T12:00:00') - new Date(p.date + 'T12:00:00')) / 86400000);
-        if (_gDays > 0 && _gDays <= 30) statsHtml += '<span>\uD83C\uDFB8 ' + _gDays + 'd to gig</span>';
+        if (_gDays > 0 && _gDays <= 30) statsHtml += '<span>\uD83C\uDFB8 ' + _gDays + ' days to gig</span>';
     }
     statsHtml += '</div>';
 
-    // Plan intelligence — what to work on
+    // Task 4: Plan intelligence with light reasoning
     var planHtml = '';
     var focusSongs = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
     if (focusSongs.list.length > 0) {
-        var _topSong = focusSongs.list[0].title;
+        var _topSong = focusSongs.list[0];
+        var _topTitle = _topSong.title;
+        var _topReason = '';
+        if (_topSong.reasons && _topSong.reasons.length) {
+            // Use first reason as parenthetical context
+            var _r = _topSong.reasons[0];
+            if (_r.match(/readiness|low/i)) _topReason = 'needs work';
+            else if (_r.match(/transition/i)) _topReason = 'transitions';
+            else if (_r.match(/setlist/i)) _topReason = 'in the setlist';
+            else if (_r.match(/critical/i)) _topReason = 'critical';
+        }
         var _more = focusSongs.list.length - 1;
-        planHtml = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px;padding:4px 8px;border-radius:4px;background:rgba(99,102,241,0.04)">'
-            + '\uD83C\uDFAF Focus: <strong style="color:var(--text)">' + (typeof escHtml === 'function' ? escHtml(_topSong) : _topSong) + '</strong>'
+        var _esc = typeof escHtml === 'function' ? escHtml : function(s) { return s; };
+        planHtml = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px;padding:5px 8px;border-radius:4px;background:rgba(99,102,241,0.04)">'
+            + '\uD83C\uDFAF Focus: <strong style="color:var(--text)">' + _esc(_topTitle) + '</strong>'
+            + (_topReason ? ' <span style="color:var(--text-dim);font-size:0.9em">(' + _topReason + ')</span>' : '')
             + (_more > 0 ? ' + ' + _more + ' more' : '') + '</div>';
     } else if (recs.nextGigDate) {
-        planHtml = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px;padding:4px 8px;border-radius:4px;background:rgba(99,102,241,0.04)">'
+        planHtml = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px;padding:5px 8px;border-radius:4px;background:rgba(99,102,241,0.04)">'
             + '\uD83C\uDFAF We\u2019ll build this around your weakest songs before the gig</div>';
     }
 
-    // Google Calendar state — check if this date already has a calendar event
+    // Task 2: Google Calendar state with post-click feedback
     var gcalStateHtml = '';
+    var _gcalClicked = window._calGcalClickedDates || {};
     if (typeof calBuildRehearsalGoogleLink === 'function') {
-        // Check if rehearsal exists on this date (would mean "added" state)
         var _calEvts = [];
         try { _calEvts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []); } catch(e) {}
         var _hasEvent = _calEvts.some(function(e) { return e.type === 'rehearsal' && e.date === p.date; });
-        if (_hasEvent) {
-            gcalStateHtml = '<div style="display:flex;align-items:center;gap:6px;margin-top:6px">'
-                + '<button onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Update in Google Calendar</button>'
+
+        if (_gcalClicked[p.date]) {
+            // Post-click state: user already clicked "Add to Google Calendar"
+            gcalStateHtml = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(66,133,244,0.04);display:flex;align-items:center;gap:6px">'
+                + '<span style="font-size:0.65em;color:#4285f4">\u2705 Added to Google Calendar</span>'
+                + '<button onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-left:auto;font-size:0.6em;padding:2px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.15);background:none;color:#4285f4;cursor:pointer">Update</button>'
                 + '</div>';
+        } else if (_hasEvent) {
+            gcalStateHtml = '<button id="calGcalBtn" onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-top:6px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Add to Google Calendar</button>';
         } else {
-            gcalStateHtml = '<button onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-top:6px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Add to Google Calendar</button>';
+            gcalStateHtml = '<button id="calGcalBtn" onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-top:6px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Add to Google Calendar</button>';
         }
+    }
+
+    // Task 3: Alternative access — subtle link, no second system
+    var altLinkHtml = '';
+    if (recs.alternatives.length > 0) {
+        altLinkHtml = '<div style="text-align:center;margin-top:6px"><span onclick="var d=document.getElementById(\'calHeroAlts\');if(d)d.open=!d.open" style="font-size:0.6em;color:var(--text-dim);cursor:pointer;text-decoration:underline dotted">See other options</span></div>';
     }
 
     el.innerHTML = '<div style="padding:16px 18px;margin-bottom:12px;border-radius:12px;border:2px solid rgba(34,197,94,0.3);background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
@@ -390,16 +417,29 @@ async function _calRenderBestRehearsalHero() {
         + '<div style="font-size:0.52em;color:var(--text-dim);text-align:center;margin-top:3px">Saves the date, then opens your rehearsal plan</div>'
         + gcalStateHtml
         + skipHtml
-        + altsHtml
+        + altLinkHtml
+        + (recs.alternatives.length > 0 ? '<details id="calHeroAlts" style="margin-top:4px">' + altsHtml.replace('<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.04);padding-top:8px">', '<div>') + '</details>' : '')
         + '</div>';
 }
 
-// Google Calendar from hero card
+// Google Calendar from hero card — tracks clicked state for visual feedback
+window._calGcalClickedDates = {};
 window._calGcalFromHero = function(dateStr) {
     if (typeof calBuildRehearsalGoogleLink !== 'function') return;
-    var url = calBuildRehearsalGoogleLink({ date: dateStr, time: '19:00' }, '');
+    var focusSongs = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var planSummary = focusSongs.list.length ? 'Focus: ' + focusSongs.list.slice(0, 3).map(function(s) { return s.title; }).join(', ') : '';
+    var url = calBuildRehearsalGoogleLink({ date: dateStr, time: '19:00' }, planSummary);
     if (url && url !== '#') {
         window.open(url, '_blank');
+        window._calGcalClickedDates[dateStr] = true;
+        // Update button to "Added" state immediately
+        var btn = document.getElementById('calGcalBtn');
+        if (btn) {
+            btn.outerHTML = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(66,133,244,0.04);display:flex;align-items:center;gap:6px">'
+                + '<span style="font-size:0.65em;color:#4285f4">\u2705 Added to Google Calendar</span>'
+                + '<button onclick="_calGcalFromHero(\'' + dateStr.replace(/'/g, "\\'") + '\')" style="margin-left:auto;font-size:0.6em;padding:2px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.15);background:none;color:#4285f4;cursor:pointer">Update</button>'
+                + '</div>';
+        }
         if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there');
     }
 };
