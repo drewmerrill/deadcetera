@@ -3641,12 +3641,12 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
     // ── 1. MOMENTUM (context) ──
     if (recs.momentum && recs.momentum.label) {
         var mColor = recs.momentum.type === 'streak' ? '#22c55e' : recs.momentum.type === 'gap' || recs.momentum.type === 'nudge' ? '#f59e0b' : '#818cf8';
-        html += '<div style="font-size:0.68em;color:' + mColor + ';font-weight:600;margin-bottom:8px">' + recs.momentum.label + '</div>';
+        html += '<div style="font-size:0.7em;color:' + mColor + ';font-weight:600;margin-bottom:8px">' + recs.momentum.label + '</div>';
     }
 
     // ── 2. RECOMMENDATION (decision) ──
-    var confLabel = hasCloseRunner ? 'A couple good options' : (p.score >= 70 ? 'Best date for your band' : 'Good option');
-    html += '<div style="font-size:0.6em;font-weight:700;color:#22c55e;margin-bottom:3px">' + confLabel + '</div>';
+    var confLabel = hasCloseRunner ? 'Close call \u2014 two good picks' : (p.score >= 70 ? 'Best next rehearsal' : 'Good option');
+    html += '<div style="font-size:0.62em;font-weight:700;color:#22c55e;margin-bottom:3px">' + confLabel + '</div>';
     html += '<div id="rhRecPrimary" onclick="_rhPickRecommendedDate(\'' + p.date + '\',this)" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);cursor:pointer;margin-bottom:4px;transition:border-color 0.2s,background 0.2s">';
     html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">';
     html += '<div style="flex:1">';
@@ -3672,13 +3672,14 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
         html += '<div style="font-size:0.55em;color:#f59e0b;margin-top:2px;font-style:italic">\u26A0 ' + escHtml(p.offPatternNotes[0]) + '</div>';
     }
     html += '</div>';
-    html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600;flex-shrink:0;align-self:center">Pick \u2192</span>';
+    html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600;flex-shrink:0;align-self:center">Use this \u2192</span>';
     html += '</div></div>';
 
     // Alternatives
     if (recs.alternatives.length) {
         html += '<details style="margin-bottom:4px">';
-        html += '<summary style="font-size:0.65em;color:var(--text-dim);cursor:pointer;padding:2px 0;list-style:none">' + (hasCloseRunner ? 'Other strong options' : recs.alternatives.length + ' more option' + (recs.alternatives.length > 1 ? 's' : '')) + '</summary>';
+        var altSummary = hasCloseRunner ? 'Other strong options' : (recs.alternatives.length + ' more date' + (recs.alternatives.length > 1 ? 's' : ''));
+        html += '<summary style="font-size:0.65em;color:var(--text-dim);cursor:pointer;padding:2px 0;list-style:none">' + altSummary + '</summary>';
         recs.alternatives.forEach(function(alt) {
             var aDate = new Date(alt.date + 'T12:00:00');
             var aLabel = aDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -3708,7 +3709,7 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
         if (recs.preferredDays && recs.preferredDays.detected) {
             footnote += (footnote ? ' \u00B7 ' : '') + 'usually ' + recs.preferredDays.preferred.map(function(p) { return p.name + 's'; }).join('/');
         }
-        html += '<div style="font-size:0.5em;color:var(--text-dim);margin-top:4px;opacity:0.6">' + footnote + '</div>';
+        html += '<div style="font-size:0.55em;color:var(--text-dim);margin-top:5px;opacity:0.8">' + footnote + '</div>';
     }
 
     el.innerHTML = html;

@@ -3891,14 +3891,14 @@
       var recentGaps = detectedCadence.gaps ? detectedCadence.gaps.slice(-3) : [];
       var allOnCadence = recentGaps.length >= 2 && recentGaps.every(function(g) { return g <= effectiveCadenceDays * 1.5; });
       if (allOnCadence && daysSinceLast <= effectiveCadenceDays * 1.3) {
-        momentum = { label: 'You\u2019ve been consistent \u2014 keep it rolling', type: 'streak' };
+        momentum = { label: '\uD83D\uDD25 On a roll \u2014 keep the momentum going', type: 'streak' };
       } else if (daysSinceLast > effectiveCadenceDays * 2.5) {
-        momentum = { label: 'It\u2019s been a while \u2014 good time to get back together', type: 'gap' };
+        momentum = { label: '\u23F0 Been a while \u2014 time to get back in the room', type: 'gap' };
       } else if (daysSinceLast > effectiveCadenceDays * 1.8) {
-        momentum = { label: 'Getting close to overdue \u2014 lock something in', type: 'nudge' };
+        momentum = { label: '\u23F0 Coming up on overdue \u2014 lock one in', type: 'nudge' };
       }
     } else if (existingDates.length === 0) {
-      momentum = { label: 'Schedule your first rehearsal and start building momentum', type: 'first' };
+      momentum = { label: '\uD83C\uDFAF First rehearsal \u2014 this is where it starts', type: 'first' };
     }
 
     return {
