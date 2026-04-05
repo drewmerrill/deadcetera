@@ -3153,6 +3153,12 @@ async function rhOpenEvent(eventId) {
         html += '<div style="text-align:center;font-size:0.82em;color:var(--text-dim)">Your account isn\'t linked to a band member</div>';
     } else {
         html += '<div style="border-top:1px solid rgba(255,255,255,0.07);padding-top:12px">';
+        // Stale RSVP warning
+        var _myRsvp = myKey ? ((ev.rsvps || {})[myKey] || {}) : {};
+        if (_myRsvp.stale) {
+            html += '<div style="padding:6px 8px;margin-bottom:8px;border-radius:6px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04);font-size:0.72em;color:#fbbf24;font-weight:600">'
+                + '\u26A0 ' + (_myRsvp.staleReason || 'Details changed') + ' \u2014 please re-confirm</div>';
+        }
         html += '<div style="font-size:0.8em;color:var(--text-muted);margin-bottom:8px;font-weight:600">Your RSVP:</div>';
         html += '<div style="display:flex;gap:6px;margin-bottom:8px">';
         ['yes','maybe','no'].forEach(function(opt) {
@@ -3941,11 +3947,37 @@ async function rhSaveEvent(eventId) {
     // Remove undefined keys
     Object.keys(ev).forEach(function(k) { if (ev[k] === undefined) delete ev[k]; });
 
+    // Detect critical changes that invalidate RSVPs (edit only)
+    var _rhCriticalChange = false;
+    var _rhChangeReasons = [];
+    if (eventId) {
+        try {
+            var _prevSnap = await firebaseDB.ref(bandPath('rehearsals/' + id)).once('value');
+            var _prev = _prevSnap.val() || {};
+            if (ev.date && ev.date !== _prev.date) { _rhCriticalChange = true; _rhChangeReasons.push('date changed'); }
+            if (ev.time && ev.time !== (_prev.time || '')) { _rhCriticalChange = true; _rhChangeReasons.push('time changed'); }
+            if (ev.location && ev.location !== (_prev.location || '')) { _rhCriticalChange = true; _rhChangeReasons.push('location changed'); }
+            // Mark existing RSVPs as stale
+            if (_rhCriticalChange && _prev.rsvps) {
+                var _staleRsvps = {};
+                Object.keys(_prev.rsvps).forEach(function(k) {
+                    _staleRsvps[k] = Object.assign({}, _prev.rsvps[k], { stale: true, staleReason: _rhChangeReasons.join(', '), staleAt: new Date().toISOString() });
+                });
+                ev.rsvps = _staleRsvps;
+                ev._lastCriticalChange = { fields: _rhChangeReasons, at: new Date().toISOString(), by: currentUserEmail || '' };
+            }
+        } catch(e) { /* comparison best-effort */ }
+    }
+
     try {
         await firebaseDB.ref(bandPath('rehearsals/' + id)).update(ev);
         document.getElementById('rhModal')?.remove();
         if (eventId) {
-            showToast('✅ Rehearsal updated');
+            if (_rhCriticalChange) {
+                showToast('\u2705 Rehearsal updated \u2014 ' + _rhChangeReasons.join(', ') + '. RSVPs need re-confirmation.');
+            } else {
+                showToast('\u2705 Rehearsal updated');
+            }
             await rhLoadEvents();
         } else {
             // New rehearsal — navigate to the plan builder so user can build the agenda

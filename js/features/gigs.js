@@ -99,22 +99,49 @@ async function saveGigEdit(idx) {
     var prev = gigData[idx] || {};
     var selectedSetlistId = document.getElementById('gigLinkedSetlist')?.value || '';
 
+    var newDate = document.getElementById('gigDate')?.value;
+    var newStartTime = document.getElementById('gigStartTime')?.value;
+    var newEndTime = document.getElementById('gigEndTime')?.value;
+    var newVenue = window._gigVenueTouched ? (window._gigSelectedVenueName || '') : (prev.venue || '');
+
+    // Detect critical changes that invalidate RSVPs
+    var criticalChange = false;
+    var changeReasons = [];
+    if (newDate && newDate !== prev.date) { criticalChange = true; changeReasons.push('date changed'); }
+    if (newStartTime && newStartTime !== prev.startTime) { criticalChange = true; changeReasons.push('start time changed'); }
+    if (newEndTime && newEndTime !== prev.endTime) { criticalChange = true; changeReasons.push('end time changed'); }
+    if (newVenue !== (prev.venue || '')) { criticalChange = true; changeReasons.push('venue changed'); }
+
     gigData[idx] = {
         ...prev,
         gigId:         prev.gigId || generateShortId(12),
         venueId:       window._gigVenueTouched ? (window._gigSelectedVenueId || null) : (prev.venueId || null),
-        venue:         window._gigVenueTouched ? (window._gigSelectedVenueName || '') : (prev.venue || ''),
-        date:          document.getElementById('gigDate')?.value,
+        venue:         newVenue,
+        date:          newDate,
         pay:           document.getElementById('gigPay')?.value,
         arrivalTime:   document.getElementById('gigArrival')?.value,
         soundcheckTime:document.getElementById('gigSoundcheck')?.value,
-        startTime:     document.getElementById('gigStartTime')?.value,
-        endTime:       document.getElementById('gigEndTime')?.value,
+        startTime:     newStartTime,
+        endTime:       newEndTime,
         soundPerson:   document.getElementById('gigSound')?.value,
         contact:       document.getElementById('gigContact')?.value,
         notes:         document.getElementById('gigNotes')?.value,
         updated: new Date().toISOString()
     };
+
+    // Mark RSVPs as stale if critical fields changed
+    if (criticalChange && gigData[idx].availability) {
+        var changeNote = changeReasons.join(', ');
+        Object.keys(gigData[idx].availability).forEach(function(k) {
+            var a = gigData[idx].availability[k];
+            if (a && a.status) {
+                a.stale = true;
+                a.staleReason = changeNote;
+                a.staleAt = new Date().toISOString();
+            }
+        });
+        gigData[idx]._lastCriticalChange = { fields: changeReasons, at: new Date().toISOString(), by: currentUserEmail || '' };
+    }
 
     // Resolve setlist link by setlistId only
     var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
@@ -145,7 +172,11 @@ async function saveGigEdit(idx) {
     await saveBandDataToDrive('_band', 'gigs', gigData);
     // Sync updated gig to calendar
     await _syncGigToCalendar(gigData[idx], gigData[idx].created || null);
-    showToast('✅ Gig updated!');
+    if (criticalChange) {
+        showToast('\u2705 Gig updated \u2014 ' + changeReasons.join(', ') + '. RSVPs need re-confirmation.');
+    } else {
+        showToast('\u2705 Gig updated!');
+    }
     loadGigs();
 }
 
@@ -1364,11 +1395,18 @@ function _gigRenderAvailability(gig) {
     html += coverageHtml;
 
     // My RSVP — compact if already voted, full if not; finalized for past gigs
+    // Stale RSVP warning
+    var _myAvailEntry = avail[myKey] || {};
+    if (_myAvailEntry.stale && isUpcoming) {
+        var staleMsg = _myAvailEntry.staleReason ? _myAvailEntry.staleReason : 'Details changed';
+        html += '<div style="padding:6px 8px;margin-top:6px;border-radius:6px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04);font-size:0.72em;color:#fbbf24;font-weight:600">'
+            + '\u26A0 ' + staleMsg + ' \u2014 please re-confirm your RSVP</div>';
+    }
     if (myKey && isUpcoming) {
         var myStatus = avail[myKey] ? avail[myKey].status : null;
-        if (myStatus) {
-            // Compact post-vote state
-            var voteLabels = { yes: '✅ You\'re In', maybe: '❓ Maybe', no: '❌ Out' };
+        if (myStatus && !_myAvailEntry.stale) {
+            // Compact post-vote state (only if not stale)
+            var voteLabels = { yes: '\u2705 You\'re In', maybe: '\u2753 Maybe', no: '\u274C Out' };
             var voteColors = { yes: '#22c55e', maybe: '#f59e0b', no: '#ef4444' };
             html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px">'
                 + '<span style="font-size:0.78em;font-weight:700;color:' + (voteColors[myStatus] || 'var(--text-dim)') + '">' + (voteLabels[myStatus] || myStatus) + '</span>'
@@ -1438,7 +1476,7 @@ window.gigSetAvailability = async function(gigIdx, status) {
         var gig = gigs[gigIdx];
         if (!gig) return;
         if (!gig.availability) gig.availability = {};
-        gig.availability[memberKey] = { status: status, updatedAt: new Date().toISOString() };
+        gig.availability[memberKey] = { status: status, updatedAt: new Date().toISOString() }; // stale flag cleared by full replace
         await saveBandDataToDrive('_band', 'gigs', gigs);
         if (typeof showToast === 'function') showToast(status === 'yes' ? "You're in!" : status === 'maybe' ? 'Marked as maybe' : 'Marked as out');
         loadGigs(); // refresh

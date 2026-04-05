@@ -1274,6 +1274,87 @@ window._glDoAddSong = async function() {
     if (modal) modal.remove();
     if (typeof showToast === 'function') showToast('"' + title + '" added');
     renderSongs();
+
+    // Show post-create setup tray
+    _glShowSongSetupTray(title);
+};
+
+// ── Post-create song setup tray ──────────────────────────────────────────────
+// Lightweight inline prompt to capture key, BPM, chart after adding a song.
+// Not mandatory — "Skip for now" closes it immediately.
+function _glShowSongSetupTray(songTitle) {
+    var existing = document.getElementById('glSongSetupTray');
+    if (existing) existing.remove();
+
+    var tray = document.createElement('div');
+    tray.id = 'glSongSetupTray';
+    tray.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:4500;background:#1e293b;border-top:1px solid rgba(99,102,241,0.2);padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,0.4);animation:slideUp 0.2s ease';
+
+    var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<div style="font-size:0.82em;font-weight:700;color:var(--text)">\u2705 ' + escHtml(songTitle) + ' added \u2014 finish setup?</div>';
+    html += '<button onclick="document.getElementById(\'glSongSetupTray\')?.remove()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em">Skip</button>';
+    html += '</div>';
+
+    // Setup fields — inline, compact
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+
+    // Key
+    html += '<div style="flex:1;min-width:80px">';
+    html += '<label style="font-size:0.62em;color:var(--text-dim);display:block;margin-bottom:2px">Key</label>';
+    html += '<select id="glSetupKey" onchange="_glSaveSetupField(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\',\'key\',this.value)" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text);font-size:0.82em;font-family:inherit">';
+    html += '<option value="">--</option>';
+    ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B', 'Am', 'Bm', 'Cm', 'Dm', 'Em', 'Fm', 'Gm'].forEach(function(k) {
+        html += '<option value="' + k + '">' + k + '</option>';
+    });
+    html += '</select></div>';
+
+    // BPM
+    html += '<div style="flex:1;min-width:80px">';
+    html += '<label style="font-size:0.62em;color:var(--text-dim);display:block;margin-bottom:2px">BPM</label>';
+    html += '<input type="number" id="glSetupBpm" placeholder="e.g. 120" min="40" max="240" onchange="_glSaveSetupField(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\',\'bpm\',this.value)" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text);font-size:0.82em;font-family:inherit;box-sizing:border-box">';
+    html += '</div>';
+
+    // Chart button
+    html += '<div style="flex:1;min-width:80px;display:flex;align-items:flex-end">';
+    html += '<button onclick="_glSetupOpenChart(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\')" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-size:0.78em;font-weight:600;font-family:inherit;min-height:32px">\uD83C\uDFB5 Add Chart</button>';
+    html += '</div>';
+
+    html += '</div>';
+
+    // Inject slideUp animation if not present
+    if (!document.getElementById('gl-setup-tray-style')) {
+        var s = document.createElement('style');
+        s.id = 'gl-setup-tray-style';
+        s.textContent = '@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}';
+        document.head.appendChild(s);
+    }
+
+    tray.innerHTML = html;
+    document.body.appendChild(tray);
+
+    // Auto-dismiss after 30 seconds if no interaction
+    setTimeout(function() { var t = document.getElementById('glSongSetupTray'); if (t) t.remove(); }, 30000);
+}
+
+// Save a setup field inline (key or BPM)
+window._glSaveSetupField = function(songTitle, field, value) {
+    if (!value) return;
+    if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+        GLStore.updateSongField(songTitle, field, field === 'bpm' ? parseInt(value) : value);
+    }
+};
+
+// Open chart/song detail for the new song
+window._glSetupOpenChart = function(songTitle) {
+    var tray = document.getElementById('glSongSetupTray');
+    if (tray) tray.remove();
+    // Navigate to song detail
+    if (typeof GLStore !== 'undefined' && GLStore.selectSong) {
+        GLStore.selectSong(songTitle);
+    } else if (typeof selectSong === 'function') {
+        selectSong(songTitle);
+    }
+    showPage('songdetail');
 };
 
 // ── Focus change listener — re-render Songs when focus data changes ──────────
