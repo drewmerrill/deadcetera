@@ -1314,9 +1314,10 @@ function _glShowSongSetupTray(songTitle) {
     html += '<input type="number" id="glSetupBpm" placeholder="e.g. 120" min="40" max="240" onchange="_glSaveSetupField(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\',\'bpm\',this.value)" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.06);color:var(--text);font-size:0.82em;font-family:inherit;box-sizing:border-box">';
     html += '</div>';
 
-    // Chart button
-    html += '<div style="flex:1;min-width:80px;display:flex;align-items:flex-end">';
+    // Chart buttons — Add Chart + Find Chart search
+    html += '<div style="flex:1;min-width:80px;display:flex;flex-direction:column;gap:3px;justify-content:flex-end">';
     html += '<button onclick="_glSetupOpenChart(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\')" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-size:0.78em;font-weight:600;font-family:inherit;min-height:32px">\uD83C\uDFB5 Add Chart</button>';
+    html += '<a href="https://www.google.com/search?q=' + encodeURIComponent(songTitle + ' chords tabs') + '" target="_blank" style="font-size:0.58em;color:var(--text-dim);text-align:center;text-decoration:none">\uD83D\uDD0D Find chart online</a>';
     html += '</div>';
 
     html += '</div>';
@@ -1332,8 +1333,14 @@ function _glShowSongSetupTray(songTitle) {
     tray.innerHTML = html;
     document.body.appendChild(tray);
 
-    // Auto-dismiss after 30 seconds if no interaction
-    setTimeout(function() { var t = document.getElementById('glSongSetupTray'); if (t) t.remove(); }, 30000);
+    // Auto-dismiss after 60 seconds, but cancel if user interacts
+    var _setupDismissTimer = setTimeout(function() {
+        var t = document.getElementById('glSongSetupTray');
+        if (t) t.remove();
+    }, 60000);
+    // Any interaction with the tray cancels auto-dismiss
+    tray.addEventListener('focusin', function() { clearTimeout(_setupDismissTimer); });
+    tray.addEventListener('click', function() { clearTimeout(_setupDismissTimer); });
 }
 
 // Save a setup field inline (key or BPM)

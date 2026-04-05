@@ -129,18 +129,32 @@ async function saveGigEdit(idx) {
         updated: new Date().toISOString()
     };
 
+    // Build human-friendly change label
+    var staleLabel = '';
+    if (criticalChange) {
+        var hasDate = changeReasons.some(function(r) { return r.match(/date/); });
+        var hasTime = changeReasons.some(function(r) { return r.match(/time/); });
+        var hasVenue = changeReasons.some(function(r) { return r.match(/venue/); });
+        staleLabel = hasDate && hasVenue ? 'Date and location changed'
+            : hasDate ? 'Date changed' : hasTime && hasVenue ? 'Time and location changed'
+            : hasTime ? 'Time changed' : hasVenue ? 'Location changed' : 'Details changed';
+    }
+
     // Mark RSVPs as stale if critical fields changed
     if (criticalChange && gigData[idx].availability) {
-        var changeNote = changeReasons.join(', ');
+
         Object.keys(gigData[idx].availability).forEach(function(k) {
             var a = gigData[idx].availability[k];
             if (a && a.status) {
                 a.stale = true;
-                a.staleReason = changeNote;
+                a.staleReason = staleLabel;
                 a.staleAt = new Date().toISOString();
             }
         });
         gigData[idx]._lastCriticalChange = { fields: changeReasons, at: new Date().toISOString(), by: currentUserEmail || '' };
+
+        // Post notification to band feed
+        _postEventChangeNotification('gig', gigData[idx].venue || 'Gig', staleLabel);
     }
 
     // Resolve setlist link by setlistId only
@@ -173,7 +187,7 @@ async function saveGigEdit(idx) {
     // Sync updated gig to calendar
     await _syncGigToCalendar(gigData[idx], gigData[idx].created || null);
     if (criticalChange) {
-        showToast('\u2705 Gig updated \u2014 ' + changeReasons.join(', ') + '. RSVPs need re-confirmation.');
+        showToast('\u2705 Gig updated \u2014 ' + staleLabel.toLowerCase() + '. RSVPs need re-confirmation.');
     } else {
         showToast('\u2705 Gig updated!');
     }
@@ -1526,6 +1540,26 @@ window.rmCaptureCancel = rmCaptureCancel;
 window.gigsMapSetFilter = gigsMapSetFilter;
 window.renderGigsPage = renderGigsPage;
 window.loadGigHistory = loadGigHistory;
+
+// ── Post event change notification to band feed ──────────────────────────────
+function _postEventChangeNotification(eventType, eventName, changeLabel) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var author = (typeof currentUserName !== 'undefined' && currentUserName) ? currentUserName : 'Someone';
+    var typeLabel = eventType === 'gig' ? 'Gig' : 'Rehearsal';
+    var msg = typeLabel + ' updated: ' + eventName + ' \u2014 ' + changeLabel.toLowerCase() + '. Please re-confirm your RSVP.';
+    db.ref(bandPath('ideas/posts')).push({
+        title: msg,
+        author: author,
+        ts: new Date().toISOString(),
+        tag: 'needs_input',
+        post_type: 'note',
+        _system: true,
+        _eventChangeType: eventType,
+        _eventName: eventName
+    }).catch(function() {});
+}
+window._postEventChangeNotification = _postEventChangeNotification;
 
 // ── Add to Google Calendar for gigs ──────────────────────────────────────────
 window._gigAddToGoogleCal = function(gigIdx) {

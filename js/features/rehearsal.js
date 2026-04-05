@@ -3955,6 +3955,7 @@ async function rhSaveEvent(eventId) {
     // Detect critical changes that invalidate RSVPs (edit only)
     var _rhCriticalChange = false;
     var _rhChangeReasons = [];
+    var _rhStaleLabel = '';
     if (eventId) {
         try {
             var _prevSnap = await firebaseDB.ref(bandPath('rehearsals/' + id)).once('value');
@@ -3962,14 +3963,27 @@ async function rhSaveEvent(eventId) {
             if (ev.date && ev.date !== _prev.date) { _rhCriticalChange = true; _rhChangeReasons.push('date changed'); }
             if (ev.time && ev.time !== (_prev.time || '')) { _rhCriticalChange = true; _rhChangeReasons.push('time changed'); }
             if (ev.location && ev.location !== (_prev.location || '')) { _rhCriticalChange = true; _rhChangeReasons.push('location changed'); }
-            // Mark existing RSVPs as stale
+            // Mark existing RSVPs as stale with human-friendly label
             if (_rhCriticalChange && _prev.rsvps) {
+                var _hasDate = _rhChangeReasons.some(function(r) { return r.match(/date/); });
+                var _hasTime = _rhChangeReasons.some(function(r) { return r.match(/time/); });
+                var _hasLoc = _rhChangeReasons.some(function(r) { return r.match(/location/); });
+                _rhStaleLabel = _hasDate && _hasLoc ? 'Date and location changed'
+                    : _hasDate ? 'Date changed' : _hasTime && _hasLoc ? 'Time and location changed'
+                    : _hasTime ? 'Time changed' : _hasLoc ? 'Location changed' : 'Details changed';
+
                 var _staleRsvps = {};
                 Object.keys(_prev.rsvps).forEach(function(k) {
-                    _staleRsvps[k] = Object.assign({}, _prev.rsvps[k], { stale: true, staleReason: _rhChangeReasons.join(', '), staleAt: new Date().toISOString() });
+                    _staleRsvps[k] = Object.assign({}, _prev.rsvps[k], { stale: true, staleReason: _rhStaleLabel, staleAt: new Date().toISOString() });
                 });
                 ev.rsvps = _staleRsvps;
                 ev._lastCriticalChange = { fields: _rhChangeReasons, at: new Date().toISOString(), by: currentUserEmail || '' };
+
+                // Post notification to band feed
+                var _rhDateLabel = ev.date ? new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                if (typeof _postEventChangeNotification === 'function') {
+                    _postEventChangeNotification('rehearsal', _rhDateLabel + ' rehearsal', _rhStaleLabel);
+                }
             }
         } catch(e) { /* comparison best-effort */ }
     }
@@ -3979,7 +3993,8 @@ async function rhSaveEvent(eventId) {
         document.getElementById('rhModal')?.remove();
         if (eventId) {
             if (_rhCriticalChange) {
-                showToast('\u2705 Rehearsal updated \u2014 ' + _rhChangeReasons.join(', ') + '. RSVPs need re-confirmation.');
+                var _toastLabel = _rhStaleLabel || _rhChangeReasons.join(', ');
+                showToast('\u2705 Rehearsal updated \u2014 ' + _toastLabel.toLowerCase() + '. RSVPs need re-confirmation.');
             } else {
                 showToast('\u2705 Rehearsal updated');
             }
