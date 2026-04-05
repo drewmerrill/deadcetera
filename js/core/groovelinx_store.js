@@ -3893,9 +3893,9 @@
       if (allOnCadence && daysSinceLast <= effectiveCadenceDays * 1.3) {
         momentum = { label: '\uD83D\uDD25 On a roll \u2014 keep the momentum going', type: 'streak' };
       } else if (daysSinceLast > effectiveCadenceDays * 2.5) {
-        momentum = { label: '\u23F0 Been a while \u2014 time to get back in the room', type: 'gap' };
+        momentum = { label: '\u23F0 It\u2019s been ' + daysSinceLast + ' days \u2014 the band should get together', type: 'gap' };
       } else if (daysSinceLast > effectiveCadenceDays * 1.8) {
-        momentum = { label: '\u23F0 Coming up on overdue \u2014 lock one in', type: 'nudge' };
+        momentum = { label: '\u23F0 ' + daysSinceLast + ' days since last rehearsal \u2014 don\u2019t let it slip', type: 'nudge' };
       }
     } else if (existingDates.length === 0) {
       momentum = { label: '\uD83C\uDFAF First rehearsal \u2014 this is where it starts', type: 'first' };

@@ -3721,8 +3721,22 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
         html += '<div style="font-size:0.55em;color:#f59e0b;margin-top:2px;font-style:italic">\u26A0 ' + escHtml(p.offPatternNotes[0]) + '</div>';
     }
     html += '</div>';
-    html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600;flex-shrink:0;align-self:center">Use this \u2192</span>';
-    html += '</div></div>';
+    html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600;flex-shrink:0;align-self:center">Lock this in \u2192</span>';
+    html += '</div>';
+    // "Why this works" — one subtle line derived from the top reason
+    if (pReasons.length) {
+        var _whyReason = pReasons[0];
+        var _whyText = '';
+        if (_whyReason.match(/free/i)) _whyText = 'Everyone can make it';
+        else if (_whyReason.match(/usual schedule/i)) _whyText = 'Matches your usual rhythm';
+        else if (_whyReason.match(/typical|matches/i) && p.dayOfWeek) _whyText = 'Your usual ' + p.dayOfWeek + ' slot';
+        else if (_whyReason.match(/gig/i)) _whyText = 'Good timing before the gig';
+        else if (_whyReason.match(/been|days since/i)) _whyText = 'You\u2019re due for one';
+        if (_whyText) {
+            html += '<div style="font-size:0.55em;color:var(--text-dim);text-align:center;margin-top:3px;font-style:italic">' + _whyText + '</div>';
+        }
+    }
+    html += '</div>';
 
     // Alternatives
     if (recs.alternatives.length) {
@@ -3761,10 +3775,13 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
         html += '<div style="font-size:0.55em;color:var(--text-dim);margin-top:5px;opacity:0.8">' + footnote + '</div>';
     }
 
+    // Stash for confirmation handler
+    window._rhLastRecs = recs;
+
     el.innerHTML = html;
 }
 
-// Pick a recommended date — visual confirmation + planning hook
+// Pick a recommended date — visual confirmation + planning transition
 window._rhPickRecommendedDate = function(dateStr, clickedEl) {
     var input = document.getElementById('rhDate');
     if (input) {
@@ -3774,16 +3791,26 @@ window._rhPickRecommendedDate = function(dateStr, clickedEl) {
         setTimeout(function() { input.style.borderColor = ''; input.style.boxShadow = ''; }, 1500);
     }
 
-    // Build contextual confirmation message
-    var tl = (typeof GLStore !== 'undefined' && GLStore.getCurrentTimeline) ? GLStore.getCurrentTimeline() : {};
+    // Contextual confirmation — varies by match quality and pattern fit
     var isOnPattern = clickedEl && clickedEl.id === 'rhRecPrimary';
-    var confirmText = isOnPattern ? '\u2714 Locked in \u2014 fits your rhythm' : '\u2714 Date set';
+    var _recs = window._rhLastRecs; // stashed by render function
+    var confirmText = '\u2714 Date set';
+    if (isOnPattern && _recs) {
+        var _p = _recs.primary;
+        if (_p && _p.isPreferredDay && _p.reasons.some(function(r) { return r.match(/usual schedule/i); })) {
+            confirmText = '\u2714 Locked in \u2014 right on your weekly pattern';
+        } else if (_recs.momentum && _recs.momentum.type === 'streak') {
+            confirmText = '\u2714 Locked in \u2014 keeps your momentum going';
+        } else if (_p && _p.isPreferredDay) {
+            confirmText = '\u2714 Locked in \u2014 your usual day';
+        } else {
+            confirmText = '\u2714 Locked in \u2014 fits your rhythm';
+        }
+    }
 
     if (clickedEl) {
-        // Dim all other cards
         var allCards = document.querySelectorAll('#rhDateRecs [onclick*="_rhPickRecommendedDate"]');
         allCards.forEach(function(c) { c.style.opacity = c === clickedEl ? '1' : '0.4'; });
-        // Highlight selected
         clickedEl.style.borderColor = '#22c55e';
         clickedEl.style.background = 'rgba(34,197,94,0.08)';
         var confirmEl = document.createElement('div');
@@ -3792,31 +3819,43 @@ window._rhPickRecommendedDate = function(dateStr, clickedEl) {
         clickedEl.appendChild(confirmEl);
     }
 
-    // Show planning hook
+    // Show planning hook — immediate transition to "what to work on"
     _rhShowPlanningHook(dateStr);
 };
 
-// Planning handoff — concise, specific, immediate
+// Planning handoff — immediate transition from scheduling to rehearsal prep
 function _rhShowPlanningHook(dateStr) {
     var hookEl = document.getElementById('rhPlanningHook');
     if (hookEl) hookEl.remove();
     var recsEl = document.getElementById('rhDateRecs');
     if (!recsEl) return;
 
+    var d = new Date(dateStr + 'T12:00:00');
+    var dayLabel = d.toLocaleDateString('en-US', { weekday: 'long' });
+
     var focusSongs = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
     var hookText = '';
+    var hookAction = '';
     if (focusSongs.list.length > 0) {
         var topSong = focusSongs.list[0].title;
         var more = focusSongs.list.length - 1;
-        hookText = 'Focus on <strong>' + escHtml(topSong) + '</strong>' + (more > 0 ? ' + ' + more + ' more' : '');
+        hookText = 'For ' + dayLabel + ': work on <strong>' + escHtml(topSong) + '</strong>' + (more > 0 ? ' + ' + more + ' more' : '');
+        hookAction = 'Build the plan \u2192';
     } else {
-        hookText = 'We\u2019ll pick the songs that need the most work';
+        hookText = 'Schedule it, then we\u2019ll build your plan';
+        hookAction = '';
     }
 
     var hook = document.createElement('div');
     hook.id = 'rhPlanningHook';
-    hook.style.cssText = 'margin-top:6px;padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.12);background:rgba(99,102,241,0.03)';
-    hook.innerHTML = '<div style="font-size:0.6em;color:var(--text-dim)">\uD83C\uDFAF ' + hookText + '</div>';
+    hook.style.cssText = 'margin-top:6px;padding:8px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.04)';
+    var h = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+    h += '<div style="font-size:0.62em;color:var(--text-dim)">\uD83C\uDFAF ' + hookText + '</div>';
+    if (hookAction) {
+        h += '<span onclick="document.getElementById(\'rhModal\')?.querySelector(\'.btn-primary\')?.click()" style="font-size:0.6em;color:#818cf8;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">' + hookAction + '</span>';
+    }
+    h += '</div>';
+    hook.innerHTML = h;
     recsEl.appendChild(hook);
 }
 
