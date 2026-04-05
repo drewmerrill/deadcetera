@@ -3125,7 +3125,8 @@ async function rhOpenEvent(eventId) {
 
     // ── Add to Google Calendar ──
     var _rhGcalPlan = planSongs.length ? 'Focus: ' + planSongs.slice(0, 3).join(', ') + (planSongs.length > 3 ? ' + ' + (planSongs.length - 3) + ' more' : '') : '';
-    html += '<button onclick="(function(){if(typeof calBuildRehearsalGoogleLink===\'function\'){var u=calBuildRehearsalGoogleLink(' + JSON.stringify({ date: ev.date, time: ev.time || '', location: ev.location || '', notes: ev.notes || '' }) + ',' + JSON.stringify(_rhGcalPlan) + ');if(u!==\'#\')window.open(u,\'_blank\')}})()" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(66,133,244,0.25);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;font-size:0.78em;font-weight:600;font-family:inherit;margin-bottom:16px;min-height:36px">\uD83D\uDCC5 Add to Google Calendar</button>';
+    html += '<button onclick="(function(){if(typeof calBuildRehearsalGoogleLink===\'function\'){var u=calBuildRehearsalGoogleLink(' + JSON.stringify({ date: ev.date, time: ev.time || '', location: ev.location || '', notes: ev.notes || '' }) + ',' + JSON.stringify(_rhGcalPlan) + ');if(u!==\'#\'){window.open(u,\'_blank\');if(typeof showToast===\'function\')showToast(\'\uD83D\uDCC5 Opening Google Calendar \u2014 confirm there to send invites\')}}})()" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(66,133,244,0.25);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;font-size:0.78em;font-weight:600;font-family:inherit;margin-bottom:4px;min-height:36px">\uD83D\uDCC5 Add to Google Calendar</button>';
+    html += '<div style="font-size:0.58em;color:var(--text-dim);text-align:center;margin-bottom:16px">Add it to your calendar and invite the band</div>';
 
     // ── RSVP Section ──
     html += '<div class="app-card" style="margin-bottom:16px">';
@@ -3873,7 +3874,10 @@ window._rhAddToGoogleCal = function(dateStr, planSummary) {
 
     if (typeof calBuildRehearsalGoogleLink === 'function') {
         var url = calBuildRehearsalGoogleLink({ date: dateStr, time: normalized, location: location, notes: notes }, planSummary);
-        if (url && url !== '#') window.open(url, '_blank');
+        if (url && url !== '#') {
+            window.open(url, '_blank');
+            if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar \u2014 confirm there to send invites');
+        }
         else if (typeof showToast === 'function') showToast('Could not build calendar link \u2014 check the date');
     } else {
         if (typeof showToast === 'function') showToast('Calendar export not available');
@@ -3919,8 +3923,9 @@ function _rhShowPlanningHook(dateStr) {
         h += '<span onclick="document.getElementById(\'rhModal\')?.querySelector(\'.btn-primary\')?.click()" style="font-size:0.6em;color:#818cf8;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">' + hookAction + '</span>';
     }
     h += '</div>';
-    // Add to Google Calendar button
+    // Add to Google Calendar button + microcopy
     h += '<button onclick="_rhAddToGoogleCal(\'' + escHtml(dateStr) + '\',\'' + escHtml(planSummary).replace(/'/g, "\\'") + '\')" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(66,133,244,0.25);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit;min-height:36px">\uD83D\uDCC5 Add to Google Calendar</button>';
+    h += '<div style="font-size:0.52em;color:var(--text-dim);text-align:center;margin-top:3px">Add it to your calendar and invite the band</div>';
     hook.innerHTML = h;
     recsEl.appendChild(hook);
 }

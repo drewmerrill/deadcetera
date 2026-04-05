@@ -1538,7 +1538,10 @@ window._gigAddToGoogleCal = function(gigIdx) {
     var g = gigs[gigIdx];
     if (!g) { if (typeof showToast === 'function') showToast('Gig not found'); return; }
     var url = calBuildGigGoogleLink(g);
-    if (url && url !== '#') window.open(url, '_blank');
+    if (url && url !== '#') {
+        window.open(url, '_blank');
+        if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar \u2014 confirm there to send invites');
+    }
     else if (typeof showToast === 'function') showToast('Could not build calendar link');
 };
 

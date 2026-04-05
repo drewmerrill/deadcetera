@@ -274,12 +274,13 @@ function calExportGoogleLink(ev, opts) {
     var bandPrefix = opts.bandName ? opts.bandName + ' ' : '';
     var title = bandPrefix + (typeLabel[ev.type] ? typeLabel[ev.type] : 'Event') + (ev.title ? ' \u2014 ' + ev.title : '');
 
+    // Structured description with line breaks
     var descParts = [];
-    if (ev.venue || ev.location) descParts.push('Location: ' + (ev.venue || ev.location));
-    if (opts.planSummary) descParts.push('Plan: ' + opts.planSummary);
-    if (ev.linkedSetlist) descParts.push('Setlist: ' + ev.linkedSetlist);
-    if (ev.notes) descParts.push(ev.notes);
-    descParts.push('Added from GrooveLinx');
+    if (opts.planSummary) descParts.push('\uD83C\uDFAF ' + opts.planSummary);
+    if (ev.linkedSetlist) descParts.push('\uD83C\uDFB5 Setlist: ' + ev.linkedSetlist);
+    if (ev.notes) descParts.push('\uD83D\uDCDD ' + ev.notes);
+    if (descParts.length) descParts.push(''); // blank line before footer
+    descParts.push('Added from GrooveLinx \u2014 groovelinx.com');
 
     // Google Calendar dates: YYYYMMDDTHHMMSSZ (UTC)
     var fmt = function(d) { return d.toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z'; };
@@ -332,10 +333,10 @@ function calBuildGigGoogleLink(gig) {
     var attendees = _calGetBandEmails();
 
     var notes = [];
-    if (gig.soundPerson) notes.push('Sound: ' + gig.soundPerson);
-    if (gig.contact) notes.push('Contact: ' + gig.contact);
-    if (gig.pay) notes.push('Pay: ' + gig.pay);
-    if (gig.notes) notes.push(gig.notes);
+    if (gig.soundPerson) notes.push('\uD83C\uDFA4 Sound: ' + gig.soundPerson);
+    if (gig.contact) notes.push('\uD83D\uDCDE Contact: ' + gig.contact);
+    if (gig.pay) notes.push('\uD83D\uDCB0 Pay: ' + gig.pay);
+    if (gig.notes) notes.push('\uD83D\uDCDD ' + gig.notes);
 
     return calExportGoogleLink(
         { date: gig.date, time: gig.startTime || gig.arrivalTime || '19:00', type: 'gig', title: gig.venue || '', venue: gig.venue || '', notes: notes.join('\n'), linkedSetlist: gig.setlistId || '' },
