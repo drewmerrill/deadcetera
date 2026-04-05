@@ -1562,7 +1562,10 @@ function _postEventChangeNotification(eventType, eventName, changeLabel) {
 window._postEventChangeNotification = _postEventChangeNotification;
 
 // ── Add to Google Calendar for gigs ──────────────────────────────────────────
+var _gigGcalDebounce = 0;
 window._gigAddToGoogleCal = function(gigIdx) {
+    if (Date.now() - _gigGcalDebounce < 3000) return;
+    _gigGcalDebounce = Date.now();
     if (typeof calBuildGigGoogleLink !== 'function') {
         if (typeof showToast === 'function') showToast('Calendar export not available');
         return;
@@ -1574,7 +1577,7 @@ window._gigAddToGoogleCal = function(gigIdx) {
     var url = calBuildGigGoogleLink(g);
     if (url && url !== '#') {
         window.open(url, '_blank');
-        if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar \u2014 confirm there to send invites');
+        if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there');
     }
     else if (typeof showToast === 'function') showToast('Could not build calendar link');
 };

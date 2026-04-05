@@ -280,7 +280,7 @@ function calExportGoogleLink(ev, opts) {
     if (ev.linkedSetlist) descParts.push('\uD83C\uDFB5 Setlist: ' + ev.linkedSetlist);
     if (ev.notes) descParts.push('\uD83D\uDCDD ' + ev.notes);
     if (descParts.length) descParts.push(''); // blank line before footer
-    descParts.push('Added from GrooveLinx \u2014 groovelinx.com');
+    descParts.push('Created with GrooveLinx \u2014 groovelinx.com');
 
     // Google Calendar dates: YYYYMMDDTHHMMSSZ (UTC)
     var fmt = function(d) { return d.toISOString().replace(/[-:]/g,'').split('.')[0] + 'Z'; };

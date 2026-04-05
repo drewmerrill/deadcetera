@@ -3853,7 +3853,12 @@ window._rhPickRecommendedDate = function(dateStr, clickedEl) {
 };
 
 // ── Add to Google Calendar from scheduling flow ──────────────────────────────
+var _rhGcalDebounce = 0;
 window._rhAddToGoogleCal = function(dateStr, planSummary) {
+    // Debounce: prevent multiple tab opens from rapid clicks
+    if (Date.now() - _rhGcalDebounce < 3000) return;
+    _rhGcalDebounce = Date.now();
+
     // Get time from the modal input if available
     var timeEl = document.getElementById('rhTime');
     var time = (timeEl && timeEl.value) ? timeEl.value.trim() : '7:00 PM';
@@ -3876,7 +3881,7 @@ window._rhAddToGoogleCal = function(dateStr, planSummary) {
         var url = calBuildRehearsalGoogleLink({ date: dateStr, time: normalized, location: location, notes: notes }, planSummary);
         if (url && url !== '#') {
             window.open(url, '_blank');
-            if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar \u2014 confirm there to send invites');
+            if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there');
         }
         else if (typeof showToast === 'function') showToast('Could not build calendar link \u2014 check the date');
     } else {
