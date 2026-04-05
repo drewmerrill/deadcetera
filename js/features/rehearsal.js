@@ -1225,9 +1225,11 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                         _pmTs.fingerprint.songTitle = seg.songTitle;
                         var _cmp = PocketMeterTimeSeries.compareFingerprints(_pmTs.fingerprint, _prevFp);
                         if (_cmp) {
-                            var _cmpColor = _cmp.improved ? '#10b981' : '#f59e0b';
-                            var _cmpIcon = _cmp.improved ? '\u2191' : (_cmp.varianceDelta < -0.5 ? '\u2193' : '\u2192');
-                            html += '<div style="padding:0 8px 3px;font-size:0.55em;color:' + _cmpColor + '">' + _cmpIcon + ' ' + escHtml(_cmp.label) + '</div>';
+                            var _cmpColor = (_cmp.tier === 'big_gain' || _cmp.tier === 'gain') ? '#10b981' : (_cmp.tier === 'same') ? '#94a3b8' : '#f59e0b';
+                            var _cmpIcon = _cmp.improved ? '\u2191' : (_cmp.tier === 'slip' || _cmp.tier === 'big_slip') ? '\u2193' : '\u2192';
+                            var _cmpBg = _cmp.improved ? 'rgba(16,185,129,0.06)' : (_cmp.tier === 'same' ? 'transparent' : 'rgba(245,158,11,0.06)');
+                            html += '<div style="padding:3px 8px;margin:2px 0;font-size:0.6em;color:' + _cmpColor + ';font-weight:600;border-radius:4px;background:' + _cmpBg + '">'
+                                + _cmpIcon + ' vs last rehearsal: ' + escHtml(_cmp.label) + '</div>';
                         }
                     }
                     // Save current fingerprint for next session comparison
@@ -1349,7 +1351,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             if (g.segments.length >= 2) {
                 rowHtml += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">Compare</button>';
             }
-            var _fixLabel = g.segments.length >= 3 ? 'Start Here \u2014 Transitions' : 'Start Here';
+            var _fixLabel = g.segments.length >= 3 ? 'Start Here \u2014 Fix Transitions' : (g.bestQuality < 2 ? 'Start Here \u2014 Full Run' : 'Start Here');
             rowHtml += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700;min-height:28px">\u25B6 ' + _fixLabel + '</button>';
             rowHtml += '</div></div>';
             return rowHtml;
@@ -1532,8 +1534,11 @@ function _rhFindSegIdx(songTitle, useWorst) {
 }
 
 // ── Pocket Meter fingerprint storage (cross-session comparison) ──────────────
-// Stores/retrieves groove fingerprints per song in Firebase for session-over-session comparison.
-var _rhFingerprintCache = {}; // { songTitle: { current: fp, previous: fp } }
+// Stores groove fingerprints per song with history for trend tracking.
+// Firebase schema: /groove_fingerprints/{songKey}/latest   — fast access
+//                  /groove_fingerprints/{songKey}/history[] — array (max 10)
+var _rhFingerprintCache = {}; // { songTitle: { current: fp, previous: fp, history: [] } }
+var _RH_FP_MAX_HISTORY = 10;
 
 function _rhSaveFingerprint(songTitle, fingerprint, session) {
     if (!songTitle || !fingerprint) return;
@@ -1546,13 +1551,27 @@ function _rhSaveFingerprint(songTitle, fingerprint, session) {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (db && typeof bandPath === 'function') {
         var key = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(songTitle) : songTitle.replace(/[.#$/\[\]]/g, '_');
-        db.ref(bandPath('groove_fingerprints/' + key + '/latest')).set(fingerprint).catch(function() {});
+        var fpPath = bandPath('groove_fingerprints/' + key);
+        // Write latest for fast access
+        db.ref(fpPath + '/latest').set(fingerprint).catch(function() {});
+        // Append to history (capped to 10 entries)
+        db.ref(fpPath + '/history').once('value').then(function(snap) {
+            var history = snap.val();
+            if (!Array.isArray(history)) history = history ? Object.values(history) : [];
+            // Don't duplicate same timestamp
+            var exists = history.some(function(h) { return h.timestamp === fingerprint.timestamp; });
+            if (!exists) {
+                history.push(fingerprint);
+                // Keep only latest N
+                if (history.length > _RH_FP_MAX_HISTORY) history = history.slice(history.length - _RH_FP_MAX_HISTORY);
+                db.ref(fpPath + '/history').set(history).catch(function() {});
+            }
+        }).catch(function() {});
     }
 }
 
 function _rhGetPreviousFingerprint(songTitle) {
     if (!songTitle) return null;
-    // Check cache first
     if (_rhFingerprintCache[songTitle] && _rhFingerprintCache[songTitle].previous) {
         return _rhFingerprintCache[songTitle].previous;
     }
@@ -1568,11 +1587,15 @@ async function _rhPreloadFingerprints() {
         var val = snap.val();
         if (!val) return;
         Object.keys(val).forEach(function(key) {
-            var fp = val[key] && val[key].latest;
-            if (fp && fp.songTitle) {
-                if (!_rhFingerprintCache[fp.songTitle]) _rhFingerprintCache[fp.songTitle] = {};
-                // The stored "latest" becomes "previous" for comparison
-                _rhFingerprintCache[fp.songTitle].previous = fp;
+            var entry = val[key];
+            var latest = entry && entry.latest;
+            var history = entry && entry.history;
+            if (!Array.isArray(history)) history = history ? Object.values(history) : [];
+            if (latest && latest.songTitle) {
+                if (!_rhFingerprintCache[latest.songTitle]) _rhFingerprintCache[latest.songTitle] = {};
+                // Latest from Firebase becomes "previous" for comparison against current session
+                _rhFingerprintCache[latest.songTitle].previous = latest;
+                _rhFingerprintCache[latest.songTitle].history = history;
             }
         });
     } catch (e) {}

@@ -664,23 +664,50 @@
      */
     compareFingerprints(current, previous) {
       if (!current || !previous) return null;
-      var vDelta = previous.variance - current.variance; // positive = improved
-      var sDelta = current.stability - previous.stability; // positive = improved
+      var vDelta = previous.variance - current.variance; // positive = tighter
+      var sDelta = current.stability - previous.stability; // positive = steadier
       var label = '';
+      var tier = 'same'; // 'big_gain' | 'gain' | 'same' | 'slip' | 'big_slip'
       var improved = false;
-      if (vDelta > 0.5 && sDelta >= 0) {
-        improved = true;
-        label = vDelta > 1.5 ? 'Much tighter than last time' : 'Tighter than last rehearsal';
-      } else if (vDelta < -0.5 && sDelta <= 0) {
-        label = vDelta < -1.5 ? 'Looser than last time' : 'Slightly looser than last rehearsal';
-      } else if (Math.abs(vDelta) <= 0.5) {
-        label = 'About the same as last time';
-        improved = sDelta > 0;
+
+      // Primary: variance change (drift reduction)
+      if (vDelta > 1.5) {
+        tier = 'big_gain'; improved = true;
+        label = 'Much tighter \u2014 great progress';
+      } else if (vDelta > 0.5) {
+        tier = 'gain'; improved = true;
+        label = 'Tighter \u2014 improving';
+      } else if (vDelta < -1.5) {
+        tier = 'big_slip';
+        label = 'Looser \u2014 needs attention';
+      } else if (vDelta < -0.5) {
+        tier = 'slip';
+        label = 'Slightly looser \u2014 keep pushing';
       } else {
-        label = sDelta > 5 ? 'Steadier overall' : (sDelta < -5 ? 'Less steady than before' : 'About the same');
-        improved = sDelta > 0;
+        tier = 'same';
+        label = 'About the same';
       }
-      return { improved: improved, label: label, varianceDelta: Math.round(vDelta * 10) / 10, stabilityDelta: sDelta };
+
+      // Stability enrichment: if variance is flat but stability shifted meaningfully
+      if (tier === 'same' && sDelta > 8) {
+        tier = 'gain'; improved = true;
+        label = 'Steadier \u2014 timing more consistent';
+      } else if (tier === 'same' && sDelta < -8) {
+        tier = 'slip';
+        label = 'Less steady \u2014 timing more erratic';
+      } else if (tier === 'gain' && sDelta > 5) {
+        label += ' \u2014 and steadier too';
+      } else if (tier === 'big_gain' && sDelta > 5) {
+        label += ' \u2014 and more locked in';
+      }
+
+      return {
+        improved: improved,
+        tier: tier,
+        label: label,
+        varianceDelta: Math.round(vDelta * 10) / 10,
+        stabilityDelta: sDelta
+      };
     }
   };
 
