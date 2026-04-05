@@ -1171,12 +1171,11 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
 
     var html = '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Rehearsal Timeline</div>';
 
-    // Audio state
-    html += '<audio id="rhTimelineAudio" style="display:none"></audio>';
+    // Audio state — lightweight file load (no analysis, just playback)
     if (!hasAudio) {
         html += '<div style="padding:5px 10px;margin-bottom:8px;border-radius:6px;border:1px solid rgba(245,158,11,0.12);background:rgba(245,158,11,0.03);font-size:0.68em;color:#fbbf24;display:flex;align-items:center;justify-content:space-between">'
-            + '<span>Load recording to enable playback</span>'
-            + '<button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(sessionId) + '\')" style="font-size:0.9em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;font-family:inherit">Load</button>'
+            + '<span>Select recording file to enable playback</span>'
+            + '<button onclick="_rhLoadRecordingForPlayback(\'' + escHtml(sessionId) + '\')" style="font-size:0.9em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;font-family:inherit">Select File</button>'
             + '</div>';
     }
 
@@ -1399,7 +1398,9 @@ function _rhPrepareSegmentData(session, segments) {
 }
 
 function _rhHasAudio() {
-    return typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl;
+    if (_rhSharedAudio && _rhSharedAudio.src) return true;
+    if (typeof RecordingAnalyzer !== 'undefined' && (RecordingAnalyzer._loadedPlaybackUrl || RecordingAnalyzer._currentAudioUrl)) return true;
+    return false;
 }
 
 // ── Inline Timeline (rendered inside session card on rehearsal page) ─────────
@@ -1679,13 +1680,20 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
 
     // Only set src ONCE — re-setting triggers full reload which crashes on 337MB files
     if (_rhAudioSessionId !== sessionId || !audio.src) {
-        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
-            audio.src = RecordingAnalyzer._currentAudioUrl;
-            _rhAudioSessionId = sessionId;
-        } else {
-            if (typeof showToast === 'function') showToast('Load the recording first via Analyze Recording');
+        var _url = null;
+        // Check lightweight playback URL first
+        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._loadedPlaybackUrl) {
+            _url = RecordingAnalyzer._loadedPlaybackUrl;
+        } else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
+            _url = RecordingAnalyzer._currentAudioUrl;
+        }
+        if (!_url) {
+            if (typeof showToast === 'function') showToast('Select recording file first to enable playback');
             return;
         }
+        audio.src = _url;
+        audio.preload = 'none'; // stream, don't preload
+        _rhAudioSessionId = sessionId;
     }
 
     // Clear previous playback highlights
@@ -1721,6 +1729,45 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
     audio.addEventListener('timeupdate', check);
 };
 
+// ── Lightweight file loader for playback only (no analysis, no decoding) ─────
+window._rhLoadRecordingForPlayback = function(sessionId) {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.onchange = function() {
+        if (!input.files || !input.files[0]) return;
+        var file = input.files[0];
+
+        // Create blob URL — this does NOT load the file into RAM
+        // The <audio> element will stream from it on demand
+        var blobUrl = URL.createObjectURL(file);
+
+        // Store on RecordingAnalyzer if available (so _rhPlaySegment can find it)
+        if (typeof RecordingAnalyzer !== 'undefined') {
+            // Set the blob URL without running analysis
+            RecordingAnalyzer._loadedPlaybackUrl = blobUrl;
+        }
+
+        // Set up shared audio element
+        if (!_rhSharedAudio) {
+            _rhSharedAudio = document.createElement('audio');
+            _rhSharedAudio.id = 'rhTimelineAudio';
+            _rhSharedAudio.style.display = 'none';
+            _rhSharedAudio.preload = 'none'; // critical: don't preload large files
+            document.body.appendChild(_rhSharedAudio);
+        }
+        _rhSharedAudio.src = blobUrl;
+        _rhSharedAudio.preload = 'none';
+        _rhAudioSessionId = sessionId;
+
+        if (typeof showToast === 'function') showToast('Recording loaded \u2014 playback ready (' + Math.round(file.size / 1024 / 1024) + ' MB)');
+
+        // Re-render timeline to enable play buttons
+        _rhRenderLastRehearsalTimeline();
+    };
+    input.click();
+};
+
 // ── Loop segment (plays repeatedly until stopped) ────────────────────────────
 window._rhLoopSegment = function(startSec, endSec, sessionId, segIdx) {
     // Reuse shared audio element (same as _rhPlaySegment)
@@ -1736,12 +1783,13 @@ window._rhLoopSegment = function(startSec, endSec, sessionId, segIdx) {
     }
     var audio = _rhSharedAudio;
     if (_rhAudioSessionId !== sessionId || !audio.src) {
-        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
-            audio.src = RecordingAnalyzer._currentAudioUrl;
-            _rhAudioSessionId = sessionId;
-        } else {
-            if (typeof showToast === 'function') showToast('Load recording first'); return;
-        }
+        var _lUrl = null;
+        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._loadedPlaybackUrl) _lUrl = RecordingAnalyzer._loadedPlaybackUrl;
+        else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) _lUrl = RecordingAnalyzer._currentAudioUrl;
+        if (!_lUrl) { if (typeof showToast === 'function') showToast('Select recording file first'); return; }
+        audio.src = _lUrl;
+        audio.preload = 'none';
+        _rhAudioSessionId = sessionId;
     }
 
     // Clear previous state
