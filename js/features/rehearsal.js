@@ -1063,6 +1063,8 @@ async function _rhRenderLastRehearsalTimeline() {
 
     // ── Auto-render timeline for latest session (if segments exist) ──
     if (segments.length) {
+        // Preload previous groove fingerprints for cross-session comparison
+        await _rhPreloadFingerprints();
         _rhRenderInlineTimelineDirectly(timelineEl, latest.sessionId, latest, segments);
     }
 }
@@ -1187,10 +1189,23 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 var _pmTs = PocketMeterTimeSeries.compute(seg.groove, seg.startSec, _pmTargetBPM);
                 if (_pmTs && _pmTs.points.length >= 3) {
                     html += '<div style="margin:6px 0 4px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.04)">';
-                    // Headline takeaway
+                    // Headline takeaway (max 1)
                     if (_pmTs.headline) {
-                        html += '<div style="padding:6px 8px 4px;font-size:0.65em;font-weight:600;color:' + _pmTs.stabilityColor + ';line-height:1.3">' + escHtml(_pmTs.headline) + '</div>';
+                        html += '<div style="padding:6px 8px 2px;font-size:0.65em;font-weight:600;color:' + _pmTs.stabilityColor + ';line-height:1.3">' + escHtml(_pmTs.headline) + '</div>';
                     }
+                    // Cross-session comparison (if previous fingerprint exists)
+                    var _prevFp = _rhGetPreviousFingerprint(seg.songTitle);
+                    if (_prevFp && _pmTs.fingerprint) {
+                        _pmTs.fingerprint.songTitle = seg.songTitle;
+                        var _cmp = PocketMeterTimeSeries.compareFingerprints(_pmTs.fingerprint, _prevFp);
+                        if (_cmp) {
+                            var _cmpColor = _cmp.improved ? '#10b981' : '#f59e0b';
+                            var _cmpIcon = _cmp.improved ? '\u2191' : (_cmp.varianceDelta < -0.5 ? '\u2193' : '\u2192');
+                            html += '<div style="padding:0 8px 3px;font-size:0.55em;color:' + _cmpColor + '">' + _cmpIcon + ' ' + escHtml(_cmp.label) + '</div>';
+                        }
+                    }
+                    // Save current fingerprint for next session comparison
+                    _rhSaveFingerprint(seg.songTitle, _pmTs.fingerprint, session);
                     // Header with stability label + stats
                     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 8px 4px">';
                     html += '<span style="font-size:0.58em;color:var(--text-dim)">Pocket Meter \u00B7 <span style="color:' + _pmTs.stabilityColor + '">' + _pmTs.stabilityLabel + '</span></span>';
@@ -1207,7 +1222,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                             html += '<span onclick="_rhJumpToTime(' + z.startSec.toFixed(1) + ')" style="cursor:pointer;color:' + zColor + '">'
                                 + (isWorst ? '\u25B6 ' : '') + escHtml(z.label) + ' at ' + _rhFmt(z.startSec) + '</span>';
                             if (isWorst) {
-                                html += ' <span onclick="_rhFixThisNow(\'' + _songSafe + '\',\'' + _sSafe + '\')" style="cursor:pointer;color:#fbbf24;text-decoration:underline;margin-left:4px">\u2014 work on this</span>';
+                                html += ' <span onclick="_rhFixThisNow(\'' + _songSafe + '\',\'' + _sSafe + '\')" style="cursor:pointer;color:#fbbf24;text-decoration:underline;margin-left:4px">\u2014 start here</span>';
                             }
                             html += '</div>';
                         });
@@ -1308,8 +1323,8 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             if (g.segments.length >= 2) {
                 rowHtml += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">Compare</button>';
             }
-            var _fixLabel = g.segments.length >= 3 ? 'Drill Transitions' : 'Work Rough Spot';
-            rowHtml += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700;min-height:28px">\uD83D\uDD27 ' + _fixLabel + '</button>';
+            var _fixLabel = g.segments.length >= 3 ? 'Start Here \u2014 Transitions' : 'Start Here';
+            rowHtml += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700;min-height:28px">\u25B6 ' + _fixLabel + '</button>';
             rowHtml += '</div></div>';
             return rowHtml;
         }
@@ -1396,7 +1411,7 @@ window._rhFocusSegment = function(segIdx, startSec, endSec, sessionId) {
     }
 };
 
-// ── Fix This Now mode: isolate section + loop + coaching guidance ─────────────
+// ── Start Here mode: isolate worst section + loop + coaching guidance ─────────
 window._rhFixThisNow = function(songTitle, sessionId) {
     var tl = (typeof GLStore !== 'undefined' && GLStore.getCurrentTimeline) ? GLStore.getCurrentTimeline() : {};
     var data = tl.data;
@@ -1447,7 +1462,7 @@ window._rhFixThisNow = function(songTitle, sessionId) {
     panel.id = 'rhFixPanel';
     panel.style.cssText = 'margin:4px 0 8px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04)';
     var ph = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
-    ph += '<div style="font-size:0.75em;font-weight:800;color:#fbbf24">\uD83D\uDD27 Work on ' + escHtml(songTitle) + '</div>';
+    ph += '<div style="font-size:0.75em;font-weight:800;color:#fbbf24">\u25B6 Start here \u2014 ' + escHtml(songTitle) + '</div>';
     ph += '<button onclick="document.getElementById(\'rhFixPanel\').remove();document.querySelectorAll(\'.rh-fix-mode\').forEach(function(e){e.classList.remove(\'rh-fix-mode\')})" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em">\u2715</button>';
     ph += '</div>';
     guidance.forEach(function(g) {
@@ -1469,8 +1484,9 @@ window._rhFixThisNow = function(songTitle, sessionId) {
     // Start loop automatically — use worst zone if available for precision targeting
     if (_rhHasAudio()) {
         var loopStart = worstZone ? worstZone.startSec : seg.startSec;
-        var loopEnd = worstZone ? Math.min(worstZone.endSec + 5, seg.endSec) : seg.endSec; // +5s context after zone
+        var loopEnd = worstZone ? Math.min(worstZone.endSec + 5, seg.endSec) : seg.endSec;
         _rhLoopSegment(loopStart, loopEnd, sessionId || tl.sessionId || '', segIdx || 0);
+        if (typeof showToast === 'function') showToast('\uD83D\uDD01 Looping the toughest spot \u2014 ' + escHtml(songTitle));
     }
 };
 
@@ -1487,6 +1503,53 @@ function _rhFindSegIdx(songTitle, useWorst) {
         if (data.allSegments[i] === target) return i;
     }
     return null;
+}
+
+// ── Pocket Meter fingerprint storage (cross-session comparison) ──────────────
+// Stores/retrieves groove fingerprints per song in Firebase for session-over-session comparison.
+var _rhFingerprintCache = {}; // { songTitle: { current: fp, previous: fp } }
+
+function _rhSaveFingerprint(songTitle, fingerprint, session) {
+    if (!songTitle || !fingerprint) return;
+    fingerprint.songTitle = songTitle;
+    fingerprint.timestamp = session && session.date ? session.date : new Date().toISOString();
+    // Cache locally
+    if (!_rhFingerprintCache[songTitle]) _rhFingerprintCache[songTitle] = {};
+    _rhFingerprintCache[songTitle].current = fingerprint;
+    // Persist to Firebase (non-blocking)
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+        var key = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(songTitle) : songTitle.replace(/[.#$/\[\]]/g, '_');
+        db.ref(bandPath('groove_fingerprints/' + key + '/latest')).set(fingerprint).catch(function() {});
+    }
+}
+
+function _rhGetPreviousFingerprint(songTitle) {
+    if (!songTitle) return null;
+    // Check cache first
+    if (_rhFingerprintCache[songTitle] && _rhFingerprintCache[songTitle].previous) {
+        return _rhFingerprintCache[songTitle].previous;
+    }
+    return null;
+}
+
+// Preload previous fingerprints from Firebase (called once when timeline renders)
+async function _rhPreloadFingerprints() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        var snap = await db.ref(bandPath('groove_fingerprints')).once('value');
+        var val = snap.val();
+        if (!val) return;
+        Object.keys(val).forEach(function(key) {
+            var fp = val[key] && val[key].latest;
+            if (fp && fp.songTitle) {
+                if (!_rhFingerprintCache[fp.songTitle]) _rhFingerprintCache[fp.songTitle] = {};
+                // The stored "latest" becomes "previous" for comparison
+                _rhFingerprintCache[fp.songTitle].previous = fp;
+            }
+        });
+    } catch (e) {}
 }
 
 // ── Song BPM lookup (for Pocket Meter) ───────────────────────────────────────

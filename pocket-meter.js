@@ -440,32 +440,30 @@
           }
         }
       }
-      if (variance > 3 && !coachingInsights.length) coachingInsights.push('Tempo wanders throughout \u2014 try playing to a click');
+      if (variance > 3 && !coachingInsights.length) coachingInsights.push('Tempo wanders \u2014 try a click track');
+      // Cap to 2 insights max
+      if (coachingInsights.length > 2) coachingInsights = coachingInsights.slice(0, 2);
 
-      // Headline takeaway — single summary sentence
+      // Headline takeaway — short, scannable, actionable
       var headline = '';
       if (stability >= 90 && Math.abs(avgDeviation) <= 2) {
-        headline = 'Tempo was locked in \u2014 right in the pocket';
+        headline = 'Right in the pocket';
       } else if (stability >= 75 && Math.abs(avgDeviation) <= 2) {
-        headline = 'Solid timing overall \u2014 minor drift';
+        headline = 'Solid \u2014 minor drift';
       } else if (worstZone) {
-        var wzDir = worstZone.type === 'rushing' ? 'sped up' : 'slowed down';
-        var wzWhen = worstZone.startSec < (points[0].timeSec + (points[points.length - 1].timeSec - points[0].timeSec) * 0.3)
-          ? 'early on' : worstZone.endSec > (points[0].timeSec + (points[points.length - 1].timeSec - points[0].timeSec) * 0.7)
-          ? 'toward the end' : 'in the middle';
-        // Check if transition issue was detected
+        var wzDir = worstZone.type === 'rushing' ? 'Sped up' : 'Slowed down';
+        var _segDur = points[points.length - 1].timeSec - points[0].timeSec;
+        var wzWhen = worstZone.startSec < (points[0].timeSec + _segDur * 0.3)
+          ? 'early' : worstZone.endSec > (points[0].timeSec + _segDur * 0.7)
+          ? 'late' : 'mid-song';
         var hasTransition = coachingInsights.some(function(c) { return c.match(/transition/i); });
-        if (hasTransition) {
-          headline = 'You ' + wzDir + ' ' + wzWhen + ' and the timing broke at a transition \u2014 focus there';
-        } else {
-          headline = 'You ' + wzDir + ' ' + wzWhen + ' \u2014 that\u2019s the spot to work on';
-        }
+        headline = wzDir + ' ' + wzWhen + (hasTransition ? ' \u2014 transition issue' : ' \u2014 start here');
       } else if (rushing) {
-        headline = 'Running a bit hot \u2014 try pulling back the tempo slightly';
+        headline = 'Running hot \u2014 ease back';
       } else if (dragging) {
-        headline = 'Dragging a bit behind \u2014 keep the energy up';
+        headline = 'Dragging \u2014 push the energy';
       } else {
-        headline = 'Timing is in decent shape \u2014 keep tightening';
+        headline = 'Decent \u2014 keep tightening';
       }
 
       return {
@@ -656,6 +654,33 @@
 
       svg += '</svg>';
       return svg;
+    },
+
+    /**
+     * Compare current fingerprint against a previous one for the same song.
+     * @param {object} current - fingerprint from current session
+     * @param {object} previous - fingerprint from previous session
+     * @returns {{ improved: boolean, label: string, varianceDelta: number, stabilityDelta: number }|null}
+     */
+    compareFingerprints(current, previous) {
+      if (!current || !previous) return null;
+      var vDelta = previous.variance - current.variance; // positive = improved
+      var sDelta = current.stability - previous.stability; // positive = improved
+      var label = '';
+      var improved = false;
+      if (vDelta > 0.5 && sDelta >= 0) {
+        improved = true;
+        label = vDelta > 1.5 ? 'Much tighter than last time' : 'Tighter than last rehearsal';
+      } else if (vDelta < -0.5 && sDelta <= 0) {
+        label = vDelta < -1.5 ? 'Looser than last time' : 'Slightly looser than last rehearsal';
+      } else if (Math.abs(vDelta) <= 0.5) {
+        label = 'About the same as last time';
+        improved = sDelta > 0;
+      } else {
+        label = sDelta > 5 ? 'Steadier overall' : (sDelta < -5 ? 'Less steady than before' : 'About the same');
+        improved = sDelta > 0;
+      }
+      return { improved: improved, label: label, varianceDelta: Math.round(vDelta * 10) / 10, stabilityDelta: sDelta };
     }
   };
 
