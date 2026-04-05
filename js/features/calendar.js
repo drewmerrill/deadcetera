@@ -340,7 +340,7 @@ async function _calRenderBestRehearsalHero() {
     var confLabel = p.score >= 70 ? 'This is your best next rehearsal' : 'Good option for the band';
 
     // Stats bar: attendance + spacing + gig proximity
-    var statsHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.72em;color:var(--text-dim);margin:6px 0 10px">';
+    var statsHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:0.72em;color:var(--text-dim);margin:6px 0 8px">';
     if (p.availability) statsHtml += '<span>\uD83D\uDC65 ' + p.availability.available + '/' + p.availability.total + ' free</span>';
     if (p.spacingDays !== null) statsHtml += '<span>\uD83D\uDCC5 ' + p.spacingDays + 'd since last</span>';
     if (recs.nextGigDate) {
@@ -349,14 +349,46 @@ async function _calRenderBestRehearsalHero() {
     }
     statsHtml += '</div>';
 
+    // Plan intelligence — what to work on
+    var planHtml = '';
+    var focusSongs = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    if (focusSongs.list.length > 0) {
+        var _topSong = focusSongs.list[0].title;
+        var _more = focusSongs.list.length - 1;
+        planHtml = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px;padding:4px 8px;border-radius:4px;background:rgba(99,102,241,0.04)">'
+            + '\uD83C\uDFAF Focus: <strong style="color:var(--text)">' + (typeof escHtml === 'function' ? escHtml(_topSong) : _topSong) + '</strong>'
+            + (_more > 0 ? ' + ' + _more + ' more' : '') + '</div>';
+    } else if (recs.nextGigDate) {
+        planHtml = '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px;padding:4px 8px;border-radius:4px;background:rgba(99,102,241,0.04)">'
+            + '\uD83C\uDFAF We\u2019ll build this around your weakest songs before the gig</div>';
+    }
+
+    // Google Calendar state — check if this date already has a calendar event
+    var gcalStateHtml = '';
+    if (typeof calBuildRehearsalGoogleLink === 'function') {
+        // Check if rehearsal exists on this date (would mean "added" state)
+        var _calEvts = [];
+        try { _calEvts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []); } catch(e) {}
+        var _hasEvent = _calEvts.some(function(e) { return e.type === 'rehearsal' && e.date === p.date; });
+        if (_hasEvent) {
+            gcalStateHtml = '<div style="display:flex;align-items:center;gap:6px;margin-top:6px">'
+                + '<button onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Update in Google Calendar</button>'
+                + '</div>';
+        } else {
+            gcalStateHtml = '<button onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-top:6px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Add to Google Calendar</button>';
+        }
+    }
+
     el.innerHTML = '<div style="padding:16px 18px;margin-bottom:12px;border-radius:12px;border:2px solid rgba(34,197,94,0.3);background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
         + momHtml
         + '<div style="font-size:0.62em;font-weight:700;color:#22c55e;margin-bottom:3px">' + confLabel + '</div>'
         + '<div style="font-size:1.15em;font-weight:900;color:var(--text);margin-bottom:2px">' + pLabel + '</div>'
         + statsHtml
+        + planHtml
         + reasonHtml
-        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer;min-height:44px;margin-top:6px">\uD83C\uDFB8 Lock This In</button>'
-        + gcalHtml
+        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer;min-height:44px;margin-top:4px">\uD83C\uDFB8 Lock In + Build Plan</button>'
+        + '<div style="font-size:0.52em;color:var(--text-dim);text-align:center;margin-top:3px">Saves the date, then opens your rehearsal plan</div>'
+        + gcalStateHtml
         + skipHtml
         + altsHtml
         + '</div>';
@@ -394,7 +426,8 @@ window._calLockAndPlan = async function(dateStr) {
                 await saveBandDataToDrive('_band', 'calendar_events', events);
             }
         }
-        if (typeof showToast === 'function') showToast('\u2705 Rehearsal locked for ' + dateStr);
+        var _dateFmt = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        if (typeof showToast === 'function') showToast('\u2705 Rehearsal locked for ' + _dateFmt + ' \u2014 building your plan');
     } catch(e) {
         console.warn('[Calendar] Failed to create rehearsal event:', e);
     }
@@ -610,10 +643,13 @@ function renderCalendarInner() {
         '<button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="color:var(--accent-light)" title="Subscribe to band calendar">\uD83D\uDCC5 Subscribe</button>' +
     '</div>' +
     '<div class="app-card" id="calEventFormArea"></div>' +
-    // Upcoming Schedule
-    '<div class="app-card"><h3>\uD83D\uDCC5 Upcoming Schedule</h3>' +
-        '<div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading\u2026</div></div>' +
-    '</div>' +
+    // Upcoming Schedule — collapsed by default
+    '<details style="margin-bottom:12px">' +
+        '<summary class="app-card" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h3 style="margin:0">\uD83D\uDCC5 Upcoming Schedule</h3><span style="font-size:0.72em;color:var(--text-dim)">tap to expand</span></summary>' +
+        '<div class="app-card" style="margin-top:-1px;border-top:none;border-top-left-radius:0;border-top-right-radius:0">' +
+            '<div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
+        '</div>' +
+    '</details>' +
     // Smart Scheduling availability matrix
     '<div class="app-card"><h3>\uD83D\uDCCA Availability</h3>' +
         '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Who\u2019s free when. Tap a date to lock it in.</div>' +
