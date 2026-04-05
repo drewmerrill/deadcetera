@@ -1663,25 +1663,33 @@ function _rhRenderSegmentReport(sessionId, session, segments) {
 }
 
 // Playback for report segments — uses the session's recording if available
-window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
-    // Try multiple audio elements
-    var audio = document.getElementById('rhTimelineAudio') || document.getElementById('rhReportAudio');
-    if (!audio) {
-        audio = document.createElement('audio');
-        audio.id = 'rhTimelineAudio';
-        audio.style.display = 'none';
-        document.body.appendChild(audio);
-    }
+// Single shared audio element — NEVER re-set src if already loaded (prevents OOM on large files)
+var _rhSharedAudio = null;
+var _rhAudioSessionId = null;
 
-    // Try to get recording URL
-    if (!audio.src || audio.dataset.sessId !== sessionId) {
+window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
+    // Reuse single audio element — critical for large files
+    if (!_rhSharedAudio) {
+        _rhSharedAudio = document.getElementById('rhTimelineAudio');
+        if (!_rhSharedAudio) {
+            _rhSharedAudio = document.createElement('audio');
+            _rhSharedAudio.id = 'rhTimelineAudio';
+            _rhSharedAudio.style.display = 'none';
+            _rhSharedAudio.preload = 'metadata'; // don't load full file into RAM
+            document.body.appendChild(_rhSharedAudio);
+        }
+    }
+    var audio = _rhSharedAudio;
+
+    // Only set src ONCE — re-setting triggers full reload which crashes on 337MB files
+    if (_rhAudioSessionId !== sessionId || !audio.src) {
         if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
             audio.src = RecordingAnalyzer._currentAudioUrl;
+            _rhAudioSessionId = sessionId;
         } else {
             if (typeof showToast === 'function') showToast('Load the recording first via Analyze Recording');
             return;
         }
-        audio.dataset.sessId = sessionId;
     }
 
     // Clear previous playback highlights
@@ -1719,13 +1727,26 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
 
 // ── Loop segment (plays repeatedly until stopped) ────────────────────────────
 window._rhLoopSegment = function(startSec, endSec, sessionId, segIdx) {
-    var audio = document.getElementById('rhTimelineAudio') || document.getElementById('rhReportAudio');
-    if (!audio) return;
-    if (!audio.src && typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
-        audio.src = RecordingAnalyzer._currentAudioUrl;
-        audio.dataset.sessId = sessionId;
+    // Reuse shared audio element (same as _rhPlaySegment)
+    if (!_rhSharedAudio) {
+        _rhSharedAudio = document.getElementById('rhTimelineAudio');
+        if (!_rhSharedAudio) {
+            _rhSharedAudio = document.createElement('audio');
+            _rhSharedAudio.id = 'rhTimelineAudio';
+            _rhSharedAudio.style.display = 'none';
+            _rhSharedAudio.preload = 'metadata';
+            document.body.appendChild(_rhSharedAudio);
+        }
     }
-    if (!audio.src) { if (typeof showToast === 'function') showToast('Load recording first'); return; }
+    var audio = _rhSharedAudio;
+    if (_rhAudioSessionId !== sessionId || !audio.src) {
+        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
+            audio.src = RecordingAnalyzer._currentAudioUrl;
+            _rhAudioSessionId = sessionId;
+        } else {
+            if (typeof showToast === 'function') showToast('Load recording first'); return;
+        }
+    }
 
     // Clear previous state
     document.querySelectorAll('.rh-playing').forEach(function(el) { el.classList.remove('rh-playing'); });
