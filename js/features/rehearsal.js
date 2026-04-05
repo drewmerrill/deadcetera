@@ -1153,7 +1153,9 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             html += '<button id="rhPlayBtn_' + si + '" onclick="event.stopPropagation();_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
             // Song name (primary) + metadata (secondary line)
             html += '<div style="flex:1;min-width:0">';
-            html += '<div style="font-size:0.8em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(seg.songTitle || 'Unknown') + '</div>';
+            var _titleConf = seg.songMatch ? seg.songMatch.confidence : null;
+            var _confDot = _titleConf === 'low' ? '<span style="color:#64748b;font-size:0.7em" title="Uncertain match"> ?</span>' : (_titleConf === 'medium' ? '<span style="color:#f59e0b;font-size:0.7em" title="Likely match"> \u00B7</span>' : '');
+            html += '<div style="font-size:0.8em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(seg.songTitle || 'Unknown') + _confDot + '</div>';
             html += '<div style="font-size:0.58em;color:var(--text-dim)">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2;
             if (seg.qualityLabel && (seg.qualityScore >= 3 || seg.groove)) html += ' \u00B7 <span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
             // BPM summary inline (if groove data has IOIs and song has target BPM)
@@ -1178,6 +1180,30 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             var _songSafe = escHtml(seg.songTitle || '').replace(/'/g, "\\'");
             html += '<div style="padding:6px 10px 10px 32px;font-size:0.72em;color:var(--text-dim);line-height:1.5">';
             html += '<div>' + _rhFmt(seg.startSec) + ' \u2013 ' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2 + '</div>';
+            // Match confidence + "why this matched"
+            if (seg.songMatch) {
+                var _mc = seg.songMatch;
+                var _confColor = _mc.confidence === 'high' ? '#10b981' : _mc.confidence === 'medium' ? '#f59e0b' : '#64748b';
+                var _confLabel = _mc.confidence === 'high' ? 'Strong match' : _mc.confidence === 'medium' ? 'Likely match' : 'Uncertain';
+                html += '<div style="display:flex;align-items:center;gap:6px;margin:2px 0">';
+                html += '<span style="font-size:0.85em;color:' + _confColor + ';font-weight:600">' + _confLabel + '</span>';
+                if (_mc.explanation && _mc.explanation.length) {
+                    html += '<span style="font-size:0.82em;color:var(--text-dim)">\u2014 ' + escHtml(_mc.explanation[0]) + '</span>';
+                }
+                if (_mc.rerankedByChords) {
+                    html += '<span style="font-size:0.75em;color:#818cf8;margin-left:4px">chord-confirmed</span>';
+                }
+                html += '</div>';
+                // Quick alternatives (if low/medium confidence and alternatives exist)
+                if (_mc.confidence !== 'high' && _mc.candidates && _mc.candidates.length > 1) {
+                    html += '<div style="font-size:0.78em;color:var(--text-dim);margin:2px 0">Also possible: ';
+                    _mc.candidates.slice(1, 3).forEach(function(alt, ai) {
+                        if (ai > 0) html += ', ';
+                        html += '<span onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer._updateSegTitle(' + si + ',\'' + escHtml(alt.title).replace(/'/g, "\\'") + '\')" style="color:#818cf8;cursor:pointer;text-decoration:underline">' + escHtml(alt.title) + '</span>';
+                    });
+                    html += '</div>';
+                }
+            }
             if (seg.groove && seg.groove.label) {
                 var _gStab = seg.groove.stability;
                 var _gDesc = _gStab >= 80 ? 'Timing was locked in' : _gStab >= 50 ? 'Timing wavered in spots' : 'Timing was loose';

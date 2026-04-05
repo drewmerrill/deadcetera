@@ -22,13 +22,16 @@
 window.SongMatchingEngine = (function() {
 
   // ── Tunable weights ─────────────────────────────────────────────────────────
+  // Stage 1 (quick): plan + audio + tempo + lyrics + continuity
+  // Stage 2 (re-rank): chord/key analysis refines top candidates
   var WEIGHTS = {
-    planMatch:      0.40,
-    audioSimilar:   0.30,
-    chordSimilar:   0.10,
+    planMatch:      0.35,
+    audioSimilar:   0.25,
+    chordSimilar:   0.15,   // upgraded: key_match + progression_match + harmonic_confidence
     tempoProx:      0.10,
     lyricsMatch:    0.05,
-    continuity:     0.05
+    continuity:     0.05,
+    correction:     0.05    // prior user corrections for this song
   };
 
   var MIN_SEGMENT_DURATION = 20;
@@ -262,6 +265,21 @@ window.SongMatchingEngine = (function() {
           seg.songTitle = result.bestMatch.title;
         }
       }
+
+      // Stage 2: If chord data is available and confidence is not high,
+      // re-rank using chord/key signals. This is the 2-stage pipeline:
+      // Stage 1 (above) = quick scoring with available signals
+      // Stage 2 (here) = chord re-ranking for ambiguous matches
+      if (seg.chordHints && seg.chordHints.summary && result.confidence !== 'high') {
+        var reranked = scoreSegment(seg, candidates, context, adjacentLabels);
+        if (reranked.bestMatch && reranked.bestMatch.score > result.bestMatch.score) {
+          seg.songMatch = reranked;
+          if (reranked.confidence !== 'low' && reranked.bestMatch.title !== seg.songTitle) {
+            seg.songTitle = reranked.bestMatch.title;
+            seg.songMatch.rerankedByChords = true;
+          }
+        }
+      }
     }
 
     // Post-scoring: store confirmed segment embeddings into the bank
@@ -286,34 +304,37 @@ window.SongMatchingEngine = (function() {
     var candidates = [];
     var seen = {};
 
-    // Priority 1: Reference songs (plan or setlist)
+    // Priority 1: Rehearsal plan / setlist songs (highest trust)
     refSongs.forEach(function(title, idx) {
       if (!seen[title]) {
-        candidates.push({
-          title: title,
-          inPlan: true,
-          planOrder: idx,
-          song: _findSong(title, allSongs)
-        });
+        candidates.push({ title: title, inPlan: true, planOrder: idx, tier: 'plan', song: _findSong(title, allSongs) });
         seen[title] = true;
       }
     });
 
-    // Priority 2: Fill from catalog (limited)
-    if (candidates.length < MAX_CATALOG_CANDIDATES) {
+    // Priority 2: Active band songs (songs with active status)
+    var ACTIVE_STATUSES = (typeof GLStore !== 'undefined' && GLStore.ACTIVE_STATUSES) ? GLStore.ACTIVE_STATUSES : { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
+    var activeCount = 0;
+    allSongs.forEach(function(s) {
+      if (activeCount >= MAX_CATALOG_CANDIDATES) return;
+      if (seen[s.title]) return;
+      var status = s.status || 'active';
+      if (ACTIVE_STATUSES[status]) {
+        candidates.push({ title: s.title, inPlan: false, planOrder: -1, tier: 'active', song: s });
+        seen[s.title] = true;
+        activeCount++;
+      }
+    });
+
+    // Priority 3: Wider library (only if we have few candidates)
+    if (candidates.length < 10) {
       var remaining = MAX_CATALOG_CANDIDATES - candidates.length;
-      allSongs.slice(0, remaining * 2).forEach(function(s) {
-        if (!seen[s.title]) {
-          candidates.push({
-            title: s.title,
-            inPlan: false,
-            planOrder: -1,
-            song: s
-          });
-          seen[s.title] = true;
-          remaining--;
-          if (remaining <= 0) return;
-        }
+      allSongs.forEach(function(s) {
+        if (remaining <= 0) return;
+        if (seen[s.title]) return;
+        candidates.push({ title: s.title, inPlan: false, planOrder: -1, tier: 'library', song: s });
+        seen[s.title] = true;
+        remaining--;
       });
     }
 
@@ -357,9 +378,10 @@ window.SongMatchingEngine = (function() {
         // audioSimilar is always unavailable until embeddings exist
         var available = (val !== null && val !== undefined);
         if (key === 'audioSimilar' && !segment.audioEmbedding) available = false;
-        if (key === 'chordSimilar' && (!segment.chordHints || !segment.chordHints.summary)) available = false;
+        if (key === 'chordSimilar' && val === null) available = false; // null = chord data unavailable
         if (key === 'tempoProx' && !segment.bpm && !(segment.groove)) available = false;
         if (key === 'lyricsMatch' && !segment.transcript) available = false;
+        if (key === 'correction' && _accuracyLog.length === 0) available = false;
         if (key === 'continuity' && !adjacentLabels) available = false;
 
         if (available) {
@@ -445,7 +467,7 @@ window.SongMatchingEngine = (function() {
     var activeSignalNames = [];
     Object.keys(WEIGHTS).forEach(function(key) {
       if (best.signals && best.signals[key] > 0) {
-        activeSignalNames.push({ planMatch: 'plan', audioSimilar: 'audio', chordSimilar: 'chords', tempoProx: 'tempo', lyricsMatch: 'lyrics', continuity: 'continuity' }[key] || key);
+        activeSignalNames.push({ planMatch: 'plan', audioSimilar: 'audio', chordSimilar: 'chords', tempoProx: 'tempo', lyricsMatch: 'lyrics', correction: 'prior match', continuity: 'continuity' }[key] || key);
       }
     });
     var explanationFull = best.explanation.slice();
@@ -475,6 +497,7 @@ window.SongMatchingEngine = (function() {
       chordSimilar: _signalChordSimilar(segment, candidate),
       tempoProx:    _signalTempoProx(segment, candidate),
       lyricsMatch:  _signalLyricsMatch(segment, candidate),
+      correction:   _signalCorrection(segment, candidate),
       continuity:   _signalContinuity(candidate, adjacentLabels)
     };
   }
@@ -553,23 +576,95 @@ window.SongMatchingEngine = (function() {
     return score;
   }
 
-  // Signal 3: Chord similarity
+  // ── Harmonic fingerprint bank: { songId: { key, topChords, progressions, confirmedCount } }
+  var _harmonicBank = {};
+
+  function storeHarmonicFingerprint(songId, songTitle, chordData) {
+    if (!songId || !chordData || !chordData.summary) return;
+    var s = chordData.summary;
+    if (!_harmonicBank[songId]) {
+      _harmonicBank[songId] = { title: songTitle, key: null, topChords: [], progressions: [], confirmedCount: 0 };
+    }
+    var entry = _harmonicBank[songId];
+    entry.confirmedCount++;
+    if (s.topChords && s.topChords.length) {
+      // Merge chord sets
+      s.topChords.forEach(function(c) { if (entry.topChords.indexOf(c) === -1) entry.topChords.push(c); });
+    }
+    if (s.topProgressionHint) {
+      if (entry.progressions.indexOf(s.topProgressionHint) === -1) entry.progressions.push(s.topProgressionHint);
+    }
+    // Derive key from most frequent chord root
+    if (s.topChords && s.topChords.length) entry.key = s.topChords[0];
+  }
+
+  function getHarmonicBank() { return _harmonicBank; }
+
+  function loadHarmonicBank(data) {
+    if (data && typeof data === 'object') _harmonicBank = data;
+  }
+
+  // Signal 3: Chord similarity (upgraded: key match + progression match + harmonic confidence)
   function _signalChordSimilar(segment, candidate) {
-    if (!segment.chordHints || !segment.chordHints.summary) return 0;
-    var song = candidate.song;
-    if (!song || !song.key) return 0;
+    if (!segment.chordHints || !segment.chordHints.summary) return null; // null = unavailable
 
-    // Compare segment's top chords with song's known key
-    var segChords = segment.chordHints.summary.topChords || [];
-    if (!segChords.length) return 0;
+    var segSummary = segment.chordHints.summary;
+    var segChords = segSummary.topChords || [];
+    var segProgression = segSummary.topProgressionHint || '';
+    if (!segChords.length) return null;
 
-    // Simple: if song key appears in top chords, partial match
-    var songKey = song.key.replace('m', ''); // strip minor
-    var match = segChords.some(function(c) {
-      return c.replace('m', '') === songKey;
-    });
+    var songId = (candidate.song && candidate.song.songId) || _resolveSongId(candidate.title);
+    var song = candidate.song || {};
 
-    return match ? 0.6 : 0;
+    // Sub-signal 1: Key match (song's known key vs segment's detected chords)
+    var keyMatchScore = 0;
+    var songKey = song.key || '';
+    if (songKey) {
+      var keyRoot = songKey.replace(/m$/, '').replace(/#/, 'sharp').replace(/b/, 'flat');
+      var keyMatch = segChords.some(function(c) {
+        return c.replace(/m$/, '').replace(/#/, 'sharp').replace(/b/, 'flat') === keyRoot;
+      });
+      keyMatchScore = keyMatch ? 0.7 : 0;
+      // Bonus if key appears as first chord (tonic)
+      if (segChords[0] && segChords[0].replace(/m$/, '') === songKey.replace(/m$/, '')) keyMatchScore = 1.0;
+    }
+
+    // Sub-signal 2: Progression match (compare against harmonic bank)
+    var progressionScore = 0;
+    var bankEntry = _harmonicBank[songId];
+    if (bankEntry && bankEntry.topChords.length >= 2 && segChords.length >= 2) {
+      // Jaccard similarity: overlap / union of chord sets
+      var overlap = 0;
+      segChords.forEach(function(c) { if (bankEntry.topChords.indexOf(c) !== -1) overlap++; });
+      var union = new Set(segChords.concat(bankEntry.topChords)).size;
+      progressionScore = union > 0 ? overlap / union : 0;
+      // Progression string match bonus
+      if (segProgression && bankEntry.progressions.length) {
+        var progMatch = bankEntry.progressions.some(function(p) { return p === segProgression; });
+        if (progMatch) progressionScore = Math.max(progressionScore, 0.9);
+      }
+    }
+
+    // Sub-signal 3: Harmonic confidence (from chord service)
+    var harmonicConfidence = 0;
+    if (segment.chordHints.confidence === 'high') harmonicConfidence = 1.0;
+    else if (segment.chordHints.confidence === 'medium') harmonicConfidence = 0.6;
+    else harmonicConfidence = 0.3;
+
+    // Combined score: weighted average of sub-signals
+    var combined = 0;
+    var subWeights = { key: 0.4, progression: 0.4, confidence: 0.2 };
+    if (!songKey && !bankEntry) {
+      // No reference data — only confidence matters
+      combined = harmonicConfidence * 0.3; // weak signal
+    } else if (!bankEntry) {
+      // Key only, no bank
+      combined = keyMatchScore * subWeights.key + harmonicConfidence * subWeights.confidence;
+    } else {
+      combined = keyMatchScore * subWeights.key + progressionScore * subWeights.progression + harmonicConfidence * subWeights.confidence;
+    }
+
+    return Math.round(combined * 100) / 100;
   }
 
   // Signal 4: Tempo proximity
@@ -607,7 +702,18 @@ window.SongMatchingEngine = (function() {
     return 0;
   }
 
-  // Signal 6: Continuity with IMMEDIATE neighbors only (±1 segment)
+  // Signal 6: Prior correction signal
+  // If the user has previously corrected this song match in similar contexts,
+  // boost that song for similar segments.
+  function _signalCorrection(segment, candidate) {
+    // Check accuracy log for confirmed matches to this song
+    var confirmed = _accuracyLog.filter(function(e) { return e.correct && e.confirmed === candidate.title; });
+    if (confirmed.length === 0) return 0;
+    // More corrections = higher trust, capped at 0.8
+    return Math.min(0.8, confirmed.length * 0.2);
+  }
+
+  // Signal 7: Continuity with IMMEDIATE neighbors only (±1 segment)
   // No chaining: a segment's continuity score comes only from direct neighbors,
   // never from neighbors-of-neighbors. This prevents long-range propagation errors.
   // Graduated bonus by neighbor trust level:
@@ -639,9 +745,11 @@ window.SongMatchingEngine = (function() {
     }
     var explanations = {
       planMatch:    'In rehearsal plan',
-      chordSimilar: 'Chord pattern aligns with known key',
+      audioSimilar: 'Sounds like previous recordings of this song',
+      chordSimilar: val >= 0.7 ? 'Key and chords match' : 'Chord pattern partially matches',
       tempoProx:    'Tempo close to typical BPM for ' + candidate.title,
       lyricsMatch:  'Transcript contains song title words',
+      correction:   'Previously confirmed as this song',
       continuity:   'Adjacent to another ' + candidate.title + ' segment'
     };
     return explanations[key] || key;
@@ -732,6 +840,11 @@ window.SongMatchingEngine = (function() {
         groove: segment.groove
       });
     }
+
+    // Store harmonic fingerprint from confirmed segments with chord data
+    if (confirmedTitle && segment.chordHints && segment.chordHints.summary) {
+      storeHarmonicFingerprint(confirmedId, confirmedTitle, segment.chordHints);
+    }
   }
 
   // ── Dev summary helpers ─────────────────────────────────────────────────────
@@ -800,6 +913,9 @@ window.SongMatchingEngine = (function() {
     getConfidenceBreakdown: getConfidenceBreakdown,
     getSignalContributionSummary: getSignalContributionSummary,
     getMostConfusedSongs: getMostConfusedSongs,
+    storeHarmonicFingerprint: storeHarmonicFingerprint,
+    getHarmonicBank: getHarmonicBank,
+    loadHarmonicBank: loadHarmonicBank,
     WEIGHTS: WEIGHTS
   };
 
