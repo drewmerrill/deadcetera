@@ -1363,74 +1363,215 @@ function _rhHasAudio() {
 }
 
 
-// Playback for report segments — uses the session's recording if available
-// Single shared audio element — NEVER re-set src if already loaded (prevents OOM on large files)
+// Playback engine — single shared audio, pause toggle, transport bar
 var _rhSharedAudio = null;
 var _rhAudioSessionId = null;
+var _rhPlayingSegIdx = null;     // currently playing segment index
+var _rhPlayingEndSec = null;     // end boundary for current segment
+var _rhTimeUpdateFn = null;      // active timeupdate listener ref
 
-window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
-    // Reuse single audio element — critical for large files
+function _rhEnsureAudio(sessionId) {
     if (!_rhSharedAudio) {
         _rhSharedAudio = document.getElementById('rhTimelineAudio');
         if (!_rhSharedAudio) {
             _rhSharedAudio = document.createElement('audio');
             _rhSharedAudio.id = 'rhTimelineAudio';
             _rhSharedAudio.style.display = 'none';
-            _rhSharedAudio.preload = 'metadata'; // don't load full file into RAM
+            _rhSharedAudio.preload = 'metadata';
             document.body.appendChild(_rhSharedAudio);
         }
     }
-    var audio = _rhSharedAudio;
-
-    // Only set src ONCE — re-setting triggers full reload which crashes on 337MB files
-    if (_rhAudioSessionId !== sessionId || !audio.src) {
+    // Only set src ONCE — re-setting triggers full reload (OOM on large files)
+    if (_rhAudioSessionId !== sessionId || !_rhSharedAudio.src) {
         var _url = null;
-        // Check lightweight playback URL first
-        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._loadedPlaybackUrl) {
-            _url = RecordingAnalyzer._loadedPlaybackUrl;
-        } else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) {
-            _url = RecordingAnalyzer._currentAudioUrl;
-        }
-        if (!_url) {
-            if (typeof showToast === 'function') showToast('Select recording file first to enable playback');
-            return;
-        }
-        audio.src = _url;
-        audio.preload = 'none'; // stream, don't preload
+        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._loadedPlaybackUrl) _url = RecordingAnalyzer._loadedPlaybackUrl;
+        else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) _url = RecordingAnalyzer._currentAudioUrl;
+        if (!_url) { if (typeof showToast === 'function') showToast('Select recording file first to enable playback'); return false; }
+        _rhSharedAudio.src = _url;
+        _rhSharedAudio.preload = 'none';
         _rhAudioSessionId = sessionId;
     }
+    return true;
+}
 
-    // Clear previous playback highlights
+function _rhClearPlayState() {
     document.querySelectorAll('.rh-playing').forEach(function(el) { el.classList.remove('rh-playing'); });
     document.querySelectorAll('.rh-playing-btn').forEach(function(el) { el.classList.remove('rh-playing-btn'); el.textContent = '\u25B6'; });
+    if (_rhTimeUpdateFn && _rhSharedAudio) { _rhSharedAudio.removeEventListener('timeupdate', _rhTimeUpdateFn); _rhTimeUpdateFn = null; }
+    window._rhLoopActive = false;
+    _rhPlayingSegIdx = null;
+    _rhPlayingEndSec = null;
+    _rhHideTransport();
+}
+
+window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
+    var audio = _rhSharedAudio;
+
+    // ── Pause toggle: if this segment is already playing, just pause ──
+    if (audio && !audio.paused && _rhPlayingSegIdx === segIdx && segIdx !== undefined) {
+        audio.pause();
+        var btn = document.getElementById('rhPlayBtn_' + segIdx);
+        if (btn) { btn.classList.remove('rh-playing-btn'); btn.textContent = '\u25B6'; }
+        _rhUpdateTransport(); // update transport to show paused state
+        return;
+    }
+
+    // ── Resume: if same segment is paused, resume ──
+    if (audio && audio.paused && _rhPlayingSegIdx === segIdx && segIdx !== undefined
+        && audio.currentTime >= startSec && audio.currentTime < endSec) {
+        audio.play();
+        var btn2 = document.getElementById('rhPlayBtn_' + segIdx);
+        if (btn2) { btn2.classList.add('rh-playing-btn'); btn2.textContent = '\u23F8'; }
+        _rhUpdateTransport();
+        return;
+    }
+
+    // ── New segment: set up fresh playback ──
+    if (!_rhEnsureAudio(sessionId)) return;
+    audio = _rhSharedAudio;
+
+    // Stop any loop
+    window._rhLoopActive = false;
+
+    // Clear previous highlights
+    _rhClearPlayState();
+
+    // Set new play state
+    _rhPlayingSegIdx = segIdx;
+    _rhPlayingEndSec = endSec;
 
     // Highlight active row
     if (segIdx !== undefined) {
         var row = document.getElementById('rhSeg_' + segIdx);
         if (row) row.classList.add('rh-playing');
-        var btn = document.getElementById('rhPlayBtn_' + segIdx);
-        if (btn) { btn.classList.add('rh-playing-btn'); btn.textContent = '\u23F8'; }
+        var btn3 = document.getElementById('rhPlayBtn_' + segIdx);
+        if (btn3) { btn3.classList.add('rh-playing-btn'); btn3.textContent = '\u23F8'; }
     }
 
     audio.currentTime = startSec;
     audio.play();
 
-    // Stop at end + clean up highlights
+    // Show transport bar
+    _rhShowTransport(startSec, endSec, sessionId, segIdx);
+
+    // Stop at end + clean up
     var _segIdx = segIdx;
-    var check = function() {
-        if (audio.currentTime >= endSec || audio.paused) {
+    _rhTimeUpdateFn = function() {
+        _rhUpdateTransport();
+        if (audio.currentTime >= endSec) {
             audio.pause();
-            audio.removeEventListener('timeupdate', check);
-            // Remove highlights
-            if (_segIdx !== undefined) {
-                var row = document.getElementById('rhSeg_' + _segIdx);
-                if (row) row.classList.remove('rh-playing');
-                var btn = document.getElementById('rhPlayBtn_' + _segIdx);
-                if (btn) { btn.classList.remove('rh-playing-btn'); btn.textContent = '\u25B6'; }
-            }
+            _rhClearPlayState();
         }
     };
-    audio.addEventListener('timeupdate', check);
+    audio.addEventListener('timeupdate', _rhTimeUpdateFn);
+};
+
+// ── Pause/resume from transport bar ──────────────────────────────────────────
+window._rhTogglePause = function() {
+    if (!_rhSharedAudio) return;
+    if (_rhSharedAudio.paused) {
+        _rhSharedAudio.play();
+    } else {
+        _rhSharedAudio.pause();
+    }
+    _rhUpdateTransport();
+    // Update segment button icon
+    if (_rhPlayingSegIdx !== undefined && _rhPlayingSegIdx !== null) {
+        var btn = document.getElementById('rhPlayBtn_' + _rhPlayingSegIdx);
+        if (btn) {
+            btn.textContent = _rhSharedAudio.paused ? '\u25B6' : '\u23F8';
+            if (_rhSharedAudio.paused) btn.classList.remove('rh-playing-btn');
+            else btn.classList.add('rh-playing-btn');
+        }
+    }
+};
+
+// ── Skip forward/back within segment ─────────────────────────────────────────
+window._rhSkip = function(deltaSec) {
+    if (!_rhSharedAudio) return;
+    _rhSharedAudio.currentTime = Math.max(0, _rhSharedAudio.currentTime + deltaSec);
+    _rhUpdateTransport();
+};
+
+// ── Stop playback ────────────────────────────────────────────────────────────
+window._rhStopPlayback = function() {
+    if (_rhSharedAudio) _rhSharedAudio.pause();
+    _rhClearPlayState();
+};
+
+// ── Floating transport bar ───────────────────────────────────────────────────
+var _rhTransportStart = 0;
+var _rhTransportEnd = 0;
+
+function _rhShowTransport(startSec, endSec, sessionId, segIdx) {
+    _rhTransportStart = startSec;
+    _rhTransportEnd = endSec;
+
+    // Get song title from timeline data
+    var title = '';
+    var tl = (typeof GLStore !== 'undefined' && GLStore.getCurrentTimeline) ? GLStore.getCurrentTimeline() : {};
+    if (tl.data && tl.data.allSegments && segIdx !== undefined && tl.data.allSegments[segIdx]) {
+        title = tl.data.allSegments[segIdx].songTitle || tl.data.allSegments[segIdx].segType || '';
+    }
+
+    var bar = document.getElementById('rhTransportBar');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'rhTransportBar';
+        bar.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:4000;background:#1e293b;border-top:1px solid rgba(99,102,241,0.2);padding:8px 16px;display:flex;align-items:center;gap:10px;font-family:inherit;box-shadow:0 -4px 20px rgba(0,0,0,0.4)';
+        document.body.appendChild(bar);
+    }
+    bar.style.display = 'flex';
+
+    var html = '';
+    // Song title
+    html += '<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78em;font-weight:600;color:var(--text)">' + escHtml(title) + '</div>';
+    // Time
+    html += '<span id="rhTransportTime" style="font-size:0.68em;color:var(--text-dim);min-width:80px;text-align:center">' + _rhFmt(startSec) + ' / ' + _rhFmt(endSec) + '</span>';
+    // Controls
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<button onclick="_rhSkip(-10)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;padding:4px" title="Back 10s">\u23EA</button>';
+    html += '<button id="rhTransportPlayBtn" onclick="_rhTogglePause()" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:1.2em;padding:4px">\u23F8</button>';
+    html += '<button onclick="_rhSkip(10)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;padding:4px" title="Forward 10s">\u23E9</button>';
+    html += '<button onclick="_rhStopPlayback()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em;padding:4px" title="Stop">\u23F9</button>';
+    html += '</div>';
+    // Progress bar
+    html += '<div id="rhTransportProgress" onclick="_rhSeekTransport(event)" style="position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,0.06);cursor:pointer">';
+    html += '<div id="rhTransportFill" style="height:100%;width:0%;background:#667eea;border-radius:0 2px 2px 0;transition:width 0.25s"></div>';
+    html += '</div>';
+
+    bar.innerHTML = html;
+}
+
+function _rhUpdateTransport() {
+    if (!_rhSharedAudio) return;
+    var timeEl = document.getElementById('rhTransportTime');
+    var fillEl = document.getElementById('rhTransportFill');
+    var playBtn = document.getElementById('rhTransportPlayBtn');
+    if (timeEl) timeEl.textContent = _rhFmt(_rhSharedAudio.currentTime) + ' / ' + _rhFmt(_rhTransportEnd);
+    if (fillEl) {
+        var range = _rhTransportEnd - _rhTransportStart;
+        var pct = range > 0 ? Math.min(100, ((_rhSharedAudio.currentTime - _rhTransportStart) / range) * 100) : 0;
+        fillEl.style.width = pct + '%';
+    }
+    if (playBtn) playBtn.textContent = _rhSharedAudio.paused ? '\u25B6' : '\u23F8';
+}
+
+function _rhHideTransport() {
+    var bar = document.getElementById('rhTransportBar');
+    if (bar) bar.style.display = 'none';
+}
+
+// Click-to-seek on the transport progress bar
+window._rhSeekTransport = function(e) {
+    if (!_rhSharedAudio) return;
+    var bar = document.getElementById('rhTransportProgress');
+    if (!bar) return;
+    var rect = bar.getBoundingClientRect();
+    var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    var range = _rhTransportEnd - _rhTransportStart;
+    _rhSharedAudio.currentTime = _rhTransportStart + (pct * range);
+    _rhUpdateTransport();
 };
 
 // ── Lightweight file loader for playback only (no analysis, no decoding) ─────
@@ -1474,46 +1615,43 @@ window._rhLoadRecordingForPlayback = function(sessionId) {
 
 // ── Loop segment (plays repeatedly until stopped) ────────────────────────────
 window._rhLoopSegment = function(startSec, endSec, sessionId, segIdx) {
-    // Reuse shared audio element (same as _rhPlaySegment)
-    if (!_rhSharedAudio) {
-        _rhSharedAudio = document.getElementById('rhTimelineAudio');
-        if (!_rhSharedAudio) {
-            _rhSharedAudio = document.createElement('audio');
-            _rhSharedAudio.id = 'rhTimelineAudio';
-            _rhSharedAudio.style.display = 'none';
-            _rhSharedAudio.preload = 'metadata';
-            document.body.appendChild(_rhSharedAudio);
-        }
+    // Toggle off if already looping
+    if (window._rhLoopActive && _rhSharedAudio && !_rhSharedAudio.paused) {
+        window._rhLoopActive = false;
+        _rhSharedAudio.pause();
+        _rhClearPlayState();
+        if (typeof showToast === 'function') showToast('Loop stopped');
+        return;
     }
+
+    if (!_rhEnsureAudio(sessionId)) return;
     var audio = _rhSharedAudio;
-    if (_rhAudioSessionId !== sessionId || !audio.src) {
-        var _lUrl = null;
-        if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._loadedPlaybackUrl) _lUrl = RecordingAnalyzer._loadedPlaybackUrl;
-        else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) _lUrl = RecordingAnalyzer._currentAudioUrl;
-        if (!_lUrl) { if (typeof showToast === 'function') showToast('Select recording file first'); return; }
-        audio.src = _lUrl;
-        audio.preload = 'none';
-        _rhAudioSessionId = sessionId;
-    }
 
     // Clear previous state
-    document.querySelectorAll('.rh-playing').forEach(function(el) { el.classList.remove('rh-playing'); });
-    if (window._rhLoopActive) { window._rhLoopActive = false; audio.pause(); if (typeof showToast === 'function') showToast('Loop stopped'); return; }
+    _rhClearPlayState();
 
     window._rhLoopActive = true;
+    _rhPlayingSegIdx = segIdx;
+    _rhPlayingEndSec = endSec;
+
     if (segIdx !== undefined) {
         var row = document.getElementById('rhSeg_' + segIdx);
         if (row) row.classList.add('rh-playing');
     }
-    if (typeof showToast === 'function') showToast('\uD83D\uDD01 Looping ' + _rhFmt(startSec) + '\u2013' + _rhFmt(endSec) + ' (click Loop again to stop)', 3000);
+    if (typeof showToast === 'function') showToast('\uD83D\uDD01 Looping ' + _rhFmt(startSec) + '\u2013' + _rhFmt(endSec), 3000);
 
     audio.currentTime = startSec;
     audio.play();
-    var _loopCheck = function() {
-        if (!window._rhLoopActive) { audio.removeEventListener('timeupdate', _loopCheck); return; }
+
+    // Show transport bar
+    _rhShowTransport(startSec, endSec, sessionId, segIdx);
+
+    _rhTimeUpdateFn = function() {
+        _rhUpdateTransport();
+        if (!window._rhLoopActive) { audio.removeEventListener('timeupdate', _rhTimeUpdateFn); _rhTimeUpdateFn = null; return; }
         if (audio.currentTime >= endSec) { audio.currentTime = startSec; }
     };
-    audio.addEventListener('timeupdate', _loopCheck);
+    audio.addEventListener('timeupdate', _rhTimeUpdateFn);
 };
 
 // ── Compare attempts side-by-side ────────────────────────────────────────────
