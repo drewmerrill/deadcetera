@@ -3615,6 +3615,224 @@
     };
   }
 
+  // ── Rehearsal Scheduling Engine ─────────────────────────────────────────────
+  // Recommends dates based on: availability, spacing from existing rehearsals,
+  // gig proximity, and detected/configured cadence.
+
+  // Cadence settings — persisted in Firebase meta
+  var _defaultCadenceDays = 7; // once per week
+  var CADENCE_PRESETS = {
+    weekly:     { label: 'Once a week',     days: 7 },
+    biweekly:   { label: 'Twice a week',    days: 3.5 },
+    every2weeks:{ label: 'Every 2 weeks',   days: 14 },
+    custom:     { label: 'Custom',          days: null }
+  };
+
+  async function getRehearsalCadence() {
+    var meta = await _dbGet('_meta/rehearsal_cadence');
+    if (meta && meta.preset && CADENCE_PRESETS[meta.preset]) {
+      return { preset: meta.preset, days: meta.customDays || CADENCE_PRESETS[meta.preset].days || _defaultCadenceDays };
+    }
+    return { preset: 'weekly', days: _defaultCadenceDays };
+  }
+
+  async function setRehearsalCadence(preset, customDays) {
+    var days = (preset === 'custom' && customDays) ? customDays : (CADENCE_PRESETS[preset] ? CADENCE_PRESETS[preset].days : _defaultCadenceDays);
+    var data = { preset: preset, customDays: customDays || null, days: days, updatedAt: new Date().toISOString() };
+    await _dbSet('_meta/rehearsal_cadence', data);
+    return data;
+  }
+
+  // Auto-detect cadence from past rehearsal dates
+  function detectCadenceFromHistory(rehearsalDates) {
+    if (!rehearsalDates || rehearsalDates.length < 2) return { detected: false, avgDays: _defaultCadenceDays };
+    var sorted = rehearsalDates.slice().sort();
+    var gaps = [];
+    for (var i = 1; i < sorted.length; i++) {
+      var d1 = new Date(sorted[i - 1] + 'T12:00:00');
+      var d2 = new Date(sorted[i] + 'T12:00:00');
+      var diff = Math.round((d2 - d1) / 86400000);
+      if (diff > 0 && diff < 60) gaps.push(diff); // ignore > 60 day gaps (band hiatus)
+    }
+    if (gaps.length === 0) return { detected: false, avgDays: _defaultCadenceDays };
+    var avg = Math.round(gaps.reduce(function(a, b) { return a + b; }, 0) / gaps.length);
+    return { detected: true, avgDays: avg, gaps: gaps, sampleSize: gaps.length };
+  }
+
+  // Score a candidate date for scheduling
+  function scoreRehearsalDate(candidateDateStr, opts) {
+    // opts: { blocks, members, existingRehearsalDates, nextGigDate, cadenceDays, overrideSpacing }
+    var score = 0;
+    var reasons = [];
+    var penalties = [];
+
+    // 1. Availability (0-100)
+    var strength = computeDateStrength(opts.blocks, opts.members, candidateDateStr);
+    var availScore = strength.score; // 0-100
+    score += availScore * 0.40; // 40% weight
+
+    // 2. Spacing penalty — distance from nearest existing rehearsal
+    var candidateMs = new Date(candidateDateStr + 'T12:00:00').getTime();
+    var minGapDays = 999;
+    var nearestDate = null;
+    if (opts.existingRehearsalDates && opts.existingRehearsalDates.length) {
+      opts.existingRehearsalDates.forEach(function(d) {
+        var gap = Math.abs(candidateMs - new Date(d + 'T12:00:00').getTime()) / 86400000;
+        if (gap < minGapDays) { minGapDays = gap; nearestDate = d; }
+      });
+    }
+    var cadenceDays = opts.cadenceDays || _defaultCadenceDays;
+    var minAcceptableGap = Math.max(2, Math.floor(cadenceDays * 0.6)); // 60% of cadence as minimum
+    var spacingScore = 0;
+    if (!opts.overrideSpacing && minGapDays < minAcceptableGap) {
+      // Too close — heavy penalty
+      spacingScore = 0;
+      penalties.push('Too close to rehearsal on ' + _fmtDateShort(nearestDate) + ' (' + Math.round(minGapDays) + ' days)');
+    } else if (minGapDays <= cadenceDays * 1.5) {
+      // Within normal range — good
+      spacingScore = 100;
+    } else {
+      // Overdue — still good but slightly less ideal than on-cadence
+      spacingScore = 80;
+      reasons.push('Overdue \u2014 last rehearsal was ' + Math.round(minGapDays) + ' days ago');
+    }
+    score += spacingScore * 0.30; // 30% weight
+
+    // 3. Gig proximity bonus (0-100)
+    var gigScore = 50; // neutral default
+    if (opts.nextGigDate) {
+      var daysToGig = (new Date(opts.nextGigDate + 'T12:00:00').getTime() - candidateMs) / 86400000;
+      if (daysToGig >= 2 && daysToGig <= 14) {
+        gigScore = 100; // sweet spot: rehearse 2-14 days before gig
+        reasons.push('Good timing \u2014 ' + Math.round(daysToGig) + ' days before gig');
+      } else if (daysToGig >= 0 && daysToGig < 2) {
+        gigScore = 60; // day-of or day-before: possible but not ideal
+      } else if (daysToGig > 14 && daysToGig <= 30) {
+        gigScore = 70;
+      }
+    }
+    score += gigScore * 0.20; // 20% weight
+
+    // 4. Day-of-week preference (weekday evenings are typical)
+    var dow = new Date(candidateDateStr + 'T12:00:00').getDay();
+    var dayScore = (dow >= 1 && dow <= 4) ? 80 : (dow === 0 || dow === 5) ? 60 : 40; // Mon-Thu best, Fri/Sun ok, Sat less
+    score += dayScore * 0.10; // 10% weight
+
+    // Build label
+    var label = 'Good';
+    var color = '#22c55e';
+    if (penalties.length > 0) { label = 'Too close'; color = '#f59e0b'; }
+    else if (strength.label === 'Not viable') { label = 'Not viable'; color = '#64748b'; }
+    else if (strength.label === 'Risky') { label = 'Risky'; color = '#ef4444'; }
+    else if (score >= 70) { label = 'Great'; color = '#22c55e'; }
+    else if (score >= 50) { label = 'Good'; color = '#84cc16'; }
+    else { label = 'Workable'; color = '#f59e0b'; }
+
+    return {
+      date: candidateDateStr,
+      score: Math.round(score),
+      label: label, color: color,
+      availability: strength,
+      spacingDays: minGapDays === 999 ? null : Math.round(minGapDays),
+      nearestRehearsal: nearestDate,
+      penalties: penalties,
+      reasons: reasons,
+      tooClose: penalties.length > 0
+    };
+  }
+
+  function _fmtDateShort(dateStr) {
+    if (!dateStr) return '';
+    var d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  // Generate ranked date recommendations for the next 21 days
+  async function getRehearsalDateRecommendations(opts) {
+    opts = opts || {};
+    var blocks = await getScheduleBlocks();
+    var members = _memberKeys().map(function(k) {
+      var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+      return bm[k] ? bm[k].name : k;
+    });
+
+    // Load existing rehearsal dates
+    var existingDates = [];
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        var snap = await db.ref(bandPath('rehearsals')).once('value');
+        var val = snap.val();
+        if (val) {
+          Object.values(val).forEach(function(r) { if (r.date) existingDates.push(r.date); });
+        }
+      }
+    } catch (e) {}
+    // Also include session dates
+    try {
+      var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db2 && typeof bandPath === 'function') {
+        var snap2 = await db2.ref(bandPath('rehearsal_sessions')).once('value');
+        var val2 = snap2.val();
+        if (val2) {
+          Object.values(val2).forEach(function(s) {
+            if (s.date) {
+              var d = s.date.split('T')[0];
+              if (existingDates.indexOf(d) === -1) existingDates.push(d);
+            }
+          });
+        }
+      }
+    } catch (e) {}
+
+    // Load next gig
+    var nextGigDate = null;
+    try {
+      var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+      var today = new Date().toISOString().split('T')[0];
+      var futureGigs = gigs.filter(function(g) { return g.date && g.date >= today; }).sort(function(a, b) { return a.date.localeCompare(b.date); });
+      if (futureGigs.length) nextGigDate = futureGigs[0].date;
+    } catch (e) {}
+
+    // Get cadence
+    var cadence = await getRehearsalCadence();
+    var detectedCadence = detectCadenceFromHistory(existingDates);
+    var effectiveCadenceDays = cadence.days || detectedCadence.avgDays || _defaultCadenceDays;
+
+    // Score each day in the next 21 days
+    var todayStr = new Date().toISOString().split('T')[0];
+    var candidates = [];
+    for (var i = 1; i <= 21; i++) {
+      var d = new Date();
+      d.setDate(d.getDate() + i);
+      var dateStr = d.toISOString().split('T')[0];
+      var scored = scoreRehearsalDate(dateStr, {
+        blocks: blocks,
+        members: members,
+        existingRehearsalDates: existingDates,
+        nextGigDate: nextGigDate,
+        cadenceDays: effectiveCadenceDays,
+        overrideSpacing: opts.overrideSpacing || false
+      });
+      candidates.push(scored);
+    }
+
+    // Sort by score desc, filter out non-viable
+    candidates.sort(function(a, b) { return b.score - a.score; });
+    var viable = candidates.filter(function(c) { return c.availability.label !== 'Not viable'; });
+    var tooClose = candidates.filter(function(c) { return c.tooClose; });
+
+    return {
+      primary: viable.length > 0 ? viable[0] : null,
+      alternatives: viable.slice(1, 4),
+      tooClose: tooClose,
+      allCandidates: candidates,
+      cadence: { setting: cadence, detected: detectedCadence, effectiveDays: effectiveCadenceDays },
+      nextGigDate: nextGigDate,
+      existingRehearsalCount: existingDates.length
+    };
+  }
+
   // BAND ROLES + BACKUP PLAYERS — role coverage intelligence
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -4316,6 +4534,14 @@
     computeDateStrength:       computeDateStrength,
     isHardConflict:            isHardConflict,
     isSoftConflict:            isSoftConflict,
+
+    // Rehearsal Scheduling Engine
+    CADENCE_PRESETS:                  CADENCE_PRESETS,
+    getRehearsalCadence:              getRehearsalCadence,
+    setRehearsalCadence:              setRehearsalCadence,
+    detectCadenceFromHistory:         detectCadenceFromHistory,
+    scoreRehearsalDate:               scoreRehearsalDate,
+    getRehearsalDateRecommendations:  getRehearsalDateRecommendations,
 
     // Band Roles + Backup Players
     BAND_ROLES:                BAND_ROLES,

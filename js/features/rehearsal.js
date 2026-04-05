@@ -3341,7 +3341,9 @@ async function rhShowEventModal(eventId) {
     modal.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.7);display:flex;align-items:flex-end;justify-content:center';
     modal.innerHTML =
         '<div style="background:#1a2340;border-radius:16px 16px 0 0;padding:20px;width:100%;max-width:500px;max-height:80vh;overflow-y:auto">' +
-            '<div style="font-weight:700;font-size:1em;color:var(--text);margin-bottom:16px">' + (existing ? '✏️ Edit Rehearsal' : '🎯 New Rehearsal') + '</div>' +
+            '<div style="font-weight:700;font-size:1em;color:var(--text);margin-bottom:16px">' + (existing ? 'Edit Rehearsal' : 'Schedule Rehearsal') + '</div>' +
+            // Date recommendations area (populated async)
+            (!existing ? '<div id="rhDateRecs" style="margin-bottom:12px"><div style="font-size:0.72em;color:var(--text-dim);padding:8px 0">Finding the best date...</div></div>' : '') +
             '<div style="display:flex;flex-direction:column;gap:10px">' +
                 '<div><label style="font-size:0.78em;color:var(--text-muted);display:block;margin-bottom:4px">Date *</label>' +
                 '<input type="date" id="rhDate" value="' + (existing ? existing.date : today) + '" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#f1f5f9;padding:9px 11px;font-size:0.9em;font-family:inherit;color-scheme:dark"></div>' +
@@ -3353,13 +3355,102 @@ async function rhShowEventModal(eventId) {
                 '<textarea id="rhNotes" rows="2" placeholder="e.g. Focus on new Phish tunes" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);border-radius:8px;color:#f1f5f9;padding:9px 11px;font-size:0.9em;font-family:inherit;resize:vertical">' + (existing ? (existing.notes || '') : '') + '</textarea></div>' +
             '</div>' +
             '<div style="display:flex;gap:8px;margin-top:16px">' +
-                '<button onclick="rhSaveEvent(\'' + (eventId || '') + '\')" class="btn btn-primary" style="flex:2">💾 ' + (existing ? 'Save Changes' : 'Create Rehearsal') + '</button>' +
+                '<button onclick="rhSaveEvent(\'' + (eventId || '') + '\')" class="btn btn-primary" style="flex:2">' + (existing ? 'Save Changes' : 'Schedule It') + '</button>' +
                 '<button onclick="document.getElementById(\'rhModal\')?.remove()" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--text-muted);border-radius:8px;padding:10px;cursor:pointer;font-size:0.9em">Cancel</button>' +
             '</div>' +
         '</div>';
     document.body.appendChild(modal);
     modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
+
+    // Load date recommendations async (only for new events)
+    if (!existing && typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations) {
+        _rhRenderDateRecommendations();
+    }
 }
+
+// Render date recommendations inside the create modal
+async function _rhRenderDateRecommendations(overrideSpacing) {
+    var el = document.getElementById('rhDateRecs');
+    if (!el) return;
+
+    var recs;
+    try {
+        recs = await GLStore.getRehearsalDateRecommendations({ overrideSpacing: !!overrideSpacing });
+    } catch (e) {
+        el.innerHTML = '';
+        return;
+    }
+
+    if (!recs.primary) {
+        el.innerHTML = '<div style="font-size:0.72em;color:var(--text-dim);padding:4px 0">No dates available in the next 3 weeks.</div>';
+        return;
+    }
+
+    var html = '';
+
+    // Cadence info
+    var cadenceLabel = recs.cadence.detected.detected
+        ? 'Based on your pattern: every ~' + recs.cadence.effectiveDays + ' days'
+        : 'Assuming weekly rehearsals';
+    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:6px">' + cadenceLabel + '</div>';
+
+    // Primary recommendation
+    var p = recs.primary;
+    var pDate = new Date(p.date + 'T12:00:00');
+    var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    html += '<div onclick="_rhPickRecommendedDate(\'' + p.date + '\')" style="padding:10px 12px;border-radius:8px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04);cursor:pointer;margin-bottom:6px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between">';
+    html += '<div>';
+    html += '<div style="font-size:0.85em;font-weight:700;color:var(--text)">' + pLabel + '</div>';
+    html += '<div style="font-size:0.65em;color:var(--text-dim);margin-top:2px">';
+    if (p.reasons.length) html += p.reasons[0];
+    else html += p.availability.available + '/' + p.availability.total + ' available';
+    html += '</div>';
+    html += '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px">';
+    html += '<span style="font-size:0.65em;font-weight:700;color:' + p.color + '">' + p.label + '</span>';
+    html += '<span style="font-size:0.72em;color:#22c55e">Use this date</span>';
+    html += '</div>';
+    html += '</div></div>';
+
+    // Alternatives (collapsed)
+    if (recs.alternatives.length) {
+        html += '<details style="margin-bottom:6px">';
+        html += '<summary style="font-size:0.68em;color:var(--text-dim);cursor:pointer;padding:2px 0;list-style:none">See ' + recs.alternatives.length + ' other option' + (recs.alternatives.length > 1 ? 's' : '') + '</summary>';
+        recs.alternatives.forEach(function(alt) {
+            var aDate = new Date(alt.date + 'T12:00:00');
+            var aLabel = aDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            var aInfo = alt.tooClose ? 'Close to existing rehearsal' : (alt.availability.available + '/' + alt.availability.total + ' available');
+            html += '<div onclick="_rhPickRecommendedDate(\'' + alt.date + '\')" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;margin-top:3px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02)">';
+            html += '<div>';
+            html += '<span style="font-size:0.78em;color:var(--text)">' + aLabel + '</span>';
+            html += '<span style="font-size:0.62em;color:var(--text-dim);margin-left:6px">' + aInfo + '</span>';
+            html += '</div>';
+            html += '<span style="font-size:0.62em;font-weight:600;color:' + alt.color + '">' + alt.label + '</span>';
+            html += '</div>';
+        });
+        html += '</details>';
+    }
+
+    // Too-close dates warning
+    var tooCloseNotShown = recs.tooClose.filter(function(c) {
+        return !recs.alternatives.some(function(a) { return a.date === c.date; }) && c.date !== recs.primary.date;
+    });
+    if (tooCloseNotShown.length > 0 && !overrideSpacing) {
+        html += '<div style="font-size:0.62em;color:#f59e0b;margin-top:4px">';
+        html += tooCloseNotShown.length + ' date' + (tooCloseNotShown.length > 1 ? 's' : '') + ' skipped (too close to existing rehearsal). ';
+        html += '<span onclick="_rhRenderDateRecommendations(true)" style="color:#818cf8;cursor:pointer;text-decoration:underline">Allow extra this week</span>';
+        html += '</div>';
+    }
+
+    el.innerHTML = html;
+}
+
+// Pick a recommended date — fill into the date input
+window._rhPickRecommendedDate = function(dateStr) {
+    var input = document.getElementById('rhDate');
+    if (input) input.value = dateStr;
+};
 
 async function rhSaveEvent(eventId) {
     if (!requireSignIn()) return;
