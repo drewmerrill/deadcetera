@@ -3888,6 +3888,12 @@
       return c.availability.label !== 'Not viable' && !c.tooClose;
     });
 
+    // Defensive: viable must never contain tooClose entries
+    if (viable.some(function(c) { return c.tooClose; })) {
+      console.error('[Scheduling] BUG: viable list contains tooClose entry — filtering failed');
+      viable = viable.filter(function(c) { return !c.tooClose; });
+    }
+
     // Momentum detection — streak vs gap awareness (past dates only)
     var momentum = { label: null, type: 'neutral' };
     var todayStr = new Date().toISOString().split('T')[0];
@@ -3921,6 +3927,67 @@
       existingRehearsalCount: existingDates.length,
       momentum: momentum
     };
+  }
+
+  // ── Scheduling self-test (call via GLStore._testSchedulingSpacing()) ──────
+  function _testSchedulingSpacing() {
+    var results = [];
+    var pass = function(name) { results.push({ name: name, ok: true }); };
+    var fail = function(name, msg) { results.push({ name: name, ok: false, msg: msg }); };
+
+    // Test 1: Future rehearsal blocks nearby dates
+    var today = new Date();
+    var futureDate = new Date(today); futureDate.setDate(today.getDate() + 7);
+    var futureDateStr = futureDate.toISOString().split('T')[0];
+    var nearbyDate = new Date(today); nearbyDate.setDate(today.getDate() + 6);
+    var nearbyDateStr = nearbyDate.toISOString().split('T')[0];
+    var scored = scoreRehearsalDate(nearbyDateStr, {
+      blocks: [], members: [], existingRehearsalDates: [futureDateStr],
+      nextGigDate: null, cadenceDays: 7, overrideSpacing: false, preferredDays: []
+    });
+    if (scored.tooClose) pass('future rehearsal blocks nearby date');
+    else fail('future rehearsal blocks nearby date', 'tooClose=' + scored.tooClose + ' for gap=1 day');
+
+    // Test 2: Far date is not blocked
+    var farDate = new Date(today); farDate.setDate(today.getDate() + 14);
+    var farDateStr = farDate.toISOString().split('T')[0];
+    var scored2 = scoreRehearsalDate(farDateStr, {
+      blocks: [], members: [], existingRehearsalDates: [futureDateStr],
+      nextGigDate: null, cadenceDays: 7, overrideSpacing: false, preferredDays: []
+    });
+    if (!scored2.tooClose) pass('far date not blocked');
+    else fail('far date not blocked', 'tooClose=true for gap=7 days');
+
+    // Test 3: Override allows nearby dates
+    var scored3 = scoreRehearsalDate(nearbyDateStr, {
+      blocks: [], members: [], existingRehearsalDates: [futureDateStr],
+      nextGigDate: null, cadenceDays: 7, overrideSpacing: true, preferredDays: []
+    });
+    if (!scored3.tooClose) pass('override allows nearby date');
+    else fail('override allows nearby date', 'tooClose=true with overrideSpacing');
+
+    // Test 4: Override nearby date has lower spacing score
+    if (scored3.score <= scored2.score || scored3.reasons.some(function(r) { return r.match(/usual schedule/i); })) {
+      pass('override nearby has reduced spacing impact');
+    } else {
+      fail('override nearby has reduced spacing impact', 'overridden date scored higher than far date');
+    }
+
+    // Test 5: Penalty text for future date uses future tense
+    if (scored.penalties.length && scored.penalties[0].match(/away\)/)) {
+      pass('future date penalty uses future tense');
+    } else {
+      fail('future date penalty uses future tense', 'penalty: ' + (scored.penalties[0] || 'none'));
+    }
+
+    // Summary
+    var passed = results.filter(function(r) { return r.ok; }).length;
+    var failed = results.filter(function(r) { return !r.ok; }).length;
+    console.log('[SchedulingTest] ' + passed + '/' + results.length + ' passed' + (failed ? ' (' + failed + ' FAILED)' : ''));
+    results.forEach(function(r) {
+      console.log('  ' + (r.ok ? '\u2713' : '\u2717') + ' ' + r.name + (r.msg ? ' — ' + r.msg : ''));
+    });
+    return { passed: passed, failed: failed, results: results };
   }
 
   // BAND ROLES + BACKUP PLAYERS — role coverage intelligence
@@ -4626,6 +4693,7 @@
     isSoftConflict:            isSoftConflict,
 
     // Rehearsal Scheduling Engine
+    _testSchedulingSpacing:           _testSchedulingSpacing,
     CADENCE_PRESETS:                  CADENCE_PRESETS,
     getRehearsalCadence:              getRehearsalCadence,
     setRehearsalCadence:              setRehearsalCadence,

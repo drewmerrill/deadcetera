@@ -3764,7 +3764,7 @@ async function _rhRenderDateRecommendations(overrideSpacing) {
         recs.alternatives.forEach(function(alt) {
             var aDate = new Date(alt.date + 'T12:00:00');
             var aLabel = aDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-            var aReason = alt.tooClose && alt.penalties.length ? alt.penalties[0] : (alt.reasons.length ? alt.reasons[0] : (alt.availability.available + '/' + alt.availability.total + ' free'));
+            var aReason = alt.reasons.length ? alt.reasons[0] : (alt.availability.available + '/' + alt.availability.total + ' free');
             html += '<div onclick="_rhPickRecommendedDate(\'' + alt.date + '\',this)" style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;margin-top:3px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);cursor:pointer;background:rgba(255,255,255,0.02);transition:border-color 0.2s,background 0.2s">';
             html += '<div style="min-width:0"><div style="font-size:0.78em;color:var(--text)">' + aLabel + '</div>';
             html += '<div style="font-size:0.56em;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(aReason) + '</div></div>';
