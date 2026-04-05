@@ -312,6 +312,257 @@
     },
   };
 
+  // ─── BPM Time Series ────────────────────────────────────────────────────────
+  // Derives windowed BPM values from pre-computed IOIs (no re-analysis needed).
+  // Used by the Pocket Meter graph in the timeline.
+
+  const PocketMeterTimeSeries = {
+    /**
+     * Compute BPM at sliding windows across a segment's IOIs.
+     * @param {object} groove - seg.groove object with iois, medianIOI, targetBeatMs
+     * @param {number} startSec - segment start time in seconds
+     * @param {number} targetBPM - song's target BPM
+     * @param {number} [windowBeats=8] - number of beats per window
+     * @returns {{ points: Array<{timeSec, bpm, deviation}>, avgBPM, variance, stability,
+     *             rushing, dragging, problemZones: Array<{startSec, endSec, avgBPM, type}> }}
+     */
+    compute(groove, startSec, targetBPM, windowBeats) {
+      if (!groove || !groove.iois || groove.iois.length < 4) return null;
+      windowBeats = windowBeats || 8;
+
+      var iois = groove.iois;
+      var targetBeatMs = 60000 / targetBPM;
+      var points = [];
+      var cumulativeMs = 0;
+
+      // Slide window across IOIs
+      for (var i = 0; i <= iois.length - windowBeats; i++) {
+        var windowSum = 0;
+        for (var j = i; j < i + windowBeats; j++) windowSum += iois[j];
+        var avgIOI = windowSum / windowBeats;
+        var bpm = 60000 / avgIOI;
+        var deviation = bpm - targetBPM;
+
+        // Time position: center of window
+        var windowStartMs = 0;
+        for (var k = 0; k < i; k++) windowStartMs += iois[k];
+        var windowCenterMs = windowStartMs + (windowSum / 2);
+        var timeSec = startSec + (windowCenterMs / 1000);
+
+        points.push({ timeSec: Math.round(timeSec * 10) / 10, bpm: Math.round(bpm * 10) / 10, deviation: Math.round(deviation * 10) / 10 });
+      }
+
+      if (points.length === 0) return null;
+
+      // Aggregate metrics
+      var bpms = points.map(function(p) { return p.bpm; });
+      var avgBPM = Math.round(bpms.reduce(function(a, b) { return a + b; }, 0) / bpms.length * 10) / 10;
+      var variance = 0;
+      for (var v = 0; v < bpms.length; v++) variance += Math.pow(bpms[v] - avgBPM, 2);
+      variance = Math.round(Math.sqrt(variance / bpms.length) * 10) / 10;
+      var stability = Math.round(Math.max(0, 100 - (variance / 5) * 100));
+      var avgDeviation = avgBPM - targetBPM;
+      var rushing = avgDeviation > 2;
+      var dragging = avgDeviation < -2;
+
+      // Detect problem zones: consecutive windows with deviation > threshold
+      var threshold = Math.max(3, targetBPM * 0.03); // 3% of target BPM or 3 BPM, whichever is larger
+      var problemZones = [];
+      var zoneStart = null;
+      var zoneBPMs = [];
+      for (var z = 0; z < points.length; z++) {
+        var absDev = Math.abs(points[z].deviation);
+        if (absDev > threshold) {
+          if (zoneStart === null) { zoneStart = z; zoneBPMs = []; }
+          zoneBPMs.push(points[z].bpm);
+        } else {
+          if (zoneStart !== null && (z - zoneStart) >= 2) {
+            var zAvg = zoneBPMs.reduce(function(a, b) { return a + b; }, 0) / zoneBPMs.length;
+            problemZones.push({
+              startSec: points[zoneStart].timeSec,
+              endSec: points[z - 1].timeSec,
+              avgBPM: Math.round(zAvg * 10) / 10,
+              type: zAvg > targetBPM ? 'rushing' : 'dragging'
+            });
+          }
+          zoneStart = null;
+        }
+      }
+      // Close trailing zone
+      if (zoneStart !== null && (points.length - zoneStart) >= 2) {
+        var zAvg2 = zoneBPMs.reduce(function(a, b) { return a + b; }, 0) / zoneBPMs.length;
+        problemZones.push({
+          startSec: points[zoneStart].timeSec,
+          endSec: points[points.length - 1].timeSec,
+          avgBPM: Math.round(zAvg2 * 10) / 10,
+          type: zAvg2 > targetBPM ? 'rushing' : 'dragging'
+        });
+      }
+
+      return {
+        points: points,
+        avgBPM: avgBPM,
+        variance: variance,
+        stability: stability,
+        rushing: rushing,
+        dragging: dragging,
+        deviation: Math.round(avgDeviation * 10) / 10,
+        targetBPM: targetBPM,
+        problemZones: problemZones
+      };
+    },
+
+    /**
+     * Generate SVG line chart for BPM time series.
+     * @param {object} ts - output of compute()
+     * @param {number} width - chart width in px
+     * @param {number} height - chart height in px
+     * @returns {string} SVG markup
+     */
+    renderSVG(ts, width, height) {
+      if (!ts || !ts.points.length) return '';
+      width = width || 300;
+      height = height || 80;
+      var pad = { top: 8, right: 8, bottom: 16, left: 32 };
+      var w = width - pad.left - pad.right;
+      var h = height - pad.top - pad.bottom;
+
+      var minTime = ts.points[0].timeSec;
+      var maxTime = ts.points[ts.points.length - 1].timeSec;
+      var timeRange = maxTime - minTime || 1;
+
+      // BPM range: center on target, expand to fit data
+      var bpms = ts.points.map(function(p) { return p.bpm; });
+      var minBPM = Math.min.apply(null, bpms.concat([ts.targetBPM - 5]));
+      var maxBPM = Math.max.apply(null, bpms.concat([ts.targetBPM + 5]));
+      var bpmRange = maxBPM - minBPM || 10;
+
+      function x(timeSec) { return pad.left + ((timeSec - minTime) / timeRange) * w; }
+      function y(bpm) { return pad.top + h - ((bpm - minBPM) / bpmRange) * h; }
+
+      var svg = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" style="display:block">';
+
+      // Problem zone highlights
+      ts.problemZones.forEach(function(z) {
+        var zx1 = x(z.startSec);
+        var zx2 = x(z.endSec);
+        var color = z.type === 'rushing' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)';
+        svg += '<rect x="' + zx1 + '" y="' + pad.top + '" width="' + Math.max(2, zx2 - zx1) + '" height="' + h + '" fill="' + color + '" rx="2"/>';
+      });
+
+      // Target BPM reference line
+      var ty = y(ts.targetBPM);
+      svg += '<line x1="' + pad.left + '" y1="' + ty + '" x2="' + (width - pad.right) + '" y2="' + ty + '" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>';
+      svg += '<text x="' + (pad.left - 2) + '" y="' + (ty + 3) + '" fill="#475569" font-size="8" text-anchor="end">' + ts.targetBPM + '</text>';
+
+      // BPM curve
+      var pathD = '';
+      ts.points.forEach(function(p, i) {
+        var px = x(p.timeSec);
+        var py = y(p.bpm);
+        pathD += (i === 0 ? 'M' : 'L') + px.toFixed(1) + ',' + py.toFixed(1);
+      });
+      // Gradient: green when near target, shifts to amber/red on deviation
+      svg += '<path d="' + pathD + '" fill="none" stroke="#667eea" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>';
+
+      // Clickable problem zone markers
+      ts.problemZones.forEach(function(z, zi) {
+        var zx = x((z.startSec + z.endSec) / 2);
+        var zy = pad.top + 4;
+        var markerColor = z.type === 'rushing' ? '#ef4444' : '#f59e0b';
+        var label = z.type === 'rushing' ? '\u2191' : '\u2193';
+        svg += '<circle cx="' + zx + '" cy="' + zy + '" r="5" fill="' + markerColor + '" opacity="0.8" style="cursor:pointer" '
+          + 'onclick="_rhJumpToTime(' + z.startSec.toFixed(1) + ')" />';
+        svg += '<text x="' + zx + '" y="' + (zy + 3) + '" fill="white" font-size="7" text-anchor="middle" style="pointer-events:none">' + label + '</text>';
+      });
+
+      // Y-axis labels
+      svg += '<text x="' + (pad.left - 2) + '" y="' + (pad.top + 6) + '" fill="#475569" font-size="7" text-anchor="end">' + Math.round(maxBPM) + '</text>';
+      svg += '<text x="' + (pad.left - 2) + '" y="' + (height - pad.bottom + 2) + '" fill="#475569" font-size="7" text-anchor="end">' + Math.round(minBPM) + '</text>';
+
+      // Time labels
+      svg += '<text x="' + pad.left + '" y="' + (height - 2) + '" fill="#475569" font-size="7">' + _fmtSec(minTime) + '</text>';
+      svg += '<text x="' + (width - pad.right) + '" y="' + (height - 2) + '" fill="#475569" font-size="7" text-anchor="end">' + _fmtSec(maxTime) + '</text>';
+
+      svg += '</svg>';
+      return svg;
+    },
+
+    /**
+     * Render compare overlay: multiple BPM curves on one chart.
+     * @param {Array<{ts: object, label: string, color: string}>} series
+     * @param {number} width
+     * @param {number} height
+     * @returns {string} SVG markup
+     */
+    renderCompareSVG(series, width, height) {
+      if (!series || !series.length) return '';
+      width = width || 300;
+      height = height || 100;
+      var pad = { top: 8, right: 8, bottom: 20, left: 32 };
+      var w = width - pad.left - pad.right;
+      var h = height - pad.top - pad.bottom;
+      var targetBPM = series[0].ts.targetBPM;
+
+      // Find global ranges across all series
+      var allBPMs = [];
+      var maxDur = 0;
+      series.forEach(function(s) {
+        s.ts.points.forEach(function(p) { allBPMs.push(p.bpm); });
+        var dur = s.ts.points[s.ts.points.length - 1].timeSec - s.ts.points[0].timeSec;
+        if (dur > maxDur) maxDur = dur;
+      });
+      var minBPM = Math.min.apply(null, allBPMs.concat([targetBPM - 5]));
+      var maxBPM = Math.max.apply(null, allBPMs.concat([targetBPM + 5]));
+      var bpmRange = maxBPM - minBPM || 10;
+
+      function x(relSec) { return pad.left + (relSec / (maxDur || 1)) * w; }
+      function y(bpm) { return pad.top + h - ((bpm - minBPM) / bpmRange) * h; }
+
+      var svg = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '" style="display:block">';
+
+      // Target line
+      var ty = y(targetBPM);
+      svg += '<line x1="' + pad.left + '" y1="' + ty + '" x2="' + (width - pad.right) + '" y2="' + ty + '" stroke="#334155" stroke-width="1" stroke-dasharray="4,3"/>';
+      svg += '<text x="' + (pad.left - 2) + '" y="' + (ty + 3) + '" fill="#475569" font-size="8" text-anchor="end">' + targetBPM + '</text>';
+
+      // Render each series
+      var colors = ['#667eea', '#f59e0b', '#10b981', '#ef4444'];
+      series.forEach(function(s, si) {
+        var startTime = s.ts.points[0].timeSec;
+        var pathD = '';
+        s.ts.points.forEach(function(p, i) {
+          var px = x(p.timeSec - startTime);
+          var py = y(p.bpm);
+          pathD += (i === 0 ? 'M' : 'L') + px.toFixed(1) + ',' + py.toFixed(1);
+        });
+        var color = s.color || colors[si % colors.length];
+        svg += '<path d="' + pathD + '" fill="none" stroke="' + color + '" stroke-width="1.5" stroke-linejoin="round" opacity="' + (si === 0 ? '1' : '0.6') + '"/>';
+      });
+
+      // Legend
+      var legendY = height - 4;
+      series.forEach(function(s, si) {
+        var lx = pad.left + si * 80;
+        var color = s.color || colors[si % colors.length];
+        svg += '<circle cx="' + lx + '" cy="' + (legendY - 3) + '" r="3" fill="' + color + '"/>';
+        svg += '<text x="' + (lx + 6) + '" y="' + legendY + '" fill="#94a3b8" font-size="7">' + (s.label || 'Take ' + (si + 1)) + '</text>';
+      });
+
+      svg += '</svg>';
+      return svg;
+    }
+  };
+
+  function _fmtSec(sec) {
+    var m = Math.floor(sec / 60);
+    var s = Math.floor(sec % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  // Export
+  global.PocketMeterTimeSeries = PocketMeterTimeSeries;
+
   // ─── Offline Analyser ────────────────────────────────────────────────────────
   // Decodes an audio file (ArrayBuffer) and runs the same spectral-flux onset
   // detection engine offline (no mic, no real-time). Returns GrooveAnalyser

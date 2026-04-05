@@ -1152,6 +1152,17 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             html += '<div style="font-size:0.8em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(seg.songTitle || 'Unknown') + '</div>';
             html += '<div style="font-size:0.58em;color:var(--text-dim)">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2;
             if (seg.qualityLabel && (seg.qualityScore >= 3 || seg.groove)) html += ' \u00B7 <span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
+            // BPM summary inline (if groove data has IOIs and song has target BPM)
+            var _segTargetBPM = _rhGetSongBPM(seg.songTitle);
+            if (seg.groove && seg.groove.iois && seg.groove.iois.length >= 8 && _segTargetBPM && typeof PocketMeterTimeSeries !== 'undefined') {
+                var _ts = PocketMeterTimeSeries.compute(seg.groove, seg.startSec, _segTargetBPM);
+                if (_ts) {
+                    var _bpmDelta = _ts.deviation > 0 ? '+' + _ts.deviation : '' + _ts.deviation;
+                    var _bpmColor = Math.abs(_ts.deviation) <= 2 ? '#10b981' : (_ts.rushing ? '#ef4444' : '#f59e0b');
+                    var _bpmLabel = _ts.rushing ? 'rushing' : (_ts.dragging ? 'dragging' : 'steady');
+                    html += ' \u00B7 <span style="color:' + _bpmColor + '">' + _ts.avgBPM + ' BPM (' + _bpmDelta + ') \u2014 ' + _bpmLabel + '</span>';
+                }
+            }
             html += '</div></div>';
             // Hover quick actions
             if (hasAudio) {
@@ -1170,6 +1181,30 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 var _gStab = seg.groove.stability;
                 var _gDesc = _gStab >= 80 ? 'Timing was locked in' : _gStab >= 50 ? 'Timing wavered in spots' : 'Timing was loose';
                 html += '<div style="color:' + (_gStab >= 80 ? '#10b981' : _gStab >= 50 ? '#f59e0b' : '#ef4444') + '">' + _gDesc + '</div>';
+            }
+            // Pocket Meter graph (BPM over time)
+            var _pmTargetBPM = _rhGetSongBPM(seg.songTitle);
+            if (seg.groove && seg.groove.iois && seg.groove.iois.length >= 8 && _pmTargetBPM && typeof PocketMeterTimeSeries !== 'undefined') {
+                var _pmTs = PocketMeterTimeSeries.compute(seg.groove, seg.startSec, _pmTargetBPM);
+                if (_pmTs && _pmTs.points.length >= 3) {
+                    html += '<div style="margin:6px 0 4px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.04)">';
+                    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px">';
+                    html += '<span style="font-size:0.62em;font-weight:700;color:var(--text-dim)">Pocket Meter</span>';
+                    html += '<span style="font-size:0.58em;color:var(--text-dim)">Target: ' + _pmTargetBPM + ' BPM</span>';
+                    html += '</div>';
+                    html += PocketMeterTimeSeries.renderSVG(_pmTs, 280, 80);
+                    // Problem zone callouts
+                    if (_pmTs.problemZones.length > 0) {
+                        html += '<div style="padding:3px 8px 5px;font-size:0.58em;color:var(--text-dim)">';
+                        _pmTs.problemZones.forEach(function(z) {
+                            var zColor = z.type === 'rushing' ? '#ef4444' : '#f59e0b';
+                            var zIcon = z.type === 'rushing' ? '\u2191' : '\u2193';
+                            html += '<span onclick="_rhJumpToTime(' + z.startSec.toFixed(1) + ')" style="cursor:pointer;color:' + zColor + ';margin-right:8px">' + zIcon + ' ' + z.type + ' at ' + _rhFmt(z.startSec) + ' (' + z.avgBPM + ' BPM)</span>';
+                        });
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                }
             }
             if (seg.chordHints && seg.chordHints.usable && seg.chordHints.summary && seg.chordHints.summary.topProgressionHint) {
                 html += '<div style="color:var(--text-dim)">\uD83C\uDFB5 ' + escHtml(seg.chordHints.summary.topProgressionHint) + '</div>';
@@ -1422,6 +1457,34 @@ function _rhFindSegIdx(songTitle, useWorst) {
     }
     return null;
 }
+
+// ── Song BPM lookup (for Pocket Meter) ───────────────────────────────────────
+function _rhGetSongBPM(songTitle) {
+    if (!songTitle) return null;
+    // Check allSongs array
+    if (typeof allSongs !== 'undefined' && allSongs) {
+        for (var i = 0; i < allSongs.length; i++) {
+            if (allSongs[i].title === songTitle && allSongs[i].bpm) return allSongs[i].bpm;
+        }
+    }
+    // Check GLStore
+    if (typeof GLStore !== 'undefined' && GLStore.getSongDetail) {
+        var detail = GLStore.getSongDetail(songTitle);
+        if (detail && detail.bpm) return detail.bpm;
+    }
+    return null;
+}
+
+// ── Jump to time in playback (from Pocket Meter problem zone clicks) ─────────
+window._rhJumpToTime = function(timeSec) {
+    if (_rhSharedAudio && _rhSharedAudio.src) {
+        _rhSharedAudio.currentTime = timeSec;
+        if (_rhSharedAudio.paused) _rhSharedAudio.play();
+        _rhUpdateTransport();
+    } else {
+        if (typeof showToast === 'function') showToast('Load a recording first to jump to this point');
+    }
+};
 
 // ── Shared data preparation (single source of truth) ────────────────────────
 var _rhFmt = function(sec) { if (!sec && sec !== 0) return '0:00'; var m = Math.floor(sec / 60); var s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; };
@@ -1938,6 +2001,30 @@ window._rhCompareAttempts = function(songTitle) {
             + '</div>';
     }
     html += trendHtml;
+
+    // Compare BPM overlay chart (if groove IOIs available for 2+ takes)
+    var _cmpTargetBPM = _rhGetSongBPM(songTitle);
+    if (_cmpTargetBPM && typeof PocketMeterTimeSeries !== 'undefined') {
+        var compareSeries = [];
+        var compareColors = ['#667eea', '#f59e0b', '#10b981', '#ef4444'];
+        group.segments.forEach(function(seg, idx) {
+            if (seg.groove && seg.groove.iois && seg.groove.iois.length >= 8) {
+                var ts = PocketMeterTimeSeries.compute(seg.groove, seg.startSec, _cmpTargetBPM);
+                if (ts && ts.points.length >= 3) {
+                    compareSeries.push({ ts: ts, label: 'Take ' + (idx + 1), color: compareColors[idx % compareColors.length] });
+                }
+            }
+        });
+        if (compareSeries.length >= 2) {
+            html += '<div style="margin-top:6px;border-radius:6px;overflow:hidden;background:rgba(0,0,0,0.15);border:1px solid rgba(255,255,255,0.04)">';
+            html += '<div style="padding:4px 8px;font-size:0.62em;font-weight:700;color:var(--text-dim)">BPM Comparison \u2014 which take was tighter?</div>';
+            html += PocketMeterTimeSeries.renderCompareSVG(compareSeries, 300, 100);
+            // Summary: which take had lowest variance
+            var bestTake = compareSeries.reduce(function(best, s, i) { return s.ts.variance < best.v ? { i: i, v: s.ts.variance } : best; }, { i: 0, v: 999 });
+            html += '<div style="padding:3px 8px 5px;font-size:0.58em;color:#10b981;text-align:center">Take ' + (bestTake.i + 1) + ' had the steadiest tempo (\u00B1' + compareSeries[bestTake.i].ts.variance + ' BPM)</div>';
+            html += '</div>';
+        }
+    }
 
     panel.innerHTML = html;
 
