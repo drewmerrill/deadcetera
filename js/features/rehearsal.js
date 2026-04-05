@@ -297,40 +297,7 @@ async function _rhRenderCommandFlow(el) {
     html += '</div>';
     html += '</div>';
 
-    // ── "Start Here" directive from GLInsights ──
-    if (typeof GLInsights !== 'undefined' && GLInsights.getFixBlock) {
-        var fixBlock = GLInsights.getFixBlock(3);
-        if (fixBlock.length > 0) {
-            var topFix = fixBlock[0];
-            html += '<div style="margin-bottom:16px;padding:14px 16px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.15);border-radius:12px;border-left:4px solid #f87171">';
-            html += '<div style="font-size:1em;font-weight:800;color:var(--text)">Start with \u201C' + escHtml(topFix.song) + '\u201D</div>';
-            html += '<div style="font-size:0.82em;color:var(--text-dim);margin-top:2px">' + escHtml(topFix.recommendation) + '</div>';
-            if (fixBlock.length > 1) {
-                html += '<details style="margin-top:8px"><summary style="font-size:0.72em;color:#64748b;cursor:pointer">+ ' + (fixBlock.length - 1) + ' more to fix</summary>';
-                for (var fi = 1; fi < fixBlock.length; fi++) {
-                    html += '<div style="font-size:0.82em;color:var(--text-dim);padding:4px 0">\u2022 ' + escHtml(fixBlock[fi].song) + ' \u2014 ' + escHtml(fixBlock[fi].recommendation) + '</div>';
-                }
-                html += '</details>';
-            }
-            html += '</div>';
-        }
-    }
-
-    // ── SECTION 1: Context ──
-    html += '<div style="margin-bottom:16px">';
-    if (nextGig) {
-        html += '<div style="padding:14px 16px;border-radius:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15)">'
-            + '<div style="font-size:0.65em;font-weight:800;letter-spacing:0.1em;color:rgba(99,102,241,0.6);text-transform:uppercase;margin-bottom:4px">Preparing for</div>'
-            + '<div style="font-size:1.1em;font-weight:800;color:var(--text)">' + gigLabel + ' <span style="font-weight:500;font-size:0.72em;color:var(--text-dim)">\u00B7 ' + (gigDaysAway === 0 ? 'Today' : gigDaysAway === 1 ? 'Tomorrow' : gigDaysAway + ' days') + '</span></div>'
-            + (weakSongs.length > 0 ? '<div style="font-size:0.78em;color:var(--text-dim);margin-top:4px">Focus on <strong>' + weakSongs[0].title + '</strong>' + (weakSongs.length > 1 ? ' + ' + (weakSongs.length - 1) + ' more' : '') + '</div>' : '')
-            + (availHtml ? '<div style="margin-top:8px">' + availHtml + '</div>' : '')
-            + '</div>';
-    } else {
-        html += '<div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06)">'
-            + '<div style="font-size:0.82em;color:var(--text-dim)">No upcoming gig scheduled. <button onclick="showPage(\'gigs\')" style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-weight:600;padding:0">Add a gig \u2192</button></div>'
-            + '</div>';
-    }
-    html += '</div>';
+    // (Context and "Start Here" directive removed — consolidated into Next Up section above)
 
     // ── SECTION 2: Saved Plan indicator + Primary CTA ──
     // Try Firebase first, then fall back to localStorage
@@ -344,17 +311,9 @@ async function _rhRenderCommandFlow(el) {
     var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
     if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
 
-    // ── Primary + Secondary CTAs — always visible above plan details ──
-    if (hasSavedPlan) {
-        html += '<div style="margin-bottom:12px">'
-            + '<button onclick="_rhConfirmStartRehearsal()" style="width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:1em;cursor:pointer;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\u25B6 Start Band Rehearsal</button>'
-            + '<div style="font-size:0.68em;color:var(--text-dim);text-align:center;margin-top:4px">Use this when the band is actually rehearsing together.</div>'
-            + '<button onclick="_rhOpenChartsOnly()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc;font-weight:600;font-size:0.85em;cursor:pointer">\uD83D\uDCDD Practice Without Starting a Rehearsal</button>'
-            + '<div style="font-size:0.65em;color:#475569;text-align:center;margin-top:3px">No session will be saved.</div>'
-            + '</div>';
-    }
+    // (Duplicate Start/Practice CTAs removed — consolidated into Next Up section above)
 
-    // ── SECTION 2: Saved Plan details ──
+    // ── PLAN (collapsed by default) ──
     if (hasSavedPlan) {
         var savedUnits = _rhGetUnits();
         var songCount = savedUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? u.songs.length : 1); }, 0);
@@ -373,13 +332,17 @@ async function _rhRenderCommandFlow(el) {
             return sum + 9;
         }, 0);
         var _preTotalLabel = _preTotalMin >= 60 ? Math.floor(_preTotalMin / 60) + 'h ' + (_preTotalMin % 60) + 'm' : _preTotalMin + 'm';
-        html += '<div id="rhPlanCard" style="margin-bottom:12px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
-            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-            + '<span onclick="_rhEditPlanName()" style="font-size:0.78em;font-weight:800;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">✅ ' + escHtml(planName) + '</span>'
-            + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
+        html += '<details id="rhPlanCard" style="margin-bottom:12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
+            + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+            + '<span style="font-size:0.72em;font-weight:800;color:#86efac">\uD83D\uDCCB Plan</span>'
             + '<span style="font-size:0.65em;color:var(--text-dim)">' + songCount + ' songs \u00B7 ' + _preTotalLabel + '</span>'
-            + '<button onclick="_rhRunWalkthrough()" style="margin-left:auto;font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;cursor:pointer" title="Show guided tour">?</button>'
-            + '<button onclick="_rhClearSavedPlan()" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer" title="Remove all songs from this plan">Clear All Songs</button>'
+            + '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto">\u25B8 expand</span>'
+            + '</summary>'
+            + '<div style="padding:4px 14px 12px">'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+            + '<span onclick="_rhEditPlanName()" style="font-size:0.72em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
+            + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
+            + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.6em;padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear</button>'
             + '</div>';
 
         // ── Rehearsal time budgeting ──────────────────────────────────────
@@ -617,11 +580,12 @@ async function _rhRenderCommandFlow(el) {
             + '<div style="font-size:0.9em;color:var(--text-dim);font-style:italic">Use a template to build your plan faster. Drag to reorder. Tap the time to adjust.</div>'
             + '</div></details>';
 
-        // Plan actions (edit-level, not rehearsal-start)
-        html += '<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:0.75em;font-weight:600;cursor:pointer">Schedule Rehearsal Date</button>'
-            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer" title="Rebuild plan structure from scratch">\u270F\uFE0F Edit Structure</button>'
+        // Plan actions inside the collapsed plan
+        html += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'
+            + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:0.68em;cursor:pointer">Schedule Date</button>'
+            + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);font-size:0.68em;cursor:pointer">\u270F Edit Structure</button>'
             + '</div>'
+            + '</div></details>' // close plan details
             + '<div id="rhSnapshots"></div>';
     } else {
         // No saved plan — show planner CTA + snapshots for restore
@@ -649,8 +613,7 @@ async function _rhRenderCommandFlow(el) {
     html += '<div id="rhMixdownsContainer" style="margin-top:12px"></div>';
     html += '</div></details>';
 
-    // ── Tab content area (AI suggestions) ──
-    html += '<div id="rhTabContent"></div>';
+    // (Tab content / AI suggestions area removed — consolidated into coaching insights)
 
     main.innerHTML = html;
     window.GL_REHEARSAL_READY = true;
