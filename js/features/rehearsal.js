@@ -1116,15 +1116,20 @@ async function _rhRenderLastRehearsalTimeline() {
     if (talkCount) snapHtml += '<span>' + talkCount + ' discussions</span>';
     snapHtml += '</div>';
 
-    // Quick insight from recommendations
+    // Key insights (top 2)
     if (segments.length) {
         var data2 = _rhPrepareSegmentData(latest, segments);
-        if (data2.recommendations.length) {
-            snapHtml += '<div style="font-size:0.7em;color:#fbbf24;margin-top:6px">\u25B6 ' + escHtml(data2.recommendations[0].text) + '</div>';
+        // Show headline from session if available
+        if (latest.analysis && latest.analysis.story && latest.analysis.story.headline) {
+            snapHtml += '<div style="font-size:0.72em;color:#fbbf24;font-weight:600;margin-top:6px">\u26A0 ' + escHtml(latest.analysis.story.headline) + '</div>';
         }
-    }
-
-    if (!segments.length) {
+        // Top 2 recommendations
+        data2.recommendations.slice(0, 2).forEach(function(r) {
+            snapHtml += '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px">\u2022 ' + escHtml(r.text) + '</div>';
+        });
+        // CTA
+        snapHtml += '<div style="margin-top:8px"><button onclick="var t=document.getElementById(\'rhTimelineSection\');if(t)t.scrollIntoView({behavior:\'smooth\'})" style="font-size:0.7em;padding:4px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer">\u25B6 Replay Timeline</button></div>';
+    } else {
         snapHtml += '<div style="margin-top:8px"><button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(latest.sessionId) + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer">\uD83D\uDD0D Analyze Recording</button></div>';
     }
     snapHtml += '</div>';
@@ -1148,14 +1153,19 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
     if (!document.getElementById('rh-timeline-styles')) {
         var _ts = document.createElement('style');
         _ts.id = 'rh-timeline-styles';
-        _ts.textContent = '.rh-seg-row{transition:background 0.15s,box-shadow 0.15s}'
+        _ts.textContent = '.rh-seg-row{transition:background 0.15s,box-shadow 0.15s;position:relative}'
             + '.rh-seg-row:hover{background:rgba(255,255,255,0.03)!important}'
             + '.rh-seg-row.rh-playing{background:rgba(99,102,241,0.06)!important;box-shadow:inset 3px 0 0 #667eea}'
             + '.rh-seg-row summary:hover{background:rgba(255,255,255,0.02)}'
+            + '.rh-seg-row .rh-hover-actions{opacity:0;transition:opacity 0.15s;position:absolute;right:8px;top:6px}'
+            + '.rh-seg-row:hover .rh-hover-actions{opacity:1}'
             + '.rh-strip-seg{cursor:pointer;transition:opacity 0.15s}'
             + '.rh-strip-seg:hover{opacity:0.7}'
             + '@keyframes rhPulsePlay{0%,100%{opacity:1}50%{opacity:0.5}}'
-            + '.rh-playing-btn{animation:rhPulsePlay 1.5s ease infinite}';
+            + '.rh-playing-btn{animation:rhPulsePlay 1.5s ease infinite}'
+            + '.rh-groove-strong{border-left-color:#10b981!important}'
+            + '.rh-groove-unstable{border-left-color:#f59e0b!important}'
+            + '.rh-groove-incomplete{border-left-color:#64748b!important}';
         document.head.appendChild(_ts);
     }
 
@@ -1190,16 +1200,29 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         var durLabel2 = seg.duration >= 60 ? Math.round(seg.duration / 60) + 'm' : Math.round(seg.duration) + 's';
 
         if (isSong) {
-            // Song segment — expandable on click
-            var borderColor = 'rgba(99,102,241,0.12)';
-            html += '<details id="rhSeg_' + si + '" class="rh-seg-row" data-song="' + escHtml(seg.songTitle || '') + '" style="margin-bottom:5px;border-radius:7px;border-left:3px solid ' + borderColor + ';background:rgba(255,255,255,0.015)">';
+            // Song segment — expandable, groove-coded border
+            var grooveClass = '';
+            if (seg.groove) {
+                grooveClass = seg.groove.stability >= 80 ? ' rh-groove-strong' : (seg.groove.stability >= 50 ? ' rh-groove-unstable' : ' rh-groove-incomplete');
+            } else if (seg.qualityScore < 2) {
+                grooveClass = ' rh-groove-incomplete';
+            }
+            html += '<details id="rhSeg_' + si + '" class="rh-seg-row' + grooveClass + '" data-song="' + escHtml(seg.songTitle || '') + '" style="margin-bottom:5px;border-radius:7px;border-left:3px solid rgba(99,102,241,0.12);background:rgba(255,255,255,0.015)">';
             html += '<summary style="padding:7px 10px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px">';
             html += '<button id="rhPlayBtn_' + si + '" onclick="event.stopPropagation();_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
-            html += '<span style="font-size:0.65em;color:var(--text-dim);min-width:40px">' + _rhFmt(seg.startSec) + '</span>';
-            html += '<span style="flex:1;font-size:0.8em;font-weight:600;color:var(--text)">' + escHtml(seg.songTitle || 'Unknown') + '</span>';
-            // Inline quality/groove badges
-            if (seg.qualityLabel && (seg.qualityScore >= 3 || seg.groove)) html += '<span style="font-size:0.58em;color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
-            html += '<span style="font-size:0.62em;color:var(--text-dim)">' + durLabel2 + '</span>';
+            // Song name (primary) + metadata (secondary line)
+            html += '<div style="flex:1;min-width:0">';
+            html += '<div style="font-size:0.8em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(seg.songTitle || 'Unknown') + '</div>';
+            html += '<div style="font-size:0.58em;color:var(--text-dim)">' + _rhFmt(seg.startSec) + '\u2013' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2;
+            if (seg.qualityLabel && (seg.qualityScore >= 3 || seg.groove)) html += ' \u00B7 <span style="color:' + (seg.qualityScore >= 3 ? '#10b981' : '#f59e0b') + '">' + escHtml(seg.qualityLabel) + '</span>';
+            html += '</div></div>';
+            // Hover quick actions
+            if (hasAudio) {
+                html += '<span class="rh-hover-actions" style="display:flex;gap:3px">'
+                    + '<button onclick="event.stopPropagation();_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="background:none;border:none;color:#fbbf24;cursor:pointer;font-size:0.7em" title="Loop">\uD83D\uDD01</button>'
+                    + '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + escHtml(seg.songTitle || '').replace(/'/g, "\\'") + '\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em" title="Practice">\uD83C\uDFAF</button>'
+                    + '</span>';
+            }
             html += '</summary>';
             // Expanded detail
             var _sSafe = escHtml(sessionId);
@@ -1237,14 +1260,15 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 if (!segments[nsi].segType || segments[nsi].segType === 'song') { nearestSong = segments[nsi].songTitle || ''; break; }
             }
 
+            var topicLabel = tags.length ? tags[0] : (nearestSong ? nearestSong : '');
             html += '<div id="rhSeg_' + si + '" class="rh-seg-row" style="margin-bottom:5px;padding:8px 10px;border-radius:7px;border-left:3px solid rgba(165,180,252,0.15);background:rgba(165,180,252,0.02)">';
             html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
             html += '<button id="rhPlayBtn_' + si + '" onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
-            html += '<span style="font-size:0.68em;font-weight:700;color:#a5b4fc">\uD83D\uDCAC Band Note</span>';
-            if (tagLabel) html += '<span style="font-size:0.6em;color:#818cf8">' + escHtml(tagLabel) + '</span>';
-            html += '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto">' + _rhFmt(seg.startSec) + '</span>';
+            html += '<span style="font-size:0.68em;font-weight:700;color:#a5b4fc">\uD83D\uDCAC BAND NOTE' + (topicLabel ? ' \u2014 ' + escHtml(topicLabel) : '') + '</span>';
+            html += '<span style="font-size:0.58em;color:var(--text-dim);margin-left:auto">' + _rhFmt(seg.startSec) + ' \u00B7 ' + durLabel2 + '</span>';
             html += '</div>';
             if (content) html += '<div style="font-size:0.75em;color:var(--text-muted);line-height:1.4;padding-left:28px">\u201C' + escHtml(content.substring(0, 200)) + (content.length > 200 ? '...' : '') + '\u201D</div>';
+            if (tags.length > 1) html += '<div style="font-size:0.58em;color:#818cf8;padding-left:28px;margin-top:2px">' + tags.join(' \u00B7 ') + '</div>';
             if (nearestSong) html += '<div style="font-size:0.62em;color:var(--text-dim);padding-left:28px;margin-top:2px;cursor:pointer" onclick="var el=document.querySelector(\'[data-song=\\\'' + escHtml(nearestSong).replace(/'/g, '') + '\\\']\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">\u2192 Applies to: <span style="color:#818cf8;text-decoration:underline dotted">' + escHtml(nearestSong) + '</span></div>';
             html += '</div>';
 
@@ -1269,7 +1293,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         var _prioritySongs = data.songList.filter(function(g) { return g.segments.length >= 3 || g.bestQuality < 2; });
         if (_prioritySongs.length) {
             _prioritySongs.forEach(function(g) {
-                var reason = g.segments.length >= 3 ? 'multiple attempts, needs focused practice' : 'incomplete run';
+                var reason = g.segments.length >= 3 ? 'multiple attempts \u2192 tighten transitions' : 'incomplete run \u2192 try full play-through';
                 var _gSafe = escHtml(g.title).replace(/'/g, "\\'");
                 var firstSeg = g.segments[0];
                 html += '<div style="font-size:0.75em;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)">'
@@ -1297,8 +1321,17 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0">\uD83D\uDD01 ' + escHtml(r.text) + '</div>';
         });
 
+        // Auto-loop weakest section
+        if (hasAudio && _prioritySongs.length) {
+            var _weakest = _prioritySongs[0];
+            var _weakSeg = _weakest.segments[_weakest.segments.length - 1]; // last attempt (usually the one they gave up on)
+            if (_weakSeg) {
+                html += '<button onclick="_rhLoopSegment(' + _weakSeg.startSec + ',' + _weakSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="width:100%;margin-top:6px;padding:7px;border-radius:8px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">\uD83D\uDD01 Loop hardest section (' + escHtml(_weakest.title) + ')</button>';
+            }
+        }
+
         // Build Next Rehearsal CTA
-        html += '<button onclick="showPage(\'rehearsal\');setTimeout(function(){renderRehearsalPlanner();},300)" style="width:100%;margin-top:8px;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(34,197,94,0.1));color:#a5b4fc;cursor:pointer;font-size:0.75em;font-weight:700">Build Next Rehearsal From This</button>';
+        html += '<button onclick="showPage(\'rehearsal\');setTimeout(function(){renderRehearsalPlanner();},300)" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:none;background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(34,197,94,0.1));color:#a5b4fc;cursor:pointer;font-size:0.75em;font-weight:700">Build Next Rehearsal From This</button>';
         html += '</div>';
     }
 
