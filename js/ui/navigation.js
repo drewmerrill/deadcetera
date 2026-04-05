@@ -82,6 +82,11 @@ window.showPage = function showPage(page) {
         }
     }
 
+    // Stop rehearsal playback when navigating away from rehearsal page
+    if (page !== 'rehearsal' && typeof window._rhStopPlayback === 'function') {
+        try { window._rhStopPlayback(); } catch(e) {}
+    }
+
     // Hide all pages
     document.querySelectorAll('.app-page').forEach(function(p) {
         p.classList.add('hidden');

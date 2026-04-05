@@ -1002,11 +1002,12 @@ async function _rhRenderLastRehearsalTimeline() {
     var sessions = await _rhLoadSessions();
     if (!sessions || !sessions.length) {
         // Empty state — no rehearsals yet
-        timelineEl.innerHTML = '<div style="padding:24px 16px;text-align:center;border-radius:12px;border:1px dashed rgba(99,102,241,0.2);background:rgba(99,102,241,0.02);margin:8px 0">'
-            + '<div style="font-size:1.2em;margin-bottom:8px">\uD83C\uDFA4</div>'
-            + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:6px">No rehearsals yet</div>'
-            + '<div style="font-size:0.72em;color:var(--text-dim);line-height:1.5;margin-bottom:12px;max-width:320px;margin-left:auto;margin-right:auto">Record a rehearsal and analyze it here. You\u2019ll see every song, how tight the band was, and exactly what to work on next.</div>'
-            + '<button onclick="rhStartRehearsalSession ? rhStartRehearsalSession() : _rhConfirmStartRehearsal()" style="padding:10px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.82em;cursor:pointer">Start a Rehearsal</button>'
+        timelineEl.innerHTML = '<div style="padding:28px 20px;text-align:center;border-radius:12px;border:1px dashed rgba(99,102,241,0.2);background:rgba(99,102,241,0.02);margin:8px 0">'
+            + '<div style="font-size:1.4em;margin-bottom:10px">\uD83C\uDFA4</div>'
+            + '<div style="font-size:0.92em;font-weight:700;color:var(--text);margin-bottom:6px">Your rehearsal timeline starts here</div>'
+            + '<div style="font-size:0.75em;color:var(--text-dim);line-height:1.5;margin-bottom:6px;max-width:340px;margin-left:auto;margin-right:auto">Run a rehearsal, then load the recording. GrooveLinx will break it down song by song so you can hear what\u2019s tight and what needs work.</div>'
+            + '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:14px">Most bands see something useful after the first session.</div>'
+            + '<button onclick="typeof rhStartRehearsalSession===\'function\' ? rhStartRehearsalSession() : _rhConfirmStartRehearsal()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.88em;cursor:pointer;min-height:44px">Start Your First Rehearsal</button>'
             + '</div>';
         return;
     }
@@ -1226,56 +1227,65 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
     // ── Coaching Insights (merged, actionable) ──
     var _hasInsights = data.recommendations.length > 0 || data.songList.some(function(g) { return g.bestQuality < 2 || g.segments.length >= 3; });
     if (_hasInsights) {
-        html += '<div id="rhCoachingPanel" style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.12);background:rgba(245,158,11,0.03);position:sticky;bottom:48px;z-index:50">';
+        html += '<div id="rhCoachingPanel" style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.12);background:#1a2340;position:sticky;bottom:48px;z-index:50;max-height:220px;overflow:hidden;transition:max-height 0.3s ease">';
         html += '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">What to Work On</div>';
 
-        // Priority songs
+        // Priority songs — show top 2 by default, rest behind expander
         var _prioritySongs = data.songList.filter(function(g) { return g.segments.length >= 3 || g.bestQuality < 2; });
-        if (_prioritySongs.length) {
-            _prioritySongs.forEach(function(g) {
-                var reason = g.segments.length >= 3 ? 'took ' + g.segments.length + ' tries \u2014 nail the transitions' : 'didn\u2019t finish \u2014 try a full run-through';
-                var _gSafe = escHtml(g.title).replace(/'/g, "\\'");
-                var firstSeg = g.segments[0];
-                html += '<div style="font-size:0.75em;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)">'
-                    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-                    + '<span style="color:#fbbf24">\uD83C\uDFAF</span>'
-                    + '<span style="color:var(--text);font-weight:600">' + escHtml(g.title) + '</span>'
-                    + '<span style="color:var(--text-dim)">\u2014 ' + reason + '</span>'
-                    + '</div>'
-                    + '<div style="display:flex;gap:4px;padding-left:20px">';
-                // Action buttons for this priority song — scroll + expand + loop
-                if (firstSeg && hasAudio) {
-                    var _segIdx = _rhFindSegIdx(g.title, true);
-                    var _focusSeg = _segIdx !== null ? g.segments[g.segments.length - 1] : firstSeg;
-                    html += '<button onclick="_rhFocusSegment(' + (_segIdx !== null ? _segIdx : 0) + ',' + _focusSeg.startSec + ',' + _focusSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-family:inherit">\uD83D\uDD01 Loop</button>';
-                }
-                if (g.segments.length >= 2) {
-                    html += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">\uD83C\uDD9A Compare</button>';
-                }
-                var _fixLabel = g.segments.length >= 3 ? 'Drill the Transitions' : 'Work the Rough Spot';
-                html += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700;min-height:28px" title="Jump to the rough spot, loop it, and get tips">\uD83D\uDD27 ' + _fixLabel + '</button>';
-                html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _gSafe + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit;min-height:28px" title="Open chart and practice this song">Practice</button>';
-                html += '</div></div>';
-            });
+        var _visibleCount = 2;
+        var _hasOverflow = _prioritySongs.length > _visibleCount;
+
+        // Helper to render a single insight row
+        function _renderInsightRow(g, hidden) {
+            var reason = g.segments.length >= 3 ? 'took ' + g.segments.length + ' tries \u2014 nail the transitions' : 'didn\u2019t finish \u2014 try a full run-through';
+            var _gSafe = escHtml(g.title).replace(/'/g, "\\'");
+            var firstSeg = g.segments[0];
+            var rowHtml = '<div class="rh-insight-row" style="font-size:0.75em;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)' + (hidden ? ';display:none' : '') + '">'
+                + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+                + '<span style="color:#fbbf24">\uD83C\uDFAF</span>'
+                + '<span style="color:var(--text);font-weight:600">' + escHtml(g.title) + '</span>'
+                + '<span style="color:var(--text-dim)">\u2014 ' + reason + '</span>'
+                + '</div>'
+                + '<div style="display:flex;gap:4px;flex-wrap:wrap;padding-left:20px">';
+            if (firstSeg && hasAudio) {
+                var _segIdx = _rhFindSegIdx(g.title, true);
+                var _focusSeg = _segIdx !== null ? g.segments[g.segments.length - 1] : firstSeg;
+                rowHtml += '<button onclick="_rhFocusSegment(' + (_segIdx !== null ? _segIdx : 0) + ',' + _focusSeg.startSec + ',' + _focusSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-family:inherit">\uD83D\uDD01 Loop</button>';
+            }
+            if (g.segments.length >= 2) {
+                rowHtml += '<button onclick="_rhCompareAttempts(\'' + _gSafe + '\')" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981;cursor:pointer;font-family:inherit">Compare</button>';
+            }
+            var _fixLabel = g.segments.length >= 3 ? 'Drill Transitions' : 'Work Rough Spot';
+            rowHtml += '<button onclick="_rhFixThisNow(\'' + _gSafe + '\',\'' + escHtml(sessionId) + '\')" style="font-size:0.85em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-family:inherit;font-weight:700;min-height:28px">\uD83D\uDD27 ' + _fixLabel + '</button>';
+            rowHtml += '</div></div>';
+            return rowHtml;
         }
 
-        // Pattern insights
+        if (_prioritySongs.length) {
+            _prioritySongs.forEach(function(g, idx) {
+                html += _renderInsightRow(g, idx >= _visibleCount);
+            });
+            if (_hasOverflow) {
+                html += '<button id="rhInsightExpander" onclick="_rhExpandInsights()" style="width:100%;margin-top:4px;padding:4px;border-radius:4px;border:none;background:none;color:#818cf8;cursor:pointer;font-size:0.68em;font-weight:600">See ' + (_prioritySongs.length - _visibleCount) + ' more</button>';
+            }
+        }
+
+        // Pattern insights (always visible, compact)
         data.recommendations.forEach(function(r) {
-            if (r.song && _prioritySongs.some(function(p) { return p.title === r.song; })) return; // skip if already shown
-            html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0">\uD83D\uDD01 ' + escHtml(r.text) + '</div>';
+            if (r.song && _prioritySongs.some(function(p) { return p.title === r.song; })) return;
+            html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0">\u2022 ' + escHtml(r.text) + '</div>';
         });
 
-        // Auto-loop weakest section — scroll to it, expand, and start loop
+        // Auto-loop weakest section
         if (hasAudio && _prioritySongs.length) {
             var _weakest = _prioritySongs[0];
-            var _weakSeg = _weakest.segments[_weakest.segments.length - 1]; // last attempt (usually the one they gave up on)
+            var _weakSeg = _weakest.segments[_weakest.segments.length - 1];
             if (_weakSeg) {
                 var _weakIdx = _rhFindSegIdx(_weakest.title, true);
                 html += '<button onclick="_rhFocusSegment(' + (_weakIdx !== null ? _weakIdx : 0) + ',' + _weakSeg.startSec + ',' + _weakSeg.endSec + ',\'' + escHtml(sessionId) + '\')" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:#fbbf24;cursor:pointer;font-size:0.78em;font-weight:700">\uD83D\uDD01 Loop the Rough Spot \u2014 ' + escHtml(_weakest.title) + '</button>';
             }
         }
 
-        // Build Next Rehearsal CTA
         html += '<button onclick="showPage(\'rehearsal\');setTimeout(function(){renderRehearsalPlanner();},300)" style="width:100%;margin-top:8px;padding:10px;border-radius:8px;border:none;background:linear-gradient(135deg,rgba(99,102,241,0.15),rgba(34,197,94,0.1));color:#a5b4fc;cursor:pointer;font-size:0.78em;font-weight:700">Plan Next Rehearsal Based on This</button>';
         html += '</div>';
     }
@@ -1297,6 +1307,26 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         });
     });
 }
+
+// ── Coaching panel expand/collapse ────────────────────────────────────────────
+window._rhExpandInsights = function() {
+    var panel = document.getElementById('rhCoachingPanel');
+    var btn = document.getElementById('rhInsightExpander');
+    if (!panel) return;
+    var hidden = panel.querySelectorAll('.rh-insight-row[style*="display:none"]');
+    if (hidden.length > 0) {
+        // Expand
+        hidden.forEach(function(el) { el.style.display = ''; });
+        panel.style.maxHeight = 'none';
+        if (btn) btn.textContent = 'Show less';
+    } else {
+        // Collapse back to top 2
+        var rows = panel.querySelectorAll('.rh-insight-row');
+        rows.forEach(function(el, i) { if (i >= 2) el.style.display = 'none'; });
+        panel.style.maxHeight = '220px';
+        if (btn) btn.textContent = 'See ' + (rows.length - 2) + ' more';
+    }
+};
 
 // ── Insight → Action: scroll to segment, expand it, prepare playback ─────────
 window._rhFocusSegment = function(segIdx, startSec, endSec, sessionId) {

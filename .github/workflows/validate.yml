@@ -29,3 +29,40 @@ jobs:
             exit 1
           fi
           echo "All JS files pass syntax check"
+
+      - name: Check for duplicate script tags in HTML
+        run: |
+          failed=0
+          for html_file in index.html index-dev.html; do
+            if [ ! -f "$html_file" ]; then continue; fi
+
+            # Extract script src values, find duplicates
+            dupes=$(grep -oP 'src="[^"]+\.js[^"]*"' "$html_file" | sort | uniq -d)
+            if [ -n "$dupes" ]; then
+              echo "::error::$html_file has duplicate script tags:"
+              echo "$dupes"
+              failed=1
+            fi
+
+            # Check total script count (threshold: 120 for prod, 130 for dev)
+            count=$(grep -c '<script' "$html_file" || true)
+            max=130
+            if [ "$count" -gt "$max" ]; then
+              echo "::error::$html_file has $count script tags (max $max) — likely merge-conflict duplication"
+              failed=1
+            fi
+
+            # Check total line count (threshold: 1200)
+            lines=$(wc -l < "$html_file")
+            max_lines=1200
+            if [ "$lines" -gt "$max_lines" ]; then
+              echo "::error::$html_file has $lines lines (max $max_lines) — likely bloated from merge conflicts"
+              failed=1
+            fi
+          done
+
+          if [ "$failed" -eq 1 ]; then
+            echo "::error::HTML validation failed — check for merge-conflict accumulation"
+            exit 1
+          fi
+          echo "HTML script validation passed"
