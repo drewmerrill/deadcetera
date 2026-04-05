@@ -199,13 +199,13 @@ function _generateOccurrenceDates(baseDate, frequency, interval, rangeStart, ran
 
 function renderCalendarPage(el) {
     el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCC5 Schedule</h1></div>'
+        + '<div id="calNextUpSection"></div>'
         + '<div id="calIntelBanner"></div>'
         + '<div id="calBestRehearsalHero"></div>'
-        + '<div id="calNextUpSection"></div>'
         + '<div id="calendarInner"></div>';
+    _calRenderNextUp();
     _calRenderIntelBanner();
     _calRenderBestRehearsalHero();
-    _calRenderNextUp();
     renderCalendarInner();
 }
 
@@ -274,134 +274,94 @@ async function _calRenderBestRehearsalHero() {
     var el = document.getElementById('calBestRehearsalHero');
     if (!el) return;
 
-    // Get members + blocked ranges
-    var members = [];
-    if (typeof bandMembers !== 'undefined') {
-        Object.entries(bandMembers).forEach(function(e) { members.push({ key: e[0], name: e[1].name || e[0] }); });
-    }
-    if (members.length < 2) { el.innerHTML = ''; return; } // no point suggesting with solo
+    // Use the unified spacing-aware recommendation engine
+    if (typeof GLStore === 'undefined' || !GLStore.getRehearsalDateRecommendations) { el.innerHTML = ''; return; }
 
-    var blockedRanges = [];
-    try {
-        var result = await loadCalendarEvents();
-        blockedRanges = result ? (result.blockedRanges || []) : [];
-    } catch(e) {}
+    var recs;
+    try { recs = await GLStore.getRehearsalDateRecommendations(); } catch(e) { el.innerHTML = ''; return; }
+    if (!recs || !recs.primary) { el.innerHTML = ''; return; }
 
-    // Find best day in next 14 days with confidence scoring
-    var today = new Date();
-    var todayStr = today.toISOString().split('T')[0];
-    var candidates = [];
+    var p = recs.primary;
+    var pDate = new Date(p.date + 'T12:00:00');
+    var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    var _bdSafe = p.date.replace(/'/g, "\\'");
 
-    // Load gig dates for spacing calculation
-    var nextGigDate = null;
-    try {
-        var allEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-        var nextGig = allEvents.filter(function(e) { return e.type === 'gig' && (e.date || '') >= todayStr; })
-            .sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
-        if (nextGig) nextGigDate = nextGig.date;
-    } catch(e) {}
+    // Build reason lines
+    var reasonHtml = '';
+    p.reasons.slice(0, 3).forEach(function(r) {
+        var icon = '\u2022';
+        if (r.match(/free/i)) icon = '\u2705';
+        else if (r.match(/available/i)) icon = '\uD83D\uDC65';
+        else if (r.match(/usual schedule/i)) icon = '\uD83D\uDC4D';
+        else if (r.match(/gig/i)) icon = '\uD83C\uDFB8';
+        else if (r.match(/typical|matches/i)) icon = '\uD83D\uDCC5';
+        else if (r.match(/been|days since/i)) icon = '\u23F3';
+        reasonHtml += '<div style="font-size:0.72em;color:var(--text-dim);line-height:1.5">' + icon + ' ' + (typeof escHtml === 'function' ? escHtml(r) : r) + '</div>';
+    });
 
-    // Check existing rehearsals
-    var existingRehearsals = [];
-    try {
-        var evts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-        existingRehearsals = evts.filter(function(e) { return e.type === 'rehearsal' && (e.date || '') >= todayStr; });
-    } catch(e) {}
-
-    // Load existing rehearsal dates to exclude from suggestions
-    var _existingRehDates = {};
-    existingRehearsals.forEach(function(r) { if (r.date) _existingRehDates[r.date] = true; });
-
-    for (var d = 1; d <= 14; d++) {
-        var dt = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
-        var ds = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
-        // Skip dates that already have a rehearsal scheduled
-        if (_existingRehDates[ds]) continue;
-        var freeCount = 0;
-        members.forEach(function(m) {
-            var blocked = blockedRanges.some(function(b) {
-                return (b.person === m.name || b.person === m.key) && b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate;
-            });
-            if (!blocked) freeCount++;
-        });
-
-        // Confidence scoring: availability + conflict score + gig spacing
-        var availPct = Math.round((freeCount / members.length) * 100);
-        var conflictScore = members.length - freeCount; // 0 = no conflicts
-        var gigSpacing = nextGigDate ? Math.ceil((new Date(nextGigDate + 'T12:00:00') - new Date(ds + 'T12:00:00')) / 86400000) : 999;
-        var spacingBonus = (gigSpacing >= 2 && gigSpacing <= 14) ? 10 : (gigSpacing >= 1 ? 5 : 0);
-        var confidence = availPct - (conflictScore * 15) + spacingBonus;
-        confidence = Math.max(0, Math.min(100, confidence));
-
-        var quality = confidence >= 85 ? 'Best' : confidence >= 60 ? 'Good' : 'Backup';
-
-        candidates.push({
-            date: ds, dt: dt, freeCount: freeCount, availPct: availPct,
-            conflictScore: conflictScore, gigSpacing: gigSpacing, confidence: confidence, quality: quality,
-            day: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dt.getDay()],
-            dayNum: dt.getDate(),
-            month: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][dt.getMonth()]
-        });
-    }
-
-    candidates.sort(function(a, b) { return b.confidence - a.confidence || a.date.localeCompare(b.date); });
-    var best = candidates[0];
-    if (!best || best.freeCount === 0) { el.innerHTML = ''; return; }
-
-    var _bdParsed = glParseDate(best.date);
-    var _bdArgs = _bdParsed ? _bdParsed.getFullYear() + ',' + _bdParsed.getMonth() + ',' + _bdParsed.getDate() : '';
-    var _bdSafe = best.date.replace(/'/g, "\\'");
-
-    // Alternatives as actionable cards
-    var alts = candidates.filter(function(c) { return c.date !== best.date && c.confidence >= 40; }).slice(0, 3);
+    // Alternatives
     var altsHtml = '';
-    if (alts.length) {
-        altsHtml = '<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.04);padding-top:10px">';
-        alts.forEach(function(a) {
-            var _aParsed = glParseDate(a.date);
-            var _aArgs = _aParsed ? _aParsed.getFullYear() + ',' + _aParsed.getMonth() + ',' + _aParsed.getDate() : '';
-            var qColor = a.quality === 'Good' ? '#84cc16' : '#fbbf24';
-            altsHtml += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0">'
-                + '<span style="flex:1;font-size:0.82em;color:var(--text)">' + a.day + ', ' + a.month + ' ' + a.dayNum
-                + ' <span style="color:var(--text-dim)">(' + a.freeCount + '/' + members.length + ')</span></span>'
-                + '<span style="font-size:0.65em;font-weight:700;padding:2px 6px;border-radius:4px;color:' + qColor + ';background:rgba(255,255,255,0.04)">' + a.quality + '</span>'
-                + '<button onclick="calDayClick(' + _aArgs + ')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Use This</button>'
+    if (recs.alternatives.length) {
+        altsHtml = '<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.04);padding-top:8px">';
+        recs.alternatives.forEach(function(a) {
+            var aDate = new Date(a.date + 'T12:00:00');
+            var aLabel = aDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            var aReason = a.reasons.length ? a.reasons[0] : (a.availability.available + '/' + a.availability.total + ' free');
+            var _aSafe = a.date.replace(/'/g, "\\'");
+            altsHtml += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0">'
+                + '<span style="flex:1;font-size:0.78em;color:var(--text)">' + aLabel + '</span>'
+                + '<span style="font-size:0.58em;color:var(--text-dim)">' + (typeof escHtml === 'function' ? escHtml(aReason) : aReason) + '</span>'
+                + '<button onclick="_calLockAndPlan(\'' + _aSafe + '\')" style="font-size:0.68em;padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Use This</button>'
                 + '</div>';
         });
         altsHtml += '</div>';
     }
 
-    // Next Up validation: check if existing rehearsal is suboptimal
-    var validationHtml = '';
-    if (existingRehearsals.length > 0) {
-        var nextReh = existingRehearsals.sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
-        var rehCandidate = candidates.find(function(c) { return c.date === nextReh.date; });
-        if (rehCandidate && rehCandidate.confidence < best.confidence - 20) {
-            validationHtml = '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);font-size:0.78em;color:#fbbf24">'
-                + '\u26A0\uFE0F Your scheduled rehearsal (' + (typeof glFormatDate === 'function' ? glFormatDate(nextReh.date) : nextReh.date) + ') isn\u2019t the best option. '
-                + '<button onclick="calDayClick(' + _bdArgs + ')" style="background:none;border:none;color:#22c55e;cursor:pointer;font-weight:700;padding:0;text-decoration:underline">Move to ' + best.day + ' ' + best.month + ' ' + best.dayNum + '</button>'
-                + '</div>';
-        }
+    // Skipped dates note
+    var skipHtml = '';
+    if (recs.tooClose.length > 0) {
+        skipHtml = '<div style="font-size:0.62em;color:#f59e0b;margin-top:6px">'
+            + recs.tooClose.length + ' date' + (recs.tooClose.length > 1 ? 's' : '') + ' too close to existing rehearsal</div>';
     }
 
+    // Google Calendar button
+    var gcalHtml = '';
+    if (typeof calBuildRehearsalGoogleLink === 'function') {
+        gcalHtml = '<button onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-top:8px;width:100%;padding:8px;border-radius:6px;border:1px solid rgba(66,133,244,0.25);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit;min-height:34px">\uD83D\uDCC5 Add to Google Calendar</button>';
+    }
+
+    // Momentum
+    var momHtml = '';
+    if (recs.momentum && recs.momentum.label) {
+        var mColor = recs.momentum.type === 'streak' ? '#22c55e' : '#f59e0b';
+        momHtml = '<div style="font-size:0.68em;color:' + mColor + ';font-weight:600;margin-bottom:6px">' + recs.momentum.label + '</div>';
+    }
+
+    var confLabel = p.score >= 70 ? 'Best next rehearsal' : 'Good option';
+
     el.innerHTML = '<div style="padding:16px 18px;margin-bottom:12px;border-radius:12px;border:2px solid rgba(34,197,94,0.3);background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        + '<span style="font-size:0.68em;font-weight:800;color:#22c55e;text-transform:uppercase;letter-spacing:0.08em">Best Next Rehearsal</span>'
-        + '<span style="font-size:0.62em;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(34,197,94,0.12);color:#22c55e">' + best.quality + ' (' + best.confidence + '%)</span>'
+        + momHtml
+        + '<div style="font-size:0.62em;font-weight:700;color:#22c55e;margin-bottom:3px">' + confLabel + '</div>'
+        + '<div style="font-size:1.15em;font-weight:900;color:var(--text);margin-bottom:4px">' + pLabel + '</div>'
+        + reasonHtml
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">'
+        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="flex:2;padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer;min-height:44px">\uD83C\uDFB8 Lock + Create Plan</button>'
         + '</div>'
-        + '<div style="font-size:1.15em;font-weight:900;color:var(--text)">' + best.day + ', ' + best.month + ' ' + best.dayNum + '</div>'
-        + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">'
-        + (best.availPct === 100 ? '\u2705 Everyone\u2019s free' : best.availPct + '% available')
-        + (best.gigSpacing <= 14 ? ' \u00B7 ' + best.gigSpacing + ' days before gig' : '')
-        + '</div>'
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="padding:10px 20px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer">\uD83C\uDFB8 Lock + Create Rehearsal Plan</button>'
-        + '<button onclick="document.getElementById(\'calAvailabilityMatrix\').scrollIntoView({behavior:\'smooth\'})" style="padding:10px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">See Alternatives</button>'
-        + '</div>'
-        + validationHtml
+        + gcalHtml
+        + skipHtml
         + altsHtml
         + '</div>';
 }
+
+// Google Calendar from hero card
+window._calGcalFromHero = function(dateStr) {
+    if (typeof calBuildRehearsalGoogleLink !== 'function') return;
+    var url = calBuildRehearsalGoogleLink({ date: dateStr, time: '19:00' }, '');
+    if (url && url !== '#') {
+        window.open(url, '_blank');
+        if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there');
+    }
+};
 
 // ── Lock rehearsal + create plan + navigate ──────────────────────────────────
 window._calLockAndPlan = async function(dateStr) {
@@ -569,13 +529,36 @@ async function _calRenderNextUp() {
             html += '</div>';
         }
 
+        html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
         html += actionBtn;
+        // Google Calendar button
+        if (typeof calBuildRehearsalGoogleLink === 'function' && ev.type === 'rehearsal') {
+            html += '<button onclick="_calNextUpGcal(\'' + (ev.date || '').replace(/'/g, "\\'") + '\',\'' + (ev.time || '').replace(/'/g, "\\'") + '\',\'' + (ev.location || ev.venue || '').replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;font-size:0.72em;font-weight:600;cursor:pointer">\uD83D\uDCC5 Google Cal</button>';
+        } else if (typeof calBuildGigGoogleLink === 'function' && ev.type === 'gig') {
+            html += '<button onclick="_calNextUpGigGcal(\'' + (ev.date || '').replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;font-size:0.72em;font-weight:600;cursor:pointer">\uD83D\uDCC5 Google Cal</button>';
+        }
+        html += '</div>';
         html += '</div>';
     });
 
     html += '</div>';
     el.innerHTML = html;
 }
+
+// Google Calendar helpers for Next Up cards
+window._calNextUpGcal = function(date, time, location) {
+    if (typeof calBuildRehearsalGoogleLink !== 'function') return;
+    var url = calBuildRehearsalGoogleLink({ date: date, time: time || '19:00', location: location || '' }, '');
+    if (url && url !== '#') { window.open(url, '_blank'); if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there'); }
+};
+window._calNextUpGigGcal = function(date) {
+    if (typeof calBuildGigGoogleLink !== 'function') return;
+    var gigs = window._loadedGigs || (typeof _cachedGigs !== 'undefined' ? _cachedGigs : []);
+    var g = gigs.find(function(gig) { return gig.date === date; });
+    if (!g) return;
+    var url = calBuildGigGoogleLink(g);
+    if (url && url !== '#') { window.open(url, '_blank'); if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there'); }
+};
 
 function renderCalendarInner() {
     // Clear schedule blocks cache so we get fresh data on each render
@@ -602,35 +585,37 @@ function renderCalendarInner() {
 
     // Render shell immediately, then load events async and paint dots
     el.innerHTML =
+    // Monthly Calendar — open by default, near the top
+    '<div class="app-card" style="margin-bottom:12px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
+            '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(-1)">\u2190 Prev</button>' +
+            '<h3 style="margin:0;font-size:1.05em;font-weight:700">' + mNames[month] + ' ' + year + '</h3>' +
+            '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(1)">Next \u2192</button>' +
+        '</div>' +
+        '<div id="calGrid"></div>' +
+    '</div>' +
+    // Action buttons
     '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
         '<button class="btn btn-primary" onclick="calAddEvent()" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;font-weight:700">\uD83C\uDFB8 Schedule Rehearsal</button>' +
         '<button class="btn btn-ghost" onclick="calBlockDates()" style="color:#f87171">\uD83D\uDEAB Block Date</button>' +
-        '<button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="color:var(--accent-light)" title="Subscribe to band calendar in Google/Apple Calendar">\uD83D\uDCC5 Subscribe</button>' +
+        '<button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="color:var(--accent-light)" title="Subscribe to band calendar">\uD83D\uDCC5 Subscribe</button>' +
     '</div>' +
     '<div class="app-card" id="calEventFormArea"></div>' +
+    // Upcoming Schedule
     '<div class="app-card"><h3>\uD83D\uDCC5 Upcoming Schedule</h3>' +
         '<div id="calendarEvents"><div style="text-align:center;padding:20px;color:var(--text-dim)">Loading\u2026</div></div>' +
     '</div>' +
-    '<div class="app-card"><h3>\uD83D\uDCCA Smart Scheduling</h3>' +
-        '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Best days for the band to rehearse. Tap a date to lock it in.</div>' +
+    // Smart Scheduling availability matrix
+    '<div class="app-card"><h3>\uD83D\uDCCA Availability</h3>' +
+        '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Who\u2019s free when. Tap a date to lock it in.</div>' +
         '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
         '<div id="calConflictResolver" style="display:none"></div>' +
     '</div>' +
+    // Conflicts — collapsed
     '<details style="margin-bottom:12px">' +
         '<summary class="app-card" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h3 style="margin:0" id="calBlockedHeader">\uD83D\uDEAB Conflicts</h3><span style="font-size:0.72em;color:var(--text-dim)">tap to expand</span></summary>' +
         '<div class="app-card" style="margin-top:-1px;border-top:none;border-top-left-radius:0;border-top-right-radius:0">' +
             '<div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>' +
-        '</div>' +
-    '</details>' +
-    '<details style="margin-bottom:12px">' +
-        '<summary class="app-card" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h3 style="margin:0">\uD83D\uDCC5 Monthly Calendar</h3><span style="font-size:0.72em;color:var(--text-dim)">tap to expand</span></summary>' +
-        '<div class="app-card" style="margin-top:-1px;border-top:none;border-top-left-radius:0;border-top-right-radius:0">' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
-                '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(-1)">\u2190 Prev</button>' +
-                '<h3 style="margin:0;font-size:1.05em;font-weight:700">' + mNames[month] + ' ' + year + '</h3>' +
-                '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(1)">Next \u2192</button>' +
-            '</div>' +
-            '<div id="calGrid"></div>' +
         '</div>' +
     '</details>';
 
