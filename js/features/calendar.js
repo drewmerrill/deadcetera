@@ -379,25 +379,31 @@ async function _calRenderBestRehearsalHero() {
             + '\uD83C\uDFAF We\u2019ll build this around your weakest songs before the gig</div>';
     }
 
-    // Task 2: Google Calendar state with post-click feedback
+    // Google Calendar sync state — check actual sync status on existing events
     var gcalStateHtml = '';
-    var _gcalClicked = window._calGcalClickedDates || {};
-    if (typeof calBuildRehearsalGoogleLink === 'function') {
-        var _calEvts = [];
-        try { _calEvts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []); } catch(e) {}
-        var _hasEvent = _calEvts.some(function(e) { return e.type === 'rehearsal' && e.date === p.date; });
+    var _calEvts = [];
+    try { _calEvts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []); } catch(e) {}
+    var _matchedEvent = _calEvts.find(function(e) { return e.type === 'rehearsal' && e.date === p.date; });
 
-        if (_gcalClicked[p.date]) {
-            // Post-click state: user already clicked "Add to Google Calendar"
-            gcalStateHtml = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(66,133,244,0.04);display:flex;align-items:center;gap:6px">'
-                + '<span style="font-size:0.65em;color:#4285f4">\u2705 Added to Google Calendar</span>'
-                + '<button onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-left:auto;font-size:0.6em;padding:2px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.15);background:none;color:#4285f4;cursor:pointer">Update</button>'
-                + '</div>';
-        } else if (_hasEvent) {
-            gcalStateHtml = '<button id="calGcalBtn" onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-top:6px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Add to Google Calendar</button>';
-        } else {
-            gcalStateHtml = '<button id="calGcalBtn" onclick="_calGcalFromHero(\'' + _bdSafe + '\')" style="margin-top:6px;width:100%;padding:6px;border-radius:6px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">\uD83D\uDCC5 Add to Google Calendar</button>';
-        }
+    if (_matchedEvent && _matchedEvent.sync && _matchedEvent.sync.status === 'synced') {
+        var _link = _matchedEvent.sync.htmlLink;
+        gcalStateHtml = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(66,133,244,0.04);display:flex;align-items:center;gap:6px">'
+            + '<span style="font-size:0.65em;color:#22c55e">\u2705 In Google Calendar</span>'
+            + (_link ? '<a href="' + _link + '" target="_blank" style="margin-left:auto;font-size:0.6em;color:#4285f4;text-decoration:underline">Open</a>' : '')
+            + '</div>';
+    } else if (_matchedEvent && _matchedEvent.sync && _matchedEvent.sync.status === 'needs_update') {
+        gcalStateHtml = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(245,158,11,0.04);display:flex;align-items:center;gap:6px">'
+            + '<span style="font-size:0.65em;color:#f59e0b">\u26A0 Date changed \u2014 </span>'
+            + '<button onclick="_calSyncUpdateHero(\'' + _bdSafe + '\')" style="background:none;border:none;color:#4285f4;cursor:pointer;font-size:0.65em;font-weight:600;padding:0;text-decoration:underline">update calendar</button>'
+            + '</div>';
+    } else if (_matchedEvent && _matchedEvent.sync && _matchedEvent.sync.status === 'error') {
+        gcalStateHtml = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(239,68,68,0.04);display:flex;align-items:center;gap:6px">'
+            + '<span style="font-size:0.65em;color:#ef4444">\u274C Sync failed \u2014 </span>'
+            + '<button onclick="_calSyncUpdateHero(\'' + _bdSafe + '\')" style="background:none;border:none;color:#4285f4;cursor:pointer;font-size:0.65em;font-weight:600;padding:0;text-decoration:underline">Retry</button>'
+            + '</div>';
+    } else {
+        // Not synced or no event yet — will sync on Lock In
+        gcalStateHtml = '<div style="margin-top:6px;font-size:0.58em;color:var(--text-dim);text-align:center">\uD83D\uDCC5 Will add to Google Calendar when locked in</div>';
     }
 
     // Task 3: Alternative access — subtle link, no second system
@@ -422,57 +428,80 @@ async function _calRenderBestRehearsalHero() {
         + '</div>';
 }
 
-// Google Calendar from hero card — tracks clicked state for visual feedback
-window._calGcalClickedDates = {};
-window._calGcalFromHero = function(dateStr) {
-    if (typeof calBuildRehearsalGoogleLink !== 'function') return;
-    var focusSongs = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
-    var planSummary = focusSongs.list.length ? 'Focus: ' + focusSongs.list.slice(0, 3).map(function(s) { return s.title; }).join(', ') : '';
-    var url = calBuildRehearsalGoogleLink({ date: dateStr, time: '19:00' }, planSummary);
-    if (url && url !== '#') {
-        window.open(url, '_blank');
-        window._calGcalClickedDates[dateStr] = true;
-        // Update button to "Added" state immediately
-        var btn = document.getElementById('calGcalBtn');
-        if (btn) {
-            btn.outerHTML = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(66,133,244,0.04);display:flex;align-items:center;gap:6px">'
-                + '<span style="font-size:0.65em;color:#4285f4">\u2705 Added to Google Calendar</span>'
-                + '<button onclick="_calGcalFromHero(\'' + dateStr.replace(/'/g, "\\'") + '\')" style="margin-left:auto;font-size:0.6em;padding:2px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.15);background:none;color:#4285f4;cursor:pointer">Update</button>'
-                + '</div>';
+// Sync update from hero card — retries failed or stale syncs
+window._calSyncUpdateHero = async function(dateStr) {
+    if (typeof GLCalendarSync === 'undefined') return;
+    try {
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var idx = events.findIndex(function(e) { return e.type === 'rehearsal' && e.date === dateStr; });
+        if (idx === -1 || !events[idx].sync || !events[idx].sync.externalEventId) return;
+        var result = await GLCalendarSync.update(events[idx].sync.externalEventId, events[idx]);
+        if (result.success) {
+            events[idx].sync.status = 'synced';
+            events[idx].sync.lastSyncedAt = result.lastSyncedAt;
+            events[idx].sync.etag = result.etag;
+            await saveBandDataToDrive('_band', 'calendar_events', events);
+            if (typeof showToast === 'function') showToast('\u2705 Google Calendar updated');
+            _calRenderBestRehearsalHero(); // re-render to show synced state
+        } else {
+            events[idx].sync.status = 'error';
+            await saveBandDataToDrive('_band', 'calendar_events', events);
+            if (typeof showToast === 'function') showToast('\u274C Update failed \u2014 try again later');
         }
-        if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there');
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('\u274C Update failed');
     }
 };
 
 // ── Lock rehearsal + create plan + navigate ──────────────────────────────────
 window._calLockAndPlan = async function(dateStr) {
-    // 1. Create rehearsal event
+    var _dateFmt = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+    // 1. Create GrooveLinx event
+    var eventIndex = -1;
+    var glEvent = null;
     try {
-        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-        if (db && typeof bandPath === 'function' && typeof loadBandDataFromDrive === 'function') {
-            var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-            var existing = events.find(function(e) { return e.type === 'rehearsal' && e.date === dateStr; });
-            if (!existing) {
-                var newEvent = {
-                    id: 'ev_' + Date.now().toString(36),
-                    type: 'rehearsal',
-                    title: 'Band Rehearsal',
-                    date: dateStr,
-                    time: '19:00',
-                    notes: '',
-                    created: new Date().toISOString()
-                };
-                events.push(newEvent);
-                await saveBandDataToDrive('_band', 'calendar_events', events);
-            }
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var existing = events.find(function(e) { return e.type === 'rehearsal' && e.date === dateStr; });
+        if (!existing) {
+            glEvent = {
+                id: 'ev_' + Date.now().toString(36),
+                type: 'rehearsal',
+                title: 'Band Rehearsal',
+                date: dateStr,
+                time: '19:00',
+                notes: '',
+                created: new Date().toISOString()
+            };
+            events.push(glEvent);
+            eventIndex = events.length - 1;
+            await saveBandDataToDrive('_band', 'calendar_events', events);
+        } else {
+            glEvent = existing;
+            eventIndex = events.indexOf(existing);
         }
-        var _dateFmt = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        if (typeof showToast === 'function') showToast('\u2705 Rehearsal locked for ' + _dateFmt + ' \u2014 building your plan');
     } catch(e) {
-        console.warn('[Calendar] Failed to create rehearsal event:', e);
+        console.warn('[Calendar] Failed to create event:', e);
     }
 
-    // 2. Set the practice plan date and navigate to rehearsal page
+    // 2. Auto-sync to Google Calendar
+    if (glEvent && typeof GLCalendarSync !== 'undefined') {
+        var focusSongs = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+        var planSummary = focusSongs.list.length ? 'Focus: ' + focusSongs.list.slice(0, 3).map(function(s) { return s.title; }).join(', ') : '';
+        var syncResult = await GLCalendarSync.create(glEvent, { planSummary: planSummary });
+        if (syncResult.success) {
+            await GLCalendarSync.saveSyncState(eventIndex, syncResult.sync);
+            if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 added to Google Calendar');
+        } else if (syncResult.fallback && syncResult.opened) {
+            if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 finish adding in Google Calendar');
+        } else {
+            if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 building your plan');
+        }
+    } else {
+        if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 building your plan');
+    }
+
+    // 3. Navigate to rehearsal planner
     window.practicePlanActiveDate = dateStr;
     showPage('rehearsal');
 };

@@ -68,6 +68,13 @@ export default {
       return handleFetchChart(request);
     if (path === '/transcribe' && request.method === 'POST')
       return handleTranscribe(request, env);
+    // Google Calendar API proxy — forwards user's access token to Google
+    if (path === '/calendar/events' && request.method === 'POST')
+      return handleCalendarProxy(request, 'POST', 'primary');
+    if (path.startsWith('/calendar/events/') && request.method === 'PATCH')
+      return handleCalendarProxy(request, 'PATCH', 'primary', path.replace('/calendar/events/', ''));
+    if (path.startsWith('/calendar/events/') && request.method === 'DELETE')
+      return handleCalendarProxy(request, 'DELETE', 'primary', path.replace('/calendar/events/', ''));
     return new Response('Not found', { status: 404 });
   }
 };
@@ -76,7 +83,7 @@ export default {
 function cors(response) {
   const h = new Headers(response.headers);
   h.set('Access-Control-Allow-Origin', '*');
-  h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   h.set('Access-Control-Max-Age', '86400');
   return new Response(response.body, { status: response.status, headers: h });
@@ -767,6 +774,56 @@ async function handleOdesliLinks(request) {
     }
     return jsonResp({ links, title, artist, thumbnail, pageUrl: data.pageUrl || '' });
   } catch(e) { return jsonResp({ error: e.message, links: {} }, 500); }
+}
+
+// ── Google Calendar API Proxy ─────────────────────────────────────────────────
+// Forwards user's OAuth access token to Google Calendar API.
+// No API keys stored in worker — the user's token provides authorization.
+// Routes:
+//   POST   /calendar/events          → calendar.events.insert
+//   PATCH  /calendar/events/:eventId → calendar.events.patch
+//   DELETE /calendar/events/:eventId → calendar.events.delete
+
+async function handleCalendarProxy(request, method, calendarId, eventId) {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return cors(new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
+      status: 401, headers: { 'Content-Type': 'application/json' }
+    }));
+  }
+
+  const baseUrl = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calendarId) + '/events';
+  let googleUrl = baseUrl;
+  if (eventId) googleUrl += '/' + encodeURIComponent(eventId);
+
+  const fetchOpts = {
+    method: method,
+    headers: {
+      'Authorization': authHeader,
+      'Content-Type': 'application/json'
+    }
+  };
+
+  // Forward request body for POST and PATCH
+  if (method === 'POST' || method === 'PATCH') {
+    const body = await request.text();
+    fetchOpts.body = body;
+    // Add sendUpdates=all to automatically send invite emails
+    googleUrl += (googleUrl.includes('?') ? '&' : '?') + 'sendUpdates=all';
+  }
+
+  try {
+    const googleRes = await fetch(googleUrl, fetchOpts);
+    const responseBody = await googleRes.text();
+    return cors(new Response(responseBody, {
+      status: googleRes.status,
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (err) {
+    return cors(new Response(JSON.stringify({ error: 'Google Calendar API error: ' + err.message }), {
+      status: 502, headers: { 'Content-Type': 'application/json' }
+    }));
+  }
 }
 
 // ── ICS Calendar Feed ─────────────────────────────────────────────────────────

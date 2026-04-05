@@ -36,7 +36,7 @@ var FIREBASE_CONFIG = {
 var GOOGLE_DRIVE_CONFIG = {
     apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
-    scope: 'email profile'
+    scope: 'email profile https://www.googleapis.com/auth/calendar.events'
 };
 
 // ── Runtime state ────────────────────────────────────────────────────────────
