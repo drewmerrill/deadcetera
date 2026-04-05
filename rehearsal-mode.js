@@ -234,6 +234,7 @@ function _rmChartQueueLoadCurrent() {
     if (panel) panel.insertBefore(banner, panel.firstChild);
 
     // Open paste mode with empty textarea
+    _rmDismissPasteBanner();
     rmEditing = true;
     var ta = document.getElementById('rmEditTextarea');
     if (ta) {
@@ -243,7 +244,7 @@ function _rmChartQueueLoadCurrent() {
     document.getElementById('rmChartText').style.display = 'none';
     document.getElementById('rmNoChart').classList.add('hidden');
     document.getElementById('rmEditPanel').classList.remove('hidden');
-    document.getElementById('rmEditToggle').textContent = '✕ Cancel';
+    document.getElementById('rmEditToggle').textContent = '\u2715 Cancel';
     if (ta) ta.focus();
 }
 
@@ -1664,6 +1665,12 @@ function rmSearchUG() {
     _rmShowPasteBanner(song.title);
 }
 
+// Dismiss paste banner if it exists (called when entering edit mode)
+function _rmDismissPasteBanner() {
+    var b = document.getElementById('rmPasteBanner');
+    if (b) b.remove();
+}
+
 // Persistent paste-back banner — appears after opening UG, survives tab-switch
 function _rmShowPasteBanner(songTitle) {
     var existing = document.getElementById('rmPasteBanner');
@@ -1682,6 +1689,7 @@ function _rmShowPasteBanner(songTitle) {
 
 // Start a fresh chart — empty textarea with section template, ready for typing or pasting
 function _rmStartFreshChart(songTitle) {
+    _rmDismissPasteBanner();
     rmEditing = true;
     var template = '[Intro]\n\n\n[Verse 1]\n\n\n[Chorus]\n\n\n[Verse 2]\n\n\n[Chorus]\n\n\n[Solo]\n\n\n[Outro]\n';
     var ta = document.getElementById('rmEditTextarea');
@@ -1775,6 +1783,7 @@ function rmToggleToolbar() {
 
 function rmToggleEdit() { if (rmEditing) rmCancelEdit(); else rmStartEdit(); }
 function rmStartEdit() {
+    _rmDismissPasteBanner();
     rmEditing = true;
     document.getElementById('rmEditTextarea').value = document.getElementById('rmChartText').textContent;
     document.getElementById('rmChartText').style.display = 'none';
