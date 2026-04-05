@@ -217,6 +217,36 @@ window.RecordingAnalyzer = (function() {
       });
     }
 
+    // ── Auto-split oversized segments using energy dips ──────────────────────
+    // A 130-minute "song" is clearly multiple songs. Find internal energy
+    // drops and split into sub-segments. Uses the RMS channelData.
+    var MAX_SONG_DURATION = 900; // 15 minutes — anything longer gets auto-split
+    if (channelData && sampleRate) {
+      var _splitSegments = [];
+      segments.forEach(function(seg) {
+        if (seg.duration <= MAX_SONG_DURATION) {
+          _splitSegments.push(seg);
+          return;
+        }
+        // This segment is too long — find internal energy dips to split on
+        var subSegs = _splitOversizedSegment(seg, channelData, sampleRate);
+        subSegs.forEach(function(s) { _splitSegments.push(s); });
+      });
+      if (_splitSegments.length > segments.length) {
+        console.log('[RecordingAnalyzer] Auto-split oversized: ' + segments.length + ' → ' + _splitSegments.length + ' segments');
+        segments = _splitSegments;
+      }
+    }
+
+    // ── Duration sanity check: flag segments that are impossibly long ──
+    segments.forEach(function(seg) {
+      if (seg.duration > MAX_SONG_DURATION && seg.songTitle) {
+        seg._oversized = true;
+        seg.confidence = Math.min(seg.confidence || 1, 0.2);
+        console.warn('[RecordingAnalyzer] Oversized segment: ' + seg.songTitle + ' (' + Math.round(seg.duration / 60) + 'min) — likely multiple songs');
+      }
+    });
+
     // ── Apply saved user overrides from previous analyses ──
     _applyUserOverrides(segments, opts.sessionId);
 
@@ -2030,6 +2060,109 @@ window.RecordingAnalyzer = (function() {
         songPartial: segments.filter(function(s) { return s.type === 'song_partial'; }).length
       }
     };
+  }
+
+  // ── Split oversized segments using internal energy analysis ──────────────────
+
+  function _splitOversizedSegment(seg, rmsData, sampleRate) {
+    // rmsData is either real PCM (high sampleRate) or 10Hz RMS timeline (sampleRate=10)
+    var isRmsTimeline = sampleRate <= 100;
+    var windowSec = isRmsTimeline ? (1 / sampleRate) : 0.5; // analysis window
+    var samplesPerWindow = isRmsTimeline ? 1 : Math.floor(sampleRate * windowSec);
+
+    // Extract energy within segment bounds
+    var startIdx = isRmsTimeline ? Math.floor(seg.startSec * sampleRate) : Math.floor(seg.startSec * sampleRate);
+    var endIdx = isRmsTimeline ? Math.floor(seg.endSec * sampleRate) : Math.floor(seg.endSec * sampleRate);
+    startIdx = Math.max(0, startIdx);
+    endIdx = Math.min(rmsData.length, endIdx);
+
+    if (endIdx - startIdx < 10) return [seg]; // too little data
+
+    // Compute energy per analysis window
+    var energyWindows = [];
+    if (isRmsTimeline) {
+      // Already RMS values — just slice
+      for (var i = startIdx; i < endIdx; i++) {
+        energyWindows.push({ time: i / sampleRate, energy: rmsData[i] });
+      }
+    } else {
+      // Compute RMS from PCM
+      for (var wi = startIdx; wi + samplesPerWindow <= endIdx; wi += samplesPerWindow) {
+        var sum = 0;
+        for (var si = 0; si < samplesPerWindow; si++) {
+          var s = rmsData[wi + si];
+          sum += s * s;
+        }
+        energyWindows.push({ time: wi / sampleRate, energy: Math.sqrt(sum / samplesPerWindow) });
+      }
+    }
+
+    if (energyWindows.length < 20) return [seg];
+
+    // Find median energy
+    var sorted = energyWindows.map(function(w) { return w.energy; }).sort(function(a, b) { return a - b; });
+    var median = sorted[Math.floor(sorted.length / 2)];
+    var dipThreshold = median * 0.25; // energy drops below 25% of median = potential song break
+    var minDipDuration = isRmsTimeline ? 3 : 6; // windows (3s for RMS timeline, 3s for PCM)
+
+    // Find significant energy dips (potential song boundaries)
+    var dips = [];
+    var dipStart = -1;
+    var dipCount = 0;
+    for (var di = 0; di < energyWindows.length; di++) {
+      if (energyWindows[di].energy < dipThreshold) {
+        if (dipStart === -1) dipStart = di;
+        dipCount++;
+      } else {
+        if (dipCount >= minDipDuration) {
+          var dipCenter = energyWindows[dipStart + Math.floor(dipCount / 2)].time;
+          dips.push(dipCenter);
+        }
+        dipStart = -1;
+        dipCount = 0;
+      }
+    }
+
+    if (!dips.length) return [seg]; // no internal dips found
+
+    console.log('[RecordingAnalyzer] Found ' + dips.length + ' energy dips in oversized segment (' + Math.round(seg.duration / 60) + 'min, ' + _formatTime(seg.startSec) + '-' + _formatTime(seg.endSec) + ')');
+
+    // Split segment at dip points
+    var subSegs = [];
+    var prevEnd = seg.startSec;
+    dips.forEach(function(dipTime, idx) {
+      if (dipTime - prevEnd >= 30) { // minimum 30s sub-segment
+        subSegs.push({
+          id: seg.id + '_sub' + idx,
+          startSec: prevEnd,
+          endSec: dipTime,
+          duration: dipTime - prevEnd,
+          type: (dipTime - prevEnd) >= 120 ? 'song_full' : 'song_partial',
+          _originalKind: 'music',
+          songTitle: null,
+          confidence: 0.3,
+          tags: ['auto-split']
+        });
+      }
+      prevEnd = dipTime;
+    });
+    // Final sub-segment
+    if (seg.endSec - prevEnd >= 30) {
+      subSegs.push({
+        id: seg.id + '_sub' + dips.length,
+        startSec: prevEnd,
+        endSec: seg.endSec,
+        duration: seg.endSec - prevEnd,
+        type: (seg.endSec - prevEnd) >= 120 ? 'song_full' : 'song_partial',
+        _originalKind: 'music',
+        songTitle: null,
+        confidence: 0.3,
+        tags: ['auto-split']
+      });
+    }
+
+    console.log('[RecordingAnalyzer] Split into ' + subSegs.length + ' sub-segments: ' + subSegs.map(function(s) { return Math.round(s.duration / 60) + 'm'; }).join(', '));
+    return subSegs.length >= 2 ? subSegs : [seg];
   }
 
   // ── Audio notification chime (Web Audio API, no file needed) ─────────────────
