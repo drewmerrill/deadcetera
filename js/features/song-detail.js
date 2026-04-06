@@ -119,6 +119,44 @@ function _sdActivateTab(lens) {
     });
 }
 
+// ── Quick DNA bar — Key/BPM/Lead always visible in header ─────────────────────
+function _sdBuildDnaBar(title) {
+    var song = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
+    var _dKey = song ? (song.key || '') : '';
+    var _dBpm = song ? (song.bpm || '') : '';
+    var _dLead = song ? (song.lead || '') : '';
+    // Also check GLStore for more recent data
+    if (typeof GLStore !== 'undefined' && GLStore.getSongMeta) {
+        var _sm = GLStore.getSongMeta(title);
+        if (_sm) { _dKey = _sm.key || _dKey; _dBpm = _sm.bpm || _dBpm; _dLead = _sm.leadSinger || _dLead; }
+    }
+
+    var h = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0">';
+    // Key select
+    h += '<select style="font-size:0.75em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:' + (_dKey ? 'var(--text)' : 'var(--text-dim)') + ';border-radius:5px;cursor:pointer" onchange="sdUpdateSongKey(this.value)">';
+    h += '<option value=""' + (!_dKey ? ' selected' : '') + '>\uD83D\uDD11 Key</option>';
+    ['C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','A','A#','Bb','B','Am','Bm','Cm','Dm','Em','Fm','Gm'].forEach(function(k) {
+        h += '<option value="' + k + '"' + (k === _dKey ? ' selected' : '') + '>' + k + '</option>';
+    });
+    h += '</select>';
+    // BPM input
+    h += '<div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:2px 6px">';
+    h += '<span style="font-size:0.68em;color:var(--text-dim)">\uD83E\uDD41</span>';
+    h += '<input type="number" min="40" max="240" placeholder="BPM" value="' + _sdEsc(String(_dBpm)) + '" style="width:42px;font-size:0.75em;padding:1px 2px;background:transparent;border:none;color:' + (_dBpm ? 'var(--text)' : 'var(--text-dim)') + ';outline:none" onchange="sdUpdateSongBpm(this.value)">';
+    h += '</div>';
+    // Lead select
+    if (typeof bandMembers !== 'undefined' && Object.keys(bandMembers).length > 0) {
+        h += '<select style="font-size:0.75em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:' + (_dLead ? 'var(--text)' : 'var(--text-dim)') + ';border-radius:5px;cursor:pointer" onchange="sdUpdateLeadSinger(this.value)">';
+        h += '<option value=""' + (!_dLead ? ' selected' : '') + '>\uD83C\uDFA4 Lead</option>';
+        Object.entries(bandMembers).forEach(function(e) {
+            h += '<option value="' + e[0] + '"' + (e[0] === _dLead ? ' selected' : '') + '>' + (e[1].name || e[0]) + '</option>';
+        });
+        h += '</select>';
+    }
+    h += '</div>';
+    return h;
+}
+
 // ── Shell HTML ────────────────────────────────────────────────────────────────
 function _sdShellHTML(title) {
     var song = (typeof allSongs!=='undefined') ? allSongs.find(function(s){return s.title===title;}) : null;
@@ -158,6 +196,9 @@ function _sdShellHTML(title) {
     // Panel mode (inside gl-right-panel): single column, no dual layout
     var _isPanelMode = !!window._sdPanelMode;
 
+    // Quick DNA bar: inline Key/BPM/Lead always visible in header
+    var _dnaBar = _sdBuildDnaBar(title);
+
     if (_isPanelMode) {
         // Single-column layout for right panel rendering
         return '<div class="song-detail-page">'+
@@ -167,6 +208,7 @@ function _sdShellHTML(title) {
                '    <div class="sd-header-meta">'+pills+'</div>'+
                '  </div>'+
                '  <h1 class="sd-title">'+_sdEsc(title)+'</h1>'+
+               _dnaBar+
                '  <div id="sd-readiness-strip" class="sd-readiness-strip"></div>'+
                '</div>'+
                '<nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
@@ -190,6 +232,7 @@ function _sdShellHTML(title) {
            '    <div class="sd-header-meta">'+pills+'</div>'+
            '  </div>'+
            '  <h1 class="sd-title">'+_sdEsc(title)+'</h1>'+
+           _dnaBar+
            '</div>'+
            '<div class="sd-workspace-row">'+
            '  <div class="sd-left-workspace">'+
