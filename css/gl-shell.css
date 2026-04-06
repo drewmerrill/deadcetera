@@ -208,12 +208,18 @@ body[data-gl-mode="play"] .gl-rail-section-title { display: none; }
 */
 #gl-shell > .main-content {
   flex: 1 1 0;
-  min-width: 0;          /* allow compression below max-width */
-  max-width: none;       /* let flex control width, not a hard cap */
-  margin: 0;             /* remove the auto-centering */
+  min-width: 0;
+  max-width: none;
+  margin: 0;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch; /* smooth scroll on iOS */
+  -webkit-overflow-scrolling: touch;
   transition: flex-basis 0.3s cubic-bezier(0.32, 0, 0, 1);
+}
+/* Centered canvas inside shell — keeps content readable on wide screens */
+#gl-shell > .main-content > .app-page {
+  max-width: var(--content-max, 1100px);
+  margin: 0 auto;
+  padding: 16px 20px;
 }
 /* Desktop: override min-height so center workspace scrolls within shell */
 @media (min-width: 901px) {
