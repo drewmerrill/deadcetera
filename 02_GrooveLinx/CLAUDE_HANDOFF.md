@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-05 (Hard Consolidation — timeline-first architecture, legacy review/report/tab systems removed)_
+_Last updated: 2026-04-06 (Band Feed/Room IA overhaul + voting integrity + unified badges)_
 
 ## Read This First
 
@@ -121,15 +121,43 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 - One-click Rehearsal Chopper integration
 - Linked to sessions via mixdown_id
 
-### Band Feed
-- Post types: note, link, photo, idea, poll
-- Photo rendering (inline image), link labels (smart domain detection)
-- Pin to Band Room (📌)
-- Edit posts (inline textarea)
-- Single + bulk delete with permissions (creator or admin)
-- System filter (⚙️) for auto-generated posts
-- Auto-posts suppressed from default "All" view
+### Band Feed + Band Room (2026-04-06)
+
+**Voting Integrity:**
+- All voting routes through `FeedActionState.voteOnPoll()` (canonical display name key)
+- One vote per band member, validated against bandMembers
+- `FeedActionState.auditPollVotes(dryRun)` cleans invalid vote keys
+- Previous bug: home-dashboard used email prefix, causing duplicate votes
+
+**Unified Badge System:**
+- Both Band Room and Feed badges driven by `FeedActionState.computeSummary()`
+- Removed separate Firebase polling badge from gl-left-rail.js
+- `setActionCount(feedCount, bandRoomCount)` updates both atomically
+- System-generated items excluded from counts
+
+**Band Feed — 3-tier action-first default:**
+- Tier 1: ACTION REQUIRED (Critical + Needs You) — full cards, highlighted
+- Tier 2: WAITING ON BAND — full cards, muted
+- Tier 3: RECENT — compact single-line rows, last 14 days only
+- Resolved: collapsed `<details>` section at bottom
+- Stale: 30+ day unresolved items show Resolve/Archive nudge
+- FYI older than 14 days filtered from default view
+- Completed polls show winning option in compact view
 - Filters: Links, Photos, Pinned, System, Archived
+
+**Band Room — decision-room layout:**
+- Needs Votes (dominant): unvoted polls + unvoted song pitches
+- Open Ideas: unconverted ideas only
+- Waiting on Band: polls where I voted, others haven't
+- Recent Decisions: compact, collapsed, read-only
+- Create forms in collapsible section
+- Converted ideas no longer active standalone cards
+
+**Lifecycle:**
+- Auto-resolve: fully-voted polls + converted ideas → `feed_meta.resolved`
+- Auto-archive: resolved 14+ days → `feed_meta.archived`
+- `resolvedAt` timestamp tracked for auto-archive timing
+- Debug: `computeSummary()` logs badge items to console
 
 ### Progression Tracking
 - Action log: practice_set, practice_all, completed_* (14-day localStorage)

@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-05 (Timeline-Driven Rehearsal System + Playback + Page Consolidation)_
+_Updated: 2026-04-06 (Band Feed/Room IA Overhaul + Voting Integrity + Schedule Timing)_
 
-## Active Phase: Timeline Intelligence + Performance Coaching
+## Active Phase: Action Trust + Information Architecture
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main) + `push.py` for GitHub Pages
