@@ -1649,7 +1649,7 @@ async function _sdPopulateListenLens(title) {
           (bestShot.audioUrl?'<audio controls src="'+_sdEsc(bestShot.audioUrl)+'" style="height:32px;max-width:140px"></audio>':
            bestShot.externalUrl?'<button class="btn btn-sm" onclick="window.open(\''+bestShot.externalUrl.replace(/'/g,"\\'")+'\',\'_blank\')" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);font-size:0.78em;padding:6px 12px;border-radius:8px;cursor:pointer">▶ Listen</button>':'')+
           '</div>')
-        :'<div style="color:var(--text-dim);font-size:0.85em">No recording yet — upload a take from the Songs page.</div>';
+        :'<div style="color:var(--text-dim);font-size:0.85em;display:flex;align-items:center;justify-content:space-between;gap:10px">No recording yet<button onclick="addBestShotTake(\''+title.replace(/'/g,"\\'")+'\');" class="btn btn-sm" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);font-size:0.82em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0">\uD83D\uDCE4 Upload Take</button></div>';
 
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
