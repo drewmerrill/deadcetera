@@ -319,8 +319,10 @@ async function _calRenderBestRehearsalHero() {
 
     var recs;
     try {
+        // Wait for band members to load before asking for recommendations
+        await GLStore.ready(['members'], 15000);
         var _heroPromise = GLStore.getRehearsalDateRecommendations();
-        var _heroTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 5000); });
+        var _heroTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 3000); });
         recs = await Promise.race([_heroPromise, _heroTimeout]);
     } catch(e) {
         // Timeout — still give direction, never dead-end
@@ -1220,17 +1222,16 @@ async function _calRenderAvailabilityMatrix(blockedRanges) {
     // This prevents the "Loading..." hang — user sees the grid right away
     _calRenderAvailabilityGridSync(el, blockedRanges);
 
-    // Async: load recommendation data and re-render with annotations
+    // Async: wait for members to load, then overlay recommendation annotations
     try {
-        var _recPromise = (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations)
-            ? GLStore.getRehearsalDateRecommendations() : Promise.resolve(null);
-        var _timeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 3000); });
-        var _recData = await Promise.race([_recPromise, _timeout]);
-        if (_recData) {
-            _calRenderAvailabilityGridSync(el, blockedRanges, _recData);
+        if (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations) {
+            await GLStore.ready(['members'], 15000);
+            var _recData = await GLStore.getRehearsalDateRecommendations();
+            if (_recData) {
+                _calRenderAvailabilityGridSync(el, blockedRanges, _recData);
+            }
         }
     } catch(e) {
-        // Timeout or error — grid already rendered without annotations, nothing to do
         console.warn('[Calendar] Recommendation annotations unavailable:', e.message);
     }
 }
