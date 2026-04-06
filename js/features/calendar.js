@@ -387,8 +387,8 @@ async function _calRenderBestRehearsalHero() {
 
     if (_matchedEvent && _matchedEvent.sync && _matchedEvent.sync.status === 'synced') {
         var _link = _matchedEvent.sync.htmlLink;
-        gcalStateHtml = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(66,133,244,0.04);display:flex;align-items:center;gap:6px">'
-            + '<span style="font-size:0.65em;color:#22c55e">\u2705 In Google Calendar</span>'
+        gcalStateHtml = '<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:rgba(34,197,94,0.04);display:flex;align-items:center;gap:6px">'
+            + '<span style="font-size:0.65em;color:#22c55e">\u2705 Synced with Google Calendar</span>'
             + (_link ? '<a href="' + _link + '" target="_blank" style="margin-left:auto;font-size:0.6em;color:#4285f4;text-decoration:underline">Open</a>' : '')
             + '</div>';
     } else if (_matchedEvent && _matchedEvent.sync && _matchedEvent.sync.status === 'needs_update') {
@@ -422,8 +422,16 @@ async function _calRenderBestRehearsalHero() {
             + '.cal-lock-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(34,197,94,0.25)}'
             + '.cal-lock-btn:active{transform:scale(0.98)}'
             + '.cal-lock-btn.loading{opacity:0.7;pointer-events:none}'
-            + '@keyframes calSuccessPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,0.4)}70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:none}}'
-            + '.cal-hero-success{animation:calSuccessPulse 1s ease-out;border-color:#22c55e!important}';
+            + '@keyframes calSuccessPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,0.4)}70%{box-shadow:0 0 0 12px rgba(34,197,94,0)}100%{box-shadow:none}}'
+            + '.cal-hero-success{animation:calSuccessPulse 1.2s ease-out;border-color:#22c55e!important}'
+            + '@keyframes calFadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}'
+            + '.cal-fade-in{animation:calFadeIn 0.3s ease forwards}'
+            + '.cal-fade-delay-1{animation-delay:0.15s;opacity:0}'
+            + '.cal-fade-delay-2{animation-delay:0.3s;opacity:0}'
+            + '.cal-fade-delay-3{animation-delay:0.5s;opacity:0}'
+            + '#calAvailabilityMatrix td{transition:opacity 0.12s}'
+            + '#calAvailabilityMatrix tr:hover td{opacity:0.85}'
+            + '#calAvailabilityMatrix td:hover{opacity:1!important}';
         document.head.appendChild(_hs);
     }
 
@@ -454,8 +462,13 @@ async function _calRenderBestRehearsalHero() {
         + '<details style="margin-bottom:8px"><summary style="font-size:0.6em;color:var(--text-dim);cursor:pointer;list-style:none;text-decoration:underline dotted">Why this works</summary>'
         + '<div style="padding:4px 0">' + reasonHtml + '</div></details>'
         + whyNotHtml
-        // Lock In button with loading state support
+        // Confidence signal
+        + (p.score >= 75 ? '<div style="font-size:0.58em;font-weight:700;color:#22c55e;margin-bottom:6px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e"></span> High confidence</div>'
+          : p.score >= 55 ? '<div style="font-size:0.58em;font-weight:700;color:#84cc16;margin-bottom:6px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#84cc16"></span> Good option</div>' : '')
+        // Lock In button
         + '<button id="calLockBtn" class="cal-lock-btn" onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px;margin-top:2px">\uD83C\uDFB8 Lock In + Build Plan</button>'
+        // Decision reinforcement
+        + '<div style="font-size:0.52em;color:var(--text-dim);text-align:center;margin-top:4px;line-height:1.4">Best option based on availability, cadence, and timing</div>'
         // Sync state (always visible)
         + gcalStateHtml
         + altLinkHtml
@@ -469,12 +482,18 @@ function _calShowHeroSuccess(dateFmt, htmlLink) {
     if (!hero) { if (typeof showToast === 'function') showToast('\u2705 Locked for ' + dateFmt); return; }
     hero.classList.add('cal-hero-success');
     hero.style.borderColor = '#22c55e';
-    hero.innerHTML = '<div style="text-align:center;padding:16px 0">'
-        + '<div style="font-size:1.5em;margin-bottom:8px">\u2705</div>'
-        + '<div style="font-size:1em;font-weight:800;color:var(--text);margin-bottom:4px">Locked for ' + dateFmt + '</div>'
-        + '<div style="font-size:0.72em;color:#22c55e;font-weight:600;margin-bottom:12px">\uD83D\uDCC5 In Google Calendar</div>'
-        + (htmlLink ? '<a href="' + htmlLink + '" target="_blank" style="font-size:0.72em;color:#4285f4;text-decoration:underline">Open event</a>' : '')
-        + '<div style="font-size:0.58em;color:var(--text-dim);margin-top:10px">Opening rehearsal planner\u2026</div>'
+    hero.innerHTML = '<div style="text-align:center;padding:20px 0">'
+        // Line 1: emoji + headline (immediate)
+        + '<div class="cal-fade-in" style="font-size:1.6em;margin-bottom:6px">\uD83C\uDFB8</div>'
+        + '<div class="cal-fade-in" style="font-size:1.05em;font-weight:800;color:var(--text);margin-bottom:2px">Rehearsal locked</div>'
+        // Line 2: date/time (slight delay)
+        + '<div class="cal-fade-in cal-fade-delay-1" style="font-size:0.82em;color:var(--text-dim);margin-bottom:10px">' + dateFmt + ' \u00B7 7 PM</div>'
+        // Line 3: sync confirmation (more delay)
+        + '<div class="cal-fade-in cal-fade-delay-2" style="font-size:0.72em;color:#22c55e;font-weight:600;margin-bottom:4px">\uD83D\uDCC5 Synced with Google Calendar</div>'
+        + '<div class="cal-fade-in cal-fade-delay-2" style="font-size:0.62em;color:var(--text-dim);margin-bottom:10px">Band has been invited</div>'
+        // Line 4: action link (most delay)
+        + (htmlLink ? '<div class="cal-fade-in cal-fade-delay-3"><a href="' + htmlLink + '" target="_blank" style="font-size:0.68em;color:#4285f4;text-decoration:underline">Open event</a></div>' : '')
+        + '<div class="cal-fade-in cal-fade-delay-3" style="font-size:0.55em;color:var(--text-dim);margin-top:12px">Opening rehearsal planner\u2026</div>'
         + '</div>';
 }
 
@@ -1150,7 +1169,8 @@ async function _calRenderAvailabilityMatrix(blockedRanges) {
             ';font-weight:' + (isPrimary ? '800' : '600') + ';font-size:0.85em;border-bottom:1px solid rgba(255,255,255,0.08);background:' + bg + ';' + monthBorder + topBorder +
             'cursor:pointer" onclick="calShowDateConflicts(\'' + day.date + '\')"' + (title ? ' title="' + title + '"' : '') + '>' +
             day.label.charAt(0) + '<br><span style="font-size:0.9em">' + day.dayNum + '</span>' +
-            (isPrimary ? '<br><span style="font-size:0.5em;color:#22c55e">\u2605</span>' : '') +
+            (isPrimary ? '<br><span style="font-size:0.42em;font-weight:800;color:#22c55e;letter-spacing:0.05em">BEST</span>' : '') +
+            (isTooClose ? '<br><span style="font-size:0.38em;color:#f59e0b;letter-spacing:0.03em">CLOSE</span>' : '') +
             '</th>';
     });
     html += '</tr>';
