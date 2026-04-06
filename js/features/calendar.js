@@ -1176,6 +1176,28 @@ async function _calRenderAvailabilityMatrix(blockedRanges) {
     var el = document.getElementById('calAvailabilityMatrix');
     if (!el) return;
 
+    // Show the grid immediately with availability data, THEN overlay recommendation annotations async
+    // This prevents the "Loading..." hang — user sees the grid right away
+    _calRenderAvailabilityGridSync(el, blockedRanges);
+
+    // Async: load recommendation data and re-render with annotations
+    try {
+        var _recPromise = (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations)
+            ? GLStore.getRehearsalDateRecommendations() : Promise.resolve(null);
+        var _timeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 3000); });
+        var _recData = await Promise.race([_recPromise, _timeout]);
+        if (_recData) {
+            _calRenderAvailabilityGridSync(el, blockedRanges, _recData);
+        }
+    } catch(e) {
+        // Timeout or error — grid already rendered without annotations, nothing to do
+        console.warn('[Calendar] Recommendation annotations unavailable:', e.message);
+    }
+}
+
+function _calRenderAvailabilityGridSync(el, blockedRanges, recData) {
+    if (!el) return;
+
     // Get members
     var members = [];
     if (typeof bandMembers !== 'undefined') {
@@ -1233,24 +1255,14 @@ async function _calRenderAvailabilityMatrix(blockedRanges) {
         return { day: day, freeCount: freeCount, allFree: freeCount === members.length, strength: null };
     });
 
-    // Load recommendation data for grid annotations (with timeout to prevent hang)
-    var _recData = null;
+    // Use recommendation data if provided (async overlay), otherwise render without
     var _tooCloseDates = {};
     var _primaryDate = null;
     var _altDates = {};
-    if (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations) {
-        try {
-            var _recPromise = GLStore.getRehearsalDateRecommendations();
-            var _timeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 5000); });
-            _recData = await Promise.race([_recPromise, _timeout]);
-            if (_recData) {
-                if (_recData.primary) _primaryDate = _recData.primary.date;
-                (_recData.alternatives || []).forEach(function(a) { _altDates[a.date] = true; });
-                (_recData.tooClose || []).forEach(function(c) { _tooCloseDates[c.date] = c.penalties && c.penalties[0] ? c.penalties[0] : 'Too close'; });
-            }
-        } catch(e) {
-            console.warn('[Calendar] Recommendation data unavailable:', e.message);
-        }
+    if (recData) {
+        if (recData.primary) _primaryDate = recData.primary.date;
+        (recData.alternatives || []).forEach(function(a) { _altDates[a.date] = true; });
+        (recData.tooClose || []).forEach(function(c) { _tooCloseDates[c.date] = c.penalties && c.penalties[0] ? c.penalties[0] : 'Too close'; });
     }
 
     // Range controls
