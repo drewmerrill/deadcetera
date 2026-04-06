@@ -395,7 +395,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             _suggestHTML = '<div style="padding:12px 18px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:12px;border-left:4px solid #22c55e;box-shadow:0 2px 12px rgba(34,197,94,0.06)">'
                 + '<div style="display:flex;align-items:center;gap:14px">'
                 + '<div style="flex:1;min-width:0">'
-                + '<div style="font-size:0.58em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#86efac;margin-bottom:4px">Work on this next</div>'
+                + '<div style="font-size:0.62em;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#86efac;margin-bottom:4px">Work on this next</div>'
                 + '<div style="font-size:0.95em;font-weight:700;color:var(--text)">' + _focus.primary.title + '</div>'
                 + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">' + (_focus.reason || '') + '</div>'
                 + _sgBuildExplanation(_focus.primary.title)

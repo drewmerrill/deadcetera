@@ -208,7 +208,7 @@ function renderCalendarPage(el) {
             + '#page-schedule .page-header p{display:none}'
             + '#page-schedule .app-card{border:none;background:rgba(255,255,255,0.01);border-radius:10px}'
             // Section labels — understated
-            + '.cal-section-label{font-size:0.6em;font-weight:700;color:rgba(148,163,184,0.7);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}'
+            + '.cal-section-label{font-size:0.65em;font-weight:700;color:rgba(148,163,184,0.8);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px}'
             // Next Up — minimal cards with hover depth
             + '.cal-next-card{padding:12px 14px;margin-bottom:6px;border-radius:10px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.03);transition:all 0.15s}'
             + '.cal-next-card:hover{background:rgba(255,255,255,0.035);border-color:rgba(255,255,255,0.06);box-shadow:0 2px 8px rgba(0,0,0,0.15)}'
