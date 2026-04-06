@@ -412,19 +412,69 @@ async function _calRenderBestRehearsalHero() {
         altLinkHtml = '<div style="text-align:center;margin-top:6px"><span onclick="var d=document.getElementById(\'calHeroAlts\');if(d)d.open=!d.open" style="font-size:0.6em;color:var(--text-dim);cursor:pointer;text-decoration:underline dotted">See other options</span></div>';
     }
 
-    el.innerHTML = '<div style="padding:16px 18px;margin-bottom:12px;border-radius:12px;border:2px solid rgba(34,197,94,0.3);background:linear-gradient(160deg,rgba(34,197,94,0.06),rgba(99,102,241,0.04))">'
+    // Inject micro-interaction CSS (once)
+    if (!document.getElementById('cal-hero-styles')) {
+        var _hs = document.createElement('style');
+        _hs.id = 'cal-hero-styles';
+        _hs.textContent = '.cal-hero{transition:box-shadow 0.2s,transform 0.2s}'
+            + '.cal-hero:hover{box-shadow:0 8px 32px rgba(34,197,94,0.12)}'
+            + '.cal-lock-btn{transition:all 0.2s ease}'
+            + '.cal-lock-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(34,197,94,0.25)}'
+            + '.cal-lock-btn:active{transform:scale(0.98)}'
+            + '.cal-lock-btn.loading{opacity:0.7;pointer-events:none}'
+            + '@keyframes calSuccessPulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,0.4)}70%{box-shadow:0 0 0 10px rgba(34,197,94,0)}100%{box-shadow:none}}'
+            + '.cal-hero-success{animation:calSuccessPulse 1s ease-out;border-color:#22c55e!important}';
+        document.head.appendChild(_hs);
+    }
+
+    // "Why others don't" — build from tooClose + alternatives with issues
+    var whyNotHtml = '';
+    if (recs.tooClose.length > 0 || recs.alternatives.some(function(a) { return a.offPatternNotes && a.offPatternNotes.length; })) {
+        var whyNotItems = [];
+        recs.tooClose.slice(0, 2).forEach(function(c) {
+            var d = new Date(c.date + 'T12:00:00');
+            var label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            whyNotItems.push(label + ' \u2014 ' + (c.penalties && c.penalties[0] ? c.penalties[0].toLowerCase() : 'too close'));
+        });
+        if (whyNotItems.length) {
+            whyNotHtml = '<details style="margin-top:4px"><summary style="font-size:0.58em;color:var(--text-dim);cursor:pointer;list-style:none;text-decoration:underline dotted">Why not other dates?</summary>'
+                + '<div style="padding:4px 0;font-size:0.58em;color:var(--text-dim)">';
+            whyNotItems.forEach(function(item) { whyNotHtml += '<div style="padding:1px 0">\u274C ' + item + '</div>'; });
+            whyNotHtml += '</div></details>';
+        }
+    }
+
+    el.innerHTML = '<div id="calHeroCard" class="cal-hero" style="padding:20px;margin-bottom:16px;border-radius:14px;border:1px solid rgba(34,197,94,0.2);background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(15,23,42,0.95))">'
         + momHtml
-        + '<div style="font-size:0.62em;font-weight:700;color:#22c55e;margin-bottom:3px">' + confLabel + '</div>'
-        + '<div style="font-size:1.15em;font-weight:900;color:var(--text);margin-bottom:2px">' + pLabel + '</div>'
+        + '<div style="font-size:0.6em;font-weight:700;color:#22c55e;letter-spacing:0.03em;margin-bottom:4px">' + confLabel + '</div>'
+        + '<div style="font-size:1.25em;font-weight:900;color:var(--text);margin-bottom:4px;letter-spacing:-0.01em">' + pLabel + '</div>'
         + statsHtml
         + planHtml
-        + reasonHtml
-        + '<button onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.88em;cursor:pointer;min-height:44px;margin-top:4px">\uD83C\uDFB8 Lock In + Build Plan</button>'
-        + '<div style="font-size:0.52em;color:var(--text-dim);text-align:center;margin-top:3px">Saves the date, then opens your rehearsal plan</div>'
+        // "Why this works" expandable
+        + '<details style="margin-bottom:8px"><summary style="font-size:0.6em;color:var(--text-dim);cursor:pointer;list-style:none;text-decoration:underline dotted">Why this works</summary>'
+        + '<div style="padding:4px 0">' + reasonHtml + '</div></details>'
+        + whyNotHtml
+        // Lock In button with loading state support
+        + '<button id="calLockBtn" class="cal-lock-btn" onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px;margin-top:2px">\uD83C\uDFB8 Lock In + Build Plan</button>'
+        // Sync state (always visible)
         + gcalStateHtml
-        + skipHtml
         + altLinkHtml
         + (recs.alternatives.length > 0 ? '<details id="calHeroAlts" style="margin-top:4px">' + altsHtml.replace('<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.04);padding-top:8px">', '<div>') + '</details>' : '')
+        + '</div>';
+}
+
+// Inline success morph — transforms hero without full re-render
+function _calShowHeroSuccess(dateFmt, htmlLink) {
+    var hero = document.getElementById('calHeroCard');
+    if (!hero) { if (typeof showToast === 'function') showToast('\u2705 Locked for ' + dateFmt); return; }
+    hero.classList.add('cal-hero-success');
+    hero.style.borderColor = '#22c55e';
+    hero.innerHTML = '<div style="text-align:center;padding:16px 0">'
+        + '<div style="font-size:1.5em;margin-bottom:8px">\u2705</div>'
+        + '<div style="font-size:1em;font-weight:800;color:var(--text);margin-bottom:4px">Locked for ' + dateFmt + '</div>'
+        + '<div style="font-size:0.72em;color:#22c55e;font-weight:600;margin-bottom:12px">\uD83D\uDCC5 In Google Calendar</div>'
+        + (htmlLink ? '<a href="' + htmlLink + '" target="_blank" style="font-size:0.72em;color:#4285f4;text-decoration:underline">Open event</a>' : '')
+        + '<div style="font-size:0.58em;color:var(--text-dim);margin-top:10px">Opening rehearsal planner\u2026</div>'
         + '</div>';
 }
 
@@ -456,6 +506,10 @@ window._calSyncUpdateHero = async function(dateStr) {
 // ── Lock rehearsal + create plan + navigate ──────────────────────────────────
 window._calLockAndPlan = async function(dateStr) {
     var _dateFmt = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+    // Immediate loading feedback (<300ms perception)
+    var lockBtn = document.getElementById('calLockBtn');
+    if (lockBtn) { lockBtn.classList.add('loading'); lockBtn.textContent = 'Locking in\u2026'; }
 
     // 1. Create GrooveLinx event
     var eventIndex = -1;
@@ -491,14 +545,15 @@ window._calLockAndPlan = async function(dateStr) {
         var syncResult = await GLCalendarSync.create(glEvent, { planSummary: planSummary });
         if (syncResult.success) {
             await GLCalendarSync.saveSyncState(eventIndex, syncResult.sync);
-            if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 added to Google Calendar');
+            // Inline success morph — no full re-render
+            _calShowHeroSuccess(_dateFmt, syncResult.sync.htmlLink);
         } else if (syncResult.fallback && syncResult.opened) {
             if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 finish adding in Google Calendar');
         } else {
-            if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 building your plan');
+            if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt);
         }
     } else {
-        if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt + ' \u2014 building your plan');
+        if (typeof showToast === 'function') showToast('\u2705 Locked for ' + _dateFmt);
     }
 
     // 3. Navigate to rehearsal planner
@@ -719,9 +774,8 @@ function renderCalendarInner() {
             '<div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
         '</div>' +
     '</details>' +
-    // Smart Scheduling availability matrix
-    '<div class="app-card"><h3>\uD83D\uDCCA Availability</h3>' +
-        '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">Who\u2019s free when. Tap a date to lock it in.</div>' +
+    // Availability heatmap
+    '<div class="app-card" style="border:none;background:transparent;padding:8px 0"><div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Availability</div>' +
         '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
         '<div id="calConflictResolver" style="display:none"></div>' +
     '</div>' +
@@ -1103,24 +1157,27 @@ async function _calRenderAvailabilityMatrix(blockedRanges) {
 
     members.forEach(function(member) {
         html += '<tr>';
-        html += '<td style="padding:4px 6px;color:var(--text-muted);font-weight:600;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.04);position:sticky;left:0;background:#0f172a;z-index:1">' + member.split(' ')[0] + '</td>';
+        html += '<td style="padding:4px 6px;color:var(--text-muted);font-weight:600;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,0.03);position:sticky;left:0;background:#0f172a;z-index:1">' + member.split(' ')[0] + '</td>';
         days.forEach(function(day) {
-            var allFreeDay = dayAvail.find(function(d) { return d.day.date === day.date; });
-            var bgCol = allFreeDay && allFreeDay.allFree ? 'rgba(34,197,94,0.05)' : '';
-            var cellContent = '<span style="color:#22c55e;opacity:0.4">\u2714</span>';
+            // Heatmap column colors based on recommendation status
+            var isPrimary = day.date === _primaryDate;
+            var isTooClose = !!_tooCloseDates[day.date];
+            var bgCol = isPrimary ? 'rgba(34,197,94,0.08)' : isTooClose ? 'rgba(245,158,11,0.04)' : '';
+            var cellContent = '<span style="color:#22c55e;opacity:0.3">\u2714</span>';
             if (useRichEval) {
                 var mStatus = GLStore.evaluateMemberDateStatus(schedBlocks, member, day.date);
                 if (mStatus.status === 'hard_conflict') {
-                    cellContent = '<span style="color:#ef4444;font-weight:700">\u2716</span>';
+                    cellContent = '<span style="color:#ef4444">\u2716</span>';
+                    if (!bgCol) bgCol = 'rgba(239,68,68,0.04)';
                 } else if (mStatus.status === 'soft_conflict') {
-                    cellContent = '<span style="color:#f59e0b;font-weight:600">~</span>';
+                    cellContent = '<span style="color:#f59e0b">~</span>';
                 }
             } else {
                 var blocked = blockedRanges.some(function(b) { return b.person === member && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate; });
-                if (blocked) cellContent = '<span style="color:#ef4444;font-weight:700">\u2716</span>';
+                if (blocked) { cellContent = '<span style="color:#ef4444">\u2716</span>'; bgCol = 'rgba(239,68,68,0.04)'; }
             }
-            var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:3px solid rgba(99,102,241,0.5);' : '';
-            html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + bgCol + ';' + monthBorder + '">' + cellContent + '</td>';
+            var monthBorder = day.isFirstOfMonth && day.dayNum === 1 ? 'border-left:2px solid rgba(99,102,241,0.3);' : '';
+            html += '<td style="text-align:center;padding:4px 2px;border-bottom:1px solid rgba(255,255,255,0.02);background:' + bgCol + ';' + monthBorder + '">' + cellContent + '</td>';
         });
         html += '</tr>';
     });
