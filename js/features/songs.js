@@ -1034,8 +1034,6 @@ function _renderTriageBar(dropdown, count) {
         + '.sq-done{font-size:0.75em;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;border-radius:5px;padding:5px 12px;cursor:pointer;font-weight:700;white-space:nowrap;align-self:flex-end}'
         + '.sq-field--saved{border-color:rgba(34,197,94,0.5)!important;transition:border-color 0.15s}'
         + '.gl-triage-active #sd-readiness-card,.gl-triage-active #sd-discussion-mount,.gl-triage-active #sd-confidence-prompt,.gl-triage-active .sd-intel-card,.gl-triage-active #sd-assets,.gl-triage-active #sd-prospect-vote{display:none!important}'
-        + '.gl-triage-active .sd-tab-bar{display:none!important}'
-        + '.gl-triage-active .sd-readiness-strip{display:none!important}'
         // Scroll snap for smooth iPhone scrolling
         + '#songDropdown{scroll-snap-type:y proximity;-webkit-overflow-scrolling:touch}'
         + '.song-item{scroll-snap-align:start}'
