@@ -660,6 +660,8 @@ window.renderBandFeedPage = async function(el) {
         await _feedLoadMeta();
         var items = await _feedLoadAll();
         _feedCache = items;
+        // Auto-resolve: persist resolved state for fully-voted polls and converted ideas
+        _feedAutoResolve(items);
     } catch(loadErr) {
         console.warn('[Feed] Data load failed:', loadErr);
         _feedCache = [];
@@ -788,6 +790,32 @@ async function _feedLoadMeta() {
     } catch(e) {
         console.warn('[Feed] Meta load error:', e.message);
         _feedMeta = {};
+    }
+}
+
+// Auto-resolve: persist resolved state to feed_meta for items that are
+// resolved by computation but not yet stored. Prevents badge/state drift.
+function _feedAutoResolve(items) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var updates = {};
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (!item.resolved) continue; // only auto-resolve items that are computed-resolved
+        var key = _feedItemKey(item);
+        var meta = _feedMeta[key];
+        if (meta && meta.resolved) continue; // already persisted
+        // Persist resolved state
+        updates[bandPath('feed_meta/' + key + '/resolved')] = true;
+        // Update local cache
+        if (!_feedMeta[key]) _feedMeta[key] = {};
+        _feedMeta[key].resolved = true;
+    }
+    if (Object.keys(updates).length > 0) {
+        db.ref().update(updates).catch(function(e) {
+            console.warn('[Feed] Auto-resolve write failed:', e.message);
+        });
+        console.log('[Feed] Auto-resolved', Object.keys(updates).length, 'items');
     }
 }
 
@@ -1116,7 +1144,7 @@ function _feedSyncNavBadge() {
     var fas = _fas();
     if (!fas || !_feedCache) return;
     var summary = fas.computeSummary(_feedCache, _feedMeta);
-    fas.setActionCount(summary.needsMyInput);
+    fas.setActionCount(summary.needsMyInput, summary.unvotedPolls);
 }
 
 // ── Navigation ──────────────────────────────────────────────────────────────
@@ -1704,7 +1732,7 @@ if (typeof pageRenderers !== 'undefined') {
         if (!myVoteKey) return;
         db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value').then(function(snap) {
             var polls = snap.val();
-            if (!polls) { fas.setActionCount(0); return; }
+            if (!polls) { fas.setActionCount(0, 0); return; }
             var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
             var count = 0;
             Object.values(polls).forEach(function(p) {
@@ -1715,7 +1743,8 @@ if (typeof pageRenderers !== 'undefined') {
                 var iVoted = !!(p.votes && p.votes[myVoteKey] !== undefined);
                 if (!iVoted) count++;
             });
-            fas.setActionCount(count);
+            // Both badges get the same count (polls-only estimate)
+            fas.setActionCount(count, count);
         }).catch(function() {});
     }
     // Run after Firebase is likely ready

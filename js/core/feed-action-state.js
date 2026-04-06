@@ -306,19 +306,34 @@ window.FeedActionState = (function() {
     function computeSummary(items, metaMap) {
         metaMap = metaMap || {};
         var critical = 0, myInput = 0, bandInput = 0, resolved = 0, total = 0;
+        var unvotedPolls = 0;
+        var _debugItems = [];
         for (var i = 0; i < items.length; i++) {
             var meta = metaMap[items[i].type + ':' + items[i].id] || {};
             if (meta.archived) continue;
+            if (items[i]._source === 'playlist_sync') continue; // exclude system-generated
             total++;
             var state = getActionState(items[i], meta);
             if (state.priorityBucket === BUCKET.CRITICAL) critical++;
-            if (state.needsMyInput) myInput++;
+            if (state.needsMyInput) {
+                myInput++;
+                _debugItems.push({ id: items[i].id, type: items[i].type, text: (items[i].text || '').slice(0, 40), bucket: state.priorityBucket });
+                // Count unvoted polls specifically for Band Room badge
+                if (items[i].type === 'poll') unvotedPolls++;
+            }
             if (state.waitingOnOthers) bandInput++;
             if (state.isResolved) resolved++;
+        }
+        if (_debugItems.length) {
+            console.log('[ActionState] Badge count:', myInput, '| Band Room polls:', unvotedPolls);
+            console.table(_debugItems);
+        } else {
+            console.log('[ActionState] Badge count: 0 (all clear)');
         }
         return {
             total: total, critical: critical,
             needsMyInput: myInput, waitingOnBand: bandInput,
+            unvotedPolls: unvotedPolls,
             resolved: resolved, allClear: critical === 0 && myInput === 0
         };
     }
@@ -407,6 +422,9 @@ window.FeedActionState = (function() {
     async function voteOnPoll(pollKey, optionIdx) {
         var voteKey = getMyVoteKey();
         if (!voteKey) return { ok: false, reason: 'no identity' };
+        // Validate voter is a band member
+        var memberKey = getMyMemberKey();
+        if (!memberKey) return { ok: false, reason: 'not a band member' };
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (!db || typeof bandPath !== 'function') return { ok: false, reason: 'no database' };
         try {
@@ -417,6 +435,52 @@ window.FeedActionState = (function() {
         }
     }
 
+    // ── Vote Audit & Cleanup ─────────────────────────────────────────────
+    // Scans all polls and removes vote keys that don't match any band member.
+    // Returns { pollsScanned, cleaned, details[] }.
+    async function auditPollVotes(dryRun) {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return { error: 'no database' };
+        var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        // Build set of valid vote keys (display names)
+        var validKeys = {};
+        Object.keys(members).forEach(function(k) {
+            if (members[k].name) validKeys[members[k].name] = true;
+        });
+        var snap = await db.ref(bandPath('polls')).once('value');
+        var allPolls = snap.val();
+        if (!allPolls) return { pollsScanned: 0, cleaned: 0, details: [] };
+
+        var scanned = 0, cleaned = 0, details = [];
+        var updates = {};
+        Object.entries(allPolls).forEach(function(entry) {
+            var pollId = entry[0], poll = entry[1];
+            if (!poll.votes) return;
+            scanned++;
+            Object.keys(poll.votes).forEach(function(vk) {
+                if (!validKeys[vk]) {
+                    details.push({ pollId: pollId, question: poll.question || poll.title || '', badKey: vk, value: poll.votes[vk] });
+                    updates['polls/' + pollId + '/votes/' + vk] = null; // delete
+                    cleaned++;
+                }
+            });
+        });
+
+        console.log('[VoteAudit] Scanned:', scanned, 'polls. Found', cleaned, 'invalid vote keys.');
+        if (details.length) console.table(details);
+
+        if (!dryRun && Object.keys(updates).length > 0) {
+            // Prefix each key with the band path
+            var absUpdates = {};
+            Object.keys(updates).forEach(function(k) { absUpdates[bandPath(k)] = null; });
+            await db.ref().update(absUpdates);
+            console.log('[VoteAudit] Cleaned', cleaned, 'invalid votes.');
+        } else if (dryRun) {
+            console.log('[VoteAudit] Dry run — no changes made. Call auditPollVotes(false) to clean.');
+        }
+        return { pollsScanned: scanned, cleaned: cleaned, details: details };
+    }
+
     // ── Nav Badge State ─────────────────────────────────────────────────────
     //
     // Cached action count for nav badge. Updated by feed after data loads,
@@ -424,9 +488,13 @@ window.FeedActionState = (function() {
 
     var _cachedActionCount = 0;
 
-    function setActionCount(count) {
+    var _cachedBandRoomCount = 0;
+
+    function setActionCount(count, bandRoomCount) {
         _cachedActionCount = count;
+        if (bandRoomCount !== undefined) _cachedBandRoomCount = bandRoomCount;
         _updateNavBadge(count);
+        _updateBandRoomBadge(_cachedBandRoomCount);
         _updateAppBadge(count);
     }
 
@@ -435,6 +503,14 @@ window.FeedActionState = (function() {
     function _updateNavBadge(count) {
         // Feed nav badge in left rail
         var badge = document.getElementById('glRailFeedBadge');
+        if (badge) {
+            badge.textContent = count > 9 ? '9+' : String(count);
+            badge.style.display = count > 0 ? '' : 'none';
+        }
+    }
+
+    function _updateBandRoomBadge(count) {
+        var badge = document.getElementById('glRailBandRoomBadge');
         if (badge) {
             badge.textContent = count > 9 ? '9+' : String(count);
             badge.style.display = count > 0 ? '' : 'none';
@@ -575,6 +651,7 @@ window.FeedActionState = (function() {
 
         // Actions
         voteOnPoll: voteOnPoll,
+        auditPollVotes: auditPollVotes,
 
         // Band alignment
         computeBandAlignment: computeBandAlignment,

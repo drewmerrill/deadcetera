@@ -529,17 +529,26 @@ window._bcCreatePoll = async function() {
 };
 
 window._bcVotePoll = async function(pollKey, optionIdx) {
-  var userId = _bcGetName();
-  try {
-    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
-      await firebaseDB.ref(bandPath('polls/' + pollKey + '/votes/' + userId)).set(optionIdx);
+  // Route through canonical vote path for consistent identity
+  var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+  if (fas && fas.voteOnPoll) {
+    var result = await fas.voteOnPoll(pollKey, optionIdx);
+    if (result.ok) {
       if (typeof showToast === 'function') showToast('Vote recorded');
-      // Refresh — find the poll container
-      var containers = document.querySelectorAll('[id]');
-      // Simple refresh: just reload ideas page if on it
-      if (typeof currentPage !== 'undefined' && currentPage === 'ideas') _bcLoadIdeas();
+    } else {
+      if (typeof showToast === 'function') showToast('Vote failed: ' + (result.reason || 'unknown'));
     }
-  } catch(e) {}
+  } else {
+    // Legacy fallback
+    var userId = _bcGetName();
+    try {
+      if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+        await firebaseDB.ref(bandPath('polls/' + pollKey + '/votes/' + userId)).set(optionIdx);
+        if (typeof showToast === 'function') showToast('Vote recorded');
+      }
+    } catch(e) {}
+  }
+  if (typeof currentPage !== 'undefined' && currentPage === 'ideas') _bcLoadIdeas();
 };
 
 // ── Reactions (Phase 2) ──────────────────────────────────────────────────────

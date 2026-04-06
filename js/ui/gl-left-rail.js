@@ -219,34 +219,50 @@
   // ── Band Room badge ────────────────────────────────────────────────────
   // Uses FeedActionState identity for correct vote key matching.
   // Previous version used email prefix which didn't match vote storage format.
-  async function _updateBandRoomBadge() {
+  // UNIFIED: Both badges now driven by FeedActionState.computeSummary().
+  // The separate Firebase polling badge was removed to prevent disagreement
+  // between Band Room and Feed badge counts.
+  //
+  // On initial page load (before feed data is available), do a lightweight
+  // poll-only check to show a badge quickly. Feed will override with
+  // accurate counts once it loads.
+  async function _updateBandRoomBadgeInit() {
     try {
+      var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+      if (fas && fas.getActionCount() > 0) return; // already set by feed
       var db = (typeof firebaseDB !== 'undefined') ? firebaseDB : null;
       if (!db || typeof bandPath !== 'function') return;
-      // Use FeedActionState for correct identity (display name = vote key)
-      var voteKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyVoteKey)
-          ? FeedActionState.getMyVoteKey() : null;
-      // Fallback: email prefix (legacy, less reliable)
-      if (!voteKey) voteKey = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
-      var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+      var voteKey = fas ? fas.getMyVoteKey() : null;
+      if (!voteKey) return;
+      var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
       var snap = await db.ref(bandPath('polls')).orderByChild('ts').limitToLast(10).once('value');
       var val = snap.val();
       var count = 0;
       if (val) {
         Object.values(val).forEach(function(p) {
-          if (p.ts > cutoff && p.options && p.options.length && (!p.votes || p.votes[voteKey] === undefined)) count++;
+          if (!p.options || !p.options.length) return;
+          var vc = p.votes ? Object.keys(p.votes).length : 0;
+          if (vc >= memberCount) return; // fully voted = resolved
+          if (!p.votes || p.votes[voteKey] === undefined) count++;
         });
       }
-      var badge = document.getElementById('glRailBandRoomBadge');
-      if (badge) {
-        badge.textContent = count > 9 ? '9+' : count;
-        badge.style.display = count > 0 ? '' : 'none';
+      // Only set if feed hasn't loaded yet
+      if (fas && fas.getActionCount() === 0) {
+        var badge = document.getElementById('glRailBandRoomBadge');
+        if (badge) {
+          badge.textContent = count > 9 ? '9+' : String(count);
+          badge.style.display = count > 0 ? '' : 'none';
+        }
+        var feedBadge = document.getElementById('glRailFeedBadge');
+        if (feedBadge) {
+          feedBadge.textContent = count > 9 ? '9+' : String(count);
+          feedBadge.style.display = count > 0 ? '' : 'none';
+        }
       }
     } catch(e) {}
   }
-  // Check badge on init and periodically
-  setTimeout(_updateBandRoomBadge, 3000);
-  setInterval(_updateBandRoomBadge, 300000); // was 2min — reduce to 5min for mobile perf
+  // Quick init badge — feed will override with accurate counts when it loads
+  setTimeout(_updateBandRoomBadgeInit, 3000);
 
   // ── Active state ────────────────────────────────────────────────────────
 

@@ -2855,7 +2855,10 @@ async function _renderHdPollCard() {
     if (!el) return;
     try {
         if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath === 'function') {} else return;
-        var userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
+        // Use canonical vote key (display name) for consistent identity
+        var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        var userId = fas ? fas.getMyVoteKey() : null;
+        if (!userId) userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
         var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
 
         // Load polls, ideas in parallel
@@ -2931,14 +2934,26 @@ async function _renderHdPollCard() {
 }
 
 window._hdVotePoll = async function(pollKey, optionIdx) {
-    var userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
-    try {
-        if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
-            await firebaseDB.ref(bandPath('polls/' + pollKey + '/votes/' + userId)).set(optionIdx);
+    // Route through canonical vote path to ensure consistent vote key (display name)
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    if (fas && fas.voteOnPoll) {
+        var result = await fas.voteOnPoll(pollKey, optionIdx);
+        if (result.ok) {
             if (typeof showToast === 'function') showToast('Vote recorded');
-            _renderHdPollCard();
+        } else {
+            if (typeof showToast === 'function') showToast('Vote failed: ' + (result.reason || 'unknown'));
         }
-    } catch(e) {}
+    } else {
+        // Legacy fallback — should not be reached
+        var voteKey = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
+        try {
+            if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+                await firebaseDB.ref(bandPath('polls/' + pollKey + '/votes/' + voteKey)).set(optionIdx);
+                if (typeof showToast === 'function') showToast('Vote recorded');
+            }
+        } catch(e) {}
+    }
+    _renderHdPollCard();
 };
 
 // Executive summary of show readiness. Complements the granular readiness %
