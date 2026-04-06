@@ -883,7 +883,7 @@ function renderCalendarInner() {
     '</details>' +
     // Availability
     '<div style="padding:4px 0"><div class="cal-section-label">Availability</div>' +
-        '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
+        '<div id="calAvailabilityMatrix" style="font-size:0.82em"></div>' +
         '<div id="calConflictResolver" style="display:none"></div>' +
     '</div>' +
     // Conflicts — collapsed, quiet
@@ -895,8 +895,11 @@ function renderCalendarInner() {
         '<div style="padding-top:4px"><div id="blockedDates" style="font-size:0.82em;color:var(--text-muted)"><div style="padding:8px 0;color:var(--text-dim);font-size:0.82em">No blocked dates.</div></div></div>' +
     '</details>';
 
+    // Render availability grid immediately (don't wait for calendar events)
+    _calRenderAvailabilityMatrix([]);
+
     // Load events, then build calendar grid with dots and blocked ranges
-    loadCalendarEvents().then(result => {
+    loadCalendarEvents().catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
         const eventDates = result ? result.dateMap : {};
         const blockedRanges = result ? (result.blockedRanges || []) : [];
         const grid = document.getElementById('calGrid');
