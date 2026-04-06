@@ -898,14 +898,21 @@ function renderCalendarInner() {
     '</details>';
 
     // Load events, then build calendar grid + availability
-    // Also schedule a fallback render in case loadCalendarEvents hangs
+    // Wait for Firebase before starting — fallback only if truly hung
     var _availRendered = false;
-    setTimeout(function() {
-        if (!_availRendered) {
-            console.warn('[Calendar] Availability fallback — loadCalendarEvents may have hung');
-            _calRenderAvailabilityMatrix([]);
-        }
-    }, 4000);
+    var _startFallbackTimer = function() {
+        setTimeout(function() {
+            if (!_availRendered) {
+                console.warn('[Calendar] Availability fallback — loadCalendarEvents may have hung');
+                _calRenderAvailabilityMatrix([]);
+            }
+        }, 6000);
+    };
+    if (typeof GLStore !== 'undefined' && GLStore.ready) {
+        GLStore.ready(['firebase'], 10000).then(_startFallbackTimer);
+    } else {
+        _startFallbackTimer();
+    }
 
     loadCalendarEvents().catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
         _availRendered = true;
