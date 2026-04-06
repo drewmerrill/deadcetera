@@ -198,10 +198,43 @@ function _generateOccurrenceDates(baseDate, frequency, interval, rangeStart, ran
 }
 
 function renderCalendarPage(el) {
-    el.innerHTML = '<div class="page-header"><h1>\uD83D\uDCC5 Schedule</h1></div>'
+    // Inject premium page styles (once)
+    if (!document.getElementById('cal-page-styles')) {
+        var _ps = document.createElement('style');
+        _ps.id = 'cal-page-styles';
+        _ps.textContent =
+            // Page-level typography reset
+            '#page-schedule .page-header h1{font-size:1.1em;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px}'
+            // Remove heavy card borders globally on this page
+            + '#page-schedule .app-card{border:none;background:rgba(255,255,255,0.015);border-radius:10px}'
+            // Section labels
+            + '.cal-section-label{font-size:0.62em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px}'
+            // Next Up cards — lighter
+            + '.cal-next-card{padding:12px 14px;margin-bottom:6px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);transition:background 0.15s}'
+            + '.cal-next-card:hover{background:rgba(255,255,255,0.04)}'
+            // Action buttons — modern pill style
+            + '.cal-action-btn{padding:6px 14px;border-radius:20px;font-size:0.75em;font-weight:600;cursor:pointer;transition:all 0.15s;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-family:inherit}'
+            + '.cal-action-btn:hover{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12)}'
+            + '.cal-action-primary{background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border:none;font-weight:700}'
+            + '.cal-action-primary:hover{box-shadow:0 2px 12px rgba(34,197,94,0.2)}'
+            // Calendar grid — lighter
+            + '#calGrid{font-size:0.82em}'
+            + '#calGrid>div>div{border-radius:6px}'
+            // Details/summary — cleaner
+            + '#calendarInner details summary{border:none;background:rgba(255,255,255,0.02);border-radius:8px;padding:10px 14px}'
+            + '#calendarInner details summary:hover{background:rgba(255,255,255,0.04)}'
+            // Reduce heavy borders everywhere
+            + '#calendarInner .app-card{border:none}'
+            ;
+        document.head.appendChild(_ps);
+    }
+
+    el.innerHTML = '<div class="page-header"><h1>Schedule</h1></div>'
+        // Layer 1: Decision
         + '<div id="calNextUpSection"></div>'
         + '<div id="calIntelBanner"></div>'
         + '<div id="calBestRehearsalHero"></div>'
+        // Layer 2: Orientation
         + '<div id="calendarInner"></div>';
     _calRenderNextUp();
     _calRenderIntelBanner();
@@ -452,10 +485,10 @@ async function _calRenderBestRehearsalHero() {
         }
     }
 
-    el.innerHTML = '<div id="calHeroCard" class="cal-hero" style="padding:20px;margin-bottom:16px;border-radius:14px;border:1px solid rgba(34,197,94,0.2);background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(15,23,42,0.95))">'
+    el.innerHTML = '<div id="calHeroCard" class="cal-hero" style="padding:22px 20px;margin-bottom:20px;border-radius:16px;border:1px solid rgba(34,197,94,0.15);background:linear-gradient(165deg,rgba(34,197,94,0.03) 0%,rgba(15,23,42,0.98) 40%,rgba(99,102,241,0.02) 100%);backdrop-filter:blur(8px)">'
         + momHtml
-        + '<div style="font-size:0.6em;font-weight:700;color:#22c55e;letter-spacing:0.03em;margin-bottom:4px">' + confLabel + '</div>'
-        + '<div style="font-size:1.25em;font-weight:900;color:var(--text);margin-bottom:4px;letter-spacing:-0.01em">' + pLabel + '</div>'
+        + '<div style="font-size:0.58em;font-weight:700;color:#22c55e;letter-spacing:0.02em;margin-bottom:6px">' + confLabel + '</div>'
+        + '<div style="font-size:1.35em;font-weight:900;color:var(--text);margin-bottom:4px;letter-spacing:-0.02em;line-height:1.1">' + pLabel + '</div>'
         + statsHtml
         + planHtml
         // "Why this works" expandable
@@ -466,7 +499,7 @@ async function _calRenderBestRehearsalHero() {
         + (p.score >= 75 ? '<div style="font-size:0.58em;font-weight:700;color:#22c55e;margin-bottom:6px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e"></span> High confidence</div>'
           : p.score >= 55 ? '<div style="font-size:0.58em;font-weight:700;color:#84cc16;margin-bottom:6px;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#84cc16"></span> Good option</div>' : '')
         // Lock In button
-        + '<button id="calLockBtn" class="cal-lock-btn" onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px;margin-top:2px">\uD83C\uDFB8 Lock In + Build Plan</button>'
+        + '<button id="calLockBtn" class="cal-lock-btn" onclick="_calLockAndPlan(\'' + _bdSafe + '\')" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:800;font-size:0.9em;cursor:pointer;min-height:48px;margin-top:4px;letter-spacing:0.01em">Lock In + Build Plan</button>'
         // Decision reinforcement
         + '<div style="font-size:0.52em;color:var(--text-dim);text-align:center;margin-top:4px;line-height:1.4">Best option based on availability, cadence, and timing</div>'
         // Sync state (always visible)
@@ -613,8 +646,8 @@ async function _calRenderNextUp() {
         }
     } catch(e) {}
 
-    var html = '<div style="margin-bottom:12px">';
-    html += '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px">Next Up</div>';
+    var html = '<div style="margin-bottom:16px">';
+    html += '<div class="cal-section-label">Next Up</div>';
 
     // Render each upcoming event card
     [nextRehearsal, nextGig].forEach(function(ev) {
@@ -668,7 +701,7 @@ async function _calRenderNextUp() {
             actionBtn = '<button onclick="showPage(\'setlists\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">View Setlist</button>';
         }
 
-        html += '<div style="padding:14px 16px;margin-bottom:8px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid ' + (isRisk ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.06)') + '">';
+        html += '<div class="cal-next-card" style="' + (isRisk ? 'border-color:rgba(245,158,11,0.2)' : '') + '">';
         html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">';
         html += '<span style="font-size:1.1em">' + icon + '</span>';
         html += '<div style="flex:1"><div style="font-weight:700;font-size:0.92em;color:var(--text)">' + (ev.title || label) + '</div>';
@@ -770,40 +803,42 @@ function renderCalendarInner() {
 
     // Render shell immediately, then load events async and paint dots
     el.innerHTML =
-    // Monthly Calendar — open by default, near the top
-    '<div class="app-card" style="margin-bottom:12px">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">' +
-            '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(-1)">\u2190 Prev</button>' +
-            '<h3 style="margin:0;font-size:1.05em;font-weight:700">' + mNames[month] + ' ' + year + '</h3>' +
-            '<button class="btn btn-ghost btn-sm" onclick="calNavMonth(1)">Next \u2192</button>' +
+    // Monthly Calendar — clean, borderless
+    '<div style="margin-bottom:16px;padding:12px 0">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
+            '<button onclick="calNavMonth(-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2190</button>' +
+            '<span style="font-size:0.95em;font-weight:700;color:var(--text);letter-spacing:-0.01em">' + mNames[month] + ' ' + year + '</span>' +
+            '<button onclick="calNavMonth(1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2192</button>' +
         '</div>' +
         '<div id="calGrid"></div>' +
     '</div>' +
-    // Action buttons
-    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
-        '<button class="btn btn-primary" onclick="calAddEvent()" style="background:linear-gradient(135deg,#22c55e,#16a34a);border:none;font-weight:700">\uD83C\uDFB8 Schedule Rehearsal</button>' +
-        '<button class="btn btn-ghost" onclick="calBlockDates()" style="color:#f87171">\uD83D\uDEAB Block Date</button>' +
-        '<button class="btn btn-ghost" onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="color:var(--accent-light)" title="Subscribe to band calendar">\uD83D\uDCC5 Subscribe</button>' +
+    // Quick actions — pill buttons
+    '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">' +
+        '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()">Schedule Rehearsal</button>' +
+        '<button class="cal-action-btn" onclick="calBlockDates()">Block Date</button>' +
+        '<button class="cal-action-btn" onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" title="Subscribe to band calendar">Subscribe</button>' +
     '</div>' +
-    '<div class="app-card" id="calEventFormArea"></div>' +
-    // Upcoming Schedule — collapsed by default
-    '<details style="margin-bottom:12px">' +
-        '<summary class="app-card" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h3 style="margin:0">\uD83D\uDCC5 Upcoming Schedule</h3><span style="font-size:0.72em;color:var(--text-dim)">tap to expand</span></summary>' +
-        '<div class="app-card" style="margin-top:-1px;border-top:none;border-top-left-radius:0;border-top-right-radius:0">' +
-            '<div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
-        '</div>' +
+    '<div id="calEventFormArea"></div>' +
+    // Upcoming Schedule — collapsed, quiet
+    '<details style="margin-bottom:16px">' +
+        '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:8px 0">' +
+            '<span class="cal-section-label" style="margin-bottom:0">Upcoming Schedule</span>' +
+            '<span style="font-size:0.55em;color:var(--text-dim)">\u25B8</span>' +
+        '</summary>' +
+        '<div style="padding-top:4px"><div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading\u2026</div></div></div>' +
     '</details>' +
-    // Availability heatmap
-    '<div class="app-card" style="border:none;background:transparent;padding:8px 0"><div style="font-size:0.72em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px">Availability</div>' +
+    // Availability
+    '<div style="padding:4px 0"><div class="cal-section-label">Availability</div>' +
         '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim)">Loading\u2026</div></div>' +
         '<div id="calConflictResolver" style="display:none"></div>' +
     '</div>' +
-    // Conflicts — collapsed
-    '<details style="margin-bottom:12px">' +
-        '<summary class="app-card" style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px"><h3 style="margin:0" id="calBlockedHeader">\uD83D\uDEAB Conflicts</h3><span style="font-size:0.72em;color:var(--text-dim)">tap to expand</span></summary>' +
-        '<div class="app-card" style="margin-top:-1px;border-top:none;border-top-left-radius:0;border-top-right-radius:0">' +
-            '<div id="blockedDates" style="font-size:0.85em;color:var(--text-muted)"><div style="text-align:center;padding:12px;color:var(--text-dim)">No blocked dates.</div></div>' +
-        '</div>' +
+    // Conflicts — collapsed, quiet
+    '<details style="margin-bottom:16px">' +
+        '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:8px 0">' +
+            '<span class="cal-section-label" style="margin-bottom:0" id="calBlockedHeader">Conflicts</span>' +
+            '<span style="font-size:0.55em;color:var(--text-dim)">\u25B8</span>' +
+        '</summary>' +
+        '<div style="padding-top:4px"><div id="blockedDates" style="font-size:0.82em;color:var(--text-muted)"><div style="padding:8px 0;color:var(--text-dim);font-size:0.82em">No blocked dates.</div></div></div>' +
     '</details>';
 
     // Load events, then build calendar grid with dots and blocked ranges
