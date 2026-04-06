@@ -883,7 +883,7 @@ function renderCalendarInner() {
     '</details>' +
     // Availability
     '<div style="padding:4px 0"><div class="cal-section-label">Availability</div>' +
-        '<div id="calAvailabilityMatrix" style="font-size:0.82em"></div>' +
+        '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading availability\u2026</div></div>' +
         '<div id="calConflictResolver" style="display:none"></div>' +
     '</div>' +
     // Conflicts — collapsed, quiet
@@ -895,10 +895,7 @@ function renderCalendarInner() {
         '<div style="padding-top:4px"><div id="blockedDates" style="font-size:0.82em;color:var(--text-muted)"><div style="padding:8px 0;color:var(--text-dim);font-size:0.82em">No blocked dates.</div></div></div>' +
     '</details>';
 
-    // Render availability grid immediately (don't wait for calendar events)
-    _calRenderAvailabilityMatrix([]);
-
-    // Load events, then build calendar grid with dots and blocked ranges
+    // Load events, then build calendar grid + availability
     loadCalendarEvents().catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
         const eventDates = result ? result.dateMap : {};
         const blockedRanges = result ? (result.blockedRanges || []) : [];
@@ -1241,7 +1238,14 @@ function _calRenderAvailabilityGridSync(el, blockedRanges, recData) {
             if (b.person && !seen[b.person]) { seen[b.person] = true; members.push(b.person); }
         });
     }
-    if (!members.length) { el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-dim)">Add band members to see availability.</div>'; return; }
+    if (!members.length) {
+        // bandMembers may not be loaded yet — retry once after a short delay
+        if (!el._retried) {
+            el._retried = true;
+            setTimeout(function() { _calRenderAvailabilityMatrix(_calCachedBlockedRanges); }, 2000);
+        }
+        return;
+    }
 
     // Build day range with month context
     var today = new Date();
