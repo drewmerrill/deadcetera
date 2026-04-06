@@ -311,7 +311,11 @@ async function _calRenderBestRehearsalHero() {
     if (typeof GLStore === 'undefined' || !GLStore.getRehearsalDateRecommendations) { el.innerHTML = ''; return; }
 
     var recs;
-    try { recs = await GLStore.getRehearsalDateRecommendations(); } catch(e) { el.innerHTML = ''; return; }
+    try {
+        var _heroPromise = GLStore.getRehearsalDateRecommendations();
+        var _heroTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 5000); });
+        recs = await Promise.race([_heroPromise, _heroTimeout]);
+    } catch(e) { el.innerHTML = ''; return; }
     if (!recs || !recs.primary) { el.innerHTML = ''; return; }
 
     var p = recs.primary;
@@ -807,10 +811,10 @@ function renderCalendarInner() {
     '<div style="margin-bottom:16px;padding:12px 0">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
             '<button onclick="calNavMonth(-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2190</button>' +
-            '<span style="font-size:0.95em;font-weight:700;color:var(--text);letter-spacing:-0.01em">' + mNames[month] + ' ' + year + '</span>' +
+            '<span id="calMonthLabel" style="font-size:0.95em;font-weight:700;color:var(--text);letter-spacing:-0.01em">' + mNames[month] + ' ' + year + '</span>' +
             '<button onclick="calNavMonth(1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2192</button>' +
         '</div>' +
-        '<div id="calGrid"></div>' +
+        '<div id="calGrid" style="transition:opacity 0.12s ease"></div>' +
     '</div>' +
     // Quick actions — pill buttons
     '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">' +
@@ -910,14 +914,63 @@ function calNavMonth(dir) {
     calViewMonth += dir;
     if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
     if (calViewMonth < 0)  { calViewMonth = 11; calViewYear--; }
-    renderCalendarInner();
-    // Re-open the calendar details element (it was open when user clicked nav)
-    setTimeout(function() {
-        var details = document.querySelectorAll('#calendarInner details');
-        details.forEach(function(d) {
-            if (d.querySelector('#calGrid')) d.open = true;
+
+    // Partial render: update only the month label and grid — nothing else
+    var mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var monthLabel = document.getElementById('calMonthLabel');
+    if (monthLabel) monthLabel.textContent = mNames[calViewMonth] + ' ' + calViewYear;
+
+    var grid = document.getElementById('calGrid');
+    if (grid) {
+        grid.style.opacity = '0.5';
+        // Rebuild grid only
+        _calRenderGridOnly(grid);
+    }
+}
+
+// Render just the calendar grid (month nav — no other sections touched)
+function _calRenderGridOnly(grid) {
+    var year = calViewYear, month = calViewMonth;
+    var dNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var firstDay = new Date(year, month, 1).getDay();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var todayStr = new Date().toISOString().split('T')[0];
+    var monthPrefix = year + '-' + String(month + 1).padStart(2, '0') + '-';
+
+    loadCalendarEvents().then(function(result) {
+        var eventDates = result ? result.dateMap : {};
+        var blockedRanges = result ? (result.blockedRanges || []) : [];
+        if (!grid) return;
+
+        var g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+        dNames.forEach(function(d, i) {
+            var w = i === 0 || i === 6;
+            g += '<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:' + (w ? 'var(--accent-light)' : 'var(--text-dim)') + ';text-align:center;padding:6px 0">' + d + '</div>';
         });
-    }, 50);
+        for (var i = 0; i < firstDay; i++) g += '<div style="min-height:60px;padding:4px;"></div>';
+        for (var d = 1; d <= daysInMonth; d++) {
+            var ds = monthPrefix + String(d).padStart(2, '0');
+            var isToday = ds === todayStr;
+            var dow = new Date(year, month, d).getDay();
+            var w = dow === 0 || dow === 6;
+            var dayEvents = eventDates ? (eventDates[ds] || []) : [];
+            var hasEvent = dayEvents.length > 0;
+            var eventPills = hasEvent ? dayEvents.slice(0, 2).map(function(ev) {
+                var typeColors = { rehearsal: '#22c55e', gig: '#f59e0b', meeting: '#818cf8' };
+                var c = typeColors[ev.type] || '#64748b';
+                var label = (ev.title || ev.type || '').substring(0, 12);
+                return '<div style="font-size:0.55em;margin-top:1px;padding:1px 3px;border-radius:3px;background:' + c + '20;color:' + c + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + '</div>';
+            }).join('') : '';
+            var moreCount = dayEvents.length > 2 ? '<div style="font-size:0.5em;color:var(--text-dim)">+' + (dayEvents.length - 2) + '</div>' : '';
+            g += '<div onclick="calDayClick(' + year + ',' + month + ',' + d + ')" style="min-height:60px;padding:4px;cursor:pointer;border-radius:6px;' + (isToday ? 'background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);' : 'border:1px solid transparent;') + 'transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseleave="this.style.background=\'' + (isToday ? 'rgba(99,102,241,0.1)' : '') + '\'">'
+                + '<span style="text-align:center;' + (isToday ? 'color:var(--accent);font-weight:700;' : hasEvent ? 'color:white;font-weight:600;' : w ? 'color:var(--accent-light);' : 'color:var(--text-muted);') + '">' + d + '</span>'
+                + eventPills + moreCount
+                + '</div>';
+        }
+        g += '</div>';
+        grid.innerHTML = g;
+        grid.style.opacity = '1';
+    });
 }
 
 
@@ -1139,20 +1192,24 @@ async function _calRenderAvailabilityMatrix(blockedRanges) {
         return { day: day, freeCount: freeCount, allFree: freeCount === members.length, strength: null };
     });
 
-    // Load recommendation data for grid annotations (no duplicate "best days" — hero handles that)
+    // Load recommendation data for grid annotations (with timeout to prevent hang)
     var _recData = null;
     var _tooCloseDates = {};
     var _primaryDate = null;
     var _altDates = {};
     if (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations) {
         try {
-            _recData = await GLStore.getRehearsalDateRecommendations();
+            var _recPromise = GLStore.getRehearsalDateRecommendations();
+            var _timeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 5000); });
+            _recData = await Promise.race([_recPromise, _timeout]);
             if (_recData) {
                 if (_recData.primary) _primaryDate = _recData.primary.date;
                 (_recData.alternatives || []).forEach(function(a) { _altDates[a.date] = true; });
                 (_recData.tooClose || []).forEach(function(c) { _tooCloseDates[c.date] = c.penalties && c.penalties[0] ? c.penalties[0] : 'Too close'; });
             }
-        } catch(e) {}
+        } catch(e) {
+            console.warn('[Calendar] Recommendation data unavailable:', e.message);
+        }
     }
 
     // Range controls
