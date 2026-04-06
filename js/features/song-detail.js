@@ -940,7 +940,42 @@ function _sdBuildReadinessStrip(title) {
         return '<span class="sd-readiness-pill" style="background:'+color+'" title="'+_sdEsc(name)+'">'+
                (function(n){var p=n.trim().split(/\s+/);return p.length>1?p[0].charAt(0)+p[p.length-1].charAt(0):p[0].charAt(0);})(name)+':'+(score||'—')+'</span>';
     }).join('');
-    strip.innerHTML='<div class="sd-readiness-pills">'+pills+'</div>';
+    // Quick DNA bar: Key, BPM, Lead — always visible, inline editable
+    var _dnaKey = '', _dnaBpm = '', _dnaLead = '';
+    if (typeof GLStore !== 'undefined') {
+        var _sm = GLStore.getSongMeta ? GLStore.getSongMeta(title) : null;
+        if (_sm) { _dnaKey = _sm.key || ''; _dnaBpm = _sm.bpm || ''; _dnaLead = _sm.leadSinger || ''; }
+    }
+    if (!_dnaKey && typeof allSongs !== 'undefined') {
+        var _ds = allSongs.find(function(s) { return s.title === title; });
+        if (_ds) { _dnaKey = _ds.key || ''; _dnaBpm = _ds.bpm || ''; _dnaLead = _ds.lead || ''; }
+    }
+    var safeSong = title.replace(/'/g, "\\'");
+    var dnaHtml = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
+    // Key
+    dnaHtml += '<span style="font-size:0.68em;color:var(--text-dim);font-weight:700">\uD83D\uDD11</span>';
+    dnaHtml += '<select style="font-size:0.72em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);border-radius:4px" onchange="sdUpdateSongKey(this.value)">';
+    dnaHtml += '<option value=""' + (!_dnaKey ? ' selected' : '') + '>Key</option>';
+    ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B','Am','Bm','Cm','Dm','Em','Fm','Gm'].forEach(function(k) {
+        dnaHtml += '<option value="' + k + '"' + (k === _dnaKey ? ' selected' : '') + '>' + k + '</option>';
+    });
+    dnaHtml += '</select>';
+    // BPM
+    dnaHtml += '<span style="font-size:0.68em;color:var(--text-dim);font-weight:700">\uD83E\uDD41</span>';
+    dnaHtml += '<input type="number" min="40" max="240" placeholder="BPM" value="' + _sdEsc(_dnaBpm) + '" style="width:50px;font-size:0.72em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);border-radius:4px" onchange="sdUpdateSongBpm(this.value)">';
+    // Lead
+    if (typeof bandMembers !== 'undefined' && Object.keys(bandMembers).length > 0) {
+        dnaHtml += '<span style="font-size:0.68em;color:var(--text-dim);font-weight:700">\uD83C\uDFA4</span>';
+        dnaHtml += '<select style="font-size:0.72em;padding:2px 4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);border-radius:4px" onchange="sdUpdateLeadSinger(this.value)">';
+        dnaHtml += '<option value="">Lead</option>';
+        Object.entries(bandMembers).forEach(function(e) {
+            dnaHtml += '<option value="' + e[0] + '"' + (e[0] === _dnaLead ? ' selected' : '') + '>' + (e[1].name || e[0]) + '</option>';
+        });
+        dnaHtml += '</select>';
+    }
+    dnaHtml += '</div>';
+
+    strip.innerHTML='<div class="sd-readiness-pills">'+pills+'</div>' + dnaHtml;
 }
 
 // ── DNA update handlers ───────────────────────────────────────────────────────
