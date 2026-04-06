@@ -186,8 +186,30 @@ async function saveGigEdit(idx) {
     await saveBandDataToDrive('_band', 'gigs', gigData);
     // Sync updated gig to calendar
     await _syncGigToCalendar(gigData[idx], gigData[idx].created || null);
+
+    // Google Calendar sync — auto-update if previously synced
+    if (criticalChange && prev.sync && prev.sync.externalEventId && typeof GLCalendarSync !== 'undefined') {
+        try {
+            var _gcalResult = await GLCalendarSync.update(prev.sync.externalEventId, gigData[idx]);
+            if (_gcalResult.success) {
+                gigData[idx].sync = Object.assign({}, prev.sync, { status: 'synced', lastSyncedAt: _gcalResult.lastSyncedAt, etag: _gcalResult.etag });
+            } else {
+                gigData[idx].sync = Object.assign({}, prev.sync, { status: 'error' });
+            }
+            await saveBandDataToDrive('_band', 'gigs', gigData);
+        } catch(e) {
+            gigData[idx].sync = Object.assign({}, prev.sync, { status: 'error' });
+            await saveBandDataToDrive('_band', 'gigs', gigData);
+        }
+    } else if (criticalChange && prev.sync && prev.sync.externalEventId) {
+        // Sync exists but GLCalendarSync not loaded — mark needs_update
+        gigData[idx].sync = Object.assign({}, prev.sync, { status: 'needs_update' });
+        await saveBandDataToDrive('_band', 'gigs', gigData);
+    }
+
     if (criticalChange) {
-        showToast('\u2705 Gig updated \u2014 ' + staleLabel.toLowerCase() + '. RSVPs need re-confirmation.');
+        var syncMsg = gigData[idx].sync && gigData[idx].sync.status === 'synced' ? ' Google Calendar updated.' : '';
+        showToast('\u2705 Gig updated \u2014 ' + staleLabel.toLowerCase() + '.' + syncMsg);
     } else {
         showToast('\u2705 Gig updated!');
     }

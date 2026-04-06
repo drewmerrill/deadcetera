@@ -3995,11 +3995,40 @@ async function rhSaveEvent(eventId) {
 
     try {
         await firebaseDB.ref(bandPath('rehearsals/' + id)).update(ev);
+
+        // Google Calendar sync — auto-update if previously synced and critical fields changed
+        if (_rhCriticalChange && eventId) {
+            // Find matching calendar event to get sync object
+            try {
+                var _calEvts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+                var _calIdx = _calEvts.findIndex(function(ce) { return ce.type === 'rehearsal' && (ce.date === ev.date || ce.date === (_prev && _prev.date)); });
+                if (_calIdx !== -1 && _calEvts[_calIdx].sync && _calEvts[_calIdx].sync.externalEventId && typeof GLCalendarSync !== 'undefined') {
+                    var _syncResult = await GLCalendarSync.update(_calEvts[_calIdx].sync.externalEventId, ev);
+                    if (_syncResult.success) {
+                        _calEvts[_calIdx].sync.status = 'synced';
+                        _calEvts[_calIdx].sync.lastSyncedAt = _syncResult.lastSyncedAt;
+                        _calEvts[_calIdx].sync.etag = _syncResult.etag;
+                    } else {
+                        _calEvts[_calIdx].sync.status = 'error';
+                    }
+                    // Update calendar event date if it changed
+                    if (ev.date) _calEvts[_calIdx].date = ev.date;
+                    if (ev.time) _calEvts[_calIdx].time = ev.time;
+                    if (ev.location) _calEvts[_calIdx].location = ev.location;
+                    await saveBandDataToDrive('_band', 'calendar_events', _calEvts);
+                } else if (_calIdx !== -1 && _calEvts[_calIdx].sync && _calEvts[_calIdx].sync.externalEventId) {
+                    // GLCalendarSync not loaded — mark needs_update
+                    _calEvts[_calIdx].sync.status = 'needs_update';
+                    await saveBandDataToDrive('_band', 'calendar_events', _calEvts);
+                }
+            } catch(e) { /* calendar sync best-effort */ }
+        }
+
         document.getElementById('rhModal')?.remove();
         if (eventId) {
             if (_rhCriticalChange) {
                 var _toastLabel = _rhStaleLabel || _rhChangeReasons.join(', ');
-                showToast('\u2705 Rehearsal updated \u2014 ' + _toastLabel.toLowerCase() + '. RSVPs need re-confirmation.');
+                showToast('\u2705 Rehearsal updated \u2014 ' + _toastLabel.toLowerCase() + '.');
             } else {
                 showToast('\u2705 Rehearsal updated');
             }

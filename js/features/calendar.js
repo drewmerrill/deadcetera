@@ -203,28 +203,31 @@ function renderCalendarPage(el) {
         var _ps = document.createElement('style');
         _ps.id = 'cal-page-styles';
         _ps.textContent =
-            // Page-level typography reset
-            '#page-schedule .page-header h1{font-size:1.1em;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px}'
-            // Remove heavy card borders globally on this page
-            + '#page-schedule .app-card{border:none;background:rgba(255,255,255,0.015);border-radius:10px}'
-            // Section labels
-            + '.cal-section-label{font-size:0.62em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px}'
-            // Next Up cards — lighter
-            + '.cal-next-card{padding:12px 14px;margin-bottom:6px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);transition:background 0.15s}'
-            + '.cal-next-card:hover{background:rgba(255,255,255,0.04)}'
-            // Action buttons — modern pill style
-            + '.cal-action-btn{padding:6px 14px;border-radius:20px;font-size:0.75em;font-weight:600;cursor:pointer;transition:all 0.15s;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-family:inherit}'
-            + '.cal-action-btn:hover{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.12)}'
+            // Page-level reset — clean, open feel
+            '#page-schedule .page-header h1{font-size:1.05em;font-weight:800;letter-spacing:-0.02em;margin-bottom:2px;color:var(--text)}'
+            + '#page-schedule .page-header p{display:none}'
+            + '#page-schedule .app-card{border:none;background:rgba(255,255,255,0.01);border-radius:10px}'
+            // Section labels — understated
+            + '.cal-section-label{font-size:0.6em;font-weight:700;color:rgba(148,163,184,0.7);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}'
+            // Next Up — minimal cards with hover depth
+            + '.cal-next-card{padding:12px 14px;margin-bottom:6px;border-radius:10px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.03);transition:all 0.15s}'
+            + '.cal-next-card:hover{background:rgba(255,255,255,0.035);border-color:rgba(255,255,255,0.06);box-shadow:0 2px 8px rgba(0,0,0,0.15)}'
+            // Pill buttons
+            + '.cal-action-btn{padding:6px 14px;border-radius:20px;font-size:0.72em;font-weight:600;cursor:pointer;transition:all 0.12s;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);font-family:inherit}'
+            + '.cal-action-btn:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);box-shadow:0 1px 4px rgba(0,0,0,0.1)}'
             + '.cal-action-primary{background:linear-gradient(135deg,#22c55e,#16a34a);color:white;border:none;font-weight:700}'
-            + '.cal-action-primary:hover{box-shadow:0 2px 12px rgba(34,197,94,0.2)}'
-            // Calendar grid — lighter
+            + '.cal-action-primary:hover{box-shadow:0 2px 12px rgba(34,197,94,0.2);transform:translateY(-1px)}'
+            + '.cal-action-primary:active{transform:scale(0.98)}'
+            // Calendar grid
             + '#calGrid{font-size:0.82em}'
-            + '#calGrid>div>div{border-radius:6px}'
-            // Details/summary — cleaner
-            + '#calendarInner details summary{border:none;background:rgba(255,255,255,0.02);border-radius:8px;padding:10px 14px}'
-            + '#calendarInner details summary:hover{background:rgba(255,255,255,0.04)}'
-            // Reduce heavy borders everywhere
-            + '#calendarInner .app-card{border:none}'
+            + '#calGrid>div>div{border-radius:8px;transition:box-shadow 0.1s}'
+            + '#calGrid>div>div:hover{box-shadow:0 2px 8px rgba(0,0,0,0.2)}'
+            // Collapsed sections
+            + '#calendarInner details summary{border:none;background:transparent;padding:8px 0;transition:color 0.12s}'
+            + '#calendarInner details summary:hover{color:var(--text)}'
+            + '#calendarInner .app-card{border:none;background:transparent}'
+            // Sync badges
+            + '.cal-sync-badge{font-size:0.62em;padding:3px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;transition:all 0.15s}'
             ;
         document.head.appendChild(_ps);
     }
