@@ -310,13 +310,30 @@ async function _calRenderBestRehearsalHero() {
     // Use the unified spacing-aware recommendation engine
     if (typeof GLStore === 'undefined' || !GLStore.getRehearsalDateRecommendations) { el.innerHTML = ''; return; }
 
+    // Show loading shell immediately
+    el.innerHTML = '<div style="padding:20px;margin-bottom:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.015);text-align:center">'
+        + '<div style="font-size:0.72em;color:var(--text-dim)">Finding the best date\u2026</div></div>';
+
     var recs;
     try {
         var _heroPromise = GLStore.getRehearsalDateRecommendations();
         var _heroTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 5000); });
         recs = await Promise.race([_heroPromise, _heroTimeout]);
-    } catch(e) { el.innerHTML = ''; return; }
-    if (!recs || !recs.primary) { el.innerHTML = ''; return; }
+    } catch(e) {
+        // Timeout or error — show quiet fallback, don't hide the hero
+        el.innerHTML = '<div style="padding:16px 20px;margin-bottom:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.015)">'
+            + '<div style="font-size:0.72em;color:var(--text-dim)">Best next rehearsal unavailable right now</div>'
+            + '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()" style="margin-top:8px">Schedule Manually</button>'
+            + '</div>';
+        return;
+    }
+    if (!recs || !recs.primary) {
+        el.innerHTML = '<div style="padding:16px 20px;margin-bottom:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.015)">'
+            + '<div style="font-size:0.72em;color:var(--text-dim)">No dates available in the next 3 weeks</div>'
+            + '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()" style="margin-top:8px">Schedule Manually</button>'
+            + '</div>';
+        return;
+    }
 
     var p = recs.primary;
     var pDate = new Date(p.date + 'T12:00:00');
@@ -811,10 +828,10 @@ function renderCalendarInner() {
     '<div style="margin-bottom:16px;padding:12px 0">' +
         '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
             '<button onclick="calNavMonth(-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2190</button>' +
-            '<span id="calMonthLabel" style="font-size:0.95em;font-weight:700;color:var(--text);letter-spacing:-0.01em">' + mNames[month] + ' ' + year + '</span>' +
+            '<span id="calMonthLabel" style="font-size:0.95em;font-weight:700;color:var(--text);letter-spacing:-0.01em;transition:opacity 0.12s ease">' + mNames[month] + ' ' + year + '</span>' +
             '<button onclick="calNavMonth(1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2192</button>' +
         '</div>' +
-        '<div id="calGrid" style="transition:opacity 0.12s ease"></div>' +
+        '<div id="calGrid" style="transition:opacity 0.12s ease;will-change:opacity"></div>' +
     '</div>' +
     // Quick actions — pill buttons
     '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">' +
@@ -919,16 +936,21 @@ function calNavMonth(dir) {
     if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
     if (calViewMonth < 0)  { calViewMonth = 11; calViewYear--; }
 
-    // Update label immediately (synchronous — always correct)
+    // Update label with micro-fade (synchronous text, CSS transition on opacity)
     var mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     var monthLabel = document.getElementById('calMonthLabel');
-    if (monthLabel) monthLabel.textContent = mNames[calViewMonth] + ' ' + calViewYear;
+    if (monthLabel) {
+        monthLabel.style.opacity = '0.3';
+        monthLabel.textContent = mNames[calViewMonth] + ' ' + calViewYear;
+        // Restore opacity after browser paints the new text
+        requestAnimationFrame(function() { monthLabel.style.opacity = '1'; });
+    }
 
     var grid = document.getElementById('calGrid');
     if (grid) {
         // Preserve height during transition to prevent collapse
         grid.style.minHeight = grid.offsetHeight + 'px';
-        grid.style.opacity = '0.4';
+        grid.style.opacity = '0.3';
         _calRenderGridOnly(grid);
     }
 }
