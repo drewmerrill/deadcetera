@@ -805,17 +805,49 @@ function _feedAutoResolve(items) {
         var key = _feedItemKey(item);
         var meta = _feedMeta[key];
         if (meta && meta.resolved) continue; // already persisted
-        // Persist resolved state
+        // Persist resolved state with timestamp
         updates[bandPath('feed_meta/' + key + '/resolved')] = true;
+        updates[bandPath('feed_meta/' + key + '/resolvedAt')] = new Date().toISOString();
         // Update local cache
         if (!_feedMeta[key]) _feedMeta[key] = {};
         _feedMeta[key].resolved = true;
+        _feedMeta[key].resolvedAt = new Date().toISOString();
     }
     if (Object.keys(updates).length > 0) {
         db.ref().update(updates).catch(function(e) {
             console.warn('[Feed] Auto-resolve write failed:', e.message);
         });
         console.log('[Feed] Auto-resolved', Object.keys(updates).length, 'items');
+    }
+    // Auto-archive: items resolved for 14+ days
+    _feedAutoArchive(items);
+}
+
+function _feedAutoArchive(items) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var cutoff = Date.now() - 14 * 86400000;
+    var updates = {};
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var key = _feedItemKey(item);
+        var meta = _feedMeta[key] || {};
+        if (meta.archived) continue;
+        if (!meta.resolved && !item.resolved) continue;
+        // Check if resolved long enough — use resolvedAt if stored, else item timestamp
+        var resolvedTs = meta.resolvedAt || item.timestamp || '';
+        if (!resolvedTs) continue;
+        var resolvedTime = new Date(resolvedTs).getTime();
+        if (isNaN(resolvedTime) || resolvedTime > cutoff) continue;
+        updates[bandPath('feed_meta/' + key + '/archived')] = true;
+        if (!_feedMeta[key]) _feedMeta[key] = {};
+        _feedMeta[key].archived = true;
+    }
+    if (Object.keys(updates).length > 0) {
+        db.ref().update(updates).catch(function(e) {
+            console.warn('[Feed] Auto-archive write failed:', e.message);
+        });
+        console.log('[Feed] Auto-archived', Object.keys(updates).length, 'items (resolved 14+ days)');
     }
 }
 
@@ -850,7 +882,8 @@ window._feedAction = async function(action, type, id) {
     if (!item) return;
     if (action === 'resolve') {
         var was = _feedIsResolved(item);
-        await _feedSaveMeta(item, { resolved: !was });
+        var resolveUpdate = was ? { resolved: false } : { resolved: true, resolvedAt: new Date().toISOString() };
+        await _feedSaveMeta(item, resolveUpdate);
         if (!was) _feedAdvanceOnboarding();
         _feedShowToast(was ? 'Reopened' : 'Marked resolved');
     } else if (action === 'archive') {
@@ -1441,16 +1474,26 @@ function _feedRender(items) {
     if (_feedFilter === 'all' && fas) {
         // Hide system-generated posts from default view (they show under System filter)
         visible = visible.filter(function(i) { return i._source !== 'playlist_sync'; });
-        // Group by action urgency
-        var groups = { critical: [], myInput: [], bandWait: [], rest: [] };
+        // Group by action urgency — 3 active tiers + resolved collapse
+        var groups = { critical: [], myInput: [], bandWait: [], recent: [], resolved: [], stale: [] };
+        var fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+        var thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
         visible.forEach(function(item) {
             var state = fas.getActionState(item, _feedGetMeta(item));
+            if (state.isResolved) { groups.resolved.push(item); return; }
             if (state.priorityBucket === 1) groups.critical.push(item);
             else if (state.needsMyInput) groups.myInput.push(item);
             else if (state.waitingOnOthers) groups.bandWait.push(item);
-            else groups.rest.push(item);
+            else {
+                // Stale check: unresolved, older than 30 days, not critical
+                if ((item.timestamp || '') < thirtyDaysAgo) groups.stale.push(item);
+                // Recent: only last 14 days in default view
+                else if ((item.timestamp || '') >= fourteenDaysAgo) groups.recent.push(item);
+                // Older non-resolved FYI items: silently skip from default (available in filters)
+            }
         });
 
+        // ── Tier 1: ACTION REQUIRED (critical + needs me) ──
         if (groups.critical.length) {
             html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;border-left:4px solid #ef4444">';
             html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u26A0\uFE0F CRITICAL (' + groups.critical.length + ')</div>';
@@ -1464,19 +1507,51 @@ function _feedRender(items) {
             groups.myInput.forEach(function(item, idx) { html += _feedRenderItem(item, idx === 0 && highlightFirst); });
             html += '</div>';
         }
+
+        // ── Tier 2: WAITING ON BAND ──
         if (groups.bandWait.length) {
             html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;border-left:4px solid #6366f1">';
             html += '<div style="font-size:0.72em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDC65 WAITING ON BAND (' + groups.bandWait.length + ')</div>';
             groups.bandWait.forEach(function(item) { html += _feedRenderItem(item); });
             html += '</div>';
         }
-        if (groups.rest.length) {
-            var lastDate = '';
-            groups.rest.forEach(function(item) {
-                var d = (item.timestamp || '').substring(0, 10);
-                if (d !== lastDate) { lastDate = d; html += '<div style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;padding:14px 0 6px">' + _feedFormatDate(d) + '</div>'; }
-                html += _feedRenderItem(item);
+
+        // ── Tier 3: RECENT (last 14 days, compact) ──
+        if (groups.recent.length) {
+            html += '<div style="font-size:0.72em;font-weight:800;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;padding:14px 0 6px">\uD83D\uDCCB RECENT</div>';
+            groups.recent.forEach(function(item) {
+                html += _feedRenderItemCompact(item);
             });
+        }
+
+        // ── Stale items: nudge to resolve/archive ──
+        if (groups.stale.length) {
+            html += '<div style="margin-top:12px;padding:10px 14px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.04);border-radius:10px">';
+            html += '<div style="font-size:0.72em;font-weight:800;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDD70\uFE0F STALE (' + groups.stale.length + ')</div>';
+            groups.stale.forEach(function(item) {
+                var safeType = _feedEsc(item.type), safeId = _feedEsc(item.id);
+                html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03)">'
+                    + '<span style="font-size:0.82em;color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _feedEsc(item.text || '').substring(0, 60) + '</span>'
+                    + '<span style="font-size:0.65em;color:var(--text-dim);flex-shrink:0">' + _feedTimeAgo(item.timestamp) + '</span>'
+                    + '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.62em;font-weight:700;padding:2px 6px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Resolve</button>'
+                    + '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.62em;font-weight:700;padding:2px 6px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Archive</button>'
+                    + '</div>';
+            });
+            html += '</div>';
+        }
+
+        // ── Resolved: collapsed by default ──
+        if (groups.resolved.length) {
+            html += '<details style="margin-top:16px">'
+                + '<summary style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;padding:8px 0;list-style:none;display:flex;align-items:center;gap:6px">'
+                + '<span style="font-size:0.9em;transition:transform 0.15s;display:inline-block" class="gl-feed-chevron">\u25B8</span>'
+                + '\u2705 RESOLVED (' + groups.resolved.length + ')'
+                + '</summary>'
+                + '<div style="padding-top:4px">';
+            groups.resolved.forEach(function(item) {
+                html += _feedRenderItemCompact(item, true);
+            });
+            html += '</div></details>';
         }
     } else {
         var lastDate = '';
@@ -1671,6 +1746,40 @@ function _feedRenderItem(item, isFirstAction) {
 
     html += '</div>';
     return html;
+}
+
+// Compact single-line renderer for FYI / resolved / recent items
+function _feedRenderItemCompact(item, isResolved) {
+    var typeIcon = { idea: '\uD83D\uDCA1', poll: '\uD83D\uDDF3\uFE0F', rehearsal_note: '\uD83C\uDFB8', song_moment: '\uD83C\uDFB5', gig_note: '\uD83C\uDFA4' }[item.type] || '\uD83D\uDCCB';
+    var safeType = _feedEsc(item.type), safeId = _feedEsc(item.id);
+    var safeSongId = item.songId ? _feedEsc(item.songId) : '';
+    var text = _feedEsc((item.text || '').substring(0, 80));
+    if ((item.text || '').length > 80) text += '\u2026';
+    var opacity = isResolved ? 'opacity:0.6;' : '';
+
+    // For completed polls, show result summary instead of question
+    var pollResult = '';
+    if (item.type === 'poll' && isResolved && item.pollOptions && item.pollVotes) {
+        var voteCounts = {};
+        Object.values(item.pollVotes).forEach(function(v) { voteCounts[v] = (voteCounts[v] || 0) + 1; });
+        var topIdx = 0, topCount = 0;
+        Object.keys(voteCounts).forEach(function(k) { if (voteCounts[k] > topCount) { topCount = voteCounts[k]; topIdx = parseInt(k); } });
+        if (item.pollOptions[topIdx]) pollResult = ' \u2192 ' + _feedEsc(item.pollOptions[topIdx]) + ' (' + topCount + ')';
+    }
+
+    var actionBtns = '';
+    if (!isResolved) {
+        actionBtns = '<div style="display:flex;gap:2px;flex-shrink:0" onclick="event.stopPropagation()">'
+            + '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.6em;padding:1px 5px;border-radius:3px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">Resolve</button>'
+            + '</div>';
+    }
+
+    return '<div onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')" style="display:flex;align-items:center;gap:8px;padding:5px 8px;margin-bottom:2px;border-radius:6px;cursor:pointer;transition:background 0.1s;' + opacity + '" onmouseover="this.style.background=\'rgba(255,255,255,0.03)\'" onmouseout="this.style.background=\'none\'">'
+        + '<span style="font-size:0.82em;flex-shrink:0">' + typeIcon + '</span>'
+        + '<span style="font-size:0.78em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + text + '<span style="color:var(--text-dim)">' + pollResult + '</span></span>'
+        + '<span style="font-size:0.62em;color:var(--text-dim);flex-shrink:0">' + _feedTimeAgo(item.timestamp) + '</span>'
+        + actionBtns
+        + '</div>';
 }
 
 function _feedFormatDate(dateStr) {

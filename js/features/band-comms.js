@@ -210,25 +210,278 @@ window._bcPostComment = async function(songTitle) {
 
 function renderIdeasBoardPage(el) {
   if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'ideas');
-  el.innerHTML = '<div class="page-header"><h1>🎸 Band Room</h1><p>Polls, ideas, discussions, and band decisions</p></div>'
+  // Band Room: action-first structure
+  // Section tabs: Needs Votes | Open Ideas | Polls | Decisions | Archive
+  el.innerHTML = '<div class="page-header"><h1>\uD83C\uDFB8 Band Room</h1><p style="font-size:0.82em;color:var(--text-dim)">Decisions, polls, and ideas</p></div>'
     + '<div style="max-width:600px;margin:0 auto">'
-    + '<div id="bcPitchSection" style="margin-bottom:16px"><div style="color:var(--text-dim);text-align:center;padding:12px;font-size:0.82em">Loading pitches...</div></div>'
-    + '<div id="bcIdeasContainer"><div style="color:var(--text-dim);text-align:center;padding:20px">Loading...</div></div>'
+    // Section tabs
+    + '<div id="bcSectionTabs" style="display:flex;gap:2px;margin-bottom:16px;padding:4px;background:rgba(255,255,255,0.02);border-radius:10px;border:1px solid rgba(255,255,255,0.04)"></div>'
+    // Needs Votes — dominant default section
+    + '<div id="bcNeedsVotes" style="margin-bottom:16px"></div>'
+    // Open Ideas
+    + '<div id="bcOpenIdeas" style="margin-bottom:16px"></div>'
+    // Polls section
+    + '<div id="bcPollsSection" style="margin-bottom:16px"></div>'
+    // Recent Decisions (compact, read-only)
+    + '<div id="bcDecisions" style="margin-bottom:16px"></div>'
+    // Create new section
+    + '<div id="bcCreateSection" style="margin-bottom:16px"></div>'
+    // Rehearsal Brief
     + '<div id="bcBriefContainer" style="margin-top:20px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px"></div>'
-    + '<div id="bcPollsContainer" style="margin-top:20px"></div>'
     + '</div>';
-  _bcLoadIdeas();
-  // Load Song Pitches
-  setTimeout(function() {
-    var pitchEl = document.getElementById('bcPitchSection');
-    if (pitchEl && typeof renderSongPitchSection === 'function') renderSongPitchSection(pitchEl);
-  }, 50);
+
+  _bcLoadBandRoom();
+
   setTimeout(function() {
     var briefContainer = document.getElementById('bcBriefContainer');
     if (briefContainer && typeof renderRehearsalBrief === 'function') renderRehearsalBrief(briefContainer);
-    var pollContainer = document.getElementById('bcPollsContainer');
-    if (pollContainer && typeof renderPollWidget === 'function') renderPollWidget(pollContainer);
   }, 100);
+}
+
+// ── Unified Band Room loader ──────────────────────────────────────────────────
+async function _bcLoadBandRoom() {
+  var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+  var myVoteKey = fas ? fas.getMyVoteKey() : _bcGetName();
+  var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+
+  // Load all data in parallel
+  var polls = [], ideas = [], pitches = [];
+  try {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+      var results = await Promise.all([
+        db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value'),
+        db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(50).once('value'),
+        (typeof loadBandDataFromDrive === 'function' ? loadBandDataFromDrive('_band', 'song_pitches').catch(function() { return null; }) : Promise.resolve(null))
+      ]);
+      var pVal = results[0].val();
+      if (pVal) polls = Object.entries(pVal).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); });
+      var iVal = results[1].val();
+      if (iVal) ideas = Object.entries(iVal).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); });
+      pitches = (typeof toArray === 'function') ? toArray(results[2] || []) : (results[2] || []);
+    }
+  } catch(e) { console.warn('[BandRoom] Load error:', e.message); }
+
+  polls.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+  ideas.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+
+  // Categorize polls
+  var unvotedPolls = [], votedPolls = [], completedPolls = [];
+  polls.forEach(function(p) {
+    var vc = p.votes ? Object.keys(p.votes).length : 0;
+    var allVoted = vc >= memberCount;
+    var iVoted = !!(myVoteKey && p.votes && p.votes[myVoteKey] !== undefined);
+    p._iVoted = iVoted;
+    p._allVoted = allVoted;
+    p._voteCount = vc;
+    if (allVoted) completedPolls.push(p);
+    else if (!iVoted) unvotedPolls.push(p);
+    else votedPolls.push(p);
+  });
+
+  // Categorize pitches
+  var unvotedPitches = [], decidedPitches = [];
+  var myMemberKey = fas ? fas.getMyMemberKey() : null;
+  pitches.forEach(function(pitch) {
+    if (!pitch || pitch.status === 'rejected' || pitch.status === 'deferred') { decidedPitches.push(pitch); return; }
+    if (pitch.status === 'approved') { decidedPitches.push(pitch); return; }
+    var iVoted = !!(myMemberKey && pitch.votes && pitch.votes[myMemberKey]);
+    if (!iVoted) unvotedPitches.push(pitch);
+    else decidedPitches.push(pitch);
+  });
+
+  // Categorize ideas
+  var openIdeas = [], convertedIdeas = [];
+  ideas.forEach(function(idea) {
+    if (idea.convertedToPitch) convertedIdeas.push(idea);
+    else openIdeas.push(idea);
+  });
+
+  var needsVotesCount = unvotedPolls.length + unvotedPitches.length;
+  var decisionsCount = completedPolls.length + decidedPitches.length + convertedIdeas.length;
+  var fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+  var recentDecisions = completedPolls.filter(function(p) { return (p.ts || '') >= fourteenDaysAgo; });
+
+  // ── Render section tabs ──
+  var tabsEl = document.getElementById('bcSectionTabs');
+  if (tabsEl) {
+    var tabs = [
+      { id: 'votes', label: 'Needs Votes', count: needsVotesCount, color: needsVotesCount > 0 ? '#fbbf24' : 'var(--text-dim)' },
+      { id: 'ideas', label: 'Open Ideas', count: openIdeas.length, color: 'var(--text-dim)' },
+      { id: 'polls', label: 'Polls', count: votedPolls.length + unvotedPolls.length, color: 'var(--text-dim)' },
+      { id: 'decisions', label: 'Decisions', count: recentDecisions.length + decidedPitches.length, color: 'var(--text-dim)' }
+    ];
+    tabsEl.innerHTML = tabs.map(function(t) {
+      return '<div style="flex:1;text-align:center;padding:6px 4px;font-size:0.65em;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:' + t.color + '">'
+        + t.label + (t.count > 0 ? ' <span style="font-weight:800">(' + t.count + ')</span>' : '')
+        + '</div>';
+    }).join('');
+  }
+
+  // ── Render Needs Votes ──
+  var nvEl = document.getElementById('bcNeedsVotes');
+  if (nvEl) {
+    var nvHtml = '';
+    if (needsVotesCount > 0) {
+      nvHtml += '<div style="padding:12px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
+      nvHtml += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px">\uD83D\uDDF3\uFE0F NEEDS YOUR VOTE (' + needsVotesCount + ')</div>';
+      // Unvoted polls
+      unvotedPolls.forEach(function(p) {
+        nvHtml += _bcRenderPollCard(p, myVoteKey, memberCount, true);
+      });
+      // Unvoted pitches
+      unvotedPitches.forEach(function(pitch) {
+        nvHtml += '<div style="padding:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px;margin-bottom:8px">'
+          + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+          + '<span style="font-size:0.85em">\uD83C\uDFB5</span>'
+          + '<span style="font-weight:700;font-size:0.85em;color:var(--text)">Song Pitch: ' + _bcEsc(pitch.title || '') + '</span>'
+          + '</div>'
+          + (pitch.reason ? '<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:8px">' + _bcEsc(pitch.reason) + '</div>' : '')
+          + '<div style="display:flex;gap:6px">'
+          + '<button onclick="showPage(\'ideas\')" style="font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">Review Pitch</button>'
+          + '</div></div>';
+      });
+      nvHtml += '</div>';
+    } else {
+      nvHtml += '<div style="padding:14px;text-align:center;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12);border-radius:10px">'
+        + '<span style="font-size:0.82em;color:#86efac;font-weight:700">\u2705 All votes cast</span>'
+        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Nothing waiting for you.</div>'
+        + '</div>';
+    }
+    nvEl.innerHTML = nvHtml;
+  }
+
+  // ── Render Open Ideas ──
+  var ideasEl = document.getElementById('bcOpenIdeas');
+  if (ideasEl) {
+    var idHtml = '';
+    if (openIdeas.length > 0) {
+      idHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDCA1 Open Ideas (' + openIdeas.length + ')</div>';
+      openIdeas.forEach(function(p) {
+        var linkHTML = '';
+        if (p.link) {
+          var isYT = p.link.indexOf('youtube') >= 0 || p.link.indexOf('youtu.be') >= 0;
+          var isSP = p.link.indexOf('spotify') >= 0;
+          var linkIcon = isYT ? '\u25B6\uFE0F' : isSP ? '\uD83C\uDFB5' : '\uD83D\uDD17';
+          linkHTML = '<a href="' + _bcEsc(p.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:#818cf8;text-decoration:none;display:inline-flex;align-items:center;gap:3px">' + linkIcon + ' ' + (isYT ? 'YouTube' : isSP ? 'Spotify' : 'Link') + '</a>';
+        }
+        idHtml += '<div style="padding:10px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px">';
+        idHtml += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">';
+        idHtml += '<span style="font-weight:700;font-size:0.85em;color:var(--text)">' + _bcEsc(p.title || 'Untitled') + '</span>';
+        idHtml += linkHTML + '</div>';
+        idHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
+        idHtml += '<span style="font-size:0.68em;color:var(--text-dim)">' + _bcEsc(p.author || '') + ' \u00B7 ' + _bcTimeAgo(p.ts) + '</span>';
+        var safeTitle = (p.title || '').replace(/'/g, "\\'");
+        var safeAuthor = (p.author || 'Ideas Board').replace(/'/g, "\\'");
+        var safeKey = (p._key || '').replace(/'/g, "\\'");
+        idHtml += '<button onclick="_bcConvertToPitch(\'' + safeTitle + '\',\'' + safeAuthor + '\',\'' + safeKey + '\')" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600;white-space:nowrap">Convert to Pitch</button>';
+        idHtml += '</div></div>';
+      });
+    }
+    ideasEl.innerHTML = idHtml;
+  }
+
+  // ── Render Polls (active, voted) ──
+  var pollsEl = document.getElementById('bcPollsSection');
+  if (pollsEl) {
+    var pollHtml = '';
+    if (votedPolls.length > 0) {
+      pollHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDC65 Waiting on Band (' + votedPolls.length + ')</div>';
+      votedPolls.forEach(function(p) { pollHtml += _bcRenderPollCard(p, myVoteKey, memberCount, false); });
+    }
+    pollsEl.innerHTML = pollHtml;
+  }
+
+  // ── Render Recent Decisions (compact, read-only) ──
+  var decEl = document.getElementById('bcDecisions');
+  if (decEl) {
+    var decHtml = '';
+    var allDecisions = [];
+    recentDecisions.forEach(function(p) {
+      // Find winning option
+      var winner = '';
+      if (p.pollOptions && p.votes) {
+        var vc = {};
+        Object.values(p.votes).forEach(function(v) { vc[v] = (vc[v] || 0) + 1; });
+        var topIdx = 0, topC = 0;
+        Object.keys(vc).forEach(function(k) { if (vc[k] > topC) { topC = vc[k]; topIdx = parseInt(k); } });
+        if (p.pollOptions[topIdx]) winner = p.pollOptions[topIdx] + ' (' + topC + '/' + p._voteCount + ')';
+      }
+      allDecisions.push({ text: _bcEsc(p.question || ''), result: winner ? '\u2192 ' + _bcEsc(winner) : '\u2705', ts: p.ts, type: 'poll' });
+    });
+    decidedPitches.forEach(function(pitch) {
+      if (!pitch) return;
+      var statusLabel = { approved: '\u2705 Approved', rejected: '\u274C Rejected', deferred: '\u23F8\uFE0F Deferred' }[pitch.status] || '\u2705';
+      allDecisions.push({ text: '\uD83C\uDFB5 ' + _bcEsc(pitch.title || ''), result: statusLabel, ts: pitch.ts || '', type: 'pitch' });
+    });
+    convertedIdeas.forEach(function(idea) {
+      allDecisions.push({ text: '\uD83D\uDCA1 ' + _bcEsc(idea.title || ''), result: '\u2192 Pitched', ts: idea.convertedAt || idea.ts || '', type: 'idea' });
+    });
+    allDecisions.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+
+    if (allDecisions.length > 0) {
+      decHtml += '<details><summary style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px">'
+        + '<span style="font-size:1em">\u25B8</span>'
+        + 'Recent Decisions (' + allDecisions.length + ')</summary>'
+        + '<div style="padding-top:6px">';
+      allDecisions.slice(0, 10).forEach(function(d) {
+        decHtml += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.78em;border-bottom:1px solid rgba(255,255,255,0.03)">'
+          + '<span style="color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + d.text + '</span>'
+          + '<span style="color:var(--text-dim);font-size:0.85em;flex-shrink:0">' + d.result + '</span>'
+          + '</div>';
+      });
+      decHtml += '</div></details>';
+    }
+    decEl.innerHTML = decHtml;
+  }
+
+  // ── Create section (idea + poll forms) ──
+  var createEl = document.getElementById('bcCreateSection');
+  if (createEl) {
+    var crHtml = '<details style="margin-top:8px"><summary style="font-size:0.72em;font-weight:700;color:var(--accent-light);cursor:pointer;padding:8px 0;list-style:none">+ Post an Idea or Create a Poll</summary>';
+    crHtml += '<div style="padding:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-top:4px">';
+    // Idea form
+    crHtml += '<div style="margin-bottom:12px">';
+    crHtml += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">\uD83D\uDCA1 Post Idea</div>';
+    crHtml += '<input id="bcIdeaTitle" placeholder="Song title or idea..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:6px 8px;border-radius:6px;font-size:0.82em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
+    crHtml += '<div style="display:flex;gap:6px">';
+    crHtml += '<input id="bcIdeaLink" placeholder="YouTube / Spotify link (optional)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:6px;font-size:0.75em;font-family:inherit;box-sizing:border-box">';
+    crHtml += '<button onclick="_bcPostIdea()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:700;white-space:nowrap">Post</button>';
+    crHtml += '</div></div>';
+    // Poll form
+    crHtml += '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:10px">';
+    crHtml += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">\uD83D\uDDF3\uFE0F Create Poll</div>';
+    crHtml += '<input id="bcPollQ" placeholder="Ask a question..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
+    crHtml += '<input id="bcPollOpts" placeholder="Options (comma-separated)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
+    crHtml += '<button onclick="_bcCreatePoll()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.72em;font-weight:700">Create</button>';
+    crHtml += '</div></div></details>';
+    createEl.innerHTML = crHtml;
+  }
+}
+
+// ── Poll card renderer — shared between Needs Votes and Waiting sections ──
+function _bcRenderPollCard(p, myVoteKey, memberCount, showCta) {
+  var votes = p.votes || {};
+  var myVote = votes[myVoteKey];
+  var remaining = memberCount - (p._voteCount || 0);
+  var statusLine = p._iVoted
+    ? '<span style="color:var(--text-dim)">You voted \u00B7 ' + remaining + ' remaining</span>'
+    : '<span style="color:#fbbf24;font-weight:700">' + remaining + ' of ' + memberCount + ' need to vote</span>';
+  var html = '<div style="padding:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px">';
+  html += '<div style="font-weight:700;font-size:0.85em;color:var(--text);margin-bottom:6px">' + _bcEsc(p.question || '') + '</div>';
+  (p.options || []).forEach(function(opt, i) {
+    var count = Object.values(votes).filter(function(v) { return v === i; }).length;
+    var isMyVote = myVote === i;
+    html += '<div onclick="_bcVotePoll(\'' + p._key + '\',' + i + ')" style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin-bottom:3px;border-radius:4px;cursor:pointer;background:' + (isMyVote ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.02)') + ';border:1px solid ' + (isMyVote ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.04)') + '">';
+    html += '<span style="flex:1;font-size:0.8em;color:var(--text-muted)">' + _bcEsc(opt) + '</span>';
+    html += '<span style="font-size:0.72em;font-weight:700;color:' + (isMyVote ? '#a5b4fc' : 'var(--text-dim)') + '">' + count + '</span>';
+    html += '</div>';
+  });
+  html += '<div style="font-size:0.62em;color:var(--text-dim);margin-top:4px;display:flex;justify-content:space-between">';
+  html += statusLine;
+  html += '<span>' + _bcEsc(p.author || '') + ' \u00B7 ' + _bcTimeAgo(p.ts) + '</span>';
+  html += '</div></div>';
+  return html;
 }
 
 async function _bcLoadIdeas() {
@@ -341,7 +594,7 @@ if (typeof _origSubmitPitch === 'function') {
                 });
             } catch(e) {}
             window._bcConvertingIdeaKey = null;
-            _bcLoadIdeas();
+            _bcLoadBandRoom();
         }
     };
 }
@@ -368,7 +621,7 @@ window._bcPostIdea = async function() {
       });
       titleEl.value = '';
       if (linkEl) linkEl.value = '';
-      _bcLoadIdeas();
+      _bcLoadBandRoom();
       if (typeof showToast === 'function') showToast('💡 Idea posted!');
     }
   } catch(e) {
@@ -521,8 +774,7 @@ window._bcCreatePoll = async function() {
         question: qEl.value.trim(), options: options, votes: {}, author: _bcGetName(), ts: new Date().toISOString()
       });
       qEl.value = ''; oEl.value = '';
-      var container = qEl.closest('[id]') || qEl.parentElement.parentElement.parentElement;
-      if (container && typeof renderPollWidget === 'function') renderPollWidget(container);
+      _bcLoadBandRoom();
       if (typeof showToast === 'function') showToast('Poll created!');
     }
   } catch(e) {}
@@ -548,7 +800,7 @@ window._bcVotePoll = async function(pollKey, optionIdx) {
       }
     } catch(e) {}
   }
-  if (typeof currentPage !== 'undefined' && currentPage === 'ideas') _bcLoadIdeas();
+  if (typeof currentPage !== 'undefined' && currentPage === 'ideas') _bcLoadBandRoom();
 };
 
 // ── Reactions (Phase 2) ──────────────────────────────────────────────────────
