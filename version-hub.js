@@ -724,7 +724,31 @@ function vhShowAllActions() {
         '<button class="vh-action-btn vh-action-northstar" onclick="vhSendTo(\'northstar\')">⭐ North Star</button>' +
         '<button class="vh-action-btn vh-action-coverme" onclick="vhSendTo(\'coverme\')">🎤 Cover Me</button>' +
         '<button class="vh-action-btn vh-action-fadr" onclick="vhSendTo(\'fadr\')">🎚️ Fadr</button>' +
-        '<button class="vh-action-btn vh-action-practice" onclick="vhSendTo(\'practice\')">🎵 Practice</button>';
+        '<button class="vh-action-btn vh-action-practice" onclick="vhSendTo(\'practice\')">🎵 Practice</button>' +
+        '<button class="vh-action-btn" onclick="vhCopyLink()" style="background:rgba(255,255,255,0.06);color:var(--text-muted,#94a3b8)">📋 Copy Link</button>';
+}
+
+function vhCopyLink() {
+    if (!vhSelectedUrl) { if (typeof showToast === 'function') showToast('No version selected'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(vhSelectedUrl).then(function() {
+            if (typeof showToast === 'function') showToast('Link copied!');
+        }).catch(function() {
+            _vhFallbackCopy(vhSelectedUrl);
+        });
+    } else {
+        _vhFallbackCopy(vhSelectedUrl);
+    }
+}
+function _vhFallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (typeof showToast === 'function') showToast('Link copied!');
 }
 
 function vhSaveUrl(songTitle, url, title, platform) {

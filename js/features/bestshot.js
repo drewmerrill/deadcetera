@@ -450,7 +450,12 @@ async function deleteBestShotTake(songTitle, index) {
 
 // ── Add Take form ───────────────────────────────────────────────────────────
 function addBestShotTake(songTitle) {
+    // Try primary container, then fall back to song detail listen lens panel
     var container = document.getElementById('bestShotVsNorthStar');
+    if (!container) {
+        var lens = document.querySelector('.sd-lens-panel[data-lens="listen"]');
+        if (lens) container = lens;
+    }
     if (!container) return;
     var memberOpts = Object.entries(bandMembers).map(function(e) { return '<option value="' + e[0] + '"' + (e[0] === currentUserEmail ? ' selected' : '') + '>' + e[1].name + '</option>'; }).join('');
     var form = document.createElement('div');
