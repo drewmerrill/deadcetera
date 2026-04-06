@@ -896,7 +896,17 @@ function renderCalendarInner() {
     '</details>';
 
     // Load events, then build calendar grid + availability
+    // Also schedule a fallback render in case loadCalendarEvents hangs
+    var _availRendered = false;
+    setTimeout(function() {
+        if (!_availRendered) {
+            console.warn('[Calendar] Availability fallback — loadCalendarEvents may have hung');
+            _calRenderAvailabilityMatrix([]);
+        }
+    }, 4000);
+
     loadCalendarEvents().catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
+        _availRendered = true;
         const eventDates = result ? result.dateMap : {};
         const blockedRanges = result ? (result.blockedRanges || []) : [];
         const grid = document.getElementById('calGrid');
@@ -1239,10 +1249,13 @@ function _calRenderAvailabilityGridSync(el, blockedRanges, recData) {
         });
     }
     if (!members.length) {
-        // bandMembers may not be loaded yet — retry once after a short delay
-        if (!el._retried) {
-            el._retried = true;
-            setTimeout(function() { _calRenderAvailabilityMatrix(_calCachedBlockedRanges); }, 2000);
+        // bandMembers may not be loaded yet — retry up to 3 times
+        var _retryCount = el._retryCount || 0;
+        if (_retryCount < 3) {
+            el._retryCount = _retryCount + 1;
+            setTimeout(function() { _calRenderAvailabilityGridSync(el, blockedRanges, recData); }, 1500);
+        } else {
+            el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">No band members found. <a href="#" onclick="showPage(\'settings\');return false" style="color:var(--accent-light)">Add members in Settings</a></div>';
         }
         return;
     }
@@ -1313,7 +1326,7 @@ function _calRenderAvailabilityGridSync(el, blockedRanges, recData) {
     rangeHtml += '</div>';
 
     // Table with month headers
-    var html = rangeHtml + bestHtml;
+    var html = rangeHtml;
     html += '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table style="width:100%;border-collapse:collapse;font-size:0.78em">';
 
     // Month header row
