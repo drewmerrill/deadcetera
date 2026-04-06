@@ -1518,7 +1518,7 @@ function _secondaryCard(title, sub, onclick, icon, emphasize) {
 // ============================================================================
 
 function _renderBandStatusCompact(bundle) {
-    var sc = _computeScorecard(bundle);
+    var sc = _computeScorecard(bundle) || { healthSummary: '', healthColor: '#475569' };
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
     songs.forEach(function(s) {
