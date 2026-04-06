@@ -212,22 +212,16 @@ function renderIdeasBoardPage(el) {
   if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'ideas');
   // Band Room: action-first structure
   // Section tabs: Needs Votes | Open Ideas | Polls | Decisions | Archive
-  el.innerHTML = '<div class="page-header"><h1>\uD83C\uDFB8 Band Room</h1><p style="font-size:0.82em;color:var(--text-dim)">Decisions, polls, and ideas</p></div>'
+  el.innerHTML = '<div class="page-header"><h1>\uD83C\uDFB8 Band Room</h1></div>'
     + '<div style="max-width:600px;margin:0 auto">'
-    // Section tabs
-    + '<div id="bcSectionTabs" style="display:flex;gap:2px;margin-bottom:16px;padding:4px;background:rgba(255,255,255,0.02);border-radius:10px;border:1px solid rgba(255,255,255,0.04)"></div>'
-    // Needs Votes — dominant default section
-    + '<div id="bcNeedsVotes" style="margin-bottom:16px"></div>'
-    // Open Ideas
-    + '<div id="bcOpenIdeas" style="margin-bottom:16px"></div>'
-    // Polls section
-    + '<div id="bcPollsSection" style="margin-bottom:16px"></div>'
-    // Recent Decisions (compact, read-only)
-    + '<div id="bcDecisions" style="margin-bottom:16px"></div>'
-    // Create new section
-    + '<div id="bcCreateSection" style="margin-bottom:16px"></div>'
-    // Rehearsal Brief
-    + '<div id="bcBriefContainer" style="margin-top:20px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px"></div>'
+    // Quick create — always visible, lightweight
+    + '<div id="bcQuickCreate" style="margin-bottom:16px"></div>'
+    // Continuous stream — no hard section breaks
+    + '<div id="bcNeedsVotes"></div>'
+    + '<div id="bcOpenIdeas"></div>'
+    + '<div id="bcPollsSection"></div>'
+    + '<div id="bcDecisions" style="margin-top:12px"></div>'
+    + '<div id="bcBriefContainer" style="margin-top:16px"></div>'
     + '</div>';
 
   _bcLoadBandRoom();
@@ -302,29 +296,30 @@ async function _bcLoadBandRoom() {
   var fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
   var recentDecisions = completedPolls.filter(function(p) { return (p.ts || '') >= fourteenDaysAgo; });
 
-  // ── Render section tabs ──
-  var tabsEl = document.getElementById('bcSectionTabs');
-  if (tabsEl) {
-    var tabs = [
-      { id: 'votes', label: 'Needs Votes', count: needsVotesCount, color: needsVotesCount > 0 ? '#fbbf24' : 'var(--text-dim)' },
-      { id: 'ideas', label: 'Open Ideas', count: openIdeas.length, color: 'var(--text-dim)' },
-      { id: 'polls', label: 'Polls', count: votedPolls.length + unvotedPolls.length, color: 'var(--text-dim)' },
-      { id: 'decisions', label: 'Decisions', count: recentDecisions.length + decidedPitches.length, color: 'var(--text-dim)' }
-    ];
-    tabsEl.innerHTML = tabs.map(function(t) {
-      return '<div style="flex:1;text-align:center;padding:6px 4px;font-size:0.65em;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:' + t.color + '">'
-        + t.label + (t.count > 0 ? ' <span style="font-weight:800">(' + t.count + ')</span>' : '')
-        + '</div>';
-    }).join('');
+  // ── Quick Create — always visible, minimal ──
+  var qcEl = document.getElementById('bcQuickCreate');
+  if (qcEl) {
+    qcEl.innerHTML = '<div style="display:flex;gap:6px;margin-bottom:4px">'
+      + '<input id="bcIdeaTitle" placeholder="Post an idea or song\u2026" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:7px 10px;border-radius:8px;font-size:0.82em;font-family:inherit;box-sizing:border-box">'
+      + '<button onclick="_bcPostIdea()" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#86efac;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">Post</button>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px;align-items:center">'
+      + '<input id="bcIdeaLink" placeholder="Link (optional)" style="flex:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-muted);padding:5px 8px;border-radius:6px;font-size:0.72em;font-family:inherit;box-sizing:border-box">'
+      + '<button onclick="document.getElementById(\'bcPollForm\').style.display=document.getElementById(\'bcPollForm\').style.display===\'none\'?\'block\':\'none\'" style="font-size:0.68em;color:var(--text-dim);background:none;border:1px solid rgba(255,255,255,0.06);padding:4px 8px;border-radius:6px;cursor:pointer">\uD83D\uDDF3\uFE0F Poll</button>'
+      + '</div>'
+      + '<div id="bcPollForm" style="display:none;margin-top:8px;padding:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">'
+      + '<input id="bcPollQ" placeholder="Question\u2026" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">'
+      + '<input id="bcPollOpts" placeholder="Options (comma-separated)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">'
+      + '<button onclick="_bcCreatePoll()" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#86efac;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.72em;font-weight:700">Create Poll</button>'
+      + '</div>';
   }
 
-  // ── Render Needs Votes ──
+  // ── Needs Votes — flows naturally at top ──
   var nvEl = document.getElementById('bcNeedsVotes');
   if (nvEl) {
     var nvHtml = '';
     if (needsVotesCount > 0) {
-      nvHtml += '<div style="padding:12px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
-      nvHtml += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:10px">\uD83D\uDDF3\uFE0F NEEDS YOUR VOTE (' + needsVotesCount + ')</div>';
+      nvHtml += '<div style="margin-bottom:16px;border-left:3px solid #f59e0b;padding-left:12px">';
       // Unvoted polls
       unvotedPolls.forEach(function(p) {
         nvHtml += _bcRenderPollCard(p, myVoteKey, memberCount, true);
@@ -343,10 +338,8 @@ async function _bcLoadBandRoom() {
       });
       nvHtml += '</div>';
     } else {
-      nvHtml += '<div style="padding:14px;text-align:center;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12);border-radius:10px">'
-        + '<span style="font-size:0.82em;color:#86efac;font-weight:700">\u2705 All votes cast</span>'
-        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Nothing waiting for you.</div>'
-        + '</div>';
+      // All clear — minimal, no heavy box
+      nvHtml += '<div style="font-size:0.75em;color:var(--text-dim);padding:8px 0">\u2705 All votes cast</div>';
     }
     nvEl.innerHTML = nvHtml;
   }
@@ -356,7 +349,7 @@ async function _bcLoadBandRoom() {
   if (ideasEl) {
     var idHtml = '';
     if (openIdeas.length > 0) {
-      idHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDCA1 Open Ideas (' + openIdeas.length + ')</div>';
+      idHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;padding-top:8px">Ideas</div>';
       openIdeas.forEach(function(p) {
         var linkHTML = '';
         if (p.link) {
@@ -386,7 +379,7 @@ async function _bcLoadBandRoom() {
   if (pollsEl) {
     var pollHtml = '';
     if (votedPolls.length > 0) {
-      pollHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDC65 Waiting on Band (' + votedPolls.length + ')</div>';
+      pollHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;padding-top:8px">Waiting on band</div>';
       votedPolls.forEach(function(p) { pollHtml += _bcRenderPollCard(p, myVoteKey, memberCount, false); });
     }
     pollsEl.innerHTML = pollHtml;
@@ -435,28 +428,7 @@ async function _bcLoadBandRoom() {
     decEl.innerHTML = decHtml;
   }
 
-  // ── Create section (idea + poll forms) ──
-  var createEl = document.getElementById('bcCreateSection');
-  if (createEl) {
-    var crHtml = '<details style="margin-top:8px"><summary style="font-size:0.72em;font-weight:700;color:var(--accent-light);cursor:pointer;padding:8px 0;list-style:none">+ Post an Idea or Create a Poll</summary>';
-    crHtml += '<div style="padding:12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;margin-top:4px">';
-    // Idea form
-    crHtml += '<div style="margin-bottom:12px">';
-    crHtml += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">\uD83D\uDCA1 Post Idea</div>';
-    crHtml += '<input id="bcIdeaTitle" placeholder="Song title or idea..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:6px 8px;border-radius:6px;font-size:0.82em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
-    crHtml += '<div style="display:flex;gap:6px">';
-    crHtml += '<input id="bcIdeaLink" placeholder="YouTube / Spotify link (optional)" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:6px;font-size:0.75em;font-family:inherit;box-sizing:border-box">';
-    crHtml += '<button onclick="_bcPostIdea()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:700;white-space:nowrap">Post</button>';
-    crHtml += '</div></div>';
-    // Poll form
-    crHtml += '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:10px">';
-    crHtml += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">\uD83D\uDDF3\uFE0F Create Poll</div>';
-    crHtml += '<input id="bcPollQ" placeholder="Ask a question..." style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
-    crHtml += '<input id="bcPollOpts" placeholder="Options (comma-separated)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">';
-    crHtml += '<button onclick="_bcCreatePoll()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.72em;font-weight:700">Create</button>';
-    crHtml += '</div></div></details>';
-    createEl.innerHTML = crHtml;
-  }
+  // Quick create is rendered at top — no separate create section needed
 }
 
 // ── Poll card renderer — shared between Needs Votes and Waiting sections ──

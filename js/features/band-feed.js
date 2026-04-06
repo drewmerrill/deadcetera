@@ -1472,11 +1472,10 @@ function _feedRender(items) {
     var html = '';
 
     if (_feedFilter === 'all' && fas) {
-        // Hide system-generated posts from default view (they show under System filter)
+        // Hide system-generated posts from default view
         visible = visible.filter(function(i) { return i._source !== 'playlist_sync'; });
-        // Group by action urgency — 3 active tiers + resolved collapse
-        var groups = { critical: [], myInput: [], bandWait: [], recent: [], resolved: [], stale: [] };
-        var fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+        // 3 tiers: ACTION REQUIRED → WAITING → CONTEXT → RESOLVED (collapsed)
+        var groups = { critical: [], myInput: [], bandWait: [], context: [], resolved: [] };
         var thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
         visible.forEach(function(item) {
             var state = fas.getActionState(item, _feedGetMeta(item));
@@ -1484,70 +1483,43 @@ function _feedRender(items) {
             if (state.priorityBucket === 1) groups.critical.push(item);
             else if (state.needsMyInput) groups.myInput.push(item);
             else if (state.waitingOnOthers) groups.bandWait.push(item);
-            else {
-                // Stale check: unresolved, older than 30 days, not critical
-                if ((item.timestamp || '') < thirtyDaysAgo) groups.stale.push(item);
-                // Recent: only last 14 days in default view
-                else if ((item.timestamp || '') >= fourteenDaysAgo) groups.recent.push(item);
-                // Older non-resolved FYI items: silently skip from default (available in filters)
-            }
+            else groups.context.push(item);
         });
 
-        // ── Tier 1: ACTION REQUIRED (critical + needs me) ──
-        if (groups.critical.length) {
-            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:10px;border-left:4px solid #ef4444">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#f87171;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u26A0\uFE0F CRITICAL (' + groups.critical.length + ')</div>';
-            groups.critical.forEach(function(item) { html += _feedRenderItem(item); });
-            html += '</div>';
-        }
-        if (groups.myInput.length) {
-            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.15);border-radius:10px;border-left:4px solid #f59e0b">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\u270B NEEDS YOU (' + groups.myInput.length + ')</div>';
+        // ── ACTION REQUIRED — strongest emphasis ──
+        var actionItems = groups.critical.concat(groups.myInput);
+        if (actionItems.length) {
+            html += '<div style="margin-bottom:16px;border-left:3px solid #f59e0b;padding-left:12px">';
             var highlightFirst = !localStorage.getItem(_FEED_HIGHLIGHT_KEY);
-            groups.myInput.forEach(function(item, idx) { html += _feedRenderItem(item, idx === 0 && highlightFirst); });
+            actionItems.forEach(function(item, idx) { html += _feedRenderItem(item, idx === 0 && highlightFirst); });
             html += '</div>';
         }
 
-        // ── Tier 2: WAITING ON BAND ──
+        // ── WAITING ON BAND — compact rows, subtle label ──
         if (groups.bandWait.length) {
-            html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;border-left:4px solid #6366f1">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:#a5b4fc;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDC65 WAITING ON BAND (' + groups.bandWait.length + ')</div>';
-            groups.bandWait.forEach(function(item) { html += _feedRenderItem(item); });
+            html += '<div style="margin-bottom:16px;padding-top:8px">';
+            html += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px">Waiting on band</div>';
+            groups.bandWait.forEach(function(item) { html += _feedRenderItemCompact(item); });
             html += '</div>';
         }
 
-        // ── Tier 3: RECENT (last 14 days, compact) ──
-        if (groups.recent.length) {
-            html += '<div style="font-size:0.72em;font-weight:800;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;padding:14px 0 6px">\uD83D\uDCCB RECENT</div>';
-            groups.recent.forEach(function(item) {
-                html += _feedRenderItemCompact(item);
-            });
-        }
-
-        // ── Stale items: nudge to resolve/archive ──
-        if (groups.stale.length) {
-            html += '<div style="margin-top:12px;padding:10px 14px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.04);border-radius:10px">';
-            html += '<div style="font-size:0.72em;font-weight:800;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px">\uD83D\uDD70\uFE0F STALE (' + groups.stale.length + ')</div>';
-            groups.stale.forEach(function(item) {
-                var safeType = _feedEsc(item.type), safeId = _feedEsc(item.id);
-                html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03)">'
-                    + '<span style="font-size:0.82em;color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _feedEsc(item.text || '').substring(0, 60) + '</span>'
-                    + '<span style="font-size:0.65em;color:var(--text-dim);flex-shrink:0">' + _feedTimeAgo(item.timestamp) + '</span>'
-                    + '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.62em;font-weight:700;padding:2px 6px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Resolve</button>'
-                    + '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.62em;font-weight:700;padding:2px 6px;border-radius:4px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">Archive</button>'
-                    + '</div>';
+        // ── CONTEXT — recent + stale merged, compact, continuous ──
+        if (groups.context.length) {
+            html += '<div style="margin-bottom:16px;padding-top:8px">';
+            groups.context.forEach(function(item) {
+                var isStale = (item.timestamp || '') < thirtyDaysAgo;
+                html += _feedRenderItemCompact(item, false, isStale);
             });
             html += '</div>';
         }
 
-        // ── Resolved: collapsed by default ──
+        // ── RESOLVED — collapsed ──
         if (groups.resolved.length) {
-            html += '<details style="margin-top:16px">'
-                + '<summary style="font-size:0.72em;font-weight:700;color:var(--text-dim);letter-spacing:0.05em;text-transform:uppercase;cursor:pointer;padding:8px 0;list-style:none;display:flex;align-items:center;gap:6px">'
-                + '<span style="font-size:0.9em;transition:transform 0.15s;display:inline-block" class="gl-feed-chevron">\u25B8</span>'
-                + '\u2705 RESOLVED (' + groups.resolved.length + ')'
-                + '</summary>'
-                + '<div style="padding-top:4px">';
+            html += '<details style="margin-top:8px">'
+                + '<summary style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;cursor:pointer;padding:6px 0;list-style:none;display:flex;align-items:center;gap:5px">'
+                + '<span style="transition:transform 0.15s;display:inline-block">\u25B8</span>'
+                + 'Resolved \u00B7 ' + groups.resolved.length
+                + '</summary><div style="padding-top:4px">';
             groups.resolved.forEach(function(item) {
                 html += _feedRenderItemCompact(item, true);
             });
@@ -1748,37 +1720,44 @@ function _feedRenderItem(item, isFirstAction) {
     return html;
 }
 
-// Compact single-line renderer for FYI / resolved / recent items
-function _feedRenderItemCompact(item, isResolved) {
+// Compact single-line renderer for context / resolved / waiting items
+function _feedRenderItemCompact(item, isResolved, isStale) {
     var typeIcon = { idea: '\uD83D\uDCA1', poll: '\uD83D\uDDF3\uFE0F', rehearsal_note: '\uD83C\uDFB8', song_moment: '\uD83C\uDFB5', gig_note: '\uD83C\uDFA4' }[item.type] || '\uD83D\uDCCB';
     var safeType = _feedEsc(item.type), safeId = _feedEsc(item.id);
     var safeSongId = item.songId ? _feedEsc(item.songId) : '';
     var text = _feedEsc((item.text || '').substring(0, 80));
     if ((item.text || '').length > 80) text += '\u2026';
-    var opacity = isResolved ? 'opacity:0.6;' : '';
+    var dimLevel = isResolved ? 'opacity:0.5;' : isStale ? 'opacity:0.7;' : '';
 
-    // For completed polls, show result summary instead of question
+    // Converted idea: show as linked reference, not standalone
+    if (item.type === 'idea' && item.convertedToPitch) {
+        return '<div style="display:flex;align-items:center;gap:6px;padding:3px 8px;' + dimLevel + 'font-size:0.72em;color:var(--text-dim)">'
+            + '\uD83D\uDCA1\u2192\uD83C\uDFB5 <span style="text-decoration:line-through;opacity:0.6">' + text + '</span>'
+            + '<span style="color:#22c55e;font-weight:600">Pitched</span>'
+            + '</div>';
+    }
+
+    // Completed poll: show winner summary
     var pollResult = '';
-    if (item.type === 'poll' && isResolved && item.pollOptions && item.pollVotes) {
+    if (item.type === 'poll' && item.pollOptions && item.pollVotes) {
         var voteCounts = {};
         Object.values(item.pollVotes).forEach(function(v) { voteCounts[v] = (voteCounts[v] || 0) + 1; });
         var topIdx = 0, topCount = 0;
         Object.keys(voteCounts).forEach(function(k) { if (voteCounts[k] > topCount) { topCount = voteCounts[k]; topIdx = parseInt(k); } });
-        if (item.pollOptions[topIdx]) pollResult = ' \u2192 ' + _feedEsc(item.pollOptions[topIdx]) + ' (' + topCount + ')';
+        if (item.pollOptions[topIdx]) pollResult = ' \u2192 ' + _feedEsc(item.pollOptions[topIdx]);
     }
 
-    var actionBtns = '';
-    if (!isResolved) {
-        actionBtns = '<div style="display:flex;gap:2px;flex-shrink:0" onclick="event.stopPropagation()">'
-            + '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.6em;padding:1px 5px;border-radius:3px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">Resolve</button>'
-            + '</div>';
+    // Stale nudge buttons
+    var trailHtml = '<span style="font-size:0.62em;color:var(--text-dim);flex-shrink:0">' + _feedTimeAgo(item.timestamp) + '</span>';
+    if (isStale) {
+        trailHtml += '<span onclick="event.stopPropagation();_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.58em;padding:1px 4px;border-radius:3px;cursor:pointer;color:var(--text-dim);border:1px solid rgba(255,255,255,0.06);margin-left:2px">\u2713</span>'
+            + '<span onclick="event.stopPropagation();_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.58em;padding:1px 4px;border-radius:3px;cursor:pointer;color:var(--text-dim);border:1px solid rgba(255,255,255,0.06)">\u2715</span>';
     }
 
-    return '<div onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')" style="display:flex;align-items:center;gap:8px;padding:5px 8px;margin-bottom:2px;border-radius:6px;cursor:pointer;transition:background 0.1s;' + opacity + '" onmouseover="this.style.background=\'rgba(255,255,255,0.03)\'" onmouseout="this.style.background=\'none\'">'
-        + '<span style="font-size:0.82em;flex-shrink:0">' + typeIcon + '</span>'
+    return '<div onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')" style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin-bottom:1px;border-radius:4px;cursor:pointer;transition:background 0.12s,opacity 0.15s;' + dimLevel + '" onmouseover="this.style.background=\'rgba(255,255,255,0.03)\'" onmouseout="this.style.background=\'none\'">'
+        + '<span style="font-size:0.78em;flex-shrink:0">' + typeIcon + '</span>'
         + '<span style="font-size:0.78em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + text + '<span style="color:var(--text-dim)">' + pollResult + '</span></span>'
-        + '<span style="font-size:0.62em;color:var(--text-dim);flex-shrink:0">' + _feedTimeAgo(item.timestamp) + '</span>'
-        + actionBtns
+        + trailHtml
         + '</div>';
 }
 
