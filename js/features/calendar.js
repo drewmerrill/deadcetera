@@ -910,27 +910,35 @@ function renderCalendarInner() {
     });
 }
 
+// Race-condition safe: each nav increments a sequence counter.
+// Only the latest navigation's callback writes to the grid.
+var _calNavSeq = 0;
+
 function calNavMonth(dir) {
     calViewMonth += dir;
     if (calViewMonth > 11) { calViewMonth = 0; calViewYear++; }
     if (calViewMonth < 0)  { calViewMonth = 11; calViewYear--; }
 
-    // Partial render: update only the month label and grid — nothing else
+    // Update label immediately (synchronous — always correct)
     var mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     var monthLabel = document.getElementById('calMonthLabel');
     if (monthLabel) monthLabel.textContent = mNames[calViewMonth] + ' ' + calViewYear;
 
     var grid = document.getElementById('calGrid');
     if (grid) {
-        grid.style.opacity = '0.5';
-        // Rebuild grid only
+        // Preserve height during transition to prevent collapse
+        grid.style.minHeight = grid.offsetHeight + 'px';
+        grid.style.opacity = '0.4';
         _calRenderGridOnly(grid);
     }
 }
 
-// Render just the calendar grid (month nav — no other sections touched)
+// Render just the calendar grid — race-condition safe, height-stable
 function _calRenderGridOnly(grid) {
+    // Snapshot month/year at call time — used in the callback to verify freshness
     var year = calViewYear, month = calViewMonth;
+    var navId = ++_calNavSeq; // only latest nav writes
+
     var dNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     var firstDay = new Date(year, month, 1).getDay();
     var daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -938,8 +946,10 @@ function _calRenderGridOnly(grid) {
     var monthPrefix = year + '-' + String(month + 1).padStart(2, '0') + '-';
 
     loadCalendarEvents().then(function(result) {
+        // Race guard: if a newer navigation happened, discard this result
+        if (navId !== _calNavSeq) return;
+
         var eventDates = result ? result.dateMap : {};
-        var blockedRanges = result ? (result.blockedRanges || []) : [];
         if (!grid) return;
 
         var g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
@@ -947,13 +957,13 @@ function _calRenderGridOnly(grid) {
             var w = i === 0 || i === 6;
             g += '<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:' + (w ? 'var(--accent-light)' : 'var(--text-dim)') + ';text-align:center;padding:6px 0">' + d + '</div>';
         });
-        for (var i = 0; i < firstDay; i++) g += '<div style="min-height:60px;padding:4px;"></div>';
+        for (var i = 0; i < firstDay; i++) g += '<div style="min-height:60px;padding:4px"></div>';
         for (var d = 1; d <= daysInMonth; d++) {
             var ds = monthPrefix + String(d).padStart(2, '0');
             var isToday = ds === todayStr;
             var dow = new Date(year, month, d).getDay();
             var w = dow === 0 || dow === 6;
-            var dayEvents = eventDates ? (eventDates[ds] || []) : [];
+            var dayEvents = eventDates[ds] || [];
             var hasEvent = dayEvents.length > 0;
             var eventPills = hasEvent ? dayEvents.slice(0, 2).map(function(ev) {
                 var typeColors = { rehearsal: '#22c55e', gig: '#f59e0b', meeting: '#818cf8' };
@@ -970,6 +980,12 @@ function _calRenderGridOnly(grid) {
         g += '</div>';
         grid.innerHTML = g;
         grid.style.opacity = '1';
+        grid.style.minHeight = ''; // release height lock after render
+    }).catch(function() {
+        // Network error fallback — render empty grid, don't hang
+        if (navId !== _calNavSeq) return;
+        grid.style.opacity = '1';
+        grid.style.minHeight = '';
     });
 }
 
