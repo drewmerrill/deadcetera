@@ -323,18 +323,35 @@ async function _calRenderBestRehearsalHero() {
         var _heroTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 5000); });
         recs = await Promise.race([_heroPromise, _heroTimeout]);
     } catch(e) {
-        // Timeout or error — show quiet fallback, don't hide the hero
+        // Timeout — still give direction, never dead-end
         el.innerHTML = '<div style="padding:16px 20px;margin-bottom:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.015)">'
-            + '<div style="font-size:0.72em;color:var(--text-dim)">Best next rehearsal unavailable right now</div>'
-            + '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()" style="margin-top:8px">Schedule Manually</button>'
+            + '<div style="font-size:0.82em;font-weight:700;color:var(--text);margin-bottom:4px">Pick a date from the calendar below</div>'
+            + '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px">We couldn\u2019t load scheduling data right now \u2014 tap any date to schedule.</div>'
+            + '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()">Schedule Rehearsal</button>'
             + '</div>';
         return;
     }
     if (!recs || !recs.primary) {
-        el.innerHTML = '<div style="padding:16px 20px;margin-bottom:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.015)">'
-            + '<div style="font-size:0.72em;color:var(--text-dim)">No dates available in the next 3 weeks</div>'
-            + '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()" style="margin-top:8px">Schedule Manually</button>'
-            + '</div>';
+        // No ideal date — show the best available or guide to calendar
+        var _fallbackAlts = recs && recs.allCandidates ? recs.allCandidates.filter(function(c) { return c.availability && c.availability.label !== 'Not viable'; }).slice(0, 3) : [];
+        var _fallbackHtml = '<div style="padding:16px 20px;margin-bottom:20px;border-radius:16px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.015)">'
+            + '<div style="font-size:0.82em;font-weight:700;color:var(--text);margin-bottom:4px">No standout date this round</div>'
+            + '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:8px">Every date has a conflict or is too close to an existing rehearsal.</div>';
+        if (_fallbackAlts.length) {
+            _fallbackHtml += '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:6px">Best available:</div>';
+            _fallbackAlts.forEach(function(a) {
+                var aDate = new Date(a.date + 'T12:00:00');
+                var aLabel = aDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                var _aSafe = a.date.replace(/'/g, "\\'");
+                _fallbackHtml += '<div style="display:flex;align-items:center;gap:8px;padding:3px 0">'
+                    + '<span style="font-size:0.75em;color:var(--text)">' + aLabel + '</span>'
+                    + '<span style="font-size:0.58em;color:' + a.color + '">' + a.label + '</span>'
+                    + '<button onclick="_calLockAndPlan(\'' + _aSafe + '\')" class="cal-action-btn" style="margin-left:auto;font-size:0.65em;padding:3px 10px">Use This</button>'
+                    + '</div>';
+            });
+        }
+        _fallbackHtml += '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()" style="margin-top:8px;width:100%">Pick a Different Date</button></div>';
+        el.innerHTML = _fallbackHtml;
         return;
     }
 
@@ -773,13 +790,24 @@ async function _calRenderNextUp() {
 
         html += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">';
         html += actionBtn;
-        // Google Calendar button
-        if (typeof calBuildRehearsalGoogleLink === 'function' && ev.type === 'rehearsal') {
-            html += '<button onclick="_calNextUpGcal(\'' + (ev.date || '').replace(/'/g, "\\'") + '\',\'' + (ev.time || '').replace(/'/g, "\\'") + '\',\'' + (ev.location || ev.venue || '').replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;font-size:0.72em;font-weight:600;cursor:pointer">\uD83D\uDCC5 Google Cal</button>';
-        } else if (typeof calBuildGigGoogleLink === 'function' && ev.type === 'gig') {
-            html += '<button onclick="_calNextUpGigGcal(\'' + (ev.date || '').replace(/'/g, "\\'") + '\')" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.04);color:#4285f4;font-size:0.72em;font-weight:600;cursor:pointer">\uD83D\uDCC5 Google Cal</button>';
-        }
         html += '</div>';
+        // Sync state — always visible, subtle
+        var _syncState = ev.sync ? ev.sync.status : null;
+        if (_syncState === 'synced') {
+            var _sLink = ev.sync.htmlLink || '';
+            html += '<div style="font-size:0.6em;color:#22c55e;margin-top:4px;display:flex;align-items:center;gap:4px">\u2705 Synced with Google Calendar' + (_sLink ? ' <a href="' + _sLink + '" target="_blank" style="color:#4285f4;text-decoration:underline">Open</a>' : '') + '</div>';
+        } else if (_syncState === 'needs_update') {
+            html += '<div style="font-size:0.6em;color:#f59e0b;margin-top:4px">\u26A0 Needs calendar update</div>';
+        } else if (_syncState === 'error') {
+            html += '<div style="font-size:0.6em;color:#ef4444;margin-top:4px">\u274C Calendar sync failed</div>';
+        } else {
+            // Not synced — show add button
+            if (typeof calBuildRehearsalGoogleLink === 'function' && ev.type === 'rehearsal') {
+                html += '<button onclick="_calNextUpGcal(\'' + (ev.date || '').replace(/'/g, "\\'") + '\',\'' + (ev.time || '').replace(/'/g, "\\'") + '\',\'' + (ev.location || ev.venue || '').replace(/'/g, "\\'") + '\')" style="margin-top:4px;padding:4px 10px;border-radius:6px;border:1px solid rgba(66,133,244,0.15);background:none;color:#4285f4;font-size:0.6em;cursor:pointer">\uD83D\uDCC5 Add to Google Calendar</button>';
+            } else if (typeof calBuildGigGoogleLink === 'function' && ev.type === 'gig') {
+                html += '<button onclick="_calNextUpGigGcal(\'' + (ev.date || '').replace(/'/g, "\\'") + '\')" style="margin-top:4px;padding:4px 10px;border-radius:6px;border:1px solid rgba(66,133,244,0.15);background:none;color:#4285f4;font-size:0.6em;cursor:pointer">\uD83D\uDCC5 Add to Google Calendar</button>';
+            }
+        }
         html += '</div>';
     });
 
@@ -836,11 +864,13 @@ function renderCalendarInner() {
         '</div>' +
         '<div id="calGrid" style="transition:opacity 0.12s ease;will-change:opacity"></div>' +
     '</div>' +
-    // Quick actions — pill buttons
-    '<div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap">' +
+    // Contextual actions — primary inline, secondary tucked away
+    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">' +
         '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()">Schedule Rehearsal</button>' +
-        '<button class="cal-action-btn" onclick="calBlockDates()">Block Date</button>' +
-        '<button class="cal-action-btn" onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" title="Subscribe to band calendar">Subscribe</button>' +
+        '<span style="margin-left:auto;display:flex;gap:4px">' +
+            '<button onclick="calBlockDates()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65em;padding:4px 8px;opacity:0.6" title="Block a date">\uD83D\uDEAB Block</button>' +
+            '<button onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65em;padding:4px 8px;opacity:0.6" title="Subscribe to calendar feed">\uD83D\uDCC5 Subscribe</button>' +
+        '</span>' +
     '</div>' +
     '<div id="calEventFormArea"></div>' +
     // Upcoming Schedule — collapsed, quiet
