@@ -1400,46 +1400,74 @@ function _timeAgo(isoStr) {
     return days + 'd ago';
 }
 
-// ── LOCK IN dashboard: session-level rehearsal plan ───────────────────────────
+// ── LOCK IN dashboard: two-column system layout ─────────────────────────────
 function _renderLockinDashboard(bundle, wf, isStoner) {
     var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-
-    // Build secondary suggestions (max 2)
     var _secondaries = _buildSecondaryActions(bundle);
-
-    // ── Proactive intelligence ──
     var _riskCard = _renderEventRiskCard(bundle);
     var _nudge = _renderSmartNudge(bundle);
 
-    return [
-        '<div class="home-dashboard hd-command-center" style="max-width:640px;margin:0 auto">',
-        '<div style="font-size:0.75em;color:var(--text-dim);padding:0 4px 6px">' + dateStr + '</div>',
+    // Inject layout CSS once
+    _hdInjectLayoutCSS();
 
-        // ── Event risk alert (if any) ──
-        _riskCard,
+    // ── Hero zone: risk + NBA merged into one narrative surface ──
+    var _heroHtml = '<div class="hd-hero">'
+        + _riskCard
+        + _renderNextActionCard(bundle, wf)
+        + (_nudge ? '<div class="hd-hero-nudge">' + _nudge + '</div>' : '')
+        + '</div>';
 
-        // ── Primary recommendation (ONE action) ──
-        _renderNextActionCard(bundle, wf),
+    // ── LEFT column: decisions + actions ──
+    var _leftHtml = _heroHtml
+        + (_secondaries.length ? '<div class="hd-section">' + _secondaries.join('') + '</div>' : '')
+        + _renderBandFocusCard(bundle)
+        + '<div id="hdPollCard"></div>'
+        + '<div id="hdPostRehearsalPrompt"></div>';
 
-        // ── Smart nudge (practice recency, readiness drop) ──
-        _nudge,
+    // ── RIGHT column: context + status ──
+    var _rightHtml = _renderBandStatusCompact(bundle);
 
-        // ── Secondary suggestions (max 2, minimal) ──
-        (_secondaries.length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">' + _secondaries.join('') + '</div>' : ''),
+    return '<div class="home-dashboard hd-system">'
+        + '<div class="hd-date">' + dateStr + '</div>'
+        + '<div class="hd-layout">'
+        + '<div class="hd-primary">' + _leftHtml + '</div>'
+        + '<div class="hd-context">' + _rightHtml + '</div>'
+        + '</div>'
+        + '</div>';
+}
 
-        // ── Band Focus (shared direction) ──
-        _renderBandFocusCard(bundle),
-
-        // ── Band Status (compact, merged scorecard + readiness) ──
-        _renderBandStatusCompact(bundle),
-
-        // ── Band Room (demoted — collapsed) ──
-        '<div id="hdPollCard"></div>',
-
-        // ── Post-rehearsal prompt mount ──
-        '<div id="hdPostRehearsalPrompt"></div>',
-        '</div>'
-    ].join('');
+// ── Layout CSS injection (once) ──────────────────────────────────────────────
+var _hdLayoutInjected = false;
+function _hdInjectLayoutCSS() {
+    if (_hdLayoutInjected) return;
+    _hdLayoutInjected = true;
+    var s = document.createElement('style');
+    s.textContent = ''
+        // System container
+        + '.hd-system{max-width:960px;margin:0 auto;padding:0 4px}'
+        + '.hd-date{font-size:0.75em;color:var(--text-dim,#475569);padding:0 4px 8px}'
+        // Two-column layout
+        + '.hd-layout{display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:start}'
+        + '.hd-primary{min-width:0}'
+        + '.hd-context{position:sticky;top:16px;min-width:0}'
+        // Mobile: single column
+        + '@media(max-width:768px){.hd-layout{grid-template-columns:1fr;gap:12px}.hd-context{position:static}}'
+        // Hero zone — continuous surface, no card borders
+        + '.hd-hero{margin-bottom:16px}'
+        + '.hd-hero>div{border:none!important;border-radius:0!important;margin-bottom:0!important}'
+        + '.hd-hero>div:first-child{border-radius:12px 12px 0 0!important}'
+        + '.hd-hero>div:last-child{border-radius:0 0 12px 12px!important}'
+        + '.hd-hero>div:only-child{border-radius:12px!important}'
+        + '.hd-hero-nudge{padding:0 16px 12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))}'
+        + '.hd-hero-nudge>div{margin-bottom:0!important;padding:6px 0!important;border:none!important;background:none!important}'
+        // Section spacing — replaces card gaps
+        + '.hd-section{margin-bottom:16px}'
+        // Typography
+        + '.hd-system .app-card{border:none;background:rgba(255,255,255,0.015);border-radius:10px}'
+        // Context panel cards — lighter treatment
+        + '.hd-context>div{border-radius:10px;background:rgba(255,255,255,0.02)!important}'
+        ;
+    document.head.appendChild(s);
 }
 
 function _buildSecondaryActions(bundle) {
