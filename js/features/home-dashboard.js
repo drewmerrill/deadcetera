@@ -441,12 +441,25 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         _subHtml = '<div style="font-size:0.85em;color:#94a3b8;margin-bottom:16px;line-height:1.4">' + _escHtml(sub) + '</div>';
     }
 
+    // Commitment state check
+    var _committed = false;
+    try { _committed = localStorage.getItem('gl_committed_today') === _todayStr(); } catch(e) {}
+
+    // Practice streak
+    var _streakHtml = _buildPracticeStreak();
+
     return '<div style="padding:18px 16px;margin-bottom:12px;border:1px solid rgba(34,197,94,0.2);border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))">'
         + '<div style="font-size:1.05em;font-weight:800;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
         + (_justification ? '<div style="font-size:0.72em;color:#64748b;margin-bottom:10px">' + _justification + '</div>' : '')
         + _subHtml
         + _expandHtml
+        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
         + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:200px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
+        + (highConfidence && !_committed
+            ? '<button onclick="_hdCommitToPlan()" style="padding:10px 18px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer;white-space:nowrap">\uD83C\uDFAF Lock in this plan</button>'
+            : _committed ? '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Plan locked for today</span>' : '')
+        + '</div>'
+        + _streakHtml
         + _buildIntelSignal()
         + _scheduleLink
         + '</div>';
@@ -1582,6 +1595,7 @@ function _renderBandStatusCompact(bundle) {
             }
             return '';
         })()
+        + _buildTrendSignal()
         + '</div>';
 }
 
@@ -1982,13 +1996,40 @@ function _renderEventRiskCard(bundle) {
         risks.push('No rehearsal in 2+ weeks');
     }
 
-    if (risks.length === 0) return '';
-
     var eventLabel = (nextEvent.type === 'gig' ? '\uD83C\uDFA4 Gig' : '\uD83C\uDFB8 Rehearsal');
     var dateLabel = daysOut === 0 ? 'today' : daysOut === 1 ? 'tomorrow' : 'in ' + daysOut + ' days';
-    var severity = (daysOut <= 2 && risks.length >= 2) ? 'high' : 'medium';
-    var borderColor = severity === 'high' ? '#ef4444' : '#f59e0b';
-    var bgColor = severity === 'high' ? 'rgba(239,68,68,0.06)' : 'rgba(245,158,11,0.04)';
+    var severity = (daysOut <= 2 && risks.length >= 2) ? 'high' : (risks.length > 0 ? 'medium' : 'ok');
+    var borderColor = severity === 'high' ? '#ef4444' : severity === 'medium' ? '#f59e0b' : '#22c55e';
+    var bgColor = severity === 'high' ? 'rgba(239,68,68,0.06)' : severity === 'medium' ? 'rgba(245,158,11,0.04)' : 'rgba(34,197,94,0.04)';
+
+    // Pre-rehearsal checklist for events < 24h
+    if (daysOut <= 1) {
+        var html = '<div style="padding:12px 14px;margin-bottom:12px;border-radius:10px;border-left:3px solid ' + borderColor + ';background:' + bgColor + '">';
+        html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:6px">' + eventLabel + ' ' + dateLabel + '</div>';
+        html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Before you go</div>';
+        // Checklist items
+        var checkItems = [];
+        checkItems.push({ done: rsvpCount >= memberCount, text: 'Attendance confirmed' + (rsvpCount < memberCount ? ' (' + rsvpCount + '/' + memberCount + ')' : '') });
+        checkItems.push({ done: lowReadiness === 0, text: lowReadiness > 0 ? lowReadiness + ' song' + (lowReadiness > 1 ? 's' : '') + ' need work' : 'All songs ready' });
+        var hasRecentPractice = false;
+        try { var _lp = localStorage.getItem('gl_last_practice_ts'); hasRecentPractice = _lp && _dayDiff(_lp.substring(0, 10), today) <= 3; } catch(e) {}
+        checkItems.push({ done: hasRecentPractice, text: hasRecentPractice ? 'Practiced recently' : 'No recent practice' });
+
+        checkItems.forEach(function(ci) {
+            var icon = ci.done ? '\u2705' : '\u26AA';
+            var color = ci.done ? 'var(--text-dim)' : 'var(--text-muted)';
+            html += '<div style="font-size:0.75em;color:' + color + ';padding:2px 0;display:flex;align-items:center;gap:6px">' + icon + ' ' + _escHtml(ci.text) + '</div>';
+        });
+
+        if (lowReadiness > 0) {
+            html += '<button onclick="showPage(\'rehearsal\')" style="margin-top:8px;font-size:0.72em;font-weight:700;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24">Quick practice \u2192</button>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    // Standard risk card for events > 24h
+    if (risks.length === 0) return '';
 
     var html = '<div style="padding:10px 14px;margin-bottom:12px;border-radius:10px;border-left:3px solid ' + borderColor + ';background:' + bgColor + '">';
     html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:4px">\u26A0\uFE0F ' + eventLabel + ' ' + dateLabel + ' is at risk</div>';
@@ -2059,9 +2100,28 @@ function _renderSmartNudge(bundle) {
         var deltaText = delta && delta.deltaAvg ? (delta.deltaAvg > 0 ? '+' + delta.deltaAvg.toFixed(1) : delta.deltaAvg.toFixed(1)) : '';
         var deltaColor = delta && delta.deltaAvg > 0 ? '#22c55e' : delta && delta.deltaAvg < 0 ? '#ef4444' : 'var(--text-dim)';
 
+        // Song-level details
+        var songDetails = '';
+        if (delta && delta.bySong) {
+            var improved = [], declined = [], unchanged = [];
+            Object.keys(delta.bySong).forEach(function(s) {
+                var d = delta.bySong[s];
+                if (d.delta > 0) improved.push(s);
+                else if (d.delta < 0) declined.push(s);
+                else unchanged.push(s);
+            });
+            if (improved.length || declined.length) {
+                songDetails = '<div style="margin:8px 0;font-size:0.72em;text-align:left;max-width:280px;margin-left:auto;margin-right:auto">';
+                if (improved.length) songDetails += '<div style="color:#22c55e;margin-bottom:2px">\u2191 ' + improved.join(', ') + '</div>';
+                if (declined.length) songDetails += '<div style="color:#f59e0b">\u2193 ' + declined.join(', ') + '</div>';
+                songDetails += '</div>';
+            }
+        }
+
         el.innerHTML = '<div style="padding:14px;margin-top:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);text-align:center">'
-            + '<div style="font-size:0.85em;font-weight:700;color:#86efac;margin-bottom:6px">Did that feel tighter?</div>'
-            + (deltaText ? '<div style="font-size:0.75em;color:' + deltaColor + ';margin-bottom:8px">Readiness ' + deltaText + '</div>' : '')
+            + '<div style="font-size:0.85em;font-weight:700;color:#86efac;margin-bottom:4px">Did that feel tighter?</div>'
+            + (deltaText ? '<div style="font-size:0.82em;font-weight:800;color:' + deltaColor + ';margin-bottom:4px">Readiness ' + deltaText + '</div>' : '')
+            + songDetails
             + '<div style="display:flex;gap:8px;justify-content:center">'
             + '<button onclick="_hdPostRehearsalFeedback(\'yes\')" style="font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac">\uD83D\uDC4D Yes</button>'
             + '<button onclick="_hdPostRehearsalFeedback(\'same\')" style="font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim)">Same</button>'
@@ -2089,6 +2149,89 @@ window._hdPostRehearsalFeedback = function(answer) {
     } catch(e) {}
     setTimeout(function() { el.innerHTML = ''; }, 2000);
 };
+
+// ── Commitment Action ─────────────────────────────────────────────────────────
+window._hdCommitToPlan = function() {
+    try { localStorage.setItem('gl_committed_today', _todayStr()); } catch(e) {}
+    if (typeof showToast === 'function') showToast('\uD83C\uDFAF Plan locked for today');
+    // Re-render to show confirmation state
+    if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+};
+
+// ── Practice Streak ──────────────────────────────────────────────────────────
+function _buildPracticeStreak() {
+    try {
+        var history = JSON.parse(localStorage.getItem('gl_practice_streak') || '[]');
+        // Also check gl_last_practice_ts to potentially extend streak
+        var lastTs = localStorage.getItem('gl_last_practice_ts');
+        if (lastTs) {
+            var lastDate = lastTs.substring(0, 10);
+            if (history.indexOf(lastDate) === -1) {
+                history.push(lastDate);
+                history.sort();
+                if (history.length > 30) history = history.slice(-30);
+                localStorage.setItem('gl_practice_streak', JSON.stringify(history));
+            }
+        }
+
+        if (history.length < 2) return '';
+
+        // Count consecutive days ending at today or yesterday
+        var today = _todayStr();
+        var yesterday = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+        var lastDay = history[history.length - 1];
+        if (lastDay !== today && lastDay !== yesterday) return ''; // streak broken
+
+        var streak = 1;
+        for (var i = history.length - 2; i >= 0; i--) {
+            var expected = new Date(new Date(history[i + 1] + 'T12:00:00').getTime() - 86400000).toISOString().substring(0, 10);
+            if (history[i] === expected) streak++;
+            else break;
+        }
+
+        if (streak < 2) return '';
+        return '<div style="font-size:0.72em;color:#f59e0b;margin-top:8px;font-weight:600">\uD83D\uDD25 ' + streak + '-day streak</div>';
+    } catch(e) { return ''; }
+}
+
+// ── Trend Signal ─────────────────────────────────────────────────────────────
+function _buildTrendSignal() {
+    var signals = [];
+
+    // Readiness trend from scorecard
+    try {
+        var sessions = (typeof _rhSessionsCache !== 'undefined') ? _rhSessionsCache : [];
+        if (sessions.length >= 2) {
+            var rated = sessions.filter(function(s) { return s.rating; }).slice(0, 5);
+            var ratingValues = { great: 3, solid: 2, needs_work: 1 };
+            if (rated.length >= 2) {
+                var recentHalf = rated.slice(0, Math.ceil(rated.length / 2));
+                var olderHalf = rated.slice(Math.ceil(rated.length / 2));
+                var recentAvg = recentHalf.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / recentHalf.length;
+                var olderAvg = olderHalf.reduce(function(s, r) { return s + (ratingValues[r.rating] || 0); }, 0) / olderHalf.length;
+                if (recentAvg > olderAvg + 0.3) signals.push({ dir: 'up', text: 'Rehearsals trending up' });
+                else if (recentAvg < olderAvg - 0.3) signals.push({ dir: 'down', text: 'Rehearsals trending down' });
+            }
+        }
+    } catch(e) {}
+
+    // Practice frequency trend
+    try {
+        var history = JSON.parse(localStorage.getItem('gl_practice_streak') || '[]');
+        if (history.length >= 3) {
+            var recent14 = history.filter(function(d) { return d >= new Date(Date.now() - 14 * 86400000).toISOString().substring(0, 10); }).length;
+            var prev14 = history.filter(function(d) { var t = new Date(Date.now() - 14 * 86400000).toISOString().substring(0, 10); var p = new Date(Date.now() - 28 * 86400000).toISOString().substring(0, 10); return d >= p && d < t; }).length;
+            if (recent14 > prev14 + 1) signals.push({ dir: 'up', text: 'Practicing more often' });
+            else if (recent14 < prev14 - 1) signals.push({ dir: 'down', text: 'Practice frequency dropping' });
+        }
+    } catch(e) {}
+
+    if (!signals.length) return '';
+    var s = signals[0];
+    var color = s.dir === 'up' ? '#22c55e' : '#f59e0b';
+    var arrow = s.dir === 'up' ? '\u2191' : '\u2193';
+    return '<div style="font-size:0.72em;color:' + color + ';font-weight:600;margin-top:4px">' + arrow + ' ' + s.text + '</div>';
+}
 
 // ── PLAY dashboard: gig focus ────────────────────────────────────────────────
 function _renderPlayDashboard(bundle, wf, isStoner) {
