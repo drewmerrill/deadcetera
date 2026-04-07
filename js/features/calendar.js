@@ -232,13 +232,17 @@ function renderCalendarPage(el) {
         document.head.appendChild(_ps);
     }
 
-    el.innerHTML = '<div class="page-header"><h1>Schedule</h1></div>'
-        // Layer 1: Decision
+    el.innerHTML = '<div class="gl-page">'
+        + '<div class="gl-page-title">\uD83D\uDCC5 Schedule</div>'
+        + '<div class="gl-page-split">'
+        + '<div class="gl-page-primary">'
         + '<div id="calNextUpSection"></div>'
         + '<div id="calIntelBanner"></div>'
         + '<div id="calBestRehearsalHero"></div>'
-        // Layer 2: Orientation
-        + '<div id="calendarInner"></div>';
+        + '<div id="calendarInner"></div>'
+        + '</div>'
+        + '<div class="gl-page-context" id="calContextRail"></div>'
+        + '</div></div>';
     _calRenderNextUp();
     _calRenderIntelBanner();
     _calRenderBestRehearsalHero();
@@ -874,28 +878,28 @@ function renderCalendarInner() {
             '<button onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65em;padding:4px 8px;opacity:0.6" title="Subscribe to calendar feed">\uD83D\uDCC5 Subscribe</button>' +
         '</span>' +
     '</div>' +
-    '<div id="calEventFormArea"></div>' +
-    // Upcoming Schedule — collapsed, quiet
-    '<details style="margin-bottom:16px">' +
-        '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:8px 0">' +
-            '<span class="cal-section-label" style="margin-bottom:0">Upcoming Schedule</span>' +
-            '<span style="font-size:0.55em;color:var(--text-dim)">\u25B8</span>' +
-        '</summary>' +
-        '<div style="padding-top:4px"><div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading\u2026</div></div></div>' +
-    '</details>' +
-    // Availability
-    '<div style="padding:4px 0"><div class="cal-section-label">Availability</div>' +
-        '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading availability\u2026</div></div>' +
-        '<div id="calConflictResolver" style="display:none"></div>' +
-    '</div>' +
-    // Conflicts — collapsed, quiet
-    '<details style="margin-bottom:16px">' +
-        '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;padding:8px 0">' +
-            '<span class="cal-section-label" style="margin-bottom:0" id="calBlockedHeader">Conflicts</span>' +
-            '<span style="font-size:0.55em;color:var(--text-dim)">\u25B8</span>' +
-        '</summary>' +
-        '<div style="padding-top:4px"><div id="blockedDates" style="font-size:0.82em;color:var(--text-muted)"><div style="padding:8px 0;color:var(--text-dim);font-size:0.82em">No blocked dates.</div></div></div>' +
-    '</details>';
+    '<div id="calEventFormArea"></div>';
+
+    // ── Context rail: Upcoming Schedule, Availability, Conflicts ──
+    var _ctxRail = document.getElementById('calContextRail');
+    if (_ctxRail) {
+        _ctxRail.innerHTML =
+        '<div class="gl-context-card">' +
+            '<div class="gl-section-label" style="padding-top:0">Upcoming</div>' +
+            '<div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading\u2026</div></div>' +
+        '</div>' +
+        '<div class="gl-context-card">' +
+            '<div class="gl-section-label" style="padding-top:0">Availability</div>' +
+            '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading\u2026</div></div>' +
+            '<div id="calConflictResolver" style="display:none"></div>' +
+        '</div>' +
+        '<details>' +
+            '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:4px;padding:6px 0">' +
+            '<span class="gl-section-label" style="padding:0;margin:0" id="calBlockedHeader">Conflicts</span>' +
+            '<span style="font-size:0.5em;color:var(--text-dim)">\u25B8</span></summary>' +
+            '<div id="blockedDates" style="font-size:0.82em;color:var(--text-muted);padding:4px 0"><div style="color:var(--text-dim);font-size:0.82em">No blocked dates.</div></div>' +
+        '</details>';
+    }
 
     // Load events, then build calendar grid + availability
     // Wait for Firebase before starting — fallback only if truly hung

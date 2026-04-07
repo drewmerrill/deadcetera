@@ -196,7 +196,12 @@ function _renderTransitionConfBadge(confidence) {
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     window.GL_REHEARSAL_READY = false;
-    el.innerHTML = '<div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div>';
+    el.innerHTML = '<div class="gl-page">'
+        + '<div class="gl-page-title">\uD83C\uDFB8 Rehearsal</div>'
+        + '<div class="gl-page-split">'
+        + '<div class="gl-page-primary"><div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div></div>'
+        + '<div class="gl-page-context" id="rhContextRail"></div>'
+        + '</div></div>';
     _rhRenderCommandFlow(el);
 }
 
@@ -598,27 +603,32 @@ async function _rhRenderCommandFlow(el) {
     html += '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>';
     html += '<div id="rhTimelineSection" style="margin-bottom:16px"></div>';
 
-    // ── Rehearsal History (collapsed) ──
-    html += '<details style="border-top:2px solid rgba(255,255,255,0.06);margin:16px 0;padding-top:12px">';
-    html += '<summary style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 0;list-style:none">'
-        + '<span class="rh-chevron" style="font-size:0.72em;color:var(--text-dim);transition:transform 0.2s;display:inline-block">\u25B6</span>'
-        + '<span style="font-size:0.72em;font-weight:800;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase">Rehearsal History</span>'
-        + '</summary>';
-    // Inject chevron rotation CSS if not done
-    if (!document.getElementById('rh-chevron-style')) {
-        var _cs = document.createElement('style');
-        _cs.id = 'rh-chevron-style';
-        _cs.textContent = 'details[open] > summary .rh-chevron{transform:rotate(90deg)}';
-        document.head.appendChild(_cs);
-    }
-    html += '<div style="margin-top:8px">';
-    html += '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>';
-    html += '<div id="rhSessionHistory"></div>';
-    html += '<div id="rhMixdownsContainer" style="margin-top:12px"></div>';
-    html += '</div></details>';
-
     main.innerHTML = html;
     window.GL_REHEARSAL_READY = true;
+
+    // ── Rehearsal History → right context rail ──
+    var _rhCtx = document.getElementById('rhContextRail');
+    if (_rhCtx) {
+        // Inject chevron rotation CSS if not done
+        if (!document.getElementById('rh-chevron-style')) {
+            var _cs = document.createElement('style');
+            _cs.id = 'rh-chevron-style';
+            _cs.textContent = 'details[open] > summary .rh-chevron{transform:rotate(90deg)}';
+            document.head.appendChild(_cs);
+        }
+        _rhCtx.innerHTML = '<div class="gl-context-card">'
+            + '<div class="gl-section-label" style="padding-top:0">History</div>'
+            + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>'
+            + '<div id="rhSessionHistory"></div>'
+            + '</div>'
+            + '<div class="gl-context-card">'
+            + '<div class="gl-section-label" style="padding-top:0">Recordings</div>'
+            + '<div id="rhMixdownsContainer"></div>'
+            + '</div>';
+    } else {
+        // Fallback: render inline if context rail not available
+        main.innerHTML += '<div style="margin-top:16px"><div id="rhSessionHistory"></div><div id="rhMixdownsContainer" style="margin-top:12px"></div></div>';
+    }
 
     // Render mixdowns section
     if (typeof RehearsalMixdowns !== 'undefined') RehearsalMixdowns.render('rhMixdownsContainer');
