@@ -2168,6 +2168,9 @@
       items: sessionItems,
     };
 
+    // Stamp practice recency for smart nudges
+    try { localStorage.setItem('gl_last_practice_ts', now); } catch(e) {}
+
     var firstItem = sessionItems[startIdx];
     setLiveRehearsalSong(firstItem.songId);
     _persistAgenda();

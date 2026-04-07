@@ -1394,12 +1394,22 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // Build secondary suggestions (max 2)
     var _secondaries = _buildSecondaryActions(bundle);
 
+    // ── Proactive intelligence ──
+    var _riskCard = _renderEventRiskCard(bundle);
+    var _nudge = _renderSmartNudge(bundle);
+
     return [
         '<div class="home-dashboard hd-command-center" style="max-width:640px;margin:0 auto">',
         '<div style="font-size:0.75em;color:var(--text-dim);padding:0 4px 6px">' + dateStr + '</div>',
 
+        // ── Event risk alert (if any) ──
+        _riskCard,
+
         // ── Primary recommendation (ONE action) ──
         _renderNextActionCard(bundle, wf),
+
+        // ── Smart nudge (practice recency, readiness drop) ──
+        _nudge,
 
         // ── Secondary suggestions (max 2, minimal) ──
         (_secondaries.length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">' + _secondaries.join('') + '</div>' : ''),
@@ -1409,6 +1419,9 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
 
         // ── Band Room (demoted — collapsed) ──
         '<div id="hdPollCard"></div>',
+
+        // ── Post-rehearsal prompt mount ──
+        '<div id="hdPostRehearsalPrompt"></div>',
         '</div>'
     ].join('');
 }
@@ -1914,6 +1927,168 @@ function _renderBandReadinessSnapshot(bundle) {
     html += '</div></div>';
     return html;
 }
+
+// ── Proactive Intelligence: At Risk Detection ────────────────────────────────
+function _renderEventRiskCard(bundle) {
+    var calEvents = [];
+    try {
+        calEvents = (typeof GLStore !== 'undefined' && GLStore.getCalendarEvents) ? GLStore.getCalendarEvents() : [];
+        if (!calEvents.length && bundle._calEvents) calEvents = bundle._calEvents;
+    } catch(e) {}
+    var today = _todayStr();
+    var upcoming = calEvents.filter(function(e) { return (e.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
+    var nextEvent = upcoming[0];
+    if (!nextEvent) return '';
+
+    var daysOut = _dayDiff(today, nextEvent.date);
+    if (daysOut > 7) return ''; // only show risk for events within a week
+
+    var risks = [];
+    var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+
+    // Check RSVP completion (read from Firebase if available)
+    try {
+        var _db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (_db && typeof bandPath === 'function') {
+            var _dk = (nextEvent.date || '').replace(/-/g, '');
+            // Non-blocking: just check if we have cached avail data
+            // (Full async would delay render — acceptable to miss on first load)
+        }
+    } catch(e) {}
+    // If event is imminent and it's a rehearsal/gig, flag missing RSVPs as generic risk
+    if (daysOut <= 3) {
+        risks.push('Confirm attendance for all members');
+    }
+
+    // Check song readiness (if setlist linked)
+    var lowReadiness = 0;
+    if (typeof GLStore !== 'undefined' && GLStore.avgReadiness) {
+        var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+        songs.forEach(function(s) {
+            if (!GLStore.isActiveSong(s.title)) return;
+            var avg = GLStore.avgReadiness(s.title);
+            if (avg > 0 && avg < 3) lowReadiness++;
+        });
+    }
+    if (lowReadiness > 0) risks.push(lowReadiness + ' song' + (lowReadiness > 1 ? 's' : '') + ' below ready');
+
+    // Check practice recency
+    var lastSession = null;
+    try {
+        var sessions = (typeof _rhSessionsCache !== 'undefined') ? _rhSessionsCache : [];
+        if (sessions.length) lastSession = sessions[0];
+    } catch(e) {}
+    if (!lastSession || _dayDiff(lastSession.date || lastSession.startedAt || '', today) > 14) {
+        risks.push('No rehearsal in 2+ weeks');
+    }
+
+    if (risks.length === 0) return '';
+
+    var eventLabel = (nextEvent.type === 'gig' ? '\uD83C\uDFA4 Gig' : '\uD83C\uDFB8 Rehearsal');
+    var dateLabel = daysOut === 0 ? 'today' : daysOut === 1 ? 'tomorrow' : 'in ' + daysOut + ' days';
+    var severity = (daysOut <= 2 && risks.length >= 2) ? 'high' : 'medium';
+    var borderColor = severity === 'high' ? '#ef4444' : '#f59e0b';
+    var bgColor = severity === 'high' ? 'rgba(239,68,68,0.06)' : 'rgba(245,158,11,0.04)';
+
+    var html = '<div style="padding:10px 14px;margin-bottom:12px;border-radius:10px;border-left:3px solid ' + borderColor + ';background:' + bgColor + '">';
+    html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:4px">\u26A0\uFE0F ' + eventLabel + ' ' + dateLabel + ' is at risk</div>';
+    risks.forEach(function(r) {
+        html += '<div style="font-size:0.72em;color:var(--text-muted);padding:1px 0">\u2022 ' + _escHtml(r) + '</div>';
+    });
+    html += '</div>';
+    return html;
+}
+
+// ── Proactive Intelligence: Smart Nudges ─────────────────────────────────────
+function _renderSmartNudge(bundle) {
+    var nudges = [];
+
+    // Practice recency nudge
+    var lastPractice = null;
+    try {
+        var lp = localStorage.getItem('gl_last_practice_ts');
+        if (lp) lastPractice = new Date(lp);
+    } catch(e) {}
+    if (!lastPractice) {
+        try {
+            var sessions = (typeof _rhSessionsCache !== 'undefined') ? _rhSessionsCache : [];
+            if (sessions.length) lastPractice = new Date(sessions[0].date || sessions[0].startedAt || '');
+        } catch(e) {}
+    }
+    if (lastPractice) {
+        var daysSince = Math.floor((Date.now() - lastPractice.getTime()) / 86400000);
+        if (daysSince >= 5) nudges.push({ icon: '\uD83C\uDFB8', text: 'You haven\u2019t practiced in ' + daysSince + ' days', cta: 'Practice now', onclick: "showPage('rehearsal')" });
+    }
+
+    // Readiness drop nudge — check if any active song dropped below 3
+    if (typeof GLStore !== 'undefined' && GLStore.avgReadiness) {
+        var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+        var dropped = [];
+        songs.forEach(function(s) {
+            if (!GLStore.isActiveSong(s.title)) return;
+            var avg = GLStore.avgReadiness(s.title);
+            if (avg > 0 && avg < 2.5) dropped.push(s.title);
+        });
+        if (dropped.length === 1) {
+            nudges.push({ icon: '\uD83D\uDCC9', text: dropped[0] + ' has dropped in readiness', cta: 'Work on it', onclick: "selectSong('" + _escHtml(dropped[0]).replace(/'/g, "\\'") + "')" });
+        } else if (dropped.length > 1) {
+            nudges.push({ icon: '\uD83D\uDCC9', text: dropped.length + ' songs have dropped in readiness', cta: 'Focus on weak songs', onclick: "showPage('songs')" });
+        }
+    }
+
+    if (!nudges.length) return '';
+
+    // Show only the most important nudge (first one)
+    var n = nudges[0];
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
+        + '<span style="font-size:0.9em">' + n.icon + '</span>'
+        + '<span style="font-size:0.78em;color:var(--text-muted);flex:1">' + _escHtml(n.text) + '</span>'
+        + '<button onclick="' + n.onclick + '" style="font-size:0.72em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;white-space:nowrap">' + n.cta + '</button>'
+        + '</div>';
+}
+
+// ── Post-Rehearsal Prompt ────────────────────────────────────────────────────
+// Listens for session completion and shows quick feedback prompt
+(function() {
+    if (typeof GLStore === 'undefined' || !GLStore.on) return;
+    GLStore.on('agendaSessionCompleted', function(data) {
+        var el = document.getElementById('hdPostRehearsalPrompt');
+        if (!el) return;
+        var session = data || {};
+        var delta = session.readinessDelta || null;
+        var deltaText = delta && delta.deltaAvg ? (delta.deltaAvg > 0 ? '+' + delta.deltaAvg.toFixed(1) : delta.deltaAvg.toFixed(1)) : '';
+        var deltaColor = delta && delta.deltaAvg > 0 ? '#22c55e' : delta && delta.deltaAvg < 0 ? '#ef4444' : 'var(--text-dim)';
+
+        el.innerHTML = '<div style="padding:14px;margin-top:12px;border-radius:10px;border:1px solid rgba(34,197,94,0.15);background:rgba(34,197,94,0.04);text-align:center">'
+            + '<div style="font-size:0.85em;font-weight:700;color:#86efac;margin-bottom:6px">Did that feel tighter?</div>'
+            + (deltaText ? '<div style="font-size:0.75em;color:' + deltaColor + ';margin-bottom:8px">Readiness ' + deltaText + '</div>' : '')
+            + '<div style="display:flex;gap:8px;justify-content:center">'
+            + '<button onclick="_hdPostRehearsalFeedback(\'yes\')" style="font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.08);color:#86efac">\uD83D\uDC4D Yes</button>'
+            + '<button onclick="_hdPostRehearsalFeedback(\'same\')" style="font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim)">Same</button>'
+            + '<button onclick="_hdPostRehearsalFeedback(\'no\')" style="font-size:0.78em;font-weight:700;padding:6px 16px;border-radius:6px;cursor:pointer;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.04);color:#fca5a5">Not yet</button>'
+            + '</div></div>';
+
+        // Auto-dismiss after 30s
+        setTimeout(function() {
+            if (el.innerHTML) { el.style.transition = 'opacity 0.3s'; el.style.opacity = '0'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = '1'; }, 300); }
+        }, 30000);
+    });
+})();
+
+window._hdPostRehearsalFeedback = function(answer) {
+    var el = document.getElementById('hdPostRehearsalPrompt');
+    if (!el) return;
+    var msg = answer === 'yes' ? '\uD83D\uDD25 That\u2019s progress.' : answer === 'no' ? '\uD83D\uDCAA Next time.' : '\u2713 Noted.';
+    el.innerHTML = '<div style="padding:10px;text-align:center;font-size:0.78em;color:var(--text-dim)">' + msg + '</div>';
+    // Save feedback to localStorage for trend tracking
+    try {
+        var history = JSON.parse(localStorage.getItem('gl_rehearsal_feedback') || '[]');
+        history.push({ answer: answer, ts: new Date().toISOString() });
+        if (history.length > 20) history = history.slice(-20);
+        localStorage.setItem('gl_rehearsal_feedback', JSON.stringify(history));
+    } catch(e) {}
+    setTimeout(function() { el.innerHTML = ''; }, 2000);
+};
 
 // ── PLAY dashboard: gig focus ────────────────────────────────────────────────
 function _renderPlayDashboard(bundle, wf, isStoner) {
