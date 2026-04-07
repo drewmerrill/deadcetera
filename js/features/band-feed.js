@@ -361,6 +361,128 @@ function _feedRenderCreateBar() {
         + '<button onclick="_feedCreateItem(\'poll\')" style="flex:1;padding:6px;border-radius:8px;cursor:pointer;font-size:0.72em;font-weight:600;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);text-align:center;min-width:60px">\uD83D\uDDF3\uFE0F Poll</button>'
         + '</div>'
         + '</div>';
+    // Wire @mention autocomplete after DOM update
+    setTimeout(function() { _feedPendingMentions = []; _feedWireMentionInput('feedQuickAdd'); }, 50);
+}
+
+// ── @Mention system for Band Feed ────────────────────────────────────────────
+var _feedPendingMentions = [];
+
+function _feedWireMentionInput(inputId) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    if (!members.length && typeof bandMembers !== 'undefined') {
+        Object.keys(bandMembers).forEach(function(k) { members.push({ key: k, name: bandMembers[k].name || k, emoji: bandMembers[k].emoji || '' }); });
+    }
+    // Group mentions
+    var groups = [
+        { key: '_all', name: 'everyone', display: '@all' },
+        { key: '_band', name: 'the whole band', display: '@band' }
+    ];
+    // Role mentions from band members
+    var roles = {};
+    if (typeof bandMembers !== 'undefined') {
+        Object.keys(bandMembers).forEach(function(k) {
+            var role = bandMembers[k].role || bandMembers[k].instrument || '';
+            if (role && !roles[role.toLowerCase()]) roles[role.toLowerCase()] = [];
+            if (role) roles[role.toLowerCase()].push(k);
+        });
+    }
+    Object.keys(roles).forEach(function(r) {
+        groups.push({ key: '_role_' + r, name: r, display: '@' + r, memberKeys: roles[r] });
+    });
+
+    input.addEventListener('input', function() {
+        var val = input.value;
+        var cursorPos = input.selectionStart || val.length;
+        var textBefore = val.substring(0, cursorPos);
+        var match = textBefore.match(/@(\w*)$/);
+        var ddId = 'feedMentionDD_' + inputId;
+        var existing = document.getElementById(ddId);
+
+        if (!match) { if (existing) existing.remove(); return; }
+        var partial = match[1].toLowerCase();
+
+        // Filter members + groups
+        var results = [];
+        groups.forEach(function(g) {
+            if (g.name.indexOf(partial) === 0 || g.display.substring(1).indexOf(partial) === 0) results.push({ type: 'group', key: g.key, name: g.display, sub: g.name, memberKeys: g.memberKeys });
+        });
+        members.forEach(function(m) {
+            var firstName = (m.name || m.key || '').split(' ')[0].toLowerCase();
+            if (firstName.indexOf(partial) === 0 || (m.key || '').toLowerCase().indexOf(partial) === 0) {
+                results.push({ type: 'member', key: m.key, name: '@' + (m.name || m.key).split(' ')[0], sub: m.name || m.key, emoji: m.emoji || '' });
+            }
+        });
+        if (!results.length) { if (existing) existing.remove(); return; }
+
+        if (!existing) {
+            existing = document.createElement('div');
+            existing.id = ddId;
+            existing.style.cssText = 'position:absolute;bottom:100%;left:0;right:0;background:#1e293b;border:1px solid rgba(99,102,241,0.25);border-radius:8px;z-index:100;max-height:180px;overflow-y:auto;margin-bottom:4px;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
+            input.parentElement.style.position = 'relative';
+            input.parentElement.appendChild(existing);
+        }
+        existing.innerHTML = results.map(function(r, i) {
+            var icon = r.type === 'group' ? '\uD83D\uDC65' : (r.emoji || '\uD83C\uDFA4');
+            return '<div data-idx="' + i + '" style="padding:6px 10px;cursor:pointer;font-size:0.82em;display:flex;align-items:center;gap:6px;color:var(--text);transition:background 0.1s" '
+                + 'onmouseenter="this.style.background=\'rgba(99,102,241,0.15)\'" onmouseleave="this.style.background=\'none\'">'
+                + '<span>' + icon + '</span><span style="font-weight:600;color:#a5b4fc">' + r.name + '</span>'
+                + '<span style="font-size:0.75em;color:var(--text-dim)">' + r.sub + '</span></div>';
+        }).join('');
+
+        existing.querySelectorAll('[data-idx]').forEach(function(item) {
+            item.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                var idx = parseInt(item.dataset.idx);
+                var r = results[idx];
+                var insertText = r.name;
+                var beforeAt = textBefore.substring(0, match.index);
+                var afterCursor = val.substring(cursorPos);
+                input.value = beforeAt + insertText + ' ' + afterCursor;
+                input.focus();
+                var newPos = (beforeAt + insertText + ' ').length;
+                input.setSelectionRange(newPos, newPos);
+                // Store mention
+                if (r.type === 'group') {
+                    if (r.key === '_all' || r.key === '_band') {
+                        _feedPendingMentions.push({ type: 'group', key: r.key, display: r.name });
+                    } else if (r.memberKeys) {
+                        r.memberKeys.forEach(function(mk) { _feedPendingMentions.push({ type: 'member', key: mk, display: r.name }); });
+                    }
+                } else {
+                    _feedPendingMentions.push({ type: 'member', key: r.key, display: r.name });
+                }
+                existing.remove();
+            });
+        });
+    });
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { var dd = document.getElementById('feedMentionDD_' + inputId); if (dd) dd.remove(); }
+    });
+}
+
+// Parse mentions from text and return { mentions[], targetMembers[], targetType }
+function _feedParseMentions() {
+    var mentions = _feedPendingMentions.slice();
+    _feedPendingMentions = [];
+    if (!mentions.length) return { mentions: [], targetMembers: [], targetType: null };
+
+    var isAll = mentions.some(function(m) { return m.key === '_all' || m.key === '_band'; });
+    if (isAll) return { mentions: mentions, targetMembers: [], targetType: 'all' };
+
+    var memberKeys = [];
+    mentions.forEach(function(m) {
+        if (m.type === 'member' && memberKeys.indexOf(m.key) === -1) memberKeys.push(m.key);
+    });
+    return { mentions: mentions, targetMembers: memberKeys, targetType: memberKeys.length ? 'specific' : null };
+}
+
+// Render mentions highlighted in text
+function _feedRenderMentions(text) {
+    if (!text) return '';
+    return text.replace(/@(\w+)/g, '<span style="color:#a5b4fc;font-weight:600">@$1</span>');
 }
 
 window._feedQuickPost = async function() {
@@ -372,10 +494,22 @@ window._feedQuickPost = async function() {
     if (!db || typeof bandPath !== 'function') { _feedShowToast('Not connected'); return; }
     var fas = _fas();
     var author = fas ? (fas.getMyDisplayName() || 'Anonymous') : 'Anonymous';
+
+    // Extract mentions
+    var mentionData = _feedParseMentions();
+    var tag = mentionData.targetMembers.length > 0 ? 'needs_input' : 'fyi';
+    var payload = { title: text, author: author, ts: new Date().toISOString(), tag: tag };
+    if (mentionData.mentions.length) payload.mentions = mentionData.mentions;
+    if (mentionData.targetType === 'specific') {
+        payload.targetType = 'specific';
+        payload.targetMembers = mentionData.targetMembers;
+    } else if (mentionData.targetType === 'all') {
+        payload.targetType = 'all';
+        payload.tag = 'needs_input';
+    }
+
     try {
-        await db.ref(bandPath('ideas/posts')).push({
-            title: text, author: author, ts: new Date().toISOString(), tag: 'fyi'
-        });
+        await db.ref(bandPath('ideas/posts')).push(payload);
         var wasFirst = !localStorage.getItem(_FEED_CREATED_KEY);
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         inp.value = '';
@@ -524,8 +658,9 @@ function _feedShowCreateForm(type, title, placeholder1, placeholder2) {
         + '<button onclick="_feedSubmitCreate(\'' + type + '\')" style="font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.1);color:#86efac">Post</button>'
         + '</div></div>';
     bar.innerHTML = html;
+    _feedPendingMentions = [];
     var inp = document.getElementById('feedCreateInput1');
-    if (inp) inp.focus();
+    if (inp) { inp.focus(); setTimeout(function() { _feedWireMentionInput('feedCreateInput1'); }, 50); }
 }
 
 var _feedCreateTargetType = 'all';
@@ -580,9 +715,14 @@ window._feedSubmitCreate = async function(type) {
     var fas = _fas();
     var author = fas ? (fas.getMyDisplayName() || 'Anonymous') : 'Anonymous';
 
-    // Build targeting payload
+    // Build targeting payload — mentions override manual targeting
+    var mentionData = _feedParseMentions();
     var targetPayload = {};
-    if (type !== 'note') {
+    if (mentionData.targetMembers.length > 0) {
+        targetPayload = { targetType: 'specific', targetMembers: mentionData.targetMembers, mentions: mentionData.mentions, tag: 'needs_input' };
+    } else if (mentionData.targetType === 'all') {
+        targetPayload = { targetType: 'all', mentions: mentionData.mentions, tag: 'needs_input' };
+    } else if (type !== 'note') {
         if (_feedCreateTargetType === 'specific' && _feedCreateTargetMembers.length > 0) {
             targetPayload = { targetType: 'specific', targetMembers: _feedCreateTargetMembers.slice() };
         } else {
@@ -1659,7 +1799,7 @@ function _feedRenderItem(item, isFirstAction) {
         + '</div>';
 
     // Body
-    html += '<div' + clickAttr + ' style="font-size:0.88em;color:var(--text-muted);line-height:1.5;cursor:pointer">' + _feedEsc(item.text) + '</div>';
+    html += '<div' + clickAttr + ' style="font-size:0.88em;color:var(--text-muted);line-height:1.5;cursor:pointer">' + _feedRenderMentions(_feedEsc(item.text)) + '</div>';
 
     if (item.link) html += '<a href="' + _feedEsc(item.link) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:0.75em;color:var(--accent-light);margin-top:4px;display:inline-block">\uD83D\uDD17 ' + _feedEsc(_feedLinkLabel(item.link)) + '</a>';
 
@@ -1862,7 +2002,7 @@ function _feedRenderItemCompact(item, isResolved, isStale) {
 
     return '<div onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')" style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin-bottom:1px;border-radius:4px;cursor:pointer;transition:background 0.12s,opacity 0.15s;' + dimLevel + '" onmouseover="this.style.background=\'rgba(255,255,255,0.03)\'" onmouseout="this.style.background=\'none\'">'
         + '<span style="font-size:0.78em;flex-shrink:0">' + typeIcon + '</span>'
-        + '<span style="font-size:0.78em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + text + '<span style="color:var(--text-dim)">' + pollResult + '</span></span>'
+        + '<span style="font-size:0.78em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _feedRenderMentions(text) + '<span style="color:var(--text-dim)">' + pollResult + '</span></span>'
         + trailHtml
         + '</div>';
 }
