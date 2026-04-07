@@ -1427,6 +1427,9 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         // ── Secondary suggestions (max 2, minimal) ──
         (_secondaries.length ? '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">' + _secondaries.join('') + '</div>' : ''),
 
+        // ── Band Focus (shared direction) ──
+        _renderBandFocusCard(bundle),
+
         // ── Band Status (compact, merged scorecard + readiness) ──
         _renderBandStatusCompact(bundle),
 
@@ -1542,6 +1545,162 @@ function _secondaryCard(title, sub, onclick, icon, emphasize) {
 // ============================================================================
 // BAND STATUS COMPACT — merged scorecard headline + readiness bar + counts
 // ============================================================================
+
+// ── Band Focus: shared direction for next rehearsal ──────────────────────────
+function _renderBandFocusCard(bundle) {
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [], count: 0 };
+    if (!focus.list || focus.list.length === 0) return '';
+
+    // Get top 3 focus songs
+    var items = focus.list.slice(0, 3);
+
+    // Check for existing locked plan
+    var _planLocked = false;
+    var _planData = null;
+    try {
+        var _pd = localStorage.getItem('gl_band_focus_plan');
+        if (_pd) {
+            _planData = JSON.parse(_pd);
+            _planLocked = _planData && _planData.date === _todayStr();
+        }
+    } catch(e) {}
+
+    // Check alignment count from Firebase cache
+    var _alignCount = 0;
+    try {
+        var _ac = localStorage.getItem('gl_band_focus_aligned');
+        if (_ac) {
+            var _acd = JSON.parse(_ac);
+            if (_acd.date === _todayStr()) _alignCount = _acd.count || 0;
+        }
+    } catch(e) {}
+    var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+
+    // Drift detection: focus exists but no recent practice on focus songs
+    var _driftWarning = '';
+    try {
+        var _lp = localStorage.getItem('gl_last_practice_ts');
+        var _daysSince = _lp ? Math.floor((Date.now() - new Date(_lp).getTime()) / 86400000) : 999;
+        if (_daysSince >= 3 && items.length > 0) {
+            _driftWarning = '<div style="font-size:0.68em;color:#f59e0b;margin-top:6px">\u26A0\uFE0F Band focus set but no recent practice detected</div>';
+        }
+    } catch(e) {}
+
+    // Post-rehearsal learning: biggest win + still needs work
+    var _learningHtml = '';
+    try {
+        var _feedback = JSON.parse(localStorage.getItem('gl_rehearsal_feedback') || '[]');
+        var _recent = _feedback.filter(function(f) { return f.ts && (Date.now() - new Date(f.ts).getTime() < 3 * 86400000); });
+        if (_recent.length > 0) {
+            var _lastSession = (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache.length) ? _rhSessionsCache[0] : null;
+            if (_lastSession && _lastSession.scorecard && _lastSession.scorecard.readiness) {
+                var rd = _lastSession.scorecard.readiness;
+                var _wins = [], _work = [];
+                if (rd.bySong) {
+                    Object.keys(rd.bySong).forEach(function(s) {
+                        if (rd.bySong[s].delta > 0) _wins.push(s);
+                        else if (rd.bySong[s].delta < 0) _work.push(s);
+                    });
+                }
+                if (_wins.length || _work.length) {
+                    _learningHtml = '<div style="font-size:0.7em;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
+                    if (_wins.length) _learningHtml += '<div style="color:#86efac">Biggest win: ' + _escHtml(_wins.slice(0, 2).join(', ')) + '</div>';
+                    if (_work.length) _learningHtml += '<div style="color:var(--text-dim)">Still needs work: ' + _escHtml(_work.slice(0, 2).join(', ')) + '</div>';
+                    _learningHtml += '</div>';
+                }
+            }
+        }
+    } catch(e) {}
+
+    var html = '<div style="padding:12px 14px;margin-bottom:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.12);background:rgba(99,102,241,0.03)">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<span style="font-size:0.78em;font-weight:700;color:var(--text)">\uD83C\uDFAF Band Focus</span>';
+    if (_alignCount > 0) {
+        html += '<span style="font-size:0.65em;color:#a5b4fc;font-weight:600">' + _alignCount + ' of ' + memberCount + ' aligned</span>';
+    }
+    html += '</div>';
+
+    // Focus items
+    items.forEach(function(item, i) {
+        var avg = item.avg ? item.avg.toFixed(1) : '?';
+        var color = item.avg >= 3 ? '#f59e0b' : '#ef4444';
+        var safeSong = _escHtml(item.title).replace(/'/g, "\\'");
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;' + (i < items.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.03)' : '') + '">';
+        html += '<span style="font-size:0.82em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(item.title) + '</span>';
+        html += '<span style="font-size:0.68em;font-weight:700;color:' + color + ';flex-shrink:0">' + avg + '</span>';
+        html += '<button onclick="selectSong(\'' + safeSong + '\')" style="font-size:0.62em;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Open</button>';
+        html += '</div>';
+    });
+
+    // Action buttons
+    html += '<div style="display:flex;gap:6px;margin-top:8px;align-items:center">';
+    if (!_planLocked) {
+        html += '<button onclick="_hdLockBandFocus()" style="font-size:0.72em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc">\uD83D\uDD12 Lock as rehearsal plan</button>';
+        html += '<button onclick="_hdAlignFocus()" style="font-size:0.72em;font-weight:600;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">I\u2019m focused on this</button>';
+    } else {
+        html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Band plan locked</span>';
+    }
+    html += '</div>';
+
+    html += _driftWarning;
+    html += _learningHtml;
+    html += '</div>';
+    return html;
+}
+
+// ── Band Focus Actions ───────────────────────────────────────────────────────
+window._hdLockBandFocus = function() {
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var items = (focus.list || []).slice(0, 3).map(function(s) { return s.title; });
+    var today = _todayStr();
+
+    try { localStorage.setItem('gl_band_focus_plan', JSON.stringify({ date: today, songs: items })); } catch(e) {}
+
+    // Write to Firebase so all members see it
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        var name = fas ? fas.getMyDisplayName() : 'Band';
+        if (db && typeof bandPath === 'function') {
+            db.ref(bandPath('band_focus/' + today.replace(/-/g, ''))).set({
+                songs: items,
+                lockedBy: name,
+                lockedAt: new Date().toISOString()
+            }).catch(function() {});
+        }
+    } catch(e) {}
+
+    if (typeof showToast === 'function') showToast('\uD83D\uDD12 Band plan locked');
+    if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+};
+
+window._hdAlignFocus = function() {
+    var today = _todayStr();
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    var myKey = fas ? fas.getMyMemberKey() : null;
+
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function' && myKey) {
+            db.ref(bandPath('band_focus_alignment/' + today.replace(/-/g, ''))).transaction(function(current) {
+                current = current || { count: 0, members: {} };
+                if (!current.members[myKey]) {
+                    current.count = (current.count || 0) + 1;
+                    current.members[myKey] = new Date().toISOString();
+                }
+                return current;
+            }).then(function(result) {
+                if (result.committed && result.snapshot) {
+                    var data = result.snapshot.val() || {};
+                    try { localStorage.setItem('gl_band_focus_aligned', JSON.stringify({ date: today, count: data.count || 1 })); } catch(e) {}
+                }
+                if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
+            }).catch(function() {});
+        }
+    } catch(e) {}
+
+    if (typeof showToast === 'function') showToast('\u2713 You\u2019re aligned');
+};
 
 function _renderBandStatusCompact(bundle) {
     var sc = _computeScorecard(bundle) || { healthSummary: '', healthColor: '#475569' };
