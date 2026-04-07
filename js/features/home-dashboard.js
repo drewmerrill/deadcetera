@@ -1574,104 +1574,89 @@ function _secondaryCard(title, sub, onclick, icon, emphasize) {
 // BAND STATUS COMPACT — merged scorecard headline + readiness bar + counts
 // ============================================================================
 
-// ── Band Focus: shared direction for next rehearsal ──────────────────────────
+// ── Band Focus: shared direction — 3-layer moment ───────────────────────────
 function _renderBandFocusCard(bundle) {
     var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [], count: 0 };
     if (!focus.list || focus.list.length === 0) return '';
 
-    // Get top 3 focus songs
     var items = focus.list.slice(0, 3);
 
-    // Check for existing locked plan
+    // State
     var _planLocked = false;
-    var _planData = null;
-    try {
-        var _pd = localStorage.getItem('gl_band_focus_plan');
-        if (_pd) {
-            _planData = JSON.parse(_pd);
-            _planLocked = _planData && _planData.date === _todayStr();
-        }
-    } catch(e) {}
-
-    // Check alignment count from Firebase cache
+    try { var _pd = localStorage.getItem('gl_band_focus_plan'); if (_pd) { var _pdd = JSON.parse(_pd); _planLocked = _pdd && _pdd.date === _todayStr(); } } catch(e) {}
     var _alignCount = 0;
-    try {
-        var _ac = localStorage.getItem('gl_band_focus_aligned');
-        if (_ac) {
-            var _acd = JSON.parse(_ac);
-            if (_acd.date === _todayStr()) _alignCount = _acd.count || 0;
-        }
-    } catch(e) {}
+    try { var _ac = localStorage.getItem('gl_band_focus_aligned'); if (_ac) { var _acd = JSON.parse(_ac); if (_acd.date === _todayStr()) _alignCount = _acd.count || 0; } } catch(e) {}
     var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
 
-    // Drift detection: focus exists but no recent practice on focus songs
-    var _driftWarning = '';
+    var html = '<div style="margin-bottom:20px">';
+
+    // ── Layer 1: PLAN — the shared commitment ──
+    html += '<div style="margin-bottom:16px">';
+    html += '<div style="font-size:0.92em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:3px">Band Focus</div>';
+    html += '<div style="font-size:0.75em;color:var(--text-dim,#475569);margin-bottom:14px">We\u2019re tightening these for the next rehearsal</div>';
+
+    items.forEach(function(item) {
+        var avg = item.avg ? item.avg.toFixed(1) : '?';
+        var barPct = item.avg ? Math.round((item.avg / 5) * 100) : 0;
+        var barColor = item.avg >= 3.5 ? '#22c55e' : item.avg >= 2.5 ? '#f59e0b' : '#ef4444';
+        var safeSong = _escHtml(item.title).replace(/'/g, "\\'");
+        html += '<div onclick="selectSong(\'' + safeSong + '\')" style="padding:10px 0;cursor:pointer;transition:opacity 0.12s" onmouseover="this.style.opacity=\'0.8\'" onmouseout="this.style.opacity=\'1\'">';
+        html += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">';
+        html += '<span style="font-size:0.88em;font-weight:700;color:var(--text,#f1f5f9)">' + _escHtml(item.title) + '</span>';
+        html += '<span style="font-size:0.75em;font-weight:700;color:' + barColor + '">' + avg + '</span>';
+        html += '</div>';
+        html += '<div style="height:3px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">';
+        html += '<div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px;transition:width 0.4s"></div>';
+        html += '</div></div>';
+    });
+    html += '</div>';
+
+    // ── Layer 2: ACTION — alignment + lock ──
+    html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px">';
+    if (!_planLocked) {
+        html += '<button onclick="_hdAlignFocus()" style="font-size:0.78em;font-weight:700;padding:8px 20px;border-radius:8px;cursor:pointer;border:none;background:rgba(99,102,241,0.12);color:#a5b4fc;transition:background 0.15s" onmouseover="this.style.background=\'rgba(99,102,241,0.2)\'" onmouseout="this.style.background=\'rgba(99,102,241,0.12)\'">I\u2019m in</button>';
+        html += '<button onclick="_hdLockBandFocus()" style="font-size:0.72em;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim,#475569);transition:background 0.15s" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'none\'">Lock this plan</button>';
+    } else {
+        html += '<span style="font-size:0.78em;color:#22c55e;font-weight:700">\u2713 Band plan locked</span>';
+    }
+    if (_alignCount > 0) {
+        html += '<span style="font-size:0.72em;color:var(--text-dim,#475569);margin-left:auto">' + _alignCount + ' of ' + memberCount + ' aligned</span>';
+    }
+    html += '</div>';
+
+    // ── Layer 3: INSIGHTS — drift + learning (separate, quieter) ──
+    var _insightsHtml = '';
+
+    // Drift detection
     try {
         var _lp = localStorage.getItem('gl_last_practice_ts');
         var _daysSince = _lp ? Math.floor((Date.now() - new Date(_lp).getTime()) / 86400000) : 999;
         if (_daysSince >= 3 && items.length > 0) {
-            _driftWarning = '<div style="font-size:0.68em;color:#f59e0b;margin-top:6px">\u26A0\uFE0F Band focus set but no recent practice detected</div>';
+            _insightsHtml += '<div style="font-size:0.72em;color:#f59e0b;padding:2px 0">\u26A0\uFE0F Focus set \u2014 no practice in ' + _daysSince + ' days</div>';
         }
     } catch(e) {}
 
-    // Post-rehearsal learning: biggest win + still needs work
-    var _learningHtml = '';
+    // Post-rehearsal learning
     try {
-        var _feedback = JSON.parse(localStorage.getItem('gl_rehearsal_feedback') || '[]');
-        var _recent = _feedback.filter(function(f) { return f.ts && (Date.now() - new Date(f.ts).getTime() < 3 * 86400000); });
-        if (_recent.length > 0) {
-            var _lastSession = (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache.length) ? _rhSessionsCache[0] : null;
-            if (_lastSession && _lastSession.scorecard && _lastSession.scorecard.readiness) {
-                var rd = _lastSession.scorecard.readiness;
-                var _wins = [], _work = [];
-                if (rd.bySong) {
-                    Object.keys(rd.bySong).forEach(function(s) {
-                        if (rd.bySong[s].delta > 0) _wins.push(s);
-                        else if (rd.bySong[s].delta < 0) _work.push(s);
-                    });
-                }
-                if (_wins.length || _work.length) {
-                    _learningHtml = '<div style="font-size:0.7em;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04)">';
-                    if (_wins.length) _learningHtml += '<div style="color:#86efac">Biggest win: ' + _escHtml(_wins.slice(0, 2).join(', ')) + '</div>';
-                    if (_work.length) _learningHtml += '<div style="color:var(--text-dim)">Still needs work: ' + _escHtml(_work.slice(0, 2).join(', ')) + '</div>';
-                    _learningHtml += '</div>';
-                }
+        var _lastSession = (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache.length) ? _rhSessionsCache[0] : null;
+        if (_lastSession && _lastSession.scorecard && _lastSession.scorecard.readiness) {
+            var rd = _lastSession.scorecard.readiness;
+            var _wins = [], _work = [];
+            if (rd.bySong) {
+                Object.keys(rd.bySong).forEach(function(s) {
+                    if (rd.bySong[s].delta > 0) _wins.push(s);
+                    else if (rd.bySong[s].delta < 0) _work.push(s);
+                });
             }
+            if (_wins.length) _insightsHtml += '<div style="font-size:0.72em;color:#86efac;padding:2px 0">Biggest win: ' + _escHtml(_wins.slice(0, 2).join(', ')) + '</div>';
+            if (_work.length) _insightsHtml += '<div style="font-size:0.72em;color:var(--text-dim);padding:2px 0">Still needs work: ' + _escHtml(_work.slice(0, 2).join(', ')) + '</div>';
         }
     } catch(e) {}
 
-    var html = '<div style="padding:12px 14px;margin-bottom:12px;border-radius:10px;border:1px solid rgba(99,102,241,0.12);background:rgba(99,102,241,0.03)">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
-    html += '<span style="font-size:0.78em;font-weight:700;color:var(--text)">\uD83C\uDFAF Band Focus</span>';
-    if (_alignCount > 0) {
-        html += '<span style="font-size:0.65em;color:#a5b4fc;font-weight:600">' + _alignCount + ' of ' + memberCount + ' aligned</span>';
+    if (_insightsHtml) {
+        html += '<div style="padding-top:10px;border-top:1px solid rgba(255,255,255,0.04)">' + _insightsHtml + '</div>';
     }
-    html += '</div>';
 
-    // Focus items
-    items.forEach(function(item, i) {
-        var avg = item.avg ? item.avg.toFixed(1) : '?';
-        var color = item.avg >= 3 ? '#f59e0b' : '#ef4444';
-        var safeSong = _escHtml(item.title).replace(/'/g, "\\'");
-        html += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;' + (i < items.length - 1 ? 'border-bottom:1px solid rgba(255,255,255,0.03)' : '') + '">';
-        html += '<span style="font-size:0.82em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(item.title) + '</span>';
-        html += '<span style="font-size:0.68em;font-weight:700;color:' + color + ';flex-shrink:0">' + avg + '</span>';
-        html += '<button onclick="selectSong(\'' + safeSong + '\')" style="font-size:0.62em;padding:2px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);cursor:pointer">Open</button>';
-        html += '</div>';
-    });
-
-    // Action buttons
-    html += '<div style="display:flex;gap:6px;margin-top:8px;align-items:center">';
-    if (!_planLocked) {
-        html += '<button onclick="_hdLockBandFocus()" style="font-size:0.72em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc">\uD83D\uDD12 Lock as rehearsal plan</button>';
-        html += '<button onclick="_hdAlignFocus()" style="font-size:0.72em;font-weight:600;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">I\u2019m focused on this</button>';
-    } else {
-        html += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Band plan locked</span>';
-    }
-    html += '</div>';
-
-    html += _driftWarning;
-    html += _learningHtml;
     html += '</div>';
     return html;
 }
