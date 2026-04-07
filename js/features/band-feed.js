@@ -1618,15 +1618,41 @@ function _feedRenderItem(item, isFirstAction) {
     var isPinned = _feedGetMeta(item).pinned;
     if (isPinned) html += '<span style="font-size:0.6em;font-weight:700;color:#fbbf24;background:rgba(251,191,36,0.1);padding:1px 5px;border-radius:3px;margin-top:4px;margin-left:4px;display:inline-block">\uD83D\uDCCC Pinned to Band Room</span>';
 
-    // Ownership + targeting labels — explicit, not subtle
-    if (state && state.isRsvpUrgent && !resolved) {
-        html += '<div style="font-size:0.72em;font-weight:800;color:#ef4444;margin-top:6px;padding:3px 0">\uD83D\uDEA8 Waiting on YOU \u2014 RSVP needed</div>';
-    } else if (state && state.isMentioned && !resolved) {
-        html += '<div style="font-size:0.72em;font-weight:700;color:#818cf8;margin-top:6px;padding:3px 0">@ You were mentioned</div>';
-    } else if (state && state.needsMyInput && !resolved) {
-        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 Waiting on YOU</div>';
+    // ── Action signals: time-aware, socially visible, escalating ──
+    if (state && !resolved) {
+        var _ageMs = item.timestamp ? (Date.now() - new Date(item.timestamp).getTime()) : 0;
+        var _ageH = Math.floor(_ageMs / 3600000);
+        var _ageLabel = _ageH < 1 ? '' : _ageH < 24 ? _ageH + 'h' : Math.floor(_ageH / 24) + 'd';
+        var _isStuck = _ageH >= 48;
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+
+        if (state.isRsvpUrgent) {
+            // RSVP with upcoming event — strongest signal
+            var _urgDays = state.urgency ? state.urgency.days : null;
+            var _urgText = _urgDays === 0 ? 'today' : _urgDays === 1 ? 'tomorrow' : 'in ' + _urgDays + ' days';
+            html += '<div style="font-size:0.75em;font-weight:800;color:#ef4444;margin-top:6px;padding:4px 8px;background:rgba(239,68,68,0.08);border-radius:6px;border-left:3px solid #ef4444">'
+                + '\u26A0\uFE0F Event ' + _urgText + ' \u2014 you haven\u2019t RSVP\u2019d</div>';
+        } else if (state.isMentioned) {
+            html += '<div style="font-size:0.72em;font-weight:700;color:#818cf8;margin-top:6px;padding:3px 0">@ You were mentioned'
+                + (_ageLabel ? ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _ageLabel + '</span>' : '')
+                + '</div>';
+        } else if (state.needsMyInput) {
+            // Poll progress signal
+            var _progressHtml = '';
+            if (item.type === 'poll' && item.pollVotes) {
+                var _voted = Object.keys(item.pollVotes).length;
+                _progressHtml = ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _voted + ' of ' + memberCount + ' responded</span>';
+            }
+            var _actionColor = _isStuck ? '#f59e0b' : '#fbbf24';
+            var _actionText = _isStuck ? 'Still waiting on YOU' : 'Waiting on YOU';
+            html += '<div style="font-size:0.72em;font-weight:700;color:' + _actionColor + ';margin-top:6px;padding:3px 0">'
+                + '\u26A1 ' + _actionText + _progressHtml
+                + (_ageLabel ? ' <span style="opacity:0.5;font-weight:500">\u00B7 ' + _ageLabel + '</span>' : '')
+                + '</div>';
+        }
     }
 
+    // Targeted members list (for items targeted at specific people)
     if (item.targetType === 'specific' && item.targetMembers && item.targetMembers.length) {
         var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
         var targetNames = item.targetMembers.map(function(k) { return members[k] ? members[k].name : k; });
@@ -1634,7 +1660,8 @@ function _feedRenderItem(item, isFirstAction) {
         html += '<div style="font-size:0.72em;color:#a5b4fc;margin-top:3px">Needs input from: ' + _feedEsc(tLabel) + '</div>';
     }
 
-    if (item.type === 'poll' && state && state.waitingOnOthers && fas) {
+    // Waiting-on-band names (when I already acted)
+    if (item.type === 'poll' && state && state.waitingOnOthers && fas && !resolved) {
         var waiting = fas.getWaitingMembers(item);
         if (waiting.length > 0) {
             var names = waiting.length <= 3 ? waiting.join(', ') : waiting.slice(0, 2).join(', ') + ' +' + (waiting.length - 2) + ' more';
