@@ -49,6 +49,23 @@ a{color:var(--accent-light);}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .fade-in{animation:fadeIn 0.2s ease-out;}
 
+/* ===== SYSTEM LAYOUT — shared two-column pattern ===== */
+.gl-page{max-width:1060px;margin:0 auto}
+.gl-page-split{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start}
+.gl-page-primary{min-width:0}
+.gl-page-context{position:sticky;top:16px;min-width:0}
+@media(max-width:768px){.gl-page-split{grid-template-columns:1fr;gap:12px}.gl-page-context{position:static}}
+/* Section labels — subtle, not boxed */
+.gl-section-label{font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;padding:12px 0 6px}
+/* Row items — continuous scroll feel */
+.gl-row{padding:8px 0;cursor:pointer;transition:background 0.12s}
+.gl-row:hover{background:rgba(255,255,255,0.025);border-radius:6px}
+/* Context cards — lighter than primary */
+.gl-context-card{padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.02);margin-bottom:10px}
+/* Page title — larger, bolder */
+.gl-page-title{font-size:1.3em;font-weight:800;color:var(--text);letter-spacing:-0.02em;margin-bottom:2px}
+.gl-page-sub{font-size:0.78em;color:var(--text-dim);margin-bottom:16px}
+
 /* ===== CARDS ===== */
 .app-card{background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:10px;transition:background 0.15s,border-color 0.15s,box-shadow 0.15s;}
 .app-card:hover{background:rgba(255,255,255,0.04);box-shadow:0 2px 8px rgba(0,0,0,0.15);}

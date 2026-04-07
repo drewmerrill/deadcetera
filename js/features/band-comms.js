@@ -212,17 +212,21 @@ function renderIdeasBoardPage(el) {
   if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'ideas');
   // Band Room: action-first structure
   // Section tabs: Needs Votes | Open Ideas | Polls | Decisions | Archive
-  el.innerHTML = '<div class="page-header"><h1>\uD83C\uDFB8 Band Room</h1></div>'
-    + '<div style="max-width:600px;margin:0 auto">'
-    // Quick create — always visible, lightweight
-    + '<div id="bcQuickCreate" style="margin-bottom:16px"></div>'
-    // Continuous stream — no hard section breaks
+  el.innerHTML = '<div class="gl-page">'
+    + '<div class="gl-page-title">\uD83C\uDFB8 Band Room</div>'
+    + '<div class="gl-page-sub">Decisions, polls, and ideas</div>'
+    + '<div class="gl-page-split">'
+    + '<div class="gl-page-primary">'
+    + '<div id="bcQuickCreate" style="margin-bottom:12px"></div>'
     + '<div id="bcNeedsVotes"></div>'
     + '<div id="bcOpenIdeas"></div>'
     + '<div id="bcPollsSection"></div>'
-    + '<div id="bcDecisions" style="margin-top:12px"></div>'
-    + '<div id="bcBriefContainer" style="margin-top:16px"></div>'
-    + '</div>';
+    + '</div>'
+    + '<div class="gl-page-context">'
+    + '<div id="bcDecisions"></div>'
+    + '<div id="bcBriefContainer" style="margin-top:10px"></div>'
+    + '</div>'
+    + '</div></div>';
 
   _bcLoadBandRoom();
 

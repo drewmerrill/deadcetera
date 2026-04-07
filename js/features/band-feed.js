@@ -646,16 +646,20 @@ window.renderBandFeedPage = async function(el) {
     }
 
     _feedRemoveBackBar();
-    el.innerHTML = '<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;padding-bottom:12px;border-bottom:2px solid rgba(99,102,241,0.15);margin-bottom:12px">'
-        + '<div><h1 style="margin:0;font-size:1.4em">\uD83D\uDCE1 Band Feed</h1>'
-        + '<p style="margin:4px 0 0;font-size:0.82em;color:var(--text-dim)">Where to jump in. What\u2019s waiting. What changed.</p></div>'
-        + '<button onclick="_feedShowHelpRecall()" title="How this works" style="flex-shrink:0;margin-top:4px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:700;display:flex;align-items:center;justify-content:center">?</button>'
-        + '</div>'
+    el.innerHTML = '<div class="gl-page">'
+        + '<div class="gl-page-title">\uD83D\uDCE1 Band Feed</div>'
+        + '<div class="gl-page-sub">What\u2019s waiting. What changed.</div>'
+        + '<div class="gl-page-split">'
+        + '<div class="gl-page-primary">'
         + '<div id="feedCreateBar" style="margin-bottom:8px"></div>'
-        + '<div id="feedProgressBar" style="display:none"></div>'
         + '<div id="feedAttentionBar"></div>'
+        + '<div id="feedList"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed\u2026</div></div>'
+        + '</div>'
+        + '<div class="gl-page-context">'
         + '<div id="feedFilterBar"></div>'
-        + '<div id="feedList" style="margin-top:8px"><div style="text-align:center;padding:40px;color:var(--text-dim)">Loading feed\u2026</div></div>';
+        + '<div id="feedProgressBar" style="display:none"></div>'
+        + '</div>'
+        + '</div></div>';
     try {
         await _feedLoadMeta();
         var items = await _feedLoadAll();
