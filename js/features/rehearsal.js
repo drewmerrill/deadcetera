@@ -285,17 +285,24 @@ async function _rhRenderCommandFlow(el) {
     var _gigContext = nextGig ? (nextGig.venue || 'Gig') : null;
     var _gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
 
-    // ── Compact inline CTA — not a separate hero card ──
-    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
+    // ── Compact CTA bar + event context ──
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">';
     html += '<button onclick="rhStartRehearsalSession()" style="padding:10px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.88em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
     html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">\uD83C\uDFB8 Solo</button>';
+    html += '</div>';
+    // Event context — separate line, clear and motivating
     if (_gigContext && _gigDays <= 30) {
-        html += '<span style="font-size:0.72em;color:var(--text-dim);margin-left:auto">' + escHtml(_gigContext) + ' in ' + _gigDays + 'd</span>';
+        var _urgColor = _gigDays <= 3 ? '#fbbf24' : 'var(--text-dim)';
+        html += '<div style="font-size:0.75em;color:' + _urgColor + ';margin-bottom:4px;display:flex;align-items:center;gap:6px">';
+        html += '<span>\uD83C\uDFA4</span><span style="font-weight:600">' + escHtml(_gigContext) + '</span>';
+        html += '<span style="opacity:0.7">\u00B7 ' + _gigDays + ' day' + (_gigDays !== 1 ? 's' : '') + ' \u00B7 Preparing for live set</span>';
+        html += '</div>';
     }
     if (_rhFocusCount > 0) {
-        html += '<span style="font-size:0.72em;color:#fbbf24;font-weight:600">' + escHtml(_rhFocusPrimary) + (_rhFocusCount > 1 ? ' +' + (_rhFocusCount - 1) : '') + '</span>';
+        html += '<div style="font-size:0.72em;color:#fbbf24;margin-bottom:10px">\uD83C\uDFAF Focus: ' + escHtml(_rhFocusPrimary) + (_rhFocusCount > 1 ? ' + ' + (_rhFocusCount - 1) + ' more' : '') + '</div>';
+    } else {
+        html += '<div style="margin-bottom:10px"></div>';
     }
-    html += '</div>';
 
     // (Context and "Start Here" directive removed — consolidated into Next Up section above)
 

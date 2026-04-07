@@ -448,18 +448,20 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
     // Practice streak
     var _streakHtml = _buildPracticeStreak();
 
-    return '<div style="padding:18px 16px;margin-bottom:12px;border:1px solid rgba(34,197,94,0.2);border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))">'
-        + '<div style="font-size:1.05em;font-weight:800;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
-        + (_justification ? '<div style="font-size:0.72em;color:#64748b;margin-bottom:10px">' + _justification + '</div>' : '')
+    // Streak + commitment inline after CTA — subtle, not competing
+    var _ctaTrail = '';
+    if (_committed) _ctaTrail += '<span style="font-size:0.68em;color:#22c55e;font-weight:600">\u2713 Locked</span>';
+    if (_streakHtml) _ctaTrail += '<span style="font-size:0.68em;color:#f59e0b;margin-left:auto">' + _streakHtml.replace(/<[^>]+>/g, '').trim() + '</span>';
+
+    return '<div style="padding:18px 16px;margin-bottom:10px;border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))">'
+        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
+        + (_justification ? '<div style="font-size:0.72em;color:#64748b;margin-bottom:12px">' + _justification + '</div>' : '')
         + _subHtml
         + _expandHtml
-        + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-        + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:200px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
-        + (highConfidence && !_committed
-            ? '<button onclick="_hdCommitToPlan()" style="padding:10px 18px;border-radius:10px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:700;font-size:0.82em;cursor:pointer;white-space:nowrap">\uD83C\uDFAF Lock in this plan</button>'
-            : _committed ? '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Plan locked for today</span>' : '')
+        + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:180px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
+        + _ctaTrail
         + '</div>'
-        + _streakHtml
         + _buildIntelSignal()
         + _scheduleLink
         + '</div>';
@@ -1424,23 +1426,41 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // NBA — the answer to "what should I do?"
     _leftHtml += _renderNextActionCard(bundle, wf);
 
-    // Band Focus songs — inline continuation, not separate card
+    // Band Focus songs — secondary, visually demoted
     if (_focusItems.length > 0) {
-        _leftHtml += '<div style="padding:0 2px;margin-bottom:16px">';
+        _leftHtml += '<div style="padding:0 2px;margin-bottom:8px;opacity:0.85">';
+        _leftHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px">Focus songs</div>';
         _focusItems.forEach(function(item) {
             var avg = item.avg ? item.avg.toFixed(1) : '?';
             var barPct = item.avg ? Math.round((item.avg / 5) * 100) : 0;
             var barColor = item.avg >= 3.5 ? '#22c55e' : item.avg >= 2.5 ? '#f59e0b' : '#ef4444';
             var safeSong = _escHtml(item.title).replace(/'/g, "\\'");
-            _leftHtml += '<div onclick="selectSong(\'' + safeSong + '\')" class="gl-row" style="padding:8px 4px">';
-            _leftHtml += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px">';
-            _leftHtml += '<span style="font-size:0.85em;font-weight:600;color:var(--text)">' + _escHtml(item.title) + '</span>';
-            _leftHtml += '<span style="font-size:0.72em;font-weight:700;color:' + barColor + '">' + avg + '</span>';
-            _leftHtml += '</div>';
-            _leftHtml += '<div style="height:2px;background:rgba(255,255,255,0.05);border-radius:1px;overflow:hidden">';
-            _leftHtml += '<div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:1px"></div>';
+            _leftHtml += '<div onclick="selectSong(\'' + safeSong + '\')" class="gl-row" style="padding:5px 4px">';
+            _leftHtml += '<div style="display:flex;align-items:center;gap:8px">';
+            _leftHtml += '<span style="font-size:0.8em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(item.title) + '</span>';
+            _leftHtml += '<div style="width:60px;height:2px;background:rgba(255,255,255,0.05);border-radius:1px;overflow:hidden;flex-shrink:0"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:1px"></div></div>';
+            _leftHtml += '<span style="font-size:0.68em;font-weight:700;color:' + barColor + ';width:22px;text-align:right;flex-shrink:0">' + avg + '</span>';
             _leftHtml += '</div></div>';
         });
+        _leftHtml += '</div>';
+
+        // Compact commitment row — integrated, not a card
+        var _alignCount = 0;
+        try { var _ac = localStorage.getItem('gl_band_focus_aligned'); if (_ac) { var _acd = JSON.parse(_ac); if (_acd.date === _todayStr()) _alignCount = _acd.count || 0; } } catch(e) {}
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+        var _planLocked = false;
+        try { var _pd = localStorage.getItem('gl_band_focus_plan'); if (_pd) { var _pdd = JSON.parse(_pd); _planLocked = _pdd && _pdd.date === _todayStr(); } } catch(e) {}
+
+        _leftHtml += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
+        if (!_planLocked) {
+            _leftHtml += '<button onclick="_hdAlignFocus()" style="font-size:0.72em;font-weight:600;padding:5px 12px;border-radius:6px;cursor:pointer;border:none;background:rgba(99,102,241,0.1);color:#a5b4fc;transition:background 0.12s" onmouseover="this.style.background=\'rgba(99,102,241,0.18)\'" onmouseout="this.style.background=\'rgba(99,102,241,0.1)\'">I\u2019m in</button>';
+            _leftHtml += '<button onclick="_hdLockBandFocus()" style="font-size:0.68em;font-weight:500;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">Lock plan</button>';
+        } else {
+            _leftHtml += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Plan locked</span>';
+        }
+        if (_alignCount > 0) {
+            _leftHtml += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:auto">' + _alignCount + '/' + memberCount + ' aligned</span>';
+        }
         _leftHtml += '</div>';
     }
 
