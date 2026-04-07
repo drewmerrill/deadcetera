@@ -883,7 +883,14 @@ function renderCalendarInner() {
     // ── Context rail: Upcoming Schedule, Availability, Conflicts ──
     var _ctxRail = document.getElementById('calContextRail');
     if (_ctxRail) {
+        // Soft guidance at top
+        var _calGuidance = '';
+        try {
+            var _calCadence = (typeof GLStore !== 'undefined' && GLStore.getRehearsalCadence) ? GLStore.getRehearsalCadence() : null;
+            if (_calCadence) _calGuidance += '<div style="font-size:0.72em;color:var(--text-dim);padding:2px 0">Cadence: ' + _calCadence + '</div>';
+        } catch(e) {}
         _ctxRail.innerHTML =
+        (_calGuidance ? '<div class="gl-context-card">' + _calGuidance + '</div>' : '') +
         '<div class="gl-context-card">' +
             '<div class="gl-section-label" style="padding-top:0">Upcoming</div>' +
             '<div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading\u2026</div></div>' +

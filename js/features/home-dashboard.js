@@ -1400,32 +1400,61 @@ function _timeAgo(isoStr) {
     return days + 'd ago';
 }
 
-// ── LOCK IN dashboard: two-column system layout ─────────────────────────────
+// ── LOCK IN dashboard: unified narrative system ─────────────────────────────
 function _renderLockinDashboard(bundle, wf, isStoner) {
     var dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-    var _secondaries = _buildSecondaryActions(bundle);
-    var _riskCard = _renderEventRiskCard(bundle);
-    var _nudge = _renderSmartNudge(bundle);
-
-    // Inject layout CSS once
     _hdInjectLayoutCSS();
 
-    // ── Hero zone: risk + NBA merged into one narrative surface ──
-    var _heroHtml = '<div class="hd-hero">'
-        + _riskCard
-        + _renderNextActionCard(bundle, wf)
-        + (_nudge ? '<div class="hd-hero-nudge">' + _nudge + '</div>' : '')
-        + '</div>';
+    // Gather all intelligence inputs
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [], count: 0 };
+    var _riskCard = _renderEventRiskCard(bundle);
+    var _nudge = _renderSmartNudge(bundle);
+    var _focusItems = (focus.list || []).slice(0, 3);
+    var _streak = _buildPracticeStreak();
+    var _committed = false;
+    try { _committed = localStorage.getItem('gl_committed_today') === _todayStr(); } catch(e) {}
 
-    // ── LEFT column: decisions + actions ──
-    var _leftHtml = _heroHtml
-        + (_secondaries.length ? '<div class="hd-section">' + _secondaries.join('') + '</div>' : '')
-        + _renderBandFocusCard(bundle)
-        + '<div id="hdPollCard"></div>'
-        + '<div id="hdPostRehearsalPrompt"></div>';
+    // ── LEFT: one narrative surface (context → action → focus) ──
+    // No separate cards — flows as a single story
+    var _leftHtml = '';
 
-    // ── RIGHT column: context + status ──
+    // Risk context (if any) — opens the narrative
+    if (_riskCard) _leftHtml += _riskCard;
+
+    // NBA — the answer to "what should I do?"
+    _leftHtml += _renderNextActionCard(bundle, wf);
+
+    // Band Focus songs — inline continuation, not separate card
+    if (_focusItems.length > 0) {
+        _leftHtml += '<div style="padding:0 2px;margin-bottom:16px">';
+        _focusItems.forEach(function(item) {
+            var avg = item.avg ? item.avg.toFixed(1) : '?';
+            var barPct = item.avg ? Math.round((item.avg / 5) * 100) : 0;
+            var barColor = item.avg >= 3.5 ? '#22c55e' : item.avg >= 2.5 ? '#f59e0b' : '#ef4444';
+            var safeSong = _escHtml(item.title).replace(/'/g, "\\'");
+            _leftHtml += '<div onclick="selectSong(\'' + safeSong + '\')" class="gl-row" style="padding:8px 4px">';
+            _leftHtml += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px">';
+            _leftHtml += '<span style="font-size:0.85em;font-weight:600;color:var(--text)">' + _escHtml(item.title) + '</span>';
+            _leftHtml += '<span style="font-size:0.72em;font-weight:700;color:' + barColor + '">' + avg + '</span>';
+            _leftHtml += '</div>';
+            _leftHtml += '<div style="height:2px;background:rgba(255,255,255,0.05);border-radius:1px;overflow:hidden">';
+            _leftHtml += '<div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:1px"></div>';
+            _leftHtml += '</div></div>';
+        });
+        _leftHtml += '</div>';
+    }
+
+    // Nudge — gentle signal below focus
+    if (_nudge) _leftHtml += _nudge;
+
+    // Post-rehearsal + polls
+    _leftHtml += '<div id="hdPostRehearsalPrompt"></div>';
+    _leftHtml += '<div id="hdPollCard"></div>';
+
+    // ── RIGHT: context rail with soft guidance ──
     var _rightHtml = _renderBandStatusCompact(bundle);
+    // Soft guidance layer
+    _rightHtml += _renderRailGuidance(bundle);
 
     return '<div class="home-dashboard hd-system">'
         + '<div class="hd-date">' + dateStr + '</div>'
@@ -1434,6 +1463,59 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         + '<div class="hd-context">' + _rightHtml + '</div>'
         + '</div>'
         + '</div>';
+}
+
+// ── Right rail soft guidance ─────────────────────────────────────────────────
+function _renderRailGuidance(bundle) {
+    var hints = [];
+
+    // Practice recency
+    try {
+        var _lp = localStorage.getItem('gl_last_practice_ts');
+        if (_lp) {
+            var _ds = Math.floor((Date.now() - new Date(_lp).getTime()) / 86400000);
+            if (_ds === 0) hints.push({ text: 'Practiced today \u2014 keep it up', color: '#22c55e' });
+            else if (_ds <= 2) hints.push({ text: 'Last practice ' + _ds + 'd ago', color: 'var(--text-dim)' });
+            else hints.push({ text: _ds + ' days since last practice', color: '#f59e0b' });
+        }
+    } catch(e) {}
+
+    // Upcoming event context
+    try {
+        var calEvents = (typeof GLStore !== 'undefined' && GLStore.getCalendarEvents) ? GLStore.getCalendarEvents() : [];
+        var today = _todayStr();
+        var next = calEvents.filter(function(e) { return (e.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
+        if (next) {
+            var dd = _dayDiff(today, next.date);
+            var icon = next.type === 'gig' ? '\uD83C\uDFA4' : '\uD83C\uDFB8';
+            hints.push({ text: icon + ' ' + (dd === 0 ? 'Today' : dd === 1 ? 'Tomorrow' : 'in ' + dd + 'd') + (next.title ? ' \u2014 ' + next.title : ''), color: dd <= 2 ? '#fbbf24' : 'var(--text-dim)' });
+        }
+    } catch(e) {}
+
+    // Alignment
+    try {
+        var _ac = localStorage.getItem('gl_band_focus_aligned');
+        if (_ac) {
+            var _acd = JSON.parse(_ac);
+            if (_acd.date === _todayStr() && _acd.count > 0) {
+                var mc = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
+                hints.push({ text: '\uD83C\uDFAF ' + _acd.count + '/' + mc + ' aligned on focus', color: '#a5b4fc' });
+            }
+        }
+    } catch(e) {}
+
+    // Trend
+    var _trend = _buildTrendSignal();
+
+    if (!hints.length && !_trend) return '';
+
+    var html = '<div class="gl-context-card" style="margin-top:8px">';
+    hints.forEach(function(h) {
+        html += '<div style="font-size:0.72em;color:' + h.color + ';padding:3px 0">' + h.text + '</div>';
+    });
+    if (_trend) html += _trend;
+    html += '</div>';
+    return html;
 }
 
 // ── Layout CSS injection (once) ──────────────────────────────────────────────

@@ -285,19 +285,16 @@ async function _rhRenderCommandFlow(el) {
     var _gigContext = nextGig ? (nextGig.venue || 'Gig') : null;
     var _gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
 
-    html += '<div style="padding:16px;margin-bottom:14px;border-radius:12px;background:linear-gradient(135deg,rgba(99,102,241,0.05),rgba(34,197,94,0.03));border:1px solid rgba(99,102,241,0.15)">';
-    html += '<div style="font-size:0.65em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:4px">\uD83C\uDFAF Next Up</div>';
+    // ── Compact inline CTA — not a separate hero card ──
+    html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">';
+    html += '<button onclick="rhStartRehearsalSession()" style="padding:10px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.88em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
+    html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" style="padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.75em;cursor:pointer">\uD83C\uDFB8 Solo</button>';
     if (_gigContext && _gigDays <= 30) {
-        html += '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:6px">Preparing for: <strong style="color:var(--text)">' + escHtml(_gigContext) + '</strong> (' + _gigDays + ' days)</div>';
+        html += '<span style="font-size:0.72em;color:var(--text-dim);margin-left:auto">' + escHtml(_gigContext) + ' in ' + _gigDays + 'd</span>';
     }
     if (_rhFocusCount > 0) {
-        html += '<div style="font-size:0.82em;color:#fbbf24;font-weight:600;margin-bottom:10px">Focus: <strong>' + escHtml(_rhFocusPrimary) + '</strong>' + (_rhFocusCount > 1 ? ' + ' + (_rhFocusCount - 1) + ' more' : '') + '</div>';
+        html += '<span style="font-size:0.72em;color:#fbbf24;font-weight:600">' + escHtml(_rhFocusPrimary) + (_rhFocusCount > 1 ? ' +' + (_rhFocusCount - 1) : '') + '</span>';
     }
-    html += '<button onclick="rhStartRehearsalSession()" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.92em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.2);display:block;width:100%;margin-bottom:8px">\u25B6 Start Full Rehearsal</button>';
-    html += '<div style="display:flex;gap:6px">';
-    html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.72em;cursor:pointer">\uD83C\uDFB8 Practice Solo</button>';
-    html += '<button onclick="var t=document.getElementById(\'rhTimelineSection\');if(t)t.scrollIntoView({behavior:\'smooth\'})" style="flex:1;padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.72em;cursor:pointer">\uD83D\uDCCA Review Timeline</button>';
-    html += '</div>';
     html += '</div>';
 
     // (Context and "Start Here" directive removed — consolidated into Next Up section above)
@@ -616,7 +613,24 @@ async function _rhRenderCommandFlow(el) {
             _cs.textContent = 'details[open] > summary .rh-chevron{transform:rotate(90deg)}';
             document.head.appendChild(_cs);
         }
-        _rhCtx.innerHTML = '<div class="gl-context-card">'
+        // Soft guidance at top of rail
+        var _rhGuidance = '';
+        if (weakSongs.length > 0) {
+            _rhGuidance += '<div style="font-size:0.72em;color:#fbbf24;padding:2px 0">' + weakSongs.length + ' song' + (weakSongs.length > 1 ? 's' : '') + ' need work</div>';
+        }
+        if (confLabel) {
+            _rhGuidance += '<div style="font-size:0.72em;color:' + confColor + ';padding:2px 0">Readiness: ' + confLabel + '</div>';
+        }
+        try {
+            var _lp = localStorage.getItem('gl_last_practice_ts');
+            if (_lp) {
+                var _ds = Math.floor((Date.now() - new Date(_lp).getTime()) / 86400000);
+                _rhGuidance += '<div style="font-size:0.72em;color:var(--text-dim);padding:2px 0">Last practice: ' + (_ds === 0 ? 'today' : _ds + 'd ago') + '</div>';
+            }
+        } catch(e) {}
+
+        _rhCtx.innerHTML = (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '')
+            + '<div class="gl-context-card">'
             + '<div class="gl-section-label" style="padding-top:0">History</div>'
             + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>'
             + '<div id="rhSessionHistory"></div>'
