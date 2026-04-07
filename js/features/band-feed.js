@@ -887,9 +887,25 @@ window._feedAction = async function(action, type, id) {
         var was = _feedIsResolved(item);
         var resolveUpdate = was ? { resolved: false } : { resolved: true, resolvedAt: new Date().toISOString() };
         await _feedSaveMeta(item, resolveUpdate);
-        if (!was) _feedAdvanceOnboarding();
-        _feedShowToast(was ? 'Reopened' : 'Marked resolved');
+        if (!was) {
+            _feedAdvanceOnboarding();
+            // Animate resolve: fade + shrink
+            var _rEl = document.getElementById('feedItem_' + type + '_' + id);
+            if (_rEl) {
+                _rEl.style.transition = 'opacity 0.3s, transform 0.3s';
+                _rEl.style.opacity = '0.4';
+                _rEl.style.transform = 'scale(0.98)';
+            }
+        }
+        _feedShowToast(was ? 'Reopened' : 'Resolved \u2713');
     } else if (action === 'archive') {
+        // Animate archive: slide out
+        var _aEl = document.getElementById('feedItem_' + type + '_' + id);
+        if (_aEl) {
+            _aEl.style.transition = 'opacity 0.2s, transform 0.2s';
+            _aEl.style.opacity = '0';
+            _aEl.style.transform = 'translateX(20px)';
+        }
         await _feedSaveMeta(item, { archived: true });
         _feedShowToast('Archived');
     } else if (action === 'unarchive') {
@@ -1126,16 +1142,36 @@ window._feedVotePoll = async function(pollKey, optionIdx) {
         ctx.push(item.resolved ? (voteCount + '/' + memberCount + ' voted \u2705') : (remaining + ' of ' + memberCount + ' still need to vote'));
         item.context = ctx.join(' \u00B7 ');
     }
-    if (!localStorage.getItem(_FEED_FIRST_VOTE_KEY)) {
+    // Micro-feedback: vote confirmation
+    if (item && item.resolved) {
+        // Poll just completed — show completion summary
+        var _winIdx = 0, _winCount = 0, _winCounts = {};
+        if (item.pollVotes) {
+            Object.values(item.pollVotes).forEach(function(v) { _winCounts[v] = (_winCounts[v] || 0) + 1; });
+            Object.keys(_winCounts).forEach(function(k) { if (_winCounts[k] > _winCount) { _winCount = _winCounts[k]; _winIdx = parseInt(k); } });
+        }
+        var _winOpt = item.pollOptions && item.pollOptions[_winIdx] ? item.pollOptions[_winIdx] : '';
+        _feedShowToast('\u2705 Decision made: ' + _winOpt + ' (' + _winCount + ' votes)');
+        // Animate the card collapse
+        var _cardEl = document.getElementById('feedItem_poll_' + _feedEsc(pollKey));
+        if (_cardEl) {
+            _cardEl.style.transition = 'opacity 0.3s, max-height 0.4s, padding 0.4s, margin 0.4s';
+            _cardEl.style.opacity = '0.5';
+            _cardEl.style.maxHeight = _cardEl.offsetHeight + 'px';
+            _cardEl.style.overflow = 'hidden';
+            setTimeout(function() { _cardEl.style.maxHeight = '48px'; _cardEl.style.padding = '6px 14px'; }, 50);
+        }
+    } else if (!localStorage.getItem(_FEED_FIRST_VOTE_KEY)) {
         localStorage.setItem(_FEED_FIRST_VOTE_KEY, '1');
         _feedMicroReinforce('first_vote');
     } else if (item && item.targetType === 'specific') {
         _feedMicroReinforce('targeted');
     } else {
-        _feedShowToast('\u2705 Vote recorded');
+        _feedShowToast('Vote recorded \u2713');
     }
     _feedAdvanceOnboarding();
-    _feedRerender();
+    // Delay rerender slightly so animation is visible
+    setTimeout(function() { _feedRerender(); }, item && item.resolved ? 800 : 0);
     // Also refresh left rail badge
     if (typeof _updateBandRoomBadge === 'function') setTimeout(_updateBandRoomBadge, 500);
 };
@@ -1150,11 +1186,17 @@ window._feedAcknowledgeIdea = async function(id) {
     var by = fas ? (fas.getMyDisplayName() || 'Me') : 'Me';
     var notes = _feedGetNotes(item).slice();
     notes.push({ text: 'Acknowledged', by: by, ts: new Date().toISOString() });
-    await _feedSaveMeta(item, { notes: notes, resolved: true });
+    await _feedSaveMeta(item, { notes: notes, resolved: true, resolvedAt: new Date().toISOString() });
     item.resolved = true;
-    _feedShowToast('\u2705 Acknowledged');
+    _feedShowToast('Got it \u2713');
     _feedAdvanceOnboarding();
-    _feedRerender();
+    // Animate collapse
+    var _el = document.getElementById('feedItem_idea_' + id);
+    if (_el) {
+        _el.style.transition = 'opacity 0.3s, max-height 0.4s';
+        _el.style.opacity = '0.4';
+    }
+    setTimeout(function() { _feedRerender(); }, 500);
 };
 
 window._feedToggleOlderNotes = function(type, id) {
@@ -1538,12 +1580,24 @@ function _feedRender(items) {
     }
 
     if (!html) {
+        // All caught up — show next event if available
+        var _nextCtx = '';
+        var _fas3 = _fas();
+        if (_fas3 && _fas3.getNextEvents) {
+            var _ne = _fas3.getNextEvents();
+            if (_ne) {
+                if (_ne.rehearsal) {
+                    try { var _rd = new Date(_ne.rehearsal + 'T12:00:00'); _nextCtx = '\uD83C\uDFB8 Next rehearsal: ' + _rd.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); } catch(e) {}
+                } else if (_ne.gig) {
+                    try { var _gd = new Date(_ne.gig + 'T12:00:00'); _nextCtx = '\uD83C\uDFA4 Next gig: ' + _gd.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); } catch(e) {}
+                }
+            }
+        }
         html = '<div style="text-align:center;padding:48px 20px">'
-            + '<div style="font-size:1.6em;margin-bottom:8px">\u2705</div>'
-            + '<div style="font-size:1em;font-weight:800;color:#86efac;margin-bottom:4px">You\u2019re locked in</div>'
-            + '<div style="font-size:0.82em;color:#6ee7b7;margin-bottom:4px">Nothing blocking rehearsal.</div>'
-            + '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:16px">The band is tighter because you showed up.</div>'
-            + '<button onclick="_feedCreateItem(\'note\')" style="font-size:0.82em;font-weight:700;padding:10px 22px;border-radius:10px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">+ Add something for the band</button>'
+            + '<div style="font-size:1em;font-weight:700;color:#86efac;margin-bottom:4px">You\u2019re all set \uD83D\uDC4D</div>'
+            + '<div style="font-size:0.82em;color:var(--text-dim);margin-bottom:4px">No actions needed right now.</div>'
+            + (_nextCtx ? '<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:12px">' + _nextCtx + '</div>' : '')
+            + '<button onclick="_feedCreateItem(\'note\')" style="font-size:0.78em;font-weight:700;padding:8px 18px;border-radius:8px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc">+ Post to band</button>'
             + '</div>';
     }
     el.innerHTML = html;
@@ -1627,25 +1681,39 @@ function _feedRenderItem(item, isFirstAction) {
         var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
 
         if (state.isRsvpUrgent) {
-            // RSVP with upcoming event — strongest signal
+            // RSVP with upcoming event — strongest signal, escalates at <24h
             var _urgDays = state.urgency ? state.urgency.days : null;
-            var _urgText = _urgDays === 0 ? 'today' : _urgDays === 1 ? 'tomorrow' : 'in ' + _urgDays + ' days';
-            html += '<div style="font-size:0.75em;font-weight:800;color:#ef4444;margin-top:6px;padding:4px 8px;background:rgba(239,68,68,0.08);border-radius:6px;border-left:3px solid #ef4444">'
-                + '\u26A0\uFE0F Event ' + _urgText + ' \u2014 you haven\u2019t RSVP\u2019d</div>';
+            var _isFinal = _urgDays !== null && _urgDays <= 1;
+            var _urgText = _urgDays === 0 ? 'tonight' : _urgDays === 1 ? 'tomorrow' : 'in ' + _urgDays + ' days';
+            var _urgIcon = _isFinal ? '\uD83D\uDEA8' : '\u26A0\uFE0F';
+            var _urgMsg = _isFinal
+                ? _urgIcon + ' Rehearsal ' + _urgText + ' \u2014 we need your RSVP'
+                : _urgIcon + ' Event ' + _urgText + ' \u2014 you haven\u2019t RSVP\u2019d';
+            html += '<div style="font-size:0.75em;font-weight:800;color:#ef4444;margin-top:6px;padding:4px 8px;background:rgba(239,68,68,' + (_isFinal ? '0.12' : '0.08') + ');border-radius:6px;border-left:3px solid #ef4444">'
+                + _urgMsg + '</div>';
         } else if (state.isMentioned) {
             html += '<div style="font-size:0.72em;font-weight:700;color:#818cf8;margin-top:6px;padding:3px 0">@ You were mentioned'
                 + (_ageLabel ? ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _ageLabel + '</span>' : '')
                 + '</div>';
         } else if (state.needsMyInput) {
-            // Poll progress signal
+            // Poll progress + blocker detection
             var _progressHtml = '';
-            if (item.type === 'poll' && item.pollVotes) {
+            var _isBlocker = false;
+            if (item.type === 'poll' && item.pollVotes && fas) {
                 var _voted = Object.keys(item.pollVotes).length;
-                _progressHtml = ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _voted + ' of ' + memberCount + ' responded</span>';
+                var _remaining = memberCount - _voted;
+                _isBlocker = _remaining === 1; // I'm the last one
+                if (_isBlocker) {
+                    _progressHtml = ' <span style="opacity:0.8;font-weight:600">\u00B7 everyone else responded</span>';
+                } else {
+                    _progressHtml = ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _voted + ' of ' + memberCount + ' responded</span>';
+                }
             }
-            var _actionColor = _isStuck ? '#f59e0b' : '#fbbf24';
-            var _actionText = _isStuck ? 'Still waiting on YOU' : 'Waiting on YOU';
-            html += '<div style="font-size:0.72em;font-weight:700;color:' + _actionColor + ';margin-top:6px;padding:3px 0">'
+            var _actionColor = _isBlocker ? '#ef4444' : _isStuck ? '#f59e0b' : '#fbbf24';
+            var _actionWeight = _isBlocker ? '800' : '700';
+            var _actionText = _isBlocker ? 'Everyone responded \u2014 waiting on YOU'
+                : _isStuck ? 'Still waiting on YOU' : 'Waiting on YOU';
+            html += '<div style="font-size:0.72em;font-weight:' + _actionWeight + ';color:' + _actionColor + ';margin-top:6px;padding:3px 0">'
                 + '\u26A1 ' + _actionText + _progressHtml
                 + (_ageLabel ? ' <span style="opacity:0.5;font-weight:500">\u00B7 ' + _ageLabel + '</span>' : '')
                 + '</div>';
