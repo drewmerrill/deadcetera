@@ -49,6 +49,24 @@ a{color:var(--accent-light);}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .fade-in{animation:fadeIn 0.2s ease-out;}
 
+/* ===== CALM UI — 2026 visual system ===== */
+/* Reduce contrast noise — softer borders, wider spacing */
+:root{--gl-text:var(--text);--gl-text-secondary:#94a3b8;--gl-text-tertiary:#64748b;--gl-surface:rgba(255,255,255,0.015);--gl-border:rgba(255,255,255,0.05);--gl-hover:rgba(255,255,255,0.03);--gl-transition:0.15s ease}
+/* Adaptive UI modes */
+body[data-gl-mode="calm"]{--bg-dark:#0c1220;--bg-card:#161f30;--accent:#5b6abf;--accent-light:#7c8ae0}
+body[data-gl-mode="focus"]{--accent:#d97706;--accent-light:#f59e0b;--accent-glow:rgba(245,158,11,0.12)}
+/* Micro-interactions — subtle, fast */
+button{transition:transform var(--gl-transition),background var(--gl-transition),opacity var(--gl-transition)}
+button:active{transform:scale(0.97)}
+/* Light glassmorphism — right rail + overlays only */
+.gl-page-context{background:rgba(15,23,42,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:12px;padding:12px;border:1px solid rgba(255,255,255,0.04)}
+@supports not (backdrop-filter:blur(1px)){.gl-page-context{background:var(--bg-card)}}
+/* Typography hierarchy — clear scan order */
+.gl-page-title{font-size:1.35em;font-weight:800;color:var(--text);letter-spacing:-0.03em;line-height:1.2}
+.gl-page-sub{font-size:0.75em;color:var(--gl-text-tertiary);letter-spacing:0.01em}
+/* Transition state */
+.gl-transitioning{opacity:0.7;transition:opacity 0.3s}
+
 /* ===== SYSTEM LAYOUT — shared two-column pattern ===== */
 .gl-page{max-width:1060px;margin:0 auto}
 .gl-page-split{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start}
@@ -58,8 +76,8 @@ a{color:var(--accent-light);}
 /* Section labels — subtle, not boxed */
 .gl-section-label{font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;padding:12px 0 6px}
 /* Row items — continuous scroll feel */
-.gl-row{padding:8px 0;cursor:pointer;transition:background 0.12s}
-.gl-row:hover{background:rgba(255,255,255,0.025);border-radius:6px}
+.gl-row{padding:8px 4px;cursor:pointer;transition:background var(--gl-transition);border-radius:6px}
+.gl-row:hover{background:var(--gl-hover)}
 /* Context cards — lighter than primary */
 .gl-context-card{padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.02);margin-bottom:10px}
 /* Page title — larger, bolder */

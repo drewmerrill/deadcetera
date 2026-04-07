@@ -453,13 +453,36 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
     if (_committed) _ctaTrail += '<span style="font-size:0.68em;color:#22c55e;font-weight:600">\u2713 Locked</span>';
     if (_streakHtml) _ctaTrail += '<span style="font-size:0.68em;color:#f59e0b;margin-left:auto">' + _streakHtml.replace(/<[^>]+>/g, '').trim() + '</span>';
 
+    // Hero confidence line — readiness + top issue
+    var _confLine = '';
+    try {
+        var _confFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : null;
+        if (_confFocus && _confFocus.primary) {
+            var _confAvg = _confFocus.primary.avg || 0;
+            var _confLabel = _confAvg >= 4 ? 'Strong' : _confAvg >= 3 ? 'Moderate' : _confAvg > 0 ? 'Needs work' : '';
+            if (_confLabel) {
+                _confLine = 'Readiness: ' + _confLabel;
+                // Add top issue hint from intelligence
+                if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
+                    var _ia = GLInsights.getNextAction();
+                    if (_ia && _ia.plan && _ia.plan.types && _ia.plan.types.length) {
+                        var _issueLabels = { stability: 'tighten stability', timing: 'fix timing', pitch: 'work on pitch', transition: 'smooth transitions', lyrics: 'nail the lyrics' };
+                        var _topIssue = _issueLabels[_ia.plan.types[0]] || '';
+                        if (_topIssue) _confLine += ' \u2014 ' + _topIssue;
+                    }
+                }
+            }
+        }
+    } catch(e) {}
+
     return '<div style="padding:18px 16px;margin-bottom:10px;border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))">'
         + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
-        + (_justification ? '<div style="font-size:0.72em;color:#64748b;margin-bottom:12px">' + _justification + '</div>' : '')
+        + (_justification ? '<div style="font-size:0.72em;color:#64748b;margin-bottom:4px">' + _justification + '</div>' : '')
+        + (_confLine ? '<div style="font-size:0.78em;color:var(--gl-text-secondary,#94a3b8);opacity:0.7;margin-bottom:10px">' + _confLine + '</div>' : '')
         + _subHtml
         + _expandHtml
         + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-        + '<button onclick="' + cta.onclick + '" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:180px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
+        + '<button onclick="_hdStartWithTransition(function(){' + cta.onclick.replace(/"/g, '&quot;') + '})" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:180px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
         + _ctaTrail
         + '</div>'
         + _buildIntelSignal()
@@ -1438,7 +1461,7 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
             _leftHtml += '<div onclick="selectSong(\'' + safeSong + '\')" class="gl-row" style="padding:5px 4px">';
             _leftHtml += '<div style="display:flex;align-items:center;gap:8px">';
             _leftHtml += '<span style="font-size:0.8em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(item.title) + '</span>';
-            _leftHtml += '<div style="width:60px;height:2px;background:rgba(255,255,255,0.05);border-radius:1px;overflow:hidden;flex-shrink:0"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:1px"></div></div>';
+            _leftHtml += '<div style="width:60px;height:3px;background:rgba(255,255,255,0.12);border-radius:2px;overflow:hidden;flex-shrink:0"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>';
             _leftHtml += '<span style="font-size:0.68em;font-weight:700;color:' + barColor + ';width:22px;text-align:right;flex-shrink:0">' + avg + '</span>';
             _leftHtml += '</div></div>';
         });
@@ -1453,13 +1476,13 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
 
         _leftHtml += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
         if (!_planLocked) {
-            _leftHtml += '<button onclick="_hdAlignFocus()" style="font-size:0.72em;font-weight:600;padding:5px 12px;border-radius:6px;cursor:pointer;border:none;background:rgba(99,102,241,0.1);color:#a5b4fc;transition:background 0.12s" onmouseover="this.style.background=\'rgba(99,102,241,0.18)\'" onmouseout="this.style.background=\'rgba(99,102,241,0.1)\'">I\u2019m in</button>';
-            _leftHtml += '<button onclick="_hdLockBandFocus()" style="font-size:0.68em;font-weight:500;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim)">Lock plan</button>';
+            _leftHtml += '<button onclick="_hdAlignFocus()" style="font-size:0.72em;font-weight:600;padding:5px 12px;border-radius:6px;cursor:pointer;border:none;background:transparent;color:var(--gl-text,var(--text))">Commit</button>';
+            _leftHtml += '<button onclick="_hdLockBandFocus()" style="font-size:0.68em;font-weight:500;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);color:var(--text-dim)">Lock for band</button>';
         } else {
-            _leftHtml += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Plan locked</span>';
+            _leftHtml += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Locked for band</span>';
         }
         if (_alignCount > 0) {
-            _leftHtml += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:auto">' + _alignCount + '/' + memberCount + ' aligned</span>';
+            _leftHtml += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto;opacity:0.6">' + _alignCount + '/' + memberCount + ' aligned</span>';
         }
         _leftHtml += '</div>';
     }
@@ -2503,6 +2526,21 @@ window._hdPostRehearsalFeedback = function(answer) {
     var msg = answer === 'yes' ? '\uD83D\uDD25 That\u2019s progress.' : answer === 'no' ? '\uD83D\uDCAA Next time.' : '\u2713 Noted.';
     el.innerHTML = '<div style="padding:10px;text-align:center;font-size:0.78em;color:var(--text-dim)">' + msg + '</div>';
     setTimeout(function() { el.innerHTML = ''; }, 3000);
+};
+
+// ── Rehearsal start transition ────────────────────────────────────────────────
+window._hdStartWithTransition = function(actionFn) {
+    // Brief transition before navigating
+    document.body.classList.add('gl-transitioning');
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : null;
+    var firstSong = (focus && focus.primary) ? (typeof focus.primary === 'string' ? focus.primary : focus.primary.title) : null;
+    setTimeout(function() {
+        if (firstSong && typeof showToast === 'function') {
+            showToast('Let\u2019s go. Starting with ' + firstSong);
+        }
+        document.body.classList.remove('gl-transitioning');
+        if (typeof actionFn === 'function') actionFn();
+    }, 200);
 };
 
 // ── Commitment Action ─────────────────────────────────────────────────────────
