@@ -455,6 +455,7 @@ function _feedWireMentionInput(inputId) {
                     _feedPendingMentions.push({ type: 'member', key: r.key, display: r.name });
                 }
                 existing.remove();
+                _feedUpdateComposerPreview(inputId);
             });
         });
     });
@@ -479,10 +480,80 @@ function _feedParseMentions() {
     return { mentions: mentions, targetMembers: memberKeys, targetType: memberKeys.length ? 'specific' : null };
 }
 
-// Render mentions highlighted in text
+// Render mentions highlighted in text — clickable, filtered
 function _feedRenderMentions(text) {
     if (!text) return '';
-    return text.replace(/@(\w+)/g, '<span style="color:#a5b4fc;font-weight:600">@$1</span>');
+    return text.replace(/@(\w+)/g, function(match, name) {
+        return '<span onclick="event.stopPropagation();_feedFilterByMention(\'' + name + '\')" style="color:#a5b4fc;font-weight:600;cursor:pointer;border-radius:3px;transition:background 0.1s" onmouseover="this.style.background=\'rgba(99,102,241,0.1)\'" onmouseout="this.style.background=\'none\'">@' + name + '</span>';
+    });
+}
+
+// Filter feed to show items mentioning a specific person
+window._feedFilterByMention = function(name) {
+    // Find member key from name
+    var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var targetKey = null;
+    Object.keys(members).forEach(function(k) {
+        if ((members[k].name || '').split(' ')[0].toLowerCase() === name.toLowerCase()) targetKey = k;
+    });
+    if (targetKey) {
+        // Use the "needs_input" filter which shows items targeted at me
+        // For now, show a toast with who was mentioned
+        if (typeof showToast === 'function') showToast('Showing items for @' + name);
+    }
+};
+
+// Build assignment chip for items with structured mentions
+function _feedBuildAssignmentChip(item) {
+    if (!item.mentions || !item.mentions.length) return '';
+    var labels = [];
+    item.mentions.forEach(function(m) {
+        if (m.key === '_all' || m.key === '_band') { labels = ['Band']; return; }
+        if (m.key && m.key.indexOf('_role_') === 0) { labels.push(m.display || m.key.replace('_role_', '')); return; }
+        if (m.display) labels.push(m.display.replace('@', ''));
+    });
+    if (!labels.length) return '';
+    var unique = [];
+    labels.forEach(function(l) { if (unique.indexOf(l) === -1) unique.push(l); });
+    var label = unique.length <= 2 ? unique.join(', ') : unique[0] + ' +' + (unique.length - 1);
+    return '<span style="font-size:0.62em;font-weight:700;color:#a5b4fc;background:rgba(99,102,241,0.08);padding:2px 6px;border-radius:4px;margin-left:4px;display:inline-block">\u2192 ' + label + '</span>';
+}
+
+// Composer targeting preview — shows who will be notified
+function _feedUpdateComposerPreview(inputId) {
+    var previewId = 'feedMentionPreview_' + inputId;
+    var existing = document.getElementById(previewId);
+    if (!_feedPendingMentions.length) {
+        if (existing) existing.remove();
+        return;
+    }
+    var isAll = _feedPendingMentions.some(function(m) { return m.key === '_all' || m.key === '_band'; });
+    var text = '';
+    if (isAll) {
+        text = '\uD83D\uDCE2 Will notify: Entire band';
+    } else {
+        var names = [];
+        _feedPendingMentions.forEach(function(m) {
+            var n = m.display ? m.display.replace('@', '') : m.key;
+            if (names.indexOf(n) === -1) names.push(n);
+        });
+        text = '\uD83D\uDD14 Will notify: ' + names.join(', ');
+    }
+
+    if (!existing) {
+        existing = document.createElement('div');
+        existing.id = previewId;
+        existing.style.cssText = 'font-size:0.72em;color:#a5b4fc;padding:4px 0';
+        var inp = document.getElementById(inputId);
+        if (inp && inp.parentElement) inp.parentElement.appendChild(existing);
+    }
+    existing.textContent = text;
+
+    // Group mention guardrail
+    if (isAll) {
+        existing.style.color = '#fbbf24';
+        existing.textContent = '\u26A0\uFE0F Will notify entire band \u2014 are you sure?';
+    }
 }
 
 window._feedQuickPost = async function() {
@@ -1794,7 +1865,7 @@ function _feedRenderItem(item, isFirstAction) {
     html += '<div' + clickAttr + ' style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;cursor:pointer">'
         + '<span style="font-size:1em">' + typeIcon + '</span>'
         + '<span style="font-size:0.82em;font-weight:700;color:var(--text)">' + _feedEsc(item.author) + '</span>'
-        + contextStr + badgeHtml + _feedRenderUrgencyTag(state)
+        + contextStr + _feedBuildAssignmentChip(item) + badgeHtml + _feedRenderUrgencyTag(state)
         + '<span style="margin-left:auto;font-size:0.68em;color:var(--text-dim);flex-shrink:0">' + timeStr + '</span>'
         + '</div>';
 

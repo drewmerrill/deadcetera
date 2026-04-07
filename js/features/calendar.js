@@ -234,18 +234,14 @@ function renderCalendarPage(el) {
 
     el.innerHTML = '<div class="gl-page">'
         + '<div class="gl-page-title">\uD83D\uDCC5 Schedule</div>'
+        + '<div id="calEventStrip" style="margin-bottom:12px"></div>'
         + '<div class="gl-page-split">'
         + '<div class="gl-page-primary">'
-        + '<div id="calNextUpSection"></div>'
-        + '<div id="calIntelBanner"></div>'
-        + '<div id="calBestRehearsalHero"></div>'
         + '<div id="calendarInner"></div>'
         + '</div>'
         + '<div class="gl-page-context" id="calContextRail"></div>'
         + '</div></div>';
-    _calRenderNextUp();
-    _calRenderIntelBanner();
-    _calRenderBestRehearsalHero();
+    _calRenderEventStrip();
     renderCalendarInner();
 }
 
@@ -661,6 +657,72 @@ window._calLockAndPlan = async function(dateStr) {
 };
 
 // ── "Next Up" section — upcoming rehearsal + gig with availability/readiness ──
+// ── Compact event strip — replaces stacked Next Up + Hero cards ──────────────
+async function _calRenderEventStrip() {
+    var el = document.getElementById('calEventStrip');
+    if (!el) return;
+    var today = new Date().toISOString().split('T')[0];
+    var events = [];
+    try { events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []); } catch(e) {}
+    var futureEnd = new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0];
+    var expanded = expandRecurringEvents(events, today, futureEnd);
+    var upcoming = expanded.filter(function(e) { return (e.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
+    var nextRehearsal = upcoming.find(function(e) { return e.type === 'rehearsal'; }) || null;
+    var nextGig = upcoming.find(function(e) { return e.type === 'gig'; }) || null;
+
+    var html = '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:stretch">';
+    [nextRehearsal, nextGig].forEach(function(ev) {
+        if (!ev) return;
+        var icon = ev.type === 'rehearsal' ? '\uD83C\uDFB8' : '\uD83C\uDFA4';
+        var daysAway = (typeof glDaysAway === 'function') ? glDaysAway(ev.date) : null;
+        var daysLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : (daysAway !== null ? daysAway + 'd' : '');
+        var dateFmt = (typeof glFormatDate === 'function') ? glFormatDate(ev.date, true) : ev.date;
+        var urgColor = daysAway !== null && daysAway <= 2 ? '#fbbf24' : 'var(--text-muted)';
+        var onclick = ev.type === 'rehearsal' ? "practicePlanActiveDate='" + ev.date + "';showPage('rehearsal')" : "showPage('setlists')";
+        html += '<div onclick="' + onclick + '" style="flex:1;min-width:140px;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer;transition:background 0.12s" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.02)\'">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span>' + icon + '</span><span style="font-size:0.82em;font-weight:700;color:var(--text)">' + (ev.title || (ev.type === 'rehearsal' ? 'Rehearsal' : 'Gig')) + '</span></div>';
+        html += '<div style="font-size:0.72em;color:' + urgColor + '">' + dateFmt + (daysLabel ? ' \u00B7 ' + daysLabel : '') + '</div>';
+        html += '</div>';
+    });
+    if (!nextRehearsal) {
+        html += '<div onclick="calAddEvent()" style="flex:1;min-width:140px;padding:10px 14px;border-radius:8px;border:1px dashed rgba(255,255,255,0.08);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.12s" onmouseover="this.style.background=\'rgba(255,255,255,0.03)\'" onmouseout="this.style.background=\'none\'">';
+        html += '<span style="font-size:0.78em;color:var(--text-dim)">+ Schedule rehearsal</span></div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+
+    // Also render guidance in right rail
+    _calRenderRailGuidance();
+}
+
+async function _calRenderRailGuidance() {
+    var ctxRail = document.getElementById('calContextRail');
+    if (!ctxRail) return;
+    // Best move guidance — from recommendation engine
+    var guidanceHtml = '';
+    try {
+        if (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations) {
+            await GLStore.ready(['members'], 10000);
+            var recs = await GLStore.getRehearsalDateRecommendations();
+            if (recs && recs.primary) {
+                var pDate = new Date(recs.primary.date + 'T12:00:00');
+                var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                guidanceHtml = '<div class="gl-context-card" style="margin-bottom:8px">'
+                    + '<div style="font-size:0.75em;font-weight:700;color:var(--text);margin-bottom:2px">Best move</div>'
+                    + '<div style="font-size:0.72em;color:var(--text-muted)">Lock rehearsal on <span style="color:#22c55e;font-weight:600">' + pLabel + '</span></div>'
+                    + '<button onclick="_calLockAndPlan(\'' + recs.primary.date + '\')" style="margin-top:6px;font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:none;background:rgba(34,197,94,0.1);color:#86efac">Lock this date</button>'
+                    + '</div>';
+            }
+        }
+    } catch(e) {}
+    // Prepend guidance before existing rail content
+    if (guidanceHtml && ctxRail.firstChild) {
+        var g = document.createElement('div');
+        g.innerHTML = guidanceHtml;
+        ctxRail.insertBefore(g.firstElementChild, ctxRail.firstChild);
+    }
+}
+
 async function _calRenderNextUp() {
     var el = document.getElementById('calNextUpSection');
     if (!el) return;
