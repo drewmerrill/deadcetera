@@ -679,6 +679,9 @@ window.renderBandFeedPage = async function(el) {
     _feedRender(items);
     _feedSyncNavBadge();
 
+    // Deep link: ?item=poll:abc123 → scroll to + highlight
+    _feedHandleDeepLink();
+
     // Trigger walkthrough on first visit
     _feedTriggerWalkthrough();
 
@@ -1616,8 +1619,12 @@ function _feedRenderItem(item, isFirstAction) {
     if (isPinned) html += '<span style="font-size:0.6em;font-weight:700;color:#fbbf24;background:rgba(251,191,36,0.1);padding:1px 5px;border-radius:3px;margin-top:4px;margin-left:4px;display:inline-block">\uD83D\uDCCC Pinned to Band Room</span>';
 
     // Ownership + targeting labels — explicit, not subtle
-    if (state && state.needsMyInput && !resolved) {
-        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 Needs You</div>';
+    if (state && state.isRsvpUrgent && !resolved) {
+        html += '<div style="font-size:0.72em;font-weight:800;color:#ef4444;margin-top:6px;padding:3px 0">\uD83D\uDEA8 Waiting on YOU \u2014 RSVP needed</div>';
+    } else if (state && state.isMentioned && !resolved) {
+        html += '<div style="font-size:0.72em;font-weight:700;color:#818cf8;margin-top:6px;padding:3px 0">@ You were mentioned</div>';
+    } else if (state && state.needsMyInput && !resolved) {
+        html += '<div style="font-size:0.72em;font-weight:700;color:#fbbf24;margin-top:6px;padding:3px 0">\u26A1 Waiting on YOU</div>';
     }
 
     if (item.targetType === 'specific' && item.targetMembers && item.targetMembers.length) {
@@ -1861,7 +1868,8 @@ if (typeof pageRenderers !== 'undefined') {
             if (fas.isMe(p.author)) return;
             fas.fireLocalNotification('Band needs your input',
                 (p.question || 'New poll').substring(0, 80),
-                { itemType: 'poll', itemId: snap.key, notifClass: 'action_required' });
+                { itemType: 'poll', itemId: snap.key, notifClass: 'action_required',
+                  url: '/#songs?item=' + encodeURIComponent('poll:' + snap.key) });
         });
 
         db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(1).on('child_added', function(snap) {
@@ -1872,11 +1880,45 @@ if (typeof pageRenderers !== 'undefined') {
             if (p.tag !== 'needs_input' && p.tag !== 'mission_critical') return;
             fas.fireLocalNotification('New idea shared',
                 (p.title || 'Band idea').substring(0, 80),
-                { itemType: 'idea', itemId: snap.key, notifClass: 'action_required' });
+                { itemType: 'idea', itemId: snap.key, notifClass: 'action_required',
+                  url: '/#songs?item=' + encodeURIComponent('idea:' + snap.key) });
         });
     }
     setTimeout(setup, 6000);
 })();
+
+// ── Deep link handler ────────────────────────────────────────────────────────
+// URL format: /#feed?item=poll:abc123 or ?item=idea:xyz
+function _feedHandleDeepLink() {
+    var search = window.location.search || '';
+    var match = search.match(/[?&]item=([^&]+)/);
+    if (!match) return;
+    var decoded = decodeURIComponent(match[1]);
+    var parts = decoded.split(':');
+    if (parts.length < 2) return;
+    var type = parts[0], id = parts.slice(1).join(':');
+    // Clear the query param from URL without reload
+    try {
+        var url = new URL(window.location.href);
+        url.searchParams.delete('item');
+        history.replaceState(null, '', url.pathname + url.hash);
+    } catch(e) {}
+    // Scroll to item after render settles
+    setTimeout(function() { _feedScrollToItem(type, id); }, 300);
+}
+
+function _feedScrollToItem(type, id) {
+    var el = document.getElementById('feedItem_' + type + '_' + id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.transition = 'box-shadow 0.3s, border-color 0.3s';
+    el.style.boxShadow = '0 0 0 2px rgba(251,191,36,0.5)';
+    el.style.borderColor = 'rgba(251,191,36,0.4)';
+    setTimeout(function() {
+        el.style.boxShadow = '';
+        el.style.borderColor = '';
+    }, 3000);
+}
 
 // ── Notification tap handler ────────────────────────────────────────────────
 
@@ -1884,17 +1926,33 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.addEventListener('message', function(event) {
         if (event.data && event.data.type === 'GL_NOTIF_TAP') {
             showPage('feed');
-            setTimeout(function() {
-                var el = document.getElementById('feedItem_' + event.data.itemType + '_' + event.data.itemId);
-                if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    el.classList.add('feed-next-action');
-                    setTimeout(function() { el.classList.remove('feed-next-action'); }, 3000);
-                }
-            }, 1500);
+            setTimeout(function() { _feedScrollToItem(event.data.itemType, event.data.itemId); }, 1500);
         }
     });
 }
+
+// ── @Mention notification listener ──────────────────────────────────────────
+// When someone posts a comment with @mentions, fire notification for tagged users
+(function() {
+    if (typeof GLStore === 'undefined' || !GLStore.on) return;
+    GLStore.on('mentionNotification', function(data) {
+        if (!data || !data.mentions || !data.author) return;
+        var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        if (!fas) return;
+        // Only fire if I'm mentioned
+        var myKey = fas.getMyMemberKey();
+        var myName = fas.getMyDisplayName();
+        var mentioned = data.mentions.some(function(m) {
+            return (m.memberKey && m.memberKey === myKey) || (m.displayName && m.displayName === myName);
+        });
+        if (!mentioned) return;
+        if (fas.isMe(data.author)) return; // don't notify yourself
+        var body = (data.author + ' mentioned you').substring(0, 80);
+        if (data.song) body += ' in ' + data.song;
+        fas.fireLocalNotification('You were mentioned', body,
+            { itemType: 'song_moment', itemId: data.song || '', notifClass: 'action_required' });
+    });
+})();
 
 // ── Feed Spotlight Walkthrough ───────────────────────────────────────────────
 // Guided behavior onboarding. 7 steps targeting real UI elements.

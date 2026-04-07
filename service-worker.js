@@ -77,17 +77,15 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
     event.notification.close();
     const data = event.notification.data || {};
-    const target = data.url || (BASE + '#feed');
+    // Deep link: /#songs?item=poll:abc123
+    const itemParam = (data.itemType && data.itemId) ? '?item=' + encodeURIComponent(data.itemType + ':' + data.itemId) : '';
+    const target = data.url || (BASE + '#feed' + itemParam);
     event.waitUntil(
         clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-            // Try to focus existing window and navigate it to feed
             for (const c of list) {
                 if (c.url.includes(BASE) && 'focus' in c) {
                     c.focus();
-                    // Post message to navigate to feed with item context
-                    if (data.itemType && data.itemId) {
-                        c.postMessage({ type: 'GL_NOTIF_TAP', itemType: data.itemType, itemId: data.itemId });
-                    }
+                    c.postMessage({ type: 'GL_NOTIF_TAP', itemType: data.itemType, itemId: data.itemId });
                     return c;
                 }
             }

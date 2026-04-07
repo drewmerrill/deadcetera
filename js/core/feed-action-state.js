@@ -93,6 +93,7 @@ window.FeedActionState = (function() {
     // ── Priority Buckets ────────────────────────────────────────────────────
 
     var BUCKET = {
+        RSVP_URGENT:     0,
         CRITICAL:        1,
         NEEDS_MY_INPUT:  2,
         WAITING_ON_BAND: 3,
@@ -177,7 +178,7 @@ window.FeedActionState = (function() {
             data: {
                 itemType: item.type,
                 itemId: item.id,
-                url: '/#feed',
+                url: '/#songs?item=' + encodeURIComponent(item.type + ':' + item.id),
                 badge: state.badge ? state.badge.text : ''
             }
         };
@@ -256,9 +257,28 @@ window.FeedActionState = (function() {
             }
         }
 
+        // Check if item is an RSVP-type with upcoming urgency
+        var _isRsvpUrgent = false;
+        if (needsMyInput && !isResolved) {
+            var urg = getUrgencyTag(item, meta);
+            if (urg && urg.days !== undefined && urg.days <= 2) _isRsvpUrgent = true;
+        }
+
+        // Check if I'm directly mentioned
+        var _isMentioned = false;
+        if (item.mentions && item.mentions.length) {
+            var _myKey = getMyMemberKey();
+            var _myName = getMyDisplayName();
+            _isMentioned = item.mentions.some(function(m) {
+                return (m.memberKey && m.memberKey === _myKey) || (m.displayName && m.displayName === _myName);
+            });
+        }
+
         var bucket;
         if (isArchived) bucket = BUCKET.ARCHIVED;
+        else if (_isRsvpUrgent) bucket = BUCKET.RSVP_URGENT;
         else if (effectiveTag === 'mission_critical' && !isResolved) bucket = BUCKET.CRITICAL;
+        else if (_isMentioned && !isResolved) bucket = BUCKET.NEEDS_MY_INPUT;
         else if (needsMyInput) bucket = BUCKET.NEEDS_MY_INPUT;
         else if (waitingOnOthers) bucket = BUCKET.WAITING_ON_BAND;
         else if (isResolved) bucket = BUCKET.RESOLVED;
@@ -267,10 +287,11 @@ window.FeedActionState = (function() {
         return {
             itemType: item.type, itemId: item.id, title: item.text || '',
             effectiveTag: effectiveTag,
-            needsMyInput: needsMyInput, needsBandInput: needsBandInput,
+            needsMyInput: needsMyInput || _isMentioned, needsBandInput: needsBandInput,
             completeForMe: completeForMe, completeForBand: completeForBand,
             waitingOnOthers: waitingOnOthers,
             isResolved: isResolved, isArchived: isArchived, iVoted: iVoted,
+            isMentioned: _isMentioned, isRsvpUrgent: _isRsvpUrgent,
             priorityBucket: bucket,
             urgency: getUrgencyTag(item, meta),
             badge: _computeBadge(effectiveTag, isResolved, iVoted, item.type, isArchived),
