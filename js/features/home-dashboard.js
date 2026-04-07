@@ -1564,6 +1564,46 @@ function _renderBandStatusCompact(bundle) {
     if (ratedCount === 0) headline = 'Open a song and rate your readiness';
     var scoreLabel = ratedCount > 0 ? overallAvg.toFixed(1) + '/5' : '\u2014';
 
+    // ── Member readiness visibility ──
+    var _memberReadiness = '';
+    if (ratedCount > 0) {
+        var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+        var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        if (members.length >= 2) {
+            var _ready = [], _needsReps = [];
+            members.forEach(function(m) {
+                var key = m.key || m;
+                var name = bm[key] ? (bm[key].name || key) : key;
+                // Check how many songs this member rated ≥ 4
+                var memberReady = 0, memberTotal = 0;
+                songs.forEach(function(s) {
+                    if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
+                    var scores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(s.title) || {}) : {};
+                    var score = scores[key] || 0;
+                    if (score > 0) { memberTotal++; if (score >= 4) memberReady++; }
+                });
+                if (memberTotal > 0 && memberReady >= memberTotal * 0.7) _ready.push(name);
+                else if (memberTotal > 0) _needsReps.push(name);
+            });
+            if (_ready.length || _needsReps.length) {
+                _memberReadiness = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.04);font-size:0.7em">';
+                if (_ready.length) _memberReadiness += '<div style="color:var(--text-dim)">\u2713 Ready: <span style="color:#86efac">' + _ready.join(', ') + '</span></div>';
+                if (_needsReps.length) _memberReadiness += '<div style="color:var(--text-dim)">Needs reps: <span style="color:var(--text-muted)">' + _needsReps.join(', ') + '</span></div>';
+                _memberReadiness += '</div>';
+            }
+        }
+    }
+
+    // ── Shared commitment count ──
+    var _commitHtml = '';
+    try {
+        var _commitData = JSON.parse(localStorage.getItem('gl_band_commits_today') || '{}');
+        var _today = _todayStr();
+        if (_commitData.date === _today && _commitData.count > 0) {
+            _commitHtml = '<div style="font-size:0.68em;color:#a5b4fc;margin-top:4px">\uD83C\uDFAF ' + _commitData.count + ' member' + (_commitData.count > 1 ? 's' : '') + ' committed today</div>';
+        }
+    } catch(e) {}
+
     return '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:12px">'
         // Headline + score
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
@@ -1580,6 +1620,8 @@ function _renderBandStatusCompact(bundle) {
         + (lowCount > 0 ? '<span style="color:#fbbf24">\u26A0\uFE0F ' + lowCount + ' need work</span>' : '')
         + '<span>' + ratedCount + ' rated</span>'
         + '</div>'
+        + _memberReadiness
+        + _commitHtml
         // Micro-guidance: rehearsal pressure when few weak songs
         + (function() {
             if (lowCount > 0 && lowCount <= 2) {
@@ -2138,23 +2180,87 @@ function _renderSmartNudge(bundle) {
 window._hdPostRehearsalFeedback = function(answer) {
     var el = document.getElementById('hdPostRehearsalPrompt');
     if (!el) return;
-    var msg = answer === 'yes' ? '\uD83D\uDD25 That\u2019s progress.' : answer === 'no' ? '\uD83D\uDCAA Next time.' : '\u2713 Noted.';
-    el.innerHTML = '<div style="padding:10px;text-align:center;font-size:0.78em;color:var(--text-dim)">' + msg + '</div>';
-    // Save feedback to localStorage for trend tracking
+
+    // Save to localStorage
     try {
         var history = JSON.parse(localStorage.getItem('gl_rehearsal_feedback') || '[]');
         history.push({ answer: answer, ts: new Date().toISOString() });
         if (history.length > 20) history = history.slice(-20);
         localStorage.setItem('gl_rehearsal_feedback', JSON.stringify(history));
     } catch(e) {}
-    setTimeout(function() { el.innerHTML = ''; }, 2000);
+
+    // Save to Firebase for band-wide aggregate
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    var myKey = fas ? fas.getMyMemberKey() : null;
+    var today = _todayStr().replace(/-/g, '');
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function' && myKey) {
+            db.ref(bandPath('rehearsal_feedback/' + today + '/' + myKey)).set({
+                answer: answer, ts: new Date().toISOString()
+            }).catch(function() {});
+
+            // Load aggregate and show team summary
+            db.ref(bandPath('rehearsal_feedback/' + today)).once('value').then(function(snap) {
+                var all = snap.val() || {};
+                var yes = 0, same = 0, no = 0;
+                Object.values(all).forEach(function(f) {
+                    if (f.answer === 'yes') yes++;
+                    else if (f.answer === 'same') same++;
+                    else if (f.answer === 'no') no++;
+                });
+                var total = yes + same + no;
+                if (total >= 2) {
+                    var summary = [];
+                    if (yes) summary.push(yes + ' tighter');
+                    if (same) summary.push(same + ' same');
+                    if (no) summary.push(no + ' not yet');
+                    el.innerHTML = '<div style="padding:10px;text-align:center;font-size:0.78em;color:var(--text-muted)">'
+                        + '<div style="font-weight:700;margin-bottom:2px">Band check</div>'
+                        + summary.join(' \u00B7 ')
+                        + '</div>';
+                    setTimeout(function() { el.style.transition = 'opacity 0.3s'; el.style.opacity = '0'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = '1'; }, 300); }, 5000);
+                    return;
+                }
+            }).catch(function() {});
+        }
+    } catch(e) {}
+
+    var msg = answer === 'yes' ? '\uD83D\uDD25 That\u2019s progress.' : answer === 'no' ? '\uD83D\uDCAA Next time.' : '\u2713 Noted.';
+    el.innerHTML = '<div style="padding:10px;text-align:center;font-size:0.78em;color:var(--text-dim)">' + msg + '</div>';
+    setTimeout(function() { el.innerHTML = ''; }, 3000);
 };
 
 // ── Commitment Action ─────────────────────────────────────────────────────────
 window._hdCommitToPlan = function() {
-    try { localStorage.setItem('gl_committed_today', _todayStr()); } catch(e) {}
+    var today = _todayStr();
+    try { localStorage.setItem('gl_committed_today', today); } catch(e) {}
     if (typeof showToast === 'function') showToast('\uD83C\uDFAF Plan locked for today');
-    // Re-render to show confirmation state
+
+    // Post commitment to band feed (lightweight, no spam — one per day)
+    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+    var name = fas ? fas.getMyDisplayName() : 'A band member';
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            // Store band-wide commit count for today
+            db.ref(bandPath('daily_commits/' + today.replace(/-/g, ''))).transaction(function(current) {
+                current = current || { count: 0, members: {} };
+                var myKey = fas ? fas.getMyMemberKey() : 'unknown';
+                if (!current.members[myKey]) {
+                    current.count = (current.count || 0) + 1;
+                    current.members[myKey] = new Date().toISOString();
+                }
+                return current;
+            }).then(function(result) {
+                if (result.committed && result.snapshot) {
+                    var data = result.snapshot.val() || {};
+                    try { localStorage.setItem('gl_band_commits_today', JSON.stringify({ date: today, count: data.count || 1 })); } catch(e) {}
+                }
+            }).catch(function() {});
+        }
+    } catch(e) {}
+
     if (typeof renderHomeDashboard === 'function') renderHomeDashboard();
 };
 
