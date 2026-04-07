@@ -41,7 +41,7 @@
     // Command Center layout (hd-command-center) already includes its own
     // health row, priority queue, and recent changes — skip all cc injections.
     // The old mission-board layout also handled its own strips.
-    if (dashboard.classList.contains('hd-command-center') || dashboard.classList.contains('hd-mission-board')) {
+    if (dashboard.classList.contains('hd-command-center') || dashboard.classList.contains('hd-mission-board') || dashboard.classList.contains('hd-system')) {
       _ccInjectStyles(); // still inject styles for any leftover elements
       return;
     }
@@ -83,7 +83,7 @@
     var dashboard = container.querySelector('.home-dashboard');
     if (!dashboard) return;
     // Skip cc injections for Command Center and mission-board layouts
-    if (dashboard.classList.contains('hd-command-center') || dashboard.classList.contains('hd-mission-board')) {
+    if (dashboard.classList.contains('hd-command-center') || dashboard.classList.contains('hd-mission-board') || dashboard.classList.contains('hd-system')) {
       return;
     }
     if (!document.getElementById('cc-summary-strip')) {
