@@ -488,35 +488,42 @@ function _feedRenderMentions(text) {
     });
 }
 
-// Filter feed to show items mentioning a specific person
+// Filter feed to show items assigned to a specific person
+window._feedMentionFilterKey = null;
+
 window._feedFilterByMention = function(name) {
-    // Find member key from name
     var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     var targetKey = null;
     Object.keys(members).forEach(function(k) {
         if ((members[k].name || '').split(' ')[0].toLowerCase() === name.toLowerCase()) targetKey = k;
     });
-    if (targetKey) {
-        // Use the "needs_input" filter which shows items targeted at me
-        // For now, show a toast with who was mentioned
+    if (!targetKey) return;
+    // Toggle: if already filtering by this person, clear it
+    if (window._feedMentionFilterKey === targetKey) {
+        window._feedMentionFilterKey = null;
+        if (typeof showToast === 'function') showToast('Filter cleared');
+    } else {
+        window._feedMentionFilterKey = targetKey;
         if (typeof showToast === 'function') showToast('Showing items for @' + name);
     }
+    _feedRerender();
 };
 
-// Build assignment chip for items with structured mentions
+// Build assignment chip — standardized "Assigned to" label
 function _feedBuildAssignmentChip(item) {
     if (!item.mentions || !item.mentions.length) return '';
     var labels = [];
     item.mentions.forEach(function(m) {
         if (m.key === '_all' || m.key === '_band') { labels = ['Band']; return; }
-        if (m.key && m.key.indexOf('_role_') === 0) { labels.push(m.display || m.key.replace('_role_', '')); return; }
+        if (m.key && m.key.indexOf('_role_') === 0) { labels.push(m.display ? m.display.replace('@', '') : m.key.replace('_role_', '')); return; }
         if (m.display) labels.push(m.display.replace('@', ''));
     });
     if (!labels.length) return '';
     var unique = [];
     labels.forEach(function(l) { if (unique.indexOf(l) === -1) unique.push(l); });
     var label = unique.length <= 2 ? unique.join(', ') : unique[0] + ' +' + (unique.length - 1);
-    return '<span style="font-size:0.62em;font-weight:700;color:#a5b4fc;background:rgba(99,102,241,0.08);padding:2px 6px;border-radius:4px;margin-left:4px;display:inline-block">\u2192 ' + label + '</span>';
+    return '<span style="font-size:0.65em;font-weight:600;color:#a5b4fc;margin-left:6px;display:inline-flex;align-items:center;gap:3px">'
+        + '<span style="opacity:0.6">Assigned to</span> ' + label + '</span>';
 }
 
 // Composer targeting preview — shows who will be notified
@@ -528,16 +535,30 @@ function _feedUpdateComposerPreview(inputId) {
         return;
     }
     var isAll = _feedPendingMentions.some(function(m) { return m.key === '_all' || m.key === '_band'; });
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     var text = '';
     if (isAll) {
-        text = '\uD83D\uDCE2 Will notify: Entire band';
+        var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : Object.keys(bm).length;
+        text = '\uD83D\uDCE2 Will notify: Entire band (' + memberCount + ')';
     } else {
-        var names = [];
+        var parts = [];
+        var seen = {};
         _feedPendingMentions.forEach(function(m) {
+            if (seen[m.key]) return;
+            seen[m.key] = true;
             var n = m.display ? m.display.replace('@', '') : m.key;
-            if (names.indexOf(n) === -1) names.push(n);
+            // Add role context if available
+            if (m.type === 'member' && bm[m.key]) {
+                var role = bm[m.key].role || bm[m.key].instrument || '';
+                if (role) n += ' (' + role + ')';
+            }
+            if (m.key && m.key.indexOf('_role_') === 0) {
+                var roleMembers = m.memberKeys ? m.memberKeys.length : '?';
+                n += ' (' + roleMembers + ')';
+            }
+            parts.push(n);
         });
-        text = '\uD83D\uDD14 Will notify: ' + names.join(', ');
+        text = '\uD83D\uDD14 Will notify: ' + parts.join(', ');
     }
 
     if (!existing) {
@@ -548,11 +569,12 @@ function _feedUpdateComposerPreview(inputId) {
         if (inp && inp.parentElement) inp.parentElement.appendChild(existing);
     }
     existing.textContent = text;
+    existing.style.color = '#a5b4fc';
 
     // Group mention guardrail
     if (isAll) {
         existing.style.color = '#fbbf24';
-        existing.textContent = '\u26A0\uFE0F Will notify entire band \u2014 are you sure?';
+        existing.textContent = '\u26A0\uFE0F Will notify entire band (' + (typeof BAND_MEMBERS_ORDERED !== 'undefined' ? BAND_MEMBERS_ORDERED.length : Object.keys(bm).length) + ' members) \u2014 are you sure?';
     }
 }
 
@@ -1696,6 +1718,15 @@ function _feedRender(items) {
         visible = items.filter(function(i) { return _feedIsArchived(i); });
     } else {
         visible = items.filter(function(i) { return !_feedIsArchived(i); });
+    }
+    // Mention filter overlay — narrows to items targeting a specific member
+    if (window._feedMentionFilterKey) {
+        var _mfk = window._feedMentionFilterKey;
+        visible = visible.filter(function(i) {
+            if (i.targetMembers && i.targetMembers.indexOf(_mfk) !== -1) return true;
+            if (i.mentions) return i.mentions.some(function(m) { return m.key === _mfk; });
+            return false;
+        });
     }
 
     // Apply filter using action state

@@ -1837,8 +1837,28 @@ window.calShowDateConflicts = function(dateStr) {
 
 function calDayClick(y, m, d) {
     calViewYear = y; calViewMonth = m;
-    const ds = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    calAddEvent(ds);
+    var ds = y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+
+    // Show selected-date context in right rail
+    var ctxRail = document.getElementById('calContextRail');
+    if (ctxRail) {
+        var dateObj = new Date(y, m, d);
+        var dateLabel = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        var blocked = _calCachedBlockedRanges ? _calCachedBlockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; }) : [];
+        var hint = blocked.length === 0 ? 'No conflicts \u2014 good choice' : blocked.length + ' conflict' + (blocked.length > 1 ? 's' : '');
+        var hintColor = blocked.length > 0 ? '#f59e0b' : '#86efac';
+        var safDs = ds.replace(/'/g, "\\'");
+
+        var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + (blocked.length > 0 ? '#f59e0b' : '#22c55e') + '">'
+            + '<div style="font-size:0.82em;font-weight:700;color:var(--text);margin-bottom:2px">' + dateLabel + '</div>'
+            + '<div style="font-size:0.72em;color:' + hintColor + ';margin-bottom:8px">' + hint + '</div>'
+            + '<button onclick="calAddEvent(\'' + safDs + '\')" style="font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:none;background:rgba(34,197,94,0.1);color:#86efac;width:100%">Lock rehearsal here</button>'
+            + '</div>';
+
+        var existing = document.getElementById('calSelectedDayCard');
+        if (existing) { existing.outerHTML = cardHtml; }
+        else { var t = document.createElement('div'); t.innerHTML = cardHtml; ctxRail.insertBefore(t.firstElementChild, ctxRail.firstChild); }
+    }
 }
 
 async function calAddEvent(date, editIdx, existing) {
