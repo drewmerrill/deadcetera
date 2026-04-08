@@ -299,7 +299,11 @@ async function _rhRenderCommandFlow(el) {
     }
     html += '</div></div>';
 
-    // (Context and "Start Here" directive removed — consolidated into Next Up section above)
+    // Confidence line — GLStatus-driven
+    if (confLabel) {
+        var _confHint = (typeof GLStatus !== 'undefined') ? GLStatus.getReadiness(ci && ci.catalogAvg ? parseFloat(ci.catalogAvg) : 0).hint : '';
+        html += '<div class="gl-confidence" style="margin-bottom:var(--gl-space-sm)">Readiness: ' + confLabel + (_confHint ? ' \u2014 ' + _confHint : '') + '</div>';
+    }
 
     // ── SECTION 2: Saved Plan indicator + Primary CTA ──
     // Try Firebase first, then fall back to localStorage
@@ -659,6 +663,19 @@ async function _rhRenderCommandFlow(el) {
 
     // Render mixdowns section
     if (typeof RehearsalMixdowns !== 'undefined') RehearsalMixdowns.render('rhMixdownsContainer');
+
+    // Accordion behavior — only one rail section open at a time
+    if (_rhCtx) {
+        _rhCtx.querySelectorAll('details').forEach(function(det) {
+            det.addEventListener('toggle', function() {
+                if (det.open) {
+                    _rhCtx.querySelectorAll('details').forEach(function(other) {
+                        if (other !== det && other.open) other.open = false;
+                    });
+                }
+            });
+        });
+    }
 
     // Move plan to right rail (context, not primary)
     var _planContainer = document.getElementById('rhPlanContainer');
@@ -4176,8 +4193,24 @@ window.renderRehearsalPlanner = async function() {
     }
     _rpState.step = 0;
     var container = document.getElementById('rhTabContent');
-    if (!container) { showPage('rehearsal'); setTimeout(renderRehearsalPlanner, 200); return; }
+    // If rhTabContent doesn't exist, use rhMain with an edit-mode header
+    if (!container) {
+        var main = document.getElementById('rhMain');
+        if (!main) { showPage('rehearsal'); setTimeout(renderRehearsalPlanner, 200); return; }
+        main.innerHTML = '<div style="display:flex;align-items:center;gap:var(--gl-space-sm);margin-bottom:var(--gl-space-md)">'
+            + '<span style="font-size:0.82em;font-weight:700;color:var(--gl-text)">Editing Plan</span>'
+            + '<button onclick="_rhExitPlannerMode()" class="gl-btn-ghost" style="margin-left:auto">Back to Timeline</button>'
+            + '</div>'
+            + '<div id="rhTabContent"></div>';
+        container = document.getElementById('rhTabContent');
+    }
+    if (!container) return;
     _rpRenderGigPicker(container);
+};
+
+window._rhExitPlannerMode = function() {
+    var el = document.getElementById('page-rehearsal') || document.querySelector('.gl-page-primary');
+    if (el) renderRehearsalPage(el);
 };
 
 // ── Step 0: Gig Picker ──────────────────────────────────────────────────────
