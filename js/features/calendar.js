@@ -1155,13 +1155,16 @@ async function loadCalendarEvents() {
     });
 
     const el = document.getElementById('calendarEvents');
-    if (!el) return { dateMap, blockedRanges: [] };
+    // Note: el may be null if context rail hasn't rendered yet.
+    // Do NOT return early — blocked data must still load for the grid.
     const today = new Date().toISOString().split('T')[0];
     var futureEnd = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
     var expandedUpcoming = expandRecurringEvents(events, today, futureEnd);
     const upcoming = expandedUpcoming.filter(function(e) { return (e.date || '') >= today; })
         .sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
-    if (upcoming.length === 0) {
+    if (!el) {
+        // calendarEvents not in DOM yet — skip upcoming rendering, proceed to blocked data
+    } else if (upcoming.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim)">No upcoming events. Click a date or + Add Event.</div>';
     } else {
         // Resolve setlist names from IDs
@@ -1259,6 +1262,7 @@ async function loadCalendarEvents() {
     }
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
+    console.log('[Calendar] Blocked ranges loaded:', blocked.length, '| calendarEvents el:', !!el);
     // Update header count
     var bHeader = document.getElementById('calBlockedHeader');
     if (bHeader) bHeader.textContent = '🚫 Conflicts & Blocked Dates' + (blocked.length > 0 ? ' (' + blocked.length + ')' : '');
