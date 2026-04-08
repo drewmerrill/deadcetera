@@ -1529,8 +1529,8 @@ function _renderRailGuidance(bundle) {
         var next = calEvents.filter(function(e) { return (e.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
         if (next) {
             var dd = _dayDiff(today, next.date);
-            var icon = next.type === 'gig' ? '\uD83C\uDFA4' : '\uD83C\uDFB8';
-            hints.push({ text: icon + ' ' + (dd === 0 ? 'Today' : dd === 1 ? 'Tomorrow' : 'in ' + dd + 'd') + (next.title ? ' \u2014 ' + next.title : ''), color: dd <= 2 ? '#fbbf24' : 'var(--text-dim)' });
+            var _eu = (typeof GLUrgency !== 'undefined') ? GLUrgency.forEvent(dd, next.type) : { label: dd + 'd', color: 'var(--gl-text-tertiary)', icon: '\uD83C\uDFB8' };
+            hints.push({ text: _eu.icon + ' ' + _eu.label + (next.title ? ' \u2014 ' + next.title : ''), color: _eu.color });
         }
     } catch(e) {}
 

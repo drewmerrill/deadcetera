@@ -1846,19 +1846,11 @@ function calDayClick(y, m, d) {
         var dateLabel = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
         var blocked = _calCachedBlockedRanges ? _calCachedBlockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; }) : [];
         var isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-        // Confidence-based reasoning
-        var hint, hintColor;
-        if (blocked.length === 0 && !isWeekend) {
-            hint = 'Best choice this week'; hintColor = 'var(--gl-green,#22c55e)';
-        } else if (blocked.length === 0) {
-            hint = 'No conflicts'; hintColor = 'var(--gl-green,#22c55e)';
-        } else if (blocked.length === 1) {
-            hint = 'Good option \u2014 minor conflict'; hintColor = 'var(--gl-amber,#f59e0b)';
-        } else {
-            hint = blocked.length + ' conflicts \u2014 consider alternatives'; hintColor = 'var(--gl-amber,#f59e0b)';
-        }
+        var _dq = (typeof GLScheduleQuality !== 'undefined') ? GLScheduleQuality.forDate(blocked.length, isWeekend) : { label: '', color: 'var(--gl-text-tertiary)', level: 'fair' };
+        var hint = _dq.label;
+        var hintColor = _dq.color;
         var safDs = ds.replace(/'/g, "\\'");
-        var borderColor = blocked.length > 0 ? 'var(--gl-amber,#f59e0b)' : 'var(--gl-green,#22c55e)';
+        var borderColor = blocked.length > 0 ? 'var(--gl-amber)' : 'var(--gl-green)';
 
         var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
             + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:2px">' + dateLabel + '</div>'

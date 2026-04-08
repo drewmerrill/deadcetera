@@ -6092,3 +6092,106 @@ window.GLStatus = (function() {
     getBarColor: getBarColor
   };
 })();
+
+// =============================================================================
+// GLUrgency — Centralized event urgency language
+//
+// RULE: All urgency labels, colors, and copy MUST come from GLUrgency.
+// No inline daysOut thresholds or urgency text in UI files.
+//
+// USAGE:
+//   var u = GLUrgency.forEvent(daysOut, eventType);
+//   // → { label, hint, level, color }
+// =============================================================================
+window.GLUrgency = (function() {
+  'use strict';
+
+  function forEvent(daysOut, eventType) {
+    var type = eventType || 'rehearsal';
+    var icon = type === 'gig' ? '\uD83C\uDFA4' : '\uD83C\uDFB8';
+    if (daysOut === null || daysOut === undefined || daysOut > 30) return { label: '', hint: '', level: 'none', color: 'var(--gl-text-tertiary)', icon: icon };
+    if (daysOut === 0) return { label: 'Today', hint: type === 'gig' ? 'Showtime' : 'Rehearsal today', level: 'critical', color: 'var(--gl-red)', icon: icon };
+    if (daysOut === 1) return { label: 'Tomorrow', hint: 'Final prep', level: 'urgent', color: 'var(--gl-red)', icon: icon };
+    if (daysOut <= 3) return { label: daysOut + ' days', hint: 'Lock your preparation', level: 'soon', color: 'var(--gl-amber)', icon: icon };
+    if (daysOut <= 7) return { label: daysOut + ' days', hint: 'Good time to rehearse', level: 'upcoming', color: 'var(--gl-text-secondary)', icon: icon };
+    return { label: daysOut + ' days', hint: '', level: 'planned', color: 'var(--gl-text-tertiary)', icon: icon };
+  }
+
+  function forRsvp(daysOut) {
+    if (daysOut === null || daysOut === undefined) return { label: '', level: 'none', color: 'var(--gl-text-tertiary)' };
+    if (daysOut <= 1) return { label: 'RSVP now', level: 'critical', color: 'var(--gl-red)' };
+    if (daysOut <= 3) return { label: 'RSVP needed', level: 'urgent', color: 'var(--gl-amber)' };
+    return { label: 'Respond when ready', level: 'normal', color: 'var(--gl-text-tertiary)' };
+  }
+
+  return { forEvent: forEvent, forRsvp: forRsvp };
+})();
+
+// =============================================================================
+// GLPriority — Centralized feed item priority language
+//
+// RULE: All feed priority labels and action copy MUST come from GLPriority.
+// No inline "Waiting on YOU" / "Still waiting" strings in UI files.
+//
+// USAGE:
+//   var p = GLPriority.forAction(state);
+//   // → { label, color, weight }
+// =============================================================================
+window.GLPriority = (function() {
+  'use strict';
+
+  function forAction(opts) {
+    var isBlocker = opts.isBlocker || false;
+    var isStuck = opts.isStuck || false;
+    var isMentioned = opts.isMentioned || false;
+    var isRsvpUrgent = opts.isRsvpUrgent || false;
+
+    if (isRsvpUrgent) return { label: 'RSVP needed', color: 'var(--gl-red)', weight: '800', icon: '\uD83D\uDEA8' };
+    if (isBlocker) return { label: 'Everyone responded \u2014 waiting on YOU', color: 'var(--gl-red)', weight: '800', icon: '\u26A1' };
+    if (isMentioned) return { label: 'You were mentioned', color: 'var(--gl-indigo)', weight: '700', icon: '@' };
+    if (isStuck) return { label: 'Still waiting on YOU', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1' };
+    return { label: 'Waiting on YOU', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1' };
+  }
+
+  function forRsvpEvent(daysOut, eventType) {
+    var type = eventType || 'rehearsal';
+    var what = type === 'gig' ? 'gig' : 'rehearsal';
+    if (daysOut === 0) return { label: '\uD83D\uDEA8 ' + (type === 'gig' ? 'Gig' : 'Rehearsal') + ' tonight \u2014 we need your RSVP', color: 'var(--gl-red)' };
+    if (daysOut === 1) return { label: '\uD83D\uDEA8 ' + (type === 'gig' ? 'Gig' : 'Rehearsal') + ' tomorrow \u2014 we need your RSVP', color: 'var(--gl-red)' };
+    return { label: '\u26A0\uFE0F Event in ' + daysOut + ' days \u2014 you haven\u2019t RSVP\u2019d', color: 'var(--gl-amber)' };
+  }
+
+  return { forAction: forAction, forRsvpEvent: forRsvpEvent };
+})();
+
+// =============================================================================
+// GLScheduleQuality — Centralized schedule date quality language
+//
+// RULE: All date quality labels MUST come from GLScheduleQuality.
+// No inline "Best choice" / "Good option" strings in UI files.
+//
+// USAGE:
+//   var q = GLScheduleQuality.forDate(conflicts, isWeekend, score);
+//   // → { label, color, level }
+// =============================================================================
+window.GLScheduleQuality = (function() {
+  'use strict';
+
+  function forDate(conflicts, isWeekend, score) {
+    conflicts = conflicts || 0;
+    if (score !== undefined && score !== null) {
+      // Score-based (from recommendation engine)
+      if (score >= 70) return { label: 'Best choice this week', level: 'best', color: 'var(--gl-green)' };
+      if (score >= 55) return { label: 'Good option', level: 'good', color: 'var(--gl-green)' };
+      if (score >= 40) return { label: 'Possible \u2014 some conflicts', level: 'fair', color: 'var(--gl-amber)' };
+      return { label: 'Tough \u2014 consider alternatives', level: 'poor', color: 'var(--gl-amber)' };
+    }
+    // Conflict-based fallback
+    if (conflicts === 0 && !isWeekend) return { label: 'Best choice this week', level: 'best', color: 'var(--gl-green)' };
+    if (conflicts === 0) return { label: 'No conflicts', level: 'good', color: 'var(--gl-green)' };
+    if (conflicts === 1) return { label: 'Good option \u2014 minor conflict', level: 'fair', color: 'var(--gl-amber)' };
+    return { label: conflicts + ' conflicts \u2014 consider alternatives', level: 'poor', color: 'var(--gl-amber)' };
+  }
+
+  return { forDate: forDate };
+})();

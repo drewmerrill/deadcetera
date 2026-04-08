@@ -1937,40 +1937,28 @@ function _feedRenderItem(item, isFirstAction) {
         var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
 
         if (state.isRsvpUrgent) {
-            // RSVP with upcoming event — strongest signal, escalates at <24h
             var _urgDays = state.urgency ? state.urgency.days : null;
+            var _rsvpP = (typeof GLPriority !== 'undefined') ? GLPriority.forRsvpEvent(_urgDays) : { label: 'RSVP needed', color: 'var(--gl-red)' };
             var _isFinal = _urgDays !== null && _urgDays <= 1;
-            var _urgText = _urgDays === 0 ? 'tonight' : _urgDays === 1 ? 'tomorrow' : 'in ' + _urgDays + ' days';
-            var _urgIcon = _isFinal ? '\uD83D\uDEA8' : '\u26A0\uFE0F';
-            var _urgMsg = _isFinal
-                ? _urgIcon + ' Rehearsal ' + _urgText + ' \u2014 we need your RSVP'
-                : _urgIcon + ' Event ' + _urgText + ' \u2014 you haven\u2019t RSVP\u2019d';
-            html += '<div style="font-size:0.75em;font-weight:800;color:var(--gl-red);margin-top:6px;padding:var(--gl-space-xs) var(--gl-space-sm);background:rgba(239,68,68,' + (_isFinal ? '0.12' : '0.08') + ');border-radius:6px;border-left:3px solid var(--gl-red)">'
-                + _urgMsg + '</div>';
-        } else if (state.isMentioned) {
-            html += '<div style="font-size:0.72em;font-weight:700;color:var(--gl-indigo);margin-top:6px;padding:3px 0">@ You were mentioned'
-                + (_ageLabel ? ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _ageLabel + '</span>' : '')
-                + '</div>';
-        } else if (state.needsMyInput) {
-            // Poll progress + blocker detection
-            var _progressHtml = '';
+            html += '<div style="font-size:0.75em;font-weight:800;color:' + _rsvpP.color + ';margin-top:6px;padding:var(--gl-space-xs) var(--gl-space-sm);background:rgba(239,68,68,' + (_isFinal ? '0.12' : '0.08') + ');border-radius:6px;border-left:3px solid ' + _rsvpP.color + '">'
+                + _rsvpP.label + '</div>';
+        } else if (state.isMentioned || state.needsMyInput) {
+            // Blocker detection for polls
             var _isBlocker = false;
+            var _progressHtml = '';
             if (item.type === 'poll' && item.pollVotes && fas) {
                 var _voted = Object.keys(item.pollVotes).length;
                 var _remaining = memberCount - _voted;
-                _isBlocker = _remaining === 1; // I'm the last one
-                if (_isBlocker) {
-                    _progressHtml = ' <span style="opacity:0.8;font-weight:600">\u00B7 everyone else responded</span>';
-                } else {
-                    _progressHtml = ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _voted + ' of ' + memberCount + ' responded</span>';
-                }
+                _isBlocker = _remaining === 1;
+                _progressHtml = _isBlocker
+                    ? ' <span style="opacity:0.8;font-weight:600">\u00B7 everyone else responded</span>'
+                    : ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _voted + ' of ' + memberCount + ' responded</span>';
             }
-            var _actionColor = _isBlocker ? 'var(--gl-red)' : _isStuck ? 'var(--gl-amber)' : 'var(--gl-amber)';
-            var _actionWeight = _isBlocker ? '800' : '700';
-            var _actionText = _isBlocker ? 'Everyone responded \u2014 waiting on YOU'
-                : _isStuck ? 'Still waiting on YOU' : 'Waiting on YOU';
-            html += '<div style="font-size:0.72em;font-weight:' + _actionWeight + ';color:' + _actionColor + ';margin-top:6px;padding:3px 0">'
-                + '\u26A1 ' + _actionText + _progressHtml
+            var _pri = (typeof GLPriority !== 'undefined')
+                ? GLPriority.forAction({ isBlocker: _isBlocker, isStuck: _isStuck, isMentioned: state.isMentioned, isRsvpUrgent: false })
+                : { label: 'Waiting on YOU', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1' };
+            html += '<div style="font-size:0.72em;font-weight:' + _pri.weight + ';color:' + _pri.color + ';margin-top:6px;padding:3px 0">'
+                + _pri.icon + ' ' + _pri.label + _progressHtml
                 + (_ageLabel ? ' <span style="opacity:0.5;font-weight:500">\u00B7 ' + _ageLabel + '</span>' : '')
                 + '</div>';
         }
