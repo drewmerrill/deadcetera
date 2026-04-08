@@ -450,8 +450,8 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
 
     // Streak + commitment inline after CTA — subtle, not competing
     var _ctaTrail = '';
-    if (_committed) _ctaTrail += '<span style="font-size:0.68em;color:#22c55e;font-weight:600">\u2713 Locked</span>';
-    if (_streakHtml) _ctaTrail += '<span style="font-size:0.68em;color:#f59e0b;margin-left:auto">' + _streakHtml.replace(/<[^>]+>/g, '').trim() + '</span>';
+    if (_committed) _ctaTrail += '<span style="font-size:0.68em;color:var(--gl-green);font-weight:600">\u2713 Locked</span>';
+    if (_streakHtml) _ctaTrail += '<span style="font-size:0.68em;color:var(--gl-amber);margin-left:auto">' + _streakHtml.replace(/<[^>]+>/g, '').trim() + '</span>';
 
     // Hero confidence line — readiness + top issue
     var _confLine = '';
@@ -459,10 +459,9 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         var _confFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : null;
         if (_confFocus && _confFocus.primary) {
             var _confAvg = _confFocus.primary.avg || 0;
-            var _confLabel = _confAvg >= 4 ? 'Strong' : _confAvg >= 3 ? 'Moderate' : _confAvg > 0 ? 'Needs work' : '';
+            var _confLabel = _confAvg >= 4 ? 'Strong' : _confAvg >= 3 ? 'Solid' : _confAvg > 0 ? 'Needs work' : '';
             if (_confLabel) {
                 _confLine = 'Readiness: ' + _confLabel;
-                // Add top issue hint from intelligence
                 if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
                     var _ia = GLInsights.getNextAction();
                     if (_ia && _ia.plan && _ia.plan.types && _ia.plan.types.length) {
@@ -475,14 +474,14 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         }
     } catch(e) {}
 
-    return '<div style="padding:18px 16px;margin-bottom:10px;border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))">'
-        + '<div style="font-size:1.1em;font-weight:800;color:#f1f5f9;margin-bottom:4px;line-height:1.25">' + _escHtml(msg) + '</div>'
-        + (_justification ? '<div style="font-size:0.72em;color:#64748b;margin-bottom:4px">' + _justification + '</div>' : '')
-        + (_confLine ? '<div style="font-size:0.78em;color:var(--gl-text-secondary,#94a3b8);opacity:0.7;margin-bottom:10px">' + _confLine + '</div>' : '')
+    return '<div style="padding:var(--gl-space-lg) var(--gl-space-md);margin-bottom:var(--gl-space-sm);border-radius:12px;background:linear-gradient(160deg,rgba(34,197,94,0.04),rgba(99,102,241,0.03))">'
+        + '<div style="font-size:1.1em;font-weight:800;color:var(--gl-text);margin-bottom:var(--gl-space-xs);line-height:1.25">' + _escHtml(msg) + '</div>'
+        + (_justification ? '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-bottom:var(--gl-space-xs)">' + _justification + '</div>' : '')
+        + (_confLine ? '<div class="gl-confidence" style="margin-bottom:var(--gl-space-sm)">' + _confLine + '</div>' : '')
         + _subHtml
         + _expandHtml
-        + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-        + '<button onclick="_hdStartWithTransition(function(){' + cta.onclick.replace(/"/g, '&quot;') + '})" style="padding:12px 28px;border-radius:10px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-weight:700;font-size:0.92em;cursor:pointer;min-width:180px;box-shadow:0 2px 8px rgba(34,197,94,0.2)">' + _escHtml(cta.label) + '</button>'
+        + '<div class="gl-action-row" style="gap:var(--gl-space-sm)">'
+        + '<button onclick="_hdStartWithTransition(function(){' + cta.onclick.replace(/"/g, '&quot;') + '})" class="gl-btn-primary">' + _escHtml(cta.label) + '</button>'
         + _ctaTrail
         + '</div>'
         + _buildIntelSignal()
@@ -1478,7 +1477,7 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
             _leftHtml += '<button onclick="_hdAlignFocus()" class="gl-btn-ghost" style="font-weight:600;color:var(--gl-text,var(--text))">Count me in</button>';
             _leftHtml += '<button onclick="_hdLockBandFocus()" class="gl-btn-ghost">Lock for band</button>';
         } else {
-            _leftHtml += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Locked for band</span>';
+            _leftHtml += '<span style="font-size:0.72em;color:var(--gl-green);font-weight:600">\u2713 Locked for band</span>';
         }
         if (_alignCount > 0) {
             _leftHtml += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto;opacity:0.6">' + _alignCount + '/' + memberCount + ' aligned</span>';

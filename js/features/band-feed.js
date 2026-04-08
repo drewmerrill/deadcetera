@@ -1877,7 +1877,7 @@ function _feedRenderItem(item, isFirstAction) {
     var safeSongId = item.songId ? _feedEsc(item.songId) : '';
     var clickAttr = ' onclick="_feedNavigate(\'' + safeType + '\',\'' + safeId + '\',\'' + safeSongId + '\')"';
 
-    var cardStyle = 'padding:10px 14px;background:var(--bg-card,#1e293b);border:1px solid var(--border,rgba(255,255,255,0.08));border-radius:10px;margin-bottom:6px';
+    var cardStyle = 'padding:var(--gl-space-sm) 14px;background:var(--gl-surface-raised);border:1px solid var(--gl-border);border-radius:10px;margin-bottom:6px';
     if (resolved) cardStyle += ';opacity:0.6';
     if (archived) cardStyle += ';opacity:0.45';
 
@@ -1899,7 +1899,7 @@ function _feedRenderItem(item, isFirstAction) {
 
     // Micro-guidance on first action item
     if (isFirstAction) {
-        html += '<div id="feedMicroGuide" style="font-size:0.68em;font-weight:600;color:#fbbf24;margin-bottom:6px;opacity:0.8">\u2192 Tap to complete this</div>';
+        html += '<div id="feedMicroGuide" style="font-size:0.68em;font-weight:600;color:var(--gl-amber);margin-bottom:6px;opacity:0.8">\u2192 Tap to complete this</div>';
     }
 
     // Header
@@ -1926,7 +1926,7 @@ function _feedRenderItem(item, isFirstAction) {
 
     // Pinned badge
     var isPinned = _feedGetMeta(item).pinned;
-    if (isPinned) html += '<span style="font-size:0.6em;font-weight:700;color:#fbbf24;background:rgba(251,191,36,0.1);padding:1px 5px;border-radius:3px;margin-top:4px;margin-left:4px;display:inline-block">\uD83D\uDCCC Pinned to Band Room</span>';
+    if (isPinned) html += '<span class="gl-chip gl-chip--amber" style="margin-top:4px;margin-left:4px">\uD83D\uDCCC Pinned</span>';
 
     // ── Action signals: time-aware, socially visible, escalating ──
     if (state && !resolved) {
@@ -1945,10 +1945,10 @@ function _feedRenderItem(item, isFirstAction) {
             var _urgMsg = _isFinal
                 ? _urgIcon + ' Rehearsal ' + _urgText + ' \u2014 we need your RSVP'
                 : _urgIcon + ' Event ' + _urgText + ' \u2014 you haven\u2019t RSVP\u2019d';
-            html += '<div style="font-size:0.75em;font-weight:800;color:#ef4444;margin-top:6px;padding:4px 8px;background:rgba(239,68,68,' + (_isFinal ? '0.12' : '0.08') + ');border-radius:6px;border-left:3px solid #ef4444">'
+            html += '<div style="font-size:0.75em;font-weight:800;color:var(--gl-red);margin-top:6px;padding:var(--gl-space-xs) var(--gl-space-sm);background:rgba(239,68,68,' + (_isFinal ? '0.12' : '0.08') + ');border-radius:6px;border-left:3px solid var(--gl-red)">'
                 + _urgMsg + '</div>';
         } else if (state.isMentioned) {
-            html += '<div style="font-size:0.72em;font-weight:700;color:#818cf8;margin-top:6px;padding:3px 0">@ You were mentioned'
+            html += '<div style="font-size:0.72em;font-weight:700;color:var(--gl-indigo);margin-top:6px;padding:3px 0">@ You were mentioned'
                 + (_ageLabel ? ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _ageLabel + '</span>' : '')
                 + '</div>';
         } else if (state.needsMyInput) {
@@ -1965,7 +1965,7 @@ function _feedRenderItem(item, isFirstAction) {
                     _progressHtml = ' <span style="opacity:0.6;font-weight:500">\u00B7 ' + _voted + ' of ' + memberCount + ' responded</span>';
                 }
             }
-            var _actionColor = _isBlocker ? '#ef4444' : _isStuck ? '#f59e0b' : '#fbbf24';
+            var _actionColor = _isBlocker ? 'var(--gl-red)' : _isStuck ? 'var(--gl-amber)' : 'var(--gl-amber)';
             var _actionWeight = _isBlocker ? '800' : '700';
             var _actionText = _isBlocker ? 'Everyone responded \u2014 waiting on YOU'
                 : _isStuck ? 'Still waiting on YOU' : 'Waiting on YOU';
