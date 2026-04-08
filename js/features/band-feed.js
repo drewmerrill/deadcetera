@@ -2032,29 +2032,45 @@ function _feedRenderItem(item, isFirstAction) {
         html += '</div>';
     }
 
-    // Action bar
+    // Type badge
+    var _typeLabels = { idea: 'Idea', poll: 'Poll', rehearsal_note: 'Rehearsal', song_moment: 'Song Note', note: 'Note', link: 'Link', photo: 'Photo' };
+    var _tl = _typeLabels[item.type] || _typeLabels[item.post_type] || '';
+    if (_tl) html += '<span class="gl-chip" style="margin-top:4px">' + _tl + '</span>';
+
+    // Action bar — primary actions visible, secondary in overflow menu
     var effectiveTag = state ? state.effectiveTag : _feedGetTag(item);
-    html += '<div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap" onclick="event.stopPropagation()">';
-    html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:' + (resolved ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (resolved ? '#86efac' : 'var(--text-dim)') + '">' + (resolved ? '\u2705 Resolved' : '\u2611\uFE0F Resolve') + '</button>';
+    var _menuId = 'feedMenu_' + safeType + '_' + safeId;
+    var _confirmId = 'feedConfirm_' + safeType + '_' + safeId;
+    html += '<div style="display:flex;align-items:center;gap:4px;margin-top:6px" onclick="event.stopPropagation()">';
+    // Primary: Resolve + Note
+    html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px;' + (resolved ? 'color:var(--gl-green);border-color:rgba(34,197,94,0.2)' : '') + '">' + (resolved ? '\u2705 Resolved' : 'Resolve') + '</button>';
+    html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px">Note</button>';
+    // Overflow menu trigger
+    html += '<div style="position:relative;margin-left:auto">';
+    html += '<button onclick="_feedToggleMenu(\'' + _menuId + '\')" style="background:transparent;border:1px solid var(--gl-border);color:var(--gl-text-secondary);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.78em;line-height:1">\u22EF</button>';
+    // Overflow menu dropdown
+    html += '<div id="' + _menuId + '" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:150px;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;z-index:20">';
     var tagLabels = { fyi: 'FYI', needs_input: 'Needs Input', mission_critical: 'Critical', fun: 'Fun' };
-    html += '<button onclick="_feedChangeTag(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83C\uDFF7\uFE0F ' + (tagLabels[effectiveTag] || effectiveTag) + '</button>';
-    html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83D\uDCDD Note</button>';
+    html += _feedMenuBtn('\uD83C\uDFF7\uFE0F ' + (tagLabels[effectiveTag] || 'Tag'), "_feedChangeTag('" + safeType + "','" + safeId + "')");
+    html += _feedMenuBtn('\uD83D\uDCCC ' + (isPinned ? 'Unpin' : 'Pin'), "_feedAction('" + (isPinned ? 'unpin' : 'pin') + "','" + safeType + "','" + safeId + "')");
     if (archived) {
-        html += '<button onclick="_feedAction(\'unarchive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\u21A9\uFE0F Restore</button>';
+        html += _feedMenuBtn('\u21A9\uFE0F Restore', "_feedAction('unarchive','" + safeType + "','" + safeId + "')");
     } else {
-        html += '<button onclick="_feedAction(\'archive\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);opacity:0.5">\uD83D\uDDC4\uFE0F Archive</button>';
+        html += _feedMenuBtn('\uD83D\uDDC4\uFE0F Archive', "_feedAction('archive','" + safeType + "','" + safeId + "')");
     }
-    // Pin to Band Room
-    html += '<button onclick="_feedAction(\'' + (isPinned ? 'unpin' : 'pin') + '\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (isPinned ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.08)') + ';background:' + (isPinned ? 'rgba(251,191,36,0.08)' : 'none') + ';color:' + (isPinned ? '#fbbf24' : 'var(--text-dim)') + ';opacity:' + (isPinned ? '1' : '0.5') + '">\uD83D\uDCCC ' + (isPinned ? 'Unpin' : 'Pin') + '</button>';
-    // Edit (creator only)
     if (_feedCanDelete(item)) {
-        html += '<button onclick="_feedEditItem(\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;opacity:0.5">\u270F\uFE0F</button>';
+        html += '<div style="height:1px;background:var(--gl-border);margin:2px 0"></div>';
+        html += _feedMenuBtn('\u270F\uFE0F Edit', "_feedEditItem('" + safeType + "','" + safeId + "')");
+        html += _feedMenuBtn('\uD83D\uDDD1\uFE0F Delete', "_feedConfirmDelete('" + safeType + "','" + safeId + "')", 'var(--gl-red)');
     }
-    // Delete button (creator or admin only)
-    if (_feedCanDelete(item)) {
-        html += '<button onclick="_feedAction(\'delete\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.68em;font-weight:600;padding:3px 8px;border-radius:5px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#64748b;opacity:0.5" title="Delete permanently">\uD83D\uDDD1\uFE0F</button>';
-    }
+    html += '</div></div>';
     html += '</div>';
+    // Inline delete confirmation
+    html += '<div id="' + _confirmId + '" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:6px;font-size:0.75em;display:none" onclick="event.stopPropagation()">'
+        + 'Delete this post? '
+        + '<button onclick="_feedAction(\'delete\',\'' + safeType + '\',\'' + safeId + '\')" style="font-size:0.85em;font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.1);color:var(--gl-red);margin-left:6px">Delete</button>'
+        + '<button onclick="document.getElementById(\'' + _confirmId + '\').style.display=\'none\'" style="font-size:0.85em;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid var(--gl-border);background:none;color:var(--gl-text-tertiary);margin-left:4px">Cancel</button>'
+        + '</div>';
 
     // Inline note input
     html += '<div id="feedNote_' + safeType + '_' + safeId + '" style="display:none;margin-top:6px" onclick="event.stopPropagation()"><div style="display:flex;gap:6px">'
@@ -2065,6 +2081,36 @@ function _feedRenderItem(item, isFirstAction) {
     html += '</div>';
     return html;
 }
+
+// ── Overflow menu helpers ────────────────────────────────────────────────────
+function _feedMenuBtn(label, onclick, color) {
+    return '<button onclick="' + onclick + '" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.78em;font-weight:500;border:none;background:none;color:' + (color || 'var(--gl-text-secondary)') + ';cursor:pointer;border-radius:4px;transition:background 0.1s" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">' + label + '</button>';
+}
+
+window._feedToggleMenu = function(menuId) {
+    // Close any other open menus first
+    document.querySelectorAll('[id^="feedMenu_"]').forEach(function(m) {
+        if (m.id !== menuId) m.style.display = 'none';
+    });
+    var menu = document.getElementById(menuId);
+    if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    // Close on click outside
+    if (menu && menu.style.display === 'block') {
+        setTimeout(function() {
+            var handler = function(e) {
+                if (!menu.contains(e.target)) { menu.style.display = 'none'; document.removeEventListener('click', handler); }
+            };
+            document.addEventListener('click', handler);
+        }, 10);
+    }
+};
+
+window._feedConfirmDelete = function(type, id) {
+    // Close the overflow menu
+    document.querySelectorAll('[id^="feedMenu_"]').forEach(function(m) { m.style.display = 'none'; });
+    var el = document.getElementById('feedConfirm_' + type + '_' + id);
+    if (el) el.style.display = 'block';
+};
 
 // Compact single-line renderer for context / resolved / waiting items
 function _feedRenderItemCompact(item, isResolved, isStale) {

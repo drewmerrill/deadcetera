@@ -371,7 +371,15 @@ async function _bcLoadBandRoom() {
         var safeTitle = (p.title || '').replace(/'/g, "\\'");
         var safeAuthor = (p.author || 'Ideas Board').replace(/'/g, "\\'");
         var safeKey = (p._key || '').replace(/'/g, "\\'");
-        idHtml += '<button onclick="_bcConvertToPitch(\'' + safeTitle + '\',\'' + safeAuthor + '\',\'' + safeKey + '\')" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-weight:600;white-space:nowrap">Convert to Pitch</button>';
+        // Contextual actions menu
+        var _imId = 'bcIdeaMenu_' + safeKey;
+        idHtml += '<div style="position:relative">';
+        idHtml += '<button onclick="event.stopPropagation();_bcToggleIdeaMenu(\'' + _imId + '\')" style="background:transparent;border:1px solid var(--gl-border,rgba(255,255,255,0.05));color:var(--gl-text-secondary,#94a3b8);border-radius:5px;padding:1px 6px;cursor:pointer;font-size:0.72em">\u22EF</button>';
+        idHtml += '<div id="' + _imId + '" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:140px;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border,rgba(255,255,255,0.05));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;z-index:20">';
+        idHtml += '<button onclick="_bcConvertToPitch(\'' + safeTitle + '\',\'' + safeAuthor + '\',\'' + safeKey + '\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDDF3\uFE0F Create poll</button>';
+        idHtml += '<button onclick="selectSong(\'' + safeTitle + '\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">\uD83C\uDFB5 Link to song</button>';
+        idHtml += '<button onclick="showPage(\'rehearsal\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">\uD83C\uDFAF Add to plan</button>';
+        idHtml += '</div></div>';
         idHtml += '</div></div>';
       });
     }
@@ -754,6 +762,18 @@ window._bcCreatePoll = async function() {
       if (typeof showToast === 'function') showToast('Poll created!');
     }
   } catch(e) {}
+};
+
+window._bcToggleIdeaMenu = function(menuId) {
+  document.querySelectorAll('[id^="bcIdeaMenu_"]').forEach(function(m) { if (m.id !== menuId) m.style.display = 'none'; });
+  var menu = document.getElementById(menuId);
+  if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  if (menu && menu.style.display === 'block') {
+    setTimeout(function() {
+      var h = function(e) { if (!menu.contains(e.target)) { menu.style.display = 'none'; document.removeEventListener('click', h); } };
+      document.addEventListener('click', h);
+    }, 10);
+  }
 };
 
 window._bcVotePoll = async function(pollKey, optionIdx) {
