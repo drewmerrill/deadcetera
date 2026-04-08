@@ -284,21 +284,20 @@ async function _rhRenderCommandFlow(el) {
     var _gigContext = nextGig ? (nextGig.venue || 'Gig') : null;
     var _gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
 
-    // ── Compact CTA bar: actions + event context in one line ──
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--gl-space-sm);flex-wrap:wrap">';
-    html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:8px 20px;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start</button>';
-    html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" class="gl-btn-ghost" style="padding:6px 12px">\uD83C\uDFB8 Solo</button>';
-    // Inline context — same row, right-aligned
-    var _ctxParts = [];
+    // ── CTA bar: readable, one line ──
+    html += '<div class="gl-action-row" style="margin-bottom:var(--gl-space-sm);gap:var(--gl-space-sm)">';
+    html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:8px 20px;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
+    html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" class="gl-btn-ghost" style="padding:6px 12px">Solo</button>';
+    // Context metadata — right-aligned, readable labels
+    html += '<div style="margin-left:auto;display:flex;gap:var(--gl-space-sm);align-items:center;flex-wrap:wrap">';
     if (_gigContext && _gigDays <= 30) {
         var _urgColor = _gigDays <= 3 ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
-        _ctxParts.push('<span style="color:' + _urgColor + '">\uD83C\uDFA4 ' + escHtml(_gigContext) + ' \u00B7 ' + _gigDays + 'd</span>');
+        html += '<span class="gl-event-line" style="color:' + _urgColor + ';font-size:0.72em">\uD83C\uDFA4 ' + escHtml(_gigContext) + ' \u00B7 ' + _gigDays + 'd</span>';
     }
     if (_rhFocusCount > 0) {
-        _ctxParts.push('<span style="color:var(--gl-amber)">\uD83C\uDFAF ' + escHtml(_rhFocusPrimary) + (_rhFocusCount > 1 ? ' +' + (_rhFocusCount - 1) : '') + '</span>');
+        html += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFAF Focus: ' + _rhFocusCount + ' song' + (_rhFocusCount > 1 ? 's' : '') + '</span>';
     }
-    if (_ctxParts.length) html += '<span style="font-size:0.72em;margin-left:auto;display:flex;gap:8px">' + _ctxParts.join('') + '</span>';
-    html += '</div>';
+    html += '</div></div>';
 
     // (Context and "Start Here" directive removed — consolidated into Next Up section above)
 
@@ -637,15 +636,22 @@ async function _rhRenderCommandFlow(el) {
 
         _rhCtx.innerHTML = (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '')
             + '<div id="rhPlanRailSlot"></div>'
-            + '<div class="gl-context-card">'
-            + '<div class="gl-section-label" style="padding-top:0">History</div>'
-            + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>'
+            // History — collapsed, lightweight
+            + '<details class="gl-context-card" style="padding:0">'
+            + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
+            + '<span class="gl-section-label" style="padding:0;margin:0">History</span>'
+            + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
+            + '<div style="padding:0 14px 10px">'
+            + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ From recording</button></div>'
             + '<div id="rhSessionHistory"></div>'
-            + '</div>'
-            + '<div class="gl-context-card">'
-            + '<div class="gl-section-label" style="padding-top:0">Recordings</div>'
-            + '<div id="rhMixdownsContainer"></div>'
-            + '</div>';
+            + '</div></details>'
+            // Recordings — collapsed
+            + '<details class="gl-context-card" style="padding:0">'
+            + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
+            + '<span class="gl-section-label" style="padding:0;margin:0">Recordings</span>'
+            + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
+            + '<div style="padding:0 14px 10px"><div id="rhMixdownsContainer"></div></div>'
+            + '</details>';
     } else {
         // Fallback: render inline if context rail not available
         main.innerHTML += '<div style="margin-top:16px"><div id="rhSessionHistory"></div><div id="rhMixdownsContainer" style="margin-top:12px"></div></div>';
@@ -1069,14 +1075,15 @@ async function _rhRenderLastRehearsalTimeline() {
         songCount = _toArr(latest.songsWorked).length || _toArr(latest.blocks).length;
     }
 
-    var snapHtml = '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(99,102,241,0.15);background:rgba(99,102,241,0.03);margin-bottom:4px">';
-    snapHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
-    snapHtml += '<div style="font-size:0.82em;font-weight:700;color:var(--text)">Last Rehearsal</div>';
-    snapHtml += '<div style="font-size:0.68em;color:var(--text-dim)">' + dateStr + '</div>';
-    snapHtml += '</div>';
-    snapHtml += '<div style="display:flex;gap:12px;font-size:0.75em;color:var(--text-dim)">';
-    snapHtml += '<span>' + durLabel + '</span>';
-    if (songCount) snapHtml += '<span>' + songCount + ' songs</span>';
+    // Snapshot: compact summary line, details collapse
+    var _snapSummary = dateStr + ' \u00B7 ' + durLabel + (songCount ? ' \u00B7 ' + songCount + ' songs' : '');
+    var snapHtml = '<details style="border-radius:10px;background:rgba(255,255,255,0.015);margin-bottom:4px">';
+    snapHtml += '<summary style="padding:8px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px;font-size:0.75em;color:var(--gl-text-secondary)">';
+    snapHtml += '<span style="font-weight:600;color:var(--gl-text-tertiary)">Last rehearsal</span>';
+    snapHtml += '<span style="opacity:0.7">' + _snapSummary + '</span>';
+    snapHtml += '<span style="font-size:0.85em;color:var(--gl-text-tertiary);margin-left:auto">\u25B8</span>';
+    snapHtml += '</summary><div style="padding:4px 14px 10px">';
+    snapHtml += '<div style="display:flex;gap:12px;font-size:0.75em;color:var(--text-dim);margin-bottom:4px">';
     if (talkCount) snapHtml += '<span>' + talkCount + ' conversations</span>';
     snapHtml += '</div>';
 
@@ -1096,7 +1103,7 @@ async function _rhRenderLastRehearsalTimeline() {
     } else {
         snapHtml += '<div style="margin-top:8px"><button onclick="if(typeof RecordingAnalyzer!==\'undefined\')RecordingAnalyzer.launchForSession(\'' + escHtml(latest.sessionId) + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#818cf8;cursor:pointer">\uD83D\uDD0D Analyze Recording</button></div>';
     }
-    snapHtml += '</div>';
+    snapHtml += '</div></details>';
     snapEl.innerHTML = snapHtml;
 
     // ── Auto-render timeline for latest session (if segments exist) ──
