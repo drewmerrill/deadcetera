@@ -1452,18 +1452,17 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // Band Focus songs — secondary, visually demoted
     if (_focusItems.length > 0) {
         _leftHtml += '<div style="padding:0 2px;margin-bottom:8px;opacity:0.85">';
-        _leftHtml += '<div style="font-size:0.65em;font-weight:700;color:var(--text-dim);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px">Focus songs</div>';
+        _leftHtml += '<div class="gl-section-label" style="margin-bottom:6px;padding-top:0">Focus songs</div>';
         _focusItems.forEach(function(item) {
             var avg = item.avg ? item.avg.toFixed(1) : '?';
             var barPct = item.avg ? Math.round((item.avg / 5) * 100) : 0;
-            var barColor = item.avg >= 3.5 ? '#22c55e' : item.avg >= 2.5 ? '#f59e0b' : '#ef4444';
+            var barColor = item.avg >= 3.5 ? 'var(--gl-green)' : item.avg >= 2.5 ? 'var(--gl-amber)' : 'var(--gl-red)';
             var safeSong = _escHtml(item.title).replace(/'/g, "\\'");
-            _leftHtml += '<div onclick="selectSong(\'' + safeSong + '\')" class="gl-row" style="padding:5px 4px">';
-            _leftHtml += '<div style="display:flex;align-items:center;gap:8px">';
-            _leftHtml += '<span style="font-size:0.8em;color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escHtml(item.title) + '</span>';
-            _leftHtml += '<div style="width:60px;height:3px;background:rgba(255,255,255,0.12);border-radius:2px;overflow:hidden;flex-shrink:0"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>';
-            _leftHtml += '<span style="font-size:0.68em;font-weight:700;color:' + barColor + ';width:22px;text-align:right;flex-shrink:0">' + avg + '</span>';
-            _leftHtml += '</div></div>';
+            _leftHtml += '<div onclick="selectSong(\'' + safeSong + '\')" class="gl-row gl-focus-row">';
+            _leftHtml += '<span class="gl-focus-title">' + _escHtml(item.title) + '</span>';
+            _leftHtml += '<div class="gl-focus-bar"><div style="height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:2px"></div></div>';
+            _leftHtml += '<span class="gl-focus-score" style="color:' + barColor + '">' + avg + '</span>';
+            _leftHtml += '</div>';
         });
         _leftHtml += '</div>';
 
@@ -1476,8 +1475,8 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
 
         _leftHtml += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:16px;flex-wrap:wrap">';
         if (!_planLocked) {
-            _leftHtml += '<button onclick="_hdAlignFocus()" style="font-size:0.72em;font-weight:600;padding:5px 12px;border-radius:6px;cursor:pointer;border:none;background:transparent;color:var(--gl-text,var(--text))">Commit</button>';
-            _leftHtml += '<button onclick="_hdLockBandFocus()" style="font-size:0.68em;font-weight:500;padding:4px 8px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.06);color:var(--text-dim)">Lock for band</button>';
+            _leftHtml += '<button onclick="_hdAlignFocus()" class="gl-btn-ghost" style="font-weight:600;color:var(--gl-text,var(--text))">Count me in</button>';
+            _leftHtml += '<button onclick="_hdLockBandFocus()" class="gl-btn-ghost">Lock for band</button>';
         } else {
             _leftHtml += '<span style="font-size:0.72em;color:#22c55e;font-weight:600">\u2713 Locked for band</span>';
         }
