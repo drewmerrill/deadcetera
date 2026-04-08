@@ -2262,7 +2262,7 @@ function _renderBandReadinessSnapshot(bundle) {
     });
     var overallAvg = ratedCount > 0 ? (totalScore / ratedCount) : 0;
     var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
-    var barColor = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : '#ef4444';
+    var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getBarColor(pct) : 'var(--gl-amber)';
 
     var html = '<div class="app-card home-anim-cards" style="padding:14px 16px">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
@@ -5373,7 +5373,7 @@ function _renderSetlistReadinessBars(gig, rc) {
         var ready  = songs.filter(function(t) { return _bandAvgForSong(rc[t] || {}) >= 3; }).length;
         var total  = songs.length;
         var pct    = total ? Math.round((ready / total) * 100) : 0;
-        var color  = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+        var color  = (typeof GLStatus !== 'undefined') ? GLStatus.getBarColor(pct) : 'var(--gl-amber)';
         var label  = setKey === 'encore' ? 'Encore' : 'Set ' + setKey.replace('set', '');
         html += '<div class="home-readiness-row">'
             + '<span class="home-readiness-row__label">' + label + '</span>'
@@ -5537,8 +5537,9 @@ function _computeBandReadinessPct(bundle, scopeSongSet) {
 function _renderBandReadinessScore(bundle) {
     var pct = _computeBandReadinessPct(bundle);
     if (pct === null) return '';
-    var color = pct >= 80 ? 'var(--green)' : pct >= 55 ? 'var(--yellow)' : 'var(--red)';
-    var label = pct >= 80 ? 'Gig ready' : pct >= 55 ? 'Getting there' : 'Needs work';
+    var _rp = (typeof GLStatus !== 'undefined') ? GLStatus.getReadinessPct(pct) : { label: '', color: 'var(--gl-amber)' };
+    var color = _rp.color;
+    var label = _rp.label;
     var rc = bundle.readinessCache || {};
     var _rbSc = (typeof statusCache !== 'undefined') ? statusCache : {};
     var _rbA = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };

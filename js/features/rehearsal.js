@@ -5501,10 +5501,8 @@ function renderRiRehearsalFocus(focusSongs, ctx) {
     } else {
         inner = focusSongs.map(function(s, i) {
             var bar = _riBar(s.avg, 5);
-            var severity = s.avg < 2 ? { label: 'Critical',      color: '#ef4444', bg: 'rgba(239,68,68,0.12)'   }
-                         : s.avg < 3 ? { label: 'Needs work',    color: '#f97316', bg: 'rgba(249,115,22,0.12)'  }
-                         : s.avg < 4 ? { label: 'Needs polish',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'  }
-                         :             { label: 'Final pass',     color: '#34d399', bg: 'rgba(52,211,153,0.10)'  };
+            var severity = (typeof GLStatus !== 'undefined') ? GLStatus.getSongSeverity(s.avg)
+                         : { label: 'Needs work', color: 'var(--gl-amber)', bg: 'rgba(245,158,11,0.12)' };
             var tags = s.reasons.map(function(r) {
                 return '<span class="ri-tag">' + r + '</span>';
             }).join('');

@@ -6026,26 +6026,45 @@
 window.GLStatus = (function() {
   'use strict';
 
-  // ── Readiness from avg score (0-5) ──
+  // ── RULE: All readiness labels, colors, and guidance MUST come from
+  // GLStatus. No inline threshold checks (avg >= 4, pct >= 80, etc.)
+  // in any UI file. Use GLStatus.getReadiness(avg) or getReadinessPct(pct).
+
+  // ── Readiness tiers (avg 0-5) ──
+  // 4 distinct labels, each with actionable guidance:
+  //   Strong    (≥4)  — gig-ready, lock it
+  //   Solid     (≥3)  — close, run it once
+  //   Getting there (≥2) — progress visible, keep pushing
+  //   Needs work (<2) — real gaps, focused block needed
   function getReadiness(avg) {
     if (!avg || avg <= 0) return { label: '', hint: '', level: 'unrated', color: 'var(--gl-text-tertiary)' };
     if (avg >= 4) return { label: 'Strong', hint: 'Ready for the stage', level: 'strong', color: 'var(--gl-green)' };
     if (avg >= 3) return { label: 'Solid', hint: 'Run it once to lock it in', level: 'solid', color: 'var(--gl-amber)' };
-    if (avg >= 2) return { label: 'Needs work', hint: 'Focus on weak spots', level: 'needs_work', color: 'var(--gl-amber)' };
+    if (avg >= 2) return { label: 'Getting there', hint: 'Keep pushing \u2014 almost', level: 'getting_there', color: 'var(--gl-amber)' };
     return { label: 'Needs work', hint: 'Give it a focused block', level: 'needs_work', color: 'var(--gl-red)' };
   }
 
-  // ── Readiness from percentage (0-100) ──
+  // ── Readiness tiers (pct 0-100) ──
   function getReadinessPct(pct) {
-    if (pct === null || pct === undefined) return { label: '', level: 'unrated', color: 'var(--gl-text-tertiary)' };
-    if (pct >= 80) return { label: 'Strong', level: 'strong', color: 'var(--gl-green)' };
-    if (pct >= 50) return { label: 'Solid', level: 'solid', color: 'var(--gl-amber)' };
-    return { label: 'Needs work', level: 'needs_work', color: pct > 0 ? 'var(--gl-red)' : 'var(--gl-text-tertiary)' };
+    if (pct === null || pct === undefined) return { label: '', hint: '', level: 'unrated', color: 'var(--gl-text-tertiary)' };
+    if (pct >= 80) return { label: 'Strong', hint: 'Lock the set', level: 'strong', color: 'var(--gl-green)' };
+    if (pct >= 55) return { label: 'Solid', hint: 'Tighten weak spots', level: 'solid', color: 'var(--gl-amber)' };
+    if (pct >= 30) return { label: 'Getting there', hint: 'Keep rehearsing', level: 'getting_there', color: 'var(--gl-amber)' };
+    return { label: 'Needs work', hint: 'Focus on fundamentals', level: 'needs_work', color: pct > 0 ? 'var(--gl-red)' : 'var(--gl-text-tertiary)' };
+  }
+
+  // ── Song severity (for timeline/coaching context) ──
+  function getSongSeverity(avg) {
+    if (!avg || avg <= 0) return { label: '', color: 'var(--gl-text-tertiary)', bg: 'transparent', level: 'unrated' };
+    if (avg >= 4) return { label: 'Final pass', color: 'var(--gl-green)', bg: 'rgba(34,197,94,0.10)', level: 'strong' };
+    if (avg >= 3) return { label: 'Needs polish', color: 'var(--gl-amber)', bg: 'rgba(245,158,11,0.12)', level: 'solid' };
+    if (avg >= 2) return { label: 'Getting there', color: 'var(--gl-amber)', bg: 'rgba(245,158,11,0.12)', level: 'getting_there' };
+    return { label: 'Critical', color: 'var(--gl-red)', bg: 'rgba(239,68,68,0.12)', level: 'needs_work' };
   }
 
   // ── Color by level ──
   function getColor(level) {
-    var map = { strong: 'var(--gl-green)', solid: 'var(--gl-amber)', needs_work: 'var(--gl-red)', unrated: 'var(--gl-text-tertiary)' };
+    var map = { strong: 'var(--gl-green)', solid: 'var(--gl-amber)', getting_there: 'var(--gl-amber)', needs_work: 'var(--gl-red)', unrated: 'var(--gl-text-tertiary)' };
     return map[level] || 'var(--gl-text-tertiary)';
   }
 
@@ -6067,6 +6086,7 @@ window.GLStatus = (function() {
   return {
     getReadiness: getReadiness,
     getReadinessPct: getReadinessPct,
+    getSongSeverity: getSongSeverity,
     getColor: getColor,
     getSongColor: getSongColor,
     getBarColor: getBarColor
