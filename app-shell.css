@@ -1,3 +1,14 @@
+/*
+ * GrooveLinx Design System Rules:
+ *
+ * 1. No raw colors — use --gl-* tokens
+ * 2. No inline spacing — use --gl-space-* tokens
+ * 3. No ad hoc components — use gl-* classes
+ * 4. Glass only in right rail + overlays (.gl-page-context)
+ * 5. Modes (calm/focus) affect accent/tone only, never layout
+ * 6. Primary action → .gl-btn-primary | Secondary → .gl-btn-ghost
+ * 7. Interactive rows → .gl-row | Status → .gl-chip--*
+ */
 /* DEADCETERA BAND APP — Dark Theme Shell v3.2 */
 :root{--bg-dark:#0f172a;--bg-card:#1e293b;--bg-surface:#334155;--bg-elevated:#283548;--accent:#667eea;--accent-light:#818cf8;--accent-glow:rgba(102,126,234,0.15);--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;--text:#f1f5f9;--text-muted:#94a3b8;--text-dim:#64748b;--border:rgba(255,255,255,0.06);--border-subtle:rgba(255,255,255,0.04);--radius:10px;--content-max:1100px;
   --gl-safe-top:env(safe-area-inset-top,0px);
@@ -78,6 +89,12 @@ a{color:var(--accent-light);}
   /* Chips */
   --gl-chip-bg:rgba(255,255,255,0.06);
   --gl-chip-border:rgba(255,255,255,0.08);
+  /* Spacing */
+  --gl-space-xs:4px;
+  --gl-space-sm:8px;
+  --gl-space-md:16px;
+  --gl-space-lg:24px;
+  --gl-space-xl:32px;
 }
 
 /* ── 2. ADAPTIVE MODES ────────────────────────────────────────────────────── */
@@ -96,6 +113,8 @@ button:active{transform:scale(0.97)}
 .gl-row{padding:8px 4px;cursor:pointer;transition:background var(--gl-transition);border-radius:6px}
 .gl-row:hover{background:var(--gl-hover)}
 .gl-row--selected{background:var(--gl-active)}
+.gl-row--active{background:var(--gl-active);border-left:3px solid var(--accent-light)}
+.gl-row--disabled{opacity:0.4;pointer-events:none;cursor:default}
 /* Clickable chips */
 .gl-chip{font-size:0.65em;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--gl-chip-bg);border:1px solid var(--gl-chip-border);cursor:pointer;transition:background var(--gl-transition);display:inline-flex;align-items:center;gap:3px}
 .gl-chip:hover{background:var(--gl-active)}
@@ -103,6 +122,10 @@ button:active{transform:scale(0.97)}
 .gl-chip--amber{color:var(--gl-amber);border-color:rgba(245,158,11,0.2);background:rgba(245,158,11,0.08)}
 .gl-chip--red{color:var(--gl-red);border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.08)}
 .gl-chip--indigo{color:var(--gl-indigo);border-color:rgba(129,140,248,0.2);background:rgba(99,102,241,0.08)}
+/* Semantic aliases */
+.gl-chip--success{color:var(--gl-green);border-color:rgba(34,197,94,0.2);background:rgba(34,197,94,0.08)}
+.gl-chip--warning{color:var(--gl-amber);border-color:rgba(245,158,11,0.2);background:rgba(245,158,11,0.08)}
+.gl-chip--danger{color:var(--gl-red);border-color:rgba(239,68,68,0.2);background:rgba(239,68,68,0.08)}
 /* Transition state */
 .gl-transitioning{opacity:0.7;transition:opacity 0.3s}
 

@@ -1719,6 +1719,16 @@ function _feedRender(items) {
     } else {
         visible = items.filter(function(i) { return !_feedIsArchived(i); });
     }
+    // Filter state bar — shows when filtered
+    if (window._feedMentionFilterKey) {
+        var _mfName = '';
+        var _bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        if (_bm[window._feedMentionFilterKey]) _mfName = _bm[window._feedMentionFilterKey].name || window._feedMentionFilterKey;
+        el.insertAdjacentHTML('beforebegin', '<div id="feedFilterStateBar" style="font-size:0.78em;color:var(--gl-text-secondary,#94a3b8);opacity:0.8;margin-bottom:8px;display:flex;align-items:center;gap:8px">'
+            + 'Showing: <span style="font-weight:600;color:var(--gl-indigo,#818cf8)">@' + _mfName + '</span>'
+            + '<button onclick="window._feedMentionFilterKey=null;_feedRerender();var b=document.getElementById(\'feedFilterStateBar\');if(b)b.remove()" style="font-size:0.85em;padding:2px 8px;border-radius:4px;border:1px solid var(--gl-border,rgba(255,255,255,0.05));background:none;color:var(--gl-text-tertiary,#64748b);cursor:pointer">Clear</button>'
+            + '</div>');
+    }
     // Mention filter overlay — narrows to items targeting a specific member
     if (window._feedMentionFilterKey) {
         var _mfk = window._feedMentionFilterKey;

@@ -1845,14 +1845,25 @@ function calDayClick(y, m, d) {
         var dateObj = new Date(y, m, d);
         var dateLabel = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
         var blocked = _calCachedBlockedRanges ? _calCachedBlockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; }) : [];
-        var hint = blocked.length === 0 ? 'No conflicts \u2014 good choice' : blocked.length + ' conflict' + (blocked.length > 1 ? 's' : '');
-        var hintColor = blocked.length > 0 ? '#f59e0b' : '#86efac';
+        var isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+        // Confidence-based reasoning
+        var hint, hintColor;
+        if (blocked.length === 0 && !isWeekend) {
+            hint = 'Best choice this week'; hintColor = 'var(--gl-green,#22c55e)';
+        } else if (blocked.length === 0) {
+            hint = 'No conflicts'; hintColor = 'var(--gl-green,#22c55e)';
+        } else if (blocked.length === 1) {
+            hint = 'Good option \u2014 minor conflict'; hintColor = 'var(--gl-amber,#f59e0b)';
+        } else {
+            hint = blocked.length + ' conflicts \u2014 consider alternatives'; hintColor = 'var(--gl-amber,#f59e0b)';
+        }
         var safDs = ds.replace(/'/g, "\\'");
+        var borderColor = blocked.length > 0 ? 'var(--gl-amber,#f59e0b)' : 'var(--gl-green,#22c55e)';
 
-        var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + (blocked.length > 0 ? '#f59e0b' : '#22c55e') + '">'
-            + '<div style="font-size:0.82em;font-weight:700;color:var(--text);margin-bottom:2px">' + dateLabel + '</div>'
-            + '<div style="font-size:0.72em;color:' + hintColor + ';margin-bottom:8px">' + hint + '</div>'
-            + '<button onclick="calAddEvent(\'' + safDs + '\')" style="font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:none;background:rgba(34,197,94,0.1);color:#86efac;width:100%">Lock rehearsal here</button>'
+        var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
+            + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:2px">' + dateLabel + '</div>'
+            + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:8px">' + hint + '</div>'
+            + '<button onclick="calAddEvent(\'' + safDs + '\')" class="gl-btn-ghost" style="width:100%;text-align:center;font-weight:700;color:var(--gl-green,#86efac)">Lock this date</button>'
             + '</div>';
 
         var existing = document.getElementById('calSelectedDayCard');
