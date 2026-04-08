@@ -2032,38 +2032,65 @@ function _feedRenderItem(item, isFirstAction) {
         html += '</div>';
     }
 
-    // Type badge
+    // State + type metadata row
     var _typeLabels = { idea: 'Idea', poll: 'Poll', rehearsal_note: 'Rehearsal', song_moment: 'Song Note', note: 'Note', link: 'Link', photo: 'Photo' };
     var _tl = _typeLabels[item.type] || _typeLabels[item.post_type] || '';
-    if (_tl) html += '<span class="gl-chip" style="margin-top:4px">' + _tl + '</span>';
+    var _stateChips = '';
+    if (_tl) _stateChips += '<span class="gl-chip">' + _tl + '</span>';
+    if (isPinned) _stateChips += '<span class="gl-chip gl-chip--amber">\uD83D\uDCCC Pinned</span>';
+    if (resolved) _stateChips += '<span class="gl-chip gl-chip--success">\u2705 Resolved</span>';
+    if (archived) _stateChips += '<span class="gl-chip" style="opacity:0.5">Archived</span>';
+    if (state && state.needsMyInput && !resolved) _stateChips += '<span class="gl-chip gl-chip--warning">\u26A1 Needs input</span>';
+    if (_stateChips) html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">' + _stateChips + '</div>';
 
-    // Action bar — primary actions visible, secondary in overflow menu
+    // Action bar — type-aware visible actions + overflow menu
     var effectiveTag = state ? state.effectiveTag : _feedGetTag(item);
     var _menuId = 'feedMenu_' + safeType + '_' + safeId;
     var _confirmId = 'feedConfirm_' + safeType + '_' + safeId;
-    html += '<div style="display:flex;align-items:center;gap:4px;margin-top:6px" onclick="event.stopPropagation()">';
-    // Primary: Resolve + Note
-    html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px;' + (resolved ? 'color:var(--gl-green);border-color:rgba(34,197,94,0.2)' : '') + '">' + (resolved ? '\u2705 Resolved' : 'Resolve') + '</button>';
-    html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px">Note</button>';
-    // Overflow menu trigger
-    html += '<div style="position:relative;margin-left:auto">';
-    html += '<button onclick="_feedToggleMenu(\'' + _menuId + '\')" style="background:transparent;border:1px solid var(--gl-border);color:var(--gl-text-secondary);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.78em;line-height:1">\u22EF</button>';
-    // Overflow menu dropdown
-    html += '<div id="' + _menuId + '" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:150px;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;z-index:20">';
-    var tagLabels = { fyi: 'FYI', needs_input: 'Needs Input', mission_critical: 'Critical', fun: 'Fun' };
-    html += _feedMenuBtn('\uD83C\uDFF7\uFE0F ' + (tagLabels[effectiveTag] || 'Tag'), "_feedChangeTag('" + safeType + "','" + safeId + "')");
-    html += _feedMenuBtn('\uD83D\uDCCC ' + (isPinned ? 'Unpin' : 'Pin'), "_feedAction('" + (isPinned ? 'unpin' : 'pin') + "','" + safeType + "','" + safeId + "')");
-    if (archived) {
-        html += _feedMenuBtn('\u21A9\uFE0F Restore', "_feedAction('unarchive','" + safeType + "','" + safeId + "')");
+    var _isSystem = item._source === 'playlist_sync';
+    html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px" onclick="event.stopPropagation()">';
+
+    // Type-aware primary actions (max 2)
+    if (_isSystem) {
+        // System items: no visible actions
+    } else if (item.type === 'poll') {
+        // Polls: Resolve only (voting is inline above)
+        html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px;' + (resolved ? 'color:var(--gl-green);border-color:rgba(34,197,94,0.2)' : '') + '">' + (resolved ? 'Resolved' : 'Resolve') + '</button>';
+    } else if (item.type === 'idea' && state && state.needsMyInput) {
+        // Actionable idea: Resolve
+        html += '<button onclick="_feedAction(\'resolve\',\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px">Resolve</button>';
+    } else if (item.link || item.post_type === 'link') {
+        // Link items: Open link + Add note
+        html += '<a href="' + _feedEsc(item.link || '') + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px;text-decoration:none">Open link</a>';
+        html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px">Add note</button>';
     } else {
-        html += _feedMenuBtn('\uD83D\uDDC4\uFE0F Archive', "_feedAction('archive','" + safeType + "','" + safeId + "')");
+        // Default: Add note (discussion-oriented items)
+        html += '<button onclick="_feedShowNoteInput(\'' + safeType + '\',\'' + safeId + '\')" class="gl-btn-ghost" style="font-size:0.65em;padding:2px 7px">Add note</button>';
     }
-    if (_feedCanDelete(item)) {
-        html += '<div style="height:1px;background:var(--gl-border);margin:2px 0"></div>';
-        html += _feedMenuBtn('\u270F\uFE0F Edit', "_feedEditItem('" + safeType + "','" + safeId + "')");
-        html += _feedMenuBtn('\uD83D\uDDD1\uFE0F Delete', "_feedConfirmDelete('" + safeType + "','" + safeId + "')", 'var(--gl-red)');
+
+    // Overflow menu trigger (all items except system)
+    if (!_isSystem) {
+        html += '<div style="position:relative;margin-left:auto">';
+        html += '<button onclick="_feedToggleMenu(\'' + _menuId + '\')" style="background:transparent;border:1px solid var(--gl-border);color:var(--gl-text-secondary);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.78em;line-height:1">\u22EF</button>';
+        html += '<div id="' + _menuId + '" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:150px;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;z-index:20">';
+        // Always available
+        if (!resolved) html += _feedMenuBtn('Resolve', "_feedAction('resolve','" + safeType + "','" + safeId + "')");
+        html += _feedMenuBtn('Add note', "_feedShowNoteInput('" + safeType + "','" + safeId + "')");
+        var tagLabels = { fyi: 'FYI', needs_input: 'Needs Input', mission_critical: 'Critical', fun: 'Fun' };
+        html += _feedMenuBtn('\uD83C\uDFF7\uFE0F ' + (tagLabels[effectiveTag] || 'Tag'), "_feedChangeTag('" + safeType + "','" + safeId + "')");
+        html += _feedMenuBtn('\uD83D\uDCCC ' + (isPinned ? 'Unpin' : 'Pin'), "_feedAction('" + (isPinned ? 'unpin' : 'pin') + "','" + safeType + "','" + safeId + "')");
+        if (archived) {
+            html += _feedMenuBtn('\u21A9\uFE0F Restore', "_feedAction('unarchive','" + safeType + "','" + safeId + "')");
+        } else {
+            html += _feedMenuBtn('\uD83D\uDDC4\uFE0F Archive', "_feedAction('archive','" + safeType + "','" + safeId + "')");
+        }
+        if (_feedCanDelete(item)) {
+            html += '<div style="height:1px;background:var(--gl-border);margin:2px 0"></div>';
+            html += _feedMenuBtn('\u270F\uFE0F Edit', "_feedEditItem('" + safeType + "','" + safeId + "')");
+            html += _feedMenuBtn('\uD83D\uDDD1\uFE0F Delete', "_feedConfirmDelete('" + safeType + "','" + safeId + "')", 'var(--gl-red)');
+        }
+        html += '</div></div>';
     }
-    html += '</div></div>';
     html += '</div>';
     // Inline delete confirmation
     html += '<div id="' + _confirmId + '" style="display:none;margin-top:6px;padding:6px 10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:6px;font-size:0.75em;display:none" onclick="event.stopPropagation()">'

@@ -363,9 +363,11 @@ async function _bcLoadBandRoom() {
           linkHTML = '<a href="' + _bcEsc(p.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:#818cf8;text-decoration:none;display:inline-flex;align-items:center;gap:3px">' + linkIcon + ' ' + (isYT ? 'YouTube' : isSP ? 'Spotify' : 'Link') + '</a>';
         }
         idHtml += '<div style="padding:10px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px">';
-        idHtml += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">';
-        idHtml += '<span style="font-weight:700;font-size:0.85em;color:var(--text)">' + _bcEsc(p.title || 'Untitled') + '</span>';
-        idHtml += linkHTML + '</div>';
+        idHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+        idHtml += '<span style="font-weight:700;font-size:0.85em;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _bcEsc(p.title || 'Untitled') + '</span>';
+        idHtml += linkHTML;
+        idHtml += '<span class="gl-chip">Idea</span>';
+        idHtml += '</div>';
         idHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px">';
         idHtml += '<span style="font-size:0.68em;color:var(--text-dim)">' + _bcEsc(p.author || '') + ' \u00B7 ' + _bcTimeAgo(p.ts) + '</span>';
         var safeTitle = (p.title || '').replace(/'/g, "\\'");
@@ -452,7 +454,7 @@ function _bcRenderPollCard(p, myVoteKey, memberCount, showCta) {
     ? '<span style="color:var(--text-dim)">You voted \u00B7 ' + remaining + ' remaining</span>'
     : '<span style="color:#fbbf24;font-weight:700">' + remaining + ' of ' + memberCount + ' need to vote</span>';
   var html = '<div style="padding:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px">';
-  html += '<div style="font-weight:700;font-size:0.85em;color:var(--text);margin-bottom:6px">' + _bcEsc(p.question || '') + '</div>';
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-weight:700;font-size:0.85em;color:var(--text);flex:1">' + _bcEsc(p.question || '') + '</span><span class="gl-chip">Poll</span></div>';
   (p.options || []).forEach(function(opt, i) {
     var count = Object.values(votes).filter(function(v) { return v === i; }).length;
     var isMyVote = myVote === i;
