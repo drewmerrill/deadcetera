@@ -198,7 +198,7 @@ async function renderRehearsalPage(el) {
     window.GL_REHEARSAL_READY = false;
     el.innerHTML = '<div class="gl-page">'
         + '<div class="gl-page-title">\uD83C\uDFB8 Rehearsal</div>'
-        + '<div class="gl-page-split">'
+        + '<div class="gl-page-split" style="grid-template-columns:1fr 260px">'
         + '<div class="gl-page-primary"><div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div></div>'
         + '<div class="gl-page-context" id="rhContextRail"></div>'
         + '</div></div>';
@@ -284,24 +284,21 @@ async function _rhRenderCommandFlow(el) {
     var _gigContext = nextGig ? (nextGig.venue || 'Gig') : null;
     var _gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
 
-    // ── Compact CTA bar + event context ──
-    html += '<div class="gl-action-row" style="margin-bottom:6px">';
-    html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
-    html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" class="gl-btn-ghost">\uD83C\uDFB8 Solo</button>';
-    html += '</div>';
-    // Event context
+    // ── Compact CTA bar: actions + event context in one line ──
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--gl-space-sm);flex-wrap:wrap">';
+    html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:8px 20px;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start</button>';
+    html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" class="gl-btn-ghost" style="padding:6px 12px">\uD83C\uDFB8 Solo</button>';
+    // Inline context — same row, right-aligned
+    var _ctxParts = [];
     if (_gigContext && _gigDays <= 30) {
         var _urgColor = _gigDays <= 3 ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
-        html += '<div class="gl-event-line" style="color:' + _urgColor + ';margin-bottom:var(--gl-space-xs)">';
-        html += '<span>\uD83C\uDFA4</span><span style="font-weight:600">' + escHtml(_gigContext) + '</span>';
-        html += '<span style="opacity:0.7">\u00B7 ' + _gigDays + ' day' + (_gigDays !== 1 ? 's' : '') + ' \u00B7 Preparing for live set</span>';
-        html += '</div>';
+        _ctxParts.push('<span style="color:' + _urgColor + '">\uD83C\uDFA4 ' + escHtml(_gigContext) + ' \u00B7 ' + _gigDays + 'd</span>');
     }
     if (_rhFocusCount > 0) {
-        html += '<div style="font-size:0.72em;color:var(--gl-amber);margin-bottom:var(--gl-space-sm)">\uD83C\uDFAF Focus: ' + escHtml(_rhFocusPrimary) + (_rhFocusCount > 1 ? ' + ' + (_rhFocusCount - 1) + ' more' : '') + '</div>';
-    } else {
-        html += '<div style="margin-bottom:10px"></div>';
+        _ctxParts.push('<span style="color:var(--gl-amber)">\uD83C\uDFAF ' + escHtml(_rhFocusPrimary) + (_rhFocusCount > 1 ? ' +' + (_rhFocusCount - 1) : '') + '</span>');
     }
+    if (_ctxParts.length) html += '<span style="font-size:0.72em;margin-left:auto;display:flex;gap:8px">' + _ctxParts.join('') + '</span>';
+    html += '</div>';
 
     // (Context and "Start Here" directive removed — consolidated into Next Up section above)
 
@@ -319,7 +316,8 @@ async function _rhRenderCommandFlow(el) {
 
     // (Duplicate Start/Practice CTAs removed — consolidated into Next Up section above)
 
-    // ── PLAN (collapsed by default) ──
+    // ── PLAN (rendered inline, then moved to rail via DOM after render) ──
+    html += '<div id="rhPlanContainer">';
     if (hasSavedPlan) {
         var savedUnits = _rhGetUnits();
         var songCount = savedUnits.reduce(function(n, u) { return n + (u.type === 'linked' ? u.songs.length : 1); }, 0);
@@ -602,9 +600,11 @@ async function _rhRenderCommandFlow(el) {
             + '<div id="rhSnapshots"></div>';
     }
 
-    // ── Last Rehearsal Snapshot + Timeline (PRIMARY CONTENT) ──
+    html += '</div>'; // close #rhPlanContainer
+
+    // ── Timeline FIRST — primary content, immediately visible ──
+    html += '<div id="rhTimelineSection" style="margin-bottom:12px"></div>';
     html += '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>';
-    html += '<div id="rhTimelineSection" style="margin-bottom:16px"></div>';
 
     main.innerHTML = html;
     window.GL_REHEARSAL_READY = true;
@@ -636,6 +636,7 @@ async function _rhRenderCommandFlow(el) {
         } catch(e) {}
 
         _rhCtx.innerHTML = (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '')
+            + '<div id="rhPlanRailSlot"></div>'
             + '<div class="gl-context-card">'
             + '<div class="gl-section-label" style="padding-top:0">History</div>'
             + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" style="font-size:0.65em;padding:3px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;cursor:pointer">+ Recreate from Recording</button></div>'
@@ -652,6 +653,13 @@ async function _rhRenderCommandFlow(el) {
 
     // Render mixdowns section
     if (typeof RehearsalMixdowns !== 'undefined') RehearsalMixdowns.render('rhMixdownsContainer');
+
+    // Move plan to right rail (context, not primary)
+    var _planContainer = document.getElementById('rhPlanContainer');
+    var _planSlot = document.getElementById('rhPlanRailSlot');
+    if (_planContainer && _planSlot) {
+        _planSlot.appendChild(_planContainer);
+    }
 
     // Wire up drag-and-drop on the unit list
     _rhInitDragDrop();
