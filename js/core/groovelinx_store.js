@@ -6013,22 +6013,32 @@
 })();
 
 // =============================================================================
-// GLStatus — Centralized readiness / status language engine
+// GROOVELINX DECISION LANGUAGE ENGINES
 //
-// Single source of truth for all readiness labels, colors, and guidance.
-// All UI surfaces must call GLStatus instead of inline threshold checks.
+// GLStatus, GLUrgency, GLPriority, GLScheduleQuality
 //
-// USAGE:
-//   var s = GLStatus.getReadiness(avg);     // avg 0-5
-//   var p = GLStatus.getReadinessPct(pct);  // pct 0-100
-//   var c = GLStatus.getColor(level);       // 'strong'|'solid'|'needs_work'|'unrated'
+// RULES (enforced across all UI files):
+//   1. No inline readiness thresholds — use GLStatus
+//   2. No inline urgency text — use GLUrgency
+//   3. No inline priority labels — use GLPriority
+//   4. No inline schedule-quality wording — use GLScheduleQuality
+//   5. All engines return a consistent shape:
+//      { label, hint, level, color, icon, chipClass }
+//      (not every field populated — but shape is predictable)
+//
+// MODULARIZATION: These engines are self-contained IIFEs on window.
+// They can be moved to separate files (e.g. js/core/gl-decision-language.js)
+// without changing any consumer code — just change script load order.
+//
+// REMAINING EXTRACTION QUEUE:
+//   - home-dashboard.js NBA card daysOut logic (lines ~688-720)
+//   - feed-action-state.js getUrgencyTag (lines ~207-222)
+//   - calendar.js hero recommendation quality text (line ~417)
 // =============================================================================
+
+// ── GLStatus — Readiness language ────────────────────────────────────────────
 window.GLStatus = (function() {
   'use strict';
-
-  // ── RULE: All readiness labels, colors, and guidance MUST come from
-  // GLStatus. No inline threshold checks (avg >= 4, pct >= 80, etc.)
-  // in any UI file. Use GLStatus.getReadiness(avg) or getReadinessPct(pct).
 
   // ── Readiness tiers (avg 0-5) ──
   // 4 distinct labels, each with actionable guidance:
@@ -6036,12 +6046,14 @@ window.GLStatus = (function() {
   //   Solid     (≥3)  — close, run it once
   //   Getting there (≥2) — progress visible, keep pushing
   //   Needs work (<2) — real gaps, focused block needed
+  var _CHIP = { strong: 'gl-chip--success', solid: 'gl-chip--warning', getting_there: 'gl-chip--warning', needs_work: 'gl-chip--danger', unrated: '' };
+
   function getReadiness(avg) {
-    if (!avg || avg <= 0) return { label: '', hint: '', level: 'unrated', color: 'var(--gl-text-tertiary)' };
-    if (avg >= 4) return { label: 'Strong', hint: 'Ready for the stage', level: 'strong', color: 'var(--gl-green)' };
-    if (avg >= 3) return { label: 'Solid', hint: 'Run it once to lock it in', level: 'solid', color: 'var(--gl-amber)' };
-    if (avg >= 2) return { label: 'Getting there', hint: 'Keep pushing \u2014 almost', level: 'getting_there', color: 'var(--gl-amber)' };
-    return { label: 'Needs work', hint: 'Give it a focused block', level: 'needs_work', color: 'var(--gl-red)' };
+    if (!avg || avg <= 0) return { label: '', hint: '', level: 'unrated', color: 'var(--gl-text-tertiary)', icon: '', chipClass: '' };
+    if (avg >= 4) return { label: 'Strong', hint: 'Ready for the stage', level: 'strong', color: 'var(--gl-green)', icon: '\uD83D\uDD12', chipClass: _CHIP.strong };
+    if (avg >= 3) return { label: 'Solid', hint: 'Run it once to lock it in', level: 'solid', color: 'var(--gl-amber)', icon: '\u2705', chipClass: _CHIP.solid };
+    if (avg >= 2) return { label: 'Getting there', hint: 'Keep pushing \u2014 almost', level: 'getting_there', color: 'var(--gl-amber)', icon: '\u2197\uFE0F', chipClass: _CHIP.getting_there };
+    return { label: 'Needs work', hint: 'Give it a focused block', level: 'needs_work', color: 'var(--gl-red)', icon: '\uD83D\uDD27', chipClass: _CHIP.needs_work };
   }
 
   // ── Readiness tiers (pct 0-100) ──
@@ -6093,50 +6105,32 @@ window.GLStatus = (function() {
   };
 })();
 
-// =============================================================================
-// GLUrgency — Centralized event urgency language
-//
-// RULE: All urgency labels, colors, and copy MUST come from GLUrgency.
-// No inline daysOut thresholds or urgency text in UI files.
-//
-// USAGE:
-//   var u = GLUrgency.forEvent(daysOut, eventType);
-//   // → { label, hint, level, color }
-// =============================================================================
+// ── GLUrgency — Event urgency language ────────────────────────────────────────
 window.GLUrgency = (function() {
   'use strict';
 
   function forEvent(daysOut, eventType) {
     var type = eventType || 'rehearsal';
     var icon = type === 'gig' ? '\uD83C\uDFA4' : '\uD83C\uDFB8';
-    if (daysOut === null || daysOut === undefined || daysOut > 30) return { label: '', hint: '', level: 'none', color: 'var(--gl-text-tertiary)', icon: icon };
-    if (daysOut === 0) return { label: 'Today', hint: type === 'gig' ? 'Showtime' : 'Rehearsal today', level: 'critical', color: 'var(--gl-red)', icon: icon };
-    if (daysOut === 1) return { label: 'Tomorrow', hint: 'Final prep', level: 'urgent', color: 'var(--gl-red)', icon: icon };
-    if (daysOut <= 3) return { label: daysOut + ' days', hint: 'Lock your preparation', level: 'soon', color: 'var(--gl-amber)', icon: icon };
-    if (daysOut <= 7) return { label: daysOut + ' days', hint: 'Good time to rehearse', level: 'upcoming', color: 'var(--gl-text-secondary)', icon: icon };
-    return { label: daysOut + ' days', hint: '', level: 'planned', color: 'var(--gl-text-tertiary)', icon: icon };
+    if (daysOut === null || daysOut === undefined || daysOut > 30) return { label: '', hint: '', level: 'none', color: 'var(--gl-text-tertiary)', icon: icon, chipClass: '' };
+    if (daysOut === 0) return { label: 'Today', hint: type === 'gig' ? 'Showtime' : 'Rehearsal today', level: 'critical', color: 'var(--gl-red)', icon: icon, chipClass: 'gl-chip--danger' };
+    if (daysOut === 1) return { label: 'Tomorrow', hint: 'Final prep', level: 'urgent', color: 'var(--gl-red)', icon: icon, chipClass: 'gl-chip--danger' };
+    if (daysOut <= 3) return { label: daysOut + ' days', hint: 'Lock your preparation', level: 'soon', color: 'var(--gl-amber)', icon: icon, chipClass: 'gl-chip--warning' };
+    if (daysOut <= 7) return { label: daysOut + ' days', hint: 'Good time to rehearse', level: 'upcoming', color: 'var(--gl-text-secondary)', icon: icon, chipClass: '' };
+    return { label: daysOut + ' days', hint: '', level: 'planned', color: 'var(--gl-text-tertiary)', icon: icon, chipClass: '' };
   }
 
   function forRsvp(daysOut) {
-    if (daysOut === null || daysOut === undefined) return { label: '', level: 'none', color: 'var(--gl-text-tertiary)' };
-    if (daysOut <= 1) return { label: 'RSVP now', level: 'critical', color: 'var(--gl-red)' };
-    if (daysOut <= 3) return { label: 'RSVP needed', level: 'urgent', color: 'var(--gl-amber)' };
-    return { label: 'Respond when ready', level: 'normal', color: 'var(--gl-text-tertiary)' };
+    if (daysOut === null || daysOut === undefined) return { label: '', hint: '', level: 'none', color: 'var(--gl-text-tertiary)', icon: '', chipClass: '' };
+    if (daysOut <= 1) return { label: 'RSVP now', hint: 'Band is waiting', level: 'critical', color: 'var(--gl-red)', icon: '\uD83D\uDEA8', chipClass: 'gl-chip--danger' };
+    if (daysOut <= 3) return { label: 'RSVP needed', hint: 'Confirm attendance', level: 'urgent', color: 'var(--gl-amber)', icon: '\u26A0\uFE0F', chipClass: 'gl-chip--warning' };
+    return { label: 'Respond when ready', hint: '', level: 'normal', color: 'var(--gl-text-tertiary)', icon: '', chipClass: '' };
   }
 
   return { forEvent: forEvent, forRsvp: forRsvp };
 })();
 
-// =============================================================================
-// GLPriority — Centralized feed item priority language
-//
-// RULE: All feed priority labels and action copy MUST come from GLPriority.
-// No inline "Waiting on YOU" / "Still waiting" strings in UI files.
-//
-// USAGE:
-//   var p = GLPriority.forAction(state);
-//   // → { label, color, weight }
-// =============================================================================
+// ── GLPriority — Feed action priority language ───────────────────────────────
 window.GLPriority = (function() {
   'use strict';
 
@@ -6146,51 +6140,40 @@ window.GLPriority = (function() {
     var isMentioned = opts.isMentioned || false;
     var isRsvpUrgent = opts.isRsvpUrgent || false;
 
-    if (isRsvpUrgent) return { label: 'RSVP needed', color: 'var(--gl-red)', weight: '800', icon: '\uD83D\uDEA8' };
-    if (isBlocker) return { label: 'Everyone responded \u2014 waiting on YOU', color: 'var(--gl-red)', weight: '800', icon: '\u26A1' };
-    if (isMentioned) return { label: 'You were mentioned', color: 'var(--gl-indigo)', weight: '700', icon: '@' };
-    if (isStuck) return { label: 'Still waiting on YOU', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1' };
-    return { label: 'Waiting on YOU', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1' };
+    if (isRsvpUrgent) return { label: 'RSVP needed', hint: 'Band is waiting', level: 'critical', color: 'var(--gl-red)', weight: '800', icon: '\uD83D\uDEA8', chipClass: 'gl-chip--danger' };
+    if (isBlocker) return { label: 'Everyone responded \u2014 waiting on YOU', hint: 'You\u2019re the last one', level: 'blocker', color: 'var(--gl-red)', weight: '800', icon: '\u26A1', chipClass: 'gl-chip--danger' };
+    if (isMentioned) return { label: 'You were mentioned', hint: 'Someone needs your input', level: 'mentioned', color: 'var(--gl-indigo)', weight: '700', icon: '@', chipClass: 'gl-chip--indigo' };
+    if (isStuck) return { label: 'Still waiting on YOU', hint: 'This has been open a while', level: 'stuck', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1', chipClass: 'gl-chip--warning' };
+    return { label: 'Waiting on YOU', hint: 'Your input needed', level: 'action', color: 'var(--gl-amber)', weight: '700', icon: '\u26A1', chipClass: 'gl-chip--warning' };
   }
 
   function forRsvpEvent(daysOut, eventType) {
     var type = eventType || 'rehearsal';
-    var what = type === 'gig' ? 'gig' : 'rehearsal';
-    if (daysOut === 0) return { label: '\uD83D\uDEA8 ' + (type === 'gig' ? 'Gig' : 'Rehearsal') + ' tonight \u2014 we need your RSVP', color: 'var(--gl-red)' };
-    if (daysOut === 1) return { label: '\uD83D\uDEA8 ' + (type === 'gig' ? 'Gig' : 'Rehearsal') + ' tomorrow \u2014 we need your RSVP', color: 'var(--gl-red)' };
-    return { label: '\u26A0\uFE0F Event in ' + daysOut + ' days \u2014 you haven\u2019t RSVP\u2019d', color: 'var(--gl-amber)' };
+    var name = type === 'gig' ? 'Gig' : 'Rehearsal';
+    if (daysOut === 0) return { label: '\uD83D\uDEA8 ' + name + ' tonight \u2014 we need your RSVP', hint: '', level: 'critical', color: 'var(--gl-red)', icon: '\uD83D\uDEA8', chipClass: 'gl-chip--danger' };
+    if (daysOut === 1) return { label: '\uD83D\uDEA8 ' + name + ' tomorrow \u2014 we need your RSVP', hint: '', level: 'urgent', color: 'var(--gl-red)', icon: '\uD83D\uDEA8', chipClass: 'gl-chip--danger' };
+    return { label: '\u26A0\uFE0F Event in ' + daysOut + ' days \u2014 you haven\u2019t RSVP\u2019d', hint: '', level: 'upcoming', color: 'var(--gl-amber)', icon: '\u26A0\uFE0F', chipClass: 'gl-chip--warning' };
   }
 
   return { forAction: forAction, forRsvpEvent: forRsvpEvent };
 })();
 
-// =============================================================================
-// GLScheduleQuality — Centralized schedule date quality language
-//
-// RULE: All date quality labels MUST come from GLScheduleQuality.
-// No inline "Best choice" / "Good option" strings in UI files.
-//
-// USAGE:
-//   var q = GLScheduleQuality.forDate(conflicts, isWeekend, score);
-//   // → { label, color, level }
-// =============================================================================
+// ── GLScheduleQuality — Date quality language ────────────────────────────────
 window.GLScheduleQuality = (function() {
   'use strict';
 
   function forDate(conflicts, isWeekend, score) {
     conflicts = conflicts || 0;
     if (score !== undefined && score !== null) {
-      // Score-based (from recommendation engine)
-      if (score >= 70) return { label: 'Best choice this week', level: 'best', color: 'var(--gl-green)' };
-      if (score >= 55) return { label: 'Good option', level: 'good', color: 'var(--gl-green)' };
-      if (score >= 40) return { label: 'Possible \u2014 some conflicts', level: 'fair', color: 'var(--gl-amber)' };
-      return { label: 'Tough \u2014 consider alternatives', level: 'poor', color: 'var(--gl-amber)' };
+      if (score >= 70) return { label: 'Best choice this week', hint: 'Full band available', level: 'best', color: 'var(--gl-green)', icon: '\u2705', chipClass: 'gl-chip--success' };
+      if (score >= 55) return { label: 'Good option', hint: 'Most members free', level: 'good', color: 'var(--gl-green)', icon: '\uD83D\uDC4D', chipClass: 'gl-chip--success' };
+      if (score >= 40) return { label: 'Possible \u2014 some conflicts', hint: 'Check availability', level: 'fair', color: 'var(--gl-amber)', icon: '\u26A0\uFE0F', chipClass: 'gl-chip--warning' };
+      return { label: 'Tough \u2014 consider alternatives', hint: 'Multiple conflicts', level: 'poor', color: 'var(--gl-amber)', icon: '\u274C', chipClass: 'gl-chip--warning' };
     }
-    // Conflict-based fallback
-    if (conflicts === 0 && !isWeekend) return { label: 'Best choice this week', level: 'best', color: 'var(--gl-green)' };
-    if (conflicts === 0) return { label: 'No conflicts', level: 'good', color: 'var(--gl-green)' };
-    if (conflicts === 1) return { label: 'Good option \u2014 minor conflict', level: 'fair', color: 'var(--gl-amber)' };
-    return { label: conflicts + ' conflicts \u2014 consider alternatives', level: 'poor', color: 'var(--gl-amber)' };
+    if (conflicts === 0 && !isWeekend) return { label: 'Best choice this week', hint: 'No conflicts', level: 'best', color: 'var(--gl-green)', icon: '\u2705', chipClass: 'gl-chip--success' };
+    if (conflicts === 0) return { label: 'No conflicts', hint: '', level: 'good', color: 'var(--gl-green)', icon: '\uD83D\uDC4D', chipClass: 'gl-chip--success' };
+    if (conflicts === 1) return { label: 'Good option \u2014 minor conflict', hint: '1 member unavailable', level: 'fair', color: 'var(--gl-amber)', icon: '\u26A0\uFE0F', chipClass: 'gl-chip--warning' };
+    return { label: conflicts + ' conflicts \u2014 consider alternatives', hint: '', level: 'poor', color: 'var(--gl-amber)', icon: '\u274C', chipClass: 'gl-chip--warning' };
   }
 
   return { forDate: forDate };
