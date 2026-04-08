@@ -987,7 +987,11 @@ function renderCalendarInner() {
         _startFallbackTimer();
     }
 
-    loadCalendarEvents().catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
+    // Wait for Firebase before loading events — prevents hang on loadBandDataFromDrive
+    var _calLoadPromise = (typeof GLStore !== 'undefined' && GLStore.ready)
+        ? GLStore.ready(['firebase'], 12000).then(function() { return loadCalendarEvents(); })
+        : loadCalendarEvents();
+    _calLoadPromise.catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
         _availRendered = true;
         const eventDates = result ? result.dateMap : {};
         const blockedRanges = result ? (result.blockedRanges || []) : [];
