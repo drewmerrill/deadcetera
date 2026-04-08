@@ -272,9 +272,8 @@ async function _rhRenderCommandFlow(el) {
     var confColor = '#64748b';
     if (ci && ci.catalogAvg) {
         var avg = parseFloat(ci.catalogAvg);
-        if (avg >= 4) { confLabel = 'Strong'; confColor = '#22c55e'; }
-        else if (avg >= 3) { confLabel = 'Solid'; confColor = 'var(--gl-amber)'; }
-        else { confLabel = 'Needs work'; confColor = 'var(--gl-red)'; }
+        var _rs = (typeof GLStatus !== 'undefined') ? GLStatus.getReadiness(avg) : null;
+        if (_rs) { confLabel = _rs.label; confColor = _rs.color; }
     }
 
     var html = '';

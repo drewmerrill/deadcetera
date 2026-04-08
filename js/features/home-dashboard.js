@@ -459,7 +459,8 @@ function _renderNextUpCard(msg, sub, cta, highConfidence) {
         var _confFocus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : null;
         if (_confFocus && _confFocus.primary) {
             var _confAvg = _confFocus.primary.avg || 0;
-            var _confLabel = _confAvg >= 4 ? 'Strong' : _confAvg >= 3 ? 'Solid' : _confAvg > 0 ? 'Needs work' : '';
+            var _cs = (typeof GLStatus !== 'undefined') ? GLStatus.getReadiness(_confAvg) : { label: '' };
+            var _confLabel = _cs.label;
             if (_confLabel) {
                 _confLine = 'Readiness: ' + _confLabel;
                 if (typeof GLInsights !== 'undefined' && GLInsights.getNextAction) {
@@ -1455,7 +1456,7 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         _focusItems.forEach(function(item) {
             var avg = item.avg ? item.avg.toFixed(1) : '?';
             var barPct = item.avg ? Math.round((item.avg / 5) * 100) : 0;
-            var barColor = item.avg >= 3.5 ? 'var(--gl-green)' : item.avg >= 2.5 ? 'var(--gl-amber)' : 'var(--gl-red)';
+            var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getSongColor(item.avg) : 'var(--gl-amber)';
             var safeSong = _escHtml(item.title).replace(/'/g, "\\'");
             _leftHtml += '<div onclick="selectSong(\'' + safeSong + '\')" class="gl-row gl-focus-row">';
             _leftHtml += '<span class="gl-focus-title">' + _escHtml(item.title) + '</span>';
@@ -1852,7 +1853,7 @@ function _renderBandStatusCompact(bundle) {
     });
     var overallAvg = ratedCount > 0 ? (totalScore / ratedCount) : 0;
     var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
-    var barColor = pct >= 80 ? '#22c55e' : pct >= 50 ? '#f59e0b' : (ratedCount > 0 ? '#ef4444' : '#475569');
+    var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getBarColor(pct) : '#475569';
 
     // Headline: use scorecard summary if rated, otherwise specific empty state
     var headline = sc.healthSummary;

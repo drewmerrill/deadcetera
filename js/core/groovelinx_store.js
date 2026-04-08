@@ -6011,3 +6011,64 @@
   console.log('✅ GLStore loaded (mode: ' + _state.productMode + ')');
 
 })();
+
+// =============================================================================
+// GLStatus — Centralized readiness / status language engine
+//
+// Single source of truth for all readiness labels, colors, and guidance.
+// All UI surfaces must call GLStatus instead of inline threshold checks.
+//
+// USAGE:
+//   var s = GLStatus.getReadiness(avg);     // avg 0-5
+//   var p = GLStatus.getReadinessPct(pct);  // pct 0-100
+//   var c = GLStatus.getColor(level);       // 'strong'|'solid'|'needs_work'|'unrated'
+// =============================================================================
+window.GLStatus = (function() {
+  'use strict';
+
+  // ── Readiness from avg score (0-5) ──
+  function getReadiness(avg) {
+    if (!avg || avg <= 0) return { label: '', hint: '', level: 'unrated', color: 'var(--gl-text-tertiary)' };
+    if (avg >= 4) return { label: 'Strong', hint: 'Ready for the stage', level: 'strong', color: 'var(--gl-green)' };
+    if (avg >= 3) return { label: 'Solid', hint: 'Run it once to lock it in', level: 'solid', color: 'var(--gl-amber)' };
+    if (avg >= 2) return { label: 'Needs work', hint: 'Focus on weak spots', level: 'needs_work', color: 'var(--gl-amber)' };
+    return { label: 'Needs work', hint: 'Give it a focused block', level: 'needs_work', color: 'var(--gl-red)' };
+  }
+
+  // ── Readiness from percentage (0-100) ──
+  function getReadinessPct(pct) {
+    if (pct === null || pct === undefined) return { label: '', level: 'unrated', color: 'var(--gl-text-tertiary)' };
+    if (pct >= 80) return { label: 'Strong', level: 'strong', color: 'var(--gl-green)' };
+    if (pct >= 50) return { label: 'Solid', level: 'solid', color: 'var(--gl-amber)' };
+    return { label: 'Needs work', level: 'needs_work', color: pct > 0 ? 'var(--gl-red)' : 'var(--gl-text-tertiary)' };
+  }
+
+  // ── Color by level ──
+  function getColor(level) {
+    var map = { strong: 'var(--gl-green)', solid: 'var(--gl-amber)', needs_work: 'var(--gl-red)', unrated: 'var(--gl-text-tertiary)' };
+    return map[level] || 'var(--gl-text-tertiary)';
+  }
+
+  // ── Song readiness color from avg ──
+  function getSongColor(avg) {
+    if (!avg || avg <= 0) return 'var(--gl-text-tertiary)';
+    if (avg >= 3.5) return 'var(--gl-green)';
+    if (avg >= 2.5) return 'var(--gl-amber)';
+    return 'var(--gl-red)';
+  }
+
+  // ── Bar color from percentage ──
+  function getBarColor(pct) {
+    if (pct >= 80) return 'var(--gl-green)';
+    if (pct >= 50) return 'var(--gl-amber)';
+    return pct > 0 ? 'var(--gl-red)' : 'var(--gl-text-tertiary)';
+  }
+
+  return {
+    getReadiness: getReadiness,
+    getReadinessPct: getReadinessPct,
+    getColor: getColor,
+    getSongColor: getSongColor,
+    getBarColor: getBarColor
+  };
+})();
