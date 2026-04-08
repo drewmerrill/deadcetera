@@ -1101,6 +1101,9 @@ function _calRenderGridOnly(grid) {
         if (navId !== _calNavSeq) return;
 
         var eventDates = result ? result.dateMap : {};
+        var blockedRanges = result ? (result.blockedRanges || []) : [];
+        // Update cached blocked ranges for availability matrix
+        _calCachedBlockedRanges = blockedRanges;
         if (!grid) return;
 
         var g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
@@ -1123,9 +1126,17 @@ function _calRenderGridOnly(grid) {
                 return '<div style="font-size:0.55em;margin-top:1px;padding:1px 3px;border-radius:3px;background:' + c + '20;color:' + c + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + '</div>';
             }).join('') : '';
             var moreCount = dayEvents.length > 2 ? '<div style="font-size:0.5em;color:var(--text-dim)">+' + (dayEvents.length - 2) + '</div>' : '';
-            g += '<div onclick="calDayClick(' + year + ',' + month + ',' + d + ')" style="min-height:60px;padding:4px;cursor:pointer;border-radius:6px;' + (isToday ? 'background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);' : 'border:1px solid transparent;') + 'transition:background 0.1s" onmouseenter="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseleave="this.style.background=\'' + (isToday ? 'rgba(99,102,241,0.1)' : '') + '\'">'
+            // Blocked date bars
+            var isBlocked = blockedRanges.some(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; });
+            var blockBars = blockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; }).map(function(b) {
+                return '<div style="background:rgba(239,68,68,0.7);border:2px dashed rgba(239,68,68,0.9);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden" title="' + (b.person || '') + ': ' + (b.reason || '') + '">'
+                    + '<span style="font-size:0.5em;font-weight:800;letter-spacing:0.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">\uD83D\uDEAB OUT</span></div>';
+            }).join('');
+            var cellBg = isBlocked ? 'rgba(239,68,68,0.06)' : isToday ? 'rgba(99,102,241,0.1)' : '';
+            var cellBorder = isToday ? 'border:2px solid var(--accent);' : isBlocked ? 'border:1px solid rgba(239,68,68,0.3);' : 'border:1px solid transparent;';
+            g += '<div onclick="calDayClick(' + year + ',' + month + ',' + d + ')" style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;cursor:pointer;border-radius:6px;background:' + cellBg + ';' + cellBorder + 'transition:background 0.1s">'
                 + '<span style="text-align:center;' + (isToday ? 'color:var(--accent);font-weight:700;' : hasEvent ? 'color:white;font-weight:600;' : w ? 'color:var(--accent-light);' : 'color:var(--text-muted);') + '">' + d + '</span>'
-                + eventPills + moreCount
+                + eventPills + moreCount + blockBars
                 + '</div>';
         }
         g += '</div>';
