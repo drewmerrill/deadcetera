@@ -1389,21 +1389,13 @@ async function _calAppendAvailMonths(el, count) {
             + monthNames[monthStart.getMonth()] + ' ' + monthStart.getFullYear() + '</div>';
 
         var html = header + '<div style="display:flex">';
-        // Sticky member column (only on first month)
-        if (mOffset === startMonth) {
-            html += '<div style="flex-shrink:0;width:80px;padding-top:24px">';
-            members.forEach(function(m) {
-                var name = (typeof m === 'object' ? m.name : bm[m] ? bm[m].name : m) || '';
-                html += '<div style="height:28px;display:flex;align-items:center;font-size:0.72em;font-weight:600;color:var(--gl-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + name.split(' ')[0] + '</div>';
-            });
-            html += '</div>';
-        } else {
-            html += '<div style="flex-shrink:0;width:80px;padding-top:24px">';
-            members.forEach(function() {
-                html += '<div style="height:28px"></div>';
-            });
-            html += '</div>';
-        }
+        // Member name column (every month)
+        html += '<div style="flex-shrink:0;width:80px;padding-top:24px">';
+        members.forEach(function(m) {
+            var name = (typeof m === 'object' ? m.name : bm[m] ? bm[m].name : m) || '';
+            html += '<div style="height:28px;display:flex;align-items:center;font-size:0.72em;font-weight:600;color:var(--gl-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + name.split(' ')[0] + '</div>';
+        });
+        html += '</div>';
         // Date columns
         html += '<div style="overflow-x:auto;flex:1;-webkit-overflow-scrolling:touch;scrollbar-width:thin">';
         html += '<div style="display:flex;min-width:' + (numDays * cellW) + 'px">';
