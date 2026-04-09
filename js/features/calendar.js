@@ -749,30 +749,106 @@ async function _calPopulateNextEventRail() {
     } catch(e) { el.innerHTML = ''; }
 }
 
-// ── Availability modal (moved from rail to dedicated view) ──────────────────
+// ── Availability modal — scrollable timeline ─────────────────────────────────
 window._calShowAvailabilityModal = function() {
-    // Create modal overlay if not exists
     var existing = document.getElementById('calAvailModal');
-    if (existing) { existing.style.display = 'flex'; return; }
+    if (existing) { existing.style.display = 'flex'; _calBuildAvailTimeline(); return; }
     var modal = document.createElement('div');
     modal.id = 'calAvailModal';
     modal.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px';
     modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
     var inner = document.createElement('div');
-    inner.style.cssText = 'background:var(--bg-card,#1e293b);border-radius:12px;padding:20px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;border:1px solid var(--gl-border)';
+    inner.style.cssText = 'background:var(--bg-card,#1e293b);border-radius:12px;padding:16px;max-width:720px;width:100%;max-height:80vh;overflow:hidden;border:1px solid var(--gl-border)';
     inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-        + '<span style="font-weight:700;color:var(--gl-text)">Availability</span>'
+        + '<span style="font-weight:700;color:var(--gl-text)">Band Availability</span>'
         + '<button onclick="document.getElementById(\'calAvailModal\').style.display=\'none\'" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1.1em">\u2715</button>'
         + '</div>'
-        + '<div id="calAvailModalContent"><div style="text-align:center;padding:20px;color:var(--gl-text-tertiary)">Loading\u2026</div></div>';
+        + '<div id="calAvailTimeline" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>';
     modal.appendChild(inner);
     document.body.appendChild(modal);
-    // Render availability matrix into the modal
-    var matrixEl = document.getElementById('calAvailabilityMatrix');
-    var modalContent = document.getElementById('calAvailModalContent');
-    if (matrixEl && modalContent) {
-        modalContent.innerHTML = matrixEl.innerHTML || '<div style="color:var(--gl-text-tertiary);font-size:0.82em">No availability data loaded yet. Navigate to a month first.</div>';
+    _calBuildAvailTimeline();
+};
+
+function _calBuildAvailTimeline() {
+    var el = document.getElementById('calAvailTimeline');
+    if (!el) return;
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    if (!members.length) {
+        Object.keys(bm).forEach(function(k) { members.push({ key: k, name: bm[k].name || k }); });
     }
+    if (!members.length) { el.innerHTML = '<div style="color:var(--gl-text-tertiary);font-size:0.82em;padding:12px">No band members found.</div>'; return; }
+
+    var today = new Date();
+    var numDays = 21; // ~3 weeks scrollable
+    var days = [];
+    var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    for (var d = 0; d < numDays; d++) {
+        var dt = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+        var ds = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+        days.push({ date: ds, day: dayNames[dt.getDay()], num: dt.getDate(), month: monthNames[dt.getMonth()], isWeekend: dt.getDay() === 0 || dt.getDay() === 6, isToday: d === 0 });
+    }
+
+    var blocked = _calCachedBlockedRanges || [];
+    var cellW = 38;
+
+    // Build grid: sticky left names + scrollable dates
+    var html = '<div style="display:flex">';
+    // Sticky member column
+    html += '<div style="flex-shrink:0;width:80px;padding-top:40px">';
+    members.forEach(function(m) {
+        var name = (typeof m === 'object' ? m.name : bm[m] ? bm[m].name : m) || '';
+        html += '<div style="height:28px;display:flex;align-items:center;font-size:0.72em;font-weight:600;color:var(--gl-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + name.split(' ')[0] + '</div>';
+    });
+    html += '</div>';
+    // Scrollable date columns
+    html += '<div style="overflow-x:auto;flex:1;-webkit-overflow-scrolling:touch;scrollbar-width:thin">';
+    html += '<div style="display:flex;min-width:' + (numDays * cellW) + 'px">';
+    // Date headers
+    days.forEach(function(day) {
+        var bg = day.isToday ? 'rgba(99,102,241,0.15)' : day.isWeekend ? 'rgba(255,255,255,0.02)' : '';
+        html += '<div style="width:' + cellW + 'px;flex-shrink:0;text-align:center;padding:4px 0;background:' + bg + '">';
+        html += '<div style="font-size:0.55em;color:var(--gl-text-tertiary);font-weight:600">' + day.day + '</div>';
+        html += '<div style="font-size:0.72em;font-weight:700;color:' + (day.isToday ? 'var(--accent-light)' : 'var(--gl-text-secondary)') + '">' + day.num + '</div>';
+        if (day.num === 1 || day.isToday) html += '<div style="font-size:0.5em;color:var(--gl-text-tertiary)">' + day.month + '</div>';
+        html += '</div>';
+    });
+    html += '</div>';
+    // Member rows
+    members.forEach(function(m) {
+        var key = (typeof m === 'object' ? m.key : m) || '';
+        html += '<div style="display:flex;min-width:' + (numDays * cellW) + 'px">';
+        days.forEach(function(day) {
+            var isBlocked = blocked.some(function(b) { return b.person && (b.person === key || b.person === (bm[key] ? bm[key].name : '')) && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate; });
+            var bg = isBlocked ? 'rgba(239,68,68,0.2)' : day.isWeekend ? 'rgba(255,255,255,0.015)' : '';
+            var border = isBlocked ? 'border:1px solid rgba(239,68,68,0.3)' : 'border:1px solid transparent';
+            var label = isBlocked ? '\uD83D\uDEAB' : '\u2705';
+            html += '<div style="width:' + cellW + 'px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.65em;background:' + bg + ';' + border + ';border-radius:3px">' + label + '</div>';
+        });
+        html += '</div>';
+    });
+    html += '</div></div>';
+    el.innerHTML = html;
+}
+
+// ── View conflicts — highlight blocked days on calendar grid ─────────────────
+window._calViewConflicts = function() {
+    var grid = document.getElementById('calGrid');
+    if (!grid) return;
+    grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Find all blocked day cells and pulse them
+    var blocked = _calCachedBlockedRanges || [];
+    if (!blocked.length) { if (typeof showToast === 'function') showToast('No conflicts this month'); return; }
+    // Pulse all cells with red background (blocked dates)
+    var cells = grid.querySelectorAll('div[onclick^="calDayClick"]');
+    cells.forEach(function(cell) {
+        if (cell.style.background && cell.style.background.indexOf('239,68,68') !== -1) {
+            cell.style.transition = 'box-shadow 0.3s';
+            cell.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.6), 0 0 12px rgba(239,68,68,0.3)';
+            setTimeout(function() { cell.style.boxShadow = ''; }, 2000);
+        }
+    });
 };
 
 async function _calRenderNextUp() {
@@ -1004,8 +1080,8 @@ function renderCalendarInner() {
         '<div id="calNextEventRail" style="font-size:0.78em;color:var(--gl-text-tertiary)"></div>' +
         // 3. Navigation links
         '<div style="padding-top:var(--gl-space-sm);display:flex;flex-direction:column;gap:4px">' +
-            '<button onclick="var m=document.getElementById(\'calAvailModal\');if(m)m.style.display=\'flex\';else _calShowAvailabilityModal()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">Check availability</button>' +
-            '<button onclick="var d=document.getElementById(\'calBlockedHeader\');if(d)d.closest(\'details\').open=true;d.scrollIntoView({behavior:\'smooth\'})" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
+            '<button onclick="_calShowAvailabilityModal()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">Check availability</button>' +
+            '<button onclick="_calViewConflicts()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
         '</div>' +
         // Hidden containers for data that still needs to load (used by loadCalendarEvents)
         '<div id="calendarEvents" style="display:none"></div>' +
