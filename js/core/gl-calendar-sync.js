@@ -19,8 +19,11 @@ window.GLCalendarSync = (function() {
 
   // ── Check if calendar scope is available ──────────────────────────────────
   function hasCalendarScope() {
-    return typeof accessToken !== 'undefined' && accessToken &&
-      typeof GOOGLE_DRIVE_CONFIG !== 'undefined' &&
+    if (typeof accessToken === 'undefined' || !accessToken) return false;
+    // Check actual granted scopes (set by token callback) — not just requested config
+    if (typeof window._calendarScopeGranted !== 'undefined') return window._calendarScopeGranted;
+    // Fallback: check config (before first token callback fires)
+    return typeof GOOGLE_DRIVE_CONFIG !== 'undefined' &&
       GOOGLE_DRIVE_CONFIG.scope && GOOGLE_DRIVE_CONFIG.scope.indexOf('calendar') !== -1;
   }
 

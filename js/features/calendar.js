@@ -1108,6 +1108,7 @@ function _calTriggerGoogleReAuth() {
             tokenClient.requestAccessToken({ prompt: 'consent' });
             // Poll for new token — give user up to 60 seconds to complete consent
             var _pollCount = 0;
+            var _prevToken = (typeof accessToken !== 'undefined') ? accessToken : null;
             var _pollTimer = setInterval(async function() {
                 _pollCount++;
                 if (_pollCount >= 120) { // 60 seconds (120 * 500ms)
@@ -1115,22 +1116,39 @@ function _calTriggerGoogleReAuth() {
                     _calShowConnectionFailure();
                     return;
                 }
-                // Check if accessToken has been set by the OAuth callback
-                if (typeof accessToken !== 'undefined' && accessToken && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
-                    var _ok = _calTestGoogleToken();
-                    if (_ok) {
-                        clearInterval(_pollTimer);
-                        GLCalendarSync.resetScopeFailure();
-                        var r = await GLCalendarSync.connectGoogleCalendar();
-                        if (r.ok) {
-                            localStorage.removeItem('gl_cal_onboard_dismissed');
-                            localStorage.removeItem('gl_cal_impact_shown');
-                            _calConnectedCache = null;
-                            await _calLoadConnections();
-                            _calRenderSyncCoverage();
-                            _calRenderOnboarding();
-                            if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                // Check if a NEW token has been set by the OAuth callback
+                if (typeof accessToken !== 'undefined' && accessToken && accessToken !== _prevToken) {
+                    clearInterval(_pollTimer);
+                    // Check if Google actually granted calendar scope
+                    if (window._calendarScopeGranted === false) {
+                        console.warn('[Calendar] Google did not grant calendar scope. Granted:', window._grantedScopes);
+                        _calShowScopeNotGranted();
+                        return;
+                    }
+                    // Verify with a real API call
+                    GLCalendarSync.resetScopeFailure();
+                    try {
+                        var now = new Date();
+                        var testMin = now.toISOString();
+                        var testMax = new Date(now.getTime() + 86400000).toISOString();
+                        var testResult = await GLCalendarSync.getFreeBusy(testMin, testMax);
+                        if (testResult.source === 'needs_consent' || testResult.source === 'error') {
+                            console.warn('[Calendar] Calendar API test failed after consent — scope not effective');
+                            _calShowScopeNotGranted();
+                            return;
                         }
+                    } catch(e) {
+                        console.warn('[Calendar] Calendar API test error:', e);
+                    }
+                    var r = await GLCalendarSync.connectGoogleCalendar();
+                    if (r.ok) {
+                        localStorage.removeItem('gl_cal_onboard_dismissed');
+                        localStorage.removeItem('gl_cal_impact_shown');
+                        _calConnectedCache = null;
+                        await _calLoadConnections();
+                        _calRenderSyncCoverage();
+                        _calRenderOnboarding();
+                        if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                     }
                 }
             }, 500);
@@ -1160,6 +1178,25 @@ function _calShowConnectionFailure() {
             + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-red);margin-bottom:4px">Connection didn\u2019t go through</div>'
             + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
             + 'We couldn\u2019t access your Google Calendar. Please try again and allow calendar access when prompted.'
+            + '</div>'
+            + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Try again</button>'
+            + '</div>';
+    }
+}
+
+// Google signed in but calendar scope was not granted
+function _calShowScopeNotGranted() {
+    if (typeof showToast === 'function') showToast('Calendar access not granted');
+    var el = document.getElementById('calOnboardingCard');
+    if (el) {
+        el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:var(--gl-space-sm)">'
+            + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-amber);margin-bottom:4px">Calendar permission wasn\u2019t included</div>'
+            + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
+            + 'You signed in successfully, but Google didn\u2019t grant calendar access. This can happen if the permission was previously skipped.'
+            + '<br><br><strong>To fix this:</strong>'
+            + '<br>1. Go to <a href="https://myaccount.google.com/permissions" target="_blank" style="color:var(--accent-light);text-decoration:underline">Google Account Permissions</a>'
+            + '<br>2. Find <strong>GrooveLinx</strong> and click <strong>Remove access</strong>'
+            + '<br>3. Come back here and connect again'
             + '</div>'
             + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Try again</button>'
             + '</div>';

@@ -333,6 +333,15 @@ window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
                             return;
                         }
                         accessToken = response.access_token;
+                        // Track which scopes Google actually granted (vs just requested)
+                        window._grantedScopes = response.scope || '';
+                        if (window._grantedScopes.indexOf('calendar') !== -1) {
+                            console.log('✅ Calendar scope GRANTED');
+                            window._calendarScopeGranted = true;
+                        } else {
+                            console.warn('⚠️ Calendar scope NOT granted — token scopes:', window._grantedScopes);
+                            window._calendarScopeGranted = false;
+                        }
                         window.updateSignInStatus(true);
                         console.log('✅ User signed in');
                         await window.getCurrentUserEmail();
