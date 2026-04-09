@@ -234,6 +234,125 @@ window.GLCalendarSync = (function() {
     return '';
   }
 
+  // ── FREE/BUSY — query current user's Google Calendar conflicts ────────────
+  var _freeBusyCache = null;
+  var _freeBusyCacheTime = 0;
+
+  async function getFreeBusy(timeMin, timeMax) {
+    if (!hasCalendarScope()) return { busy: [], source: 'unavailable' };
+    // Cache for 5 minutes
+    var cacheKey = timeMin + '|' + timeMax;
+    if (_freeBusyCache && _freeBusyCacheTime > Date.now() - 300000 && _freeBusyCache._key === cacheKey) {
+      return _freeBusyCache;
+    }
+    try {
+      var res = await fetch(WORKER_BASE + '/calendar/freebusy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+        body: JSON.stringify({
+          timeMin: timeMin,
+          timeMax: timeMax,
+          items: [{ id: 'primary' }]
+        })
+      });
+      if (!res.ok) return { busy: [], source: 'error' };
+      var data = await res.json();
+      // Extract busy ranges from primary calendar
+      var busy = [];
+      if (data.calendars && data.calendars.primary && data.calendars.primary.busy) {
+        data.calendars.primary.busy.forEach(function(b) {
+          busy.push({ start: b.start, end: b.end });
+        });
+      }
+      _freeBusyCache = { busy: busy, source: 'google', _key: cacheKey };
+      _freeBusyCacheTime = Date.now();
+      return _freeBusyCache;
+    } catch (err) {
+      console.warn('[CalSync] Free/busy error:', err);
+      return { busy: [], source: 'error' };
+    }
+  }
+
+  // Convert free/busy ranges to date-based blocked ranges for calendar
+  function freeBusyToBlockedRanges(busyData, memberName) {
+    if (!busyData || !busyData.busy || !busyData.busy.length) return [];
+    var ranges = [];
+    var seen = {};
+    busyData.busy.forEach(function(b) {
+      var startDate = b.start.substring(0, 10);
+      var endDate = b.end.substring(0, 10);
+      // Dedupe by date (multiple busy periods on same day = one block)
+      var key = startDate + '|' + endDate;
+      if (seen[key]) return;
+      seen[key] = true;
+      ranges.push({
+        person: memberName || 'You',
+        startDate: startDate,
+        endDate: endDate,
+        reason: 'Busy (Google Calendar)',
+        status: 'unavailable',
+        _source: 'google'
+      });
+    });
+    return ranges;
+  }
+
+  // ── ATTENDEE SYNC — read RSVP status from Google event ──────────────────
+  async function syncAttendeeStatus(externalEventId) {
+    if (!hasCalendarScope() || !externalEventId) return null;
+    try {
+      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId), {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      if (!res.ok) return null;
+      var data = await res.json();
+      if (!data.attendees) return null;
+      var statuses = {};
+      data.attendees.forEach(function(a) {
+        if (a.email && a.responseStatus) {
+          var map = { accepted: 'yes', declined: 'no', tentative: 'maybe', needsAction: 'pending' };
+          statuses[a.email] = { status: map[a.responseStatus] || 'pending', email: a.email, displayName: a.displayName || '' };
+        }
+      });
+      return statuses;
+    } catch (err) {
+      console.warn('[CalSync] Attendee sync error:', err);
+      return null;
+    }
+  }
+
+  // ── EVENT IMPORT — list Google Calendar events for a date range ──────────
+  async function listGoogleEvents(timeMin, timeMax) {
+    if (!hasCalendarScope()) return [];
+    try {
+      var url = WORKER_BASE + '/calendar/events?timeMin=' + encodeURIComponent(timeMin) + '&timeMax=' + encodeURIComponent(timeMax);
+      var res = await fetch(url, {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      if (!res.ok) return [];
+      var data = await res.json();
+      if (!data.items) return [];
+      return data.items.map(function(ev) {
+        var start = ev.start ? (ev.start.dateTime || ev.start.date || '') : '';
+        var end = ev.end ? (ev.end.dateTime || ev.end.date || '') : '';
+        return {
+          id: ev.id,
+          title: ev.summary || 'Google Event',
+          date: start.substring(0, 10),
+          time: start.length > 10 ? start.substring(11, 16) : '',
+          endDate: end.substring(0, 10),
+          location: ev.location || '',
+          type: 'external',
+          _source: 'google',
+          _htmlLink: ev.htmlLink || ''
+        };
+      });
+    } catch (err) {
+      console.warn('[CalSync] List events error:', err);
+      return [];
+    }
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -243,6 +362,11 @@ window.GLCalendarSync = (function() {
     saveSyncState: saveSyncState,
     getSyncStatus: getSyncStatus,
     renderSyncBadge: renderSyncBadge,
+    // Phase 2: Real-world awareness
+    getFreeBusy: getFreeBusy,
+    freeBusyToBlockedRanges: freeBusyToBlockedRanges,
+    syncAttendeeStatus: syncAttendeeStatus,
+    listGoogleEvents: listGoogleEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };

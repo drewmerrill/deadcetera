@@ -75,6 +75,15 @@ export default {
       return handleCalendarProxy(request, 'PATCH', 'primary', path.replace('/calendar/events/', ''));
     if (path.startsWith('/calendar/events/') && request.method === 'DELETE')
       return handleCalendarProxy(request, 'DELETE', 'primary', path.replace('/calendar/events/', ''));
+    // Free/busy query
+    if (path === '/calendar/freebusy' && request.method === 'POST')
+      return handleCalendarFreeBusy(request);
+    // List events (import)
+    if (path === '/calendar/events' && request.method === 'GET')
+      return handleCalendarListEvents(request);
+    // Get single event (attendee sync)
+    if (path.startsWith('/calendar/events/') && request.method === 'GET')
+      return handleCalendarGetEvent(request, path.replace('/calendar/events/', ''));
     return new Response('Not found', { status: 404 });
   }
 };
@@ -823,6 +832,63 @@ async function handleCalendarProxy(request, method, calendarId, eventId) {
     return cors(new Response(JSON.stringify({ error: 'Google Calendar API error: ' + err.message }), {
       status: 502, headers: { 'Content-Type': 'application/json' }
     }));
+  }
+}
+
+// ── Google Calendar Free/Busy Query ──────────────────────────────────────────
+// POST /calendar/freebusy → Google freeBusy.query
+// Body: { timeMin, timeMax, items: [{ id: calendarId }] }
+async function handleCalendarFreeBusy(request) {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader) return cors(new Response('Unauthorized', { status: 401 }));
+  try {
+    const body = await request.text();
+    const res = await fetch('https://www.googleapis.com/calendar/v3/freeBusy', {
+      method: 'POST',
+      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+      body: body
+    });
+    const data = await res.text();
+    return cors(new Response(data, { status: res.status, headers: { 'Content-Type': 'application/json' } }));
+  } catch (err) {
+    return cors(new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { 'Content-Type': 'application/json' } }));
+  }
+}
+
+// ── Google Calendar List Events ──────────────────────────────────────────────
+// GET /calendar/events?timeMin=...&timeMax=...
+async function handleCalendarListEvents(request) {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader) return cors(new Response('Unauthorized', { status: 401 }));
+  try {
+    const url = new URL(request.url);
+    const params = new URLSearchParams();
+    if (url.searchParams.get('timeMin')) params.set('timeMin', url.searchParams.get('timeMin'));
+    if (url.searchParams.get('timeMax')) params.set('timeMax', url.searchParams.get('timeMax'));
+    params.set('singleEvents', 'true');
+    params.set('orderBy', 'startTime');
+    params.set('maxResults', '50');
+    const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?' + params.toString();
+    const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });
+    const data = await res.text();
+    return cors(new Response(data, { status: res.status, headers: { 'Content-Type': 'application/json' } }));
+  } catch (err) {
+    return cors(new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { 'Content-Type': 'application/json' } }));
+  }
+}
+
+// ── Google Calendar Get Single Event ─────────────────────────────────────────
+// GET /calendar/events/:eventId → read event with attendee status
+async function handleCalendarGetEvent(request, eventId) {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader) return cors(new Response('Unauthorized', { status: 401 }));
+  try {
+    const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/primary/events/' + encodeURIComponent(eventId);
+    const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });
+    const data = await res.text();
+    return cors(new Response(data, { status: res.status, headers: { 'Content-Type': 'application/json' } }));
+  } catch (err) {
+    return cors(new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { 'Content-Type': 'application/json' } }));
   }
 }
 

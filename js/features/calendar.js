@@ -1456,9 +1456,24 @@ async function loadCalendarEvents() {
     } else {
         blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
     }
+    // Merge Google Calendar free/busy conflicts (current user only)
+    try {
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+            var _fbTimeMin = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-01T00:00:00Z';
+            var _fbDaysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+            var _fbTimeMax = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-' + String(_fbDaysInMonth).padStart(2, '0') + 'T23:59:59Z';
+            var _fbData = await GLCalendarSync.getFreeBusy(_fbTimeMin, _fbTimeMax);
+            var _myName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
+            var _googleBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName);
+            if (_googleBlocks.length) {
+                blocked = blocked.concat(_googleBlocks);
+                console.log('[Calendar] Google free/busy merged:', _googleBlocks.length, 'ranges');
+            }
+        }
+    } catch(e) { console.warn('[Calendar] Free/busy merge failed:', e); }
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
-    console.log('[Calendar] Blocked ranges loaded:', blocked.length, '| calendarEvents el:', !!el);
+    console.log('[Calendar] Total blocked ranges:', blocked.length, '| calendarEvents el:', !!el);
     // Update header count
     var bHeader = document.getElementById('calBlockedHeader');
     if (bHeader) bHeader.textContent = '🚫 Conflicts & Blocked Dates' + (blocked.length > 0 ? ' (' + blocked.length + ')' : '');
