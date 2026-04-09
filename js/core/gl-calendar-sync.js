@@ -391,6 +391,7 @@ window.GLCalendarSync = (function() {
   // ── ATTENDEE SYNC — read RSVP status from Google event ──────────────────
   async function syncAttendeeStatus(externalEventId) {
     if (!hasCalendarScope() || !externalEventId) return null;
+    if (_calendarScopeFailed) return null;
     try {
       var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId), {
         headers: { 'Authorization': 'Bearer ' + accessToken }
@@ -415,13 +416,17 @@ window.GLCalendarSync = (function() {
   // ── EVENT IMPORT — list Google Calendar events for a date range ──────────
   async function listGoogleEvents(timeMin, timeMax) {
     if (!hasCalendarScope()) return [];
+    if (_calendarScopeFailed) return [];
     try {
       var url = WORKER_BASE + '/calendar/events?timeMin=' + encodeURIComponent(timeMin) + '&timeMax=' + encodeURIComponent(timeMax);
       var res = await fetch(url, {
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
       if (!res.ok) {
-        if (res.status === 403) console.log('[CalSync] Event list 403 — calendar scope not granted');
+        if (res.status === 403) {
+          console.log('[CalSync] Event list 403 — calendar scope not granted (will not retry)');
+          _calendarScopeFailed = true;
+        }
         return [];
       }
       var data = await res.json();
@@ -447,6 +452,13 @@ window.GLCalendarSync = (function() {
     }
   }
 
+  // ── Reset scope failure flag (call after successful re-consent) ──────────
+  function resetScopeFailure() {
+    _calendarScopeFailed = false;
+    _freeBusyCache = null;
+    _freeBusyCacheTime = 0;
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -466,6 +478,7 @@ window.GLCalendarSync = (function() {
     disconnectGoogleCalendar: disconnectGoogleCalendar,
     getConnectedMembers: getConnectedMembers,
     getAllMembersFreeBusy: getAllMembersFreeBusy,
+    resetScopeFailure: resetScopeFailure,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };

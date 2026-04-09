@@ -1098,6 +1098,13 @@ function _calTriggerGoogleReAuth() {
     if (typeof tokenClient !== 'undefined' && tokenClient) {
         if (typeof showToast === 'function') showToast('Opening Google sign-in\u2026');
         try {
+            // Revoke existing token first so Google re-evaluates all scopes (including calendar)
+            var _oldToken = (typeof accessToken !== 'undefined') ? accessToken : null;
+            if (_oldToken && typeof google !== 'undefined' && google.accounts && google.accounts.oauth2 && google.accounts.oauth2.revoke) {
+                google.accounts.oauth2.revoke(_oldToken, function() {
+                    console.log('[Calendar] Old token revoked — requesting fresh consent');
+                });
+            }
             tokenClient.requestAccessToken({ prompt: 'consent' });
             // Poll for new token — give user up to 60 seconds to complete consent
             var _pollCount = 0;
@@ -1113,6 +1120,7 @@ function _calTriggerGoogleReAuth() {
                     var _ok = _calTestGoogleToken();
                     if (_ok) {
                         clearInterval(_pollTimer);
+                        GLCalendarSync.resetScopeFailure();
                         var r = await GLCalendarSync.connectGoogleCalendar();
                         if (r.ok) {
                             localStorage.removeItem('gl_cal_onboard_dismissed');
