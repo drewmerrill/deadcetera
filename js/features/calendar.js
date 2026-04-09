@@ -769,7 +769,7 @@ window._calShowAvailabilityModal = function() {
     _calBuildAvailTimeline();
 };
 
-function _calBuildAvailTimeline() {
+async function _calBuildAvailTimeline() {
     var el = document.getElementById('calAvailTimeline');
     if (!el) return;
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
@@ -778,6 +778,17 @@ function _calBuildAvailTimeline() {
         Object.keys(bm).forEach(function(k) { members.push({ key: k, name: bm[k].name || k }); });
     }
     if (!members.length) { el.innerHTML = '<div style="color:var(--gl-text-tertiary);font-size:0.82em;padding:12px">No band members found.</div>'; return; }
+
+    // Load blocked data directly — don't rely on grid cache
+    var blocked = _calCachedBlockedRanges;
+    if (!blocked || !blocked.length) {
+        try {
+            if (typeof GLStore !== 'undefined' && GLStore.getScheduleBlocksAsRanges) {
+                blocked = await GLStore.getScheduleBlocksAsRanges();
+                _calCachedBlockedRanges = blocked;
+            }
+        } catch(e) { blocked = []; }
+    }
 
     var today = new Date();
     var numDays = 21; // ~3 weeks scrollable
@@ -790,7 +801,7 @@ function _calBuildAvailTimeline() {
         days.push({ date: ds, day: dayNames[dt.getDay()], num: dt.getDate(), month: monthNames[dt.getMonth()], isWeekend: dt.getDay() === 0 || dt.getDay() === 6, isToday: d === 0 });
     }
 
-    var blocked = _calCachedBlockedRanges || [];
+    if (!blocked) blocked = [];
     var cellW = 38;
 
     // Build grid: sticky left names + scrollable dates
@@ -829,6 +840,13 @@ function _calBuildAvailTimeline() {
         html += '</div>';
     });
     html += '</div></div>';
+    // Legend
+    html += '<div style="display:flex;gap:12px;padding:8px 0 0;font-size:0.65em;color:var(--gl-text-tertiary)">';
+    html += '<span>\u2705 Available</span>';
+    html += '<span>\uD83D\uDEAB Blocked</span>';
+    html += '<span style="color:var(--accent-light)">\u25CF Today</span>';
+    html += '<span style="opacity:0.6">Tinted = weekend</span>';
+    html += '</div>';
     el.innerHTML = html;
 }
 
@@ -837,17 +855,13 @@ window._calViewConflicts = function() {
     var grid = document.getElementById('calGrid');
     if (!grid) return;
     grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Find all blocked day cells and pulse them
-    var blocked = _calCachedBlockedRanges || [];
-    if (!blocked.length) { if (typeof showToast === 'function') showToast('No conflicts this month'); return; }
-    // Pulse all cells with red background (blocked dates)
-    var cells = grid.querySelectorAll('div[onclick^="calDayClick"]');
-    cells.forEach(function(cell) {
-        if (cell.style.background && cell.style.background.indexOf('239,68,68') !== -1) {
-            cell.style.transition = 'box-shadow 0.3s';
-            cell.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.6), 0 0 12px rgba(239,68,68,0.3)';
-            setTimeout(function() { cell.style.boxShadow = ''; }, 2000);
-        }
+    // Semantic selector: data-blocked="true" added by grid renderers
+    var blockedCells = grid.querySelectorAll('[data-blocked="true"]');
+    if (!blockedCells.length) { if (typeof showToast === 'function') showToast('No conflicts this month'); return; }
+    blockedCells.forEach(function(cell) {
+        cell.style.transition = 'box-shadow 0.3s';
+        cell.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.6), 0 0 12px rgba(239,68,68,0.3)';
+        setTimeout(function() { cell.style.boxShadow = ''; }, 2000);
     });
 };
 
@@ -1165,7 +1179,7 @@ function renderCalendarInner() {
                 </div>`;
                 }).join('');
             const isBlocked = blockedRanges.some(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
-            g += `<div style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;background:${isBlocked?'rgba(239,68,68,0.06)':hasEvent?'rgba(102,126,234,0.08)':w?'rgba(102,126,234,0.04)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':isBlocked?'border:1px solid rgba(239,68,68,0.3);':hasEvent?'border:1px solid rgba(102,126,234,0.25);':''}" onclick="calDayClick(${year},${month},${d})">
+            g += `<div${isBlocked?' data-blocked="true"':''} style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;background:${isBlocked?'rgba(239,68,68,0.06)':hasEvent?'rgba(102,126,234,0.08)':w?'rgba(102,126,234,0.04)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':isBlocked?'border:1px solid rgba(239,68,68,0.3);':hasEvent?'border:1px solid rgba(102,126,234,0.25);':''}" onclick="calDayClick(${year},${month},${d})">
                 <span style="text-align:center;${isToday?'color:var(--accent);font-weight:700;':hasEvent?'color:white;font-weight:600;':w?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
                 ${eventPills}
                 ${moreCount}
@@ -1258,7 +1272,7 @@ function _calRenderGridOnly(grid) {
             }).join('');
             var cellBg = isBlocked ? 'rgba(239,68,68,0.06)' : isToday ? 'rgba(99,102,241,0.1)' : '';
             var cellBorder = isToday ? 'border:2px solid var(--accent);' : isBlocked ? 'border:1px solid rgba(239,68,68,0.3);' : 'border:1px solid transparent;';
-            g += '<div onclick="calDayClick(' + year + ',' + month + ',' + d + ')" style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;cursor:pointer;border-radius:6px;background:' + cellBg + ';' + cellBorder + 'transition:background 0.1s">'
+            g += '<div' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')" style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;cursor:pointer;border-radius:6px;background:' + cellBg + ';' + cellBorder + 'transition:background 0.1s">'
                 + '<span style="text-align:center;' + (isToday ? 'color:var(--accent);font-weight:700;' : hasEvent ? 'color:white;font-weight:600;' : w ? 'color:var(--accent-light);' : 'color:var(--text-muted);') + '">' + d + '</span>'
                 + eventPills + moreCount + blockBars
                 + '</div>';
