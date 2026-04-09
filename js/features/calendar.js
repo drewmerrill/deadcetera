@@ -1016,20 +1016,32 @@ window._calConfirmSchedule = function(dateStr, type) {
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 
-// ── Connect/Disconnect Google Calendar ────────────────────────────────────────
+// ── Connect/Disconnect/Reconnect Google Calendar ─────────────────────────────
 window._calConnectGoogle = async function() {
+    // If we already have scope + token, just register the connection
     if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
-        var result = await GLCalendarSync.connectGoogleCalendar();
-        if (result.ok) {
-            if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
-            _calConnectedCache = null; // force refresh
-            await _calLoadConnections();
-            _calRenderSyncCoverage();
+        // Verify token is still valid with a lightweight API call
+        var _testOk = await _calTestGoogleToken();
+        if (_testOk) {
+            var result = await GLCalendarSync.connectGoogleCalendar();
+            if (result.ok) {
+                if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                localStorage.removeItem('gl_cal_onboard_dismissed');
+                _calConnectedCache = null;
+                await _calLoadConnections();
+                _calRenderSyncCoverage();
+                _calRenderOnboarding();
+            }
+            return;
         }
-    } else {
-        // Need to re-authenticate with calendar scope
-        if (typeof showToast === 'function') showToast('Sign in again to grant calendar access');
+        // Token expired — fall through to re-auth
     }
+    // Trigger Google re-auth with calendar scope
+    _calTriggerGoogleReAuth();
+};
+
+window._calReconnectGoogle = function() {
+    _calTriggerGoogleReAuth();
 };
 
 window._calDisconnectGoogle = async function() {
@@ -1040,9 +1052,108 @@ window._calDisconnectGoogle = async function() {
             _calConnectedCache = null;
             await _calLoadConnections();
             _calRenderSyncCoverage();
+            _calRenderOnboarding();
         }
     }
 };
+
+// Test if current token is still valid
+async function _calTestGoogleToken() {
+    try {
+        var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+        var res = await fetch(WORKER_BASE + '/calendar/events?timeMin=' + encodeURIComponent(new Date().toISOString()) + '&timeMax=' + encodeURIComponent(new Date().toISOString()), {
+            headers: { 'Authorization': 'Bearer ' + (typeof accessToken !== 'undefined' ? accessToken : '') }
+        });
+        return res.ok;
+    } catch(e) { return false; }
+}
+
+// Trigger Google OAuth re-consent
+function _calTriggerGoogleReAuth() {
+    // Use the existing tokenClient from firebase-service.js
+    if (typeof tokenClient !== 'undefined' && tokenClient) {
+        if (typeof showToast === 'function') showToast('Opening Google sign-in\u2026');
+        try {
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+            // After consent, the callback in firebase-service.js sets accessToken
+            // We poll for the new token and then register connection
+            var _pollCount = 0;
+            var _pollTimer = setInterval(async function() {
+                _pollCount++;
+                if (_pollCount >= 30) { clearInterval(_pollTimer); return; } // 15s timeout
+                if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+                    var _ok = await _calTestGoogleToken();
+                    if (_ok) {
+                        clearInterval(_pollTimer);
+                        var r = await GLCalendarSync.connectGoogleCalendar();
+                        if (r.ok) {
+                            if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                            localStorage.removeItem('gl_cal_onboard_dismissed');
+                            _calConnectedCache = null;
+                            await _calLoadConnections();
+                            _calRenderSyncCoverage();
+                            _calRenderOnboarding();
+                        }
+                    }
+                }
+            }, 500);
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Could not open Google sign-in');
+        }
+    } else {
+        // tokenClient not available — direct user to sign in
+        if (typeof showToast === 'function') showToast('Please sign in first, then connect your calendar');
+    }
+}
+
+// Show reconnect prompt when token is expired
+function _calShowReconnectPrompt(container) {
+    if (!container) return;
+    container.innerHTML = '<div style="padding:10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:8px">'
+        + '<div style="font-size:0.78em;font-weight:600;color:var(--gl-amber);margin-bottom:4px">Calendar connection expired</div>'
+        + '<div style="font-size:0.72em;color:var(--gl-text-secondary);margin-bottom:6px">Reconnect to keep your availability accurate.</div>'
+        + '<button onclick="_calReconnectGoogle()" class="gl-btn-ghost" style="font-size:0.72em;color:var(--gl-indigo)">Reconnect Google Calendar</button>'
+        + '</div>';
+}
+
+// ── Live connection watcher ───────────────────────────────────────────────────
+var _calConnectionWatcher = null;
+
+function _calWatchConnections() {
+    if (_calConnectionWatcher) return; // already watching
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        _calConnectionWatcher = db.ref(bandPath('google_connections'));
+        _calConnectionWatcher.on('value', function() {
+            _calConnectedCache = null;
+            _calLoadConnections().then(function() { _calRenderSyncCoverage(); });
+        });
+    } catch(e) {}
+}
+
+// ── Token validation on load ─────────────────────────────────────────────────
+async function _calValidateMyToken() {
+    var cov = _calGetSyncCoverage();
+    if (!cov.hasScope) return; // not connected, nothing to validate
+    var myKey = cov.myKey;
+    if (!myKey) return;
+    // Check if we're registered as connected
+    var isRegistered = cov.connectedKeys.indexOf(myKey) !== -1;
+    if (!isRegistered) return; // not registered, no token to validate
+    // Test the token
+    var ok = await _calTestGoogleToken();
+    if (!ok) {
+        // Token expired — show reconnect prompt
+        var onboardEl = document.getElementById('calOnboardingCard');
+        if (onboardEl) _calShowReconnectPrompt(onboardEl);
+        // Remove stale connection record
+        if (typeof GLCalendarSync !== 'undefined') GLCalendarSync.disconnectGoogleCalendar();
+        _calConnectedCache = null;
+        await _calLoadConnections();
+        _calRenderSyncCoverage();
+    }
+}
 
 // ── Attendee sync on page load ───────────────────────────────────────────────
 // ── ATTENDEE SYNC RULES:
@@ -1454,7 +1565,11 @@ function renderCalendarInner() {
         _calLoadConnections().then(function() {
             _calRenderSyncCoverage();
             _calRenderOnboarding();
+            // Validate current user's token if connected
+            _calValidateMyToken();
         });
+        // Live connection updates — re-render when another member connects/disconnects
+        _calWatchConnections();
         setTimeout(_calSyncAttendeeStatuses, 2000); // delay to not block initial render
     }
 
