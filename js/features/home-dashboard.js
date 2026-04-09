@@ -1569,7 +1569,7 @@ function _hdInjectLayoutCSS() {
     s.textContent = ''
         // System container
         + '.hd-system{max-width:960px;margin:0 auto;padding:0 4px}'
-        + '.hd-date{font-size:0.75em;color:var(--text-dim,#475569);padding:0 4px 8px}'
+        + '.hd-date{font-size:0.75em;color:var(--gl-text-tertiary);padding:0 4px 8px}'
         // Two-column layout
         + '.hd-layout{display:grid;grid-template-columns:1fr 280px;gap:20px;align-items:start}'
         + '.hd-primary{min-width:0}'

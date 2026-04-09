@@ -362,7 +362,7 @@ async function _bcLoadBandRoom() {
           var linkIcon = isYT ? '\u25B6\uFE0F' : isSP ? '\uD83C\uDFB5' : '\uD83D\uDD17';
           linkHTML = '<a href="' + _bcEsc(p.link) + '" target="_blank" rel="noopener" style="font-size:0.75em;color:#818cf8;text-decoration:none;display:inline-flex;align-items:center;gap:3px">' + linkIcon + ' ' + (isYT ? 'YouTube' : isSP ? 'Spotify' : 'Link') + '</a>';
         }
-        idHtml += '<div style="padding:10px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px">';
+        idHtml += '<div style="padding:10px 12px;background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:8px;margin-bottom:6px">';
         idHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
         idHtml += '<span style="font-weight:700;font-size:0.85em;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _bcEsc(p.title || 'Untitled') + '</span>';
         idHtml += linkHTML;
@@ -451,16 +451,16 @@ function _bcRenderPollCard(p, myVoteKey, memberCount, showCta) {
   var myVote = votes[myVoteKey];
   var remaining = memberCount - (p._voteCount || 0);
   var statusLine = p._iVoted
-    ? '<span style="color:var(--text-dim)">You voted \u00B7 ' + remaining + ' remaining</span>'
-    : '<span style="color:#fbbf24;font-weight:700">' + remaining + ' of ' + memberCount + ' need to vote</span>';
-  var html = '<div style="padding:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:8px">';
-  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-weight:700;font-size:0.85em;color:var(--text);flex:1">' + _bcEsc(p.question || '') + '</span><span class="gl-chip">Poll</span></div>';
+    ? '<span style="color:var(--gl-text-tertiary)">You voted \u00B7 ' + remaining + ' remaining</span>'
+    : '<span style="color:var(--gl-amber);font-weight:700">' + remaining + ' of ' + memberCount + ' need to vote</span>';
+  var html = '<div style="padding:10px;background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:8px;margin-bottom:8px">';
+  html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><span style="font-weight:700;font-size:0.85em;color:var(--gl-text);flex:1">' + _bcEsc(p.question || '') + '</span><span class="gl-chip">Poll</span></div>';
   (p.options || []).forEach(function(opt, i) {
     var count = Object.values(votes).filter(function(v) { return v === i; }).length;
     var isMyVote = myVote === i;
-    html += '<div onclick="_bcVotePoll(\'' + p._key + '\',' + i + ')" style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin-bottom:3px;border-radius:4px;cursor:pointer;background:' + (isMyVote ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.02)') + ';border:1px solid ' + (isMyVote ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.04)') + '">';
-    html += '<span style="flex:1;font-size:0.8em;color:var(--text-muted)">' + _bcEsc(opt) + '</span>';
-    html += '<span style="font-size:0.72em;font-weight:700;color:' + (isMyVote ? '#a5b4fc' : 'var(--text-dim)') + '">' + count + '</span>';
+    html += '<div onclick="_bcVotePoll(\'' + p._key + '\',' + i + ')" class="gl-row" style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin-bottom:3px;' + (isMyVote ? 'background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:4px' : '') + '">';
+    html += '<span style="flex:1;font-size:0.8em;color:var(--gl-text-secondary)">' + _bcEsc(opt) + '</span>';
+    html += '<span style="font-size:0.72em;font-weight:700;color:' + (isMyVote ? 'var(--gl-indigo)' : 'var(--gl-text-tertiary)') + '">' + count + '</span>';
     html += '</div>';
   });
   html += '<div style="font-size:0.62em;color:var(--text-dim);margin-top:4px;display:flex;justify-content:space-between">';

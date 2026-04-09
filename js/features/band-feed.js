@@ -315,7 +315,7 @@ function _feedShowContinuityBanner(text) {
 
     var el = document.createElement('div');
     el.id = 'feedContinuity';
-    el.style.cssText = 'text-align:center;padding:8px 14px;margin-bottom:6px;font-size:0.78em;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.1);border-radius:8px;animation:feedHelpIn 0.3s ease';
+    el.style.cssText = 'text-align:center;padding:8px 14px;margin-bottom:6px;font-size:0.78em;font-weight:600;color:var(--gl-indigo);background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.1);border-radius:8px;animation:feedHelpIn 0.3s ease';
     el.textContent = text;
     container.parentNode.insertBefore(el, container);
     // Auto-fade after 6 seconds
@@ -961,18 +961,16 @@ function _feedRenderAttentionBar(items) {
         return;
     }
 
-    var html = '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+    var html = '<div style="display:flex;gap:var(--gl-space-sm);margin-bottom:var(--gl-space-sm);flex-wrap:wrap">';
     if (summary.critical > 0) {
-        html += '<button onclick="_feedSetFilter(\'critical\')" style="flex:1;min-width:130px;padding:12px 16px;border-radius:10px;cursor:pointer;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);display:flex;align-items:center;gap:10px">'
-            + '<span style="width:10px;height:10px;border-radius:50%;background:#ef4444;flex-shrink:0"></span>'
-            + '<div><div style="font-size:1.2em;font-weight:800;color:#f87171;line-height:1">' + summary.critical + '</div>'
-            + '<div style="font-size:0.68em;font-weight:600;color:#fca5a5">Critical</div></div></button>';
+        html += '<button onclick="_feedSetFilter(\'critical\')" class="gl-chip gl-chip--danger" style="padding:8px 14px;font-size:0.82em;gap:8px">'
+            + '<span style="width:8px;height:8px;border-radius:50%;background:var(--gl-red);flex-shrink:0"></span>'
+            + '<span style="font-weight:800">' + summary.critical + '</span> Critical</button>';
     }
     if (summary.needsMyInput > 0) {
-        html += '<button onclick="_feedSetFilter(\'needs_input\')" style="flex:1;min-width:130px;padding:12px 16px;border-radius:10px;cursor:pointer;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);display:flex;align-items:center;gap:10px">'
-            + '<span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span>'
-            + '<div><div style="font-size:1.2em;font-weight:800;color:#fbbf24;line-height:1">' + summary.needsMyInput + '</div>'
-            + '<div style="font-size:0.68em;font-weight:600;color:#fcd34d">Needs You</div></div></button>';
+        html += '<button onclick="_feedSetFilter(\'needs_input\')" class="gl-chip gl-chip--warning" style="padding:8px 14px;font-size:0.82em;gap:8px">'
+            + '<span style="width:8px;height:8px;border-radius:50%;background:var(--gl-amber);flex-shrink:0"></span>'
+            + '<span style="font-weight:800">' + summary.needsMyInput + '</span> Needs You</button>';
     }
     html += '</div>';
     bar.innerHTML = html;
@@ -1004,9 +1002,9 @@ function _feedRenderFilterBar(items) {
     bar.innerHTML = '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
         + filters.map(function(f) {
             var active = _feedFilter === f.key;
-            return '<button onclick="_feedSetFilter(\'' + f.key + '\')" style="font-size:0.75em;font-weight:' + (active ? '800' : '600') + ';padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid ' + (active ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (active ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + '">' + f.label + '</button>';
+            return '<button onclick="_feedSetFilter(\'' + f.key + '\')" class="gl-btn-ghost" style="font-size:0.72em;' + (active ? 'font-weight:800;border-color:rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:var(--gl-indigo)' : '') + '">' + f.label + '</button>';
         }).join('')
-        + '<button onclick="_feedToggleBulkMode()" style="font-size:0.68em;font-weight:600;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid ' + (_feedBulkMode ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_feedBulkMode ? 'rgba(239,68,68,0.1)' : 'none') + ';color:' + (_feedBulkMode ? '#f87171' : '#475569') + ';margin-left:auto">' + (_feedBulkMode ? '\u2715 Cancel' : '\u2611 Select') + '</button>'
+        + '<button onclick="_feedToggleBulkMode()" class="gl-btn-ghost" style="font-size:0.68em;margin-left:auto;' + (_feedBulkMode ? 'border-color:rgba(239,68,68,0.4);color:var(--gl-red)' : 'color:var(--gl-text-tertiary)') + '">' + (_feedBulkMode ? '\u2715 Cancel' : '\u2611 Select') + '</button>'
         + '</div>'
         + (_feedBulkMode ? '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:8px 12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px"><span id="feedBulkCount" style="font-size:0.78em;font-weight:600;color:#f87171">0 selected</span><button onclick="_feedBulkDelete()" style="margin-left:auto;font-size:0.78em;font-weight:700;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.1);color:#f87171">\uD83D\uDDD1 Delete Selected</button></div>' : '');
 }
