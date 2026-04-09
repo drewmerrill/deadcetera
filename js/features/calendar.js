@@ -749,6 +749,71 @@ async function _calPopulateNextEventRail() {
     } catch(e) { el.innerHTML = ''; }
 }
 
+// ── Sync coverage indicator ───────────────────────────────────────────────────
+function _calRenderSyncCoverage() {
+    var el = document.getElementById('calSyncCoverage');
+    if (!el) return;
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    if (!members.length) { el.innerHTML = ''; return; }
+
+    var hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
+    var myKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+    var connectedCount = hasScope ? 1 : 0; // Only current user for now
+
+    var html = '<div style="padding:var(--gl-space-sm) 0;font-size:0.7em">';
+    html += '<div style="font-weight:600;color:var(--gl-text-tertiary);margin-bottom:4px">Availability coverage</div>';
+    members.forEach(function(m) {
+        var key = (typeof m === 'object') ? m.key : m;
+        var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
+        var isMe = key === myKey;
+        var connected = isMe && hasScope;
+        html += '<div style="display:flex;align-items:center;gap:4px;padding:1px 0;color:var(--gl-text-tertiary)">';
+        html += connected
+            ? '<span style="color:var(--gl-green)">\u2713</span><span>' + name + '</span><span style="opacity:0.5">synced</span>'
+            : '<span style="color:var(--gl-amber)">\u26A0</span><span>' + name + '</span><span style="opacity:0.4">not connected</span>';
+        html += '</div>';
+    });
+    if (connectedCount < members.length) {
+        html += '<div style="color:var(--gl-text-tertiary);opacity:0.5;margin-top:2px;font-size:0.92em">' + connectedCount + '/' + members.length + ' calendars synced</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+// ── Attendee sync on page load ───────────────────────────────────────────────
+async function _calSyncAttendeeStatuses() {
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.hasCalendarScope()) return;
+    try {
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return;
+        for (var i = 0; i < events.length; i++) {
+            var ev = events[i];
+            if (!ev.sync || !ev.sync.externalEventId || ev.sync.status !== 'synced') continue;
+            var statuses = await GLCalendarSync.syncAttendeeStatus(ev.sync.externalEventId);
+            if (!statuses) continue;
+            // Write to event_availability in Firebase
+            var dateKey = (ev.date || '').replace(/-/g, '');
+            if (!dateKey) continue;
+            var updates = {};
+            Object.keys(statuses).forEach(function(email) {
+                // Find member key by email
+                var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+                Object.keys(bm).forEach(function(k) {
+                    if (bm[k].email === email) {
+                        updates[k] = { status: statuses[email].status, source: 'google', syncedAt: new Date().toISOString() };
+                    }
+                });
+            });
+            if (Object.keys(updates).length) {
+                await db.ref(bandPath('event_availability/' + dateKey)).update(updates);
+            }
+        }
+        console.log('[Calendar] Attendee statuses synced from Google');
+    } catch(e) { console.warn('[Calendar] Attendee sync failed:', e); }
+}
+
 // ── Availability modal — scrollable timeline ─────────────────────────────────
 window._calShowAvailabilityModal = function() {
     var existing = document.getElementById('calAvailModal');
@@ -1091,7 +1156,9 @@ function renderCalendarInner() {
         '<div id="calSelectedDayCard"></div>' +
         // 2. Next event (single, compact — populated async)
         '<div id="calNextEventRail" style="font-size:0.78em;color:var(--gl-text-tertiary)"></div>' +
-        // 3. Navigation links
+        // 3. Sync coverage
+        '<div id="calSyncCoverage"></div>' +
+        // 4. Navigation links
         '<div style="padding-top:var(--gl-space-sm);display:flex;flex-direction:column;gap:4px">' +
             '<button onclick="_calShowAvailabilityModal()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">Check availability</button>' +
             '<button onclick="_calViewConflicts()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
@@ -1103,8 +1170,10 @@ function renderCalendarInner() {
         '<div id="blockedDates" style="display:none"></div>' +
         '<div id="calBlockedHeader" style="display:none"></div>';
 
-        // Populate next event asynchronously
+        // Populate next event + sync coverage + attendee statuses
         _calPopulateNextEventRail();
+        _calRenderSyncCoverage();
+        setTimeout(_calSyncAttendeeStatuses, 2000); // delay to not block initial render
     }
 
     // Load events, then build calendar grid + availability
@@ -1188,7 +1257,10 @@ function renderCalendarInner() {
                 if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                 hoverHtml += '</div>';
             } else if (isBest) {
-                hoverHtml = '<div class="gl-day-hover">Full band available</div>';
+                var _syncN = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) ? 1 : 0;
+                var _memN = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 0;
+                var _bestTip = (_syncN > 0 && _syncN < _memN) ? 'Best based on available data (' + _syncN + '/' + _memN + ' synced)' : 'No conflicts';
+                hoverHtml = '<div class="gl-day-hover">' + _bestTip + '</div>';
             } else if (state === 'default' && isFuture) {
                 hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
@@ -1310,7 +1382,10 @@ function _calRenderGridOnly(grid) {
                     hoverHtml += '</div>';
                 }
             } else if (isBest) {
-                hoverHtml = '<div class="gl-day-hover">Full band available</div>';
+                var _syncN = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) ? 1 : 0;
+                var _memN = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 0;
+                var _bestTip = (_syncN > 0 && _syncN < _memN) ? 'Best based on available data (' + _syncN + '/' + _memN + ' synced)' : 'No conflicts';
+                hoverHtml = '<div class="gl-day-hover">' + _bestTip + '</div>';
             } else if (state === 'default' && isFuture) {
                 hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
