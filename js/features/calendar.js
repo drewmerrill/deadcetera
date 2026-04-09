@@ -1280,19 +1280,28 @@ window._calShowAvailabilityModal = function() {
     modal.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px';
     modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
     var inner = document.createElement('div');
-    inner.style.cssText = 'background:var(--bg-card,#1e293b);border-radius:12px;padding:16px;max-width:720px;width:100%;max-height:80vh;overflow:hidden;border:1px solid var(--gl-border)';
+    inner.style.cssText = 'background:var(--bg-card,#1e293b);border-radius:12px;padding:16px;max-width:720px;width:100%;max-height:85vh;overflow-y:auto;overflow-x:hidden;border:1px solid var(--gl-border)';
     inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
         + '<span style="font-weight:700;color:var(--gl-text)">Band Availability</span>'
         + '<button onclick="document.getElementById(\'calAvailModal\').style.display=\'none\'" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1.1em">\u2715</button>'
         + '</div>'
-        + '<div id="calAvailTimeline" style="overflow-x:auto;-webkit-overflow-scrolling:touch"></div>';
+        + '<div id="calAvailTimeline"></div>';
     modal.appendChild(inner);
     document.body.appendChild(modal);
     _calBuildAvailTimeline();
 };
 
+var _availTimelineMonthsLoaded = 0;
+
 async function _calBuildAvailTimeline() {
     var el = document.getElementById('calAvailTimeline');
+    if (!el) return;
+    _availTimelineMonthsLoaded = 0;
+    el.innerHTML = '';
+    await _calAppendAvailMonths(el, 3);
+}
+
+async function _calAppendAvailMonths(el, count) {
     if (!el) return;
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
@@ -1301,7 +1310,6 @@ async function _calBuildAvailTimeline() {
     }
     if (!members.length) { el.innerHTML = '<div style="color:var(--gl-text-tertiary);font-size:0.82em;padding:12px">No band members found.</div>'; return; }
 
-    // Load blocked data directly — don't rely on grid cache
     var blocked = _calCachedBlockedRanges;
     if (!blocked || !blocked.length) {
         try {
@@ -1311,66 +1319,121 @@ async function _calBuildAvailTimeline() {
             }
         } catch(e) { blocked = []; }
     }
+    if (!blocked) blocked = [];
 
     var today = new Date();
-    var numDays = 21; // ~3 weeks scrollable
-    var days = [];
     var dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    for (var d = 0; d < numDays; d++) {
-        var dt = new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
-        var ds = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
-        days.push({ date: ds, day: dayNames[dt.getDay()], num: dt.getDate(), month: monthNames[dt.getMonth()], isWeekend: dt.getDay() === 0 || dt.getDay() === 6, isToday: d === 0 });
-    }
+    var cellW = 34;
+    var startMonth = _availTimelineMonthsLoaded;
 
-    if (!blocked) blocked = [];
-    var cellW = 38;
+    for (var mi = 0; mi < count; mi++) {
+        var mOffset = startMonth + mi;
+        var monthStart = new Date(today.getFullYear(), today.getMonth() + mOffset, 1);
+        var monthEnd = new Date(today.getFullYear(), today.getMonth() + mOffset + 1, 0);
+        // For the current month, start from today
+        var firstDay = (mOffset === 0) ? today.getDate() : 1;
+        var numDays = monthEnd.getDate() - firstDay + 1;
+        if (numDays <= 0) continue;
 
-    // Build grid: sticky left names + scrollable dates
-    var html = '<div style="display:flex">';
-    // Sticky member column
-    html += '<div style="flex-shrink:0;width:80px;padding-top:40px">';
-    members.forEach(function(m) {
-        var name = (typeof m === 'object' ? m.name : bm[m] ? bm[m].name : m) || '';
-        html += '<div style="height:28px;display:flex;align-items:center;font-size:0.72em;font-weight:600;color:var(--gl-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + name.split(' ')[0] + '</div>';
-    });
-    html += '</div>';
-    // Scrollable date columns
-    html += '<div style="overflow-x:auto;flex:1;-webkit-overflow-scrolling:touch;scrollbar-width:thin">';
-    html += '<div style="display:flex;min-width:' + (numDays * cellW) + 'px">';
-    // Date headers
-    days.forEach(function(day) {
-        var bg = day.isToday ? 'rgba(99,102,241,0.15)' : day.isWeekend ? 'rgba(255,255,255,0.02)' : '';
-        html += '<div style="width:' + cellW + 'px;flex-shrink:0;text-align:center;padding:4px 0;background:' + bg + '">';
-        html += '<div style="font-size:0.55em;color:var(--gl-text-tertiary);font-weight:600">' + day.day + '</div>';
-        html += '<div style="font-size:0.72em;font-weight:700;color:' + (day.isToday ? 'var(--accent-light)' : 'var(--gl-text-secondary)') + '">' + day.num + '</div>';
-        if (day.num === 1 || day.isToday) html += '<div style="font-size:0.5em;color:var(--gl-text-tertiary)">' + day.month + '</div>';
-        html += '</div>';
-    });
-    html += '</div>';
-    // Member rows
-    members.forEach(function(m) {
-        var key = (typeof m === 'object' ? m.key : m) || '';
+        var days = [];
+        for (var d = 0; d < numDays; d++) {
+            var dt = new Date(monthStart.getFullYear(), monthStart.getMonth(), firstDay + d);
+            var ds = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+            var isToday = ds === (today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0'));
+            days.push({ date: ds, day: dayNames[dt.getDay()], num: dt.getDate(), month: monthNames[dt.getMonth()], year: dt.getFullYear(), isWeekend: dt.getDay() === 0 || dt.getDay() === 6, isToday: isToday });
+        }
+
+        var monthBlock = document.createElement('div');
+        monthBlock.style.cssText = 'margin-bottom:16px';
+
+        // Month header
+        var header = '<div style="font-size:0.78em;font-weight:800;color:var(--accent-light);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:6px;padding-left:82px">'
+            + monthNames[monthStart.getMonth()] + ' ' + monthStart.getFullYear() + '</div>';
+
+        var html = header + '<div style="display:flex">';
+        // Sticky member column (only on first month)
+        if (mOffset === startMonth) {
+            html += '<div style="flex-shrink:0;width:80px;padding-top:24px">';
+            members.forEach(function(m) {
+                var name = (typeof m === 'object' ? m.name : bm[m] ? bm[m].name : m) || '';
+                html += '<div style="height:28px;display:flex;align-items:center;font-size:0.72em;font-weight:600;color:var(--gl-text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + name.split(' ')[0] + '</div>';
+            });
+            html += '</div>';
+        } else {
+            html += '<div style="flex-shrink:0;width:80px;padding-top:24px">';
+            members.forEach(function() {
+                html += '<div style="height:28px"></div>';
+            });
+            html += '</div>';
+        }
+        // Date columns
+        html += '<div style="overflow-x:auto;flex:1;-webkit-overflow-scrolling:touch;scrollbar-width:thin">';
         html += '<div style="display:flex;min-width:' + (numDays * cellW) + 'px">';
         days.forEach(function(day) {
-            var isBlocked = blocked.some(function(b) { return b.person && (b.person === key || b.person === (bm[key] ? bm[key].name : '')) && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate; });
-            var bg = isBlocked ? 'rgba(239,68,68,0.2)' : day.isWeekend ? 'rgba(255,255,255,0.015)' : '';
-            var border = isBlocked ? 'border:1px solid rgba(239,68,68,0.3)' : 'border:1px solid transparent';
-            var label = isBlocked ? '\uD83D\uDEAB' : '\u2705';
-            html += '<div style="width:' + cellW + 'px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.65em;background:' + bg + ';' + border + ';border-radius:3px">' + label + '</div>';
+            var bg = day.isToday ? 'rgba(99,102,241,0.15)' : day.isWeekend ? 'rgba(255,255,255,0.02)' : '';
+            html += '<div style="width:' + cellW + 'px;flex-shrink:0;text-align:center;padding:2px 0;background:' + bg + '">';
+            html += '<div style="font-size:0.5em;color:var(--gl-text-tertiary);font-weight:600">' + day.day + '</div>';
+            html += '<div style="font-size:0.68em;font-weight:700;color:' + (day.isToday ? 'var(--accent-light)' : 'var(--gl-text-secondary)') + '">' + day.num + '</div>';
+            html += '</div>';
         });
         html += '</div>';
-    });
-    html += '</div></div>';
-    // Legend
-    html += '<div style="display:flex;gap:12px;padding:8px 0 0;font-size:0.65em;color:var(--gl-text-tertiary)">';
-    html += '<span>\u2705 Available</span>';
-    html += '<span>\uD83D\uDEAB Blocked</span>';
-    html += '<span style="color:var(--accent-light)">\u25CF Today</span>';
-    html += '<span style="opacity:0.6">Tinted = weekend</span>';
-    html += '</div>';
-    el.innerHTML = html;
+        // Member rows
+        members.forEach(function(m) {
+            var key = (typeof m === 'object' ? m.key : m) || '';
+            html += '<div style="display:flex;min-width:' + (numDays * cellW) + 'px">';
+            days.forEach(function(day) {
+                var isBlocked = blocked.some(function(b) { return b.person && (b.person === key || b.person === (bm[key] ? bm[key].name : '')) && b.startDate && b.endDate && day.date >= b.startDate && day.date <= b.endDate; });
+                var bg = isBlocked ? 'rgba(239,68,68,0.2)' : day.isWeekend ? 'rgba(255,255,255,0.015)' : '';
+                var border = isBlocked ? 'border:1px solid rgba(239,68,68,0.3)' : 'border:1px solid transparent';
+                var label = isBlocked ? '\uD83D\uDEAB' : '\u2705';
+                html += '<div style="width:' + cellW + 'px;height:28px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:0.6em;background:' + bg + ';' + border + ';border-radius:3px">' + label + '</div>';
+            });
+            html += '</div>';
+        });
+        html += '</div></div>';
+        monthBlock.innerHTML = html;
+        el.appendChild(monthBlock);
+    }
+
+    _availTimelineMonthsLoaded += count;
+
+    // Remove old sentinel if any
+    var oldSentinel = el.querySelector('[data-avail-sentinel]');
+    if (oldSentinel) oldSentinel.remove();
+
+    // Add "Load more" sentinel
+    var sentinel = document.createElement('div');
+    sentinel.setAttribute('data-avail-sentinel', '1');
+    sentinel.style.cssText = 'text-align:center;padding:12px';
+    sentinel.innerHTML = '<button onclick="_calLoadMoreAvailMonths()" style="background:rgba(99,102,241,0.1);color:var(--accent-light);border:1px solid rgba(99,102,241,0.2);padding:6px 16px;border-radius:8px;font-size:0.72em;font-weight:600;cursor:pointer">Load more months</button>';
+    el.appendChild(sentinel);
+
+    // Auto-load more when scrolled near bottom
+    var scrollParent = el.closest('#calAvailModal') ? el.parentElement : el;
+    if (!scrollParent._availScrollWired) {
+        scrollParent._availScrollWired = true;
+        scrollParent.addEventListener('scroll', function() {
+            if (scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 60) {
+                _calLoadMoreAvailMonths();
+            }
+        });
+    }
+
+    // Legend (only on first render)
+    if (startMonth === 0) {
+        var legend = document.createElement('div');
+        legend.style.cssText = 'display:flex;gap:12px;padding:8px 0 0;font-size:0.65em;color:var(--gl-text-tertiary)';
+        legend.innerHTML = '<span>\u2705 Available</span><span>\uD83D\uDEAB Blocked</span><span style="color:var(--accent-light)">\u25CF Today</span><span style="opacity:0.6">Tinted = weekend</span>';
+        el.insertBefore(legend, el.firstChild);
+    }
 }
+
+window._calLoadMoreAvailMonths = function() {
+    var el = document.getElementById('calAvailTimeline');
+    if (!el) return;
+    _calAppendAvailMonths(el, 2);
+};
 
 // ── View conflicts — highlight blocked days on calendar grid ─────────────────
 window._calViewConflicts = function() {
@@ -2192,7 +2255,7 @@ function _calRenderAvailabilityGridSync(el, blockedRanges, recData) {
 
     // Range controls
     var rangeHtml = '<div style="display:flex;gap:4px;margin-bottom:8px">';
-    [7, 14, 30].forEach(function(n) {
+    [7, 14, 30, 60, 90].forEach(function(n) {
         var active = numDays === n;
         rangeHtml += '<button onclick="calMatrixRange(' + n + ')" style="background:' + (active ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)') +
             ';color:' + (active ? '#a5b4fc' : 'var(--text-dim)') + ';border:1px solid ' + (active ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') +
