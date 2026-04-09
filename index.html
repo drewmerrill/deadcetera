@@ -307,34 +307,50 @@
         <div class="menu-divider"></div>
         <div class="menu-section" id="glMobileNavMore"><div class="menu-section-title">More</div></div>
         <script>
-        // Populate mobile nav from gl-left-rail.js config (runs after DOMContentLoaded)
-        document.addEventListener('DOMContentLoaded', function() {
-            if (typeof glLeftRail === 'undefined') return;
-            // Defer until gl-left-rail.js has loaded
-            setTimeout(function() {
-                // Use the same SVG icon strings as the left rail
-                var _mi = function(page, icon, label) {
-                    return '<button class="menu-item" data-page="' + page + '" onclick="toggleMenu();showPage(\'' + page + '\')"><span class="menu-icon" style="display:inline-flex;vertical-align:middle;margin-right:6px">' + icon + '</span> ' + label + '</button>';
-                };
-                var sections = { core: '', band: '', tools: '', more: '' };
+        /*
+         * MOBILE NAV GUARDRAIL:
+         * Home, Songs, Rehearsal, Schedule, Setlists MUST always be visible/reachable.
+         * Core nav items are hardcoded as immediate fallback.
+         * gl-left-rail.js config enhances with Band/Tools/More sections when loaded.
+         */
+        (function() {
+            // Immediate: hardcode core nav so it's ALWAYS available on mobile
+            var _mi = function(page, icon, label) {
+                return '<button class="menu-item" data-page="' + page + '" onclick="toggleMenu();showPage(\'' + page + '\')"><span class="menu-icon" style="display:inline-flex;vertical-align:middle;margin-right:6px">' + icon + '</span> ' + label + '</button>';
+            };
+            var coreEl = document.getElementById('glMobileNavCore');
+            if (coreEl && !coreEl.querySelector('.menu-item')) {
+                coreEl.innerHTML = _mi('home', '🏠', 'Home')
+                    + _mi('songs', '🎵', 'Songs')
+                    + _mi('rehearsal', '🎸', 'Rehearsal')
+                    + _mi('calendar', '📅', 'Schedule')
+                    + _mi('setlists', '📋', 'Setlists');
+            }
+            // Enhanced: populate Band/Tools/More from gl-left-rail.js when it loads
+            function _populateFromRail() {
                 var rail = window.glLeftRail;
-                if (!rail || !rail.NAV_SECTIONS) return;
-                // Home always first
-                sections.core = _mi('home', rail.NAV_TOP.icon, 'Home');
-                // Build from NAV_SECTIONS
+                if (!rail || !rail.NAV_SECTIONS) return false;
+                var sections = { band: '', tools: '', more: '' };
                 rail.NAV_SECTIONS.forEach(function(sec) {
-                    var target = sec.primary ? 'core' : (sec.title === 'Band' ? 'band' : (sec.title === 'Tools' ? 'tools' : 'more'));
+                    if (sec.primary) return; // core already hardcoded
+                    var target = sec.title === 'Band' ? 'band' : (sec.title === 'Tools' ? 'tools' : 'more');
                     sec.items.forEach(function(item) {
                         sections[target] += _mi(item.page, item.icon, item.label);
                     });
                 });
                 var el;
-                el = document.getElementById('glMobileNavCore'); if (el) el.innerHTML = sections.core;
-                el = document.getElementById('glMobileNavBand'); if (el) el.innerHTML = '<div class="menu-section-title">Band</div>' + sections.band;
-                el = document.getElementById('glMobileNavTools'); if (el) el.innerHTML = '<div class="menu-section-title">Tools</div>' + sections.tools;
-                el = document.getElementById('glMobileNavMore'); if (el) el.innerHTML = '<div class="menu-section-title">More</div>' + sections.more;
-            }, 100);
-        });
+                el = document.getElementById('glMobileNavBand'); if (el && sections.band) el.innerHTML = '<div class="menu-section-title">Band</div>' + sections.band;
+                el = document.getElementById('glMobileNavTools'); if (el && sections.tools) el.innerHTML = '<div class="menu-section-title">Tools</div>' + sections.tools;
+                el = document.getElementById('glMobileNavMore'); if (el && sections.more) el.innerHTML = '<div class="menu-section-title">More</div>' + sections.more;
+                return true;
+            }
+            // Retry until gl-left-rail.js loads (up to 5s)
+            var _attempts = 0;
+            var _timer = setInterval(function() {
+                _attempts++;
+                if (_populateFromRail() || _attempts >= 25) clearInterval(_timer);
+            }, 200);
+        })();
         </script>
         <div class="menu-divider"></div>
             <button class="menu-item" data-page="help" onclick="showPage('help')"><span class="menu-icon">❓</span> Help</button>
