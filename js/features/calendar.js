@@ -1202,15 +1202,24 @@ function _calWatchConnections() {
 }
 
 // ── Token validation on load ─────────────────────────────────────────────────
+// IMPORTANT: accessToken is set asynchronously by the OAuth auto-reconnect.
+// We must wait for sign-in before validating, otherwise we'd always fail.
 async function _calValidateMyToken() {
+    // Wait for sign-in to complete (accessToken set by OAuth callback)
+    if (typeof GLStore !== 'undefined' && GLStore.ready) {
+        await GLStore.ready(['firebase'], 15000);
+    }
+    // Additional wait for the auto-reconnect to fire
+    if (!_calTestGoogleToken()) {
+        // Token not set yet — wait a bit more for auto-reconnect
+        await new Promise(function(resolve) { setTimeout(resolve, 5000); });
+    }
     var cov = _calGetSyncCoverage();
-    if (!cov.hasScope) return; // not connected, nothing to validate
+    if (!cov.hasScope) return;
     var myKey = cov.myKey;
     if (!myKey) return;
-    // Check if we're registered as connected
     var isRegistered = cov.connectedKeys.indexOf(myKey) !== -1;
-    if (!isRegistered) return; // not registered, no token to validate
-    // Test the token
+    if (!isRegistered) return;
     var ok = _calTestGoogleToken();
     if (!ok) {
         // Token expired — show reconnect prompt
@@ -1633,9 +1642,12 @@ function renderCalendarInner() {
         _calPopulateNextEventRail();
         _calLoadConnections().then(function() {
             _calRenderSyncCoverage();
-            _calRenderOnboarding();
-            // Validate current user's token if connected
-            _calValidateMyToken();
+            // Delay onboarding + token validation until after sign-in completes
+            // (accessToken is set asynchronously by auto-reconnect)
+            setTimeout(function() {
+                _calRenderOnboarding();
+                _calValidateMyToken();
+            }, 6000);
         });
         // Live connection updates — re-render when another member connects/disconnects
         _calWatchConnections();
