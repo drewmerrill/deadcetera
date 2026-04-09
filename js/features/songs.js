@@ -459,7 +459,20 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Render recommendation ABOVE search (in separate container)
     var _recEl = document.getElementById('songRecommendation');
-    if (_recEl) _recEl.innerHTML = _isCleanup ? _cleanupCard : _suggestHTML;
+    if (_recEl) {
+        var _focusCue = '';
+        if (!_isCleanup) {
+            var _nwCount = 0;
+            if (typeof allSongs !== 'undefined') allSongs.forEach(function(s) {
+                if (typeof GLStore !== 'undefined' && GLStore.isActiveSong(s.title)) {
+                    var _a = GLStore.avgReadiness ? GLStore.avgReadiness(s.title) : 0;
+                    if (_a > 0 && _a < 3) _nwCount++;
+                }
+            });
+            if (_nwCount > 0) _focusCue = '<div onclick="sqTriageSet(\'needs_work\')" style="font-size:0.75em;color:var(--gl-amber);opacity:0.7;cursor:pointer;padding:2px 0">\uD83C\uDFAF Focus: ' + _nwCount + ' song' + (_nwCount > 1 ? 's' : '') + ' need work</div>';
+        }
+        _recEl.innerHTML = (_isCleanup ? _cleanupCard : _suggestHTML) + _focusCue;
+    }
 
     dropdown.innerHTML = _modeBar + headerHTML + filtered.map(function(song) {
         var titleEsc   = song.title.replace(/"/g, '&quot;');
@@ -470,7 +483,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         // Average readiness (compute FIRST — needed by signal logic)
         var avg = (_hasGLStore && GLStore.avgReadiness) ? GLStore.avgReadiness(song.title) : 0;
         var barPct = avg ? Math.round((avg / 5) * 100) : 0;
-        var barColor = avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)';
+        var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getSongColor(avg) : (avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)');
         // Combined readiness display: "3.0/5" (not "3.0" + "3/5" separately)
         var readinessText = avg > 0 ? avg.toFixed(1) + '/5' : '—';
 
@@ -957,19 +970,33 @@ function _renderTriageBar(dropdown, count) {
     }
 
     var _triageIcons = { no_key:'🔑', no_bpm:'🥁', no_status:'🎯', no_lead:'🎤', no_structure:'🎼', needs_work:'⚠️', not_rotation:'🔄' };
+    var _primaryFilters = { needs_work: true, no_key: true, no_bpm: true };
+    var _secondaryHtml = '';
+    var _hasSecondary = false;
     items.forEach(function(it) {
         var active = tf === it.id;
         var itemCount = _missingCounts[it.id] || '';
         var icon = _triageIcons[it.id] || '';
+        var btnHtml;
         if (tf && !active) {
-            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.62em;font-weight:500;padding:2px 7px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);opacity:0.4;transition:opacity 0.15s" onmouseenter="this.style.opacity=0.8" onmouseleave="this.style.opacity=0.4">' + icon + ' ' + it.label + '</button>';
+            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 7px;opacity:0.4">' + icon + ' ' + it.label + '</button>';
         } else {
-            html += '<button onclick="sqTriageSet(\'' + it.id + '\')" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;border-radius:8px;cursor:pointer;border:' + (active ? '2px' : '1px') + ' solid '
-                + (active ? '#fbbf24' : 'rgba(255,255,255,0.1)') + ';background:'
-                + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)') + ';color:'
-                + (active ? '#fbbf24' : '#94a3b8') + (active ? ';box-shadow:0 0 8px rgba(251,191,36,0.12)' : '') + ';transition:all 0.15s" onmouseenter="this.style.background=\'' + (active ? 'rgba(251,191,36,0.2)' : 'rgba(255,255,255,0.08)') + '\'" onmouseleave="this.style.background=\'' + (active ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)') + '\'">' + icon + ' ' + it.label + (itemCount ? ' <span style="opacity:0.6">(' + itemCount + ')</span>' : '') + '</button>';
+            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;' + (active ? 'border-color:var(--gl-amber);color:var(--gl-amber);background:rgba(251,191,36,0.15)' : '') + '">' + icon + ' ' + it.label + (itemCount ? ' <span style="opacity:0.6">(' + itemCount + ')</span>' : '') + '</button>';
+        }
+        if (_primaryFilters[it.id] || active) {
+            html += btnHtml;
+        } else {
+            _secondaryHtml += btnHtml;
+            _hasSecondary = true;
         }
     });
+    // Collapsed secondary filters
+    if (_hasSecondary && !tf) {
+        html += '<button onclick="var s=document.getElementById(\'sqSecondaryFilters\');if(s)s.hidden=!s.hidden" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 7px;opacity:0.5">More \u25BE</button>';
+        html += '<div id="sqSecondaryFilters" hidden style="display:flex;gap:4px;flex-wrap:wrap;width:100%;padding-top:4px">' + _secondaryHtml + '</div>';
+    } else if (_hasSecondary) {
+        html += _secondaryHtml; // show all when a filter is active
+    }
     if (tf) {
         html += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:4px">' + count + ' songs need data</span>';
         if (window._sqTriageDone > 0) {
