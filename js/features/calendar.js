@@ -723,6 +723,58 @@ async function _calRenderRailGuidance() {
     }
 }
 
+// ── Next event rail (single event, minimal) ──────────────────────────────────
+async function _calPopulateNextEventRail() {
+    var el = document.getElementById('calNextEventRail');
+    if (!el) return;
+    try {
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var today = new Date().toISOString().split('T')[0];
+        var futureEnd = new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0];
+        var expanded = expandRecurringEvents(events, today, futureEnd);
+        var next = expanded.filter(function(e) { return (e.date || '') >= today; })
+            .sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0];
+        if (!next) { el.innerHTML = '<div style="color:var(--gl-text-tertiary);font-size:0.75em;padding:var(--gl-space-sm) 0">No upcoming events</div>'; return; }
+        var icon = next.type === 'gig' ? '\uD83C\uDFA4' : next.type === 'rehearsal' ? '\uD83C\uDFB8' : '\uD83D\uDCC5';
+        var dateFmt = (typeof glFormatDate === 'function') ? glFormatDate(next.date, true) : next.date;
+        var daysAway = (typeof glDaysAway === 'function') ? glDaysAway(next.date) : null;
+        var daysLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : (daysAway !== null ? daysAway + 'd' : '');
+        el.innerHTML = '<div style="padding:var(--gl-space-sm) 0">'
+            + '<div style="display:flex;align-items:center;gap:6px">'
+            + '<span>' + icon + '</span>'
+            + '<span style="font-weight:600;color:var(--gl-text-secondary)">' + (next.title || (next.type === 'rehearsal' ? 'Rehearsal' : 'Event')) + '</span>'
+            + '</div>'
+            + '<div style="font-size:0.9em;color:var(--gl-text-tertiary);margin-top:2px">' + dateFmt + (daysLabel ? ' \u00B7 ' + daysLabel : '') + '</div>'
+            + '</div>';
+    } catch(e) { el.innerHTML = ''; }
+}
+
+// ── Availability modal (moved from rail to dedicated view) ──────────────────
+window._calShowAvailabilityModal = function() {
+    // Create modal overlay if not exists
+    var existing = document.getElementById('calAvailModal');
+    if (existing) { existing.style.display = 'flex'; return; }
+    var modal = document.createElement('div');
+    modal.id = 'calAvailModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+    var inner = document.createElement('div');
+    inner.style.cssText = 'background:var(--bg-card,#1e293b);border-radius:12px;padding:20px;max-width:600px;width:100%;max-height:80vh;overflow-y:auto;border:1px solid var(--gl-border)';
+    inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        + '<span style="font-weight:700;color:var(--gl-text)">Availability</span>'
+        + '<button onclick="document.getElementById(\'calAvailModal\').style.display=\'none\'" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1.1em">\u2715</button>'
+        + '</div>'
+        + '<div id="calAvailModalContent"><div style="text-align:center;padding:20px;color:var(--gl-text-tertiary)">Loading\u2026</div></div>';
+    modal.appendChild(inner);
+    document.body.appendChild(modal);
+    // Render availability matrix into the modal
+    var matrixEl = document.getElementById('calAvailabilityMatrix');
+    var modalContent = document.getElementById('calAvailModalContent');
+    if (matrixEl && modalContent) {
+        modalContent.innerHTML = matrixEl.innerHTML || '<div style="color:var(--gl-text-tertiary);font-size:0.82em">No availability data loaded yet. Navigate to a month first.</div>';
+    }
+};
+
 async function _calRenderNextUp() {
     var el = document.getElementById('calNextUpSection');
     if (!el) return;
@@ -942,32 +994,28 @@ function renderCalendarInner() {
     '</div>' +
     '<div id="calEventFormArea"></div>';
 
-    // ── Context rail: Upcoming Schedule, Availability, Conflicts ──
+    // ── Context rail: minimal, decision-focused (max 3 sections) ──
     var _ctxRail = document.getElementById('calContextRail');
     if (_ctxRail) {
-        // Soft guidance at top
-        var _calGuidance = '';
-        try {
-            var _calCadence = (typeof GLStore !== 'undefined' && GLStore.getRehearsalCadence) ? GLStore.getRehearsalCadence() : null;
-            if (_calCadence) _calGuidance += '<div style="font-size:0.72em;color:var(--text-dim);padding:2px 0">Cadence: ' + _calCadence + '</div>';
-        } catch(e) {}
         _ctxRail.innerHTML =
-        (_calGuidance ? '<div class="gl-context-card">' + _calGuidance + '</div>' : '') +
-        '<div class="gl-context-card">' +
-            '<div class="gl-section-label" style="padding-top:0">Upcoming</div>' +
-            '<div id="calendarEvents"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading\u2026</div></div>' +
+        // 1. Selected date context (populated by calDayClick)
+        '<div id="calSelectedDayCard"></div>' +
+        // 2. Next event (single, compact — populated async)
+        '<div id="calNextEventRail" style="font-size:0.78em;color:var(--gl-text-tertiary)"></div>' +
+        // 3. Navigation links
+        '<div style="padding-top:var(--gl-space-sm);display:flex;flex-direction:column;gap:4px">' +
+            '<button onclick="var m=document.getElementById(\'calAvailModal\');if(m)m.style.display=\'flex\';else _calShowAvailabilityModal()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">Check availability</button>' +
+            '<button onclick="var d=document.getElementById(\'calBlockedHeader\');if(d)d.closest(\'details\').open=true;d.scrollIntoView({behavior:\'smooth\'})" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
         '</div>' +
-        '<div class="gl-context-card">' +
-            '<div class="gl-section-label" style="padding-top:0">Availability</div>' +
-            '<div id="calAvailabilityMatrix" style="font-size:0.82em"><div style="text-align:center;padding:12px;color:var(--text-dim);font-size:0.78em">Loading\u2026</div></div>' +
-            '<div id="calConflictResolver" style="display:none"></div>' +
-        '</div>' +
-        '<details>' +
-            '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:4px;padding:6px 0">' +
-            '<span class="gl-section-label" style="padding:0;margin:0" id="calBlockedHeader">Conflicts</span>' +
-            '<span style="font-size:0.5em;color:var(--text-dim)">\u25B8</span></summary>' +
-            '<div id="blockedDates" style="font-size:0.82em;color:var(--text-muted);padding:4px 0"><div style="color:var(--text-dim);font-size:0.82em">No blocked dates.</div></div>' +
-        '</details>';
+        // Hidden containers for data that still needs to load (used by loadCalendarEvents)
+        '<div id="calendarEvents" style="display:none"></div>' +
+        '<div id="calAvailabilityMatrix" style="display:none"></div>' +
+        '<div id="calConflictResolver" style="display:none"></div>' +
+        '<div id="blockedDates" style="display:none"></div>' +
+        '<div id="calBlockedHeader" style="display:none"></div>';
+
+        // Populate next event asynchronously
+        _calPopulateNextEventRail();
     }
 
     // Load events, then build calendar grid + availability
