@@ -295,9 +295,12 @@ window.GLCalendarSync = (function() {
   // ── FREE/BUSY — query + share current user's conflicts ────────────────
   var _freeBusyCache = null;
   var _freeBusyCacheTime = 0;
+  var _calendarScopeFailed = false; // sticky: once 403, stop retrying until page reload
 
   async function getFreeBusy(timeMin, timeMax) {
     if (!hasCalendarScope()) return { busy: [], source: 'unavailable' };
+    // If we already know the scope is missing, don't keep hitting Google
+    if (_calendarScopeFailed) return { busy: [], source: 'needs_consent' };
     var cacheKey = timeMin + '|' + timeMax;
     if (_freeBusyCache && _freeBusyCacheTime > Date.now() - 300000 && _freeBusyCache._key === cacheKey) {
       return _freeBusyCache;
@@ -310,12 +313,15 @@ window.GLCalendarSync = (function() {
       });
       if (!res.ok) {
         if (res.status === 403) {
-          console.log('[CalSync] Calendar scope not yet authorized (403) — need consent');
+          console.log('[CalSync] Calendar scope not authorized (403) — need consent (will not retry)');
+          _calendarScopeFailed = true;
           return { busy: [], source: 'needs_consent' };
         }
         console.log('[CalSync] Free/busy returned', res.status);
         return { busy: [], source: 'error' };
       }
+      // Success — clear any previous failure state
+      _calendarScopeFailed = false;
       var data = await res.json();
       var busy = [];
       if (data.calendars && data.calendars.primary && data.calendars.primary.busy) {
