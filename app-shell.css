@@ -163,19 +163,27 @@ button:active{transform:scale(0.97)}
 .gl-context-card{padding:12px 14px;border-radius:10px;background:var(--gl-surface);margin-bottom:10px}
 
 /* ===== CALENDAR DAY CELLS ===== */
-.gl-day{position:relative;min-height:80px;border-radius:10px;padding:8px;cursor:pointer;transition:box-shadow var(--gl-transition),transform var(--gl-transition),background var(--gl-transition);border:1px solid transparent;display:flex;flex-direction:column}
-.gl-day:hover{box-shadow:0 0 0 1px rgba(255,255,255,0.08),0 6px 20px rgba(0,0,0,0.18);transform:translateY(-1px)}
-.gl-day--blocked{background:#3B1520;border-color:rgba(239,68,68,0.5);color:#FECACA}
-.gl-day--best{background:#132E24;border-color:rgba(34,197,94,0.4);color:#BBF7D0}
-.gl-day--rehearsal{background:#1A2748;border-color:rgba(124,155,255,0.4);color:#DCE7FF}
-.gl-day--gig{background:#3D2D10;border-color:rgba(245,158,11,0.5);color:#FDE68A}
-.gl-day--today{border:2px solid var(--accent)!important}
-.gl-day--selected{box-shadow:0 0 0 2px #A5B4FC}
-.gl-day-num{font-size:1em;font-weight:700}
-.gl-day-icon{position:absolute;right:8px;bottom:6px;opacity:0.8;font-size:0.85em}
-.gl-day-hover{display:none;position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);min-width:140px;max-width:200px;padding:8px 10px;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);z-index:30;font-size:0.72em;color:var(--gl-text-secondary);pointer-events:none;white-space:normal}
+.gl-day{position:relative;min-height:118px;border-radius:14px;padding:10px;cursor:pointer;transition:box-shadow var(--gl-transition),transform var(--gl-transition),background var(--gl-transition),border-color var(--gl-transition);border:1px solid transparent;display:flex;flex-direction:column}
+.gl-day:hover{box-shadow:0 0 0 1px rgba(255,255,255,0.08),0 8px 24px rgba(0,0,0,0.18);transform:translateY(-1px)}
+/* State fills — priority: gig > rehearsal > blocked > best > default */
+.gl-day--gig{background:#5A3A12;border-color:#F59E0B;color:#FDE68A}
+.gl-day--rehearsal{background:#1E2F5E;border-color:#7C9BFF;color:#DCE7FF}
+.gl-day--blocked{background:#5A1F24;border-color:#EF4444;color:#FECACA}
+.gl-day--best{background:#163B31;border-color:#22C55E;color:#BBF7D0}
+/* Today + selected layer ON TOP of state fills */
+.gl-day--today{box-shadow:inset 0 0 0 2px rgba(165,180,252,0.6)}
+.gl-day--selected{box-shadow:0 0 0 2px #A5B4FC,0 8px 24px rgba(0,0,0,0.2)}
+/* Content */
+.gl-day-num{font-size:1.15em;font-weight:700}
+.gl-day-icon{position:absolute;right:10px;bottom:8px;opacity:0.85;font-size:0.95em}
+/* Hover popover */
+.gl-day-hover{display:none;position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);min-width:140px;max-width:220px;padding:8px 10px;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.3);z-index:30;font-size:0.72em;color:var(--gl-text-secondary);pointer-events:none;white-space:normal}
 .gl-day:hover .gl-day-hover{display:block}
-@media(max-width:640px){.gl-day{min-height:60px;padding:4px;border-radius:6px}.gl-day-icon{font-size:0.72em;right:4px;bottom:3px}}
+/* Pulse for View Conflicts */
+@keyframes gl-day-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 0 4px rgba(239,68,68,0.4),0 0 16px rgba(239,68,68,0.2)}}
+.gl-day--pulse{animation:gl-day-pulse 0.8s ease 2}
+/* Mobile */
+@media(max-width:640px){.gl-day{min-height:64px;padding:6px;border-radius:8px}.gl-day-num{font-size:0.95em}.gl-day-icon{font-size:0.78em;right:5px;bottom:4px}}
 
 /* ===== CARDS ===== */
 .app-card{background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:10px;transition:background 0.15s,border-color 0.15s,box-shadow 0.15s;}

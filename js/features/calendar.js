@@ -859,9 +859,8 @@ window._calViewConflicts = function() {
     var blockedCells = grid.querySelectorAll('[data-blocked="true"]');
     if (!blockedCells.length) { if (typeof showToast === 'function') showToast('No conflicts this month'); return; }
     blockedCells.forEach(function(cell) {
-        cell.style.transition = 'box-shadow 0.3s';
-        cell.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.6), 0 0 12px rgba(239,68,68,0.3)';
-        setTimeout(function() { cell.style.boxShadow = ''; }, 2000);
+        cell.classList.add('gl-day--pulse');
+        setTimeout(function() { cell.classList.remove('gl-day--pulse'); }, 2000);
     });
 };
 
@@ -1153,13 +1152,17 @@ function renderCalendarInner() {
             const isGig = dayEvents.some(e => e.type === 'gig');
             const isRehearsal = dayEvents.some(e => e.type === 'rehearsal');
             const hasEvent = dayEvents.length > 0;
-            // State class (priority: gig > rehearsal > blocked > default)
+            // State class (priority: gig > rehearsal > blocked > best > default)
+            const isFuture = ds >= todayStr;
+            const isBest = isFuture && !hasEvent && !isBlocked && !w;
+            let state = 'default';
             let stateClass = '';
             let icon = '';
-            if (isGig) { stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
-            else if (isRehearsal) { stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
-            else if (isBlocked) { stateClass = 'gl-day--blocked'; }
-            else if (hasEvent) { stateClass = ''; icon = dayEvents[0].type === 'meeting' ? '\uD83D\uDC65' : '\uD83D\uDCC5'; }
+            if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
+            else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
+            else if (isBlocked) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
+            else if (hasEvent) { icon = dayEvents[0].type === 'meeting' ? '\uD83D\uDC65' : '\uD83D\uDCC5'; }
             if (isToday) stateClass += ' gl-day--today';
             // Hover content
             let hoverHtml = '';
@@ -1175,8 +1178,10 @@ function renderCalendarInner() {
                 hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Conflicts</div>';
                 blockedList.slice(0,3).forEach(b => { hoverHtml += '<div>' + (b.person || '') + (b.reason ? ' \u2014 ' + b.reason : '') + '</div>'; });
                 hoverHtml += '</div>';
+            } else if (isBest) {
+                hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Best choice</div><div>No conflicts \u2014 full band available</div></div>';
             }
-            g += `<div class="gl-day ${stateClass}" data-date="${ds}"${isBlocked?' data-blocked="true"':''} onclick="calDayClick(${year},${month},${d})">
+            g += `<div class="gl-day ${stateClass}" data-date="${ds}" data-state="${state}"${isBlocked?' data-blocked="true"':''} onclick="calDayClick(${year},${month},${d})">
                 <div class="gl-day-num">${d}</div>
                 ${icon ? '<div class="gl-day-icon">' + icon + '</div>' : ''}
                 ${hoverHtml}
@@ -1255,14 +1260,19 @@ function _calRenderGridOnly(grid) {
             var isGig = dayEvents.some(function(e) { return e.type === 'gig'; });
             var isRehearsal = dayEvents.some(function(e) { return e.type === 'rehearsal'; });
             var hasEvent = dayEvents.length > 0;
+            var w = dow === 0 || dow === 6;
+            var isFuture = ds >= todayStr;
+            var isBest = isFuture && !hasEvent && !isBlocked && !w;
+            var state = 'default';
             var stateClass = '';
             var icon = '';
-            if (isGig) { stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
-            else if (isRehearsal) { stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
-            else if (isBlocked) { stateClass = 'gl-day--blocked'; }
+            if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
+            else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
+            else if (isBlocked) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
             else if (hasEvent) { icon = '\uD83D\uDCC5'; }
             if (isToday) stateClass += ' gl-day--today';
-            g += '<div class="gl-day ' + stateClass + '" data-date="' + ds + '"' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')">'
+            g += '<div class="gl-day ' + stateClass + '" data-date="' + ds + '" data-state="' + state + '"' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')">'
                 + '<div class="gl-day-num">' + d + '</div>'
                 + (icon ? '<div class="gl-day-icon">' + icon + '</div>' : '')
                 + '</div>';
