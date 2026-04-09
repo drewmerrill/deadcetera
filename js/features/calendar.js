@@ -788,17 +788,24 @@ async function _calOverlayExternalEvents(monthPrefix, daysInMonth) {
             dot.className = 'gl-day-external';
             dot.title = byDate[date].map(function(e) { return e.title; }).join(', ');
             cell.appendChild(dot);
-            // Add hover content if cell doesn't already have one
-            if (!cell.querySelector('.gl-day-hover')) {
+            // Build external event hover lines
+            var _extLines = byDate[date].slice(0, 3).map(function(e) {
+                return '<div>' + (e.title || 'Busy') + (e.time ? ' \u00B7 ' + e.time : '') + '</div>';
+            }).join('');
+            if (byDate[date].length > 3) _extLines += '<div style="opacity:0.6">+' + (byDate[date].length - 3) + ' more</div>';
+            _extLines += '<div style="opacity:0.4;margin-top:2px">Google Calendar</div>';
+            // If this is a "best" day, downgrade the hover to acknowledge the conflict
+            var existingHover = cell.querySelector('.gl-day-hover');
+            if (state === 'best' && existingHover) {
+                existingHover.innerHTML = 'Open with ' + byDate[date].length + ' Google event' + (byDate[date].length > 1 ? 's' : '') + '<div style="margin-top:4px">' + _extLines + '</div>';
+            } else if (!existingHover) {
                 var hover = document.createElement('div');
                 hover.className = 'gl-day-hover';
-                var lines = byDate[date].slice(0, 3).map(function(e) {
-                    return '<div>' + (e.title || 'Busy') + (e.time ? ' \u00B7 ' + e.time : '') + '</div>';
-                }).join('');
-                if (byDate[date].length > 3) lines += '<div style="opacity:0.6">+' + (byDate[date].length - 3) + ' more</div>';
-                lines += '<div style="opacity:0.4;margin-top:2px">Google Calendar</div>';
-                hover.innerHTML = lines;
+                hover.innerHTML = _extLines;
                 cell.appendChild(hover);
+            } else {
+                // Append to existing hover
+                existingHover.innerHTML += '<div style="margin-top:4px;padding-top:4px;border-top:1px solid var(--gl-border-subtle)">' + _extLines + '</div>';
             }
         });
         console.log('[Calendar] External Google events overlaid:', events.length);
@@ -831,6 +838,11 @@ function _calRenderSyncCoverage() {
     });
     if (connectedCount < members.length) {
         html += '<div style="color:var(--gl-text-tertiary);opacity:0.5;margin-top:2px;font-size:0.92em">' + connectedCount + '/' + members.length + ' calendars synced</div>';
+    }
+    if (hasScope) {
+        html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px;opacity:0.5;font-size:0.88em;color:var(--gl-text-tertiary)">'
+            + '<div style="width:5px;height:5px;border-radius:50%;background:var(--gl-indigo);flex-shrink:0"></div>'
+            + 'Google event on this day</div>';
     }
     html += '</div>';
     el.innerHTML = html;
