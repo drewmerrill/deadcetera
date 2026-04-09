@@ -900,9 +900,121 @@ function _calRenderSyncCoverage() {
             + '<div style="width:5px;height:5px;border-radius:50%;background:var(--gl-indigo);flex-shrink:0"></div>'
             + 'Google event on this day</div>';
     }
+    // Explainer + band invite
+    html += '<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">';
+    html += '<button onclick="_calShowSyncExplainer()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;text-decoration:underline">What this means</button>';
+    if (connectedCount < members.length) {
+        html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6">Send setup to band</button>';
+    }
+    html += '</div>';
     html += '</div>';
     el.innerHTML = html;
 }
+
+// ── First-time onboarding card ────────────────────────────────────────────────
+function _calRenderOnboarding() {
+    var el = document.getElementById('calOnboardingCard');
+    if (!el) return;
+    var cov = _calGetSyncCoverage();
+    // Only show when current user is NOT connected + hasn't dismissed
+    if (cov.hasScope || localStorage.getItem('gl_cal_onboard_dismissed')) {
+        el.innerHTML = '';
+        return;
+    }
+    el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:var(--gl-space-sm)">'
+        + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Connect your Google Calendar</div>'
+        + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
+        + 'See your real availability automatically. When connected, your busy times help the band avoid conflicts and RSVP responses sync back from Google.'
+        + '</div>'
+        + '<div style="display:flex;gap:6px;margin-bottom:6px">'
+        + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Connect</button>'
+        + '<button onclick="_calShowSyncExplainer()" class="gl-btn-ghost" style="font-size:0.72em">How it works</button>'
+        + '</div>'
+        + '<div style="font-size:0.62em;color:var(--gl-text-tertiary);opacity:0.6">Only your calendar syncs until other members connect theirs.</div>'
+        + '<button onclick="localStorage.setItem(\'gl_cal_onboard_dismissed\',\'1\');document.getElementById(\'calOnboardingCard\').innerHTML=\'\'" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:0.82em;opacity:0.5">\u2715</button>'
+        + '</div>';
+}
+
+// ── Sync explainer sheet ─────────────────────────────────────────────────────
+window._calShowSyncExplainer = function() {
+    var existing = document.getElementById('calSyncExplainer');
+    if (existing) { existing.style.display = 'flex'; return; }
+    var modal = document.createElement('div');
+    modal.id = 'calSyncExplainer';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.onclick = function(e) { if (e.target === modal) modal.style.display = 'none'; };
+    var inner = document.createElement('div');
+    inner.style.cssText = 'background:var(--bg-card,#1e293b);border-radius:12px;padding:20px;max-width:420px;width:100%;border:1px solid var(--gl-border)';
+    inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        + '<span style="font-weight:700;color:var(--gl-text)">How Google Calendar sync works</span>'
+        + '<button onclick="document.getElementById(\'calSyncExplainer\').style.display=\'none\'" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1.1em">\u2715</button>'
+        + '</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text-secondary);line-height:1.6">'
+        + '<div style="margin-bottom:8px"><strong>What it does</strong></div>'
+        + '<div style="margin-bottom:6px">\u2022 Reads your busy times from Google Calendar</div>'
+        + '<div style="margin-bottom:6px">\u2022 Shows conflicts in the band schedule automatically</div>'
+        + '<div style="margin-bottom:6px">\u2022 Syncs RSVP responses if you answer from Google</div>'
+        + '<div style="margin-bottom:6px">\u2022 Makes date recommendations more accurate</div>'
+        + '<div style="margin-bottom:12px;padding-top:8px;border-top:1px solid var(--gl-border-subtle)"><strong>How coverage works</strong></div>'
+        + '<div style="margin-bottom:6px">Each band member connects their own calendar. The more members who connect, the more accurate scheduling becomes.</div>'
+        + '<div style="margin-bottom:6px">Unconnected members still need to manually RSVP or block dates.</div>'
+        + '</div>';
+    modal.appendChild(inner);
+    document.body.appendChild(modal);
+};
+
+// ── Band invite message for Google sync ──────────────────────────────────────
+window._calCopyBandSyncInvite = function() {
+    var msg = 'Please connect your Google Calendar in GrooveLinx. It only takes a minute, and it lets the app automatically see your busy times so we stop guessing when the band can rehearse. It also keeps your RSVP responses synced if you answer from Google Calendar.';
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(msg).then(function() {
+            if (typeof showToast === 'function') showToast('Message copied \u2014 paste to your band chat');
+        });
+    } else {
+        var ta = document.createElement('textarea'); ta.value = msg; ta.style.cssText = 'position:fixed;left:-9999px';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        if (typeof showToast === 'function') showToast('Message copied');
+    }
+};
+
+// ── Schedule confirmation panel ──────────────────────────────────────────────
+window._calConfirmSchedule = function(dateStr, type) {
+    type = type || 'rehearsal';
+    var cov = _calGetSyncCoverage();
+    var dateLabel = '';
+    try { dateLabel = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }); } catch(e) { dateLabel = dateStr; }
+
+    var html = '<div style="padding:14px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.15);margin-bottom:12px">';
+    html += '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text);margin-bottom:8px">Schedule ' + type + ' for ' + dateLabel + '?</div>';
+    html += '<div style="font-size:0.75em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
+        + 'This will:<br>'
+        + '\u2022 Create the event in GrooveLinx<br>';
+    if (cov.hasScope) {
+        html += '\u2022 Sync to Google Calendar<br>'
+            + '\u2022 Send Google invites to band members<br>'
+            + '\u2022 Keep RSVP responses synced</div>';
+    } else {
+        html += '\u2022 Event stays in GrooveLinx only</div>';
+    }
+    if (cov.isPartial) {
+        html += '<div style="font-size:0.72em;color:var(--gl-amber);margin-bottom:8px">\u26A0\uFE0F Only ' + cov.connected + '/' + cov.total + ' calendars connected \u2014 this date may still conflict for unconnected members.</div>';
+    }
+    html += '<div style="display:flex;gap:6px">'
+        + '<button onclick="calAddEvent(\'' + dateStr.replace(/'/g, "\\'") + '\')" class="gl-btn-primary" style="font-size:0.82em;padding:8px 18px">Confirm</button>'
+        + '<button onclick="document.getElementById(\'calConfirmPanel\').innerHTML=\'\'" class="gl-btn-ghost" style="font-size:0.78em">Cancel</button>'
+        + '</div></div>';
+
+    var panel = document.getElementById('calConfirmPanel');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'calConfirmPanel';
+        var form = document.getElementById('calEventFormArea');
+        if (form) form.parentNode.insertBefore(panel, form);
+        else document.querySelector('.gl-page-primary').appendChild(panel);
+    }
+    panel.innerHTML = html;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
 
 // ── Connect/Disconnect Google Calendar ────────────────────────────────────────
 window._calConnectGoogle = async function() {
@@ -1317,6 +1429,8 @@ function renderCalendarInner() {
     var _ctxRail = document.getElementById('calContextRail');
     if (_ctxRail) {
         _ctxRail.innerHTML =
+        // 0. Onboarding card (shown when not connected)
+        '<div id="calOnboardingCard"></div>' +
         // 1. Selected date context (populated by calDayClick)
         '<div id="calSelectedDayCard"></div>' +
         // 2. Next event (single, compact — populated async)
@@ -1335,10 +1449,12 @@ function renderCalendarInner() {
         '<div id="blockedDates" style="display:none"></div>' +
         '<div id="calBlockedHeader" style="display:none"></div>';
 
-        // Populate next event + sync coverage + attendee statuses
+        // Populate next event + sync coverage + onboarding + attendee statuses
         _calPopulateNextEventRail();
-        // Load real connection data then render coverage
-        _calLoadConnections().then(function() { _calRenderSyncCoverage(); });
+        _calLoadConnections().then(function() {
+            _calRenderSyncCoverage();
+            _calRenderOnboarding();
+        });
         setTimeout(_calSyncAttendeeStatuses, 2000); // delay to not block initial render
     }
 
