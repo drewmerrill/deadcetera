@@ -812,16 +812,46 @@ async function _calOverlayExternalEvents(monthPrefix, daysInMonth) {
     } catch(e) { console.warn('[Calendar] External events overlay failed:', e); }
 }
 
+// ── SYNC COVERAGE — shared helper for all trust messaging ────────────────────
+// RULES:
+// - All sync coverage messaging must route through _calGetSyncCoverage()
+// - No inline assumptions about sync completeness in UI code
+// - Currently: only current user's primary Google Calendar is synced
+// - MULTI-USER PATH: each band member connects their own Google Calendar
+//   - OAuth tokens stored per-member in Firebase
+//   - free/busy queried per-member with their token
+//   - blocked ranges carry _source:'google' + person name
+//   - event_availability carries source:'google' + syncedAt per member
+//   - _calGetSyncCoverage().connected increases as members connect
+
+function _calGetSyncCoverage() {
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
+    var myKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+    var connected = hasScope ? 1 : 0;
+    var total = members.length || Object.keys(bm).length;
+    return {
+        connected: connected,
+        total: total,
+        isPartial: connected > 0 && connected < total,
+        isNone: connected === 0,
+        isFull: connected >= total && total > 0,
+        hasScope: hasScope,
+        myKey: myKey
+    };
+}
+
 function _calRenderSyncCoverage() {
     var el = document.getElementById('calSyncCoverage');
     if (!el) return;
+    var cov = _calGetSyncCoverage();
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     if (!members.length) { el.innerHTML = ''; return; }
-
-    var hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
-    var myKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
-    var connectedCount = hasScope ? 1 : 0; // Only current user for now
+    var hasScope = cov.hasScope;
+    var myKey = cov.myKey;
+    var connectedCount = cov.connected;
 
     var html = '<div style="padding:var(--gl-space-sm) 0;font-size:0.7em">';
     html += '<div style="font-weight:600;color:var(--gl-text-tertiary);margin-bottom:4px">Availability coverage</div>';
@@ -849,23 +879,35 @@ function _calRenderSyncCoverage() {
 }
 
 // ── Attendee sync on page load ───────────────────────────────────────────────
+// ── ATTENDEE SYNC RULES:
+// - All attendee status mapping must route through GLCalendarSync.syncAttendeeStatus()
+// - Maps: accepted→yes, declined→no, tentative→maybe, needsAction→pending
+// - Writes to Firebase event_availability/{dateKey}/{memberKey}
+// - 5-minute cache per session to avoid redundant API calls
+// - Only syncs events with sync.externalEventId + status 'synced'
+var _attendeeSyncedAt = 0;
+
 async function _calSyncAttendeeStatuses() {
     if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.hasCalendarScope()) return;
+    // 5-minute cache — don't re-sync within same session
+    if (_attendeeSyncedAt > Date.now() - 300000) {
+        console.log('[Calendar] Attendee sync cached (last:', Math.round((Date.now() - _attendeeSyncedAt) / 1000), 's ago)');
+        return;
+    }
     try {
         var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (!db || typeof bandPath !== 'function') return;
+        var syncCount = 0;
         for (var i = 0; i < events.length; i++) {
             var ev = events[i];
             if (!ev.sync || !ev.sync.externalEventId || ev.sync.status !== 'synced') continue;
             var statuses = await GLCalendarSync.syncAttendeeStatus(ev.sync.externalEventId);
             if (!statuses) continue;
-            // Write to event_availability in Firebase
             var dateKey = (ev.date || '').replace(/-/g, '');
             if (!dateKey) continue;
             var updates = {};
             Object.keys(statuses).forEach(function(email) {
-                // Find member key by email
                 var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
                 Object.keys(bm).forEach(function(k) {
                     if (bm[k].email === email) {
@@ -875,9 +917,11 @@ async function _calSyncAttendeeStatuses() {
             });
             if (Object.keys(updates).length) {
                 await db.ref(bandPath('event_availability/' + dateKey)).update(updates);
+                syncCount++;
             }
         }
-        console.log('[Calendar] Attendee statuses synced from Google');
+        _attendeeSyncedAt = Date.now();
+        console.log('[Calendar] Attendee statuses synced:', syncCount, 'events updated');
     } catch(e) { console.warn('[Calendar] Attendee sync failed:', e); }
 }
 
