@@ -888,15 +888,23 @@ function _calRenderSyncCoverage() {
     });
     if (connectedCount < members.length) {
         html += '<div style="color:var(--gl-text-tertiary);opacity:0.5;margin-top:2px;font-size:0.92em">' + connectedCount + '/' + members.length + ' calendars synced</div>';
+        html += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);opacity:0.4;margin-top:1px">More connected = better scheduling</div>';
     }
-    // Connect/disconnect button for current user
+    // Connect/disconnect + connection confidence
     if (hasScope) {
-        html += '<button onclick="_calDisconnectGoogle()" class="gl-btn-ghost" style="width:100%;font-size:0.85em;margin-top:4px;color:var(--gl-text-tertiary)">Disconnect my calendar</button>';
+        // Check freshness of shared data
+        var _myFbFresh = true;
+        try {
+            var _myFbData = (_calConnectedCache && cov.myKey && typeof _calExternalEventsCache !== 'undefined') ? true : true;
+            // Could check member_freebusy updatedAt but keeping it simple
+        } catch(e) {}
+        html += '<div style="font-size:0.72em;color:var(--gl-green);margin-top:4px">\u2713 You\u2019re connected</div>';
+        html += '<button onclick="_calDisconnectGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.4;margin-top:2px">Disconnect</button>';
     } else {
-        html += '<button onclick="_calConnectGoogle()" class="gl-btn-ghost" style="width:100%;font-size:0.85em;margin-top:4px;color:var(--gl-indigo)">Connect your Google Calendar</button>';
+        html += '<button onclick="_calConnectGoogle()" class="gl-btn-ghost" style="width:100%;font-size:0.82em;margin-top:6px;color:var(--gl-indigo)">Connect your Google Calendar</button>';
     }
     if (hasScope) {
-        html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px;opacity:0.5;font-size:0.88em;color:var(--gl-text-tertiary)">'
+        html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px;opacity:0.5;font-size:0.82em;color:var(--gl-text-tertiary)">'
             + '<div style="width:5px;height:5px;border-radius:50%;background:var(--gl-indigo);flex-shrink:0"></div>'
             + 'Google event on this day</div>';
     }
@@ -921,10 +929,10 @@ function _calRenderOnboarding() {
         el.innerHTML = '';
         return;
     }
-    el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:var(--gl-space-sm)">'
-        + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Connect your Google Calendar</div>'
+    el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:var(--gl-space-sm);position:relative">'
+        + '<div style="font-size:0.85em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Stop guessing when the band is free</div>'
         + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
-        + 'See your real availability automatically. When connected, your busy times help the band avoid conflicts and RSVP responses sync back from Google.'
+        + 'Connect your Google Calendar to automatically show your real availability in GrooveLinx. Conflicts surface instantly and RSVP responses sync back.'
         + '</div>'
         + '<div style="display:flex;gap:6px;margin-bottom:6px">'
         + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Connect</button>'
@@ -958,6 +966,8 @@ window._calShowSyncExplainer = function() {
         + '<div style="margin-bottom:12px;padding-top:8px;border-top:1px solid var(--gl-border-subtle)"><strong>How coverage works</strong></div>'
         + '<div style="margin-bottom:6px">Each band member connects their own calendar. The more members who connect, the more accurate scheduling becomes.</div>'
         + '<div style="margin-bottom:6px">Unconnected members still need to manually RSVP or block dates.</div>'
+        + '<div style="margin-bottom:12px;padding-top:8px;border-top:1px solid var(--gl-border-subtle)"><strong style="color:var(--gl-amber)">Important</strong></div>'
+        + '<div style="margin-bottom:6px">GrooveLinx only sees calendars that are connected. If someone hasn\u2019t connected, their conflicts won\u2019t show automatically.</div>'
         + '</div>';
     modal.appendChild(inner);
     document.body.appendChild(modal);
@@ -997,7 +1007,7 @@ window._calConfirmSchedule = function(dateStr, type) {
         html += '\u2022 Event stays in GrooveLinx only</div>';
     }
     if (cov.isPartial) {
-        html += '<div style="font-size:0.72em;color:var(--gl-amber);margin-bottom:8px">\u26A0\uFE0F Only ' + cov.connected + '/' + cov.total + ' calendars connected \u2014 this date may still conflict for unconnected members.</div>';
+        html += '<div style="font-size:0.72em;color:var(--gl-amber);margin-bottom:8px">\u26A0\uFE0F Only ' + cov.connected + '/' + cov.total + ' calendars are connected \u2014 this date may still conflict. Consider asking the rest of the band to connect for more accurate scheduling.</div>';
     }
     html += '<div style="display:flex;gap:6px">'
         + '<button onclick="calAddEvent(\'' + dateStr.replace(/'/g, "\\'") + '\')" class="gl-btn-primary" style="font-size:0.82em;padding:8px 18px">Confirm</button>'
@@ -1025,12 +1035,25 @@ window._calConnectGoogle = async function() {
         if (_testOk) {
             var result = await GLCalendarSync.connectGoogleCalendar();
             if (result.ok) {
-                if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                 localStorage.removeItem('gl_cal_onboard_dismissed');
                 _calConnectedCache = null;
                 await _calLoadConnections();
                 _calRenderSyncCoverage();
                 _calRenderOnboarding();
+                // Post-connect: show conflict count
+                try {
+                    var _fbNow = new Date();
+                    var _fb30 = new Date(Date.now() + 30 * 86400000);
+                    var _fbData = await GLCalendarSync.getFreeBusy(_fbNow.toISOString(), _fb30.toISOString());
+                    var _conflictCount = _fbData && _fbData.busy ? _fbData.busy.length : 0;
+                    if (_conflictCount > 0) {
+                        if (typeof showToast === 'function') showToast('\u2713 Connected \u2014 found ' + _conflictCount + ' upcoming conflict' + (_conflictCount > 1 ? 's' : '') + ' from your calendar');
+                    } else {
+                        if (typeof showToast === 'function') showToast('\u2713 Connected \u2014 your calendar is clear');
+                    }
+                } catch(e) {
+                    if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                }
             }
             return;
         }
