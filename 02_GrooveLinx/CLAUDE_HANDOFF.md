@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-06 (Band Feed/Room IA overhaul + voting integrity + unified badges)_
+_Last updated: 2026-04-09 (System-wide UI transformation + Google Calendar multi-user sync + design system hardening)_
 
 ## Read This First
 
@@ -158,6 +158,142 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 - Auto-archive: resolved 14+ days → `feed_meta.archived`
 - `resolvedAt` timestamp tracked for auto-archive timing
 - Debug: `computeSummary()` logs badge items to console
+
+### Notification & Action System (2026-04-06 → 2026-04-07)
+
+**Phase 1 — Deep Linking + @Mentions:**
+- URL format: `?item=poll:abc123` → auto-scroll + 3s golden highlight
+- @mention autocomplete in Feed quick-add + create forms
+- Group mentions: @all, @band, @guitar, @vocals
+- Mentioned users get `isMentioned` flag in action state
+- `GLPriority.forAction()` provides all priority labels centrally
+- Service worker notification click includes deep link URL
+
+**Phase 2 — Follow-Up Signals + Accountability:**
+- Time-aware action labels: "Waiting on YOU · 18h"
+- Band progress: "3 of 5 responded"
+- RSVP escalation: "🚨 Rehearsal tonight — we need your RSVP"
+- Blocker detection: "Everyone responded — waiting on YOU"
+- Completion animations: card collapse on resolve/vote
+- Post-rehearsal team summary from Firebase aggregate
+
+### Proactive Intelligence Layer (2026-04-07)
+
+- Event risk detection: "Rehearsal in 6 days is at risk" with bullet reasons
+- Smart nudges: "You haven't practiced in N days" / "N songs dropped"
+- Pre-rehearsal checklist (event ≤24h): attendance, songs, practice
+- Post-rehearsal prompt: "Did that feel tighter?" with readiness delta
+- Practice streak tracking: `gl_practice_streak` localStorage
+- Band focus: shared direction with "Count me in" / "Lock for band"
+- Band alignment: Firebase `band_focus_alignment/{date}`
+- Shared commitments: Firebase `daily_commits/{date}`
+
+### Design System (2026-04-07 → 2026-04-09)
+
+**Tokens (app-shell.css):**
+- `--gl-text`, `--gl-text-secondary`, `--gl-text-tertiary`
+- `--gl-surface`, `--gl-surface-raised`, `--gl-surface-elevated`
+- `--gl-border`, `--gl-border-subtle`
+- `--gl-hover`, `--gl-active`, `--gl-transition`
+- `--gl-green`, `--gl-amber`, `--gl-red`, `--gl-indigo`
+- `--gl-space-xs/sm/md/lg/xl` (4/8/16/24/32px)
+
+**Decision Language Engines (groovelinx_store.js):**
+- `GLStatus` — readiness labels, colors, severity (Strong/Solid/Getting there/Needs work)
+- `GLUrgency` — event urgency (Today/Tomorrow/N days + hint + color)
+- `GLPriority` — feed action priority (waiting/blocker/mention/RSVP)
+- `GLScheduleQuality` — date quality (best/good/fair/poor)
+- All return consistent shape: `{ label, hint, level, color, icon, chipClass }`
+
+**Components:**
+- `.gl-btn-primary`, `.gl-btn-ghost` — button hierarchy
+- `.gl-chip` + variants (success/warning/danger/indigo)
+- `.gl-row`, `.gl-row--selected`, `.gl-row--active`, `.gl-row--disabled`
+- `.gl-page-split` — shared two-column layout (1fr + 280px)
+- `.gl-page-context` — glassmorphism right rail (blur, fallback)
+- `.gl-day` — calendar day cells (full-cell state fills)
+
+### System-Wide Layout (2026-04-07 → 2026-04-08)
+
+| Page | Layout | Primary (left) | Context (right) |
+|------|--------|---------------|-----------------|
+| Home | hd-system | Risk + NBA + Focus | Band Status + Guidance |
+| Songs | gl-right-panel | Song list | Song detail |
+| Schedule | gl-page-split | Calendar grid | Selected date + coverage |
+| Rehearsal | gl-page-split | Timeline | History + Recordings |
+| Band Feed | gl-page-split | Action stream | Filters |
+| Band Room | gl-page-split | Votes + Ideas | Decisions |
+
+### Schedule Calendar (2026-04-08 → 2026-04-09)
+
+**Full-cell day design:**
+- `.gl-day--gig` (#5A3A12 amber), `.gl-day--rehearsal` (#1E2F5E blue)
+- `.gl-day--blocked` (#5A1F24 red), `.gl-day--best` (#163B31 green)
+- `.gl-day--today` inset box-shadow, `.gl-day--selected` ring
+- Hover popovers: venue/time for events, member names for blocked, "Full band available" for best
+- Mobile: bottom card replaces hover (state-aware messaging + context CTA)
+- `data-state` + `data-blocked` + `data-date` attributes on all cells
+- View Conflicts: semantic `[data-blocked="true"]` selector + CSS pulse animation
+
+**Availability modal:**
+- Horizontal scrollable timeline (21 days, per-member rows)
+- Legend: ✅ Available, 🚫 Blocked, Today, Weekend
+- Decoupled from grid render timing
+
+### Google Calendar Integration (2026-04-08 → 2026-04-09)
+
+**Phase 1 — Event CRUD (existing):**
+- POST/PATCH/DELETE via Worker proxy to Google Calendar API
+- Sync state tracked in Firebase: synced/needs_update/error/detached
+- ICS subscription feed: `/ical/{bandSlug}`
+
+**Phase 2 — Real-World Awareness:**
+- Worker routes: POST `/calendar/freebusy`, GET `/calendar/events`, GET `/calendar/events/:id`
+- `GLCalendarSync.getFreeBusy()` — queries user's primary calendar, 5-min cache
+- `GLCalendarSync.syncAttendeeStatus()` — reads RSVP from Google, writes to Firebase
+- `GLCalendarSync.listGoogleEvents()` — imports external events (read-only)
+- Free/busy merged with manual blocks in `loadCalendarEvents()`
+- External events shown as indigo dots on calendar cells
+- 403 detection: returns `source: 'needs_consent'`, prompts for calendar scope
+
+**Phase 3 — Multi-User Band Sync:**
+- Connection records: `bands/{slug}/google_connections/{memberKey}`
+- Shared free/busy: `bands/{slug}/member_freebusy/{memberKey}`
+- Each member's browser queries their own Google Calendar
+- Results written to Firebase, all members read merged data
+- `_calGetSyncCoverage()` reads real connection state
+- Live updates via Firebase `.on('value')` listener
+- Sync coverage UI: per-member ✓/⚠ + total count
+- Connect/Disconnect/Reconnect flow with consent handling
+
+**Onboarding:**
+- "Stop guessing when the band is free" onboarding card
+- "How it works" explainer modal
+- Consent prompt when 403 detected: "Grant calendar access"
+- Post-connect confirmation with conflict count
+- Full-band milestone: "🎸 Full band connected"
+- Band invite message: one-tap copy for sharing
+
+**Known issue (2026-04-09):**
+- Google Calendar API must be enabled in Google Cloud Console for project 177899334738
+- Token from auto-reconnect may not include calendar.events scope
+- User needs to click "Allow calendar access" to grant the scope via consent prompt
+
+### Feed/Room Interaction (2026-04-08)
+
+- Overflow menu (⋯) on each feed item: Tag, Pin, Archive, Edit, Delete
+- Inline delete confirmation (not modal)
+- Type badges: Idea, Poll, Rehearsal, Song Note, Link, Photo
+- State chips: Pinned, Resolved, Archived, Needs input
+- Type-aware visible actions (max 2 per item type)
+- Band Room: "Convert to Pitch" replaced with contextual menu
+
+### Mobile Fixes (2026-04-08 → 2026-04-09)
+
+- P1: Schedule nav item restored on iPhone (hardcoded core nav fallback)
+- Calendar hover popovers disabled on mobile (was blocking tap)
+- Mobile bottom card for date selection (state-aware messaging + CTA)
+- Calendar day cells responsive: 64px min-height, smaller icons
 
 ### Progression Tracking
 - Action log: practice_set, practice_all, completed_* (14-day localStorage)

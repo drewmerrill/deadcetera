@@ -1,12 +1,53 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-06 (Band Feed/Room IA Overhaul + Voting Integrity + Schedule Timing)_
+_Updated: 2026-04-09 (System-Wide UI + Google Calendar Multi-User + Design System + Action System)_
 
-## Active Phase: Action Trust + Information Architecture
+## Active Phase: Google Calendar Integration + System Polish
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
-Deploy: **Vercel** (auto-deploy on push to main) + `push.py` for GitHub Pages
+Deploy: **Vercel** (auto-deploy on push to main)
+Worker: **Cloudflare** (`wrangler deploy worker.js --name deadcetera-proxy`)
 Production URL: **https://app.groovelinx.com**
+
+---
+
+## What's Live (2026-04-09)
+
+### Google Calendar Integration (2026-04-08 → 2026-04-09)
+- Multi-user band sync: each member connects their own calendar
+- Free/busy merged from all connected members via shared Firebase path
+- External Google events visible as indigo dots on calendar cells
+- Attendee RSVP sync from Google on Schedule page load
+- Sync coverage indicator: per-member ✓/⚠ + "N/N synced"
+- Onboarding: "Stop guessing when the band is free" + consent flow
+- Full-band milestone celebration when all members connected
+- **BLOCKING**: Google Calendar API must be enabled in Cloud Console
+
+### Design System (2026-04-07 → 2026-04-09)
+- GLStatus, GLUrgency, GLPriority, GLScheduleQuality engines
+- Shared CSS tokens, components, spacing, interaction patterns
+- Calendar full-cell day design with hover popovers
+- Mobile bottom card for date interaction
+- Calm UI foundation with adaptive modes
+
+### System-Wide Layout (2026-04-07 → 2026-04-08)
+- All 6 pages on shared split layout (primary + context rail)
+- Rehearsal: timeline-first, plan in rail
+- Schedule: calendar-dominant, minimal right rail
+- Band Feed/Room: continuous stream + context filters
+
+### Action System (2026-04-06 → 2026-04-07)
+- Deep linking, @mentions, follow-up signals, accountability
+- Proactive intelligence: risk detection, nudges, streaks
+- Band alignment: shared focus, commitments, team summaries
+
+---
+
+## Next Steps
+1. **Enable Google Calendar API** in Google Cloud Console (project 177899334738)
+2. Test full free/busy flow end-to-end after API is enabled
+3. Get second band member to connect → validate multi-user merge
+4. Production polish pass on remaining console warnings
 
 ---
 
