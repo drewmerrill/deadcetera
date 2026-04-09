@@ -1117,16 +1117,17 @@ function _calTriggerGoogleReAuth() {
         if (typeof showToast === 'function') showToast('Opening Google sign-in\u2026');
         try {
             tokenClient.requestAccessToken({ prompt: 'consent' });
+            // Poll for new token — give user up to 60 seconds to complete consent
             var _pollCount = 0;
             var _pollTimer = setInterval(async function() {
                 _pollCount++;
-                if (_pollCount >= 30) {
-                    // Timeout — consent was denied or popup closed
+                if (_pollCount >= 120) { // 60 seconds (120 * 500ms)
                     clearInterval(_pollTimer);
                     _calShowConnectionFailure();
                     return;
                 }
-                if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+                // Check if accessToken has been set by the OAuth callback
+                if (typeof accessToken !== 'undefined' && accessToken && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
                     var _ok = await _calTestGoogleToken();
                     if (_ok) {
                         clearInterval(_pollTimer);
