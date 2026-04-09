@@ -2187,7 +2187,13 @@ function calDayClick(y, m, d) {
     calViewYear = y; calViewMonth = m;
     var ds = y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
 
-    // Show selected-date context in right rail
+    // Mobile: show bottom card instead of right rail
+    if (window.innerWidth <= 640) {
+        _calShowMobileDateCard(ds, y, m, d);
+        return;
+    }
+
+    // Desktop: show selected-date context in right rail
     var ctxRail = document.getElementById('calContextRail');
     if (ctxRail) {
         var dateObj = new Date(y, m, d);
@@ -2224,6 +2230,74 @@ function calDayClick(y, m, d) {
         else { var t = document.createElement('div'); t.innerHTML = cardHtml; ctxRail.insertBefore(t.firstElementChild, ctxRail.firstChild); }
     }
 }
+
+// ── Mobile date card (bottom sheet) ──────────────────────────────────────────
+function _calShowMobileDateCard(ds, y, m, d) {
+    var dateObj = new Date(y, m, d);
+    var dateLabel = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    var blocked = _calCachedBlockedRanges ? _calCachedBlockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; }) : [];
+    var isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
+    var _dq = (typeof GLScheduleQuality !== 'undefined') ? GLScheduleQuality.forDate(blocked.length, isWeekend) : { label: '', color: 'var(--gl-text-tertiary)' };
+
+    // Build content
+    var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    html += '<div style="font-size:1em;font-weight:700;color:var(--gl-text)">' + dateLabel + '</div>';
+    html += '<button onclick="_calCloseMobileCard()" style="background:none;border:none;color:var(--gl-text-tertiary);font-size:1.2em;cursor:pointer;padding:4px">\u2715</button>';
+    html += '</div>';
+    html += '<div style="font-size:0.82em;color:' + _dq.color + ';margin-bottom:10px">' + _dq.label + '</div>';
+
+    // Blocked details
+    if (blocked.length) {
+        blocked.slice(0, 3).forEach(function(b) {
+            html += '<div style="font-size:0.78em;color:var(--gl-text-secondary);padding:2px 0">' + (b.person || 'Member') + (b.reason ? ' \u2014 ' + b.reason : ' unavailable') + '</div>';
+        });
+    }
+
+    // External Google events
+    var _ext = _calExternalEventsCache[ds] || [];
+    if (_ext.length) {
+        html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--gl-border-subtle);font-size:0.78em;color:var(--gl-text-tertiary)">';
+        html += '<div style="font-weight:600;margin-bottom:2px">Google Calendar</div>';
+        _ext.slice(0, 4).forEach(function(e) {
+            html += '<div>' + (e.title || 'Busy') + (e.time ? ' \u00B7 ' + e.time : '') + '</div>';
+        });
+        html += '</div>';
+    }
+
+    // Action
+    var safDs = ds.replace(/'/g, "\\'");
+    html += '<div style="margin-top:12px">';
+    html += '<button onclick="_calCloseMobileCard();calAddEvent(\'' + safDs + '\')" class="gl-btn-primary" style="width:100%">Lock this date</button>';
+    html += '</div>';
+
+    // Show/create bottom card
+    var card = document.getElementById('calMobileCard');
+    if (!card) {
+        card = document.createElement('div');
+        card.id = 'calMobileCard';
+        card.className = 'gl-day-mobile-card';
+        document.body.appendChild(card);
+    }
+    card.innerHTML = html;
+    card.classList.add('is-open');
+    // Close on backdrop tap
+    var _backdrop = document.getElementById('calMobileBackdrop');
+    if (!_backdrop) {
+        _backdrop = document.createElement('div');
+        _backdrop.id = 'calMobileBackdrop';
+        _backdrop.style.cssText = 'position:fixed;inset:0;z-index:1099;background:rgba(0,0,0,0.3)';
+        _backdrop.onclick = function() { _calCloseMobileCard(); };
+        document.body.appendChild(_backdrop);
+    }
+    _backdrop.style.display = 'block';
+}
+
+window._calCloseMobileCard = function() {
+    var card = document.getElementById('calMobileCard');
+    if (card) card.classList.remove('is-open');
+    var backdrop = document.getElementById('calMobileBackdrop');
+    if (backdrop) backdrop.style.display = 'none';
+};
 
 async function calAddEvent(date, editIdx, existing) {
     const area = document.getElementById('calEventFormArea');
