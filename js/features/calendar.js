@@ -824,22 +824,42 @@ async function _calOverlayExternalEvents(monthPrefix, daysInMonth) {
 //   - event_availability carries source:'google' + syncedAt per member
 //   - _calGetSyncCoverage().connected increases as members connect
 
+// _calConnectedCache: populated async, used by sync functions
+var _calConnectedCache = null;
+var _calConnectedCacheTime = 0;
+
 function _calGetSyncCoverage() {
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     var hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
     var myKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
-    var connected = hasScope ? 1 : 0;
     var total = members.length || Object.keys(bm).length;
+    // Use cached connection data if available (populated by _calLoadConnections)
+    var connectedKeys = _calConnectedCache ? Object.keys(_calConnectedCache) : [];
+    var connected = connectedKeys.length;
+    // If no cache yet, fall back to current user check
+    if (!_calConnectedCache) connected = hasScope ? 1 : 0;
     return {
         connected: connected,
         total: total,
+        connectedKeys: connectedKeys,
         isPartial: connected > 0 && connected < total,
         isNone: connected === 0,
         isFull: connected >= total && total > 0,
         hasScope: hasScope,
         myKey: myKey
     };
+}
+
+// Load real connection data from Firebase (async — call on page load)
+async function _calLoadConnections() {
+    if (_calConnectedCache && _calConnectedCacheTime > Date.now() - 300000) return;
+    try {
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getConnectedMembers) {
+            _calConnectedCache = await GLCalendarSync.getConnectedMembers();
+            _calConnectedCacheTime = Date.now();
+        }
+    } catch(e) { _calConnectedCache = {}; }
 }
 
 function _calRenderSyncCoverage() {
@@ -859,7 +879,7 @@ function _calRenderSyncCoverage() {
         var key = (typeof m === 'object') ? m.key : m;
         var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
         var isMe = key === myKey;
-        var connected = isMe && hasScope;
+        var connected = cov.connectedKeys.indexOf(key) !== -1 || (isMe && hasScope);
         html += '<div style="display:flex;align-items:center;gap:4px;padding:1px 0;color:var(--gl-text-tertiary)">';
         html += connected
             ? '<span style="color:var(--gl-green)">\u2713</span><span>' + name + '</span><span style="opacity:0.5">synced</span>'
@@ -869,6 +889,12 @@ function _calRenderSyncCoverage() {
     if (connectedCount < members.length) {
         html += '<div style="color:var(--gl-text-tertiary);opacity:0.5;margin-top:2px;font-size:0.92em">' + connectedCount + '/' + members.length + ' calendars synced</div>';
     }
+    // Connect/disconnect button for current user
+    if (hasScope) {
+        html += '<button onclick="_calDisconnectGoogle()" class="gl-btn-ghost" style="width:100%;font-size:0.85em;margin-top:4px;color:var(--gl-text-tertiary)">Disconnect my calendar</button>';
+    } else {
+        html += '<button onclick="_calConnectGoogle()" class="gl-btn-ghost" style="width:100%;font-size:0.85em;margin-top:4px;color:var(--gl-indigo)">Connect your Google Calendar</button>';
+    }
     if (hasScope) {
         html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px;opacity:0.5;font-size:0.88em;color:var(--gl-text-tertiary)">'
             + '<div style="width:5px;height:5px;border-radius:50%;background:var(--gl-indigo);flex-shrink:0"></div>'
@@ -877,6 +903,34 @@ function _calRenderSyncCoverage() {
     html += '</div>';
     el.innerHTML = html;
 }
+
+// ── Connect/Disconnect Google Calendar ────────────────────────────────────────
+window._calConnectGoogle = async function() {
+    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+        var result = await GLCalendarSync.connectGoogleCalendar();
+        if (result.ok) {
+            if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+            _calConnectedCache = null; // force refresh
+            await _calLoadConnections();
+            _calRenderSyncCoverage();
+        }
+    } else {
+        // Need to re-authenticate with calendar scope
+        if (typeof showToast === 'function') showToast('Sign in again to grant calendar access');
+    }
+};
+
+window._calDisconnectGoogle = async function() {
+    if (typeof GLCalendarSync !== 'undefined') {
+        var result = await GLCalendarSync.disconnectGoogleCalendar();
+        if (result.ok) {
+            if (typeof showToast === 'function') showToast('Google Calendar disconnected');
+            _calConnectedCache = null;
+            await _calLoadConnections();
+            _calRenderSyncCoverage();
+        }
+    }
+};
 
 // ── Attendee sync on page load ───────────────────────────────────────────────
 // ── ATTENDEE SYNC RULES:
@@ -1283,7 +1337,8 @@ function renderCalendarInner() {
 
         // Populate next event + sync coverage + attendee statuses
         _calPopulateNextEventRail();
-        _calRenderSyncCoverage();
+        // Load real connection data then render coverage
+        _calLoadConnections().then(function() { _calRenderSyncCoverage(); });
         setTimeout(_calSyncAttendeeStatuses, 2000); // delay to not block initial render
     }
 
@@ -1645,20 +1700,38 @@ async function loadCalendarEvents() {
     } else {
         blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
     }
-    // Merge Google Calendar free/busy conflicts (current user only)
+    // Merge Google Calendar free/busy — current user + all connected members
     try {
+        var _fbTimeMin = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-01T00:00:00Z';
+        var _fbDaysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
+        var _fbTimeMax = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-' + String(_fbDaysInMonth).padStart(2, '0') + 'T23:59:59Z';
+        // Current user: query Google directly (has own OAuth token)
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
-            var _fbTimeMin = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-01T00:00:00Z';
-            var _fbDaysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
-            var _fbTimeMax = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-' + String(_fbDaysInMonth).padStart(2, '0') + 'T23:59:59Z';
             var _fbData = await GLCalendarSync.getFreeBusy(_fbTimeMin, _fbTimeMax);
             var _myName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
-            var _googleBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName);
-            if (_googleBlocks.length) {
-                blocked = blocked.concat(_googleBlocks);
-                console.log('[Calendar] Google free/busy merged:', _googleBlocks.length, 'ranges');
-            }
+            var _myBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName);
+            if (_myBlocks.length) blocked = blocked.concat(_myBlocks);
+            // Also register as connected
+            GLCalendarSync.connectGoogleCalendar();
         }
+        // Other members: read their shared free/busy from Firebase
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getAllMembersFreeBusy) {
+            var _allFb = await GLCalendarSync.getAllMembersFreeBusy();
+            var _myKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+            var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+            Object.keys(_allFb).forEach(function(mk) {
+                if (mk === _myKey) return; // skip self — already queried directly
+                var fb = _allFb[mk];
+                if (!fb || !fb.busy || !fb.busy.length) return;
+                // Check freshness: only use data < 1 hour old
+                if (fb.updatedAt && (Date.now() - new Date(fb.updatedAt).getTime() > 3600000)) return;
+                var memberName = bm[mk] ? bm[mk].name : mk;
+                var memberBlocks = GLCalendarSync.freeBusyToBlockedRanges(fb, memberName);
+                if (memberBlocks.length) blocked = blocked.concat(memberBlocks);
+            });
+        }
+        var _totalGoogleBlocks = blocked.filter(function(b) { return b._source === 'google'; }).length;
+        if (_totalGoogleBlocks) console.log('[Calendar] Google free/busy merged:', _totalGoogleBlocks, 'ranges (all members)');
     } catch(e) { console.warn('[Calendar] Free/busy merge failed:', e); }
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });

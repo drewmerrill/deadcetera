@@ -234,13 +234,70 @@ window.GLCalendarSync = (function() {
     return '';
   }
 
-  // ── FREE/BUSY — query current user's Google Calendar conflicts ────────────
+  // ── MULTI-USER GOOGLE CALENDAR SYNC ─────────────────────────────────────
+  //
+  // ARCHITECTURE:
+  //   - Each member's browser has their own OAuth token (via Firebase Auth)
+  //   - No Worker-level token storage needed — Worker forwards client token
+  //   - Connection records stored in Firebase: bands/{slug}/google_connections/{memberKey}
+  //   - Free/busy results shared via Firebase: bands/{slug}/member_freebusy/{memberKey}
+  //   - All members read merged results from shared path
+  //
+  // TOKEN SECURITY:
+  //   - Raw OAuth tokens NEVER stored in Firebase (stay in browser)
+  //   - Firebase stores connection metadata only: { email, connectedAt, provider }
+  //   - Each member's browser is responsible for refreshing their own token
+  //
+  // MEMBERKEY OWNERSHIP:
+  //   - Connection records keyed by memberKey from FeedActionState.getMyMemberKey()
+  //   - One member cannot overwrite another's connection record
+  //   - Disconnect removes own record only
+
+  // ── Connection management ──────────────────────────────────────────────
+  async function connectGoogleCalendar() {
+    if (!hasCalendarScope()) return { ok: false, reason: 'no calendar scope' };
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return { ok: false, reason: 'no database' };
+    var memberKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+    if (!memberKey) return { ok: false, reason: 'no member key' };
+    var email = (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '';
+    try {
+      await db.ref(bandPath('google_connections/' + memberKey)).set({
+        email: email,
+        connectedAt: new Date().toISOString(),
+        provider: 'google'
+      });
+      return { ok: true, memberKey: memberKey };
+    } catch(e) { return { ok: false, reason: e.message }; }
+  }
+
+  async function disconnectGoogleCalendar() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return { ok: false };
+    var memberKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+    if (!memberKey) return { ok: false };
+    try {
+      await db.ref(bandPath('google_connections/' + memberKey)).remove();
+      await db.ref(bandPath('member_freebusy/' + memberKey)).remove();
+      return { ok: true };
+    } catch(e) { return { ok: false }; }
+  }
+
+  async function getConnectedMembers() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return {};
+    try {
+      var snap = await db.ref(bandPath('google_connections')).once('value');
+      return snap.val() || {};
+    } catch(e) { return {}; }
+  }
+
+  // ── FREE/BUSY — query + share current user's conflicts ────────────────
   var _freeBusyCache = null;
   var _freeBusyCacheTime = 0;
 
   async function getFreeBusy(timeMin, timeMax) {
     if (!hasCalendarScope()) return { busy: [], source: 'unavailable' };
-    // Cache for 5 minutes
     var cacheKey = timeMin + '|' + timeMax;
     if (_freeBusyCache && _freeBusyCacheTime > Date.now() - 300000 && _freeBusyCache._key === cacheKey) {
       return _freeBusyCache;
@@ -249,28 +306,49 @@ window.GLCalendarSync = (function() {
       var res = await fetch(WORKER_BASE + '/calendar/freebusy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
-        body: JSON.stringify({
-          timeMin: timeMin,
-          timeMax: timeMax,
-          items: [{ id: 'primary' }]
-        })
+        body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: [{ id: 'primary' }] })
       });
       if (!res.ok) return { busy: [], source: 'error' };
       var data = await res.json();
-      // Extract busy ranges from primary calendar
       var busy = [];
       if (data.calendars && data.calendars.primary && data.calendars.primary.busy) {
-        data.calendars.primary.busy.forEach(function(b) {
-          busy.push({ start: b.start, end: b.end });
-        });
+        data.calendars.primary.busy.forEach(function(b) { busy.push({ start: b.start, end: b.end }); });
       }
       _freeBusyCache = { busy: busy, source: 'google', _key: cacheKey };
       _freeBusyCacheTime = Date.now();
+      // Share results to Firebase for other band members to read
+      _shareFreeBusy(busy, timeMin, timeMax);
       return _freeBusyCache;
     } catch (err) {
       console.warn('[CalSync] Free/busy error:', err);
       return { busy: [], source: 'error' };
     }
+  }
+
+  // Write current user's free/busy to shared Firebase path
+  async function _shareFreeBusy(busy, timeMin, timeMax) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var memberKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+    if (!memberKey) return;
+    try {
+      await db.ref(bandPath('member_freebusy/' + memberKey)).set({
+        busy: busy,
+        timeMin: timeMin,
+        timeMax: timeMax,
+        updatedAt: new Date().toISOString()
+      });
+    } catch(e) {}
+  }
+
+  // Read ALL members' free/busy from shared Firebase path
+  async function getAllMembersFreeBusy() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return {};
+    try {
+      var snap = await db.ref(bandPath('member_freebusy')).once('value');
+      return snap.val() || {};
+    } catch(e) { return {}; }
   }
 
   // Convert free/busy ranges to date-based blocked ranges for calendar
@@ -367,6 +445,11 @@ window.GLCalendarSync = (function() {
     freeBusyToBlockedRanges: freeBusyToBlockedRanges,
     syncAttendeeStatus: syncAttendeeStatus,
     listGoogleEvents: listGoogleEvents,
+    // Phase 3: Multi-user band sync
+    connectGoogleCalendar: connectGoogleCalendar,
+    disconnectGoogleCalendar: disconnectGoogleCalendar,
+    getConnectedMembers: getConnectedMembers,
+    getAllMembersFreeBusy: getAllMembersFreeBusy,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };
