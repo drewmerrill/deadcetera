@@ -308,7 +308,11 @@ window.GLCalendarSync = (function() {
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
         body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: [{ id: 'primary' }] })
       });
-      if (!res.ok) return { busy: [], source: 'error' };
+      if (!res.ok) {
+        if (res.status === 403) console.log('[CalSync] Calendar scope not yet authorized — free/busy unavailable');
+        else console.log('[CalSync] Free/busy returned', res.status);
+        return { busy: [], source: 'error' };
+      }
       var data = await res.json();
       var busy = [];
       if (data.calendars && data.calendars.primary && data.calendars.primary.busy) {

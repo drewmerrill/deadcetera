@@ -1056,24 +1056,12 @@ window._calConnectGoogle = async function() {
             var result = await GLCalendarSync.connectGoogleCalendar();
             if (result.ok) {
                 localStorage.removeItem('gl_cal_onboard_dismissed');
+                localStorage.removeItem('gl_cal_impact_shown');
                 _calConnectedCache = null;
                 await _calLoadConnections();
                 _calRenderSyncCoverage();
                 _calRenderOnboarding();
-                // Post-connect: show conflict count
-                try {
-                    var _fbNow = new Date();
-                    var _fb30 = new Date(Date.now() + 30 * 86400000);
-                    var _fbData = await GLCalendarSync.getFreeBusy(_fbNow.toISOString(), _fb30.toISOString());
-                    var _conflictCount = _fbData && _fbData.busy ? _fbData.busy.length : 0;
-                    if (_conflictCount > 0) {
-                        if (typeof showToast === 'function') showToast('\u2713 Connected \u2014 found ' + _conflictCount + ' upcoming conflict' + (_conflictCount > 1 ? 's' : '') + ' from your calendar');
-                    } else {
-                        if (typeof showToast === 'function') showToast('\u2713 Connected \u2014 your calendar is clear');
-                    }
-                } catch(e) {
-                    if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
-                }
+                if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
             }
             return;
         }
@@ -1128,17 +1116,12 @@ function _calTriggerGoogleReAuth() {
                         var r = await GLCalendarSync.connectGoogleCalendar();
                         if (r.ok) {
                             localStorage.removeItem('gl_cal_onboard_dismissed');
+                            localStorage.removeItem('gl_cal_impact_shown');
                             _calConnectedCache = null;
                             await _calLoadConnections();
                             _calRenderSyncCoverage();
                             _calRenderOnboarding();
-                            // Post-connect: show conflict count
-                            try {
-                                var _fbData = await GLCalendarSync.getFreeBusy(new Date().toISOString(), new Date(Date.now() + 30 * 86400000).toISOString());
-                                var _cc = _fbData && _fbData.busy ? _fbData.busy.length : 0;
-                                if (_cc > 0) showToast('\u2713 Connected \u2014 found ' + _cc + ' upcoming conflict' + (_cc > 1 ? 's' : ''));
-                                else showToast('\u2713 Connected \u2014 your calendar is clear');
-                            } catch(e) { showToast('\u2713 Google Calendar connected'); }
+                            if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                         }
                     }
                 }
