@@ -335,12 +335,16 @@ window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
                         accessToken = response.access_token;
                         // Track which scopes Google actually granted (vs just requested)
                         window._grantedScopes = response.scope || '';
-                        if (window._grantedScopes.indexOf('calendar') !== -1) {
-                            console.log('✅ Calendar scope GRANTED');
-                            window._calendarScopeGranted = true;
-                        } else {
-                            console.warn('⚠️ Calendar scope NOT granted — token scopes:', window._grantedScopes);
-                            window._calendarScopeGranted = false;
+                        // Check for FULL calendar scope (not just calendar.events substring match)
+                        var _scopeList = window._grantedScopes.split(' ');
+                        var _hasFullCal = _scopeList.some(function(s) { return s === 'https://www.googleapis.com/auth/calendar' || s.endsWith('/auth/calendar'); });
+                        var _hasCalEvents = _scopeList.some(function(s) { return s.indexOf('calendar.events') !== -1; });
+                        var _hasCalFreeBusy = _scopeList.some(function(s) { return s.indexOf('calendar.freebusy') !== -1; });
+                        window._calendarScopeGranted = _hasFullCal || _hasCalEvents;
+                        window._calendarFreeBusyGranted = _hasFullCal || _hasCalFreeBusy;
+                        console.log('[Auth] Calendar scopes — full:', _hasFullCal, 'events:', _hasCalEvents, 'freebusy:', _hasCalFreeBusy);
+                        if (!window._calendarScopeGranted) {
+                            console.warn('⚠️ No calendar scope granted — token scopes:', window._grantedScopes);
                         }
                         window.updateSignInStatus(true);
                         console.log('✅ User signed in');

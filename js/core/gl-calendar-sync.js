@@ -20,11 +20,16 @@ window.GLCalendarSync = (function() {
   // ── Check if calendar scope is available ──────────────────────────────────
   function hasCalendarScope() {
     if (typeof accessToken === 'undefined' || !accessToken) return false;
-    // Check actual granted scopes (set by token callback) — not just requested config
     if (typeof window._calendarScopeGranted !== 'undefined') return window._calendarScopeGranted;
-    // Fallback: check config (before first token callback fires)
     return typeof GOOGLE_DRIVE_CONFIG !== 'undefined' &&
       GOOGLE_DRIVE_CONFIG.scope && GOOGLE_DRIVE_CONFIG.scope.indexOf('calendar') !== -1;
+  }
+
+  // FreeBusy requires full calendar or calendar.freebusy scope (calendar.events is NOT enough)
+  function hasFreeBusyScope() {
+    if (typeof accessToken === 'undefined' || !accessToken) return false;
+    if (typeof window._calendarFreeBusyGranted !== 'undefined') return window._calendarFreeBusyGranted;
+    return false;
   }
 
   // ── Build Google Calendar event body ──────────────────────────────────────
@@ -301,8 +306,7 @@ window.GLCalendarSync = (function() {
   var _calendarScopeFailed = false; // sticky: once 403, stop retrying until page reload
 
   async function getFreeBusy(timeMin, timeMax) {
-    if (!hasCalendarScope()) return { busy: [], source: 'unavailable' };
-    // If we already know the scope is missing, don't keep hitting Google
+    if (!hasFreeBusyScope()) return { busy: [], source: 'unavailable' };
     if (_calendarScopeFailed) return { busy: [], source: 'needs_consent' };
     var cacheKey = timeMin + '|' + timeMax;
     if (_freeBusyCache && _freeBusyCacheTime > Date.now() - 300000 && _freeBusyCache._key === cacheKey) {

@@ -1,7 +1,7 @@
 // GrooveLinx Service Worker — Simplified for reliable updates
 // Strategy: network-first for everything. Cache is offline fallback only.
 
-const CACHE_NAME = 'groovelinx-20260409-220257';
+const CACHE_NAME = 'groovelinx-20260409-221352';
 const BASE = self.registration.scope;
 
 // ── Install: pre-cache index.html for offline nav, then activate immediately ─
