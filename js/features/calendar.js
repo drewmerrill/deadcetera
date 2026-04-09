@@ -2249,14 +2249,69 @@ function _calShowMobileDateCard(ds, y, m, d) {
     var dateLabel = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     var blocked = _calCachedBlockedRanges ? _calCachedBlockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; }) : [];
     var isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
-    var _dq = (typeof GLScheduleQuality !== 'undefined') ? GLScheduleQuality.forDate(blocked.length, isWeekend) : { label: '', color: 'var(--gl-text-tertiary)' };
+    var _ext = _calExternalEventsCache[ds] || [];
+    var safDs = ds.replace(/'/g, "\\'");
+    var todayStr = new Date().toISOString().split('T')[0];
+    var isFuture = ds >= todayStr;
 
-    // Build content
+    // Read true state from grid cell (set during render)
+    var _cellState = 'default';
+    var grid = document.getElementById('calGrid');
+    if (grid) {
+        var cell = grid.querySelector('[data-date="' + ds + '"]');
+        if (cell) _cellState = cell.getAttribute('data-state') || 'default';
+    }
+
+    // Build header
     var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     html += '<div style="font-size:1em;font-weight:700;color:var(--gl-text)">' + dateLabel + '</div>';
     html += '<button onclick="_calCloseMobileCard()" style="background:none;border:none;color:var(--gl-text-tertiary);font-size:1.2em;cursor:pointer;padding:4px">\u2715</button>';
     html += '</div>';
-    html += '<div style="font-size:0.82em;color:' + _dq.color + ';margin-bottom:10px">' + _dq.label + '</div>';
+
+    // State-based message + CTA
+    var statusMsg = '';
+    var statusColor = 'var(--gl-text-tertiary)';
+    var ctaLabel = '';
+    var ctaAction = '';
+
+    if (_cellState === 'gig') {
+        statusMsg = 'Gig scheduled';
+        statusColor = 'var(--gl-amber)';
+        ctaLabel = 'View gig details';
+        ctaAction = "_calCloseMobileCard();showPage('setlists')";
+    } else if (_cellState === 'rehearsal') {
+        statusMsg = 'Rehearsal scheduled';
+        statusColor = 'var(--gl-indigo)';
+        ctaLabel = 'Open rehearsal';
+        ctaAction = "_calCloseMobileCard();practicePlanActiveDate='" + safDs + "';showPage('rehearsal')";
+    } else if (_cellState === 'blocked') {
+        if (blocked.length >= 2) {
+            statusMsg = 'Conflicts \u2014 not ideal';
+            statusColor = 'var(--gl-red)';
+            ctaLabel = 'Schedule anyway';
+        } else {
+            statusMsg = 'Good option \u2014 minor conflict';
+            statusColor = 'var(--gl-amber)';
+            ctaLabel = 'Schedule anyway';
+        }
+        ctaAction = "_calCloseMobileCard();calAddEvent('" + safDs + "')";
+    } else if (_cellState === 'best') {
+        var _hasExtConflict = _ext.length > 0;
+        statusMsg = _hasExtConflict ? 'Open with ' + _ext.length + ' Google event' + (_ext.length > 1 ? 's' : '') : 'Best choice this week';
+        statusColor = _hasExtConflict ? 'var(--gl-amber)' : 'var(--gl-green)';
+        ctaLabel = 'Schedule rehearsal';
+        ctaAction = "_calCloseMobileCard();calAddEvent('" + safDs + "')";
+    } else if (!isFuture) {
+        statusMsg = 'Past date';
+        statusColor = 'var(--gl-text-tertiary)';
+    } else {
+        statusMsg = 'Open date';
+        statusColor = 'var(--gl-text-tertiary)';
+        ctaLabel = 'Schedule rehearsal';
+        ctaAction = "_calCloseMobileCard();calAddEvent('" + safDs + "')";
+    }
+
+    html += '<div style="font-size:0.85em;font-weight:600;color:' + statusColor + ';margin-bottom:10px">' + statusMsg + '</div>';
 
     // Blocked details
     if (blocked.length) {
@@ -2266,7 +2321,6 @@ function _calShowMobileDateCard(ds, y, m, d) {
     }
 
     // External Google events
-    var _ext = _calExternalEventsCache[ds] || [];
     if (_ext.length) {
         html += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--gl-border-subtle);font-size:0.78em;color:var(--gl-text-tertiary)">';
         html += '<div style="font-weight:600;margin-bottom:2px">Google Calendar</div>';
@@ -2276,11 +2330,12 @@ function _calShowMobileDateCard(ds, y, m, d) {
         html += '</div>';
     }
 
-    // Action
-    var safDs = ds.replace(/'/g, "\\'");
-    html += '<div style="margin-top:12px">';
-    html += '<button onclick="_calCloseMobileCard();calAddEvent(\'' + safDs + '\')" class="gl-btn-primary" style="width:100%">Lock this date</button>';
-    html += '</div>';
+    // CTA
+    if (ctaLabel && ctaAction) {
+        html += '<div style="margin-top:12px">';
+        html += '<button onclick="' + ctaAction + '" class="gl-btn-primary" style="width:100%">' + ctaLabel + '</button>';
+        html += '</div>';
+    }
 
     // Show/create bottom card
     var card = document.getElementById('calMobileCard');
