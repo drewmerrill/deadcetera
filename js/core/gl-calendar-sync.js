@@ -319,12 +319,14 @@ window.GLCalendarSync = (function() {
         body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: [{ id: 'primary' }] })
       });
       if (!res.ok) {
+        var errBody = '';
+        try { errBody = await res.text(); } catch(e) {}
+        console.warn('[CalSync] FreeBusy ' + res.status + ' — response:', errBody);
+        console.warn('[CalSync] Token (first 20):', accessToken ? accessToken.substring(0, 20) + '...' : 'none');
         if (res.status === 403) {
-          console.log('[CalSync] Calendar scope not authorized (403) — need consent (will not retry)');
           _calendarScopeFailed = true;
           return { busy: [], source: 'needs_consent' };
         }
-        console.log('[CalSync] Free/busy returned', res.status);
         return { busy: [], source: 'error' };
       }
       // Success — clear any previous failure state
