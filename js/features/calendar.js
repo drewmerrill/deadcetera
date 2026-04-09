@@ -1164,22 +1164,33 @@ function renderCalendarInner() {
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
             else if (hasEvent) { icon = dayEvents[0].type === 'meeting' ? '\uD83D\uDC65' : '\uD83D\uDCC5'; }
             if (isToday) stateClass += ' gl-day--today';
-            // Hover content
+            // Hover content — explains the color, doesn't duplicate right rail
             let hoverHtml = '';
-            if (isGig || isRehearsal) {
-                const ev = dayEvents.find(e => e.type === (isGig ? 'gig' : 'rehearsal'));
+            if (isGig) {
+                const ev = dayEvents.find(e => e.type === 'gig');
                 if (ev) {
-                    hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">' + (ev.title || (isGig ? 'Gig' : 'Rehearsal')) + '</div>';
+                    hoverHtml = '<div class="gl-day-hover">';
+                    if (ev.venue || ev.location) hoverHtml += '<div style="font-weight:600;color:var(--gl-text)">' + (ev.venue || ev.location) + '</div>';
+                    if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
+                    hoverHtml += '</div>';
+                }
+            } else if (isRehearsal) {
+                const ev = dayEvents.find(e => e.type === 'rehearsal');
+                if (ev) {
+                    hoverHtml = '<div class="gl-day-hover">';
                     if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
                     if (ev.location || ev.venue) hoverHtml += '<div>' + (ev.location || ev.venue) + '</div>';
                     hoverHtml += '</div>';
                 }
             } else if (isBlocked && blockedList.length) {
-                hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Conflicts</div>';
-                blockedList.slice(0,3).forEach(b => { hoverHtml += '<div>' + (b.person || '') + (b.reason ? ' \u2014 ' + b.reason : '') + '</div>'; });
+                hoverHtml = '<div class="gl-day-hover">';
+                blockedList.slice(0,3).forEach(b => { hoverHtml += '<div>' + (b.person || 'Member') + (b.reason ? ' \u2014 ' + b.reason : ' unavailable') + '</div>'; });
+                if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                 hoverHtml += '</div>';
             } else if (isBest) {
-                hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Best choice</div><div>No conflicts \u2014 full band available</div></div>';
+                hoverHtml = '<div class="gl-day-hover">Full band available</div>';
+            } else if (state === 'default' && isFuture) {
+                hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
             g += `<div class="gl-day ${stateClass}" data-date="${ds}" data-state="${state}"${isBlocked?' data-blocked="true"':''} onclick="calDayClick(${year},${month},${d})">
                 <div class="gl-day-num">${d}</div>
@@ -1272,12 +1283,20 @@ function _calRenderGridOnly(grid) {
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
             else if (hasEvent) { icon = '\uD83D\uDCC5'; }
             if (isToday) stateClass += ' gl-day--today';
-            // Hover content
+            // Hover content — explains the color
             var hoverHtml = '';
-            if (isGig || isRehearsal) {
-                var ev = dayEvents.find(function(e) { return e.type === (isGig ? 'gig' : 'rehearsal'); });
+            if (isGig) {
+                var ev = dayEvents.find(function(e) { return e.type === 'gig'; });
                 if (ev) {
-                    hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">' + (ev.title || (isGig ? 'Gig' : 'Rehearsal')) + '</div>';
+                    hoverHtml = '<div class="gl-day-hover">';
+                    if (ev.venue || ev.location) hoverHtml += '<div style="font-weight:600;color:var(--gl-text)">' + (ev.venue || ev.location) + '</div>';
+                    if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
+                    hoverHtml += '</div>';
+                }
+            } else if (isRehearsal) {
+                var ev = dayEvents.find(function(e) { return e.type === 'rehearsal'; });
+                if (ev) {
+                    hoverHtml = '<div class="gl-day-hover">';
                     if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
                     if (ev.location || ev.venue) hoverHtml += '<div>' + (ev.location || ev.venue) + '</div>';
                     hoverHtml += '</div>';
@@ -1285,12 +1304,15 @@ function _calRenderGridOnly(grid) {
             } else if (isBlocked) {
                 var blockedList = blockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; });
                 if (blockedList.length) {
-                    hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Conflicts</div>';
-                    blockedList.slice(0,3).forEach(function(b) { hoverHtml += '<div>' + (b.person || '') + (b.reason ? ' \u2014 ' + b.reason : '') + '</div>'; });
+                    hoverHtml = '<div class="gl-day-hover">';
+                    blockedList.slice(0,3).forEach(function(b) { hoverHtml += '<div>' + (b.person || 'Member') + (b.reason ? ' \u2014 ' + b.reason : ' unavailable') + '</div>'; });
+                    if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                     hoverHtml += '</div>';
                 }
             } else if (isBest) {
-                hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Best choice</div><div>No conflicts</div></div>';
+                hoverHtml = '<div class="gl-day-hover">Full band available</div>';
+            } else if (state === 'default' && isFuture) {
+                hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
             g += '<div class="gl-day ' + stateClass + '" data-date="' + ds + '" data-state="' + state + '"' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')">'
                 + '<div class="gl-day-num">' + d + '</div>'
