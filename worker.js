@@ -84,7 +84,7 @@ export default {
     // Get single event (attendee sync)
     if (path.startsWith('/calendar/events/') && request.method === 'GET')
       return handleCalendarGetEvent(request, path.replace('/calendar/events/', ''));
-    return new Response('Not found', { status: 404 });
+    return cors(new Response('Not found', { status: 404 }));
   }
 };
 

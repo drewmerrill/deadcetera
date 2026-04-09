@@ -1051,7 +1051,7 @@ window._calConnectGoogle = async function() {
     // If we already have scope + token, just register the connection
     if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
         // Verify token is still valid with a lightweight API call
-        var _testOk = await _calTestGoogleToken();
+        var _testOk = _calTestGoogleToken();
         if (_testOk) {
             var result = await GLCalendarSync.connectGoogleCalendar();
             if (result.ok) {
@@ -1100,15 +1100,9 @@ window._calDisconnectGoogle = async function() {
     }
 };
 
-// Test if current token is still valid
-async function _calTestGoogleToken() {
-    try {
-        var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
-        var res = await fetch(WORKER_BASE + '/calendar/events?timeMin=' + encodeURIComponent(new Date().toISOString()) + '&timeMax=' + encodeURIComponent(new Date().toISOString()), {
-            headers: { 'Authorization': 'Bearer ' + (typeof accessToken !== 'undefined' ? accessToken : '') }
-        });
-        return res.ok;
-    } catch(e) { return false; }
+// Check if current token exists (no API call — avoids CORS issues with Worker GET)
+function _calTestGoogleToken() {
+    return typeof accessToken !== 'undefined' && accessToken && accessToken.length > 20;
 }
 
 // Trigger Google OAuth re-consent
@@ -1128,7 +1122,7 @@ function _calTriggerGoogleReAuth() {
                 }
                 // Check if accessToken has been set by the OAuth callback
                 if (typeof accessToken !== 'undefined' && accessToken && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
-                    var _ok = await _calTestGoogleToken();
+                    var _ok = _calTestGoogleToken();
                     if (_ok) {
                         clearInterval(_pollTimer);
                         var r = await GLCalendarSync.connectGoogleCalendar();
@@ -1217,7 +1211,7 @@ async function _calValidateMyToken() {
     var isRegistered = cov.connectedKeys.indexOf(myKey) !== -1;
     if (!isRegistered) return; // not registered, no token to validate
     // Test the token
-    var ok = await _calTestGoogleToken();
+    var ok = _calTestGoogleToken();
     if (!ok) {
         // Token expired — show reconnect prompt
         var onboardEl = document.getElementById('calOnboardingCard');
