@@ -1655,20 +1655,18 @@ function renderCalendarInner() {
     }
 
     // Load events, then build calendar grid + availability
-    // Wait for Firebase before starting — fallback only if truly hung
+    // Fallback: if loadCalendarEvents hasn't completed after all dependencies
+    // are ready + 15s grace, render empty availability so the page isn't stuck.
     var _availRendered = false;
-    var _startFallbackTimer = function() {
-        setTimeout(function() {
-            if (!_availRendered) {
-                console.warn('[Calendar] Availability fallback — loadCalendarEvents may have hung');
-                _calRenderAvailabilityMatrix([]);
-            }
-        }, 6000);
-    };
     if (typeof GLStore !== 'undefined' && GLStore.ready) {
-        GLStore.ready(['firebase'], 10000).then(_startFallbackTimer);
-    } else {
-        _startFallbackTimer();
+        GLStore.ready(['firebase', 'members'], 30000).then(function() {
+            setTimeout(function() {
+                if (!_availRendered) {
+                    console.log('[Calendar] Availability fallback — rendering without event data');
+                    _calRenderAvailabilityMatrix([]);
+                }
+            }, 15000);
+        });
     }
 
     // Wait for Firebase before loading events — prevents hang on loadBandDataFromDrive
