@@ -2001,11 +2001,23 @@ async function loadCalendarEvents() {
         // Current user: query Google directly (has own OAuth token)
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
             var _fbData = await GLCalendarSync.getFreeBusy(_fbTimeMin, _fbTimeMax);
-            var _myName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
-            var _myBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName);
-            if (_myBlocks.length) blocked = blocked.concat(_myBlocks);
-            // Also register as connected
-            GLCalendarSync.connectGoogleCalendar();
+            if (_fbData.source === 'needs_consent') {
+                // Token doesn't have calendar scope — show consent prompt
+                console.log('[Calendar] Calendar scope needed — showing consent prompt');
+                var _onboardEl = document.getElementById('calOnboardingCard');
+                if (_onboardEl) {
+                    _onboardEl.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:var(--gl-space-sm)">'
+                        + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-indigo);margin-bottom:4px">Grant calendar access</div>'
+                        + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">Your Google sign-in doesn\u2019t include calendar access yet. Click below to allow GrooveLinx to see your availability.</div>'
+                        + '<button onclick="_calTriggerGoogleReAuth()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Allow calendar access</button>'
+                        + '</div>';
+                }
+            } else {
+                var _myName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
+                var _myBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName);
+                if (_myBlocks.length) blocked = blocked.concat(_myBlocks);
+                GLCalendarSync.connectGoogleCalendar();
+            }
         }
         // Other members: read their shared free/busy from Firebase
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getAllMembersFreeBusy) {
