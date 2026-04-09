@@ -5943,11 +5943,7 @@ async function _handleGoogleDriveAuthInner(silent) {
         try {
             console.log('🔑 Requesting sign-in...' + (silent ? ' (auto-reconnect)' : ''));
             if (silent) {
-                // Restore session from localStorage only — no GIS network call.
-                // This avoids the full-screen Google iframe flash on every refresh.
-                // The access token is not restored (it expires anyway), so API calls
-                // that need it will fail gracefully. User clicks Connect to get a
-                // fresh token when needed.
+                // Restore UI from localStorage immediately (avoids hero flash)
                 var savedEmail = localStorage.getItem('deadcetera_google_email') || '';
                 if (savedEmail) {
                     currentUserEmail = savedEmail;
@@ -5956,18 +5952,19 @@ async function _handleGoogleDriveAuthInner(silent) {
                     updateSignInStatus(true);
                     updateDriveAuthButton();
                     injectAdminButton();
-                    // Hide hero without forcing showPage('home') — the user may be
-                    // on Songs or another restored page. Home nav only happens if
-                    // no other page claimed the screen (glLastPage not set).
                     var _h = document.getElementById('page-hero');
                     if (_h) _h.classList.add('hidden');
                     var _lastP = localStorage.getItem('glLastPage');
                     if (!window._glPageRestorePending) {
-                        // If no page restore is pending, navigate now.
-                        // Use saved page if valid, otherwise fall back to home.
                         if (typeof showPage === 'function') showPage((!_lastP || _lastP === 'home') ? 'home' : _lastP);
                     }
                     console.log('✅ Session restored from cache:', savedEmail);
+                    // Also silently request a fresh access token from Google (no popup)
+                    try {
+                        tokenClient.requestAccessToken({ prompt: 'none' });
+                    } catch(e) {
+                        console.log('[Auth] Silent token refresh failed (expected if 3p cookies blocked):', e.message);
+                    }
                 } else {
                     console.log('🔑 No cached session — user can click Connect');
                 }
