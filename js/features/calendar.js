@@ -750,6 +750,61 @@ async function _calPopulateNextEventRail() {
 }
 
 // ── Sync coverage indicator ───────────────────────────────────────────────────
+// ── External Google Calendar events overlay ──────────────────────────────────
+// Loads user's Google Calendar events and adds subtle markers to calendar cells.
+// Non-blocking, non-destructive — adds to existing cells without rebuilding grid.
+var _calExternalEventsCache = {};
+
+async function _calOverlayExternalEvents(monthPrefix, daysInMonth) {
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.hasCalendarScope()) return;
+    var timeMin = monthPrefix + '01T00:00:00Z';
+    var lastDay = String(daysInMonth).padStart(2, '0');
+    var timeMax = monthPrefix + lastDay + 'T23:59:59Z';
+    try {
+        var events = await GLCalendarSync.listGoogleEvents(timeMin, timeMax);
+        if (!events || !events.length) return;
+        // Index by date
+        var byDate = {};
+        events.forEach(function(ev) {
+            if (!ev.date) return;
+            // Skip events that match existing GrooveLinx events (dedup by date + title similarity)
+            if (!byDate[ev.date]) byDate[ev.date] = [];
+            byDate[ev.date].push(ev);
+        });
+        _calExternalEventsCache = byDate;
+        // Add markers to grid cells
+        var grid = document.getElementById('calGrid');
+        if (!grid) return;
+        Object.keys(byDate).forEach(function(date) {
+            var cell = grid.querySelector('[data-date="' + date + '"]');
+            if (!cell) return;
+            // Don't add marker if cell already has a band event state (gig/rehearsal)
+            var state = cell.getAttribute('data-state');
+            if (state === 'gig' || state === 'rehearsal') return;
+            // Don't duplicate marker
+            if (cell.querySelector('.gl-day-external')) return;
+            // Add subtle dot marker
+            var dot = document.createElement('div');
+            dot.className = 'gl-day-external';
+            dot.title = byDate[date].map(function(e) { return e.title; }).join(', ');
+            cell.appendChild(dot);
+            // Add hover content if cell doesn't already have one
+            if (!cell.querySelector('.gl-day-hover')) {
+                var hover = document.createElement('div');
+                hover.className = 'gl-day-hover';
+                var lines = byDate[date].slice(0, 3).map(function(e) {
+                    return '<div>' + (e.title || 'Busy') + (e.time ? ' \u00B7 ' + e.time : '') + '</div>';
+                }).join('');
+                if (byDate[date].length > 3) lines += '<div style="opacity:0.6">+' + (byDate[date].length - 3) + ' more</div>';
+                lines += '<div style="opacity:0.4;margin-top:2px">Google Calendar</div>';
+                hover.innerHTML = lines;
+                cell.appendChild(hover);
+            }
+        });
+        console.log('[Calendar] External Google events overlaid:', events.length);
+    } catch(e) { console.warn('[Calendar] External events overlay failed:', e); }
+}
+
 function _calRenderSyncCoverage() {
     var el = document.getElementById('calSyncCoverage');
     if (!el) return;
@@ -1275,6 +1330,8 @@ function renderCalendarInner() {
         // Render availability matrix from blocked ranges
         _calCachedBlockedRanges = result ? (result.blockedRanges || []) : [];
         _calRenderAvailabilityMatrix(_calCachedBlockedRanges);
+        // Overlay external Google Calendar events (non-blocking)
+        _calOverlayExternalEvents(monthPrefix, daysInMonth);
     });
 }
 
@@ -1399,6 +1456,7 @@ function _calRenderGridOnly(grid) {
         grid.innerHTML = g;
         grid.style.opacity = '1';
         grid.style.minHeight = ''; // release height lock after render
+        _calOverlayExternalEvents(monthPrefix, daysInMonth);
     }).catch(function() {
         // Network error fallback — render empty grid, don't hang
         if (navId !== _calNavSeq) return;
@@ -2142,9 +2200,22 @@ function calDayClick(y, m, d) {
         var safDs = ds.replace(/'/g, "\\'");
         var borderColor = blocked.length > 0 ? 'var(--gl-amber)' : 'var(--gl-green)';
 
+        // External Google events for this date
+        var _extEvents = _calExternalEventsCache[ds] || [];
+        var _extHtml = '';
+        if (_extEvents.length) {
+            _extHtml = '<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--gl-border-subtle);font-size:0.72em;color:var(--gl-text-tertiary)">';
+            _extHtml += '<div style="font-weight:600;margin-bottom:2px">Google Calendar</div>';
+            _extEvents.slice(0, 3).forEach(function(e) {
+                _extHtml += '<div>' + (e.title || 'Busy') + (e.time ? ' \u00B7 ' + e.time : '') + '</div>';
+            });
+            _extHtml += '</div>';
+        }
+
         var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
             + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:2px">' + dateLabel + '</div>'
             + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:8px">' + hint + '</div>'
+            + _extHtml
             + '<button onclick="calAddEvent(\'' + safDs + '\')" class="gl-btn-ghost" style="width:100%;text-align:center;font-weight:700;color:var(--gl-green,#86efac)">Lock this date</button>'
             + '</div>';
 

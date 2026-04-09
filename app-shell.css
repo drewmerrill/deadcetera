@@ -188,6 +188,9 @@ button:active{transform:scale(0.97)}
 .gl-day--pulse{animation:gl-day-pulse 0.8s ease 2}
 /* Mobile */
 @media(max-width:640px){.gl-day{min-height:64px;padding:6px;border-radius:8px}.gl-day-num{font-size:0.95em;font-weight:700}.gl-day-icon{font-size:1em;right:5px;bottom:4px}.gl-day--gig .gl-day-icon{font-size:1.2em}}
+/* External Google event marker — subtle corner dot */
+.gl-day-external{position:absolute;top:6px;left:6px;width:6px;height:6px;border-radius:50%;background:var(--gl-indigo);opacity:0.7}
+@media(max-width:640px){.gl-day-external{width:4px;height:4px;top:4px;left:4px}}
 
 /* ===== CARDS ===== */
 .app-card{background:rgba(255,255,255,0.025);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:10px;transition:background 0.15s,border-color 0.15s,box-shadow 0.15s;}
