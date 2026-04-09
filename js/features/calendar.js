@@ -1272,9 +1272,30 @@ function _calRenderGridOnly(grid) {
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
             else if (hasEvent) { icon = '\uD83D\uDCC5'; }
             if (isToday) stateClass += ' gl-day--today';
+            // Hover content
+            var hoverHtml = '';
+            if (isGig || isRehearsal) {
+                var ev = dayEvents.find(function(e) { return e.type === (isGig ? 'gig' : 'rehearsal'); });
+                if (ev) {
+                    hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">' + (ev.title || (isGig ? 'Gig' : 'Rehearsal')) + '</div>';
+                    if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
+                    if (ev.location || ev.venue) hoverHtml += '<div>' + (ev.location || ev.venue) + '</div>';
+                    hoverHtml += '</div>';
+                }
+            } else if (isBlocked) {
+                var blockedList = blockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; });
+                if (blockedList.length) {
+                    hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Conflicts</div>';
+                    blockedList.slice(0,3).forEach(function(b) { hoverHtml += '<div>' + (b.person || '') + (b.reason ? ' \u2014 ' + b.reason : '') + '</div>'; });
+                    hoverHtml += '</div>';
+                }
+            } else if (isBest) {
+                hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Best choice</div><div>No conflicts</div></div>';
+            }
             g += '<div class="gl-day ' + stateClass + '" data-date="' + ds + '" data-state="' + state + '"' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')">'
                 + '<div class="gl-day-num">' + d + '</div>'
                 + (icon ? '<div class="gl-day-icon">' + icon + '</div>' : '')
+                + hoverHtml
                 + '</div>';
         }
         g += '</div>';

@@ -163,7 +163,7 @@ button:active{transform:scale(0.97)}
 .gl-context-card{padding:12px 14px;border-radius:10px;background:var(--gl-surface);margin-bottom:10px}
 
 /* ===== CALENDAR DAY CELLS ===== */
-.gl-day{position:relative;min-height:118px;border-radius:14px;padding:10px;cursor:pointer;transition:box-shadow var(--gl-transition),transform var(--gl-transition),background var(--gl-transition),border-color var(--gl-transition);border:1px solid transparent;display:flex;flex-direction:column;overflow:hidden}
+.gl-day{position:relative;min-height:118px;border-radius:14px;padding:10px;cursor:pointer;transition:box-shadow var(--gl-transition),transform var(--gl-transition),background var(--gl-transition),border-color var(--gl-transition);border:1px solid transparent;display:flex;flex-direction:column}
 .gl-day::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,0.06),transparent 40%);border-radius:inherit;pointer-events:none}
 .gl-day:hover{box-shadow:0 10px 28px rgba(0,0,0,0.25);transform:translateY(-2px)}
 /* State fills — priority: gig > rehearsal > blocked > best > default */
