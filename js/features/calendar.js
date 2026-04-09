@@ -1093,29 +1093,37 @@ async function _calTestGoogleToken() {
 
 // Trigger Google OAuth re-consent
 function _calTriggerGoogleReAuth() {
-    // Use the existing tokenClient from firebase-service.js
     if (typeof tokenClient !== 'undefined' && tokenClient) {
         if (typeof showToast === 'function') showToast('Opening Google sign-in\u2026');
         try {
             tokenClient.requestAccessToken({ prompt: 'consent' });
-            // After consent, the callback in firebase-service.js sets accessToken
-            // We poll for the new token and then register connection
             var _pollCount = 0;
             var _pollTimer = setInterval(async function() {
                 _pollCount++;
-                if (_pollCount >= 30) { clearInterval(_pollTimer); return; } // 15s timeout
+                if (_pollCount >= 30) {
+                    // Timeout — consent was denied or popup closed
+                    clearInterval(_pollTimer);
+                    _calShowConnectionFailure();
+                    return;
+                }
                 if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
                     var _ok = await _calTestGoogleToken();
                     if (_ok) {
                         clearInterval(_pollTimer);
                         var r = await GLCalendarSync.connectGoogleCalendar();
                         if (r.ok) {
-                            if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                             localStorage.removeItem('gl_cal_onboard_dismissed');
                             _calConnectedCache = null;
                             await _calLoadConnections();
                             _calRenderSyncCoverage();
                             _calRenderOnboarding();
+                            // Post-connect: show conflict count
+                            try {
+                                var _fbData = await GLCalendarSync.getFreeBusy(new Date().toISOString(), new Date(Date.now() + 30 * 86400000).toISOString());
+                                var _cc = _fbData && _fbData.busy ? _fbData.busy.length : 0;
+                                if (_cc > 0) showToast('\u2713 Connected \u2014 found ' + _cc + ' upcoming conflict' + (_cc > 1 ? 's' : ''));
+                                else showToast('\u2713 Connected \u2014 your calendar is clear');
+                            } catch(e) { showToast('\u2713 Google Calendar connected'); }
                         }
                     }
                 }
@@ -1124,8 +1132,31 @@ function _calTriggerGoogleReAuth() {
             if (typeof showToast === 'function') showToast('Could not open Google sign-in');
         }
     } else {
-        // tokenClient not available — direct user to sign in
-        if (typeof showToast === 'function') showToast('Please sign in first, then connect your calendar');
+        // tokenClient not available — user needs to sign in first
+        if (typeof showToast === 'function') showToast('Sign in to Google first');
+        var _onboardEl = document.getElementById('calOnboardingCard');
+        if (_onboardEl) {
+            _onboardEl.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:var(--gl-space-sm)">'
+                + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-amber);margin-bottom:4px">Sign in to Google first</div>'
+                + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">You need to be signed into your Google account before connecting your calendar.</div>'
+                + '<button onclick="if(typeof signIn===\'function\')signIn()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Sign in</button>'
+                + '</div>';
+        }
+    }
+}
+
+// Show connection failure (consent denied or timeout)
+function _calShowConnectionFailure() {
+    if (typeof showToast === 'function') showToast('Connection not completed');
+    var el = document.getElementById('calOnboardingCard');
+    if (el) {
+        el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);margin-bottom:var(--gl-space-sm);position:relative">'
+            + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-red);margin-bottom:4px">Connection not completed</div>'
+            + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
+            + 'We couldn\u2019t access your Google Calendar. Please try again and allow calendar access when prompted.'
+            + '</div>'
+            + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Try again</button>'
+            + '</div>';
     }
 }
 
