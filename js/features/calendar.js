@@ -1135,55 +1135,51 @@ function renderCalendarInner() {
         const blockedRanges = result ? (result.blockedRanges || []) : [];
         const grid = document.getElementById('calGrid');
         if (!grid) return;
-        let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+        let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">';
         dNames.forEach((d,i) => {
             const w = i===0||i===6;
-            g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--text-dim)'};text-align:center;padding:6px 0">${d}</div>`;
+            g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--gl-text-tertiary)'};text-align:center;padding:6px 0">${d}</div>`;
         });
-        for (let i=0;i<firstDay;i++) g += '<div style="min-height:60px;padding:4px;"></div>';
+        for (let i=0;i<firstDay;i++) g += '<div></div>';
         for (let d=1;d<=daysInMonth;d++) {
             const ds = `${monthPrefix}${String(d).padStart(2,'0')}`;
             const isToday = ds===todayStr;
             const dow = new Date(year,month,d).getDay();
             const w = dow===0||dow===6;
             const dayEvents = eventDates ? (eventDates[ds] || []) : [];
-            const hasEvent = dayEvents.length > 0;
-            // For each event show icon + truncated name
-            const eventPills = hasEvent
-                ? dayEvents.slice(0,2).map((ev,ei) => {
-                    // Accessible pills: icon + border style (no abbreviations)
-                    var _pillCfg = {
-                        rehearsal: { icon:'\uD83C\uDFB8', bg:'rgba(34,197,94,0.2)', border:'1px solid rgba(34,197,94,0.5)', radius:'3px' },
-                        gig:       { icon:'\uD83C\uDFA4', bg:'rgba(245,158,11,0.2)', border:'2px solid rgba(245,158,11,0.6)', radius:'8px' },
-                        meeting:   { icon:'\uD83D\uDC65', bg:'rgba(99,102,241,0.15)', border:'1px dashed rgba(99,102,241,0.4)', radius:'3px' },
-                        other:     { icon:'\uD83D\uDCCC', bg:'rgba(148,163,184,0.1)', border:'1px solid rgba(148,163,184,0.3)', radius:'3px' }
-                    };
-                    var _pc = _pillCfg[ev.type||'other'] || _pillCfg.other;
-                    const evIdx = ev._idx !== undefined ? ev._idx : ei;
-                    // Month view: icon only — title on hover. Fast recognition, no clutter.
-                    return `<div onclick="event.stopPropagation();calShowEvent(${evIdx},'${ev.date||''}')" style="display:flex;align-items:center;justify-content:center;background:${_pc.bg};border:${_pc.border};border-radius:${_pc.radius};padding:2px;margin-top:1px;cursor:pointer;width:100%;min-height:16px" title="${ev.title||'Untitled'}">
-                        <span style="font-size:0.72em;line-height:1">${_pc.icon}</span>
-                    </div>`;
-                }).join('')
-                : '';
-            const moreCount = dayEvents.length > 2 ? `<div style="font-size:0.55em;color:var(--accent-light);text-align:center">+${dayEvents.length-2} more</div>` : '';
-            // Blocked date bars
-            const blockBars = blockedRanges
-                .filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate)
-                .map((b,bi) => {
-                    const blockId = b._block ? b._block.blockId : null;
-                    // Always use _calEditScheduleBlock — it handles both legacy and new-model blocks
-                    const editAction = blockId ? `_calEditScheduleBlock('${blockId}')` : `_calEditScheduleBlock('')`;
-                    return `<div ondblclick="event.stopPropagation();${editAction}" onclick="event.stopPropagation()" style="background:rgba(239,68,68,0.7);border:2px dashed rgba(239,68,68,0.9);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden;cursor:pointer" title="Dbl-click to edit | ${b.person||''}: ${b.reason||''}">
-                    <span style="font-size:0.5em;font-weight:800;letter-spacing:0.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">\uD83D\uDEAB OUT</span>
-                </div>`;
-                }).join('');
             const isBlocked = blockedRanges.some(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
-            g += `<div${isBlocked?' data-blocked="true"':''} style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;background:${isBlocked?'rgba(239,68,68,0.06)':hasEvent?'rgba(102,126,234,0.08)':w?'rgba(102,126,234,0.04)':'rgba(255,255,255,0.02)'};border-radius:6px;font-size:0.75em;cursor:pointer;${isToday?'border:2px solid var(--accent);':isBlocked?'border:1px solid rgba(239,68,68,0.3);':hasEvent?'border:1px solid rgba(102,126,234,0.25);':''}" onclick="calDayClick(${year},${month},${d})">
-                <span style="text-align:center;${isToday?'color:var(--accent);font-weight:700;':hasEvent?'color:white;font-weight:600;':w?'color:var(--accent-light);':'color:var(--text-muted);'}">${d}</span>
-                ${eventPills}
-                ${moreCount}
-                ${blockBars}
+            const blockedList = blockedRanges.filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
+            // Determine dominant event type
+            const isGig = dayEvents.some(e => e.type === 'gig');
+            const isRehearsal = dayEvents.some(e => e.type === 'rehearsal');
+            const hasEvent = dayEvents.length > 0;
+            // State class (priority: gig > rehearsal > blocked > default)
+            let stateClass = '';
+            let icon = '';
+            if (isGig) { stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
+            else if (isRehearsal) { stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
+            else if (isBlocked) { stateClass = 'gl-day--blocked'; }
+            else if (hasEvent) { stateClass = ''; icon = dayEvents[0].type === 'meeting' ? '\uD83D\uDC65' : '\uD83D\uDCC5'; }
+            if (isToday) stateClass += ' gl-day--today';
+            // Hover content
+            let hoverHtml = '';
+            if (isGig || isRehearsal) {
+                const ev = dayEvents.find(e => e.type === (isGig ? 'gig' : 'rehearsal'));
+                if (ev) {
+                    hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">' + (ev.title || (isGig ? 'Gig' : 'Rehearsal')) + '</div>';
+                    if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
+                    if (ev.location || ev.venue) hoverHtml += '<div>' + (ev.location || ev.venue) + '</div>';
+                    hoverHtml += '</div>';
+                }
+            } else if (isBlocked && blockedList.length) {
+                hoverHtml = '<div class="gl-day-hover"><div style="font-weight:700;color:var(--gl-text);margin-bottom:2px">Conflicts</div>';
+                blockedList.slice(0,3).forEach(b => { hoverHtml += '<div>' + (b.person || '') + (b.reason ? ' \u2014 ' + b.reason : '') + '</div>'; });
+                hoverHtml += '</div>';
+            }
+            g += `<div class="gl-day ${stateClass}" data-date="${ds}"${isBlocked?' data-blocked="true"':''} onclick="calDayClick(${year},${month},${d})">
+                <div class="gl-day-num">${d}</div>
+                ${icon ? '<div class="gl-day-icon">' + icon + '</div>' : ''}
+                ${hoverHtml}
             </div>`;
         }
         g += '</div>';
@@ -1244,37 +1240,31 @@ function _calRenderGridOnly(grid) {
         _calCachedBlockedRanges = blockedRanges;
         if (!grid) return;
 
-        var g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">';
+        var g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
         dNames.forEach(function(d, i) {
             var w = i === 0 || i === 6;
-            g += '<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:' + (w ? 'var(--accent-light)' : 'var(--text-dim)') + ';text-align:center;padding:6px 0">' + d + '</div>';
+            g += '<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:' + (w ? 'var(--accent-light)' : 'var(--gl-text-tertiary)') + ';text-align:center;padding:6px 0">' + d + '</div>';
         });
-        for (var i = 0; i < firstDay; i++) g += '<div style="min-height:60px;padding:4px"></div>';
+        for (var i = 0; i < firstDay; i++) g += '<div></div>';
         for (var d = 1; d <= daysInMonth; d++) {
             var ds = monthPrefix + String(d).padStart(2, '0');
             var isToday = ds === todayStr;
             var dow = new Date(year, month, d).getDay();
-            var w = dow === 0 || dow === 6;
             var dayEvents = eventDates[ds] || [];
-            var hasEvent = dayEvents.length > 0;
-            var eventPills = hasEvent ? dayEvents.slice(0, 2).map(function(ev) {
-                var typeColors = { rehearsal: '#22c55e', gig: '#f59e0b', meeting: '#818cf8' };
-                var c = typeColors[ev.type] || '#64748b';
-                var label = (ev.title || ev.type || '').substring(0, 12);
-                return '<div style="font-size:0.55em;margin-top:1px;padding:1px 3px;border-radius:3px;background:' + c + '20;color:' + c + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + '</div>';
-            }).join('') : '';
-            var moreCount = dayEvents.length > 2 ? '<div style="font-size:0.5em;color:var(--text-dim)">+' + (dayEvents.length - 2) + '</div>' : '';
-            // Blocked date bars
             var isBlocked = blockedRanges.some(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; });
-            var blockBars = blockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; }).map(function(b) {
-                return '<div style="background:rgba(239,68,68,0.7);border:2px dashed rgba(239,68,68,0.9);border-radius:3px;padding:1px 4px;margin-top:1px;overflow:hidden" title="' + (b.person || '') + ': ' + (b.reason || '') + '">'
-                    + '<span style="font-size:0.5em;font-weight:800;letter-spacing:0.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;color:white">\uD83D\uDEAB OUT</span></div>';
-            }).join('');
-            var cellBg = isBlocked ? 'rgba(239,68,68,0.06)' : isToday ? 'rgba(99,102,241,0.1)' : '';
-            var cellBorder = isToday ? 'border:2px solid var(--accent);' : isBlocked ? 'border:1px solid rgba(239,68,68,0.3);' : 'border:1px solid transparent;';
-            g += '<div' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')" style="min-height:60px;display:flex;flex-direction:column;align-items:stretch;padding:3px 2px;cursor:pointer;border-radius:6px;background:' + cellBg + ';' + cellBorder + 'transition:background 0.1s">'
-                + '<span style="text-align:center;' + (isToday ? 'color:var(--accent);font-weight:700;' : hasEvent ? 'color:white;font-weight:600;' : w ? 'color:var(--accent-light);' : 'color:var(--text-muted);') + '">' + d + '</span>'
-                + eventPills + moreCount + blockBars
+            var isGig = dayEvents.some(function(e) { return e.type === 'gig'; });
+            var isRehearsal = dayEvents.some(function(e) { return e.type === 'rehearsal'; });
+            var hasEvent = dayEvents.length > 0;
+            var stateClass = '';
+            var icon = '';
+            if (isGig) { stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
+            else if (isRehearsal) { stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
+            else if (isBlocked) { stateClass = 'gl-day--blocked'; }
+            else if (hasEvent) { icon = '\uD83D\uDCC5'; }
+            if (isToday) stateClass += ' gl-day--today';
+            g += '<div class="gl-day ' + stateClass + '" data-date="' + ds + '"' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')">'
+                + '<div class="gl-day-num">' + d + '</div>'
+                + (icon ? '<div class="gl-day-icon">' + icon + '</div>' : '')
                 + '</div>';
         }
         g += '</div>';
