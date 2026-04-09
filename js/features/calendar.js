@@ -924,7 +924,27 @@ function _calRenderOnboarding() {
     var el = document.getElementById('calOnboardingCard');
     if (!el) return;
     var cov = _calGetSyncCoverage();
-    // Only show when current user is NOT connected + hasn't dismissed
+    // Full band milestone — show once when all members connected
+    if (cov.isFull && !localStorage.getItem('gl_cal_fullband_shown')) {
+        localStorage.setItem('gl_cal_fullband_shown', '1');
+        el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);margin-bottom:var(--gl-space-sm);text-align:center">'
+            + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-green);margin-bottom:4px">\uD83C\uDFB8 Full band connected</div>'
+            + '<div style="font-size:0.72em;color:var(--gl-text-secondary)">Scheduling now reflects everyone\u2019s real availability.</div>'
+            + '</div>';
+        setTimeout(function() { if (el) { el.style.transition = 'opacity 0.5s'; el.style.opacity = '0'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = '1'; }, 500); } }, 8000);
+        return;
+    }
+    // Connected state — show impact confirmation briefly after connect
+    if (cov.hasScope && !localStorage.getItem('gl_cal_impact_shown')) {
+        localStorage.setItem('gl_cal_impact_shown', '1');
+        el.innerHTML = '<div style="padding:10px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12);margin-bottom:var(--gl-space-sm)">'
+            + '<div style="font-size:0.78em;font-weight:600;color:var(--gl-green);margin-bottom:2px">\u2713 You\u2019re connected</div>'
+            + '<div style="font-size:0.72em;color:var(--gl-text-secondary)">Your availability is now included when the band schedules.</div>'
+            + '</div>';
+        setTimeout(function() { if (el) { el.style.transition = 'opacity 0.5s'; el.style.opacity = '0'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = '1'; }, 500); } }, 6000);
+        return;
+    }
+    // Already connected + impact shown — nothing to show
     if (cov.hasScope || localStorage.getItem('gl_cal_onboard_dismissed')) {
         el.innerHTML = '';
         return;
@@ -1138,7 +1158,7 @@ function _calTriggerGoogleReAuth() {
         if (_onboardEl) {
             _onboardEl.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:var(--gl-space-sm)">'
                 + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-amber);margin-bottom:4px">Sign in to Google first</div>'
-                + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">You need to be signed into your Google account before connecting your calendar.</div>'
+                + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">We need your Google account to connect your calendar. Sign in and we\u2019ll take it from there.</div>'
                 + '<button onclick="if(typeof signIn===\'function\')signIn()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Sign in</button>'
                 + '</div>';
         }
@@ -1147,11 +1167,11 @@ function _calTriggerGoogleReAuth() {
 
 // Show connection failure (consent denied or timeout)
 function _calShowConnectionFailure() {
-    if (typeof showToast === 'function') showToast('Connection not completed');
+    if (typeof showToast === 'function') showToast('Connection didn\u2019t go through');
     var el = document.getElementById('calOnboardingCard');
     if (el) {
         el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);margin-bottom:var(--gl-space-sm);position:relative">'
-            + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-red);margin-bottom:4px">Connection not completed</div>'
+            + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-red);margin-bottom:4px">Connection didn\u2019t go through</div>'
             + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
             + 'We couldn\u2019t access your Google Calendar. Please try again and allow calendar access when prompted.'
             + '</div>'
@@ -1164,7 +1184,7 @@ function _calShowConnectionFailure() {
 function _calShowReconnectPrompt(container) {
     if (!container) return;
     container.innerHTML = '<div style="padding:10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:8px">'
-        + '<div style="font-size:0.78em;font-weight:600;color:var(--gl-amber);margin-bottom:4px">Calendar connection expired</div>'
+        + '<div style="font-size:0.78em;font-weight:600;color:var(--gl-amber);margin-bottom:4px">Your calendar connection needs to be refreshed</div>'
         + '<div style="font-size:0.72em;color:var(--gl-text-secondary);margin-bottom:6px">Reconnect to keep your availability accurate.</div>'
         + '<button onclick="_calReconnectGoogle()" class="gl-btn-ghost" style="font-size:0.72em;color:var(--gl-indigo)">Reconnect Google Calendar</button>'
         + '</div>';
