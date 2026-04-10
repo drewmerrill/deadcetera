@@ -1468,6 +1468,18 @@ window._calViewConflicts = function() {
     });
 };
 
+window._calToggleConflictList = function() {
+    var section = document.getElementById('calConflictListSection');
+    if (!section) return;
+    var isHidden = section.style.display === 'none';
+    section.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) {
+        // Also pulse the grid cells
+        _calViewConflicts();
+        section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+};
+
 async function _calRenderNextUp() {
     var el = document.getElementById('calNextUpSection');
     if (!el) return;
@@ -1702,14 +1714,17 @@ function renderCalendarInner() {
         // 4. Navigation links
         '<div style="padding-top:var(--gl-space-sm);display:flex;flex-direction:column;gap:4px">' +
             '<button onclick="_calShowAvailabilityModal()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">Check availability</button>' +
-            '<button onclick="_calViewConflicts()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
+            '<button onclick="_calToggleConflictList()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
+        '</div>' +
+        // Conflict list (toggled by View conflicts button)
+        '<div id="calConflictListSection" style="display:none;margin-top:8px">' +
+            '<div id="calBlockedHeader" style="font-size:0.7em;font-weight:700;color:var(--gl-text-tertiary);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px"></div>' +
+            '<div id="blockedDates"></div>' +
         '</div>' +
         // Hidden containers for data that still needs to load (used by loadCalendarEvents)
         '<div id="calendarEvents" style="display:none"></div>' +
         '<div id="calAvailabilityMatrix" style="display:none"></div>' +
-        '<div id="calConflictResolver" style="display:none"></div>' +
-        '<div id="blockedDates" style="display:none"></div>' +
-        '<div id="calBlockedHeader" style="display:none"></div>';
+        '<div id="calConflictResolver" style="display:none"></div>';
 
         // Populate next event + sync coverage + onboarding + attendee statuses
         _calPopulateNextEventRail();
