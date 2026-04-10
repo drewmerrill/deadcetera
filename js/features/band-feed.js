@@ -1496,8 +1496,11 @@ function _feedShowBackBar() {
     _feedRemoveBackBar();
     var bar = document.createElement('div');
     bar.id = 'feedBackBar';
-    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:1100;display:flex;align-items:center;gap:8px;padding:8px 16px;padding-top:calc(8px + var(--gl-safe-top,0px));background:rgba(15,23,42,0.97);border-bottom:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
-    bar.innerHTML = '<button onclick="_feedBackToFeed()" style="display:flex;align-items:center;gap:6px;font-size:0.8em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc">\u2190 Back to Feed</button>';
+    // Floating pill button — stays visible without covering the full topbar
+    var rail = document.getElementById('gl-left-rail');
+    var railW = rail ? rail.offsetWidth + 16 : 16;
+    bar.style.cssText = 'position:fixed;top:8px;z-index:1100;display:inline-flex;align-items:center;padding:0;border-radius:8px;background:rgba(15,23,42,0.92);border:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 2px 8px rgba(0,0,0,0.2);left:' + railW + 'px';
+    bar.innerHTML = '<button onclick="_feedBackToFeed()" style="display:flex;align-items:center;gap:6px;font-size:0.78em;font-weight:700;padding:6px 14px;border-radius:8px;cursor:pointer;border:none;background:transparent;color:#a5b4fc">\u2190 Back to Feed</button>';
     document.body.appendChild(bar);
 }
 

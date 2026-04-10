@@ -37,9 +37,13 @@
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   transition: width 0.2s ease;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
 }
-#gl-left-rail::-webkit-scrollbar { width: 0; }
+#gl-left-rail::-webkit-scrollbar { width: 4px; }
+#gl-left-rail::-webkit-scrollbar-track { background: transparent; }
+#gl-left-rail::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+#gl-left-rail::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
 /* Collapsed state */
 #gl-shell.gl-shell--nav-collapsed #gl-left-rail {
