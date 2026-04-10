@@ -1,8 +1,8 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-09 (System-Wide UI + Google Calendar Multi-User + Design System + Action System)_
+_Updated: 2026-04-10 (Google Calendar fully working + conflict sync + Band Room rich text + availability infinite scroll + mobile fixes)_
 
-## Active Phase: Google Calendar Integration + System Polish
+## Active Phase: Band Adoption + Polish
 
 Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
 Deploy: **Vercel** (auto-deploy on push to main)
@@ -11,24 +11,51 @@ Production URL: **https://app.groovelinx.com**
 
 ---
 
-## What's Live (2026-04-09)
+## What's Live (2026-04-10)
 
-### Google Calendar Integration (2026-04-08 → 2026-04-09)
+### Google Calendar Integration (FULLY WORKING)
+- OAuth scope: full `calendar` (covers events + freeBusy)
+- API enabled in project **177899334738** (OAuth client's project)
+- Google Auth Platform: External, test users added, calendar scope in Data Access
 - Multi-user band sync: each member connects their own calendar
 - Free/busy merged from all connected members via shared Firebase path
 - External Google events visible as indigo dots on calendar cells
-- Attendee RSVP sync from Google on Schedule page load
-- Sync coverage indicator: per-member ✓/⚠ + "N/N synced"
-- Onboarding: "Stop guessing when the band is free" + consent flow
-- Full-band milestone celebration when all members connected
-- **BLOCKING**: Google Calendar API must be enabled in Cloud Console
+- Auto-reconnect silently requests fresh token on page load (no manual sign-in needed)
+- Accurate scope detection: checks actual granted scopes from token callback
+- 403 spam prevention: `_calendarScopeFailed` sticky flag + separate freeBusy scope check
+- Consent flow: revoke → fresh consent → verify scope → connect
+
+### Conflict → Google Calendar Sync (NEW 2026-04-10)
+- After saving a conflict: "Also add to your Google Calendar?" prompt
+- Creates private "Busy" event (no band names, no attendees, no reminders)
+- Edit: auto-updates Google event silently if already synced
+- Delete: prompts "Also remove from Google Calendar?"
+- Existing/legacy conflicts: 📅 sync button in conflict list
+- ✅ badge on already-synced conflicts
+
+### Band Room Upgrades (NEW 2026-04-10)
+- Rich text rendering: **bold**, *italic*, bullets, numbered lists, headers, horizontal rules
+- Textarea auto-grows on paste (multi-line post support)
+- Full text always visible (no truncation)
+- Edit + Delete in overflow menu (creator/admin only)
+- @mention tagging in compose + edit (with @everyone/@band groups)
+- "Forgot to tag?" prompt on long untagged posts
+
+### Availability (2026-04-10)
+- Modal: month-by-month infinite scroll (3 months → load more)
+- Member names on every month block
+- Matrix: 7/14/30/60/90 day ranges
+- "View conflicts" toggles full conflict list in right rail
+
+### Mobile Fixes (2026-04-10)
+- Rehearsal page stacks to single column on mobile (removed inline grid override)
+- manifest.json 403 fixed (vercel.json explicit rewrite before catch-all)
 
 ### Design System (2026-04-07 → 2026-04-09)
 - GLStatus, GLUrgency, GLPriority, GLScheduleQuality engines
 - Shared CSS tokens, components, spacing, interaction patterns
 - Calendar full-cell day design with hover popovers
 - Mobile bottom card for date interaction
-- Calm UI foundation with adaptive modes
 
 ### System-Wide Layout (2026-04-07 → 2026-04-08)
 - All 6 pages on shared split layout (primary + context rail)
@@ -44,10 +71,11 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## Next Steps
-1. **Enable Google Calendar API** in Google Cloud Console (project 177899334738)
-2. Test full free/busy flow end-to-end after API is enabled
-3. Get second band member to connect → validate multi-user merge
-4. Production polish pass on remaining console warnings
+1. Get all band members to connect Google Calendar (guide posted in Band Room)
+2. Test multi-user free/busy merge with 2+ connected members
+3. Production polish pass on remaining console warnings
+4. Calibrate song matching thresholds on real recordings
+5. Build "next rehearsal plan from insights" flow
 
 ---
 

@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-09 (System-wide UI transformation + Google Calendar multi-user sync + design system hardening)_
+_Last updated: 2026-04-10 (Google Calendar 403 resolution + conflict→Google sync + Band Room rich text + availability infinite scroll + mobile fixes)_
 
 ## Read This First
 
@@ -235,10 +235,19 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 - `data-state` + `data-blocked` + `data-date` attributes on all cells
 - View Conflicts: semantic `[data-blocked="true"]` selector + CSS pulse animation
 
-**Availability modal:**
-- Horizontal scrollable timeline (21 days, per-member rows)
+**Availability modal (2026-04-10 — infinite scroll):**
+- Month-by-month layout (starts with 3 months, loads 2 more on scroll/click)
+- Member names shown on every month block
+- "Load more months" button + auto-load on scroll near bottom
 - Legend: ✅ Available, 🚫 Blocked, Today, Weekend
-- Decoupled from grid render timing
+
+**Availability matrix:**
+- Range buttons: 7, 14, 30, 60, 90 days
+
+**Conflict list (2026-04-10):**
+- "View conflicts" button in right rail toggles full list visible
+- Each conflict shows: date range, person, reason, status, edit/delete/sync buttons
+- Also pulses blocked cells on calendar grid
 
 ### Google Calendar Integration (2026-04-08 → 2026-04-09)
 
@@ -274,26 +283,67 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 - Full-band milestone: "🎸 Full band connected"
 - Band invite message: one-tap copy for sharing
 
-**Known issue (2026-04-09):**
-- Google Calendar API must be enabled in Google Cloud Console for project 177899334738
-- Token from auto-reconnect may not include calendar.events scope
-- User needs to click "Allow calendar access" to grant the scope via consent prompt
+**Scope & Auth (resolved 2026-04-10):**
+- Google Calendar API must be enabled in project **177899334738** (not deadcetera-35424 — the OAuth client ID belongs to 177899334738)
+- OAuth scope: `https://www.googleapis.com/auth/calendar` (full scope — covers events + freeBusy)
+- Google Auth Platform configured: External audience, test users added, `calendar` scope in Data Access
+- `hasCalendarScope()` checks actual granted scopes from token callback (`window._calendarScopeGranted`)
+- `hasFreeBusyScope()` separate check (`window._calendarFreeBusyGranted`) — freeBusy.query requires full `calendar` scope, NOT just `calendar.events`
+- Auto-reconnect now silently requests fresh token with `prompt: 'none'` (was cache-only, accessToken stayed null)
+- `_calendarScopeFailed` sticky flag prevents 403 spam after first failure (resets on page load)
+- Consent flow: revokes old token → `requestAccessToken({ prompt: 'consent' })` → verifies scope granted → connects
 
-### Feed/Room Interaction (2026-04-08)
+**Conflict → Google Calendar Sync (2026-04-10):**
+- After saving a conflict: "Also add this to your Google Calendar?" prompt
+- Creates private "Busy" event (no band names, no attendees, no reminders)
+- `extendedProperties.private.groovelinxConflictId` for duplicate protection
+- `googleEventId` + `syncedToGoogle` stored on the block in Firebase
+- Edit: auto-updates Google event silently if already synced
+- Delete: prompts "Also remove from Google Calendar?"
+- Existing/legacy conflicts: 📅 button in conflict list to sync on demand
+- ✅ badge on already-synced conflicts
+- Only shown for own conflicts when Google Calendar is connected
+- `GLCalendarSync.syncConflictToGoogle()`, `updateConflictInGoogle()`, `deleteConflictFromGoogle()`
 
-- Overflow menu (⋯) on each feed item: Tag, Pin, Archive, Edit, Delete
+### Feed/Room Interaction (2026-04-08 → 2026-04-10)
+
+**Band Feed overflow menu (⋯):**
+- Tag, Pin, Archive, Edit, Delete (creator/admin only for Edit/Delete)
 - Inline delete confirmation (not modal)
 - Type badges: Idea, Poll, Rehearsal, Song Note, Link, Photo
 - State chips: Pinned, Resolved, Archived, Needs input
-- Type-aware visible actions (max 2 per item type)
-- Band Room: "Convert to Pitch" replaced with contextual menu
 
-### Mobile Fixes (2026-04-08 → 2026-04-09)
+**Band Room overflow menu (⋯) — updated 2026-04-10:**
+- Create poll, Link to song, Add to plan, Tag member
+- Edit + Delete (creator/admin only, separated by divider)
+- `_bcCanEdit()` permission check: creator OR admin (drew)
+- Inline editor with text + @mention tagging
+- Tag member action opens edit focused on mention input
+
+**Band Room rich text (2026-04-10):**
+- Post input is a textarea (auto-grows on input + paste)
+- Markdown-lite rendering: `**bold**`, `*italic*`, bullets (`-` or `*`), numbered lists, `# headers`, `---` rules
+- `_bcFormatText()` — HTML-safe markdown renderer
+- `white-space: pre-wrap` preserves line breaks and formatting
+- Full text always visible (no truncation)
+
+**Band Room @mentions (2026-04-10):**
+- Inline `@tag members…` input in compose area (below textarea)
+- Autocomplete with `@everyone` and `@band` group tags at top
+- Selected tags show as blue `@Name` chips with × remove
+- "Forgot to tag?" prompt on long untagged posts (>30 chars)
+- Quick `@everyone` button posts immediately with full-band tag
+- Mentions saved to post, notifications emitted via `mentionNotification` event
+- Mention chips displayed inline on rendered posts
+
+### Mobile Fixes (2026-04-08 → 2026-04-10)
 
 - P1: Schedule nav item restored on iPhone (hardcoded core nav fallback)
 - Calendar hover popovers disabled on mobile (was blocking tap)
 - Mobile bottom card for date selection (state-aware messaging + CTA)
 - Calendar day cells responsive: 64px min-height, smaller icons
+- Rehearsal page: removed inline `grid-template-columns:1fr 260px` that overrode `@media(max-width:768px)` breakpoint — now properly stacks to single column on mobile
+- manifest.json 403 fixed: explicit `/manifest.json` rewrite added before catch-all SPA route in vercel.json
 
 ### Progression Tracking
 - Action log: practice_set, practice_all, completed_* (14-day localStorage)
@@ -907,48 +957,58 @@ I'm continuing GrooveLinx development. Read these files first:
 - 02_GrooveLinx/CURRENT_PHASE.md
 - CLAUDE.md
 
-Current state (2026-04-05):
-- Rehearsal page is now a TIMELINE-DRIVEN COMMAND CENTER
-- Page hierarchy: Next Up → Plan (collapsed) → Snapshot → Timeline (primary) → Coaching → History
-- Timeline is the center of experience: expandable segments, playback, loop, compare, practice
-- Song segments: groove-coded borders (green/amber/gray), hover quick actions (🔁 🎯)
-- Band Notes: "💬 BAND NOTE — {topic}" with transcript, tags, "Applies to: {song}" clickable links
-- Coaching Insights: priority songs with specific fixes + action buttons + "Loop hardest section"
-- Playback: lightweight file loader (no analysis, stream-only) — prevents 337MB OOM crash
-- Recording Analysis: upload → segment → match → review → report (full pipeline)
-- Song Matching Engine: 6-signal weighted scoring, position-aware planMatch, learning loop
-- Auto-split oversized segments (>15min) using internal energy dips
-- User label overrides persist across re-analyses (Firebase)
-- Chord analysis + audio embeddings services (ports 8100/8200) installed and running
-- Deepgram transcription via Cloudflare Worker
-- Home: decision engine with one hero + secondary cards + compact band status
-- Song Page: Practice/Play/Versions/Harmony tabs (guided workflows)
-- 4 SYSTEM LOCKs intact: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
+Current state (2026-04-10):
 
-Hard Consolidation (2026-04-05):
-- Removed: _rhShowInlineTimeline, _rhRenderSegmentReport, legacy _rhShowSessionReport, _rhCompareAttempts modal, _rhRenderTonightTab, rhShowTab review routing, Song Summary block, #rhSessionReview
-- Replaced: _rhCompareAttempts → inline data-driven compare (no modal, no DOM scraping)
-- Replaced: session cards Timeline/Report/Analyze trio → single "View Timeline" CTA
-- _rhRenderInlineTimelineDirectly is now the ONE canonical review renderer
-- _rhPrepareSegmentData is the single data source for all review UI
-- Timeline data cached in window._rhLastTimelineData for inline compare
-- Net: -511 lines removed, 5 render paths → 1
+Google Calendar Integration (FULLY WORKING):
+- OAuth scope: full `calendar` (not calendar.events — freeBusy needs full scope)
+- API enabled in project 177899334738 (the OAuth client's project, NOT deadcetera-35424)
+- Google Auth Platform configured: External, test users, calendar scope in Data Access
+- Auto-reconnect silently requests fresh token on page load (prompt:'none')
+- Accurate scope detection: checks actual granted scopes, not config substring
+- Separate _calendarScopeGranted and _calendarFreeBusyGranted flags
+- _calendarScopeFailed sticky flag prevents 403 spam
+
+Conflict → Google Calendar Sync:
+- After saving a conflict: optional "Add to Google Calendar?" prompt
+- Creates private "Busy" event (no band info, no attendees)
+- Edit auto-updates, delete prompts to remove from Google
+- Existing conflicts: 📅 sync button in conflict list
+- GLCalendarSync.syncConflictToGoogle/updateConflictInGoogle/deleteConflictFromGoogle
+
+Band Room Upgrades:
+- Rich text: **bold**, *italic*, bullets, numbered lists, headers, horizontal rules
+- Textarea auto-grows on paste, full text always visible
+- Edit + Delete in overflow menu (creator/admin only)
+- @mention tagging in compose + edit (with @everyone/@band groups)
+- "Forgot to tag?" prompt on long untagged posts
+
+Availability Modal:
+- Month-by-month infinite scroll (3 months initial, load more on scroll)
+- Member names on every month
+- Matrix: 7/14/30/60/90 day ranges
+
+Mobile Fixes:
+- Rehearsal page stacks to single column (removed inline grid override)
+- manifest.json 403 fixed (vercel.json explicit rewrite)
+
+All prior systems intact:
+- 4 SYSTEM LOCKs: GL_PAGE_READY, focusChanged, Firebase filter, active statuses
+- Timeline-driven rehearsal, recording analysis, song matching engine
+- Design system tokens + decision language engines
+- Band Feed 3-tier action system with deep linking + @mentions
 
 Known issues:
-- Large file playback may still crash on some machines (337MB MP3 + Chrome memory limits)
-- Song matching accuracy depends on plan order — no audio-based song identification yet
-- Chord/embedding services need to be started manually (not auto-deployed)
-- Rehearsal planner still references rhTabContent as render target (works via fallback — not part of review system)
+- Large file playback may crash (337MB + Chrome memory limits)
+- Song matching accuracy depends on plan order
+- Chord/embedding services need manual start (ports 8100/8200)
 
 Next recommended actions:
-1. Calibrate song matching thresholds on real rehearsal recordings
-2. Wire chord hints into automatic post-segmentation flow (currently on-demand per segment)
-3. Persist embedding bank to Firebase for cross-session learning
-4. Add waveform visualization to timeline strip
-5. Auto-start chord/embedding services (Docker or systemd)
-6. Test Deepgram transcription on talking segments
-7. Build "next rehearsal plan from insights" flow
-8. Migrate rehearsal planner render target from rhTabContent to a dedicated container
+1. Get all band members to connect Google Calendar
+2. Test multi-user free/busy merge with 2+ connected members
+3. Calibrate song matching thresholds on real recordings
+4. Wire chord hints into automatic post-segmentation flow
+5. Persist embedding bank to Firebase for cross-session learning
+6. Build "next rehearsal plan from insights" flow
 ```
 
 ## Firebase Paths
@@ -966,6 +1026,10 @@ bands/{slug}/live_gig_notes/{setlistId}    — quick notes from Go Live
 bands/{slug}/songs/{title}/curation        — per-song version curation (spotify/youtube/archive)
 bands/{slug}/intelligence/issues/{song}    — persistent issue store (GLInsights)
 bands/{slug}/intelligence/sessions/{id}    — session analysis metadata
+bands/{slug}/google_connections/{memberKey} — Google Calendar connection records
+bands/{slug}/member_freebusy/{memberKey}   — shared free/busy data for band schedule
+bands/{slug}/event_availability/{date}/{mk} — per-event RSVP responses
+bands/{slug}/schedule_blocks/{blockId}     — conflict/blocked date records (may include googleEventId)
 ```
 
 ## Product Principles
