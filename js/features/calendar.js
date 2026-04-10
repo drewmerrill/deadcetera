@@ -2440,6 +2440,13 @@ async function saveBlockedDates() {
             }
             editingId = null; // assign new blockId for migrated block
         }
+        // Preserve googleEventId from existing block when editing
+        var _existingGoogleEventId = null;
+        if (editingId && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks) {
+            var _existBlocks = await GLStore.getScheduleBlocks();
+            var _existBlock = _existBlocks.find(function(b) { return b.blockId === editingId; });
+            if (_existBlock && _existBlock.googleEventId) _existingGoogleEventId = _existBlock.googleEventId;
+        }
         var block = {
             blockId: editingId,
             ownerKey: personKey || null,
@@ -2452,16 +2459,38 @@ async function saveBlockedDates() {
             visibility: 'band_full',
             sourceType: 'manual'
         };
-        await GLStore.saveScheduleBlock(block);
+        if (_existingGoogleEventId) {
+            block.googleEventId = _existingGoogleEventId;
+            block.syncedToGoogle = true;
+        }
+        var savedBlock = await GLStore.saveScheduleBlock(block);
+        var finalBlockId = (savedBlock && savedBlock.blockId) || block.blockId || editingId;
+        // If editing and already synced to Google, auto-update silently
+        if (editingId && block.googleEventId) {
+            block.blockId = finalBlockId;
+            var _upd = await GLCalendarSync.updateConflictInGoogle(block);
+            if (_upd.success) {
+                if (typeof showToast === 'function') showToast('Google Calendar updated');
+            }
+        }
+        window._calEditingBlockId = null;
+        document.getElementById('calEventFormArea').innerHTML = '';
+        renderCalendarInner();
+        // Show Google sync prompt (only for own conflicts, only if connected)
+        var _isMe = (typeof FeedActionState !== 'undefined' && FeedActionState.isMe) ? FeedActionState.isMe(personName) : false;
+        var _hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
+        if (_isMe && _hasScope && !editingId) {
+            _calShowGoogleSyncPrompt(finalBlockId, block);
+        }
     } else {
         // Fallback: save to legacy blocked_dates
         var ex = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
         ex.push({ startDate: startDate, endDate: endDate, person: personName, reason: reason });
         await saveBandDataToDrive('_band', 'blocked_dates', ex);
+        window._calEditingBlockId = null;
+        document.getElementById('calEventFormArea').innerHTML = '';
+        renderCalendarInner();
     }
-    window._calEditingBlockId = null;
-    document.getElementById('calEventFormArea').innerHTML = '';
-    renderCalendarInner();
 }
 
 async function calDeleteBlocked(idx) {
@@ -2506,6 +2535,13 @@ async function saveBlockedDatesEdit(idx) {
 // Schedule block CRUD (handles both new-model and legacy blocks)
 window._calDeleteScheduleBlock = async function(blockId) {
     if (!blockId || !confirm('Remove this schedule block?')) return;
+    // Check if synced to Google before deleting
+    var googleEventId = null;
+    if (blockId.indexOf('_legacy_') !== 0 && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks) {
+        var _blocks = await GLStore.getScheduleBlocks();
+        var _block = _blocks.find(function(b) { return b.blockId === blockId; });
+        if (_block && _block.googleEventId) googleEventId = _block.googleEventId;
+    }
     // Legacy blocks have blockId like '_legacy_N' — delete from blocked_dates array
     if (blockId.indexOf('_legacy_') === 0) {
         var legacyIdx = parseInt(blockId.replace('_legacy_', ''), 10);
@@ -2517,7 +2553,55 @@ window._calDeleteScheduleBlock = async function(blockId) {
     } else if (typeof GLStore !== 'undefined' && GLStore.deleteScheduleBlock) {
         await GLStore.deleteScheduleBlock(blockId);
     }
+    // If was synced to Google, ask to remove there too
+    if (googleEventId && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+        if (confirm('Also remove from your Google Calendar?')) {
+            var result = await GLCalendarSync.deleteConflictFromGoogle(googleEventId);
+            if (result.success) {
+                if (typeof showToast === 'function') showToast('Removed from Google Calendar');
+            } else {
+                if (typeof showToast === 'function') showToast('Couldn\u2019t remove from Google Calendar');
+            }
+        }
+    }
     renderCalendarInner();
+};
+
+// ── Google Calendar sync prompt after conflict save ──────────────────────────
+function _calShowGoogleSyncPrompt(blockId, block) {
+    var area = document.getElementById('calEventFormArea');
+    if (!area) return;
+    area.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(66,133,244,0.06);border:1px solid rgba(66,133,244,0.15);margin-bottom:8px">'
+        + '<div style="font-size:0.82em;font-weight:600;color:#4285f4;margin-bottom:6px">Also add this to your Google Calendar?</div>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button onclick="_calSyncConflictToGoogle(\'' + (blockId || '').replace(/'/g, "\\'") + '\')" style="font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(66,133,244,0.3);background:rgba(66,133,244,0.15);color:#4285f4">\uD83D\uDCC5 Add to Google</button>'
+        + '<button onclick="document.getElementById(\'calEventFormArea\').innerHTML=\'\'" style="font-size:0.75em;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid var(--gl-border);background:none;color:var(--gl-text-tertiary)">Keep here only</button>'
+        + '</div></div>';
+}
+
+window._calSyncConflictToGoogle = async function(blockId) {
+    var area = document.getElementById('calEventFormArea');
+    if (area) area.innerHTML = '<div style="padding:12px;font-size:0.78em;color:var(--gl-text-tertiary)">Syncing\u2026</div>';
+    // Load block data
+    var block = null;
+    if (typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks) {
+        var blocks = await GLStore.getScheduleBlocks();
+        block = blocks.find(function(b) { return b.blockId === blockId; });
+    }
+    if (!block) { if (area) area.innerHTML = ''; return; }
+    var result = await GLCalendarSync.syncConflictToGoogle(block);
+    if (result.success) {
+        // Save googleEventId back to the block
+        block.googleEventId = result.googleEventId;
+        block.syncedToGoogle = true;
+        if (typeof GLStore !== 'undefined' && GLStore.saveScheduleBlock) {
+            await GLStore.saveScheduleBlock(block);
+        }
+        if (typeof showToast === 'function') showToast('\u2713 Added to your Google Calendar');
+    } else {
+        if (typeof showToast === 'function') showToast('Couldn\u2019t add to Google Calendar');
+    }
+    if (area) area.innerHTML = '';
 };
 
 window._calEditScheduleBlock = async function(blockId) {

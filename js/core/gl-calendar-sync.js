@@ -461,6 +461,95 @@ window.GLCalendarSync = (function() {
     }
   }
 
+  // ── CONFLICT SYNC — push GrooveLinx conflicts to Google Calendar ─────────
+  //
+  // Creates a private "Busy" event in the user's Google Calendar.
+  // Never auto-syncs — only triggered by explicit user action.
+
+  async function syncConflictToGoogle(block) {
+    if (!hasCalendarScope() || !block) return { success: false, error: 'no scope' };
+    var startDate = block.startDate;
+    var endDate = block.endDate;
+    if (!startDate || !endDate) return { success: false, error: 'no dates' };
+    // All-day event: use date (not dateTime), end is exclusive in Google API
+    var endExclusive = new Date(endDate + 'T00:00:00');
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    var endStr = endExclusive.getFullYear() + '-' + String(endExclusive.getMonth() + 1).padStart(2, '0') + '-' + String(endExclusive.getDate()).padStart(2, '0');
+
+    var body = {
+      summary: 'Busy',
+      description: 'Created by GrooveLinx (band scheduling)',
+      start: { date: startDate },
+      end: { date: endStr },
+      visibility: 'private',
+      transparency: 'opaque',
+      reminders: { useDefault: false, overrides: [] },
+      extendedProperties: { private: { groovelinxConflictId: block.blockId || '' } }
+    };
+
+    try {
+      // Check for existing event to prevent duplicates
+      if (block.googleEventId) {
+        return await updateConflictInGoogle(block);
+      }
+      var res = await fetch(WORKER_BASE + '/calendar/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        console.warn('[CalSync] Conflict sync failed:', res.status);
+        return { success: false, error: 'Google returned ' + res.status };
+      }
+      var data = await res.json();
+      return { success: true, googleEventId: data.id, htmlLink: data.htmlLink || '' };
+    } catch (err) {
+      console.warn('[CalSync] Conflict sync error:', err);
+      return { success: false, error: err.message };
+    }
+  }
+
+  async function updateConflictInGoogle(block) {
+    if (!hasCalendarScope() || !block || !block.googleEventId) return { success: false };
+    var endExclusive = new Date(block.endDate + 'T00:00:00');
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    var endStr = endExclusive.getFullYear() + '-' + String(endExclusive.getMonth() + 1).padStart(2, '0') + '-' + String(endExclusive.getDate()).padStart(2, '0');
+
+    var body = {
+      summary: 'Busy',
+      description: 'Created by GrooveLinx (band scheduling)',
+      start: { date: block.startDate },
+      end: { date: endStr },
+      visibility: 'private',
+      transparency: 'opaque'
+    };
+    try {
+      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(block.googleEventId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) return { success: false, error: 'Update failed: ' + res.status };
+      return { success: true, googleEventId: block.googleEventId };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  async function deleteConflictFromGoogle(googleEventId) {
+    if (!hasCalendarScope() || !googleEventId) return { success: false };
+    try {
+      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(googleEventId), {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      if (res.status === 204 || res.status === 410) return { success: true };
+      return { success: false, error: 'Delete failed: ' + res.status };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
   // ── Reset scope failure flag (call after successful re-consent) ──────────
   function resetScopeFailure() {
     _calendarScopeFailed = false;
@@ -488,6 +577,10 @@ window.GLCalendarSync = (function() {
     getConnectedMembers: getConnectedMembers,
     getAllMembersFreeBusy: getAllMembersFreeBusy,
     resetScopeFailure: resetScopeFailure,
+    // Conflict sync (GrooveLinx → Google)
+    syncConflictToGoogle: syncConflictToGoogle,
+    updateConflictInGoogle: updateConflictInGoogle,
+    deleteConflictFromGoogle: deleteConflictFromGoogle,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };
