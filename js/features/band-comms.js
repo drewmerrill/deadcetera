@@ -303,8 +303,8 @@ async function _bcLoadBandRoom() {
   // ── Quick Create — always visible, minimal ──
   var qcEl = document.getElementById('bcQuickCreate');
   if (qcEl) {
-    qcEl.innerHTML = '<div style="display:flex;gap:6px;margin-bottom:4px">'
-      + '<input id="bcIdeaTitle" placeholder="Post an idea or song\u2026" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:7px 10px;border-radius:8px;font-size:0.82em;font-family:inherit;box-sizing:border-box">'
+    qcEl.innerHTML = '<div style="display:flex;gap:6px;margin-bottom:4px;align-items:flex-start">'
+      + '<textarea id="bcIdeaTitle" placeholder="Post an idea or song\u2026" rows="1" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:7px 10px;border-radius:8px;font-size:0.82em;font-family:inherit;box-sizing:border-box;resize:vertical;min-height:36px;line-height:1.4" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'"></textarea>'
       + '<button onclick="_bcPostIdea()" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#86efac;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">Post</button>'
       + '</div>'
       + '<div style="display:flex;gap:6px;align-items:center">'
@@ -364,7 +364,21 @@ async function _bcLoadBandRoom() {
         }
         idHtml += '<div style="padding:10px 12px;background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:8px;margin-bottom:6px">';
         idHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-        idHtml += '<span style="font-weight:700;font-size:0.85em;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _bcEsc(p.title || 'Untitled') + '</span>';
+        var _titleText = _bcEsc(p.title || 'Untitled');
+        var _isLong = (p.title || '').length > 100;
+        var _textId = 'bcIdeaText_' + (p._key || '').replace(/[^a-zA-Z0-9]/g, '_');
+        // Mention chips inline
+        var _mentionChips = '';
+        if (p.mentions && p.mentions.length) {
+            _mentionChips = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">' + p.mentions.map(function(m) {
+                return '<span style="font-size:0.68em;padding:1px 6px;border-radius:10px;background:rgba(99,102,241,0.12);color:#a5b4fc;font-weight:600">@' + _bcEsc(m.displayName || m.memberKey || '') + '</span>';
+            }).join('') + '</div>';
+        }
+        if (_isLong) {
+            idHtml += '<div style="flex:1;min-width:0"><div id="' + _textId + '" style="font-weight:600;font-size:0.85em;color:var(--text);line-height:1.5;max-height:1.5em;overflow:hidden;cursor:pointer;white-space:pre-wrap;word-break:break-word" onclick="var el=this;if(el.style.maxHeight===\'1.5em\'){el.style.maxHeight=\'none\';el.style.whiteSpace=\'pre-wrap\'}else{el.style.maxHeight=\'1.5em\'}">' + _titleText + '</div>' + _mentionChips + '</div>';
+        } else {
+            idHtml += '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.85em;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word">' + _titleText + '</div>' + _mentionChips + '</div>';
+        }
         idHtml += linkHTML;
         idHtml += '<span class="gl-chip">Idea</span>';
         idHtml += '</div>';
@@ -914,6 +928,16 @@ function _bcMentionAutocomplete(ideaKey, query) {
   if (!q) { dropdown.style.display = 'none'; return; }
   var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
   var matches = [];
+  // Group targets first
+  var groups = [
+    { key: '_all', name: 'everyone' },
+    { key: '_band', name: 'the whole band' }
+  ];
+  groups.forEach(function(g) {
+    if (g.name.indexOf(q) !== -1 || g.key.indexOf(q) !== -1 || 'all'.indexOf(q) !== -1 || 'band'.indexOf(q) !== -1 || 'everyone'.indexOf(q) !== -1) {
+      matches.push(g);
+    }
+  });
   Object.keys(bm).forEach(function(k) {
     var name = bm[k].name || k;
     if (name.toLowerCase().indexOf(q) !== -1 || k.toLowerCase().indexOf(q) !== -1) {
