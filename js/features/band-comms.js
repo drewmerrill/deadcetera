@@ -311,9 +311,9 @@ async function _bcLoadBandRoom() {
       + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">'
       + '<div id="bcComposeMentions" style="display:flex;flex-wrap:wrap;gap:3px"></div>'
       + '<input id="bcComposeMentionInput" type="text" placeholder="@tag members\u2026" style="flex:1;min-width:100px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-muted);padding:5px 8px;border-radius:6px;font-size:0.72em;font-family:inherit;box-sizing:border-box">'
-      + '<div id="bcComposeMentionDropdown" style="position:relative"></div>'
       + '<button onclick="_bcPostIdea()" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#86efac;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">Post</button>'
       + '</div>'
+      + '<div id="bcComposeMentionDropdown" style="display:none;position:relative"></div>'
       + '<div style="display:flex;gap:6px;align-items:center">'
       + '<input id="bcIdeaLink" placeholder="Link (optional)" style="flex:1;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-muted);padding:5px 8px;border-radius:6px;font-size:0.72em;font-family:inherit;box-sizing:border-box">'
       + '<button onclick="document.getElementById(\'bcPollForm\').style.display=document.getElementById(\'bcPollForm\').style.display===\'none\'?\'block\':\'none\'" style="font-size:0.68em;color:var(--text-dim);background:none;border:1px solid rgba(255,255,255,0.06);padding:4px 8px;border-radius:6px;cursor:pointer">\uD83D\uDDF3\uFE0F Poll</button>'
@@ -1046,30 +1046,35 @@ function _bcComposeMentionAutocomplete(query) {
   var dropdown = document.getElementById('bcComposeMentionDropdown');
   if (!dropdown) return;
   var q = query.replace(/^@/, '').toLowerCase().trim();
-  if (!q) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
   var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
   var matches = [];
-  // Group targets
+  // Group targets (always show when query starts with @ or is empty after stripping @)
   var groups = [
     { key: '_all', name: 'everyone' },
     { key: '_band', name: 'the whole band' }
   ];
-  groups.forEach(function(g) {
-    if (g.name.indexOf(q) !== -1 || 'all'.indexOf(q) !== -1 || 'band'.indexOf(q) !== -1 || 'everyone'.indexOf(q) !== -1) {
-      matches.push(g);
-    }
-  });
-  Object.keys(bm).forEach(function(k) {
-    var name = bm[k].name || k;
-    if (name.toLowerCase().indexOf(q) !== -1 || k.toLowerCase().indexOf(q) !== -1) {
-      matches.push({ key: k, name: name });
-    }
-  });
+  if (!q || query.trim() === '@') {
+    // Show all options when just @ is typed
+    matches = matches.concat(groups);
+    Object.keys(bm).forEach(function(k) { matches.push({ key: k, name: bm[k].name || k }); });
+  } else {
+    groups.forEach(function(g) {
+      if (g.name.indexOf(q) !== -1 || 'all'.indexOf(q) !== -1 || 'band'.indexOf(q) !== -1 || 'everyone'.indexOf(q) !== -1) {
+        matches.push(g);
+      }
+    });
+    Object.keys(bm).forEach(function(k) {
+      var name = bm[k].name || k;
+      if (name.toLowerCase().indexOf(q) !== -1 || k.toLowerCase().indexOf(q) !== -1) {
+        matches.push({ key: k, name: name });
+      }
+    });
+  }
   if (!matches.length) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
   dropdown.style.display = 'block';
-  dropdown.innerHTML = '<div style="position:absolute;left:0;right:0;bottom:100%;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:2px;z-index:30;max-height:180px;overflow-y:auto">'
+  dropdown.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:2px;z-index:30;max-height:180px;overflow-y:auto">'
     + matches.map(function(m) {
-      return '<button onclick="_bcAddComposeMention(\'' + m.key.replace(/'/g, "\\'") + '\',\'' + m.name.replace(/'/g, "\\'") + '\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">@' + m.name + '</button>';
+      return '<button onclick="_bcAddComposeMention(\'' + m.key.replace(/'/g, "\\'") + '\',\'' + m.name.replace(/'/g, "\\'") + '\')" style="display:block;width:100%;text-align:left;padding:6px 10px;font-size:0.78em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">@' + m.name + '</button>';
     }).join('') + '</div>';
 }
 
