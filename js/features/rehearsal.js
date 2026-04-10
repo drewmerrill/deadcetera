@@ -198,7 +198,7 @@ async function renderRehearsalPage(el) {
     window.GL_REHEARSAL_READY = false;
     el.innerHTML = '<div class="gl-page">'
         + '<div class="gl-page-title">\uD83C\uDFB8 Rehearsal</div>'
-        + '<div class="gl-page-split" style="grid-template-columns:1fr 260px">'
+        + '<div class="gl-page-split">'
         + '<div class="gl-page-primary"><div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div></div>'
         + '<div class="gl-page-context" id="rhContextRail"></div>'
         + '</div></div>';
