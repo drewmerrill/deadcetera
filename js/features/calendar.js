@@ -2138,9 +2138,24 @@ async function loadCalendarEvents() {
             // Always use schedule block functions — they handle both legacy and new-model
             var deleteAction = '_calDeleteScheduleBlock(\'' + (blockId || '') + '\')';
             var editAction = '_calEditScheduleBlock(\'' + (blockId || '') + '\')';
+            // Google sync button — only for own conflicts, only if connected, only if not already synced
+            var _syncBtn = '';
+            var _syncedBadge = '';
+            var _origBlock = b._block || null;
+            var _isSynced = _origBlock && _origBlock.syncedToGoogle && _origBlock.googleEventId;
+            var _isMyConflict = (typeof FeedActionState !== 'undefined' && FeedActionState.isMe) ? FeedActionState.isMe(b.person) : false;
+            var _hasGoogleScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
+            if (_isMyConflict && _hasGoogleScope && blockId) {
+                if (_isSynced) {
+                    _syncedBadge = '<span style="font-size:0.65em;color:#22c55e;margin-right:4px" title="Synced to Google Calendar">\u2705</span>';
+                } else {
+                    _syncBtn = '<button onclick="_calSyncExistingConflict(\'' + (blockId || '').replace(/'/g, "\\'") + '\')" style="background:rgba(66,133,244,0.1);color:#4285f4;border:1px solid rgba(66,133,244,0.2);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px;flex-shrink:0;margin-right:4px" title="Add to Google Calendar">\uD83D\uDCC5</button>';
+                }
+            }
             return '<div class="list-item" style="padding:6px 12px;font-size:0.85em">'
                 + '<span style="color:var(--red)">' + startFmt + ' → ' + endFmt + '</span>'
                 + '<span style="flex:1;color:var(--text-muted);margin-left:8px">' + statusChip + (b.person || '') + (b.reason ? ': ' + b.reason : '') + '</span>'
+                + _syncedBadge + _syncBtn
                 + '<button onclick="' + editAction + '" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;flex-shrink:0;margin-right:4px;">✏️</button>'
                 + '<button onclick="' + deleteAction + '" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">✕</button>'
                 + '</div>';
@@ -2602,6 +2617,33 @@ window._calSyncConflictToGoogle = async function(blockId) {
         if (typeof showToast === 'function') showToast('Couldn\u2019t add to Google Calendar');
     }
     if (area) area.innerHTML = '';
+};
+
+// Sync an existing/legacy conflict to Google Calendar (from the list button)
+window._calSyncExistingConflict = async function(blockId) {
+    if (!blockId) return;
+    var block = null;
+    if (typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks) {
+        var blocks = await GLStore.getScheduleBlocks();
+        block = blocks.find(function(b) { return b.blockId === blockId; });
+    }
+    if (!block) { if (typeof showToast === 'function') showToast('Block not found'); return; }
+    if (block.syncedToGoogle && block.googleEventId) {
+        if (typeof showToast === 'function') showToast('Already synced to Google Calendar');
+        return;
+    }
+    var result = await GLCalendarSync.syncConflictToGoogle(block);
+    if (result.success) {
+        block.googleEventId = result.googleEventId;
+        block.syncedToGoogle = true;
+        if (typeof GLStore !== 'undefined' && GLStore.saveScheduleBlock) {
+            await GLStore.saveScheduleBlock(block);
+        }
+        if (typeof showToast === 'function') showToast('\u2713 Added to your Google Calendar');
+        renderCalendarInner();
+    } else {
+        if (typeof showToast === 'function') showToast('Couldn\u2019t add to Google Calendar');
+    }
 };
 
 window._calEditScheduleBlock = async function(blockId) {
