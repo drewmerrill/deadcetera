@@ -378,9 +378,19 @@ async function _bcLoadBandRoom() {
         idHtml += '<div style="position:relative">';
         idHtml += '<button onclick="event.stopPropagation();_bcToggleIdeaMenu(\'' + _imId + '\')" style="background:transparent;border:1px solid var(--gl-border,rgba(255,255,255,0.05));color:var(--gl-text-secondary,#94a3b8);border-radius:5px;padding:1px 6px;cursor:pointer;font-size:0.72em">\u22EF</button>';
         idHtml += '<div id="' + _imId + '" style="display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:140px;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border,rgba(255,255,255,0.05));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.3);padding:4px;z-index:20">';
-        idHtml += '<button onclick="_bcConvertToPitch(\'' + safeTitle + '\',\'' + safeAuthor + '\',\'' + safeKey + '\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">\uD83D\uDDF3\uFE0F Create poll</button>';
-        idHtml += '<button onclick="selectSong(\'' + safeTitle + '\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">\uD83C\uDFB5 Link to song</button>';
-        idHtml += '<button onclick="showPage(\'rehearsal\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">\uD83C\uDFAF Add to plan</button>';
+        var _menuBtn = function(label, action, color) {
+          return '<button onclick="' + action + '" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:' + (color || 'var(--gl-text-secondary)') + ';cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">' + label + '</button>';
+        };
+        idHtml += _menuBtn('\uD83D\uDDF3\uFE0F Create poll', "_bcConvertToPitch('" + safeTitle + "','" + safeAuthor + "','" + safeKey + "')");
+        idHtml += _menuBtn('\uD83C\uDFB5 Link to song', "selectSong('" + safeTitle + "')");
+        idHtml += _menuBtn('\uD83C\uDFAF Add to plan', "showPage('rehearsal')");
+        idHtml += _menuBtn('\uD83C\uDFF7\uFE0F Tag member', "_bcTagIdea('" + safeKey + "')");
+        // Edit + Delete for creator/admin
+        if (_bcCanEdit(p)) {
+          idHtml += '<div style="height:1px;background:var(--gl-border,rgba(255,255,255,0.06));margin:2px 0"></div>';
+          idHtml += _menuBtn('\u270F\uFE0F Edit', "_bcEditIdea('" + safeKey + "')");
+          idHtml += _menuBtn('\uD83D\uDDD1\uFE0F Delete', "_bcDeleteIdea('" + safeKey + "')", 'var(--gl-red,#ef4444)');
+        }
         idHtml += '</div></div>';
         idHtml += '</div></div>';
       });
@@ -776,6 +786,158 @@ window._bcToggleIdeaMenu = function(menuId) {
       document.addEventListener('click', h);
     }, 10);
   }
+};
+
+// ── Permission check for ideas ───────────────────────────────────────────────
+function _bcCanEdit(idea) {
+  var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+  if (!fas) return true;
+  if (fas.isMe && fas.isMe(idea.author)) return true;
+  var key = fas.getMyMemberKey ? fas.getMyMemberKey() : '';
+  if (key === 'drew') return true;
+  return false;
+}
+
+// ── Edit idea ────────────────────────────────────────────────────────────────
+window._bcEditIdea = async function(ideaKey) {
+  document.querySelectorAll('[id^="bcIdeaMenu_"]').forEach(function(m) { m.style.display = 'none'; });
+  var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+  if (!db || typeof bandPath !== 'function') return;
+  try {
+    var snap = await db.ref(bandPath('ideas/posts/' + ideaKey)).once('value');
+    var idea = snap.val();
+    if (!idea) { if (typeof showToast === 'function') showToast('Post not found'); return; }
+    // Build inline editor
+    var container = document.getElementById('bcOpenIdeas');
+    if (!container) return;
+    var editorId = 'bcEditIdea_' + ideaKey;
+    var existing = document.getElementById(editorId);
+    if (existing) { existing.remove(); return; }
+    var editor = document.createElement('div');
+    editor.id = editorId;
+    editor.style.cssText = 'padding:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:8px';
+    var mentionHtml = '<div style="margin-top:8px"><label style="font-size:0.68em;font-weight:600;color:var(--gl-text-tertiary)">Tag members (optional)</label>'
+      + '<div id="bcEditMentions_' + ideaKey + '" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>'
+      + '<input id="bcEditMentionInput_' + ideaKey + '" type="text" placeholder="Type @ to tag..." style="width:100%;margin-top:4px;font-size:0.78em;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none">'
+      + '<div id="bcEditMentionDropdown_' + ideaKey + '" style="display:none;position:relative"></div></div>';
+    editor.innerHTML = '<div style="font-size:0.78em;font-weight:600;color:var(--accent-light);margin-bottom:6px">Edit post</div>'
+      + '<input id="bcEditText_' + ideaKey + '" type="text" value="' + (idea.title || '').replace(/"/g, '&quot;') + '" style="width:100%;font-size:0.82em;padding:8px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.2);color:var(--text);outline:none">'
+      + mentionHtml
+      + '<div style="display:flex;gap:6px;margin-top:8px">'
+      + '<button onclick="_bcSaveEditIdea(\'' + ideaKey + '\')" style="font-size:0.75em;font-weight:700;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.15);color:#a5b4fc">Save</button>'
+      + '<button onclick="document.getElementById(\'' + editorId + '\').remove()" style="font-size:0.75em;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid var(--gl-border);background:none;color:var(--gl-text-tertiary)">Cancel</button>'
+      + '</div>';
+    container.insertBefore(editor, container.firstChild);
+    // Focus text input
+    var textInput = document.getElementById('bcEditText_' + ideaKey);
+    if (textInput) textInput.focus();
+    // Load existing mentions
+    window._bcEditMentions = idea.mentions || [];
+    _bcRenderEditMentions(ideaKey);
+    // Wire up mention autocomplete
+    var mentionInput = document.getElementById('bcEditMentionInput_' + ideaKey);
+    if (mentionInput) {
+      mentionInput.addEventListener('input', function() { _bcMentionAutocomplete(ideaKey, mentionInput.value); });
+      mentionInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') e.preventDefault(); });
+    }
+  } catch(e) { console.warn('[BandRoom] Edit load error:', e); }
+};
+
+window._bcSaveEditIdea = async function(ideaKey) {
+  var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+  if (!db || typeof bandPath !== 'function') return;
+  var textInput = document.getElementById('bcEditText_' + ideaKey);
+  if (!textInput || !textInput.value.trim()) return;
+  try {
+    var updates = { title: textInput.value.trim(), edited_at: new Date().toISOString() };
+    if (window._bcEditMentions && window._bcEditMentions.length) {
+      updates.mentions = window._bcEditMentions;
+      // Emit mention notifications for new mentions
+      var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+      var authorName = fas && fas.getMyDisplayName ? fas.getMyDisplayName() : 'Someone';
+      window._bcEditMentions.forEach(function(m) {
+        if (typeof GLStore !== 'undefined' && GLStore.emit) {
+          GLStore.emit('mentionNotification', { type: 'idea', author: authorName, mentionKey: m.memberKey, mentionName: m.displayName });
+        }
+      });
+    }
+    await db.ref(bandPath('ideas/posts/' + ideaKey)).update(updates);
+    var editor = document.getElementById('bcEditIdea_' + ideaKey);
+    if (editor) editor.remove();
+    if (typeof showToast === 'function') showToast('Post updated');
+    _bcLoadBandRoom();
+  } catch(e) { if (typeof showToast === 'function') showToast('Save failed'); }
+};
+
+// ── Delete idea ──────────────────────────────────────────────────────────────
+window._bcDeleteIdea = async function(ideaKey) {
+  document.querySelectorAll('[id^="bcIdeaMenu_"]').forEach(function(m) { m.style.display = 'none'; });
+  if (!confirm('Delete this post? This cannot be undone.')) return;
+  var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+  if (!db || typeof bandPath !== 'function') return;
+  try {
+    await db.ref(bandPath('ideas/posts/' + ideaKey)).remove();
+    if (typeof showToast === 'function') showToast('Post deleted');
+    _bcLoadBandRoom();
+  } catch(e) { if (typeof showToast === 'function') showToast('Delete failed'); }
+};
+
+// ── Tag member on existing idea ──────────────────────────────────────────────
+window._bcTagIdea = async function(ideaKey) {
+  document.querySelectorAll('[id^="bcIdeaMenu_"]').forEach(function(m) { m.style.display = 'none'; });
+  // Use the edit flow but focus on mention input
+  await window._bcEditIdea(ideaKey);
+  setTimeout(function() {
+    var mentionInput = document.getElementById('bcEditMentionInput_' + ideaKey);
+    if (mentionInput) mentionInput.focus();
+  }, 100);
+};
+
+// ── Mention autocomplete helpers ─────────────────────────────────────────────
+function _bcRenderEditMentions(ideaKey) {
+  var el = document.getElementById('bcEditMentions_' + ideaKey);
+  if (!el) return;
+  var mentions = window._bcEditMentions || [];
+  if (!mentions.length) { el.innerHTML = ''; return; }
+  el.innerHTML = mentions.map(function(m, i) {
+    return '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:12px;background:rgba(99,102,241,0.15);color:#a5b4fc;font-size:0.72em;font-weight:600">'
+      + '@' + (m.displayName || m.memberKey)
+      + '<button onclick="window._bcEditMentions.splice(' + i + ',1);_bcRenderEditMentions(\'' + ideaKey + '\')" style="background:none;border:none;color:#a5b4fc;cursor:pointer;font-size:1.1em;padding:0;margin-left:2px;line-height:1">\u00D7</button>'
+      + '</span>';
+  }).join('');
+}
+
+function _bcMentionAutocomplete(ideaKey, query) {
+  var dropdown = document.getElementById('bcEditMentionDropdown_' + ideaKey);
+  if (!dropdown) return;
+  var q = query.replace(/^@/, '').toLowerCase().trim();
+  if (!q) { dropdown.style.display = 'none'; return; }
+  var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+  var matches = [];
+  Object.keys(bm).forEach(function(k) {
+    var name = bm[k].name || k;
+    if (name.toLowerCase().indexOf(q) !== -1 || k.toLowerCase().indexOf(q) !== -1) {
+      matches.push({ key: k, name: name });
+    }
+  });
+  if (!matches.length) { dropdown.style.display = 'none'; return; }
+  dropdown.style.display = 'block';
+  dropdown.innerHTML = '<div style="position:absolute;left:0;right:0;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:2px;z-index:30">'
+    + matches.map(function(m) {
+      return '<button onclick="_bcAddEditMention(\'' + ideaKey + '\',\'' + m.key.replace(/'/g, "\\'") + '\',\'' + m.name.replace(/'/g, "\\'") + '\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">' + m.name + '</button>';
+    }).join('') + '</div>';
+}
+
+window._bcAddEditMention = function(ideaKey, memberKey, displayName) {
+  if (!window._bcEditMentions) window._bcEditMentions = [];
+  // Don't add duplicates
+  if (window._bcEditMentions.some(function(m) { return m.memberKey === memberKey; })) return;
+  window._bcEditMentions.push({ memberKey: memberKey, displayName: displayName });
+  _bcRenderEditMentions(ideaKey);
+  var input = document.getElementById('bcEditMentionInput_' + ideaKey);
+  if (input) input.value = '';
+  var dropdown = document.getElementById('bcEditMentionDropdown_' + ideaKey);
+  if (dropdown) dropdown.style.display = 'none';
 };
 
 window._bcVotePoll = async function(pollKey, optionIdx) {
