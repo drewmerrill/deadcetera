@@ -896,7 +896,10 @@ function _calRenderGooglePanel() {
             + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">All calendars connected</span>'
             + '</div>'
             + (lastSync ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary)">Last synced ' + lastSync + '</div>' : '')
-            + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;margin-top:2px;padding:0">Manage connections</button>'
+            + '<div style="display:flex;gap:8px;margin-top:4px">'
+            + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Availability rules</button>'
+            + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
+            + '</div>'
             + '</div>';
     } else {
         // MODE A — ONBOARDING STATE: dominant connection panel
@@ -931,6 +934,7 @@ function _calRenderGooglePanel() {
                 : '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.85em;font-weight:700">Connect Google Calendar</button>'
               )
             + '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
+            + (hasScope ? '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Availability rules</button>' : '')
             + '<button onclick="_calShowSyncExplainer()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.6;padding:0;text-decoration:underline">How it works</button>'
             + (connectedCount < totalCount ? '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Send to band</button>' : '')
             + '</div>'
@@ -1069,6 +1073,146 @@ async function _calRenderDecisionAnchor() {
             + '</div>';
     } catch(e) { el.innerHTML = ''; }
 }
+
+// ── Availability Rules Settings Modal ─────────────────────────────────────────
+window._calShowAvailabilitySettings = async function() {
+    var existing = document.getElementById('calAvailSettingsModal');
+    if (existing) existing.remove();
+
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.hasCalendarScope()) {
+        if (typeof showToast === 'function') showToast('Connect Google Calendar first');
+        return;
+    }
+
+    var modal = document.createElement('div');
+    modal.id = 'calAvailSettingsModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:1200;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+    var inner = document.createElement('div');
+    inner.style.cssText = 'background:var(--bg-card,#1e293b);border-radius:12px;padding:20px;max-width:480px;width:100%;border:1px solid var(--gl-border);max-height:80vh;overflow-y:auto';
+    inner.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+        + '<span style="font-weight:700;color:var(--gl-text);font-size:0.95em">Availability Rules</span>'
+        + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1.1em">\u2715</button>'
+        + '</div>'
+        + '<div style="font-size:0.72em;color:var(--gl-text-secondary);margin-bottom:16px">Choose which calendars affect your band availability and how conflicts are classified.</div>'
+        + '<div id="calAvailSettingsBody" style="font-size:0.82em;color:var(--gl-text-tertiary)">Loading calendars\u2026</div>';
+
+    modal.appendChild(inner);
+    document.body.appendChild(modal);
+
+    // Load calendars + current settings in parallel
+    var calendars = await GLCalendarSync.listCalendars();
+    var settings = await GLCalendarSync.getAvailabilitySettings() || {};
+    var selectedCals = settings.selectedCalendars || [];
+    var ignoreAllDay = settings.ignoreAllDay !== false;
+    var timeAware = settings.timeAware !== false;
+    var rWindow = settings.rehearsalWindow || { startHour: 17, endHour: 23 };
+
+    var body = document.getElementById('calAvailSettingsBody');
+    if (!body) return;
+
+    if (!calendars.length) {
+        body.innerHTML = '<div style="color:var(--gl-amber);padding:12px 0">Could not load calendars. Make sure Google Calendar access is granted.</div>';
+        return;
+    }
+
+    // Build calendar checkboxes
+    var calHtml = '<div style="margin-bottom:16px">';
+    calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:8px">Which calendars affect your availability?</div>';
+    calHtml += '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:8px">Only checked calendars will create conflicts on the band schedule.</div>';
+    calendars.forEach(function(c, i) {
+        var isSelected = selectedCals.length > 0
+            ? selectedCals.indexOf(c.id) !== -1
+            : (c.primary && !c.autoExclude); // Default: primary only
+        var dimmed = c.autoExclude && !isSelected;
+        calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;'
+            + (dimmed ? 'opacity:0.5;' : '') + '">'
+            + '<input type="checkbox" name="calSel" value="' + c.id + '"' + (isSelected ? ' checked' : '') + ' style="accent-color:var(--gl-green)">'
+            + '<span style="flex:1;color:var(--gl-text)">' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + '</span>'
+            + (c.primary ? '<span style="font-size:0.75em;color:var(--gl-green)">primary</span>' : '')
+            + (c.autoExclude ? '<span style="font-size:0.75em;color:var(--gl-amber)">auto-excluded</span>' : '')
+            + (c.backgroundColor ? '<span style="width:10px;height:10px;border-radius:50%;background:' + c.backgroundColor + ';flex-shrink:0"></span>' : '')
+            + '</label>';
+    });
+    calHtml += '</div>';
+
+    // Time-aware filtering toggle
+    var rulesHtml = '<div style="margin-bottom:16px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">';
+    rulesHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:8px">Conflict rules</div>';
+    rulesHtml += '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer">'
+        + '<input type="checkbox" id="calOptTimeAware"' + (timeAware ? ' checked' : '') + ' style="accent-color:var(--gl-green)">'
+        + '<span style="color:var(--gl-text)">Only block events during rehearsal hours</span></label>';
+    rulesHtml += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0 4px 26px;font-size:0.88em;color:var(--gl-text-tertiary)">'
+        + 'Rehearsal window: '
+        + '<select id="calOptStartHour" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:4px;padding:2px 4px;font-size:0.9em">';
+    for (var h = 12; h <= 21; h++) {
+        var lbl = h > 12 ? (h - 12) + 'pm' : h + (h === 12 ? 'pm' : 'am');
+        rulesHtml += '<option value="' + h + '"' + (h === rWindow.startHour ? ' selected' : '') + '>' + lbl + '</option>';
+    }
+    rulesHtml += '</select> to <select id="calOptEndHour" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:4px;padding:2px 4px;font-size:0.9em">';
+    for (var h = 18; h <= 24; h++) {
+        var lbl = h > 12 ? (h - 12) + (h === 24 ? 'am' : 'pm') : h + 'am';
+        rulesHtml += '<option value="' + h + '"' + (h === rWindow.endHour ? ' selected' : '') + '>' + lbl + '</option>';
+    }
+    rulesHtml += '</select></div>';
+    rulesHtml += '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer">'
+        + '<input type="checkbox" id="calOptIgnoreAllDay"' + (ignoreAllDay ? ' checked' : '') + ' style="accent-color:var(--gl-green)">'
+        + '<span style="color:var(--gl-text)">Ignore all-day events (birthdays, holidays)</span></label>';
+    rulesHtml += '</div>';
+
+    // Save button
+    var saveHtml = '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">'
+        + '<button id="calAvailSaveBtn" onclick="_calSaveAvailabilitySettings()" class="gl-btn-primary" style="flex:1;padding:10px;font-size:0.85em;font-weight:700">Save & Refresh</button>'
+        + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
+        + '</div>';
+
+    body.innerHTML = calHtml + rulesHtml + saveHtml;
+};
+
+window._calSaveAvailabilitySettings = async function() {
+    var btn = document.getElementById('calAvailSaveBtn');
+    if (btn) { btn.textContent = 'Saving\u2026'; btn.disabled = true; }
+
+    // Gather selected calendars
+    var checkboxes = document.querySelectorAll('input[name="calSel"]:checked');
+    var selectedCals = [];
+    checkboxes.forEach(function(cb) { selectedCals.push(cb.value); });
+
+    if (!selectedCals.length) {
+        if (typeof showToast === 'function') showToast('Select at least one calendar');
+        if (btn) { btn.textContent = 'Save & Refresh'; btn.disabled = false; }
+        return;
+    }
+
+    var timeAware = document.getElementById('calOptTimeAware');
+    var ignoreAllDay = document.getElementById('calOptIgnoreAllDay');
+    var startHour = document.getElementById('calOptStartHour');
+    var endHour = document.getElementById('calOptEndHour');
+
+    var settings = {
+        selectedCalendars: selectedCals,
+        timeAware: timeAware ? timeAware.checked : true,
+        ignoreAllDay: ignoreAllDay ? ignoreAllDay.checked : true,
+        rehearsalWindow: {
+            startHour: startHour ? parseInt(startHour.value, 10) : 17,
+            endHour: endHour ? parseInt(endHour.value, 10) : 23
+        },
+        updatedAt: new Date().toISOString()
+    };
+
+    var ok = await GLCalendarSync.saveAvailabilitySettings(settings);
+    if (ok) {
+        if (typeof showToast === 'function') showToast('\u2705 Availability rules saved \u2014 refreshing calendar');
+        var modal = document.getElementById('calAvailSettingsModal');
+        if (modal) modal.remove();
+        // Re-render calendar with new filtering
+        renderCalendarInner();
+    } else {
+        if (typeof showToast === 'function') showToast('Failed to save settings');
+        if (btn) { btn.textContent = 'Save & Refresh'; btn.disabled = false; }
+    }
+};
 
 // ── Sync explainer sheet ─────────────────────────────────────────────────────
 window._calShowSyncExplainer = function() {
@@ -1959,13 +2103,15 @@ function renderCalendarInner() {
             const dow = new Date(year,month,d).getDay();
             const w = dow===0||dow===6;
             const dayEvents = eventDates ? (eventDates[ds] || []) : [];
-            const isBlocked = blockedRanges.some(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
             const blockedList = blockedRanges.filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
+            const isBlocked = blockedList.length > 0;
+            const hasHardConflict = blockedList.some(b => b._conflictType !== 'soft');
+            const isSoftOnly = isBlocked && !hasHardConflict;
             // Determine dominant event type
             const isGig = dayEvents.some(e => e.type === 'gig');
             const isRehearsal = dayEvents.some(e => e.type === 'rehearsal');
             const hasEvent = dayEvents.length > 0;
-            // State class (priority: gig > rehearsal > blocked > best > default)
+            // State class (priority: gig > rehearsal > hard blocked > soft > best > default)
             const isFuture = ds >= todayStr;
             const isBest = isFuture && !hasEvent && !isBlocked && !w;
             let state = 'default';
@@ -1973,11 +2119,12 @@ function renderCalendarInner() {
             let icon = '';
             if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
             else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
-            else if (isBlocked) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
             else if (hasEvent) { icon = dayEvents[0].type === 'meeting' ? '\uD83D\uDC65' : '\uD83D\uDCC5'; }
             if (isToday) stateClass += ' gl-day--today';
-            // Hover content — explains the color, doesn't duplicate right rail
+            // Hover content — explains the color with time-aware detail
             let hoverHtml = '';
             if (isGig) {
                 const ev = dayEvents.find(e => e.type === 'gig');
@@ -1997,7 +2144,10 @@ function renderCalendarInner() {
                 }
             } else if (isBlocked && blockedList.length) {
                 hoverHtml = '<div class="gl-day-hover">';
-                blockedList.slice(0,3).forEach(b => { hoverHtml += '<div>' + (b.person || 'Member') + (b.reason ? ' \u2014 ' + b.reason : ' unavailable') + '</div>'; });
+                blockedList.slice(0,3).forEach(b => {
+                    var conflictLabel = b._conflictType === 'soft' ? ' (does not conflict)' : '';
+                    hoverHtml += '<div>' + (b.person || 'Member') + ' \u2014 ' + (b.reason || 'unavailable') + conflictLabel + '</div>';
+                });
                 if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                 hoverHtml += '</div>';
             } else if (isBest) {
@@ -2085,7 +2235,10 @@ function _calRenderGridOnly(grid) {
             var isToday = ds === todayStr;
             var dow = new Date(year, month, d).getDay();
             var dayEvents = eventDates[ds] || [];
-            var isBlocked = blockedRanges.some(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; });
+            var blockedList = blockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; });
+            var isBlocked = blockedList.length > 0;
+            var hasHardConflict = blockedList.some(function(b) { return b._conflictType !== 'soft'; });
+            var isSoftOnly = isBlocked && !hasHardConflict;
             var isGig = dayEvents.some(function(e) { return e.type === 'gig'; });
             var isRehearsal = dayEvents.some(function(e) { return e.type === 'rehearsal'; });
             var hasEvent = dayEvents.length > 0;
@@ -2097,11 +2250,12 @@ function _calRenderGridOnly(grid) {
             var icon = '';
             if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
             else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
-            else if (isBlocked) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
             else if (hasEvent) { icon = '\uD83D\uDCC5'; }
             if (isToday) stateClass += ' gl-day--today';
-            // Hover content — explains the color
+            // Hover content — explains the color with time-aware detail
             var hoverHtml = '';
             if (isGig) {
                 var ev = dayEvents.find(function(e) { return e.type === 'gig'; });
@@ -2120,10 +2274,12 @@ function _calRenderGridOnly(grid) {
                     hoverHtml += '</div>';
                 }
             } else if (isBlocked) {
-                var blockedList = blockedRanges.filter(function(b) { return b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate; });
                 if (blockedList.length) {
                     hoverHtml = '<div class="gl-day-hover">';
-                    blockedList.slice(0,3).forEach(function(b) { hoverHtml += '<div>' + (b.person || 'Member') + (b.reason ? ' \u2014 ' + b.reason : ' unavailable') + '</div>'; });
+                    blockedList.slice(0,3).forEach(function(b) {
+                        var conflictLabel = b._conflictType === 'soft' ? ' (does not conflict)' : '';
+                        hoverHtml += '<div>' + (b.person || 'Member') + ' \u2014 ' + (b.reason || 'unavailable') + conflictLabel + '</div>';
+                    });
                     if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                     hoverHtml += '</div>';
                 }
@@ -2279,6 +2435,21 @@ async function loadCalendarEvents() {
         blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
     }
     // Merge Google Calendar free/busy — current user + all connected members
+    // Load availability settings for time-aware conflict classification
+    var _fbOpts = { rehearsalStartHour: 17, rehearsalEndHour: 23, ignoreAllDay: true, timeAware: true };
+    try {
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getAvailabilitySettings) {
+            var _avSettings = await GLCalendarSync.getAvailabilitySettings();
+            if (_avSettings) {
+                if (_avSettings.rehearsalWindow) {
+                    _fbOpts.rehearsalStartHour = _avSettings.rehearsalWindow.startHour || 17;
+                    _fbOpts.rehearsalEndHour = _avSettings.rehearsalWindow.endHour || 23;
+                }
+                if (typeof _avSettings.ignoreAllDay !== 'undefined') _fbOpts.ignoreAllDay = _avSettings.ignoreAllDay;
+                if (typeof _avSettings.timeAware !== 'undefined') _fbOpts.timeAware = _avSettings.timeAware;
+            }
+        }
+    } catch(e) {}
     try {
         var _fbTimeMin = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-01T00:00:00Z';
         var _fbDaysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
@@ -2290,7 +2461,7 @@ async function loadCalendarEvents() {
                 // FreeBusy not available — silently skip (events scope still works for other features)
             } else {
                 var _myName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
-                var _myBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName);
+                var _myBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName, _fbOpts);
                 if (_myBlocks.length) blocked = blocked.concat(_myBlocks);
                 GLCalendarSync.connectGoogleCalendar();
             }
@@ -2307,12 +2478,13 @@ async function loadCalendarEvents() {
                 // Check freshness: only use data < 1 hour old
                 if (fb.updatedAt && (Date.now() - new Date(fb.updatedAt).getTime() > 3600000)) return;
                 var memberName = bm[mk] ? bm[mk].name : mk;
-                var memberBlocks = GLCalendarSync.freeBusyToBlockedRanges(fb, memberName);
+                var memberBlocks = GLCalendarSync.freeBusyToBlockedRanges(fb, memberName, _fbOpts);
                 if (memberBlocks.length) blocked = blocked.concat(memberBlocks);
             });
         }
         var _totalGoogleBlocks = blocked.filter(function(b) { return b._source === 'google'; }).length;
-        if (_totalGoogleBlocks) console.log('[Calendar] Google free/busy merged:', _totalGoogleBlocks, 'ranges (all members)');
+        var _softBlocks = blocked.filter(function(b) { return b._conflictType === 'soft'; }).length;
+        if (_totalGoogleBlocks) console.log('[Calendar] Google free/busy merged:', _totalGoogleBlocks, 'ranges (' + _softBlocks + ' soft, all members)');
     } catch(e) { console.warn('[Calendar] Free/busy merge failed:', e); }
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });

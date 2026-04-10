@@ -313,10 +313,13 @@ window.GLCalendarSync = (function() {
       return _freeBusyCache;
     }
     try {
+      // Use selected calendars (not all — prevents overblocking from birthdays, sports, etc)
+      var calIds = await _getSelectedCalendarIds();
+      var items = calIds.map(function(id) { return { id: id }; });
       var res = await fetch(WORKER_BASE + '/calendar/freebusy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
-        body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: [{ id: 'primary' }] })
+        body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: items })
       });
       if (!res.ok) {
         var errBody = '';
@@ -333,9 +336,18 @@ window.GLCalendarSync = (function() {
       _calendarScopeFailed = false;
       var data = await res.json();
       var busy = [];
-      if (data.calendars && data.calendars.primary && data.calendars.primary.busy) {
-        data.calendars.primary.busy.forEach(function(b) { busy.push({ start: b.start, end: b.end }); });
+      // Merge busy periods from ALL selected calendars
+      if (data.calendars) {
+        Object.keys(data.calendars).forEach(function(calId) {
+          var cal = data.calendars[calId];
+          if (cal.busy) {
+            cal.busy.forEach(function(b) { busy.push({ start: b.start, end: b.end }); });
+          }
+        });
       }
+      // Sort chronologically and dedupe overlapping ranges
+      busy.sort(function(a, b) { return a.start.localeCompare(b.start); });
+      console.log('[CalSync] FreeBusy: queried', calIds.length, 'calendar(s), got', busy.length, 'busy periods');
       _freeBusyCache = { busy: busy, source: 'google', _key: cacheKey };
       _freeBusyCacheTime = Date.now();
       // Share results to Firebase for other band members to read
@@ -374,25 +386,71 @@ window.GLCalendarSync = (function() {
   }
 
   // Convert free/busy ranges to date-based blocked ranges for calendar
-  function freeBusyToBlockedRanges(busyData, memberName) {
+  // Now time-aware: classifies events as hard (overlaps rehearsal window) or soft (doesn't)
+  function freeBusyToBlockedRanges(busyData, memberName, opts) {
     if (!busyData || !busyData.busy || !busyData.busy.length) return [];
+    opts = opts || {};
+    var rehearsalStart = opts.rehearsalStartHour || 17; // 5pm default
+    var rehearsalEnd = opts.rehearsalEndHour || 23; // 11pm default
+    var ignoreAllDay = opts.ignoreAllDay !== false; // default true
+    var timeAware = opts.timeAware !== false; // default true
+
     var ranges = [];
     var seen = {};
     busyData.busy.forEach(function(b) {
       var startDate = b.start.substring(0, 10);
       var endDate = b.end.substring(0, 10);
-      // Dedupe by date (multiple busy periods on same day = one block)
+
+      // Check if this is an all-day event (no time component, or spans 24h+)
+      var isAllDay = b.start.length <= 10 || b.end.length <= 10;
+      if (!isAllDay) {
+        var durationMs = new Date(b.end) - new Date(b.start);
+        if (durationMs >= 23 * 3600000) isAllDay = true; // 23+ hours = effectively all-day
+      }
+
+      // Skip all-day events if user chose to ignore them
+      if (ignoreAllDay && isAllDay) return;
+
+      // Time-aware conflict classification
+      var conflictType = 'hard'; // default: hard conflict
+      var timeLabel = '';
+      if (timeAware && !isAllDay && b.start.length > 10) {
+        var eventStartHour = parseInt(b.start.substring(11, 13), 10);
+        var eventEndHour = parseInt(b.end.substring(11, 13), 10);
+        var eventEndMin = parseInt(b.end.substring(14, 16), 10);
+        if (eventEndMin > 0) eventEndHour += 1; // round up
+        // If event is completely before or after rehearsal window, it's soft
+        if (eventEndHour <= rehearsalStart || eventStartHour >= rehearsalEnd) {
+          conflictType = 'soft';
+        }
+        // Build readable time label
+        var sH = eventStartHour > 12 ? eventStartHour - 12 : eventStartHour;
+        var sA = eventStartHour >= 12 ? 'pm' : 'am';
+        var rawEndH = parseInt(b.end.substring(11, 13), 10);
+        var eH = rawEndH > 12 ? rawEndH - 12 : rawEndH;
+        var eA = rawEndH >= 12 ? 'pm' : 'am';
+        timeLabel = sH + sA + '\u2013' + eH + eA;
+      }
+
+      // Dedupe by date (multiple busy periods on same day = one block, keep hardest)
       var key = startDate + '|' + endDate;
-      if (seen[key]) return;
-      seen[key] = true;
-      ranges.push({
+      if (seen[key]) {
+        // Upgrade soft → hard if this period overlaps rehearsal window
+        if (conflictType === 'hard') seen[key].status = 'unavailable';
+        return;
+      }
+      var range = {
         person: memberName || 'You',
         startDate: startDate,
         endDate: endDate,
-        reason: 'Busy (Google Calendar)',
-        status: 'unavailable',
-        _source: 'google'
-      });
+        reason: timeLabel ? 'Busy ' + timeLabel + ' (Google)' : 'Busy (Google Calendar)',
+        status: conflictType === 'hard' ? 'unavailable' : 'tentative',
+        _source: 'google',
+        _conflictType: conflictType,
+        _timeLabel: timeLabel
+      };
+      seen[key] = range;
+      ranges.push(range);
     });
     return ranges;
   }
@@ -557,6 +615,104 @@ window.GLCalendarSync = (function() {
     _freeBusyCacheTime = 0;
   }
 
+  // ── CALENDAR SELECTION & AVAILABILITY RULES ────────────────────────────────
+  // Lets users choose WHICH calendars affect their availability and HOW.
+  // Settings stored per-member in Firebase: bands/{slug}/cal_settings/{memberKey}
+
+  // Patterns that indicate auto-excludable calendars
+  var _AUTO_EXCLUDE_PATTERNS = [
+    /birthday/i, /holiday/i, /contacts/i,
+    /#contacts@group\.v1\.calendar\.google\.com$/i,
+    /^addressbook#contacts@group\.v1\.calendar\.google\.com$/i
+  ];
+
+  // Fetch user's calendar list from Google
+  async function listCalendars() {
+    if (!hasCalendarScope()) return [];
+    if (_calendarScopeFailed) return [];
+    try {
+      var res = await fetch(WORKER_BASE + '/calendar/list', {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      if (!res.ok) return [];
+      var data = await res.json();
+      if (!data.items) return [];
+      return data.items.map(function(c) {
+        var isAutoExclude = _AUTO_EXCLUDE_PATTERNS.some(function(p) { return p.test(c.summary || '') || p.test(c.id || ''); });
+        return {
+          id: c.id,
+          summary: c.summary || c.id,
+          primary: !!c.primary,
+          backgroundColor: c.backgroundColor || '',
+          accessRole: c.accessRole || '',
+          autoExclude: isAutoExclude
+        };
+      });
+    } catch(e) {
+      console.warn('[CalSync] listCalendars error:', e);
+      return [];
+    }
+  }
+
+  // Get saved availability settings from Firebase
+  async function getAvailabilitySettings() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return null;
+    var memberKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+    if (!memberKey) return null;
+    try {
+      var snap = await db.ref(bandPath('cal_settings/' + memberKey)).once('value');
+      return snap.val();
+    } catch(e) { return null; }
+  }
+
+  // Save availability settings to Firebase
+  async function saveAvailabilitySettings(settings) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return false;
+    var memberKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+    if (!memberKey) return false;
+    try {
+      await db.ref(bandPath('cal_settings/' + memberKey)).set(settings);
+      // Invalidate cache so next query uses new settings
+      _freeBusyCache = null;
+      _freeBusyCacheTime = 0;
+      return true;
+    } catch(e) { return false; }
+  }
+
+  // Get the effective calendar IDs to query (respects user selection)
+  async function _getSelectedCalendarIds() {
+    var settings = await getAvailabilitySettings();
+    if (settings && settings.selectedCalendars && settings.selectedCalendars.length > 0) {
+      return settings.selectedCalendars;
+    }
+    // Default: primary only (safe default that prevents overblocking)
+    return ['primary'];
+  }
+
+  // Get the default rehearsal window (user-configurable)
+  async function _getRehearsalWindow() {
+    var settings = await getAvailabilitySettings();
+    if (settings && settings.rehearsalWindow) return settings.rehearsalWindow;
+    // Default: 5pm-11pm (covers most band rehearsal times)
+    return { startHour: 17, endHour: 23 };
+  }
+
+  // Check if settings indicate all-day events should be ignored
+  async function _shouldIgnoreAllDay() {
+    var settings = await getAvailabilitySettings();
+    if (settings && typeof settings.ignoreAllDay !== 'undefined') return settings.ignoreAllDay;
+    return true; // Default: ignore all-day events (birthdays, holidays, etc)
+  }
+
+  // Check if time-aware filtering is enabled
+  async function _isTimeAwareEnabled() {
+    var settings = await getAvailabilitySettings();
+    if (settings && typeof settings.timeAware !== 'undefined') return settings.timeAware;
+    return true; // Default: enabled
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -581,6 +737,11 @@ window.GLCalendarSync = (function() {
     syncConflictToGoogle: syncConflictToGoogle,
     updateConflictInGoogle: updateConflictInGoogle,
     deleteConflictFromGoogle: deleteConflictFromGoogle,
+    // Calendar selection & availability rules
+    listCalendars: listCalendars,
+    getAvailabilitySettings: getAvailabilitySettings,
+    saveAvailabilitySettings: saveAvailabilitySettings,
+    hasFreeBusyScope: hasFreeBusyScope,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };

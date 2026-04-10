@@ -78,6 +78,9 @@ export default {
     // Free/busy query
     if (path === '/calendar/freebusy' && request.method === 'POST')
       return handleCalendarFreeBusy(request);
+    // List user's calendars (for selection UI)
+    if (path === '/calendar/list' && request.method === 'GET')
+      return handleCalendarList(request);
     // List events (import)
     if (path === '/calendar/events' && request.method === 'GET')
       return handleCalendarListEvents(request);
@@ -848,6 +851,21 @@ async function handleCalendarFreeBusy(request) {
       headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
       body: body
     });
+    const data = await res.text();
+    return cors(new Response(data, { status: res.status, headers: { 'Content-Type': 'application/json' } }));
+  } catch (err) {
+    return cors(new Response(JSON.stringify({ error: err.message }), { status: 502, headers: { 'Content-Type': 'application/json' } }));
+  }
+}
+
+// ── Google Calendar List — returns user's calendar list for selection UI ──────
+// GET /calendar/list
+async function handleCalendarList(request) {
+  const authHeader = request.headers.get('Authorization');
+  if (!authHeader) return cors(new Response('Unauthorized', { status: 401 }));
+  try {
+    const googleUrl = 'https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=freeBusyReader&maxResults=100';
+    const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });
     const data = await res.text();
     return cors(new Response(data, { status: res.status, headers: { 'Content-Type': 'application/json' } }));
   } catch (err) {
