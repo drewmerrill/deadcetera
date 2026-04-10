@@ -235,12 +235,15 @@ function renderCalendarPage(el) {
     el.innerHTML = '<div class="gl-page">'
         + '<div class="gl-page-title">\uD83D\uDCC5 Schedule</div>'
         + '<div id="calEventStrip" style="margin-bottom:12px"></div>'
-        + '<div class="gl-page-split">'
+        + '<div class="gl-page-split cal-page-split">'
         + '<div class="gl-page-primary">'
         + '<div id="calendarInner"></div>'
         + '</div>'
         + '<div class="gl-page-context" id="calContextRail"></div>'
-        + '</div></div>';
+        + '</div>'
+        // Full-width conflict panel below calendar (toggled by View conflicts)
+        + '<div id="calConflictPanel" style="display:none;margin-top:var(--gl-space-md)"></div>'
+        + '</div>';
     _calRenderEventStrip();
     renderCalendarInner();
 }
@@ -696,31 +699,7 @@ async function _calRenderEventStrip() {
 }
 
 async function _calRenderRailGuidance() {
-    var ctxRail = document.getElementById('calContextRail');
-    if (!ctxRail) return;
-    // Best move guidance — from recommendation engine
-    var guidanceHtml = '';
-    try {
-        if (typeof GLStore !== 'undefined' && GLStore.getRehearsalDateRecommendations) {
-            await GLStore.ready(['members'], 10000);
-            var recs = await GLStore.getRehearsalDateRecommendations();
-            if (recs && recs.primary) {
-                var pDate = new Date(recs.primary.date + 'T12:00:00');
-                var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-                guidanceHtml = '<div class="gl-context-card" style="margin-bottom:8px">'
-                    + '<div style="font-size:0.75em;font-weight:700;color:var(--text);margin-bottom:2px">Best move</div>'
-                    + '<div style="font-size:0.72em;color:var(--text-muted)">Lock rehearsal on <span style="color:#22c55e;font-weight:600">' + pLabel + '</span></div>'
-                    + '<button onclick="_calLockAndPlan(\'' + recs.primary.date + '\')" style="margin-top:6px;font-size:0.72em;font-weight:700;padding:4px 12px;border-radius:6px;cursor:pointer;border:none;background:rgba(34,197,94,0.1);color:#86efac">Lock this date</button>'
-                    + '</div>';
-            }
-        }
-    } catch(e) {}
-    // Prepend guidance before existing rail content
-    if (guidanceHtml && ctxRail.firstChild) {
-        var g = document.createElement('div');
-        g.innerHTML = guidanceHtml;
-        ctxRail.insertBefore(g.firstElementChild, ctxRail.firstChild);
-    }
+    // Replaced by _calRenderDecisionAnchor() above calendar
 }
 
 // ── Next event rail (single event, minimal) ──────────────────────────────────
@@ -863,104 +842,232 @@ async function _calLoadConnections() {
 }
 
 function _calRenderSyncCoverage() {
-    var el = document.getElementById('calSyncCoverage');
+    // Delegate to unified Google panel — keeps all callers working
+    _calRenderGooglePanel();
+}
+
+// ── First-time onboarding — now handled by _calRenderGooglePanel ──────────────
+function _calRenderOnboarding() {
+    // Full band milestone toast — show once when all members connected
+    var cov = _calGetSyncCoverage();
+    if (cov.isFull && !localStorage.getItem('gl_cal_fullband_shown')) {
+        localStorage.setItem('gl_cal_fullband_shown', '1');
+        if (typeof showToast === 'function') showToast('\uD83C\uDFB8 Full band connected — scheduling now reflects everyone\u2019s real availability');
+    }
+    // Connected impact confirmation — show once
+    if (cov.hasScope && !localStorage.getItem('gl_cal_impact_shown')) {
+        localStorage.setItem('gl_cal_impact_shown', '1');
+        if (typeof showToast === 'function') showToast('\u2713 Connected — your availability is now included when the band schedules');
+    }
+    // Re-render Google panel with latest state
+    _calRenderGooglePanel();
+}
+
+// ── Unified Google Panel (right rail) — onboarding vs steady-state ──────────
+function _calRenderGooglePanel() {
+    var el = document.getElementById('calGooglePanel');
     if (!el) return;
     var cov = _calGetSyncCoverage();
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     if (!members.length) { el.innerHTML = ''; return; }
-    var hasScope = cov.hasScope;
-    var myKey = cov.myKey;
-    var connectedCount = cov.connected;
 
-    var html = '<div style="padding:var(--gl-space-sm) 0;font-size:0.7em">';
-    html += '<div style="font-weight:600;color:var(--gl-text-tertiary);margin-bottom:4px">Availability coverage</div>';
+    var isFullyConnected = cov.isFull;
+    var hasScope = cov.hasScope;
+    var connectedCount = cov.connected;
+    var totalCount = members.length;
+
+    if (isFullyConnected) {
+        // MODE B — STEADY STATE: compressed status view
+        var lastSync = '';
+        try {
+            if (typeof _calConnectedCache !== 'undefined' && _calConnectedCache) {
+                var times = Object.values(_calConnectedCache).map(function(c) { return c.updatedAt || ''; }).filter(Boolean);
+                if (times.length) {
+                    var latest = times.sort().reverse()[0];
+                    var mins = Math.floor((Date.now() - new Date(latest).getTime()) / 60000);
+                    lastSync = mins < 2 ? 'just now' : mins + ' min ago';
+                }
+            }
+        } catch(e) {}
+        el.innerHTML = '<div style="padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.1);margin-bottom:var(--gl-space-sm)">'
+            + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+            + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
+            + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">All calendars connected</span>'
+            + '</div>'
+            + (lastSync ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary)">Last synced ' + lastSync + '</div>' : '')
+            + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;margin-top:2px;padding:0">Manage connections</button>'
+            + '</div>';
+    } else {
+        // MODE A — ONBOARDING STATE: dominant connection panel
+        var memberListHtml = '';
+        members.forEach(function(m) {
+            var key = (typeof m === 'object') ? m.key : m;
+            var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
+            var isMe = key === cov.myKey;
+            var connected = cov.connectedKeys.indexOf(key) !== -1 || (isMe && hasScope);
+            memberListHtml += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.78em">';
+            memberListHtml += connected
+                ? '<span style="color:var(--gl-green)">\u2713</span><span style="color:var(--gl-text)">' + name + '</span>'
+                : '<span style="color:var(--gl-amber)">\u26A0</span><span style="color:var(--gl-text-secondary)">' + name + '</span><span style="font-size:0.82em;color:var(--gl-text-tertiary);opacity:0.5">not connected</span>';
+            memberListHtml += '</div>';
+        });
+
+        el.innerHTML = '<div style="padding:14px;border-radius:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:var(--gl-space-sm)">'
+            + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text);margin-bottom:6px">Google Calendar</div>'
+            + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">'
+            + 'Connect calendars so GrooveLinx can find dates when everyone\u2019s actually free.'
+            + '</div>'
+            // Member connection status
+            + '<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02)">'
+            + '<div style="font-size:0.68em;font-weight:600;color:var(--gl-text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">'
+            + connectedCount + ' of ' + totalCount + ' connected</div>'
+            + memberListHtml
+            + '</div>'
+            // CTA
+            + (hasScope
+                ? '<div style="font-size:0.72em;color:var(--gl-green);margin-bottom:4px">\u2713 You\u2019re connected</div>'
+                  + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:8px 14px;font-size:0.82em;font-weight:700">Connect Your Calendar</button>'
+                : '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.85em;font-weight:700">Connect Google Calendar</button>'
+              )
+            + '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
+            + '<button onclick="_calShowSyncExplainer()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.6;padding:0;text-decoration:underline">How it works</button>'
+            + (connectedCount < totalCount ? '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Send to band</button>' : '')
+            + '</div>'
+            + '</div>';
+    }
+}
+
+// Manage connections popover — shows member list with disconnect option
+window._calShowManageConnections = function() {
+    var cov = _calGetSyncCoverage();
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var html = '<div style="padding:10px 12px;border-radius:10px;background:var(--gl-surface);border:1px solid var(--gl-border-subtle);margin-bottom:var(--gl-space-sm)">';
+    html += '<div style="font-size:0.78em;font-weight:600;color:var(--gl-text);margin-bottom:6px">Connections</div>';
     members.forEach(function(m) {
         var key = (typeof m === 'object') ? m.key : m;
         var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
-        var isMe = key === myKey;
-        var connected = cov.connectedKeys.indexOf(key) !== -1 || (isMe && hasScope);
-        html += '<div style="display:flex;align-items:center;gap:4px;padding:1px 0;color:var(--gl-text-tertiary)">';
-        html += connected
-            ? '<span style="color:var(--gl-green)">\u2713</span><span>' + name + '</span><span style="opacity:0.5">synced</span>'
-            : '<span style="color:var(--gl-amber)">\u26A0</span><span>' + name + '</span><span style="opacity:0.4">not connected</span>';
+        var connected = cov.connectedKeys.indexOf(key) !== -1 || (key === cov.myKey && cov.hasScope);
+        html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.72em">';
+        html += '<span style="color:' + (connected ? 'var(--gl-green)' : 'var(--gl-amber)') + '">' + (connected ? '\u2713' : '\u26A0') + '</span>';
+        html += '<span style="color:var(--gl-text);flex:1">' + name + '</span>';
+        html += '<span style="color:var(--gl-text-tertiary);font-size:0.85em">' + (connected ? 'synced' : 'not connected') + '</span>';
         html += '</div>';
     });
-    if (connectedCount < members.length) {
-        html += '<div style="color:var(--gl-text-tertiary);opacity:0.5;margin-top:2px;font-size:0.92em">' + connectedCount + '/' + members.length + ' calendars synced</div>';
-        html += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);opacity:0.4;margin-top:1px">More connected = better scheduling</div>';
+    if (cov.hasScope) {
+        html += '<button onclick="_calDisconnectGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;margin-top:4px;padding:0">Disconnect my calendar</button>';
     }
-    // Connect/disconnect + connection confidence
-    if (hasScope) {
-        // Check freshness of shared data
-        var _myFbFresh = true;
-        try {
-            var _myFbData = (_calConnectedCache && cov.myKey && typeof _calExternalEventsCache !== 'undefined') ? true : true;
-            // Could check member_freebusy updatedAt but keeping it simple
-        } catch(e) {}
-        html += '<div style="font-size:0.72em;color:var(--gl-green);margin-top:4px">\u2713 You\u2019re connected</div>';
-        html += '<button onclick="_calDisconnectGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.4;margin-top:2px">Disconnect</button>';
-    } else {
-        html += '<button onclick="_calConnectGoogle()" class="gl-btn-ghost" style="width:100%;font-size:0.82em;margin-top:6px;color:var(--gl-indigo)">Connect your Google Calendar</button>';
-    }
-    if (hasScope) {
-        html += '<div style="display:flex;align-items:center;gap:4px;margin-top:4px;opacity:0.5;font-size:0.82em;color:var(--gl-text-tertiary)">'
-            + '<div style="width:5px;height:5px;border-radius:50%;background:var(--gl-indigo);flex-shrink:0"></div>'
-            + 'Google event on this day</div>';
-    }
-    // Explainer + band invite
-    html += '<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">';
-    html += '<button onclick="_calShowSyncExplainer()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;text-decoration:underline">What this means</button>';
-    if (connectedCount < members.length) {
-        html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6">Send setup to band</button>';
-    }
+    html += '<button onclick="_calRenderGooglePanel()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.4;margin-top:2px;padding:0;display:block">Close</button>';
     html += '</div>';
-    html += '</div>';
-    el.innerHTML = html;
+    var el = document.getElementById('calGooglePanel');
+    if (el) el.innerHTML = html;
+};
+
+// ── Band Availability Health (compact) ──────────────────────────────────────
+function _calRenderAvailHealth() {
+    var el = document.getElementById('calAvailHealth');
+    if (!el) return;
+    var blocked = _calCachedBlockedRanges || [];
+    var today = new Date().toISOString().split('T')[0];
+    var twoWeeks = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
+    // Count unique members with conflicts in next 14 days
+    var membersBlocked = {};
+    var totalConflictDays = 0;
+    blocked.forEach(function(b) {
+        if (!b.startDate || b.startDate > twoWeeks || (b.endDate && b.endDate < today)) return;
+        if (b.person) membersBlocked[b.person] = true;
+        totalConflictDays++;
+    });
+    var blockedCount = Object.keys(membersBlocked).length;
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var totalMembers = members.length || 5;
+
+    if (!totalConflictDays) {
+        el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;font-size:0.72em;color:var(--gl-green);margin-bottom:var(--gl-space-xs,4px)">'
+            + '\u2705 No conflicts in the next 2 weeks</div>';
+        return;
+    }
+    var healthColor = blockedCount >= totalMembers - 1 ? 'var(--gl-red,#ef4444)' : blockedCount >= 2 ? 'var(--gl-amber,#f59e0b)' : 'var(--gl-text-secondary)';
+    el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);margin-bottom:var(--gl-space-xs,4px)">'
+        + '<div style="font-size:0.72em;font-weight:600;color:' + healthColor + '">'
+        + blockedCount + ' member' + (blockedCount > 1 ? 's' : '') + ' with conflicts (next 14 days)</div>'
+        + '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-top:2px">'
+        + totalConflictDays + ' blocked range' + (totalConflictDays > 1 ? 's' : '') + ' total</div>'
+        + '</div>';
 }
 
-// ── First-time onboarding card ────────────────────────────────────────────────
-function _calRenderOnboarding() {
-    var el = document.getElementById('calOnboardingCard');
+// ── Weekly Pressure (compact) ───────────────────────────────────────────────
+async function _calRenderWeeklyPressure() {
+    var el = document.getElementById('calWeeklyPressure');
     if (!el) return;
-    var cov = _calGetSyncCoverage();
-    // Full band milestone — show once when all members connected
-    if (cov.isFull && !localStorage.getItem('gl_cal_fullband_shown')) {
-        localStorage.setItem('gl_cal_fullband_shown', '1');
-        el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);margin-bottom:var(--gl-space-sm);text-align:center">'
-            + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-green);margin-bottom:4px">\uD83C\uDFB8 Full band connected</div>'
-            + '<div style="font-size:0.72em;color:var(--gl-text-secondary)">Scheduling now reflects everyone\u2019s real availability.</div>'
+    var today = new Date().toISOString().split('T')[0];
+    var events = [];
+    try { events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []); } catch(e) {}
+    var thirtyOut = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+    var expanded = (typeof expandRecurringEvents === 'function') ? expandRecurringEvents(events, today, thirtyOut) : events;
+    var upcoming = expanded.filter(function(e) { return (e.date || '') >= today && (e.date || '') <= thirtyOut; });
+    var gigs = upcoming.filter(function(e) { return e.type === 'gig'; });
+    var rehearsals = upcoming.filter(function(e) { return e.type === 'rehearsal'; });
+
+    // Last rehearsal
+    var daysSinceRehearsal = null;
+    try {
+        var sessions = (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache) ? _rhSessionsCache : [];
+        if (!sessions.length && typeof loadBandDataFromDrive === 'function') {
+            var raw = await loadBandDataFromDrive('_band', 'rehearsal_sessions');
+            sessions = raw ? toArray(raw).sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); }) : [];
+        }
+        if (sessions.length && sessions[0].date) {
+            daysSinceRehearsal = Math.floor((Date.now() - new Date(sessions[0].date).getTime()) / 86400000);
+        }
+    } catch(e) {}
+
+    var items = [];
+    if (gigs.length) {
+        var nextGig = gigs[0];
+        var gDays = Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+        var gIcon = gDays <= 7 ? '\uD83D\uDEA8' : '\uD83C\uDFA4';
+        var gColor = gDays <= 7 ? 'var(--gl-amber)' : 'var(--gl-text-secondary)';
+        items.push('<div style="color:' + gColor + '">' + gIcon + ' Gig in ' + gDays + ' day' + (gDays !== 1 ? 's' : '') + '</div>');
+    }
+    if (rehearsals.length) {
+        items.push('<div>' + rehearsals.length + ' rehearsal' + (rehearsals.length > 1 ? 's' : '') + ' scheduled</div>');
+    } else if (daysSinceRehearsal !== null && daysSinceRehearsal > 7) {
+        items.push('<div style="color:var(--gl-amber)">\u26A0 ' + daysSinceRehearsal + ' days since last rehearsal</div>');
+    }
+    if (!items.length) { el.innerHTML = ''; return; }
+    el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);font-size:0.68em;color:var(--gl-text-tertiary);display:flex;flex-direction:column;gap:2px;margin-bottom:var(--gl-space-xs,4px)">'
+        + items.join('') + '</div>';
+}
+
+// ── Decision Anchor — lightweight recommendation above calendar ─────────────
+async function _calRenderDecisionAnchor() {
+    var el = document.getElementById('calDecisionAnchor');
+    if (!el) return;
+    if (typeof GLStore === 'undefined' || !GLStore.getRehearsalDateRecommendations) { el.innerHTML = ''; return; }
+    try {
+        await GLStore.ready(['members'], 10000);
+        var _anchorTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 3000); });
+        var recs = await Promise.race([GLStore.getRehearsalDateRecommendations(), _anchorTimeout]);
+        if (!recs || !recs.primary) { el.innerHTML = ''; return; }
+        var p = recs.primary;
+        var pDate = new Date(p.date + 'T12:00:00');
+        var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+        var _safDate = p.date.replace(/'/g, "\\'");
+        // Build a short reason
+        var reason = '';
+        if (p.reasons && p.reasons.length) reason = p.reasons[0];
+        else if (p.availability) reason = p.availability.available + ' of ' + p.availability.total + ' members free';
+        el.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.1)">'
+            + '<div style="flex:1;min-width:0">'
+            + '<div style="font-size:0.72em;font-weight:700;color:var(--gl-green,#22c55e);margin-bottom:2px">Best next rehearsal</div>'
+            + '<div style="font-size:0.95em;font-weight:800;color:var(--text);letter-spacing:-0.01em">' + pLabel + '</div>'
+            + (reason ? '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px">' + (typeof escHtml === 'function' ? escHtml(reason) : reason) + '</div>' : '')
+            + '</div>'
+            + '<button onclick="_calLockAndPlan(\'' + _safDate + '\')" class="cal-action-btn cal-action-primary" style="flex-shrink:0;padding:8px 16px;font-size:0.78em">Schedule</button>'
             + '</div>';
-        setTimeout(function() { if (el) { el.style.transition = 'opacity 0.5s'; el.style.opacity = '0'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = '1'; }, 500); } }, 8000);
-        return;
-    }
-    // Connected state — show impact confirmation briefly after connect
-    if (cov.hasScope && !localStorage.getItem('gl_cal_impact_shown')) {
-        localStorage.setItem('gl_cal_impact_shown', '1');
-        el.innerHTML = '<div style="padding:10px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12);margin-bottom:var(--gl-space-sm)">'
-            + '<div style="font-size:0.78em;font-weight:600;color:var(--gl-green);margin-bottom:2px">\u2713 You\u2019re connected</div>'
-            + '<div style="font-size:0.72em;color:var(--gl-text-secondary)">Your availability is now included when the band schedules.</div>'
-            + '</div>';
-        setTimeout(function() { if (el) { el.style.transition = 'opacity 0.5s'; el.style.opacity = '0'; setTimeout(function() { el.innerHTML = ''; el.style.opacity = '1'; }, 500); } }, 6000);
-        return;
-    }
-    // Already connected + impact shown — nothing to show
-    if (cov.hasScope || localStorage.getItem('gl_cal_onboard_dismissed')) {
-        el.innerHTML = '';
-        return;
-    }
-    el.innerHTML = '<div style="padding:12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:var(--gl-space-sm);position:relative">'
-        + '<div style="font-size:0.85em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Stop guessing when the band is free</div>'
-        + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">'
-        + 'Connect your Google Calendar to automatically show your real availability in GrooveLinx. Conflicts surface instantly and RSVP responses sync back.'
-        + '</div>'
-        + '<div style="display:flex;gap:6px;margin-bottom:6px">'
-        + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:6px 14px;font-size:0.78em">Connect</button>'
-        + '<button onclick="_calShowSyncExplainer()" class="gl-btn-ghost" style="font-size:0.72em">How it works</button>'
-        + '</div>'
-        + '<div style="font-size:0.62em;color:var(--gl-text-tertiary);opacity:0.6">Only your calendar syncs until other members connect theirs.</div>'
-        + '<button onclick="localStorage.setItem(\'gl_cal_onboard_dismissed\',\'1\');document.getElementById(\'calOnboardingCard\').innerHTML=\'\'" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:0.82em;opacity:0.5">\u2715</button>'
-        + '</div>';
+    } catch(e) { el.innerHTML = ''; }
 }
 
 // ── Sync explainer sheet ─────────────────────────────────────────────────────
@@ -1469,16 +1576,87 @@ window._calViewConflicts = function() {
 };
 
 window._calToggleConflictList = function() {
-    var section = document.getElementById('calConflictListSection');
-    if (!section) return;
-    var isHidden = section.style.display === 'none';
-    section.style.display = isHidden ? 'block' : 'none';
+    var panel = document.getElementById('calConflictPanel');
+    if (!panel) return;
+    var isHidden = panel.style.display === 'none';
     if (isHidden) {
-        // Also pulse the grid cells
+        _calRenderConflictPanel();
+        panel.style.display = 'block';
         _calViewConflicts();
-        section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        panel.style.display = 'none';
     }
 };
+
+// ── Full-width conflict panel (below calendar) ──────────────────────────────
+function _calRenderConflictPanel() {
+    var panel = document.getElementById('calConflictPanel');
+    if (!panel) return;
+    var blocked = _calCachedBlockedRanges || [];
+    if (!blocked.length) {
+        panel.innerHTML = '<div style="padding:16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);text-align:center;font-size:0.82em;color:var(--gl-text-tertiary)">No conflicts or blocked dates</div>';
+        return;
+    }
+    // Group by person
+    var groups = {};
+    blocked.forEach(function(b) {
+        var person = b.person || 'Unknown';
+        if (!groups[person]) groups[person] = [];
+        groups[person].push(b);
+    });
+    var statusLabels = { unavailable:'Hard conflict', tentative:'Soft conflict', booked_elsewhere:'Booked elsewhere', vacation:'Vacation', travel:'Travel', personal_block:'Personal', hold:'Hold' };
+    var html = '<div style="padding:16px 20px;border-radius:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06)">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--gl-space-md,16px)">';
+    html += '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text)">\uD83D\uDEAB Conflicts & Blocked Dates <span style="font-weight:400;color:var(--gl-text-tertiary)">(' + blocked.length + ')</span></div>';
+    html += '<button onclick="document.getElementById(\'calConflictPanel\').style.display=\'none\'" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:0.85em;opacity:0.5">\u2715 Close</button>';
+    html += '</div>';
+
+    Object.keys(groups).forEach(function(person) {
+        var items = groups[person];
+        html += '<div style="margin-bottom:var(--gl-space-md,16px)">';
+        html += '<div style="font-size:0.75em;font-weight:700;color:var(--gl-text-secondary);margin-bottom:6px">' + (typeof escHtml === 'function' ? escHtml(person) : person) + ' <span style="font-weight:400;color:var(--gl-text-tertiary)">(' + items.length + ')</span></div>';
+        items.forEach(function(b) {
+            var blockId = b._block ? b._block.blockId : null;
+            var isSoft = b.status === 'tentative' || b.status === 'hold';
+            var statusLabel = statusLabels[b.status] || 'Unavailable';
+            var statusColor = isSoft ? 'rgba(251,191,36,0.15)' : 'rgba(239,68,68,0.1)';
+            var statusTextColor = isSoft ? '#fbbf24' : '#f87171';
+            var startFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.startDate, true) : b.startDate;
+            var endFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.endDate, true) : b.endDate;
+            var _origBlock = b._block || null;
+            var _isSynced = _origBlock && _origBlock.syncedToGoogle && _origBlock.googleEventId;
+            var _isMyConflict = (typeof FeedActionState !== 'undefined' && FeedActionState.isMe) ? FeedActionState.isMe(b.person) : false;
+            var _hasGoogleScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
+            var deleteAction = '_calDeleteScheduleBlock(\'' + (blockId || '') + '\')';
+            var editAction = '_calEditScheduleBlock(\'' + (blockId || '') + '\')';
+            // Action buttons
+            var actionsHtml = '';
+            if (_isMyConflict && _hasGoogleScope && blockId && !_isSynced) {
+                actionsHtml += '<button onclick="_calSyncExistingConflict(\'' + (blockId || '').replace(/'/g, "\\'") + '\')" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;white-space:nowrap">\uD83D\uDCC5 Push to Google</button>';
+            }
+            actionsHtml += '<button onclick="' + editAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer">\u270F\uFE0F</button>';
+            actionsHtml += '<button onclick="' + deleteAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:none;background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer">\u2715</button>';
+
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:4px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">';
+            // Date range
+            html += '<div style="flex:1;min-width:0">';
+            html += '<div style="font-size:0.78em;color:var(--gl-text)">' + startFmt + ' \u2192 ' + endFmt + '</div>';
+            html += '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-top:1px">' + (b.reason || '') + '</div>';
+            html += '</div>';
+            // Status chip
+            html += '<span style="font-size:0.62em;padding:2px 6px;border-radius:4px;background:' + statusColor + ';color:' + statusTextColor + ';white-space:nowrap;flex-shrink:0">' + statusLabel + '</span>';
+            // Synced badge
+            if (_isSynced) html += '<span style="font-size:0.65em;color:var(--gl-green);flex-shrink:0" title="Synced to Google Calendar">\u2705</span>';
+            // Actions
+            html += '<div style="display:flex;gap:4px;flex-shrink:0">' + actionsHtml + '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+    });
+    html += '</div>';
+    panel.innerHTML = html;
+}
 
 async function _calRenderNextUp() {
     var el = document.getElementById('calNextUpSection');
@@ -1680,67 +1858,69 @@ function renderCalendarInner() {
 
     // Render shell immediately, then load events async and paint dots
     el.innerHTML =
-    // Monthly Calendar — clean, borderless
-    '<div style="margin-bottom:16px;padding:12px 0">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-            '<button onclick="calNavMonth(-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2190</button>' +
-            '<span id="calMonthLabel" style="font-size:0.95em;font-weight:700;color:var(--text);letter-spacing:-0.01em;transition:opacity 0.12s ease">' + mNames[month] + ' ' + year + '</span>' +
-            '<button onclick="calNavMonth(1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">\u2192</button>' +
+    // Decision anchor — lightweight recommendation
+    '<div id="calDecisionAnchor" style="margin-bottom:var(--gl-space-md,16px)"></div>' +
+    // Monthly Calendar — clean, borderless, dominant
+    '<div style="margin-bottom:var(--gl-space-md,16px);padding:12px 0">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--gl-space-sm,8px)">' +
+            '<button onclick="calNavMonth(-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1em;padding:6px 10px">\u2190</button>' +
+            '<span id="calMonthLabel" style="font-size:1.1em;font-weight:800;color:var(--text);letter-spacing:-0.02em;transition:opacity 0.12s ease">' + mNames[month] + ' ' + year + '</span>' +
+            '<button onclick="calNavMonth(1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1em;padding:6px 10px">\u2192</button>' +
         '</div>' +
         '<div id="calGrid" style="transition:opacity 0.12s ease;will-change:opacity"></div>' +
     '</div>' +
     // Contextual actions — primary inline, secondary tucked away
-    '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--gl-space-md,16px)">' +
         '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()">Schedule Rehearsal</button>' +
-        '<span style="margin-left:auto;display:flex;gap:4px">' +
-            '<button onclick="calBlockDates()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65em;padding:4px 8px;opacity:0.6" title="Block a date">\uD83D\uDEAB Block</button>' +
-            '<button onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.65em;padding:4px 8px;opacity:0.6" title="Subscribe to calendar feed">\uD83D\uDCC5 Subscribe</button>' +
+        '<span style="margin-left:auto;display:flex;gap:6px">' +
+            '<button onclick="calBlockDates()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px 8px;opacity:0.6" title="Block a date">\uD83D\uDEAB Block</button>' +
+            '<button onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px 8px;opacity:0.6" title="Subscribe to calendar feed">\uD83D\uDCC5 Subscribe</button>' +
         '</span>' +
     '</div>' +
     '<div id="calEventFormArea"></div>';
 
-    // ── Context rail: minimal, decision-focused (max 3 sections) ──
+    // ── Context rail: Google panel (primary) + availability health + pressure ──
     var _ctxRail = document.getElementById('calContextRail');
     if (_ctxRail) {
         _ctxRail.innerHTML =
-        // 0. Onboarding card (shown when not connected)
-        '<div id="calOnboardingCard"></div>' +
-        // 1. Selected date context (populated by calDayClick)
+        // 1. Google Calendar connection panel (onboarding OR steady-state — rendered dynamically)
+        '<div id="calGooglePanel"></div>' +
+        // 2. Selected date context (populated by calDayClick)
         '<div id="calSelectedDayCard"></div>' +
-        // 2. Next event (single, compact — populated async)
-        '<div id="calNextEventRail" style="font-size:0.78em;color:var(--gl-text-tertiary)"></div>' +
-        // 3. Sync coverage
-        '<div id="calSyncCoverage"></div>' +
-        // 4. Navigation links
+        // 3. Band availability health (compact)
+        '<div id="calAvailHealth"></div>' +
+        // 4. Weekly pressure (gigs, missing rehearsals)
+        '<div id="calWeeklyPressure"></div>' +
+        // 5. Quick actions
         '<div style="padding-top:var(--gl-space-sm);display:flex;flex-direction:column;gap:4px">' +
             '<button onclick="_calShowAvailabilityModal()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">Check availability</button>' +
             '<button onclick="_calToggleConflictList()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
         '</div>' +
-        // Conflict list (toggled by View conflicts button)
-        '<div id="calConflictListSection" style="display:none;margin-top:8px">' +
-            '<div id="calBlockedHeader" style="font-size:0.7em;font-weight:700;color:var(--gl-text-tertiary);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:6px"></div>' +
-            '<div id="blockedDates"></div>' +
-        '</div>' +
-        // Hidden containers for data that still needs to load (used by loadCalendarEvents)
+        // Hidden containers for data loading (used by loadCalendarEvents)
+        '<div id="calOnboardingCard" style="display:none"></div>' +
+        '<div id="calSyncCoverage" style="display:none"></div>' +
+        '<div id="calNextEventRail" style="display:none"></div>' +
         '<div id="calendarEvents" style="display:none"></div>' +
         '<div id="calAvailabilityMatrix" style="display:none"></div>' +
         '<div id="calConflictResolver" style="display:none"></div>';
 
-        // Populate next event + sync coverage + onboarding + attendee statuses
-        _calPopulateNextEventRail();
+        // Populate Google panel + availability + pressure
+        _calPopulateNextEventRail(); // still loads data for internal use
         _calLoadConnections().then(function() {
-            _calRenderSyncCoverage();
-            // Delay onboarding + token validation until after sign-in completes
-            // (accessToken is set asynchronously by auto-reconnect)
+            _calRenderGooglePanel();
+            _calRenderAvailHealth();
+            _calRenderWeeklyPressure();
             setTimeout(function() {
-                _calRenderOnboarding();
                 _calValidateMyToken();
             }, 6000);
         });
         // Live connection updates — re-render when another member connects/disconnects
         _calWatchConnections();
-        setTimeout(_calSyncAttendeeStatuses, 2000); // delay to not block initial render
+        setTimeout(_calSyncAttendeeStatuses, 2000);
     }
+
+    // Populate decision anchor above calendar
+    _calRenderDecisionAnchor();
 
     // Load events, then build calendar grid + availability
     // Fallback: if loadCalendarEvents hasn't completed after all dependencies
@@ -1767,7 +1947,7 @@ function renderCalendarInner() {
         const blockedRanges = result ? (result.blockedRanges || []) : [];
         const grid = document.getElementById('calGrid');
         if (!grid) return;
-        let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">';
+        let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;">';
         dNames.forEach((d,i) => {
             const w = i===0||i===6;
             g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--gl-text-tertiary)'};text-align:center;padding:6px 0">${d}</div>`;
@@ -2137,44 +2317,14 @@ async function loadCalendarEvents() {
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
     console.log('[Calendar] Total blocked ranges:', blocked.length, '| calendarEvents el:', !!el);
-    // Update header count
-    var bHeader = document.getElementById('calBlockedHeader');
-    if (bHeader) bHeader.textContent = '🚫 Conflicts & Blocked Dates' + (blocked.length > 0 ? ' (' + blocked.length + ')' : '');
-    const bEl = document.getElementById('blockedDates');
-    if (bEl && blocked.length > 0) {
-        var statusLabels = { unavailable:'Unavailable', tentative:'Tentative', booked_elsewhere:'Booked', vacation:'Vacation', travel:'Travel', personal_block:'Personal', hold:'Hold' };
-        bEl.innerHTML = blocked.map(function(b, i) {
-            var blockId = b._block ? b._block.blockId : null;
-            var statusChip = b.status && b.status !== 'unavailable'
-                ? '<span style="font-size:0.72em;padding:1px 5px;border-radius:3px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.2)">' + (statusLabels[b.status] || b.status) + '</span> '
-                : '';
-            var startFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.startDate, true) : b.startDate;
-            var endFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.endDate, true) : b.endDate;
-            // Always use schedule block functions — they handle both legacy and new-model
-            var deleteAction = '_calDeleteScheduleBlock(\'' + (blockId || '') + '\')';
-            var editAction = '_calEditScheduleBlock(\'' + (blockId || '') + '\')';
-            // Google sync button — only for own conflicts, only if connected, only if not already synced
-            var _syncBtn = '';
-            var _syncedBadge = '';
-            var _origBlock = b._block || null;
-            var _isSynced = _origBlock && _origBlock.syncedToGoogle && _origBlock.googleEventId;
-            var _isMyConflict = (typeof FeedActionState !== 'undefined' && FeedActionState.isMe) ? FeedActionState.isMe(b.person) : false;
-            var _hasGoogleScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
-            if (_isMyConflict && _hasGoogleScope && blockId) {
-                if (_isSynced) {
-                    _syncedBadge = '<span style="font-size:0.65em;color:#22c55e;margin-right:4px" title="Synced to Google Calendar">\u2705</span>';
-                } else {
-                    _syncBtn = '<button onclick="_calSyncExistingConflict(\'' + (blockId || '').replace(/'/g, "\\'") + '\')" style="background:rgba(66,133,244,0.1);color:#4285f4;border:1px solid rgba(66,133,244,0.2);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:10px;flex-shrink:0;margin-right:4px" title="Add to Google Calendar">\uD83D\uDCC5</button>';
-                }
-            }
-            return '<div class="list-item" style="padding:6px 12px;font-size:0.85em">'
-                + '<span style="color:var(--red)">' + startFmt + ' → ' + endFmt + '</span>'
-                + '<span style="flex:1;color:var(--text-muted);margin-left:8px">' + statusChip + (b.person || '') + (b.reason ? ': ' + b.reason : '') + '</span>'
-                + _syncedBadge + _syncBtn
-                + '<button onclick="' + editAction + '" style="background:rgba(102,126,234,0.15);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;flex-shrink:0;margin-right:4px;">✏️</button>'
-                + '<button onclick="' + deleteAction + '" style="background:#ef4444;color:white;border:none;border-radius:4px;padding:2px 7px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">✕</button>'
-                + '</div>';
-        }).join('');
+    // Cache blocked ranges for conflict panel (rendered on toggle)
+    _calCachedBlockedRanges = blocked;
+    // Update availability health in right rail now that we have conflict data
+    _calRenderAvailHealth();
+    // Re-render conflict panel if it's currently visible
+    var _conflictPanel = document.getElementById('calConflictPanel');
+    if (_conflictPanel && _conflictPanel.style.display !== 'none') {
+        _calRenderConflictPanel();
     }
     return { dateMap, blockedRanges: blocked };
 }

@@ -154,16 +154,18 @@ button:active{transform:scale(0.97)}
 /* ── 6. LAYOUT ────────────────────────────────────────────────────────────── */
 .gl-page{max-width:1060px;margin:0 auto}
 .gl-page-split{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start}
+/* Schedule page: give calendar more room */
+.cal-page-split{grid-template-columns:1fr 260px;gap:28px}
 .gl-page-primary{min-width:0}
 /* Glass: right rail + overlays ONLY */
 .gl-page-context{position:sticky;top:16px;min-width:0;background:rgba(15,23,42,0.6);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-radius:12px;padding:12px;border:1px solid var(--gl-border-subtle)}
 @supports not (backdrop-filter:blur(1px)){.gl-page-context{background:var(--bg-card)}}
-@media(max-width:768px){.gl-page-split{grid-template-columns:1fr;gap:12px}.gl-page-context{position:static;backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--gl-surface-raised)}}
+@media(max-width:768px){.gl-page-split{grid-template-columns:1fr;gap:12px}.gl-page-context{position:static;backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--gl-surface-raised)}.cal-page-split{grid-template-columns:1fr;gap:12px}}
 /* Context cards */
 .gl-context-card{padding:12px 14px;border-radius:10px;background:var(--gl-surface);margin-bottom:10px}
 
 /* ===== CALENDAR DAY CELLS ===== */
-.gl-day{position:relative;min-height:118px;border-radius:14px;padding:10px;cursor:pointer;transition:box-shadow var(--gl-transition),transform var(--gl-transition),background var(--gl-transition),border-color var(--gl-transition);border:1px solid transparent;display:flex;flex-direction:column}
+.gl-day{position:relative;min-height:132px;border-radius:14px;padding:12px;cursor:pointer;transition:box-shadow var(--gl-transition),transform var(--gl-transition),background var(--gl-transition),border-color var(--gl-transition);border:1px solid transparent;display:flex;flex-direction:column}
 .gl-day::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(255,255,255,0.06),transparent 40%);border-radius:inherit;pointer-events:none}
 .gl-day:hover{box-shadow:0 10px 28px rgba(0,0,0,0.25);transform:translateY(-2px)}
 /* State fills — priority: gig > rehearsal > blocked > best > default */
