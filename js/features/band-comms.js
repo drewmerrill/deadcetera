@@ -365,8 +365,6 @@ async function _bcLoadBandRoom() {
         idHtml += '<div style="padding:10px 12px;background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:8px;margin-bottom:6px">';
         idHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
         var _titleText = _bcEsc(p.title || 'Untitled');
-        var _isLong = (p.title || '').length > 100;
-        var _textId = 'bcIdeaText_' + (p._key || '').replace(/[^a-zA-Z0-9]/g, '_');
         // Mention chips inline
         var _mentionChips = '';
         if (p.mentions && p.mentions.length) {
@@ -374,11 +372,7 @@ async function _bcLoadBandRoom() {
                 return '<span style="font-size:0.68em;padding:1px 6px;border-radius:10px;background:rgba(99,102,241,0.12);color:#a5b4fc;font-weight:600">@' + _bcEsc(m.displayName || m.memberKey || '') + '</span>';
             }).join('') + '</div>';
         }
-        if (_isLong) {
-            idHtml += '<div style="flex:1;min-width:0"><div id="' + _textId + '" style="font-weight:600;font-size:0.85em;color:var(--text);line-height:1.5;max-height:1.5em;overflow:hidden;cursor:pointer;white-space:pre-wrap;word-break:break-word" onclick="var el=this;if(el.style.maxHeight===\'1.5em\'){el.style.maxHeight=\'none\';el.style.whiteSpace=\'pre-wrap\'}else{el.style.maxHeight=\'1.5em\'}">' + _titleText + '</div>' + _mentionChips + '</div>';
-        } else {
-            idHtml += '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.85em;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word">' + _titleText + '</div>' + _mentionChips + '</div>';
-        }
+        idHtml += '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.85em;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word">' + _titleText + '</div>' + _mentionChips + '</div>';
         idHtml += linkHTML;
         idHtml += '<span class="gl-chip">Idea</span>';
         idHtml += '</div>';
