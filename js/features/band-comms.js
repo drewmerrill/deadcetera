@@ -626,17 +626,20 @@ window._bcPostIdea = async function(skipTagPrompt) {
   var mentions = window._bcComposeMentions || [];
   if (!skipTagPrompt && !mentions.length && titleEl.value.trim().length > 30) {
     var tagPrompt = document.getElementById('bcTagPrompt');
-    if (!tagPrompt) {
+    if (tagPrompt) {
+      // Prompt already showing — user clicked Post again, treat as "post without tag"
+      tagPrompt.remove();
+    } else {
       tagPrompt = document.createElement('div');
       tagPrompt.id = 'bcTagPrompt';
-      tagPrompt.style.cssText = 'padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:6px;font-size:0.75em;display:flex;align-items:center;gap:8px';
+      tagPrompt.style.cssText = 'padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:6px;font-size:0.75em;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
       tagPrompt.innerHTML = '<span style="color:var(--gl-amber)">Tag the band so they see this?</span>'
         + '<button onclick="_bcQuickTagAll()" style="font-size:0.9em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-weight:600">@everyone</button>'
         + '<button onclick="_bcPostIdea(true)" style="font-size:0.9em;padding:2px 8px;border-radius:4px;border:1px solid var(--gl-border);background:none;color:var(--gl-text-tertiary);cursor:pointer">Post without tag</button>';
       var qc = document.getElementById('bcQuickCreate');
       if (qc) qc.insertBefore(tagPrompt, qc.firstChild);
+      return;
     }
-    return;
   }
   // Clear tag prompt if showing
   var existingPrompt = document.getElementById('bcTagPrompt');
