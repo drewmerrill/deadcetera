@@ -303,8 +303,15 @@ async function _bcLoadBandRoom() {
   // ── Quick Create — always visible, minimal ──
   var qcEl = document.getElementById('bcQuickCreate');
   if (qcEl) {
-    qcEl.innerHTML = '<div style="display:flex;gap:6px;margin-bottom:4px;align-items:flex-start">'
-      + '<textarea id="bcIdeaTitle" placeholder="Post an idea or song\u2026" rows="1" style="flex:1;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:7px 10px;border-radius:8px;font-size:0.82em;font-family:inherit;box-sizing:border-box;resize:vertical;min-height:36px;line-height:1.4" oninput="this.style.height=\'auto\';this.style.height=this.scrollHeight+\'px\'"></textarea>'
+    var _autoGrow = 'var t=this;t.style.height=\\"auto\\";t.style.height=t.scrollHeight+\\"px\\"';
+    qcEl.innerHTML = '<div style="margin-bottom:4px">'
+      + '<textarea id="bcIdeaTitle" placeholder="Post an idea or song\u2026" rows="1" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:7px 10px;border-radius:8px;font-size:0.82em;font-family:inherit;box-sizing:border-box;resize:vertical;min-height:36px;line-height:1.4" oninput="' + _autoGrow + '" onpaste="setTimeout(function(){var t=document.getElementById(\'bcIdeaTitle\');if(t){t.style.height=\'auto\';t.style.height=t.scrollHeight+\'px\'}},0)"></textarea>'
+      + '</div>'
+      // Tag + Post row
+      + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap">'
+      + '<div id="bcComposeMentions" style="display:flex;flex-wrap:wrap;gap:3px"></div>'
+      + '<input id="bcComposeMentionInput" type="text" placeholder="@tag members\u2026" style="flex:1;min-width:100px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);color:var(--text-muted);padding:5px 8px;border-radius:6px;font-size:0.72em;font-family:inherit;box-sizing:border-box">'
+      + '<div id="bcComposeMentionDropdown" style="position:relative"></div>'
       + '<button onclick="_bcPostIdea()" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#86efac;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">Post</button>'
       + '</div>'
       + '<div style="display:flex;gap:6px;align-items:center">'
@@ -316,6 +323,13 @@ async function _bcLoadBandRoom() {
       + '<input id="bcPollOpts" placeholder="Options (comma-separated)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:5px 8px;border-radius:5px;font-size:0.78em;font-family:inherit;margin-bottom:4px;box-sizing:border-box">'
       + '<button onclick="_bcCreatePoll()" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);color:#86efac;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:0.72em;font-weight:700">Create Poll</button>'
       + '</div>';
+    // Wire up compose mention autocomplete
+    window._bcComposeMentions = [];
+    var _cmInput = document.getElementById('bcComposeMentionInput');
+    if (_cmInput) {
+      _cmInput.addEventListener('input', function() { _bcComposeMentionAutocomplete(_cmInput.value); });
+      _cmInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') e.preventDefault(); });
+    }
   }
 
   // ── Needs Votes — flows naturally at top ──
@@ -364,7 +378,7 @@ async function _bcLoadBandRoom() {
         }
         idHtml += '<div style="padding:10px 12px;background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:8px;margin-bottom:6px">';
         idHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
-        var _titleText = _bcEsc(p.title || 'Untitled');
+        var _titleHtml = _bcFormatText(p.title || 'Untitled');
         // Mention chips inline
         var _mentionChips = '';
         if (p.mentions && p.mentions.length) {
@@ -372,7 +386,7 @@ async function _bcLoadBandRoom() {
                 return '<span style="font-size:0.68em;padding:1px 6px;border-radius:10px;background:rgba(99,102,241,0.12);color:#a5b4fc;font-weight:600">@' + _bcEsc(m.displayName || m.memberKey || '') + '</span>';
             }).join('') + '</div>';
         }
-        idHtml += '<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.85em;color:var(--text);line-height:1.5;white-space:pre-wrap;word-break:break-word">' + _titleText + '</div>' + _mentionChips + '</div>';
+        idHtml += '<div style="flex:1;min-width:0"><div style="font-weight:400;font-size:0.85em;color:var(--text-muted);line-height:1.6;white-space:pre-wrap;word-break:break-word">' + _titleHtml + '</div>' + _mentionChips + '</div>';
         idHtml += linkHTML;
         idHtml += '<span class="gl-chip">Idea</span>';
         idHtml += '</div>';
@@ -603,10 +617,30 @@ if (typeof _origSubmitPitch === 'function') {
     };
 }
 
-window._bcPostIdea = async function() {
+window._bcPostIdea = async function(skipTagPrompt) {
   var titleEl = document.getElementById('bcIdeaTitle');
   var linkEl = document.getElementById('bcIdeaLink');
   if (!titleEl || !titleEl.value.trim()) { if (typeof showToast === 'function') showToast('Enter a song title or idea'); return; }
+
+  // "Forgot to tag?" prompt — if no mentions and text is substantial
+  var mentions = window._bcComposeMentions || [];
+  if (!skipTagPrompt && !mentions.length && titleEl.value.trim().length > 30) {
+    var tagPrompt = document.getElementById('bcTagPrompt');
+    if (!tagPrompt) {
+      tagPrompt = document.createElement('div');
+      tagPrompt.id = 'bcTagPrompt';
+      tagPrompt.style.cssText = 'padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:6px;font-size:0.75em;display:flex;align-items:center;gap:8px';
+      tagPrompt.innerHTML = '<span style="color:var(--gl-amber)">Tag the band so they see this?</span>'
+        + '<button onclick="_bcQuickTagAll()" style="font-size:0.9em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-weight:600">@everyone</button>'
+        + '<button onclick="_bcPostIdea(true)" style="font-size:0.9em;padding:2px 8px;border-radius:4px;border:1px solid var(--gl-border);background:none;color:var(--gl-text-tertiary);cursor:pointer">Post without tag</button>';
+      var qc = document.getElementById('bcQuickCreate');
+      if (qc) qc.insertBefore(tagPrompt, qc.firstChild);
+    }
+    return;
+  }
+  // Clear tag prompt if showing
+  var existingPrompt = document.getElementById('bcTagPrompt');
+  if (existingPrompt) existingPrompt.remove();
 
   try {
     if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
@@ -617,14 +651,28 @@ window._bcPostIdea = async function() {
         var urlMatch = titleText.match(/(https?:\/\/[^\s]+)/);
         if (urlMatch) { autoLink = urlMatch[1]; titleText = titleText.replace(urlMatch[1], '').trim(); }
       }
-      await firebaseDB.ref(bandPath('ideas/posts')).push({
+      var postData = {
         title: titleText,
         link: autoLink,
         author: _bcGetName(),
         ts: new Date().toISOString()
-      });
+      };
+      if (mentions.length) {
+        postData.mentions = mentions;
+        // Emit mention notifications
+        var authorName = _bcGetName();
+        mentions.forEach(function(m) {
+          if (typeof GLStore !== 'undefined' && GLStore.emit) {
+            GLStore.emit('mentionNotification', { type: 'idea', author: authorName, mentionKey: m.memberKey, mentionName: m.displayName });
+          }
+        });
+      }
+      await firebaseDB.ref(bandPath('ideas/posts')).push(postData);
       titleEl.value = '';
+      titleEl.style.height = '36px';
       if (linkEl) linkEl.value = '';
+      window._bcComposeMentions = [];
+      _bcRenderComposeMentions();
       _bcLoadBandRoom();
       if (typeof showToast === 'function') showToast('💡 Idea posted!');
     }
@@ -667,6 +715,25 @@ function _bcTimeAgo(ts) {
 
 function _bcEsc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Markdown-lite: bold, italic, bullets, line breaks
+function _bcFormatText(str) {
+  var s = _bcEsc(str);
+  // Bold: **text** or __text__
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--text)">$1</strong>');
+  s = s.replace(/__(.+?)__/g, '<strong style="color:var(--text)">$1</strong>');
+  // Italic: *text* or _text_ (but not inside **)
+  s = s.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+  // Bullet lines: lines starting with - or * or •
+  s = s.replace(/^[\-\*\u2022]\s+/gm, '\u2022 ');
+  // Numbered lists: lines starting with 1. 2. etc
+  s = s.replace(/^(\d+)\.\s+/gm, '<span style="color:var(--accent-light);font-weight:600">$1.</span> ');
+  // Headers: lines starting with # (strip the # and bold it)
+  s = s.replace(/^#{1,3}\s+(.+)$/gm, '<strong style="color:var(--text);font-size:1.05em">$1</strong>');
+  // Horizontal rules: --- or ***
+  s = s.replace(/^[\-\*]{3,}$/gm, '<hr style="border:none;border-top:1px solid var(--gl-border);margin:6px 0">');
+  return s;
 }
 
 // ── Event Comment Threads (Phase 2) ──────────────────────────────────────────
@@ -956,6 +1023,70 @@ window._bcAddEditMention = function(ideaKey, memberKey, displayName) {
   if (input) input.value = '';
   var dropdown = document.getElementById('bcEditMentionDropdown_' + ideaKey);
   if (dropdown) dropdown.style.display = 'none';
+};
+
+// ── Compose mention autocomplete (for new posts) ────────────────────────────
+function _bcRenderComposeMentions() {
+  var el = document.getElementById('bcComposeMentions');
+  if (!el) return;
+  var mentions = window._bcComposeMentions || [];
+  if (!mentions.length) { el.innerHTML = ''; return; }
+  el.innerHTML = mentions.map(function(m, i) {
+    return '<span style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:12px;background:rgba(99,102,241,0.15);color:#a5b4fc;font-size:0.72em;font-weight:600">'
+      + '@' + (m.displayName || m.memberKey)
+      + '<button onclick="window._bcComposeMentions.splice(' + i + ',1);_bcRenderComposeMentions()" style="background:none;border:none;color:#a5b4fc;cursor:pointer;font-size:1.1em;padding:0;margin-left:2px;line-height:1">\u00D7</button>'
+      + '</span>';
+  }).join('');
+}
+
+function _bcComposeMentionAutocomplete(query) {
+  var dropdown = document.getElementById('bcComposeMentionDropdown');
+  if (!dropdown) return;
+  var q = query.replace(/^@/, '').toLowerCase().trim();
+  if (!q) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
+  var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+  var matches = [];
+  // Group targets
+  var groups = [
+    { key: '_all', name: 'everyone' },
+    { key: '_band', name: 'the whole band' }
+  ];
+  groups.forEach(function(g) {
+    if (g.name.indexOf(q) !== -1 || 'all'.indexOf(q) !== -1 || 'band'.indexOf(q) !== -1 || 'everyone'.indexOf(q) !== -1) {
+      matches.push(g);
+    }
+  });
+  Object.keys(bm).forEach(function(k) {
+    var name = bm[k].name || k;
+    if (name.toLowerCase().indexOf(q) !== -1 || k.toLowerCase().indexOf(q) !== -1) {
+      matches.push({ key: k, name: name });
+    }
+  });
+  if (!matches.length) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; return; }
+  dropdown.style.display = 'block';
+  dropdown.innerHTML = '<div style="position:absolute;left:0;right:0;bottom:100%;background:var(--bg-card,#1e293b);border:1px solid var(--gl-border);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,0.3);padding:2px;z-index:30;max-height:180px;overflow-y:auto">'
+    + matches.map(function(m) {
+      return '<button onclick="_bcAddComposeMention(\'' + m.key.replace(/'/g, "\\'") + '\',\'' + m.name.replace(/'/g, "\\'") + '\')" style="display:block;width:100%;text-align:left;padding:5px 8px;font-size:0.75em;border:none;background:none;color:var(--gl-text-secondary);cursor:pointer;border-radius:4px" onmouseover="this.style.background=\'var(--gl-hover)\'" onmouseout="this.style.background=\'none\'">@' + m.name + '</button>';
+    }).join('') + '</div>';
+}
+
+window._bcAddComposeMention = function(memberKey, displayName) {
+  if (!window._bcComposeMentions) window._bcComposeMentions = [];
+  if (window._bcComposeMentions.some(function(m) { return m.memberKey === memberKey; })) return;
+  window._bcComposeMentions.push({ memberKey: memberKey, displayName: displayName });
+  _bcRenderComposeMentions();
+  var input = document.getElementById('bcComposeMentionInput');
+  if (input) input.value = '';
+  var dropdown = document.getElementById('bcComposeMentionDropdown');
+  if (dropdown) { dropdown.style.display = 'none'; dropdown.innerHTML = ''; }
+};
+
+window._bcQuickTagAll = function() {
+  window._bcComposeMentions = [{ memberKey: '_all', displayName: 'everyone' }];
+  _bcRenderComposeMentions();
+  var prompt = document.getElementById('bcTagPrompt');
+  if (prompt) prompt.remove();
+  _bcPostIdea(true);
 };
 
 window._bcVotePoll = async function(pollKey, optionIdx) {
