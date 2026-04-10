@@ -297,8 +297,8 @@ async function _bcLoadBandRoom() {
 
   var needsVotesCount = unvotedPolls.length + unvotedPitches.length;
   var decisionsCount = completedPolls.length + decidedPitches.length + convertedIdeas.length;
-  var fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
-  var recentDecisions = completedPolls.filter(function(p) { return (p.ts || '') >= fourteenDaysAgo; });
+  var thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+  var recentDecisions = completedPolls.filter(function(p) { return (p.ts || '') >= thirtyDaysAgo; });
 
   // ── Quick Create — always visible, minimal ──
   var qcEl = document.getElementById('bcQuickCreate');

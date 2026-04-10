@@ -440,6 +440,18 @@ window.FeedActionState = (function() {
 
     // ── Inline Vote ─────────────────────────────────────────────────────────
 
+    // Build all possible vote key variants for the current user
+    function _myVoteKeyVariants() {
+        var variants = {};
+        var name = getMyDisplayName();
+        if (name) variants[name] = true;
+        var email = getMyEmail();
+        if (email) { variants[email] = true; variants[email.split('@')[0]] = true; }
+        var key = getMyMemberKey();
+        if (key) variants[key] = true;
+        return variants;
+    }
+
     async function voteOnPoll(pollKey, optionIdx) {
         var voteKey = getMyVoteKey();
         if (!voteKey) return { ok: false, reason: 'no identity' };
@@ -449,6 +461,19 @@ window.FeedActionState = (function() {
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (!db || typeof bandPath !== 'function') return { ok: false, reason: 'no database' };
         try {
+            // Remove any stale vote keys for this user (e.g. email prefix from legacy path)
+            var snap = await db.ref(bandPath('polls/' + pollKey + '/votes')).once('value');
+            var existing = snap.val() || {};
+            var variants = _myVoteKeyVariants();
+            var staleUpdates = {};
+            Object.keys(existing).forEach(function(k) {
+                if (k !== voteKey && variants[k]) {
+                    staleUpdates[bandPath('polls/' + pollKey + '/votes/' + k)] = null;
+                }
+            });
+            if (Object.keys(staleUpdates).length) {
+                await db.ref().update(staleUpdates);
+            }
             await db.ref(bandPath('polls/' + pollKey + '/votes/' + voteKey)).set(optionIdx);
             return { ok: true, voteKey: voteKey, optionIdx: optionIdx };
         } catch(e) {
@@ -463,10 +488,23 @@ window.FeedActionState = (function() {
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (!db || typeof bandPath !== 'function') return { error: 'no database' };
         var members = (typeof bandMembers !== 'undefined') ? bandMembers : {};
-        // Build set of valid vote keys (display names)
+        // Build set of valid vote keys (display names, member keys, email prefixes)
         var validKeys = {};
+        // Map each variant back to the canonical display name
+        var canonicalFor = {};
         Object.keys(members).forEach(function(k) {
-            if (members[k].name) validKeys[members[k].name] = true;
+            var name = members[k].name || k;
+            validKeys[name] = true;
+            validKeys[k] = true;
+            canonicalFor[name] = name;
+            canonicalFor[k] = name;
+            if (members[k].email) {
+                var prefix = members[k].email.split('@')[0];
+                validKeys[prefix] = true;
+                validKeys[members[k].email] = true;
+                canonicalFor[prefix] = name;
+                canonicalFor[members[k].email] = name;
+            }
         });
         var snap = await db.ref(bandPath('polls')).once('value');
         var allPolls = snap.val();
@@ -478,24 +516,45 @@ window.FeedActionState = (function() {
             var pollId = entry[0], poll = entry[1];
             if (!poll.votes) return;
             scanned++;
+            // Track which canonical member has already been seen (keep display-name key, remove variants)
+            var seenCanonical = {};
+            // First pass: identify display-name keys (preferred)
             Object.keys(poll.votes).forEach(function(vk) {
-                if (!validKeys[vk]) {
-                    details.push({ pollId: pollId, question: poll.question || poll.title || '', badKey: vk, value: poll.votes[vk] });
-                    updates['polls/' + pollId + '/votes/' + vk] = null; // delete
+                var cn = canonicalFor[vk];
+                if (cn && cn === vk) seenCanonical[cn] = true;
+            });
+            // Second pass: remove invalid keys and duplicate variants
+            Object.keys(poll.votes).forEach(function(vk) {
+                var cn = canonicalFor[vk];
+                if (!cn) {
+                    // Not a recognized member at all
+                    details.push({ pollId: pollId, question: poll.question || poll.title || '', badKey: vk, value: poll.votes[vk], reason: 'unknown' });
+                    updates['polls/' + pollId + '/votes/' + vk] = null;
+                    cleaned++;
+                } else if (cn !== vk && seenCanonical[cn]) {
+                    // Duplicate — canonical key already exists, remove this variant
+                    details.push({ pollId: pollId, question: poll.question || poll.title || '', badKey: vk, value: poll.votes[vk], reason: 'duplicate of ' + cn });
+                    updates['polls/' + pollId + '/votes/' + vk] = null;
+                    cleaned++;
+                } else if (cn !== vk) {
+                    // Variant key but no canonical key exists — migrate to canonical
+                    details.push({ pollId: pollId, question: poll.question || poll.title || '', badKey: vk, value: poll.votes[vk], reason: 'migrate to ' + cn });
+                    updates['polls/' + pollId + '/votes/' + vk] = null;
+                    updates['polls/' + pollId + '/votes/' + cn] = poll.votes[vk];
+                    seenCanonical[cn] = true;
                     cleaned++;
                 }
             });
         });
 
-        console.log('[VoteAudit] Scanned:', scanned, 'polls. Found', cleaned, 'invalid vote keys.');
+        console.log('[VoteAudit] Scanned:', scanned, 'polls. Found', cleaned, 'invalid/duplicate vote keys.');
         if (details.length) console.table(details);
 
         if (!dryRun && Object.keys(updates).length > 0) {
-            // Prefix each key with the band path
             var absUpdates = {};
-            Object.keys(updates).forEach(function(k) { absUpdates[bandPath(k)] = null; });
+            Object.keys(updates).forEach(function(k) { absUpdates[bandPath(k)] = updates[k]; });
             await db.ref().update(absUpdates);
-            console.log('[VoteAudit] Cleaned', cleaned, 'invalid votes.');
+            console.log('[VoteAudit] Cleaned', cleaned, 'vote keys.');
         } else if (dryRun) {
             console.log('[VoteAudit] Dry run — no changes made. Call auditPollVotes(false) to clean.');
         }
