@@ -2133,15 +2133,12 @@ async function _sdPopulateRightPanel(title) {
         return '<option value="' + val + '"' + (val === lead.toLowerCase() ? ' selected' : '') + '>' + _sdEsc(name) + '</option>';
     }).join('');
 
-    // ── ALWAYS VISIBLE: Song Info ──
-    infoEl.innerHTML = '<div style="padding:8px 12px">'
-        + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Song Info</div>'
-        + '<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 8px;font-size:0.8em;align-items:center">'
-        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83D\uDD11</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongKey(this.value)">' + keyOpts + '</select>'
-        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83E\uDD41</span><input type="number" class="app-input sd-bpm-input" style="width:60px;font-size:0.85em;padding:3px 6px" min="40" max="240" placeholder="\u2014" value="' + _sdEsc(metaBpm) + '" onchange="sdUpdateSongBpm(this.value)">'
-        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83C\uDFA4</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateLeadSinger(this.value)">' + leadOpts + '</select>'
-        + '<span style="color:var(--text-dim);font-size:0.85em">\uD83C\uDFAF</span><select class="app-select sd-select" style="font-size:0.85em;padding:3px 6px" onchange="sdUpdateSongStatus(this.value)">' + statusOpts + '</select>'
-        + '</div></div>';
+    // ── ALWAYS VISIBLE: Band Love + Audience Love (primary position — above fold) ──
+    // Key/BPM/Lead/Status editing is in the header bar only — not duplicated here
+    infoEl.innerHTML = '<div style="padding:8px 12px" id="sd-love-card">'
+        + _sdRenderBandLove(title, safeSong)
+        + _sdRenderAudienceLove(title, safeSong)
+        + '</div>';
 
     // ── ALWAYS VISIBLE: Readiness (full card) ──
     var songScores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
@@ -2162,11 +2159,7 @@ async function _sdPopulateRightPanel(title) {
     });
     readinessHtml += '</div></div>';
 
-    // ── ALWAYS VISIBLE: Band Love + Audience Love ──
-    var loveHtml = '<div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)" id="sd-love-card">'
-        + _sdRenderBandLove(title, safeSong)
-        + _sdRenderAudienceLove(title, safeSong)
-        + '</div>';
+    // Love cards are now rendered in infoEl (above readiness, above fold)
 
     // ── COLLAPSIBLE: Structure ──
     structEl.innerHTML = '';
@@ -2198,7 +2191,7 @@ async function _sdPopulateRightPanel(title) {
         + '</div></details>';
 
     if (extrasEl) {
-        extrasEl.innerHTML = readinessHtml + loveHtml + extrasHtml;
+        extrasEl.innerHTML = readinessHtml + extrasHtml;
         // Load discussion into right panel
         setTimeout(function() {
             var discMount = document.getElementById('sd-rp-discussion');
