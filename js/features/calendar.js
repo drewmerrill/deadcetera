@@ -3129,31 +3129,42 @@ window.calShowDateConflicts = function(dateStr) {
 
     // Strength badge
     if (strength) {
+        // Conflict summary in plain language
+        var _csHard = strength.hardConflictCount || 0;
+        var _csSoft = strength.softConflictCount || 0;
+        var _csAvail = strength.available || 0;
+        var _csTotal = strength.total || 0;
+        var _csSummary = _csAvail + ' of ' + _csTotal + ' clear';
+        if (_csHard > 0) _csSummary += ' \u00B7 ' + _csHard + ' conflict' + (_csHard > 1 ? 's' : '');
+        if (_csSoft > 0) _csSummary += ' \u00B7 ' + _csSoft + ' same-day';
         html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">'
             + '<span style="font-size:0.82em;font-weight:800;color:' + strength.color + '">' + strength.label + '</span>'
-            + '<span style="font-size:0.68em;color:var(--text-dim)">' + strength.available + ' available · ' + strength.softConflictCount + ' soft · ' + strength.hardConflictCount + ' hard</span>'
+            + '<span style="font-size:0.68em;color:var(--text-dim)">' + _csSummary + '</span>'
             + '</div>';
     }
 
     // Per-member breakdown
     if (strength && strength.memberStatuses) {
         html += '<div style="margin-bottom:10px">';
-        var statusIcons = { available: '✅', hard_conflict: '❌', soft_conflict: '❓' };
+        var statusIcons = { available: '\u2705', hard_conflict: '\u274C', soft_conflict: '\u26A0' };
         var statusColors = { available: '#22c55e', hard_conflict: '#ef4444', soft_conflict: '#f59e0b' };
-        var statusLabels = { available: 'Available', hard_conflict: 'Unavailable', soft_conflict: 'Tentative' };
-        var conflictTypeLabels = { unavailable: 'Unavailable', booked_elsewhere: 'Booked elsewhere', vacation: 'Vacation', travel: 'Travel', tentative: 'Tentative', hold: 'Hold', personal_block: 'Personal' };
 
         members.forEach(function(member) {
             var ms = strength.memberStatuses[member];
             if (!ms) return;
             var icon = statusIcons[ms.status] || '?';
             var color = statusColors[ms.status] || '#64748b';
-            var label = statusLabels[ms.status] || ms.status;
+            // Build human-readable detail from block data
+            var label = 'Available';
             var detail = '';
-            if (ms.blocks && ms.blocks.length > 0) {
-                var b = ms.blocks[0];
-                detail = ' — ' + (conflictTypeLabels[b.status] || b.status);
-                if (b.summary) detail += ': ' + b.summary;
+            if (ms.status === 'hard_conflict' && ms.blocks && ms.blocks.length > 0) {
+                var hb = ms.blocks[0];
+                label = hb._timeLabel ? 'Busy ' + hb._timeLabel : 'Unavailable';
+                detail = ' (conflicts)';
+            } else if (ms.status === 'soft_conflict' && ms.blocks && ms.blocks.length > 0) {
+                var sb = ms.blocks[0];
+                label = sb._timeLabel ? 'Busy ' + sb._timeLabel : 'Same-day event';
+                detail = ' (does not conflict)';
             }
             // Role info
             var roleStr = '';
@@ -3270,9 +3281,32 @@ function calDayClick(y, m, d) {
             _extHtml += '</div>';
         }
 
+        // Build conflict summary for the selected date
+        var _hardBlocks = blocked.filter(function(b) { return b._conflictType !== 'soft'; });
+        var _softBlocks = blocked.filter(function(b) { return b._conflictType === 'soft'; });
+        var _conflictSummary = '';
+        if (_hardBlocks.length > 0 || _softBlocks.length > 0) {
+            var parts = [];
+            if (_hardBlocks.length) parts.push('<span style="color:#f87171">' + _hardBlocks.length + ' conflict' + (_hardBlocks.length > 1 ? 's' : '') + '</span>');
+            if (_softBlocks.length) parts.push('<span style="color:var(--gl-text-tertiary)">' + _softBlocks.length + ' same-day</span>');
+            _conflictSummary = '<div style="font-size:0.68em;margin-bottom:6px">' + parts.join(' \u00B7 ') + '</div>';
+            // Per-member conflict lines (compact)
+            blocked.slice(0, 3).forEach(function(b) {
+                var nm = (b.person || 'Member').split(' ')[0];
+                var tm = b._timeLabel || '';
+                var note = b._conflictType === 'soft' ? 'same day' : 'conflicts';
+                var noteColor = b._conflictType === 'soft' ? 'var(--gl-text-tertiary)' : '#f87171';
+                _conflictSummary += '<div style="font-size:0.65em;color:var(--gl-text-secondary);padding:1px 0">'
+                    + nm + (tm ? ' ' + tm : ' busy') + ' <span style="color:' + noteColor + '">(' + note + ')</span></div>';
+            });
+        } else if (ds >= new Date().toISOString().split('T')[0]) {
+            _conflictSummary = '<div style="font-size:0.68em;color:var(--gl-green);margin-bottom:6px">No conflicts</div>';
+        }
+
         var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
             + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:2px">' + dateLabel + '</div>'
-            + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:8px">' + hint + '</div>'
+            + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:4px">' + hint + '</div>'
+            + _conflictSummary
             + _extHtml
             + '<button onclick="calAddEvent(\'' + safDs + '\')" class="gl-btn-ghost" style="width:100%;text-align:center;font-weight:700;color:var(--gl-green,#86efac)">Lock this date</button>'
             + '</div>';
