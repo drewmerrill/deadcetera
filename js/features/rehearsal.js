@@ -106,7 +106,7 @@ window._rhOpenChartsOnly = function() {
     }
 };
 
-// ── Recreate session from recording ──────────────────────────────────────────
+// ── Analyze Recording — upload audio for a rehearsal ─────────────────────────
 window._rhRecreateFromRecording = function() {
     var existing = document.getElementById('rhRecreateModal');
     if (existing) existing.remove();
@@ -115,25 +115,62 @@ window._rhRecreateFromRecording = function() {
     ov.id = 'rhRecreateModal';
     ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
     ov.innerHTML = '<div style="max-width:420px;width:100%;background:#1e293b;border-radius:16px;padding:24px;border:1px solid rgba(255,255,255,0.08);max-height:90vh;overflow-y:auto">'
-        + '<div style="font-size:1em;font-weight:800;color:#f1f5f9;margin-bottom:4px">Recreate from Recording</div>'
-        + '<div style="font-size:0.78em;color:#64748b;margin-bottom:16px">Recover a past rehearsal that wasn\u2019t tracked.</div>'
-        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Date</label>'
+        + '<div style="font-size:1em;font-weight:800;color:#f1f5f9;margin-bottom:4px">Analyze Recording</div>'
+        + '<div style="font-size:0.78em;color:#64748b;margin-bottom:16px">Upload a rehearsal recording and GrooveLinx will break it down song by song.</div>'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Rehearsal date</label>'
         + '<input type="date" id="rhRecDate" value="' + today + '" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px;color-scheme:dark">'
-        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Recording</label>'
-        + '<div style="display:flex;gap:6px;margin-bottom:12px">'
-        + '<input type="file" id="rhRecFile" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" style="flex:1;padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.78em">'
-        + '</div>'
-        + '<div style="font-size:0.65em;color:#475569;margin-bottom:4px;text-align:center">or paste a link</div>'
-        + '<input type="text" id="rhRecUrl" placeholder="Google Drive, Dropbox, or direct URL" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px">'
-        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Songs worked on</label>'
+        + '<div id="rhRecDupeWarning"></div>'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Recording file</label>'
+        + '<input type="file" id="rhRecFile" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" style="width:100%;padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.78em;margin-bottom:12px">'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Songs worked on <span style="font-weight:400;opacity:0.5">(helps with song matching)</span></label>'
         + '<input type="text" id="rhRecSongs" placeholder="Song 1, Song 2, Song 3" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px">'
         + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Notes (optional)</label>'
         + '<textarea id="rhRecNotes" rows="2" placeholder="How did it go?" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:16px;resize:vertical"></textarea>'
-        + '<button onclick="_rhSaveRecreatedSession()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Save Recovered Rehearsal</button>'
+        + '<button onclick="_rhSaveRecreatedSession()" style="width:100%;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:white;font-weight:800;font-size:0.92em;cursor:pointer">Save and Analyze</button>'
         + '<button onclick="document.getElementById(\'rhRecreateModal\').remove()" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:none;background:none;color:#64748b;cursor:pointer;font-size:0.78em">Cancel</button>'
         + '</div>';
     ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
     document.body.appendChild(ov);
+    // Check for existing session on date change
+    var dateInput = document.getElementById('rhRecDate');
+    if (dateInput) {
+        dateInput.addEventListener('change', function() { _rhCheckDuplicateDate(dateInput.value); });
+        _rhCheckDuplicateDate(today);
+    }
+};
+
+// Check if a session already exists for this date and show warning
+async function _rhCheckDuplicateDate(dateStr) {
+    var warnEl = document.getElementById('rhRecDupeWarning');
+    if (!warnEl) return;
+    var sessions = _rhSessionsCache || await _rhLoadSessions();
+    var match = sessions.find(function(s) {
+        if (!s.date) return false;
+        return s.date.substring(0, 10) === dateStr || s.date.split('T')[0] === dateStr;
+    });
+    if (match) {
+        var dur = match.totalActualMin || 0;
+        var durLabel = dur >= 60 ? Math.floor(dur / 60) + 'h ' + (dur % 60) + 'm' : dur + ' min';
+        var hasTimeline = !!(match.audio_segments);
+        warnEl.innerHTML = '<div style="padding:10px 12px;margin-bottom:12px;border-radius:8px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.25);font-size:0.78em">'
+            + '<div style="font-weight:700;color:#fbbf24;margin-bottom:4px">\u26A0 A rehearsal already exists for this date</div>'
+            + '<div style="color:var(--text-muted);margin-bottom:6px">' + durLabel + (hasTimeline ? ' \u00B7 has timeline' : '') + '</div>'
+            + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+            + '<button onclick="_rhAttachToExisting(\'' + match.sessionId + '\')" style="flex:1;padding:6px 12px;border-radius:6px;border:none;background:rgba(34,197,94,0.15);color:#86efac;cursor:pointer;font-size:0.85em;font-weight:700">Add to existing rehearsal</button>'
+            + '<button onclick="document.getElementById(\'rhRecDupeWarning\').innerHTML=\'<div style=padding:6px;font-size:0.72em;color:var(--text-dim)>Will create a separate session.</div>\'" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.82em">Create separate</button>'
+            + '</div></div>';
+        window._rhExistingSessionId = match.sessionId;
+    } else {
+        warnEl.innerHTML = '';
+        window._rhExistingSessionId = null;
+    }
+}
+
+// Attach recording to an existing session (instead of creating duplicate)
+window._rhAttachToExisting = function(sessionId) {
+    window._rhExistingSessionId = sessionId;
+    var warnEl = document.getElementById('rhRecDupeWarning');
+    if (warnEl) warnEl.innerHTML = '<div style="padding:6px;font-size:0.72em;color:#86efac;font-weight:600">\u2705 Will add recording to existing rehearsal. This will re-analyze the session.</div>';
 };
 
 window._rhSaveRecreatedSession = async function() {
@@ -143,32 +180,50 @@ window._rhSaveRecreatedSession = async function() {
     var notes = (document.getElementById('rhRecNotes') || {}).value || '';
     var songs = songStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
 
-    var session = {
-        sessionId: 'rsess_rec_' + Date.now().toString(36),
-        date: new Date(date + 'T12:00:00').toISOString(),
-        start_time: new Date(date + 'T19:00:00').toISOString(),
-        end_time: new Date(date + 'T21:00:00').toISOString(),
-        totalBudgetMin: 0,
-        totalActualMin: 120,
-        blocksCompleted: songs.length,
-        totalBlocks: songs.length,
-        songsWorked: songs,
-        notes: notes,
-        mixdown_id: null,
-        recording_url: url,
-        recovered: true,
-        recoveredLabel: 'Recovered from recording',
-        blocks: songs.map(function(s) { return { title: s, budgetMin: 0, actualMin: 0 }; })
-    };
+    // Use existing session if user chose "Add to existing rehearsal"
+    var sessionId = window._rhExistingSessionId || ('rsess_rec_' + Date.now().toString(36));
+    var isExisting = !!window._rhExistingSessionId;
+    window._rhExistingSessionId = null;
 
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (db && typeof bandPath === 'function') {
-        try {
-            await db.ref(bandPath('rehearsal_sessions') + '/' + session.sessionId).set(session);
-            if (typeof showToast === 'function') showToast('\u2705 Recovered rehearsal saved');
-        } catch(e) {
-            if (typeof showToast === 'function') showToast('Save failed \u2014 check connection');
+    if (!isExisting) {
+        // Create new session
+        var session = {
+            sessionId: sessionId,
+            date: new Date(date + 'T12:00:00').toISOString(),
+            start_time: new Date(date + 'T19:00:00').toISOString(),
+            end_time: new Date(date + 'T21:00:00').toISOString(),
+            totalBudgetMin: 0,
+            totalActualMin: 120,
+            blocksCompleted: songs.length,
+            totalBlocks: songs.length,
+            songsWorked: songs,
+            notes: notes,
+            recording_url: url,
+            blocks: songs.map(function(s) { return { title: s, budgetMin: 0, actualMin: 0 }; })
+        };
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            try {
+                await db.ref(bandPath('rehearsal_sessions/' + sessionId)).set(session);
+                if (typeof showToast === 'function') showToast('\u2705 Rehearsal saved');
+            } catch(e) {
+                if (typeof showToast === 'function') showToast('Save failed');
+                return;
+            }
         }
+    } else {
+        // Existing session — update notes/songs if provided
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            var updates = {};
+            if (notes) updates.notes = notes;
+            if (songs.length) updates.songsWorked = songs;
+            if (url) updates.recording_url = url;
+            if (Object.keys(updates).length) {
+                await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates);
+            }
+        }
+        if (typeof showToast === 'function') showToast('\u2705 Adding recording to existing rehearsal');
     }
 
     // Check for local file upload
@@ -183,7 +238,7 @@ window._rhSaveRecreatedSession = async function() {
         var fileSizeMB = Math.round(localFile.size / 1024 / 1024);
         if (typeof showToast === 'function') showToast('Analyzing recording (' + fileSizeMB + 'MB)... this may take a few minutes');
         RecordingAnalyzer.analyze(localFile, {
-            sessionId: session.sessionId,
+            sessionId: sessionId,
             contextType: 'rehearsal',
             referenceSongs: songs
         }).then(function(result) {
@@ -191,11 +246,11 @@ window._rhSaveRecreatedSession = async function() {
                 // Save segments to Firebase
                 var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
                 if (db2 && typeof bandPath === 'function') {
-                    db2.ref(bandPath('rehearsal_sessions/' + session.sessionId + '/audio_segments')).set(result.segments);
+                    db2.ref(bandPath('rehearsal_sessions/' + sessionId + '/audio_segments')).set(result.segments);
                 }
                 if (typeof showToast === 'function') showToast('\u2705 Analysis complete \u2014 ' + result.segments.length + ' segments detected');
                 // Show the timeline for this session
-                if (typeof _rhShowSessionReport === 'function') _rhShowSessionReport(session.sessionId);
+                if (typeof _rhShowSessionReport === 'function') _rhShowSessionReport(sessionId);
             } else {
                 if (typeof showToast === 'function') showToast('Analysis complete \u2014 no segments detected');
             }
@@ -681,7 +736,7 @@ async function _rhRenderCommandFlow(el) {
             + '<span class="gl-section-label" style="padding:0;margin:0">History</span>'
             + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
             + '<div style="padding:0 14px 10px">'
-            + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ From recording</button></div>'
+            + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Analyze recording</button></div>'
             + '<div id="rhSessionHistory"></div>'
             + '</div></details>'
             // Recordings — collapsed
@@ -1003,8 +1058,9 @@ async function _rhRenderSessionHistory() {
             else if (avgRecent < avgOlder - 0.3) { trend = 'Needs attention'; trendColor = '#fbbf24'; trendIcon = '\u2193'; }
             else { trend = 'Steady'; trendColor = '#94a3b8'; trendIcon = '\u2192'; }
         }
-        html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px">';
-        html += '<div style="font-size:0.85em;letter-spacing:2px" title="Last ' + last5.length + ' sessions (oldest \u2192 newest)">' + dots + '</div>';
+        html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px" title="Recent rehearsal trend \u2014 last ' + last5.length + ' sessions (oldest \u2192 newest). \uD83D\uDD25 = Great, \uD83D\uDCAA = Solid, \uD83D\uDD27 = Needs work, \u25CB = Not rated">';
+        html += '<div style="font-size:0.65em;color:var(--text-dim);font-weight:600;white-space:nowrap">Trend</div>';
+        html += '<div style="font-size:0.85em;letter-spacing:2px">' + dots + '</div>';
         if (trend) html += '<div style="font-size:0.72em;font-weight:700;color:' + trendColor + ';margin-left:auto">' + trendIcon + ' ' + trend + '</div>';
         html += '</div>';
     }
