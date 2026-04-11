@@ -135,7 +135,7 @@ function _sdBuildDnaBar(title) {
     // Key select
     h += '<select style="font-size:0.75em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:' + (_dKey ? 'var(--text)' : 'var(--text-dim)') + ';border-radius:5px;cursor:pointer" onchange="sdUpdateSongKey(this.value)">';
     h += '<option value=""' + (!_dKey ? ' selected' : '') + '>\uD83D\uDD11 Key</option>';
-    ['C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','A','A#','Bb','B','Am','Bm','Cm','Dm','Em','Fm','Gm'].forEach(function(k) {
+    ['A','A#','Bb','B','C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','Am','A#m','Bbm','Bm','Cm','C#m','Dm','D#m','Ebm','Em','Fm','F#m','Gm','G#m','Abm'].forEach(function(k) {
         h += '<option value="' + k + '"' + (k === _dKey ? ' selected' : '') + '>' + k + '</option>';
     });
     h += '</select>';
@@ -352,7 +352,7 @@ async function _sdPopulateBandLens(title) {
     var statusOpts=[['','— Select —'],['prospect','👀 Prospect (Active)'],['learning','📖 Learning (Active)'],['rotation','🔄 In Rotation (Active)'],['shelved','📦 Shelved (Library)']].map(function(p){
         return '<option value="'+p[0]+'"'+(status===p[0]?' selected':'')+'>'+p[1]+'</option>';
     }).join('');
-    var keyOpts=['','A','Am','Bb','Bbm','B','Bm','C','Cm','C#','C#m','D','Dm','D#m','E','Em','F','Fm','F#','F#m','G','Gm','G#m','Ab','Abm'].map(function(k){
+    var keyOpts=['','A','A#','Bb','B','C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','Am','A#m','Bbm','Bm','Cm','C#m','Dm','D#m','Ebm','Em','Fm','F#m','Gm','G#m','Abm'].map(function(k){
         return '<option value="'+k+'"'+(metaKey===k?' selected':'')+'>'+(k||'—')+'</option>';
     }).join('');
 
