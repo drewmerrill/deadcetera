@@ -3834,6 +3834,21 @@
         }
       }
     } catch(e) {}
+    // Build dateWindows from calendar events (gigs with specific times) BEFORE freeBusy calls
+    try {
+      var _recCalEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+      var _recDateWindows = {};
+      _recCalEvents.forEach(function(ev) {
+        if (ev.type === 'gig' && ev.date && ev.time) {
+          var gStart = parseInt(ev.time.split(':')[0], 10);
+          if (isNaN(gStart)) return;
+          var gEnd = gStart + 3;
+          if (ev.endTime) { var eH = parseInt(ev.endTime.split(':')[0], 10); if (!isNaN(eH)) gEnd = eH; }
+          _recDateWindows[ev.date] = { startHour: gStart, endHour: Math.min(gEnd, 26) };
+        }
+      });
+      _recOpts.dateWindows = _recDateWindows;
+    } catch(e) {}
     try {
       if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope && GLCalendarSync.hasCalendarScope()) {
         var _recTimeMin = new Date().toISOString();
@@ -3922,21 +3937,7 @@
       var futureGigs = gigs.filter(function(g) { return g.date && g.date >= today; }).sort(function(a, b) { return a.date.localeCompare(b.date); });
       if (futureGigs.length) nextGigDate = futureGigs[0].date;
     } catch (e) {}
-    // Build dateWindows from calendar events (gigs with specific times)
-    var _recDateWindows = {};
-    try {
-      var calEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-      calEvents.forEach(function(ev) {
-        if (ev.type === 'gig' && ev.date && ev.time) {
-          var gStart = parseInt(ev.time.split(':')[0], 10);
-          if (isNaN(gStart)) return;
-          var gEnd = gStart + 3; // default 3-hour gig
-          if (ev.endTime) { var eH = parseInt(ev.endTime.split(':')[0], 10); if (!isNaN(eH)) gEnd = eH; }
-          _recDateWindows[ev.date] = { startHour: gStart, endHour: Math.min(gEnd, 26) };
-        }
-      });
-      _recOpts.dateWindows = _recDateWindows;
-    } catch(e) {}
+    // (dateWindows already built and set on _recOpts above, before freeBusy calls)
 
     // Get cadence + preferred days
     var cadence = await getRehearsalCadence();
