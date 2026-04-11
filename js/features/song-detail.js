@@ -2327,9 +2327,9 @@ function _sdRenderBandLove(title, safeSong) {
         var blDis = GLStore.getBandLoveDisagreement(title);
         if (blDis.disagreementLevel === 'notable' || blDis.disagreementLevel === 'strong') {
             var blInsight = '';
-            if (blDis.delta > 0) blInsight = 'You\u2019re higher on this than the band';
-            else if (blDis.delta < 0) blInsight = 'You\u2019re lower on this than the band';
-            else if (blDis.groupSpread >= 2) blInsight = 'Mixed band feelings';
+            if (blDis.delta > 0) blInsight = 'You\u2019re higher on this than the band \u2014 worth pushing?';
+            else if (blDis.delta < 0) blInsight = 'You\u2019re lower on this \u2014 revisit or consider dropping';
+            else if (blDis.groupSpread >= 2) blInsight = 'Mixed band feelings \u2014 try it live and decide';
             if (blInsight) {
                 html += '<div style="font-size:0.62em;color:var(--gl-amber,#f59e0b);padding:1px 0;font-style:italic">' + blInsight + '</div>';
             }
@@ -2387,9 +2387,9 @@ function _sdRenderAudienceLove(title, safeSong) {
         var alDis = GLStore.getAudienceLoveDisagreement(title);
         if (alDis.disagreementLevel === 'notable' || alDis.disagreementLevel === 'strong') {
             var alInsight = '';
-            if (alDis.delta > 0) alInsight = 'You think the crowd loves this more than the band does';
-            else if (alDis.delta < 0) alInsight = 'You think the crowd cares less than the band thinks';
-            else if (alDis.groupSpread >= 2) alInsight = 'Crowd impact feels debated';
+            if (alDis.delta > 0) alInsight = 'You think the crowd loves this more \u2014 play it and see';
+            else if (alDis.delta < 0) alInsight = 'You think the crowd cares less \u2014 test it at a gig';
+            else if (alDis.groupSpread >= 2) alInsight = 'Crowd impact feels debated \u2014 try it live and decide';
             if (alInsight) {
                 html += '<div style="font-size:0.62em;color:var(--gl-amber,#f59e0b);padding:1px 0;font-style:italic">' + alInsight + '</div>';
             }
