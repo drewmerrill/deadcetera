@@ -1015,6 +1015,26 @@ async function _rhRenderSessionHistory() {
         if (headline) {
             html += '<div style="font-size:0.7em;font-weight:600;color:' + headline.color + ';margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + headline.icon + ' ' + headline.text + '</div>';
         }
+        // Scorecard summary for latest session (inline, compact)
+        if (isLatest && typeof RehearsalScorecardEngine !== 'undefined') {
+            var _sc = RehearsalScorecardEngine.generateScorecard(s);
+            if (_sc && _sc.score > 0) {
+                var _scColor = _sc.score >= 85 ? '#22c55e' : _sc.score >= 65 ? '#84cc16' : _sc.score >= 40 ? '#f59e0b' : '#ef4444';
+                html += '<div style="display:flex;align-items:center;gap:6px;margin-top:4px;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">';
+                html += '<span style="font-size:1.1em;font-weight:800;color:' + _scColor + '">' + _sc.score + '</span>';
+                html += '<span style="font-size:0.65em;color:var(--text-dim)">' + _sc.label + '</span>';
+                if (_sc.highlights && _sc.highlights.biggestWin) {
+                    html += '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">\u2705 ' + _sc.highlights.biggestWin + '</span>';
+                }
+                html += '</div>';
+                // Top 2 action items
+                if (_sc.recommendations && _sc.recommendations.length) {
+                    _sc.recommendations.slice(0, 2).forEach(function(rec) {
+                        html += '<div style="font-size:0.6em;color:var(--text-dim);padding:1px 8px">\u2192 ' + (rec.text || rec) + '</div>';
+                    });
+                }
+            }
+        }
         html += '</div>';
 
         // Actions — compact
@@ -2308,6 +2328,15 @@ window._rhShowSessionReport = async function(sessionId) {
     // Render into the main timeline section
     var timelineEl = document.getElementById('rhTimelineSection');
     if (!timelineEl) return;
+
+    // Scorecard + Song Outcomes (rendered above timeline)
+    var _scHtml = _rhBuildScorecardAndOutcomes(s, segments);
+    if (_scHtml) {
+        var _scDiv = document.createElement('div');
+        _scDiv.innerHTML = _scHtml;
+        timelineEl.innerHTML = '';
+        timelineEl.appendChild(_scDiv);
+    }
 
     if (segments.length > 0) {
         _rhRenderInlineTimelineDirectly(timelineEl, sessionId, s, segments);
@@ -4655,6 +4684,116 @@ function _rpLaunchRehearsal() {
         openRehearsalModeWithQueue(queue);
     }
     if (typeof showToast === 'function') showToast('Rehearsal started · ' + queue.length + ' songs');
+}
+
+// ============================================================================
+// REHEARSAL SCORECARD + SONG OUTCOMES
+// ============================================================================
+
+function _rhBuildScorecardAndOutcomes(session, segments) {
+    if (!session) return '';
+    var items = session.items || session.blocks || [];
+    if (!items.length && !segments.length) return '';
+
+    var html = '';
+
+    // ── Scorecard ──
+    if (typeof RehearsalScorecardEngine !== 'undefined') {
+        var sc = RehearsalScorecardEngine.generateScorecard(session);
+        if (sc && sc.score > 0) {
+            var scColor = sc.score >= 85 ? '#22c55e' : sc.score >= 65 ? '#84cc16' : sc.score >= 40 ? '#f59e0b' : '#ef4444';
+            html += '<div style="padding:14px 16px;border-radius:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06);margin-bottom:12px">';
+            // Header: score + label
+            html += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">';
+            html += '<div style="font-size:2em;font-weight:900;color:' + scColor + ';line-height:1">' + sc.score + '</div>';
+            html += '<div><div style="font-size:0.88em;font-weight:700;color:var(--text)">' + sc.label + '</div>';
+            html += '<div style="font-size:0.72em;color:var(--text-dim)">' + sc.headline + '</div></div>';
+            html += '</div>';
+            // Highlights
+            if (sc.highlights) {
+                if (sc.highlights.biggestWin) html += '<div style="font-size:0.72em;color:#22c55e;padding:2px 0">\u2705 ' + sc.highlights.biggestWin + '</div>';
+                if (sc.highlights.biggestRisk) html += '<div style="font-size:0.72em;color:#f59e0b;padding:2px 0">\u26A0 ' + sc.highlights.biggestRisk + '</div>';
+            }
+            // Top 3 action items
+            if (sc.recommendations && sc.recommendations.length) {
+                html += '<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.04);padding-top:6px">';
+                html += '<div style="font-size:0.62em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Next Steps</div>';
+                sc.recommendations.slice(0, 3).forEach(function(rec) {
+                    var text = rec.text || rec;
+                    html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0">\u2192 ' + text + '</div>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+    }
+
+    // ── Song Outcome Cards ──
+    var songItems = items.filter(function(it) { return it.title && it.status; });
+    // Also derive outcomes from segments if available
+    var segmentSongs = {};
+    if (segments && segments.length) {
+        segments.forEach(function(seg) {
+            var title = seg.label || seg.title || seg.songTitle || '';
+            if (!title || seg.type === 'speech' || seg.type === 'silence' || seg.type === 'talking') return;
+            if (!segmentSongs[title]) segmentSongs[title] = { attempts: 0, totalDuration: 0, longestDuration: 0 };
+            segmentSongs[title].attempts++;
+            var dur = seg.duration || seg.durationSec || 0;
+            segmentSongs[title].totalDuration += dur;
+            if (dur > segmentSongs[title].longestDuration) segmentSongs[title].longestDuration = dur;
+        });
+    }
+
+    // Merge items + segment data
+    var outcomeMap = {};
+    songItems.forEach(function(it) {
+        outcomeMap[it.title] = {
+            title: it.title,
+            status: it.status,
+            minutes: it.minutes || 0,
+            type: it.type || 'run'
+        };
+    });
+    Object.keys(segmentSongs).forEach(function(title) {
+        if (!outcomeMap[title]) {
+            outcomeMap[title] = { title: title, status: 'done', minutes: Math.round(segmentSongs[title].totalDuration / 60), type: 'run' };
+        }
+        outcomeMap[title].attempts = segmentSongs[title].attempts;
+        outcomeMap[title].longestSec = segmentSongs[title].longestDuration;
+    });
+
+    var outcomes = Object.values(outcomeMap);
+    if (outcomes.length) {
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">';
+        outcomes.forEach(function(o) {
+            // Determine outcome status
+            var outcomeLabel = 'Done';
+            var outcomeColor = '#94a3b8';
+            var outcomeIcon = '\u2705';
+            if (o.status === 'skipped') {
+                outcomeLabel = 'Skipped'; outcomeColor = '#64748b'; outcomeIcon = '\u23ED';
+            } else if (o.attempts && o.attempts >= 3) {
+                outcomeLabel = 'Needs work'; outcomeColor = '#f59e0b'; outcomeIcon = '\uD83D\uDD27';
+            } else if (o.attempts && o.attempts === 1 && o.longestSec > 120) {
+                outcomeLabel = 'Locked in'; outcomeColor = '#22c55e'; outcomeIcon = '\uD83D\uDD12';
+            } else if (o.attempts && o.attempts <= 2) {
+                outcomeLabel = 'Improving'; outcomeColor = '#84cc16'; outcomeIcon = '\uD83D\uDCC8';
+            }
+            var attemptStr = o.attempts ? o.attempts + ' take' + (o.attempts > 1 ? 's' : '') : '';
+
+            html += '<div style="flex:1;min-width:140px;max-width:200px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">';
+            html += '<div style="font-size:0.78em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + o.title + '</div>';
+            html += '<div style="display:flex;align-items:center;gap:6px;margin-top:3px">';
+            html += '<span style="font-size:0.82em">' + outcomeIcon + '</span>';
+            html += '<span style="font-size:0.65em;font-weight:700;color:' + outcomeColor + '">' + outcomeLabel + '</span>';
+            if (attemptStr) html += '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto">' + attemptStr + '</span>';
+            html += '</div>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    return html;
 }
 
 console.log('✅ rehearsal.js loaded');
