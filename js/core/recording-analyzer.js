@@ -55,6 +55,15 @@ window.RecordingAnalyzer = (function() {
     opts = opts || {};
     var onProgress = opts.onProgress || function() {};
 
+    // Allow callers to set recording context via opts (bypasses UI picker)
+    if (opts.referenceSongs || opts.contextType) {
+      _recordingContext = {
+        type: opts.contextType || 'rehearsal',
+        referenceSongs: opts.referenceSongs || [],
+        referenceId: opts.sessionId || ''
+      };
+    }
+
     // Stage 1: Decode audio (memory-safe for large files)
     onProgress('decoding', 0);
     var arrayBuffer = source instanceof ArrayBuffer ? source : await source.arrayBuffer();

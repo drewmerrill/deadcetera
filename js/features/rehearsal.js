@@ -179,32 +179,35 @@ window._rhSaveRecreatedSession = async function() {
     if (modal) modal.remove();
 
     // Launch analysis: local file takes priority over URL
-    if (localFile && typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer.launchForSession) {
-        if (typeof showToast === 'function') showToast('Analyzing recording (' + Math.round(localFile.size / 1024 / 1024) + 'MB)...');
-        // Set recording context with songs from the form
-        RecordingAnalyzer.setContext({ type: 'rehearsal', referenceSongs: songs, referenceId: session.sessionId });
-        RecordingAnalyzer.launchForSession(session.sessionId, localFile);
-    } else if (localFile && typeof RecordingAnalyzer !== 'undefined') {
-        // Fallback: analyze directly
-        if (typeof showToast === 'function') showToast('Analyzing recording...');
-        RecordingAnalyzer.analyze(localFile, { sessionId: session.sessionId }).then(function(result) {
-            if (result && result.segments) {
+    if (localFile && typeof RecordingAnalyzer !== 'undefined') {
+        var fileSizeMB = Math.round(localFile.size / 1024 / 1024);
+        if (typeof showToast === 'function') showToast('Analyzing recording (' + fileSizeMB + 'MB)... this may take a few minutes');
+        RecordingAnalyzer.analyze(localFile, {
+            sessionId: session.sessionId,
+            contextType: 'rehearsal',
+            referenceSongs: songs
+        }).then(function(result) {
+            if (result && result.segments && result.segments.length) {
                 // Save segments to Firebase
                 var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
                 if (db2 && typeof bandPath === 'function') {
                     db2.ref(bandPath('rehearsal_sessions/' + session.sessionId + '/audio_segments')).set(result.segments);
                 }
                 if (typeof showToast === 'function') showToast('\u2705 Analysis complete \u2014 ' + result.segments.length + ' segments detected');
+                // Show the timeline for this session
+                if (typeof _rhShowSessionReport === 'function') _rhShowSessionReport(session.sessionId);
+            } else {
+                if (typeof showToast === 'function') showToast('Analysis complete \u2014 no segments detected');
             }
             _rhRenderSessionHistory();
         }).catch(function(e) {
-            console.warn('[Rehearsal] File analysis failed:', e);
-            if (typeof showToast === 'function') showToast('Analysis failed: ' + e.message);
+            console.error('[Rehearsal] File analysis failed:', e);
+            if (typeof showToast === 'function') showToast('Analysis failed: ' + (e.message || 'unknown error'));
         });
-    } else if (typeof RehearsalAnalysis !== 'undefined') {
+    } else if (typeof RehearsalAnalysis !== 'undefined' && url) {
         // URL-based fallback
         RehearsalAnalysis.run(session.sessionId, {
-            recordingUrl: session.recording_url || null
+            recordingUrl: url
         }).catch(function(e) { console.warn('[Rehearsal] Analysis pipeline failed:', e); });
     }
     _rhRenderSessionHistory();
