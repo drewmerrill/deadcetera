@@ -119,7 +119,11 @@ window._rhRecreateFromRecording = function() {
         + '<div style="font-size:0.78em;color:#64748b;margin-bottom:16px">Recover a past rehearsal that wasn\u2019t tracked.</div>'
         + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Date</label>'
         + '<input type="date" id="rhRecDate" value="' + today + '" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px;color-scheme:dark">'
-        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Recording (URL or paste link)</label>'
+        + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Recording</label>'
+        + '<div style="display:flex;gap:6px;margin-bottom:12px">'
+        + '<input type="file" id="rhRecFile" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" style="flex:1;padding:6px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.78em">'
+        + '</div>'
+        + '<div style="font-size:0.65em;color:#475569;margin-bottom:4px;text-align:center">or paste a link</div>'
         + '<input type="text" id="rhRecUrl" placeholder="Google Drive, Dropbox, or direct URL" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px">'
         + '<label style="font-size:0.75em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:4px">Songs worked on</label>'
         + '<input type="text" id="rhRecSongs" placeholder="Song 1, Song 2, Song 3" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.85em;margin-bottom:12px">'
@@ -167,10 +171,38 @@ window._rhSaveRecreatedSession = async function() {
         }
     }
 
+    // Check for local file upload
+    var fileInput = document.getElementById('rhRecFile');
+    var localFile = (fileInput && fileInput.files && fileInput.files.length > 0) ? fileInput.files[0] : null;
+
     var modal = document.getElementById('rhRecreateModal');
     if (modal) modal.remove();
-    // Trigger analysis pipeline for the recovered session
-    if (typeof RehearsalAnalysis !== 'undefined') {
+
+    // Launch analysis: local file takes priority over URL
+    if (localFile && typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer.launchForSession) {
+        if (typeof showToast === 'function') showToast('Analyzing recording (' + Math.round(localFile.size / 1024 / 1024) + 'MB)...');
+        // Set recording context with songs from the form
+        RecordingAnalyzer.setContext({ type: 'rehearsal', referenceSongs: songs, referenceId: session.sessionId });
+        RecordingAnalyzer.launchForSession(session.sessionId, localFile);
+    } else if (localFile && typeof RecordingAnalyzer !== 'undefined') {
+        // Fallback: analyze directly
+        if (typeof showToast === 'function') showToast('Analyzing recording...');
+        RecordingAnalyzer.analyze(localFile, { sessionId: session.sessionId }).then(function(result) {
+            if (result && result.segments) {
+                // Save segments to Firebase
+                var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                if (db2 && typeof bandPath === 'function') {
+                    db2.ref(bandPath('rehearsal_sessions/' + session.sessionId + '/audio_segments')).set(result.segments);
+                }
+                if (typeof showToast === 'function') showToast('\u2705 Analysis complete \u2014 ' + result.segments.length + ' segments detected');
+            }
+            _rhRenderSessionHistory();
+        }).catch(function(e) {
+            console.warn('[Rehearsal] File analysis failed:', e);
+            if (typeof showToast === 'function') showToast('Analysis failed: ' + e.message);
+        });
+    } else if (typeof RehearsalAnalysis !== 'undefined') {
+        // URL-based fallback
         RehearsalAnalysis.run(session.sessionId, {
             recordingUrl: session.recording_url || null
         }).catch(function(e) { console.warn('[Rehearsal] Analysis pipeline failed:', e); });
