@@ -199,26 +199,33 @@ window.RecordingAnalyzer = (function() {
     var _bpmExtracted = 0;
     var _grooveExtracted = 0;
     var _embedsExtracted = 0;
+    var _chordsExtracted = 0;
     var _MIN_FEAT_DURATION = 20; // seconds — minimum for BPM/groove
     var _MIN_EMBED_DURATION = 30; // seconds — minimum for CLAP embedding
     var _SLICE_SEC = 30;          // analyze up to 30s from each segment
 
-    // Check embedding service availability (shared across all segments)
+    // Check external service availability (shared across all segments)
     var _embedServiceUrl = window._glEmbedServiceUrl || 'http://localhost:8200';
     var _embedServiceAvailable = false;
-    try {
-      var _healthCtrl = new AbortController();
-      var _healthTimeout = setTimeout(function() { _healthCtrl.abort(); }, 1500);
-      var _healthRes = await fetch(_embedServiceUrl + '/health', { signal: _healthCtrl.signal });
-      clearTimeout(_healthTimeout);
-      if (_healthRes.ok) {
-        var _healthData = await _healthRes.json();
-        _embedServiceAvailable = _healthData.status === 'ok' || _healthData.status === 'ready';
-      }
-    } catch(_hErr) { /* service not available */ }
+    var _chordServiceUrl = window._glChordServiceUrl || 'http://localhost:8100';
+    var _chordServiceAvailable = false;
+
+    // Probe both services in parallel (1.5s timeout each)
+    var _probes = [];
+    _probes.push(fetch(_embedServiceUrl + '/health', { signal: AbortSignal.timeout(1500) })
+      .then(function(r) { return r.json(); })
+      .then(function(d) { _embedServiceAvailable = d.status === 'ok' || d.status === 'ready'; })
+      .catch(function() {}));
+    _probes.push(fetch(_chordServiceUrl + '/health', { signal: AbortSignal.timeout(1500) })
+      .then(function(r) { return r.json(); })
+      .then(function(d) { _chordServiceAvailable = d.status === 'ok'; })
+      .catch(function() {}));
+    await Promise.all(_probes);
+
     console.log('[RecordingAnalyzer] Feature extraction: ' + segments.length + ' segments' +
       (isLargeFile ? ' (large file — on-demand decode)' : ' (full PCM)') +
-      ', embed service: ' + (_embedServiceAvailable ? 'available' : 'unavailable'));
+      ', embed: ' + (_embedServiceAvailable ? 'YES' : 'no') +
+      ', chords: ' + (_chordServiceAvailable ? 'YES' : 'no'));
 
     for (var _fi = 0; _fi < segments.length; _fi++) {
       var _fSeg = segments[_fi];
@@ -348,13 +355,51 @@ window.RecordingAnalyzer = (function() {
           }
         }
       }
+
+      // ── Chord detection (Essentia) ──────────────────────────────────────────
+      if (_chordServiceAvailable && _fSeg.duration >= _MIN_EMBED_DURATION && !_fSeg.chordHints) {
+        try {
+          var _cWav = _encodeWAV(_segPcm, _segSr);
+          var _cCtrl = new AbortController();
+          var _cTimeout = setTimeout(function() { _cCtrl.abort(); }, 10000); // chords take longer
+          var _cForm = new FormData();
+          _cForm.append('file', new Blob([_cWav], { type: 'audio/wav' }), 'segment.wav');
+          _cForm.append('segment_id', _fSeg.id || ('seg_' + _fi));
+          _cForm.append('song_name', _fSeg.songTitle || '');
+          _cForm.append('segment_type', 'song');
+          _cForm.append('duration_sec', String(Math.round(_fSeg.duration)));
+          var _cRes = await fetch(_chordServiceUrl + '/analyze-chords', { method: 'POST', body: _cForm, signal: _cCtrl.signal });
+          clearTimeout(_cTimeout);
+          var _cData = await _cRes.json();
+
+          if (_cData && !_cData.error) {
+            _fSeg.chordHints = _cData;
+            _fSeg._chordCacheKey = (_fSeg.id || '') + '|' + _fSeg.startSec.toFixed(1) + '|' + _fSeg.endSec.toFixed(1);
+            _chordsExtracted++;
+            var _cSummary = _cData.summary;
+            var _cProg = _cSummary && _cSummary.topProgressionHint ? _cSummary.topProgressionHint : '(no progression)';
+            var _cTop = _cSummary && _cSummary.topChords ? _cSummary.topChords.join(',') : '';
+            console.log('[Chords] seg ' + _fi + ' (' + _formatTime(_fSeg.startSec) + '-' + _formatTime(_fSeg.endSec) + '): ' +
+              _cProg + ' [' + _cTop + '] conf=' + (_cData.confidence || '?') +
+              (isLargeFile ? ' [on-demand decode]' : ''));
+          }
+        } catch(_cErr) {
+          if (_cErr.name === 'AbortError') {
+            console.warn('[Chords] Service timeout — stopping chord extraction');
+            _chordServiceAvailable = false;
+          } else {
+            console.warn('[Chords] seg ' + _fi + ' failed:', _cErr.message);
+          }
+        }
+      }
     }
 
     // Release raw bytes now that all segment extraction is done
     _rawBytes = null;
 
     console.log('[RecordingAnalyzer] Feature extraction complete: BPM=' + _bpmExtracted +
-      ' Groove=' + _grooveExtracted + ' Embed=' + _embedsExtracted + ' / ' + segments.length + ' segments');
+      ' Groove=' + _grooveExtracted + ' Embed=' + _embedsExtracted +
+      ' Chords=' + _chordsExtracted + ' / ' + segments.length + ' segments');
     onProgress('groove', 100);
 
     // Stage 4: Song matching
@@ -373,12 +418,14 @@ window.RecordingAnalyzer = (function() {
       console.log('[RecordingAnalyzer] === MATCHING RESULTS ===');
       segments.forEach(function(seg, idx) {
         var bpmStr = seg.bpm ? (seg.bpm + ' BPM') : 'no BPM';
-        var embedStr = seg.audioEmbedding ? (seg.audioEmbedding.length + 'd') : 'no embed';
-        var matchStr = seg.songMatch ? (seg.songMatch.confidence + ', signals=' + (seg.songMatch.activeSignals || []).join('+')) : 'no match';
+        var embedStr = seg.audioEmbedding ? (seg.audioEmbedding.length + 'd') : '-';
+        var chordStr = seg.chordHints && seg.chordHints.usable ? (seg.chordHints.confidence || '?') : '-';
+        var matchStr = seg.songMatch ? (seg.songMatch.confidence + ' [' + (seg.songMatch.activeSignals || []).join('+') + ']') : 'no match';
         var topCands = seg.songMatch && seg.songMatch.candidates ? seg.songMatch.candidates.map(function(c) { return c.title + '(' + c.score + ')'; }).join(', ') : '';
         console.log('[Match] #' + idx + ' ' + _formatTime(seg.startSec) + '-' + _formatTime(seg.endSec) +
-          ' | ' + bpmStr + ' | ' + embedStr + ' | → ' + (seg.songTitle || '?') + ' | ' + matchStr +
-          (topCands ? ' | top: ' + topCands : ''));
+          ' | ' + bpmStr + ' | chords:' + chordStr + ' | embed:' + embedStr +
+          ' | → ' + (seg.songTitle || '?') + ' | ' + matchStr +
+          (topCands ? ' | ' + topCands : ''));
       });
     } else {
       // Fallback: use legacy plan-order matching
