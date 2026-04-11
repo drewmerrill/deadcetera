@@ -787,8 +787,61 @@
     } catch(e) {}
   }
 
+  // ── Audience Love (how much the crowd responds to a song) ───────────────
+  // Same scale and pattern as Band Love.
+
+  var _audienceLoveCache = {};
+
+  async function saveAudienceLove(songId, value) {
+    var v = parseInt(value, 10);
+    if (isNaN(v) || v < 0 || v > 5) return;
+    var db = _db();
+    if (!db) return;
+    var k = _sanitize(songId);
+    try {
+      if (v === 0) {
+        await db.ref(_bp('songs/' + k + '/audienceLove')).remove();
+        delete _audienceLoveCache[songId];
+      } else {
+        await db.ref(_bp('songs/' + k + '/audienceLove')).set({ score: v, updatedAt: new Date().toISOString() });
+        _audienceLoveCache[songId] = v;
+      }
+      emit('audienceLoveChanged', { songId: songId, value: v });
+      if (typeof showToast === 'function') showToast(v > 0 ? 'Audience: ' + v + '/5' : 'Audience love cleared');
+    } catch(e) {
+      if (typeof showToast === 'function') showToast('Could not save');
+    }
+  }
+
+  function getAudienceLove(songId) {
+    return _audienceLoveCache[songId] || 0;
+  }
+
+  function getAllAudienceLove() {
+    return _audienceLoveCache;
+  }
+
+  // Preload audience love alongside band love
+  async function _preloadAudienceLove() {
+    var db = _db();
+    if (!db) return;
+    try {
+      var snap = await db.ref(_bp('songs')).once('value');
+      var data = snap.val();
+      if (!data) return;
+      Object.keys(data).forEach(function(key) {
+        if (data[key] && data[key].audienceLove && data[key].audienceLove.score) {
+          var title = key.replace(/_/g, ' ');
+          _audienceLoveCache[title] = data[key].audienceLove.score;
+          _audienceLoveCache[key] = data[key].audienceLove.score;
+        }
+      });
+    } catch(e) {}
+  }
+
   // Auto-preload after readiness loads
   setTimeout(_preloadBandLove, 8000);
+  setTimeout(_preloadAudienceLove, 8500);
 
   // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
 
@@ -802,14 +855,15 @@
 
   /**
    * Priority score: identifies highest-value rehearsal targets.
-   * High love + low readiness = highest priority.
-   * priorityScore = (bandLove * 0.6) + ((5 - readiness) * 0.4)
+   * Band love is primary emotional driver, audience love influences, readiness matters.
+   * priorityScore = (bandLove * 0.5) + (audienceLove * 0.2) + ((5 - readiness) * 0.3)
    */
   function getSongPriority(songId) {
     var love = _bandLoveCache[songId] || 0;
+    var crowd = _audienceLoveCache[songId] || 0;
     var readiness = _avgReadiness(songId);
-    if (love === 0) return 0; // unrated songs have no priority
-    return Math.round((love * 0.6 + (5 - readiness) * 0.4) * 100) / 100;
+    if (love === 0 && crowd === 0) return 0; // unrated songs have no priority
+    return Math.round((love * 0.5 + crowd * 0.2 + (5 - readiness) * 0.3) * 100) / 100;
   }
 
   /**
@@ -828,14 +882,16 @@
    */
   function getSongSignals(songId) {
     var love = _bandLoveCache[songId] || 0;
+    var crowd = _audienceLoveCache[songId] || 0;
     var readiness = _avgReadiness(songId);
     return {
       bandLove: love,
+      audienceLove: crowd,
       readiness: Math.round(readiness * 10) / 10,
       priorityScore: getSongPriority(songId),
       derivedStatus: deriveSongStatus(songId),
       gap: getSongGap(songId),
-      isFocus: getSongPriority(songId) >= 3.5 // high enough to flag
+      isFocus: getSongPriority(songId) >= 3.5
     };
   }
 
@@ -4570,6 +4626,9 @@
     saveBandLove:      saveBandLove,
     getBandLove:       getBandLove,
     getAllBandLove:     getAllBandLove,
+    saveAudienceLove:  saveAudienceLove,
+    getAudienceLove:   getAudienceLove,
+    getAllAudienceLove: getAllAudienceLove,
     deriveSongStatus:  deriveSongStatus,
     getSongPriority:   getSongPriority,
     getSongGap:        getSongGap,

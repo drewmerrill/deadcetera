@@ -2162,9 +2162,10 @@ async function _sdPopulateRightPanel(title) {
     });
     readinessHtml += '</div></div>';
 
-    // ── ALWAYS VISIBLE: Band Love ──
+    // ── ALWAYS VISIBLE: Band Love + Audience Love ──
     var loveHtml = '<div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)" id="sd-love-card">'
         + _sdRenderBandLove(title, safeSong)
+        + _sdRenderAudienceLove(title, safeSong)
         + '</div>';
 
     // ── COLLAPSIBLE: Structure ──
@@ -2319,12 +2320,54 @@ function _sdRenderBandLove(title, safeSong) {
 window.sdSaveBandLove = function(safeSong, title, value) {
     if (typeof GLStore !== 'undefined' && GLStore.saveBandLove) {
         GLStore.saveBandLove(title, value);
-        // Re-render the love card
-        var card = document.getElementById('sd-love-card');
-        if (card) {
-            card.innerHTML = '<div class="sd-card-title">\u2764\uFE0F Love Playing</div>' + _sdRenderBandLove(title, safeSong);
-        }
+        _sdRefreshLoveCard(safeSong, title);
     }
 };
+
+// ── Audience Love Rating ─────────────────────────────────────────────────────
+
+function _sdRenderAudienceLove(title, safeSong) {
+    var crowd = (typeof GLStore !== 'undefined' && GLStore.getAudienceLove) ? GLStore.getAudienceLove(title) : 0;
+    var HEARTS = ['\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C'];
+    var labels = ['Not set', 'Quiet', 'Polite', 'Into it', 'They love it', 'CROWD GOES WILD'];
+
+    var html = '<div style="display:flex;align-items:center;gap:12px;padding:4px 0">';
+    html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);min-width:70px">Audience</span>';
+    for (var i = 1; i <= 5; i++) {
+        var active = i <= crowd;
+        html += '<button onclick="sdSaveAudienceLove(\'' + safeSong + '\',\'' + title.replace(/'/g, '') + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.15') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
+    }
+    html += '<span style="font-size:0.75em;color:var(--text-dim);margin-left:auto">' + labels[crowd] + '</span>';
+    html += '</div>';
+
+    // Recommendation insight when both ratings exist
+    var bandLove = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? GLStore.getBandLove(title) : 0;
+    if (bandLove > 0 && crowd > 0) {
+        var insight = '';
+        if (bandLove >= 4 && crowd >= 4) insight = 'Band + crowd favorite \u2014 anchor song';
+        else if (bandLove >= 4 && crowd < 3) insight = 'Band loves it \u2014 worth tightening for the crowd';
+        else if (bandLove < 3 && crowd >= 4) insight = 'Crowd favorite \u2014 get this ready';
+        else if (bandLove < 3 && crowd < 3) insight = 'Low energy both sides \u2014 consider dropping';
+        if (insight) {
+            html += '<div style="font-size:0.68em;color:var(--text-dim);padding:2px 0;margin-top:2px;font-style:italic">' + insight + '</div>';
+        }
+    }
+
+    return html;
+}
+
+window.sdSaveAudienceLove = function(safeSong, title, value) {
+    if (typeof GLStore !== 'undefined' && GLStore.saveAudienceLove) {
+        GLStore.saveAudienceLove(title, value);
+        _sdRefreshLoveCard(safeSong, title);
+    }
+};
+
+function _sdRefreshLoveCard(safeSong, title) {
+    var card = document.getElementById('sd-love-card');
+    if (card) {
+        card.innerHTML = _sdRenderBandLove(title, safeSong) + _sdRenderAudienceLove(title, safeSong);
+    }
+}
 
 console.log('✅ song-detail.js loaded (Phase 2 — direct Firebase, no DOM mirroring)');

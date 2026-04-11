@@ -529,12 +529,29 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             ? '<td style="padding:6px 2px 6px 8px;width:28px"><input type="checkbox" ' + (_isChecked ? 'checked ' : '') + 'onclick="event.stopPropagation();_sqToggleRow(\'' + titleOnclick + '\')" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer"></td>'
             : '';
 
+        // Compact love indicators (band + audience)
+        var _blv = (_hasGLStore && GLStore.getBandLove) ? GLStore.getBandLove(song.title) : 0;
+        var _alv = (_hasGLStore && GLStore.getAudienceLove) ? GLStore.getAudienceLove(song.title) : 0;
+        var _loveHtml = '';
+        if (_blv > 0 || _alv > 0) {
+            var _bDots = '', _aDots = '';
+            for (var _li = 1; _li <= 5; _li++) {
+                _bDots += '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:' + (_li <= _blv ? '#ef4444' : 'rgba(255,255,255,0.08)') + ';margin-right:1px"></span>';
+                _aDots += '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:' + (_li <= _alv ? '#a855f7' : 'rgba(255,255,255,0.08)') + ';margin-right:1px"></span>';
+            }
+            _loveHtml = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1" title="Band: ' + _blv + '/5 \u00B7 Audience: ' + _alv + '/5">'
+                + (_blv > 0 ? '<div>' + _bDots + '</div>' : '')
+                + (_alv > 0 ? '<div>' + _aDots + '</div>' : '')
+                + '</div>';
+        }
+
         return '<tr class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
                ' onclick="' + _rowClick + '" style="cursor:pointer;border-left:' + _rowBorder + ';background:' + (_isChecked ? 'rgba(251,191,36,0.06)' : _rowBg) + '">' +
                _checkCol +
                '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
                '<td style="padding:6px 4px"><div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:48px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.72em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
                '<td style="padding:6px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.7em">' + chipHTML + '</div></td>' +
+               (_loveHtml ? '<td style="padding:6px 4px">' + _loveHtml + '</td>' : '') +
                '<td style="padding:6px 8px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span></td>' +
                '</tr>';
     }).join('') + '</tbody></table>';
