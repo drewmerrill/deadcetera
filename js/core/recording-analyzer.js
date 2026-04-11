@@ -285,6 +285,85 @@ window.RecordingAnalyzer = (function() {
     console.log('[RecordingAnalyzer] BPM extracted for ' + _bpmExtracted + '/' + segments.length + ' segments');
     onProgress('groove', 100);
 
+    // Stage 3b: Audio embeddings (CLAP) — optional, requires localhost:8200
+    // Fetches embeddings for song-like segments to enable audioSimilar matching signal.
+    // Non-blocking: if service is unavailable, skips gracefully.
+    var _embedsExtracted = 0;
+    var _embedServiceUrl = window._glEmbedServiceUrl || 'http://localhost:8200';
+    var _embedServiceAvailable = false;
+    var _MIN_EMBED_DURATION = 30; // seconds — minimum segment length for embedding
+
+    if (!isLargeFile && channelData && sampleRate >= 8000) {
+      // Probe service availability with a quick health check (1s timeout)
+      try {
+        var _healthCtrl = new AbortController();
+        var _healthTimeout = setTimeout(function() { _healthCtrl.abort(); }, 1000);
+        var _healthRes = await fetch(_embedServiceUrl + '/health', { signal: _healthCtrl.signal });
+        clearTimeout(_healthTimeout);
+        if (_healthRes.ok) {
+          var _healthData = await _healthRes.json();
+          _embedServiceAvailable = _healthData.status === 'ok' || _healthData.status === 'ready';
+          console.log('[Embed] Service available at ' + _embedServiceUrl + ' (status=' + _healthData.status + ')');
+        }
+      } catch(_hErr) {
+        console.log('[Embed] Service not available at ' + _embedServiceUrl + ' — skipping embeddings');
+      }
+
+      if (_embedServiceAvailable) {
+        onProgress('embedding', 0);
+        for (var _ei = 0; _ei < segments.length; _ei++) {
+          var _eSeg = segments[_ei];
+          // Only embed song-type segments with sufficient duration
+          if (_eSeg.duration < _MIN_EMBED_DURATION) continue;
+          var _eType = _eSeg.type || '';
+          if (_eType === 'false_start' || _eType === 'retry') continue;
+
+          onProgress('embedding', Math.round((_ei / segments.length) * 100));
+
+          try {
+            // Extract 30s audio slice from segment center
+            var _eDur = Math.min(_eSeg.duration, 30);
+            var _eOffset = Math.max(0, (_eSeg.duration - _eDur) / 2); // center of segment
+            var _eStart = Math.floor((_eSeg.startSec + _eOffset) * sampleRate);
+            var _eEnd = Math.min(_eStart + Math.floor(_eDur * sampleRate), channelData.length);
+            var _eSamples = _eEnd - _eStart;
+            if (_eSamples < sampleRate * 5) continue;
+
+            // Encode slice as WAV
+            var _eSlice = channelData.subarray(_eStart, _eEnd);
+            var _eWav = _encodeWAV(_eSlice, sampleRate);
+
+            // POST to embedding service (5s timeout per segment)
+            var _eCtrl = new AbortController();
+            var _eTimeout = setTimeout(function() { _eCtrl.abort(); }, 5000);
+            var _eForm = new FormData();
+            _eForm.append('file', new Blob([_eWav], { type: 'audio/wav' }), 'segment.wav');
+            var _eRes = await fetch(_embedServiceUrl + '/embed', { method: 'POST', body: _eForm, signal: _eCtrl.signal });
+            clearTimeout(_eTimeout);
+            var _eData = await _eRes.json();
+
+            if (_eData.embedding && _eData.embedding.length) {
+              _eSeg.audioEmbedding = _eData.embedding;
+              _embedsExtracted++;
+              console.log('[Embed] seg ' + _ei + ' (' + _formatTime(_eSeg.startSec) + '-' + _formatTime(_eSeg.endSec) + '): ' +
+                _eData.dimension + 'd embedding extracted');
+            }
+          } catch(_eErr) {
+            console.warn('[Embed] seg ' + _ei + ' failed:', _eErr.message);
+            // If service went down mid-analysis, stop trying
+            if (_eErr.name === 'AbortError' || _eErr.message.indexOf('fetch') !== -1) {
+              console.warn('[Embed] Service appears down — stopping embedding extraction');
+              break;
+            }
+          }
+        }
+        console.log('[RecordingAnalyzer] Embeddings extracted for ' + _embedsExtracted + '/' + segments.length + ' segments');
+        onProgress('embedding', 100);
+      }
+    } else if (isLargeFile) {
+      console.log('[Embed] Large file — skipping embeddings (no decoded audio available)');
+    }
+
     // Stage 4: Song matching
     onProgress('matching', 0);
 
@@ -301,10 +380,11 @@ window.RecordingAnalyzer = (function() {
       console.log('[RecordingAnalyzer] === MATCHING RESULTS ===');
       segments.forEach(function(seg, idx) {
         var bpmStr = seg.bpm ? (seg.bpm + ' BPM') : 'no BPM';
+        var embedStr = seg.audioEmbedding ? (seg.audioEmbedding.length + 'd') : 'no embed';
         var matchStr = seg.songMatch ? (seg.songMatch.confidence + ', signals=' + (seg.songMatch.activeSignals || []).join('+')) : 'no match';
         var topCands = seg.songMatch && seg.songMatch.candidates ? seg.songMatch.candidates.map(function(c) { return c.title + '(' + c.score + ')'; }).join(', ') : '';
         console.log('[Match] #' + idx + ' ' + _formatTime(seg.startSec) + '-' + _formatTime(seg.endSec) +
-          ' | ' + bpmStr + ' | → ' + (seg.songTitle || '?') + ' | ' + matchStr +
+          ' | ' + bpmStr + ' | ' + embedStr + ' | → ' + (seg.songTitle || '?') + ' | ' + matchStr +
           (topCands ? ' | top: ' + topCands : ''));
       });
     } else {
