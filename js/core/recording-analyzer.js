@@ -404,8 +404,7 @@ window.RecordingAnalyzer = (function() {
       }
     }
 
-    // Release raw bytes now that all segment extraction is done
-    _rawBytes = null;
+    // NOTE: _rawBytes NOT released yet — transcription stage needs it for large-file talk segments
 
     console.log('[RecordingAnalyzer] Feature extraction complete: BPM=' + _bpmExtracted +
       ' Groove=' + _grooveExtracted + ' Embed=' + _embedsExtracted +
@@ -516,7 +515,7 @@ window.RecordingAnalyzer = (function() {
         onProgress('groove', 80 + Math.round((_ti / _talkSegments.length) * 10));
 
         try {
-          // Get audio for this talking segment
+          // Get audio for this talking segment (same on-demand decode pattern as feature extraction)
           var _tPcm = null, _tSr = 0;
           if (!isLargeFile && channelData && sampleRate >= 8000) {
             var _tStart = Math.floor(_tSeg.startSec * sampleRate);
@@ -525,8 +524,22 @@ window.RecordingAnalyzer = (function() {
               _tPcm = channelData.subarray(_tStart, _tEnd);
               _tSr = sampleRate;
             }
+          } else if (isLargeFile && _rawBytes) {
+            // Large file: on-demand decode from raw MP3 bytes
+            try {
+              var _tByteStart = Math.max(0, Math.floor((_tSeg.startSec * _rawBitrate) / 8) - 4096);
+              var _tByteEnd = Math.min(Math.ceil((_tSeg.endSec * _rawBitrate) / 8) + 4096, _rawBytes.byteLength);
+              if (_tByteEnd - _tByteStart > 5000) {
+                var _tDecCtx = new (window.AudioContext || window.webkitAudioContext)();
+                var _tDecBuf = await _tDecCtx.decodeAudioData(_rawBytes.slice(_tByteStart, _tByteEnd));
+                _tPcm = _tDecBuf.getChannelData(0);
+                _tSr = _tDecBuf.sampleRate;
+                _tDecCtx.close();
+              }
+            } catch(_tDecErr) {
+              console.warn('[Transcribe] talk seg ' + _ti + ' decode failed:', _tDecErr.message);
+            }
           }
-          // Large file: skip talking transcription (no raw bytes available here since released)
           if (!_tPcm) continue;
 
           var _tWav = _encodeWAV(_tPcm, _tSr);
@@ -657,6 +670,9 @@ window.RecordingAnalyzer = (function() {
 
     console.log('[RecordingAnalyzer] Transcription: talks=' + _talksTranscribed +
       ' cues=' + _cuesDetected + ' lyrics=' + _lyricsExtracted);
+
+    // Release raw bytes now that all extraction + transcription is done
+    _rawBytes = null;
     onProgress('groove', 100);
 
     // Stage 4: Song matching
@@ -2552,14 +2568,66 @@ window.RecordingAnalyzer = (function() {
       }
     });
 
-    console.log('[RecordingAnalyzer] RMS segmentation: ' + segments.length + ' segments from ' + rmsData.length + ' windows (raw=' + rawSegments.length + ' merged=' + merged.length + ' minSilence=' + (MIN_SILENCE_WINDOWS * RMS_WINDOW_SEC) + 's minSong=' + (MIN_MUSIC_WINDOWS * RMS_WINDOW_SEC) + 's)');
+    // Pass 4: Detect talking segments in gaps between music
+    // Between-song gaps that have energy above silence but below music threshold
+    // are likely band members talking (announcing next song, discussing, etc.)
+    var talkSegments = [];
+    var MIN_TALK_WINDOWS = 30;  // 3 seconds minimum
+    var MAX_TALK_WINDOWS = 600; // 60 seconds maximum
+    var TALK_ENERGY_MIN = threshold * 0.5; // must have SOME energy (not dead silence)
+
+    // Collect all gaps between music segments
+    var allBoundaries = [{ end: 0 }]; // start of recording
+    segments.forEach(function(s) {
+      allBoundaries.push({ start: s.start_time / RMS_WINDOW_SEC, end: s.end_time / RMS_WINDOW_SEC });
+    });
+    allBoundaries.push({ start: rmsData.length }); // end of recording
+
+    for (var gi = 0; gi < allBoundaries.length - 1; gi++) {
+      var gapStart = Math.floor(allBoundaries[gi].end || 0);
+      var gapEnd = Math.floor(allBoundaries[gi + 1].start || rmsData.length);
+      var gapLen = gapEnd - gapStart;
+
+      if (gapLen < MIN_TALK_WINDOWS || gapLen > MAX_TALK_WINDOWS) continue;
+
+      // Check if gap has speech-like energy: above dead silence but below music
+      var gapEnergy = 0;
+      var gapNonSilent = 0;
+      for (var gw = gapStart; gw < gapEnd && gw < rmsData.length; gw++) {
+        gapEnergy += rmsData[gw];
+        if (rmsData[gw] > TALK_ENERGY_MIN) gapNonSilent++;
+      }
+      var gapAvgEnergy = gapEnergy / Math.max(1, gapLen);
+      var gapActivityRatio = gapNonSilent / Math.max(1, gapLen);
+
+      // Speech: has some energy (not silence) but not loud (not music)
+      // Activity ratio > 30% means something is happening in this gap
+      if (gapAvgEnergy > TALK_ENERGY_MIN && gapAvgEnergy < threshold * 3 && gapActivityRatio > 0.3) {
+        talkSegments.push({
+          start_time: gapStart * RMS_WINDOW_SEC,
+          end_time: gapEnd * RMS_WINDOW_SEC,
+          type: 'speech',
+          kind: 'speech',
+          intent: 'discussion',
+          durationSec: (gapEnd - gapStart) * RMS_WINDOW_SEC,
+          _originalKind: 'speech'
+        });
+      }
+    }
+
+    // Combine music + talk segments, sorted by time
+    var allSegments = segments.concat(talkSegments);
+    allSegments.sort(function(a, b) { return (a.start_time || 0) - (b.start_time || 0); });
+
+    console.log('[RecordingAnalyzer] RMS segmentation: ' + segments.length + ' music + ' + talkSegments.length + ' talk segments from ' + rmsData.length + ' windows');
 
     return {
-      events: segments,
+      events: allSegments,
       summary: {
-        totalEvents: segments.length,
+        totalEvents: allSegments.length,
         songFull: segments.filter(function(s) { return s.type === 'song_full'; }).length,
-        songPartial: segments.filter(function(s) { return s.type === 'song_partial'; }).length
+        songPartial: segments.filter(function(s) { return s.type === 'song_partial'; }).length,
+        talkSegments: talkSegments.length
       }
     };
   }
