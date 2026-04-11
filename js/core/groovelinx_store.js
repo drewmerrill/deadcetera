@@ -718,15 +718,15 @@
     var db = _db();
     if (!db) return;
     var k = _sanitize(songId);
+    // Optimistic cache update — UI reads cache immediately after save call
+    if (v === 0) { delete _bandLoveCache[songId]; } else { _bandLoveCache[songId] = v; }
+    emit('bandLoveChanged', { songId: songId, value: v });
     try {
       if (v === 0) {
         await db.ref(_bp('songs/' + k + '/bandLove')).remove();
-        delete _bandLoveCache[songId];
       } else {
         await db.ref(_bp('songs/' + k + '/bandLove')).set({ score: v, updatedAt: new Date().toISOString() });
-        _bandLoveCache[songId] = v;
       }
-      emit('bandLoveChanged', { songId: songId, value: v });
       if (typeof showToast === 'function') showToast(v > 0 ? 'Love: ' + v + '/5' : 'Love cleared');
     } catch(e) {
       if (typeof showToast === 'function') showToast('Could not save');
@@ -798,15 +798,15 @@
     var db = _db();
     if (!db) return;
     var k = _sanitize(songId);
+    // Optimistic cache update — UI reads cache immediately after save call
+    if (v === 0) { delete _audienceLoveCache[songId]; } else { _audienceLoveCache[songId] = v; }
+    emit('audienceLoveChanged', { songId: songId, value: v });
     try {
       if (v === 0) {
         await db.ref(_bp('songs/' + k + '/audienceLove')).remove();
-        delete _audienceLoveCache[songId];
       } else {
         await db.ref(_bp('songs/' + k + '/audienceLove')).set({ score: v, updatedAt: new Date().toISOString() });
-        _audienceLoveCache[songId] = v;
       }
-      emit('audienceLoveChanged', { songId: songId, value: v });
       if (typeof showToast === 'function') showToast(v > 0 ? 'Audience: ' + v + '/5' : 'Audience love cleared');
     } catch(e) {
       if (typeof showToast === 'function') showToast('Could not save');
@@ -859,16 +859,20 @@
     var mk = _myKey(); if (!mk) return;
     var db = _db(); if (!db) return;
     var k = _sanitize(songId);
+    // Optimistic cache update
+    if (v === 0) {
+      if (_personalBandLoveCache[songId]) delete _personalBandLoveCache[songId][mk];
+    } else {
+      if (!_personalBandLoveCache[songId]) _personalBandLoveCache[songId] = {};
+      _personalBandLoveCache[songId][mk] = v;
+    }
+    emit('personalBandLoveChanged', { songId: songId, value: v });
     try {
       if (v === 0) {
         await db.ref(_bp('songs/' + k + '/bandLove/personal/' + mk)).remove();
-        if (_personalBandLoveCache[songId]) delete _personalBandLoveCache[songId][mk];
       } else {
         await db.ref(_bp('songs/' + k + '/bandLove/personal/' + mk)).set({ score: v, updatedAt: new Date().toISOString() });
-        if (!_personalBandLoveCache[songId]) _personalBandLoveCache[songId] = {};
-        _personalBandLoveCache[songId][mk] = v;
       }
-      emit('personalBandLoveChanged', { songId: songId, value: v });
     } catch(e) {}
   }
 
@@ -883,16 +887,20 @@
     var mk = _myKey(); if (!mk) return;
     var db = _db(); if (!db) return;
     var k = _sanitize(songId);
+    // Optimistic cache update
+    if (v === 0) {
+      if (_personalAudienceLoveCache[songId]) delete _personalAudienceLoveCache[songId][mk];
+    } else {
+      if (!_personalAudienceLoveCache[songId]) _personalAudienceLoveCache[songId] = {};
+      _personalAudienceLoveCache[songId][mk] = v;
+    }
+    emit('personalAudienceLoveChanged', { songId: songId, value: v });
     try {
       if (v === 0) {
         await db.ref(_bp('songs/' + k + '/audienceLove/personal/' + mk)).remove();
-        if (_personalAudienceLoveCache[songId]) delete _personalAudienceLoveCache[songId][mk];
       } else {
         await db.ref(_bp('songs/' + k + '/audienceLove/personal/' + mk)).set({ score: v, updatedAt: new Date().toISOString() });
-        if (!_personalAudienceLoveCache[songId]) _personalAudienceLoveCache[songId] = {};
-        _personalAudienceLoveCache[songId][mk] = v;
       }
-      emit('personalAudienceLoveChanged', { songId: songId, value: v });
     } catch(e) {}
   }
 

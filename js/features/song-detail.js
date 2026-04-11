@@ -2063,46 +2063,8 @@ async function _sdPopulateRightPanel(title) {
 
     var safeSong = _sdEsc(title).replace(/'/g, "\\'");
 
-    // Load song data
-    var song = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
-    var metaKey = '', metaBpm = '', lead = '', status = '';
-    try {
-        var res = await Promise.all([
-            loadBandDataFromDrive(title, 'key').catch(function() { return null; }),
-            loadBandDataFromDrive(title, 'song_bpm').catch(function() { return null; }),
-            loadBandDataFromDrive(title, 'lead_singer').catch(function() { return null; }),
-            loadBandDataFromDrive(title, 'song_status').catch(function() { return null; }),
-        ]);
-        metaKey = (res[0] && typeof res[0] === 'object') ? (res[0].key || '') : (res[0] || '');
-        metaBpm = (res[1] && typeof res[1] === 'object') ? (res[1].bpm || '') : (res[1] || '');
-        lead = (res[2] && res[2].singer) ? res[2].singer : (typeof res[2] === 'string' ? res[2] : '');
-        status = (res[3] && res[3].status) ? res[3].status : (typeof res[3] === 'string' ? res[3] : '');
-        // Also check in-memory
-        if (!metaKey && song && song.key) metaKey = song.key;
-        if (!metaBpm && song && song.bpm) metaBpm = song.bpm;
-        if (!lead && song && song.lead) lead = song.lead;
-        if (!status) status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(title) : '';
-    } catch(e) {}
-
-    // Build key options
-    var keys = ['', 'C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B',
-        'Am', 'A#m', 'Bbm', 'Bm', 'Cm', 'C#m', 'Dm', 'D#m', 'Ebm', 'Em', 'Fm', 'F#m', 'Gm', 'G#m', 'Abm'];
-    var keyOpts = keys.map(function(k) { return '<option value="' + k + '"' + (k === metaKey ? ' selected' : '') + '>' + (k || '\u2014') + '</option>'; }).join('');
-
-    // Build status options
-    var statuses = [['', '\u2014 Select \u2014'], ['prospect', '\uD83D\uDC40 Prospect'], ['learning', '\uD83D\uDCD6 Learning'], ['rotation', '\uD83D\uDD04 In Rotation'], ['gig_ready', '\u2705 Gig Ready'], ['shelved', '\uD83D\uDCE6 Shelved']];
-    var statusOpts = statuses.map(function(s) { return '<option value="' + s[0] + '"' + (s[0] === status ? ' selected' : '') + '>' + s[1] + '</option>'; }).join('');
-
-    // Build lead options
-    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
-    var leadOpts = '<option value="">\u2014</option>' + members.map(function(m) {
-        var name = (typeof m === 'object') ? m.name : m;
-        var val = name.toLowerCase();
-        return '<option value="' + val + '"' + (val === lead.toLowerCase() ? ' selected' : '') + '>' + _sdEsc(name) + '</option>';
-    }).join('');
-
     // ── ALWAYS VISIBLE: Band Love + Audience Love (primary position — above fold) ──
-    // Key/BPM/Lead/Status editing is in the header bar only — not duplicated here
+    // Key/BPM/Lead/Status editing is in the header DNA bar only — not rendered here
     infoEl.innerHTML = '<div style="padding:8px 12px" id="sd-love-card">'
         + _sdRenderBandLove(title, safeSong)
         + _sdRenderAudienceLove(title, safeSong)
@@ -2258,7 +2220,7 @@ function _sdInjectStyles(){
 function _sdRenderBandLove(title, safeSong) {
     var love = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? GLStore.getBandLove(title) : 0;
     var derived = (typeof GLStore !== 'undefined' && GLStore.deriveSongStatus) ? GLStore.deriveSongStatus(title) : { label: 'Unrated', color: '#64748b' };
-    var HEARTS = ['\u2764\uFE0F', '\uD83E\uDDE1', '\uD83D\uDC9B', '\uD83D\uDC9A', '\uD83D\uDC99'];
+    var HEARTS = ['\u2764\uFE0F', '\u2764\uFE0F', '\u2764\uFE0F', '\u2764\uFE0F', '\u2764\uFE0F'];
     var labels = ['Not set', 'Meh', 'It\u2019s OK', 'Like it', 'Love it', 'LOVE IT'];
     var safeTitle = title.replace(/'/g, '');
 
