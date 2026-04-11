@@ -446,12 +446,20 @@ function slRenderSetSongs(setIdx) {
         const bpmStr = songData?.bpm ? `<span style="font-size:0.7em;color:#94a3b8">\u26a1${songData.bpm}</span>` : '';
         const segueColor = { stop:'#64748b', flow:'#818cf8', segue:'#34d399', cutoff:'#f87171' }[segue] || '#64748b';
         const histTip = typeof getSongHistoryTooltip === 'function' ? getSongHistoryTooltip(s) : '';
+        // Compact love + readiness badges
+        var _slBl = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? GLStore.getBandLove(s) : 0;
+        var _slAl = (typeof GLStore !== 'undefined' && GLStore.getAudienceLove) ? GLStore.getAudienceLove(s) : 0;
+        var _slRd = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(s) : 0;
+        var _slBadges = '';
+        if (_slBl > 0) _slBadges += '<span style="font-size:0.7em;opacity:0.7" title="Band: ' + _slBl + '/5">' + '\u2764'.repeat(Math.min(_slBl, 5)) + '</span>';
+        if (_slAl > 0) _slBadges += '<span style="font-size:0.7em;opacity:0.7" title="Audience: ' + _slAl + '/5">' + '\uD83D\uDC9C'.repeat(Math.min(_slAl, 5)) + '</span>';
+        if (_slRd > 0 && _slRd < 3) _slBadges += '<span style="font-size:0.6em;color:#f59e0b;font-weight:700" title="Readiness: ' + _slRd.toFixed(1) + '/5">\u26A0</span>';
         var row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
             style="padding:3px 6px;font-size:0.82em;gap:4px;align-items:center;cursor:default;min-height:28px" title="${histTip.replace(/"/g,'&quot;')}">
             <span style="color:#475569;cursor:grab;font-size:0.9em;flex-shrink:0">\u2807</span>
             <span style="color:var(--text-dim);min-width:16px;font-weight:600;flex-shrink:0;font-size:0.85em">${i + 1}</span>
             <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
-            ${keyStr}${bpmStr}
+            ${_slBadges}${keyStr}${bpmStr}
             <select onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
                 title="Transition: · = Full Stop, → = Flow into next, ~ = Segue/blend, | = Hard cutoff"
                 style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:4px;padding:1px 3px;font-size:0.72em;font-weight:700;cursor:pointer;flex-shrink:0">
@@ -486,6 +494,7 @@ function slRenderSetSongs(setIdx) {
         });
     });
     _slUpdateShowTotal();
+    _slRenderSetIntelligence();
 }
 
 // Band Readiness Meter for setlist
@@ -1690,6 +1699,160 @@ function slPickerToggleLibrary() {
             label.style.display = _slPickerShowLibrary ? 'flex' : 'none';
         }
     });
+}
+
+// ============================================================================
+// SETLIST INTELLIGENCE — Energy Model, Flow Visualization, Insights
+// ============================================================================
+
+// Energy score per song: audience-weighted (what the crowd feels)
+// Scale 1-5 normalized
+function _slSongEnergy(title) {
+    if (typeof GLStore === 'undefined') return 2.5;
+    var al = GLStore.getAudienceLove ? GLStore.getAudienceLove(title) : 0;
+    var bl = GLStore.getBandLove ? GLStore.getBandLove(title) : 0;
+    var rd = GLStore.avgReadiness ? GLStore.avgReadiness(title) : 0;
+    // If nothing is rated, return neutral
+    if (al === 0 && bl === 0 && rd === 0) return 0;
+    var raw = (al * 0.6) + (bl * 0.3) + (rd * 0.1);
+    // Normalize: if only partial data, scale from what we have
+    var weight = (al > 0 ? 0.6 : 0) + (bl > 0 ? 0.3 : 0) + (rd > 0 ? 0.1 : 0);
+    if (weight > 0 && weight < 1) raw = raw / weight; // normalize partial
+    return Math.round(raw * 10) / 10;
+}
+
+// Color for energy level
+function _slEnergyColor(e) {
+    if (e === 0) return 'rgba(255,255,255,0.08)';
+    if (e >= 4) return '#22c55e';
+    if (e >= 3) return '#84cc16';
+    if (e >= 2) return '#f59e0b';
+    return '#ef4444';
+}
+
+// Render energy flow strip + insights for the full setlist
+function _slRenderSetIntelligence() {
+    // Remove old panel if exists
+    var old = document.getElementById('slIntelPanel');
+    if (old) old.remove();
+
+    // Gather all songs across all sets
+    var allSongs = [];
+    (window._slSets || []).forEach(function(set, si) {
+        (set.songs || []).forEach(function(item) {
+            var title = typeof item === 'string' ? item : (item.title || '');
+            if (title && !(item.break)) allSongs.push({ title: title, setIdx: si });
+        });
+    });
+    if (allSongs.length < 2) return; // need at least 2 songs for flow
+
+    // Compute energy per song
+    var energies = allSongs.map(function(s) {
+        return { title: s.title, energy: _slSongEnergy(s.title), setIdx: s.setIdx };
+    });
+    var ratedCount = energies.filter(function(e) { return e.energy > 0; }).length;
+    if (ratedCount < 2) return; // not enough data
+
+    // Build energy flow strip
+    var maxE = Math.max.apply(null, energies.map(function(e) { return e.energy || 1; }));
+    var stripHtml = '<div style="display:flex;align-items:flex-end;gap:2px;height:40px;margin-bottom:8px">';
+    energies.forEach(function(e) {
+        var pct = e.energy > 0 ? Math.round((e.energy / maxE) * 100) : 10;
+        var color = _slEnergyColor(e.energy);
+        var shortTitle = e.title.length > 12 ? e.title.substring(0, 11) + '\u2026' : e.title;
+        stripHtml += '<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:1px" title="' + e.title.replace(/"/g, '&quot;') + ': ' + (e.energy > 0 ? e.energy.toFixed(1) : 'unrated') + '/5">'
+            + '<div style="width:100%;height:' + pct + '%;min-height:3px;background:' + color + ';border-radius:3px 3px 0 0;transition:height 0.2s"></div>'
+            + '</div>';
+    });
+    stripHtml += '</div>';
+    // Labels: first, peak, last
+    var peakIdx = 0;
+    energies.forEach(function(e, i) { if (e.energy > energies[peakIdx].energy) peakIdx = i; });
+    stripHtml += '<div style="display:flex;justify-content:space-between;font-size:0.55em;color:var(--text-dim)">'
+        + '<span>Open</span>'
+        + '<span>Peak: ' + energies[peakIdx].title.split(' ').slice(0, 3).join(' ') + '</span>'
+        + '<span>Close</span></div>';
+
+    // Generate insights (max 4)
+    var insights = _slGenerateInsights(energies, allSongs);
+
+    // Build panel
+    var panel = document.createElement('div');
+    panel.id = 'slIntelPanel';
+    panel.style.cssText = 'margin-top:12px;padding:12px 14px;border-radius:10px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.04)';
+    panel.innerHTML = '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">\uD83C\uDFB6 Set Energy</div>'
+        + stripHtml
+        + (insights.length ? '<div style="margin-top:10px;border-top:1px solid rgba(255,255,255,0.04);padding-top:8px">'
+            + insights.map(function(ins) {
+                return '<div style="font-size:0.72em;color:' + (ins.color || 'var(--text-dim)') + ';padding:2px 0;display:flex;align-items:flex-start;gap:6px">'
+                    + '<span style="flex-shrink:0">' + ins.icon + '</span>'
+                    + '<span>' + ins.text + '</span></div>';
+            }).join('') + '</div>' : '');
+
+    // Insert after the show total element
+    var showTotal = document.getElementById('slShowTotal');
+    if (showTotal) {
+        showTotal.parentNode.insertBefore(panel, showTotal);
+    }
+}
+
+function _slGenerateInsights(energies, allSongs) {
+    var insights = [];
+    var _hasStore = typeof GLStore !== 'undefined';
+
+    // 1. Energy flow analysis
+    var first3Avg = energies.slice(0, Math.min(3, energies.length)).reduce(function(s, e) { return s + e.energy; }, 0) / Math.min(3, energies.length);
+    var last3Avg = energies.slice(-Math.min(3, energies.length)).reduce(function(s, e) { return s + e.energy; }, 0) / Math.min(3, energies.length);
+    var midStart = Math.floor(energies.length * 0.3);
+    var midEnd = Math.ceil(energies.length * 0.7);
+    var midSlice = energies.slice(midStart, midEnd);
+    var midAvg = midSlice.length ? midSlice.reduce(function(s, e) { return s + e.energy; }, 0) / midSlice.length : 0;
+
+    if (first3Avg > 0 && first3Avg < 2.5) {
+        insights.push({ icon: '\u26A0', text: 'Starts flat \u2014 consider opening with a stronger song', color: '#f59e0b' });
+    } else if (first3Avg >= 4) {
+        insights.push({ icon: '\u2705', text: 'Strong opener \u2014 good energy out of the gate', color: '#22c55e' });
+    }
+    if (midAvg > 0 && midAvg < first3Avg * 0.7 && midAvg < last3Avg * 0.7) {
+        insights.push({ icon: '\u26A0', text: 'Energy dips mid-set \u2014 consider a crowd favorite in the middle', color: '#f59e0b' });
+    }
+    if (last3Avg >= 3.5) {
+        insights.push({ icon: '\u2705', text: 'Strong finish \u2014 set ends on a high note', color: '#22c55e' });
+    } else if (last3Avg > 0 && last3Avg < 2.5) {
+        insights.push({ icon: '\u26A0', text: 'Ends quiet \u2014 consider a bigger closer', color: '#f59e0b' });
+    }
+
+    // 2. Love balance
+    var highAudience = 0, lowImpact = 0;
+    allSongs.forEach(function(s) {
+        var al = _hasStore && GLStore.getAudienceLove ? GLStore.getAudienceLove(s.title) : 0;
+        var bl = _hasStore && GLStore.getBandLove ? GLStore.getBandLove(s.title) : 0;
+        if (al >= 4) highAudience++;
+        if (al > 0 && al < 3 && bl > 0 && bl < 3) lowImpact++;
+    });
+    if (highAudience >= allSongs.length * 0.5) {
+        insights.push({ icon: '\uD83D\uDC9C', text: 'Crowd-heavy set \u2014 strong audience impact', color: '#a855f7' });
+    } else if (highAudience === 0 && allSongs.length >= 4) {
+        insights.push({ icon: '\u26A0', text: 'No crowd favorites \u2014 consider adding one the audience loves', color: '#f59e0b' });
+    }
+    if (lowImpact >= 3) {
+        insights.push({ icon: '\u26A0', text: lowImpact + ' low-impact songs \u2014 consider swapping for higher energy', color: '#f59e0b' });
+    }
+
+    // 3. Readiness check
+    var notReady = 0;
+    allSongs.forEach(function(s) {
+        var avg = _hasStore && GLStore.avgReadiness ? GLStore.avgReadiness(s.title) : 0;
+        if (avg > 0 && avg < 3) notReady++;
+    });
+    if (notReady > 0) {
+        insights.push({ icon: '\u26A0', text: notReady + ' song' + (notReady > 1 ? 's' : '') + ' may not be ready for this gig', color: '#f59e0b' });
+    } else if (allSongs.length >= 4) {
+        var anyRated = allSongs.some(function(s) { return _hasStore && GLStore.avgReadiness && GLStore.avgReadiness(s.title) > 0; });
+        if (anyRated) insights.push({ icon: '\u2705', text: 'All songs gig-ready', color: '#22c55e' });
+    }
+
+    return insights.slice(0, 4); // max 4 insights
 }
 
 window.slOpenSongPicker = slOpenSongPicker;
