@@ -3,9 +3,18 @@
     {
       "source": "/manifest.json",
       "headers": [{ "key": "Content-Type", "value": "application/manifest+json" }]
+    },
+    {
+      "source": "/version.json",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+    },
+    {
+      "source": "/service-worker.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
     }
   ],
   "rewrites": [
+    { "source": "/favicon.ico", "destination": "/favicon.ico" },
     { "source": "/manifest.json", "destination": "/manifest.json" },
     { "source": "/service-worker.js", "destination": "/service-worker.js" },
     { "source": "/version.json", "destination": "/version.json" },
