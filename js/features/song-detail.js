@@ -65,7 +65,7 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
     _sdActivateTab(_defaultTab);
     _sdPopulateBandLens(title);
     if (_defaultTab === 'learn') { _sdLensPopulated.learn = true; _sdPopulateLearnLens(title); }
-    if (!window._sdPanelMode) _sdPopulateRightPanel(title);
+    _sdPopulateRightPanel(title);
     requestAnimationFrame(function() { container.classList.add('sd-entered'); });
 };
 
