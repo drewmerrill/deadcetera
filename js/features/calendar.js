@@ -1061,10 +1061,22 @@ async function _calRenderDecisionAnchor() {
         var pDate = new Date(p.date + 'T12:00:00');
         var pLabel = pDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
         var _safDate = p.date.replace(/'/g, "\\'");
-        // Build a short reason
+        // Build explainability line — conflict-aware reason
         var reason = '';
-        if (p.reasons && p.reasons.length) reason = p.reasons[0];
-        else if (p.availability) reason = p.availability.available + ' of ' + p.availability.total + ' members free';
+        var avail = p.availability;
+        if (avail) {
+            var softCount = avail.softConflictCount || 0;
+            var hardCount = avail.hardConflictCount || 0;
+            if (hardCount === 0 && softCount === 0) {
+                reason = 'No conflicts \u2014 ' + avail.available + ' of ' + avail.total + ' members clear';
+            } else if (hardCount === 0 && softCount > 0) {
+                reason = 'Best available \u2014 ' + softCount + ' same-day event' + (softCount > 1 ? 's' : '') + ' but no overlaps';
+            } else {
+                reason = avail.available + ' of ' + avail.total + ' available';
+            }
+        } else if (p.reasons && p.reasons.length) {
+            reason = p.reasons[0];
+        }
         el.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.1)">'
             + '<div style="flex:1;min-width:0">'
             + '<div style="font-size:0.72em;font-weight:700;color:var(--gl-green,#22c55e);margin-bottom:2px">Best next rehearsal</div>'
@@ -2161,18 +2173,30 @@ function renderCalendarInner() {
                     hoverHtml += '</div>';
                 }
             } else if (isBlocked && blockedList.length) {
+                // Determine event context for conflict explanation
+                var _evtContext = isGig ? 'this gig' : isRehearsal ? 'rehearsal' : 'rehearsal';
+                var _hardCount = blockedList.filter(function(x) { return x._conflictType !== 'soft'; }).length;
+                var _softCount = blockedList.filter(function(x) { return x._conflictType === 'soft'; }).length;
                 hoverHtml = '<div class="gl-day-hover">';
+                // Summary line
+                if (_hardCount && _softCount) hoverHtml += '<div style="font-size:0.9em;color:var(--gl-text-tertiary);margin-bottom:3px">' + _hardCount + ' conflict' + (_hardCount > 1 ? 's' : '') + ', ' + _softCount + ' same-day</div>';
                 blockedList.slice(0,3).forEach(b => {
-                    var conflictLabel = b._conflictType === 'soft' ? ' (does not conflict)' : '';
-                    hoverHtml += '<div>' + (b.person || 'Member') + ' \u2014 ' + (b.reason || 'unavailable') + conflictLabel + '</div>';
+                    var name = (b.person || 'Member').split(' ')[0];
+                    var time = b._timeLabel || '';
+                    var conflictNote = b._conflictType === 'soft'
+                        ? '<span style="color:var(--gl-text-tertiary)"> (same day, does not conflict)</span>'
+                        : '<span style="color:#f87171"> (conflicts with ' + _evtContext + ')</span>';
+                    hoverHtml += '<div>' + name + ' busy' + (time ? ' ' + time : '') + conflictNote + '</div>';
                 });
                 if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                 hoverHtml += '</div>';
             } else if (isBest) {
-                var _syncN = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) ? 1 : 0;
-                var _memN = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 0;
-                var _bestTip = (_syncN > 0 && _syncN < _memN) ? 'Best based on available data (' + _syncN + '/' + _memN + ' synced)' : 'No conflicts';
-                hoverHtml = '<div class="gl-day-hover">' + _bestTip + '</div>';
+                var _syncCov = (typeof _calGetSyncCoverage === 'function') ? _calGetSyncCoverage() : null;
+                var _bestExplain = 'No conflicts \u2014 everyone\u2019s clear';
+                if (_syncCov && _syncCov.connected < _syncCov.total) {
+                    _bestExplain = 'No conflicts from ' + _syncCov.connected + ' synced calendar' + (_syncCov.connected > 1 ? 's' : '');
+                }
+                hoverHtml = '<div class="gl-day-hover">' + _bestExplain + '</div>';
             } else if (state === 'default' && isFuture) {
                 hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
@@ -2293,19 +2317,29 @@ function _calRenderGridOnly(grid) {
                 }
             } else if (isBlocked) {
                 if (blockedList.length) {
+                    var _evCtx = isGig ? 'this gig' : 'rehearsal';
+                    var _hCnt = blockedList.filter(function(x) { return x._conflictType !== 'soft'; }).length;
+                    var _sCnt = blockedList.filter(function(x) { return x._conflictType === 'soft'; }).length;
                     hoverHtml = '<div class="gl-day-hover">';
+                    if (_hCnt && _sCnt) hoverHtml += '<div style="font-size:0.9em;color:var(--gl-text-tertiary);margin-bottom:3px">' + _hCnt + ' conflict' + (_hCnt > 1 ? 's' : '') + ', ' + _sCnt + ' same-day</div>';
                     blockedList.slice(0,3).forEach(function(b) {
-                        var conflictLabel = b._conflictType === 'soft' ? ' (does not conflict)' : '';
-                        hoverHtml += '<div>' + (b.person || 'Member') + ' \u2014 ' + (b.reason || 'unavailable') + conflictLabel + '</div>';
+                        var nm = (b.person || 'Member').split(' ')[0];
+                        var tm = b._timeLabel || '';
+                        var note = b._conflictType === 'soft'
+                            ? '<span style="color:var(--gl-text-tertiary)"> (same day, does not conflict)</span>'
+                            : '<span style="color:#f87171"> (conflicts with ' + _evCtx + ')</span>';
+                        hoverHtml += '<div>' + nm + ' busy' + (tm ? ' ' + tm : '') + note + '</div>';
                     });
                     if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                     hoverHtml += '</div>';
                 }
             } else if (isBest) {
-                var _syncN = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) ? 1 : 0;
-                var _memN = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 0;
-                var _bestTip = (_syncN > 0 && _syncN < _memN) ? 'Best based on available data (' + _syncN + '/' + _memN + ' synced)' : 'No conflicts';
-                hoverHtml = '<div class="gl-day-hover">' + _bestTip + '</div>';
+                var _syncCov2 = (typeof _calGetSyncCoverage === 'function') ? _calGetSyncCoverage() : null;
+                var _bestExp = 'No conflicts \u2014 everyone\u2019s clear';
+                if (_syncCov2 && _syncCov2.connected < _syncCov2.total) {
+                    _bestExp = 'No conflicts from ' + _syncCov2.connected + ' synced calendar' + (_syncCov2.connected > 1 ? 's' : '');
+                }
+                hoverHtml = '<div class="gl-day-hover">' + _bestExp + '</div>';
             } else if (state === 'default' && isFuture) {
                 hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
