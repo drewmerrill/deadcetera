@@ -220,7 +220,7 @@ window.RecordingAnalyzer = (function() {
     // ── Auto-split oversized segments using energy dips ──────────────────────
     // A 130-minute "song" is clearly multiple songs. Find internal energy
     // drops and split into sub-segments. Uses the RMS channelData.
-    var MAX_SONG_DURATION = 900; // 15 minutes — anything longer gets auto-split
+    var MAX_SONG_DURATION = 600; // 10 minutes — anything longer gets auto-split (was 15)
     if (channelData && sampleRate) {
       var _splitSegments = [];
       segments.forEach(function(seg) {
@@ -1975,10 +1975,10 @@ window.RecordingAnalyzer = (function() {
 
   function _segmentFromRMS(rmsData, totalDuration) {
     var RMS_WINDOW_SEC = 0.1; // each sample = 100ms
-    var SILENCE_THRESHOLD = 0.3; // fraction of median energy below which = silence
-    var MIN_SILENCE_WINDOWS = 80; // 8 seconds — real between-song breaks (was 3s)
-    var MIN_MUSIC_WINDOWS = 600; // 60 seconds minimum for a song segment (was 30s)
-    var MERGE_GAP_WINDOWS = 150; // 15 seconds — merge segments closer than this
+    var SILENCE_THRESHOLD = 0.25; // fraction of median energy below which = silence (was 0.3)
+    var MIN_SILENCE_WINDOWS = 30; // 3 seconds — catch shorter between-song pauses (was 80/8s)
+    var MIN_MUSIC_WINDOWS = 200; // 20 seconds minimum for a segment (was 600/60s)
+    var MERGE_GAP_WINDOWS = 50; // 5 seconds — merge segments closer than this (was 150/15s)
 
     // Compute median energy (ignoring zeros)
     var nonZero = [];
@@ -2041,10 +2041,15 @@ window.RecordingAnalyzer = (function() {
     merged.forEach(function(seg) {
       var segDuration = seg.end - seg.start;
       if (segDuration >= MIN_MUSIC_WINDOWS) {
+        var segSec = segDuration * RMS_WINDOW_SEC;
+        var segType = 'song_full';
+        if (segSec < 45) segType = 'false_start';
+        else if (segSec < 120) segType = 'song_partial';
         segments.push({
           start_time: seg.start * RMS_WINDOW_SEC,
           end_time: seg.end * RMS_WINDOW_SEC,
-          type: segDuration >= 1200 ? 'song_full' : 'song_partial',
+          type: segType,
+          durationSec: segSec,
           _originalKind: 'music'
         });
       }

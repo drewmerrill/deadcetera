@@ -22,16 +22,17 @@
 window.SongMatchingEngine = (function() {
 
   // ── Tunable weights ─────────────────────────────────────────────────────────
-  // Stage 1 (quick): plan + audio + tempo + lyrics + continuity
-  // Stage 2 (re-rank): chord/key analysis refines top candidates
+  // Plan match is a WEAK prior — audio signals must dominate when available.
+  // When no audio signals are available, plan match should produce low-confidence
+  // results, NOT high-confidence wrong labels.
   var WEIGHTS = {
-    planMatch:      0.35,
-    audioSimilar:   0.25,
-    chordSimilar:   0.15,   // upgraded: key_match + progression_match + harmonic_confidence
-    tempoProx:      0.10,
+    planMatch:      0.15,   // reduced from 0.35 — weak prior, not dominant labeler
+    audioSimilar:   0.30,
+    chordSimilar:   0.20,   // key_match + progression_match + harmonic_confidence
+    tempoProx:      0.15,
     lyricsMatch:    0.05,
     continuity:     0.05,
-    correction:     0.05    // prior user corrections for this song
+    correction:     0.10    // prior user corrections for this song
   };
 
   var MIN_SEGMENT_DURATION = 20;
@@ -266,12 +267,17 @@ window.SongMatchingEngine = (function() {
       if (result.bestMatch) {
         if (result.confidence === 'high') {
           seg.songTitle = result.bestMatch.title;
+          seg.label = result.bestMatch.title;
           result.needsReview = false;
         } else if (result.confidence === 'medium') {
           if (!seg.songTitle || seg.confidence < 0.5) seg.songTitle = result.bestMatch.title;
           result.needsReview = true;
         } else {
-          // Low: keep existing title if any, mark for review
+          // Low: do NOT assign a potentially wrong label — mark as unknown for review
+          if (!seg.songTitle) {
+            seg.songTitle = 'Unknown (needs review)';
+            seg.label = 'Unknown (needs review)';
+          }
           result.needsReview = true;
         }
       }
@@ -445,6 +451,14 @@ window.SongMatchingEngine = (function() {
     // Cap at medium when limited evidence (single signal)
     if (limitedEvidence && confidence === 'high') confidence = 'medium';
 
+    // CRITICAL: If planMatch is the only active signal, force LOW confidence.
+    // Plan-order labeling without audio verification is the #1 cause of wrong labels.
+    var onlyPlanActive = best.activeSignalCount <= 1 && best.signals && best.signals.planMatch > 0;
+    if (onlyPlanActive) {
+      confidence = 'low';
+      console.log('[SongMatch] Plan-only match for segment ' + (segment._matchIndex || '?') + ': ' + best.title + ' (score=' + best.score + ') — forced LOW confidence (no audio evidence)');
+    }
+
     // Signal disagreement detection: strong signals pointing at different songs
     var signalsDisagree = false;
     if (best.signals && best.activeSignalCount >= 2) {
@@ -518,20 +532,12 @@ window.SongMatchingEngine = (function() {
   // Songs not in plan get 0.
   function _signalPlanMatch(candidate, context, segmentIndex) {
     if (!candidate.inPlan) return 0;
-    if (segmentIndex === undefined || segmentIndex === null) return 0.5; // no index → generic plan membership
 
-    var planPos = candidate.planOrder;
-    if (planPos < 0) return 0;
-
-    // Exact position match = full score
-    if (planPos === segmentIndex) return 1.0;
-
-    // Nearby positions get diminishing credit
-    var distance = Math.abs(planPos - segmentIndex);
-    if (distance === 1) return 0.5;  // adjacent in plan
-    if (distance === 2) return 0.3;
-    if (distance <= 4) return 0.15;
-    return 0.05; // in plan but very far from expected position
+    // Plan membership gives a flat base score — NOT position-dependent.
+    // Position matching caused cascading wrong labels when the band didn't
+    // follow the plan exactly. Being "in the plan" is a useful weak prior;
+    // being "at the right position in the plan" is unreliable.
+    return 0.5; // flat: "this song was on the plan" — no position bonus
   }
 
   // Signal 2: Audio embedding similarity (CLAP)
