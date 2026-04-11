@@ -363,13 +363,17 @@ function slSearchSong(input, setIdx) {
         .filter(s => s.title.toLowerCase().includes(q))
         .filter(s => !_slOnlyActive || _activeStatuses.includes(GLStore && GLStore.getStatus(s.title)))
         .slice(0, 10);
-    var html = matches.map(s => `<div class="list-item" style="cursor:pointer;padding:8px 10px;font-size:0.85em" data-title="${s.title.replace(/"/g,'&quot;')}" data-setidx="${setIdx}" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},this.dataset.title)" ontouchstart="slAddSongToSet(${setIdx},this.dataset.title)">
-        <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`).join('');
-    // Always show "Add as new song" option — allows implicit song creation
+    var html = matches.map(s => {
+        var safeTitle = s.title.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<div class="list-item" style="cursor:pointer;padding:8px 10px;font-size:0.85em" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},'${safeTitle}')">
+        <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`;
+    }).join('');
+    // Show "Add as new song" only when no matching songs exist in the library
     var exactMatch = matches.some(s => s.title.toLowerCase() === q);
-    if (!exactMatch && input.value.trim().length >= 2) {
-        var safeVal = input.value.trim().replace(/"/g, '&quot;').replace(/</g, '&lt;');
-        html += '<div class="list-item" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddNewSongToSet(' + setIdx + ')" ontouchstart="slAddNewSongToSet(' + setIdx + ')">+ Add &quot;' + safeVal + '&quot; to this band</div>';
+    if (!exactMatch && input.value.trim().length >= 2 && matches.length === 0) {
+        var safeVal = input.value.trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        var displayVal = input.value.trim().replace(/</g, '&lt;');
+        html += `<div class="list-item" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},'${safeVal}')">+ Add &quot;${displayVal}&quot; to this band</div>`;
     }
     results.innerHTML = html;
     results.style.cssText = 'position:relative;z-index:100000';
