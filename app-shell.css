@@ -172,7 +172,7 @@ button:active{transform:scale(0.97)}
 .gl-day--gig{background:#7A4B12;border:2px solid #F59E0B;color:#FDE68A;box-shadow:0 0 18px rgba(245,158,11,0.35)}
 .gl-day--rehearsal{background:#243A75;border-color:#7C9BFF;color:#DCE7FF}
 .gl-day--blocked{background:#5A1F24;border-color:#EF4444;color:#FECACA}
-.gl-day--soft{background:#3B3012;border-color:#F59E0B;color:#FDE68A;opacity:0.75}
+.gl-day--soft{background:#2D2A1F;border:1px dashed #D97706;color:#FDE68A;opacity:0.7}
 .gl-day--best{background:#163B31;border-color:#22C55E;color:#BBF7D0}
 /* Today + selected layer ON TOP of state fills */
 .gl-day--today{box-shadow:inset 0 0 0 2px rgba(165,180,252,0.6)}

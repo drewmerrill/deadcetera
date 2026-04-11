@@ -1315,6 +1315,14 @@ window._calConnectGoogle = async function() {
                 _calRenderSyncCoverage();
                 _calRenderOnboarding();
                 if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                // Auto-open calendar selection if first time connecting and user has multiple calendars
+                if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
+                    var _cals = await GLCalendarSync.listCalendars();
+                    if (_cals.length > 1) {
+                        localStorage.setItem('gl_cal_settings_shown', '1');
+                        setTimeout(function() { _calShowAvailabilitySettings(); }, 500);
+                    }
+                }
             }
             return;
         }
@@ -1392,6 +1400,14 @@ function _calTriggerGoogleReAuth() {
                         _calRenderSyncCoverage();
                         _calRenderOnboarding();
                         if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                        // Auto-open calendar selection on first connect with multiple calendars
+                        if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
+                            var _authCals = await GLCalendarSync.listCalendars();
+                            if (_authCals.length > 1) {
+                                localStorage.setItem('gl_cal_settings_shown', '1');
+                                setTimeout(function() { _calShowAvailabilitySettings(); }, 500);
+                            }
+                        }
                     }
                 }
             }, 500);
@@ -2465,7 +2481,6 @@ async function loadCalendarEvents() {
                 var _myName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
                 var _myBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName, _fbOpts);
                 if (_myBlocks.length) blocked = blocked.concat(_myBlocks);
-                GLCalendarSync.connectGoogleCalendar();
             }
         }
         // Other members: read their shared free/busy from Firebase
