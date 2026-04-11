@@ -871,6 +871,85 @@
       return mag;
     }
 
+    /**
+     * Analyse an already-decoded AudioBuffer (avoids re-encoding for per-segment BPM).
+     * Same algorithm as analyse() but skips the decodeAudioData step.
+     * @param {AudioBuffer} audioBuffer — decoded audio
+     * @param {number} targetBPM
+     * @param {string} sourceType
+     * @returns {Promise<{metrics, onsets, duration, sourceType}>}
+     */
+    async analyseBuffer(audioBuffer, targetBPM, sourceType) {
+      const sr          = audioBuffer.sampleRate;
+      const nChannels   = audioBuffer.numberOfChannels;
+      const duration    = audioBuffer.duration;
+      const FRAME_SIZE  = 2048;
+      const HOP_SIZE    = 512;
+
+      // Mix down to mono
+      const mono = new Float32Array(audioBuffer.length);
+      for (let ch = 0; ch < nChannels; ch++) {
+        const chData = audioBuffer.getChannelData(ch);
+        for (let i = 0; i < mono.length; i++) mono[i] += chData[i] / nChannels;
+      }
+
+      // Spectral flux onset detection (same as analyse)
+      const onsets      = [];
+      const CHUNK_SECS  = 10;
+      const chunkFrames = Math.floor(CHUNK_SECS * sr);
+      const totalFrames = mono.length;
+      let offset        = 0;
+      let prevMagSlice  = null;
+      let noiseHistory  = [];
+      let noiseFloor    = 0;
+      const binHz       = sr / FRAME_SIZE;
+      const bin         = hz => Math.min(Math.floor(hz / binHz), FRAME_SIZE / 2 - 1);
+      const kickLo  = bin(50),  kickHi  = bin(200);
+      const snapLo  = bin(200), snapHi  = bin(8000);
+
+      while (offset < totalFrames) {
+        const end    = Math.min(offset + chunkFrames, totalFrames);
+        const slice  = mono.subarray(offset, end);
+        const sliceMs = (offset / sr) * 1000;
+
+        let frameStart = 0;
+        while (frameStart + FRAME_SIZE <= slice.length) {
+          const frame  = slice.subarray(frameStart, frameStart + FRAME_SIZE);
+          const mag    = this._fft(frame);
+
+          if (prevMagSlice) {
+            const kFlux = this._bandFluxOffline(mag, prevMagSlice, kickLo, kickHi, 0.6);
+            const sFlux = this._bandFluxOffline(mag, prevMagSlice, snapLo, snapHi, 0.4);
+            const flux  = kFlux + sFlux;
+
+            noiseHistory.push(flux);
+            if (noiseHistory.length > 120) noiseHistory.shift();
+            const sorted = [...noiseHistory].sort((a, b) => a - b);
+            noiseFloor = sorted[Math.floor(sorted.length * 0.25)] || 0;
+
+            const threshold = noiseFloor * 1.5 + 0.001;
+            const frameTimeMs = sliceMs + (frameStart / sr) * 1000;
+
+            if (flux > threshold) {
+              const lastOnset = onsets[onsets.length - 1];
+              if (!lastOnset || (frameTimeMs - lastOnset) > 250) {
+                onsets.push(frameTimeMs);
+              }
+            }
+          }
+
+          prevMagSlice = mag;
+          frameStart  += HOP_SIZE;
+        }
+
+        offset += chunkFrames;
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      const metrics = GrooveAnalyser.analyse(onsets, targetBPM);
+      return { metrics, onsets, duration, sourceType };
+    }
+
     _bandFluxOffline(mag, prev, lo, hi, weight) {
       let flux = 0;
       for (let i = lo; i <= hi; i++) {

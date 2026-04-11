@@ -164,30 +164,8 @@ window.RecordingAnalyzer = (function() {
     }
     onProgress('segmenting', 100);
 
-    // Stage 3: BPM / groove analysis (skip on large files to save memory)
+    // Stage 3: Build segment list + per-segment BPM extraction
     onProgress('groove', 0);
-    var grooveMetrics = null;
-    if (!isLargeFile) {
-      try {
-        if (typeof OfflineAnalyser !== 'undefined') {
-          var analyser = new OfflineAnalyser();
-          grooveMetrics = await analyser.analyse(
-            channelData.buffer.slice(0),
-            opts.targetBPM || 120,
-            'recording',
-            function(pct) { onProgress('groove', Math.round(pct * 100)); }
-          );
-        }
-      } catch(e) {
-        console.warn('[RecordingAnalyzer] Groove analysis failed:', e.message);
-      }
-    } else {
-      console.log('[RecordingAnalyzer] Skipping full groove analysis (large file)');
-    }
-    onProgress('groove', 100);
-
-    // Stage 4: Song matching
-    onProgress('matching', 0);
     var events = segResult ? (segResult.events || segResult.segments || []) : [];
     var songCatalog = (typeof allSongs !== 'undefined') ? allSongs : [];
     var segments = events
@@ -211,6 +189,82 @@ window.RecordingAnalyzer = (function() {
         };
       });
 
+    // Per-segment BPM extraction — runs BEFORE matching so tempoProx signal works
+    var _bpmExtracted = 0;
+    var _MIN_BPM_DURATION = 20; // seconds — minimum segment length for BPM detection
+    var _BPM_SLICE_SEC = 30;    // analyze up to 30s from each segment
+    if (typeof OfflineAnalyser !== 'undefined' && channelData && sampleRate > 100) {
+      // For large files, sampleRate is 10 Hz (RMS windows) — can't run OfflineAnalyser.
+      // For normal files, sampleRate is 44100+ — full PCM available.
+      var _canDoFullBPM = sampleRate >= 8000;
+      console.log('[RecordingAnalyzer] BPM extraction: ' + segments.length + ' segments, ' +
+        (_canDoFullBPM ? 'full PCM (' + sampleRate + 'Hz)' : 'RMS-only — onset estimation'));
+
+      for (var _bi = 0; _bi < segments.length; _bi++) {
+        var _seg = segments[_bi];
+        if (_seg.duration < _MIN_BPM_DURATION) continue;
+
+        onProgress('groove', Math.round((_bi / segments.length) * 100));
+
+        if (_canDoFullBPM) {
+          // Full PCM path: extract segment slice, run OfflineAnalyser.analyseBuffer
+          try {
+            var _sliceStart = Math.floor(_seg.startSec * sampleRate);
+            var _sliceDur = Math.min(_seg.duration, _BPM_SLICE_SEC);
+            var _sliceEnd = Math.min(_sliceStart + Math.floor(_sliceDur * sampleRate), channelData.length);
+            var _sliceSamples = _sliceEnd - _sliceStart;
+            if (_sliceSamples < sampleRate * 5) continue; // need at least 5s
+
+            // Create a mono AudioBuffer from the PCM slice
+            var _bpmCtx = new (window.AudioContext || window.webkitAudioContext)();
+            var _segBuf = _bpmCtx.createBuffer(1, _sliceSamples, sampleRate);
+            _segBuf.getChannelData(0).set(channelData.subarray(_sliceStart, _sliceEnd));
+            _bpmCtx.close();
+
+            // Run spectral flux onset detection on the segment buffer
+            var _segAnalyser = new OfflineAnalyser();
+            var _segResult = await _segAnalyser.analyseBuffer(_segBuf, 120, 'recording');
+            if (_segResult && _segResult.metrics && _segResult.metrics.medianIOI > 0) {
+              _seg.bpm = Math.round(60000 / _segResult.metrics.medianIOI);
+              _seg.bpmConfidence = _segResult.metrics.pocketConfidence || 'low';
+              _seg.groove = _segResult.metrics;
+              _bpmExtracted++;
+              console.log('[BPM] seg ' + _bi + ' (' + _formatTime(_seg.startSec) + '-' + _formatTime(_seg.endSec) + '): ' +
+                _seg.bpm + ' BPM (stability=' + (_segResult.metrics.stabilityScore || 0).toFixed(0) +
+                ', confidence=' + _seg.bpmConfidence + ')');
+            }
+          } catch(_bpmErr) {
+            console.warn('[BPM] seg ' + _bi + ' failed:', _bpmErr.message);
+          }
+        } else {
+          // RMS-only path (large files): estimate BPM from energy peak spacing
+          try {
+            var _rmsRate = 10; // RMS windows per second
+            var _rStart = Math.floor(_seg.startSec * _rmsRate);
+            var _rEnd = Math.min(Math.floor(_seg.endSec * _rmsRate), channelData.length);
+            if (_rEnd - _rStart < _rmsRate * 10) continue; // need 10s minimum
+
+            var _rmsSlice = channelData.subarray(_rStart, _rEnd);
+            var _estBpm = _estimateBpmFromRMS(_rmsSlice, _rmsRate);
+            if (_estBpm > 0) {
+              _seg.bpm = _estBpm;
+              _seg.bpmConfidence = 'low'; // RMS-based is inherently low confidence
+              _bpmExtracted++;
+              console.log('[BPM-RMS] seg ' + _bi + ' (' + _formatTime(_seg.startSec) + '-' + _formatTime(_seg.endSec) + '): ' +
+                _seg.bpm + ' BPM (RMS onset estimation)');
+            }
+          } catch(_rmsErr) {
+            console.warn('[BPM-RMS] seg ' + _bi + ' failed:', _rmsErr.message);
+          }
+        }
+      }
+    }
+    console.log('[RecordingAnalyzer] BPM extracted for ' + _bpmExtracted + '/' + segments.length + ' segments');
+    onProgress('groove', 100);
+
+    // Stage 4: Song matching
+    onProgress('matching', 0);
+
     // Run Song Matching Engine (multi-signal scoring)
     if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.run) {
       var matchContext = {
@@ -219,6 +273,17 @@ window.RecordingAnalyzer = (function() {
         allSongs: songCatalog
       };
       segments = SongMatchingEngine.run(segments, matchContext);
+
+      // Debug: log matching results with BPM data
+      console.log('[RecordingAnalyzer] === MATCHING RESULTS ===');
+      segments.forEach(function(seg, idx) {
+        var bpmStr = seg.bpm ? (seg.bpm + ' BPM') : 'no BPM';
+        var matchStr = seg.songMatch ? (seg.songMatch.confidence + ', signals=' + (seg.songMatch.activeSignals || []).join('+')) : 'no match';
+        var topCands = seg.songMatch && seg.songMatch.candidates ? seg.songMatch.candidates.map(function(c) { return c.title + '(' + c.score + ')'; }).join(', ') : '';
+        console.log('[Match] #' + idx + ' ' + _formatTime(seg.startSec) + '-' + _formatTime(seg.endSec) +
+          ' | ' + bpmStr + ' | → ' + (seg.songTitle || '?') + ' | ' + matchStr +
+          (topCands ? ' | top: ' + topCands : ''));
+      });
     } else {
       // Fallback: use legacy plan-order matching
       segments.forEach(function(seg, i) {
@@ -1976,6 +2041,55 @@ window.RecordingAnalyzer = (function() {
     } catch(e) {
       console.warn('[RecordingAnalyzer] Home refresh failed:', e.message);
     }
+  }
+
+  // ── RMS-based BPM estimation for large files ──────────────────────────────────
+  // Uses autocorrelation on the RMS energy timeline to find dominant beat period.
+  // Works with the 10Hz energy timeline (100ms windows). Accuracy is limited
+  // (~±10 BPM) but sufficient for tempo proximity matching.
+  function _estimateBpmFromRMS(rmsSlice, rmsRate) {
+    var len = rmsSlice.length;
+    if (len < rmsRate * 5) return 0; // need at least 5s
+
+    // Normalize energy to 0-1 range
+    var maxE = 0;
+    for (var i = 0; i < len; i++) { if (rmsSlice[i] > maxE) maxE = rmsSlice[i]; }
+    if (maxE < 0.001) return 0;
+
+    // Onset detection: find energy peaks (positive derivative above threshold)
+    var threshold = maxE * 0.3;
+    var onsets = [];
+    var prevE = 0;
+    for (var j = 1; j < len; j++) {
+      var e = rmsSlice[j];
+      var rising = e > prevE * 1.3 && e > threshold;
+      if (rising) {
+        var lastOnset = onsets.length > 0 ? onsets[onsets.length - 1] : -10;
+        if (j - lastOnset >= 2) { // minimum 200ms gap (300 BPM cap)
+          onsets.push(j);
+        }
+      }
+      prevE = e;
+    }
+    if (onsets.length < 4) return 0; // need at least 4 onsets
+
+    // Compute inter-onset intervals and find median
+    var iois = [];
+    for (var k = 1; k < onsets.length; k++) {
+      var ioi = (onsets[k] - onsets[k - 1]) / rmsRate; // seconds
+      if (ioi >= 0.25 && ioi <= 2.0) { // 30-240 BPM range
+        iois.push(ioi);
+      }
+    }
+    if (iois.length < 3) return 0;
+
+    iois.sort(function(a, b) { return a - b; });
+    var median = iois[Math.floor(iois.length / 2)];
+    var bpm = Math.round(60 / median);
+
+    // Sanity check
+    if (bpm < 40 || bpm > 240) return 0;
+    return bpm;
   }
 
   // ── Simple RMS-based segmenter for large files ───────────────────────────────
