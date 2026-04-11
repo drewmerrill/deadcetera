@@ -1,8 +1,7 @@
-name: Stamp Version
+name: Stamp Version (DISABLED — version stamping done locally at deploy time)
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch: # manual trigger only — no longer runs on push
 
 jobs:
   stamp:
