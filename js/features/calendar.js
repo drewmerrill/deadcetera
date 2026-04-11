@@ -927,10 +927,12 @@ function _calRenderGooglePanel() {
             + connectedCount + ' of ' + totalCount + ' connected</div>'
             + memberListHtml
             + '</div>'
-            // CTA
+            // CTA — different for connected vs not connected
             + (hasScope
-                ? '<div style="font-size:0.72em;color:var(--gl-green);margin-bottom:4px">\u2713 You\u2019re connected</div>'
-                  + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:8px 14px;font-size:0.82em;font-weight:700">Connect Your Calendar</button>'
+                ? '<div style="font-size:0.72em;color:var(--gl-green);margin-bottom:6px">\u2713 You\u2019re connected</div>'
+                  + (connectedCount < totalCount
+                      ? '<button onclick="_calCopyBandSyncInvite()" class="gl-btn-primary" style="width:100%;padding:8px 14px;font-size:0.82em;font-weight:700">Send Setup to Band</button>'
+                      : '')
                 : '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.85em;font-weight:700">Connect Google Calendar</button>'
               )
             + '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
