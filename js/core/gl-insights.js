@@ -241,11 +241,18 @@
       score += Math.min(issueEntry.totalCount, 3);
     }
 
-    // Band love priority
-    if (typeof GLStore !== 'undefined' && GLStore.getSongPriority) {
-      var pri = GLStore.getSongPriority(songTitle);
-      if (pri > 3) {
-        details.push('High priority song (band loves it but needs work)');
+    // Band + audience love context
+    if (typeof GLStore !== 'undefined') {
+      var _bl = GLStore.getBandLove ? GLStore.getBandLove(songTitle) : 0;
+      var _al = GLStore.getAudienceLove ? GLStore.getAudienceLove(songTitle) : 0;
+      if (_bl >= 4 && _al >= 4) {
+        details.push('Band + crowd favorite \u2014 anchor song');
+      } else if (_bl >= 4) {
+        details.push('Band loves this \u2014 worth getting tight');
+      } else if (_al >= 4) {
+        details.push('Crowd favorite \u2014 get this ready');
+      } else if (_bl > 0 && _bl < 3 && _al > 0 && _al < 3) {
+        details.push('Low impact \u2014 consider dropping');
       }
     }
 

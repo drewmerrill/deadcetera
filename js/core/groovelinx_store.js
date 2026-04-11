@@ -1004,13 +1004,20 @@
     var list = candidates.slice(0, 5);
     var primary = list[0] || null;
 
-    // Generate reason
+    // Generate reason — love-aware when meaningful
     var reason = '';
     if (primary) {
-      if (gigDays <= 3 && primary.inSetlist) reason = 'Gig soon \u2014 this needs work before you play.';
-      else if (primary.avg < 2) reason = 'Low readiness. Run it start to finish.';
-      else if (primary.avg < 3) reason = 'Almost there. Tighten the weak spots.';
-      else reason = 'Could be stronger. Worth a run-through.';
+      var _bl = _bandLoveCache[primary.title] || 0;
+      var _al = _audienceLoveCache[primary.title] || 0;
+      if (gigDays <= 3 && primary.inSetlist) {
+        reason = _al >= 4 ? 'Gig soon \u2014 crowd loves this, get it tight.' : 'Gig soon \u2014 this needs work before you play.';
+      } else if (primary.avg < 2) {
+        reason = _bl >= 4 ? 'Band favorite but not ready \u2014 run it start to finish.' : 'Low readiness. Run it start to finish.';
+      } else if (primary.avg < 3) {
+        reason = _al >= 4 ? 'Crowd favorite \u2014 tighten the weak spots.' : 'Almost there. Tighten the weak spots.';
+      } else {
+        reason = (_bl >= 4 && _al >= 4) ? 'Anchor song \u2014 keep it sharp.' : 'Could be stronger. Worth a run-through.';
+      }
     }
 
     _focusCache = { primary: primary, list: list, reason: reason, count: candidates.length };

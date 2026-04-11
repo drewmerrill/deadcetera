@@ -744,6 +744,16 @@ function _renderNextActionCard(bundle, wf) {
         _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
     }
 
+    // Add love context to subtitle when meaningful (not when already high confidence with specific copy)
+    if (!_highConfidence && _focusList.length > 0 && typeof GLStore !== 'undefined') {
+        var _topTitle = _focusList[0];
+        var _hBl = GLStore.getBandLove ? GLStore.getBandLove(_topTitle) : 0;
+        var _hAl = GLStore.getAudienceLove ? GLStore.getAudienceLove(_topTitle) : 0;
+        if (_hBl >= 4 && _hAl >= 4 && !_sub) _sub = 'Band + crowd favorite \u2014 keep it sharp.';
+        else if (_hAl >= 4 && !_sub) _sub = 'Crowd favorite \u2014 get this ready.';
+        else if (_hBl >= 4 && !_sub) _sub = 'Band loves this \u2014 worth tightening.';
+    }
+
     // Hero card only — secondary suggestions handled by dashboard layout
     return _renderNextUpCard(_msg, _sub, _cta, _highConfidence);
 
