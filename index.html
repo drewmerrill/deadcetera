@@ -59,10 +59,12 @@
             background: rgba(99,102,241,0.25);
             color: #818cf8;
             border-color: rgba(99,102,241,0.5);
+        }
+        @media(max-width:640px){
+            #calendarInner{margin:0 -6px 0 -4px!important;}
+            #calendarInner .app-card:first-child{padding:12px 2px!important;border-radius:8px!important;width:calc(100% + 10px)!important;box-sizing:border-box!important;}
+        }
     </style>
-@media(max-width:640px){
-  #calendarInner{margin:0 -6px 0 -4px!important;}
-  #calendarInner .app-card:first-child{padding:12px 2px!important;border-radius:8px!important;width:calc(100% + 10px)!important;box-sizing:border-box!important;}
 </head>
 <body>
     <!-- Overlay root — top-level stacking context for persistent UI (Now Playing bar) -->
