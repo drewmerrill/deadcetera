@@ -2222,14 +2222,13 @@ function _sdRenderBandLove(title, safeSong) {
     var derived = (typeof GLStore !== 'undefined' && GLStore.deriveSongStatus) ? GLStore.deriveSongStatus(title) : { label: 'Unrated', color: '#64748b' };
     var HEARTS = ['\u2764\uFE0F', '\u2764\uFE0F', '\u2764\uFE0F', '\u2764\uFE0F', '\u2764\uFE0F'];
     var labels = ['Not set', 'Meh', 'It\u2019s OK', 'Like it', 'Love it', 'LOVE IT'];
-    var safeTitle = title.replace(/'/g, '');
 
     // Shared band love (primary)
     var html = '<div style="display:flex;align-items:center;gap:12px;padding:8px 0">';
     html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);min-width:70px">Band Love</span>';
     for (var i = 1; i <= 5; i++) {
         var active = i <= love;
-        html += '<button onclick="sdSaveBandLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.25') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
+        html += '<button onclick="sdSaveBandLove(\'' + safeSong + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.25') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
     }
     html += '<span style="font-size:0.75em;color:var(--text-dim);margin-left:auto">' + labels[love] + '</span>';
     html += '</div>';
@@ -2240,7 +2239,7 @@ function _sdRenderBandLove(title, safeSong) {
     html += '<span style="font-size:0.68em;color:var(--text-dim);min-width:70px">Your take</span>';
     for (var j = 1; j <= 5; j++) {
         var pActive = j <= myBl;
-        html += '<button onclick="sdSavePersonalBandLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + j + ')" style="background:none;border:none;font-size:0.9em;cursor:pointer;opacity:' + (pActive ? '1' : '0.2') + ';transition:opacity 0.15s" title="Your personal: ' + labels[j] + '">\u2764\uFE0F</button>';
+        html += '<button onclick="sdSavePersonalBandLove(\'' + safeSong + '\',' + j + ')" style="background:none;border:none;font-size:0.9em;cursor:pointer;opacity:' + (pActive ? '1' : '0.2') + ';transition:opacity 0.15s" title="Your personal: ' + labels[j] + '">\u2764\uFE0F</button>';
     }
     if (myBl > 0) html += '<span style="font-size:0.62em;color:var(--text-dim);margin-left:auto">' + labels[myBl] + '</span>';
     html += '</div>';
@@ -2269,10 +2268,10 @@ function _sdRenderBandLove(title, safeSong) {
     return html;
 }
 
-window.sdSaveBandLove = function(safeSong, title, value) {
+window.sdSaveBandLove = function(title, value) {
     if (typeof GLStore !== 'undefined' && GLStore.saveBandLove) {
         GLStore.saveBandLove(title, value);
-        _sdRefreshLoveCard(safeSong, title);
+        _sdRefreshLoveCard(null, title);
     }
 };
 
@@ -2282,14 +2281,13 @@ function _sdRenderAudienceLove(title, safeSong) {
     var crowd = (typeof GLStore !== 'undefined' && GLStore.getAudienceLove) ? GLStore.getAudienceLove(title) : 0;
     var HEARTS = ['\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C'];
     var labels = ['Not set', 'Quiet', 'Polite', 'Into it', 'They love it', 'CROWD GOES WILD'];
-    var safeTitle = title.replace(/'/g, '');
 
     // Shared audience love (primary)
     var html = '<div style="display:flex;align-items:center;gap:12px;padding:4px 0">';
     html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);min-width:70px">Audience</span>';
     for (var i = 1; i <= 5; i++) {
         var active = i <= crowd;
-        html += '<button onclick="sdSaveAudienceLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.15') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
+        html += '<button onclick="sdSaveAudienceLove(\'' + safeSong + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.15') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
     }
     html += '<span style="font-size:0.75em;color:var(--text-dim);margin-left:auto">' + labels[crowd] + '</span>';
     html += '</div>';
@@ -2300,7 +2298,7 @@ function _sdRenderAudienceLove(title, safeSong) {
     html += '<span style="font-size:0.68em;color:var(--text-dim);min-width:70px">Your take</span>';
     for (var j = 1; j <= 5; j++) {
         var pActive = j <= myAl;
-        html += '<button onclick="sdSavePersonalAudienceLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + j + ')" style="background:none;border:none;font-size:0.9em;cursor:pointer;opacity:' + (pActive ? '1' : '0.2') + ';transition:opacity 0.15s" title="Your personal: ' + labels[j] + '">\uD83D\uDC9C</button>';
+        html += '<button onclick="sdSavePersonalAudienceLove(\'' + safeSong + '\',' + j + ')" style="background:none;border:none;font-size:0.9em;cursor:pointer;opacity:' + (pActive ? '1' : '0.2') + ';transition:opacity 0.15s" title="Your personal: ' + labels[j] + '">\uD83D\uDC9C</button>';
     }
     if (myAl > 0) html += '<span style="font-size:0.62em;color:var(--text-dim);margin-left:auto">' + labels[myAl] + '</span>';
     html += '</div>';
@@ -2335,32 +2333,34 @@ function _sdRenderAudienceLove(title, safeSong) {
     return html;
 }
 
-window.sdSaveAudienceLove = function(safeSong, title, value) {
+window.sdSaveAudienceLove = function(title, value) {
     if (typeof GLStore !== 'undefined' && GLStore.saveAudienceLove) {
         GLStore.saveAudienceLove(title, value);
-        _sdRefreshLoveCard(safeSong, title);
+        _sdRefreshLoveCard(null, title);
     }
 };
 
-window.sdSavePersonalBandLove = function(safeSong, title, value) {
+window.sdSavePersonalBandLove = function(title, value) {
     if (typeof GLStore !== 'undefined' && GLStore.savePersonalBandLove) {
         GLStore.savePersonalBandLove(title, value);
-        _sdRefreshLoveCard(safeSong, title);
+        _sdRefreshLoveCard(null, title);
     }
 };
 
-window.sdSavePersonalAudienceLove = function(safeSong, title, value) {
+window.sdSavePersonalAudienceLove = function(title, value) {
     if (typeof GLStore !== 'undefined' && GLStore.savePersonalAudienceLove) {
         GLStore.savePersonalAudienceLove(title, value);
-        _sdRefreshLoveCard(safeSong, title);
+        _sdRefreshLoveCard(null, title);
     }
 };
 
-function _sdRefreshLoveCard(safeSong, title) {
+function _sdRefreshLoveCard(_unused, title) {
     var card = document.getElementById('sd-love-card');
-    if (card) {
-        card.innerHTML = _sdRenderBandLove(title, safeSong) + _sdRenderAudienceLove(title, safeSong);
-    }
+    if (!card) return;
+    // Always rebuild safeSong from the raw title — never reuse the parameter
+    // from the onclick handler (it was unescaped by the JS runtime)
+    var safeSong = _sdEsc(title).replace(/'/g, "\\'");
+    card.innerHTML = _sdRenderBandLove(title, safeSong) + _sdRenderAudienceLove(title, safeSong);
 }
 
 console.log('✅ song-detail.js loaded (Phase 2 — direct Firebase, no DOM mirroring)');
