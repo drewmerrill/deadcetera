@@ -77,6 +77,16 @@ Production URL: **https://app.groovelinx.com**
 - index.html rebuilt from 1.1MB (64 duplicate head sections) to 55KB
 - Love cards now render in panel mode (Songs page right panel)
 
+### Rehearsal Analyzer Intelligence Pipeline (NEW 2026-04-11)
+- **Per-segment BPM extraction**: spectral flux onset detection via OfflineAnalyser.analyseBuffer()
+- **Per-segment groove/pocket analysis**: stability score, pocket position, drift, iois for PocketMeterTimeSeries
+- **CLAP audio embeddings**: 512-dim vectors from localhost:8200 (laion/clap-htsat-unfused)
+- **On-demand segment decode for large files**: raw MP3 bytes → targeted 35s chunk decode → feature extraction
+- **Unified extraction loop**: both normal and large file paths use same BPM/groove/embed code
+- **Groove-informed quality labels**: "Nailed it" (tight timing), downgrade on loose timing
+- **Love hearts instant update**: optimistic cache, apostrophe escaping fix
+- **Song detail panel**: duplicate DNA removed, love cards render in all modes
+
 ---
 
 ## What's Live (2026-04-10)
