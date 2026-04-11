@@ -408,6 +408,7 @@
   // ── Restart Detection ──────────────────────────────────────────────────────
 
   function _detectRestarts(segments) {
+    // Pass 1: Classic restart pattern — short music + gap + longer music
     for (var i = 0; i < segments.length - 2; i++) {
       var a = segments[i], b = segments[i + 1], c = segments[i + 2];
       if (a.kind === 'music' && a.durationSec < 45 &&
@@ -417,19 +418,82 @@
         a.confidence = Math.max(a.confidence, 0.6);
       }
     }
+
+    // Pass 2: Consecutive false start cluster — multiple short attempts before a long run
+    // Pattern: 2+ music segments under 4min clustered within 20min, followed by a long version
+    for (var j = 0; j < segments.length; j++) {
+      if (segments[j].kind !== 'music' || segments[j].durationSec >= 240) continue;
+      // Look ahead for a "success" run of the same song
+      var clusterEnd = j;
+      var shortCount = 0;
+      for (var k = j; k < Math.min(j + 15, segments.length); k++) {
+        if (segments[k].kind !== 'music') continue;
+        if (segments[k].durationSec < 240) {
+          shortCount++;
+          clusterEnd = k;
+        } else {
+          // Found a long segment — check if shorts are within 20 min of it
+          var timeDiff = (segments[k].startSec || 0) - (segments[j].startSec || 0);
+          if (timeDiff < 1200 && shortCount >= 2) {
+            // Mark all shorts before this as restarts
+            for (var m = j; m <= clusterEnd; m++) {
+              if (segments[m].kind === 'music' && segments[m].durationSec < 240) {
+                segments[m].likelyIntent = 'restart';
+                segments[m]._clusterRestart = true;
+              }
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    // Pass 3: Partial song detection — medium segments (1-4min) adjacent to a full run of same song
+    for (var p = 0; p < segments.length; p++) {
+      var seg = segments[p];
+      if (seg.kind !== 'music' || seg.likelyIntent === 'restart') continue;
+      if (seg.durationSec >= 60 && seg.durationSec < 240) {
+        // Check if there's a longer segment nearby with similar characteristics
+        for (var q = Math.max(0, p - 3); q < Math.min(segments.length, p + 4); q++) {
+          if (q === p || segments[q].kind !== 'music') continue;
+          if (segments[q].durationSec > seg.durationSec * 1.5 && segments[q].durationSec >= 240) {
+            seg.likelyIntent = 'partial';
+            break;
+          }
+        }
+      }
+    }
+
+    // Pass 4: Jam detection — music segments with no matching song in catalog and atypical duration
+    // Jams are typically 1-3 min, no strong song match, often between two different songs
+    for (var r = 0; r < segments.length; r++) {
+      var s = segments[r];
+      if (s.kind !== 'music' || s.likelyIntent) continue;
+      if (s.durationSec >= 60 && s.durationSec <= 200 && !s._isSongCandidate) {
+        // Check if surrounded by different songs (transition jam)
+        var prevSong = null, nextSong = null;
+        for (var rp = r - 1; rp >= 0; rp--) { if (segments[rp].kind === 'music' && segments[rp]._isSongCandidate) { prevSong = segments[rp]; break; } }
+        for (var rn = r + 1; rn < segments.length; rn++) { if (segments[rn].kind === 'music' && segments[rn]._isSongCandidate) { nextSong = segments[rn]; break; } }
+        if (prevSong && nextSong) {
+          s.likelyIntent = 'jam';
+        }
+      }
+    }
   }
 
   // ── Summary ────────────────────────────────────────────────────────────────
 
   function _buildSummary(segments) {
-    var m = 0, sp = 0, si = 0, r = 0;
+    var m = 0, sp = 0, si = 0, r = 0, p = 0, j = 0;
     for (var i = 0; i < segments.length; i++) {
       if (segments[i].kind === 'music') m++;
       if (segments[i].kind === 'speech') sp++;
       if (segments[i].kind === 'silence') si++;
       if (segments[i].likelyIntent === 'restart') r++;
+      if (segments[i].likelyIntent === 'partial') p++;
+      if (segments[i].likelyIntent === 'jam') j++;
     }
-    return { segmentCount: segments.length, musicSegments: m, speechSegments: sp, silenceSegments: si, likelyRestarts: r };
+    return { segmentCount: segments.length, musicSegments: m, speechSegments: sp, silenceSegments: si, likelyRestarts: r, partialSongs: p, jams: j };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
