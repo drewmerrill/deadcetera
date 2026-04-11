@@ -396,7 +396,7 @@ window.SongMatchingEngine = (function() {
         if (key === 'audioSimilar' && !segment.audioEmbedding) available = false;
         if (key === 'chordSimilar' && val === null) available = false; // null = chord data unavailable
         if (key === 'tempoProx' && !segment.bpm && !(segment.groove)) available = false;
-        if (key === 'lyricsMatch' && !segment.transcript) available = false;
+        if (key === 'lyricsMatch' && !segment.transcript && !segment.spokenCueHint) available = false;
         if (key === 'correction' && _accuracyLog.length === 0) available = false;
         if (key === 'continuity' && !adjacentLabels) available = false;
 
@@ -701,21 +701,43 @@ window.SongMatchingEngine = (function() {
     return 0;
   }
 
-  // Signal 5: Lyrics/transcript match
+  // Signal 5: Lyrics/transcript match + spoken cue detection
   function _signalLyricsMatch(segment, candidate) {
-    if (!segment.transcript) return 0;
-    var lower = segment.transcript.toLowerCase();
-    var titleWords = candidate.title.toLowerCase().split(/\s+/);
+    var score = 0;
 
-    // Check if any title word (≥3 chars) appears in transcript
-    var matches = titleWords.filter(function(w) {
-      return w.length >= 3 && lower.indexOf(w) !== -1;
-    });
+    // Strong boost: spoken cue directly names this candidate
+    if (segment.spokenCueHint) {
+      var cueMatch = _labelsMatchFuzzy(segment.spokenCueHint, candidate.title);
+      if (cueMatch) {
+        score = Math.max(score, (segment.spokenCueConfidence || 0.7) * 1.2);
+        score = Math.min(score, 1.0);
+      }
+    }
 
-    if (matches.length >= 2) return 1.0;
-    if (matches.length === 1 && titleWords.length <= 3) return 0.6;
-    if (matches.length === 1) return 0.3;
-    return 0;
+    // Standard transcript matching (lyrics or adjacent speech)
+    if (segment.transcript) {
+      var lower = segment.transcript.toLowerCase();
+      var titleWords = candidate.title.toLowerCase().split(/\s+/);
+      var matches = titleWords.filter(function(w) {
+        return w.length >= 3 && lower.indexOf(w) !== -1;
+      });
+      if (matches.length >= 2) score = Math.max(score, 1.0);
+      else if (matches.length === 1 && titleWords.length <= 3) score = Math.max(score, 0.6);
+      else if (matches.length === 1) score = Math.max(score, 0.3);
+    }
+
+    return score;
+  }
+
+  function _labelsMatchFuzzy(a, b) {
+    if (!a || !b) return false;
+    var al = a.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    var bl = b.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+    if (al === bl) return true;
+    if (al.indexOf(bl) !== -1 || bl.indexOf(al) !== -1) return true;
+    var aNorm = al.replace(/\s+/g, '');
+    var bNorm = bl.replace(/\s+/g, '');
+    return aNorm === bNorm;
   }
 
   // Signal 6: Prior correction signal

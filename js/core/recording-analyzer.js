@@ -167,30 +167,40 @@ window.RecordingAnalyzer = (function() {
     }
     onProgress('segmenting', 100);
 
-    // Stage 3: Build segment list + per-segment BPM extraction
+    // Stage 3: Build segment list (song + talking) for feature extraction
     onProgress('groove', 0);
     var events = segResult ? (segResult.events || segResult.segments || []) : [];
     var songCatalog = (typeof allSongs !== 'undefined') ? allSongs : [];
-    var segments = events
-      .filter(function(e) {
-        var t = e.type || e._originalKind || '';
-        return t.indexOf('song') !== -1 || t === 'music' || t === 'warmup_jam' || t === 'jam'
-          || t === 'section_work' || t === 'strong_moment' || t === 'retry';
-      })
-      .map(function(e, i) {
-        var dur = (e.end_time || e.endSec || 0) - (e.start_time || e.startSec || 0);
-        return {
-          id: e.id || ('seg_' + i),
-          startSec: e.start_time || e.startSec || 0,
-          endSec: e.end_time || e.endSec || 0,
-          duration: dur,
-          type: e.type || e._originalKind || 'unknown',
-          songTitle: e.song || null,
-          confidence: e.confidence || 0.3,
-          grooveMetrics: null,
-          tags: e.tags || []
-        };
-      });
+
+    // Keep both music segments (for matching) and speech segments (for transcription)
+    var _allEvents = events.map(function(e, i) {
+      var dur = (e.end_time || e.endSec || 0) - (e.start_time || e.startSec || 0);
+      return {
+        id: e.id || ('seg_' + i),
+        startSec: e.start_time || e.startSec || 0,
+        endSec: e.end_time || e.endSec || 0,
+        duration: dur,
+        type: e.type || e._originalKind || '',
+        kind: e.kind || e.type || '',
+        intent: e.intent || '',
+        songTitle: e.song || null,
+        confidence: e.confidence || 0.3,
+        grooveMetrics: null,
+        tags: e.tags || []
+      };
+    });
+
+    // Separate speech segments for transcription
+    var _talkSegments = _allEvents.filter(function(e) {
+      return e.kind === 'speech' || e.intent === 'discussion';
+    });
+
+    // Music segments for matching (existing filter)
+    var segments = _allEvents.filter(function(e) {
+      var t = e.type || '';
+      return t.indexOf('song') !== -1 || t === 'music' || t === 'warmup_jam' || t === 'jam'
+        || t === 'section_work' || t === 'strong_moment' || t === 'retry';
+    });
 
     // ── Stage 3: Per-segment feature extraction (BPM + groove + embeddings) ────
     // Unified loop: for each segment, decode a short audio slice and run all
@@ -400,6 +410,253 @@ window.RecordingAnalyzer = (function() {
     console.log('[RecordingAnalyzer] Feature extraction complete: BPM=' + _bpmExtracted +
       ' Groove=' + _grooveExtracted + ' Embed=' + _embedsExtracted +
       ' Chords=' + _chordsExtracted + ' / ' + segments.length + ' segments');
+
+    // ── Stage 3c: Spoken cue transcription ──────────────────────────────────
+    // Transcribe short talking segments adjacent to song segments to detect
+    // spoken song announcements ("let's do Fire", "Estimated again").
+    // Also transcribe short vocal windows from song segments for lyric matching.
+    var _talksTranscribed = 0;
+    var _lyricsExtracted = 0;
+    var _cuesDetected = 0;
+    var _workerUrl = (typeof WORKER_URL !== 'undefined') ? WORKER_URL : 'https://groovelinx-worker.drewmerrill.workers.dev';
+    var _transcribeAvailable = true; // assume available, fail gracefully
+    var _MIN_TALK_DURATION = 3;  // minimum talking segment for transcription
+    var _MAX_TALK_DURATION = 60; // don't transcribe very long discussions
+    var _MIN_LYRIC_DURATION = 60; // minimum song duration for lyric extraction
+    var _LYRIC_WINDOW_SEC = 15;   // transcribe 15s from song center for lyrics
+
+    // Build song title index for cue matching
+    var _titleIndex = {};
+    songCatalog.forEach(function(s) {
+      if (!s.title) return;
+      var lower = s.title.toLowerCase();
+      _titleIndex[lower] = s.title;
+      // Also index significant words (≥4 chars) for partial matches
+      lower.split(/\s+/).forEach(function(w) {
+        if (w.length >= 4 && w !== 'the' && w !== 'this' && w !== 'that' && w !== 'with' && w !== 'from') {
+          if (!_titleIndex['_word_' + w]) _titleIndex['_word_' + w] = [];
+          if (Array.isArray(_titleIndex['_word_' + w])) _titleIndex['_word_' + w].push(s.title);
+        }
+      });
+    });
+
+    // Helper: extract spoken cues from transcript text
+    function _extractSpokenCues(text) {
+      if (!text || text.length < 3) return [];
+      var lower = text.toLowerCase();
+      var cues = [];
+
+      // Direct title match (full title appears in speech)
+      Object.keys(_titleIndex).forEach(function(key) {
+        if (key.charAt(0) === '_') return; // skip word index entries
+        if (lower.indexOf(key) !== -1) {
+          cues.push({ title: _titleIndex[key], type: 'title_mention', confidence: 0.85 });
+        }
+      });
+
+      // Cue pattern detection: "let's do/play/try [song]", "back to [song]", etc.
+      var cuePatterns = [
+        /(?:let's|lets|let us)\s+(?:do|play|try|run|start|hit)\s+(.{3,30}?)(?:\s+again|\s+now|\s*[.!?]|$)/i,
+        /(?:back to|go to|jump to|switch to)\s+(.{3,30}?)(?:\s+again|\s*[.!?]|$)/i,
+        /(?:next up|next is|how about)\s+(.{3,30}?)(?:\s*[.!?]|$)/i,
+        /(?:one more time|again|from the top)\s*[,.]?\s*(.{3,20}?)(?:\s*[.!?]|$)/i
+      ];
+      cuePatterns.forEach(function(pat) {
+        var match = lower.match(pat);
+        if (match && match[1]) {
+          var phrase = match[1].trim().replace(/[.!?,;:]+$/, '');
+          // Try to match phrase against catalog
+          var bestMatch = _fuzzyMatchTitle(phrase, songCatalog);
+          if (bestMatch) {
+            cues.push({ title: bestMatch, type: 'cue_pattern', confidence: 0.7, phrase: phrase });
+          }
+        }
+      });
+
+      return cues;
+    }
+
+    // Fuzzy title matching: find best catalog match for a spoken phrase
+    function _fuzzyMatchTitle(phrase, catalog) {
+      if (!phrase || phrase.length < 3) return null;
+      var lower = phrase.toLowerCase();
+      var bestTitle = null;
+      var bestScore = 0;
+
+      catalog.forEach(function(s) {
+        if (!s.title) return;
+        var titleLower = s.title.toLowerCase();
+        // Exact containment
+        if (titleLower.indexOf(lower) !== -1 || lower.indexOf(titleLower) !== -1) {
+          var score = Math.min(lower.length, titleLower.length) / Math.max(lower.length, titleLower.length);
+          if (score > bestScore) { bestScore = score; bestTitle = s.title; }
+          return;
+        }
+        // Word overlap: count shared significant words
+        var phraseWords = lower.split(/\s+/).filter(function(w) { return w.length >= 3; });
+        var titleWords = titleLower.split(/\s+/).filter(function(w) { return w.length >= 3; });
+        var overlap = phraseWords.filter(function(w) { return titleWords.indexOf(w) !== -1; }).length;
+        if (overlap >= 1 && titleWords.length <= 4) {
+          var score2 = overlap / Math.max(phraseWords.length, titleWords.length) * 0.8;
+          if (score2 > bestScore) { bestScore = score2; bestTitle = s.title; }
+        }
+      });
+
+      return bestScore >= 0.4 ? bestTitle : null;
+    }
+
+    // Transcribe talking segments adjacent to song segments
+    if (_talkSegments.length > 0 && channelData && (sampleRate >= 8000 || _rawBytes)) {
+      console.log('[Transcribe] Found ' + _talkSegments.length + ' talking segments — transcribing for spoken cues');
+
+      for (var _ti = 0; _ti < _talkSegments.length && _transcribeAvailable; _ti++) {
+        var _tSeg = _talkSegments[_ti];
+        if (_tSeg.duration < _MIN_TALK_DURATION || _tSeg.duration > _MAX_TALK_DURATION) continue;
+
+        onProgress('groove', 80 + Math.round((_ti / _talkSegments.length) * 10));
+
+        try {
+          // Get audio for this talking segment
+          var _tPcm = null, _tSr = 0;
+          if (!isLargeFile && channelData && sampleRate >= 8000) {
+            var _tStart = Math.floor(_tSeg.startSec * sampleRate);
+            var _tEnd = Math.min(Math.floor(_tSeg.endSec * sampleRate), channelData.length);
+            if (_tEnd - _tStart >= sampleRate) {
+              _tPcm = channelData.subarray(_tStart, _tEnd);
+              _tSr = sampleRate;
+            }
+          }
+          // Large file: skip talking transcription (no raw bytes available here since released)
+          if (!_tPcm) continue;
+
+          var _tWav = _encodeWAV(_tPcm, _tSr);
+          var _tCtrl = new AbortController();
+          var _tTimeout = setTimeout(function() { _tCtrl.abort(); }, 15000);
+          var _tRes = await fetch(_workerUrl + '/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'audio/wav' },
+            body: _tWav,
+            signal: _tCtrl.signal
+          });
+          clearTimeout(_tTimeout);
+          var _tData = await _tRes.json();
+
+          if (_tData.error) {
+            console.warn('[Transcribe] talk seg ' + _ti + ' error:', _tData.error);
+            if (_tData.error.indexOf('not configured') !== -1) {
+              _transcribeAvailable = false; // Deepgram not set up
+              console.warn('[Transcribe] Deepgram not configured — skipping all transcription');
+            }
+            continue;
+          }
+
+          if (_tData.transcript && _tData.transcript.length > 2) {
+            _tSeg.transcript = _tData.transcript;
+            _talksTranscribed++;
+
+            // Extract spoken cues
+            var cues = _extractSpokenCues(_tData.transcript);
+            if (cues.length > 0) {
+              _cuesDetected += cues.length;
+              // Find the next song segment after this talking segment
+              var _nextSong = null;
+              for (var _ns = 0; _ns < segments.length; _ns++) {
+                if (segments[_ns].startSec >= _tSeg.endSec - 5) { _nextSong = segments[_ns]; break; }
+              }
+              // Also check previous song (might be re-doing the same one)
+              var _prevSong = null;
+              for (var _ps = segments.length - 1; _ps >= 0; _ps--) {
+                if (segments[_ps].endSec <= _tSeg.startSec + 5) { _prevSong = segments[_ps]; break; }
+              }
+
+              var bestCue = cues.sort(function(a, b) { return b.confidence - a.confidence; })[0];
+              console.log('[SpokenCue] "' + _tData.transcript.slice(0, 60) + '" → ' +
+                bestCue.title + ' (conf=' + bestCue.confidence + ', type=' + bestCue.type + ')');
+
+              // Propagate to adjacent song segment
+              var _target = _nextSong || _prevSong;
+              if (_target) {
+                _target.spokenCueHint = bestCue.title;
+                _target.spokenCueConfidence = bestCue.confidence;
+                _target.spokenCueTranscript = _tData.transcript;
+                // Also set transcript so lyricsMatch signal can use it
+                if (!_target.transcript) _target.transcript = _tData.transcript;
+              }
+            } else {
+              console.log('[Transcribe] talk seg ' + _ti + ' (' + _formatTime(_tSeg.startSec) + '): "' +
+                _tData.transcript.slice(0, 50) + '" (no song cue detected)');
+            }
+          }
+        } catch(_tErr) {
+          if (_tErr.name === 'AbortError') {
+            console.warn('[Transcribe] Timeout — stopping transcription');
+            _transcribeAvailable = false;
+          } else {
+            console.warn('[Transcribe] talk seg ' + _ti + ' failed:', _tErr.message);
+          }
+        }
+      }
+    }
+
+    // Lyric snippets: transcribe short vocal windows from low-confidence song segments
+    if (_transcribeAvailable && !isLargeFile && channelData && sampleRate >= 8000) {
+      for (var _li = 0; _li < segments.length && _transcribeAvailable; _li++) {
+        var _lSeg = segments[_li];
+        if (_lSeg.duration < _MIN_LYRIC_DURATION) continue;
+        if (_lSeg.transcript) continue; // already has transcript from spoken cue
+        var _lType = _lSeg.type || '';
+        if (_lType === 'false_start' || _lType === 'retry') continue;
+
+        // Only transcribe segments without a strong match yet
+        // (we'll check confidence later, but at this point matching hasn't run,
+        // so we prioritize longer segments that are likely full songs)
+        if (_lSeg.duration < 120) continue; // only full-length songs
+
+        onProgress('groove', 90 + Math.round((_li / segments.length) * 10));
+
+        try {
+          // Extract 15s from the center of the song (more likely to have clear vocals)
+          var _lCenter = _lSeg.startSec + (_lSeg.duration / 2);
+          var _lStart = Math.floor((_lCenter - _LYRIC_WINDOW_SEC / 2) * sampleRate);
+          var _lEnd = Math.min(_lStart + Math.floor(_LYRIC_WINDOW_SEC * sampleRate), channelData.length);
+          _lStart = Math.max(0, _lStart);
+          if (_lEnd - _lStart < sampleRate * 3) continue;
+
+          var _lPcm = channelData.subarray(_lStart, _lEnd);
+          var _lWav = _encodeWAV(_lPcm, sampleRate);
+          var _lCtrl = new AbortController();
+          var _lTimeout = setTimeout(function() { _lCtrl.abort(); }, 15000);
+          var _lRes = await fetch(_workerUrl + '/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'audio/wav' },
+            body: _lWav,
+            signal: _lCtrl.signal
+          });
+          clearTimeout(_lTimeout);
+          var _lData = await _lRes.json();
+
+          if (!_lData.error && _lData.transcript && _lData.transcript.length > 10) {
+            _lSeg.lyricSnippet = _lData.transcript;
+            _lSeg.lyricConfidence = _lData.confidence || 0;
+            // Also set transcript for lyricsMatch signal
+            if (!_lSeg.transcript) _lSeg.transcript = _lData.transcript;
+            _lyricsExtracted++;
+            console.log('[Lyrics] seg ' + _li + ' (' + _formatTime(_lSeg.startSec) + '): "' +
+              _lData.transcript.slice(0, 60) + '..." (conf=' + (_lData.confidence || 0).toFixed(2) + ')');
+          }
+        } catch(_lErr) {
+          if (_lErr.name === 'AbortError') {
+            console.warn('[Lyrics] Timeout — stopping lyric extraction');
+            _transcribeAvailable = false;
+          } else {
+            console.warn('[Lyrics] seg ' + _li + ' failed:', _lErr.message);
+          }
+        }
+      }
+    }
+
+    console.log('[RecordingAnalyzer] Transcription: talks=' + _talksTranscribed +
+      ' cues=' + _cuesDetected + ' lyrics=' + _lyricsExtracted);
     onProgress('groove', 100);
 
     // Stage 4: Song matching
@@ -417,13 +674,14 @@ window.RecordingAnalyzer = (function() {
       // Debug: log matching results with BPM data
       console.log('[RecordingAnalyzer] === MATCHING RESULTS ===');
       segments.forEach(function(seg, idx) {
-        var bpmStr = seg.bpm ? (seg.bpm + ' BPM') : 'no BPM';
+        var bpmStr = seg.bpm ? (seg.bpm + ' BPM') : '-';
         var embedStr = seg.audioEmbedding ? (seg.audioEmbedding.length + 'd') : '-';
         var chordStr = seg.chordHints && seg.chordHints.usable ? (seg.chordHints.confidence || '?') : '-';
+        var cueStr = seg.spokenCueHint ? ('cue:"' + seg.spokenCueHint + '"') : (seg.lyricSnippet ? 'lyrics' : '-');
         var matchStr = seg.songMatch ? (seg.songMatch.confidence + ' [' + (seg.songMatch.activeSignals || []).join('+') + ']') : 'no match';
         var topCands = seg.songMatch && seg.songMatch.candidates ? seg.songMatch.candidates.map(function(c) { return c.title + '(' + c.score + ')'; }).join(', ') : '';
         console.log('[Match] #' + idx + ' ' + _formatTime(seg.startSec) + '-' + _formatTime(seg.endSec) +
-          ' | ' + bpmStr + ' | chords:' + chordStr + ' | embed:' + embedStr +
+          ' | ' + bpmStr + ' | chords:' + chordStr + ' | embed:' + embedStr + ' | ' + cueStr +
           ' | → ' + (seg.songTitle || '?') + ' | ' + matchStr +
           (topCands ? ' | ' + topCands : ''));
       });
