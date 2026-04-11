@@ -138,8 +138,11 @@ window.RecordingAnalyzer = (function() {
       _currentAudioBuffer = audioBuffer;
     }
 
-    // Release the raw ArrayBuffer — we only need channelData now
-    arrayBuffer = null;
+    // For large files: keep arrayBuffer + bitrate for on-demand segment decode.
+    // For normal files: release — we have the full channelData already.
+    var _rawBytes = isLargeFile ? arrayBuffer : null;
+    var _rawBitrate = isLargeFile ? bitrate : 0;
+    arrayBuffer = null; // release the local ref (large file data lives in _rawBytes)
     onProgress('decoding', 100);
 
     console.log('[RecordingAnalyzer] Decoded: ' + Math.round(duration) + 's at ' + sampleRate + 'Hz (' + Math.round(channelData.length / 1024 / 1024) + 'M samples)');
@@ -189,180 +192,170 @@ window.RecordingAnalyzer = (function() {
         };
       });
 
-    // Per-segment BPM extraction — runs BEFORE matching so tempoProx signal works
+    // ── Stage 3: Per-segment feature extraction (BPM + groove + embeddings) ────
+    // Unified loop: for each segment, decode a short audio slice and run all
+    // available extractors. Works on both normal files (PCM in memory) and
+    // large files (on-demand decode from raw MP3 bytes).
     var _bpmExtracted = 0;
-    var _MIN_BPM_DURATION = 20; // seconds — minimum segment length for BPM detection
-    var _BPM_SLICE_SEC = 30;    // analyze up to 30s from each segment
-    if (typeof OfflineAnalyser !== 'undefined' && channelData && sampleRate > 100) {
-      // For large files, sampleRate is 10 Hz (RMS windows) — can't run OfflineAnalyser.
-      // For normal files, sampleRate is 44100+ — full PCM available.
-      var _canDoFullBPM = sampleRate >= 8000;
-      console.log('[RecordingAnalyzer] BPM extraction: ' + segments.length + ' segments, ' +
-        (_canDoFullBPM ? 'full PCM (' + sampleRate + 'Hz)' : 'RMS-only — onset estimation'));
-
-      for (var _bi = 0; _bi < segments.length; _bi++) {
-        var _seg = segments[_bi];
-        if (_seg.duration < _MIN_BPM_DURATION) continue;
-
-        onProgress('groove', Math.round((_bi / segments.length) * 100));
-
-        if (_canDoFullBPM) {
-          // Full PCM path: extract segment slice, run OfflineAnalyser.analyseBuffer
-          try {
-            var _sliceStart = Math.floor(_seg.startSec * sampleRate);
-            var _sliceDur = Math.min(_seg.duration, _BPM_SLICE_SEC);
-            var _sliceEnd = Math.min(_sliceStart + Math.floor(_sliceDur * sampleRate), channelData.length);
-            var _sliceSamples = _sliceEnd - _sliceStart;
-            if (_sliceSamples < sampleRate * 5) continue; // need at least 5s
-
-            // Create a mono AudioBuffer from the PCM slice
-            var _bpmCtx = new (window.AudioContext || window.webkitAudioContext)();
-            var _segBuf = _bpmCtx.createBuffer(1, _sliceSamples, sampleRate);
-            _segBuf.getChannelData(0).set(channelData.subarray(_sliceStart, _sliceEnd));
-            _bpmCtx.close();
-
-            // Run spectral flux onset detection on the segment buffer
-            var _segAnalyser = new OfflineAnalyser();
-            var _segResult = await _segAnalyser.analyseBuffer(_segBuf, 120, 'recording');
-            if (_segResult && _segResult.metrics && _segResult.metrics.medianIOI > 0) {
-              var _m = _segResult.metrics;
-              _seg.bpm = Math.round(60000 / _m.medianIOI);
-              _seg.bpmConfidence = _m.pocketConfidence || 'low';
-              // Build groove object with both GrooveAnalyser fields AND UI-expected fields
-              var _stabScore = _m.stabilityScore || 0;
-              var _pocketMs = _m.pocketPositionMs || 0;
-              var _stabLabel = _stabScore >= 80 ? 'Locked in' : _stabScore >= 50 ? 'Getting there' : 'Unsteady';
-              var _driftLabel = Math.abs(_pocketMs) < 5 ? 'Centered' : (_pocketMs > 0 ? 'Dragging' : 'Rushing');
-              _seg.groove = {
-                // GrooveAnalyser native fields (for PocketMeterTimeSeries)
-                stabilityScore: _stabScore,
-                spacingVarianceMsRaw: _m.spacingVarianceMsRaw || 0,
-                pocketPositionMs: _pocketMs,
-                pocketLabel: _m.pocketLabel || 'CENTERED',
-                pocketConfidence: _m.pocketConfidence || 'low',
-                iois: _m.iois || [],
-                medianIOI: _m.medianIOI,
-                targetBeatMs: _m.targetBeatMs || 500,
-                pctInPocket: _m.pctInPocket || 0,
-                // UI-expected fields (for rehearsal.js timeline rendering)
-                stability: _stabScore,
-                pocketOffsetMs: Math.round(_pocketMs * 10) / 10,
-                stabilityLabel: _stabLabel,
-                drift: _driftLabel,
-                label: _stabLabel + ' \u00B7 ' + _driftLabel
-              };
-              _bpmExtracted++;
-              console.log('[BPM] seg ' + _bi + ' (' + _formatTime(_seg.startSec) + '-' + _formatTime(_seg.endSec) + '): ' +
-                _seg.bpm + ' BPM (stability=' + _stabScore.toFixed(0) +
-                ', pocket=' + _driftLabel + ', confidence=' + _seg.bpmConfidence + ')');
-            }
-          } catch(_bpmErr) {
-            console.warn('[BPM] seg ' + _bi + ' failed:', _bpmErr.message);
-          }
-        } else {
-          // RMS-only path (large files): estimate BPM from energy peak spacing
-          try {
-            var _rmsRate = 10; // RMS windows per second
-            var _rStart = Math.floor(_seg.startSec * _rmsRate);
-            var _rEnd = Math.min(Math.floor(_seg.endSec * _rmsRate), channelData.length);
-            if (_rEnd - _rStart < _rmsRate * 10) continue; // need 10s minimum
-
-            var _rmsSlice = channelData.subarray(_rStart, _rEnd);
-            var _estBpm = _estimateBpmFromRMS(_rmsSlice, _rmsRate);
-            if (_estBpm > 0) {
-              _seg.bpm = _estBpm;
-              _seg.bpmConfidence = 'low'; // RMS-based is inherently low confidence
-              _bpmExtracted++;
-              console.log('[BPM-RMS] seg ' + _bi + ' (' + _formatTime(_seg.startSec) + '-' + _formatTime(_seg.endSec) + '): ' +
-                _seg.bpm + ' BPM (RMS onset estimation)');
-            }
-          } catch(_rmsErr) {
-            console.warn('[BPM-RMS] seg ' + _bi + ' failed:', _rmsErr.message);
-          }
-        }
-      }
-    }
-    console.log('[RecordingAnalyzer] BPM extracted for ' + _bpmExtracted + '/' + segments.length + ' segments');
-    onProgress('groove', 100);
-
-    // Stage 3b: Audio embeddings (CLAP) — optional, requires localhost:8200
-    // Fetches embeddings for song-like segments to enable audioSimilar matching signal.
-    // Non-blocking: if service is unavailable, skips gracefully.
+    var _grooveExtracted = 0;
     var _embedsExtracted = 0;
+    var _MIN_FEAT_DURATION = 20; // seconds — minimum for BPM/groove
+    var _MIN_EMBED_DURATION = 30; // seconds — minimum for CLAP embedding
+    var _SLICE_SEC = 30;          // analyze up to 30s from each segment
+
+    // Check embedding service availability (shared across all segments)
     var _embedServiceUrl = window._glEmbedServiceUrl || 'http://localhost:8200';
     var _embedServiceAvailable = false;
-    var _MIN_EMBED_DURATION = 30; // seconds — minimum segment length for embedding
+    try {
+      var _healthCtrl = new AbortController();
+      var _healthTimeout = setTimeout(function() { _healthCtrl.abort(); }, 1500);
+      var _healthRes = await fetch(_embedServiceUrl + '/health', { signal: _healthCtrl.signal });
+      clearTimeout(_healthTimeout);
+      if (_healthRes.ok) {
+        var _healthData = await _healthRes.json();
+        _embedServiceAvailable = _healthData.status === 'ok' || _healthData.status === 'ready';
+      }
+    } catch(_hErr) { /* service not available */ }
+    console.log('[RecordingAnalyzer] Feature extraction: ' + segments.length + ' segments' +
+      (isLargeFile ? ' (large file — on-demand decode)' : ' (full PCM)') +
+      ', embed service: ' + (_embedServiceAvailable ? 'available' : 'unavailable'));
 
-    if (!isLargeFile && channelData && sampleRate >= 8000) {
-      // Probe service availability with a quick health check (1s timeout)
-      try {
-        var _healthCtrl = new AbortController();
-        var _healthTimeout = setTimeout(function() { _healthCtrl.abort(); }, 1000);
-        var _healthRes = await fetch(_embedServiceUrl + '/health', { signal: _healthCtrl.signal });
-        clearTimeout(_healthTimeout);
-        if (_healthRes.ok) {
-          var _healthData = await _healthRes.json();
-          _embedServiceAvailable = _healthData.status === 'ok' || _healthData.status === 'ready';
-          console.log('[Embed] Service available at ' + _embedServiceUrl + ' (status=' + _healthData.status + ')');
+    for (var _fi = 0; _fi < segments.length; _fi++) {
+      var _fSeg = segments[_fi];
+      if (_fSeg.duration < _MIN_FEAT_DURATION) continue;
+      var _fType = _fSeg.type || '';
+      if (_fType === 'false_start' || _fType === 'retry') continue;
+
+      onProgress('groove', Math.round((_fi / segments.length) * 80));
+
+      // ── Get decoded audio for this segment ────────────────────────────────
+      var _segPcm = null;   // Float32Array of mono PCM samples
+      var _segSr = 0;       // sample rate of the decoded audio
+
+      if (!isLargeFile && channelData && sampleRate >= 8000) {
+        // Normal file: slice directly from in-memory PCM
+        var _pStart = Math.floor(_fSeg.startSec * sampleRate);
+        var _pDur = Math.min(_fSeg.duration, _SLICE_SEC);
+        var _pEnd = Math.min(_pStart + Math.floor(_pDur * sampleRate), channelData.length);
+        if (_pEnd - _pStart >= sampleRate * 5) {
+          _segPcm = channelData.subarray(_pStart, _pEnd);
+          _segSr = sampleRate;
         }
-      } catch(_hErr) {
-        console.log('[Embed] Service not available at ' + _embedServiceUrl + ' — skipping embeddings');
+      } else if (isLargeFile && _rawBytes) {
+        // Large file: on-demand decode from raw MP3 bytes
+        // Calculate byte offset using estimated bitrate, add padding for MP3 frame alignment
+        try {
+          var _segCenterSec = _fSeg.startSec + Math.max(0, (_fSeg.duration - _SLICE_SEC) / 2);
+          var _decStartSec = Math.max(0, _segCenterSec - 2); // 2s padding before
+          var _decDurSec = Math.min(_SLICE_SEC + 4, duration - _decStartSec); // +4s padding
+          var _byteStart = Math.max(0, Math.floor((_decStartSec * _rawBitrate) / 8));
+          var _byteEnd = Math.min(Math.ceil(((_decStartSec + _decDurSec) * _rawBitrate) / 8) + 8192, _rawBytes.byteLength);
+
+          if (_byteEnd - _byteStart > 10000) { // need at least ~10KB
+            var _decCtx = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+              var _decBuf = await _decCtx.decodeAudioData(_rawBytes.slice(_byteStart, _byteEnd));
+              // Extract mono channel, trim to target duration
+              var _decMono = _decBuf.getChannelData(0);
+              var _trimSamples = Math.min(_decMono.length, Math.floor(_SLICE_SEC * _decBuf.sampleRate));
+              // Skip the first 2s of padding to get the actual segment audio
+              var _skipSamples = Math.floor(2 * _decBuf.sampleRate);
+              var _trimStart = Math.min(_skipSamples, _decMono.length - _trimSamples);
+              _segPcm = _decMono.subarray(_trimStart, _trimStart + _trimSamples);
+              _segSr = _decBuf.sampleRate;
+            } catch(_decErr) {
+              // MP3 frame boundary issue — try without padding
+              console.warn('[Decode] seg ' + _fi + ' chunk decode failed:', _decErr.message);
+            }
+            _decCtx.close();
+          }
+        } catch(_byteErr) {
+          console.warn('[Decode] seg ' + _fi + ' byte extraction failed:', _byteErr.message);
+        }
       }
 
-      if (_embedServiceAvailable) {
-        onProgress('embedding', 0);
-        for (var _ei = 0; _ei < segments.length; _ei++) {
-          var _eSeg = segments[_ei];
-          // Only embed song-type segments with sufficient duration
-          if (_eSeg.duration < _MIN_EMBED_DURATION) continue;
-          var _eType = _eSeg.type || '';
-          if (_eType === 'false_start' || _eType === 'retry') continue;
+      if (!_segPcm || _segPcm.length < 1000) continue;
 
-          onProgress('embedding', Math.round((_ei / segments.length) * 100));
+      // ── BPM + Groove extraction ───────────────────────────────────────────
+      if (typeof OfflineAnalyser !== 'undefined') {
+        try {
+          var _gCtx = new (window.AudioContext || window.webkitAudioContext)();
+          var _gBuf = _gCtx.createBuffer(1, _segPcm.length, _segSr);
+          _gBuf.getChannelData(0).set(_segPcm);
+          _gCtx.close();
 
-          try {
-            // Extract 30s audio slice from segment center
-            var _eDur = Math.min(_eSeg.duration, 30);
-            var _eOffset = Math.max(0, (_eSeg.duration - _eDur) / 2); // center of segment
-            var _eStart = Math.floor((_eSeg.startSec + _eOffset) * sampleRate);
-            var _eEnd = Math.min(_eStart + Math.floor(_eDur * sampleRate), channelData.length);
-            var _eSamples = _eEnd - _eStart;
-            if (_eSamples < sampleRate * 5) continue;
+          var _gAnalyser = new OfflineAnalyser();
+          var _gResult = await _gAnalyser.analyseBuffer(_gBuf, 120, 'recording');
+          if (_gResult && _gResult.metrics && _gResult.metrics.medianIOI > 0) {
+            var _m = _gResult.metrics;
+            _fSeg.bpm = Math.round(60000 / _m.medianIOI);
+            _fSeg.bpmConfidence = _m.pocketConfidence || 'low';
+            _bpmExtracted++;
 
-            // Encode slice as WAV
-            var _eSlice = channelData.subarray(_eStart, _eEnd);
-            var _eWav = _encodeWAV(_eSlice, sampleRate);
+            // Build normalized groove object
+            var _stabScore = _m.stabilityScore || 0;
+            var _pocketMs = _m.pocketPositionMs || 0;
+            var _stabLabel = _stabScore >= 80 ? 'Locked in' : _stabScore >= 50 ? 'Getting there' : 'Unsteady';
+            var _driftLabel = Math.abs(_pocketMs) < 5 ? 'Centered' : (_pocketMs > 0 ? 'Dragging' : 'Rushing');
+            _fSeg.groove = {
+              stabilityScore: _stabScore, spacingVarianceMsRaw: _m.spacingVarianceMsRaw || 0,
+              pocketPositionMs: _pocketMs, pocketLabel: _m.pocketLabel || 'CENTERED',
+              pocketConfidence: _m.pocketConfidence || 'low', iois: _m.iois || [],
+              medianIOI: _m.medianIOI, targetBeatMs: _m.targetBeatMs || 500,
+              pctInPocket: _m.pctInPocket || 0,
+              stability: _stabScore, pocketOffsetMs: Math.round(_pocketMs * 10) / 10,
+              stabilityLabel: _stabLabel, drift: _driftLabel,
+              label: _stabLabel + ' \u00B7 ' + _driftLabel
+            };
+            _grooveExtracted++;
+            console.log('[Groove] seg ' + _fi + ' (' + _formatTime(_fSeg.startSec) + '-' + _formatTime(_fSeg.endSec) + '): ' +
+              _fSeg.bpm + ' BPM, stability=' + _stabScore.toFixed(0) + ', ' + _driftLabel +
+              (isLargeFile ? ' [on-demand decode]' : ''));
+          }
+        } catch(_gErr) {
+          console.warn('[Groove] seg ' + _fi + ' failed:', _gErr.message);
+        }
+      }
 
-            // POST to embedding service (5s timeout per segment)
-            var _eCtrl = new AbortController();
-            var _eTimeout = setTimeout(function() { _eCtrl.abort(); }, 5000);
-            var _eForm = new FormData();
-            _eForm.append('file', new Blob([_eWav], { type: 'audio/wav' }), 'segment.wav');
-            var _eRes = await fetch(_embedServiceUrl + '/embed', { method: 'POST', body: _eForm, signal: _eCtrl.signal });
-            clearTimeout(_eTimeout);
-            var _eData = await _eRes.json();
+      // ── CLAP embedding extraction ─────────────────────────────────────────
+      if (_embedServiceAvailable && _fSeg.duration >= _MIN_EMBED_DURATION) {
+        try {
+          // Use center 30s (or less) for embedding
+          var _eCenterLen = Math.min(_segPcm.length, Math.floor(30 * _segSr));
+          var _eCenterOff = Math.floor((_segPcm.length - _eCenterLen) / 2);
+          var _eSlice = _segPcm.subarray(_eCenterOff, _eCenterOff + _eCenterLen);
+          var _eWav = _encodeWAV(_eSlice, _segSr);
 
-            if (_eData.embedding && _eData.embedding.length) {
-              _eSeg.audioEmbedding = _eData.embedding;
-              _embedsExtracted++;
-              console.log('[Embed] seg ' + _ei + ' (' + _formatTime(_eSeg.startSec) + '-' + _formatTime(_eSeg.endSec) + '): ' +
-                _eData.dimension + 'd embedding extracted');
-            }
-          } catch(_eErr) {
-            console.warn('[Embed] seg ' + _ei + ' failed:', _eErr.message);
-            // If service went down mid-analysis, stop trying
-            if (_eErr.name === 'AbortError' || _eErr.message.indexOf('fetch') !== -1) {
-              console.warn('[Embed] Service appears down — stopping embedding extraction');
-              break;
-            }
+          var _eCtrl = new AbortController();
+          var _eTimeout = setTimeout(function() { _eCtrl.abort(); }, 8000);
+          var _eForm = new FormData();
+          _eForm.append('file', new Blob([_eWav], { type: 'audio/wav' }), 'segment.wav');
+          var _eRes = await fetch(_embedServiceUrl + '/embed', { method: 'POST', body: _eForm, signal: _eCtrl.signal });
+          clearTimeout(_eTimeout);
+          var _eData = await _eRes.json();
+
+          if (_eData.embedding && _eData.embedding.length) {
+            _fSeg.audioEmbedding = _eData.embedding;
+            _embedsExtracted++;
+            console.log('[Embed] seg ' + _fi + ': ' + _eData.dimension + 'd' + (isLargeFile ? ' [on-demand decode]' : ''));
+          }
+        } catch(_eErr) {
+          if (_eErr.name === 'AbortError') {
+            console.warn('[Embed] Service timeout — stopping embedding extraction');
+            _embedServiceAvailable = false; // don't try remaining segments
+          } else {
+            console.warn('[Embed] seg ' + _fi + ' failed:', _eErr.message);
           }
         }
-        console.log('[RecordingAnalyzer] Embeddings extracted for ' + _embedsExtracted + '/' + segments.length + ' segments');
-        onProgress('embedding', 100);
       }
-    } else if (isLargeFile) {
-      console.log('[Embed] Large file — skipping embeddings (no decoded audio available)');
     }
+
+    // Release raw bytes now that all segment extraction is done
+    _rawBytes = null;
+
+    console.log('[RecordingAnalyzer] Feature extraction complete: BPM=' + _bpmExtracted +
+      ' Groove=' + _grooveExtracted + ' Embed=' + _embedsExtracted + ' / ' + segments.length + ' segments');
+    onProgress('groove', 100);
 
     // Stage 4: Song matching
     onProgress('matching', 0);
