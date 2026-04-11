@@ -2299,15 +2299,44 @@ function _sdRenderBandLove(title, safeSong) {
     var derived = (typeof GLStore !== 'undefined' && GLStore.deriveSongStatus) ? GLStore.deriveSongStatus(title) : { label: 'Unrated', color: '#64748b' };
     var HEARTS = ['\u2764\uFE0F', '\uD83E\uDDE1', '\uD83D\uDC9B', '\uD83D\uDC9A', '\uD83D\uDC99'];
     var labels = ['Not set', 'Meh', 'It\u2019s OK', 'Like it', 'Love it', 'LOVE IT'];
+    var safeTitle = title.replace(/'/g, '');
 
+    // Shared band love (primary)
     var html = '<div style="display:flex;align-items:center;gap:12px;padding:8px 0">';
     html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);min-width:70px">Band Love</span>';
     for (var i = 1; i <= 5; i++) {
         var active = i <= love;
-        html += '<button onclick="sdSaveBandLove(\'' + safeSong + '\',\'' + title.replace(/'/g, '') + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.25') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
+        html += '<button onclick="sdSaveBandLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.25') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
     }
     html += '<span style="font-size:0.75em;color:var(--text-dim);margin-left:auto">' + labels[love] + '</span>';
     html += '</div>';
+
+    // Personal band love (secondary, subtle)
+    var myBl = (typeof GLStore !== 'undefined' && GLStore.getPersonalBandLove) ? GLStore.getPersonalBandLove(title) : 0;
+    html += '<div style="display:flex;align-items:center;gap:12px;padding:2px 0;opacity:0.6">';
+    html += '<span style="font-size:0.68em;color:var(--text-dim);min-width:70px">Your take</span>';
+    for (var j = 1; j <= 5; j++) {
+        var pActive = j <= myBl;
+        html += '<button onclick="sdSavePersonalBandLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + j + ')" style="background:none;border:none;font-size:0.9em;cursor:pointer;opacity:' + (pActive ? '1' : '0.2') + ';transition:opacity 0.15s" title="Your personal: ' + labels[j] + '">\u2764\uFE0F</button>';
+    }
+    if (myBl > 0) html += '<span style="font-size:0.62em;color:var(--text-dim);margin-left:auto">' + labels[myBl] + '</span>';
+    html += '</div>';
+
+    // Band love disagreement insight
+    if (typeof GLStore !== 'undefined' && GLStore.getBandLoveDisagreement) {
+        var blDis = GLStore.getBandLoveDisagreement(title);
+        if (blDis.disagreementLevel === 'notable' || blDis.disagreementLevel === 'strong') {
+            var blInsight = '';
+            if (blDis.delta > 0) blInsight = 'You\u2019re higher on this than the band';
+            else if (blDis.delta < 0) blInsight = 'You\u2019re lower on this than the band';
+            else if (blDis.groupSpread >= 2) blInsight = 'Mixed band feelings';
+            if (blInsight) {
+                html += '<div style="font-size:0.62em;color:var(--gl-amber,#f59e0b);padding:1px 0;font-style:italic">' + blInsight + '</div>';
+            }
+        } else if (blDis.raterCount >= 3 && blDis.groupSpread <= 1 && love >= 4) {
+            html += '<div style="font-size:0.62em;color:var(--gl-green,#22c55e);padding:1px 0;font-style:italic">Band agrees strongly on this one</div>';
+        }
+    }
 
     // Derived status badge
     if (derived.status !== 'unrated') {
@@ -2330,15 +2359,42 @@ function _sdRenderAudienceLove(title, safeSong) {
     var crowd = (typeof GLStore !== 'undefined' && GLStore.getAudienceLove) ? GLStore.getAudienceLove(title) : 0;
     var HEARTS = ['\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C', '\uD83D\uDC9C'];
     var labels = ['Not set', 'Quiet', 'Polite', 'Into it', 'They love it', 'CROWD GOES WILD'];
+    var safeTitle = title.replace(/'/g, '');
 
+    // Shared audience love (primary)
     var html = '<div style="display:flex;align-items:center;gap:12px;padding:4px 0">';
     html += '<span style="font-size:0.82em;font-weight:600;color:var(--text);min-width:70px">Audience</span>';
     for (var i = 1; i <= 5; i++) {
         var active = i <= crowd;
-        html += '<button onclick="sdSaveAudienceLove(\'' + safeSong + '\',\'' + title.replace(/'/g, '') + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.15') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
+        html += '<button onclick="sdSaveAudienceLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + i + ')" style="background:none;border:none;font-size:1.3em;cursor:pointer;opacity:' + (active ? '1' : '0.15') + ';transition:opacity 0.15s" title="' + labels[i] + '">' + HEARTS[(i - 1) % HEARTS.length] + '</button>';
     }
     html += '<span style="font-size:0.75em;color:var(--text-dim);margin-left:auto">' + labels[crowd] + '</span>';
     html += '</div>';
+
+    // Personal audience love (secondary, subtle)
+    var myAl = (typeof GLStore !== 'undefined' && GLStore.getPersonalAudienceLove) ? GLStore.getPersonalAudienceLove(title) : 0;
+    html += '<div style="display:flex;align-items:center;gap:12px;padding:2px 0;opacity:0.6">';
+    html += '<span style="font-size:0.68em;color:var(--text-dim);min-width:70px">Your take</span>';
+    for (var j = 1; j <= 5; j++) {
+        var pActive = j <= myAl;
+        html += '<button onclick="sdSavePersonalAudienceLove(\'' + safeSong + '\',\'' + safeTitle + '\',' + j + ')" style="background:none;border:none;font-size:0.9em;cursor:pointer;opacity:' + (pActive ? '1' : '0.2') + ';transition:opacity 0.15s" title="Your personal: ' + labels[j] + '">\uD83D\uDC9C</button>';
+    }
+    if (myAl > 0) html += '<span style="font-size:0.62em;color:var(--text-dim);margin-left:auto">' + labels[myAl] + '</span>';
+    html += '</div>';
+
+    // Audience love disagreement insight
+    if (typeof GLStore !== 'undefined' && GLStore.getAudienceLoveDisagreement) {
+        var alDis = GLStore.getAudienceLoveDisagreement(title);
+        if (alDis.disagreementLevel === 'notable' || alDis.disagreementLevel === 'strong') {
+            var alInsight = '';
+            if (alDis.delta > 0) alInsight = 'You think the crowd loves this more than the band does';
+            else if (alDis.delta < 0) alInsight = 'You think the crowd cares less than the band thinks';
+            else if (alDis.groupSpread >= 2) alInsight = 'Crowd impact feels debated';
+            if (alInsight) {
+                html += '<div style="font-size:0.62em;color:var(--gl-amber,#f59e0b);padding:1px 0;font-style:italic">' + alInsight + '</div>';
+            }
+        }
+    }
 
     // Recommendation insight when both ratings exist
     var bandLove = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? GLStore.getBandLove(title) : 0;
@@ -2359,6 +2415,20 @@ function _sdRenderAudienceLove(title, safeSong) {
 window.sdSaveAudienceLove = function(safeSong, title, value) {
     if (typeof GLStore !== 'undefined' && GLStore.saveAudienceLove) {
         GLStore.saveAudienceLove(title, value);
+        _sdRefreshLoveCard(safeSong, title);
+    }
+};
+
+window.sdSavePersonalBandLove = function(safeSong, title, value) {
+    if (typeof GLStore !== 'undefined' && GLStore.savePersonalBandLove) {
+        GLStore.savePersonalBandLove(title, value);
+        _sdRefreshLoveCard(safeSong, title);
+    }
+};
+
+window.sdSavePersonalAudienceLove = function(safeSong, title, value) {
+    if (typeof GLStore !== 'undefined' && GLStore.savePersonalAudienceLove) {
+        GLStore.savePersonalAudienceLove(title, value);
         _sdRefreshLoveCard(safeSong, title);
     }
 };

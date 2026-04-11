@@ -839,9 +839,140 @@
     } catch(e) {}
   }
 
+  // ── Personal Love Overrides + Disagreement ──────────────────────────────
+  // Personal scores are per-member overlays on the shared band/audience love.
+  // They do NOT replace the shared score in scoring/recommendations.
+  // Firebase: songs/{key}/bandLove/personal/{memberKey} = { score, updatedAt }
+  //           songs/{key}/audienceLove/personal/{memberKey} = { score, updatedAt }
+
+  var _personalBandLoveCache = {};   // { songId: { memberKey: score } }
+  var _personalAudienceLoveCache = {};
+
+  function _myKey() {
+    return (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey)
+      ? FeedActionState.getMyMemberKey() : null;
+  }
+
+  async function savePersonalBandLove(songId, value) {
+    var v = parseInt(value, 10);
+    if (isNaN(v) || v < 0 || v > 5) return;
+    var mk = _myKey(); if (!mk) return;
+    var db = _db(); if (!db) return;
+    var k = _sanitize(songId);
+    try {
+      if (v === 0) {
+        await db.ref(_bp('songs/' + k + '/bandLove/personal/' + mk)).remove();
+        if (_personalBandLoveCache[songId]) delete _personalBandLoveCache[songId][mk];
+      } else {
+        await db.ref(_bp('songs/' + k + '/bandLove/personal/' + mk)).set({ score: v, updatedAt: new Date().toISOString() });
+        if (!_personalBandLoveCache[songId]) _personalBandLoveCache[songId] = {};
+        _personalBandLoveCache[songId][mk] = v;
+      }
+      emit('personalBandLoveChanged', { songId: songId, value: v });
+    } catch(e) {}
+  }
+
+  function getPersonalBandLove(songId, memberKey) {
+    var mk = memberKey || _myKey();
+    return (_personalBandLoveCache[songId] && _personalBandLoveCache[songId][mk]) || 0;
+  }
+
+  async function savePersonalAudienceLove(songId, value) {
+    var v = parseInt(value, 10);
+    if (isNaN(v) || v < 0 || v > 5) return;
+    var mk = _myKey(); if (!mk) return;
+    var db = _db(); if (!db) return;
+    var k = _sanitize(songId);
+    try {
+      if (v === 0) {
+        await db.ref(_bp('songs/' + k + '/audienceLove/personal/' + mk)).remove();
+        if (_personalAudienceLoveCache[songId]) delete _personalAudienceLoveCache[songId][mk];
+      } else {
+        await db.ref(_bp('songs/' + k + '/audienceLove/personal/' + mk)).set({ score: v, updatedAt: new Date().toISOString() });
+        if (!_personalAudienceLoveCache[songId]) _personalAudienceLoveCache[songId] = {};
+        _personalAudienceLoveCache[songId][mk] = v;
+      }
+      emit('personalAudienceLoveChanged', { songId: songId, value: v });
+    } catch(e) {}
+  }
+
+  function getPersonalAudienceLove(songId, memberKey) {
+    var mk = memberKey || _myKey();
+    return (_personalAudienceLoveCache[songId] && _personalAudienceLoveCache[songId][mk]) || 0;
+  }
+
+  // Disagreement helper — returns aggregate insight without exposing individual names
+  function _computeDisagreement(sharedScore, personalCache, songId) {
+    var personals = personalCache[songId];
+    var myKey = _myKey();
+    var myScore = (personals && myKey && personals[myKey]) || 0;
+    if (!personals || Object.keys(personals).length === 0) {
+      return { sharedScore: sharedScore, personalScore: myScore, delta: 0, groupSpread: 0, raterCount: 0, disagreementLevel: 'none' };
+    }
+    var scores = Object.values(personals).filter(function(v) { return typeof v === 'number' && v > 0; });
+    var raterCount = scores.length;
+    var avg = raterCount > 0 ? scores.reduce(function(a, b) { return a + b; }, 0) / raterCount : 0;
+    var spread = raterCount > 1 ? Math.max.apply(null, scores) - Math.min.apply(null, scores) : 0;
+    var delta = myScore > 0 ? myScore - sharedScore : 0;
+    var level = 'none';
+    if (Math.abs(delta) >= 3 || spread >= 3) level = 'strong';
+    else if (Math.abs(delta) >= 2 || spread >= 2) level = 'notable';
+    else if (Math.abs(delta) >= 1) level = 'mild';
+    return {
+      sharedScore: sharedScore, personalScore: myScore, delta: delta,
+      avg: Math.round(avg * 10) / 10, groupSpread: spread, raterCount: raterCount,
+      disagreementLevel: level
+    };
+  }
+
+  function getBandLoveDisagreement(songId) {
+    return _computeDisagreement(_bandLoveCache[songId] || 0, _personalBandLoveCache, songId);
+  }
+
+  function getAudienceLoveDisagreement(songId) {
+    return _computeDisagreement(_audienceLoveCache[songId] || 0, _personalAudienceLoveCache, songId);
+  }
+
+  // Preload personal values from the same Firebase snapshot as shared values
+  async function _preloadPersonalLove() {
+    var db = _db(); if (!db) return;
+    try {
+      var snap = await db.ref(_bp('songs')).once('value');
+      var data = snap.val();
+      if (!data) return;
+      Object.keys(data).forEach(function(key) {
+        var title = key.replace(/_/g, ' ');
+        var song = data[key];
+        if (song.bandLove && song.bandLove.personal) {
+          _personalBandLoveCache[title] = {};
+          _personalBandLoveCache[key] = {};
+          Object.keys(song.bandLove.personal).forEach(function(mk) {
+            var ps = song.bandLove.personal[mk];
+            if (ps && ps.score) {
+              _personalBandLoveCache[title][mk] = ps.score;
+              _personalBandLoveCache[key][mk] = ps.score;
+            }
+          });
+        }
+        if (song.audienceLove && song.audienceLove.personal) {
+          _personalAudienceLoveCache[title] = {};
+          _personalAudienceLoveCache[key] = {};
+          Object.keys(song.audienceLove.personal).forEach(function(mk) {
+            var ps = song.audienceLove.personal[mk];
+            if (ps && ps.score) {
+              _personalAudienceLoveCache[title][mk] = ps.score;
+              _personalAudienceLoveCache[key][mk] = ps.score;
+            }
+          });
+        }
+      });
+    } catch(e) {}
+  }
+
   // Auto-preload after readiness loads
   setTimeout(_preloadBandLove, 8000);
   setTimeout(_preloadAudienceLove, 8500);
+  setTimeout(_preloadPersonalLove, 9000);
 
   // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
 
@@ -4636,6 +4767,12 @@
     saveAudienceLove:  saveAudienceLove,
     getAudienceLove:   getAudienceLove,
     getAllAudienceLove: getAllAudienceLove,
+    savePersonalBandLove: savePersonalBandLove,
+    getPersonalBandLove: getPersonalBandLove,
+    savePersonalAudienceLove: savePersonalAudienceLove,
+    getPersonalAudienceLove: getPersonalAudienceLove,
+    getBandLoveDisagreement: getBandLoveDisagreement,
+    getAudienceLoveDisagreement: getAudienceLoveDisagreement,
     deriveSongStatus:  deriveSongStatus,
     getSongPriority:   getSongPriority,
     getSongGap:        getSongGap,
