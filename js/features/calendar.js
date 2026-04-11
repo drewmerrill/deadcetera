@@ -2452,9 +2452,32 @@ async function loadCalendarEvents() {
     } else {
         blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
     }
+    // Build per-date event windows from gig/rehearsal events for accurate conflict classification
+    // Gigs use their actual start/end time; dates without events use the default rehearsal window
+    var _dateWindows = {};
+    Object.keys(dateMap).forEach(function(ds) {
+        var dayEvts = dateMap[ds];
+        dayEvts.forEach(function(ev) {
+            if (ev.type === 'gig' && ev.time) {
+                // Parse gig time (e.g., "19:00" or "7:30 PM") into start hour
+                var gStart = parseInt(ev.time.split(':')[0], 10);
+                if (isNaN(gStart)) return;
+                // Estimate gig duration: use end time if available, otherwise assume 3 hours
+                var gEnd = gStart + 3;
+                if (ev.endTime) {
+                    var eH = parseInt(ev.endTime.split(':')[0], 10);
+                    if (!isNaN(eH)) gEnd = eH;
+                } else if (ev.duration) {
+                    gEnd = gStart + Math.ceil(ev.duration / 60);
+                }
+                _dateWindows[ds] = { startHour: gStart, endHour: Math.min(gEnd, 26) };
+            }
+        });
+    });
+
     // Merge Google Calendar free/busy — current user + all connected members
     // Load availability settings for time-aware conflict classification
-    var _fbOpts = { rehearsalStartHour: 17, rehearsalEndHour: 23, ignoreAllDay: true, timeAware: true };
+    var _fbOpts = { rehearsalStartHour: 17, rehearsalEndHour: 23, ignoreAllDay: true, timeAware: true, dateWindows: _dateWindows };
     try {
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getAvailabilitySettings) {
             var _avSettings = await GLCalendarSync.getAvailabilitySettings();

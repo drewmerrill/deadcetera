@@ -386,12 +386,15 @@ window.GLCalendarSync = (function() {
   }
 
   // Convert free/busy ranges to date-based blocked ranges for calendar
-  // Now time-aware: classifies events as hard (overlaps rehearsal window) or soft (doesn't)
+  // Time-aware: classifies events as hard (overlaps event window) or soft (doesn't)
+  // opts.rehearsalStartHour / rehearsalEndHour: default window for rehearsal dates
+  // opts.dateWindows: { 'YYYY-MM-DD': { startHour, endHour } } — per-date overrides (e.g., gigs)
   function freeBusyToBlockedRanges(busyData, memberName, opts) {
     if (!busyData || !busyData.busy || !busyData.busy.length) return [];
     opts = opts || {};
-    var rehearsalStart = opts.rehearsalStartHour || 17; // 5pm default
-    var rehearsalEnd = opts.rehearsalEndHour || 23; // 11pm default
+    var defaultStart = opts.rehearsalStartHour || 17; // 5pm default
+    var defaultEnd = opts.rehearsalEndHour || 23; // 11pm default
+    var dateWindows = opts.dateWindows || {}; // per-date overrides for gigs
     var ignoreAllDay = opts.ignoreAllDay !== false; // default true
     var timeAware = opts.timeAware !== false; // default true
 
@@ -425,6 +428,13 @@ window.GLCalendarSync = (function() {
       if (ignoreAllDay && isAllDay) return;
 
       // Time-aware conflict classification using LOCAL hours
+      // Use per-date window if available (e.g., gig at 2-5pm), otherwise default rehearsal window
+      var windowStart = defaultStart;
+      var windowEnd = defaultEnd;
+      if (dateWindows[startDate]) {
+        windowStart = dateWindows[startDate].startHour;
+        windowEnd = dateWindows[startDate].endHour;
+      }
       var conflictType = 'hard'; // default: hard conflict
       var timeLabel = '';
       if (timeAware && !isAllDay) {
@@ -439,8 +449,8 @@ window.GLCalendarSync = (function() {
         if (eventEndHour < eventStartHour || (eventEndHour === 0 && endDate > startDate)) {
           effectiveEndHour = eventEndHour + 24;
         }
-        // If event is completely before or after rehearsal window, it's soft
-        if (effectiveEndHour <= rehearsalStart || eventStartHour >= rehearsalEnd) {
+        // If event is completely before or after the event window, it's soft
+        if (effectiveEndHour <= windowStart || eventStartHour >= windowEnd) {
           conflictType = 'soft';
         }
         // Build readable time label from local hours
