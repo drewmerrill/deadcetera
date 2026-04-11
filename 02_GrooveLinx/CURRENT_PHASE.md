@@ -1,13 +1,81 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-10 (Google Calendar fully working + conflict sync + Band Room rich text + availability infinite scroll + mobile fixes)_
+_Updated: 2026-04-11 (Audience Love + Setlist Intelligence + Personal Overrides + Rehearsal Scorecard + Analyzer Calibration + Deploy Hardening)_
 
 ## Active Phase: Band Adoption + Polish
 
-Build: **auto-stamped via GitHub Actions (YYYYMMDD-HHMMSS)**
+Build: **local stamp via `scripts/stamp-version.py`** (GitHub Actions auto-stamp disabled)
 Deploy: **Vercel** (auto-deploy on push to main)
 Worker: **Cloudflare** (`wrangler deploy worker.js --name deadcetera-proxy`)
 Production URL: **https://app.groovelinx.com**
+
+---
+
+## What's Live (2026-04-11)
+
+### Audience Love — Second Axis of Song Value (NEW)
+- `saveAudienceLove/getAudienceLove/getAllAudienceLove` in GLStore
+- Purple heart widget on Song Detail (1-5: Quiet → CROWD GOES WILD)
+- Priority scoring updated: `(bandLove * 0.5) + (audienceLove * 0.2) + ((5 - readiness) * 0.3)`
+- Compact dot indicators on song list rows (red = band, purple = audience)
+- Insight lines when both rated: "Band + crowd favorite — anchor song", etc.
+
+### Personal Love Overrides + Band Disagreement Insights (NEW)
+- Per-member personal band love + audience love (stored under `personal/{memberKey}`)
+- "Your take" row below each shared rating (only current user sees/edits)
+- Disagreement detection: `getBandLoveDisagreement()`, `getAudienceLoveDisagreement()`
+- Insight text: "You're higher/lower than the band", "Mixed band feelings", "Band agrees strongly"
+- Action hints: "worth pushing?", "revisit or consider dropping", "try it live and decide"
+- Privacy: no individual scores exposed by name, insights are aggregate/directional only
+
+### Love-Aware Recommendations (NEW)
+- Focus engine reasons now contextual: "Crowd loves this, get it tight", "Anchor song — keep it sharp"
+- GLInsights detail bullets include love context
+- Home hero subtitle adds love context when no other urgency exists
+
+### Setlist Intelligence (NEW)
+- Energy model: `(audienceLove * 0.6) + (bandLove * 0.3) + (readiness * 0.1)`
+- Energy flow visualization: horizontal colored bar strip below setlist songs
+- Song badges in editor: ❤️ band love + 💜 audience love + ⚠ readiness warning
+- Set quality insights (max 4): energy flow, mid-set dip, love balance, readiness
+- Setlist song search fix: click to add works, "add to band" only shows when no matches
+
+### Rehearsal Scorecard + Song Outcome Cards (NEW)
+- Scorecard on latest session card: score (0-100), label, biggest win/risk, top 2 actions
+- Full scorecard in session report view: headline, highlights, top 3 action items
+- Song Outcome Cards: grid per song with outcome status (Locked in / Improving / Needs work / Skipped)
+- Status derived from segment data (attempt count, duration, clean takes)
+
+### Analyzer Calibration Framework (NEW)
+- `tests/calibration/calibration-runner.js`: evaluates against gold truth segments
+- Metrics: detection rate, label accuracy, false start recall, jam misclassification
+- Gold truth: `rehearsal_2026-04-03_gold.json` (29 segments, 4+ hours)
+- Segmentation improvements: false start clustering, partial song detection, jam detection
+- Plan cascade eliminated: planMatch weight 0.35 → 0.15, position-dependent scoring removed
+- Low-confidence-only matches labeled "Unknown (needs review)" instead of wrong song name
+- RMS tuned: MIN_SILENCE 8s → 3s, MIN_MUSIC 60s → 20s
+
+### Analyze Recording (renamed from "Recreate from Recording")
+- Local file upload: file picker for MP3/WAV (primary), URL input (secondary fallback)
+- Duplicate date detection: warns if session exists, offers "Add to existing" or "Create separate"
+- Trend indicator: "Trend" label + descriptive tooltip explaining emoji dots
+- Fixed: analysis now actually runs on uploaded files (broken setContext path replaced)
+
+### Schedule Enhancements (2026-04-10 evening)
+- Cross-midnight event classification fix (10pm-1am events now detected as conflicts)
+- Event-aware availability: gigs use actual time window instead of fixed rehearsal window
+- Availability explainability: hover tooltips show "Brian busy 2-4pm (conflicts with this gig)"
+- Decision anchor: "No conflicts — 4 of 5 members clear" replaces generic text
+- Selected date card: conflict summary with per-member time + conflict status
+- Conflict resolver: plain language "3 of 5 clear · 1 conflict · 1 same-day"
+
+### Deploy Infrastructure Hardening (NEW)
+- `scripts/stamp-version.py`: targeted updates to 3 files with validation, fails on anomalies
+- `tests/verify-deploy.sh`: checks version.json, HTML meta, SW CACHE_NAME, ?v= consistency, HTTP status
+- Disabled auto-stamp GitHub Action (was causing constant rebase conflicts)
+- Vercel caching: no-cache headers on version.json + service-worker.js
+- index.html rebuilt from 1.1MB (64 duplicate head sections) to 55KB
+- Love cards now render in panel mode (Songs page right panel)
 
 ---
 
@@ -71,11 +139,11 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## Next Steps
-1. Get all band members to connect Google Calendar (guide posted in Band Room)
-2. Test multi-user free/busy merge with 2+ connected members
-3. Production polish pass on remaining console warnings
-4. Calibrate song matching thresholds on real recordings
-5. Build "next rehearsal plan from insights" flow
+1. Calibrate song matching on real rehearsal data (use calibration framework + gold truth)
+2. Wire chord hints into automatic post-segmentation (currently on-demand per segment)
+3. Build "next rehearsal plan from insights" flow (coaching → plan builder)
+4. Test multi-user free/busy merge with 2+ connected members
+5. Production polish pass on remaining console warnings
 
 ---
 
@@ -340,9 +408,9 @@ js/core/gl-avatar-guide.js             — GrooveMate: 5 intelligence triggers, 
 js/features/home-dashboard.js          — Unified hero card: directive, intelligence-driven, zero-hesitation
 js/features/rehearsal.js                — Rehearsal Plan + "Start Here" directive + session report + re-analyze
 js/features/songs.js                    — Focus engine + explainability dots + focusChanged subscriber
-js/features/setlists.js                — "Build Your Set" with guided flow
-js/features/calendar.js                 — Schedule (Next Up, availability, risk, locations)
-js/features/song-detail.js             — Practice This Song (band chart + band love + GLStore.setStatus)
+js/features/setlists.js                — "Build Your Set" + energy flow + set insights
+js/features/calendar.js                 — Schedule (Next Up, availability, risk, locations, explainability)
+js/features/song-detail.js             — Song detail (band love + audience love + personal overrides + disagreement)
 js/ui/gl-left-rail.js                  — Simplified nav (5 primary + collapsed secondary)
 js/ui/gl-avatar-ui.js                  — Avatar: photorealistic portraits, action plans, settings
 js/ui/navigation.js                     — GL_PAGE_READY lifecycle (_navSeq guard, SYSTEM LOCK)
@@ -353,6 +421,9 @@ js/core/recording-analyzer.js          — Upload → segment → match → revi
 js/core/song_matching_engine.js        — 6-signal weighted scoring + learning loop (NEW)
 services/chord-analysis/               — Essentia chord hints microservice, port 8100 (NEW)
 services/audio-embeddings/             — CLAP embedding microservice, port 8200 (NEW)
+scripts/stamp-version.py                — Safe version stamping (replaces auto-stamp CI)
+tests/verify-deploy.sh                  — Post-deploy verification script
+tests/calibration/calibration-runner.js — Analyzer accuracy evaluation vs gold truth
 tests/chaos.spec.js                      — Chaos stability tests (46 tests)
 tests/burn-in.spec.js                   — Burn-in stability tests
 ```

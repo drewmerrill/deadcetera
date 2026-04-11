@@ -164,9 +164,7 @@ function _sdShellHTML(title) {
     var mode = _sdGetMode();
     var lenses = SD_LENSES_BY_MODE[mode] || SD_LENSES_FULL;
     var pills = (band?'<span class="sd-meta-pill sd-band-pill '+band.toLowerCase()+'">'+_sdEsc(band)+'</span>':'');
-    // Key/BPM pills for quick reference (always shown, prominent in Play)
-    if (key) pills += '<span class="sd-meta-pill" style="background:rgba(129,140,248,0.12);color:#818cf8;border-color:rgba(129,140,248,0.2)">'+_sdEsc(key)+'</span>';
-    if (bpm) pills += '<span class="sd-meta-pill" style="color:var(--text-dim)">'+_sdEsc(bpm)+' BPM</span>';
+    // Key/BPM shown in DNA bar (editable) — no duplicate read-only pills needed
 
     var tabs = lenses.map(function(l) {
         return '<button class="sd-tab-btn" data-lens="'+l.id+'" onclick="switchLens(\''+l.id+'\')">'+
@@ -201,6 +199,7 @@ function _sdShellHTML(title) {
 
     if (_isPanelMode) {
         // Single-column layout for right panel rendering
+        // Include sd-right-info/extras/structure so _sdPopulateRightPanel renders love + readiness
         return '<div class="song-detail-page">'+
                '<div class="sd-header">'+
                '  <div class="sd-header-top">'+
@@ -211,6 +210,9 @@ function _sdShellHTML(title) {
                _dnaBar+
                '  <div id="sd-readiness-strip" class="sd-readiness-strip"></div>'+
                '</div>'+
+               '<div id="sd-right-info"></div>'+
+               '<div id="sd-right-structure"></div>'+
+               '<div id="sd-right-extras"></div>'+
                '<nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
                '<div class="sd-panels">'+panels+'</div>'+
                '<div class="sd-mobile-bar">'+action+'</div>'+

@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-10 (Google Calendar 403 resolution + conflict→Google sync + Band Room rich text + availability infinite scroll + mobile fixes)_
+_Last updated: 2026-04-11 (Audience Love + Setlist Intelligence + Personal Overrides + Rehearsal Scorecard + Analyzer Calibration + Deploy Hardening)_
 
 ## Read This First
 
@@ -30,7 +30,7 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 - **Firebase Realtime Database** — backend/persistence
 - **Vercel** — hosting, auto-deploy on push to main
 - **Cloudflare Worker** — API proxy (Claude, Spotify, YouTube, Archive)
-- **GitHub Actions** — JS syntax validation + auto version stamping
+- **GitHub Actions** — JS syntax validation (auto version stamping disabled, use `scripts/stamp-version.py` locally)
 - **Production URL**: https://app.groovelinx.com
 
 ## Key Files
@@ -58,6 +58,9 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 | `rehearsal-mode.js` | Rehearsal mode — 5 tabs, session summary, mixdown attachment |
 | `service-worker.js` | PWA — network-first, push handling |
 | `worker.js` | Cloudflare Worker — API proxies, Spotify config |
+| `scripts/stamp-version.py` | Safe version stamping (replaces sed-based CI stamp) |
+| `tests/verify-deploy.sh` | Post-deploy verification (version, caching, content) |
+| `tests/calibration/calibration-runner.js` | Analyzer accuracy evaluation against gold truth |
 
 ## Current State (2026-03-25)
 
@@ -305,6 +308,142 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 - Only shown for own conflicts when Google Calendar is connected
 - `GLCalendarSync.syncConflictToGoogle()`, `updateConflictInGoogle()`, `deleteConflictFromGoogle()`
 
+### Schedule Enhancements (2026-04-10 → 2026-04-11)
+
+**Cross-midnight + Event-Aware Availability:**
+- Cross-midnight events (10pm-1am) now correctly classified as conflicts
+- `freeBusyToBlockedRanges()` accepts `opts.dateWindows` — per-date map of {startHour, endHour}
+- Gigs use actual event time window instead of fixed rehearsal window
+- `_recOpts` scoping fix: all members' free/busy use same availability rules
+
+**Availability Explainability:**
+- Hover tooltips: "Brian busy 2-4pm (conflicts with this gig)" / "Drew busy 7-8pm (same day, does not conflict)"
+- Mixed summary: "1 conflict, 2 same-day" above member details
+- Decision anchor: "No conflicts — 4 of 5 members clear" replaces generic text
+- Both grid renderers updated (initial load + month navigation)
+
+**Schedule Page Clarity:**
+- Selected date card: conflict summary with per-member time + "(conflicts)" or "(same day)"
+- Green border for clear dates, amber for dates with conflicts
+- Conflict resolver: plain language "3 of 5 clear · 1 conflict · 1 same-day"
+- "Busy 7-8pm (conflicts)" / "Busy 3-4pm (does not conflict)" instead of raw status labels
+
+### Audience Love — Second Axis of Song Value (2026-04-11)
+
+- `saveAudienceLove/getAudienceLove/getAllAudienceLove` in GLStore
+- Firebase: `bands/{slug}/songs/{title}/audienceLove`
+- Purple heart widget on Song Detail (1-5: Quiet → CROWD GOES WILD)
+- Priority scoring updated: `(bandLove * 0.5) + (audienceLove * 0.2) + ((5 - readiness) * 0.3)`
+- `getSongSignals()` now includes `audienceLove` field
+- Compact dot indicators on song list rows (red = band, purple = audience)
+- Insight lines when both rated: "Band + crowd favorite — anchor song", "Crowd favorite — get this ready"
+
+### Personal Love Overrides + Disagreement Insights (2026-04-11)
+
+**Data Model:**
+- Personal overrides: `songs/{key}/bandLove/personal/{memberKey}` and `songs/{key}/audienceLove/personal/{memberKey}`
+- Backward compatible: shared score unchanged, personal is additive
+- Store methods: `savePersonalBandLove`, `getPersonalBandLove`, `savePersonalAudienceLove`, `getPersonalAudienceLove`
+- Disagreement helpers: `getBandLoveDisagreement()`, `getAudienceLoveDisagreement()`
+- Returns: sharedScore, personalScore, delta, avg, groupSpread, raterCount, disagreementLevel
+
+**UI:**
+- "Your take" row below each shared rating (60% opacity, smaller hearts)
+- Disagreement insight when delta ≥ 2 or spread ≥ 2
+- Action hints: "worth pushing?", "revisit or consider dropping", "try it live and decide"
+- Privacy: no individual scores exposed by name, insights are aggregate/directional only
+- Shared score remains canonical for all scoring — personal overrides don't affect shared engine
+
+### Love-Aware Recommendations (2026-04-11)
+
+- Focus engine reasons contextual: "Crowd loves this, get it tight", "Band favorite but not ready", "Anchor song — keep it sharp"
+- GLInsights detail bullets: "Band + crowd favorite — anchor song", "Low impact — consider dropping"
+- Home hero subtitle: love context when no other urgency exists
+- Only overrides when love signals meaningful (≥4)
+
+### Setlist Intelligence (2026-04-11)
+
+**Energy Model:**
+- `_slSongEnergy(title)`: `(audienceLove * 0.6) + (bandLove * 0.3) + (readiness * 0.1)`
+- 1-5 scale, 0 for fully unrated
+
+**Energy Flow Visualization:**
+- Horizontal bar strip below setlist songs
+- Colored blocks per song: green (high) → amber (mid) → red (low) → grey (unrated)
+- Labels: Open / Peak song / Close
+- Updates live on add/reorder/remove
+
+**Song Badges in Editor:**
+- ❤️ band love + 💜 audience love + ⚠ readiness warning per row
+- Hover tooltips: "Band: 4/5", "Audience: 2/5", "Readiness: 2.3/5"
+
+**Set Quality Insights (max 4):**
+- Energy flow: "Starts flat — consider opening stronger" / "Strong finish"
+- Mid-set dip: "Energy dips mid-set — add a crowd favorite"
+- Love balance: "No crowd favorites — consider adding one"
+- Readiness: "3 songs may not be ready for this gig"
+
+**Setlist Search Fix:**
+- Click to add now works (mousedown handler passes title directly)
+- "Add to band" only shows when zero matches found
+
+### Rehearsal Scorecard + Song Outcome Cards (2026-04-11)
+
+**Scorecard (from RehearsalScorecardEngine):**
+- Latest session card: score (0-100), label, biggest win, biggest risk, top 2 actions
+- Full session report: headline, highlights, top 3 action items
+- Colors: green (85+), lime (65+), amber (40+), red (<40)
+
+**Song Outcome Cards:**
+- Grid of compact cards per song in session report
+- Status derived from segments: Locked in (1 clean take >2min), Improving (1-2 takes), Needs work (3+ takes), Skipped, Done
+- Merges plan items with audio segment data
+
+### Analyzer Calibration Framework (2026-04-11)
+
+**Calibration (`tests/calibration/`):**
+- `calibration-runner.js`: evaluates analyzer output against gold truth
+- Metrics: detection rate, song label accuracy, false start recall, partial accuracy, jam misclassification, boundary errors
+- Gold truth: `rehearsal_2026-04-03_gold.json` (29 segments, 4+ hours)
+
+**Segmentation Improvements:**
+- Pass 2: consecutive false start cluster detection (2+ short attempts <4min within 20min)
+- Pass 3: partial song detection (1-4min adjacent to longer full run)
+- Pass 4: jam detection (1-3min music with no song candidate, between different songs)
+
+**Plan Cascade Elimination:**
+- planMatch weight: 0.35 → 0.15
+- Position-dependent scoring removed (flat 0.5 for plan membership)
+- Low-confidence-only matches: "Unknown (needs review)" instead of wrong song
+- RMS tuned: MIN_SILENCE 8s → 3s, MIN_MUSIC 60s → 20s
+
+### Analyze Recording (renamed, 2026-04-11)
+
+- Renamed: "Recreate from Recording" → "Analyze Recording" throughout
+- Local file upload: file picker for MP3/WAV (primary), URL input (secondary)
+- `recording-analyzer.js`: `analyze()` now accepts `opts.referenceSongs` + `opts.contextType`
+- Duplicate date detection: warns if session exists, offers "Add to existing" or "Create separate"
+- Trend indicator: "Trend" label + descriptive tooltip for emoji dots
+- Fixed: broken `setContext/launchForSession` path replaced with direct `analyze(file, opts)` call
+
+### Deploy Infrastructure Hardening (2026-04-11)
+
+**Version Stamping:**
+- `scripts/stamp-version.py`: targeted updates to 3 files with validation
+- Fails loudly on: duplicated meta tags, duplicated CACHE_NAME, mixed ?v= versions
+- Reports before/after counts for every change
+- Disabled auto-stamp GitHub Action (caused constant rebase conflicts)
+
+**Deploy Verification:**
+- `tests/verify-deploy.sh`: version.json, HTML meta, SW CACHE_NAME, ?v= consistency, HTTP status, fix-specific content checks
+- Exit code 0 = pass, 1 = fail
+
+**Critical Fixes:**
+- index.html rebuilt: 1.1MB (64 duplicate head sections) → 55KB
+- Vercel caching: no-cache headers on version.json + service-worker.js
+- Love cards now render in panel mode (Songs page right panel) — was gated behind `!_sdPanelMode`
+- Duplicate DNA removed from right panel, love cards moved above fold
+
 ### Feed/Room Interaction (2026-04-08 → 2026-04-10)
 
 **Band Feed overflow menu (⋯):**
@@ -522,13 +661,16 @@ Single source of truth for "what should we work on?" — replaces scattered weak
 - All UI consumers wired: Home dashboard (Next Action, Session Plan, Top Songs), Songs page (needs_work filter, suggested next), Rehearsal page (focus songs header)
 - Replaces `PracticeAttention` and individual weak-song calculations everywhere
 
-### Band Love + Song Value Model (2026-03-29)
+### Band Love + Song Value Model (2026-03-29, updated 2026-04-11)
 
-Heart-based song rating (1-5) with derived intelligence — how much the band loves a song vs how ready they are.
+Heart-based song rating (1-5) with derived intelligence — how much the band loves a song vs how ready they are. **Audience Love** added as second axis (purple hearts).
 
 - **`GLStore.saveBandLove(songId, value)`** / `getBandLove()` / `getAllBandLove()` — Firebase-persisted
+- **`GLStore.saveAudienceLove(songId, value)`** / `getAudienceLove()` / `getAllAudienceLove()` — Firebase-persisted
+- **Personal overrides:** `savePersonalBandLove/getPersonalBandLove`, `savePersonalAudienceLove/getPersonalAudienceLove`
+- **Disagreement:** `getBandLoveDisagreement()`, `getAudienceLoveDisagreement()` — returns delta, spread, disagreementLevel
 - **`deriveSongStatus(songId)`** — labels: Core Song, Worth the Work, Utility, Shelve Candidate, Solid, Growing, Developing
-- **`getSongPriority(songId)`** — `(love * 0.6) + ((5 - readiness) * 0.4)`
+- **`getSongPriority(songId)`** — `(bandLove * 0.5) + (audienceLove * 0.2) + ((5 - readiness) * 0.3)`
 - **`getSongGap(songId)`** — emotional gap (love minus readiness) for triage
 - **`getSongSignals(songId)`** — full signal bundle for avatar/NBA engine
 - **`getRehearsalPriorities(limit)`** — ranked list for rehearsal planning
