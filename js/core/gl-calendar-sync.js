@@ -397,46 +397,64 @@ window.GLCalendarSync = (function() {
 
     var ranges = [];
     var seen = {};
-    busyData.busy.forEach(function(b) {
-      var startDate = b.start.substring(0, 10);
-      var endDate = b.end.substring(0, 10);
 
-      // Check if this is an all-day event (no time component, or spans 24h+)
+    // Helper: format hour as readable time (e.g., 6pm, 12am)
+    function _fmtHour(h) {
+      if (h === 0 || h === 24) return '12am';
+      if (h === 12) return '12pm';
+      return h > 12 ? (h - 12) + 'pm' : h + 'am';
+    }
+
+    busyData.busy.forEach(function(b) {
+      // Parse into proper Date objects for correct local time
+      var startDt = new Date(b.start);
+      var endDt = new Date(b.end);
+
+      // Extract LOCAL date and hours (not UTC)
+      var startDate = startDt.getFullYear() + '-' + String(startDt.getMonth() + 1).padStart(2, '0') + '-' + String(startDt.getDate()).padStart(2, '0');
+      var endDate = endDt.getFullYear() + '-' + String(endDt.getMonth() + 1).padStart(2, '0') + '-' + String(endDt.getDate()).padStart(2, '0');
+
+      // Check if this is an all-day event (date-only format or spans 23h+)
       var isAllDay = b.start.length <= 10 || b.end.length <= 10;
       if (!isAllDay) {
-        var durationMs = new Date(b.end) - new Date(b.start);
-        if (durationMs >= 23 * 3600000) isAllDay = true; // 23+ hours = effectively all-day
+        var durationMs = endDt - startDt;
+        if (durationMs >= 23 * 3600000) isAllDay = true;
       }
 
       // Skip all-day events if user chose to ignore them
       if (ignoreAllDay && isAllDay) return;
 
-      // Time-aware conflict classification
+      // Time-aware conflict classification using LOCAL hours
       var conflictType = 'hard'; // default: hard conflict
       var timeLabel = '';
-      if (timeAware && !isAllDay && b.start.length > 10) {
-        var eventStartHour = parseInt(b.start.substring(11, 13), 10);
-        var eventEndHour = parseInt(b.end.substring(11, 13), 10);
-        var eventEndMin = parseInt(b.end.substring(14, 16), 10);
-        if (eventEndMin > 0) eventEndHour += 1; // round up
+      if (timeAware && !isAllDay) {
+        var eventStartHour = startDt.getHours();
+        var eventEndHour = endDt.getHours();
+        var eventEndMin = endDt.getMinutes();
+        // Round up end hour if there are remaining minutes
+        if (eventEndMin > 0) eventEndHour += 1;
+        // If event ends at midnight (0), treat as 24 for comparison
+        if (eventEndHour === 0 && endDate > startDate) eventEndHour = 24;
         // If event is completely before or after rehearsal window, it's soft
         if (eventEndHour <= rehearsalStart || eventStartHour >= rehearsalEnd) {
           conflictType = 'soft';
         }
-        // Build readable time label
-        var sH = eventStartHour > 12 ? eventStartHour - 12 : eventStartHour;
-        var sA = eventStartHour >= 12 ? 'pm' : 'am';
-        var rawEndH = parseInt(b.end.substring(11, 13), 10);
-        var eH = rawEndH > 12 ? rawEndH - 12 : rawEndH;
-        var eA = rawEndH >= 12 ? 'pm' : 'am';
-        timeLabel = sH + sA + '\u2013' + eH + eA;
+        // Build readable time label from local hours
+        timeLabel = _fmtHour(startDt.getHours()) + '\u2013' + _fmtHour(endDt.getHours());
       }
 
-      // Dedupe by date (multiple busy periods on same day = one block, keep hardest)
+      // Dedupe by date — keep hardest conflict + update label when upgrading
       var key = startDate + '|' + endDate;
       if (seen[key]) {
-        // Upgrade soft → hard if this period overlaps rehearsal window
-        if (conflictType === 'hard') seen[key].status = 'unavailable';
+        if (conflictType === 'hard' && seen[key]._conflictType !== 'hard') {
+          // Upgrade soft → hard: also update the reason/label to the causing event
+          seen[key].status = 'unavailable';
+          seen[key]._conflictType = 'hard';
+          if (timeLabel) {
+            seen[key].reason = 'Busy ' + timeLabel + ' (Google)';
+            seen[key]._timeLabel = timeLabel;
+          }
+        }
         return;
       }
       var range = {

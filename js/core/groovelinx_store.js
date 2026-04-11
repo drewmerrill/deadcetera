@@ -3817,6 +3817,67 @@
   async function getRehearsalDateRecommendations(opts) {
     opts = opts || {};
     var blocks = await getScheduleBlocks();
+
+    // Merge Google Calendar free/busy data so recommendations account for Google conflicts
+    try {
+      if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope && GLCalendarSync.hasCalendarScope()) {
+        var _recTimeMin = new Date().toISOString();
+        var _recTimeMax = new Date(Date.now() + 22 * 86400000).toISOString();
+        var _recFb = await GLCalendarSync.getFreeBusy(_recTimeMin, _recTimeMax);
+        if (_recFb && _recFb.busy && _recFb.busy.length) {
+          var _recName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
+          // Load user's availability settings for time-aware filtering
+          var _recOpts = { rehearsalStartHour: 17, rehearsalEndHour: 23, ignoreAllDay: true, timeAware: true };
+          if (GLCalendarSync.getAvailabilitySettings) {
+            var _recSettings = await GLCalendarSync.getAvailabilitySettings();
+            if (_recSettings) {
+              if (_recSettings.rehearsalWindow) {
+                _recOpts.rehearsalStartHour = _recSettings.rehearsalWindow.startHour || 17;
+                _recOpts.rehearsalEndHour = _recSettings.rehearsalWindow.endHour || 23;
+              }
+              if (typeof _recSettings.ignoreAllDay !== 'undefined') _recOpts.ignoreAllDay = _recSettings.ignoreAllDay;
+              if (typeof _recSettings.timeAware !== 'undefined') _recOpts.timeAware = _recSettings.timeAware;
+            }
+          }
+          var _recBlocks = GLCalendarSync.freeBusyToBlockedRanges(_recFb, _recName, _recOpts);
+          // Convert to schedule_block format for computeDateStrength compatibility
+          _recBlocks.forEach(function(rb) {
+            blocks.push({
+              ownerName: rb.person,
+              startDate: rb.startDate,
+              endDate: rb.endDate,
+              status: rb.status,
+              reason: rb.reason,
+              _source: 'google'
+            });
+          });
+        }
+      }
+      // Also merge other members' shared free/busy from Firebase
+      if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getAllMembersFreeBusy) {
+        var _allMemberFb = await GLCalendarSync.getAllMembersFreeBusy();
+        var _myKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+        var _bmRef = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        Object.keys(_allMemberFb).forEach(function(mk) {
+          if (mk === _myKey) return;
+          var fb = _allMemberFb[mk];
+          if (!fb || !fb.busy || !fb.busy.length) return;
+          if (fb.updatedAt && (Date.now() - new Date(fb.updatedAt).getTime() > 3600000)) return;
+          var memberName = _bmRef[mk] ? _bmRef[mk].name : mk;
+          var memberBlocks = GLCalendarSync.freeBusyToBlockedRanges(fb, memberName, _recOpts || {});
+          memberBlocks.forEach(function(rb) {
+            blocks.push({
+              ownerName: rb.person,
+              startDate: rb.startDate,
+              endDate: rb.endDate,
+              status: rb.status,
+              reason: rb.reason,
+              _source: 'google'
+            });
+          });
+        });
+      }
+    } catch(e) { console.warn('[Scheduling] Google Calendar merge failed:', e.message); }
     var members = _memberKeys().map(function(k) {
       var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
       return bm[k] ? bm[k].name : k;
