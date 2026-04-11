@@ -225,13 +225,36 @@ window.RecordingAnalyzer = (function() {
             var _segAnalyser = new OfflineAnalyser();
             var _segResult = await _segAnalyser.analyseBuffer(_segBuf, 120, 'recording');
             if (_segResult && _segResult.metrics && _segResult.metrics.medianIOI > 0) {
-              _seg.bpm = Math.round(60000 / _segResult.metrics.medianIOI);
-              _seg.bpmConfidence = _segResult.metrics.pocketConfidence || 'low';
-              _seg.groove = _segResult.metrics;
+              var _m = _segResult.metrics;
+              _seg.bpm = Math.round(60000 / _m.medianIOI);
+              _seg.bpmConfidence = _m.pocketConfidence || 'low';
+              // Build groove object with both GrooveAnalyser fields AND UI-expected fields
+              var _stabScore = _m.stabilityScore || 0;
+              var _pocketMs = _m.pocketPositionMs || 0;
+              var _stabLabel = _stabScore >= 80 ? 'Locked in' : _stabScore >= 50 ? 'Getting there' : 'Unsteady';
+              var _driftLabel = Math.abs(_pocketMs) < 5 ? 'Centered' : (_pocketMs > 0 ? 'Dragging' : 'Rushing');
+              _seg.groove = {
+                // GrooveAnalyser native fields (for PocketMeterTimeSeries)
+                stabilityScore: _stabScore,
+                spacingVarianceMsRaw: _m.spacingVarianceMsRaw || 0,
+                pocketPositionMs: _pocketMs,
+                pocketLabel: _m.pocketLabel || 'CENTERED',
+                pocketConfidence: _m.pocketConfidence || 'low',
+                iois: _m.iois || [],
+                medianIOI: _m.medianIOI,
+                targetBeatMs: _m.targetBeatMs || 500,
+                pctInPocket: _m.pctInPocket || 0,
+                // UI-expected fields (for rehearsal.js timeline rendering)
+                stability: _stabScore,
+                pocketOffsetMs: Math.round(_pocketMs * 10) / 10,
+                stabilityLabel: _stabLabel,
+                drift: _driftLabel,
+                label: _stabLabel + ' \u00B7 ' + _driftLabel
+              };
               _bpmExtracted++;
               console.log('[BPM] seg ' + _bi + ' (' + _formatTime(_seg.startSec) + '-' + _formatTime(_seg.endSec) + '): ' +
-                _seg.bpm + ' BPM (stability=' + (_segResult.metrics.stabilityScore || 0).toFixed(0) +
-                ', confidence=' + _seg.bpmConfidence + ')');
+                _seg.bpm + ' BPM (stability=' + _stabScore.toFixed(0) +
+                ', pocket=' + _driftLabel + ', confidence=' + _seg.bpmConfidence + ')');
             }
           } catch(_bpmErr) {
             console.warn('[BPM] seg ' + _bi + ' failed:', _bpmErr.message);
@@ -398,48 +421,21 @@ window.RecordingAnalyzer = (function() {
       else { q += 1; qWhy = 'Short attempt'; }
       if (seg.type === 'false_start' || seg.type === 'retry') { q = 1; qWhy = 'Early stop'; }
       if (seg.tags && seg.tags.indexOf('strong_moment') !== -1) { q += 1; qWhy += ' with stable energy'; }
-      seg.qualityScore = Math.min(q, 4);
-      seg.qualityLabel = q >= 4 ? 'Strong finish' : q >= 3 ? 'Solid run' : q >= 2 ? 'Needs another pass' : 'Incomplete';
+      // Groove-informed quality: upgrade/downgrade based on actual timing data
+      if (seg.groove && typeof seg.groove.stability === 'number') {
+        if (seg.groove.stability >= 80) { q += 1; qWhy += ' + tight timing'; }
+        else if (seg.groove.stability < 40 && q >= 3) { q -= 1; qWhy += ' but timing was loose'; }
+      }
+      seg.qualityScore = Math.min(q, 5);
+      seg.qualityLabel = q >= 5 ? 'Nailed it' : q >= 4 ? 'Strong finish' : q >= 3 ? 'Solid run' : q >= 2 ? 'Needs another pass' : 'Incomplete';
       seg.qualityWhy = qWhy;
       // Duration context label
       seg.durContext = seg.type === 'false_start' ? 'false start' : (seg.duration >= 120 ? 'full run' : (seg.duration >= 30 ? 'partial' : 'fragment'));
     });
 
-    // Per-segment groove feedback (normal files only, using onset timestamps)
-    if (grooveMetrics && grooveMetrics.onsets && grooveMetrics.onsets.length > 10) {
-      var onsets = grooveMetrics.onsets; // ms timestamps
-      segments.forEach(function(seg) {
-        var startMs = seg.startSec * 1000;
-        var endMs = seg.endSec * 1000;
-        var segOnsets = onsets.filter(function(t) { return t >= startMs && t <= endMs; });
-        if (segOnsets.length < 4) return;
-        // Compute per-segment IOIs
-        var iois = [];
-        for (var oi = 1; oi < segOnsets.length; oi++) iois.push(segOnsets[oi] - segOnsets[oi - 1]);
-        var targetMs = grooveMetrics.metrics ? grooveMetrics.metrics.targetBeatMs : 500;
-        // Filter outliers (0.4x to 3x target)
-        var filtered = iois.filter(function(v) { return v > targetMs * 0.4 && v < targetMs * 3; });
-        if (filtered.length < 3) return;
-        var mean = filtered.reduce(function(a, b) { return a + b; }, 0) / filtered.length;
-        var variance = filtered.reduce(function(a, v) { return a + (v - mean) * (v - mean); }, 0) / filtered.length;
-        var stdDev = Math.sqrt(variance);
-        var stability = Math.max(0, Math.round(100 - (stdDev / 50) * 100));
-        var pocketOffset = mean - targetMs;
-        var inPocket = filtered.filter(function(v) { return Math.abs(v - targetMs) <= 15; }).length;
-        var pctInPocket = Math.round(inPocket / filtered.length * 100);
-
-        var _stabLabel = stability >= 80 ? 'Locked in' : stability >= 50 ? 'Getting there' : 'Unsteady';
-        var _driftLabel = Math.abs(pocketOffset) < 5 ? 'Centered' : (pocketOffset > 0 ? 'Dragging' : 'Rushing');
-        seg.groove = {
-          stability: stability,
-          pocketOffsetMs: Math.round(pocketOffset * 10) / 10,
-          pctInPocket: pctInPocket,
-          stabilityLabel: _stabLabel,
-          drift: _driftLabel,
-          label: _stabLabel + ' \u00B7 ' + _driftLabel
-        };
-      });
-    }
+    // Per-segment groove is now computed inline during BPM extraction (Stage 3 above).
+    // The groove object includes both GrooveAnalyser native fields (for PocketMeterTimeSeries)
+    // and UI-expected fields (stability, label, drift) for rehearsal.js rendering.
 
     // Flag segments not in plan
     if (_recordingContext && _recordingContext.referenceSongs && _recordingContext.referenceSongs.length) {
@@ -461,7 +457,7 @@ window.RecordingAnalyzer = (function() {
 
     return {
       segments: segments,
-      grooveMetrics: grooveMetrics,
+      grooveMetrics: null, // groove metrics are now per-segment (seg.groove)
       duration: duration,
       summary: segResult ? segResult.summary : null,
       songMatches: segments.filter(function(s) { return s.confidence >= 0.5; }).length,
