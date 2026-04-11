@@ -3819,6 +3819,21 @@
     var blocks = await getScheduleBlocks();
 
     // Merge Google Calendar free/busy data so recommendations account for Google conflicts
+    // Load availability settings once — used for both current user and other members
+    var _recOpts = { rehearsalStartHour: 17, rehearsalEndHour: 23, ignoreAllDay: true, timeAware: true };
+    try {
+      if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getAvailabilitySettings) {
+        var _recSettings = await GLCalendarSync.getAvailabilitySettings();
+        if (_recSettings) {
+          if (_recSettings.rehearsalWindow) {
+            _recOpts.rehearsalStartHour = _recSettings.rehearsalWindow.startHour || 17;
+            _recOpts.rehearsalEndHour = _recSettings.rehearsalWindow.endHour || 23;
+          }
+          if (typeof _recSettings.ignoreAllDay !== 'undefined') _recOpts.ignoreAllDay = _recSettings.ignoreAllDay;
+          if (typeof _recSettings.timeAware !== 'undefined') _recOpts.timeAware = _recSettings.timeAware;
+        }
+      }
+    } catch(e) {}
     try {
       if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope && GLCalendarSync.hasCalendarScope()) {
         var _recTimeMin = new Date().toISOString();
@@ -3826,19 +3841,6 @@
         var _recFb = await GLCalendarSync.getFreeBusy(_recTimeMin, _recTimeMax);
         if (_recFb && _recFb.busy && _recFb.busy.length) {
           var _recName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
-          // Load user's availability settings for time-aware filtering
-          var _recOpts = { rehearsalStartHour: 17, rehearsalEndHour: 23, ignoreAllDay: true, timeAware: true };
-          if (GLCalendarSync.getAvailabilitySettings) {
-            var _recSettings = await GLCalendarSync.getAvailabilitySettings();
-            if (_recSettings) {
-              if (_recSettings.rehearsalWindow) {
-                _recOpts.rehearsalStartHour = _recSettings.rehearsalWindow.startHour || 17;
-                _recOpts.rehearsalEndHour = _recSettings.rehearsalWindow.endHour || 23;
-              }
-              if (typeof _recSettings.ignoreAllDay !== 'undefined') _recOpts.ignoreAllDay = _recSettings.ignoreAllDay;
-              if (typeof _recSettings.timeAware !== 'undefined') _recOpts.timeAware = _recSettings.timeAware;
-            }
-          }
           var _recBlocks = GLCalendarSync.freeBusyToBlockedRanges(_recFb, _recName, _recOpts);
           // Convert to schedule_block format for computeDateStrength compatibility
           _recBlocks.forEach(function(rb) {
@@ -3864,7 +3866,7 @@
           if (!fb || !fb.busy || !fb.busy.length) return;
           if (fb.updatedAt && (Date.now() - new Date(fb.updatedAt).getTime() > 3600000)) return;
           var memberName = _bmRef[mk] ? _bmRef[mk].name : mk;
-          var memberBlocks = GLCalendarSync.freeBusyToBlockedRanges(fb, memberName, _recOpts || {});
+          var memberBlocks = GLCalendarSync.freeBusyToBlockedRanges(fb, memberName, _recOpts);
           memberBlocks.forEach(function(rb) {
             blocks.push({
               ownerName: rb.person,

@@ -433,10 +433,14 @@ window.GLCalendarSync = (function() {
         var eventEndMin = endDt.getMinutes();
         // Round up end hour if there are remaining minutes
         if (eventEndMin > 0) eventEndHour += 1;
-        // If event ends at midnight (0), treat as 24 for comparison
-        if (eventEndHour === 0 && endDate > startDate) eventEndHour = 24;
+        // Cross-midnight handling: if end hour < start hour, the event wraps past midnight
+        // Treat effective end as 24+ for overlap comparison (e.g., 10pm-1am → end=25)
+        var effectiveEndHour = eventEndHour;
+        if (eventEndHour < eventStartHour || (eventEndHour === 0 && endDate > startDate)) {
+          effectiveEndHour = eventEndHour + 24;
+        }
         // If event is completely before or after rehearsal window, it's soft
-        if (eventEndHour <= rehearsalStart || eventStartHour >= rehearsalEnd) {
+        if (effectiveEndHour <= rehearsalStart || eventStartHour >= rehearsalEnd) {
           conflictType = 'soft';
         }
         // Build readable time label from local hours
