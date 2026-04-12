@@ -1148,10 +1148,8 @@ function _calRenderAvailHealth() {
         var _syncDate = new Date(_calConnectedCacheTime);
         var _syncStr = _syncDate.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
         var _isStale = _syncAge > 5;
-        _syncHeader = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">'
-            + '<span style="font-size:0.62em;color:' + (_isStale ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)') + '">'
-            + (_isStale ? '\u26A0 ' : '') + 'Last synced: ' + _syncStr + '</span>'
-            + '<button onclick="_calSyncNow()" id="calAvailSyncBtn" style="font-size:0.6em;font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc;font-family:inherit">\u21BB Sync Now</button>'
+        _syncHeader = '<div style="font-size:0.62em;color:' + (_isStale ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)') + ';margin-bottom:6px">'
+            + (_isStale ? '\u26A0 ' : '') + 'Last synced: ' + _syncStr
             + '</div>';
     }
 
