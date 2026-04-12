@@ -898,7 +898,47 @@ window._calSyncNow = async function() {
     } catch(e) {
         if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
     }
-    if (btn) { btn.textContent = '\u21BB Sync Calendars'; btn.disabled = false; }
+    var _hasAvailRestore = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
+    if (btn) { btn.textContent = _hasAvailRestore ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events'; btn.disabled = false; }
+};
+
+// Dismiss date selection — return to global mode
+window._calDismissDateSelection = function() {
+    var card = document.getElementById('calSelectedDayCard');
+    if (card) card.innerHTML = '';
+    // Restore global sections
+    ['calAvailHealth', 'calWeeklyPressure'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = '';
+    });
+};
+
+// Toggle RSVP status for a member on an event (inline, no modal)
+window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
+    try {
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var ev = events.find(function(e) { return (e.eventId || e.id) === eventId; });
+        if (!ev) return;
+        if (!ev.availability) ev.availability = {};
+        if (newStatus === null) {
+            delete ev.availability[memberKey];
+        } else {
+            ev.availability[memberKey] = { status: newStatus, updatedAt: new Date().toISOString() };
+        }
+        await saveBandDataToDrive('_band', 'calendar_events', events);
+        // Update local cache
+        if (_calEventsByDate[dateStr]) {
+            var cached = _calEventsByDate[dateStr].find(function(e) { return (e.eventId || e.id) === eventId; });
+            if (cached) cached.availability = ev.availability;
+        }
+        // Re-render the date panel
+        if (dateStr) {
+            var parts = dateStr.split('-');
+            calDayClick(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('RSVP update failed');
+    }
 };
 
 // Delete event from the date panel with confirmation + Google sync
@@ -1030,7 +1070,7 @@ function _calRenderGooglePanel() {
     if (!_isConnected) {
         html += '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.82em;font-weight:700">Connect Google Calendar</button>';
     } else {
-        var _syncLabel = _hasFreeBusy ? '\u21BB Sync Calendars' : '\u21BB Sync Events';
+        var _syncLabel = _hasFreeBusy ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events';
         html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
             + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">' + _syncLabel + '</button>'
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
@@ -3394,6 +3434,13 @@ function calDayClick(y, m, d) {
         return;
     }
 
+    // ── CONTEXT MODE: hide global insights, show date-specific ──
+    var _globalSections = ['calAvailHealth', 'calWeeklyPressure'];
+    _globalSections.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
     // Desktop: show selected-date context in right rail
     var ctxRail = document.getElementById('calContextRail');
     if (ctxRail) {
@@ -3462,7 +3509,7 @@ function calDayClick(y, m, d) {
                 // RSVP display
                 var _avail = ev.availability || {};
                 if (_members.length > 0) {
-                    _existingHtml += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">';
+                    _existingHtml += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px" title="RSVP: \u2714=attending \u2716=not attending ?=maybe \u2022=no response \u2014 click to change">';
                     _members.forEach(function(ref) {
                         var mKey = (typeof ref === 'object') ? ref.key : ref;
                         var name = _bm[mKey] ? _bm[mKey].name : mKey;
@@ -3471,7 +3518,9 @@ function calDayClick(y, m, d) {
                         var status = a ? a.status : null;
                         var rIcon = status === 'yes' ? '\u2714' : status === 'no' ? '\u2716' : status === 'maybe' ? '?' : '\u2022';
                         var rColor = status === 'yes' ? 'var(--gl-green)' : status === 'no' ? '#f87171' : status === 'maybe' ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
-                        _existingHtml += '<span style="font-size:0.62em;color:' + rColor + '">' + rIcon + ' ' + short + '</span>';
+                        var _nextStatus = !status ? 'yes' : status === 'yes' ? 'no' : status === 'no' ? null : 'yes';
+                        var _nextVal = _nextStatus === null ? 'null' : '\'' + _nextStatus + '\'';
+                        _existingHtml += '<span onclick="_calToggleRsvp(\'' + evId + '\',\'' + mKey + '\',' + _nextVal + ',\'' + safDs + '\')" style="font-size:0.62em;color:' + rColor + ';cursor:pointer" title="Click to change RSVP (\u2714=yes \u2716=no \u2022=unknown)">' + rIcon + ' ' + short + '</span>';
                     });
                     _existingHtml += '</div>';
                 }
@@ -3490,7 +3539,10 @@ function calDayClick(y, m, d) {
         }
 
         var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
-            + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:2px">' + dateLabel + '</div>'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">'
+            + '<span style="font-size:0.82em;font-weight:700;color:var(--gl-text)">' + dateLabel + '</span>'
+            + '<button onclick="_calDismissDateSelection()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:0.85em;padding:2px">\u2715</button>'
+            + '</div>'
             + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:4px">' + hint + '</div>'
             + _availSection
             + _existingHtml
