@@ -846,6 +846,26 @@ function _calRenderSyncCoverage() {
     _calRenderGooglePanel();
 }
 
+// Manual sync: pull latest Google data, refresh availability, update UI
+window._calSyncNow = async function() {
+    var btn = document.getElementById('calSyncBtn');
+    if (btn) { btn.textContent = '\u21BB Syncing...'; btn.disabled = true; }
+    try {
+        // Refresh free/busy data
+        _calConnectedCache = null;
+        await _calLoadConnections();
+        // Reload calendar events
+        if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+        // Re-render everything
+        if (typeof renderCalendarInner === 'function') renderCalendarInner();
+        _calRenderGooglePanel();
+        if (typeof showToast === 'function') showToast('\u2713 Calendars synced');
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
+    }
+    if (btn) { btn.textContent = '\u21BB Sync Calendars'; btn.disabled = false; }
+};
+
 // ── First-time onboarding — now handled by _calRenderGooglePanel ──────────────
 function _calRenderOnboarding() {
     // Full band milestone toast — show once when all members connected
@@ -904,15 +924,27 @@ function _calRenderGooglePanel() {
               + '</div>'
             : '';
 
+        // Per-member connection status (compact)
+        var _memberStatusHtml = '';
+        members.forEach(function(m) {
+            var key = (typeof m === 'object') ? m.key : m;
+            var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
+            var isConnected = cov.connectedKeys.indexOf(key) !== -1;
+            _memberStatusHtml += '<span style="font-size:0.62em;color:' + (isConnected ? 'var(--gl-green)' : 'var(--gl-text-tertiary)') + '">'
+                + (isConnected ? '\u2713' : '\u2022') + ' ' + name + '</span>';
+        });
+
         el.innerHTML = '<div style="padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.1);margin-bottom:var(--gl-space-sm)">'
             + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
             + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
             + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">' + (_partialScope ? 'Calendar connected' : 'All calendars connected') + '</span>'
             + '</div>'
-            + (lastSync && !_partialScope ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary)">Last synced ' + lastSync + '</div>' : '')
+            + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">' + _memberStatusHtml + '</div>'
+            + (lastSync ? '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:4px">Last synced ' + lastSync + '</div>' : '')
             + _partialWarning
-            + '<div style="display:flex;gap:8px;margin-top:4px">'
-            + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Availability rules</button>'
+            + '<div style="display:flex;gap:8px;margin-top:4px;align-items:center">'
+            + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.65em;font-weight:700;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">\u21BB Sync Calendars</button>'
+            + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
             + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
             + '</div>'
             + '</div>';
@@ -3336,7 +3368,11 @@ function calDayClick(y, m, d) {
             + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:4px">' + hint + '</div>'
             + _conflictSummary
             + _extHtml
-            + '<button onclick="calAddEvent(\'' + safDs + '\')" class="gl-btn-ghost" style="width:100%;text-align:center;font-weight:700;color:var(--gl-green,#86efac)">Lock this date</button>'
+            + '<div style="display:flex;gap:4px;margin-top:6px">'
+            + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'rehearsal\'})" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:700;font-family:inherit">\uD83C\uDFB8 Rehearsal</button>'
+            + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'gig\'})" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:700;font-family:inherit">\uD83C\uDFA4 Gig</button>'
+            + '<button onclick="calAddEvent(\'' + safDs + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--gl-text-dim);cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">Other</button>'
+            + '</div>'
             + '</div>';
 
         var existing = document.getElementById('calSelectedDayCard');
@@ -3432,8 +3468,13 @@ function _calShowMobileDateCard(ds, y, m, d) {
         html += '</div>';
     }
 
-    // CTA
-    if (ctaLabel && ctaAction) {
+    // CTA — quick event type buttons for schedulable dates
+    if (ctaLabel && ctaAction && (_cellState === 'best' || _cellState === 'blocked' || _cellState === 'default')) {
+        html += '<div style="display:flex;gap:6px;margin-top:12px">';
+        html += '<button onclick="_calCloseMobileCard();calAddEvent(\'' + safDs + '\',null,{type:\'rehearsal\'})" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit">\uD83C\uDFB8 Rehearsal</button>';
+        html += '<button onclick="_calCloseMobileCard();calAddEvent(\'' + safDs + '\',null,{type:\'gig\'})" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit">\uD83C\uDFA4 Gig</button>';
+        html += '</div>';
+    } else if (ctaLabel && ctaAction) {
         html += '<div style="margin-top:12px">';
         html += '<button onclick="' + ctaAction + '" class="gl-btn-primary" style="width:100%">' + ctaLabel + '</button>';
         html += '</div>';
