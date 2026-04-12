@@ -221,8 +221,8 @@ window.SongMatchingEngine = (function() {
     var allSongs = context.allSongs || (typeof window.allSongs !== 'undefined' ? window.allSongs : []);
     var type = context.type || 'rehearsal';
 
-    // Build candidate list
-    var candidates = _buildCandidates(refSongs, allSongs, type);
+    // Build candidate list (with recent session history for band-context priors)
+    var candidates = _buildCandidates(refSongs, allSongs, type, context);
 
     // Build adjacency map for continuity signal
     var adjacentLabels = {};
@@ -322,7 +322,7 @@ window.SongMatchingEngine = (function() {
 
   // ── Candidate generation ────────────────────────────────────────────────────
 
-  function _buildCandidates(refSongs, allSongs, type) {
+  function _buildCandidates(refSongs, allSongs, type, context) {
     var candidates = [];
     var seen = {};
 
@@ -334,13 +334,21 @@ window.SongMatchingEngine = (function() {
       }
     });
 
-    // Priority 2: Active band songs (songs with active status)
+    // Priority 2: Recent rehearsal history (songs practiced in last 3 sessions)
+    var recentSongs = (context && context.recentSessionSongs) || [];
+    recentSongs.forEach(function(title) {
+      if (seen[title]) return;
+      candidates.push({ title: title, inPlan: false, planOrder: -1, tier: 'recent', song: _findSong(title, allSongs) });
+      seen[title] = true;
+    });
+
+    // Priority 3: Active band songs (In Rotation, Learning, Prospect)
     var ACTIVE_STATUSES = (typeof GLStore !== 'undefined' && GLStore.ACTIVE_STATUSES) ? GLStore.ACTIVE_STATUSES : { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
     var activeCount = 0;
     allSongs.forEach(function(s) {
       if (activeCount >= MAX_CATALOG_CANDIDATES) return;
       if (seen[s.title]) return;
-      var status = s.status || 'active';
+      var status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(s.title) || '') : (s.status || '');
       if (ACTIVE_STATUSES[status]) {
         candidates.push({ title: s.title, inPlan: false, planOrder: -1, tier: 'active', song: s });
         seen[s.title] = true;
@@ -348,7 +356,7 @@ window.SongMatchingEngine = (function() {
       }
     });
 
-    // Priority 3: Wider library (only if we have few candidates)
+    // Priority 4: Wider library (only if we have few candidates)
     if (candidates.length < 10) {
       var remaining = MAX_CATALOG_CANDIDATES - candidates.length;
       allSongs.forEach(function(s) {
@@ -359,6 +367,12 @@ window.SongMatchingEngine = (function() {
         remaining--;
       });
     }
+
+    // Log candidate buckets
+    var _tierCounts = {};
+    candidates.forEach(function(c) { _tierCounts[c.tier] = (_tierCounts[c.tier] || 0) + 1; });
+    console.log('[SongMatch] Candidates: ' + candidates.length + ' total — ' +
+      Object.keys(_tierCounts).map(function(t) { return t + ':' + _tierCounts[t]; }).join(', '));
 
     return candidates;
   }
@@ -651,19 +665,32 @@ window.SongMatchingEngine = (function() {
       if (segChords[0] && segChords[0].replace(/m$/, '') === songKey.replace(/m$/, '')) keyMatchScore = 1.0;
     }
 
-    // Sub-signal 2: Progression match (compare against harmonic bank)
+    // Sub-signal 2: Progression match (harmonic bank OR chart fingerprint)
     var progressionScore = 0;
     var bankEntry = _harmonicBank[songId];
+    var chartFp = _chartFingerprints[candidate.title];
+
     if (bankEntry && bankEntry.topChords.length >= 2 && segChords.length >= 2) {
-      // Jaccard similarity: overlap / union of chord sets
+      // Harmonic bank: Jaccard similarity of chord sets
       var overlap = 0;
       segChords.forEach(function(c) { if (bankEntry.topChords.indexOf(c) !== -1) overlap++; });
       var union = new Set(segChords.concat(bankEntry.topChords)).size;
       progressionScore = union > 0 ? overlap / union : 0;
-      // Progression string match bonus
       if (segProgression && bankEntry.progressions.length) {
         var progMatch = bankEntry.progressions.some(function(p) { return p === segProgression; });
         if (progMatch) progressionScore = Math.max(progressionScore, 0.9);
+      }
+    } else if (chartFp && chartFp.topChords && chartFp.topChords.length >= 2 && segChords.length >= 2) {
+      // Chart fingerprint fallback: compare detected chords against chart-derived chords
+      var _chartOverlap = 0;
+      segChords.forEach(function(c) { if (chartFp.topChords.indexOf(c) !== -1) _chartOverlap++; });
+      var _chartUnion = new Set(segChords.concat(chartFp.topChords)).size;
+      progressionScore = _chartUnion > 0 ? _chartOverlap / _chartUnion : 0;
+      // Bonus: check if detected chords match intro or verse progression
+      if (chartFp.introProgression.length >= 2) {
+        var _introOverlap = 0;
+        segChords.slice(0, 4).forEach(function(c) { if (chartFp.introProgression.indexOf(c) !== -1) _introOverlap++; });
+        if (_introOverlap >= 2) progressionScore = Math.max(progressionScore, 0.7);
       }
     }
 
@@ -947,6 +974,144 @@ window.SongMatchingEngine = (function() {
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
+  // ── Chart Chord Parser ────────────────────────────────────────────────────
+  // Extracts structured chord data from plain-text band charts.
+  // Used to create chart fingerprints for matching against audio-detected chords.
+
+  var _CHORD_RE = /\b([A-G][#b]?(?:m|min|maj|dim|aug|sus[24]?|add[0-9]?|[0-9]{1,2})?(?:\/[A-G][#b]?)?)\b/g;
+  var _SECTION_RE = /^\[([^\]]+)\]\s*$/;
+
+  function parseChart(chartText) {
+    if (!chartText || typeof chartText !== 'string' || chartText.length < 10) {
+      return { usable: false, reason: 'empty or too short' };
+    }
+
+    var lines = chartText.split('\n');
+    var sections = [];
+    var currentSection = { name: 'Intro', chords: [] };
+    var allChords = [];
+    var sectionOrder = [];
+
+    lines.forEach(function(line) {
+      var trimmed = line.trim();
+      if (!trimmed) return;
+
+      // Check for section header: [Verse], [Chorus], [Bridge], etc.
+      var secMatch = trimmed.match(_SECTION_RE);
+      if (secMatch) {
+        if (currentSection.chords.length > 0) {
+          sections.push(currentSection);
+          sectionOrder.push(currentSection.name);
+        }
+        currentSection = { name: secMatch[1].trim(), chords: [] };
+        return;
+      }
+
+      // Extract chords from chord lines (lines with mostly chords, few lyrics)
+      var chords = [];
+      var match;
+      _CHORD_RE.lastIndex = 0;
+      while ((match = _CHORD_RE.exec(trimmed)) !== null) {
+        chords.push(match[1]);
+      }
+
+      // A line is a "chord line" if it has ≥2 chords and chord chars are >30% of content
+      // (excludes lyric lines that happen to contain a word like "Am" or "Be")
+      if (chords.length >= 2) {
+        var chordChars = chords.join('').length;
+        var nonSpaceChars = trimmed.replace(/\s+/g, '').length;
+        if (chordChars / nonSpaceChars > 0.3) {
+          chords.forEach(function(c) {
+            currentSection.chords.push(c);
+            allChords.push(c);
+          });
+        }
+      } else if (chords.length === 1 && trimmed.length < 15) {
+        // Single chord on a short line (common in charts)
+        currentSection.chords.push(chords[0]);
+        allChords.push(chords[0]);
+      }
+    });
+
+    // Push last section
+    if (currentSection.chords.length > 0) {
+      sections.push(currentSection);
+      sectionOrder.push(currentSection.name);
+    }
+
+    if (allChords.length < 3) {
+      return { usable: false, reason: 'too few chords detected (' + allChords.length + ')' };
+    }
+
+    // Derive fingerprint
+    var chordCounts = {};
+    allChords.forEach(function(c) { var root = c.replace(/\/.*/, ''); chordCounts[root] = (chordCounts[root] || 0) + 1; });
+    var topChords = Object.keys(chordCounts).sort(function(a, b) { return chordCounts[b] - chordCounts[a]; }).slice(0, 5);
+
+    // Intro progression (first section's chords, max 8)
+    var introSection = sections.find(function(s) { return /intro|head|opening/i.test(s.name); }) || sections[0];
+    var introProgression = introSection ? introSection.chords.slice(0, 8) : [];
+
+    // Main/verse progression
+    var verseSection = sections.find(function(s) { return /verse|main/i.test(s.name); });
+    var verseProgression = verseSection ? verseSection.chords.slice(0, 8) : [];
+
+    // Chorus progression
+    var chorusSection = sections.find(function(s) { return /chorus|hook/i.test(s.name); });
+    var chorusProgression = chorusSection ? chorusSection.chords.slice(0, 8) : [];
+
+    return {
+      usable: true,
+      totalChords: allChords.length,
+      sections: sections.length,
+      sectionOrder: sectionOrder,
+      topChords: topChords,
+      likelyKey: topChords[0] || '',
+      introProgression: introProgression,
+      verseProgression: verseProgression,
+      chorusProgression: chorusProgression,
+      allProgressions: sections.map(function(s) { return { name: s.name, chords: s.chords.slice(0, 12) }; })
+    };
+  }
+
+  // Preload chart fingerprints for all songs with charts
+  var _chartFingerprints = {}; // { songTitle: parseChart result }
+
+  async function preloadChartFingerprints() {
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return;
+    try {
+      // Load all charts in one read
+      var snap = await firebaseDB.ref(bandPath('songs')).once('value');
+      var data = snap.val();
+      if (!data) return;
+      var parsed = 0, failed = 0;
+      Object.keys(data).forEach(function(key) {
+        var songData = data[key];
+        if (songData && songData.chart && songData.chart.text) {
+          var title = key.replace(/_/g, ' ');
+          var result = parseChart(songData.chart.text);
+          if (result.usable) {
+            _chartFingerprints[title] = result;
+            parsed++;
+          } else {
+            failed++;
+          }
+        }
+      });
+      console.log('[ChartParser] Parsed ' + parsed + ' charts, ' + failed + ' unusable, ' + Object.keys(_chartFingerprints).length + ' fingerprints ready');
+    } catch(e) {
+      console.warn('[ChartParser] Preload failed:', e.message);
+    }
+  }
+
+  function getChartFingerprint(title) {
+    return _chartFingerprints[title] || null;
+  }
+
+  function getAllChartFingerprints() {
+    return _chartFingerprints;
+  }
+
   return {
     run: run,
     scoreSegment: scoreSegment,
@@ -964,6 +1129,10 @@ window.SongMatchingEngine = (function() {
     storeHarmonicFingerprint: storeHarmonicFingerprint,
     getHarmonicBank: getHarmonicBank,
     loadHarmonicBank: loadHarmonicBank,
+    parseChart: parseChart,
+    preloadChartFingerprints: preloadChartFingerprints,
+    getChartFingerprint: getChartFingerprint,
+    getAllChartFingerprints: getAllChartFingerprints,
     WEIGHTS: WEIGHTS
   };
 

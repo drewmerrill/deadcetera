@@ -680,15 +680,38 @@ window.RecordingAnalyzer = (function() {
     // Stage 4: Song matching
     onProgress('matching', 0);
 
+    // Preload chart fingerprints for chord-to-chart matching
+    if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.preloadChartFingerprints) {
+      await SongMatchingEngine.preloadChartFingerprints();
+    }
+
     // Run Song Matching Engine (multi-signal scoring)
     if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.run) {
       var _refSongs = (_recordingContext && _recordingContext.referenceSongs) || [];
       console.log('[RecordingAnalyzer] Matching context: type=' + ((_recordingContext && _recordingContext.type) || '?') +
         ', referenceSongs=' + _refSongs.length + (_refSongs.length > 0 ? ' [' + _refSongs.slice(0, 5).join(', ') + '...]' : ' (EMPTY — no plan songs for matching)') +
         ', catalog=' + songCatalog.length + ' songs');
+      // Gather recent rehearsal history for candidate prioritization
+      var _recentSessionSongs = [];
+      try {
+        if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+          var _sessSnap = await firebaseDB.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(5).once('value');
+          var _sessVal = _sessSnap.val();
+          if (_sessVal) {
+            var _sessArr = Object.values(_sessVal).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+            var _recentSet = {};
+            _sessArr.forEach(function(s) {
+              (s.songsWorked || []).forEach(function(t) { if (t && !_recentSet[t]) { _recentSet[t] = true; _recentSessionSongs.push(t); } });
+            });
+          }
+        }
+      } catch(e) {}
+      if (_recentSessionSongs.length) console.log('[RecordingAnalyzer] Recent rehearsal songs: ' + _recentSessionSongs.length + ' [' + _recentSessionSongs.slice(0, 5).join(', ') + '...]');
+
       var matchContext = {
         type: (_recordingContext && _recordingContext.type) || 'rehearsal',
         referenceSongs: _refSongs,
+        recentSessionSongs: _recentSessionSongs,
         allSongs: songCatalog
       };
       segments = SongMatchingEngine.run(segments, matchContext);
