@@ -14634,6 +14634,7 @@ async function _preloadSongDNA() {
                 }
             }
         });
+        window._glDnaPreloaded = true;
         console.log('[DNA] Loaded from songs_v2: ' + populated + ' songs with data, ' + Object.keys(allDataV2).length + ' v2 records total');
         if (_repairs.length > 0) console.warn('[DNA-RECOVERY] Recovered ' + _repairs.length + ' stranded key/bpm/lead entries from localStorage');
         if (noSongId > 0) console.warn('[DNA] ' + noSongId + ' songs missing songId');

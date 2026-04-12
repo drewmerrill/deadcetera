@@ -1293,9 +1293,10 @@ body[data-gl-mode="play"] .menu-item[data-page="bestshot"],
 body[data-gl-mode="play"] .menu-item[data-page="notifications"] { display:none; }
 
 /* ── Play mode: simplify song list — hide editing UI ── */
+/* NOTE: #songSearch is no longer hidden in play mode.
+   Mode should NOT hide features (see Practice/Rehearse/Play architecture). */
 body[data-gl-mode="play"] .song-status-cell,
 body[data-gl-mode="play"] .song-chain-strip,
-body[data-gl-mode="play"] #songSearch,
 body[data-gl-mode="play"] .filter-row,
 body[data-gl-mode="play"] #customSongBtn { display:none!important; }
 

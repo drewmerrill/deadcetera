@@ -967,7 +967,14 @@ function _renderTriageBar(dropdown, count) {
         { id: 'not_rotation', label: 'Not in Rotation' }
     ];
     // Count missing data — only active songs, respects band filter
+    // Skip counts if DNA preload hasn't completed yet (allSongs lacks key/bpm before preload)
     var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0 };
+    if (!window._glDnaPreloaded) {
+        // DNA not loaded yet — don't show misleading counts
+        bar.innerHTML = '';
+        dropdown.insertBefore(bar, dropdown.firstChild);
+        return;
+    }
     var _countPool = allSongs.filter(function(s) {
         if (!isSongActive(s.title)) return false;
         if (window._sqBandFilter && window._sqBandFilter.length && window._sqBandFilter.indexOf(s.band || 'Other') === -1) return false;
