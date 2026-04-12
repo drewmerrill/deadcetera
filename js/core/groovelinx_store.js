@@ -985,8 +985,11 @@
   var _lovePreloadDone = false;
   function _tryLovePreload() {
     if (_lovePreloadDone) return;
-    if (typeof allSongs === 'undefined' || !allSongs || allSongs.length === 0) {
-      setTimeout(_tryLovePreload, 2000); // retry until songs load
+    // Wait for BOTH allSongs AND Firebase to be ready
+    var _hasDB = (typeof firebaseDB !== 'undefined' && firebaseDB);
+    var _hasSongs = (typeof allSongs !== 'undefined' && allSongs && allSongs.length > 0);
+    if (!_hasDB || !_hasSongs) {
+      setTimeout(_tryLovePreload, 2000); // retry until both are ready
       return;
     }
     _lovePreloadDone = true;
@@ -997,7 +1000,11 @@
         try { renderSongs(); } catch(e2) {}
       }
       return _preloadPersonalLove();
-    }).catch(function() {});
+    }).catch(function(e) {
+      // Preload failed — reset flag so it can retry
+      _lovePreloadDone = false;
+      setTimeout(_tryLovePreload, 3000);
+    });
   }
   setTimeout(_tryLovePreload, 2000);
 
