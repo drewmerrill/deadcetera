@@ -205,9 +205,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 if (!s.bpm) _allMissing.no_bpm = (_allMissing.no_bpm || 0) + 1;
                 if (!s.lead) _allMissing.no_lead = (_allMissing.no_lead || 0) + 1;
                 if (typeof GLStore !== 'undefined' && GLStore.getStatus && !GLStore.getStatus(s.title)) _allMissing.no_status = (_allMissing.no_status || 0) + 1;
+                if (!s._hasStructure) _allMissing.no_structure = (_allMissing.no_structure || 0) + 1;
             });
             var _summaryLines = [];
-            ['no_key', 'no_bpm', 'no_lead', 'no_status'].forEach(function(k) {
+            ['no_key', 'no_bpm', 'no_lead', 'no_status', 'no_structure'].forEach(function(k) {
                 var count = _allMissing[k] || 0;
                 var label = _tfLabels[k] || k;
                 _summaryLines.push('<div style="display:flex;justify-content:space-between;padding:2px 0">'
@@ -232,7 +233,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         var _ac2 = 0, _lc2 = 0;
         if (typeof allSongs !== 'undefined') allSongs.forEach(function(s) { if (getSongScope(s.title) === 'active') _ac2++; else _lc2++; });
         var _emptyNav = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
-            + '<button onclick="window._sqTriageFilter=null;window._sqSongSort=\'default\';document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:800;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc">\uD83C\uDFAF Rehearsal</button>'
+            + '<button onclick="window._sqTriageFilter=null;window._sqSongSort=\'default\';document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:800;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc">All Songs</button>'
             + '<button onclick="if(!window._sqTriageFilter)sqCleanupStart()" style="font-size:0.72em;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83E\uDDF9 Cleanup</button>'
             + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">'
             + '<button onclick="window._sqScopeView=\'active\';window._sqTriageFilter=null;window._sqSongSort=\'default\';renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'active' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'active' ? '#22c55e' : 'var(--text-dim)') + '">Active (' + _ac2 + ')</button>'
