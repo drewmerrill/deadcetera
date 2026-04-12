@@ -15,6 +15,12 @@
 // EXPOSES:
 //   SongMatchingEngine.run(segments, context) → segments with songMatch attached
 //   SongMatchingEngine.scoreSegment(segment, candidates, context, adjacentLabels)
+//
+// DATA SOURCE:
+//   candidate.song.key and candidate.song.bpm come from the runtime-enriched
+//   allSongs array (populated by _preloadSongDNA from Firebase songs_v2).
+//   They are NOT read from starter_packs.js or data.js seed files.
+//   To inspect actual values: debugSongDNA('Song Title') in browser console.
 // ============================================================================
 
 'use strict';

@@ -712,12 +712,15 @@
 
   var _bandLoveCache = {};
 
+  // NOTE: "songId" param is actually the song TITLE (legacy naming).
+  // The cache and Firebase path use sanitized title as key.
+  // This is consistent across all love functions.
   async function saveBandLove(songId, value) {
     var v = parseInt(value, 10);
     if (isNaN(v) || v < 0 || v > 5) return;
     var db = _db();
     if (!db) return;
-    var k = _sanitize(songId);
+    var k = _sanitize(songId); // songId is actually title here
     // Optimistic cache update — UI reads cache immediately after save call
     if (v === 0) { delete _bandLoveCache[songId]; } else { _bandLoveCache[songId] = v; }
     emit('bandLoveChanged', { songId: songId, value: v });
@@ -6309,6 +6312,54 @@
   console.log('✅ GLStore loaded (mode: ' + _state.productMode + ')');
 
 })();
+
+// ── Debug helper: inspect runtime song DNA ───────────────────────────────────
+// Usage: debugSongDNA('Fire on the Mountain')
+// Shows the ACTUAL values the matcher uses (from runtime-enriched allSongs),
+// NOT from static seed files like starter_packs.js.
+//
+// ⚠️ AUDIT RULE: Song DNA audits must inspect runtime data (Firebase songs_v2
+// + allSongs after _preloadSongDNA), not static seed files. starter_packs.js
+// contains initial seeds that may be stale or overridden by user edits.
+window.debugSongDNA = function(title) {
+  if (!title) { console.log('Usage: debugSongDNA("Song Title")'); return; }
+  var song = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title.toLowerCase() === title.toLowerCase(); }) : null;
+  if (!song) { console.warn('Song not found in allSongs: ' + title); return; }
+  var bl = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? GLStore.getBandLove(title) : 0;
+  var al = (typeof GLStore !== 'undefined' && GLStore.getAudienceLove) ? GLStore.getAudienceLove(title) : 0;
+  var status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? GLStore.getStatus(title) : '';
+  var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
+  console.log('%c=== Song DNA: ' + song.title + ' ===', 'font-weight:bold;font-size:13px;color:#22c55e');
+  console.log('songId:      ', song.songId || '(none)');
+  console.log('key:         ', song.key || '(not set)', '  ← from allSongs (runtime-enriched by _preloadSongDNA)');
+  console.log('bpm:         ', song.bpm || '(not set)', '  ← from allSongs (runtime-enriched by _preloadSongDNA)');
+  console.log('lead:        ', song.lead || '(not set)');
+  console.log('status:      ', status || '(not set)');
+  console.log('readiness:   ', avg > 0 ? avg.toFixed(1) + '/5' : '(unrated)');
+  console.log('band love:   ', bl > 0 ? bl + '/5' : '(unrated)');
+  console.log('audience:    ', al > 0 ? al + '/5' : '(unrated)');
+  console.log('band:        ', song.band || '(none)');
+  console.log('artist:      ', song.artist || '(none)');
+  // Check seed data if available
+  if (typeof STARTER_PACKS !== 'undefined') {
+    var seedMatch = null;
+    Object.keys(STARTER_PACKS).forEach(function(pk) {
+      (STARTER_PACKS[pk].songs || []).forEach(function(ss) {
+        if (ss.title && ss.title.toLowerCase() === title.toLowerCase()) seedMatch = ss;
+      });
+    });
+    if (seedMatch) {
+      var keyDrift = seedMatch.key && song.key && seedMatch.key !== song.key;
+      var bpmDrift = seedMatch.bpm && song.bpm && seedMatch.bpm !== song.bpm;
+      console.log('%c--- Seed data (starter_packs.js — NOT authoritative) ---', 'color:#f59e0b');
+      console.log('seed key:    ', seedMatch.key || '(none)', keyDrift ? ' ⚠️ DIFFERS from live' : '');
+      console.log('seed bpm:    ', seedMatch.bpm || '(none)', bpmDrift ? ' ⚠️ DIFFERS from live' : '');
+    } else {
+      console.log('(no starter pack seed data for this song)');
+    }
+  }
+  return { songId: song.songId, key: song.key, bpm: song.bpm, status: status, bandLove: bl, audienceLove: al, readiness: avg };
+};
 
 // =============================================================================
 // GROOVELINX DECISION LANGUAGE ENGINES
