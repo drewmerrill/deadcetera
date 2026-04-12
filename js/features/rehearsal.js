@@ -2331,43 +2331,107 @@ window._rhSeekTransport = function(e) {
 };
 
 // ── Lightweight file loader for playback only (no analysis, no decoding) ─────
-window._rhLoadRecordingForPlayback = function(sessionId) {
+window._rhLoadRecordingForPlayback = async function(sessionId) {
+    // Check if a Drive link is available before showing file picker
+    var driveUrl = null;
+    if (typeof RehearsalMixdowns !== 'undefined' && RehearsalMixdowns.getDriveUrl) {
+        driveUrl = await RehearsalMixdowns.getDriveUrl();
+    }
+
+    if (driveUrl) {
+        // Offer choice: stream from Drive or pick local file
+        var existing = document.getElementById('rhAudioSourcePicker');
+        if (existing) existing.remove();
+        var picker = document.createElement('div');
+        picker.id = 'rhAudioSourcePicker';
+        picker.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:16px';
+        picker.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:24px;max-width:340px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,0.5)">'
+            + '<div style="font-size:0.95em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:4px">Load Recording</div>'
+            + '<div style="font-size:0.75em;color:var(--text-dim);margin-bottom:16px">Choose how to load the rehearsal audio</div>'
+            + '<div style="display:flex;flex-direction:column;gap:8px">'
+            + '<button id="rhPickDrive" style="padding:12px 16px;border-radius:10px;border:1px solid rgba(66,133,244,0.3);background:rgba(66,133,244,0.08);color:#60a5fa;cursor:pointer;text-align:left;font-family:inherit;width:100%">'
+            + '<div style="font-weight:700;font-size:0.88em">\u2601\uFE0F Stream from Google Drive</div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">No download needed \u2014 plays directly</div></button>'
+            + '<button id="rhPickFile" style="padding:12px 16px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-dim);cursor:pointer;text-align:left;font-family:inherit;width:100%">'
+            + '<div style="font-weight:700;font-size:0.88em">\uD83D\uDCC1 Choose local file</div>'
+            + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Pick from this device</div></button>'
+            + '</div>'
+            + '<button id="rhPickCancel" style="margin-top:12px;width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em;font-family:inherit">Cancel</button>'
+            + '</div>';
+        document.body.appendChild(picker);
+
+        document.getElementById('rhPickDrive').onclick = function() {
+            picker.remove();
+            _rhStreamFromDrive(driveUrl, sessionId);
+        };
+        document.getElementById('rhPickFile').onclick = function() {
+            picker.remove();
+            _rhPickLocalFile(sessionId);
+        };
+        document.getElementById('rhPickCancel').onclick = function() { picker.remove(); };
+        picker.onclick = function(e) { if (e.target === picker) picker.remove(); };
+    } else {
+        _rhPickLocalFile(sessionId);
+    }
+};
+
+// Stream rehearsal audio from Google Drive via Worker proxy
+function _rhStreamFromDrive(driveUrl, sessionId) {
+    if (typeof showToast === 'function') showToast('Loading from Google Drive\u2026');
+
+    var workerBase = (typeof WORKER_BASE !== 'undefined') ? WORKER_BASE
+        : (typeof window.WORKER_BASE !== 'undefined') ? window.WORKER_BASE
+        : 'https://groovelinx-worker.drewmerrill.workers.dev';
+
+    fetch(workerBase + '/drive-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ driveUrl: driveUrl })
+    }).then(function(res) {
+        if (!res.ok) throw new Error('Drive fetch failed: ' + res.status);
+        return res.blob();
+    }).then(function(blob) {
+        var blobUrl = URL.createObjectURL(blob);
+        _rhSetupPlaybackAudio(blobUrl, sessionId);
+        if (typeof showToast === 'function') showToast('Recording loaded from Drive \u2014 playback ready (' + Math.round(blob.size / 1024 / 1024) + ' MB)');
+        _rhRenderLastRehearsalTimeline();
+    }).catch(function(err) {
+        if (typeof showToast === 'function') showToast('\u26A0 Could not load from Drive: ' + err.message, 5000);
+    });
+}
+
+// Pick a local file for playback
+function _rhPickLocalFile(sessionId) {
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = 'audio/*';
     input.onchange = function() {
         if (!input.files || !input.files[0]) return;
         var file = input.files[0];
-
-        // Create blob URL — this does NOT load the file into RAM
-        // The <audio> element will stream from it on demand
         var blobUrl = URL.createObjectURL(file);
-
-        // Store on RecordingAnalyzer if available (so _rhPlaySegment can find it)
-        if (typeof RecordingAnalyzer !== 'undefined') {
-            // Set the blob URL without running analysis
-            RecordingAnalyzer._loadedPlaybackUrl = blobUrl;
-        }
-
-        // Set up shared audio element
-        if (!_rhSharedAudio) {
-            _rhSharedAudio = document.createElement('audio');
-            _rhSharedAudio.id = 'rhTimelineAudio';
-            _rhSharedAudio.style.display = 'none';
-            _rhSharedAudio.preload = 'none'; // critical: don't preload large files
-            document.body.appendChild(_rhSharedAudio);
-        }
-        _rhSharedAudio.src = blobUrl;
-        _rhSharedAudio.preload = 'none';
-        _rhAudioSessionId = sessionId;
-
+        _rhSetupPlaybackAudio(blobUrl, sessionId);
         if (typeof showToast === 'function') showToast('Recording loaded \u2014 playback ready (' + Math.round(file.size / 1024 / 1024) + ' MB)');
-
-        // Re-render timeline to enable play buttons
         _rhRenderLastRehearsalTimeline();
     };
     input.click();
-};
+}
+
+// Shared: set up the audio element for timeline playback
+function _rhSetupPlaybackAudio(blobUrl, sessionId) {
+    if (typeof RecordingAnalyzer !== 'undefined') {
+        RecordingAnalyzer._loadedPlaybackUrl = blobUrl;
+    }
+    if (!_rhSharedAudio) {
+        _rhSharedAudio = document.createElement('audio');
+        _rhSharedAudio.id = 'rhTimelineAudio';
+        _rhSharedAudio.style.display = 'none';
+        _rhSharedAudio.preload = 'none';
+        document.body.appendChild(_rhSharedAudio);
+    }
+    _rhSharedAudio.src = blobUrl;
+    _rhSharedAudio.preload = 'none';
+    _rhAudioSessionId = sessionId;
+}
 
 // ── Loop segment (plays repeatedly until stopped) ────────────────────────────
 window._rhLoopSegment = function(startSec, endSec, sessionId, segIdx) {

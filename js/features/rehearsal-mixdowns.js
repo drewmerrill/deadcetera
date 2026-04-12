@@ -362,12 +362,22 @@ window.RehearsalMixdowns = (function() {
 
     // ── Public API ──────────────────────────────────────────────────────────
 
+    // Find the first mixdown with a drive_url (for timeline integration)
+    async function getDriveUrl() {
+        var items = await _load();
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].drive_url) return items[i].drive_url;
+        }
+        return null;
+    }
+
     return {
         render: render,
         showAddForm: showAddForm,
         showEditForm: showEditForm,
         deleteMixdown: deleteMixdown,
         openInChopper: openInChopper,
+        getDriveUrl: getDriveUrl,
         _saveForm: _saveForm,
         _onFileSelected: _onFileSelected,
         _copyLink: _copyLink,
