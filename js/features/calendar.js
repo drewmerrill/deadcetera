@@ -2909,6 +2909,51 @@ async function loadCalendarEvents() {
         var _softBlocks = blocked.filter(function(b) { return b._conflictType === 'soft'; }).length;
         if (_totalGoogleBlocks) console.log('[Calendar] Google free/busy merged:', _totalGoogleBlocks, 'ranges (' + _softBlocks + ' soft, all members)');
     } catch(e) { console.warn('[Calendar] Free/busy merge failed:', e); }
+
+    // ── CIRCULAR CONFLICT FILTER ──
+    // When band events are synced to Google, members who accepted the invite
+    // get the event on their PRIMARY calendar too. Free/busy then reports their
+    // own rehearsal as a conflict. Strip out any busy period that matches a
+    // known band event's date + time window.
+    if (blocked.length > 0 && Object.keys(_calEventsByDate).length > 0) {
+        var _beforeFilter = blocked.length;
+        blocked = blocked.filter(function(b) {
+            var bandEvs = _calEventsByDate[b.startDate];
+            if (!bandEvs || !bandEvs.length) return true; // no band event on this date — keep
+            // Check if any band event on this date overlaps this busy period
+            for (var ei = 0; ei < bandEvs.length; ei++) {
+                var ev = bandEvs[ei];
+                if (!ev.time) continue;
+                // Parse band event time (e.g. "19:00" or "7:00 PM")
+                var _evTime = ev.time.replace(/\s*(AM|PM)\s*/i, function(m, ap) { return ap; });
+                var _parts = _evTime.split(':');
+                var _evHour = parseInt(_parts[0], 10);
+                if (/pm/i.test(ev.time) && _evHour < 12) _evHour += 12;
+                if (/am/i.test(ev.time) && _evHour === 12) _evHour = 0;
+                var _evDur = parseFloat(ev.duration) || 2; // default 2h
+                var _evEndHour = _evHour + _evDur;
+                // Parse blocked range time label (e.g. "7pm–9pm")
+                var bLabel = b._timeLabel || '';
+                var _bMatch = bLabel.match(/(\d+)(am|pm)\u2013(\d+)(am|pm)/i);
+                if (_bMatch) {
+                    var bStart = parseInt(_bMatch[1], 10);
+                    if (_bMatch[2].toLowerCase() === 'pm' && bStart < 12) bStart += 12;
+                    if (_bMatch[2].toLowerCase() === 'am' && bStart === 12) bStart = 0;
+                    var bEnd = parseInt(_bMatch[3], 10);
+                    if (_bMatch[4].toLowerCase() === 'pm' && bEnd < 12) bEnd += 12;
+                    if (_bMatch[4].toLowerCase() === 'am' && bEnd === 12) bEnd = 0;
+                    // If the busy period matches the band event time (within 1h tolerance)
+                    if (Math.abs(bStart - _evHour) <= 1 && Math.abs(bEnd - _evEndHour) <= 1) {
+                        return false; // suppress — this is our own band event
+                    }
+                }
+            }
+            return true; // no match — keep
+        });
+        var _filtered = _beforeFilter - blocked.length;
+        if (_filtered > 0) console.log('[Calendar] Circular conflict filter: removed', _filtered, 'band-event conflicts from free/busy');
+    }
+
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
     console.log('[Calendar] Total blocked ranges:', blocked.length, '| calendarEvents el:', !!el);
