@@ -329,6 +329,7 @@ window._rhSaveRecreatedSession = async function() {
 };
 
 var rhCurrentEventId = null; // which event is open in detail view
+var _rhPlanningMode = false; // true = Plan Mode, false = Review Mode
 
 // ── Page entry point ──────────────────────────────────────────────────────────
 
@@ -346,8 +347,11 @@ function _renderTransitionConfBadge(confidence) {
 async function renderRehearsalPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     window.GL_REHEARSAL_READY = false;
+    var _pageTitle = _rhPlanningMode
+        ? '\uD83D\uDCCB Planning Next Rehearsal'
+        : '\uD83C\uDFB8 Rehearsal';
     el.innerHTML = '<div class="gl-page">'
-        + '<div class="gl-page-title">\uD83C\uDFB8 Rehearsal</div>'
+        + '<div class="gl-page-title" id="rhPageTitle">' + _pageTitle + '</div>'
         + '<div class="gl-page-split">'
         + '<div class="gl-page-primary"><div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div></div>'
         + '<div class="gl-page-context" id="rhContextRail"></div>'
@@ -434,21 +438,34 @@ async function _rhRenderCommandFlow(el) {
     var _gigContext = nextGig ? (nextGig.venue || 'Gig') : null;
     var _gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
 
-    // ── PRIMARY ACTIONS: two clear buttons ──
+    // ── PRIMARY ACTIONS ──
     html += '<div style="display:flex;gap:10px;margin-bottom:var(--gl-space-md);align-items:center;flex-wrap:wrap">';
-    html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
-    html += '<button onclick="_rhOpenPlanMode()" style="padding:10px 24px;font-size:0.9em;font-weight:700;border-radius:8px;cursor:pointer;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.08);color:#86efac;font-family:inherit">\uD83D\uDCCB Plan Next Rehearsal</button>';
-    html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" class="gl-btn-ghost" style="padding:6px 12px;font-size:0.82em">Solo Practice</button>';
-    // Context metadata
-    html += '<div style="margin-left:auto;display:flex;gap:var(--gl-space-sm);align-items:center;flex-wrap:wrap">';
-    if (_gigContext && _gigDays <= 30) {
-        var _urgColor = _gigDays <= 3 ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
-        html += '<span style="color:' + _urgColor + ';font-size:0.72em">\uD83C\uDFA4 ' + escHtml(_gigContext) + ' \u00B7 ' + _gigDays + 'd</span>';
+    if (_rhPlanningMode) {
+        // Plan Mode: planning controls
+        html += '<button onclick="_rhExitPlanMode()" style="padding:8px 18px;font-size:0.85em;font-weight:700;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:none;color:var(--gl-text-tertiary);font-family:inherit">\u2190 Back to Review</button>';
+        html += '<span id="rhSaveStateTop" style="font-size:0.72em;color:var(--gl-green);font-weight:600"></span>';
+        html += '<div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+        html += '<button onclick="_rhLaunchSavedPlan()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.85em;background:linear-gradient(135deg,#667eea,#764ba2)">\u25B6 Start This Plan</button>';
+        html += '</div>';
+    } else {
+        // Review Mode: normal actions
+        html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
+        html += '<button onclick="_rhOpenPlanMode()" style="padding:10px 24px;font-size:0.9em;font-weight:700;border-radius:8px;cursor:pointer;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.08);color:#86efac;font-family:inherit">\uD83D\uDCCB Plan Next Rehearsal</button>';
+        html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" class="gl-btn-ghost" style="padding:6px 12px;font-size:0.82em">Solo Practice</button>';
     }
-    if (_rhFocusCount > 0) {
-        html += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFAF Focus: ' + _rhFocusCount + ' song' + (_rhFocusCount > 1 ? 's' : '') + '</span>';
+    // Context metadata (both modes)
+    if (!_rhPlanningMode) {
+        html += '<div style="margin-left:auto;display:flex;gap:var(--gl-space-sm);align-items:center;flex-wrap:wrap">';
+        if (_gigContext && _gigDays <= 30) {
+            var _urgColor = _gigDays <= 3 ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
+            html += '<span style="color:' + _urgColor + ';font-size:0.72em">\uD83C\uDFA4 ' + escHtml(_gigContext) + ' \u00B7 ' + _gigDays + 'd</span>';
+        }
+        if (_rhFocusCount > 0) {
+            html += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFAF Focus: ' + _rhFocusCount + ' song' + (_rhFocusCount > 1 ? 's' : '') + '</span>';
+        }
+        html += '</div>';
     }
-    html += '</div></div>';
+    html += '</div>';
 
     // Confidence line — GLStatus-driven
     if (confLabel) {
@@ -470,12 +487,15 @@ async function _rhRenderCommandFlow(el) {
 
     // (Duplicate Start/Practice CTAs removed — consolidated into Next Up section above)
 
-    // ── PLAN VERSIONS (collapsed by default, only expanded in plan mode) ──
+    // ── PLAN SECTION ──
     html += '<div id="rhPlanContainer">';
-    html += '<details id="rhPlanVersions" style="margin-bottom:8px">'
-        + '<summary style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px">'
-        + '\u25B8 Plan Versions (' + (hasSavedPlan ? '1 saved' : 'none') + ')</summary>'
-        + '<div id="rhPlanVersionContent" style="padding:4px 0"></div></details>';
+    if (!_rhPlanningMode) {
+        // Review Mode: plan versions collapsed in rail
+        html += '<details id="rhPlanVersions" style="margin-bottom:8px">'
+            + '<summary style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px">'
+            + '\u25B8 Plan Versions (' + (hasSavedPlan ? '1 saved' : 'none') + ')</summary>'
+            + '<div id="rhPlanVersionContent" style="padding:4px 0"></div></details>';
+    }
 
     if (hasSavedPlan) {
         var savedUnits = _rhGetUnits();
@@ -495,18 +515,36 @@ async function _rhRenderCommandFlow(el) {
             return sum + 9;
         }, 0);
         var _preTotalLabel = _preTotalMin >= 60 ? Math.floor(_preTotalMin / 60) + 'h ' + (_preTotalMin % 60) + 'm' : _preTotalMin + 'm';
-        html += '<details id="rhPlanCard" style="margin-bottom:12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
-            + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-            + '<span style="font-size:0.72em;font-weight:800;color:#86efac">\uD83D\uDCCB Plan</span>'
-            + '<span style="font-size:0.65em;color:var(--text-dim)">' + songCount + ' songs \u00B7 ' + _preTotalLabel + '</span>'
-            + '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto">\u25B8 expand</span>'
-            + '</summary>'
-            + '<div style="padding:4px 14px 12px">'
-            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
-            + '<span onclick="_rhEditPlanName()" style="font-size:0.72em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
-            + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
-            + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.6em;padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear</button>'
-            + '</div>';
+        if (_rhPlanningMode) {
+            // ── PLAN MODE: plan is the primary workspace (no collapsible) ──
+            html += '<div id="rhPlanCard" style="margin-bottom:12px">';
+            // Subcontext bar
+            var _planSubCtx = '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12)">';
+            if (nextGig && _gigDays <= 30) _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFA4 ' + escHtml(nextGig.venue || 'Gig') + ' in ' + _gigDays + ' days</span>';
+            _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-text-tertiary)">' + songCount + ' songs \u00B7 ' + _preTotalLabel + '</span>';
+            if (_rhFocusCount > 0) _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFAF ' + _rhFocusCount + ' focus</span>';
+            _planSubCtx += '<span id="rhSaveState" style="font-size:0.68em;font-weight:600;margin-left:auto"></span>';
+            _planSubCtx += '</div>';
+            html += _planSubCtx;
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+                + '<span onclick="_rhEditPlanName()" style="font-size:0.88em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
+                + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.65em;padding:3px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
+                + '</div>';
+        } else {
+            // ── REVIEW MODE: plan is a collapsible card ──
+            html += '<details id="rhPlanCard" style="margin-bottom:12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
+                + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+                + '<span style="font-size:0.72em;font-weight:800;color:#86efac">\uD83D\uDCCB Plan</span>'
+                + '<span style="font-size:0.65em;color:var(--text-dim)">' + songCount + ' songs \u00B7 ' + _preTotalLabel + '</span>'
+                + '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto">\u25B8 expand</span>'
+                + '</summary>'
+                + '<div style="padding:4px 14px 12px">'
+                + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+                + '<span onclick="_rhEditPlanName()" style="font-size:0.72em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
+                + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
+                + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.6em;padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear</button>'
+                + '</div>';
+        }
 
         // ── Rehearsal time budgeting ──────────────────────────────────────
         // Estimate minutes per block. Separate from setlist runtime logic.
@@ -743,29 +781,54 @@ async function _rhRenderCommandFlow(el) {
             + '<div style="font-size:0.9em;color:var(--text-dim);font-style:italic">Use a template to build your plan faster. Drag to reorder. Tap the time to adjust.</div>'
             + '</div></details>';
 
-        // Plan actions inside the collapsed plan
+        // Plan actions
         html += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">'
             + '<button onclick="rhOpenCreateModal()" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:0.68em;cursor:pointer">Schedule Date</button>'
             + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);font-size:0.68em;cursor:pointer">\u270F Edit Structure</button>'
-            + '</div>'
-            + '</div></details>' // close plan details
-            + '<div id="rhSnapshots"></div>';
+            + '</div>';
+        if (_rhPlanningMode) {
+            html += '</div>' // close plan card (plain div)
+                + '<div id="rhSnapshots"></div>';
+        } else {
+            html += '</div></details>' // close plan details
+                + '<div id="rhSnapshots"></div>';
+        }
     } else {
-        // No saved plan — show planner CTA + snapshots for restore
-        html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">▶ Plan Next Rehearsal</button>'
-            + '<button onclick="var h=document.querySelector(\'#rhMain details:last-of-type\');if(h){h.open=true;h.scrollIntoView({behavior:\'smooth\'})}" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
-            + '</div>'
-            + '<div id="rhSnapshots"></div>';
+        // No saved plan
+        if (_rhPlanningMode) {
+            // In plan mode with no plan — show seed message
+            html += '<div style="padding:20px;text-align:center;color:var(--gl-text-tertiary);font-size:0.85em">'
+                + 'No plan yet. Click below to build one from scratch or from your focus songs.'
+                + '<div style="margin-top:12px;display:flex;gap:8px;justify-content:center">'
+                + '<button onclick="renderRehearsalPlanner()" class="gl-btn-primary" style="padding:10px 20px;font-size:0.88em">\u25B6 Build Plan</button>'
+                + '</div></div>';
+        } else {
+            html += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">'
+                + '<button onclick="renderRehearsalPlanner()" style="flex:2;padding:14px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:0.92em;cursor:pointer;min-height:48px">\u25B6 Plan Next Rehearsal</button>'
+                + '<button onclick="var h=document.querySelector(\'#rhMain details:last-of-type\');if(h){h.open=true;h.scrollIntoView({behavior:\'smooth\'})}" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
+                + '</div>';
+        }
+        html += '<div id="rhSnapshots"></div>';
     }
 
     html += '</div>'; // close #rhPlanContainer
 
     // ── SECTION: Latest Rehearsal Review ──
-    html += '<div style="font-size:0.68em;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px;margin-top:12px">What Happened</div>';
-    html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:8px">Listen back to each song, see where the band was tight and where it got rough. Tap a song for details, double-tap to loop.</div>';
-    html += '<div id="rhTimelineSection" style="margin-bottom:12px"></div>';
-    html += '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>';
+    if (_rhPlanningMode) {
+        // Plan Mode: review content collapsed
+        html += '<details style="margin-top:16px;opacity:0.7">'
+            + '<summary style="font-size:0.68em;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);cursor:pointer;padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px">'
+            + '\u25B8 Latest Rehearsal Review</summary>'
+            + '<div id="rhTimelineSection" style="margin-bottom:12px;margin-top:8px"></div>'
+            + '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>'
+            + '</details>';
+    } else {
+        // Review Mode: review content primary
+        html += '<div style="font-size:0.68em;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px;margin-top:12px">Latest Rehearsal Review</div>';
+        html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:8px">Listen back to each song, see where the band was tight and where it got rough. Tap a song for details, double-tap to loop.</div>';
+        html += '<div id="rhTimelineSection" style="margin-bottom:12px"></div>';
+        html += '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>';
+    }
 
     main.innerHTML = html;
     window.GL_REHEARSAL_READY = true;
@@ -796,24 +859,53 @@ async function _rhRenderCommandFlow(el) {
             }
         } catch(e) {}
 
-        _rhCtx.innerHTML = (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '')
-            + '<div id="rhPlanRailSlot"></div>'
-            // History — collapsed, lightweight
-            + '<details class="gl-context-card" style="padding:0">'
-            + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
-            + '<span class="gl-section-label" style="padding:0;margin:0">History</span>'
-            + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
-            + '<div style="padding:0 14px 10px">'
-            + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Analyze recording</button></div>'
-            + '<div id="rhSessionHistory"></div>'
-            + '</div></details>'
+        var _railHtml = '';
+        if (_rhPlanningMode) {
+            // Plan Mode right rail: context cards (readiness, focus, gig, versions, snapshots)
+            _railHtml += (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '');
+            // Upcoming gig context
+            if (nextGig && _gigDays <= 30) {
+                _railHtml += '<div class="gl-context-card" style="border-left:3px solid var(--gl-amber)">'
+                    + '<div style="font-size:0.68em;font-weight:800;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Upcoming Gig</div>'
+                    + '<div style="font-size:0.82em;font-weight:600;color:var(--gl-text)">' + escHtml(nextGig.venue || 'Gig') + '</div>'
+                    + '<div style="font-size:0.72em;color:var(--gl-amber)">' + _gigDays + ' days away \u00B7 ' + (nextGig.date || '') + '</div>'
+                    + (availHtml ? '<div style="margin-top:4px">' + availHtml + '</div>' : '')
+                    + '</div>';
+            }
+            // Versioning card — single canonical location
+            _railHtml += '<div class="gl-context-card" id="rhVersionsRailCard">'
+                + '<div style="font-size:0.68em;font-weight:800;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Plan Versions</div>'
+                + '<div id="rhSnapshots"></div>'
+                + '</div>';
+            // Quick actions
+            _railHtml += '<div class="gl-context-card">'
+                + '<div style="font-size:0.68em;font-weight:800;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">Quick Actions</div>'
+                + '<div style="display:flex;flex-direction:column;gap:4px">'
+                + '<button onclick="rhOpenCreateModal()" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-size:0.72em;cursor:pointer;font-family:inherit">\uD83D\uDCC5 Schedule Date</button>'
+                + '<button onclick="_rhLaunchSavedPlan()" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac;font-size:0.72em;cursor:pointer;font-family:inherit">\u25B6 Launch Plan</button>'
+                + '</div></div>';
+        } else {
+            // Review Mode right rail: plan slot + history + recordings
+            _railHtml += (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '');
+            _railHtml += '<div id="rhPlanRailSlot"></div>';
+            // History — collapsed
+            _railHtml += '<details class="gl-context-card" style="padding:0">'
+                + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
+                + '<span class="gl-section-label" style="padding:0;margin:0">History</span>'
+                + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
+                + '<div style="padding:0 14px 10px">'
+                + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Analyze recording</button></div>'
+                + '<div id="rhSessionHistory"></div>'
+                + '</div></details>';
             // Recordings — collapsed
-            + '<details class="gl-context-card" style="padding:0">'
-            + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
-            + '<span class="gl-section-label" style="padding:0;margin:0">Recordings</span>'
-            + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
-            + '<div style="padding:0 14px 10px"><div id="rhMixdownsContainer"></div></div>'
-            + '</details>';
+            _railHtml += '<details class="gl-context-card" style="padding:0">'
+                + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
+                + '<span class="gl-section-label" style="padding:0;margin:0">Recordings</span>'
+                + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
+                + '<div style="padding:0 14px 10px"><div id="rhMixdownsContainer"></div></div>'
+                + '</details>';
+        }
+        _rhCtx.innerHTML = _railHtml;
     } else {
         // Fallback: render inline if context rail not available
         main.innerHTML += '<div style="margin-top:16px"><div id="rhSessionHistory"></div><div id="rhMixdownsContainer" style="margin-top:12px"></div></div>';
@@ -835,11 +927,14 @@ async function _rhRenderCommandFlow(el) {
         });
     }
 
-    // Move plan to right rail (context, not primary)
-    var _planContainer = document.getElementById('rhPlanContainer');
-    var _planSlot = document.getElementById('rhPlanRailSlot');
-    if (_planContainer && _planSlot) {
-        _planSlot.appendChild(_planContainer);
+    // Move plan to right rail in Review Mode only
+    // In Plan Mode, plan stays in the main content area
+    if (!_rhPlanningMode) {
+        var _planContainer = document.getElementById('rhPlanContainer');
+        var _planSlot = document.getElementById('rhPlanRailSlot');
+        if (_planContainer && _planSlot) {
+            _planSlot.appendChild(_planContainer);
+        }
     }
 
     // Wire up drag-and-drop on the unit list
@@ -862,41 +957,28 @@ async function _rhRenderCommandFlow(el) {
 // Clear saved rehearsal plan (explicit user action — auto-snapshots first)
 // ── PLAN MODE: full-width planning workspace ────────────────────────────────
 window._rhOpenPlanMode = function() {
-    var main = document.getElementById('rhMain');
-    if (!main) return;
-
-    // Expand the plan card if it exists
-    var planCard = document.getElementById('rhPlanCard');
-    if (planCard) planCard.open = true;
-
-    // Scroll plan into view and give it visual prominence
-    var planContainer = document.getElementById('rhPlanContainer');
-    if (planContainer) {
-        planContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        // Highlight briefly
-        planContainer.style.outline = '2px solid rgba(134,239,172,0.4)';
-        planContainer.style.outlineOffset = '4px';
-        planContainer.style.borderRadius = '12px';
-        setTimeout(function() { planContainer.style.outline = 'none'; }, 2000);
-    }
-
-    // If no plan exists, create one from focus songs
+    // If no plan exists, seed from focus songs first
     var units = _rhGetUnits();
     if (!units || !units.length) {
-        // Auto-populate from focus engine
         var _focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
         if (_focus.list.length > 0) {
             var newUnits = _focus.list.map(function(s) {
                 return { type: 'single', title: s.title, band: '', block: 'flow' };
             });
-            try { localStorage.setItem('glPlannerUnits', JSON.stringify(newUnits)); } catch(e) {}
-            _rhSavePlanToFirebase(newUnits);
+            _rhSaveUnits(newUnits);
             if (typeof showToast === 'function') showToast('Plan started with ' + newUnits.length + ' focus songs');
-            _rhRenderCommandFlow(document.getElementById('page-rehearsal'));
-        } else {
-            if (typeof showToast === 'function') showToast('Add songs to your plan — drag from the song list');
         }
     }
+    // Enter Plan Mode
+    _rhPlanningMode = true;
+    var el = document.querySelector('.app-page:not(.hidden)') || document.body;
+    renderRehearsalPage(el);
+};
+
+window._rhExitPlanMode = function() {
+    _rhPlanningMode = false;
+    var el = document.querySelector('.app-page:not(.hidden)') || document.body;
+    renderRehearsalPage(el);
 };
 
 window._rhClearSavedPlan = async function() {
@@ -2742,12 +2824,14 @@ async function _rhDeletePlanFromFirebase() {
 
 // Show save state indicator
 function _rhShowSaveState(state) {
-    var el = document.getElementById('rhSaveState');
-    if (!el) return;
-    if (state === 'saving') { el.textContent = 'Saving…'; el.style.color = '#fbbf24'; }
-    else if (state === 'saved') { el.textContent = '✓ Saved'; el.style.color = '#22c55e'; setTimeout(function() { if (el.textContent === '✓ Saved') el.textContent = ''; }, 2000); }
-    else if (state === 'error') { el.textContent = '✕ Save failed'; el.style.color = '#f87171'; }
-    else { el.textContent = ''; }
+    var targets = [document.getElementById('rhSaveState'), document.getElementById('rhSaveStateTop')];
+    targets.forEach(function(el) {
+        if (!el) return;
+        if (state === 'saving') { el.textContent = 'Saving\u2026'; el.style.color = '#fbbf24'; }
+        else if (state === 'saved') { el.textContent = '\u2713 Saved'; el.style.color = '#22c55e'; setTimeout(function() { if (el.textContent === '\u2713 Saved') el.textContent = ''; }, 2000); }
+        else if (state === 'error') { el.textContent = '\u2715 Save failed'; el.style.color = '#f87171'; }
+        else { el.textContent = ''; }
+    });
 }
 
 // ── Inline agenda editing ─────────────────────────────────────────────────────
@@ -4446,6 +4530,7 @@ window.renderRehearsalPlanner = async function() {
 };
 
 window._rhExitPlannerMode = function() {
+    _rhPlanningMode = false; // Return to review mode when exiting planner
     var el = document.getElementById('page-rehearsal') || document.querySelector('.gl-page-primary');
     if (el) renderRehearsalPage(el);
 };
