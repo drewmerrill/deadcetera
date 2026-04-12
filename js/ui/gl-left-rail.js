@@ -167,10 +167,11 @@
     }
     if (!_rail) return;
 
+    // Mode no longer drives UI — all pages always visible.
+    // These reads are retained for potential future use in copy/recommendations.
     var currentMode = (typeof GLStore !== 'undefined' && GLStore.getProductMode)
       ? GLStore.getProductMode() : 'sharpen';
-    var modePages = (typeof GLStore !== 'undefined' && GLStore.getModePages)
-      ? GLStore.getModePages(currentMode) : null;
+    var modePages = null; // DEPRECATED — all pages visible
 
     var html = '<button class="gl-rail-toggle" title="Collapse navigation">'
       + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">'

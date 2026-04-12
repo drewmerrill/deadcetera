@@ -76,6 +76,9 @@ function rmArchiveQuery(title, bandCode) {
 
 
 // ── Entry: single song ───────────────────────────────────────────────────────
+// NOTE: Despite the name, this opens the PRACTICE/CHART overlay, not a
+// "rehearsal mode". The name is a legacy holdover. 50+ call sites reference
+// it, so renaming would be high-risk churn. Alias provided for clarity.
 function openRehearsalMode(songTitle, mode) {
     const songData = (typeof allSongs !== 'undefined' ? allSongs : [])
         .find(s => s.title === songTitle);

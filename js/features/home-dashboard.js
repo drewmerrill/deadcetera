@@ -361,6 +361,7 @@ function _scorePlayShowCard(bundle) {
 
 function _renderDashboard(bundle, context) {
     var isStoner = _resolveIsStoner();
+    // Mode is informational only — does NOT drive UI layout or feature visibility
     var mode = (typeof GLStore !== 'undefined' && GLStore.getProductMode) ? GLStore.getProductMode() : 'sharpen';
 
     // Workflow state from GLStore

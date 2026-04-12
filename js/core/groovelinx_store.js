@@ -6240,17 +6240,14 @@
   // 'lockin'  = band rehearsal focus
   // 'play'    = gig / performance focus
 
+  // ── LEGACY MODE SYSTEM — NO LONGER USED FOR UI GATING ────────────────────
+  // Practice/Rehearse/Play are conceptual perspectives used in recommendations
+  // and copy only. All features are always visible in a single coherent page
+  // structure. These constants are retained for backward compatibility with
+  // code that reads getProductMode() for informational purposes.
   var VALID_MODES = ['sharpen', 'lockin', 'play'];
-
-  // Pages visible per mode (pages NOT in the list are hidden from nav)
-  var MODE_PAGES = {
-    sharpen: ['home', 'songs', 'practice', 'playlists', 'pocketmeter', 'tuner', 'metronome', 'feed', 'admin', 'help'],
-    lockin:  ['home', 'songs', 'rehearsal', 'setlists', 'ideas', 'feed', 'calendar', 'admin', 'help'],
-    play:    ['home', 'setlists', 'gigs', 'calendar', 'venues', 'stageplot', 'admin', 'help']
-  };
-
-  // Default landing page per mode
-  var MODE_LANDING = { sharpen: 'songs', lockin: 'rehearsal', play: 'setlists' };
+  var MODE_PAGES = null;    // DEPRECATED — was used for nav hiding, now removed
+  var MODE_LANDING = null;  // DEPRECATED — was used for forced redirects, now removed
 
   // DEPRECATED: Product modes no longer gate UI visibility.
   // Practice/Rehearse/Play are conceptual perspectives, not UI modes.
@@ -6270,26 +6267,21 @@
     return _state.productMode;
   }
 
-  function getModePages(mode) {
-    return MODE_PAGES[mode || _state.productMode] || MODE_PAGES.sharpen;
-  }
-
-  function isPageVisibleInMode(page, mode) {
-    var pages = getModePages(mode);
-    return pages.indexOf(page) !== -1;
-  }
+  // DEPRECATED: all pages are always visible. Kept for backward compat.
+  function getModePages() { return null; }
+  function isPageVisibleInMode() { return true; }
 
   // DEPRECATED: data-gl-mode no longer set — modes don't gate UI visibility
   // document.body.setAttribute('data-gl-mode', _state.productMode);
 
-  // Expose on GLStore
-  window.GLStore.setProductMode = setProductMode;
-  window.GLStore.MODE_LANDING   = MODE_LANDING;
-  window.GLStore.getProductMode = getProductMode;
-  window.GLStore.getModePages   = getModePages;
-  window.GLStore.isPageVisibleInMode = isPageVisibleInMode;
+  // Expose on GLStore (mode system is DEPRECATED — informational only, no UI gating)
+  window.GLStore.setProductMode = setProductMode;       // No-op: stores preference, no side effects
+  window.GLStore.getProductMode = getProductMode;       // Informational: returns stored preference
+  window.GLStore.getModePages   = getModePages;          // DEPRECATED: returns null
+  window.GLStore.isPageVisibleInMode = function() { return true; }; // All pages always visible
   window.GLStore.PRODUCT_MODES  = VALID_MODES;
-  window.GLStore.MODE_PAGES     = MODE_PAGES;
+  window.GLStore.MODE_PAGES     = null;                  // DEPRECATED
+  window.GLStore.MODE_LANDING   = null;                  // DEPRECATED
 
   console.log('✅ GLStore loaded (mode: ' + _state.productMode + ')');
 
