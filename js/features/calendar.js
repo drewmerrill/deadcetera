@@ -891,9 +891,9 @@ window._calSyncNow = async function() {
         _calRenderGooglePanel();
         // Build explicit sync status message
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
-        var _syncMsg = '\u2713 Events synced';
-        if (typeof pushed !== 'undefined' && pushed > 0) _syncMsg += ' (' + pushed + ' pushed to Google)';
-        if (!_hasAvail) _syncMsg += '. Availability not synced \u2014 enable in Rules to detect conflicts.';
+        var _syncMsg = '\u2713 Band events synced to Google Calendar';
+        if (typeof pushed !== 'undefined' && pushed > 0) _syncMsg += ' (' + pushed + ' new)';
+        if (!_hasAvail) _syncMsg += '. Personal availability not synced \u2014 click "enable" above to detect scheduling conflicts.';
         if (typeof showToast === 'function') showToast(_syncMsg, _hasAvail ? 3000 : 6000);
     } catch(e) {
         if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
@@ -3678,7 +3678,8 @@ function calDayClick(y, m, d) {
         var _availSection = '';
         var _hasAvailData = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
         if (!_hasAvailData && blocked.length === 0) {
-            _availSection = '<div style="font-size:0.65em;color:var(--gl-amber);margin-bottom:4px">\u26A0 Availability not enabled</div>';
+            // Availability warning shown in conflict summary section below — not duplicated here
+            _availSection = '';
         }
 
         var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
