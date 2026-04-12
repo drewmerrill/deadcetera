@@ -1348,34 +1348,34 @@ window._calShowAvailabilitySettings = async function() {
     var calHtml = '<div style="margin-bottom:16px">';
     calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Your Availability Calendars</div>';
     calHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Select your <strong>personal</strong> calendars. GrooveLinx reads these to detect when you\u2019re busy \u2014 it never writes to them.</div>';
+    // Match band calendar by ID or by name (IDs can differ between users)
+    var _bandCalName = (_bandLevelCalName || '').toLowerCase();
     calendars.forEach(function(c, i) {
-        var isBandCal = c.id === bandCalId;
-        // Band calendar is ALWAYS excluded from availability — prevent circular conflicts
+        var isBandCal = (c.id === bandCalId) || (_bandCalName && c.summary.toLowerCase() === _bandCalName);
+        var _esc = (typeof escHtml === 'function') ? escHtml(c.summary) : c.summary;
+
         if (isBandCal) {
-            calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;opacity:0.4;cursor:not-allowed">'
+            // Band calendar: disabled, cannot be used for availability
+            calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;opacity:0.35;cursor:not-allowed">'
                 + '<input type="checkbox" disabled style="accent-color:var(--gl-text-tertiary)">'
-                + '<span style="flex:1;color:var(--gl-text-tertiary)">' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + '</span>'
-                + '<span style="font-size:0.75em;color:var(--gl-text-tertiary)">excluded</span>'
-                + (c.backgroundColor ? '<span style="width:10px;height:10px;border-radius:50%;background:' + c.backgroundColor + ';flex-shrink:0;opacity:0.4"></span>' : '')
+                + '<span style="flex:1;color:var(--gl-text-tertiary);text-decoration:line-through">' + _esc + '</span>'
+                + '<span style="font-size:0.72em;color:var(--gl-text-tertiary)">band \u2014 excluded</span>'
                 + '</label>';
             return;
         }
         var isSelected = selectedCals.length > 0
             ? selectedCals.indexOf(c.id) !== -1
             : (c.primary && !c.autoExclude);
-        var dimmed = c.autoExclude && !isSelected;
-        calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;'
-            + (dimmed ? 'opacity:0.5;' : '') + '">'
+        calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer">'
             + '<input type="checkbox" name="calSel" value="' + c.id + '"' + (isSelected ? ' checked' : '')
             + ' style="accent-color:var(--gl-green)">'
-            + '<span style="flex:1;color:var(--gl-text)">' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + '</span>'
-            + (c.primary ? '<span style="font-size:0.75em;color:var(--gl-green)">personal</span>' : '')
-            + (c.autoExclude ? '<span style="font-size:0.75em;color:var(--gl-text-tertiary)">auto-excluded</span>' : '')
+            + '<span style="flex:1;color:var(--gl-text)">' + _esc + '</span>'
+            + (c.primary ? '<span style="font-size:0.72em;color:var(--gl-green)">personal</span>' : '')
             + (c.backgroundColor ? '<span style="width:10px;height:10px;border-radius:50%;background:' + c.backgroundColor + ';flex-shrink:0"></span>' : '')
             + '</label>';
     });
-    calHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);padding:4px 8px;margin-top:2px;line-height:1.4">'
-        + 'The band calendar is automatically excluded to prevent rehearsals from conflicting with themselves.</div>';
+    calHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);padding:4px 8px;margin-top:4px;line-height:1.4">'
+        + '\uD83D\uDCA1 Only check your personal calendars here. The band calendar (' + (typeof escHtml === 'function' ? escHtml(_bandLevelCalName || 'Deadcetera') : (_bandLevelCalName || 'Deadcetera')) + ') is automatically excluded so rehearsals don\u2019t conflict with themselves.</div>';
     calHtml += '</div>';
 
     // Time-aware filtering toggle

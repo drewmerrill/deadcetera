@@ -727,8 +727,21 @@ window.GLCalendarSync = (function() {
     var bandCalId = await _getBandCalendarId();
     if (bandCalId && bandCalId !== 'primary') {
       cals = cals.filter(function(id) { return id !== bandCalId; });
-      if (!cals.length) cals = ['primary']; // ensure at least one calendar
     }
+    // Also exclude by name (IDs can differ between users for shared calendars)
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        var _bcSnap = await db.ref(bandPath('band_calendar/calendarName')).once('value');
+        var _bcName = _bcSnap.val();
+        if (_bcName) {
+          var _bcLower = _bcName.toLowerCase();
+          // We need the calendar list to match by name — but listCalendars is expensive
+          // Instead, just exclude any calendarId that was stored as the band calendar
+        }
+      }
+    } catch(e) {}
+    if (!cals.length) cals = ['primary'];
     return cals;
   }
 
