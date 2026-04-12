@@ -906,12 +906,17 @@ function _calRenderGooglePanel() {
     var lastSync = '';
     try {
         if (_calConnectedCache) {
-            var times = Object.values(_calConnectedCache).map(function(c) { return c.updatedAt || ''; }).filter(Boolean);
+            var times = Object.values(_calConnectedCache).map(function(c) { return c.updatedAt || c.connectedAt || ''; }).filter(Boolean);
             if (times.length) {
                 var latest = times.sort().reverse()[0];
                 var mins = Math.floor((Date.now() - new Date(latest).getTime()) / 60000);
-                lastSync = mins < 2 ? 'just now' : mins + ' min ago';
+                lastSync = mins < 2 ? 'just now' : (mins < 60 ? mins + ' min ago' : Math.floor(mins / 60) + 'h ago');
             }
+        }
+        // Fallback: if no timestamps in records, use cache load time
+        if (!lastSync && _calConnectedCacheTime > 0) {
+            var _cacheAge = Math.floor((Date.now() - _calConnectedCacheTime) / 60000);
+            lastSync = _cacheAge < 2 ? 'just now' : (_cacheAge < 60 ? _cacheAge + ' min ago' : Math.floor(_cacheAge / 60) + 'h ago');
         }
     } catch(e) {}
 
