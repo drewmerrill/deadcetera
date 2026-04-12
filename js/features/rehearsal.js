@@ -2415,8 +2415,53 @@ function _rhStreamFromDrive(driveUrl, sessionId) {
 function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
     if (typeof showToast === 'function') showToast('Loading from Google Drive\u2026');
 
+    // Extract file ID from Drive URL
+    var _fileId = null;
+    var _m = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (_m) _fileId = _m[1];
+    if (!_fileId) { _m = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (_m) _fileId = _m[1]; }
+
+    if (!_fileId) {
+        if (typeof showToast === 'function') showToast('\u26A0 Could not extract file ID from Drive link', 5000);
+        return;
+    }
+
+    // Strategy 1: Direct browser fetch from Google Drive API (no Worker proxy needed)
+    // The Drive API supports CORS for OAuth-authenticated requests
+    var _token = (typeof accessToken !== 'undefined') ? accessToken : null;
+    if (_token) {
+        var apiUrl = 'https://www.googleapis.com/drive/v3/files/' + _fileId + '?alt=media&supportsAllDrives=true';
+        console.log('[Drive] Fetching directly via Drive API:', _fileId.substring(0, 10) + '...');
+        fetch(apiUrl, {
+            headers: { 'Authorization': 'Bearer ' + _token }
+        }).then(function(res) {
+            if (!res.ok) {
+                console.warn('[Drive] Direct API failed:', res.status);
+                return res.text().then(function(body) {
+                    console.warn('[Drive] API response:', body.substring(0, 500));
+                    throw new Error('Drive API ' + res.status);
+                });
+            }
+            return res.blob();
+        }).then(function(blob) {
+            var blobUrl = URL.createObjectURL(blob);
+            _rhSetupPlaybackAudio(blobUrl, sessionId);
+            if (typeof showToast === 'function') showToast('Recording loaded \u2014 playback ready (' + Math.round(blob.size / 1024 / 1024) + ' MB)');
+            _rhRenderLastRehearsalTimeline();
+        }).catch(function(err) {
+            console.warn('[Drive] Direct fetch failed, trying Worker proxy:', err.message);
+            // Strategy 2: Fall back to Worker proxy
+            _rhDoStreamViaWorker(workerBase, driveUrl, _token, sessionId);
+        });
+    } else {
+        // No token — try Worker proxy (public download methods)
+        _rhDoStreamViaWorker(workerBase, driveUrl, null, sessionId);
+    }
+}
+
+function _rhDoStreamViaWorker(workerBase, driveUrl, token, sessionId) {
     var _drivePayload = { driveUrl: driveUrl };
-    if (typeof accessToken !== 'undefined' && accessToken) _drivePayload.accessToken = accessToken;
+    if (token) _drivePayload.accessToken = token;
 
     fetch(workerBase + '/drive-audio', {
         method: 'POST',
@@ -2427,7 +2472,7 @@ function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
             return res.json().catch(function() { return {}; }).then(function(d) {
                 var msg = d.error || 'Drive fetch failed: ' + res.status;
                 if (d.hint) msg += '\n' + d.hint;
-                if (d.detail) console.warn('[Drive] API detail:', d.detail);
+                if (d.detail) console.warn('[Drive] Worker API detail:', d.detail);
                 throw new Error(msg);
             });
         }
