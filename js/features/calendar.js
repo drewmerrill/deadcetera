@@ -883,7 +883,7 @@ function _calRenderOnboarding() {
     _calRenderGooglePanel();
 }
 
-// ── Unified Google Panel (right rail) — onboarding vs steady-state ──────────
+// ── Unified Google Panel (right rail) — single render, no duplicates ────────
 function _calRenderGooglePanel() {
     var el = document.getElementById('calGooglePanel');
     if (!el) return;
@@ -892,106 +892,83 @@ function _calRenderGooglePanel() {
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
     if (!members.length) { el.innerHTML = ''; return; }
 
-    var isFullyConnected = cov.isFull;
     var hasScope = cov.hasScope;
     var connectedCount = cov.connected;
     var totalCount = members.length;
-
-    // Check for partial scope: calendar events work but free/busy doesn't
     var _hasFreeBusy = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope) ? GLCalendarSync.hasFreeBusyScope() : true;
     var _partialScope = hasScope && !_hasFreeBusy;
 
-    if (isFullyConnected) {
-        // MODE B — STEADY STATE: compressed status view
-        var lastSync = '';
-        try {
-            if (typeof _calConnectedCache !== 'undefined' && _calConnectedCache) {
-                var times = Object.values(_calConnectedCache).map(function(c) { return c.updatedAt || ''; }).filter(Boolean);
-                if (times.length) {
-                    var latest = times.sort().reverse()[0];
-                    var mins = Math.floor((Date.now() - new Date(latest).getTime()) / 60000);
-                    lastSync = mins < 2 ? 'just now' : mins + ' min ago';
-                }
+    // Last synced time
+    var lastSync = '';
+    try {
+        if (_calConnectedCache) {
+            var times = Object.values(_calConnectedCache).map(function(c) { return c.updatedAt || ''; }).filter(Boolean);
+            if (times.length) {
+                var latest = times.sort().reverse()[0];
+                var mins = Math.floor((Date.now() - new Date(latest).getTime()) / 60000);
+                lastSync = mins < 2 ? 'just now' : mins + ' min ago';
             }
-        } catch(e) {}
+        }
+    } catch(e) {}
 
-        // Partial scope warning (events OK but no free/busy = can't show availability)
-        var _partialWarning = _partialScope
-            ? '<div style="padding:8px 10px;margin-top:6px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">'
-              + '<div style="font-size:0.72em;color:var(--gl-amber);font-weight:600;margin-bottom:3px">\u26A0 Availability access not enabled</div>'
-              + '<div style="font-size:0.65em;color:var(--gl-text-secondary);line-height:1.4;margin-bottom:6px">Calendar is connected but GrooveLinx can\u2019t see when you\u2019re free. Enable availability to find dates that work for the whole band.</div>'
-              + '<button onclick="_calConnectGoogle()" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:var(--gl-amber)">Enable Availability</button>'
-              + '</div>'
-            : '';
+    // ── SINGLE member list (rendered once, used in all states) ──
+    var memberHtml = '';
+    members.forEach(function(m) {
+        var key = (typeof m === 'object') ? m.key : m;
+        var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
+        var isMe = key === cov.myKey;
+        var connected = cov.connectedKeys.indexOf(key) !== -1 || (isMe && hasScope);
+        memberHtml += '<div style="display:flex;align-items:center;gap:5px;padding:2px 0;font-size:0.72em">'
+            + '<span style="color:' + (connected ? 'var(--gl-green)' : 'var(--gl-text-tertiary)') + '">' + (connected ? '\u2713' : '\u26A0') + '</span>'
+            + '<span style="color:' + (connected ? 'var(--gl-text)' : 'var(--gl-text-secondary)') + '">' + name + '</span>'
+            + (connected ? '' : '<span style="font-size:0.82em;color:var(--gl-text-tertiary);opacity:0.5">not connected</span>')
+            + '</div>';
+    });
 
-        // Per-member connection status (compact)
-        var _memberStatusHtml = '';
-        members.forEach(function(m) {
-            var key = (typeof m === 'object') ? m.key : m;
-            var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
-            var isConnected = cov.connectedKeys.indexOf(key) !== -1;
-            _memberStatusHtml += '<span style="font-size:0.62em;color:' + (isConnected ? 'var(--gl-green)' : 'var(--gl-text-tertiary)') + '">'
-                + (isConnected ? '\u2713' : '\u2022') + ' ' + name + '</span>';
-        });
+    // ── Build panel ──
+    var borderColor = hasScope ? 'rgba(34,197,94,0.1)' : 'rgba(99,102,241,0.15)';
+    var bgColor = hasScope ? 'rgba(34,197,94,0.04)' : 'rgba(99,102,241,0.06)';
 
-        el.innerHTML = '<div style="padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.1);margin-bottom:var(--gl-space-sm)">'
-            + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+    var html = '<div style="padding:12px;border-radius:10px;background:' + bgColor + ';border:1px solid ' + borderColor + ';margin-bottom:var(--gl-space-sm)">';
+
+    // Header: connection status
+    if (hasScope) {
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
             + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
-            + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">' + (_partialScope ? 'Calendar connected' : 'All calendars connected') + '</span>'
-            + '</div>'
-            + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">' + _memberStatusHtml + '</div>'
-            + (lastSync ? '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:4px">Last synced ' + lastSync + '</div>' : '')
-            + _partialWarning
-            + '<div style="display:flex;gap:8px;margin-top:4px;align-items:center">'
-            + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.65em;font-weight:700;padding:4px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">\u21BB Sync Calendars</button>'
-            + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
-            + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
-            + '</div>'
-            + '</div>';
+            + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">'
+            + (connectedCount >= totalCount ? 'All calendars connected' : connectedCount + ' of ' + totalCount + ' connected')
+            + '</span></div>';
+        if (lastSync) html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Last synced ' + lastSync + '</div>';
     } else {
-        // MODE A — ONBOARDING STATE: dominant connection panel
-        var memberListHtml = '';
-        members.forEach(function(m) {
-            var key = (typeof m === 'object') ? m.key : m;
-            var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
-            var isMe = key === cov.myKey;
-            var connected = cov.connectedKeys.indexOf(key) !== -1 || (isMe && hasScope);
-            memberListHtml += '<div style="display:flex;align-items:center;gap:6px;padding:3px 0;font-size:0.78em">';
-            memberListHtml += connected
-                ? '<span style="color:var(--gl-green)">\u2713</span><span style="color:var(--gl-text)">' + name + '</span>'
-                : '<span style="color:var(--gl-amber)">\u26A0</span><span style="color:var(--gl-text-secondary)">' + name + '</span><span style="font-size:0.82em;color:var(--gl-text-tertiary);opacity:0.5">not connected</span>';
-            memberListHtml += '</div>';
-        });
-
-        el.innerHTML = '<div style="padding:14px;border-radius:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);margin-bottom:var(--gl-space-sm)">'
-            + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text);margin-bottom:6px">Google Calendar</div>'
-            + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">'
-            + 'Connect calendars so GrooveLinx can find dates when everyone\u2019s actually free.'
-            + '</div>'
-            // Member connection status
-            + '<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02)">'
-            + '<div style="font-size:0.68em;font-weight:600;color:var(--gl-text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">'
-            + connectedCount + ' of ' + totalCount + ' connected</div>'
-            + memberListHtml
-            + '</div>'
-            // CTA — different for connected vs not connected vs partial scope
-            + (hasScope
-                ? '<div style="font-size:0.72em;color:var(--gl-green);margin-bottom:6px">\u2713 You\u2019re connected</div>'
-                  + (_partialScope
-                      ? '<div style="padding:6px 8px;margin-bottom:8px;border-radius:6px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12);font-size:0.68em;color:var(--gl-amber)">\u26A0 Availability access not enabled \u2014 <button onclick="_calConnectGoogle()" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">enable now</button></div>'
-                      : '')
-                  + (connectedCount < totalCount
-                      ? '<button onclick="_calCopyBandSyncInvite()" class="gl-btn-primary" style="width:100%;padding:8px 14px;font-size:0.82em;font-weight:700">Send Setup to Band</button>'
-                      : '')
-                : '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.85em;font-weight:700">Connect Google Calendar</button>'
-              )
-            + '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'
-            + (hasScope ? '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Availability rules</button>' : '')
-            + '<button onclick="_calShowSyncExplainer()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.6;padding:0;text-decoration:underline">How it works</button>'
-            + (connectedCount < totalCount ? '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Send to band</button>' : '')
-            + '</div>'
-            + '</div>';
+        html += '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Google Calendar</div>'
+            + '<div style="font-size:0.68em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">Connect so GrooveLinx can find dates when everyone\u2019s free.</div>';
     }
+
+    // Member list (always shown, once)
+    html += '<div style="margin-bottom:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02)">' + memberHtml + '</div>';
+
+    // Partial scope warning
+    if (_partialScope) {
+        html += '<div style="padding:6px 8px;margin-bottom:8px;border-radius:6px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12);font-size:0.68em;color:var(--gl-amber)">'
+            + '\u26A0 Availability not enabled \u2014 <button onclick="_calConnectGoogle()" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">enable</button></div>';
+    }
+
+    // CTA: connect (if not connected) OR sync + manage (if connected)
+    if (!hasScope) {
+        html += '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.82em;font-weight:700">Connect Google Calendar</button>';
+    } else {
+        html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+            + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">\u21BB Sync Calendars</button>'
+            + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
+            + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>';
+        if (connectedCount < totalCount) {
+            html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
+        }
+        html += '</div>';
+    }
+
+    html += '</div>';
+    el.innerHTML = html;
 }
 
 // Manage connections popover — shows member list with disconnect option
