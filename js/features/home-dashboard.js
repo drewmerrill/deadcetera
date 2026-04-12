@@ -2309,13 +2309,13 @@ function _renderEventRiskCard(bundle) {
     var risks = [];
     var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
 
-    // Check RSVP completion (read from Firebase if available)
+    // Check RSVP completion
+    var rsvpCount = 0;
     try {
         var _db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (_db && typeof bandPath === 'function') {
             var _dk = (nextEvent.date || '').replace(/-/g, '');
-            // Non-blocking: just check if we have cached avail data
-            // (Full async would delay render — acceptable to miss on first load)
+            // TODO: async RSVP count from Firebase — using 0 as default for now
         }
     } catch(e) {}
     // If event is imminent and it's a rehearsal/gig, flag missing RSVPs as generic risk

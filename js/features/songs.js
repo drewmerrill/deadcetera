@@ -1164,12 +1164,13 @@ function _renderTriageBar(dropdown, count) {
         // Scroll snap for smooth iPhone scrolling
         + '#songDropdown{scroll-snap-type:y proximity;-webkit-overflow-scrolling:touch}'
         + '.song-item{scroll-snap-align:start}'
-        // Mobile: 2-col layout (Song + Readiness), hide Why + Band columns
+        // Mobile: show Song + Readiness + Love only, hide Status + NeedsWork + Band
         + '@media(max-width:640px){'
         + 'thead{display:none!important}'
-        + '.song-item td:nth-child(4){display:none!important}'
-        + '.song-item td:nth-child(3) .song-chip:nth-child(n+2){display:none!important}'
-        + '.song-item td:first-child{white-space:normal!important;font-size:0.85em!important}'
+        + '.song-item td:nth-child(3){display:none!important}'  // Status
+        + '.song-item td:nth-child(4){display:none!important}'  // Needs Work
+        + '.song-item td:nth-child(5){display:none!important}'  // Band
+        + '.song-item td:first-child{white-space:normal!important;font-size:0.85em!important;max-width:none!important}'
         + '}';
     document.head.appendChild(style);
 })();
