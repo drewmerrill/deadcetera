@@ -479,11 +479,12 @@ window.GLCalendarSync = (function() {
         person: memberName || 'You',
         startDate: startDate,
         endDate: endDate,
-        reason: timeLabel ? 'Busy ' + timeLabel + ' (Google)' : 'Busy (Google Calendar)',
+        reason: isAllDay ? 'Busy all day (Personal Calendar)' : (timeLabel ? 'Busy ' + timeLabel + ' (Personal Calendar)' : 'Busy (Personal Calendar)'),
         status: conflictType === 'hard' ? 'unavailable' : 'tentative',
         _source: 'google',
         _conflictType: conflictType,
-        _timeLabel: timeLabel
+        _timeLabel: timeLabel,
+        _isAllDay: isAllDay
       };
       seen[key] = range;
       ranges.push(range);

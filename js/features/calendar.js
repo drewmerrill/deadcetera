@@ -3616,15 +3616,23 @@ function calDayClick(y, m, d) {
                 var short = name.split(' ')[0];
                 var blocks = _memberBlocks[short] || [];
                 if (blocks.length > 0) {
-                    blocks.forEach(function(b) {
-                        var icon = b._conflictType === 'hard' ? '\u2716' : '\u26A0';
-                        var color = b._conflictType === 'hard' ? '#f87171' : 'var(--gl-amber)';
-                        var detail = b.reason || (b._timeLabel ? 'Busy ' + b._timeLabel : 'Busy');
-                        _conflictSummary += '<div style="font-size:0.68em;padding:1px 0;display:flex;align-items:center;gap:4px">'
-                            + '<span style="color:' + color + '">' + icon + '</span>'
-                            + '<span style="color:var(--gl-text)">' + short + '</span>'
-                            + '<span style="color:var(--gl-text-tertiary)">\u2014 ' + detail + '</span></div>';
+                    // Show strongest conflict first (hard > soft, all-day > timed)
+                    var _sorted = blocks.slice().sort(function(a, b) {
+                        if (a._conflictType === 'hard' && b._conflictType !== 'hard') return -1;
+                        if (a._isAllDay && !b._isAllDay) return -1;
+                        return 0;
                     });
+                    var _primary = _sorted[0];
+                    var icon = _primary._conflictType === 'hard' ? '\u2716' : '\u26A0';
+                    var color = _primary._conflictType === 'hard' ? '#f87171' : 'var(--gl-amber)';
+                    var detail = _primary.reason || (_primary._isAllDay ? 'Busy all day' : (_primary._timeLabel ? 'Busy ' + _primary._timeLabel : 'Busy'));
+                    _conflictSummary += '<div style="font-size:0.68em;padding:2px 0;display:flex;align-items:center;gap:4px">'
+                        + '<span style="color:' + color + '">' + icon + '</span>'
+                        + '<span style="color:var(--gl-text);font-weight:500">' + short + '</span>'
+                        + '<span style="color:var(--gl-text-tertiary)">\u2014 ' + detail + '</span></div>';
+                    if (_sorted.length > 1) {
+                        _conflictSummary += '<div style="font-size:0.6em;color:var(--gl-text-tertiary);padding-left:18px">+ ' + (_sorted.length - 1) + ' more conflict' + (_sorted.length > 2 ? 's' : '') + '</div>';
+                    }
                 } else {
                     _conflictSummary += '<div style="font-size:0.68em;padding:1px 0;display:flex;align-items:center;gap:4px">'
                         + '<span style="color:var(--gl-green)">\u2714</span>'
