@@ -236,11 +236,44 @@ window._rhSaveRecreatedSession = async function() {
     // Launch analysis: local file takes priority over URL
     if (localFile && typeof RecordingAnalyzer !== 'undefined') {
         var fileSizeMB = Math.round(localFile.size / 1024 / 1024);
-        if (typeof showToast === 'function') showToast('Analyzing recording (' + fileSizeMB + 'MB)... this may take a few minutes');
+        // Show inline progress bar in the timeline section
+        var _progEl = document.getElementById('rhTimelineSection');
+        var _stageLabels = {
+            decoding: 'Decoding audio',
+            segmenting: 'Finding song boundaries',
+            groove: 'Extracting BPM, groove & chords',
+            embedding: 'Generating audio fingerprints',
+            matching: 'Identifying songs'
+        };
+        var _progStartTime = Date.now();
+        function _updateProgress(stage, pct) {
+            if (!_progEl) return;
+            var label = _stageLabels[stage] || stage;
+            var elapsed = Math.round((Date.now() - _progStartTime) / 1000);
+            var elapsedStr = elapsed < 60 ? elapsed + 's' : Math.floor(elapsed / 60) + 'm ' + (elapsed % 60) + 's';
+            _progEl.innerHTML = '<div style="padding:24px 20px;border-radius:12px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);margin:8px 0">'
+                + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+                + '<div style="font-size:0.82em;font-weight:700;color:var(--text)">' + label + '\u2026</div>'
+                + '<div style="font-size:0.68em;color:var(--text-dim)">' + elapsedStr + '</div>'
+                + '</div>'
+                + '<div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;margin-bottom:8px">'
+                + '<div style="height:100%;width:' + Math.min(pct, 100) + '%;background:linear-gradient(90deg,#818cf8,#6366f1);border-radius:3px;transition:width 0.3s"></div>'
+                + '</div>'
+                + '<div style="font-size:0.68em;color:var(--text-dim)">'
+                + (stage === 'decoding' ? 'Reading ' + fileSizeMB + 'MB of audio — large files take longer'
+                    : stage === 'segmenting' ? 'Detecting silence gaps between songs'
+                    : stage === 'groove' ? 'Analyzing each segment for tempo, timing, key & chords'
+                    : stage === 'embedding' ? 'Creating audio signatures for song comparison'
+                    : stage === 'matching' ? 'Comparing detected features against your song catalog'
+                    : '')
+                + '</div></div>';
+        }
+        _updateProgress('decoding', 0);
         RecordingAnalyzer.analyze(localFile, {
             sessionId: sessionId,
             contextType: 'rehearsal',
-            referenceSongs: songs
+            referenceSongs: songs,
+            onProgress: _updateProgress
         }).then(function(result) {
             if (result && result.segments && result.segments.length) {
                 // Save segments to Firebase
