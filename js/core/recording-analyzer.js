@@ -54,6 +54,8 @@ window.RecordingAnalyzer = (function() {
   async function analyze(source, opts) {
     opts = opts || {};
     var onProgress = opts.onProgress || function() {};
+    var _runStartMs = Date.now();
+    var _timings = { decode: 0, segment: 0, features: 0, clap: 0, transcribe: 0, match: 0 };
 
     // Allow callers to set recording context via opts (bypasses UI picker)
     if (opts.referenceSongs || opts.contextType) {
@@ -145,7 +147,8 @@ window.RecordingAnalyzer = (function() {
     arrayBuffer = null; // release the local ref (large file data lives in _rawBytes)
     onProgress('decoding', 100);
 
-    console.log('[RecordingAnalyzer] Decoded: ' + Math.round(duration) + 's at ' + sampleRate + 'Hz (' + Math.round(channelData.length / 1024 / 1024) + 'M samples)');
+    _timings.decode = Date.now() - _runStartMs;
+    console.log('[RecordingAnalyzer] Decoded: ' + Math.round(duration) + 's at ' + sampleRate + 'Hz (' + Math.round(channelData.length / 1024 / 1024) + 'M samples) [' + Math.round(_timings.decode / 1000) + 's]');
 
     // Stage 2: Segmentation
     onProgress('segmenting', 0);
@@ -747,20 +750,10 @@ window.RecordingAnalyzer = (function() {
       };
       segments = SongMatchingEngine.run(segments, matchContext);
 
-      // Debug: log matching results with BPM data
-      console.log('[RecordingAnalyzer] === MATCHING RESULTS ===');
-      segments.forEach(function(seg, idx) {
-        var bpmStr = seg.bpm ? (seg.bpm + ' BPM') : '-';
-        var embedStr = seg.audioEmbedding ? (seg.audioEmbedding.length + 'd') : '-';
-        var chordStr = seg.chordHints && seg.chordHints.usable ? (seg.chordHints.confidence || '?') : '-';
-        var cueStr = seg.spokenCueHint ? ('cue:"' + seg.spokenCueHint + '"') : (seg.lyricSnippet ? 'lyrics' : '-');
-        var matchStr = seg.songMatch ? (seg.songMatch.confidence + ' [' + (seg.songMatch.activeSignals || []).join('+') + ']') : 'no match';
-        var topCands = seg.songMatch && seg.songMatch.candidates ? seg.songMatch.candidates.map(function(c) { return c.title + '(' + c.score + ')'; }).join(', ') : '';
-        console.log('[Match] #' + idx + ' ' + _formatTime(seg.startSec) + '-' + _formatTime(seg.endSec) +
-          ' | ' + bpmStr + ' | chords:' + chordStr + ' | embed:' + embedStr + ' | ' + cueStr +
-          ' | → ' + (seg.songTitle || '?') + ' | ' + matchStr +
-          (topCands ? ' | ' + topCands : ''));
-      });
+      // Compact match summary (detailed per-segment in scorecard below)
+      var _mMatched = segments.filter(function(s) { return s.songTitle && !s._unresolved; }).length;
+      var _mUnresolved = segments.filter(function(s) { return s._unresolved; }).length;
+      console.log('[RecordingAnalyzer] Matching complete: ' + _mMatched + ' matched, ' + _mUnresolved + ' unresolved');
     } else {
       // Fallback: use legacy plan-order matching
       segments.forEach(function(seg, i) {
@@ -908,14 +901,69 @@ window.RecordingAnalyzer = (function() {
     _currentSegments = segments;
     _currentSessionId = opts.sessionId || null;
 
+    // ── RUN SCORECARD ──────────────────────────────────────────────────────
+    var _totalRunMs = Date.now() - _runStartMs;
+    var _matched = segments.filter(function(s) { return s.songTitle && !s._unresolved; }).length;
+    var _unresolved = segments.filter(function(s) { return s._unresolved; }).length;
+    var _planMatched = segments.filter(function(s) { return s.songMatch && s.songMatch._planFirstMatch; }).length;
+    var _highConf = segments.filter(function(s) { return s.songMatch && s.songMatch.confidence === 'high'; }).length;
+    var _medConf = segments.filter(function(s) { return s.songMatch && s.songMatch.confidence === 'medium'; }).length;
+    var _hasBpm = segments.filter(function(s) { return s.bpm > 0; }).length;
+    var _hasGroove = segments.filter(function(s) { return s.groove; }).length;
+    var _hasEmbed = segments.filter(function(s) { return s.audioEmbedding; }).length;
+    var _hasChords = segments.filter(function(s) { return s.chordHints && s.chordHints.usable; }).length;
+
+    console.log('%c\n══════════════════════════════════════════════', 'color:#22c55e;font-weight:bold');
+    console.log('%c  REHEARSAL ANALYSIS SCORECARD', 'color:#22c55e;font-weight:bold;font-size:14px');
+    console.log('%c══════════════════════════════════════════════', 'color:#22c55e;font-weight:bold');
+    console.log('  Audio:       ' + Math.round(duration / 60) + ' min (' + Math.round(duration) + 's)');
+    console.log('  Runtime:     ' + Math.round(_totalRunMs / 1000) + 's (' + Math.round(_totalRunMs / 60000) + ' min)');
+    console.log('  Segments:    ' + segments.length);
+    console.log('  ─────────────────────────────');
+    console.log('  Matched:     ' + _matched + ' (' + Math.round(_matched / segments.length * 100) + '%)');
+    console.log('    HIGH conf: ' + _highConf);
+    console.log('    MEDIUM:    ' + _medConf);
+    console.log('    Plan-first:' + _planMatched);
+    console.log('  Unresolved:  ' + _unresolved + ' (' + Math.round(_unresolved / segments.length * 100) + '%)');
+    console.log('  ─────────────────────────────');
+    console.log('  BPM:         ' + _hasBpm + '/' + segments.length);
+    console.log('  Groove:      ' + _hasGroove + '/' + segments.length);
+    console.log('  Chords:      ' + _hasChords + '/' + segments.length);
+    console.log('  Embeddings:  ' + _hasEmbed + '/' + segments.length);
+    console.log('  Plan songs:  ' + ((_recordingContext && _recordingContext.referenceSongs) || []).length);
+    console.log('%c══════════════════════════════════════════════\n', 'color:#22c55e;font-weight:bold');
+
+    // Per-segment detail log
+    console.log('[Scorecard] Per-segment detail:');
+    segments.forEach(function(seg, idx) {
+      var _top5 = seg.songMatch && seg.songMatch.candidates ? seg.songMatch.candidates.slice(0, 5).map(function(c) { return c.title + '(' + c.score + ')'; }).join(', ') : '-';
+      var _chartFp = (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.getChartFingerprint && seg.songTitle) ? (SongMatchingEngine.getChartFingerprint(seg.songTitle) ? 'yes' : 'no') : '-';
+      console.log('  #' + idx + ' ' + _formatTime(seg.startSec) + '-' + _formatTime(seg.endSec) +
+        ' | ' + (seg.bpm || '-') + 'bpm' +
+        ' | conf=' + (seg.songMatch ? seg.songMatch.confidence : '-') +
+        ' | ' + (seg._unresolved ? 'UNRESOLVED' : seg.songTitle || '?') +
+        (seg.songMatch && seg.songMatch._planFirstMatch ? ' [PLAN]' : '') +
+        ' | chart=' + _chartFp +
+        ' | top5: ' + _top5);
+    });
+
     return {
       segments: segments,
-      grooveMetrics: null, // groove metrics are now per-segment (seg.groove)
+      grooveMetrics: null,
       duration: duration,
       summary: segResult ? segResult.summary : null,
-      songMatches: segments.filter(function(s) { return s.confidence >= 0.5; }).length,
+      songMatches: _matched,
       planVsActual: _planVsActual,
-      recordingType: _recordingContext ? _recordingContext.type : null
+      recordingType: _recordingContext ? _recordingContext.type : null,
+      scorecard: {
+        totalRunMs: _totalRunMs,
+        matched: _matched,
+        unresolved: _unresolved,
+        planMatched: _planMatched,
+        highConf: _highConf,
+        medConf: _medConf,
+        features: { bpm: _hasBpm, groove: _hasGroove, chords: _hasChords, embeds: _hasEmbed }
+      }
     };
   }
 
