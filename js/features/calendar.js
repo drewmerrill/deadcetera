@@ -1349,27 +1349,33 @@ window._calShowAvailabilitySettings = async function() {
     calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Your Availability Calendars</div>';
     calHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Select your <strong>personal</strong> calendars. GrooveLinx reads these to detect when you\u2019re busy \u2014 it never writes to them.</div>';
     calendars.forEach(function(c, i) {
+        var isBandCal = c.id === bandCalId;
+        // Band calendar is ALWAYS excluded from availability — prevent circular conflicts
+        if (isBandCal) {
+            calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;opacity:0.4;cursor:not-allowed">'
+                + '<input type="checkbox" disabled style="accent-color:var(--gl-text-tertiary)">'
+                + '<span style="flex:1;color:var(--gl-text-tertiary)">' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + '</span>'
+                + '<span style="font-size:0.75em;color:var(--gl-text-tertiary)">excluded</span>'
+                + (c.backgroundColor ? '<span style="width:10px;height:10px;border-radius:50%;background:' + c.backgroundColor + ';flex-shrink:0;opacity:0.4"></span>' : '')
+                + '</label>';
+            return;
+        }
         var isSelected = selectedCals.length > 0
             ? selectedCals.indexOf(c.id) !== -1
             : (c.primary && !c.autoExclude);
         var dimmed = c.autoExclude && !isSelected;
-        var isBandCal = c.id === bandCalId;
         calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;'
             + (dimmed ? 'opacity:0.5;' : '') + '">'
             + '<input type="checkbox" name="calSel" value="' + c.id + '"' + (isSelected ? ' checked' : '')
-            + ' onchange="var w=document.getElementById(\'calAvailBandWarn\');if(w){w.style.display=this.checked&&this.value===\'' + bandCalId.replace(/'/g, "\\'") + '\'?\'block\':\'none\'}"'
             + ' style="accent-color:var(--gl-green)">'
             + '<span style="flex:1;color:var(--gl-text)">' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + '</span>'
             + (c.primary ? '<span style="font-size:0.75em;color:var(--gl-green)">personal</span>' : '')
-            + (isBandCal ? '<span style="font-size:0.75em;color:var(--gl-amber)">band calendar</span>' : '')
             + (c.autoExclude ? '<span style="font-size:0.75em;color:var(--gl-text-tertiary)">auto-excluded</span>' : '')
             + (c.backgroundColor ? '<span style="width:10px;height:10px;border-radius:50%;background:' + c.backgroundColor + ';flex-shrink:0"></span>' : '')
             + '</label>';
     });
-    // Warning if band calendar is checked as availability
-    var _bandInAvail = selectedCals.indexOf(bandCalId) !== -1;
-    calHtml += '<div id="calAvailBandWarn" style="' + (_bandInAvail ? '' : 'display:none;') + 'font-size:0.78em;color:var(--gl-amber);padding:4px 8px;margin-top:4px;line-height:1.4">'
-        + '\u26A0 The band calendar is selected for availability. This may create false conflicts \u2014 your own rehearsals will show as busy times. Consider unchecking it.</div>';
+    calHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);padding:4px 8px;margin-top:2px;line-height:1.4">'
+        + 'The band calendar is automatically excluded to prevent rehearsals from conflicting with themselves.</div>';
     calHtml += '</div>';
 
     // Time-aware filtering toggle

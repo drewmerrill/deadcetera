@@ -718,12 +718,18 @@ window.GLCalendarSync = (function() {
   }
 
   // Get the effective calendar IDs to query for AVAILABILITY (read-only)
+  // CRITICAL: always excludes the band calendar to prevent circular conflicts
   async function _getSelectedCalendarIds() {
     var settings = await getAvailabilitySettings();
-    if (settings && settings.selectedCalendars && settings.selectedCalendars.length > 0) {
-      return settings.selectedCalendars;
+    var cals = (settings && settings.selectedCalendars && settings.selectedCalendars.length > 0)
+      ? settings.selectedCalendars : ['primary'];
+    // Auto-exclude band calendar — band events must never create self-conflicts
+    var bandCalId = await _getBandCalendarId();
+    if (bandCalId && bandCalId !== 'primary') {
+      cals = cals.filter(function(id) { return id !== bandCalId; });
+      if (!cals.length) cals = ['primary']; // ensure at least one calendar
     }
-    return ['primary'];
+    return cals;
   }
 
   // Get the band calendar ID for WRITES (rehearsals, gigs)
