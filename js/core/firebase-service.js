@@ -438,8 +438,17 @@ window.handleGoogleDriveAuth = async function handleGoogleDriveAuth(silent) {
     }
 
     try {
-        console.log('🔑 Requesting sign-in...' + (silent ? ' (auto-reconnect)' : ''));
-        tokenClient.requestAccessToken({ prompt: silent ? 'none' : '' });
+        if (silent) {
+            console.log('\uD83D\uDD11 Silent token refresh (auto-reconnect)...');
+            // Use prompt:'none' — should not show UI. If it fails, the user
+            // stays "connected" from localStorage but without a fresh token.
+            // A fresh token will be obtained when user explicitly uses a
+            // Google feature (calendar sync, file save, etc.).
+            tokenClient.requestAccessToken({ prompt: 'none' });
+        } else {
+            console.log('\uD83D\uDD11 Requesting sign-in...');
+            tokenClient.requestAccessToken({ prompt: '' });
+        }
     } catch (error) {
         console.error('Sign-in failed:', error);
         if (!silent) alert('Sign-in failed.\n\nError: ' + error.message);

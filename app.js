@@ -5973,12 +5973,11 @@ async function _handleGoogleDriveAuthInner(silent) {
                         if (typeof showPage === 'function') showPage((!_lastP || _lastP === 'home') ? 'home' : _lastP);
                     }
                     console.log('✅ Session restored from cache:', savedEmail);
-                    // Also silently request a fresh access token from Google (no popup)
-                    try {
-                        tokenClient.requestAccessToken({ prompt: 'none' });
-                    } catch(e) {
-                        console.log('[Auth] Silent token refresh failed (expected if 3p cookies blocked):', e.message);
-                    }
+                    // Skip silent token refresh — it can flash a Google popup on some
+                    // browser configs even with prompt:'none'. The cached session is
+                    // sufficient; a fresh token will be obtained on the next user action
+                    // that needs Google API access (calendar sync, file save, etc.).
+                    console.log('[Auth] Session restored from cache — skipping silent token refresh');
                 } else {
                     console.log('🔑 No cached session — user can click Connect');
                 }
