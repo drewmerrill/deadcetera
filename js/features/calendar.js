@@ -943,33 +943,42 @@ window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
 
 // Delete event from the date panel with confirmation + Google sync
 window._calDeleteFromPanel = async function(eventId, dateStr) {
-    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
-        var _canDel = await GLCalendarSync.canWriteBandCalendar();
-        if (!_canDel) {
-            if (typeof showToast === 'function') showToast('\u26A0 You don\u2019t have access to the band calendar. Cannot delete synced events.', 5000);
-            return;
-        }
+    // Check if event is synced to Google and whether we can reach Google
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    var ev = events.find(function(e) { return (e.eventId || e.id) === eventId; });
+    var _isSynced = ev && ev.googleEventId;
+    var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
+
+    if (_isSynced && !_hasToken) {
+        // Event is on Google Calendar but we can't reach Google to delete it
+        if (!confirm('This event is synced to Google Calendar, but your Google session has expired.\n\nDelete from GrooveLinx only?\nThe event will remain on Google Calendar until you sign in and sync again.')) return;
+    } else {
+        if (!confirm('Delete this event?' + (_isSynced ? ' It will also be removed from Google Calendar.' : ''))) return;
     }
-    if (!confirm('Delete this event?')) return;
+
     try {
-        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-        var ev = events.find(function(e) { return (e.eventId || e.id) === eventId; });
-        // Remove from Google Calendar if synced
-        if (ev && ev.googleEventId && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.remove) {
-            try { await GLCalendarSync.remove(ev.googleEventId); } catch(e) {}
+        // Remove from Google Calendar if synced AND we have a token
+        if (_isSynced && _hasToken && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.remove) {
+            try {
+                await GLCalendarSync.remove(ev.googleEventId);
+            } catch(e) {
+                console.warn('[Calendar] Google delete failed:', e.message);
+            }
         }
         // Remove from GrooveLinx
         events = events.filter(function(e) { return (e.eventId || e.id) !== eventId; });
         await saveBandDataToDrive('_band', 'calendar_events', events);
         // Refresh UI
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
-        if (typeof renderCalendarInner === 'function') renderCalendarInner();
-        // Re-click the date to refresh the panel
+        _calRenderGooglePanel();
         if (dateStr) {
             var parts = dateStr.split('-');
             calDayClick(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
         }
-        if (typeof showToast === 'function') showToast('\u2713 Event deleted');
+        var _toast = '\u2713 Event deleted';
+        if (_isSynced && !_hasToken) _toast += ' from GrooveLinx (still on Google \u2014 sign in to sync)';
+        else if (_isSynced) _toast += ' from GrooveLinx and Google Calendar';
+        if (typeof showToast === 'function') showToast(_toast, 4000);
     } catch(e) {
         if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || 'unknown error'));
     }
