@@ -1323,7 +1323,17 @@ window._calShowAvailabilitySettings = async function() {
     if (!body) return;
 
     if (!calendars.length) {
-        body.innerHTML = '<div style="color:var(--gl-amber);padding:12px 0">Could not load calendars. Make sure Google Calendar access is granted.</div>';
+        var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
+        body.innerHTML = '<div style="padding:16px 0">'
+            + '<div style="color:var(--gl-amber);font-size:0.88em;font-weight:600;margin-bottom:8px">\u26A0 Could not load your calendars</div>'
+            + '<div style="font-size:0.82em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:12px">'
+            + (_hasToken
+                ? 'Google Calendar access may not be fully granted. Try reconnecting below.'
+                : 'Your Google session needs to be refreshed. Click below to sign in and grant calendar access.')
+            + '</div>'
+            + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove();_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px;font-size:0.85em;font-weight:700">'
+            + (_hasToken ? 'Reconnect Google Calendar' : 'Sign in to Google Calendar')
+            + '</button></div>';
         return;
     }
 
