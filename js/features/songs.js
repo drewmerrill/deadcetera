@@ -50,6 +50,9 @@ window.getSongScope = function(title) {
 };
 window.isSongActive = function(title) { return getSongScope(title) === 'active'; };
 
+// Track which data layers have loaded — prevents premature renders
+window._sqDataReady = window._sqDataReady || { songs: false, dna: false, readiness: false, love: false };
+
 window.renderSongs = function renderSongs(filter, searchTerm) {
     filter     = filter     || 'all';
     searchTerm = searchTerm || '';
@@ -58,6 +61,23 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     var dropdown = document.getElementById('songDropdown');
     if (!dropdown) return;
+
+    // Mark data layers as ready based on actual state
+    if (typeof allSongs !== 'undefined' && allSongs.length > 0) window._sqDataReady.songs = true;
+    if (window._glDnaPreloaded) window._sqDataReady.dna = true;
+    if (typeof readinessCache !== 'undefined' && Object.keys(readinessCache).length > 0) window._sqDataReady.readiness = true;
+    if (typeof GLStore !== 'undefined' && GLStore.getAllBandLove && Object.keys(GLStore.getAllBandLove()).length > 0) window._sqDataReady.love = true;
+
+    // Show loading skeleton until songs + DNA are ready (minimum for meaningful render)
+    if (!window._sqDataReady.songs || !window._sqDataReady.dna) {
+        if (!dropdown.querySelector('.sq-loading')) {
+            dropdown.innerHTML = '<div class="sq-loading" style="padding:40px 20px;text-align:center">'
+                + '<div style="font-size:1.5em;margin-bottom:12px;opacity:0.3">\uD83C\uDFB5</div>'
+                + '<div style="font-size:0.88em;color:var(--text-dim)">Loading songs...</div>'
+                + '</div>';
+        }
+        return;
+    }
 
     var knownBands = ['GD','JGB','WSP','PHISH','ABB','GOOSE','DMB'];
 
@@ -534,70 +554,66 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         _recEl.innerHTML = (_isCleanup ? _cleanupCard : _suggestHTML) + _focusCue;
     }
 
-    dropdown.innerHTML = _modeBar + headerHTML + filtered.map(function(song) {
-        var titleEsc   = song.title.replace(/"/g, '&quot;');
-        var titleOnclick = song.title.replace(/'/g, "\\'");
-        var customAttr = song.isCustom ? ' data-custom="true"' : '';
-        var customClass = song.isCustom ? ' custom-song' : '';
-
-        // Average readiness (compute FIRST — needed by signal logic)
+    // ── Build normalized row view models (all data resolved once, not per-cell) ──
+    var _isSelectMode = window._sqSelectMode && window._sqScopeView === 'library';
+    var _rowModels = filtered.map(function(song) {
         var avg = (_hasGLStore && GLStore.avgReadiness) ? GLStore.avgReadiness(song.title) : 0;
-        var barPct = avg ? Math.round((avg / 5) * 100) : 0;
-        var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getSongColor(avg) : (avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)');
-        // Combined readiness display: "3.0/5" (not "3.0" + "3/5" separately)
-        var readinessText = avg > 0 ? avg.toFixed(1) + '/5' : '—';
-
-        // Status chip (lifecycle only — clean single column)
         var status = (_hasGLStore && GLStore.getStatus) ? (GLStore.getStatus(song.title) || '') : '';
-        var statusText = _statusDisplay[status] || '';
-        var statusChip = statusText
-            ? '<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>'
-            : '';
+        var blv = (_hasGLStore && GLStore.getBandLove) ? GLStore.getBandLove(song.title) : 0;
+        var alv = (_hasGLStore && GLStore.getAudienceLove) ? GLStore.getAudienceLove(song.title) : 0;
+        return {
+            title: song.title,
+            titleEsc: song.title.replace(/"/g, '&quot;'),
+            titleOnclick: song.title.replace(/'/g, "\\'"),
+            band: song.band || '',
+            isCustom: !!song.isCustom,
+            avg: avg,
+            barPct: avg ? Math.round((avg / 5) * 100) : 0,
+            barColor: (typeof GLStatus !== 'undefined') ? GLStatus.getSongColor(avg) : (avg >= 3.5 ? '#22c55e' : avg >= 2 ? '#f59e0b' : avg > 0 ? '#ef4444' : 'rgba(255,255,255,0.08)'),
+            readinessText: avg > 0 ? avg.toFixed(1) + '/5' : '\u2014',
+            status: status,
+            statusText: _statusDisplay[status] || '',
+            needsWork: !!_topGaps[song.title],
+            inSetlist: !!_upcomingSongs[song.title],
+            bandLove: blv,
+            audienceLove: alv,
+            isChecked: _isSelectMode && !!window._sqSelected[song.title]
+        };
+    });
 
-        // Needs Work indicator (separate column)
-        var needsWork = !!_topGaps[song.title];
-        var inSetlist = !!_upcomingSongs[song.title];
-        var needsWorkHtml = needsWork
+    dropdown.innerHTML = _modeBar + headerHTML + _rowModels.map(function(r) {
+        var statusChip = r.statusText
+            ? '<span class="song-chip" style="color:' + (_statusColor[r.status] || '#6b7280') + ';border-color:' + (_statusColor[r.status] || '#6b7280') + '44;background:' + (_statusColor[r.status] || '#6b7280') + '15">' + r.statusText + '</span>'
+            : '';
+        var needsWorkHtml = r.needsWork
             ? '<span style="color:#f59e0b;font-size:0.7em;font-weight:700" title="Focus engine flagged this song">\u26A0</span>'
-            : (inSetlist ? '<span style="color:#818cf8;font-size:0.65em" title="In upcoming setlist">\uD83C\uDFAF</span>' : '');
-
-        // Row priority bar color (thin left border)
-        var _rowBorder = avg >= 3.5 ? '3px solid rgba(34,197,94,0.4)' : avg >= 2 ? '3px solid rgba(245,158,11,0.3)' : avg > 0 ? '3px solid rgba(239,68,68,0.4)' : '3px solid transparent';
-        var _rowBg = needsWork ? 'rgba(245,158,11,0.02)' : '#1e293b';
-
-        var _isSelectMode = window._sqSelectMode && window._sqScopeView === 'library';
-        var _isChecked = _isSelectMode && window._sqSelected[song.title];
-        var _rowClick = _isSelectMode
-            ? '_sqToggleRow(\'' + titleOnclick + '\')'
-            : 'selectSong(\'' + titleOnclick + '\')';
+            : (r.inSetlist ? '<span style="color:#818cf8;font-size:0.65em" title="In upcoming setlist">\uD83C\uDFAF</span>' : '');
+        var _rowBorder = r.avg >= 3.5 ? '3px solid rgba(34,197,94,0.4)' : r.avg >= 2 ? '3px solid rgba(245,158,11,0.3)' : r.avg > 0 ? '3px solid rgba(239,68,68,0.4)' : '3px solid transparent';
+        var _rowBg = r.needsWork ? 'rgba(245,158,11,0.02)' : '#1e293b';
+        var _rowClick = _isSelectMode ? '_sqToggleRow(\'' + r.titleOnclick + '\')' : 'selectSong(\'' + r.titleOnclick + '\')';
         var _checkCol = _isSelectMode
-            ? '<td style="padding:6px 2px 6px 8px;width:28px"><input type="checkbox" ' + (_isChecked ? 'checked ' : '') + 'onclick="event.stopPropagation();_sqToggleRow(\'' + titleOnclick + '\')" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer"></td>'
+            ? '<td style="padding:6px 2px 6px 8px;width:28px"><input type="checkbox" ' + (r.isChecked ? 'checked ' : '') + 'onclick="event.stopPropagation();_sqToggleRow(\'' + r.titleOnclick + '\')" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer"></td>'
             : '';
-
-        // Compact love indicators (band + audience)
-        var _blv = (_hasGLStore && GLStore.getBandLove) ? GLStore.getBandLove(song.title) : 0;
-        var _alv = (_hasGLStore && GLStore.getAudienceLove) ? GLStore.getAudienceLove(song.title) : 0;
         var _loveHtml = '';
-        if (_blv > 0 || _alv > 0) {
+        if (r.bandLove > 0 || r.audienceLove > 0) {
             var _bDots = '', _aDots = '';
             for (var _li = 1; _li <= 5; _li++) {
-                _bDots += '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:' + (_li <= _blv ? '#ef4444' : 'rgba(255,255,255,0.08)') + ';margin-right:1px"></span>';
-                _aDots += '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:' + (_li <= _alv ? '#a855f7' : 'rgba(255,255,255,0.08)') + ';margin-right:1px"></span>';
+                _bDots += '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:' + (_li <= r.bandLove ? '#ef4444' : 'rgba(255,255,255,0.08)') + ';margin-right:1px"></span>';
+                _aDots += '<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:' + (_li <= r.audienceLove ? '#a855f7' : 'rgba(255,255,255,0.08)') + ';margin-right:1px"></span>';
             }
-            _loveHtml = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1" title="Band: ' + _blv + '/5 \u00B7 Audience: ' + _alv + '/5">'
-                + (_blv > 0 ? '<div>' + _bDots + '</div>' : '')
-                + (_alv > 0 ? '<div>' + _aDots + '</div>' : '')
+            _loveHtml = '<div style="display:flex;flex-direction:column;gap:1px;line-height:1" title="Band: ' + r.bandLove + '/5 \u00B7 Audience: ' + r.audienceLove + '/5">'
+                + (r.bandLove > 0 ? '<div>' + _bDots + '</div>' : '')
+                + (r.audienceLove > 0 ? '<div>' + _aDots + '</div>' : '')
                 + '</div>';
         }
-
-        return '<tr class="song-item' + customClass + '" data-title="' + titleEsc + '"' + customAttr +
-               ' onclick="' + _rowClick + '" style="cursor:pointer;border-left:' + _rowBorder + ';background:' + (_isChecked ? 'rgba(251,191,36,0.06)' : _rowBg) + '">' +
+        return '<tr class="song-item' + (r.isCustom ? ' custom-song' : '') + '" data-title="' + r.titleEsc + '"' + (r.isCustom ? ' data-custom="true"' : '') +
+               ' onclick="' + _rowClick + '" style="cursor:pointer;border-left:' + _rowBorder + ';background:' + (r.isChecked ? 'rgba(251,191,36,0.06)' : _rowBg) + '">' +
                _checkCol +
-               '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
-               '<td style="padding:6px 4px"><div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:48px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.72em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
+               '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + r.title + '</td>' +
+               '<td style="padding:6px 4px"><div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:48px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + r.barPct + '%;background:' + r.barColor + ';border-radius:3px"></span></span><span style="font-size:0.72em;font-weight:700;color:' + r.barColor + '">' + r.readinessText + '</span></div></td>' +
                '<td style="padding:6px 4px;font-size:0.7em;text-align:center">' + statusChip + '</td>' +
                '<td style="padding:6px 2px;text-align:center;font-size:1.1em">' + needsWorkHtml + '</td>' +
-               '<td style="padding:6px 6px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span></td>' +
+               '<td style="padding:6px 6px"><span class="song-badge ' + (r.band || 'other').toLowerCase() + '">' + r.band + '</span></td>' +
                '<td style="padding:6px 4px;text-align:center">' + _loveHtml + '</td>' +
                '</tr>';
     }).join('') + '</tbody></table>';

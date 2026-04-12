@@ -764,15 +764,16 @@ document.addEventListener('DOMContentLoaded', function() {
             window._glBootTimings.songLibReady = performance.now();
             return loadCustomSongs();
         }).then(function() {
-            renderSongs();
-            console.log('[Startup] Songs rendered at ' + Math.round(performance.now()) + 'ms');
-            window._glBootTimings.songsRendered = performance.now();
+            // Don't render yet — wait for DNA preload so first render has complete data
+            console.log('[Startup] Song library loaded at ' + Math.round(performance.now()) + 'ms');
+            window._glBootTimings.songLibReady = performance.now();
             if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('songs');
-            // Preload key/bpm/lead AFTER song library is loaded (allSongs is final)
             return Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]);
         }).then(function() {
-            // Re-render with DNA data filled in
-            if (typeof renderSongs === 'function') requestAnimationFrame(function() { renderSongs(); });
+            // First render: songs + DNA are ready (key/bpm/lead populated)
+            if (typeof renderSongs === 'function') renderSongs();
+            console.log('[Startup] Songs rendered (with DNA) at ' + Math.round(performance.now()) + 'ms');
+            window._glBootTimings.songsRendered = performance.now();
         });
 
         // ── STAGE 3: Deferred preloads (idle/background) ──
