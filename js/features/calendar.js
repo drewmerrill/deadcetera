@@ -846,6 +846,33 @@ function _calRenderSyncCoverage() {
     _calRenderGooglePanel();
 }
 
+// Delete event from the date panel with confirmation + Google sync
+window._calDeleteFromPanel = async function(eventId, dateStr) {
+    if (!confirm('Delete this event?')) return;
+    try {
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var ev = events.find(function(e) { return (e.eventId || e.id) === eventId; });
+        // Remove from Google Calendar if synced
+        if (ev && ev.googleEventId && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.remove) {
+            try { await GLCalendarSync.remove(ev.googleEventId); } catch(e) {}
+        }
+        // Remove from GrooveLinx
+        events = events.filter(function(e) { return (e.eventId || e.id) !== eventId; });
+        await saveBandDataToDrive('_band', 'calendar_events', events);
+        // Refresh UI
+        if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+        if (typeof renderCalendarInner === 'function') renderCalendarInner();
+        // Re-click the date to refresh the panel
+        if (dateStr) {
+            var parts = dateStr.split('-');
+            calDayClick(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+        }
+        if (typeof showToast === 'function') showToast('\u2713 Event deleted');
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || 'unknown error'));
+    }
+};
+
 // Manual sync: pull latest Google data, refresh availability, update UI
 window._calSyncNow = async function() {
     var btn = document.getElementById('calSyncBtn');
@@ -2409,8 +2436,13 @@ function _calRenderGridOnly(grid) {
 }
 
 
+var _calEventsByDate = {}; // { 'YYYY-MM-DD': [event, ...] } — cached during render
+
 async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    // Cache events by date for quick lookup in calDayClick
+    _calEventsByDate = {};
+    events.forEach(function(ev, idx) { if (ev.date) { if (!_calEventsByDate[ev.date]) _calEventsByDate[ev.date] = []; _calEventsByDate[ev.date].push(Object.assign({}, ev, { _idx: idx })); } });
 
     // Expand recurring events for the viewed month (grid dots)
     var daysInViewMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
@@ -3349,9 +3381,33 @@ function calDayClick(y, m, d) {
             _conflictSummary = '<div style="font-size:0.68em;color:var(--gl-green);margin-bottom:6px">No conflicts</div>';
         }
 
+        // ── Existing GrooveLinx events on this date ──
+        var _dateEvents = _calEventsByDate[ds] || [];
+        var _existingHtml = '';
+        if (_dateEvents.length > 0) {
+            _dateEvents.forEach(function(ev) {
+                var icon = ev.type === 'rehearsal' ? '\uD83C\uDFB8' : ev.type === 'gig' ? '\uD83C\uDFA4' : '\uD83D\uDCCC';
+                var label = ev.name || ev.title || (ev.type || 'Event');
+                var time = ev.time ? (' \u00B7 ' + ev.time) : '';
+                var loc = ev.location ? (' \u00B7 ' + ev.location) : (ev.venue ? (' \u00B7 ' + ev.venue) : '');
+                var evId = ev.eventId || ev.id || '';
+                _existingHtml += '<div style="padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">'
+                    + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+                    + '<span style="font-size:0.85em">' + icon + '</span>'
+                    + '<span style="font-size:0.75em;font-weight:600;color:var(--gl-text);flex:1">' + label + '</span>'
+                    + '</div>'
+                    + (time || loc ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary)">' + (time + loc).replace(/^ \u00B7 /, '') + '</div>' : '')
+                    + '<div style="display:flex;gap:6px;margin-top:4px">'
+                    + '<button onclick="calEditEventById(\'' + evId + '\')" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;cursor:pointer;font-family:inherit">Edit</button>'
+                    + '<button onclick="_calDeleteFromPanel(\'' + evId + '\',\'' + safDs + '\')" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer;font-family:inherit">Delete</button>'
+                    + '</div></div>';
+            });
+        }
+
         var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
             + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:2px">' + dateLabel + '</div>'
             + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:4px">' + hint + '</div>'
+            + _existingHtml
             + _conflictSummary
             + _extHtml
             + '<div style="display:flex;gap:4px;margin-top:6px">'
