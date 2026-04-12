@@ -846,6 +846,56 @@ function _calRenderSyncCoverage() {
     _calRenderGooglePanel();
 }
 
+// Manual sync: push unsynced events + pull latest availability
+window._calSyncNow = async function() {
+    var btn = document.getElementById('calSyncBtn');
+    if (btn) { btn.textContent = '\u21BB Syncing...'; btn.disabled = true; }
+    try {
+        // Push unsynced events to Google band calendar
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+            var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+            var pushed = 0;
+            for (var _si = 0; _si < events.length; _si++) {
+                var ev = events[_si];
+                if (ev.syncStatus === 'synced' && ev.googleEventId) continue; // already synced
+                if (!ev.date || !ev.title) continue;
+                try {
+                    var glEvent = {
+                        summary: ev.title || ev.type || 'Band Event',
+                        date: ev.date,
+                        startTime: ev.time || '19:00',
+                        location: ev.location || ev.venue || '',
+                        description: ev.notes || '',
+                        type: ev.type
+                    };
+                    var sync = await GLCalendarSync.create(glEvent);
+                    if (sync.success && sync.sync) {
+                        events[_si].googleEventId = sync.sync.externalEventId;
+                        events[_si].calendarId = sync.sync.calendarId;
+                        events[_si].syncStatus = 'synced';
+                        events[_si].lastSyncedAt = new Date().toISOString();
+                        pushed++;
+                    }
+                } catch(e) {}
+            }
+            if (pushed > 0) {
+                await saveBandDataToDrive('_band', 'calendar_events', events);
+                console.log('[Sync] Pushed ' + pushed + ' events to Google Calendar');
+            }
+        }
+        // Pull latest connections + availability
+        _calConnectedCache = null;
+        await _calLoadConnections();
+        if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+        if (typeof renderCalendarInner === 'function') renderCalendarInner();
+        _calRenderGooglePanel();
+        if (typeof showToast === 'function') showToast('\u2713 Calendars synced' + (typeof pushed !== 'undefined' && pushed > 0 ? ' (' + pushed + ' events pushed)' : ''));
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
+    }
+    if (btn) { btn.textContent = '\u21BB Sync Calendars'; btn.disabled = false; }
+};
+
 // Delete event from the date panel with confirmation + Google sync
 window._calDeleteFromPanel = async function(eventId, dateStr) {
     if (!confirm('Delete this event?')) return;
@@ -873,25 +923,7 @@ window._calDeleteFromPanel = async function(eventId, dateStr) {
     }
 };
 
-// Manual sync: pull latest Google data, refresh availability, update UI
-window._calSyncNow = async function() {
-    var btn = document.getElementById('calSyncBtn');
-    if (btn) { btn.textContent = '\u21BB Syncing...'; btn.disabled = true; }
-    try {
-        // Refresh free/busy data
-        _calConnectedCache = null;
-        await _calLoadConnections();
-        // Reload calendar events
-        if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
-        // Re-render everything
-        if (typeof renderCalendarInner === 'function') renderCalendarInner();
-        _calRenderGooglePanel();
-        if (typeof showToast === 'function') showToast('\u2713 Calendars synced');
-    } catch(e) {
-        if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
-    }
-    if (btn) { btn.textContent = '\u21BB Sync Calendars'; btn.disabled = false; }
-};
+// (Old simple sync replaced by full sync above that pushes unsynced events)
 
 // ── First-time onboarding — now handled by _calRenderGooglePanel ──────────────
 function _calRenderOnboarding() {
@@ -4054,6 +4086,49 @@ async function calSaveEvent(editIdx) {
             await saveBandDataToDrive('_band', 'calendar_events', savedEvents);
         }
     }
+    // Auto-sync to Google Calendar (band calendar)
+    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+        try {
+            var glEvent = {
+                summary: ev.title || (ev.type === 'rehearsal' ? 'Rehearsal' : ev.type === 'gig' ? 'Gig' : 'Band Event'),
+                date: ev.date,
+                startTime: ev.time || '19:00',
+                location: ev.location || ev.venue || '',
+                description: ev.notes || '',
+                type: ev.type
+            };
+            // Check if already synced (edit) — update instead of create
+            var _savedEvt = events.find(function(e) { return e.id === ev.id; }) || ev;
+            if (_savedEvt.googleEventId) {
+                var upd = await GLCalendarSync.update(_savedEvt.googleEventId, glEvent);
+                if (upd.success) {
+                    _savedEvt.lastSyncedAt = new Date().toISOString();
+                    _savedEvt.syncStatus = 'synced';
+                }
+            } else {
+                var sync = await GLCalendarSync.create(glEvent);
+                if (sync.success && sync.sync) {
+                    _savedEvt.googleEventId = sync.sync.externalEventId;
+                    _savedEvt.calendarId = sync.sync.calendarId;
+                    _savedEvt.syncStatus = 'synced';
+                    _savedEvt.lastSyncedAt = new Date().toISOString();
+                    // Re-save with sync metadata
+                    var _updatedEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+                    var _ui = _updatedEvents.findIndex(function(e) { return e.id === ev.id; });
+                    if (_ui >= 0) {
+                        _updatedEvents[_ui].googleEventId = _savedEvt.googleEventId;
+                        _updatedEvents[_ui].calendarId = _savedEvt.calendarId;
+                        _updatedEvents[_ui].syncStatus = 'synced';
+                        _updatedEvents[_ui].lastSyncedAt = _savedEvt.lastSyncedAt;
+                        await saveBandDataToDrive('_band', 'calendar_events', _updatedEvents);
+                    }
+                }
+            }
+        } catch(e) {
+            console.warn('[Calendar] Google sync failed:', e.message);
+        }
+    }
+
     document.getElementById('calEventFormArea').innerHTML = '';
     renderCalendarInner(); // re-render full grid + events list
 }
