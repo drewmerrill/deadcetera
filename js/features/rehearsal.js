@@ -179,6 +179,14 @@ window._rhSaveRecreatedSession = async function() {
     var songStr = (document.getElementById('rhRecSongs') || {}).value || '';
     var notes = (document.getElementById('rhRecNotes') || {}).value || '';
     var songs = songStr.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    // If no songs typed, use current rehearsal plan as reference songs
+    if (!songs.length) {
+        try {
+            var _planQueue = (typeof window.glPlannerQueue !== 'undefined') ? window.glPlannerQueue : [];
+            songs = _planQueue.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
+            if (songs.length) console.log('[Rehearsal] Using current plan as reference: ' + songs.length + ' songs');
+        } catch(e) {}
+    }
 
     // Use existing session if user chose "Add to existing rehearsal"
     var sessionId = window._rhExistingSessionId || ('rsess_rec_' + Date.now().toString(36));

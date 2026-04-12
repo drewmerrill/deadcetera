@@ -2799,5 +2799,8 @@
 
   // Export
   global.PocketMeter = PocketMeter;
+  global.OfflineAnalyser = OfflineAnalyser;
+  global.GrooveAnalyser = GrooveAnalyser;
+  global.PocketMeterTimeSeries = PocketMeterTimeSeries;
 
 })(window);
