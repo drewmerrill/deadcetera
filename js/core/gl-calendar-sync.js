@@ -734,15 +734,23 @@ window.GLCalendarSync = (function() {
     }
     // Also exclude by name (IDs can differ between users for shared calendars)
     try {
+      var _bcName = null;
       var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
       if (db && typeof bandPath === 'function') {
         var _bcSnap = await db.ref(bandPath('band_calendar/calendarName')).once('value');
-        var _bcName = _bcSnap.val();
-        if (_bcName) {
-          var _bcLower = _bcName.toLowerCase();
-          // We need the calendar list to match by name — but listCalendars is expensive
-          // Instead, just exclude any calendarId that was stored as the band calendar
-        }
+        _bcName = _bcSnap.val();
+      }
+      if (!_bcName) _bcName = (typeof localStorage !== 'undefined') ? localStorage.getItem('deadcetera_band_name') : null;
+      if (_bcName && cals.length > 0) {
+        var _bcLower = _bcName.toLowerCase();
+        // Need calendar list to match name → ID, but only fetch if we have names to check
+        var _allCals = await listCalendars();
+        _allCals.forEach(function(cal) {
+          var _cn = (cal.summary || '').toLowerCase();
+          if (_cn === _bcLower || (_bcLower.length > 3 && (_cn.indexOf(_bcLower) !== -1 || _bcLower.indexOf(_cn) !== -1))) {
+            cals = cals.filter(function(id) { return id !== cal.id; });
+          }
+        });
       }
     } catch(e) {}
     if (!cals.length) cals = ['primary'];

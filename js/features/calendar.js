@@ -1353,9 +1353,12 @@ window._calShowAvailabilitySettings = async function() {
     var calHtml = '<div style="margin-bottom:16px">';
     calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Your Availability Calendars</div>';
     calHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Select your <strong>personal</strong> calendars. GrooveLinx reads these to detect when you\u2019re busy \u2014 it never writes to them.</div>';
-    // Match band calendar by ID or by name (IDs can differ between users)
+    // Match band calendar by ID, exact name, or fuzzy contains (handles "Deadcetera" vs "DeadCetera" etc.)
     calendars.forEach(function(c, i) {
-        var isBandCal = (bandCalId && c.id === bandCalId) || (_bandCalName && c.summary.toLowerCase() === _bandCalName);
+        var _cName = (c.summary || '').toLowerCase();
+        var isBandCal = (bandCalId && c.id === bandCalId)
+            || (_bandCalName && _cName === _bandCalName)
+            || (_bandCalName && _bandCalName.length > 3 && (_cName.indexOf(_bandCalName) !== -1 || _bandCalName.indexOf(_cName) !== -1));
         var _esc = (typeof escHtml === 'function') ? escHtml(c.summary) : c.summary;
 
         if (isBandCal) {
