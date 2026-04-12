@@ -526,14 +526,14 @@ if ('serviceWorker' in navigator && !_rt.swInitialized) {
                 .then(function(reg) {
                     // Poll for SW updates every 5 min (was 60s — too aggressive for mobile)
                     setInterval(function() { reg.update(); }, 300000);
-                    // Detect waiting worker (new version ready)
-                    if (reg.waiting) { _pwaShowUpdateBanner(); return; }
+                    // Detect waiting worker (new version ready) — use unified banner
+                    if (reg.waiting) { showUpdateBanner(); return; }
                     reg.addEventListener('updatefound', function() {
                         var newSW = reg.installing;
                         if (!newSW) return;
                         newSW.addEventListener('statechange', function() {
                             if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
-                                _pwaShowUpdateBanner();
+                                showUpdateBanner();
                             }
                         });
                     });
@@ -628,42 +628,7 @@ function _pwaShowIOSInstructions() {
     document.body.appendChild(overlay);
 }
 
-// ── Update banner ───────────────────────────────────────────────────────────
-
-function _pwaShowUpdateBanner() {
-    if (document.getElementById('gl-pwa-update')) return;
-
-    var banner = document.createElement('div');
-    banner.id = 'gl-pwa-update';
-    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:8600;display:flex;align-items:center;gap:10px;padding:10px 14px;max-height:60px;overflow:hidden;'
-        + 'background:rgba(15,23,42,0.95);border-bottom:1px solid rgba(34,197,94,0.3);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
-    banner.innerHTML = '<div style="flex:1;font-size:0.8em;font-weight:600;color:#86efac;line-height:1.3">'
-        + '\uD83D\uDE80 New version available</div>';
-
-    var updateBtn = document.createElement('button');
-    updateBtn.textContent = 'Update';
-    updateBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.15);color:#86efac;white-space:nowrap';
-    updateBtn.addEventListener('click', function() {
-        // Tell waiting SW to activate, then reload
-        if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.ready.then(function(reg) {
-                if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            });
-        }
-        // Reload after a brief pause for SW activation
-        window._pwaReloading = true;
-        setTimeout(function() { location.reload(); }, 500);
-    });
-    banner.appendChild(updateBtn);
-
-    var laterBtn = document.createElement('button');
-    laterBtn.textContent = 'Later';
-    laterBtn.style.cssText = 'flex-shrink:0;font-size:0.75em;font-weight:600;padding:6px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim,#64748b)';
-    laterBtn.addEventListener('click', function() { _pwaRemoveBanner('gl-pwa-update'); });
-    banner.appendChild(laterBtn);
-
-    document.body.appendChild(banner);
-}
+// ── Update banner (removed — unified into showUpdateBanner() below) ─────────
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -12807,22 +12772,35 @@ function showUpdateBanner() {
 
     var banner = document.createElement('div');
     banner.id = 'dc-update-banner';
-    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:12px 20px;font-size:0.9em;font-weight:600;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;gap:12px';
+    // Use safe-area-inset-top so the banner clears the iPhone notch/Dynamic Island
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;'
+        + 'padding:calc(env(safe-area-inset-top, 0px) + 10px) 20px 10px;'
+        + 'background:linear-gradient(135deg,#667eea,#764ba2);color:white;'
+        + 'font-size:0.9em;font-weight:600;z-index:99999;'
+        + 'box-shadow:0 4px 20px rgba(0,0,0,0.4);'
+        + 'display:flex;align-items:center;justify-content:center;gap:12px';
 
     var label = document.createElement('span');
-    label.textContent = '🎸 New version available!';
+    label.textContent = '\uD83C\uDFB8 New version available!';
     banner.appendChild(label);
 
     var reloadBtn = document.createElement('button');
     reloadBtn.textContent = 'Reload';
-    reloadBtn.style.cssText = 'background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;font-size:0.85em';
+    reloadBtn.style.cssText = 'background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:0.85em';
     reloadBtn.addEventListener('click', function() {
         banner.remove();
-        window.location.reload();
+        // Tell waiting SW to activate before reloading
+        if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(function(reg) {
+                if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            });
+        }
+        window._pwaReloading = true;
+        setTimeout(function() { location.reload(); }, 400);
     });
 
     var dismissBtn = document.createElement('button');
-    dismissBtn.textContent = '✕';
+    dismissBtn.textContent = '\u2715';
     dismissBtn.style.cssText = 'background:none;color:rgba(255,255,255,0.65);border:none;font-size:1.1em;cursor:pointer;padding:4px 6px;line-height:1';
     dismissBtn.addEventListener('click', function() {
         banner.remove();
