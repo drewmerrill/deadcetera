@@ -225,6 +225,22 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 return _aS.localeCompare(_bS);
             }
             if (_sortMode === 'band') return ((a.band||'').localeCompare(b.band||''));
+            if (_sortMode === 'love_desc' || _sortMode === 'love_asc') {
+                var _gs = (typeof GLStore !== 'undefined');
+                var _aLove = (_gs && GLStore.getBandLove) ? GLStore.getBandLove(a.title) : 0;
+                var _bLove = (_gs && GLStore.getBandLove) ? GLStore.getBandLove(b.title) : 0;
+                if (_aLove === _bLove) {
+                    var _aAl = (_gs && GLStore.getAudienceLove) ? GLStore.getAudienceLove(a.title) : 0;
+                    var _bAl = (_gs && GLStore.getAudienceLove) ? GLStore.getAudienceLove(b.title) : 0;
+                    return _sortMode === 'love_desc' ? _bAl - _aAl : _aAl - _bAl;
+                }
+                return _sortMode === 'love_desc' ? _bLove - _aLove : _aLove - _bLove;
+            }
+            if (_sortMode === 'needs_work') {
+                var _aNw = _topGaps[a.title] ? 1 : 0;
+                var _bNw = _topGaps[b.title] ? 1 : 0;
+                return _bNw - _aNw; // needs work first
+            }
             return 0;
         });
     }
@@ -309,7 +325,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (_sm === field + '_desc' || _sm === field) return ' ↓';
         return '';
     };
-    var _sortLabels = { default:'Default', title_asc:'Song A→Z', title_desc:'Song Z→A', readiness_asc:'Readiness ↑', readiness_desc:'Readiness ↓', status:'Status', band:'Band' };
+    var _sortLabels = { default:'Default', title_asc:'Song A→Z', title_desc:'Song Z→A', readiness_asc:'Readiness ↑', readiness_desc:'Readiness ↓', status:'Status', band:'Band', love_desc:'Love ↓', love_asc:'Love ↑', needs_work:'Needs Work' };
     var _modeBar = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
         + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">🎯 Rehearsal</button>'
         + '<button onclick="if(!window._sqTriageFilter)sqTriageSet(\'no_bpm\')" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
@@ -353,10 +369,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var _selectAllChecked = _isSelectMode && _selCount > 0 && _selCount === filtered.length;
     var headerHTML = _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
           + (_isSelectMode ? '<th style="' + _hd + ';width:28px;padding:6px 2px 6px 8px"><input type="checkbox" ' + (_selectAllChecked ? 'checked ' : '') + 'onclick="_sqToggleAll()" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer" title="Select all"></th>' : '')
-          + '<th style="' + _hd + ';text-align:left;width:' + (_isSelectMode ? '36%' : '38%') + '" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:28%">Focus' + _statusFilterIcon + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:17%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:' + (_isSelectMode ? '28%' : '30%') + '" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:14%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:14%">Status' + _statusFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:center;width:10%" onclick="window._sqSongSort=(window._sqSongSort===\'needs_work\'?\'default\':\'needs_work\');renderSongs()">Needs Work' + _arrow('needs_work') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:10%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:center;width:12%" onclick="window._sqSongSort=(window._sqSongSort===\'love_desc\'?\'love_asc\':\'love_desc\');renderSongs()">Love' + _arrow('love') + '</th>'
           + '</tr></thead><tbody>';
 
     // ── Explainability helper ──
@@ -487,34 +505,19 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         // Combined readiness display: "3.0/5" (not "3.0" + "3/5" separately)
         var readinessText = avg > 0 ? avg.toFixed(1) + '/5' : '—';
 
-        // Focus chips — STATUS (identity) first, CONDITION (action) second
+        // Status chip (lifecycle only — clean single column)
         var status = (_hasGLStore && GLStore.getStatus) ? (GLStore.getStatus(song.title) || '') : '';
         var statusText = _statusDisplay[status] || '';
-        var chips = [];
-        // 1. Lifecycle status — what the song IS (primary identity)
-        if (statusText) chips.push('<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>');
-        // Simplified: only show lifecycle status chip — no derived/focus noise
-        if (false) { // derived + focus chips disabled for clarity
-        var _derived = (typeof GLStore !== 'undefined' && GLStore.deriveSongStatus) ? GLStore.deriveSongStatus(song.title) : null;
-        if (_derived && _derived.status !== 'unrated') {
-            chips.push('<span class="song-chip" style="color:' + _derived.color + ';border-color:' + _derived.color + '44;background:' + _derived.color + '15;font-size:0.65em">' + _derived.label + '</span>');
-        }
-        if (typeof GLStore !== 'undefined' && GLStore.getSongPriority) {
-            var _pri = GLStore.getSongPriority(song.title);
-            if (_pri >= 3.5) {
-                chips.push('<span class="song-chip" style="color:#f59e0b;border-color:#f59e0b44;background:#f59e0b15;font-size:0.6em;font-weight:800">\uD83C\uDFAF High Focus</span>');
-            } else if (_pri >= 2.5) {
-                chips.push('<span class="song-chip" style="color:#818cf8;border-color:#818cf844;background:#818cf815;font-size:0.6em">Focus</span>');
-            }
-        }
-        } // end if(false) derived/focus chips
-        // 2. One clear signal — focus engine drives "Needs work"
-        if (_topGaps[song.title]) chips.push('<span class="song-chip song-chip--warn">\u26A0\uFE0F Needs work</span>');
-        if (_upcomingSongs[song.title]) chips.push('<span class="song-chip song-chip--setlist">\uD83C\uDFAF Setlist</span>');
+        var statusChip = statusText
+            ? '<span class="song-chip" style="color:' + (_statusColor[status] || '#6b7280') + ';border-color:' + (_statusColor[status] || '#6b7280') + '44;background:' + (_statusColor[status] || '#6b7280') + '15">' + statusText + '</span>'
+            : '';
 
-        var needsWork = chips.some(function(c) { return c.indexOf('warn') > -1; });
-        var chipHTML = chips.slice(0, 2).join(' ');
-        var mobileChip = chips.length > 0 ? chips[0] : '';
+        // Needs Work indicator (separate column)
+        var needsWork = !!_topGaps[song.title];
+        var inSetlist = !!_upcomingSongs[song.title];
+        var needsWorkHtml = needsWork
+            ? '<span style="color:#f59e0b;font-size:0.7em;font-weight:700" title="Focus engine flagged this song">\u26A0</span>'
+            : (inSetlist ? '<span style="color:#818cf8;font-size:0.65em" title="In upcoming setlist">\uD83C\uDFAF</span>' : '');
 
         // Row priority bar color (thin left border)
         var _rowBorder = avg >= 3.5 ? '3px solid rgba(34,197,94,0.4)' : avg >= 2 ? '3px solid rgba(245,158,11,0.3)' : avg > 0 ? '3px solid rgba(239,68,68,0.4)' : '3px solid transparent';
@@ -550,9 +553,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                _checkCol +
                '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
                '<td style="padding:6px 4px"><div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:48px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.72em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
-               '<td style="padding:6px 4px"><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;font-size:0.7em">' + chipHTML + '</div></td>' +
-               (_loveHtml ? '<td style="padding:6px 4px">' + _loveHtml + '</td>' : '') +
-               '<td style="padding:6px 8px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span></td>' +
+               '<td style="padding:6px 4px;font-size:0.7em">' + statusChip + '</td>' +
+               '<td style="padding:6px 4px;text-align:center">' + needsWorkHtml + '</td>' +
+               '<td style="padding:6px 6px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span></td>' +
+               '<td style="padding:6px 4px;text-align:center">' + _loveHtml + '</td>' +
                '</tr>';
     }).join('') + '</tbody></table>';
 
