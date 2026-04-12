@@ -307,7 +307,11 @@ window.RecordingAnalyzer = (function() {
           console.log('[BPM] seg ' + _fi + ' result: onsets=' + (_gResult && _gResult.onsets ? _gResult.onsets.length : 0) + ', medianIOI=' + (_gResult && _gResult.metrics ? _gResult.metrics.medianIOI : 'null'));
           if (_gResult && _gResult.metrics && _gResult.metrics.medianIOI > 0) {
             var _m = _gResult.metrics;
-            _fSeg.bpm = Math.round(60000 / _m.medianIOI);
+            var _rawBpm = Math.round(60000 / _m.medianIOI);
+            // BPM correction: live band recordings often detect double-time
+            // (snare+kick as separate beats). If BPM > 160, halve it.
+            // Most band music is 60-160 BPM; 160-240 is almost always doubled.
+            _fSeg.bpm = _rawBpm > 160 ? Math.round(_rawBpm / 2) : _rawBpm;
             _fSeg.bpmConfidence = _m.pocketConfidence || 'low';
             _bpmExtracted++;
 

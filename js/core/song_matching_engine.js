@@ -457,14 +457,17 @@ window.SongMatchingEngine = (function() {
     var second = scored[1] || { score: 0 };
     var gap = best.score - second.score;
 
-    // Confidence — strict rules for trust
+    // Confidence — calibrated for real rehearsal data
     var confidence = 'low';
     var limitedEvidence = best.activeSignalCount <= 1;
 
-    // High confidence requires: score ≥ 0.75 + gap ≥ 0.12 + ≥2 active signals
-    if (best.score >= 0.75 && gap >= 0.12 && best.activeSignalCount >= 2) {
+    // High confidence: strong score + clear gap + multiple signals
+    if (best.score >= 0.65 && gap >= 0.10 && best.activeSignalCount >= 2) {
       confidence = 'high';
-    } else if (best.score >= 0.5) {
+    } else if (best.score >= 0.35 && best.activeSignalCount >= 2) {
+      confidence = 'medium';
+    } else if (best.score >= 0.25 && gap >= 0.05 && best.activeSignalCount >= 2) {
+      // Weak but differentiated: still better than Unknown
       confidence = 'medium';
     }
 

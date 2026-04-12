@@ -182,10 +182,22 @@ window._rhSaveRecreatedSession = async function() {
     // If no songs typed, use current rehearsal plan as reference songs
     if (!songs.length) {
         try {
-            var _planQueue = (typeof window.glPlannerQueue !== 'undefined') ? window.glPlannerQueue : [];
-            songs = _planQueue.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
+            // Plan queue is in localStorage, not a window global
+            var _planRaw = localStorage.getItem('glPlannerQueue');
+            if (_planRaw) {
+                var _planQueue = JSON.parse(_planRaw);
+                songs = _planQueue.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
+            }
+            // Also try planner units (newer format)
+            if (!songs.length) {
+                var _unitsRaw = localStorage.getItem('glPlannerUnits');
+                if (_unitsRaw) {
+                    var _units = JSON.parse(_unitsRaw);
+                    songs = _units.filter(function(u) { return u && u.type === 'song' && u.title; }).map(function(u) { return u.title; });
+                }
+            }
             if (songs.length) console.log('[Rehearsal] Using current plan as reference: ' + songs.length + ' songs');
-        } catch(e) {}
+        } catch(e) { console.warn('[Rehearsal] Could not read plan from localStorage:', e.message); }
     }
 
     // Use existing session if user chose "Add to existing rehearsal"
