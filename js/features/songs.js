@@ -193,8 +193,15 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                   '<div style="font-size:1.1em;font-weight:600;margin-bottom:8px">No songs marked "' + statusLabel + '"</div>' +
                   '<div style="margin-bottom:16px;font-size:0.9em;color:#64748b">Click any song and set its status!</div>' +
                   '<button onclick="document.getElementById(\'statusFilter\').value=\'all\';filterByStatus(\'all\')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>';
+        } else if (window._sqTriageFilter) {
+            var _tfLabels = { no_key:'missing a key', no_bpm:'missing BPM', no_status:'missing a status', no_lead:'missing a lead singer', needs_work:'flagged as needs work', not_rotation:'not in rotation', no_structure:'missing structure' };
+            var _tfLabel = _tfLabels[window._sqTriageFilter] || window._sqTriageFilter;
+            msg = '<div style="font-size:2em;margin-bottom:12px">\u2705</div>' +
+                  '<div style="font-size:1.1em;font-weight:600;margin-bottom:6px;color:#22c55e">All good!</div>' +
+                  '<div style="font-size:0.9em;color:#64748b;margin-bottom:16px">No active songs ' + _tfLabel + '.</div>' +
+                  '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" class="btn btn-ghost" style="padding:8px 20px;font-size:0.85em">Back to Songs</button>';
         } else {
-            msg = '<div style="font-size:2em;margin-bottom:12px">🔍</div>' +
+            msg = '<div style="font-size:2em;margin-bottom:12px">\uD83D\uDD0D</div>' +
                   '<div style="font-size:1.1em;font-weight:600;margin-bottom:6px">No songs found</div>' +
                   '<div style="font-size:0.9em;color:#64748b">Try a different search or filter</div>';
         }
@@ -208,7 +215,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Sort: user-selected or triage auto-sort
     var _sortMode = window._sqSongSort || 'default';
-    // User-selected sort overrides triage sort when explicitly set
+    // User-selected sort — applies in all views including triage/cleanup
     var _userSortActive = _sortMode !== 'default' && filtered.length > 1;
     if (_userSortActive) {
         filtered.sort(function(a, b) {
@@ -1015,8 +1022,8 @@ function _renderTriageBar(dropdown, count) {
     });
     // Collapsed secondary filters
     if (_hasSecondary && !tf) {
-        html += '<button onclick="var s=document.getElementById(\'sqSecondaryFilters\');if(s)s.hidden=!s.hidden" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 7px;opacity:0.5">More \u25BE</button>';
-        html += '<div id="sqSecondaryFilters" hidden style="display:flex;gap:4px;flex-wrap:wrap;width:100%;padding-top:4px">' + _secondaryHtml + '</div>';
+        html += '<button onclick="var s=document.getElementById(\'sqSecondaryFilters\');if(s){s.style.display=s.style.display===\'none\'?\'flex\':\'none\'}" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 7px;opacity:0.5">More \u25BE</button>';
+        html += '<div id="sqSecondaryFilters" style="display:none;gap:4px;flex-wrap:wrap;width:100%;padding-top:4px">' + _secondaryHtml + '</div>';
     } else if (_hasSecondary) {
         html += _secondaryHtml; // show all when a filter is active
     }
