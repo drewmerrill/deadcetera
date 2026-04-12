@@ -369,12 +369,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var _selectAllChecked = _isSelectMode && _selCount > 0 && _selCount === filtered.length;
     var headerHTML = _tableStart + '<thead style="position:sticky;top:0;z-index:5;background:#0f172a"><tr style="border-bottom:2px solid rgba(255,255,255,0.1)">'
           + (_isSelectMode ? '<th style="' + _hd + ';width:28px;padding:6px 2px 6px 8px"><input type="checkbox" ' + (_selectAllChecked ? 'checked ' : '') + 'onclick="_sqToggleAll()" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer" title="Select all"></th>' : '')
-          + '<th style="' + _hd + ';text-align:left;width:' + (_isSelectMode ? '28%' : '30%') + '" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
+          + '<th style="' + _hd + ';text-align:left;width:' + (_isSelectMode ? '28%' : '32%') + '" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:14%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:14%">Status' + _statusFilterIcon + '</th>'
-          + '<th style="' + _hd + ';text-align:center;width:10%" onclick="window._sqSongSort=(window._sqSongSort===\'needs_work\'?\'default\':\'needs_work\');renderSongs()">Needs Work' + _arrow('needs_work') + '</th>'
+          + '<th style="' + _hd + ';text-align:center;width:7%" onclick="window._sqSongSort=(window._sqSongSort===\'needs_work\'?\'default\':\'needs_work\');renderSongs()" title="Songs flagged by focus engine">\u26A0' + _arrow('needs_work') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:10%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
-          + '<th style="' + _hd + ';text-align:center;width:12%" onclick="window._sqSongSort=(window._sqSongSort===\'love_desc\'?\'love_asc\':\'love_desc\');renderSongs()">Love' + _arrow('love') + '</th>'
+          + '<th style="' + _hd + ';text-align:center;width:13%" onclick="window._sqSongSort=(window._sqSongSort===\'love_desc\'?\'love_asc\':\'love_desc\');renderSongs()">Love' + _arrow('love') + '</th>'
           + '</tr></thead><tbody>';
 
     // ── Explainability helper ──

@@ -977,10 +977,18 @@
     } catch(e) {}
   }
 
-  // Auto-preload after readiness loads
-  setTimeout(_preloadBandLove, 8000);
-  setTimeout(_preloadAudienceLove, 8500);
-  setTimeout(_preloadPersonalLove, 9000);
+  // Auto-preload after readiness loads, then re-render songs to show love dots
+  setTimeout(function() {
+    _preloadBandLove().then(function() {
+      return _preloadAudienceLove();
+    }).then(function() {
+      // Re-render songs page if visible so love dots appear
+      if (typeof renderSongs === 'function') {
+        try { renderSongs(); } catch(e) {}
+      }
+      return _preloadPersonalLove();
+    }).catch(function() {});
+  }, 8000);
 
   // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
 
