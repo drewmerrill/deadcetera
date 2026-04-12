@@ -895,8 +895,12 @@ function _calRenderGooglePanel() {
     var hasScope = cov.hasScope;
     var connectedCount = cov.connected;
     var totalCount = members.length;
+    // Check if current user has a Firebase connection record (even if token expired)
+    var _myConnected = cov.myKey && cov.connectedKeys.indexOf(cov.myKey) !== -1;
+    // User is "connected" if they have scope OR have a Firebase connection record
+    var _isConnected = hasScope || _myConnected;
     var _hasFreeBusy = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope) ? GLCalendarSync.hasFreeBusyScope() : true;
-    var _partialScope = hasScope && !_hasFreeBusy;
+    var _partialScope = _isConnected && !_hasFreeBusy;
 
     // Last synced time
     var lastSync = '';
@@ -917,7 +921,7 @@ function _calRenderGooglePanel() {
         var key = (typeof m === 'object') ? m.key : m;
         var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
         var isMe = key === cov.myKey;
-        var connected = cov.connectedKeys.indexOf(key) !== -1 || (isMe && hasScope);
+        var connected = cov.connectedKeys.indexOf(key) !== -1 || (isMe && _isConnected);
         memberHtml += '<div style="display:flex;align-items:center;gap:5px;padding:2px 0;font-size:0.72em">'
             + '<span style="color:' + (connected ? 'var(--gl-green)' : 'var(--gl-text-tertiary)') + '">' + (connected ? '\u2713' : '\u26A0') + '</span>'
             + '<span style="color:' + (connected ? 'var(--gl-text)' : 'var(--gl-text-secondary)') + '">' + name + '</span>'
@@ -926,13 +930,13 @@ function _calRenderGooglePanel() {
     });
 
     // ── Build panel ──
-    var borderColor = hasScope ? 'rgba(34,197,94,0.1)' : 'rgba(99,102,241,0.15)';
-    var bgColor = hasScope ? 'rgba(34,197,94,0.04)' : 'rgba(99,102,241,0.06)';
+    var borderColor = _isConnected ? 'rgba(34,197,94,0.1)' : 'rgba(99,102,241,0.15)';
+    var bgColor = _isConnected ? 'rgba(34,197,94,0.04)' : 'rgba(99,102,241,0.06)';
 
     var html = '<div style="padding:12px;border-radius:10px;background:' + bgColor + ';border:1px solid ' + borderColor + ';margin-bottom:var(--gl-space-sm)">';
 
     // Header: connection status
-    if (hasScope) {
+    if (_isConnected) {
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
             + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
             + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">'
@@ -953,8 +957,8 @@ function _calRenderGooglePanel() {
             + '\u26A0 Availability not enabled \u2014 <button onclick="_calConnectGoogle()" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">enable</button></div>';
     }
 
-    // CTA: connect (if not connected) OR sync + manage (if connected)
-    if (!hasScope) {
+    // CTA: connect (if never connected) OR sync + manage (if connected)
+    if (!_isConnected) {
         html += '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.82em;font-weight:700">Connect Google Calendar</button>';
     } else {
         html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
