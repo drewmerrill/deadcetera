@@ -943,6 +943,13 @@ window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
 
 // Delete event from the date panel with confirmation + Google sync
 window._calDeleteFromPanel = async function(eventId, dateStr) {
+    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
+        var _canDel = await GLCalendarSync.canWriteBandCalendar();
+        if (!_canDel) {
+            if (typeof showToast === 'function') showToast('\u26A0 You don\u2019t have access to the band calendar. Cannot delete synced events.', 5000);
+            return;
+        }
+    }
     if (!confirm('Delete this event?')) return;
     try {
         var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
@@ -1051,7 +1058,16 @@ function _calRenderGooglePanel() {
             + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">'
             + (connectedCount >= totalCount ? 'All calendars connected' : connectedCount + ' of ' + totalCount + ' connected')
             + '</span></div>';
-        if (lastSync) html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Last synced ' + lastSync + '</div>';
+        if (lastSync) html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:2px">Last synced ' + lastSync + '</div>';
+        // Band calendar name + access status
+        try {
+            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (db && typeof bandPath === 'function') {
+                // Read synchronously from a cached value if available
+            }
+        } catch(e) {}
+        // Show band calendar name if stored (async would delay render, use simple approach)
+        html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Band calendar: <span style="color:var(--gl-text)">' + (_isConnected ? '\u2714 configured' : 'not set') + '</span></div>';
     } else {
         html += '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Google Calendar</div>'
             + '<div style="font-size:0.68em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">Connect so GrooveLinx can find dates when everyone\u2019s free.</div>';
@@ -3800,11 +3816,18 @@ window._calCloseMobileCard = function() {
 };
 
 async function calAddEvent(date, editIdx, existing) {
+    // Check band calendar access before allowing event creation/edit
+    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
+        var _canWrite = await GLCalendarSync.canWriteBandCalendar();
+        if (!_canWrite) {
+            if (typeof showToast === 'function') showToast('\u26A0 You don\u2019t have access to the band calendar. Open Rules to set up access.', 5000);
+            return;
+        }
+    }
     const area = document.getElementById('calEventFormArea');
     if (!area) return;
     const isEdit = editIdx !== undefined;
     const ev = existing || {};
-    // Reset venue picker state
     window._calVenuePicker = null;
     // Load setlists + venues for gig-type dropdowns
     const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);

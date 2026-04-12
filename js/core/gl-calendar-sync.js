@@ -765,6 +765,20 @@ window.GLCalendarSync = (function() {
     return true; // Default: enabled
   }
 
+  // Check if current user can write to the band calendar
+  var _bandCalAccessCache = null;
+  async function canWriteBandCalendar() {
+    if (_bandCalAccessCache !== null) return _bandCalAccessCache;
+    var calId = await _getBandCalendarId();
+    if (calId === 'primary') { _bandCalAccessCache = true; return true; }
+    // Check if user's calendar list includes the band calendar
+    try {
+      var cals = await listCalendars();
+      _bandCalAccessCache = cals.some(function(c) { return c.id === calId; });
+    } catch(e) { _bandCalAccessCache = false; }
+    return _bandCalAccessCache;
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -795,6 +809,7 @@ window.GLCalendarSync = (function() {
     saveAvailabilitySettings: saveAvailabilitySettings,
     hasFreeBusyScope: hasFreeBusyScope,
     getBandCalendarId: _getBandCalendarId,
+    canWriteBandCalendar: canWriteBandCalendar,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };
