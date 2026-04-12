@@ -861,6 +861,7 @@ window._calSyncNow = async function() {
                 if (!ev.date || !ev.title) continue;
                 try {
                     var glEvent = {
+                        id: ev.id || ev.eventId || '',
                         summary: ev.title || ev.type || 'Band Event',
                         date: ev.date,
                         startTime: ev.time || '19:00',
@@ -2879,11 +2880,13 @@ async function loadCalendarEvents() {
         var _fbDaysInMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
         var _fbTimeMax = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-' + String(_fbDaysInMonth).padStart(2, '0') + 'T23:59:59Z';
         // Current user: query Google directly (has own OAuth token)
+        var _bandSlots = []; // Deterministic band-event time slots from Google events.list
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
             var _fbData = await GLCalendarSync.getFreeBusy(_fbTimeMin, _fbTimeMax);
             if (_fbData.source === 'unavailable' || _fbData.source === 'needs_consent') {
                 // FreeBusy not available — silently skip (events scope still works for other features)
             } else {
+                _bandSlots = _fbData.bandSlots || [];
                 var _myName = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyDisplayName) ? FeedActionState.getMyDisplayName() : 'You';
                 var _myBlocks = GLCalendarSync.freeBusyToBlockedRanges(_fbData, _myName, _fbOpts);
                 if (_myBlocks.length) blocked = blocked.concat(_myBlocks);
@@ -2910,48 +2913,90 @@ async function loadCalendarEvents() {
         if (_totalGoogleBlocks) console.log('[Calendar] Google free/busy merged:', _totalGoogleBlocks, 'ranges (' + _softBlocks + ' soft, all members)');
     } catch(e) { console.warn('[Calendar] Free/busy merge failed:', e); }
 
-    // ── CIRCULAR CONFLICT FILTER ──
+    // ── CIRCULAR CONFLICT SUPPRESSION ──
     // When band events are synced to Google, members who accepted the invite
     // get the event on their PRIMARY calendar too. Free/busy then reports their
-    // own rehearsal as a conflict. Strip out any busy period that matches a
-    // known band event's date + time window.
-    if (blocked.length > 0 && Object.keys(_calEventsByDate).length > 0) {
+    // own rehearsal as a conflict.
+    //
+    // LAYER 1 (deterministic): Match busy periods against known band-event
+    //   time slots identified by extendedProperties or Google eventId.
+    // LAYER 2 (fallback): Fuzzy date+time match against Firebase calendar_events
+    //   for events not yet tagged or from other members' Firebase data.
+    if (blocked.length > 0) {
         var _beforeFilter = blocked.length;
+        var _suppressedByIdentity = 0;
+        var _suppressedByFuzzy = 0;
+
+        // Helper: check if two ISO time ranges overlap (with tolerance in ms)
+        function _rangesOverlap(aStart, aEnd, bStart, bEnd, toleranceMs) {
+            var a0 = new Date(aStart).getTime() - toleranceMs;
+            var a1 = new Date(aEnd).getTime() + toleranceMs;
+            var b0 = new Date(bStart).getTime();
+            var b1 = new Date(bEnd).getTime();
+            return a0 < b1 && b0 < a1;
+        }
+
+        // Build quick lookup from band slots by date for Layer 1
+        var _slotsByDate = {};
+        (_bandSlots || []).forEach(function(s) {
+            var d = (s.start || '').substring(0, 10);
+            if (d) { if (!_slotsByDate[d]) _slotsByDate[d] = []; _slotsByDate[d].push(s); }
+        });
+
         blocked = blocked.filter(function(b) {
-            var bandEvs = _calEventsByDate[b.startDate];
-            if (!bandEvs || !bandEvs.length) return true; // no band event on this date — keep
-            // Check if any band event on this date overlaps this busy period
-            for (var ei = 0; ei < bandEvs.length; ei++) {
-                var ev = bandEvs[ei];
-                if (!ev.time) continue;
-                // Parse band event time (e.g. "19:00" or "7:00 PM")
-                var _evTime = ev.time.replace(/\s*(AM|PM)\s*/i, function(m, ap) { return ap; });
-                var _parts = _evTime.split(':');
-                var _evHour = parseInt(_parts[0], 10);
-                if (/pm/i.test(ev.time) && _evHour < 12) _evHour += 12;
-                if (/am/i.test(ev.time) && _evHour === 12) _evHour = 0;
-                var _evDur = parseFloat(ev.duration) || 2; // default 2h
-                var _evEndHour = _evHour + _evDur;
-                // Parse blocked range time label (e.g. "7pm–9pm")
-                var bLabel = b._timeLabel || '';
-                var _bMatch = bLabel.match(/(\d+)(am|pm)\u2013(\d+)(am|pm)/i);
-                if (_bMatch) {
-                    var bStart = parseInt(_bMatch[1], 10);
-                    if (_bMatch[2].toLowerCase() === 'pm' && bStart < 12) bStart += 12;
-                    if (_bMatch[2].toLowerCase() === 'am' && bStart === 12) bStart = 0;
-                    var bEnd = parseInt(_bMatch[3], 10);
-                    if (_bMatch[4].toLowerCase() === 'pm' && bEnd < 12) bEnd += 12;
-                    if (_bMatch[4].toLowerCase() === 'am' && bEnd === 12) bEnd = 0;
-                    // If the busy period matches the band event time (within 1h tolerance)
-                    if (Math.abs(bStart - _evHour) <= 1 && Math.abs(bEnd - _evEndHour) <= 1) {
-                        return false; // suppress — this is our own band event
+            // ── Layer 1: Deterministic identity match ──
+            // Use raw ISO timestamps for precise overlap (5 min tolerance)
+            var dateSlots = _slotsByDate[b.startDate];
+            if (dateSlots && b._isoStart && b._isoEnd) {
+                for (var si = 0; si < dateSlots.length; si++) {
+                    if (_rangesOverlap(dateSlots[si].start, dateSlots[si].end,
+                            b._isoStart, b._isoEnd, 300000)) {
+                        _suppressedByIdentity++;
+                        return false;
                     }
                 }
             }
-            return true; // no match — keep
+
+            // ── Layer 2: Fuzzy fallback (date+time match against Firebase events) ──
+            var bandEvs = _calEventsByDate[b.startDate];
+            if (bandEvs && bandEvs.length > 0) {
+                for (var ei = 0; ei < bandEvs.length; ei++) {
+                    var ev = bandEvs[ei];
+                    if (!ev.time) continue;
+                    var _evTime = ev.time.replace(/\s*(AM|PM)\s*/i, function(m, ap) { return ap; });
+                    var _parts = _evTime.split(':');
+                    var _evHour = parseInt(_parts[0], 10);
+                    if (/pm/i.test(ev.time) && _evHour < 12) _evHour += 12;
+                    if (/am/i.test(ev.time) && _evHour === 12) _evHour = 0;
+                    var _evDur = parseFloat(ev.duration) || 2;
+                    var _evEndHour = _evHour + _evDur;
+                    var bLabel = b._timeLabel || '';
+                    var _bMatch = bLabel.match(/(\d+)(am|pm)\u2013(\d+)(am|pm)/i);
+                    if (_bMatch) {
+                        var bStart = parseInt(_bMatch[1], 10);
+                        if (_bMatch[2].toLowerCase() === 'pm' && bStart < 12) bStart += 12;
+                        if (_bMatch[2].toLowerCase() === 'am' && bStart === 12) bStart = 0;
+                        var bEnd = parseInt(_bMatch[3], 10);
+                        if (_bMatch[4].toLowerCase() === 'pm' && bEnd < 12) bEnd += 12;
+                        if (_bMatch[4].toLowerCase() === 'am' && bEnd === 12) bEnd = 0;
+                        if (Math.abs(bStart - _evHour) <= 1 && Math.abs(bEnd - _evEndHour) <= 1) {
+                            _suppressedByFuzzy++;
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            // ── Retained as real conflict ──
+            return true;
         });
-        var _filtered = _beforeFilter - blocked.length;
-        if (_filtered > 0) console.log('[Calendar] Circular conflict filter: removed', _filtered, 'band-event conflicts from free/busy');
+        var _totalFiltered = _beforeFilter - blocked.length;
+        if (_totalFiltered > 0 || _suppressedByIdentity > 0) {
+            console.log('[Calendar] Circular conflict suppression: '
+                + _suppressedByIdentity + ' by identity, '
+                + _suppressedByFuzzy + ' by fuzzy fallback, '
+                + blocked.length + ' retained as real conflicts');
+        }
     }
 
     // Sort blocked dates chronologically

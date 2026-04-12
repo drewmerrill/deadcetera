@@ -888,7 +888,8 @@ async function handleCalendarListEvents(request) {
     params.set('singleEvents', 'true');
     params.set('orderBy', 'startTime');
     params.set('maxResults', '50');
-    const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?' + params.toString();
+    const calId = url.searchParams.get('calendarId') || 'primary';
+    const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events?' + params.toString();
     const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });
     const data = await res.text();
     return cors(new Response(data, { status: res.status, headers: { 'Content-Type': 'application/json' } }));

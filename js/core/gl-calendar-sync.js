@@ -73,6 +73,15 @@ window.GLCalendarSync = (function() {
       body.attendees = attendees.map(function(email) { return { email: email }; });
     }
 
+    // Tag as GrooveLinx-created for deterministic circular-conflict suppression
+    // Google extended properties are string-only key/value pairs
+    body.extendedProperties = {
+      private: {
+        groovelinx: 'true',
+        glEventId: opts.glEventId || ''
+      }
+    };
+
     return body;
   }
 
@@ -91,7 +100,8 @@ window.GLCalendarSync = (function() {
       return _fallbackUrl(glEvent, opts);
     }
 
-    var body = _buildEventBody(glEvent, opts);
+    var _opts = Object.assign({}, opts, { glEventId: glEvent.id || glEvent.eventId || '' });
+    var body = _buildEventBody(glEvent, _opts);
     var calId = await _getBandCalendarId();
     if (!calId) return { success: false, error: 'No band calendar configured. Open Rules to set one up.' };
 
@@ -138,7 +148,8 @@ window.GLCalendarSync = (function() {
       return { success: false, error: 'No calendar scope or event ID', fallback: true };
     }
 
-    var body = _buildEventBody(glEvent, opts);
+    var _opts = Object.assign({}, opts, { glEventId: glEvent.id || glEvent.eventId || '' });
+    var body = _buildEventBody(glEvent, _opts);
     var calId = await _getBandCalendarId();
     if (!calId) return { success: false, error: 'No band calendar configured.' };
 
@@ -307,6 +318,69 @@ window.GLCalendarSync = (function() {
     } catch(e) { return {}; }
   }
 
+  // ── BAND EVENT IDENTIFICATION — deterministic circular-conflict suppression ──
+
+  // Load known Google event IDs from Firebase calendar_events
+  async function _loadKnownGoogleEventIds() {
+    var ids = {};
+    try {
+      var events = [];
+      if (typeof loadBandDataFromDrive === 'function') {
+        events = (typeof toArray === 'function') ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []) : [];
+      }
+      events.forEach(function(ev) {
+        var gId = (ev.sync && ev.sync.externalEventId) || ev.googleEventId || null;
+        if (gId) ids[gId] = true;
+      });
+    } catch(e) {}
+    return ids;
+  }
+
+  // Query Google events across selected calendars, identify which are GrooveLinx-created.
+  // Returns array of { start: ISO, end: ISO, matchType: 'extProp'|'eventId' }
+  async function _getBandEventTimeSlots(calIds, timeMin, timeMax) {
+    var slots = [];
+    try {
+      var knownIds = await _loadKnownGoogleEventIds();
+      // Query each selected calendar for events in the time range
+      var fetches = calIds.map(function(calId) {
+        var url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId)
+          + '&timeMin=' + encodeURIComponent(timeMin)
+          + '&timeMax=' + encodeURIComponent(timeMax);
+        return fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } })
+          .then(function(r) { return r.ok ? r.json() : { items: [] }; })
+          .catch(function() { return { items: [] }; });
+      });
+      var responses = await Promise.all(fetches);
+      responses.forEach(function(data) {
+        if (!data.items) return;
+        data.items.forEach(function(ev) {
+          // Primary match: extendedProperties.private.groovelinx === 'true'
+          var extProp = ev.extendedProperties && ev.extendedProperties.private;
+          var isTagged = extProp && extProp.groovelinx === 'true';
+          // Secondary match: Google event ID is in our known Firebase set
+          var isKnownId = knownIds[ev.id] === true;
+
+          if (isTagged || isKnownId) {
+            var start = (ev.start && (ev.start.dateTime || ev.start.date)) || '';
+            var end = (ev.end && (ev.end.dateTime || ev.end.date)) || '';
+            slots.push({
+              start: start,
+              end: end,
+              googleEventId: ev.id,
+              glEventId: (extProp && extProp.glEventId) || '',
+              matchType: isTagged ? 'extProp' : 'eventId'
+            });
+          }
+        });
+      });
+      if (slots.length) console.log('[CalSync] Band event slots identified:', slots.length, '(' + slots.filter(function(s){return s.matchType==='extProp';}).length + ' by extProp, ' + slots.filter(function(s){return s.matchType==='eventId';}).length + ' by eventId)');
+    } catch(e) {
+      console.warn('[CalSync] getBandEventTimeSlots error:', e);
+    }
+    return slots;
+  }
+
   // ── FREE/BUSY — query + share current user's conflicts ────────────────
   var _freeBusyCache = null;
   var _freeBusyCacheTime = 0;
@@ -323,11 +397,18 @@ window.GLCalendarSync = (function() {
       // Use selected calendars (not all — prevents overblocking from birthdays, sports, etc)
       var calIds = await _getSelectedCalendarIds();
       var items = calIds.map(function(id) { return { id: id }; });
-      var res = await fetch(WORKER_BASE + '/calendar/freebusy', {
+
+      // Run free/busy + band-event identification in PARALLEL
+      var fbPromise = fetch(WORKER_BASE + '/calendar/freebusy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
         body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: items })
       });
+      var bandSlotsPromise = _getBandEventTimeSlots(calIds, timeMin, timeMax);
+      var results = await Promise.all([fbPromise, bandSlotsPromise]);
+      var res = results[0];
+      var bandSlots = results[1];
+
       if (!res.ok) {
         var errBody = '';
         try { errBody = await res.text(); } catch(e) {}
@@ -335,9 +416,9 @@ window.GLCalendarSync = (function() {
         console.warn('[CalSync] Token (first 20):', accessToken ? accessToken.substring(0, 20) + '...' : 'none');
         if (res.status === 403) {
           _calendarScopeFailed = true;
-          return { busy: [], source: 'needs_consent' };
+          return { busy: [], bandSlots: [], source: 'needs_consent' };
         }
-        return { busy: [], source: 'error' };
+        return { busy: [], bandSlots: [], source: 'error' };
       }
       // Success — clear any previous failure state
       _calendarScopeFailed = false;
@@ -354,15 +435,15 @@ window.GLCalendarSync = (function() {
       }
       // Sort chronologically and dedupe overlapping ranges
       busy.sort(function(a, b) { return a.start.localeCompare(b.start); });
-      console.log('[CalSync] FreeBusy: queried', calIds.length, 'calendar(s), got', busy.length, 'busy periods');
-      _freeBusyCache = { busy: busy, source: 'google', _key: cacheKey };
+      console.log('[CalSync] FreeBusy: queried', calIds.length, 'calendar(s), got', busy.length, 'busy periods, bandSlots:', bandSlots.length);
+      _freeBusyCache = { busy: busy, bandSlots: bandSlots, source: 'google', _key: cacheKey };
       _freeBusyCacheTime = Date.now();
       // Share results to Firebase for other band members to read
       _shareFreeBusy(busy, timeMin, timeMax);
       return _freeBusyCache;
     } catch (err) {
       console.warn('[CalSync] Free/busy error:', err);
-      return { busy: [], source: 'error' };
+      return { busy: [], bandSlots: [], source: 'error' };
     }
   }
 
@@ -487,7 +568,9 @@ window.GLCalendarSync = (function() {
         _source: 'google',
         _conflictType: conflictType,
         _timeLabel: timeLabel,
-        _isAllDay: isAllDay
+        _isAllDay: isAllDay,
+        _isoStart: b.start,  // raw ISO for deterministic conflict matching
+        _isoEnd: b.end
       };
       seen[key] = range;
       ranges.push(range);
@@ -842,6 +925,7 @@ window.GLCalendarSync = (function() {
     hasFreeBusyScope: hasFreeBusyScope,
     getBandCalendarId: _getBandCalendarId,
     canWriteBandCalendar: canWriteBandCalendar,
+    getBandEventTimeSlots: _getBandEventTimeSlots,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };
