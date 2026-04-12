@@ -296,6 +296,7 @@ window.RecordingAnalyzer = (function() {
       // ── BPM + Groove extraction ───────────────────────────────────────────
       if (typeof OfflineAnalyser !== 'undefined') {
         try {
+          console.log('[BPM] seg ' + _fi + ': PCM=' + _segPcm.length + ' samples, SR=' + _segSr + 'Hz, dur=' + (_segPcm.length / _segSr).toFixed(1) + 's');
           var _gCtx = new (window.AudioContext || window.webkitAudioContext)();
           var _gBuf = _gCtx.createBuffer(1, _segPcm.length, _segSr);
           _gBuf.getChannelData(0).set(_segPcm);
@@ -303,6 +304,7 @@ window.RecordingAnalyzer = (function() {
 
           var _gAnalyser = new OfflineAnalyser();
           var _gResult = await _gAnalyser.analyseBuffer(_gBuf, 120, 'recording');
+          console.log('[BPM] seg ' + _fi + ' result: onsets=' + (_gResult && _gResult.onsets ? _gResult.onsets.length : 0) + ', medianIOI=' + (_gResult && _gResult.metrics ? _gResult.metrics.medianIOI : 'null'));
           if (_gResult && _gResult.metrics && _gResult.metrics.medianIOI > 0) {
             var _m = _gResult.metrics;
             _fSeg.bpm = Math.round(60000 / _m.medianIOI);
@@ -680,9 +682,13 @@ window.RecordingAnalyzer = (function() {
 
     // Run Song Matching Engine (multi-signal scoring)
     if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.run) {
+      var _refSongs = (_recordingContext && _recordingContext.referenceSongs) || [];
+      console.log('[RecordingAnalyzer] Matching context: type=' + ((_recordingContext && _recordingContext.type) || '?') +
+        ', referenceSongs=' + _refSongs.length + (_refSongs.length > 0 ? ' [' + _refSongs.slice(0, 5).join(', ') + '...]' : ' (EMPTY — no plan songs for matching)') +
+        ', catalog=' + songCatalog.length + ' songs');
       var matchContext = {
         type: (_recordingContext && _recordingContext.type) || 'rehearsal',
-        referenceSongs: (_recordingContext && _recordingContext.referenceSongs) || [],
+        referenceSongs: _refSongs,
         allSongs: songCatalog
       };
       segments = SongMatchingEngine.run(segments, matchContext);
