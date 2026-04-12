@@ -50,7 +50,18 @@ window.getSongScope = function(title) {
 };
 window.isSongActive = function(title) { return getSongScope(title) === 'active'; };
 
-// Track which data layers have loaded — prevents premature renders
+// ── Songs Page Hydration Model ──────────────────────────────────────────────
+// Tracks which async data layers have loaded. Prevents premature renders
+// that would show empty/wrong values (0% readiness, missing love dots, etc.).
+//
+// Render gating:
+//   songs + dna  → REQUIRED for first visible render (shows skeleton until ready)
+//   readiness    → additive (re-render updates bars, no flash)
+//   love         → additive (re-render adds dots, no flash)
+//
+// Sort safety:
+//   If a sort depends on data not yet loaded (love, readiness), falls back
+//   to title sort to prevent reorder jumps when data arrives.
 window._sqDataReady = window._sqDataReady || { songs: false, dna: false, readiness: false, love: false };
 
 window.renderSongs = function renderSongs(filter, searchTerm) {
@@ -273,6 +284,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     if (_userSortActive) {
         filtered.sort(function(a, b) {
             if (_sortMode === 'readiness_asc' || _sortMode === 'readiness_desc') {
+                // If readiness data hasn't loaded yet, fall back to title sort
+                if (!window._sqDataReady.readiness) return (a.title||'').localeCompare(b.title||'');
                 var aA = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(a.title) : -1;
                 var bA = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(b.title) : -1;
                 if (aA < 0) aA = (_sortMode === 'readiness_asc' ? 99 : -1);
@@ -288,6 +301,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             }
             if (_sortMode === 'band') return ((a.band||'').localeCompare(b.band||''));
             if (_sortMode === 'love_desc' || _sortMode === 'love_asc') {
+                // If love data hasn't loaded yet, fall back to title sort (prevents reorder jump)
+                if (!window._sqDataReady.love) return (a.title||'').localeCompare(b.title||'');
                 var _gs = (typeof GLStore !== 'undefined');
                 var _aLove = (_gs && GLStore.getBandLove) ? GLStore.getBandLove(a.title) : 0;
                 var _bLove = (_gs && GLStore.getBandLove) ? GLStore.getBandLove(b.title) : 0;
