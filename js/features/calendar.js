@@ -1290,24 +1290,32 @@ window._calShowAvailabilitySettings = async function() {
         return;
     }
 
-    // Build calendar checkboxes
+    // ── SECTION 1: Availability Calendars (personal, read-only) ──
     var calHtml = '<div style="margin-bottom:16px">';
-    calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:8px">Which calendars affect your availability?</div>';
-    calHtml += '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:8px">Only checked calendars will create conflicts on the band schedule.</div>';
+    calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Your Availability Calendars</div>';
+    calHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Select your <strong>personal</strong> calendars. GrooveLinx reads these to detect when you\u2019re busy \u2014 it never writes to them.</div>';
     calendars.forEach(function(c, i) {
         var isSelected = selectedCals.length > 0
             ? selectedCals.indexOf(c.id) !== -1
-            : (c.primary && !c.autoExclude); // Default: primary only
+            : (c.primary && !c.autoExclude);
         var dimmed = c.autoExclude && !isSelected;
+        var isBandCal = c.id === bandCalId;
         calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;'
             + (dimmed ? 'opacity:0.5;' : '') + '">'
-            + '<input type="checkbox" name="calSel" value="' + c.id + '"' + (isSelected ? ' checked' : '') + ' style="accent-color:var(--gl-green)">'
+            + '<input type="checkbox" name="calSel" value="' + c.id + '"' + (isSelected ? ' checked' : '')
+            + ' onchange="var w=document.getElementById(\'calAvailBandWarn\');if(w){w.style.display=this.checked&&this.value===\'' + bandCalId.replace(/'/g, "\\'") + '\'?\'block\':\'none\'}"'
+            + ' style="accent-color:var(--gl-green)">'
             + '<span style="flex:1;color:var(--gl-text)">' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + '</span>'
-            + (c.primary ? '<span style="font-size:0.75em;color:var(--gl-green)">primary</span>' : '')
-            + (c.autoExclude ? '<span style="font-size:0.75em;color:var(--gl-amber)">auto-excluded</span>' : '')
+            + (c.primary ? '<span style="font-size:0.75em;color:var(--gl-green)">personal</span>' : '')
+            + (isBandCal ? '<span style="font-size:0.75em;color:var(--gl-amber)">band calendar</span>' : '')
+            + (c.autoExclude ? '<span style="font-size:0.75em;color:var(--gl-text-tertiary)">auto-excluded</span>' : '')
             + (c.backgroundColor ? '<span style="width:10px;height:10px;border-radius:50%;background:' + c.backgroundColor + ';flex-shrink:0"></span>' : '')
             + '</label>';
     });
+    // Warning if band calendar is checked as availability
+    var _bandInAvail = selectedCals.indexOf(bandCalId) !== -1;
+    calHtml += '<div id="calAvailBandWarn" style="' + (_bandInAvail ? '' : 'display:none;') + 'font-size:0.78em;color:var(--gl-amber);padding:4px 8px;margin-top:4px;line-height:1.4">'
+        + '\u26A0 The band calendar is selected for availability. This may create false conflicts \u2014 your own rehearsals will show as busy times. Consider unchecking it.</div>';
     calHtml += '</div>';
 
     // Time-aware filtering toggle
@@ -1339,15 +1347,14 @@ window._calShowAvailabilitySettings = async function() {
     var bandCalId = settings.bandCalendarId || 'primary';
     var bandCalHtml = '<div style="margin-bottom:16px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">';
     bandCalHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Band Calendar</div>';
-    bandCalHtml += '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:8px">Rehearsals and gigs are written here. Choose a shared calendar for the band.</div>';
+    bandCalHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Shared calendar where GrooveLinx writes rehearsals and gigs. All band members should select the same calendar here.</div>';
     bandCalHtml += '<select id="calOptBandCal" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
     calendars.forEach(function(c) {
         var selected = c.id === bandCalId;
-        bandCalHtml += '<option value="' + c.id + '"' + (selected ? ' selected' : '') + '>' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + (c.primary ? ' (primary)' : '') + '</option>';
+        bandCalHtml += '<option value="' + c.id + '"' + (selected ? ' selected' : '') + '>' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + (c.primary ? ' (personal)' : '') + '</option>';
     });
     bandCalHtml += '</select>';
-    // Warning if band cal is also in availability
-    bandCalHtml += '<div id="calBandCalWarning" style="display:none;font-size:0.78em;color:var(--gl-amber);margin-top:4px">\u26A0 This calendar is also used for availability — you may see your own rehearsals as conflicts.</div>';
+    bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:4px;line-height:1.4">\uD83D\uDCA1 Tip: Create a shared \u201CDeadcetera\u201D calendar in Google and select it here. Don\u2019t use your personal calendar for band events.</div>';
     bandCalHtml += '</div>';
 
     // Save button
