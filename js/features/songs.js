@@ -194,12 +194,34 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                   '<div style="margin-bottom:16px;font-size:0.9em;color:#64748b">Click any song and set its status!</div>' +
                   '<button onclick="document.getElementById(\'statusFilter\').value=\'all\';filterByStatus(\'all\')" class="btn btn-success" style="padding:10px 24px">Show All Songs</button>';
         } else if (window._sqTriageFilter) {
-            var _tfLabels = { no_key:'missing a key', no_bpm:'missing BPM', no_status:'missing a status', no_lead:'missing a lead singer', needs_work:'flagged as needs work', not_rotation:'not in rotation', no_structure:'missing structure' };
+            // Show comprehensive cleanup summary, not just the active filter
+            var _tfLabels = { no_key:'Key', no_bpm:'BPM', no_status:'Status', no_lead:'Lead Singer', needs_work:'Needs Work', not_rotation:'Rotation', no_structure:'Structure' };
             var _tfLabel = _tfLabels[window._sqTriageFilter] || window._sqTriageFilter;
-            msg = '<div style="font-size:2em;margin-bottom:12px">\u2705</div>' +
-                  '<div style="font-size:1.1em;font-weight:600;margin-bottom:6px;color:#22c55e">All good!</div>' +
-                  '<div style="font-size:0.9em;color:#64748b;margin-bottom:16px">No active songs ' + _tfLabel + '.</div>' +
-                  '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" class="btn btn-ghost" style="padding:8px 20px;font-size:0.85em">Back to Songs</button>';
+            // Check all categories for a complete picture
+            var _allPool = (typeof allSongs !== 'undefined' ? allSongs : []).filter(function(s) { return isSongActive(s.title); });
+            var _allMissing = {};
+            _allPool.forEach(function(s) {
+                if (!s.key) _allMissing.no_key = (_allMissing.no_key || 0) + 1;
+                if (!s.bpm) _allMissing.no_bpm = (_allMissing.no_bpm || 0) + 1;
+                if (!s.lead) _allMissing.no_lead = (_allMissing.no_lead || 0) + 1;
+                if (typeof GLStore !== 'undefined' && GLStore.getStatus && !GLStore.getStatus(s.title)) _allMissing.no_status = (_allMissing.no_status || 0) + 1;
+            });
+            var _summaryLines = [];
+            ['no_key', 'no_bpm', 'no_lead', 'no_status'].forEach(function(k) {
+                var count = _allMissing[k] || 0;
+                var label = _tfLabels[k] || k;
+                _summaryLines.push('<div style="display:flex;justify-content:space-between;padding:2px 0">'
+                    + '<span>' + label + '</span>'
+                    + '<span style="font-weight:700;color:' + (count > 0 ? '#f59e0b' : '#22c55e') + '">' + (count > 0 ? count + ' missing' : '\u2713') + '</span></div>');
+            });
+            var _anyMissing = Object.keys(_allMissing).some(function(k) { return _allMissing[k] > 0; });
+            msg = '<div style="font-size:2em;margin-bottom:12px">' + (_anyMissing ? '\uD83E\uDDF9' : '\u2705') + '</div>' +
+                  '<div style="font-size:1.1em;font-weight:600;margin-bottom:6px;color:' + (_anyMissing ? '#fbbf24' : '#22c55e') + '">' + (_anyMissing ? 'Cleanup Status' : 'All good!') + '</div>' +
+                  '<div style="max-width:250px;margin:0 auto 16px;text-align:left;font-size:0.85em;color:var(--text-dim)">' + _summaryLines.join('') + '</div>' +
+                  (_anyMissing ? '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">' + Object.keys(_allMissing).filter(function(k) { return _allMissing[k] > 0; }).map(function(k) {
+                      return '<button onclick="sqTriageSet(\'' + k + '\')" style="font-size:0.78em;padding:6px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(251,191,36,0.3);background:rgba(251,191,36,0.08);color:#fbbf24;font-weight:600">Fix ' + _tfLabels[k] + ' (' + _allMissing[k] + ')</button>';
+                  }).join('') + '</div>' : '') +
+                  '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" class="btn btn-ghost" style="padding:8px 20px;font-size:0.85em;margin-top:12px">Back to Songs</button>';
         } else {
             msg = '<div style="font-size:2em;margin-bottom:12px">\uD83D\uDD0D</div>' +
                   '<div style="font-size:1.1em;font-weight:600;margin-bottom:6px">No songs found</div>' +
@@ -211,7 +233,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         if (typeof allSongs !== 'undefined') allSongs.forEach(function(s) { if (getSongScope(s.title) === 'active') _ac2++; else _lc2++; });
         var _emptyNav = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
             + '<button onclick="window._sqTriageFilter=null;window._sqSongSort=\'default\';document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:800;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc">\uD83C\uDFAF Rehearsal</button>'
-            + '<button onclick="if(!window._sqTriageFilter)sqTriageSet(\'no_bpm\')" style="font-size:0.72em;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83E\uDDF9 Cleanup</button>'
+            + '<button onclick="if(!window._sqTriageFilter)sqCleanupStart()" style="font-size:0.72em;font-weight:600;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)">\uD83E\uDDF9 Cleanup</button>'
             + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">'
             + '<button onclick="window._sqScopeView=\'active\';window._sqTriageFilter=null;window._sqSongSort=\'default\';renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'active' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'active' ? 'rgba(34,197,94,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'active' ? '#22c55e' : 'var(--text-dim)') + '">Active (' + _ac2 + ')</button>'
             + '<button onclick="window._sqScopeView=\'library\';window._sqTriageFilter=null;window._sqSongSort=\'default\';renderSongs()" style="font-size:0.65em;font-weight:' + (window._sqScopeView === 'library' ? '800' : '500') + ';padding:2px 8px;border-radius:5px;cursor:pointer;border:1px solid ' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)') + ';background:' + (window._sqScopeView === 'library' ? 'rgba(99,102,241,0.08)' : 'none') + ';color:' + (window._sqScopeView === 'library' ? '#a5b4fc' : 'var(--text-dim)') + '">Library (' + _lc2 + ')</button>'
@@ -347,7 +369,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     var _sortLabels = { default:'Default', title_asc:'Song A→Z', title_desc:'Song Z→A', readiness_asc:'Readiness ↑', readiness_desc:'Readiness ↓', status:'Status', band:'Band', love_desc:'Love ↓', love_asc:'Love ↑', needs_work:'Needs Work' };
     var _modeBar = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
         + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">🎯 Rehearsal</button>'
-        + '<button onclick="if(!window._sqTriageFilter)sqTriageSet(\'no_bpm\')" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
+        + '<button onclick="if(!window._sqTriageFilter)sqCleanupStart()" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
         + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">';
     // Count active vs library for scope labels
     var _activeCount = 0, _libraryCount = 0;
@@ -879,6 +901,37 @@ window._sqTriageFilter = null;
 window._sqTriageList = [];    // Ordered list of titles matching current triage
 window._sqTriageIndex = -1;   // Current position in triage list
 window._sqTriageDone = 0;     // Count of songs completed this session
+
+// Smart cleanup entry: pick the first filter that has actual missing data
+window.sqCleanupStart = function() {
+    // Wait for DNA preload before checking
+    if (!window._glDnaPreloaded) {
+        if (typeof showToast === 'function') showToast('Loading song data\u2026 try again in a moment');
+        return;
+    }
+    var pool = (typeof allSongs !== 'undefined' ? allSongs : []).filter(function(s) { return isSongActive(s.title); });
+    var missing = { no_key: 0, no_bpm: 0, no_lead: 0, no_status: 0, no_structure: 0 };
+    pool.forEach(function(s) {
+        if (!s.key) missing.no_key++;
+        if (!s.bpm) missing.no_bpm++;
+        if (!s.lead) missing.no_lead++;
+        if (typeof GLStore !== 'undefined' && GLStore.getStatus && !GLStore.getStatus(s.title)) missing.no_status++;
+        if (!s._hasStructure) missing.no_structure++;
+    });
+    // Pick the first filter with missing data
+    var order = ['no_key', 'no_bpm', 'no_lead', 'no_status', 'no_structure'];
+    var labels = { no_key: 'key', no_bpm: 'BPM', no_lead: 'lead singer', no_status: 'status', no_structure: 'structure' };
+    var best = null;
+    for (var i = 0; i < order.length; i++) {
+        if (missing[order[i]] > 0) { best = order[i]; break; }
+    }
+    if (best) {
+        sqTriageSet(best);
+    } else {
+        // All clean — show summary
+        sqTriageSet('no_bpm'); // will show "All good" message
+    }
+};
 
 window.sqTriageSet = function(filter) {
     window._sqTriageFilter = (window._sqTriageFilter === filter) ? null : filter;
