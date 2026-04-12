@@ -182,22 +182,29 @@ window._rhSaveRecreatedSession = async function() {
     // If no songs typed, use current rehearsal plan as reference songs
     if (!songs.length) {
         try {
-            // Plan queue is in localStorage, not a window global
-            var _planRaw = localStorage.getItem('glPlannerQueue');
-            if (_planRaw) {
-                var _planQueue = JSON.parse(_planRaw);
-                songs = _planQueue.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
+            // Primary: use _rhGetUnits() which checks Firebase cache → localStorage → fallback
+            var _planUnits = (typeof _rhGetUnits === 'function') ? _rhGetUnits() : [];
+            if (_planUnits && _planUnits.length) {
+                songs = _planUnits.map(function(u) { return u && u.title ? u.title : ''; }).filter(Boolean);
             }
-            // Also try planner units (newer format)
+            // Fallback: raw localStorage reads
             if (!songs.length) {
                 var _unitsRaw = localStorage.getItem('glPlannerUnits');
                 if (_unitsRaw) {
                     var _units = JSON.parse(_unitsRaw);
-                    songs = _units.filter(function(u) { return u && u.type === 'song' && u.title; }).map(function(u) { return u.title; });
+                    songs = _units.filter(function(u) { return u && u.title; }).map(function(u) { return u.title; });
                 }
             }
-            if (songs.length) console.log('[Rehearsal] Using current plan as reference: ' + songs.length + ' songs');
-        } catch(e) { console.warn('[Rehearsal] Could not read plan from localStorage:', e.message); }
+            if (!songs.length) {
+                var _planRaw = localStorage.getItem('glPlannerQueue');
+                if (_planRaw) {
+                    var _planQueue = JSON.parse(_planRaw);
+                    songs = _planQueue.map(function(item) { return typeof item === 'string' ? item : (item.title || ''); }).filter(Boolean);
+                }
+            }
+            if (songs.length) console.log('[Rehearsal] Using current plan as reference: ' + songs.length + ' songs [' + songs.slice(0, 5).join(', ') + '...]');
+            else console.warn('[Rehearsal] No plan songs found in _rhGetUnits, glPlannerUnits, or glPlannerQueue');
+        } catch(e) { console.warn('[Rehearsal] Could not read plan:', e.message); }
     }
 
     // Use existing session if user chose "Add to existing rehearsal"
