@@ -1115,6 +1115,21 @@ window._calShowManageConnections = function() {
 function _calRenderAvailHealth() {
     var el = document.getElementById('calAvailHealth');
     if (!el) return;
+
+    // Last synced header
+    var _syncHeader = '';
+    if (_calConnectedCacheTime > 0) {
+        var _syncAge = Math.floor((Date.now() - _calConnectedCacheTime) / 60000);
+        var _syncDate = new Date(_calConnectedCacheTime);
+        var _syncStr = _syncDate.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        var _isStale = _syncAge > 5;
+        _syncHeader = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">'
+            + '<span style="font-size:0.62em;color:' + (_isStale ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)') + '">'
+            + (_isStale ? '\u26A0 ' : '') + 'Last synced: ' + _syncStr + '</span>'
+            + '<button onclick="_calSyncNow()" id="calAvailSyncBtn" style="font-size:0.6em;font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.04);color:#a5b4fc;font-family:inherit">\u21BB Sync Now</button>'
+            + '</div>';
+    }
+
     var blocked = _calCachedBlockedRanges || [];
     var today = new Date().toISOString().split('T')[0];
     var twoWeeks = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
@@ -1131,12 +1146,12 @@ function _calRenderAvailHealth() {
     var totalMembers = members.length || 5;
 
     if (!totalConflictDays) {
-        el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;font-size:0.72em;color:var(--gl-green);margin-bottom:var(--gl-space-xs,4px)">'
+        el.innerHTML = _syncHeader + '<div style="padding:8px 10px;border-radius:8px;font-size:0.72em;color:var(--gl-green);margin-bottom:var(--gl-space-xs,4px)">'
             + '\u2705 No conflicts in the next 2 weeks</div>';
         return;
     }
     var healthColor = blockedCount >= totalMembers - 1 ? 'var(--gl-red,#ef4444)' : blockedCount >= 2 ? 'var(--gl-amber,#f59e0b)' : 'var(--gl-text-secondary)';
-    el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);margin-bottom:var(--gl-space-xs,4px)">'
+    el.innerHTML = _syncHeader + '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);margin-bottom:var(--gl-space-xs,4px)">'
         + '<div style="font-size:0.72em;font-weight:600;color:' + healthColor + '">'
         + blockedCount + ' member' + (blockedCount > 1 ? 's' : '') + ' with conflicts (next 14 days)</div>'
         + '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-top:2px">'
