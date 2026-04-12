@@ -2383,7 +2383,38 @@ function _rhStreamFromDrive(driveUrl, sessionId) {
         : (typeof window.WORKER_BASE !== 'undefined') ? window.WORKER_BASE
         : 'https://groovelinx-worker.drewmerrill.workers.dev';
 
-    // Pass Google OAuth token if available (enables Drive API download for shared files)
+    // Check if token has Drive scope
+    var _hasDriveScope = false;
+    if (typeof window._grantedScopes === 'string') {
+        _hasDriveScope = window._grantedScopes.indexOf('drive') !== -1;
+    }
+
+    // If no Drive scope, request it directly before streaming
+    if (!_hasDriveScope && typeof tokenClient !== 'undefined' && tokenClient) {
+        if (typeof showToast === 'function') showToast('Requesting Drive access\u2026');
+        // Request token with consent to get Drive scope
+        try {
+            tokenClient.requestAccessToken({ prompt: 'consent' });
+        } catch(e) {}
+        // Poll for new token with Drive scope (up to 30s)
+        var _pollCount2 = 0;
+        var _pollTimer2 = setInterval(function() {
+            _pollCount2++;
+            if (_pollCount2 >= 60) { clearInterval(_pollTimer2); if (typeof showToast === 'function') showToast('\u26A0 Drive access not granted', 3000); return; }
+            if (typeof window._grantedScopes === 'string' && window._grantedScopes.indexOf('drive') !== -1) {
+                clearInterval(_pollTimer2);
+                _rhDoStreamFromDrive(workerBase, driveUrl, sessionId);
+            }
+        }, 500);
+        return;
+    }
+
+    _rhDoStreamFromDrive(workerBase, driveUrl, sessionId);
+}
+
+function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
+    if (typeof showToast === 'function') showToast('Loading from Google Drive\u2026');
+
     var _drivePayload = { driveUrl: driveUrl };
     if (typeof accessToken !== 'undefined' && accessToken) _drivePayload.accessToken = accessToken;
 
