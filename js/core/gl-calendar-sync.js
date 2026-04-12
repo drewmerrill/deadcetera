@@ -727,10 +727,20 @@ window.GLCalendarSync = (function() {
   }
 
   // Get the band calendar ID for WRITES (rehearsals, gigs)
+  // Checks band-level setting first (shared), then user-level fallback
   async function _getBandCalendarId() {
+    // Band-level setting (shared across all members)
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        var snap = await db.ref(bandPath('band_calendar/calendarId')).once('value');
+        if (snap.val()) return snap.val();
+      }
+    } catch(e) {}
+    // User-level fallback
     var settings = await getAvailabilitySettings();
     if (settings && settings.bandCalendarId) return settings.bandCalendarId;
-    return 'primary'; // default: write to primary
+    return 'primary';
   }
 
   // Get the default rehearsal window (user-configurable)

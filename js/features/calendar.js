@@ -1274,13 +1274,34 @@ window._calShowAvailabilitySettings = async function() {
     modal.appendChild(inner);
     document.body.appendChild(modal);
 
-    // Load calendars + current settings in parallel
+    // Load calendars + current settings + band-level band calendar
     var calendars = await GLCalendarSync.listCalendars();
     var settings = await GLCalendarSync.getAvailabilitySettings() || {};
     var selectedCals = settings.selectedCalendars || [];
-    var ignoreAllDay = settings.ignoreAllDay === true; // default OFF — false "free" is worse than noise
+    var ignoreAllDay = settings.ignoreAllDay === true;
     var timeAware = settings.timeAware !== false;
     var rWindow = settings.rehearsalWindow || { startHour: 17, endHour: 23 };
+
+    // Band-level band calendar (shared across all members)
+    var _bandLevelCalId = null;
+    var _bandLevelCalName = null;
+    var _bandLevelSetBy = null;
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            var _bcSnap = await db.ref(bandPath('band_calendar')).once('value');
+            var _bcVal = _bcSnap.val();
+            if (_bcVal) {
+                _bandLevelCalId = _bcVal.calendarId || null;
+                _bandLevelCalName = _bcVal.calendarName || null;
+                _bandLevelSetBy = _bcVal.setBy || null;
+            }
+        }
+    } catch(e) {}
+
+    // Check if current user has access to the band calendar
+    var _userCalIds = calendars.map(function(c) { return c.id; });
+    var _userHasBandCal = _bandLevelCalId ? _userCalIds.indexOf(_bandLevelCalId) !== -1 : true;
 
     var body = document.getElementById('calAvailSettingsBody');
     if (!body) return;
@@ -1343,18 +1364,36 @@ window._calShowAvailabilitySettings = async function() {
         + '<div style="font-size:0.78em;color:var(--gl-amber);padding:2px 0 4px 26px;line-height:1.4">\u26A0 Enabling this hides ALL all-day events \u2014 including PTO, travel, and out-of-town days. Only enable if birthday/holiday noise is a problem.</div>';
     rulesHtml += '</div>';
 
-    // Band calendar selector (where rehearsals/gigs get written)
-    var bandCalId = settings.bandCalendarId || 'primary';
+    // Band calendar — band-level setting (shared across all members)
+    var bandCalId = _bandLevelCalId || settings.bandCalendarId || 'primary';
     var bandCalHtml = '<div style="margin-bottom:16px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">';
     bandCalHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Band Calendar</div>';
-    bandCalHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Shared calendar where GrooveLinx writes rehearsals and gigs. All band members should select the same calendar here.</div>';
-    bandCalHtml += '<select id="calOptBandCal" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
-    calendars.forEach(function(c) {
-        var selected = c.id === bandCalId;
-        bandCalHtml += '<option value="' + c.id + '"' + (selected ? ' selected' : '') + '>' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + (c.primary ? ' (personal)' : '') + '</option>';
-    });
-    bandCalHtml += '</select>';
-    bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:4px;line-height:1.4">\uD83D\uDCA1 Tip: Create a shared \u201CDeadcetera\u201D calendar in Google and select it here. Don\u2019t use your personal calendar for band events.</div>';
+    bandCalHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Shared calendar where GrooveLinx writes rehearsals and gigs. This setting applies to the whole band.</div>';
+
+    if (_bandLevelCalId && !_userHasBandCal) {
+        // User does NOT have access to the band calendar
+        bandCalHtml += '<div style="padding:10px;border-radius:8px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);margin-bottom:8px">'
+            + '<div style="font-size:0.78em;font-weight:600;color:#f87171;margin-bottom:4px">\u26A0 You don\u2019t have access to ' + (typeof escHtml === 'function' ? escHtml(_bandLevelCalName || 'the band calendar') : (_bandLevelCalName || 'the band calendar')) + '</div>'
+            + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.4;margin-bottom:6px">'
+            + 'This calendar must be shared with your Google account before GrooveLinx can write events there for you.</div>'
+            + '<div style="font-size:0.72em;color:var(--gl-text-secondary);line-height:1.4">'
+            + '<strong>Setup:</strong> Ask ' + (_bandLevelSetBy ? (typeof escHtml === 'function' ? escHtml(_bandLevelSetBy) : _bandLevelSetBy) : 'the person who set it up') + ' to share the <strong>' + (typeof escHtml === 'function' ? escHtml(_bandLevelCalName || 'band') : (_bandLevelCalName || 'band')) + '</strong> Google Calendar with you. After you accept the invitation, come back here and click Refresh.</div>'
+            + '<button onclick="_calShowAvailabilitySettings()" style="margin-top:6px;font-size:0.72em;padding:4px 12px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-family:inherit">\u21BB Refresh</button>'
+            + '</div>';
+        bandCalHtml += '<input type="hidden" id="calOptBandCal" value="' + bandCalId + '">';
+    } else {
+        // User has access — show dropdown
+        bandCalHtml += '<select id="calOptBandCal" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
+        calendars.forEach(function(c) {
+            var selected = c.id === bandCalId;
+            bandCalHtml += '<option value="' + c.id + '"' + (selected ? ' selected' : '') + '>' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + (c.primary ? ' (personal)' : '') + '</option>';
+        });
+        bandCalHtml += '</select>';
+        if (_userHasBandCal && _bandLevelCalId) {
+            bandCalHtml += '<div style="font-size:0.68em;color:var(--gl-green);margin-top:4px">\u2714 You have access to this calendar</div>';
+        }
+        bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:4px;line-height:1.4">\uD83D\uDCA1 Tip: Create a shared \u201CDeadcetera\u201D calendar in Google and select it here. All band members should use the same calendar.</div>';
+    }
     bandCalHtml += '</div>';
 
     // Save button
@@ -1402,11 +1441,32 @@ window._calSaveAvailabilitySettings = async function() {
     };
 
     var ok = await GLCalendarSync.saveAvailabilitySettings(settings);
+
+    // Also save band calendar at BAND level (shared across all members)
+    if (bandCalId && bandCalId !== 'primary') {
+        try {
+            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (db && typeof bandPath === 'function') {
+                // Find calendar name from list
+                var _calName = bandCalId;
+                var _calList = await GLCalendarSync.listCalendars();
+                var _match = _calList.find(function(c) { return c.id === bandCalId; });
+                if (_match) _calName = _match.summary;
+                var _who = (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '';
+                await db.ref(bandPath('band_calendar')).set({
+                    calendarId: bandCalId,
+                    calendarName: _calName,
+                    setBy: _who,
+                    updatedAt: new Date().toISOString()
+                });
+            }
+        } catch(e) { console.warn('[Calendar] Band calendar save failed:', e.message); }
+    }
+
     if (ok) {
-        if (typeof showToast === 'function') showToast('\u2705 Availability rules saved \u2014 refreshing calendar');
+        if (typeof showToast === 'function') showToast('\u2705 Settings saved \u2014 refreshing calendar');
         var modal = document.getElementById('calAvailSettingsModal');
         if (modal) modal.remove();
-        // Re-render calendar with new filtering
         renderCalendarInner();
     } else {
         if (typeof showToast === 'function') showToast('Failed to save settings');
