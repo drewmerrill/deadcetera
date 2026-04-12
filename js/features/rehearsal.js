@@ -992,6 +992,8 @@ window._rhDeleteSessionUI = async function(sessionId) {
     await _rhDeleteSession(sessionId);
     if (typeof showToast === 'function') showToast('Session deleted');
     _rhRenderSessionHistory();
+    // Also refresh the timeline — deleted session may have been the one displayed
+    _rhRenderLastRehearsalTimeline();
 };
 
 window._rhToggleBulkMode = function() {
@@ -1018,6 +1020,7 @@ window._rhBulkDelete = async function() {
     _rhBulkMode = false;
     _rhBulkSelected = {};
     _rhRenderSessionHistory();
+    _rhRenderLastRehearsalTimeline();
 };
 
 async function _rhRenderSessionHistory() {
