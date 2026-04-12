@@ -3466,26 +3466,53 @@ function calDayClick(y, m, d) {
             _extHtml += '</div>';
         }
 
-        // Build conflict summary for the selected date
-        var _hardBlocks = blocked.filter(function(b) { return b._conflictType !== 'soft'; });
-        var _softBlocks = blocked.filter(function(b) { return b._conflictType === 'soft'; });
+        // ── SECTION: Per-member availability for this date ──
+        var _allMembers = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+        var _bm2 = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        var _hasAvailScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
         var _conflictSummary = '';
-        if (_hardBlocks.length > 0 || _softBlocks.length > 0) {
-            var parts = [];
-            if (_hardBlocks.length) parts.push('<span style="color:#f87171">' + _hardBlocks.length + ' conflict' + (_hardBlocks.length > 1 ? 's' : '') + '</span>');
-            if (_softBlocks.length) parts.push('<span style="color:var(--gl-text-tertiary)">' + _softBlocks.length + ' same-day</span>');
-            _conflictSummary = '<div style="font-size:0.68em;margin-bottom:6px">' + parts.join(' \u00B7 ') + '</div>';
-            // Per-member conflict lines (compact)
-            blocked.slice(0, 3).forEach(function(b) {
-                var nm = (b.person || 'Member').split(' ')[0];
-                var tm = b._timeLabel || '';
-                var note = b._conflictType === 'soft' ? 'same day' : 'conflicts';
-                var noteColor = b._conflictType === 'soft' ? 'var(--gl-text-tertiary)' : '#f87171';
-                _conflictSummary += '<div style="font-size:0.65em;color:var(--gl-text-secondary);padding:1px 0">'
-                    + nm + (tm ? ' ' + tm : ' busy') + ' <span style="color:' + noteColor + '">(' + note + ')</span></div>';
+
+        if (_allMembers.length > 0 && (blocked.length > 0 || _hasAvailScope) && ds >= new Date().toISOString().split('T')[0]) {
+            _conflictSummary = '<div style="font-size:0.62em;font-weight:700;color:var(--gl-text-tertiary);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">Availability</div>';
+            // Build per-member availability map
+            var _memberBlocks = {};
+            blocked.forEach(function(b) {
+                var nm = (b.person || 'Unknown').split(' ')[0];
+                if (!_memberBlocks[nm]) _memberBlocks[nm] = [];
+                _memberBlocks[nm].push(b);
             });
-        } else if (ds >= new Date().toISOString().split('T')[0]) {
-            _conflictSummary = '<div style="font-size:0.68em;color:var(--gl-green);margin-bottom:6px">No conflicts</div>';
+            // Stale data warning
+            if (_calConnectedCacheTime > 0) {
+                var _staleMin = Math.floor((Date.now() - _calConnectedCacheTime) / 60000);
+                if (_staleMin > 5) {
+                    _conflictSummary += '<div style="font-size:0.62em;color:var(--gl-amber);margin-bottom:4px">\u26A0 Availability may be outdated \u2014 last synced ' + _staleMin + ' min ago</div>';
+                }
+            }
+            _allMembers.forEach(function(ref) {
+                var mKey = (typeof ref === 'object') ? ref.key : ref;
+                var name = _bm2[mKey] ? _bm2[mKey].name : mKey;
+                var short = name.split(' ')[0];
+                var blocks = _memberBlocks[short] || [];
+                if (blocks.length > 0) {
+                    blocks.forEach(function(b) {
+                        var icon = b._conflictType === 'hard' ? '\u2716' : '\u26A0';
+                        var color = b._conflictType === 'hard' ? '#f87171' : 'var(--gl-amber)';
+                        var detail = b.reason || (b._timeLabel ? 'Busy ' + b._timeLabel : 'Busy');
+                        _conflictSummary += '<div style="font-size:0.68em;padding:1px 0;display:flex;align-items:center;gap:4px">'
+                            + '<span style="color:' + color + '">' + icon + '</span>'
+                            + '<span style="color:var(--gl-text)">' + short + '</span>'
+                            + '<span style="color:var(--gl-text-tertiary)">\u2014 ' + detail + '</span></div>';
+                    });
+                } else {
+                    _conflictSummary += '<div style="font-size:0.68em;padding:1px 0;display:flex;align-items:center;gap:4px">'
+                        + '<span style="color:var(--gl-green)">\u2714</span>'
+                        + '<span style="color:var(--gl-text)">' + short + '</span>'
+                        + '<span style="color:var(--gl-text-tertiary)">\u2014 Free</span></div>';
+                }
+            });
+            _conflictSummary += '<div style="height:4px"></div>';
+        } else if (!_hasAvailScope && ds >= new Date().toISOString().split('T')[0]) {
+            _conflictSummary = '<div style="font-size:0.65em;color:var(--gl-amber);margin-bottom:4px">\u26A0 Availability not enabled \u2014 cannot check conflicts</div>';
         }
 
         // ── SECTION 1: Existing events + RSVP ──
