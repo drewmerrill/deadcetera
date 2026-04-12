@@ -3661,7 +3661,7 @@ function calDayClick(y, m, d) {
                 // RSVP display
                 var _avail = ev.availability || {};
                 if (_members.length > 0) {
-                    _existingHtml += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px" title="RSVP: \u2714=attending \u2716=not attending ?=maybe \u2022=no response \u2014 click to change">';
+                    _existingHtml += '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px">';
                     _members.forEach(function(ref) {
                         var mKey = (typeof ref === 'object') ? ref.key : ref;
                         var name = _bm[mKey] ? _bm[mKey].name : mKey;
@@ -3674,6 +3674,7 @@ function calDayClick(y, m, d) {
                         var _nextVal = _nextStatus === null ? 'null' : '\'' + _nextStatus + '\'';
                         _existingHtml += '<span onclick="_calToggleRsvp(\'' + evId + '\',\'' + mKey + '\',' + _nextVal + ',\'' + safDs + '\')" style="font-size:0.62em;color:' + rColor + ';cursor:pointer" title="Click to change RSVP (\u2714=yes \u2716=no \u2022=unknown)">' + rIcon + ' ' + short + '</span>';
                     });
+                    _existingHtml += '<span style="font-size:0.52em;color:var(--gl-text-tertiary);margin-left:2px">tap to RSVP</span>';
                     _existingHtml += '</div>';
                 }
                 _existingHtml += '<div style="display:flex;gap:6px">'
@@ -3700,17 +3701,34 @@ function calDayClick(y, m, d) {
             + _availSection
             + _existingHtml
             + _conflictSummary
-            + _extHtml
-            + '<div style="display:flex;gap:4px;margin-top:6px">'
-            + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'rehearsal\'})" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:700;font-family:inherit">\uD83C\uDFB8 Rehearsal</button>'
-            + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'gig\'})" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:700;font-family:inherit">\uD83C\uDFA4 Gig</button>'
-            + '<button onclick="calAddEvent(\'' + safDs + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--gl-text-dim);cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">Other</button>'
-            + '</div>'
-            + '</div>';
+            + _extHtml;
+
+        // Add-event buttons: full buttons if no events, collapsed "+ Add another" if events exist
+        if (_dateEvents.length > 0) {
+            cardHtml += '<div style="margin-top:6px;text-align:center">'
+                + '<button onclick="var p=this.parentNode.querySelector(\'.cal-add-expand\');if(p){p.style.display=p.style.display===\'none\'?\'flex\':\'none\';}" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:0.65em;font-family:inherit;padding:2px 8px">+ Add another event</button>'
+                + '<div class="cal-add-expand" style="display:none;gap:4px;margin-top:4px">'
+                + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'rehearsal\'})" style="flex:1;padding:5px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.68em;font-weight:700;font-family:inherit">\uD83C\uDFB8 Rehearsal</button>'
+                + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'gig\'})" style="flex:1;padding:5px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-size:0.68em;font-weight:700;font-family:inherit">\uD83C\uDFA4 Gig</button>'
+                + '<button onclick="calAddEvent(\'' + safDs + '\')" style="flex:1;padding:5px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--gl-text-dim);cursor:pointer;font-size:0.68em;font-weight:600;font-family:inherit">Other</button>'
+                + '</div></div>';
+        } else {
+            cardHtml += '<div style="display:flex;gap:4px;margin-top:6px">'
+                + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'rehearsal\'})" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:700;font-family:inherit">\uD83C\uDFB8 Rehearsal</button>'
+                + '<button onclick="calAddEvent(\'' + safDs + '\',null,{type:\'gig\'})" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:700;font-family:inherit">\uD83C\uDFA4 Gig</button>'
+                + '<button onclick="calAddEvent(\'' + safDs + '\')" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--gl-text-dim);cursor:pointer;font-size:0.72em;font-weight:600;font-family:inherit">Other</button>'
+                + '</div>';
+        }
+        cardHtml += '</div>';
 
         var existing = document.getElementById('calSelectedDayCard');
         if (existing) { existing.outerHTML = cardHtml; }
         else { var t = document.createElement('div'); t.innerHTML = cardHtml; ctxRail.insertBefore(t.firstElementChild, ctxRail.firstChild); }
+        // Scroll the card into view (critical on iPad where rail is below the fold)
+        requestAnimationFrame(function() {
+            var card = document.getElementById('calSelectedDayCard');
+            if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
     }
 }
 
@@ -3846,10 +3864,18 @@ async function calAddEvent(date, editIdx, existing) {
     // Gate: must have an active Google token to create/edit events
     var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
     if (!_hasToken) {
-        if (typeof showToast === 'function') showToast('\u26A0 Sign in to Google Calendar first to create events.', 5000);
-        // Offer to connect
-        if (confirm('You need to sign in to Google Calendar before creating events.\n\nSign in now?')) {
-            _calConnectGoogle();
+        // Show inline sign-in prompt (no confirm() — Safari blocks OAuth popups after confirm dialogs)
+        var _area = document.getElementById('calEventFormArea');
+        if (_area) {
+            _area.innerHTML = '<div style="padding:16px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">'
+                + '<div style="font-size:0.88em;font-weight:600;color:var(--gl-amber);margin-bottom:6px">Sign in to Google Calendar</div>'
+                + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">You need to be connected to Google Calendar to create or edit events.</div>'
+                + '<div style="display:flex;gap:8px">'
+                + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">Connect Now</button>'
+                + '<button onclick="document.getElementById(\'calEventFormArea\').innerHTML=\'\'" style="padding:8px 16px;font-size:0.82em;background:none;border:1px solid rgba(255,255,255,0.1);color:var(--gl-text-tertiary);border-radius:6px;cursor:pointer">Cancel</button>'
+                + '</div></div>';
+        } else {
+            if (typeof showToast === 'function') showToast('\u26A0 Sign in to Google Calendar first to create events.', 5000);
         }
         return;
     }
