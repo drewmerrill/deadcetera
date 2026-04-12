@@ -93,6 +93,7 @@ window.GLCalendarSync = (function() {
 
     var body = _buildEventBody(glEvent, opts);
     var calId = await _getBandCalendarId();
+    if (!calId) return { success: false, error: 'No band calendar configured. Open Rules to set one up.' };
 
     try {
       var res = await fetch(WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId), {
@@ -139,6 +140,7 @@ window.GLCalendarSync = (function() {
 
     var body = _buildEventBody(glEvent, opts);
     var calId = await _getBandCalendarId();
+    if (!calId) return { success: false, error: 'No band calendar configured.' };
 
     try {
       var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId), {
@@ -175,6 +177,7 @@ window.GLCalendarSync = (function() {
     }
 
     var calId = await _getBandCalendarId();
+    if (!calId) return { success: false, error: 'No band calendar configured.' };
 
     try {
       var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId), {
@@ -726,7 +729,7 @@ window.GLCalendarSync = (function() {
       ? settings.selectedCalendars : ['primary'];
     // Auto-exclude band calendar — band events must never create self-conflicts
     var bandCalId = await _getBandCalendarId();
-    if (bandCalId && bandCalId !== 'primary') {
+    if (bandCalId) {
       cals = cals.filter(function(id) { return id !== bandCalId; });
     }
     // Also exclude by name (IDs can differ between users for shared calendars)
@@ -760,7 +763,8 @@ window.GLCalendarSync = (function() {
     // User-level fallback
     var settings = await getAvailabilitySettings();
     if (settings && settings.bandCalendarId) return settings.bandCalendarId;
-    return 'primary';
+    // No band calendar configured — return null (callers must check)
+    return null;
   }
 
   // Get the default rehearsal window (user-configurable)
@@ -790,7 +794,7 @@ window.GLCalendarSync = (function() {
   async function canWriteBandCalendar() {
     if (_bandCalAccessCache !== null) return _bandCalAccessCache;
     var calId = await _getBandCalendarId();
-    if (calId === 'primary') { _bandCalAccessCache = true; return true; }
+    if (!calId) { _bandCalAccessCache = false; return false; }
     // Check if user's calendar list includes the band calendar
     try {
       var cals = await listCalendars();

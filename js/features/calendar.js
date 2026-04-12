@@ -1344,14 +1344,17 @@ window._calShowAvailabilitySettings = async function() {
         return;
     }
 
+    // Resolve band calendar ID early so availability list can exclude it
+    var bandCalId = _bandLevelCalId || settings.bandCalendarId || null;
+    var _bandCalName = (_bandLevelCalName || '').toLowerCase();
+
     // ── SECTION 1: Availability Calendars (personal, read-only) ──
     var calHtml = '<div style="margin-bottom:16px">';
     calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Your Availability Calendars</div>';
     calHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Select your <strong>personal</strong> calendars. GrooveLinx reads these to detect when you\u2019re busy \u2014 it never writes to them.</div>';
     // Match band calendar by ID or by name (IDs can differ between users)
-    var _bandCalName = (_bandLevelCalName || '').toLowerCase();
     calendars.forEach(function(c, i) {
-        var isBandCal = (c.id === bandCalId) || (_bandCalName && c.summary.toLowerCase() === _bandCalName);
+        var isBandCal = (bandCalId && c.id === bandCalId) || (_bandCalName && c.summary.toLowerCase() === _bandCalName);
         var _esc = (typeof escHtml === 'function') ? escHtml(c.summary) : c.summary;
 
         if (isBandCal) {
@@ -1399,7 +1402,7 @@ window._calShowAvailabilitySettings = async function() {
     rulesHtml += '</div>';
 
     // Band calendar — band-level setting (shared across all members)
-    var bandCalId = _bandLevelCalId || settings.bandCalendarId || 'primary';
+    // bandCalId already resolved above (null if never configured)
     var bandCalHtml = '<div style="margin-bottom:16px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">';
     bandCalHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Band Calendar</div>';
     bandCalHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Shared calendar where GrooveLinx writes rehearsals and gigs. This setting applies to the whole band.</div>';
@@ -1418,8 +1421,11 @@ window._calShowAvailabilitySettings = async function() {
     } else {
         // User has access — show dropdown
         bandCalHtml += '<select id="calOptBandCal" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
+        if (!bandCalId) {
+            bandCalHtml += '<option value="" selected disabled>\u2014 Select your band calendar \u2014</option>';
+        }
         calendars.forEach(function(c) {
-            var selected = c.id === bandCalId;
+            var selected = bandCalId && c.id === bandCalId;
             bandCalHtml += '<option value="' + c.id + '"' + (selected ? ' selected' : '') + '>' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + (c.primary ? ' (personal)' : '') + '</option>';
         });
         bandCalHtml += '</select>';
@@ -1460,7 +1466,7 @@ window._calSaveAvailabilitySettings = async function() {
     var endHour = document.getElementById('calOptEndHour');
 
     var bandCalSelect = document.getElementById('calOptBandCal');
-    var bandCalId = bandCalSelect ? bandCalSelect.value : 'primary';
+    var bandCalId = (bandCalSelect && bandCalSelect.value) ? bandCalSelect.value : null;
 
     var settings = {
         selectedCalendars: selectedCals,
@@ -1477,7 +1483,7 @@ window._calSaveAvailabilitySettings = async function() {
     var ok = await GLCalendarSync.saveAvailabilitySettings(settings);
 
     // Also save band calendar at BAND level (shared across all members)
-    if (bandCalId && bandCalId !== 'primary') {
+    if (bandCalId) {
         try {
             var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
             if (db && typeof bandPath === 'function') {
