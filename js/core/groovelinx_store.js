@@ -980,18 +980,21 @@
     } catch(e) {}
   }
 
-  // Auto-preload after readiness loads, then re-render songs to show love dots
-  setTimeout(function() {
-    _preloadBandLove().then(function() {
-      return _preloadAudienceLove();
-    }).then(function() {
-      // Re-render songs page if visible so love dots appear
-      if (typeof renderSongs === 'function') {
-        try { renderSongs(); } catch(e) {}
-      }
-      return _preloadPersonalLove();
-    }).catch(function() {});
-  }, 8000);
+  // Love preload: chain after songs are ready (GLStore.ready('songs') fires at ~2s).
+  // Previously delayed 8s — now triggers as soon as songs are loaded.
+  on('ready', function(e) {
+    if (e && e.key === 'songs') {
+      _preloadBandLove().then(function() {
+        return _preloadAudienceLove();
+      }).then(function() {
+        // Re-render songs page so love dots appear
+        if (typeof renderSongs === 'function') {
+          try { renderSongs(); } catch(e2) {}
+        }
+        return _preloadPersonalLove();
+      }).catch(function() {});
+    }
+  });
 
   // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
 

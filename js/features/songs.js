@@ -368,7 +368,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     };
     var _sortLabels = { default:'Default', title_asc:'Song A→Z', title_desc:'Song Z→A', readiness_asc:'Readiness ↑', readiness_desc:'Readiness ↓', status:'Status', band:'Band', love_desc:'Love ↓', love_asc:'Love ↑', needs_work:'Needs Work' };
     var _modeBar = '<div style="display:flex;align-items:center;gap:8px;padding:4px 12px;margin-bottom:4px">'
-        + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">🎯 Rehearsal</button>'
+        + '<button onclick="window._sqTriageFilter=null;document.body.classList.remove(\'gl-triage-active\');renderSongs()" style="font-size:0.72em;font-weight:' + (!_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (!_isCleanup ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (!_isCleanup ? 'rgba(99,102,241,0.1)' : 'none') + ';color:' + (!_isCleanup ? '#a5b4fc' : 'var(--text-dim)') + '">All Songs</button>'
         + '<button onclick="if(!window._sqTriageFilter)sqCleanupStart()" style="font-size:0.72em;font-weight:' + (_isCleanup ? '800' : '600') + ';padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_isCleanup ? 'rgba(251,191,36,0.4)' : 'rgba(255,255,255,0.08)') + ';background:' + (_isCleanup ? 'rgba(251,191,36,0.1)' : 'none') + ';color:' + (_isCleanup ? '#fbbf24' : 'var(--text-dim)') + '">🧹 Cleanup</button>'
         + '<span style="display:flex;align-items:center;gap:4px;margin-left:auto">';
     // Count active vs library for scope labels
@@ -429,7 +429,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
       return '<div style="margin-top:4px;line-height:1.5">' + items + '</div>';
     }
 
-    // ── SUGGESTED NEXT SONG (Rehearsal mode only) ──
+    // ── SUGGESTED NEXT SONG ──
     // Focus engine — single source of truth for recommendation
     var _suggestHTML = '';
     if (!_isCleanup && filtered.length > 0) {

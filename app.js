@@ -790,7 +790,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         preloadReadinessCache().then(function() {
             console.log('📊 Readiness loaded:', Object.keys(readinessCache).length, 'songs');
-            // Signal that bulk readiness data loaded — invalidates Practice Attention cache
+            // Signal that bulk readiness data loaded — invalidates focus + Practice Attention cache
+            if (typeof GLStore !== 'undefined' && GLStore.invalidateFocusCache) GLStore.invalidateFocusCache();
             if (typeof GLStore !== 'undefined' && GLStore.emit) GLStore.emit('readinessChanged', {});
             // Re-render song list so readiness bars fill in (they render inline from cache)
             if (typeof renderSongs === 'function') { console.log('📊 Re-rendering songs with readiness'); requestAnimationFrame(function() { renderSongs(); }); }
