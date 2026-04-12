@@ -224,15 +224,16 @@ window.SongMatchingEngine = (function() {
     // Build candidate list (with recent session history for band-context priors)
     var candidates = _buildCandidates(refSongs, allSongs, type, context);
 
-    // Build adjacency map for continuity signal
-    var adjacentLabels = {};
+    // Separate plan-only candidates for fast first pass
+    var planCandidates = candidates.filter(function(c) { return c.inPlan; });
 
-    // Score each segment — track song-type index for plan position matching
+    var adjacentLabels = {};
     var _songSegIdx = 0;
+    var _matched = 0, _unresolved = 0;
+
     for (var i = 0; i < segments.length; i++) {
       var seg = segments[i];
 
-      // Skip non-song segments
       if (seg.segType && seg.segType !== 'song' && seg.segType !== 'restart') {
         seg.songMatch = null;
         continue;
@@ -240,20 +241,16 @@ window.SongMatchingEngine = (function() {
       seg._matchIndex = _songSegIdx;
       _songSegIdx++;
 
-      // Short segments → low confidence
       if (seg.duration < MIN_SEGMENT_DURATION) {
         seg.songMatch = {
-          bestMatch: seg.songTitle ? { title: seg.songTitle, score: 0.3 } : null,
-          candidates: [],
-          confidence: 'low',
-          explanation: ['Segment too short for reliable matching (' + Math.round(seg.duration) + 's)'],
+          bestMatch: null, candidates: [], confidence: 'low',
+          explanation: ['Segment too short (' + Math.round(seg.duration) + 's)'],
           needsReview: true
         };
+        _unresolved++;
         continue;
       }
 
-      // Build adjacent labels with trust metadata
-      // Strong anchors get highest continuity; confirmed-but-not-anchor gets standard confirmed tier
       var prevSeg = i > 0 ? segments[i - 1] : null;
       var nextSeg = i < segments.length - 1 ? segments[i + 1] : null;
       adjacentLabels.prev = prevSeg && prevSeg.songTitle ? prevSeg.songTitle : null;
@@ -263,29 +260,46 @@ window.SongMatchingEngine = (function() {
       adjacentLabels.nextConfirmed = nextSeg && nextSeg.confirmed;
       adjacentLabels.nextConfidence = nextSeg && nextSeg.songMatch ? nextSeg.songMatch.confidence : null;
 
-      var result = scoreSegment(seg, candidates, context, adjacentLabels);
+      // ── PLAN-FIRST PASS: try plan songs only before broader search ──
+      var result = null;
+      if (planCandidates.length > 0) {
+        var planResult = scoreSegment(seg, planCandidates, context, adjacentLabels);
+        if (planResult.confidence === 'high' || planResult.confidence === 'medium') {
+          result = planResult;
+          result._planFirstMatch = true;
+        }
+      }
+
+      // Broader search if plan-first didn't resolve
+      if (!result) {
+        result = scoreSegment(seg, candidates, context, adjacentLabels);
+      }
       seg.songMatch = result;
 
-      // Confidence-based assignment behavior:
-      // High → auto-assign silently (confirmed feel)
-      // Medium → assign + needsReview stays true (show alternatives)
-      // Low → don't assign (require user confirmation)
+      // Assignment: HIGH/MEDIUM get labels, LOW gets "Unresolved"
       if (result.bestMatch) {
         if (result.confidence === 'high') {
           seg.songTitle = result.bestMatch.title;
           seg.label = result.bestMatch.title;
           result.needsReview = false;
+          _matched++;
         } else if (result.confidence === 'medium') {
-          if (!seg.songTitle || seg.confidence < 0.5) seg.songTitle = result.bestMatch.title;
+          seg.songTitle = result.bestMatch.title;
+          seg.label = result.bestMatch.title + ' ?';
           result.needsReview = true;
+          _matched++;
         } else {
-          // Low: do NOT assign a potentially wrong label — mark as unknown for review
-          if (!seg.songTitle) {
-            seg.songTitle = 'Unknown (needs review)';
-            seg.label = 'Unknown (needs review)';
-          }
+          // Low: show as unresolved with suggestions, NOT "Unknown (needs review)"
+          seg.songTitle = null;
+          seg.label = null;
+          seg._unresolved = true;
+          seg._suggestions = result.candidates ? result.candidates.slice(0, 3) : [];
           result.needsReview = true;
+          _unresolved++;
         }
+      } else {
+        seg._unresolved = true;
+        _unresolved++;
       }
 
       // Stage 2: If chord data is available and confidence is not high,
@@ -303,6 +317,8 @@ window.SongMatchingEngine = (function() {
         }
       }
     }
+
+    console.log('[SongMatch] Results: ' + _matched + ' matched, ' + _unresolved + ' unresolved / ' + segments.length + ' total');
 
     // Post-scoring: store confirmed segment embeddings into the bank
     segments.forEach(function(seg) {
@@ -323,55 +339,57 @@ window.SongMatchingEngine = (function() {
   // ── Candidate generation ────────────────────────────────────────────────────
 
   function _buildCandidates(refSongs, allSongs, type, context) {
-    var candidates = [];
+    var scored = []; // { title, score, tier, inPlan, planOrder, song }
     var seen = {};
 
-    // Priority 1: Rehearsal plan / setlist songs (highest trust)
+    // Score-based candidate pool — plan songs dominate via scoring
+    var _gs = (typeof GLStore !== 'undefined');
+
+    // 1. Plan songs: +120 base (MUST dominate)
     refSongs.forEach(function(title, idx) {
-      if (!seen[title]) {
-        candidates.push({ title: title, inPlan: true, planOrder: idx, tier: 'plan', song: _findSong(title, allSongs) });
-        seen[title] = true;
-      }
+      if (seen[title]) return;
+      seen[title] = true;
+      scored.push({ title: title, score: 120, inPlan: true, planOrder: idx, tier: 'plan', song: _findSong(title, allSongs) });
     });
 
-    // Priority 2: Recent rehearsal history (songs practiced in last 3 sessions)
+    // 2. Recent rehearsal songs: +50 base
     var recentSongs = (context && context.recentSessionSongs) || [];
     recentSongs.forEach(function(title) {
       if (seen[title]) return;
-      candidates.push({ title: title, inPlan: false, planOrder: -1, tier: 'recent', song: _findSong(title, allSongs) });
       seen[title] = true;
+      scored.push({ title: title, score: 50, inPlan: false, planOrder: -1, tier: 'recent', song: _findSong(title, allSongs) });
     });
 
-    // Priority 3: Active band songs (In Rotation, Learning, Prospect)
-    var ACTIVE_STATUSES = (typeof GLStore !== 'undefined' && GLStore.ACTIVE_STATUSES) ? GLStore.ACTIVE_STATUSES : { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
-    var activeCount = 0;
+    // 3. Active songs: +25 base + love boost
+    var ACTIVE_STATUSES = (_gs && GLStore.ACTIVE_STATUSES) ? GLStore.ACTIVE_STATUSES : { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
     allSongs.forEach(function(s) {
-      if (activeCount >= MAX_CATALOG_CANDIDATES) return;
       if (seen[s.title]) return;
-      var status = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(s.title) || '') : (s.status || '');
-      if (ACTIVE_STATUSES[status]) {
-        candidates.push({ title: s.title, inPlan: false, planOrder: -1, tier: 'active', song: s });
-        seen[s.title] = true;
-        activeCount++;
-      }
+      var status = (_gs && GLStore.getStatus) ? (GLStore.getStatus(s.title) || '') : (s.status || '');
+      if (!ACTIVE_STATUSES[status]) return;
+      seen[s.title] = true;
+      var loveBoost = 0;
+      if (_gs && GLStore.getBandLove) loveBoost += (GLStore.getBandLove(s.title) || 0) * 2;
+      if (_gs && GLStore.getAudienceLove) loveBoost += (GLStore.getAudienceLove(s.title) || 0);
+      scored.push({ title: s.title, score: 25 + loveBoost, inPlan: false, planOrder: -1, tier: 'active', song: s });
     });
 
-    // Priority 4: Wider library (only if we have few candidates)
-    if (candidates.length < 10) {
-      var remaining = MAX_CATALOG_CANDIDATES - candidates.length;
+    // 4. Library fallback (only if few candidates)
+    if (scored.length < 10) {
       allSongs.forEach(function(s) {
-        if (remaining <= 0) return;
         if (seen[s.title]) return;
-        candidates.push({ title: s.title, inPlan: false, planOrder: -1, tier: 'library', song: s });
         seen[s.title] = true;
-        remaining--;
+        scored.push({ title: s.title, score: 1, inPlan: false, planOrder: -1, tier: 'library', song: s });
       });
     }
+
+    // Sort by score descending, hard limit to top 25
+    scored.sort(function(a, b) { return b.score - a.score; });
+    var candidates = scored.slice(0, 25);
 
     // Log candidate buckets
     var _tierCounts = {};
     candidates.forEach(function(c) { _tierCounts[c.tier] = (_tierCounts[c.tier] || 0) + 1; });
-    console.log('[SongMatch] Candidates: ' + candidates.length + ' total — ' +
+    console.log('[SongMatch] Candidates: ' + candidates.length + ' (from ' + scored.length + ' scored) — ' +
       Object.keys(_tierCounts).map(function(t) { return t + ':' + _tierCounts[t]; }).join(', '));
 
     return candidates;

@@ -340,36 +340,14 @@ window.RecordingAnalyzer = (function() {
         }
       }
 
-      // ── CLAP embedding extraction ─────────────────────────────────────────
+      // ── CLAP: prepare WAV blob for parallel processing (NOT blocking here) ──
       if (_embedServiceAvailable && _fSeg.duration >= _MIN_EMBED_DURATION) {
         try {
-          // Use center 30s (or less) for embedding
           var _eCenterLen = Math.min(_segPcm.length, Math.floor(30 * _segSr));
           var _eCenterOff = Math.floor((_segPcm.length - _eCenterLen) / 2);
           var _eSlice = _segPcm.subarray(_eCenterOff, _eCenterOff + _eCenterLen);
-          var _eWav = _encodeWAV(_eSlice, _segSr);
-
-          var _eCtrl = new AbortController();
-          var _eTimeout = setTimeout(function() { _eCtrl.abort(); }, 8000);
-          var _eForm = new FormData();
-          _eForm.append('file', new Blob([_eWav], { type: 'audio/wav' }), 'segment.wav');
-          var _eRes = await fetch(_embedServiceUrl + '/embed', { method: 'POST', body: _eForm, signal: _eCtrl.signal });
-          clearTimeout(_eTimeout);
-          var _eData = await _eRes.json();
-
-          if (_eData.embedding && _eData.embedding.length) {
-            _fSeg.audioEmbedding = _eData.embedding;
-            _embedsExtracted++;
-            console.log('[Embed] seg ' + _fi + ': ' + _eData.dimension + 'd' + (isLargeFile ? ' [on-demand decode]' : ''));
-          }
-        } catch(_eErr) {
-          if (_eErr.name === 'AbortError') {
-            console.warn('[Embed] Service timeout — stopping embedding extraction');
-            _embedServiceAvailable = false; // don't try remaining segments
-          } else {
-            console.warn('[Embed] seg ' + _fi + ' failed:', _eErr.message);
-          }
-        }
+          _fSeg._embedWav = _encodeWAV(_eSlice, _segSr); // store for parallel batch
+        } catch(e) {}
       }
 
       // ── Chord detection (Essentia) ──────────────────────────────────────────
@@ -407,6 +385,55 @@ window.RecordingAnalyzer = (function() {
             console.warn('[Chords] seg ' + _fi + ' failed:', _cErr.message);
           }
         }
+      }
+    }
+
+    // ── Parallel CLAP embedding batch ─────────────────────────────────────
+    // Run all CLAP requests in parallel (5 concurrent) instead of sequential.
+    // WAV blobs were prepared during the extraction loop above.
+    if (_embedServiceAvailable) {
+      var _embedQueue = [];
+      segments.forEach(function(seg, idx) {
+        if (seg._embedWav) _embedQueue.push({ seg: seg, idx: idx, wav: seg._embedWav });
+        delete seg._embedWav; // free memory
+      });
+
+      if (_embedQueue.length > 0) {
+        var _embedStart = Date.now();
+        var _MAX_CONCURRENT = 5;
+        var _embedIdx = 0;
+
+        async function _embedWorker() {
+          while (_embedIdx < _embedQueue.length) {
+            var _item = _embedQueue[_embedIdx++];
+            try {
+              var _form = new FormData();
+              _form.append('file', new Blob([_item.wav], { type: 'audio/wav' }), 'segment.wav');
+              var _ctrl = new AbortController();
+              var _to = setTimeout(function() { _ctrl.abort(); }, 10000);
+              var _res = await fetch(_embedServiceUrl + '/embed', { method: 'POST', body: _form, signal: _ctrl.signal });
+              clearTimeout(_to);
+              var _data = await _res.json();
+              if (_data.embedding && _data.embedding.length) {
+                _item.seg.audioEmbedding = _data.embedding;
+                _embedsExtracted++;
+              }
+            } catch(e) {
+              // Individual segment failure — continue with others
+            }
+          }
+        }
+
+        var _workers = [];
+        for (var _wi = 0; _wi < Math.min(_MAX_CONCURRENT, _embedQueue.length); _wi++) {
+          _workers.push(_embedWorker());
+        }
+        await Promise.all(_workers);
+
+        var _embedMs = Date.now() - _embedStart;
+        var _avgMs = _embedQueue.length > 0 ? Math.round(_embedMs / _embedQueue.length) : 0;
+        console.log('[Embed] Parallel batch: ' + _embedsExtracted + '/' + _embedQueue.length +
+          ' in ' + Math.round(_embedMs / 1000) + 's (avg ' + _avgMs + 'ms/segment, ' + _MAX_CONCURRENT + ' concurrent)');
       }
     }
 
@@ -830,13 +857,12 @@ window.RecordingAnalyzer = (function() {
       }
     });
 
-    // Label segments without song matches + compute quality scores
-    var songNum = 1;
+    // Label unresolved segments + compute quality scores
     segments.forEach(function(seg) {
       if (!seg.songTitle && seg.duration >= 60) {
-        seg.songTitle = 'Song ' + songNum;
+        // Mark as unresolved — DO NOT assign placeholder "Song N" labels
+        seg._unresolved = true;
         seg.confidence = 0.1;
-        songNum++;
       }
       if (!seg.segType) seg.segType = 'song';
 

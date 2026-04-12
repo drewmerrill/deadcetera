@@ -1569,8 +1569,15 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         html += '<div id="rhCoachingPanel" style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.12);background:#1a2340;position:sticky;bottom:48px;z-index:50;max-height:220px;overflow:hidden;transition:max-height 0.3s ease">';
         html += '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">What to Work On</div>';
 
-        // Priority songs — show top 2 by default, rest behind expander
-        var _prioritySongs = data.songList.filter(function(g) { return g.segments.length >= 3 || g.bestQuality < 2; });
+        // Priority songs — only resolved songs (confidence >= medium), no unresolved segments
+        var _prioritySongs = data.songList.filter(function(g) {
+            if (!g.title) return false;
+            // Exclude unresolved/unknown segments from coaching
+            var _isUnresolved = g.segments.some(function(s) { return s._unresolved; });
+            var _isUnknown = g.title.indexOf('Unknown') !== -1 || g.title.indexOf('Unresolved') !== -1;
+            if (_isUnresolved || _isUnknown) return false;
+            return g.segments.length >= 3 || g.bestQuality < 2;
+        });
         var _visibleCount = 2;
         var _hasOverflow = _prioritySongs.length > _visibleCount;
 
