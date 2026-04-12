@@ -327,7 +327,8 @@ async function handleDriveAudio(request) {
 
     // Strategy 1: Use Google Drive API with user's OAuth token (most reliable)
     if (accessToken) {
-      var apiUrl = 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media';
+      // supportsAllDrives=true handles files in Shared Drives (Team Drives)
+      var apiUrl = 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media&supportsAllDrives=true';
       var res = await fetch(apiUrl, {
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
@@ -345,14 +346,17 @@ async function handleDriveAudio(request) {
       var apiErr = '';
       try { apiErr = await res.text(); } catch(e) {}
       // If it's a clear auth/not-found error, return it directly
-      if (res.status === 404 || res.status === 403) {
+      if (res.status === 404 || res.status === 403 || res.status === 401) {
         return jsonResp({
-          error: 'Drive API ' + res.status + ' for file ' + fileId.substring(0, 8) + '...',
-          detail: apiErr.substring(0, 300),
+          error: 'Drive API ' + res.status + ' for file ' + fileId,
+          detail: apiErr.substring(0, 500),
+          driveUrl: driveUrl,
           hint: res.status === 404
-            ? 'File not found. Check that the Drive link is correct and the file still exists.'
-            : 'Access denied. Make sure the file is shared with your Google account.'
-        }, res.status === 404 ? 404 : 403);
+            ? 'File not found. The file ID is ' + fileId + '. Check that this file exists and is shared with your Google account (drewmerrill1029@gmail.com).'
+            : res.status === 401
+            ? 'Token rejected. The Drive scope may not have been granted. Try disconnecting and reconnecting Google.'
+            : 'Access denied. The file exists but your account cannot access it. Make sure it is shared with you.'
+        }, res.status);
       }
       // Other errors — fall through to public methods
     }
