@@ -208,7 +208,9 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
 
     // Sort: user-selected or triage auto-sort
     var _sortMode = window._sqSongSort || 'default';
-    if (!window._sqTriageFilter && _sortMode !== 'default' && filtered.length > 1) {
+    // User-selected sort overrides triage sort when explicitly set
+    var _userSortActive = _sortMode !== 'default' && filtered.length > 1;
+    if (_userSortActive) {
         filtered.sort(function(a, b) {
             if (_sortMode === 'readiness_asc' || _sortMode === 'readiness_desc') {
                 var aA = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(a.title) : -1;
@@ -245,8 +247,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         });
     }
 
-    // Triage priority sort: when triage active, surface the most important songs first
-    if (window._sqTriageFilter && filtered.length > 1) {
+    // Triage priority sort: only when triage active AND no user sort overrides
+    if (window._sqTriageFilter && !_userSortActive && filtered.length > 1) {
         var _sortUpcoming = (typeof window._glCachedSetlists !== 'undefined') ? {} : null;
         if (_sortUpcoming) {
             try {
@@ -371,7 +373,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
           + (_isSelectMode ? '<th style="' + _hd + ';width:28px;padding:6px 2px 6px 8px"><input type="checkbox" ' + (_selectAllChecked ? 'checked ' : '') + 'onclick="_sqToggleAll()" style="accent-color:#fbbf24;width:16px;height:16px;cursor:pointer" title="Select all"></th>' : '')
           + '<th style="' + _hd + ';text-align:left;width:' + (_isSelectMode ? '28%' : '32%') + '" onclick="window._sqSongSort=(window._sqSongSort===\'title_asc\'?\'title_desc\':\'title_asc\');renderSongs()">Song' + _arrow('title') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:14%" onclick="window._sqSongSort=(window._sqSongSort===\'readiness_asc\'?\'readiness_desc\':\'readiness_asc\');renderSongs()">Readiness' + _arrow('readiness') + '</th>'
-          + '<th style="' + _hd + ';text-align:left;width:14%">Status' + _statusFilterIcon + '</th>'
+          + '<th style="' + _hd + ';text-align:center;width:14%">Status' + _statusFilterIcon + '</th>'
           + '<th style="' + _hd + ';text-align:center;width:7%" onclick="window._sqSongSort=(window._sqSongSort===\'needs_work\'?\'default\':\'needs_work\');renderSongs()" title="Songs flagged by focus engine">\u26A0' + _arrow('needs_work') + '</th>'
           + '<th style="' + _hd + ';text-align:left;width:10%" onclick="window._sqSongSort=(window._sqSongSort===\'band\'?\'default\':\'band\');renderSongs()">Band' + _arrow('band') + ' ' + _bandFilterIcon + '</th>'
           + '<th style="' + _hd + ';text-align:center;width:13%" onclick="window._sqSongSort=(window._sqSongSort===\'love_desc\'?\'love_asc\':\'love_desc\');renderSongs()">Love' + _arrow('love') + '</th>'
@@ -553,8 +555,8 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                _checkCol +
                '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + song.title + '</td>' +
                '<td style="padding:6px 4px"><div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:48px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + barPct + '%;background:' + barColor + ';border-radius:3px"></span></span><span style="font-size:0.72em;font-weight:700;color:' + barColor + '">' + readinessText + '</span></div></td>' +
-               '<td style="padding:6px 4px;font-size:0.7em">' + statusChip + '</td>' +
-               '<td style="padding:6px 4px;text-align:center">' + needsWorkHtml + '</td>' +
+               '<td style="padding:6px 4px;font-size:0.7em;text-align:center">' + statusChip + '</td>' +
+               '<td style="padding:6px 2px;text-align:center;font-size:1.1em">' + needsWorkHtml + '</td>' +
                '<td style="padding:6px 6px"><span class="song-badge ' + (song.band || 'other').toLowerCase() + '">' + (song.band || '') + '</span></td>' +
                '<td style="padding:6px 4px;text-align:center">' + _loveHtml + '</td>' +
                '</tr>';
