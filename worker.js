@@ -341,7 +341,20 @@ async function handleDriveAudio(request) {
           }
         }));
       }
-      // Token might not have Drive scope — fall through to public methods
+      // Return detailed error so we can debug
+      var apiErr = '';
+      try { apiErr = await res.text(); } catch(e) {}
+      // If it's a clear auth/not-found error, return it directly
+      if (res.status === 404 || res.status === 403) {
+        return jsonResp({
+          error: 'Drive API ' + res.status + ' for file ' + fileId.substring(0, 8) + '...',
+          detail: apiErr.substring(0, 300),
+          hint: res.status === 404
+            ? 'File not found. Check that the Drive link is correct and the file still exists.'
+            : 'Access denied. Make sure the file is shared with your Google account.'
+        }, res.status === 404 ? 404 : 403);
+      }
+      // Other errors — fall through to public methods
     }
 
     // Strategy 2: Try multiple public download URLs (no auth needed for "anyone with link" files)

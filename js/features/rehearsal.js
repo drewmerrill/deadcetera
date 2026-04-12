@@ -2425,7 +2425,10 @@ function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
     }).then(function(res) {
         if (!res.ok) {
             return res.json().catch(function() { return {}; }).then(function(d) {
-                throw new Error(d.error || 'Drive fetch failed: ' + res.status);
+                var msg = d.error || 'Drive fetch failed: ' + res.status;
+                if (d.hint) msg += '\n' + d.hint;
+                if (d.detail) console.warn('[Drive] API detail:', d.detail);
+                throw new Error(msg);
             });
         }
         return res.blob();
