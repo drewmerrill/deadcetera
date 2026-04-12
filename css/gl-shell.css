@@ -196,8 +196,7 @@ details[open] > .gl-rail-section-title .gl-rail-chevron {
 #gl-shell.gl-shell--nav-collapsed .gl-mode-btn { flex-direction: row; padding: 6px; }
 #gl-shell.gl-shell--nav-collapsed .gl-mode-label { display: none; }
 
-/* ── Play mode: minimize clutter ───────────────────────────────────────────── */
-body[data-gl-mode="play"] .gl-rail-section-title { display: none; }
+/* REMOVED: play mode rail title hiding — modes don't gate visibility */
 
 /* Mobile: mode bar in hamburger menu is handled separately */
 @media (max-width: 900px) {

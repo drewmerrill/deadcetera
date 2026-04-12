@@ -6252,36 +6252,18 @@
   // Default landing page per mode
   var MODE_LANDING = { sharpen: 'songs', lockin: 'rehearsal', play: 'setlists' };
 
+  // DEPRECATED: Product modes no longer gate UI visibility.
+  // Practice/Rehearse/Play are conceptual perspectives, not UI modes.
+  // This function is kept for backward compatibility but has no destructive side effects.
   function setProductMode(mode) {
     if (VALID_MODES.indexOf(mode) === -1) return;
     var prev = _state.productMode;
     _state.productMode = mode;
     localStorage.setItem('gl_product_mode', mode);
-    document.body.setAttribute('data-gl-mode', mode);
-
-    // Clear song selection on mode switch — prevents stale "After Midnight" auto-opening
-    if (prev !== mode) {
-      _state.activeSongId = null;
-      try { localStorage.removeItem('glLastSong'); } catch(e) {}
-      if (typeof window.glRightPanel !== 'undefined' && window.glRightPanel.hide) {
-        window.glRightPanel.hide();
-      }
-    }
-
+    // No longer set data-gl-mode (was used for CSS nav hiding)
+    // No longer clear song selection
+    // No longer force-redirect to landing page
     emit('productModeChanged', { mode: mode, prev: prev });
-
-    // Auto-redirect: if current page is not visible in new mode, go to landing
-    var currentPage = _state.activePage;
-    var visiblePages = MODE_PAGES[mode];
-    if (currentPage && visiblePages && visiblePages.indexOf(currentPage) === -1) {
-      var landing = MODE_LANDING[mode] || 'home';
-      if (typeof showPage === 'function') showPage(landing);
-    }
-
-    // Re-render home dashboard if on home (it's mode-aware)
-    if (_state.activePage === 'home' && typeof renderHomeDashboard === 'function') {
-      renderHomeDashboard();
-    }
   }
 
   function getProductMode() {
@@ -6297,8 +6279,8 @@
     return pages.indexOf(page) !== -1;
   }
 
-  // Apply initial body attribute on load
-  document.body.setAttribute('data-gl-mode', _state.productMode);
+  // DEPRECATED: data-gl-mode no longer set — modes don't gate UI visibility
+  // document.body.setAttribute('data-gl-mode', _state.productMode);
 
   // Expose on GLStore
   window.GLStore.setProductMode = setProductMode;

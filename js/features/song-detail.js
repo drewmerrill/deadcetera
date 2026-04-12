@@ -18,30 +18,10 @@ var SD_LENSES_FULL = [
     { id:'inspire',  icon:'\u2728', label:'Inspire' },
 ];
 
-// All modes now use the same 4 primary lenses
-var SD_LENSES_BY_MODE = {
-    sharpen: [
-        { id:'learn',  icon:'\uD83C\uDFB8', label:'Practice' },
-        { id:'band',   icon:'\uD83D\uDCCA', label:'Play'     },
-        { id:'listen', icon:'\uD83C\uDFA7', label:'Versions' },
-        { id:'sing',   icon:'\uD83C\uDFA4', label:'Harmony'  },
-    ],
-    lockin: [
-        { id:'learn',  icon:'\uD83C\uDFB8', label:'Practice' },
-        { id:'band',   icon:'\uD83D\uDCCA', label:'Play'     },
-        { id:'listen', icon:'\uD83C\uDFA7', label:'Versions' },
-        { id:'sing',   icon:'\uD83C\uDFA4', label:'Harmony'  },
-    ],
-    play: [
-        { id:'band',   icon:'\uD83D\uDCCA', label:'Chart'   },
-    ],
-};
-
-function _sdGetMode() {
-    return (typeof GLStore !== 'undefined' && GLStore.getProductMode) ? GLStore.getProductMode() : 'lockin';
-}
-
-var SD_LENSES = SD_LENSES_FULL; // backward compat
+// All tabs always visible — no mode-based gating.
+// Practice/Rehearse/Play influence meaning, not visibility.
+var SD_LENSES_BY_MODE = null; // DEPRECATED — kept as null to prevent errors if referenced
+var SD_LENSES = SD_LENSES_FULL;
 
 // ── Entry ────────────────────────────────────────────────────────────────────
 window.renderSongDetail = function renderSongDetail(songTitle, containerOverride, options) {
@@ -61,7 +41,7 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
     window._sdPanelMode = !!_sdOpts.panelMode;
     container.innerHTML = _sdShellHTML(title);
     _sdInjectStyles();
-    var _defaultTab = (_sdGetMode() === 'play') ? 'band' : 'learn';
+    var _defaultTab = 'learn';
     _sdActivateTab(_defaultTab);
     _sdPopulateBandLens(title);
     if (_defaultTab === 'learn') { _sdLensPopulated.learn = true; _sdPopulateLearnLens(title); }
@@ -161,10 +141,8 @@ function _sdBuildDnaBar(title) {
 function _sdShellHTML(title) {
     var song = (typeof allSongs!=='undefined') ? allSongs.find(function(s){return s.title===title;}) : null;
     var band=song?(song.band||''):'', key=song?(song.key||''):'', bpm=song?(song.bpm||''):'';
-    var mode = _sdGetMode();
-    var lenses = SD_LENSES_BY_MODE[mode] || SD_LENSES_FULL;
+    var lenses = SD_LENSES_FULL;
     var pills = (band?'<span class="sd-meta-pill sd-band-pill '+band.toLowerCase()+'">'+_sdEsc(band)+'</span>':'');
-    // Key/BPM shown in DNA bar (editable) — no duplicate read-only pills needed
 
     var tabs = lenses.map(function(l) {
         return '<button class="sd-tab-btn" data-lens="'+l.id+'" onclick="switchLens(\''+l.id+'\')">'+
@@ -176,20 +154,11 @@ function _sdShellHTML(title) {
         return '<div class="sd-lens-panel" data-lens="'+l.id+'" style="display:none">'+_sdSkeleton()+'</div>';
     }).join('');
 
-    // Play mode: hide tab bar entirely (single-lens mode)
-    var tabBarStyle = (mode === 'play') ? ' style="display:none"' : '';
+    var tabBarStyle = ''; // tabs always visible
 
-    // Mode-specific dominant action
+    // Unified action bar — same actions regardless of mode
     var safeSong = _sdEsc(title).replace(/'/g,"\\'");
-    var action = '';
-    if (mode === 'sharpen') {
-        action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >🔥 Start Practice</button>';
-    } else if (mode === 'lockin') {
-        action = '<button class="sd-mobile-bar__btn" onclick="var el=document.querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})">📊 Update Readiness</button>'
-               + '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >📖 Practice</button>';
-    } else {
-        action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >📖 Open Chart</button>';
-    }
+    var action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >\u25B6 Practice</button>';
 
     // Panel mode (inside gl-right-panel): single column, no dual layout
     var _isPanelMode = !!window._sdPanelMode;
@@ -276,7 +245,7 @@ function _sdRenderBandChart(title, safeSong, chartText) {
 
 // ── Practice This Song section ────────────────────────────────────────────────
 function _sdRenderPracticeSection(title, safeSong, ytQuery) {
-    var _opts = _sdGetMode() === 'play' ? '' : '';
+    var _opts = '';
     return '<div class="sd-card" style="border-color:rgba(34,197,94,0.15)">'+
         '<div class="sd-card-title" style="margin-bottom:10px">\uD83C\uDFB8 Practice This Song</div>'+
         '<div style="display:flex;flex-direction:column;gap:8px">'+
@@ -309,7 +278,6 @@ async function _sdPopulateBandLens(title) {
     if (!panel) return;
     panel.style.display = 'block';
     _sdBuildReadinessStrip(title);
-    var mode = _sdGetMode();
 
     var songKey = typeof sanitizeFirebasePath==='function' ? sanitizeFirebasePath(title) : title;
     var safeSong = title.replace(/'/g,"\\'");

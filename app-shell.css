@@ -1246,62 +1246,17 @@ body{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent}
    ============================================================================ */
 
 /* Sharpen: show practice, songs, tools; hide setlist editing, rehearsal, gigs */
-body[data-gl-mode="sharpen"] .menu-item[data-page="setlists"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="rehearsal"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="ideas"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="gigs"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="calendar"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="venues"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="stageplot"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="social"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="finances"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="equipment"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="contacts"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="bestshot"],
-body[data-gl-mode="sharpen"] .menu-item[data-page="notifications"] { display:none; }
+/* REMOVED: mode-based nav hiding — all pages always visible.
+   Practice/Rehearse/Play are perspectives, not UI gates. */
 
 /* Lock In: show rehearsal, songs, band tools; hide solo practice, gig logistics */
-body[data-gl-mode="lockin"] .menu-item[data-page="practice"],
-body[data-gl-mode="lockin"] .menu-item[data-page="gigs"],
-body[data-gl-mode="lockin"] .menu-item[data-page="venues"],
-body[data-gl-mode="lockin"] .menu-item[data-page="stageplot"],
-body[data-gl-mode="lockin"] .menu-item[data-page="playlists"],
-body[data-gl-mode="lockin"] .menu-item[data-page="tuner"],
-body[data-gl-mode="lockin"] .menu-item[data-page="metronome"],
-body[data-gl-mode="lockin"] .menu-item[data-page="pocketmeter"],
-body[data-gl-mode="lockin"] .menu-item[data-page="social"],
-body[data-gl-mode="lockin"] .menu-item[data-page="finances"],
-body[data-gl-mode="lockin"] .menu-item[data-page="equipment"],
-body[data-gl-mode="lockin"] .menu-item[data-page="contacts"],
-body[data-gl-mode="lockin"] .menu-item[data-page="bestshot"],
-body[data-gl-mode="lockin"] .menu-item[data-page="notifications"] { display:none; }
+/* REMOVED: lockin mode nav hiding */
 
 /* Play: show gigs, setlists, venues; hide everything else */
-body[data-gl-mode="play"] .menu-item[data-page="songs"],
-body[data-gl-mode="play"] .menu-item[data-page="practice"],
-body[data-gl-mode="play"] .menu-item[data-page="rehearsal"],
-body[data-gl-mode="play"] .menu-item[data-page="ideas"],
-body[data-gl-mode="play"] .menu-item[data-page="playlists"],
-body[data-gl-mode="play"] .menu-item[data-page="tuner"],
-body[data-gl-mode="play"] .menu-item[data-page="metronome"],
-body[data-gl-mode="play"] .menu-item[data-page="pocketmeter"],
-body[data-gl-mode="play"] .menu-item[data-page="social"],
-body[data-gl-mode="play"] .menu-item[data-page="finances"],
-body[data-gl-mode="play"] .menu-item[data-page="equipment"],
-body[data-gl-mode="play"] .menu-item[data-page="contacts"],
-body[data-gl-mode="play"] .menu-item[data-page="bestshot"],
-body[data-gl-mode="play"] .menu-item[data-page="notifications"] { display:none; }
+/* REMOVED: play mode nav hiding */
 
 /* ── Play mode: simplify song list — hide editing UI ── */
-/* NOTE: #songSearch is no longer hidden in play mode.
-   Mode should NOT hide features (see Practice/Rehearse/Play architecture). */
-body[data-gl-mode="play"] .song-status-cell,
-body[data-gl-mode="play"] .song-chain-strip,
-body[data-gl-mode="play"] .filter-row,
-body[data-gl-mode="play"] #customSongBtn { display:none!important; }
-
-/* ── Sharpen mode: de-emphasize band status columns ── */
-body[data-gl-mode="sharpen"] .song-status-cell { opacity:0.4; }
+/* REMOVED: play mode song page hiding + sharpen mode opacity override */
 
 /* ── All modes: improved base spacing ── */
 .app-card { margin-bottom:14px; }
@@ -1309,9 +1264,8 @@ body[data-gl-mode="sharpen"] .song-status-cell { opacity:0.4; }
 
 /* Mobile mode switcher — highlight active button */
 .gl-mobile-mode-btn[data-mode] { transition: all 0.15s; }
-body[data-gl-mode="sharpen"] .gl-mobile-mode-btn[data-mode="sharpen"],
-body[data-gl-mode="lockin"] .gl-mobile-mode-btn[data-mode="lockin"],
-body[data-gl-mode="play"] .gl-mobile-mode-btn[data-mode="play"] {
+/* REMOVED: mobile mode button highlighting — mode switcher no longer exists */
+.gl-mobile-mode-btn--active {
   background: var(--accent-glow, rgba(102,126,234,0.15)) !important;
   color: var(--accent-light, #818cf8) !important;
 }
