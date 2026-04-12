@@ -1368,7 +1368,9 @@ function _calTestGoogleToken() {
 
 // Trigger Google OAuth re-consent
 function _calTriggerGoogleReAuth() {
+    if (_calConnecting) return; // already in progress — prevent double-click
     if (typeof tokenClient !== 'undefined' && tokenClient) {
+        _calConnecting = true; // suppress Firebase listener re-renders during consent
         if (typeof showToast === 'function') showToast('Opening Google sign-in\u2026');
         try {
             // Revoke existing token first so Google re-evaluates all scopes (including calendar)
@@ -1386,6 +1388,7 @@ function _calTriggerGoogleReAuth() {
                 _pollCount++;
                 if (_pollCount >= 120) { // 60 seconds (120 * 500ms)
                     clearInterval(_pollTimer);
+                    _calConnecting = false;
                     _calShowConnectionFailure();
                     return;
                 }
@@ -1395,6 +1398,7 @@ function _calTriggerGoogleReAuth() {
                     // Check if Google granted any calendar scope at all
                     if (window._calendarScopeGranted === false) {
                         console.warn('[Calendar] Google did not grant calendar scope. Granted:', window._grantedScopes);
+                        _calConnecting = false;
                         _calShowScopeNotGranted();
                         return;
                     }
@@ -1404,6 +1408,7 @@ function _calTriggerGoogleReAuth() {
                         console.log('[Calendar] Calendar events scope granted but freeBusy not available — skipping free/busy overlay');
                     }
                     var r = await GLCalendarSync.connectGoogleCalendar();
+                    _calConnecting = false; // done — allow Firebase listener re-renders
                     if (r.ok) {
                         localStorage.removeItem('gl_cal_onboard_dismissed');
                         localStorage.removeItem('gl_cal_impact_shown');
@@ -1424,6 +1429,7 @@ function _calTriggerGoogleReAuth() {
                 }
             }, 500);
         } catch(e) {
+            _calConnecting = false;
             if (typeof showToast === 'function') showToast('Could not open Google sign-in');
         }
     } else {
@@ -1486,6 +1492,8 @@ function _calShowReconnectPrompt(container) {
 
 // ── Live connection watcher ───────────────────────────────────────────────────
 var _calConnectionWatcher = null;
+var _calConnecting = false; // true while user is actively connecting (suppresses listener re-renders)
+var _calWatchDebounce = null;
 
 function _calWatchConnections() {
     if (_calConnectionWatcher) return; // already watching
@@ -1494,8 +1502,14 @@ function _calWatchConnections() {
     try {
         _calConnectionWatcher = db.ref(bandPath('google_connections'));
         _calConnectionWatcher.on('value', function() {
-            _calConnectedCache = null;
-            _calLoadConnections().then(function() { _calRenderSyncCoverage(); });
+            // Suppress re-renders while user is actively connecting (prevents consent UI flash)
+            if (_calConnecting) return;
+            // Debounce: multiple Firebase updates can fire in quick succession
+            if (_calWatchDebounce) clearTimeout(_calWatchDebounce);
+            _calWatchDebounce = setTimeout(function() {
+                _calConnectedCache = null;
+                _calLoadConnections().then(function() { _calRenderSyncCoverage(); });
+            }, 1000);
         });
     } catch(e) {}
 }
@@ -1521,14 +1535,10 @@ async function _calValidateMyToken() {
     if (!isRegistered) return;
     var ok = _calTestGoogleToken();
     if (!ok) {
-        // Token expired — show reconnect prompt
-        var onboardEl = document.getElementById('calOnboardingCard');
-        if (onboardEl) _calShowReconnectPrompt(onboardEl);
-        // Remove stale connection record
-        if (typeof GLCalendarSync !== 'undefined') GLCalendarSync.disconnectGoogleCalendar();
-        _calConnectedCache = null;
-        await _calLoadConnections();
-        _calRenderSyncCoverage();
+        // Token not available — log for diagnostics but do NOT auto-disconnect or flash UI.
+        // The user will see "Reconnect" in the Google panel if they navigate to Schedule.
+        // Auto-disconnecting here caused the consent UI to flash on every page load.
+        console.log('[Calendar] Token validation: token not available for registered user. User can reconnect from Schedule page.');
     }
 }
 
