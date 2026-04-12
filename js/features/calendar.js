@@ -1025,8 +1025,9 @@ function _calRenderGooglePanel() {
     if (!_isConnected) {
         html += '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.82em;font-weight:700">Connect Google Calendar</button>';
     } else {
+        var _syncLabel = _hasFreeBusy ? '\u21BB Sync Calendars' : '\u21BB Sync Events';
         html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
-            + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">\u21BB Sync Calendars</button>'
+            + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">' + _syncLabel + '</button>'
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
             + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>';
         if (connectedCount < totalCount) {
@@ -3432,9 +3433,11 @@ function calDayClick(y, m, d) {
             _conflictSummary = '<div style="font-size:0.68em;color:var(--gl-green);margin-bottom:6px">No conflicts</div>';
         }
 
-        // ── Existing GrooveLinx events on this date ──
+        // ── SECTION 1: Existing events + RSVP ──
         var _dateEvents = _calEventsByDate[ds] || [];
         var _existingHtml = '';
+        var _bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+        var _members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
         if (_dateEvents.length > 0) {
             _dateEvents.forEach(function(ev) {
                 var icon = ev.type === 'rehearsal' ? '\uD83C\uDFB8' : ev.type === 'gig' ? '\uD83C\uDFA4' : '\uD83D\uDCCC';
@@ -3442,22 +3445,46 @@ function calDayClick(y, m, d) {
                 var time = ev.time ? (' \u00B7 ' + ev.time) : '';
                 var loc = ev.location ? (' \u00B7 ' + ev.location) : (ev.venue ? (' \u00B7 ' + ev.venue) : '');
                 var evId = ev.eventId || ev.id || '';
-                _existingHtml += '<div style="padding:6px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">'
+                _existingHtml += '<div style="padding:8px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">'
                     + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
                     + '<span style="font-size:0.85em">' + icon + '</span>'
                     + '<span style="font-size:0.75em;font-weight:600;color:var(--gl-text);flex:1">' + label + '</span>'
                     + '</div>'
-                    + (time || loc ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary)">' + (time + loc).replace(/^ \u00B7 /, '') + '</div>' : '')
-                    + '<div style="display:flex;gap:6px;margin-top:4px">'
+                    + (time || loc ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-bottom:4px">' + (time + loc).replace(/^ \u00B7 /, '') + '</div>' : '');
+                // RSVP display
+                var _avail = ev.availability || {};
+                if (_members.length > 0) {
+                    _existingHtml += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">';
+                    _members.forEach(function(ref) {
+                        var mKey = (typeof ref === 'object') ? ref.key : ref;
+                        var name = _bm[mKey] ? _bm[mKey].name : mKey;
+                        var short = name.split(' ')[0];
+                        var a = _avail[mKey];
+                        var status = a ? a.status : null;
+                        var rIcon = status === 'yes' ? '\u2714' : status === 'no' ? '\u2716' : status === 'maybe' ? '?' : '\u2022';
+                        var rColor = status === 'yes' ? 'var(--gl-green)' : status === 'no' ? '#f87171' : status === 'maybe' ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
+                        _existingHtml += '<span style="font-size:0.62em;color:' + rColor + '">' + rIcon + ' ' + short + '</span>';
+                    });
+                    _existingHtml += '</div>';
+                }
+                _existingHtml += '<div style="display:flex;gap:6px">'
                     + '<button onclick="calEditEventById(\'' + evId + '\')" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.2);background:none;color:#a5b4fc;cursor:pointer;font-family:inherit">Edit</button>'
                     + '<button onclick="_calDeleteFromPanel(\'' + evId + '\',\'' + safDs + '\')" style="font-size:0.62em;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer;font-family:inherit">Delete</button>'
                     + '</div></div>';
             });
         }
 
+        // ── SECTION 2: Availability for this date ──
+        var _availSection = '';
+        var _hasAvailData = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
+        if (!_hasAvailData && blocked.length === 0) {
+            _availSection = '<div style="font-size:0.65em;color:var(--gl-amber);margin-bottom:4px">\u26A0 Availability not enabled</div>';
+        }
+
         var cardHtml = '<div class="gl-context-card" id="calSelectedDayCard" style="border-left:3px solid ' + borderColor + '">'
             + '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:2px">' + dateLabel + '</div>'
             + '<div class="gl-confidence" style="color:' + hintColor + ';margin-bottom:4px">' + hint + '</div>'
+            + _availSection
             + _existingHtml
             + _conflictSummary
             + _extHtml
