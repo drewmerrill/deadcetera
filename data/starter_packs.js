@@ -3,6 +3,11 @@
 // Pre-built song packs for instant library setup.
 // Each song: { title, artist, key, bpm }
 // Artist codes match data.js conventions.
+//
+// ⚠️  KEY/BPM VALUES HERE ARE INITIAL SEEDS ONLY — NOT AUTHORITATIVE.
+// Canonical song DNA lives in Firebase songs_v2/{songId}/key and song_bpm.
+// importStarterPack() only writes seed values if no live data exists yet.
+// Do NOT audit key/bpm accuracy from this file — check Firebase instead.
 // ============================================================================
 
 'use strict';

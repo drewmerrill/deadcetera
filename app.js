@@ -1128,12 +1128,24 @@ async function importStarterPack(packId) {
         });
         existingTitles.add(s.title.toLowerCase());
 
-        // Dual-write BPM and Key via GLStore if available
-        if (s.bpm && typeof GLStore !== 'undefined' && GLStore.updateSongField) {
-            GLStore.updateSongField(s.title, 'bpm', s.bpm);
-        }
-        if (s.key && typeof GLStore !== 'undefined' && GLStore.updateSongField) {
-            GLStore.updateSongField(s.title, 'key', s.key);
+        // Seed BPM and Key from starter pack ONLY if not already set in songs_v2.
+        // Starter pack values are initial seeds, not authoritative — user-set
+        // values in Firebase are canonical and must not be overwritten.
+        if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+            try {
+                if (s.bpm) {
+                    var _existingBpm = await loadBandDataFromDrive(s.title, 'song_bpm').catch(function() { return null; });
+                    if (!_existingBpm || (!_existingBpm.bpm && typeof _existingBpm !== 'number')) {
+                        GLStore.updateSongField(s.title, 'bpm', s.bpm);
+                    }
+                }
+                if (s.key) {
+                    var _existingKey = await loadBandDataFromDrive(s.title, 'key').catch(function() { return null; });
+                    if (!_existingKey || (!_existingKey.key && typeof _existingKey !== 'string') || _existingKey === '') {
+                        GLStore.updateSongField(s.title, 'key', s.key);
+                    }
+                }
+            } catch(_seedErr) { /* seed failed — non-critical */ }
         }
 
         added++;
