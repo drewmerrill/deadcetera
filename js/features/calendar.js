@@ -857,7 +857,10 @@ window._calSyncNow = async function() {
             var pushed = 0;
             for (var _si = 0; _si < events.length; _si++) {
                 var ev = events[_si];
-                if (ev.syncStatus === 'synced' && ev.googleEventId) continue; // already synced
+                // Check BOTH sync patterns: top-level googleEventId (legacy) + nested sync.externalEventId (normal flow)
+                var _alreadySynced = (ev.syncStatus === 'synced' && ev.googleEventId)
+                    || (ev.sync && ev.sync.externalEventId && ev.sync.status === 'synced');
+                if (_alreadySynced) continue;
                 if (!ev.date || !ev.title) continue;
                 try {
                     var glEvent = {
