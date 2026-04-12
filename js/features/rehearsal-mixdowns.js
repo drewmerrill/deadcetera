@@ -335,10 +335,13 @@ window.RehearsalMixdowns = (function() {
                 : (typeof window.WORKER_BASE !== 'undefined') ? window.WORKER_BASE
                 : 'https://groovelinx-worker.drewmerrill.workers.dev';
 
+            var _payload = { driveUrl: m.drive_url };
+            if (typeof accessToken !== 'undefined' && accessToken) _payload.accessToken = accessToken;
+
             var res = await fetch(workerBase + '/drive-audio', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ driveUrl: m.drive_url })
+                body: JSON.stringify(_payload)
             });
 
             if (!res.ok) {

@@ -2383,12 +2383,20 @@ function _rhStreamFromDrive(driveUrl, sessionId) {
         : (typeof window.WORKER_BASE !== 'undefined') ? window.WORKER_BASE
         : 'https://groovelinx-worker.drewmerrill.workers.dev';
 
+    // Pass Google OAuth token if available (enables Drive API download for shared files)
+    var _drivePayload = { driveUrl: driveUrl };
+    if (typeof accessToken !== 'undefined' && accessToken) _drivePayload.accessToken = accessToken;
+
     fetch(workerBase + '/drive-audio', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ driveUrl: driveUrl })
+        body: JSON.stringify(_drivePayload)
     }).then(function(res) {
-        if (!res.ok) throw new Error('Drive fetch failed: ' + res.status);
+        if (!res.ok) {
+            return res.json().catch(function() { return {}; }).then(function(d) {
+                throw new Error(d.error || 'Drive fetch failed: ' + res.status);
+            });
+        }
         return res.blob();
     }).then(function(blob) {
         var blobUrl = URL.createObjectURL(blob);

@@ -315,7 +315,7 @@ async function handleArchiveFetch(request) {
 // Works with "Anyone with the link" shared files.
 async function handleDriveAudio(request) {
   try {
-    const { driveUrl } = await request.json();
+    const { driveUrl, accessToken } = await request.json();
     if (!driveUrl) return jsonResp({ error: 'driveUrl required' }, 400);
 
     // Extract file ID from various Google Drive URL formats
@@ -325,38 +325,53 @@ async function handleDriveAudio(request) {
     if (!fileId) { m = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (m) fileId = m[1]; }
     if (!fileId) return jsonResp({ error: 'Could not extract file ID from Drive URL' }, 400);
 
-    // Google Drive direct download URL (works for publicly shared files)
-    const directUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
-
-    // First request — Google may return a confirmation page for large files
-    var res = await fetch(directUrl, {
-      headers: { 'User-Agent': 'GrooveLinx/1.0' },
-      redirect: 'follow'
-    });
-
-    // Check for virus scan warning page (large files)
-    var contentType = res.headers.get('Content-Type') || '';
-    if (contentType.includes('text/html')) {
-      // Try the confirm bypass URL
-      var confirmUrl = 'https://drive.google.com/uc?export=download&confirm=t&id=' + fileId;
-      res = await fetch(confirmUrl, {
-        headers: { 'User-Agent': 'GrooveLinx/1.0' },
-        redirect: 'follow'
+    // Strategy 1: Use Google Drive API with user's OAuth token (most reliable)
+    if (accessToken) {
+      var apiUrl = 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media';
+      var res = await fetch(apiUrl, {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
       });
-      contentType = res.headers.get('Content-Type') || '';
+      if (res.ok) {
+        var ct = res.headers.get('Content-Type') || 'audio/mpeg';
+        return cors(new Response(res.body, {
+          status: 200,
+          headers: {
+            'Content-Type': ct.includes('audio') ? ct : 'audio/mpeg',
+            'Content-Length': res.headers.get('Content-Length') || ''
+          }
+        }));
+      }
+      // Token might not have Drive scope — fall through to public methods
     }
 
-    if (!res.ok) return jsonResp({ error: 'Drive fetch failed: ' + res.status }, 502);
+    // Strategy 2: Try multiple public download URLs (no auth needed for "anyone with link" files)
+    var urls = [
+      'https://drive.google.com/uc?export=download&confirm=t&id=' + fileId,
+      'https://drive.google.com/uc?export=download&id=' + fileId,
+      'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media&key=AIzaSyDummyKeyForPublicFiles'
+    ];
 
-    // Stream audio back
-    return cors(new Response(res.body, {
-      status: 200,
-      headers: {
-        'Content-Type': contentType.includes('audio') ? contentType : 'audio/mpeg',
-        'Content-Length': res.headers.get('Content-Length') || '',
-        'Accept-Ranges': 'bytes'
-      }
-    }));
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        var res2 = await fetch(urls[i], {
+          headers: { 'User-Agent': 'GrooveLinx/1.0' },
+          redirect: 'follow'
+        });
+        var ct2 = res2.headers.get('Content-Type') || '';
+        // Skip HTML responses (login pages, virus scan warnings)
+        if (res2.ok && !ct2.includes('text/html')) {
+          return cors(new Response(res2.body, {
+            status: 200,
+            headers: {
+              'Content-Type': ct2.includes('audio') ? ct2 : 'audio/mpeg',
+              'Content-Length': res2.headers.get('Content-Length') || ''
+            }
+          }));
+        }
+      } catch(e) { /* try next */ }
+    }
+
+    return jsonResp({ error: 'Could not download from Drive. Make sure the file is shared with "Anyone with the link" and try passing your Google access token.' }, 403);
   } catch (e) { return jsonResp({ error: e.message }, 500); }
 }
 
