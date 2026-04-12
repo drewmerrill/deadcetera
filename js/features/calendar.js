@@ -1238,13 +1238,28 @@ window._calShowAvailabilitySettings = async function() {
         + '<span style="color:var(--gl-text)">Ignore all-day events (birthdays, holidays)</span></label>';
     rulesHtml += '</div>';
 
+    // Band calendar selector (where rehearsals/gigs get written)
+    var bandCalId = settings.bandCalendarId || 'primary';
+    var bandCalHtml = '<div style="margin-bottom:16px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">';
+    bandCalHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Band Calendar</div>';
+    bandCalHtml += '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:8px">Rehearsals and gigs are written here. Choose a shared calendar for the band.</div>';
+    bandCalHtml += '<select id="calOptBandCal" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
+    calendars.forEach(function(c) {
+        var selected = c.id === bandCalId;
+        bandCalHtml += '<option value="' + c.id + '"' + (selected ? ' selected' : '') + '>' + (typeof escHtml === 'function' ? escHtml(c.summary) : c.summary) + (c.primary ? ' (primary)' : '') + '</option>';
+    });
+    bandCalHtml += '</select>';
+    // Warning if band cal is also in availability
+    bandCalHtml += '<div id="calBandCalWarning" style="display:none;font-size:0.78em;color:var(--gl-amber);margin-top:4px">\u26A0 This calendar is also used for availability — you may see your own rehearsals as conflicts.</div>';
+    bandCalHtml += '</div>';
+
     // Save button
     var saveHtml = '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">'
         + '<button id="calAvailSaveBtn" onclick="_calSaveAvailabilitySettings()" class="gl-btn-primary" style="flex:1;padding:10px;font-size:0.85em;font-weight:700">Save & Refresh</button>'
         + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
         + '</div>';
 
-    body.innerHTML = calHtml + rulesHtml + saveHtml;
+    body.innerHTML = calHtml + rulesHtml + bandCalHtml + saveHtml;
 };
 
 window._calSaveAvailabilitySettings = async function() {
@@ -1267,8 +1282,12 @@ window._calSaveAvailabilitySettings = async function() {
     var startHour = document.getElementById('calOptStartHour');
     var endHour = document.getElementById('calOptEndHour');
 
+    var bandCalSelect = document.getElementById('calOptBandCal');
+    var bandCalId = bandCalSelect ? bandCalSelect.value : 'primary';
+
     var settings = {
         selectedCalendars: selectedCals,
+        bandCalendarId: bandCalId,
         timeAware: timeAware ? timeAware.checked : true,
         ignoreAllDay: ignoreAllDay ? ignoreAllDay.checked : true,
         rehearsalWindow: {

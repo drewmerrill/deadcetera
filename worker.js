@@ -69,12 +69,14 @@ export default {
     if (path === '/transcribe' && request.method === 'POST')
       return handleTranscribe(request, env);
     // Google Calendar API proxy — forwards user's access token to Google
+    // Calendar CRUD — calendarId from query param or default to 'primary'
+    var _calId = url.searchParams.get('calendarId') || 'primary';
     if (path === '/calendar/events' && request.method === 'POST')
-      return handleCalendarProxy(request, 'POST', 'primary');
+      return handleCalendarProxy(request, 'POST', _calId);
     if (path.startsWith('/calendar/events/') && request.method === 'PATCH')
-      return handleCalendarProxy(request, 'PATCH', 'primary', path.replace('/calendar/events/', ''));
+      return handleCalendarProxy(request, 'PATCH', _calId, path.replace('/calendar/events/', ''));
     if (path.startsWith('/calendar/events/') && request.method === 'DELETE')
-      return handleCalendarProxy(request, 'DELETE', 'primary', path.replace('/calendar/events/', ''));
+      return handleCalendarProxy(request, 'DELETE', _calId, path.replace('/calendar/events/', ''));
     // Free/busy query
     if (path === '/calendar/freebusy' && request.method === 'POST')
       return handleCalendarFreeBusy(request);

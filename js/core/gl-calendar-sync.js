@@ -92,9 +92,10 @@ window.GLCalendarSync = (function() {
     }
 
     var body = _buildEventBody(glEvent, opts);
+    var calId = await _getBandCalendarId();
 
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events', {
+      var res = await fetch(WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -113,7 +114,7 @@ window.GLCalendarSync = (function() {
       var syncObj = {
         provider: 'google',
         externalEventId: data.id,
-        calendarId: 'primary',
+        calendarId: calId,
         htmlLink: data.htmlLink || null,
         status: 'synced',
         lastSyncedAt: new Date().toISOString(),
@@ -137,9 +138,10 @@ window.GLCalendarSync = (function() {
     }
 
     var body = _buildEventBody(glEvent, opts);
+    var calId = await _getBandCalendarId();
 
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId), {
+      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -172,8 +174,10 @@ window.GLCalendarSync = (function() {
       return { success: false, error: 'No calendar scope or event ID' };
     }
 
+    var calId = await _getBandCalendarId();
+
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId), {
+      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId), {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
@@ -713,14 +717,20 @@ window.GLCalendarSync = (function() {
     } catch(e) { return false; }
   }
 
-  // Get the effective calendar IDs to query (respects user selection)
+  // Get the effective calendar IDs to query for AVAILABILITY (read-only)
   async function _getSelectedCalendarIds() {
     var settings = await getAvailabilitySettings();
     if (settings && settings.selectedCalendars && settings.selectedCalendars.length > 0) {
       return settings.selectedCalendars;
     }
-    // Default: primary only (safe default that prevents overblocking)
     return ['primary'];
+  }
+
+  // Get the band calendar ID for WRITES (rehearsals, gigs)
+  async function _getBandCalendarId() {
+    var settings = await getAvailabilitySettings();
+    if (settings && settings.bandCalendarId) return settings.bandCalendarId;
+    return 'primary'; // default: write to primary
   }
 
   // Get the default rehearsal window (user-configurable)
@@ -774,6 +784,7 @@ window.GLCalendarSync = (function() {
     getAvailabilitySettings: getAvailabilitySettings,
     saveAvailabilitySettings: saveAvailabilitySettings,
     hasFreeBusyScope: hasFreeBusyScope,
+    getBandCalendarId: _getBandCalendarId,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
   };
