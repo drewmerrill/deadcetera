@@ -3833,7 +3833,17 @@ window._calCloseMobileCard = function() {
 };
 
 async function calAddEvent(date, editIdx, existing) {
-    // Check band calendar access before allowing event creation/edit
+    // Gate: must have an active Google token to create/edit events
+    var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
+    if (!_hasToken) {
+        if (typeof showToast === 'function') showToast('\u26A0 Sign in to Google Calendar first to create events.', 5000);
+        // Offer to connect
+        if (confirm('You need to sign in to Google Calendar before creating events.\n\nSign in now?')) {
+            _calConnectGoogle();
+        }
+        return;
+    }
+    // Also check band calendar access
     if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
         var _canWrite = await GLCalendarSync.canWriteBandCalendar();
         if (!_canWrite) {
