@@ -1278,7 +1278,7 @@ window._calShowAvailabilitySettings = async function() {
     var calendars = await GLCalendarSync.listCalendars();
     var settings = await GLCalendarSync.getAvailabilitySettings() || {};
     var selectedCals = settings.selectedCalendars || [];
-    var ignoreAllDay = settings.ignoreAllDay !== false;
+    var ignoreAllDay = settings.ignoreAllDay === true; // default OFF — false "free" is worse than noise
     var timeAware = settings.timeAware !== false;
     var rWindow = settings.rehearsalWindow || { startHour: 17, endHour: 23 };
 
@@ -1331,7 +1331,8 @@ window._calShowAvailabilitySettings = async function() {
     rulesHtml += '</select></div>';
     rulesHtml += '<label style="display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer">'
         + '<input type="checkbox" id="calOptIgnoreAllDay"' + (ignoreAllDay ? ' checked' : '') + ' style="accent-color:var(--gl-green)">'
-        + '<span style="color:var(--gl-text)">Ignore all-day events (birthdays, holidays)</span></label>';
+        + '<span style="color:var(--gl-text)">Skip all-day events in conflict detection</span></label>'
+        + '<div style="font-size:0.78em;color:var(--gl-amber);padding:2px 0 4px 26px;line-height:1.4">\u26A0 Enabling this hides ALL all-day events \u2014 including PTO, travel, and out-of-town days. Only enable if birthday/holiday noise is a problem.</div>';
     rulesHtml += '</div>';
 
     // Band calendar selector (where rehearsals/gigs get written)
@@ -1385,7 +1386,7 @@ window._calSaveAvailabilitySettings = async function() {
         selectedCalendars: selectedCals,
         bandCalendarId: bandCalId,
         timeAware: timeAware ? timeAware.checked : true,
-        ignoreAllDay: ignoreAllDay ? ignoreAllDay.checked : true,
+        ignoreAllDay: ignoreAllDay ? ignoreAllDay.checked : false,
         rehearsalWindow: {
             startHour: startHour ? parseInt(startHour.value, 10) : 17,
             endHour: endHour ? parseInt(endHour.value, 10) : 23

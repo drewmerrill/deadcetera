@@ -745,7 +745,7 @@ window.GLCalendarSync = (function() {
   async function _shouldIgnoreAllDay() {
     var settings = await getAvailabilitySettings();
     if (settings && typeof settings.ignoreAllDay !== 'undefined') return settings.ignoreAllDay;
-    return true; // Default: ignore all-day events (birthdays, holidays, etc)
+    return false; // Default: DO NOT ignore — a false "free" is worse than birthday noise
   }
 
   // Check if time-aware filtering is enabled
