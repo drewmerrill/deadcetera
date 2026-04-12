@@ -1355,12 +1355,7 @@ window._calShowAvailabilitySettings = async function() {
         var _esc = (typeof escHtml === 'function') ? escHtml(c.summary) : c.summary;
 
         if (isBandCal) {
-            // Band calendar: disabled, cannot be used for availability
-            calHtml += '<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;opacity:0.35;cursor:not-allowed">'
-                + '<input type="checkbox" disabled style="accent-color:var(--gl-text-tertiary)">'
-                + '<span style="flex:1;color:var(--gl-text-tertiary);text-decoration:line-through">' + _esc + '</span>'
-                + '<span style="font-size:0.72em;color:var(--gl-text-tertiary)">band \u2014 excluded</span>'
-                + '</label>';
+            // Band calendar: completely hidden from availability list
             return;
         }
         var isSelected = selectedCals.length > 0
