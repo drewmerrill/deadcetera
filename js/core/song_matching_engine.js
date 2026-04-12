@@ -790,7 +790,7 @@ window.SongMatchingEngine = (function() {
     var explanations = {
       planMatch:    'In rehearsal plan',
       audioSimilar: 'Sounds like previous recordings of this song',
-      chordSimilar: val >= 0.7 ? 'Key and chords match' : 'Chord pattern partially matches',
+      chordSimilar: value >= 0.7 ? 'Key and chords match' : 'Chord pattern partially matches',
       tempoProx:    'Tempo close to typical BPM for ' + candidate.title,
       lyricsMatch:  'Transcript contains song title words',
       correction:   'Previously confirmed as this song',
