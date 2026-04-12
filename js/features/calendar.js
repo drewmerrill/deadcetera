@@ -1346,7 +1346,8 @@ window._calShowAvailabilitySettings = async function() {
 
     // Resolve band calendar ID early so availability list can exclude it
     var bandCalId = _bandLevelCalId || settings.bandCalendarId || null;
-    var _bandCalName = (_bandLevelCalName || '').toLowerCase();
+    // Name match: use Firebase name first, fall back to localStorage band name
+    var _bandCalName = (_bandLevelCalName || localStorage.getItem('deadcetera_band_name') || '').toLowerCase();
 
     // ── SECTION 1: Availability Calendars (personal, read-only) ──
     var calHtml = '<div style="margin-bottom:16px">';
@@ -1372,8 +1373,9 @@ window._calShowAvailabilitySettings = async function() {
             + (c.backgroundColor ? '<span style="width:10px;height:10px;border-radius:50%;background:' + c.backgroundColor + ';flex-shrink:0"></span>' : '')
             + '</label>';
     });
+    var _displayBandName = _bandLevelCalName || localStorage.getItem('deadcetera_band_name') || 'your band';
     calHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);padding:4px 8px;margin-top:4px;line-height:1.4">'
-        + '\uD83D\uDCA1 Only check your personal calendars here. The band calendar (' + (typeof escHtml === 'function' ? escHtml(_bandLevelCalName || 'Deadcetera') : (_bandLevelCalName || 'Deadcetera')) + ') is automatically excluded so rehearsals don\u2019t conflict with themselves.</div>';
+        + '\uD83D\uDCA1 Only check your personal calendars here. The band calendar (' + (typeof escHtml === 'function' ? escHtml(_displayBandName) : _displayBandName) + ') is automatically excluded so rehearsals don\u2019t conflict with themselves.</div>';
     calHtml += '</div>';
 
     // Time-aware filtering toggle
@@ -1632,6 +1634,49 @@ window._calConnectGoogle = async function() {
 
 window._calReconnectGoogle = function() {
     _calTriggerGoogleReAuth();
+};
+
+// Connect flow triggered from inline sign-in prompt — clears dialog after success,
+// then opens Rules so user can configure band calendar before creating events
+window._calConnectAndResume = function(date) {
+    // Clear the sign-in prompt immediately
+    var area = document.getElementById('calEventFormArea');
+    if (area) {
+        area.innerHTML = '<div style="padding:16px;text-align:center;font-size:0.82em;color:var(--gl-text-tertiary)">'
+            + '<div style="margin-bottom:6px">Connecting to Google\u2026</div>'
+            + '<div style="font-size:0.72em">Complete the sign-in in the popup window.</div></div>';
+    }
+    // Start connection — _calConnectGoogle handles the OAuth flow
+    // After it completes, check if band calendar is set up
+    var _origConnect = window._calConnectGoogle;
+    var _checkAfter = setInterval(function() {
+        // Poll for connection completion
+        if (!_calConnecting) {
+            clearInterval(_checkAfter);
+            var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
+            if (_hasToken && area) {
+                // Connected — check if band calendar is configured
+                GLCalendarSync.getBandCalendarId().then(function(calId) {
+                    if (!calId) {
+                        // No band calendar — guide user to Rules
+                        area.innerHTML = '<div style="padding:16px;border-radius:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15)">'
+                            + '<div style="font-size:0.88em;font-weight:600;color:var(--gl-green);margin-bottom:6px">\u2713 Google Calendar connected!</div>'
+                            + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">One more step \u2014 select which Google Calendar is your <strong>band calendar</strong> so GrooveLinx knows where to put events.</div>'
+                            + '<button onclick="_calShowAvailabilitySettings()" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">Set Up Band Calendar</button>'
+                            + '</div>';
+                    } else {
+                        // Band calendar already set — clear and retry event creation
+                        area.innerHTML = '';
+                        if (date) calAddEvent(date);
+                    }
+                });
+            } else if (area) {
+                // Connection failed or was cancelled — clear the waiting message
+                area.innerHTML = '';
+            }
+        }
+    }, 500);
+    _origConnect();
 };
 
 window._calDisconnectGoogle = async function() {
@@ -3877,7 +3922,7 @@ async function calAddEvent(date, editIdx, existing) {
                 + '<div style="font-size:0.88em;font-weight:600;color:var(--gl-amber);margin-bottom:6px">Sign in to Google Calendar</div>'
                 + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">You need to be connected to Google Calendar to create or edit events.</div>'
                 + '<div style="display:flex;gap:8px">'
-                + '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">Connect Now</button>'
+                + '<button onclick="_calConnectAndResume(\'' + (date || '').replace(/'/g, "\\'") + '\')" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">Connect Now</button>'
                 + '<button onclick="document.getElementById(\'calEventFormArea\').innerHTML=\'\'" style="padding:8px 16px;font-size:0.82em;background:none;border:1px solid rgba(255,255,255,0.1);color:var(--gl-text-tertiary);border-radius:6px;cursor:pointer">Cancel</button>'
                 + '</div></div>';
         } else {
@@ -3889,7 +3934,21 @@ async function calAddEvent(date, editIdx, existing) {
     if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
         var _canWrite = await GLCalendarSync.canWriteBandCalendar();
         if (!_canWrite) {
-            if (typeof showToast === 'function') showToast('\u26A0 You don\u2019t have access to the band calendar. Open Rules to set up access.', 5000);
+            var _area2 = document.getElementById('calEventFormArea');
+            if (_area2) {
+                var _bcId = await GLCalendarSync.getBandCalendarId();
+                var _msg = _bcId
+                    ? 'You don\u2019t have access to the band calendar. Ask the person who set it up to share it with your Google account.'
+                    : 'No band calendar has been selected yet. Open Rules to choose which Google Calendar GrooveLinx should use for band events.';
+                var _btn = _bcId ? 'Check Access' : 'Set Up Band Calendar';
+                _area2.innerHTML = '<div style="padding:16px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">'
+                    + '<div style="font-size:0.88em;font-weight:600;color:var(--gl-amber);margin-bottom:6px">\u26A0 Band Calendar Not Ready</div>'
+                    + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">' + _msg + '</div>'
+                    + '<button onclick="_calShowAvailabilitySettings()" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">' + _btn + '</button>'
+                    + '</div>';
+            } else {
+                if (typeof showToast === 'function') showToast('\u26A0 Band calendar not configured. Open Rules to set it up.', 5000);
+            }
             return;
         }
     }
