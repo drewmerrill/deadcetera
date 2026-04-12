@@ -883,13 +883,18 @@ window._calSyncNow = async function() {
                 console.log('[Sync] Pushed ' + pushed + ' events to Google Calendar');
             }
         }
-        // Pull latest connections + availability
+        // Pull latest connections (no full re-render — prevents screen flash)
         _calConnectedCache = null;
         await _calLoadConnections();
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
-        if (typeof renderCalendarInner === 'function') renderCalendarInner();
+        // Only re-render the Google panel, not the entire calendar grid
         _calRenderGooglePanel();
-        if (typeof showToast === 'function') showToast('\u2713 Calendars synced' + (typeof pushed !== 'undefined' && pushed > 0 ? ' (' + pushed + ' events pushed)' : ''));
+        // Build explicit sync status message
+        var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
+        var _syncMsg = '\u2713 Events synced';
+        if (typeof pushed !== 'undefined' && pushed > 0) _syncMsg += ' (' + pushed + ' pushed to Google)';
+        if (!_hasAvail) _syncMsg += '. Availability not synced \u2014 enable in Rules to detect conflicts.';
+        if (typeof showToast === 'function') showToast(_syncMsg, _hasAvail ? 3000 : 6000);
     } catch(e) {
         if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
     }
@@ -1189,8 +1194,11 @@ window._calShowAvailabilitySettings = async function() {
     var existing = document.getElementById('calAvailSettingsModal');
     if (existing) existing.remove();
 
-    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.hasCalendarScope()) {
-        if (typeof showToast === 'function') showToast('Connect Google Calendar first');
+    // Check connection via Firebase record, not just token (token may not be refreshed yet)
+    var _cov = _calGetSyncCoverage();
+    var _myConn = _cov.myKey && _cov.connectedKeys.indexOf(_cov.myKey) !== -1;
+    if (typeof GLCalendarSync === 'undefined' || (!GLCalendarSync.hasCalendarScope() && !_myConn)) {
+        if (typeof showToast === 'function') showToast('Enable availability first \u2014 click "enable" in the Google Calendar panel above');
         return;
     }
 
