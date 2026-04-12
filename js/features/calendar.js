@@ -877,6 +877,10 @@ function _calRenderGooglePanel() {
     var connectedCount = cov.connected;
     var totalCount = members.length;
 
+    // Check for partial scope: calendar events work but free/busy doesn't
+    var _hasFreeBusy = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope) ? GLCalendarSync.hasFreeBusyScope() : true;
+    var _partialScope = hasScope && !_hasFreeBusy;
+
     if (isFullyConnected) {
         // MODE B — STEADY STATE: compressed status view
         var lastSync = '';
@@ -890,12 +894,23 @@ function _calRenderGooglePanel() {
                 }
             }
         } catch(e) {}
+
+        // Partial scope warning (events OK but no free/busy = can't show availability)
+        var _partialWarning = _partialScope
+            ? '<div style="padding:8px 10px;margin-top:6px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">'
+              + '<div style="font-size:0.72em;color:var(--gl-amber);font-weight:600;margin-bottom:3px">\u26A0 Availability access not enabled</div>'
+              + '<div style="font-size:0.65em;color:var(--gl-text-secondary);line-height:1.4;margin-bottom:6px">Calendar is connected but GrooveLinx can\u2019t see when you\u2019re free. Enable availability to find dates that work for the whole band.</div>'
+              + '<button onclick="_calConnectGoogle()" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:var(--gl-amber)">Enable Availability</button>'
+              + '</div>'
+            : '';
+
         el.innerHTML = '<div style="padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.1);margin-bottom:var(--gl-space-sm)">'
             + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
             + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
-            + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">All calendars connected</span>'
+            + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">' + (_partialScope ? 'Calendar connected' : 'All calendars connected') + '</span>'
             + '</div>'
-            + (lastSync ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary)">Last synced ' + lastSync + '</div>' : '')
+            + (lastSync && !_partialScope ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary)">Last synced ' + lastSync + '</div>' : '')
+            + _partialWarning
             + '<div style="display:flex;gap:8px;margin-top:4px">'
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Availability rules</button>'
             + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
@@ -927,9 +942,12 @@ function _calRenderGooglePanel() {
             + connectedCount + ' of ' + totalCount + ' connected</div>'
             + memberListHtml
             + '</div>'
-            // CTA — different for connected vs not connected
+            // CTA — different for connected vs not connected vs partial scope
             + (hasScope
                 ? '<div style="font-size:0.72em;color:var(--gl-green);margin-bottom:6px">\u2713 You\u2019re connected</div>'
+                  + (_partialScope
+                      ? '<div style="padding:6px 8px;margin-bottom:8px;border-radius:6px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12);font-size:0.68em;color:var(--gl-amber)">\u26A0 Availability access not enabled \u2014 <button onclick="_calConnectGoogle()" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">enable now</button></div>'
+                      : '')
                   + (connectedCount < totalCount
                       ? '<button onclick="_calCopyBandSyncInvite()" class="gl-btn-primary" style="width:100%;padding:8px 14px;font-size:0.82em;font-weight:700">Send Setup to Band</button>'
                       : '')

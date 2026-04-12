@@ -342,9 +342,10 @@ window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
                         var _hasCalFreeBusy = _scopeList.some(function(s) { return s.indexOf('calendar.freebusy') !== -1; });
                         window._calendarScopeGranted = _hasFullCal || _hasCalEvents;
                         window._calendarFreeBusyGranted = _hasFullCal || _hasCalFreeBusy;
-                        console.log('[Auth] Calendar scopes — full:', _hasFullCal, 'events:', _hasCalEvents, 'freebusy:', _hasCalFreeBusy);
+                        console.log('[Auth] Calendar scopes — calendar:', window._calendarScopeGranted, 'freeBusy:', window._calendarFreeBusyGranted,
+                            '(raw: full=' + _hasFullCal + ' events=' + _hasCalEvents + ' freebusy=' + _hasCalFreeBusy + ')');
                         if (!window._calendarScopeGranted) {
-                            console.warn('⚠️ No calendar scope granted — token scopes:', window._grantedScopes);
+                            console.warn('\u26A0\uFE0F No calendar scope granted — token scopes:', window._grantedScopes);
                         }
                         window.updateSignInStatus(true);
                         console.log('✅ User signed in');
