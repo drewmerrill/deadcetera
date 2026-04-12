@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-11 (Audience Love + Setlist Intelligence + Personal Overrides + Rehearsal Scorecard + Analyzer Calibration + Deploy Hardening)_
+_Updated: 2026-04-12 (Rehearsal Analyzer pipeline fully wired + Songs page hydration + Mode system removed + Drift audit)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -77,15 +77,42 @@ Production URL: **https://app.groovelinx.com**
 - index.html rebuilt from 1.1MB (64 duplicate head sections) to 55KB
 - Love cards now render in panel mode (Songs page right panel)
 
-### Rehearsal Analyzer Intelligence Pipeline (NEW 2026-04-11)
+### Rehearsal Analyzer Intelligence Pipeline (2026-04-11 → 2026-04-12)
 - **Per-segment BPM extraction**: spectral flux onset detection via OfflineAnalyser.analyseBuffer()
 - **Per-segment groove/pocket analysis**: stability score, pocket position, drift, iois for PocketMeterTimeSeries
 - **CLAP audio embeddings**: 512-dim vectors from localhost:8200 (laion/clap-htsat-unfused)
+- **Chord detection (Essentia)**: auto-analysis via localhost:8100, chordSimilar signal active
+- **Spoken cue transcription**: Deepgram on talking segments, song title cue extraction
+- **Chart chord parsing**: 408 charts auto-parsed into fingerprints for chord-to-audio matching
 - **On-demand segment decode for large files**: raw MP3 bytes → targeted 35s chunk decode → feature extraction
-- **Unified extraction loop**: both normal and large file paths use same BPM/groove/embed code
+- **Candidate priority order**: plan → recent sessions → active → library (was alphabetical)
+- **Progress bar**: inline stage descriptions + elapsed time during analysis
 - **Groove-informed quality labels**: "Nailed it" (tight timing), downgrade on loose timing
-- **Love hearts instant update**: optimistic cache, apostrophe escaping fix
-- **Song detail panel**: duplicate DNA removed, love cards render in all modes
+
+### Songs Page Stabilization (NEW 2026-04-12)
+- **Hydration gating**: songs + DNA required before first render (no premature flash)
+- **Normalized row model**: all cell data pre-computed, no per-cell async reads
+- **Sort safety**: love/readiness sorts fall back to title until data loads
+- **6-column layout**: Song | Readiness | Status | ⚠ | Band | Love (sortable)
+- **Mobile responsive**: Status/NeedsWork/Band hidden on <640px
+- **Love preload fix**: waits for Firebase + retries on failure (iPad fix)
+- **Cleanup summary**: shows Key/BPM/Lead/Status/Structure with checkmarks
+
+### Architecture Cleanup (NEW 2026-04-12)
+- **Mode system removed**: Practice/Rehearse/Play are perspectives, not UI gates
+- **All pages always visible**: no mode-based nav hiding
+- **All song detail tabs always visible**: no lens-by-mode gating
+- **Dead code removed**: _renderSharpenDashboard, _renderPlayDashboard (~150 lines)
+- **home-dashboard-cc.js removed**: legacy summary chip system
+- **Google consent fix**: no automatic popup, no silent token flash
+- **Starter pack DNA guard**: seed values only fill blanks, never overwrite live data
+- **debugSongDNA() helper**: inspect runtime song data from console
+
+### Love System Fixes (2026-04-11 → 2026-04-12)
+- **Instant heart feedback**: optimistic cache update before Firebase write
+- **Apostrophe fix**: songs with ' in title no longer break onclick handlers
+- **Consistent colors**: Band Love = all red hearts, Audience Love = all purple hearts
+- **Love preload**: triggers on songs ready event, retries if Firebase not available
 
 ---
 
@@ -149,11 +176,11 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## Next Steps
-1. Calibrate song matching on real rehearsal data (use calibration framework + gold truth)
-2. Wire chord hints into automatic post-segmentation (currently on-demand per segment)
-3. Build "next rehearsal plan from insights" flow (coaching → plan builder)
-4. Test multi-user free/busy merge with 2+ connected members
-5. Production polish pass on remaining console warnings
+1. **Fix BPM double-detection**: OfflineAnalyser detecting snare+kick as separate beats, doubling BPM (172-225 should be 86-112). Need half-BPM correction.
+2. **Fix plan songs not reaching matcher**: `window.glPlannerQueue` is empty at analysis time. Need to load plan from Firebase or pass from UI.
+3. **Raise matching confidence**: with chords+tempo active (2 signals), scores are 0.12-0.30 — below MEDIUM threshold (0.5). Chart fingerprint matching needs tuning.
+4. **Reference clip seeding**: add "Record reference" to song detail for signature intros/heads
+5. **Performance**: 120-minute analysis for 4h recording — need to parallelize or skip CLAP for speed
 
 ---
 
