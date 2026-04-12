@@ -96,9 +96,14 @@ window.RehearsalMixdowns = (function() {
         if (meta.length) html += '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:4px">' + meta.join(' \u00B7 ') + '</div>';
         if (notesPreview) html += '<div style="font-size:0.75em;color:#64748b;margin-bottom:6px">' + notesPreview + '</div>';
 
-        // Audio player
+        // Audio player — use direct URL if available, otherwise proxy through Worker for Drive links
         if (hasAudio) {
             html += '<audio controls preload="metadata" style="width:100%;height:36px;margin-bottom:6px" src="' + _esc(m.audio_url) + '"></audio>';
+        } else if (hasDrive) {
+            // Drive-only: show a play button that streams via Worker proxy
+            html += '<div id="rmPlayer_' + _esc(m.id) + '" style="margin-bottom:6px">'
+                + '<button onclick="RehearsalMixdowns._playFromDrive(\'' + _esc(m.id) + '\')" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(66,133,244,0.3);background:rgba(66,133,244,0.06);color:#60a5fa;cursor:pointer;font-size:0.78em;font-weight:600;font-family:inherit">\u25B6 Play Recording</button>'
+                + '</div>';
         }
 
         // Action buttons
@@ -312,6 +317,49 @@ window.RehearsalMixdowns = (function() {
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
+    // ── Drive Audio Proxy ───────────────────────────────────────────────────
+
+    async function _playFromDrive(id) {
+        var items = await _load();
+        var m = items.find(function(x) { return x.id === id; });
+        if (!m || !m.drive_url) { if (typeof showToast === 'function') showToast('No Drive link'); return; }
+
+        var container = document.getElementById('rmPlayer_' + id);
+        if (!container) return;
+
+        // Show loading state
+        container.innerHTML = '<div style="font-size:0.72em;color:var(--text-dim);padding:6px">Loading from Google Drive\u2026</div>';
+
+        try {
+            var workerBase = (typeof WORKER_BASE !== 'undefined') ? WORKER_BASE
+                : (typeof window.WORKER_BASE !== 'undefined') ? window.WORKER_BASE
+                : 'https://groovelinx-worker.drewmerrill.workers.dev';
+
+            var res = await fetch(workerBase + '/drive-audio', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ driveUrl: m.drive_url })
+            });
+
+            if (!res.ok) {
+                var errData = {};
+                try { errData = await res.json(); } catch(e) {}
+                container.innerHTML = '<div style="font-size:0.72em;color:#f87171;padding:6px">\u26A0 Could not load audio'
+                    + (errData.error ? ': ' + _esc(errData.error) : '')
+                    + '<br><a href="' + _esc(m.drive_url) + '" target="_blank" style="color:#60a5fa;text-decoration:underline">Open in Drive instead</a></div>';
+                return;
+            }
+
+            var blob = await res.blob();
+            var blobUrl = URL.createObjectURL(blob);
+
+            container.innerHTML = '<audio controls preload="metadata" style="width:100%;height:36px" src="' + blobUrl + '"></audio>';
+        } catch(e) {
+            container.innerHTML = '<div style="font-size:0.72em;color:#f87171;padding:6px">\u26A0 ' + _esc(e.message)
+                + '<br><a href="' + _esc(m.drive_url) + '" target="_blank" style="color:#60a5fa;text-decoration:underline">Open in Drive instead</a></div>';
+        }
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
@@ -322,7 +370,8 @@ window.RehearsalMixdowns = (function() {
         openInChopper: openInChopper,
         _saveForm: _saveForm,
         _onFileSelected: _onFileSelected,
-        _copyLink: _copyLink
+        _copyLink: _copyLink,
+        _playFromDrive: _playFromDrive
     };
 
 })();

@@ -32,6 +32,8 @@ export default {
       return handleMidi2Abc(request);
     if (path === '/archive-fetch' && request.method === 'POST')
       return handleArchiveFetch(request);
+    if (path === '/drive-audio' && request.method === 'POST')
+      return handleDriveAudio(request);
     if (path === '/archive-search' && request.method === 'POST')
       return handleArchiveSearch(request);
     if (path === '/archive-files' && request.method === 'POST')
@@ -302,6 +304,57 @@ async function handleArchiveFetch(request) {
       headers: {
         'Content-Type': res.headers.get('Content-Type') || 'audio/mpeg',
         'Content-Length': res.headers.get('Content-Length') || '',
+      }
+    }));
+  } catch (e) { return jsonResp({ error: e.message }, 500); }
+}
+
+// ── Google Drive Audio Proxy ─────────────────────────────────────────────────
+// POST /drive-audio { driveUrl: "https://drive.google.com/file/d/FILE_ID/..." }
+// Extracts file ID, constructs direct download URL, streams audio back.
+// Works with "Anyone with the link" shared files.
+async function handleDriveAudio(request) {
+  try {
+    const { driveUrl } = await request.json();
+    if (!driveUrl) return jsonResp({ error: 'driveUrl required' }, 400);
+
+    // Extract file ID from various Google Drive URL formats
+    var fileId = null;
+    var m = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) fileId = m[1];
+    if (!fileId) { m = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/); if (m) fileId = m[1]; }
+    if (!fileId) return jsonResp({ error: 'Could not extract file ID from Drive URL' }, 400);
+
+    // Google Drive direct download URL (works for publicly shared files)
+    const directUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
+
+    // First request — Google may return a confirmation page for large files
+    var res = await fetch(directUrl, {
+      headers: { 'User-Agent': 'GrooveLinx/1.0' },
+      redirect: 'follow'
+    });
+
+    // Check for virus scan warning page (large files)
+    var contentType = res.headers.get('Content-Type') || '';
+    if (contentType.includes('text/html')) {
+      // Try the confirm bypass URL
+      var confirmUrl = 'https://drive.google.com/uc?export=download&confirm=t&id=' + fileId;
+      res = await fetch(confirmUrl, {
+        headers: { 'User-Agent': 'GrooveLinx/1.0' },
+        redirect: 'follow'
+      });
+      contentType = res.headers.get('Content-Type') || '';
+    }
+
+    if (!res.ok) return jsonResp({ error: 'Drive fetch failed: ' + res.status }, 502);
+
+    // Stream audio back
+    return cors(new Response(res.body, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType.includes('audio') ? contentType : 'audio/mpeg',
+        'Content-Length': res.headers.get('Content-Length') || '',
+        'Accept-Ranges': 'bytes'
       }
     }));
   } catch (e) { return jsonResp({ error: e.message }, 500); }
