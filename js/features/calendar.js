@@ -2456,8 +2456,10 @@ function renderCalendarInner() {
 
         // Populate Google panel + availability + pressure
         _calPopulateNextEventRail(); // still loads data for internal use
+        // Render Google panel immediately with cached data (don't wait for fresh load)
+        _calRenderGooglePanel();
         _calLoadConnections().then(function() {
-            _calRenderGooglePanel();
+            _calRenderGooglePanel(); // re-render with fresh data if cache was stale
             _calRenderAvailHealth();
             _calRenderWeeklyPressure();
             setTimeout(function() {
