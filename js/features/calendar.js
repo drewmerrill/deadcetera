@@ -2834,8 +2834,9 @@ async function loadCalendarEvents() {
                 _slDisplay = '<span style="font-size:0.75em;color:var(--accent-light);cursor:pointer" onclick="event.stopPropagation();showPage(\'setlists\')" title="View setlist: ' + _slName + '">\uD83D\uDCCB ' + _slName + '</span>';
             }
 
-            // First event gets "NEXT" badge
+            // First event gets "NEXT" badge; imported events get "From Google" badge
             var _nextBadge = i === 0 ? '<span style="font-size:0.6em;font-weight:800;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.15);color:#22c55e;margin-left:6px;vertical-align:middle">NEXT</span>' : '';
+            if (e._importedFromGoogle) _nextBadge += '<span style="font-size:0.55em;padding:1px 5px;border-radius:3px;background:rgba(66,133,244,0.12);color:#60a5fa;font-weight:600;margin-left:4px;vertical-align:middle">From Google</span>';
 
             return '<div class="list-item" style="padding:12px 14px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">'
                 // Left: event info
@@ -3833,10 +3834,13 @@ function calDayClick(y, m, d) {
                 var time = ev.time ? (' \u00B7 ' + ev.time) : '';
                 var loc = ev.location ? (' \u00B7 ' + ev.location) : (ev.venue ? (' \u00B7 ' + ev.venue) : '');
                 var evId = ev.eventId || ev.id || '';
+                var _isImported = ev._importedFromGoogle;
+                var _importBadge = _isImported ? '<span style="font-size:0.55em;padding:1px 4px;border-radius:3px;background:rgba(66,133,244,0.12);color:#60a5fa;font-weight:600;margin-left:4px;white-space:nowrap">From Google</span>' : '';
                 _existingHtml += '<div style="padding:8px 8px;margin-bottom:4px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">'
                     + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
                     + '<span style="font-size:0.85em">' + icon + '</span>'
-                    + '<span style="font-size:0.75em;font-weight:600;color:var(--gl-text);flex:1">' + label + '</span>'
+                    + '<span style="font-size:0.75em;font-weight:600;color:var(--gl-text);flex:1">' + label + _importBadge + '</span>'
+                    + (ev.isAllDay ? '<span style="font-size:0.55em;color:var(--gl-text-tertiary)">All day</span>' : '')
                     + '</div>'
                     + (time || loc ? '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-bottom:4px">' + (time + loc).replace(/^ \u00B7 /, '') + '</div>' : '');
                 // RSVP display

@@ -1018,7 +1018,8 @@ async function handleCalendarListEvents(request) {
     if (url.searchParams.get('timeMax')) params.set('timeMax', url.searchParams.get('timeMax'));
     params.set('singleEvents', 'true');
     params.set('orderBy', 'startTime');
-    params.set('maxResults', '50');
+    params.set('maxResults', url.searchParams.get('maxResults') || '250');
+    if (url.searchParams.get('pageToken')) params.set('pageToken', url.searchParams.get('pageToken'));
     const calId = url.searchParams.get('calendarId') || 'primary';
     const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events?' + params.toString();
     const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });
