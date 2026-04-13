@@ -435,7 +435,15 @@ window.GLCalendarSync = (function() {
       }
       // Sort chronologically and dedupe overlapping ranges
       busy.sort(function(a, b) { return a.start.localeCompare(b.start); });
-      console.log('[CalSync] FreeBusy: queried', calIds.length, 'calendar(s), got', busy.length, 'busy periods, bandSlots:', bandSlots.length);
+      // Debug logging: availability reasoning
+      console.log('[CalSync] FreeBusy: queried', calIds.length, 'calendar(s):', calIds.join(', '));
+      console.log('[CalSync] FreeBusy: got', busy.length, 'busy periods, bandSlots:', bandSlots.length);
+      if (busy.length > 0) {
+        busy.slice(0, 5).forEach(function(b) {
+          console.log('[CalSync]   busy:', b.start, '→', b.end);
+        });
+        if (busy.length > 5) console.log('[CalSync]   ... and', busy.length - 5, 'more');
+      }
       _freeBusyCache = { busy: busy, bandSlots: bandSlots, source: 'google', _key: cacheKey };
       _freeBusyCacheTime = Date.now();
       // Share results to Firebase for other band members to read

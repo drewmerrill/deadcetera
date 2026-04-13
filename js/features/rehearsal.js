@@ -443,9 +443,11 @@ async function _rhRenderCommandFlow(el) {
     html += '<div style="display:flex;gap:10px;margin-bottom:var(--gl-space-md);align-items:center;flex-wrap:wrap">';
     if (_rhPlanningMode) {
         // Plan Mode: planning controls
-        html += '<button onclick="_rhExitPlanMode()" style="padding:8px 18px;font-size:0.85em;font-weight:700;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:none;color:var(--gl-text-tertiary);font-family:inherit">\u2190 Back to Review</button>';
+        html += '<button onclick="_rhExitPlanMode()" style="padding:8px 16px;font-size:0.82em;font-weight:700;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:none;color:var(--gl-text-tertiary);font-family:inherit">\u2190 Back to Review</button>';
         html += '<span id="rhSaveStateTop" style="font-size:0.72em;color:var(--gl-green);font-weight:600"></span>';
-        html += '<div style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+        html += '<div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
+        html += '<button onclick="_rhDuplicatePriorPlan()" style="padding:6px 12px;font-size:0.78em;border-radius:6px;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--gl-text-tertiary);font-family:inherit">\uD83D\uDCC4 Duplicate Prior</button>';
+        html += '<button onclick="_rhClearSavedPlan()" style="padding:6px 12px;font-size:0.78em;border-radius:6px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#f87171;font-family:inherit">Clear Plan</button>';
         html += '<button onclick="_rhLaunchSavedPlan()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.85em;background:linear-gradient(135deg,#667eea,#764ba2)">\u25B6 Start This Plan</button>';
         html += '</div>';
     } else {
@@ -490,13 +492,7 @@ async function _rhRenderCommandFlow(el) {
 
     // ── PLAN SECTION ──
     html += '<div id="rhPlanContainer">';
-    if (!_rhPlanningMode) {
-        // Review Mode: plan versions collapsed in rail
-        html += '<details id="rhPlanVersions" style="margin-bottom:8px">'
-            + '<summary style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;padding:4px 0;list-style:none;display:flex;align-items:center;gap:6px">'
-            + '\u25B8 Plan Versions (' + (hasSavedPlan ? '1 saved' : 'none') + ')</summary>'
-            + '<div id="rhPlanVersionContent" style="padding:4px 0"></div></details>';
-    }
+    // Plan Versions rendered by _rhRenderSnapshots() into #rhSnapshots — no separate header needed
 
     if (hasSavedPlan) {
         var savedUnits = _rhGetUnits();
@@ -788,8 +784,8 @@ async function _rhRenderCommandFlow(el) {
             + '<button onclick="renderRehearsalPlanner()" style="flex:1;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);font-size:0.68em;cursor:pointer">\u270F Edit Structure</button>'
             + '</div>';
         if (_rhPlanningMode) {
-            html += '</div>' // close plan card (plain div)
-                + '<div id="rhSnapshots"></div>';
+            html += '</div>'; // close plan card (plain div)
+            // Snapshots in Plan Mode are in the right rail — no duplicate here
         } else {
             html += '</div></details>' // close plan details
                 + '<div id="rhSnapshots"></div>';
@@ -809,7 +805,7 @@ async function _rhRenderCommandFlow(el) {
                 + '<button onclick="var h=document.querySelector(\'#rhMain details:last-of-type\');if(h){h.open=true;h.scrollIntoView({behavior:\'smooth\'})}" style="flex:1;padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim);font-size:0.82em;cursor:pointer">Past Rehearsals</button>'
                 + '</div>';
         }
-        html += '<div id="rhSnapshots"></div>';
+        if (!_rhPlanningMode) html += '<div id="rhSnapshots"></div>';
     }
 
     html += '</div>'; // close #rhPlanContainer
@@ -872,6 +868,28 @@ async function _rhRenderCommandFlow(el) {
                     + '<div style="font-size:0.72em;color:var(--gl-amber)">' + _gigDays + ' days away \u00B7 ' + (nextGig.date || '') + '</div>'
                     + (availHtml ? '<div style="margin-top:4px">' + availHtml + '</div>' : '')
                     + '</div>';
+            }
+            // Focus songs not in plan — right rail reminder
+            if (hasSavedPlan) {
+                var _planUnits = _rhGetUnits();
+                var _planTitlesRail = {};
+                _planUnits.forEach(function(u) {
+                    if (u.title) _planTitlesRail[u.title] = true;
+                    if (u.songs) u.songs.forEach(function(s) { if (s.title) _planTitlesRail[s.title] = true; });
+                });
+                var _missingRail = weakSongs.filter(function(f) { return !_planTitlesRail[f.title]; });
+                if (_missingRail.length > 0) {
+                    _railHtml += '<div class="gl-context-card" style="border-left:3px solid var(--gl-amber)">'
+                        + '<div style="font-size:0.68em;font-weight:800;text-transform:uppercase;color:var(--gl-amber);margin-bottom:4px">Focus Songs Not in Plan</div>';
+                    _missingRail.forEach(function(f) {
+                        var _safe = f.title.replace(/'/g, "\\'");
+                        _railHtml += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.75em">'
+                            + '<span style="color:var(--gl-text)">' + escHtml(f.title) + '</span>'
+                            + '<button onclick="_rhAddBlock(\'song\',\'' + _safe + '\')" style="font-size:0.82em;padding:1px 6px;border-radius:4px;border:1px solid rgba(34,197,94,0.2);background:none;color:#86efac;cursor:pointer">+</button>'
+                            + '</div>';
+                    });
+                    _railHtml += '</div>';
+                }
             }
             // Versioning card — single canonical location
             _railHtml += '<div class="gl-context-card" id="rhVersionsRailCard">'
@@ -994,6 +1012,21 @@ window._rhClearSavedPlan = async function() {
     if (typeof showToast === 'function') showToast('Plan cleared (snapshot saved)');
     var el = document.getElementById('rhMain');
     if (el) _rhRenderCommandFlow(document.querySelector('.app-page:not(.hidden)') || document.body);
+};
+
+// ── Duplicate prior plan (load most recent snapshot into active plan) ─────────
+window._rhDuplicatePriorPlan = async function() {
+    var snaps = await _rhLoadSnapshots(5);
+    if (!snaps.length) { if (typeof showToast === 'function') showToast('No prior plans to duplicate'); return; }
+    var latest = snaps[0];
+    if (!latest.units || !latest.units.length) { if (typeof showToast === 'function') showToast('Prior plan is empty'); return; }
+    if (!confirm('Replace current plan with "' + (latest.name || 'Previous version') + '"?')) return;
+    // Snapshot current plan first
+    await _rhSaveSnapshot('Before duplicating prior plan');
+    _rhSaveUnits(latest.units);
+    if (typeof showToast === 'function') showToast('\u2705 Plan restored from ' + (latest.name || 'previous version'));
+    var el = document.querySelector('.app-page:not(.hidden)') || document.body;
+    renderRehearsalPage(el);
 };
 
 // ── Rehearsal plan snapshots ──────────────────────────────────────────────────
@@ -1478,8 +1511,12 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         document.head.appendChild(_ts);
     }
 
-    var html = '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">What Happened</div>';
-    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:8px;line-height:1.4">Listen back to each song, see where the band was tight and where it got rough. Tap a song for details, double-tap to loop.</div>';
+    var html = '';
+    // Subheading only shown when rendered inside a session report (not on main page where the section heading exists)
+    if (!document.querySelector('#rhTimelineSection')) {
+        html += '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Latest Rehearsal Review</div>';
+    }
+    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:8px;line-height:1.4">Listen back to each song. Tap a song for details, double-tap to loop.</div>';
 
     // Audio state — prompt to load recording for playback
     if (!hasAudio) {
