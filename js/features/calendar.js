@@ -1031,7 +1031,7 @@ function _calRenderGooglePanel() {
     var cov = _calGetSyncCoverage();
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
-    if (!members.length) { el.innerHTML = ''; return; }
+    // Don't bail if members haven't loaded yet — show panel with connection status
 
     var hasScope = cov.hasScope;
     var connectedCount = cov.connected;
