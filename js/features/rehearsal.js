@@ -330,6 +330,7 @@ window._rhSaveRecreatedSession = async function() {
 
 var rhCurrentEventId = null; // which event is open in detail view
 var _rhPlanningMode = false; // true = Plan Mode, false = Review Mode
+var _rhViewingSessionId = null; // which session timeline is currently displayed
 
 // ── Page entry point ──────────────────────────────────────────────────────────
 
@@ -2491,7 +2492,12 @@ function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
         _rhAudioSessionId = sessionId;
         console.log('[Drive] Drive playback configured:', _fileId.substring(0, 10) + '...');
         if (typeof showToast === 'function') showToast('Recording ready \u2014 tap play on any song');
-        _rhRenderLastRehearsalTimeline();
+        // Re-render the session the user was actually viewing (not always the latest)
+        if (_rhViewingSessionId) {
+            _rhShowSessionReport(_rhViewingSessionId);
+        } else {
+            _rhRenderLastRehearsalTimeline();
+        }
     } else {
         _rhDoStreamViaWorker(workerBase, driveUrl, null, sessionId);
     }
@@ -2519,7 +2525,7 @@ function _rhDoStreamViaWorker(workerBase, driveUrl, token, sessionId) {
         var blobUrl = URL.createObjectURL(blob);
         _rhSetupPlaybackAudio(blobUrl, sessionId);
         if (typeof showToast === 'function') showToast('Recording loaded from Drive \u2014 playback ready (' + Math.round(blob.size / 1024 / 1024) + ' MB)');
-        _rhRenderLastRehearsalTimeline();
+        if (_rhViewingSessionId) _rhShowSessionReport(_rhViewingSessionId); else _rhRenderLastRehearsalTimeline();
     }).catch(function(err) {
         if (typeof showToast === 'function') showToast('\u26A0 Could not load from Drive: ' + err.message, 5000);
     });
@@ -2536,7 +2542,7 @@ function _rhPickLocalFile(sessionId) {
         var blobUrl = URL.createObjectURL(file);
         _rhSetupPlaybackAudio(blobUrl, sessionId);
         if (typeof showToast === 'function') showToast('Recording loaded \u2014 playback ready (' + Math.round(file.size / 1024 / 1024) + ' MB)');
-        _rhRenderLastRehearsalTimeline();
+        if (_rhViewingSessionId) _rhShowSessionReport(_rhViewingSessionId); else _rhRenderLastRehearsalTimeline();
     };
     input.click();
 }
@@ -2803,6 +2809,9 @@ window._rhShowSessionReport = async function(sessionId) {
 
     var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
     var segments = _toArr(s.audio_segments);
+
+    // Track which session is being viewed (so audio load doesn't jump away)
+    _rhViewingSessionId = sessionId;
 
     // Render into the main timeline section
     var timelineEl = document.getElementById('rhTimelineSection');
