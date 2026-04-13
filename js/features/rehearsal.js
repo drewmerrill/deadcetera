@@ -2168,30 +2168,43 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
         if (btn3) { btn3.classList.add('rh-playing-btn'); btn3.textContent = '\u23F8'; }
     }
 
-    // For Drive streaming: fetch the segment via JS fetch() and create a blob URL.
-    // Safari won't play from a Worker proxy URL directly (<audio src=workerUrl> fails
-    // with SRC_NOT_SUPPORTED). But blob URLs from fetch() always work.
-    if (window._rhDriveFileId && window._rhDriveToken && (!audio.src || audio.src.indexOf('blob:') === -1)) {
-        if (typeof showToast === 'function') showToast('Loading segment\u2026');
-        var _streamUrl = audio.src || ((typeof WORKER_BASE !== 'undefined' ? WORKER_BASE : 'https://groovelinx-worker.drewmerrill.workers.dev')
-            + '/drive-stream?fileId=' + encodeURIComponent(window._rhDriveFileId)
-            + '&token=' + encodeURIComponent(window._rhDriveToken));
-        fetch(_streamUrl).then(function(res) {
-            if (!res.ok) throw new Error('Stream error ' + res.status);
+    // For Drive streaming: fetch via JS fetch() and create a blob URL.
+    // Safari won't play from any non-blob URL (SRC_NOT_SUPPORTED error 4).
+    var _isDrivePending = window._rhDriveFileId && (!audio.src || audio.src.indexOf('blob:') === -1);
+    if (_isDrivePending) {
+        if (typeof showToast === 'function') showToast('Downloading recording from Drive\u2026 this may take a minute');
+        // Use fresh accessToken (not cached _rhDriveToken which may be stale)
+        var _freshToken = (typeof accessToken !== 'undefined') ? accessToken : window._rhDriveToken;
+        // Fetch directly from Drive API (not through Worker — fewer hops)
+        var _apiUrl = 'https://www.googleapis.com/drive/v3/files/' + window._rhDriveFileId
+            + '?alt=media&supportsAllDrives=true';
+        console.log('[Drive] Fetching file as blob:', window._rhDriveFileId, 'token length:', (_freshToken || '').length);
+        fetch(_apiUrl, {
+            headers: { 'Authorization': 'Bearer ' + _freshToken }
+        }).then(function(res) {
+            console.log('[Drive] Response:', res.status, res.headers.get('Content-Type'), res.headers.get('Content-Length'));
+            if (!res.ok) {
+                return res.text().then(function(body) {
+                    console.error('[Drive] Error body:', body.substring(0, 500));
+                    throw new Error(res.status + ' — ' + (body.substring(0, 100)));
+                });
+            }
             return res.blob();
         }).then(function(blob) {
+            console.log('[Drive] Blob received:', blob.size, 'bytes, type:', blob.type);
             var blobUrl = URL.createObjectURL(blob);
             audio.src = blobUrl;
             audio.preload = 'metadata';
             audio.addEventListener('loadedmetadata', function() {
+                console.log('[Drive] Metadata loaded, duration:', audio.duration, 'seeking to:', startSec);
                 audio.currentTime = startSec;
                 audio.play();
             }, { once: true });
             audio.load();
-            if (typeof showToast === 'function') showToast('Recording loaded (' + Math.round(blob.size / 1024 / 1024) + ' MB)');
+            if (typeof showToast === 'function') showToast('Recording loaded (' + Math.round(blob.size / 1024 / 1024) + ' MB) \u2014 playing');
         }).catch(function(err) {
-            console.error('[Drive] Segment fetch failed:', err);
-            if (typeof showToast === 'function') showToast('\u26A0 Could not load: ' + err.message, 5000);
+            console.error('[Drive] Fetch failed:', err);
+            if (typeof showToast === 'function') showToast('\u26A0 ' + err.message, 8000);
         });
     } else {
         // Local file or already-loaded blob — seek and play directly
