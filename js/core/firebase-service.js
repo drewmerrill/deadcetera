@@ -342,8 +342,14 @@ window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
                         var _hasCalFreeBusy = _scopeList.some(function(s) { return s.indexOf('calendar.freebusy') !== -1; });
                         window._calendarScopeGranted = _hasFullCal || _hasCalEvents;
                         window._calendarFreeBusyGranted = _hasFullCal || _hasCalFreeBusy;
+                        // Persist granted scope state so cached-session restores can read it
+                        try {
+                            localStorage.setItem('gl_scope_calendar', window._calendarScopeGranted ? '1' : '0');
+                            localStorage.setItem('gl_scope_freeBusy', window._calendarFreeBusyGranted ? '1' : '0');
+                            localStorage.setItem('gl_scope_grantedAt', new Date().toISOString());
+                        } catch(e) {}
                         console.log('[Auth] Calendar scopes — calendar:', window._calendarScopeGranted, 'freeBusy:', window._calendarFreeBusyGranted,
-                            '(raw: full=' + _hasFullCal + ' events=' + _hasCalEvents + ' freebusy=' + _hasCalFreeBusy + ')');
+                            '(raw: full=' + _hasFullCal + ' events=' + _hasCalEvents + ' freebusy=' + _hasCalFreeBusy + ') [persisted]');
                         if (!window._calendarScopeGranted) {
                             console.warn('\u26A0\uFE0F No calendar scope granted — token scopes:', window._grantedScopes);
                         }

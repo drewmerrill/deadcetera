@@ -18,25 +18,52 @@ window.GLCalendarSync = (function() {
   var CAL_DEFAULT_DURATION_MIN = 120;
 
   // ── Check if calendar scope is available ──────────────────────────────────
+  // Priority: 1) OAuth callback flag  2) persisted localStorage  3) config fallback
   function hasCalendarScope() {
     if (typeof accessToken === 'undefined' || !accessToken) return false;
+    // Source 1: live OAuth callback flag (set during this session's token grant)
     if (typeof window._calendarScopeGranted !== 'undefined') return window._calendarScopeGranted;
+    // Source 2: persisted granted state from a previous OAuth session
+    try {
+      var _persisted = localStorage.getItem('gl_scope_calendar');
+      if (_persisted !== null) return _persisted === '1';
+    } catch(e) {}
+    // Source 3: config fallback (we requested calendar scope, assume granted)
     return typeof GOOGLE_DRIVE_CONFIG !== 'undefined' &&
       GOOGLE_DRIVE_CONFIG.scope && GOOGLE_DRIVE_CONFIG.scope.indexOf('calendar') !== -1;
   }
 
   // FreeBusy requires full calendar or calendar.freebusy scope (calendar.events is NOT enough)
+  // Priority: 1) OAuth callback flag  2) persisted localStorage  3) config fallback
   function hasFreeBusyScope() {
-    if (typeof accessToken === 'undefined' || !accessToken) return false;
-    if (typeof window._calendarFreeBusyGranted !== 'undefined') return window._calendarFreeBusyGranted;
-    // Fallback: if we requested full calendar scope (which includes freeBusy), assume granted
-    // This handles cached session restore where _calendarFreeBusyGranted was never set
+    if (typeof accessToken === 'undefined' || !accessToken) {
+      console.log('[CalSync] hasFreeBusyScope: false (no accessToken)');
+      return false;
+    }
+    // Source 1: live OAuth callback flag
+    if (typeof window._calendarFreeBusyGranted !== 'undefined') {
+      console.log('[CalSync] hasFreeBusyScope:', window._calendarFreeBusyGranted, '(OAuth callback flag)');
+      return window._calendarFreeBusyGranted;
+    }
+    // Source 2: persisted granted state from a previous OAuth
+    try {
+      var _persisted = localStorage.getItem('gl_scope_freeBusy');
+      if (_persisted !== null) {
+        var _val = _persisted === '1';
+        console.log('[CalSync] hasFreeBusyScope:', _val, '(persisted localStorage)');
+        return _val;
+      }
+    } catch(e) {}
+    // Source 3: config fallback — full calendar scope includes freeBusy
     if (typeof GOOGLE_DRIVE_CONFIG !== 'undefined' && GOOGLE_DRIVE_CONFIG.scope) {
-      // Full calendar scope (not calendar.events) includes freeBusy
       var _hasFullCalScope = GOOGLE_DRIVE_CONFIG.scope.indexOf('/auth/calendar') !== -1
         && GOOGLE_DRIVE_CONFIG.scope.indexOf('calendar.events') === -1;
-      if (_hasFullCalScope) return true;
+      if (_hasFullCalScope) {
+        console.log('[CalSync] hasFreeBusyScope: true (config fallback — full calendar scope requested)');
+        return true;
+      }
     }
+    console.log('[CalSync] hasFreeBusyScope: false (no source matched)');
     return false;
   }
 
