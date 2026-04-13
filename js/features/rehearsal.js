@@ -2178,6 +2178,14 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
         _doSeekAndPlay();
     } else {
         if (typeof showToast === 'function') showToast('Buffering\u2026');
+        // Listen for errors to diagnose failures
+        audio.addEventListener('error', function _onErr() {
+            audio.removeEventListener('error', _onErr);
+            var e = audio.error;
+            var msg = e ? ('Audio error ' + e.code + ': ' + (e.message || ['','ABORTED','NETWORK','DECODE','SRC_NOT_SUPPORTED'][e.code] || 'unknown')) : 'Unknown audio error';
+            console.error('[Timeline] Audio load error:', msg, 'src:', (audio.src || '').substring(0, 100));
+            if (typeof showToast === 'function') showToast('\u26A0 ' + msg, 5000);
+        }, { once: true });
         audio.preload = 'metadata';
         audio.load();
         var _metaHandled = false;
@@ -2187,7 +2195,13 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
             _metaHandled = true;
             _doSeekAndPlay();
         }, { once: true });
-        setTimeout(function() { if (!_metaHandled) { _metaHandled = true; _doSeekAndPlay(); } }, 5000);
+        setTimeout(function() {
+            if (!_metaHandled) {
+                _metaHandled = true;
+                console.warn('[Timeline] Metadata timeout. readyState:', audio.readyState, 'networkState:', audio.networkState, 'src:', (audio.src || '').substring(0, 100));
+                _doSeekAndPlay();
+            }
+        }, 5000);
     }
 
     // Show transport bar
