@@ -2488,6 +2488,9 @@ function renderCalendarInner() {
             // Determine dominant event type
             const isGig = dayEvents.some(e => e.type === 'gig');
             const isRehearsal = dayEvents.some(e => e.type === 'rehearsal');
+            if (dayEvents.length > 0 && !isGig && !isRehearsal) {
+                console.log('[Calendar] Date', ds, 'has', dayEvents.length, 'events but no gig/rehearsal type:', dayEvents.map(e => e.type || 'NO_TYPE'));
+            }
             const hasEvent = dayEvents.length > 0;
             // State class (priority: gig > rehearsal > hard blocked > soft > best > default)
             const isFuture = ds >= todayStr;
