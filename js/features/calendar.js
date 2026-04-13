@@ -1108,8 +1108,19 @@ function _calRenderGooglePanel() {
 
     // Partial scope warning
     if (_partialScope) {
+        // Determine the right label and action based on state
+        var _enableLabel = 'Connect Google Calendar';
+        var _enableAction = '_calConnectGoogle()';
+        if (_isConnected && _hasToken) {
+            // Connected with token but no free/busy — need to set up availability calendars
+            _enableLabel = 'Set Up Availability';
+            _enableAction = '_calShowAvailabilitySettings()';
+        } else if (_isConnected && !_hasToken) {
+            _enableLabel = 'Reconnect Google Calendar';
+            _enableAction = '_calConnectGoogle()';
+        }
         html += '<div style="padding:6px 8px;margin-bottom:8px;border-radius:6px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12);font-size:0.68em;color:var(--gl-amber)">'
-            + '\u26A0 Availability not enabled \u2014 <button onclick="_calConnectGoogle()" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">enable</button></div>';
+            + '\u26A0 Availability not enabled \u2014 <button onclick="' + _enableAction + '" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">' + _enableLabel + '</button></div>';
     }
 
     // CTA: connect (if never connected) OR sync + manage (if connected)
@@ -1636,13 +1647,13 @@ window._calConnectGoogle = async function() {
                 localStorage.removeItem('gl_cal_impact_shown');
                 _calConnectedCache = null;
                 await _calLoadConnections();
-                _calRenderSyncCoverage();
-                _calRenderOnboarding();
+                // Full re-render to clear stale state messages
+                renderCalendarInner();
                 if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
-                // Auto-open calendar selection if first time connecting and user has multiple calendars
+                // Auto-open availability setup if first time connecting
                 if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
                     var _cals = await GLCalendarSync.listCalendars();
-                    if (_cals.length > 1) {
+                    if (_cals.length > 0) {
                         localStorage.setItem('gl_cal_settings_shown', '1');
                         setTimeout(function() { _calShowAvailabilitySettings(); }, 500);
                     }
@@ -1769,13 +1780,13 @@ function _calTriggerGoogleReAuth() {
                         localStorage.removeItem('gl_cal_impact_shown');
                         _calConnectedCache = null;
                         await _calLoadConnections();
-                        _calRenderSyncCoverage();
-                        _calRenderOnboarding();
+                        // Full re-render — clears stale "Availability not enabled" messages
+                        renderCalendarInner();
                         if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
-                        // Auto-open calendar selection on first connect with multiple calendars
+                        // Auto-open availability setup on first connect
                         if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
                             var _authCals = await GLCalendarSync.listCalendars();
-                            if (_authCals.length > 1) {
+                            if (_authCals.length > 0) {
                                 localStorage.setItem('gl_cal_settings_shown', '1');
                                 setTimeout(function() { _calShowAvailabilitySettings(); }, 500);
                             }
@@ -3804,7 +3815,10 @@ function calDayClick(y, m, d) {
             });
             _conflictSummary += '<div style="height:4px"></div>';
         } else if (!_hasAvailScope && ds >= new Date().toISOString().split('T')[0]) {
-            _conflictSummary = '<div style="font-size:0.65em;color:var(--gl-amber);margin-bottom:4px">\u26A0 Availability not enabled \u2014 cannot check conflicts</div>';
+            var _hasTokenForAvail = (typeof accessToken !== 'undefined' && accessToken);
+            var _availAction = _hasTokenForAvail ? '_calShowAvailabilitySettings()' : '_calConnectGoogle()';
+            var _availLabel = _hasTokenForAvail ? 'Set Up Availability' : 'Connect Google Calendar';
+            _conflictSummary = '<div style="font-size:0.65em;color:var(--gl-amber);margin-bottom:4px">\u26A0 Availability not enabled \u2014 <button onclick="' + _availAction + '" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">' + _availLabel + '</button></div>';
         }
 
         // ── SECTION 1: Existing events + RSVP ──

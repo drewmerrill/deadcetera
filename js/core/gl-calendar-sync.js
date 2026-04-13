@@ -29,6 +29,14 @@ window.GLCalendarSync = (function() {
   function hasFreeBusyScope() {
     if (typeof accessToken === 'undefined' || !accessToken) return false;
     if (typeof window._calendarFreeBusyGranted !== 'undefined') return window._calendarFreeBusyGranted;
+    // Fallback: if we requested full calendar scope (which includes freeBusy), assume granted
+    // This handles cached session restore where _calendarFreeBusyGranted was never set
+    if (typeof GOOGLE_DRIVE_CONFIG !== 'undefined' && GOOGLE_DRIVE_CONFIG.scope) {
+      // Full calendar scope (not calendar.events) includes freeBusy
+      var _hasFullCalScope = GOOGLE_DRIVE_CONFIG.scope.indexOf('/auth/calendar') !== -1
+        && GOOGLE_DRIVE_CONFIG.scope.indexOf('calendar.events') === -1;
+      if (_hasFullCalScope) return true;
+    }
     return false;
   }
 
