@@ -34,6 +34,8 @@ export default {
       return handleArchiveFetch(request);
     if (path === '/drive-audio' && request.method === 'POST')
       return handleDriveAudio(request);
+    if (path === '/drive-stream' && request.method === 'GET')
+      return handleDriveStream(request);
     if (path === '/archive-search' && request.method === 'POST')
       return handleArchiveSearch(request);
     if (path === '/archive-files' && request.method === 'POST')
@@ -393,6 +395,50 @@ async function handleDriveAudio(request) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ── Google Drive Audio Stream (GET) ──────────────────────────────────────────
+// GET /drive-stream?fileId=XXX&token=YYY
+// Safari can't use googleapis.com URLs as <audio> src (CORS/auth issues).
+// This endpoint proxies the Drive API response so the <audio> element
+// streams from our Worker domain. Supports Range requests for seeking.
+async function handleDriveStream(request) {
+  try {
+    const url = new URL(request.url);
+    const fileId = url.searchParams.get('fileId');
+    const token = url.searchParams.get('token');
+    if (!fileId || !token) return cors(new Response('fileId and token required', { status: 400 }));
+
+    const apiUrl = 'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media&supportsAllDrives=true';
+    const headers = { 'Authorization': 'Bearer ' + token };
+
+    // Forward Range header for seeking support
+    const rangeHeader = request.headers.get('Range');
+    if (rangeHeader) headers['Range'] = rangeHeader;
+
+    const res = await fetch(apiUrl, { headers: headers });
+    if (!res.ok) {
+      var errBody = '';
+      try { errBody = await res.text(); } catch(e) {}
+      return cors(new Response(errBody || 'Drive API error', { status: res.status }));
+    }
+
+    // Build response headers — pass through content info from Drive
+    var respHeaders = {
+      'Content-Type': res.headers.get('Content-Type') || 'audio/mpeg',
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*'
+    };
+    if (res.headers.get('Content-Length')) respHeaders['Content-Length'] = res.headers.get('Content-Length');
+    if (res.headers.get('Content-Range')) respHeaders['Content-Range'] = res.headers.get('Content-Range');
+
+    return new Response(res.body, {
+      status: res.status, // 200 for full, 206 for partial
+      headers: respHeaders
+    });
+  } catch (e) {
+    return cors(new Response(e.message, { status: 502 }));
+  }
+}
+
 // Archive.org Search v2 — structured queries + source type detection
 // ══════════════════════════════════════════════════════════════════════════════
 function parseSourceType(srcStr) {

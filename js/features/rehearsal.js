@@ -2095,10 +2095,13 @@ function _rhEnsureAudio(sessionId) {
         var _url = null;
         if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._loadedPlaybackUrl) _url = RecordingAnalyzer._loadedPlaybackUrl;
         else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) _url = RecordingAnalyzer._currentAudioUrl;
-        // Drive streaming: use Drive API URL with token
+        // Drive streaming: proxy through Worker (Safari can't stream from googleapis.com directly)
         if (!_url && window._rhDriveFileId && window._rhDriveToken) {
-            _url = 'https://www.googleapis.com/drive/v3/files/' + window._rhDriveFileId
-                + '?alt=media&supportsAllDrives=true&access_token=' + encodeURIComponent(window._rhDriveToken);
+            var _wb = (typeof WORKER_BASE !== 'undefined') ? WORKER_BASE
+                : (typeof window.WORKER_BASE !== 'undefined') ? window.WORKER_BASE
+                : 'https://groovelinx-worker.drewmerrill.workers.dev';
+            _url = _wb + '/drive-stream?fileId=' + encodeURIComponent(window._rhDriveFileId)
+                + '&token=' + encodeURIComponent(window._rhDriveToken);
         }
         if (!_url) { if (typeof showToast === 'function') showToast('Select recording file first to enable playback'); return false; }
         _rhSharedAudio.src = _url;
