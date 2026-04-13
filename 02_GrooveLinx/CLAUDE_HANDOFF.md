@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-11 (Audience Love + Setlist Intelligence + Personal Overrides + Rehearsal Scorecard + Analyzer Calibration + Deploy Hardening)_
+_Last updated: 2026-04-13 (Calendar trust layer + Rehearsal two-mode split + Drive audio streaming + Golden timelines + Sync bug fix)_
 
 ## Read This First
 
@@ -62,7 +62,42 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 | `tests/verify-deploy.sh` | Post-deploy verification (version, caching, content) |
 | `tests/calibration/calibration-runner.js` | Analyzer accuracy evaluation against gold truth |
 
-## Current State (2026-03-25)
+## Current State (2026-04-13)
+
+### Calendar Trust Layer (2026-04-12 → 2026-04-13)
+- Band calendar architecture: personal availability (read-only) vs band calendar (write target)
+- Band calendar auto-excluded from availability queries (circular conflict prevention)
+- Deterministic conflict suppression: extendedProperties tags on Google events + eventId matching + fuzzy time fallback
+- Sync Now guard fixed: was re-creating already-synced events (sent duplicate invites to entire band)
+- OAuth scope: `email profile calendar drive.readonly`
+- GCP projects: 177899334738 (OAuth client), 218400123401 (API key) — Drive API enabled on both
+
+### Rehearsal Page Two-Mode Split (2026-04-13)
+- `_rhPlanningMode` flag controls rendering in `_rhRenderCommandFlow()`
+- Review Mode: timeline primary, plan in right rail
+- Plan Mode: plan workspace primary, review collapsed, right rail = context (gig, readiness, versions, actions)
+- `_rhOpenPlanMode()` seeds from focus songs if no plan exists
+- `_rhExitPlanMode()` returns to review
+
+### Drive Audio Streaming (2026-04-13)
+- Worker `GET /drive-stream?fileId=X&token=Y` — proxies Drive API with Range header support
+- Worker `POST /drive-audio` — extracts file ID, tries OAuth → public download fallback
+- Client fetches as blob → blob URL (Safari won't play cross-origin audio src directly)
+- Session-matched: `getDriveUrl(sessionDate)` matches mixdown by rehearsal_date
+- `_rhViewingSessionId` tracks which session is displayed (audio load doesn't jump to latest)
+- Drive scope auto-requested on first play if token lacks it
+
+### Golden Standard Timelines (2026-04-13)
+- 4/3/2026: 29 songs, 4h19m — `scripts/apply-golden-timeline.js`
+- 3/23/2026: 15 entries, 7 songs, 83m — `scripts/apply-golden-timeline-0323.js`
+- Segments tagged `_goldenStandard: true` — hides confidence labels in UI
+- `label_overrides` in Firebase persist across re-analyses
+
+### What to Work On — Accept/Dismiss (2026-04-13)
+- Checkmark adds song to plan, X dismisses with fade animation
+- Quick triage for 18+ recommendations
+
+## Previous State (2026-03-25)
 
 ### Unified Player Engine (GLPlayerEngine + GLPlayerUI)
 - State machine: IDLE → LOADING → RESOLVING → PLAYING → FALLBACK → ERROR

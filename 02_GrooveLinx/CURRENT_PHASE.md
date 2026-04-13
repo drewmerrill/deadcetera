@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-12 (Rehearsal Analyzer pipeline fully wired + Songs page hydration + Mode system removed + Drift audit)_
+_Updated: 2026-04-13 (Calendar trust layer + Rehearsal two-mode split + Drive audio streaming + Golden timelines + Update banner unification)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -10,6 +10,62 @@ Worker: **Cloudflare** (`wrangler deploy worker.js --name deadcetera-proxy`)
 Production URL: **https://app.groovelinx.com**
 
 ---
+
+## What's Live (2026-04-13)
+
+### Calendar Trust Layer + Band Calendar Architecture (NEW)
+- **Band calendar separation**: personal calendars (read-only availability) vs shared band calendar (write target)
+- **Band calendar selection**: dropdown with placeholder, saved at band level in Firebase
+- **Band calendar auto-excluded** from availability queries (prevents circular conflicts)
+- **Fuzzy name matching**: band calendar hidden from availability list by ID, exact name, or substring match (+ localStorage fallback)
+- **Deterministic circular conflict suppression**: Layer 1 = extendedProperties tag on Google events + eventId matching; Layer 2 = fuzzy time-window fallback
+- **All new Google events tagged** with `extendedProperties.private.groovelinx = 'true'` + `glEventId`
+- **Parallel events.list** call alongside free/busy to identify band events deterministically
+- **Sync Now guard fixed**: checks both `ev.sync.externalEventId` and `ev.googleEventId` patterns (was re-creating all synced events, spamming invites)
+- **OAuth scope expanded**: `drive.readonly` added for Drive audio streaming
+- **Drive API enabled** on GCP projects 177899334738 + 218400123401
+- **Connect-then-setup flow**: after OAuth, guides user to select band calendar before event creation
+- **Access enforcement**: blocks event creation when no band calendar configured
+
+### Rehearsal Page Two-Mode Split (NEW)
+- **Review Mode** (default): timeline/analysis primary, plan collapsed in right rail
+- **Plan Mode** (click "Plan Next Rehearsal"): plan workspace is primary content, review collapses
+- **Page title changes**: "Rehearsal" vs "Planning Next Rehearsal"
+- **Plan Mode right rail**: readiness, upcoming gig, Plan Versions (single canonical location), quick actions
+- **Top bar adapts**: Review = Start/Plan/Solo; Plan = Back to Review / save state / Start This Plan
+- **Auto-seed**: entering Plan Mode with no plan creates one from focus songs
+- **Save state syncs** to both plan card and top bar
+- **No duplicate rendering**: Plan Versions, What Happened, plan card — each rendered once
+
+### What to Work On — Accept/Dismiss (NEW)
+- Each recommendation has green checkmark (add to plan) and red X (dismiss)
+- Accept adds song to rehearsal plan if not already there
+- Dismiss fades out the row with animation
+- Quick triage of 18+ recommendations
+
+### Drive Audio Streaming for Timeline Playback (NEW)
+- **Worker GET /drive-stream**: proxies Google Drive API, forwards Range headers for seeking
+- **Worker POST /drive-audio**: extracts file ID, tries OAuth token → public download fallback
+- **Load Audio picker**: "Stream from Google Drive" vs "Choose local file" options
+- **Session-matched audio**: matches mixdown by rehearsal_date to session date
+- **Auto Drive scope request**: if token lacks drive.readonly, triggers consent before streaming
+- **Blob-based playback**: fetches full file, creates blob URL (Safari won't play cross-origin audio src)
+- **Session tracking**: loading audio no longer jumps to latest session — stays on viewed session
+
+### Golden Standard Timelines (NEW)
+- **4/3/2026**: 29 songs, 4h19m, all timestamps manually verified by Drew
+- **3/23/2026**: 15 entries, 7 songs, ~83 min, includes detailed per-song performance notes
+- Scripts: `scripts/apply-golden-timeline.js`, `scripts/apply-golden-timeline-0323.js`
+- `label_overrides` persisted in Firebase for each session
+- `_goldenStandard: true` flag hides confidence/explanation labels (not useful for verified data)
+
+### iPad + Mobile UX Fixes (NEW)
+- **Calendar day card auto-scrolls** into view on iPad (was below fold)
+- **Inline sign-in prompt** replaces confirm() dialog (Safari blocks OAuth popups after confirm)
+- **"tap to RSVP" hint** next to member names in day panel
+- **Smart add buttons**: collapse into "+ Add another event" when date already has an event
+- **Update banner unified**: was two separate systems (SW-based dark + version.json purple); now one
+- **iPhone safe area**: update banner uses `env(safe-area-inset-top)` padding
 
 ## What's Live (2026-04-11)
 
@@ -118,17 +174,18 @@ Production URL: **https://app.groovelinx.com**
 
 ## What's Live (2026-04-10)
 
-### Google Calendar Integration (FULLY WORKING)
-- OAuth scope: full `calendar` (covers events + freeBusy)
-- API enabled in project **177899334738** (OAuth client's project)
-- Google Auth Platform: External, test users added, calendar scope in Data Access
+### Google Calendar Integration (FULLY WORKING + TRUST LAYER)
+- OAuth scope: `email profile calendar drive.readonly`
+- API enabled on projects **177899334738** (OAuth client) + **218400123401** (API key)
+- Band calendar architecture: personal availability (read-only) vs shared band calendar (write target)
+- Band calendar saved at Firebase band level, shared across all members
+- Deterministic circular conflict suppression (extendedProperties + eventId + fuzzy fallback)
+- Sync Now guard checks both sync patterns before re-pushing events
 - Multi-user band sync: each member connects their own calendar
 - Free/busy merged from all connected members via shared Firebase path
 - External Google events visible as indigo dots on calendar cells
-- Auto-reconnect silently requests fresh token on page load (no manual sign-in needed)
-- Accurate scope detection: checks actual granted scopes from token callback
-- 403 spam prevention: `_calendarScopeFailed` sticky flag + separate freeBusy scope check
 - Consent flow: revoke → fresh consent → verify scope → connect
+- Connect-then-setup flow: guides user to configure band calendar after first connect
 
 ### Conflict → Google Calendar Sync (NEW 2026-04-10)
 - After saving a conflict: "Also add to your Google Calendar?" prompt
