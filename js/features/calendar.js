@@ -4455,9 +4455,14 @@ async function calSaveEvent(editIdx) {
         ev.id = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36);
         events.push(ev);
     }
-    await saveBandDataToDrive('_band', 'calendar_events', events);
+    var _saveOk = await saveBandDataToDrive('_band', 'calendar_events', events);
+    console.log('[Calendar] Event saved to Firebase:', _saveOk, 'id:', ev.id, 'type:', ev.type, 'date:', ev.date, 'title:', ev.title, 'total events:', events.length);
+    if (!_saveOk) {
+        if (typeof showToast === 'function') showToast('\u26A0 Event could not be saved to Firebase', 5000);
+    }
     // If this is a gig event, sync to canonical Gig record
     if (ev.type === 'gig') {
+      try {
         const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
         // Match by gigId first (stable), fallback to venue+date (legacy compat)
         var existingIdx = -1;
@@ -4532,6 +4537,9 @@ async function calSaveEvent(editIdx) {
             savedEvents[calIdx].gigId = ev.gigId;
             await saveBandDataToDrive('_band', 'calendar_events', savedEvents);
         }
+      } catch(gigSyncErr) {
+        console.error('[Calendar] Gig record sync failed (event still saved):', gigSyncErr);
+      }
     }
     // Auto-sync to Google Calendar (band calendar)
     if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
