@@ -415,12 +415,17 @@ function _spRender() {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) { container.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px">No stage plots</div>'; return; }
 
-  // Inject hover CSS for delete buttons (only once)
+  // Inject hover CSS for delete buttons + dropdown fixes (only once)
   if (!document.getElementById('spHoverCSS')) {
     var style = document.createElement('style');
     style.id = 'spHoverCSS';
     style.textContent = '.sp-cell .sp-del{opacity:0;transition:opacity 0.15s}.sp-cell:hover .sp-del{opacity:1}'
-      + '.sp-share .sp-cell .sp-del{display:none}';
+      + '.sp-share .sp-cell .sp-del{display:none}'
+      + '.sp-select{background:#1e293b;border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;padding:6px 10px;border-radius:6px;font-size:0.85em}'
+      + '.sp-select option{background:#1e293b;color:#e2e8f0}'
+      + '.sp-select:focus{outline:1px solid #667eea;border-color:#667eea}'
+      + '.sp-plot-title{cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.2);padding-bottom:1px}'
+      + '.sp-plot-title:hover{color:#a5b4fc;border-bottom-color:#a5b4fc}';
     document.head.appendChild(style);
   }
 
@@ -430,14 +435,16 @@ function _spRender() {
   if (!share) {
     // ── Edit Mode Controls ──
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
-    html += '<select id="spPlotSelect" onchange="_spSwitchPlot(this.value)" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.85em">';
+    html += '<select id="spPlotSelect" onchange="_spSwitchPlot(this.value)" class="sp-select">';
     _spPlots.forEach(function(p, i) {
       html += '<option value="' + i + '"' + (i === _spCurrentIdx ? ' selected' : '') + '>' + _spEsc(p.name) + '</option>';
     });
     html += '</select>';
+    html += '<span class="sp-plot-title" onclick="_spRenamePlot()" style="font-size:0.82em;font-weight:700;color:var(--text)" title="Click to rename">' + _spEsc(plot.name) + ' ✎</span>';
     html += '<button onclick="_spAddPlot()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ New</button>';
+    html += '<button onclick="_spSaveAs()" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:#a5b4fc;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Save As</button>';
     html += '<button onclick="_spDuplicatePlot()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Dup</button>';
-    html += '<select onchange="_spApplyPreset(this.value)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:4px 6px;border-radius:6px;font-size:0.72em"><option value="">Presets...</option>' + Object.keys(SP_PRESETS).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') + '</select>';
+    html += '<select onchange="_spApplyPreset(this.value)" class="sp-select" style="font-size:0.72em;padding:4px 6px"><option value="">Presets...</option>' + Object.keys(SP_PRESETS).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') + '</select>';
     html += '<div style="margin-left:auto;display:flex;gap:6px">';
     html += '<button onclick="_spToggleShareMode()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">&#x1F4E4; Share View</button>';
     html += '<button onclick="_spSave()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Save</button>';
@@ -837,6 +844,36 @@ function _spDuplicatePlot() {
   if (typeof showToast === 'function') showToast('Layout duplicated');
 }
 
+function _spRenamePlot() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var newName = prompt('Rename stage plot:', plot.name);
+  if (newName !== null && newName.trim() !== '') {
+    plot.name = newName.trim();
+    _spDirty = true;
+    _spRender();
+    if (typeof showToast === 'function') showToast('Renamed to "' + plot.name + '"');
+  }
+}
+
+function _spSaveAs() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var newName = prompt('Save a copy as:', plot.name + ' (copy)');
+  if (newName === null || newName.trim() === '') return;
+  var copy = JSON.parse(JSON.stringify(plot));
+  copy.id = 'plot_' + Date.now();
+  copy.name = newName.trim();
+  copy.createdAt = new Date().toISOString();
+  copy.updatedAt = new Date().toISOString();
+  _spPlots.push(copy);
+  _spCurrentIdx = _spPlots.length - 1;
+  _spDirty = true;
+  _spSave();
+  _spRender();
+  if (typeof showToast === 'function') showToast('Saved as "' + copy.name + '"');
+}
+
 function _spResetToDefault() {
   if (!confirm('Reset this layout to band default positions?')) return;
   var plot = _spPlots[_spCurrentIdx];
@@ -1016,6 +1053,8 @@ window._spAddPlot = _spAddPlot;
 window._spSwitchPlot = _spSwitchPlot;
 window._spSave = _spSave;
 window._spDuplicatePlot = _spDuplicatePlot;
+window._spRenamePlot = _spRenamePlot;
+window._spSaveAs = _spSaveAs;
 window._spResetToDefault = _spResetToDefault;
 window._spUpdateRiderNotes = _spUpdateRiderNotes;
 window._spUpdateContact = _spUpdateContact;

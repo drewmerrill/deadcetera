@@ -887,18 +887,35 @@ window._calSyncNow = async function() {
                 console.log('[Sync] Pushed ' + pushed + ' events to Google Calendar');
             }
         }
+        // ── INBOUND: Pull events from Band Calendar into GrooveLinx ──
+        var _imported = 0;
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.pullBandCalendarEvents) {
+            // Pull 6 months of events (3 months back + 3 months forward)
+            var _now = new Date();
+            var _pullMin = new Date(_now.getFullYear(), _now.getMonth() - 3, 1).toISOString();
+            var _pullMax = new Date(_now.getFullYear(), _now.getMonth() + 3, 0, 23, 59, 59).toISOString();
+            var _pullResult = await GLCalendarSync.pullBandCalendarEvents(_pullMin, _pullMax);
+            _imported = _pullResult.imported || 0;
+            if (_pullResult.error) console.warn('[Sync] Inbound pull error:', _pullResult.error);
+        }
+
         // Pull latest connections (no full re-render — prevents screen flash)
         _calConnectedCache = null;
         await _calLoadConnections();
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
-        // Only re-render the Google panel, not the entire calendar grid
+        // Re-render full calendar grid (new events may need dots)
+        renderCalendarInner();
         _calRenderGooglePanel();
         // Build explicit sync status message
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
-        var _syncMsg = '\u2713 Band events synced to Google Calendar';
-        if (typeof pushed !== 'undefined' && pushed > 0) _syncMsg += ' (' + pushed + ' new)';
-        if (!_hasAvail) _syncMsg += '. Personal availability not synced \u2014 click "enable" above to detect scheduling conflicts.';
-        if (typeof showToast === 'function') showToast(_syncMsg, _hasAvail ? 3000 : 6000);
+        var _syncMsg = '\u2713 Sync complete';
+        var _syncParts = [];
+        if (typeof pushed !== 'undefined' && pushed > 0) _syncParts.push(pushed + ' pushed to Google');
+        if (_imported > 0) _syncParts.push(_imported + ' imported from Google');
+        if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
+        else _syncMsg += ' \u2014 everything up to date';
+        if (!_hasAvail) _syncMsg += '. Availability not enabled.';
+        if (typeof showToast === 'function') showToast(_syncMsg, _hasAvail ? 4000 : 6000);
     } catch(e) {
         if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
     }
