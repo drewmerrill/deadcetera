@@ -2067,6 +2067,7 @@ function _rhPrepareSegmentData(session, segments) {
 function _rhHasAudio() {
     if (_rhSharedAudio && _rhSharedAudio.src) return true;
     if (typeof RecordingAnalyzer !== 'undefined' && (RecordingAnalyzer._loadedPlaybackUrl || RecordingAnalyzer._currentAudioUrl)) return true;
+    if (window._rhDriveFileId && window._rhDriveToken) return true;
     return false;
 }
 
@@ -2094,6 +2095,11 @@ function _rhEnsureAudio(sessionId) {
         var _url = null;
         if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._loadedPlaybackUrl) _url = RecordingAnalyzer._loadedPlaybackUrl;
         else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) _url = RecordingAnalyzer._currentAudioUrl;
+        // Drive streaming: use Drive API URL with token
+        if (!_url && window._rhDriveFileId && window._rhDriveToken) {
+            _url = 'https://www.googleapis.com/drive/v3/files/' + window._rhDriveFileId
+                + '?alt=media&supportsAllDrives=true&access_token=' + encodeURIComponent(window._rhDriveToken);
+        }
         if (!_url) { if (typeof showToast === 'function') showToast('Select recording file first to enable playback'); return false; }
         _rhSharedAudio.src = _url;
         _rhSharedAudio.preload = 'none';
@@ -2156,8 +2162,30 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
         if (btn3) { btn3.classList.add('rh-playing-btn'); btn3.textContent = '\u23F8'; }
     }
 
-    audio.currentTime = startSec;
-    audio.play();
+    // For streaming URLs (Drive), wait for audio to be seekable before playing
+    function _doSeekAndPlay() {
+        try { audio.currentTime = startSec; } catch(e) {}
+        audio.play().catch(function(e) {
+            console.warn('[Timeline] Play failed:', e.message);
+            if (typeof showToast === 'function') showToast('Buffering\u2026 try again in a moment');
+        });
+    }
+
+    if (audio.readyState >= 1) {
+        _doSeekAndPlay();
+    } else {
+        if (typeof showToast === 'function') showToast('Buffering\u2026');
+        audio.preload = 'metadata';
+        audio.load();
+        var _metaHandled = false;
+        audio.addEventListener('loadedmetadata', function _onMeta() {
+            audio.removeEventListener('loadedmetadata', _onMeta);
+            if (_metaHandled) return;
+            _metaHandled = true;
+            _doSeekAndPlay();
+        }, { once: true });
+        setTimeout(function() { if (!_metaHandled) { _metaHandled = true; _doSeekAndPlay(); } }, 5000);
+    }
 
     // Show transport bar
     _rhShowTransport(startSec, endSec, sessionId, segIdx);
@@ -2426,18 +2454,18 @@ function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
         return;
     }
 
-    // Stream directly — set audio src to Drive API URL with token as query param.
-    // This lets the browser stream on demand instead of downloading the entire
-    // file into memory (which crashes iPad for 200MB+ rehearsal recordings).
+    // Store the Drive file ID + token so _rhPlaySegment can fetch individual segments
+    // on demand. We do NOT download the whole file (200-400MB crashes iPad).
     var _token = (typeof accessToken !== 'undefined') ? accessToken : null;
     if (_token) {
-        var streamUrl = 'https://www.googleapis.com/drive/v3/files/' + _fileId + '?alt=media&supportsAllDrives=true&access_token=' + encodeURIComponent(_token);
-        console.log('[Drive] Streaming via Drive API:', _fileId.substring(0, 10) + '...');
-        _rhSetupPlaybackAudio(streamUrl, sessionId);
+        window._rhDriveFileId = _fileId;
+        window._rhDriveToken = _token;
+        // Mark audio as available so play buttons enable, but don't load anything yet
+        _rhAudioSessionId = sessionId;
+        console.log('[Drive] Drive playback configured:', _fileId.substring(0, 10) + '...');
         if (typeof showToast === 'function') showToast('Recording ready \u2014 tap play on any song');
         _rhRenderLastRehearsalTimeline();
     } else {
-        // No token — try Worker proxy (public download methods)
         _rhDoStreamViaWorker(workerBase, driveUrl, null, sessionId);
     }
 }
