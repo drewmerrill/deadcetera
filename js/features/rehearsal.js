@@ -514,7 +514,7 @@ async function _rhRenderCommandFlow(el) {
         var _preTotalLabel = _preTotalMin >= 60 ? Math.floor(_preTotalMin / 60) + 'h ' + (_preTotalMin % 60) + 'm' : _preTotalMin + 'm';
         if (_rhPlanningMode) {
             // ── PLAN MODE: plan is the primary workspace (no collapsible) ──
-            html += '<div id="rhPlanCard" style="margin-bottom:12px">';
+            html += '<div id="rhPlanWorkspace" style="margin-bottom:12px">';
             // Subcontext bar
             var _planSubCtx = '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12)">';
             if (nextGig && _gigDays <= 30) _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFA4 ' + escHtml(nextGig.venue || 'Gig') + ' in ' + _gigDays + ' days</span>';
@@ -892,8 +892,8 @@ async function _rhRenderCommandFlow(el) {
                 }
             }
             // Versioning card — single canonical location
+            // No extra header here — _rhRenderSnapshots() includes its own "Plan Versions" heading
             _railHtml += '<div class="gl-context-card" id="rhVersionsRailCard">'
-                + '<div style="font-size:0.68em;font-weight:800;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px">Plan Versions</div>'
                 + '<div id="rhSnapshots"></div>'
                 + '</div>';
             // Quick actions
@@ -961,6 +961,11 @@ async function _rhRenderCommandFlow(el) {
 
     // Render saved snapshots
     _rhRenderSnapshots();
+
+    // Show initial save state in Plan Mode
+    if (_rhPlanningMode && hasSavedPlan) {
+        setTimeout(function() { _rhShowSaveState('saved'); }, 100);
+    }
 
     // First-visit walkthrough (only when a saved plan exists)
     if (hasSavedPlan && typeof glSpotlight !== 'undefined') {
@@ -3023,8 +3028,23 @@ async function _rhRenderSnapshots() {
     var el = document.getElementById('rhSnapshots');
     if (!el) return;
     var snaps = await _rhLoadSnapshots(5);
-    if (!snaps.length) { el.innerHTML = ''; return; }
-    var html = '<details style="margin-bottom:12px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">\uD83D\uDCC2 Plan Versions (' + snaps.length + ')</summary>'
+    // Show current plan status above snapshots
+    var _currentUnits = _rhGetUnits();
+    var _currentPlanName = (_rhPlanCache && _rhPlanCache.name) ? _rhPlanCache.name : (localStorage.getItem('glSavedPlanName') || 'Rehearsal Plan');
+    var _currentHtml = '';
+    if (_currentUnits.length > 0) {
+        var _curSongCount = _currentUnits.reduce(function(n, u) { return n + (u.type === 'linked' && u.songs ? u.songs.length : 1); }, 0);
+        _currentHtml = '<div style="padding:4px 0;margin-bottom:4px;font-size:0.75em">'
+            + '<div style="display:flex;align-items:center;gap:6px">'
+            + '<span style="color:var(--gl-green);font-weight:700">\u25CF</span>'
+            + '<span style="color:var(--gl-text);font-weight:600">' + escHtml(_currentPlanName) + '</span>'
+            + '<span style="color:var(--gl-text-tertiary)">\u2014 ' + _curSongCount + ' songs</span>'
+            + '<span style="color:var(--gl-green);font-size:0.82em">current</span>'
+            + '</div></div>';
+    }
+    if (!snaps.length) { el.innerHTML = _currentHtml || ''; return; }
+    var html = _currentHtml;
+    html += '<details style="margin-bottom:4px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">\uD83D\uDCC2 Prior Versions (' + snaps.length + ')</summary>'
         + '<div style="margin-top:6px">';
     snaps.forEach(function(s) {
         var d = s.savedAt ? new Date(s.savedAt) : null;
@@ -3109,7 +3129,21 @@ function _rhShowSaveState(state) {
     targets.forEach(function(el) {
         if (!el) return;
         if (state === 'saving') { el.textContent = 'Saving\u2026'; el.style.color = '#fbbf24'; }
-        else if (state === 'saved') { el.textContent = '\u2713 Saved'; el.style.color = '#22c55e'; setTimeout(function() { if (el.textContent === '\u2713 Saved') el.textContent = ''; }, 2000); }
+        else if (state === 'saved') {
+            el.textContent = '\u2713 Saved';
+            el.style.color = '#22c55e';
+            // In Plan Mode, keep showing "All changes saved" instead of clearing
+            setTimeout(function() {
+                if (el.textContent === '\u2713 Saved') {
+                    if (_rhPlanningMode) {
+                        el.textContent = '\u2713 All changes saved';
+                        el.style.color = 'rgba(34,197,94,0.6)';
+                    } else {
+                        el.textContent = '';
+                    }
+                }
+            }, 2000);
+        }
         else if (state === 'error') { el.textContent = '\u2715 Save failed'; el.style.color = '#f87171'; }
         else { el.textContent = ''; }
     });
