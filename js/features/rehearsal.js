@@ -2421,10 +2421,23 @@ window._rhSeekTransport = function(e) {
 
 // ── Lightweight file loader for playback only (no analysis, no decoding) ─────
 window._rhLoadRecordingForPlayback = async function(sessionId) {
-    // Check if a Drive link is available before showing file picker
+    // Clear any previously cached Drive file (prevents playing wrong session's audio)
+    window._rhDriveFileId = null;
+    window._rhDriveToken = null;
+    if (_rhSharedAudio) { _rhSharedAudio.src = ''; _rhSharedAudio.removeAttribute('src'); }
+    _rhAudioSessionId = null;
+
+    // Find session date to match the right Drive recording
+    var _sessionDate = null;
+    if (_rhSessionsCache) {
+        var _s = _rhSessionsCache.find(function(s) { return s.sessionId === sessionId; });
+        if (_s) _sessionDate = _s.date;
+    }
+
+    // Check if a Drive link is available for this session
     var driveUrl = null;
     if (typeof RehearsalMixdowns !== 'undefined' && RehearsalMixdowns.getDriveUrl) {
-        driveUrl = await RehearsalMixdowns.getDriveUrl();
+        driveUrl = await RehearsalMixdowns.getDriveUrl(_sessionDate);
     }
 
     if (driveUrl) {

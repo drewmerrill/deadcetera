@@ -365,11 +365,21 @@ window.RehearsalMixdowns = (function() {
 
     // ── Public API ──────────────────────────────────────────────────────────
 
-    // Find the first mixdown with a drive_url (for timeline integration)
-    async function getDriveUrl() {
+    // Find the mixdown with a drive_url matching a date, or first available
+    async function getDriveUrl(sessionDate) {
         var items = await _load();
-        for (var i = 0; i < items.length; i++) {
-            if (items[i].drive_url) return items[i].drive_url;
+        // Try to match by date first
+        if (sessionDate) {
+            var targetDate = sessionDate.substring(0, 10); // 'YYYY-MM-DD'
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].drive_url && items[i].rehearsal_date && items[i].rehearsal_date.substring(0, 10) === targetDate) {
+                    return items[i].drive_url;
+                }
+            }
+        }
+        // Fallback: first mixdown with a drive_url
+        for (var j = 0; j < items.length; j++) {
+            if (items[j].drive_url) return items[j].drive_url;
         }
         return null;
     }
