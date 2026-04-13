@@ -2102,6 +2102,9 @@ function _rhEnsureAudio(sessionId) {
                 : 'https://groovelinx-worker.drewmerrill.workers.dev';
             _url = _wb + '/drive-stream?fileId=' + encodeURIComponent(window._rhDriveFileId)
                 + '&token=' + encodeURIComponent(window._rhDriveToken);
+            // Pre-validate: check if the stream URL actually returns audio before setting as src
+            console.log('[Drive] Stream URL:', _url.substring(0, 80) + '...');
+            console.log('[Drive] Token length:', window._rhDriveToken.length, 'starts with:', window._rhDriveToken.substring(0, 10));
         }
         if (!_url) { if (typeof showToast === 'function') showToast('Select recording file first to enable playback'); return false; }
         _rhSharedAudio.src = _url;
@@ -2165,43 +2168,37 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
         if (btn3) { btn3.classList.add('rh-playing-btn'); btn3.textContent = '\u23F8'; }
     }
 
-    // For streaming URLs (Drive), wait for audio to be seekable before playing
-    function _doSeekAndPlay() {
+    // For Drive streaming: fetch the segment via JS fetch() and create a blob URL.
+    // Safari won't play from a Worker proxy URL directly (<audio src=workerUrl> fails
+    // with SRC_NOT_SUPPORTED). But blob URLs from fetch() always work.
+    if (window._rhDriveFileId && window._rhDriveToken && (!audio.src || audio.src.indexOf('blob:') === -1)) {
+        if (typeof showToast === 'function') showToast('Loading segment\u2026');
+        var _streamUrl = audio.src || ((typeof WORKER_BASE !== 'undefined' ? WORKER_BASE : 'https://groovelinx-worker.drewmerrill.workers.dev')
+            + '/drive-stream?fileId=' + encodeURIComponent(window._rhDriveFileId)
+            + '&token=' + encodeURIComponent(window._rhDriveToken));
+        fetch(_streamUrl).then(function(res) {
+            if (!res.ok) throw new Error('Stream error ' + res.status);
+            return res.blob();
+        }).then(function(blob) {
+            var blobUrl = URL.createObjectURL(blob);
+            audio.src = blobUrl;
+            audio.preload = 'metadata';
+            audio.addEventListener('loadedmetadata', function() {
+                audio.currentTime = startSec;
+                audio.play();
+            }, { once: true });
+            audio.load();
+            if (typeof showToast === 'function') showToast('Recording loaded (' + Math.round(blob.size / 1024 / 1024) + ' MB)');
+        }).catch(function(err) {
+            console.error('[Drive] Segment fetch failed:', err);
+            if (typeof showToast === 'function') showToast('\u26A0 Could not load: ' + err.message, 5000);
+        });
+    } else {
+        // Local file or already-loaded blob — seek and play directly
         try { audio.currentTime = startSec; } catch(e) {}
         audio.play().catch(function(e) {
             console.warn('[Timeline] Play failed:', e.message);
-            if (typeof showToast === 'function') showToast('Buffering\u2026 try again in a moment');
         });
-    }
-
-    if (audio.readyState >= 1) {
-        _doSeekAndPlay();
-    } else {
-        if (typeof showToast === 'function') showToast('Buffering\u2026');
-        // Listen for errors to diagnose failures
-        audio.addEventListener('error', function _onErr() {
-            audio.removeEventListener('error', _onErr);
-            var e = audio.error;
-            var msg = e ? ('Audio error ' + e.code + ': ' + (e.message || ['','ABORTED','NETWORK','DECODE','SRC_NOT_SUPPORTED'][e.code] || 'unknown')) : 'Unknown audio error';
-            console.error('[Timeline] Audio load error:', msg, 'src:', (audio.src || '').substring(0, 100));
-            if (typeof showToast === 'function') showToast('\u26A0 ' + msg, 5000);
-        }, { once: true });
-        audio.preload = 'metadata';
-        audio.load();
-        var _metaHandled = false;
-        audio.addEventListener('loadedmetadata', function _onMeta() {
-            audio.removeEventListener('loadedmetadata', _onMeta);
-            if (_metaHandled) return;
-            _metaHandled = true;
-            _doSeekAndPlay();
-        }, { once: true });
-        setTimeout(function() {
-            if (!_metaHandled) {
-                _metaHandled = true;
-                console.warn('[Timeline] Metadata timeout. readyState:', audio.readyState, 'networkState:', audio.networkState, 'src:', (audio.src || '').substring(0, 100));
-                _doSeekAndPlay();
-            }
-        }, 5000);
     }
 
     // Show transport bar
