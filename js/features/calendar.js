@@ -4373,13 +4373,23 @@ async function calDeleteEventById(eventId) {
 }
 
 async function calSaveEvent(editIdx) {
+    // ── PHASE A: VALIDATE + READ FORM ────────────────────────────────────────
+    // Guard: ensure form elements still exist (venue creation modal can remove them)
+    var _dateEl = document.getElementById('calDate');
+    var _typeEl = document.getElementById('calType');
+    var _titleEl = document.getElementById('calTitle');
+    if (!_dateEl || !_typeEl || !_titleEl) {
+        console.error('[Calendar] Form elements missing from DOM — save aborted');
+        if (typeof showToast === 'function') showToast('\u26A0 Form not ready — try again', 3000);
+        return;
+    }
     const ev = {
-        date: document.getElementById('calDate')?.value,
-        type: document.getElementById('calType')?.value,
-        title: document.getElementById('calTitle')?.value,
-        time: document.getElementById('calTime')?.value,
-        notes: document.getElementById('calNotes')?.value,
-        linkedSetlist: document.getElementById('calLinkedSetlist')?.value || null,
+        date: _dateEl.value,
+        type: _typeEl.value,
+        title: _titleEl.value,
+        time: (document.getElementById('calTime') || {}).value || '',
+        notes: (document.getElementById('calNotes') || {}).value || '',
+        linkedSetlist: (document.getElementById('calLinkedSetlist') || {}).value || null,
         venueId: window._calSelectedVenueId || null,
         venue: window._calSelectedVenueName || null,
         locationId: null,
@@ -4411,7 +4421,6 @@ async function calSaveEvent(editIdx) {
     var _repeatEndCount = parseInt((document.getElementById('calRepeatEndCount') || {}).value) || null;
     var _endsAt = (_repeatEndType === 'date') ? _repeatEndDate : null;
     var _endsAfter = (_repeatEndType === 'count') ? _repeatEndCount : null;
-    // Auto-compute endsAt from count if date not provided
     if (_endsAfter && !_endsAt && ev.date && repeatVal !== 'none') {
         var _interval = repeatVal === 'biweekly' ? 14 : repeatVal === 'monthly' ? 30 : 7;
         var _endDate = new Date(ev.date + 'T12:00:00');
@@ -4426,166 +4435,184 @@ async function calSaveEvent(editIdx) {
     var dateErr = _calValidateDate(ev.date, 'Event date');
     if (dateErr) { alert(dateErr); return; }
     if (ev.type === 'gig' && !ev.venue) { alert('Gig events require a venue'); return; }
-    let events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+
+    // ── PHASE A: CORE SAVE (atomic, primary) ─────────────────────────────────
+    console.log('[Calendar] Phase A: Core save starting...');
+    if (typeof showToast === 'function') showToast('Saving\u2026');
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    var _savedIdx = -1; // index of this event in the array (for targeted updates later)
     if (editIdx !== undefined) {
         var i = -1;
-        // Try id-based lookup first (set by calEditEventById)
         var editId = window._calEditEventId;
-        if (editId) {
-            i = events.findIndex(function(e) { return e.id === editId; });
-        }
+        if (editId) i = events.findIndex(function(e) { return e.id === editId; });
         if (i < 0) {
-            // Fallback to positional lookup (legacy path)
-            const today = new Date().toISOString().split('T')[0];
-            const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
-            const old = upcoming[editIdx];
-            if (old) i = events.findIndex(e => e.date===old.date && e.title===old.title);
+            var today = new Date().toISOString().split('T')[0];
+            var upcoming = events.filter(function(e) { return (e.date||'') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
+            var old = upcoming[editIdx];
+            if (old) i = events.findIndex(function(e) { return e.date===old.date && e.title===old.title; });
         }
         if (i >= 0) {
-            const existingId = events[i].id;
-            events[i] = { ...events[i], ...ev };
+            var existingId = events[i].id;
+            events[i] = Object.assign({}, events[i], ev);
             if (existingId) events[i].id = existingId;
             events[i].updated_at = new Date().toISOString();
+            _savedIdx = i;
         }
         window._calEditEventId = null;
     } else {
         ev.created = new Date().toISOString();
         ev.updated_at = ev.created;
-        // Stamp a stable id at creation — this is the most important moment
         ev.id = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36);
         events.push(ev);
+        _savedIdx = events.length - 1;
     }
-    var _saveOk = await saveBandDataToDrive('_band', 'calendar_events', events);
-    console.log('[Calendar] Event saved to Firebase:', _saveOk, 'id:', ev.id, 'type:', ev.type, 'date:', ev.date, 'title:', ev.title, 'total events:', events.length);
-    if (!_saveOk) {
-        if (typeof showToast === 'function') showToast('\u26A0 Event could not be saved to Firebase', 5000);
+    var _coreSaveOk = await saveBandDataToDrive('_band', 'calendar_events', events);
+    console.log('[Calendar] Phase A: Core save', _coreSaveOk ? 'SUCCEEDED' : 'FAILED',
+        '| id:', ev.id, '| type:', ev.type, '| date:', ev.date, '| title:', ev.title,
+        '| idx:', _savedIdx, '| total:', events.length);
+    if (!_coreSaveOk) {
+        if (typeof showToast === 'function') showToast('\u26A0 Event could not be saved', 5000);
+        return; // STOP — do not sync to Google or create gig records
     }
-    // If this is a gig event, sync to canonical Gig record
+
+    // ── IMMEDIATE UI UPDATE ──────────────────────────────────────────────────
+    // Clear form + re-render grid BEFORE enrichment — user sees success immediately
+    document.getElementById('calEventFormArea').innerHTML = '';
+    if (typeof showToast === 'function') showToast('\u2713 Event saved');
+    renderCalendarInner();
+
+    // ── PHASE B: POST-SAVE ENRICHMENT (non-blocking) ─────────────────────────
+    // Gig record + setlist creation + Google sync
+    // These run after the user already sees their event on the grid.
+    // Failures here do NOT lose the event.
+
+    // B1: Gig record sync
     if (ev.type === 'gig') {
-      try {
-        const existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-        // Match by gigId first (stable), fallback to venue+date (legacy compat)
-        var existingIdx = -1;
-        if (ev.gigId) {
-            existingIdx = existingGigs.findIndex(function(g) { return g.gigId === ev.gigId; });
-        }
-        if (existingIdx < 0) {
-            const gigKey = (ev.venue||'') + '|' + (ev.date||'');
-            existingIdx = existingGigs.findIndex(function(g) { return ((g.venue||'')+'|'+(g.date||'')) === gigKey; });
-        }
+        console.log('[Calendar] Phase B1: Gig record sync starting...');
+        try {
+            var existingGigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+            var existingIdx = -1;
+            if (ev.gigId) existingIdx = existingGigs.findIndex(function(g) { return g.gigId === ev.gigId; });
+            if (existingIdx < 0) {
+                var gigKey = (ev.venue||'') + '|' + (ev.date||'');
+                existingIdx = existingGigs.findIndex(function(g) { return ((g.venue||'')+'|'+(g.date||'')) === gigKey; });
+            }
+            var calSetlistVal = ev.linkedSetlist || '';
+            var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+            var linkedSl = calSetlistVal ? allSetlists.find(function(s) { return s.setlistId === calSetlistVal; }) : null;
 
-        // Resolve setlist from dropdown
-        var calSetlistVal = ev.linkedSetlist || '';
-        var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
-        var linkedSl = calSetlistVal
-            ? allSetlists.find(function(s) { return s.setlistId === calSetlistVal; })
-            : null;
-
-        const gigRecord = {
-            venueId: ev.venueId || null,
-            venue: ev.venue || ev.title || '',
-            date: ev.date || '',
-            startTime: ev.time || '',
-            notes: ev.notes || '',
-            linkedSetlist: linkedSl ? (linkedSl.name || '') : (ev.linkedSetlist || ''),
-            setlistId: linkedSl ? (linkedSl.setlistId || null) : null,
-            updated: new Date().toISOString()
-        };
-        if (existingIdx >= 0) {
-            var prev = existingGigs[existingIdx];
-            existingGigs[existingIdx] = { ...prev, ...gigRecord };
-            // Preserve existing gigId and fields not in the calendar form
-            existingGigs[existingIdx].gigId = prev.gigId || generateShortId(12);
-            if (!gigRecord.setlistId && prev.setlistId) existingGigs[existingIdx].setlistId = prev.setlistId;
-            if (!gigRecord.linkedSetlist && prev.linkedSetlist) existingGigs[existingIdx].linkedSetlist = prev.linkedSetlist;
-            // Write gigId back to calendar event
-            ev.gigId = existingGigs[existingIdx].gigId;
-        } else {
-            gigRecord.gigId = generateShortId(12);
-            gigRecord.created = new Date().toISOString();
-            // Auto-create blank setlist if none selected
-            if (!gigRecord.setlistId) {
-                var newSl = {
-                    setlistId: generateShortId(12),
-                    gigId: gigRecord.gigId,
-                    name: (gigRecord.venue || 'Gig') + ' ' + (gigRecord.date || ''),
-                    date: gigRecord.date || '',
-                    venueId: gigRecord.venueId || null,
-                    venue: gigRecord.venue || '',
-                    notes: '',
-                    sets: [{ name: 'Set 1', songs: [] }],
-                    created: new Date().toISOString()
-                };
-                gigRecord.setlistId = newSl.setlistId;
-                gigRecord.linkedSetlist = newSl.name;
-                allSetlists.push(newSl);
+            var gigRecord = {
+                venueId: ev.venueId || null, venue: ev.venue || ev.title || '',
+                date: ev.date || '', startTime: ev.time || '', notes: ev.notes || '',
+                linkedSetlist: linkedSl ? (linkedSl.name || '') : (ev.linkedSetlist || ''),
+                setlistId: linkedSl ? (linkedSl.setlistId || null) : null,
+                updated: new Date().toISOString()
+            };
+            if (existingIdx >= 0) {
+                var prev = existingGigs[existingIdx];
+                existingGigs[existingIdx] = Object.assign({}, prev, gigRecord);
+                existingGigs[existingIdx].gigId = prev.gigId || generateShortId(12);
+                if (!gigRecord.setlistId && prev.setlistId) existingGigs[existingIdx].setlistId = prev.setlistId;
+                if (!gigRecord.linkedSetlist && prev.linkedSetlist) existingGigs[existingIdx].linkedSetlist = prev.linkedSetlist;
+                ev.gigId = existingGigs[existingIdx].gigId;
+            } else {
+                gigRecord.gigId = generateShortId(12);
+                gigRecord.created = new Date().toISOString();
+                if (!gigRecord.setlistId) {
+                    var newSl = {
+                        setlistId: generateShortId(12), gigId: gigRecord.gigId,
+                        name: (gigRecord.venue || 'Gig') + ' ' + (gigRecord.date || ''),
+                        date: gigRecord.date || '', venueId: gigRecord.venueId || null,
+                        venue: gigRecord.venue || '', notes: '',
+                        sets: [{ name: 'Set 1', songs: [] }], created: new Date().toISOString()
+                    };
+                    gigRecord.setlistId = newSl.setlistId;
+                    gigRecord.linkedSetlist = newSl.name;
+                    allSetlists.push(newSl);
+                    await saveBandDataToDrive('_band', 'setlists', allSetlists);
+                }
+                ev.gigId = gigRecord.gigId;
+                existingGigs.push(gigRecord);
+            }
+            if (linkedSl && !linkedSl.gigId) {
+                linkedSl.gigId = ev.gigId;
                 await saveBandDataToDrive('_band', 'setlists', allSetlists);
             }
-            ev.gigId = gigRecord.gigId;
-            existingGigs.push(gigRecord);
+            await saveBandDataToDrive('_band', 'gigs', existingGigs);
+            // TARGETED UPDATE: stamp gigId on the specific event — no full array re-read/re-save
+            if (ev.gigId && _savedIdx >= 0) {
+                var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                if (db && typeof bandPath === 'function') {
+                    await db.ref(bandPath('calendar_events/' + _savedIdx + '/gigId')).set(ev.gigId);
+                    console.log('[Calendar] Phase B1: gigId stamped via targeted update:', ev.gigId);
+                }
+            }
+            console.log('[Calendar] Phase B1: Gig record sync SUCCEEDED | gigId:', ev.gigId);
+        } catch(gigErr) {
+            console.error('[Calendar] Phase B1: Gig record sync FAILED (event still saved):', gigErr);
+            if (typeof showToast === 'function') showToast('\u26A0 Event saved, but gig record sync failed', 4000);
         }
-        // Link setlist back to gig if applicable
-        if (linkedSl && !linkedSl.gigId) {
-            linkedSl.gigId = ev.gigId;
-            await saveBandDataToDrive('_band', 'setlists', allSetlists);
-        }
-        await saveBandDataToDrive('_band', 'gigs', existingGigs);
-        // Re-save calendar events with gigId stamped on the event
-        var savedEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-        var calIdx = savedEvents.findIndex(function(e) { return e.id === ev.id; });
-        if (calIdx >= 0 && !savedEvents[calIdx].gigId) {
-            savedEvents[calIdx].gigId = ev.gigId;
-            await saveBandDataToDrive('_band', 'calendar_events', savedEvents);
-        }
-      } catch(gigSyncErr) {
-        console.error('[Calendar] Gig record sync failed (event still saved):', gigSyncErr);
-      }
     }
-    // Auto-sync to Google Calendar (band calendar)
+
+    // B2: Google Calendar sync — ONLY if core save succeeded (we already confirmed above)
     if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+        console.log('[Calendar] Phase B2: Google sync starting...');
         try {
             var glEvent = {
+                id: ev.id, eventId: ev.id,
                 summary: ev.title || (ev.type === 'rehearsal' ? 'Rehearsal' : ev.type === 'gig' ? 'Gig' : 'Band Event'),
-                date: ev.date,
-                startTime: ev.time || '19:00',
+                date: ev.date, startTime: ev.time || '19:00',
                 location: ev.location || ev.venue || '',
-                description: ev.notes || '',
-                type: ev.type
+                description: ev.notes || '', type: ev.type
             };
-            // Check if already synced (edit) — update instead of create
-            var _savedEvt = events.find(function(e) { return e.id === ev.id; }) || ev;
-            if (_savedEvt.googleEventId) {
-                var upd = await GLCalendarSync.update(_savedEvt.googleEventId, glEvent);
-                if (upd.success) {
-                    _savedEvt.lastSyncedAt = new Date().toISOString();
-                    _savedEvt.syncStatus = 'synced';
-                }
+            var _existingEvt = events[_savedIdx] || ev;
+            // Check both sync metadata patterns
+            var _existingGoogleId = _existingEvt.googleEventId
+                || (_existingEvt.sync && _existingEvt.sync.externalEventId) || null;
+            if (_existingGoogleId) {
+                var upd = await GLCalendarSync.update(_existingGoogleId, glEvent);
+                console.log('[Calendar] Phase B2: Google update', upd.success ? 'SUCCEEDED' : 'FAILED');
             } else {
                 var sync = await GLCalendarSync.create(glEvent);
                 if (sync.success && sync.sync) {
-                    _savedEvt.googleEventId = sync.sync.externalEventId;
-                    _savedEvt.calendarId = sync.sync.calendarId;
-                    _savedEvt.syncStatus = 'synced';
-                    _savedEvt.lastSyncedAt = new Date().toISOString();
-                    // Re-save with sync metadata
-                    var _updatedEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-                    var _ui = _updatedEvents.findIndex(function(e) { return e.id === ev.id; });
-                    if (_ui >= 0) {
-                        _updatedEvents[_ui].googleEventId = _savedEvt.googleEventId;
-                        _updatedEvents[_ui].calendarId = _savedEvt.calendarId;
-                        _updatedEvents[_ui].syncStatus = 'synced';
-                        _updatedEvents[_ui].lastSyncedAt = _savedEvt.lastSyncedAt;
-                        await saveBandDataToDrive('_band', 'calendar_events', _updatedEvents);
+                    // TARGETED UPDATE: stamp Google sync metadata — no full array re-read/re-save
+                    if (_savedIdx >= 0) {
+                        var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                        if (db2 && typeof bandPath === 'function') {
+                            var _syncData = {
+                                googleEventId: sync.sync.externalEventId,
+                                calendarId: sync.sync.calendarId,
+                                syncStatus: 'synced',
+                                lastSyncedAt: new Date().toISOString()
+                            };
+                            var _evPath = bandPath('calendar_events/' + _savedIdx);
+                            await db2.ref(_evPath + '/googleEventId').set(_syncData.googleEventId);
+                            await db2.ref(_evPath + '/calendarId').set(_syncData.calendarId);
+                            await db2.ref(_evPath + '/syncStatus').set(_syncData.syncStatus);
+                            await db2.ref(_evPath + '/lastSyncedAt').set(_syncData.lastSyncedAt);
+                            // Also store in nested sync object for consistency
+                            await db2.ref(_evPath + '/sync').set({
+                                provider: 'google',
+                                externalEventId: sync.sync.externalEventId,
+                                calendarId: sync.sync.calendarId,
+                                status: 'synced',
+                                lastSyncedAt: _syncData.lastSyncedAt
+                            });
+                            console.log('[Calendar] Phase B2: Google sync metadata stamped via targeted update');
+                        }
                     }
                 }
+                console.log('[Calendar] Phase B2: Google create', sync.success ? 'SUCCEEDED' : 'FAILED',
+                    sync.success && sync.sync ? '| googleEventId: ' + sync.sync.externalEventId : '');
             }
         } catch(e) {
-            console.warn('[Calendar] Google sync failed:', e.message);
+            console.warn('[Calendar] Phase B2: Google sync FAILED:', e.message);
+            if (typeof showToast === 'function') showToast('\u26A0 Event saved, but Google sync failed', 4000);
         }
     }
 
-    document.getElementById('calEventFormArea').innerHTML = '';
-    renderCalendarInner(); // re-render full grid + events list
+    // Phase B complete — form was already cleared and grid re-rendered in Phase A
+    console.log('[Calendar] Save complete | id:', ev.id, '| gigId:', ev.gigId || 'none', '| google:', ev.syncStatus || 'none');
 }
 
 
