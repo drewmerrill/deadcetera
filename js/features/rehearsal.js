@@ -360,9 +360,12 @@ async function renderRehearsalPage(el) {
     _rhRenderCommandFlow(el);
 }
 
+var _rhRenderInProgress = false; // guard against concurrent renders
 async function _rhRenderCommandFlow(el) {
+    if (_rhRenderInProgress) { console.warn('[Rehearsal] Skipping concurrent render'); return; }
+    _rhRenderInProgress = true;
     var main = document.getElementById('rhMain');
-    if (!main) return;
+    if (!main) { _rhRenderInProgress = false; return; }
 
     // Load context
     var ctx = null;
@@ -976,6 +979,8 @@ async function _rhRenderCommandFlow(el) {
     _rhRenderLastRehearsalTimeline();
     // Render full history list (inside collapsed History section)
     _rhRenderSessionHistory();
+
+    _rhRenderInProgress = false;
 }
 
 // Clear saved rehearsal plan (explicit user action — auto-snapshots first)
@@ -1521,7 +1526,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
     if (!document.querySelector('#rhTimelineSection')) {
         html += '<div style="font-size:0.72em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Latest Rehearsal Review</div>';
     }
-    html += '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:8px;line-height:1.4">Listen back to each song. Tap a song for details, double-tap to loop.</div>';
+    // Description text rendered by page-level heading — not duplicated here
 
     // Audio state — prompt to load recording for playback
     if (!hasAudio) {
