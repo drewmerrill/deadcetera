@@ -185,9 +185,16 @@
       + '<span class="gl-rail-label">' + NAV_TOP.label + '</span></button>';
 
     // Sections: primary items always visible, secondary collapsed
+    var _seenPages = {}; // dedup guard — prevent duplicate nav items
+    _seenPages[NAV_TOP.page] = true;
     for (var s = 0; s < NAV_SECTIONS.length; s++) {
       var section = NAV_SECTIONS[s];
-      var visibleItems = section.items; // no mode filtering — all items available
+      // Dedup: skip items whose page key was already rendered
+      var visibleItems = section.items.filter(function(item) {
+        if (_seenPages[item.page]) return false;
+        _seenPages[item.page] = true;
+        return true;
+      });
 
       if (visibleItems.length === 0) continue;
 
@@ -212,6 +219,15 @@
       }
       html += '</details>';
     }
+
+    // Debug: log final nav items to detect duplicates
+    var _navDebug = [];
+    NAV_SECTIONS.forEach(function(sec) {
+      sec.items.forEach(function(item) { _navDebug.push(item.label); });
+    });
+    var _dupes = _navDebug.filter(function(label, i) { return _navDebug.indexOf(label) !== i; });
+    if (_dupes.length) console.error('[Nav] DUPLICATE LABELS FOUND:', _dupes, 'Full list:', _navDebug);
+    else console.log('[Nav] Rendered', _navDebug.length, 'items (no duplicates):', _navDebug.join(', '));
 
     _rail.innerHTML = html;
     _items = _rail.querySelectorAll('.gl-rail-item');
