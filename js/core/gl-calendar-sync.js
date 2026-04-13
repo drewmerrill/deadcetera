@@ -740,6 +740,70 @@ window.GLCalendarSync = (function() {
           : Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       };
 
+      // Build member name lookup for unavailability detection
+      var _memberNames = {}; // { 'drew': 'drew_key', 'brian': 'brian_key', ... }
+      var _allMemberKeys = [];
+      var _bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+      Object.keys(_bm).forEach(function(k) {
+        var name = _bm[k] && _bm[k].name ? _bm[k].name : '';
+        if (name) {
+          _memberNames[name.split(' ')[0].toLowerCase()] = k; // first name → key
+          _memberNames[name.toLowerCase()] = k; // full name → key
+        }
+        _allMemberKeys.push(k);
+      });
+
+      // Unavailability keyword sets
+      var _strongUnavailKw = ['out', 'unavailable', 'pto', 'vacation', 'away', 'travel'];
+      var _weakUnavailKw = ['busy', 'conflict', 'off', 'blocked']; // only valid with member name or band phrase
+      var _wholeBandPhrases = ['band off', 'full band off', 'everyone out', 'no rehearsal', 'band unavailable', 'all out', 'band away'];
+
+      function _detectUnavailability(title) {
+        var lc = title.toLowerCase().trim();
+        // Check whole-band phrases first
+        for (var wp = 0; wp < _wholeBandPhrases.length; wp++) {
+          if (lc.indexOf(_wholeBandPhrases[wp]) !== -1) {
+            return { isUnavail: true, scope: 'band', members: _allMemberKeys.slice() };
+          }
+        }
+        // Check strong keywords (standalone match)
+        var hasStrongKw = _strongUnavailKw.some(function(kw) {
+          // Match as whole word or with separators (not substring of another word)
+          var idx = lc.indexOf(kw);
+          if (idx === -1) return false;
+          var before = idx > 0 ? lc[idx - 1] : ' ';
+          var after = idx + kw.length < lc.length ? lc[idx + kw.length] : ' ';
+          return /[\s\-–—,.:;!?/]/.test(before) || idx === 0 ? (/[\s\-–—,.:;!?/]/.test(after) || idx + kw.length === lc.length) : false;
+        });
+        // Check weak keywords (need member name to qualify)
+        var hasWeakKw = !hasStrongKw && _weakUnavailKw.some(function(kw) {
+          return lc.indexOf(kw) !== -1;
+        });
+        if (!hasStrongKw && !hasWeakKw) return { isUnavail: false };
+        // Extract member name(s) from title
+        var matchedMembers = [];
+        Object.keys(_memberNames).forEach(function(name) {
+          if (name.length < 2) return; // skip single letters
+          if (lc.indexOf(name) !== -1) {
+            var key = _memberNames[name];
+            if (matchedMembers.indexOf(key) === -1) matchedMembers.push(key);
+          }
+        });
+        // Also check for "&" or "and" patterns: "Drew & Jay - Out"
+        // (member extraction above already handles multiple names in the string)
+        if (hasStrongKw && matchedMembers.length > 0) {
+          return { isUnavail: true, scope: 'member', members: matchedMembers };
+        }
+        if (hasWeakKw && matchedMembers.length > 0) {
+          return { isUnavail: true, scope: 'member', members: matchedMembers };
+        }
+        if (hasStrongKw && matchedMembers.length === 0) {
+          // Strong keyword but no member name — ambiguous, don't auto-block
+          return { isUnavail: true, scope: 'unassigned', members: [] };
+        }
+        return { isUnavail: false };
+      }
+
       googleEvents.forEach(function(gEv) {
         if (gEv.status === 'cancelled') { skipped.push({ id: gEv.id, reason: 'cancelled' }); return; }
         if (knownGoogleIds[gEv.id]) { skipped.push({ id: gEv.id, title: gEv.summary, reason: 'already exists' }); return; }
@@ -750,12 +814,26 @@ window.GLCalendarSync = (function() {
         var startDate = startStr.substring(0, 10);
         var summary = gEv.summary || 'Google Event';
 
-        // Infer type from summary (best effort — availability uses time ranges, not type)
+        // Infer type from summary
         var inferredType = 'other';
         var lc = summary.toLowerCase();
         if (lc.indexOf('rehearsal') !== -1 || lc.indexOf('practice') !== -1) inferredType = 'rehearsal';
         else if (lc.indexOf('gig') !== -1 || lc.indexOf('show') !== -1 || lc.indexOf('concert') !== -1) inferredType = 'gig';
         else if (lc.indexOf('meeting') !== -1) inferredType = 'meeting';
+
+        // ── Unavailability detection ──
+        var _unavail = (inferredType !== 'rehearsal' && inferredType !== 'gig') ? _detectUnavailability(summary) : { isUnavail: false };
+        if (_unavail.isUnavail) {
+          inferredType = _unavail.scope === 'unassigned' ? 'unavailable_unassigned' : 'unavailable';
+          if (_unavail.scope === 'member') {
+            var _mNames = _unavail.members.map(function(k) { return _bm[k] ? _bm[k].name.split(' ')[0] : k; });
+            console.log('[CalSync] Inbound: MEMBER UNAVAILABLE "' + summary + '" \u2192 blocking', _mNames.join(', '));
+          } else if (_unavail.scope === 'band') {
+            console.log('[CalSync] Inbound: WHOLE BAND UNAVAILABLE "' + summary + '"');
+          } else {
+            console.log('[CalSync] Inbound: AMBIGUOUS UNAVAILABLE "' + summary + '" \u2192 imported but NOT blocking (no member identified)');
+          }
+        }
 
         // ── Multi-day all-day events: expand to one record per day ──
         if (isAllDay) {
@@ -773,7 +851,7 @@ window.GLCalendarSync = (function() {
           for (var di = 0; di < dayCount; di++) {
             var _d = new Date(_start.getTime() + di * 86400000);
             var _ds = _d.getFullYear() + '-' + String(_d.getMonth() + 1).padStart(2, '0') + '-' + String(_d.getDate()).padStart(2, '0');
-            imported.push({
+            var _rec = {
               id: _genId(),
               date: _ds,
               type: inferredType,
@@ -792,13 +870,18 @@ window.GLCalendarSync = (function() {
               sync: { provider: 'google', externalEventId: gEv.id, calendarId: bandCalId, status: 'synced', direction: 'inbound', lastSyncedAt: new Date().toISOString() },
               created: new Date().toISOString(),
               updated_at: new Date().toISOString()
-            });
+            };
+            if (_unavail.isUnavail) {
+              _rec.assignedMembers = _unavail.members;
+              _rec.blockScope = _unavail.scope; // 'member', 'band', or 'unassigned'
+            }
+            imported.push(_rec);
           }
         } else {
           // ── Timed event: single record ──
           var eventTime = startStr.length > 10 ? startStr.substring(11, 16) : '';
           var eventEndTime = endStr.length > 10 ? endStr.substring(11, 16) : '';
-          imported.push({
+          var _trec = {
             id: _genId(),
             date: startDate,
             type: inferredType,
@@ -818,7 +901,12 @@ window.GLCalendarSync = (function() {
             sync: { provider: 'google', externalEventId: gEv.id, calendarId: bandCalId, status: 'synced', direction: 'inbound', lastSyncedAt: new Date().toISOString() },
             created: new Date().toISOString(),
             updated_at: new Date().toISOString()
-          });
+          };
+          if (_unavail.isUnavail) {
+            _trec.assignedMembers = _unavail.members;
+            _trec.blockScope = _unavail.scope;
+          }
+          imported.push(_trec);
           console.log('[CalSync] Inbound: importing "' + summary + '" |', startDate, eventTime || 'all-day', '| googleId:', gEv.id);
         }
       });

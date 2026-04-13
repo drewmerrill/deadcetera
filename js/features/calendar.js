@@ -1470,6 +1470,12 @@ window._calShowAvailabilitySettings = async function() {
             bandCalHtml += '<div style="font-size:0.68em;color:var(--gl-green);margin-top:4px">\u2714 You have access to this calendar</div>';
         }
         bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:4px;line-height:1.4">\uD83D\uDCA1 Tip: Create a shared \u201CDeadcetera\u201D calendar in Google and select it here. All band members should use the same calendar.</div>';
+        bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:8px;line-height:1.4;padding-top:6px;border-top:1px solid var(--gl-border-subtle)">'
+            + '<strong style="color:var(--gl-text-secondary)">Member unavailability:</strong> To mark someone as unavailable on the band calendar, name the event:'
+            + '<div style="margin:4px 0 2px;font-style:italic;color:var(--gl-text-secondary)">\u201CDrew - Out\u201D \u00B7 \u201CJay PTO\u201D \u00B7 \u201CBrian vacation\u201D</div>'
+            + 'GrooveLinx will detect the name and block their availability automatically.'
+            + '<div style="margin-top:2px;font-size:0.92em">For the whole band: \u201CBand off\u201D or \u201CEveryone out\u201D</div>'
+            + '</div>';
     }
     bandCalHtml += '</div>';
 
@@ -2518,9 +2524,7 @@ function renderCalendarInner() {
             // Determine dominant event type
             const isGig = dayEvents.some(e => e.type === 'gig');
             const isRehearsal = dayEvents.some(e => e.type === 'rehearsal');
-            if (dayEvents.length > 0 && !isGig && !isRehearsal) {
-                console.log('[Calendar] Date', ds, 'has', dayEvents.length, 'events but no gig/rehearsal type:', dayEvents.map(e => e.type || 'NO_TYPE'));
-            }
+            const isUnavailable = dayEvents.some(e => e.type === 'unavailable' || e.type === 'unavailable_unassigned');
             const hasEvent = dayEvents.length > 0;
             // State class (priority: gig > rehearsal > hard blocked > soft > best > default)
             const isFuture = ds >= todayStr;
@@ -2530,6 +2534,7 @@ function renderCalendarInner() {
             let icon = '';
             if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
             else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
+            else if (isUnavailable) { state = 'unavailable'; stateClass = 'gl-day--blocked'; icon = '\uD83D\uDEAB'; }
             else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
             else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
@@ -2673,6 +2678,7 @@ function _calRenderGridOnly(grid) {
             var icon = '';
             if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
             else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
+            else if (isUnavailable) { state = 'unavailable'; stateClass = 'gl-day--blocked'; icon = '\uD83D\uDEAB'; }
             else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
             else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
@@ -3035,6 +3041,39 @@ async function loadCalendarEvents() {
                 + blocked.length + ' retained as real conflicts');
         }
     }
+
+    // ── MEMBER UNAVAILABILITY from band calendar events ──
+    // Inject blocked ranges from imported unavailable events (type: 'unavailable')
+    // These were imported from the band calendar with member assignment.
+    // Does NOT apply to 'unavailable_unassigned' (ambiguous — no auto-blocking).
+    var _unavailCount = 0;
+    Object.keys(_calEventsByDate).forEach(function(dateKey) {
+        _calEventsByDate[dateKey].forEach(function(ev) {
+            if (ev.type !== 'unavailable') return; // skip unassigned and non-unavailable
+            if (!ev.assignedMembers || !ev.assignedMembers.length) return;
+            var _bm2 = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+            ev.assignedMembers.forEach(function(mKey) {
+                var memberName = _bm2[mKey] ? _bm2[mKey].name : mKey;
+                var shortName = memberName.split(' ')[0];
+                var reason = ev.isAllDay
+                    ? (ev._googleSource || ev.title || 'Unavailable') + ' (all day)'
+                    : (ev._googleSource || ev.title || 'Unavailable') + (ev.time ? ' ' + ev.time + (ev.endTime ? '\u2013' + ev.endTime : '') : '');
+                blocked.push({
+                    person: shortName,
+                    startDate: dateKey,
+                    endDate: dateKey,
+                    reason: reason,
+                    status: 'unavailable',
+                    _source: 'band_calendar',
+                    _conflictType: 'hard',
+                    _isAllDay: !!ev.isAllDay,
+                    _timeLabel: ev.time && ev.endTime ? ev.time + '\u2013' + ev.endTime : ''
+                });
+                _unavailCount++;
+            });
+        });
+    });
+    if (_unavailCount > 0) console.log('[Calendar] Member unavailability: injected', _unavailCount, 'blocked ranges from band calendar');
 
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
