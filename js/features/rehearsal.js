@@ -1548,8 +1548,8 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             var _songSafe = escHtml(seg.songTitle || '').replace(/'/g, "\\'");
             html += '<div style="padding:6px 10px 10px 32px;font-size:0.72em;color:var(--text-dim);line-height:1.5">';
             html += '<div>' + _rhFmt(seg.startSec) + ' \u2013 ' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2 + '</div>';
-            // Match confidence + "why this matched"
-            if (seg.songMatch) {
+            // Match confidence + "why this matched" (skip for golden standard — those are definitively correct)
+            if (seg.songMatch && !seg._goldenStandard) {
                 var _mc = seg.songMatch;
                 var _confColor = _mc.confidence === 'high' ? '#10b981' : _mc.confidence === 'medium' ? '#f59e0b' : '#64748b';
                 var _confLabel = _mc.confidence === 'high' ? 'High confidence' : _mc.confidence === 'medium' ? 'Likely match' : 'Needs review';
