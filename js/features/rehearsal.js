@@ -1718,14 +1718,16 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         var _visibleCount = 2;
         var _hasOverflow = _prioritySongs.length > _visibleCount;
 
-        // Helper to render a single insight row
+        // Helper to render a single insight row with accept/dismiss
         function _renderInsightRow(g, hidden) {
             var reason = g.segments.length >= 3 ? 'took ' + g.segments.length + ' tries \u2014 nail the transitions' : 'didn\u2019t finish \u2014 try a full run-through';
             var _gSafe = escHtml(g.title).replace(/'/g, "\\'");
             var firstSeg = g.segments[0];
-            var rowHtml = '<div class="rh-insight-row" style="font-size:0.75em;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)' + (hidden ? ';display:none' : '') + '">'
+            var _rowId = 'rhInsight_' + _gSafe.replace(/[^a-zA-Z0-9]/g, '_');
+            var rowHtml = '<div id="' + _rowId + '" class="rh-insight-row" style="font-size:0.75em;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03)' + (hidden ? ';display:none' : '') + '">'
                 + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-                + '<span style="color:#fbbf24">\uD83C\uDFAF</span>'
+                + '<button onclick="_rhAcceptInsight(\'' + _gSafe + '\',\'' + _rowId + '\')" style="background:none;border:none;cursor:pointer;font-size:1.1em;padding:0;line-height:1" title="Yes \u2014 add to plan">\u2705</button>'
+                + '<button onclick="_rhDismissInsight(\'' + _rowId + '\')" style="background:none;border:none;cursor:pointer;font-size:1.1em;padding:0;line-height:1" title="Skip this one">\u274C</button>'
                 + '<span style="color:var(--text);font-weight:600">' + escHtml(g.title) + '</span>'
                 + '<span style="color:var(--text-dim)">\u2014 ' + reason + '</span>'
                 + '</div>'
@@ -1808,6 +1810,37 @@ window._rhExpandInsights = function() {
         rows.forEach(function(el, i) { if (i >= 2) el.style.display = 'none'; });
         panel.style.maxHeight = '220px';
         if (btn) btn.textContent = 'See ' + (rows.length - 2) + ' more';
+    }
+};
+
+// ── Accept/Dismiss insight recommendations ──────────────────────────────────
+window._rhAcceptInsight = function(songTitle, rowId) {
+    // Add to plan
+    var units = _rhGetUnits();
+    // Check if already in plan
+    var already = units.some(function(u) { return u.title === songTitle; });
+    if (!already) {
+        units.push({ type: 'single', title: songTitle, band: '', block: 'flow' });
+        _rhSaveUnits(units);
+        if (typeof showToast === 'function') showToast('\u2705 ' + songTitle + ' added to plan');
+    } else {
+        if (typeof showToast === 'function') showToast(songTitle + ' already in plan');
+    }
+    // Fade out the row
+    var row = document.getElementById(rowId);
+    if (row) { row.style.opacity = '0.3'; row.style.textDecoration = 'line-through'; row.style.pointerEvents = 'none'; }
+};
+
+window._rhDismissInsight = function(rowId) {
+    var row = document.getElementById(rowId);
+    if (row) {
+        row.style.transition = 'opacity 0.3s, max-height 0.3s';
+        row.style.opacity = '0';
+        row.style.maxHeight = '0';
+        row.style.overflow = 'hidden';
+        row.style.padding = '0';
+        row.style.margin = '0';
+        setTimeout(function() { row.remove(); }, 300);
     }
 };
 
