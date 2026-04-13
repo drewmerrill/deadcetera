@@ -2426,33 +2426,16 @@ function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
         return;
     }
 
-    // Strategy 1: Direct browser fetch from Google Drive API (no Worker proxy needed)
-    // The Drive API supports CORS for OAuth-authenticated requests
+    // Stream directly — set audio src to Drive API URL with token as query param.
+    // This lets the browser stream on demand instead of downloading the entire
+    // file into memory (which crashes iPad for 200MB+ rehearsal recordings).
     var _token = (typeof accessToken !== 'undefined') ? accessToken : null;
     if (_token) {
-        var apiUrl = 'https://www.googleapis.com/drive/v3/files/' + _fileId + '?alt=media&supportsAllDrives=true';
-        console.log('[Drive] Fetching directly via Drive API:', _fileId.substring(0, 10) + '...');
-        fetch(apiUrl, {
-            headers: { 'Authorization': 'Bearer ' + _token }
-        }).then(function(res) {
-            if (!res.ok) {
-                console.warn('[Drive] Direct API failed:', res.status);
-                return res.text().then(function(body) {
-                    console.warn('[Drive] API response:', body.substring(0, 500));
-                    throw new Error('Drive API ' + res.status);
-                });
-            }
-            return res.blob();
-        }).then(function(blob) {
-            var blobUrl = URL.createObjectURL(blob);
-            _rhSetupPlaybackAudio(blobUrl, sessionId);
-            if (typeof showToast === 'function') showToast('Recording loaded \u2014 playback ready (' + Math.round(blob.size / 1024 / 1024) + ' MB)');
-            _rhRenderLastRehearsalTimeline();
-        }).catch(function(err) {
-            console.warn('[Drive] Direct fetch failed, trying Worker proxy:', err.message);
-            // Strategy 2: Fall back to Worker proxy
-            _rhDoStreamViaWorker(workerBase, driveUrl, _token, sessionId);
-        });
+        var streamUrl = 'https://www.googleapis.com/drive/v3/files/' + _fileId + '?alt=media&supportsAllDrives=true&access_token=' + encodeURIComponent(_token);
+        console.log('[Drive] Streaming via Drive API:', _fileId.substring(0, 10) + '...');
+        _rhSetupPlaybackAudio(streamUrl, sessionId);
+        if (typeof showToast === 'function') showToast('Recording ready \u2014 tap play on any song');
+        _rhRenderLastRehearsalTimeline();
     } else {
         // No token — try Worker proxy (public download methods)
         _rhDoStreamViaWorker(workerBase, driveUrl, null, sessionId);
