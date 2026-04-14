@@ -1554,7 +1554,7 @@ window._calSaveAvailabilitySettings = async function() {
         if (typeof showToast === 'function') showToast('\u2705 Settings saved \u2014 refreshing calendar');
         var modal = document.getElementById('calAvailSettingsModal');
         if (modal) modal.remove();
-        renderCalendarInner();
+        _calRenderGridOnly();
     } else {
         if (typeof showToast === 'function') showToast('Failed to save settings');
         if (btn) { btn.textContent = 'Save & Refresh'; btn.disabled = false; }
@@ -2488,32 +2488,9 @@ function renderCalendarInner() {
     // Populate decision anchor above calendar
     _calRenderDecisionAnchor();
 
-    // Load events, then build calendar grid + availability
-    // Fallback: if loadCalendarEvents hasn't completed after all dependencies
-    // are ready + 15s grace, render empty availability so the page isn't stuck.
-    var _availRendered = false;
-    if (typeof GLStore !== 'undefined' && GLStore.ready) {
-        GLStore.ready(['firebase', 'members'], 30000).then(function() {
-            setTimeout(function() {
-                if (!_availRendered) {
-                    console.log('[Calendar] Availability fallback — rendering without event data');
-                    _calRenderAvailabilityMatrix([]);
-                }
-            }, 15000);
-        });
-    }
-
-    // Single grid render path — _calRenderGridOnly is the ONLY grid painter.
-    // Use a short delay to ensure the DOM is fully updated before painting.
-    // This handles the case where renderCalendarInner is called multiple times
-    // (page load + post-auth + post-sync) — only the last paint wins.
-    clearTimeout(window._calGridPaintTimer);
-    window._calGridPaintTimer = setTimeout(function() {
-        var _calGridEl = document.getElementById('calGrid');
-        if (_calGridEl) {
-            _calRenderGridOnly(_calGridEl);
-        }
-    }, 50);
+    // ── GRID: single render path via _calRenderGridOnly ──
+    console.log('[SHELL RENDER] renderCalendarInner complete — calling _calRenderGridOnly');
+    _calRenderGridOnly();
 }
 
 // Race-condition safe: each nav increments a sequence counter.
@@ -2537,35 +2514,40 @@ function calNavMonth(dir) {
 
     var grid = document.getElementById('calGrid');
     if (grid) {
-        // Preserve height during transition to prevent collapse
         grid.style.minHeight = grid.offsetHeight + 'px';
         grid.style.opacity = '0.3';
-        _calRenderGridOnly(grid);
+        _calRenderGridOnly();
     }
 }
 
-// Render just the calendar grid — race-condition safe, height-stable
-function _calRenderGridOnly(grid) {
-    // Snapshot month/year at call time — used in the callback to verify freshness
+// ── THE SINGLE GRID RENDERER ─────────────────────────────────────────────────
+// This is the ONLY function that ever writes to #calGrid.
+// renderCalendarInner builds the shell. This paints the cells.
+// calNavMonth calls this directly. No other code touches #calGrid.innerHTML.
+function _calRenderGridOnly() {
+    var grid = document.getElementById('calGrid');
+    if (!grid) { console.warn('[GRID RENDER] #calGrid not found'); return; }
+
     var year = calViewYear, month = calViewMonth;
-    var navId = ++_calNavSeq; // only latest nav writes
+    var navId = ++_calNavSeq;
 
     var dNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
     var firstDay = new Date(year, month, 1).getDay();
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var todayStr = new Date().toISOString().split('T')[0];
     var monthPrefix = year + '-' + String(month + 1).padStart(2, '0') + '-';
-    console.log('[Calendar Grid] navId:', navId, '| month:', year + '-' + (month+1), '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | days:', daysInMonth);
+    console.log('[GRID RENDER]', year, month + 1, '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | navId:', navId);
 
     loadCalendarEvents().then(function(result) {
-        // Race guard: if a newer navigation happened, discard this result
-        if (navId !== _calNavSeq) return;
+        if (navId !== _calNavSeq) return; // stale — a newer nav superseded this
+
+        // Re-acquire grid from live DOM (never use stale reference)
+        var grid = document.getElementById('calGrid');
+        if (!grid) return;
 
         var eventDates = result ? result.dateMap : {};
         var blockedRanges = result ? (result.blockedRanges || []) : [];
-        // Update cached blocked ranges for availability matrix
         _calCachedBlockedRanges = blockedRanges;
-        if (!grid) return;
 
         var g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
         dNames.forEach(function(d, i) {
@@ -2652,11 +2634,9 @@ function _calRenderGridOnly(grid) {
                 + '</div>';
         }
         g += '</div>';
-        // Re-acquire grid element in case renderCalendarInner recreated it
-        var _liveGrid = document.getElementById('calGrid') || grid;
-        _liveGrid.innerHTML = g;
-        _liveGrid.style.opacity = '1';
-        _liveGrid.style.minHeight = '';
+        grid.innerHTML = g;
+        grid.style.opacity = '1';
+        grid.style.minHeight = '';
         _calOverlayExternalEvents(monthPrefix, daysInMonth);
     }).catch(function() {
         // Network error fallback — render empty grid, don't hang
@@ -3333,7 +3313,7 @@ async function saveBlockedDates() {
         }
         window._calEditingBlockId = null;
         document.getElementById('calEventFormArea').innerHTML = '';
-        renderCalendarInner();
+        _calRenderGridOnly();
         // Show Google sync prompt (only for own conflicts, only if connected)
         var _isMe = (typeof FeedActionState !== 'undefined' && FeedActionState.isMe) ? FeedActionState.isMe(personName) : false;
         var _hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
@@ -3347,7 +3327,7 @@ async function saveBlockedDates() {
         await saveBandDataToDrive('_band', 'blocked_dates', ex);
         window._calEditingBlockId = null;
         document.getElementById('calEventFormArea').innerHTML = '';
-        renderCalendarInner();
+        _calRenderGridOnly();
     }
 }
 
@@ -3387,7 +3367,7 @@ async function saveBlockedDatesEdit(idx) {
     blocked[idx] = b;
     await saveBandDataToDrive('_band', 'blocked_dates', blocked);
     document.getElementById('calEventFormArea').innerHTML = '';
-    renderCalendarInner();
+    _calRenderGridOnly();
 }
 
 // Schedule block CRUD (handles both new-model and legacy blocks)
@@ -3422,7 +3402,7 @@ window._calDeleteScheduleBlock = async function(blockId) {
             }
         }
     }
-    renderCalendarInner();
+    _calRenderGridOnly();
 };
 
 // ── Google Calendar sync prompt after conflict save ──────────────────────────
@@ -3483,7 +3463,7 @@ window._calSyncExistingConflict = async function(blockId) {
             await GLStore.saveScheduleBlock(block);
         }
         if (typeof showToast === 'function') showToast('\u2713 Added to your Google Calendar');
-        renderCalendarInner();
+        _calRenderGridOnly();
     } else {
         if (typeof showToast === 'function') showToast('Couldn\u2019t add to Google Calendar');
     }
@@ -4362,7 +4342,7 @@ async function calDeleteEventById(eventId) {
     events = events.filter(function(e) { return e.id !== eventId; });
     await saveBandDataToDrive('_band', 'calendar_events', events);
     document.getElementById('calEventFormArea').innerHTML = '';
-    renderCalendarInner();
+    _calRenderGridOnly();
 }
 
 async function calSaveEvent(editIdx) {
@@ -4472,7 +4452,7 @@ async function calSaveEvent(editIdx) {
     // Clear form + re-render grid BEFORE enrichment — user sees success immediately
     document.getElementById('calEventFormArea').innerHTML = '';
     if (typeof showToast === 'function') showToast('\u2713 Event saved');
-    renderCalendarInner();
+    _calRenderGridOnly();
 
     // ── PHASE B: POST-SAVE ENRICHMENT (non-blocking) ─────────────────────────
     // Gig record + setlist creation + Google sync
