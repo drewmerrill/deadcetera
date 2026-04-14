@@ -1113,11 +1113,12 @@ function _calRenderGooglePanel() {
         // Determine the right label and action based on state
         var _enableLabel = 'Connect Google Calendar';
         var _enableAction = '_calConnectGoogle()';
-        if (_isConnected && _hasToken) {
+        var _hasTokenForEnable = _calTestGoogleToken();
+        if (_isConnected && _hasTokenForEnable) {
             // Connected with token but no free/busy — need to set up availability calendars
             _enableLabel = 'Set Up Availability';
             _enableAction = '_calShowAvailabilitySettings()';
-        } else if (_isConnected && !_hasToken) {
+        } else if (_isConnected && !_hasTokenForEnable) {
             _enableLabel = 'Reconnect Google Calendar';
             _enableAction = '_calConnectGoogle()';
         }
