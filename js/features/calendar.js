@@ -2559,6 +2559,7 @@ function _calRenderGridOnly() {
             var isSoftOnly = isBlocked && !hasHardConflict;
             var isGig = dayEvents.some(function(e) { return e.type === 'gig'; });
             var isRehearsal = dayEvents.some(function(e) { return e.type === 'rehearsal'; });
+            var isUnavailable = dayEvents.some(function(e) { return e.type === 'unavailable' || e.type === 'unavailable_unassigned'; });
             var hasEvent = dayEvents.length > 0;
             var w = dow === 0 || dow === 6;
             var isFuture = ds >= todayStr;
