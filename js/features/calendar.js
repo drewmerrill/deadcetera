@@ -82,14 +82,80 @@ async function _calLoadSchedulingMode() {
                 _calSchedulingMode = val.mode === 'shared_calendar' ? 'A_SHARED_SYNC'
                     : val.mode === 'personal_availability' ? 'B_PERSONAL_AVAILABILITY'
                     : val.mode === 'native' ? 'C_NATIVE'
-                    : 'A_SHARED_SYNC'; // default
+                    : 'A_SHARED_SYNC';
             }
         }
     } catch(e) {}
-    if (!_calSchedulingMode) _calSchedulingMode = 'A_SHARED_SYNC'; // default for existing bands
+    if (!_calSchedulingMode) _calSchedulingMode = 'NOT_SET'; // first-time: show onboarding chooser
     console.log('[Calendar] Scheduling mode:', _calSchedulingMode);
     return _calSchedulingMode;
 }
+
+// Onboarding chooser — shown when band hasn't picked a scheduling mode
+function _calShowModeChooser() {
+    var el = document.getElementById('calendarInner');
+    if (!el) return;
+    var bandName = localStorage.getItem('deadcetera_band_name') || 'your band';
+    el.innerHTML = '<div style="max-width:560px;margin:20px auto;text-align:center">'
+        + '<div style="font-size:1.3em;font-weight:800;color:var(--gl-text);margin-bottom:6px">How does ' + (typeof escHtml === 'function' ? escHtml(bandName) : bandName) + ' schedule?</div>'
+        + '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:24px">Pick the way that matches how your band works today. You can change this anytime.</div>'
+        // Mode A: Shared Calendar
+        + '<button onclick="_calSelectMode(\'shared_calendar\')" style="width:100%;padding:16px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
+        + '<div style="font-size:0.95em;font-weight:700;color:#86efac;margin-bottom:4px">\u2601\uFE0F We share one Google Calendar</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">GrooveLinx syncs two-way with your shared calendar. Events, rehearsals, and gigs stay mirrored. Best for bands with an existing shared calendar.</div>'
+        + '</button>'
+        // Mode B: Personal Availability
+        + '<button onclick="_calSelectMode(\'personal_availability\')" style="width:100%;padding:16px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
+        + '<div style="font-size:0.95em;font-weight:700;color:#a5b4fc;margin-bottom:4px">\uD83D\uDCC5 Everyone uses their own calendar</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Each member connects their personal calendar. GrooveLinx finds dates when everyone\u2019s free and recommends the best time to rehearse.</div>'
+        + '</button>'
+        // Mode C: Native
+        + '<button onclick="_calSelectMode(\'native\')" style="width:100%;padding:16px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
+        + '<div style="font-size:0.95em;font-weight:700;color:var(--gl-text-tertiary);margin-bottom:4px">\uD83C\uDFB8 We mostly text / wing it</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Schedule rehearsals and gigs right in GrooveLinx. No calendar setup needed. RSVP by tapping. Upgrade to calendar sync anytime.</div>'
+        + '</button>'
+        + '</div>';
+}
+
+window._calSelectMode = async function(mode) {
+    var modeKey = mode === 'shared_calendar' ? 'A_SHARED_SYNC'
+        : mode === 'personal_availability' ? 'B_PERSONAL_AVAILABILITY'
+        : 'C_NATIVE';
+    _calSchedulingMode = modeKey;
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            await db.ref(bandPath('scheduling_mode')).set({
+                mode: mode,
+                setAt: new Date().toISOString(),
+                setBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
+            });
+        }
+    } catch(e) {}
+    console.log('[Calendar] Mode selected:', modeKey);
+
+    // Track activation
+    if (typeof GLUXTracker !== 'undefined' && GLUXTracker._logEvent) {
+        GLUXTracker._logEvent('scheduling_mode_selected', { mode: mode });
+    }
+
+    if (typeof showToast === 'function') {
+        var labels = { shared_calendar: 'Shared Calendar Sync', personal_availability: 'Personal Availability', native: 'GrooveLinx Native' };
+        showToast('\u2713 ' + (labels[mode] || mode) + ' mode activated');
+    }
+
+    // Re-render calendar with the new mode
+    renderCalendarInner();
+
+    // Mode A: auto-open Google connect flow
+    if (mode === 'shared_calendar') {
+        setTimeout(function() { if (typeof _calConnectGoogle === 'function') _calConnectGoogle(); }, 500);
+    }
+    // Mode B: auto-open Google connect flow for personal calendars
+    if (mode === 'personal_availability') {
+        setTimeout(function() { if (typeof _calConnectGoogle === 'function') _calConnectGoogle(); }, 500);
+    }
+};
 
 // Convenience checks
 function _calIsModeA() { return _calSchedulingMode === 'A_SHARED_SYNC'; }
@@ -1093,8 +1159,13 @@ function _calRenderGooglePanel() {
             html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Band calendar: <span style="color:var(--gl-text)">' + (_isConnected ? '\u2714 configured' : 'not set') + '</span></div>';
         }
     } else {
-        html += '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Google Calendar</div>'
-            + '<div style="font-size:0.68em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">Connect so GrooveLinx can find dates when everyone\u2019s free.</div>';
+        if (_calIsModeA()) {
+            html += '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Shared Calendar</div>'
+                + '<div style="font-size:0.68em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">Connect your shared band Google Calendar for two-way sync.</div>';
+        } else {
+            html += '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Connect Calendars</div>'
+                + '<div style="font-size:0.68em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">Each member connects their calendar so GrooveLinx can find dates when everyone\u2019s free.</div>';
+        }
     }
 
     // Member list (Mode B: always shown. Mode A: show for visibility but de-emphasized)
@@ -1250,6 +1321,16 @@ async function _calRenderWeeklyPressure() {
         items.push('<div>' + rehearsals.length + ' rehearsal' + (rehearsals.length > 1 ? 's' : '') + ' scheduled</div>');
     } else if (daysSinceRehearsal !== null && daysSinceRehearsal > 7) {
         items.push('<div style="color:var(--gl-amber)">\u26A0 ' + daysSinceRehearsal + ' days since last rehearsal</div>');
+    }
+    // Mode-specific upgrade nudge
+    if (_calIsModeC() && items.length >= 2) {
+        items.push('<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04);color:var(--gl-indigo)">'
+            + '<button onclick="_calSelectMode(\'personal_availability\')" style="background:none;border:none;color:var(--gl-indigo);cursor:pointer;font-size:1em;padding:0;font-family:inherit;text-decoration:underline">'
+            + '\uD83D\uDCC5 Want smarter scheduling? Connect calendars</button></div>');
+    } else if (_calIsModeB() && items.length >= 2) {
+        items.push('<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04);color:var(--gl-green)">'
+            + '<button onclick="_calSelectMode(\'shared_calendar\')" style="background:none;border:none;color:var(--gl-green);cursor:pointer;font-size:1em;padding:0;font-family:inherit;text-decoration:underline">'
+            + '\u2601\uFE0F Want seamless sync? Connect a shared calendar</button></div>');
     }
     if (!items.length) { el.innerHTML = ''; return; }
     el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);font-size:0.68em;color:var(--gl-text-tertiary);display:flex;flex-direction:column;gap:2px;margin-bottom:var(--gl-space-xs,4px)">'
@@ -1486,7 +1567,8 @@ window._calShowAvailabilitySettings = async function() {
         if (_userHasBandCal && _bandLevelCalId) {
             bandCalHtml += '<div style="font-size:0.68em;color:var(--gl-green);margin-top:4px">\u2714 You have access to this calendar</div>';
         }
-        bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:4px;line-height:1.4">\uD83D\uDCA1 Tip: Create a shared \u201CDeadcetera\u201D calendar in Google and select it here. All band members should use the same calendar.</div>';
+        var _tipBandName = localStorage.getItem('deadcetera_band_name') || 'your band';
+        bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:4px;line-height:1.4">\uD83D\uDCA1 Tip: Create a shared \u201C' + (typeof escHtml === 'function' ? escHtml(_tipBandName) : _tipBandName) + '\u201D calendar in Google and select it here. All band members should use the same calendar.</div>';
         bandCalHtml += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:8px;line-height:1.4;padding-top:6px;border-top:1px solid var(--gl-border-subtle)">'
             + '<strong style="color:var(--gl-text-secondary)">Member unavailability:</strong> To mark someone as unavailable on the band calendar, name the event:'
             + '<div style="margin:4px 0 2px;font-style:italic;color:var(--gl-text-secondary)">\u201CDrew - Out\u201D \u00B7 \u201CJay PTO\u201D \u00B7 \u201CBrian vacation\u201D</div>'
@@ -2426,6 +2508,11 @@ window._calNextUpGigGcal = function(date) {
 async function renderCalendarInner() {
     // Load scheduling mode before rendering
     await _calLoadSchedulingMode();
+    // If no scheduling mode set, show onboarding chooser instead of calendar
+    if (_calSchedulingMode === 'NOT_SET') {
+        var el0 = document.getElementById('calendarInner');
+        if (el0) { _calShowModeChooser(); return; }
+    }
     // Clear schedule blocks cache so we get fresh data on each render
     if (typeof GLStore !== 'undefined' && GLStore._clearScheduleBlocksCache) GLStore._clearScheduleBlocksCache();
     // Mobile: pull grid card edge-to-edge to fit 7 columns
@@ -4073,7 +4160,7 @@ async function calAddEvent(date, editIdx, existing) {
     var repeatVal = _calRepeatRuleToValue(ev.repeatRule);
     window._calEditEventId = isEdit ? (ev.id || null) : null;
     var isRecurringEdit = isEdit && ev.repeatRule && ev.repeatRule.frequency;
-    var _titlePlaceholder = (ev.type === 'gig') ? 'e.g. HighTower Drinks' : 'e.g. DeadCetera Rehearsal';
+    var _titlePlaceholder = (ev.type === 'gig') ? 'e.g. HighTower Drinks' : 'e.g. Band Rehearsal';
     // Load saved rehearsal locations
     var rehLocs = [];
     try { rehLocs = await GLStore.getRehearsalLocations(); } catch(e) {}
@@ -4275,7 +4362,7 @@ function calTypeChanged(sel) {
     if (locRow) locRow.style.display = isRehearsal ? '' : 'none';
     if (virtualRow && !isRehearsal) virtualRow.style.display = 'none';
     // Update title placeholder
-    if (titleInput) titleInput.placeholder = isGig ? 'e.g. HighTower Drinks' : isRehearsal ? 'e.g. DeadCetera Rehearsal' : 'e.g. Band meeting';
+    if (titleInput) titleInput.placeholder = isGig ? 'e.g. HighTower Drinks' : isRehearsal ? 'e.g. Band Rehearsal' : 'e.g. Band meeting';
     // Init venue picker if switching to gig and picker not yet initialized
     if (isGig && !window._calVenuePicker && document.getElementById('calVenuePicker')) {
         GLStore.getVenues().then(function(venues) {
