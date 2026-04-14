@@ -1638,7 +1638,13 @@ window._calShowAvailabilitySettings = async function() {
         + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
         + '</div>';
 
-    body.innerHTML = modeHtml + calHtml + rulesHtml + bandCalHtml + saveHtml;
+    // Mode A: band calendar first (primary), then availability (secondary)
+    // Mode B/C: availability first (primary), then band calendar (secondary)
+    if (_calIsModeA()) {
+        body.innerHTML = modeHtml + bandCalHtml + calHtml + rulesHtml + saveHtml;
+    } else {
+        body.innerHTML = modeHtml + calHtml + rulesHtml + bandCalHtml + saveHtml;
+    }
 };
 
 window._calSaveAvailabilitySettings = async function() {
