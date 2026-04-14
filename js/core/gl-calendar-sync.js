@@ -711,12 +711,20 @@ window.GLCalendarSync = (function() {
     } catch(e) { console.warn('[CalSync] Failed to save sync state:', e); }
   }
 
-  // Merge a Google event into an existing GrooveLinx event (preserving GL metadata)
+  // ── RECONCILIATION RULES (Shared Calendar Mode) ──────────────────────────
+  // IDENTITY: googleEventId is the stable primary key. No fuzzy matching.
+  // SCHEDULING FIELDS (Google wins): date, time, endTime, isAllDay
+  // SHARED FIELDS (Google wins if changed): title, location, notes/description
+  // GL-ONLY METADATA (always preserved): type, venueId, linkedSetlist,
+  //   availability, assignedMembers, gigId, blockScope, _importedFromGoogle,
+  //   RSVP data, _googleSource
+  // DELETION: Google deletion removes from GrooveLinx. GrooveLinx deletion
+  //   removes from Google (via Phase 3). Last-delete-wins.
   function _reconcileEvent(existing, googleEvent) {
     var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
     var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
     var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
-    // Update scheduling fields from Google (source of truth for dates/times)
+    // Scheduling fields — Google is source of truth
     existing.date = startStr.substring(0, 10);
     existing.title = googleEvent.summary || existing.title;
     existing.location = googleEvent.location || existing.location;
@@ -897,6 +905,26 @@ window.GLCalendarSync = (function() {
         dirty = true;
       } else {
         // ── New: import from Google ──
+        // Safety: check extendedProperties to see if this is a GrooveLinx-created event
+        // that we somehow lost locally. If so, match by glEventId before importing as new.
+        var _extProp = gEv.extendedProperties && gEv.extendedProperties.private;
+        var _glId = _extProp && _extProp.glEventId;
+        if (_glId) {
+          var _localMatch = events.findIndex(function(e) { return e.id === _glId; });
+          if (_localMatch >= 0) {
+            // Re-link: local event exists but lost its googleEventId
+            events[_localMatch].googleEventId = gEv.id;
+            events[_localMatch].sync = events[_localMatch].sync || {};
+            events[_localMatch].sync.externalEventId = gEv.id;
+            events[_localMatch].sync.status = 'synced';
+            _reconcileEvent(events[_localMatch], gEv);
+            eventsByGoogleId[gEv.id] = _localMatch;
+            result.updated++;
+            dirty = true;
+            console.log('[CalSync] Re-linked:', gEv.summary, '→ local id:', _glId);
+            return; // skip import — it's a re-link
+          }
+        }
         var newEv = _importGoogleEvent(gEv, bandCalId);
         events.push(newEv);
         eventsByGoogleId[gEv.id] = events.length - 1;

@@ -1344,6 +1344,25 @@ window._calShowAvailabilitySettings = async function() {
     var _bandCalName = (_bandLevelCalName || localStorage.getItem('deadcetera_band_name') || '').toLowerCase();
 
     // ── SECTION 1: Availability Calendars (personal, read-only) ──
+    // ── Scheduling Mode selector ──
+    var _currentMode = 'shared_calendar'; // default for now
+    try {
+        var _modeSnap = await firebaseDB.ref(bandPath('scheduling_mode')).once('value');
+        if (_modeSnap.val() && _modeSnap.val().mode) _currentMode = _modeSnap.val().mode;
+    } catch(e) {}
+    var modeHtml = '<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--gl-border-subtle)">';
+    modeHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Scheduling Mode</div>';
+    modeHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">How your band manages scheduling.</div>';
+    modeHtml += '<select id="calOptSchedulingMode" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
+    modeHtml += '<option value="shared_calendar"' + (_currentMode === 'shared_calendar' ? ' selected' : '') + '>\u2601\uFE0F Shared Calendar \u2014 two-way sync with Google</option>';
+    modeHtml += '<option value="personal_availability"' + (_currentMode === 'personal_availability' ? ' selected' : '') + ' disabled>\uD83D\uDCC5 Personal Availability \u2014 coming soon</option>';
+    modeHtml += '<option value="native"' + (_currentMode === 'native' ? ' selected' : '') + '>\uD83C\uDFB8 GrooveLinx Only \u2014 no external calendars</option>';
+    modeHtml += '</select>';
+    if (_currentMode === 'shared_calendar') {
+        modeHtml += '<div style="font-size:0.72em;color:var(--gl-green);margin-top:4px">\u2714 Events sync both ways with your shared Google Calendar. Changes made in Google appear here automatically.</div>';
+    }
+    modeHtml += '</div>';
+
     var calHtml = '<div style="margin-bottom:16px">';
     calHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Your Availability Calendars</div>';
     calHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">Select your <strong>personal</strong> calendars. GrooveLinx reads these to detect when you\u2019re busy \u2014 it never writes to them.</div>';
@@ -1447,7 +1466,7 @@ window._calShowAvailabilitySettings = async function() {
         + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
         + '</div>';
 
-    body.innerHTML = calHtml + rulesHtml + bandCalHtml + saveHtml;
+    body.innerHTML = modeHtml + calHtml + rulesHtml + bandCalHtml + saveHtml;
 };
 
 window._calSaveAvailabilitySettings = async function() {
@@ -1486,6 +1505,21 @@ window._calSaveAvailabilitySettings = async function() {
     };
 
     var ok = await GLCalendarSync.saveAvailabilitySettings(settings);
+
+    // Save scheduling mode at band level
+    var _modeSelect = document.getElementById('calOptSchedulingMode');
+    if (_modeSelect && _modeSelect.value) {
+        try {
+            var db0 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (db0 && typeof bandPath === 'function') {
+                await db0.ref(bandPath('scheduling_mode')).set({
+                    mode: _modeSelect.value,
+                    setAt: new Date().toISOString(),
+                    setBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
+                });
+            }
+        } catch(e) { console.warn('[Calendar] Scheduling mode save failed:', e); }
+    }
 
     // Also save band calendar at BAND level (shared across all members)
     if (bandCalId) {
