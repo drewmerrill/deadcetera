@@ -2499,12 +2499,16 @@ function renderCalendarInner() {
     }
 
     // Single grid render path — _calRenderGridOnly is the ONLY grid painter.
-    // This eliminates the race condition between two async render callbacks
-    // that could overwrite each other with different firstDay offsets.
-    var _calGridEl = document.getElementById('calGrid');
-    if (_calGridEl) {
-        _calRenderGridOnly(_calGridEl);
-    }
+    // Use a short delay to ensure the DOM is fully updated before painting.
+    // This handles the case where renderCalendarInner is called multiple times
+    // (page load + post-auth + post-sync) — only the last paint wins.
+    clearTimeout(window._calGridPaintTimer);
+    window._calGridPaintTimer = setTimeout(function() {
+        var _calGridEl = document.getElementById('calGrid');
+        if (_calGridEl) {
+            _calRenderGridOnly(_calGridEl);
+        }
+    }, 50);
 }
 
 // Race-condition safe: each nav increments a sequence counter.
