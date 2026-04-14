@@ -905,8 +905,7 @@ window._calSyncNow = async function() {
         await _calLoadConnections();
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
         // Refresh grid + Google panel (don't rebuild entire page shell)
-        var _sg = document.getElementById('calGrid');
-        if (_sg) _calRenderGridOnly(_sg);
+        _calRenderGridOnly();
         _calRenderGooglePanel();
         // Build explicit sync status message
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
@@ -1659,8 +1658,7 @@ window._calConnectGoogle = async function() {
                 await _calLoadConnections();
                 // Refresh Google panel + grid (don't rebuild entire shell)
                 _calRenderGooglePanel();
-                var _cg1 = document.getElementById('calGrid');
-                if (_cg1) _calRenderGridOnly(_cg1);
+                _calRenderGridOnly();
                 if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                 // Auto-open availability setup if first time connecting
                 if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
@@ -1794,8 +1792,7 @@ function _calTriggerGoogleReAuth() {
                         await _calLoadConnections();
                         // Refresh panels (don't rebuild entire shell — destroys grid)
                         _calRenderGooglePanel();
-                        var _cg2 = document.getElementById('calGrid');
-                        if (_cg2) _calRenderGridOnly(_cg2);
+                        _calRenderGridOnly();
                         if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                         // Auto-open availability setup on first connect
                         if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
@@ -2412,13 +2409,8 @@ function renderCalendarInner() {
     }
     const el = document.getElementById('calendarInner');
     if (!el) return;
-    const year = calViewYear, month = calViewMonth;
-    const mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const dNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const todayStr = new Date().toISOString().split('T')[0];
-    const monthPrefix = `${year}-${String(month+1).padStart(2,'0')}-`;
+    var year = calViewYear, month = calViewMonth;
+    var mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
     // Render shell immediately, then load events async and paint dots
     el.innerHTML =
