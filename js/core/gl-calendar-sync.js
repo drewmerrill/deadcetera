@@ -685,12 +685,267 @@ window.GLCalendarSync = (function() {
     }
   }
 
-  // ── INBOUND SYNC — pull events from Band Calendar into GrooveLinx ────────
+  // ── TWO-WAY SYNC ENGINE (Mode A: Shared Calendar) ──────────────────────
+  // Full bidirectional sync using Google Calendar's incremental syncToken.
+  // Phase 1: Push local changes to Google
+  // Phase 2: Pull remote changes from Google (incremental or full)
+  // Phase 3: Propagate local deletions to Google
+
+  async function _loadSyncState() {
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        var snap = await db.ref(bandPath('calendar_sync_state')).once('value');
+        return snap.val() || {};
+      }
+    } catch(e) {}
+    return {};
+  }
+
+  async function _saveSyncState(state) {
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        await db.ref(bandPath('calendar_sync_state')).set(state);
+      }
+    } catch(e) { console.warn('[CalSync] Failed to save sync state:', e); }
+  }
+
+  // Merge a Google event into an existing GrooveLinx event (preserving GL metadata)
+  function _reconcileEvent(existing, googleEvent) {
+    var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
+    var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
+    var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
+    // Update scheduling fields from Google (source of truth for dates/times)
+    existing.date = startStr.substring(0, 10);
+    existing.title = googleEvent.summary || existing.title;
+    existing.location = googleEvent.location || existing.location;
+    existing.notes = googleEvent.description || existing.notes;
+    existing.isAllDay = isAllDay;
+    if (!isAllDay && startStr.length > 10) {
+      existing.time = startStr.substring(11, 16);
+      if (endStr.length > 10) existing.endTime = endStr.substring(11, 16);
+    } else {
+      existing.time = '';
+      existing.endTime = '';
+    }
+    existing.updated_at = new Date().toISOString();
+    existing.sync = existing.sync || {};
+    existing.sync.lastSyncedAt = new Date().toISOString();
+    existing.sync.status = 'synced';
+    // Preserve GrooveLinx-only metadata: type, venueId, linkedSetlist, availability,
+    // assignedMembers, gigId, blockScope, _importedFromGoogle — these are NEVER overwritten
+    return existing;
+  }
+
+  // Build a new GrooveLinx event from a Google event (for first-time imports)
+  function _importGoogleEvent(googleEvent, bandCalId) {
+    var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
+    var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
+    var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
+    var summary = googleEvent.summary || 'Google Event';
+    var lc = summary.toLowerCase();
+    var inferredType = 'other';
+    if (lc.indexOf('rehearsal') !== -1 || lc.indexOf('practice') !== -1) inferredType = 'rehearsal';
+    else if (lc.indexOf('gig') !== -1 || lc.indexOf('show') !== -1 || lc.indexOf('concert') !== -1) inferredType = 'gig';
+    else if (lc.indexOf('meeting') !== -1) inferredType = 'meeting';
+    var eventTime = (!isAllDay && startStr.length > 10) ? startStr.substring(11, 16) : '';
+    var eventEndTime = (!isAllDay && endStr.length > 10) ? endStr.substring(11, 16) : '';
+
+    return {
+      id: (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      date: startStr.substring(0, 10),
+      type: inferredType,
+      title: summary,
+      time: eventTime,
+      endTime: eventEndTime,
+      location: googleEvent.location || '',
+      notes: googleEvent.description || '',
+      venue: (inferredType === 'gig') ? summary : '',
+      isAllDay: isAllDay,
+      _importedFromGoogle: true,
+      googleEventId: googleEvent.id,
+      calendarId: bandCalId,
+      syncStatus: 'synced',
+      lastSyncedAt: new Date().toISOString(),
+      sync: { provider: 'google', externalEventId: googleEvent.id, calendarId: bandCalId, status: 'synced', direction: 'inbound', lastSyncedAt: new Date().toISOString() },
+      created: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+  }
+
+  async function syncBandCalendar() {
+    if (!hasCalendarScope()) return { error: 'no scope', pushed: 0, pulled: 0, deleted: 0 };
+    var bandCalId = await _getBandCalendarId();
+    if (!bandCalId) return { error: 'no band calendar configured', pushed: 0, pulled: 0, deleted: 0 };
+
+    console.log('[CalSync] === TWO-WAY SYNC START ===');
+    var syncState = await _loadSyncState();
+    var events = (typeof toArray === 'function')
+      ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+      : [];
+    var result = { pushed: 0, pulled: 0, updated: 0, deleted: 0, error: null };
+
+    // ── PHASE 1: Push local unsynced events to Google ──
+    console.log('[CalSync] Phase 1: Push local changes...');
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      var alreadySynced = (ev.syncStatus === 'synced' && ev.googleEventId)
+        || (ev.sync && ev.sync.externalEventId && ev.sync.status === 'synced');
+      if (alreadySynced || !ev.date || !ev.title) continue;
+      try {
+        var glEvent = {
+          id: ev.id || '', eventId: ev.id || '',
+          summary: ev.title, date: ev.date, startTime: ev.time || '19:00',
+          location: ev.location || ev.venue || '', description: ev.notes || '', type: ev.type
+        };
+        var sync = await create(glEvent);
+        if (sync.success && sync.sync) {
+          events[i].googleEventId = sync.sync.externalEventId;
+          events[i].calendarId = sync.sync.calendarId;
+          events[i].syncStatus = 'synced';
+          events[i].lastSyncedAt = new Date().toISOString();
+          events[i].sync = sync.sync;
+          result.pushed++;
+        }
+      } catch(e) { console.warn('[CalSync] Push failed for', ev.title, e.message); }
+    }
+    if (result.pushed > 0) {
+      await saveBandDataToDrive('_band', 'calendar_events', events);
+      console.log('[CalSync] Phase 1: Pushed', result.pushed, 'events');
+    }
+
+    // ── PHASE 2: Pull remote changes from Google (incremental or full) ──
+    console.log('[CalSync] Phase 2: Pull remote changes...');
+    var knownGoogleIds = {};
+    var eventsByGoogleId = {};
+    events.forEach(function(e, idx) {
+      if (e.googleEventId) { knownGoogleIds[e.googleEventId] = true; eventsByGoogleId[e.googleEventId] = idx; }
+      if (e.sync && e.sync.externalEventId) { knownGoogleIds[e.sync.externalEventId] = true; eventsByGoogleId[e.sync.externalEventId] = idx; }
+    });
+
+    var googleEvents = [];
+    var pageToken = null;
+    var useSyncToken = !!syncState.syncToken;
+    var newSyncToken = null;
+    try {
+      do {
+        var url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(bandCalId)
+          + '&maxResults=250&showDeleted=true';
+        if (useSyncToken && syncState.syncToken && !pageToken) {
+          url += '&syncToken=' + encodeURIComponent(syncState.syncToken);
+        } else if (!useSyncToken) {
+          // Full sync: query 12 months centered on now
+          var now = new Date();
+          var min = new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString();
+          var max = new Date(now.getFullYear(), now.getMonth() + 6, 0, 23, 59, 59).toISOString();
+          url += '&timeMin=' + encodeURIComponent(min) + '&timeMax=' + encodeURIComponent(max);
+        }
+        if (pageToken) url += '&pageToken=' + encodeURIComponent(pageToken);
+
+        var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+        if (res.status === 410) {
+          // syncToken expired — fall back to full sync
+          console.log('[CalSync] syncToken expired (410) — full re-sync');
+          syncState.syncToken = null;
+          useSyncToken = false;
+          continue; // restart the do-while with full query
+        }
+        if (!res.ok) {
+          console.warn('[CalSync] Pull failed:', res.status);
+          result.error = 'Google API ' + res.status;
+          break;
+        }
+        var data = await res.json();
+        googleEvents = googleEvents.concat(data.items || []);
+        pageToken = data.nextPageToken || null;
+        if (data.nextSyncToken) newSyncToken = data.nextSyncToken;
+      } while (pageToken);
+    } catch(e) {
+      console.warn('[CalSync] Pull error:', e);
+      result.error = e.message;
+    }
+
+    console.log('[CalSync] Phase 2: Fetched', googleEvents.length, 'changes', useSyncToken ? '(incremental)' : '(full)');
+
+    var dirty = false;
+    googleEvents.forEach(function(gEv) {
+      if (!gEv.id) return;
+      var existIdx = eventsByGoogleId[gEv.id];
+
+      if (gEv.status === 'cancelled') {
+        // ── Deletion from Google → remove from Firebase ──
+        if (existIdx !== undefined && existIdx >= 0) {
+          console.log('[CalSync] Inbound DELETE:', events[existIdx].title, events[existIdx].date);
+          events.splice(existIdx, 1);
+          // Rebuild index after splice
+          eventsByGoogleId = {};
+          events.forEach(function(e, idx) {
+            if (e.googleEventId) eventsByGoogleId[e.googleEventId] = idx;
+            if (e.sync && e.sync.externalEventId) eventsByGoogleId[e.sync.externalEventId] = idx;
+          });
+          result.deleted++;
+          dirty = true;
+        }
+        return;
+      }
+
+      if (existIdx !== undefined && existIdx >= 0) {
+        // ── Update: Google event matches existing Firebase event ──
+        _reconcileEvent(events[existIdx], gEv);
+        result.updated++;
+        dirty = true;
+      } else {
+        // ── New: import from Google ──
+        var newEv = _importGoogleEvent(gEv, bandCalId);
+        events.push(newEv);
+        eventsByGoogleId[gEv.id] = events.length - 1;
+        result.pulled++;
+        dirty = true;
+        console.log('[CalSync] Inbound NEW:', newEv.title, newEv.date);
+      }
+    });
+
+    // ── PHASE 3: Propagate local deletions to Google ──
+    var deletedLocally = events.filter(function(e) { return e.sync && e.sync.status === 'deleted_locally'; });
+    for (var di = 0; di < deletedLocally.length; di++) {
+      var del = deletedLocally[di];
+      if (del.googleEventId) {
+        try {
+          await remove(del.googleEventId);
+          events = events.filter(function(e) { return e !== del; });
+          result.deleted++;
+          dirty = true;
+          console.log('[CalSync] Outbound DELETE:', del.title);
+        } catch(e) { console.warn('[CalSync] Delete failed:', del.title, e.message); }
+      }
+    }
+
+    // Save all changes
+    if (dirty) {
+      await saveBandDataToDrive('_band', 'calendar_events', events);
+    }
+
+    // Save sync token for next incremental sync
+    if (newSyncToken) {
+      await _saveSyncState({
+        syncToken: newSyncToken,
+        lastFullSync: useSyncToken ? (syncState.lastFullSync || null) : new Date().toISOString(),
+        lastIncrementalSync: new Date().toISOString(),
+        syncVersion: 2
+      });
+      console.log('[CalSync] Sync token saved for next incremental sync');
+    }
+
+    console.log('[CalSync] === TWO-WAY SYNC COMPLETE: pushed', result.pushed, '| pulled', result.pulled, '| updated', result.updated, '| deleted', result.deleted, '===');
+    return result;
+  }
+
+  // ── INBOUND SYNC (legacy — kept as fallback for Mode C) ────────────────
   // Fetches ALL events from the selected band Google Calendar (with pagination).
   // Imports events not already in GrooveLinx. Does NOT require extendedProperties.
   // Handles all-day events, multi-day spans, and timed events.
   async function pullBandCalendarEvents(timeMin, timeMax) {
-    console.log('[CalSync] pullBandCalendarEvents called. hasCalendarScope:', hasCalendarScope(), 'accessToken:', typeof accessToken !== 'undefined' && accessToken ? accessToken.substring(0,10) + '...' : 'NONE');
     if (!hasCalendarScope()) return { imported: 0, skipped: 0, fetched: 0, events: [], error: 'no scope' };
     var bandCalId = await _getBandCalendarId();
     if (!bandCalId) return { imported: 0, skipped: 0, fetched: 0, events: [], error: 'no band calendar configured' };
@@ -806,10 +1061,8 @@ window.GLCalendarSync = (function() {
         return { isUnavail: false };
       }
 
-      console.log('[CalSync] Processing', googleEvents.length, 'events. Known IDs:', Object.keys(knownGoogleIds).length);
       googleEvents.forEach(function(gEv) {
         if (gEv.status === 'cancelled') { skipped.push({ id: gEv.id, reason: 'cancelled' }); return; }
-        console.log('[CalSync] Checking:', gEv.summary, '| id:', gEv.id.substring(0,12), '| known:', !!knownGoogleIds[gEv.id]);
         if (knownGoogleIds[gEv.id]) {
           // Already imported — but check if we should upgrade its type to 'unavailable'
           // (handles events imported before unavailability detection was added)
@@ -1233,6 +1486,7 @@ window.GLCalendarSync = (function() {
     getBandCalendarId: _getBandCalendarId,
     canWriteBandCalendar: canWriteBandCalendar,
     getBandEventTimeSlots: _getBandEventTimeSlots,
+    syncBandCalendar: syncBandCalendar,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody

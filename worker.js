@@ -1014,12 +1014,20 @@ async function handleCalendarListEvents(request) {
   try {
     const url = new URL(request.url);
     const params = new URLSearchParams();
-    if (url.searchParams.get('timeMin')) params.set('timeMin', url.searchParams.get('timeMin'));
-    if (url.searchParams.get('timeMax')) params.set('timeMax', url.searchParams.get('timeMax'));
-    params.set('singleEvents', 'true');
-    params.set('orderBy', 'startTime');
+    // Incremental sync mode: syncToken replaces timeMin/timeMax
+    const syncToken = url.searchParams.get('syncToken');
+    if (syncToken) {
+      params.set('syncToken', syncToken);
+      // syncToken mode: don't set singleEvents/orderBy (Google rejects them with syncToken)
+    } else {
+      if (url.searchParams.get('timeMin')) params.set('timeMin', url.searchParams.get('timeMin'));
+      if (url.searchParams.get('timeMax')) params.set('timeMax', url.searchParams.get('timeMax'));
+      params.set('singleEvents', 'true');
+      params.set('orderBy', 'startTime');
+    }
     params.set('maxResults', url.searchParams.get('maxResults') || '250');
     if (url.searchParams.get('pageToken')) params.set('pageToken', url.searchParams.get('pageToken'));
+    if (url.searchParams.get('showDeleted')) params.set('showDeleted', 'true');
     const calId = url.searchParams.get('calendarId') || 'primary';
     const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events?' + params.toString();
     const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });

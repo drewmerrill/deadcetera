@@ -851,71 +851,30 @@ window._calSyncNow = async function() {
     var btn = document.getElementById('calSyncBtn');
     if (btn) { btn.textContent = '\u21BB Syncing...'; btn.disabled = true; }
     try {
-        // Push unsynced events to Google band calendar
-        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
-            var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-            var pushed = 0;
-            for (var _si = 0; _si < events.length; _si++) {
-                var ev = events[_si];
-                // Check BOTH sync patterns: top-level googleEventId (legacy) + nested sync.externalEventId (normal flow)
-                var _alreadySynced = (ev.syncStatus === 'synced' && ev.googleEventId)
-                    || (ev.sync && ev.sync.externalEventId && ev.sync.status === 'synced');
-                if (_alreadySynced) continue;
-                if (!ev.date || !ev.title) continue;
-                try {
-                    var glEvent = {
-                        id: ev.id || ev.eventId || '',
-                        summary: ev.title || ev.type || 'Band Event',
-                        date: ev.date,
-                        startTime: ev.time || '19:00',
-                        location: ev.location || ev.venue || '',
-                        description: ev.notes || '',
-                        type: ev.type
-                    };
-                    var sync = await GLCalendarSync.create(glEvent);
-                    if (sync.success && sync.sync) {
-                        events[_si].googleEventId = sync.sync.externalEventId;
-                        events[_si].calendarId = sync.sync.calendarId;
-                        events[_si].syncStatus = 'synced';
-                        events[_si].lastSyncedAt = new Date().toISOString();
-                        pushed++;
-                    }
-                } catch(e) {}
-            }
-            if (pushed > 0) {
-                await saveBandDataToDrive('_band', 'calendar_events', events);
-                console.log('[Sync] Pushed ' + pushed + ' events to Google Calendar');
-            }
-        }
-        // ── INBOUND: Pull events from Band Calendar into GrooveLinx ──
-        var _imported = 0;
-        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.pullBandCalendarEvents) {
-            // Pull 6 months of events (3 months back + 3 months forward)
-            var _now = new Date();
-            var _pullMin = new Date(_now.getFullYear(), _now.getMonth() - 3, 1).toISOString();
-            var _pullMax = new Date(_now.getFullYear(), _now.getMonth() + 3, 0, 23, 59, 59).toISOString();
-            var _pullResult = await GLCalendarSync.pullBandCalendarEvents(_pullMin, _pullMax);
-            _imported = _pullResult.imported || 0;
-            var _upgraded = _pullResult.upgraded || 0;
-            if (_pullResult.error) console.warn('[Sync] Inbound pull error:', _pullResult.error);
+        // Use two-way sync engine (Mode A: Shared Calendar)
+        var _syncResult = { pushed: 0, pulled: 0, updated: 0, deleted: 0, error: null };
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.syncBandCalendar && GLCalendarSync.hasCalendarScope()) {
+            _syncResult = await GLCalendarSync.syncBandCalendar();
         }
 
-        // Pull latest connections (no full re-render — prevents screen flash)
+        // Pull latest connections
         _calConnectedCache = null;
         await _calLoadConnections();
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
-        // Refresh grid + Google panel (don't rebuild entire page shell)
         _calRenderGridOnly();
         _calRenderGooglePanel();
-        // Build explicit sync status message
+
+        // Build sync status message
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
         var _syncMsg = '\u2713 Sync complete';
         var _syncParts = [];
-        if (typeof pushed !== 'undefined' && pushed > 0) _syncParts.push(pushed + ' pushed to Google');
-        if (_imported > 0) _syncParts.push(_imported + ' imported from Google');
-        if (typeof _upgraded !== 'undefined' && _upgraded > 0) _syncParts.push(_upgraded + ' updated with availability');
+        if (_syncResult.pushed > 0) _syncParts.push(_syncResult.pushed + ' pushed');
+        if (_syncResult.pulled > 0) _syncParts.push(_syncResult.pulled + ' imported');
+        if (_syncResult.updated > 0) _syncParts.push(_syncResult.updated + ' updated');
+        if (_syncResult.deleted > 0) _syncParts.push(_syncResult.deleted + ' deleted');
         if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
         else _syncMsg += ' \u2014 everything up to date';
+        if (_syncResult.error) _syncMsg += ' (\u26A0 ' + _syncResult.error + ')';
         if (!_hasAvail) _syncMsg += '. Availability not enabled.';
         if (typeof showToast === 'function') showToast(_syncMsg, _hasAvail ? 4000 : 6000);
     } catch(e) {
@@ -2531,7 +2490,6 @@ function _calRenderGridOnly() {
     console.log('[GRID RENDER]', year, month + 1, '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | navId:', navId);
 
     loadCalendarEvents().then(function(result) {
-        console.log('[GRID CALLBACK] navId:', navId, 'current _calNavSeq:', _calNavSeq, 'match:', navId === _calNavSeq);
         if (navId !== _calNavSeq) return; // stale — a newer nav superseded this
 
         // Re-acquire grid from live DOM (never use stale reference)
@@ -2628,36 +2586,9 @@ function _calRenderGridOnly() {
                 + '</div>';
         }
         g += '</div>';
-        g += '<div id="grid-debug-marker" style="color:red;font-size:12px;font-weight:bold">GRID PAINTED</div>';
-
-        // ── DIAGNOSTIC: before write ──
-        var _preGrid = document.getElementById('calGrid');
-        console.log('[GRID DEBUG] PRE-WRITE: getElementById=', !!_preGrid, 'grid===preGrid:', grid === _preGrid,
-            'grid.isConnected:', grid.isConnected,
-            'g.length:', g.length, 'g preview:', g.substring(0, 300));
-        console.log('[GRID DEBUG] PRE-WRITE: grid.offsetWidth:', grid.offsetWidth, 'offsetHeight:', grid.offsetHeight);
 
         grid.innerHTML = g;
 
-        // ── DIAGNOSTIC: after write ──
-        var _postGrid = document.getElementById('calGrid');
-        console.log('[GRID DEBUG] POST-WRITE: getElementById=', !!_postGrid,
-            'innerHTML.length:', _postGrid ? _postGrid.innerHTML.length : 'N/A',
-            'children.length:', _postGrid ? _postGrid.children.length : 'N/A');
-        if (_postGrid) {
-            var _cs = window.getComputedStyle(_postGrid);
-            console.log('[GRID DEBUG] POST-WRITE computed style: display:', _cs.display,
-                'visibility:', _cs.visibility, 'opacity:', _cs.opacity,
-                'height:', _cs.height, 'overflow:', _cs.overflow);
-            console.log('[GRID DEBUG] POST-WRITE: offsetWidth:', _postGrid.offsetWidth, 'offsetHeight:', _postGrid.offsetHeight);
-            // Check first child (the grid wrapper div)
-            if (_postGrid.firstElementChild) {
-                var _wcs = window.getComputedStyle(_postGrid.firstElementChild);
-                console.log('[GRID DEBUG] WRAPPER child: display:', _wcs.display,
-                    'visibility:', _wcs.visibility, 'height:', _wcs.height,
-                    'opacity:', _wcs.opacity, 'overflow:', _wcs.overflow);
-            }
-        }
 
         grid.style.opacity = '1';
         grid.style.minHeight = '';
@@ -4362,9 +4293,20 @@ async function calDeleteEventById(eventId) {
         ? 'Delete this recurring event? All future occurrences will be removed.'
         : 'Delete this event?';
     if (!confirm(msg)) return;
+    // Sync deletion to Google Calendar if event was synced
+    var _gId = ev.googleEventId || (ev.sync && ev.sync.externalEventId) || null;
+    if (_gId && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+        try {
+            await GLCalendarSync.remove(_gId);
+            console.log('[Calendar] Deleted from Google:', _gId);
+        } catch(e) {
+            console.warn('[Calendar] Google delete failed:', e.message);
+        }
+    }
     events = events.filter(function(e) { return e.id !== eventId; });
     await saveBandDataToDrive('_band', 'calendar_events', events);
     document.getElementById('calEventFormArea').innerHTML = '';
+    if (typeof showToast === 'function') showToast('\u2713 Event deleted');
     _calRenderGridOnly();
 }
 
