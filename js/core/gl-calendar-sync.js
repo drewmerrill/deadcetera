@@ -966,6 +966,13 @@ window.GLCalendarSync = (function() {
     }
 
     console.log('[CalSync] === TWO-WAY SYNC COMPLETE: pushed', result.pushed, '| pulled', result.pulled, '| updated', result.updated, '| deleted', result.deleted, '===');
+    // Track first sync success
+    if ((result.pushed > 0 || result.pulled > 0) && typeof GLUXTracker !== 'undefined' && GLUXTracker._logEvent) {
+      if (!localStorage.getItem('gl_cal_first_sync')) {
+        localStorage.setItem('gl_cal_first_sync', '1');
+        GLUXTracker._logEvent('cal_first_sync_success', { pushed: result.pushed, pulled: result.pulled });
+      }
+    }
     return result;
   }
 

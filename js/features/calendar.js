@@ -97,42 +97,50 @@ function _calShowModeChooser() {
     if (!el) return;
     var bandName = localStorage.getItem('deadcetera_band_name') || 'your band';
     var _esc = (typeof escHtml === 'function') ? escHtml(bandName) : bandName;
+    var _memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 0;
 
-    // Track that chooser was shown
     _calTrack('chooser_shown');
 
-    el.innerHTML = '<div style="max-width:560px;margin:20px auto;text-align:center">'
-        + '<div style="font-size:1.3em;font-weight:800;color:var(--gl-text);margin-bottom:6px">How does ' + _esc + ' schedule?</div>'
-        + '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:24px">Pick what matches your band today. You can always upgrade later.</div>'
+    // Recommended default: Mode C for fastest activation, Mode B if 3+ members
+    var _recMode = _memberCount >= 3 ? 'personal_availability' : 'native';
+
+    var _cardStyle = 'width:100%;padding:16px 18px;margin-bottom:10px;border-radius:12px;color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit;transition:transform 0.1s,box-shadow 0.1s';
+    var _cardHover = 'onmouseenter="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 16px rgba(0,0,0,0.2)\'" onmouseleave="this.style.transform=\'\';this.style.boxShadow=\'\'"';
+
+    el.innerHTML = '<div style="max-width:520px;margin:16px auto;text-align:center">'
+        + '<div style="font-size:1.2em;font-weight:800;color:var(--gl-text);margin-bottom:4px">\uD83C\uDFB8 Get ' + _esc + ' on the same page</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:20px">Pick how your band schedules. You can change this anytime in Rules.</div>'
+
+        // RECOMMENDED: Mode C or B (based on band size)
+        + '<button onclick="_calSelectMode(\'' + _recMode + '\')" ' + _cardHover + ' style="' + _cardStyle + ';border:2px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.06)">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+        + '<span style="font-size:1.1em">' + (_recMode === 'native' ? '\u26A1' : '\uD83D\uDCC5') + '</span>'
+        + '<span style="font-size:0.92em;font-weight:700;color:#fbbf24">' + (_recMode === 'native' ? 'Get Organized Fast' : 'Never Double-Book Again') + '</span>'
+        + '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:#fbbf24;font-weight:800;margin-left:auto">RECOMMENDED</span>'
+        + '</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text);line-height:1.4">' + (_recMode === 'native'
+            ? 'Schedule your next rehearsal in 10 seconds. Band members RSVP with one tap. No calendar setup \u2014 start right now.'
+            : 'Connect calendars and GrooveLinx tells you \u201CWednesday works for ' + (_memberCount - 1) + ' of ' + _memberCount + '.\u201D No more guessing.') + '</div>'
+        + '</button>'
 
         // Mode A: Shared Calendar
-        + '<button onclick="_calSelectMode(\'shared_calendar\')" style="width:100%;padding:18px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        + '<span style="font-size:1.2em">\u2601\uFE0F</span>'
-        + '<span style="font-size:0.95em;font-weight:700;color:#86efac">Shared Calendar</span>'
+        + '<button onclick="_calSelectMode(\'shared_calendar\')" ' + _cardHover + ' style="' + _cardStyle + ';border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04)">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        + '<span style="font-size:1em">\u2601\uFE0F</span>'
+        + '<span style="font-size:0.88em;font-weight:700;color:#86efac">Keep Everything in Sync</span>'
         + '</div>'
-        + '<div style="font-size:0.82em;color:var(--gl-text);margin-bottom:4px">Everything stays in sync \u2014 rehearsals, gigs, and availability in one place.</div>'
-        + '<div style="font-size:0.72em;color:var(--gl-text-tertiary)">Best if your band already uses a shared Google Calendar.</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Your shared Google Calendar and GrooveLinx stay mirrored. Create in one, see in both.</div>'
         + '</button>'
 
-        // Mode B: Personal Availability
-        + '<button onclick="_calSelectMode(\'personal_availability\')" style="width:100%;padding:18px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        + '<span style="font-size:1.2em">\uD83D\uDCC5</span>'
-        + '<span style="font-size:0.95em;font-weight:700;color:#a5b4fc">Find the Best Date</span>'
+        // The non-recommended option (whichever wasn't recommended above)
+        + '<button onclick="_calSelectMode(\'' + (_recMode === 'native' ? 'personal_availability' : 'native') + '\')" ' + _cardHover + ' style="' + _cardStyle + ';border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.015)">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        + '<span style="font-size:1em">' + (_recMode === 'native' ? '\uD83D\uDCC5' : '\u26A1') + '</span>'
+        + '<span style="font-size:0.88em;font-weight:600;color:var(--gl-text-secondary)">' + (_recMode === 'native' ? 'Never Double-Book Again' : 'Get Organized Fast') + '</span>'
         + '</div>'
-        + '<div style="font-size:0.82em;color:var(--gl-text);margin-bottom:4px">\u201CWednesday works for 4 of 5\u201D \u2014 GrooveLinx finds when everyone\u2019s free.</div>'
-        + '<div style="font-size:0.72em;color:var(--gl-text-tertiary)">Best if members have separate busy schedules.</div>'
-        + '</button>'
-
-        // Mode C: Native — intentional, not fallback
-        + '<button onclick="_calSelectMode(\'native\')" style="width:100%;padding:18px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-        + '<span style="font-size:1.2em">\u26A1</span>'
-        + '<span style="font-size:0.95em;font-weight:700;color:#fbbf24">Start Scheduling Now</span>'
-        + '</div>'
-        + '<div style="font-size:0.82em;color:var(--gl-text);margin-bottom:4px">Schedule rehearsals in seconds. RSVP with one tap. No setup required.</div>'
-        + '<div style="font-size:0.72em;color:var(--gl-text-tertiary)">Best if you want to get organized immediately.</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-tertiary);line-height:1.4">' + (_recMode === 'native'
+            ? 'Connect personal calendars. GrooveLinx finds dates when everyone\u2019s free.'
+            : 'No calendar setup. Schedule rehearsals and RSVP right here.') + '</div>'
         + '</button>'
         + '</div>';
 }
@@ -1037,6 +1045,11 @@ window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
             ev.availability[memberKey] = { status: newStatus, updatedAt: new Date().toISOString() };
         }
         await saveBandDataToDrive('_band', 'calendar_events', events);
+        // First-RSVP milestone
+        if (newStatus && !localStorage.getItem('gl_cal_first_rsvp')) {
+            localStorage.setItem('gl_cal_first_rsvp', '1');
+            _calTrack('first_rsvp_completed', { status: newStatus });
+        }
         // Update local cache
         if (_calEventsByDate[dateStr]) {
             var cached = _calEventsByDate[dateStr].find(function(e) { return (e.eventId || e.id) === eventId; });
@@ -4619,6 +4632,11 @@ async function calSaveEvent(editIdx) {
     document.getElementById('calEventFormArea').innerHTML = '';
     if (typeof showToast === 'function') showToast('\u2713 Event saved');
     _calTrack('event_created', { type: ev.type });
+    // First-value milestones
+    if (ev.type === 'rehearsal' && !localStorage.getItem('gl_cal_first_rehearsal')) {
+        localStorage.setItem('gl_cal_first_rehearsal', '1');
+        _calTrack('first_rehearsal_scheduled');
+    }
     _calRenderGridOnly();
 
     // ── PHASE B: POST-SAVE ENRICHMENT (non-blocking) ─────────────────────────
