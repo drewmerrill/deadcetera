@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-13 (Calendar trust layer + Rehearsal two-mode split + Drive audio streaming + Golden timelines + Sync bug fix)_
+_Last updated: 2026-04-14 (Calendar render architecture + Atomic saves + Inbound sync + Member unavailability + Stage plot + Grid alignment fix)_
 
 ## Read This First
 
@@ -62,7 +62,32 @@ Band Feed is the central action hub. Listening Bundles are the fastest path to h
 | `tests/verify-deploy.sh` | Post-deploy verification (version, caching, content) |
 | `tests/calibration/calibration-runner.js` | Analyzer accuracy evaluation against gold truth |
 
-## Current State (2026-04-13)
+## Current State (2026-04-14)
+
+### Calendar Render Architecture (2026-04-14) — LOCKED
+- `_calRenderGridOnly()` is the SOLE owner of `#calGrid.innerHTML`
+- `renderCalendarInner()` builds shell only, calls `_calRenderGridOnly()` once
+- `calNavMonth()` calls `_calRenderGridOnly()` directly — shell stays stable
+- All event CRUD, post-auth, post-sync use `_calRenderGridOnly()` not `renderCalendarInner()`
+- Stale nav guard via `_calNavSeq`
+- DO NOT add another grid render path. DO NOT call renderCalendarInner from callbacks.
+
+### Atomic Event Save (2026-04-14)
+- Phase A: core save → confirm → clear form → render grid → toast
+- Phase B: gig record + setlist + Google sync (non-blocking, try/catch)
+- Targeted Firebase updates for gigId + sync metadata (no array re-read/re-save)
+
+### Inbound Sync + Member Unavailability (2026-04-14)
+- `pullBandCalendarEvents()` fetches from band calendar, dedupes, imports
+- Unavailability detection: keyword + member name matching
+- `type: 'unavailable'` events with `assignedMembers` create blocked ranges
+- KNOWN BUG: Google Calendar API returns different event sets for 6-month vs 1-month queries. Brian's "Brian Busy All Day Test" and "Pierce out" events appear in a June-only query but NOT in the Jan-Jul range query. All 37 events from the 6-month query were `known: true` (already imported). The 4 new events simply weren't in the API response. Needs investigation — could be Google API pagination behavior, caching, or access control on events created by other users.
+
+### Availability Enable (2026-04-14)
+- Persisted scope state: gl_scope_calendar + gl_scope_freeBusy in localStorage
+- Three-source priority: OAuth flag → localStorage → config fallback
+- Smart button labels based on state
+- _hasToken crash fixed (was undefined variable in Google panel)
 
 ### Calendar Trust Layer (2026-04-12 → 2026-04-13)
 - Band calendar architecture: personal availability (read-only) vs band calendar (write target)

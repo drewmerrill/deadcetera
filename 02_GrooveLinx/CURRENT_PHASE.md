@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-13 (Calendar trust layer + Rehearsal two-mode split + Drive audio streaming + Golden timelines + Update banner unification)_
+_Updated: 2026-04-14 (Calendar render architecture + Atomic event saves + Inbound sync + Member unavailability + Availability enable fix + Stage plot)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -12,6 +12,49 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## What's Live (2026-04-13)
+
+### Calendar Render Architecture (NEW 2026-04-14)
+- **Single grid renderer**: `_calRenderGridOnly()` is the ONLY function that writes to `#calGrid`
+- **Shell vs grid separation**: `renderCalendarInner()` builds static shell only, calls `_calRenderGridOnly()` once
+- **Month navigation**: `calNavMonth()` calls `_calRenderGridOnly()` directly — no shell rebuild
+- **Stale nav guard**: `_calNavSeq` token prevents old async callbacks from overwriting current month
+- **No duplicate renders**: removed ~90 lines of duplicate grid builder from renderCalendarInner
+- **All event CRUD** uses `_calRenderGridOnly()` instead of `renderCalendarInner()`
+- **Post-auth/sync flows** use targeted `_calRenderGooglePanel()` + `_calRenderGridOnly()`
+- **isUnavailable variable** added to grid renderer for unavailable event detection
+- **Grid day alignment verified**: June 25, 2026 = Thursday (confirmed via Python + JS)
+
+### Atomic Event Save Architecture (NEW 2026-04-14)
+- **Phase A (Core Save)**: validate → write to Firebase → confirm success → clear form → re-render grid → toast
+- **Phase B (Post-Save Enrichment)**: gig record + setlist + Google sync — non-blocking, try/catch isolated
+- **Targeted Firebase updates**: gigId + Google sync metadata stamped via individual field updates (no full array re-read/re-save)
+- **Form DOM guard**: checks calDate/calType/calTitle exist before reading (venue modal safety)
+- **Google sync gated**: only runs after confirmed core save success
+
+### Band Calendar Inbound Sync (NEW 2026-04-14)
+- **`pullBandCalendarEvents()`**: fetches ALL events from band Google Calendar with pagination
+- **Multi-day all-day events**: expanded to one record per day with "(day N/M)" suffix
+- **Dedup by googleEventId**: skips already-imported events, upgrades existing to unavailable if keywords match
+- **"From Google" badge**: shown on imported events in day panel and upcoming list
+- **Member unavailability detection**: keyword + member name matching (strong: out/unavailable/pto/vacation/away/travel; weak: busy/conflict/off/blocked only with member name)
+- **Whole-band phrases**: "band off", "everyone out", "no rehearsal"
+- **Ambiguous events**: imported but NOT blocking (unavailable_unassigned type)
+- **Availability injection**: unavailable events create blocked ranges for assigned members only
+- **Help text in Rules**: naming convention examples for users
+- **KNOWN BUG**: Google Calendar API returns different event sets for different time ranges — Brian's events appear in June-only query but not in 6-month range. Needs investigation.
+
+### Availability Enable Fix (NEW 2026-04-14)
+- **Persisted scope state**: gl_scope_calendar + gl_scope_freeBusy saved to localStorage after OAuth
+- **Three-source priority**: 1) OAuth callback flag → 2) persisted localStorage → 3) config fallback
+- **Smart button labels**: "Connect Google Calendar" vs "Set Up Availability" vs "Reconnect"
+- **Post-auth re-render**: _calRenderGooglePanel() + _calRenderGridOnly() (not renderCalendarInner)
+- **Auto-open availability setup** after first connect
+- **_hasToken crash fixed**: was using undefined variable in Google panel render
+
+### Stage Plot (NEW 2026-04-14)
+- **Rename**: click plot name to rename via prompt
+- **Save As**: duplicate current plot under new name with fresh ID
+- **Dropdown styling**: forced dark theme colors for readability
 
 ### Calendar Trust Layer + Band Calendar Architecture (NEW)
 - **Band calendar separation**: personal calendars (read-only availability) vs shared band calendar (write target)
