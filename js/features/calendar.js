@@ -2499,10 +2499,16 @@ function renderCalendarInner() {
     }
 
     // Wait for Firebase before loading events — prevents hang on loadBandDataFromDrive
+    var _initialNavId = ++_calNavSeq; // capture nav sequence for race guard
     var _calLoadPromise = (typeof GLStore !== 'undefined' && GLStore.ready)
         ? GLStore.ready(['firebase'], 12000).then(function() { return loadCalendarEvents(); })
         : loadCalendarEvents();
     _calLoadPromise.catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
+        // Race guard: if user navigated to a different month while loading, discard
+        if (_initialNavId !== _calNavSeq) {
+            console.log('[Calendar] Discarding stale initial render (nav changed during load)');
+            return;
+        }
         _availRendered = true;
         const eventDates = result ? result.dateMap : {};
         const blockedRanges = result ? (result.blockedRanges || []) : [];
