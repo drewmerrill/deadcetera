@@ -67,6 +67,35 @@ async function calShowEvent(idx, occDate) {
 let calViewYear = new Date().getFullYear();
 let calViewMonth = new Date().getMonth();
 
+// Scheduling mode: A_SHARED_SYNC | B_PERSONAL_AVAILABILITY | C_NATIVE
+// Loaded from Firebase on page render, cached for the session
+var _calSchedulingMode = null; // null = not yet loaded
+
+async function _calLoadSchedulingMode() {
+    if (_calSchedulingMode) return _calSchedulingMode;
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            var snap = await db.ref(bandPath('scheduling_mode')).once('value');
+            var val = snap.val();
+            if (val && val.mode) {
+                _calSchedulingMode = val.mode === 'shared_calendar' ? 'A_SHARED_SYNC'
+                    : val.mode === 'personal_availability' ? 'B_PERSONAL_AVAILABILITY'
+                    : val.mode === 'native' ? 'C_NATIVE'
+                    : 'A_SHARED_SYNC'; // default
+            }
+        }
+    } catch(e) {}
+    if (!_calSchedulingMode) _calSchedulingMode = 'A_SHARED_SYNC'; // default for existing bands
+    console.log('[Calendar] Scheduling mode:', _calSchedulingMode);
+    return _calSchedulingMode;
+}
+
+// Convenience checks
+function _calIsModeA() { return _calSchedulingMode === 'A_SHARED_SYNC'; }
+function _calIsModeB() { return _calSchedulingMode === 'B_PERSONAL_AVAILABILITY'; }
+function _calIsModeC() { return _calSchedulingMode === 'C_NATIVE'; }
+
 // ── Recurrence helpers ──────────────────────────────────────────────────────
 
 function _calRepeatRuleToValue(rule) {
@@ -989,6 +1018,8 @@ function _calRenderOnboarding() {
 function _calRenderGooglePanel() {
     var el = document.getElementById('calGooglePanel');
     if (!el) return;
+    // Mode C (Native): no Google panel at all
+    if (_calIsModeC()) { el.innerHTML = ''; return; }
     var cov = _calGetSyncCoverage();
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
@@ -1044,28 +1075,32 @@ function _calRenderGooglePanel() {
 
     // Header: connection status
     if (_isConnected) {
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
-            + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
-            + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">'
-            + (connectedCount >= totalCount ? 'All calendars connected' : connectedCount + ' of ' + totalCount + ' connected')
-            + '</span></div>';
-        if (lastSync) html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:2px">Last synced ' + lastSync + '</div>';
-        // Band calendar name + access status
-        try {
-            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-            if (db && typeof bandPath === 'function') {
-                // Read synchronously from a cached value if available
-            }
-        } catch(e) {}
-        // Show band calendar name if stored (async would delay render, use simple approach)
-        html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Band calendar: <span style="color:var(--gl-text)">' + (_isConnected ? '\u2714 configured' : 'not set') + '</span></div>';
+        if (_calIsModeA()) {
+            // Mode A: Shared Calendar — show sync status, not connection count
+            html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+                + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
+                + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">Shared Calendar Sync</span></div>';
+            if (lastSync) html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:2px">Last synced ' + lastSync + '</div>';
+            html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Band calendar: <span style="color:var(--gl-text)">\u2714 configured</span></div>';
+        } else {
+            // Mode B: Personal Availability — show connection count
+            html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+                + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
+                + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">'
+                + (connectedCount >= totalCount ? 'All calendars connected' : connectedCount + ' of ' + totalCount + ' connected')
+                + '</span></div>';
+            if (lastSync) html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:2px">Last synced ' + lastSync + '</div>';
+            html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Band calendar: <span style="color:var(--gl-text)">' + (_isConnected ? '\u2714 configured' : 'not set') + '</span></div>';
+        }
     } else {
         html += '<div style="font-size:0.82em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Google Calendar</div>'
             + '<div style="font-size:0.68em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:8px">Connect so GrooveLinx can find dates when everyone\u2019s free.</div>';
     }
 
-    // Member list (always shown, once)
-    html += '<div style="margin-bottom:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02)">' + memberHtml + '</div>';
+    // Member list (Mode B: always shown. Mode A: show for visibility but de-emphasized)
+    if (!_calIsModeA()) {
+        html += '<div style="margin-bottom:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02)">' + memberHtml + '</div>';
+    }
 
     // Partial scope warning
     if (_partialScope) {
@@ -1134,6 +1169,7 @@ window._calShowManageConnections = function() {
 function _calRenderAvailHealth() {
     var el = document.getElementById('calAvailHealth');
     if (!el) return;
+    if (_calIsModeC()) { el.innerHTML = ''; return; } // Mode C: no availability data
 
     // Last synced header
     var _syncHeader = '';
@@ -2387,7 +2423,9 @@ window._calNextUpGigGcal = function(date) {
     if (url && url !== '#') { window.open(url, '_blank'); if (typeof showToast === 'function') showToast('\uD83D\uDCC5 Opening Google Calendar\u2026 send invites there'); }
 };
 
-function renderCalendarInner() {
+async function renderCalendarInner() {
+    // Load scheduling mode before rendering
+    await _calLoadSchedulingMode();
     // Clear schedule blocks cache so we get fresh data on each render
     if (typeof GLStore !== 'undefined' && GLStore._clearScheduleBlocksCache) GLStore._clearScheduleBlocksCache();
     // Mobile: pull grid card edge-to-edge to fit 7 columns
@@ -2440,11 +2478,12 @@ function renderCalendarInner() {
         '<div id="calAvailHealth"></div>' +
         // 4. Weekly pressure (gigs, missing rehearsals)
         '<div id="calWeeklyPressure"></div>' +
-        // 5. Quick actions
+        // 5. Quick actions (availability/conflicts only in Mode A/B)
+        (_calIsModeC() ? '' :
         '<div style="padding-top:var(--gl-space-sm);display:flex;flex-direction:column;gap:4px">' +
             '<button onclick="_calShowAvailabilityModal()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">Check availability</button>' +
             '<button onclick="_calToggleConflictList()" class="gl-btn-ghost" style="width:100%;text-align:left;font-size:0.72em">View conflicts</button>' +
-        '</div>' +
+        '</div>') +
         // Hidden containers for data loading (used by loadCalendarEvents)
         '<div id="calOnboardingCard" style="display:none"></div>' +
         '<div id="calSyncCoverage" style="display:none"></div>' +
@@ -2555,7 +2594,7 @@ function _calRenderGridOnly() {
             var hasEvent = dayEvents.length > 0;
             var w = dow === 0 || dow === 6;
             var isFuture = ds >= todayStr;
-            var isBest = isFuture && !hasEvent && !isBlocked && !w;
+            var isBest = !_calIsModeC() && isFuture && !hasEvent && !isBlocked && !w;
             var state = 'default';
             var stateClass = '';
             var icon = '';
@@ -3741,7 +3780,8 @@ function calDayClick(y, m, d) {
                 }
             });
             _conflictSummary += '<div style="height:4px"></div>';
-        } else if (!_hasAvailScope && ds >= new Date().toISOString().split('T')[0]) {
+        } else if (!_calIsModeC() && !_hasAvailScope && ds >= new Date().toISOString().split('T')[0]) {
+            // Mode A/B: show availability setup prompt. Mode C: no availability concept.
             var _hasTokenForAvail = (typeof accessToken !== 'undefined' && accessToken);
             var _availAction = _hasTokenForAvail ? '_calShowAvailabilitySettings()' : '_calConnectGoogle()';
             var _availLabel = _hasTokenForAvail ? 'Set Up Availability' : 'Connect Google Calendar';
@@ -3972,9 +4012,10 @@ window._calCloseMobileCard = function() {
 };
 
 async function calAddEvent(date, editIdx, existing) {
-    // Gate: must have an active Google token to create/edit events
+    // Mode C (Native): skip all Google auth gates — events are local only
+    // Mode A/B: require Google token
     var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
-    if (!_hasToken) {
+    if (!_calIsModeC() && !_hasToken) {
         // Show inline sign-in prompt (no confirm() — Safari blocks OAuth popups after confirm dialogs)
         var _area = document.getElementById('calEventFormArea');
         if (_area) {
@@ -3990,8 +4031,8 @@ async function calAddEvent(date, editIdx, existing) {
         }
         return;
     }
-    // Also check band calendar access
-    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
+    // Also check band calendar access (Mode A/B only — Mode C skips this)
+    if (!_calIsModeC() && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
         var _canWrite = await GLCalendarSync.canWriteBandCalendar();
         if (!_canWrite) {
             var _area2 = document.getElementById('calEventFormArea');
