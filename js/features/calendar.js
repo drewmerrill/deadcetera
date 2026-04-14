@@ -2531,6 +2531,7 @@ function _calRenderGridOnly() {
     console.log('[GRID RENDER]', year, month + 1, '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | navId:', navId);
 
     loadCalendarEvents().then(function(result) {
+        console.log('[GRID CALLBACK] navId:', navId, 'current _calNavSeq:', _calNavSeq, 'match:', navId === _calNavSeq);
         if (navId !== _calNavSeq) return; // stale — a newer nav superseded this
 
         // Re-acquire grid from live DOM (never use stale reference)
