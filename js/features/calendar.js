@@ -2505,9 +2505,8 @@ function renderCalendarInner() {
         : loadCalendarEvents();
     _calLoadPromise.catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
         // Race guard: if user navigated to a different month while loading, discard
-        console.log('[Calendar] Initial render callback: navId=' + _initialNavId + ' current=' + _calNavSeq + ' firstDay=' + firstDay + ' month=' + month);
         if (_initialNavId !== _calNavSeq) {
-            console.log('[Calendar] Discarding stale initial render (nav changed during load)');
+            console.log('[Calendar] Discarding stale initial render (navId=' + _initialNavId + ' current=' + _calNavSeq + ')');
             return;
         }
         _availRendered = true;
@@ -2515,16 +2514,23 @@ function renderCalendarInner() {
         const blockedRanges = result ? (result.blockedRanges || []) : [];
         const grid = document.getElementById('calGrid');
         if (!grid) return;
+        // Recompute from CURRENT view state (not captured values) to avoid stale month offset
+        var _cYear = calViewYear, _cMonth = calViewMonth;
+        var _cFirstDay = new Date(_cYear, _cMonth, 1).getDay();
+        var _cDaysInMonth = new Date(_cYear, _cMonth + 1, 0).getDate();
+        var _cPrefix = _cYear + '-' + String(_cMonth + 1).padStart(2, '0') + '-';
+        var _cToday = new Date().toISOString().split('T')[0];
+        console.log('[Calendar] Initial render painting: month=' + _cYear + '-' + (_cMonth+1) + ' firstDay=' + _cFirstDay);
         let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;">';
         dNames.forEach((d,i) => {
             const w = i===0||i===6;
             g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--gl-text-tertiary)'};text-align:center;padding:6px 0">${d}</div>`;
         });
-        for (let i=0;i<firstDay;i++) g += '<div></div>';
-        for (let d=1;d<=daysInMonth;d++) {
-            const ds = `${monthPrefix}${String(d).padStart(2,'0')}`;
-            const isToday = ds===todayStr;
-            const dow = new Date(year,month,d).getDay();
+        for (let i=0;i<_cFirstDay;i++) g += '<div></div>';
+        for (let d=1;d<=_cDaysInMonth;d++) {
+            const ds = `${_cPrefix}${String(d).padStart(2,'0')}`;
+            const isToday = ds===_cToday;
+            const dow = new Date(_cYear,_cMonth,d).getDay();
             const w = dow===0||dow===6;
             const dayEvents = eventDates ? (eventDates[ds] || []) : [];
             const blockedList = blockedRanges.filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
@@ -2537,7 +2543,7 @@ function renderCalendarInner() {
             const isUnavailable = dayEvents.some(e => e.type === 'unavailable' || e.type === 'unavailable_unassigned');
             const hasEvent = dayEvents.length > 0;
             // State class (priority: gig > rehearsal > hard blocked > soft > best > default)
-            const isFuture = ds >= todayStr;
+            const isFuture = ds >= _cToday;
             const isBest = isFuture && !hasEvent && !isBlocked && !w;
             let state = 'default';
             let stateClass = '';
@@ -2596,7 +2602,7 @@ function renderCalendarInner() {
             } else if (state === 'default' && isFuture) {
                 hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
-            g += `<div class="gl-day ${stateClass}" data-date="${ds}" data-state="${state}"${isBlocked?' data-blocked="true"':''} onclick="calDayClick(${year},${month},${d})">
+            g += `<div class="gl-day ${stateClass}" data-date="${ds}" data-state="${state}"${isBlocked?' data-blocked="true"':''} onclick="calDayClick(${_cYear},${_cMonth},${d})">
                 <div class="gl-day-num">${d}</div>
                 ${icon ? '<div class="gl-day-icon">' + icon + '</div>' : ''}
                 ${hoverHtml}
@@ -2608,7 +2614,7 @@ function renderCalendarInner() {
         _calCachedBlockedRanges = result ? (result.blockedRanges || []) : [];
         _calRenderAvailabilityMatrix(_calCachedBlockedRanges);
         // Overlay external Google Calendar events (non-blocking)
-        _calOverlayExternalEvents(monthPrefix, daysInMonth);
+        _calOverlayExternalEvents(_cPrefix, _cDaysInMonth);
     });
 }
 
