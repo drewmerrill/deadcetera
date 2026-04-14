@@ -86,7 +86,20 @@ async function _calLoadSchedulingMode() {
             }
         }
     } catch(e) {}
-    if (!_calSchedulingMode) _calSchedulingMode = 'NOT_SET'; // first-time: show onboarding chooser
+    if (!_calSchedulingMode) {
+        // Check if band already has a band calendar configured (existing bands pre-mode-system)
+        try {
+            var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (db2 && typeof bandPath === 'function') {
+                var _bcSnap = await db2.ref(bandPath('band_calendar')).once('value');
+                if (_bcSnap.val() && _bcSnap.val().calendarId) {
+                    _calSchedulingMode = 'A_SHARED_SYNC'; // existing band with band calendar → default to Mode A
+                    console.log('[Calendar] Existing band with band calendar — defaulting to Mode A');
+                }
+            }
+        } catch(e) {}
+    }
+    if (!_calSchedulingMode) _calSchedulingMode = 'NOT_SET'; // truly first-time: show onboarding chooser
     console.log('[Calendar] Scheduling mode:', _calSchedulingMode);
     return _calSchedulingMode;
 }
@@ -1670,12 +1683,13 @@ window._calSaveAvailabilitySettings = async function() {
     var btn = document.getElementById('calAvailSaveBtn');
     if (btn) { btn.textContent = 'Saving\u2026'; btn.disabled = true; }
 
-    // Gather selected calendars
+    // Gather selected calendars (only required in Mode B)
     var checkboxes = document.querySelectorAll('input[name="calSel"]:checked');
     var selectedCals = [];
     checkboxes.forEach(function(cb) { selectedCals.push(cb.value); });
 
-    if (!selectedCals.length) {
+    // Mode A and C don't show personal calendar checkboxes — skip validation
+    if (!_calIsModeA() && !_calIsModeC() && !selectedCals.length) {
         if (typeof showToast === 'function') showToast('Select at least one calendar');
         if (btn) { btn.textContent = 'Save & Refresh'; btn.disabled = false; }
         return;
