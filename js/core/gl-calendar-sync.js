@@ -735,6 +735,7 @@ window.GLCalendarSync = (function() {
 
       var imported = [];
       var skipped = [];
+      var _upgraded = 0; // existing events upgraded to 'unavailable'
       var _genId = function() {
         return (typeof generateShortId === 'function') ? generateShortId(12)
           : Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -806,7 +807,24 @@ window.GLCalendarSync = (function() {
 
       googleEvents.forEach(function(gEv) {
         if (gEv.status === 'cancelled') { skipped.push({ id: gEv.id, reason: 'cancelled' }); return; }
-        if (knownGoogleIds[gEv.id]) { skipped.push({ id: gEv.id, title: gEv.summary, reason: 'already exists' }); return; }
+        if (knownGoogleIds[gEv.id]) {
+          // Already imported — but check if we should upgrade its type to 'unavailable'
+          // (handles events imported before unavailability detection was added)
+          var _existIdx = existingEvents.findIndex(function(e) {
+            return e.googleEventId === gEv.id || (e.sync && e.sync.externalEventId === gEv.id);
+          });
+          if (_existIdx >= 0 && existingEvents[_existIdx].type !== 'unavailable' && existingEvents[_existIdx].type !== 'rehearsal' && existingEvents[_existIdx].type !== 'gig') {
+            var _recheck = (existingEvents[_existIdx].type !== 'rehearsal' && existingEvents[_existIdx].type !== 'gig') ? _detectUnavailability(gEv.summary || '') : { isUnavail: false };
+            if (_recheck.isUnavail && _recheck.scope !== 'unassigned') {
+              existingEvents[_existIdx].type = 'unavailable';
+              existingEvents[_existIdx].assignedMembers = _recheck.members;
+              existingEvents[_existIdx].blockScope = _recheck.scope;
+              _upgraded++;
+              console.log('[CalSync] Inbound: UPGRADED existing "' + (gEv.summary || '') + '" to unavailable → blocking', _recheck.members.map(function(k) { return _bm[k] ? _bm[k].name.split(' ')[0] : k; }).join(', '));
+            }
+          }
+          skipped.push({ id: gEv.id, title: gEv.summary, reason: 'already exists' }); return;
+        }
 
         var isAllDay = !!(gEv.start && gEv.start.date && !gEv.start.dateTime);
         var startStr = gEv.start ? (gEv.start.dateTime || gEv.start.date || '') : '';
@@ -911,17 +929,17 @@ window.GLCalendarSync = (function() {
         }
       });
 
-      // ── Save imported events to Firebase ──
-      if (imported.length > 0) {
-        var allEvents = existingEvents.concat(imported);
+      // ── Save to Firebase — new imports + upgraded existing events ──
+      if (imported.length > 0 || _upgraded > 0) {
+        var allEvents = _upgraded > 0 ? existingEvents.concat(imported) : existingEvents.concat(imported);
         await saveBandDataToDrive('_band', 'calendar_events', allEvents);
-        console.log('[CalSync] Inbound sync: saved', imported.length, 'new event records to Firebase');
+        console.log('[CalSync] Inbound sync: saved', imported.length, 'new +', _upgraded, 'upgraded event records to Firebase');
       }
 
-      console.log('[CalSync] Inbound sync complete: fetched', googleEvents.length, '| imported', imported.length, '| skipped', skipped.length);
+      console.log('[CalSync] Inbound sync complete: fetched', googleEvents.length, '| imported', imported.length, '| upgraded', _upgraded, '| skipped', skipped.length);
       skipped.forEach(function(s) { console.log('[CalSync]   skipped:', s.title || s.id, '\u2014', s.reason); });
 
-      return { imported: imported.length, skipped: skipped.length, fetched: googleEvents.length, events: imported, error: null };
+      return { imported: imported.length, upgraded: _upgraded, skipped: skipped.length, fetched: googleEvents.length, events: imported, error: null };
     } catch(err) {
       console.error('[CalSync] Inbound sync error:', err);
       return { imported: 0, skipped: 0, fetched: 0, events: [], error: err.message };

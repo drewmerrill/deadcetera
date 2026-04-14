@@ -896,6 +896,7 @@ window._calSyncNow = async function() {
             var _pullMax = new Date(_now.getFullYear(), _now.getMonth() + 3, 0, 23, 59, 59).toISOString();
             var _pullResult = await GLCalendarSync.pullBandCalendarEvents(_pullMin, _pullMax);
             _imported = _pullResult.imported || 0;
+            var _upgraded = _pullResult.upgraded || 0;
             if (_pullResult.error) console.warn('[Sync] Inbound pull error:', _pullResult.error);
         }
 
@@ -912,6 +913,7 @@ window._calSyncNow = async function() {
         var _syncParts = [];
         if (typeof pushed !== 'undefined' && pushed > 0) _syncParts.push(pushed + ' pushed to Google');
         if (_imported > 0) _syncParts.push(_imported + ' imported from Google');
+        if (typeof _upgraded !== 'undefined' && _upgraded > 0) _syncParts.push(_upgraded + ' updated with availability');
         if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
         else _syncMsg += ' \u2014 everything up to date';
         if (!_hasAvail) _syncMsg += '. Availability not enabled.';
