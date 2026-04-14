@@ -2661,11 +2661,10 @@ function _calRenderGridOnly() {
         grid.style.opacity = '1';
         grid.style.minHeight = '';
         _calOverlayExternalEvents(monthPrefix, daysInMonth);
-    }).catch(function() {
-        // Network error fallback — render empty grid, don't hang
-        if (navId !== _calNavSeq) return;
-        grid.style.opacity = '1';
-        grid.style.minHeight = '';
+    }).catch(function(err) {
+        console.error('[GRID ERROR]', err);
+        var grid = document.getElementById('calGrid');
+        if (grid) { grid.style.opacity = '1'; grid.style.minHeight = ''; }
     });
 }
 
