@@ -152,7 +152,8 @@ window._calModeDropdownChanged = function(modeValue) {
     _calSchedulingMode = modeValue === 'shared_calendar' ? 'A_SHARED_SYNC'
         : modeValue === 'personal_availability' ? 'B_PERSONAL_AVAILABILITY'
         : 'C_NATIVE';
-    // Close and re-open the modal to reflect the new mode
+    // Store the pending mode so the re-opened modal uses it instead of Firebase
+    window._calPendingMode = modeValue;
     var modal = document.getElementById('calAvailSettingsModal');
     if (modal) modal.remove();
     _calShowAvailabilitySettings();
@@ -1524,11 +1525,15 @@ window._calShowAvailabilitySettings = async function() {
 
     // ── SECTION 1: Availability Calendars (personal, read-only) ──
     // ── Scheduling Mode selector ──
-    var _currentMode = 'shared_calendar'; // default for now
-    try {
-        var _modeSnap = await firebaseDB.ref(bandPath('scheduling_mode')).once('value');
-        if (_modeSnap.val() && _modeSnap.val().mode) _currentMode = _modeSnap.val().mode;
-    } catch(e) {}
+    // Use pending mode from dropdown switch if available, otherwise read from Firebase
+    var _currentMode = window._calPendingMode || 'shared_calendar';
+    if (!window._calPendingMode) {
+        try {
+            var _modeSnap = await firebaseDB.ref(bandPath('scheduling_mode')).once('value');
+            if (_modeSnap.val() && _modeSnap.val().mode) _currentMode = _modeSnap.val().mode;
+        } catch(e) {}
+    }
+    window._calPendingMode = null; // clear after use
     var modeHtml = '<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--gl-border-subtle)">';
     modeHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Scheduling Mode</div>';
     modeHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">How your band manages scheduling.</div>';
