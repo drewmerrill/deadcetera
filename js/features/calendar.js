@@ -1638,10 +1638,13 @@ window._calShowAvailabilitySettings = async function() {
         + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
         + '</div>';
 
-    // Mode A: band calendar first (primary), then availability (secondary)
-    // Mode B/C: availability first (primary), then band calendar (secondary)
+    // Mode A: band calendar only — personal calendars and conflict rules are not relevant
+    // Mode B: availability calendars + conflict rules (primary), band calendar (secondary)
+    // Mode C: minimal — just the mode selector + save
     if (_calIsModeA()) {
-        body.innerHTML = modeHtml + bandCalHtml + calHtml + rulesHtml + saveHtml;
+        body.innerHTML = modeHtml + bandCalHtml + saveHtml;
+    } else if (_calIsModeC()) {
+        body.innerHTML = modeHtml + saveHtml;
     } else {
         body.innerHTML = modeHtml + calHtml + rulesHtml + bandCalHtml + saveHtml;
     }
