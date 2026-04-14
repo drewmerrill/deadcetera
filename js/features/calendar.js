@@ -2498,124 +2498,13 @@ function renderCalendarInner() {
         });
     }
 
-    // Wait for Firebase before loading events — prevents hang on loadBandDataFromDrive
-    var _initialNavId = ++_calNavSeq; // capture nav sequence for race guard
-    var _calLoadPromise = (typeof GLStore !== 'undefined' && GLStore.ready)
-        ? GLStore.ready(['firebase'], 12000).then(function() { return loadCalendarEvents(); })
-        : loadCalendarEvents();
-    _calLoadPromise.catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
-        // Race guard: if user navigated to a different month while loading, discard
-        if (_initialNavId !== _calNavSeq) {
-            console.log('[Calendar] Discarding stale initial render (navId=' + _initialNavId + ' current=' + _calNavSeq + ')');
-            return;
-        }
-        _availRendered = true;
-        const eventDates = result ? result.dateMap : {};
-        const blockedRanges = result ? (result.blockedRanges || []) : [];
-        const grid = document.getElementById('calGrid');
-        if (!grid) return;
-        // Recompute from CURRENT view state (not captured values) to avoid stale month offset
-        var _cYear = calViewYear, _cMonth = calViewMonth;
-        var _cFirstDay = new Date(_cYear, _cMonth, 1).getDay();
-        var _cDaysInMonth = new Date(_cYear, _cMonth + 1, 0).getDate();
-        var _cPrefix = _cYear + '-' + String(_cMonth + 1).padStart(2, '0') + '-';
-        var _cToday = new Date().toISOString().split('T')[0];
-        console.log('[Calendar] Initial render painting: month=' + _cYear + '-' + (_cMonth+1) + ' firstDay=' + _cFirstDay);
-        let g = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;">';
-        dNames.forEach((d,i) => {
-            const w = i===0||i===6;
-            g += `<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:${w?'var(--accent-light)':'var(--gl-text-tertiary)'};text-align:center;padding:6px 0">${d}</div>`;
-        });
-        for (let i=0;i<_cFirstDay;i++) g += '<div></div>';
-        for (let d=1;d<=_cDaysInMonth;d++) {
-            const ds = `${_cPrefix}${String(d).padStart(2,'0')}`;
-            const isToday = ds===_cToday;
-            const dow = new Date(_cYear,_cMonth,d).getDay();
-            const w = dow===0||dow===6;
-            const dayEvents = eventDates ? (eventDates[ds] || []) : [];
-            const blockedList = blockedRanges.filter(b => b.startDate && b.endDate && ds >= b.startDate && ds <= b.endDate);
-            const isBlocked = blockedList.length > 0;
-            const hasHardConflict = blockedList.some(b => b._conflictType !== 'soft');
-            const isSoftOnly = isBlocked && !hasHardConflict;
-            // Determine dominant event type
-            const isGig = dayEvents.some(e => e.type === 'gig');
-            const isRehearsal = dayEvents.some(e => e.type === 'rehearsal');
-            const isUnavailable = dayEvents.some(e => e.type === 'unavailable' || e.type === 'unavailable_unassigned');
-            const hasEvent = dayEvents.length > 0;
-            // State class (priority: gig > rehearsal > hard blocked > soft > best > default)
-            const isFuture = ds >= _cToday;
-            const isBest = isFuture && !hasEvent && !isBlocked && !w;
-            let state = 'default';
-            let stateClass = '';
-            let icon = '';
-            if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
-            else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
-            else if (isUnavailable) { state = 'unavailable'; stateClass = 'gl-day--blocked'; icon = '\uD83D\uDEAB'; }
-            else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
-            else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
-            else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
-            else if (hasEvent) { icon = dayEvents[0].type === 'meeting' ? '\uD83D\uDC65' : '\uD83D\uDCC5'; }
-            if (isToday) stateClass += ' gl-day--today';
-            // Hover content — explains the color with time-aware detail
-            let hoverHtml = '';
-            if (isGig) {
-                const ev = dayEvents.find(e => e.type === 'gig');
-                if (ev) {
-                    hoverHtml = '<div class="gl-day-hover">';
-                    if (ev.venue || ev.location) hoverHtml += '<div style="font-weight:600;color:var(--gl-text)">' + (ev.venue || ev.location) + '</div>';
-                    if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
-                    hoverHtml += '</div>';
-                }
-            } else if (isRehearsal) {
-                const ev = dayEvents.find(e => e.type === 'rehearsal');
-                if (ev) {
-                    hoverHtml = '<div class="gl-day-hover">';
-                    if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
-                    if (ev.location || ev.venue) hoverHtml += '<div>' + (ev.location || ev.venue) + '</div>';
-                    hoverHtml += '</div>';
-                }
-            } else if (isBlocked && blockedList.length) {
-                // Determine event context for conflict explanation
-                var _evtContext = isGig ? 'this gig' : isRehearsal ? 'rehearsal' : 'rehearsal';
-                var _hardCount = blockedList.filter(function(x) { return x._conflictType !== 'soft'; }).length;
-                var _softCount = blockedList.filter(function(x) { return x._conflictType === 'soft'; }).length;
-                hoverHtml = '<div class="gl-day-hover">';
-                // Summary line
-                if (_hardCount && _softCount) hoverHtml += '<div style="font-size:0.9em;color:var(--gl-text-tertiary);margin-bottom:3px">' + _hardCount + ' conflict' + (_hardCount > 1 ? 's' : '') + ', ' + _softCount + ' same-day</div>';
-                blockedList.slice(0,3).forEach(b => {
-                    var name = (b.person || 'Member').split(' ')[0];
-                    var time = b._timeLabel || '';
-                    var conflictNote = b._conflictType === 'soft'
-                        ? '<span style="color:var(--gl-text-tertiary)"> (same day, does not conflict)</span>'
-                        : '<span style="color:#f87171"> (conflicts with ' + _evtContext + ')</span>';
-                    hoverHtml += '<div>' + name + ' busy' + (time ? ' ' + time : '') + conflictNote + '</div>';
-                });
-                if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
-                hoverHtml += '</div>';
-            } else if (isBest) {
-                var _syncCov = (typeof _calGetSyncCoverage === 'function') ? _calGetSyncCoverage() : null;
-                var _bestExplain = 'No conflicts \u2014 everyone\u2019s clear';
-                if (_syncCov && _syncCov.connected < _syncCov.total) {
-                    _bestExplain = 'No conflicts from ' + _syncCov.connected + ' synced calendar' + (_syncCov.connected > 1 ? 's' : '');
-                }
-                hoverHtml = '<div class="gl-day-hover">' + _bestExplain + '</div>';
-            } else if (state === 'default' && isFuture) {
-                hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
-            }
-            g += `<div class="gl-day ${stateClass}" data-date="${ds}" data-state="${state}"${isBlocked?' data-blocked="true"':''} onclick="calDayClick(${_cYear},${_cMonth},${d})">
-                <div class="gl-day-num">${d}</div>
-                ${icon ? '<div class="gl-day-icon">' + icon + '</div>' : ''}
-                ${hoverHtml}
-            </div>`;
-        }
-        g += '</div>';
-        grid.innerHTML = g;
-        // Render availability matrix from blocked ranges
-        _calCachedBlockedRanges = result ? (result.blockedRanges || []) : [];
-        _calRenderAvailabilityMatrix(_calCachedBlockedRanges);
-        // Overlay external Google Calendar events (non-blocking)
-        _calOverlayExternalEvents(_cPrefix, _cDaysInMonth);
-    });
+    // Single grid render path — _calRenderGridOnly is the ONLY grid painter.
+    // This eliminates the race condition between two async render callbacks
+    // that could overwrite each other with different firstDay offsets.
+    var _calGridEl = document.getElementById('calGrid');
+    if (_calGridEl) {
+        _calRenderGridOnly(_calGridEl);
+    }
 }
 
 // Race-condition safe: each nav increments a sequence counter.
