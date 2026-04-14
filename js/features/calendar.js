@@ -2626,7 +2626,37 @@ function _calRenderGridOnly() {
                 + '</div>';
         }
         g += '</div>';
+        g += '<div id="grid-debug-marker" style="color:red;font-size:12px;font-weight:bold">GRID PAINTED</div>';
+
+        // ── DIAGNOSTIC: before write ──
+        var _preGrid = document.getElementById('calGrid');
+        console.log('[GRID DEBUG] PRE-WRITE: getElementById=', !!_preGrid, 'grid===preGrid:', grid === _preGrid,
+            'grid.isConnected:', grid.isConnected,
+            'g.length:', g.length, 'g preview:', g.substring(0, 300));
+        console.log('[GRID DEBUG] PRE-WRITE: grid.offsetWidth:', grid.offsetWidth, 'offsetHeight:', grid.offsetHeight);
+
         grid.innerHTML = g;
+
+        // ── DIAGNOSTIC: after write ──
+        var _postGrid = document.getElementById('calGrid');
+        console.log('[GRID DEBUG] POST-WRITE: getElementById=', !!_postGrid,
+            'innerHTML.length:', _postGrid ? _postGrid.innerHTML.length : 'N/A',
+            'children.length:', _postGrid ? _postGrid.children.length : 'N/A');
+        if (_postGrid) {
+            var _cs = window.getComputedStyle(_postGrid);
+            console.log('[GRID DEBUG] POST-WRITE computed style: display:', _cs.display,
+                'visibility:', _cs.visibility, 'opacity:', _cs.opacity,
+                'height:', _cs.height, 'overflow:', _cs.overflow);
+            console.log('[GRID DEBUG] POST-WRITE: offsetWidth:', _postGrid.offsetWidth, 'offsetHeight:', _postGrid.offsetHeight);
+            // Check first child (the grid wrapper div)
+            if (_postGrid.firstElementChild) {
+                var _wcs = window.getComputedStyle(_postGrid.firstElementChild);
+                console.log('[GRID DEBUG] WRAPPER child: display:', _wcs.display,
+                    'visibility:', _wcs.visibility, 'height:', _wcs.height,
+                    'opacity:', _wcs.opacity, 'overflow:', _wcs.overflow);
+            }
+        }
+
         grid.style.opacity = '1';
         grid.style.minHeight = '';
         _calOverlayExternalEvents(monthPrefix, daysInMonth);
