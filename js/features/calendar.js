@@ -147,6 +147,17 @@ function _calShowModeChooser() {
         + '</div>';
 }
 
+// Live mode switch in Rules modal — re-renders modal body to match selected mode
+window._calModeDropdownChanged = function(modeValue) {
+    _calSchedulingMode = modeValue === 'shared_calendar' ? 'A_SHARED_SYNC'
+        : modeValue === 'personal_availability' ? 'B_PERSONAL_AVAILABILITY'
+        : 'C_NATIVE';
+    // Close and re-open the modal to reflect the new mode
+    var modal = document.getElementById('calAvailSettingsModal');
+    if (modal) modal.remove();
+    _calShowAvailabilitySettings();
+};
+
 // Lightweight analytics helper for calendar events
 function _calTrack(event, data) {
     try {
@@ -1521,7 +1532,7 @@ window._calShowAvailabilitySettings = async function() {
     var modeHtml = '<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--gl-border-subtle)">';
     modeHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Scheduling Mode</div>';
     modeHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">How your band manages scheduling.</div>';
-    modeHtml += '<select id="calOptSchedulingMode" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
+    modeHtml += '<select id="calOptSchedulingMode" onchange="_calModeDropdownChanged(this.value)" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
     modeHtml += '<option value="shared_calendar"' + (_currentMode === 'shared_calendar' ? ' selected' : '') + '>\u2601\uFE0F Shared Calendar \u2014 everything stays in sync</option>';
     modeHtml += '<option value="personal_availability"' + (_currentMode === 'personal_availability' ? ' selected' : '') + '>\uD83D\uDCC5 Find the Best Date \u2014 who can make it</option>';
     modeHtml += '<option value="native"' + (_currentMode === 'native' ? ' selected' : '') + '>\u26A1 Quick Scheduling \u2014 no setup needed</option>';
