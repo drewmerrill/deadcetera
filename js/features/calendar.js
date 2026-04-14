@@ -2643,9 +2643,11 @@ function _calRenderGridOnly(grid) {
                 + '</div>';
         }
         g += '</div>';
-        grid.innerHTML = g;
-        grid.style.opacity = '1';
-        grid.style.minHeight = ''; // release height lock after render
+        // Re-acquire grid element in case renderCalendarInner recreated it
+        var _liveGrid = document.getElementById('calGrid') || grid;
+        _liveGrid.innerHTML = g;
+        _liveGrid.style.opacity = '1';
+        _liveGrid.style.minHeight = '';
         _calOverlayExternalEvents(monthPrefix, daysInMonth);
     }).catch(function() {
         // Network error fallback — render empty grid, don't hang
