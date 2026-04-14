@@ -97,50 +97,52 @@ function _calShowModeChooser() {
     if (!el) return;
     var bandName = localStorage.getItem('deadcetera_band_name') || 'your band';
     var _esc = (typeof escHtml === 'function') ? escHtml(bandName) : bandName;
-    var _memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 0;
+    var _mc = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 0;
 
     _calTrack('chooser_shown');
 
-    // Recommended default: Mode C for fastest activation, Mode B if 3+ members
-    var _recMode = _memberCount >= 3 ? 'personal_availability' : 'native';
+    // A/B test bucket: always Mode C recommended (fastest first-value)
+    // Future: swap to band-size heuristic via Firebase Remote Config
+    var _recMode = 'native';
 
-    var _cardStyle = 'width:100%;padding:16px 18px;margin-bottom:10px;border-radius:12px;color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit;transition:transform 0.1s,box-shadow 0.1s';
-    var _cardHover = 'onmouseenter="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 16px rgba(0,0,0,0.2)\'" onmouseleave="this.style.transform=\'\';this.style.boxShadow=\'\'"';
+    var _cs = 'width:100%;padding:16px 18px;margin-bottom:10px;border-radius:12px;color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit;transition:transform 0.1s,box-shadow 0.1s;-webkit-tap-highlight-color:transparent';
+    var _hover = function(m) { return 'onclick="_calTrack(\'card_clicked\',{card:\'' + m + '\'});_calSelectMode(\'' + m + '\')" onmouseenter="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 16px rgba(0,0,0,0.2)\'" onmouseleave="this.style.transform=\'\';this.style.boxShadow=\'\'"'; };
 
-    el.innerHTML = '<div style="max-width:520px;margin:16px auto;text-align:center">'
-        + '<div style="font-size:1.2em;font-weight:800;color:var(--gl-text);margin-bottom:4px">\uD83C\uDFB8 Get ' + _esc + ' on the same page</div>'
-        + '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:20px">Pick how your band schedules. You can change this anytime in Rules.</div>'
+    el.innerHTML = '<div style="max-width:500px;margin:16px auto;text-align:center;padding:0 12px">'
+        + '<div style="font-size:1.15em;font-weight:800;color:var(--gl-text);margin-bottom:4px">\uD83C\uDFB8 Get ' + _esc + ' on the same page</div>'
+        + '<div style="font-size:0.8em;color:var(--gl-text-tertiary);margin-bottom:20px;line-height:1.4">Pick how your band schedules. Change anytime in Rules.</div>'
 
-        // RECOMMENDED: Mode C or B (based on band size)
-        + '<button onclick="_calSelectMode(\'' + _recMode + '\')" ' + _cardHover + ' style="' + _cardStyle + ';border:2px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.06)">'
+        // ── RECOMMENDED: Mode C ──
+        + '<button ' + _hover('native') + ' style="' + _cs + ';border:2px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.06)">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
-        + '<span style="font-size:1.1em">' + (_recMode === 'native' ? '\u26A1' : '\uD83D\uDCC5') + '</span>'
-        + '<span style="font-size:0.92em;font-weight:700;color:#fbbf24">' + (_recMode === 'native' ? 'Get Organized Fast' : 'Never Double-Book Again') + '</span>'
-        + '<span style="font-size:0.6em;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:#fbbf24;font-weight:800;margin-left:auto">RECOMMENDED</span>'
+        + '<span style="font-size:1.1em">\u26A1</span>'
+        + '<span style="font-size:0.92em;font-weight:700;color:#fbbf24">Schedule Your Next Rehearsal Now</span>'
+        + '<span style="font-size:0.55em;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:#fbbf24;font-weight:800;margin-left:auto;white-space:nowrap">RECOMMENDED</span>'
         + '</div>'
-        + '<div style="font-size:0.82em;color:var(--gl-text);line-height:1.4">' + (_recMode === 'native'
-            ? 'Schedule your next rehearsal in 10 seconds. Band members RSVP with one tap. No calendar setup \u2014 start right now.'
-            : 'Connect calendars and GrooveLinx tells you \u201CWednesday works for ' + (_memberCount - 1) + ' of ' + _memberCount + '.\u201D No more guessing.') + '</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text);line-height:1.4;margin-bottom:3px">Create a rehearsal in seconds. Band members RSVP with one tap. Zero setup.</div>'
+        + '<div style="font-size:0.68em;color:var(--gl-text-tertiary);font-style:italic">Upgrade to calendar sync anytime.</div>'
         + '</button>'
 
-        // Mode A: Shared Calendar
-        + '<button onclick="_calSelectMode(\'shared_calendar\')" ' + _cardHover + ' style="' + _cardStyle + ';border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04)">'
+        // ── Mode B ──
+        + '<button ' + _hover('personal_availability') + ' style="' + _cs + ';border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.04)">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        + '<span style="font-size:1em">\uD83D\uDCC5</span>'
+        + '<span style="font-size:0.88em;font-weight:700;color:#a5b4fc">Never Double-Book Again</span>'
+        + '</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">'
+        + (_mc >= 3 ? '\u201CWednesday works for ' + (_mc - 1) + ' of ' + _mc + '.\u201D ' : '')
+        + 'GrooveLinx reads calendars and finds the best date.</div>'
+        + '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-top:2px">\uD83D\uDD12 No one sees your private calendar details.</div>'
+        + '</button>'
+
+        // ── Mode A ──
+        + '<button ' + _hover('shared_calendar') + ' style="' + _cs + ';border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.03)">'
         + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
         + '<span style="font-size:1em">\u2601\uFE0F</span>'
-        + '<span style="font-size:0.88em;font-weight:700;color:#86efac">Keep Everything in Sync</span>'
+        + '<span style="font-size:0.88em;font-weight:700;color:#86efac">One Calendar. Zero Confusion.</span>'
         + '</div>'
-        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Your shared Google Calendar and GrooveLinx stay mirrored. Create in one, see in both.</div>'
-        + '</button>'
-
-        // The non-recommended option (whichever wasn't recommended above)
-        + '<button onclick="_calSelectMode(\'' + (_recMode === 'native' ? 'personal_availability' : 'native') + '\')" ' + _cardHover + ' style="' + _cardStyle + ';border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.015)">'
-        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-        + '<span style="font-size:1em">' + (_recMode === 'native' ? '\uD83D\uDCC5' : '\u26A1') + '</span>'
-        + '<span style="font-size:0.88em;font-weight:600;color:var(--gl-text-secondary)">' + (_recMode === 'native' ? 'Never Double-Book Again' : 'Get Organized Fast') + '</span>'
-        + '</div>'
-        + '<div style="font-size:0.78em;color:var(--gl-text-tertiary);line-height:1.4">' + (_recMode === 'native'
-            ? 'Connect personal calendars. GrooveLinx finds dates when everyone\u2019s free.'
-            : 'No calendar setup. Schedule rehearsals and RSVP right here.') + '</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Two-way sync with your shared Google Calendar. Create in one place, see everywhere.</div>'
+        + '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-top:2px">\u2714 Works with the Google Calendar you already use.</div>'
         + '</button>'
         + '</div>';
 }
@@ -1823,6 +1825,7 @@ window._calConnectGoogle = async function() {
                 _calRenderGooglePanel();
                 _calRenderGridOnly();
                 if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                _calTrack('auth_completed');
                 // Auto-open availability setup if first time connecting
                 if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
                     var _cals = await GLCalendarSync.listCalendars();
@@ -1911,6 +1914,7 @@ function _calTriggerGoogleReAuth() {
     if (typeof tokenClient !== 'undefined' && tokenClient) {
         _calConnecting = true; // suppress Firebase listener re-renders during consent
         if (typeof showToast === 'function') showToast('Opening Google sign-in\u2026');
+        _calTrack('auth_started');
         try {
             // Revoke existing token first so Google re-evaluates all scopes (including calendar)
             var _oldToken = (typeof accessToken !== 'undefined') ? accessToken : null;
@@ -1957,6 +1961,7 @@ function _calTriggerGoogleReAuth() {
                         _calRenderGooglePanel();
                         _calRenderGridOnly();
                         if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
+                        _calTrack('auth_completed');
                         // Auto-open availability setup on first connect
                         if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
                             var _authCals = await GLCalendarSync.listCalendars();
