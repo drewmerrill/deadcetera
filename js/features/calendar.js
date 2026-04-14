@@ -2505,6 +2505,7 @@ function renderCalendarInner() {
         : loadCalendarEvents();
     _calLoadPromise.catch(function(e) { console.warn('[Calendar] loadCalendarEvents failed:', e); return null; }).then(result => {
         // Race guard: if user navigated to a different month while loading, discard
+        console.log('[Calendar] Initial render callback: navId=' + _initialNavId + ' current=' + _calNavSeq + ' firstDay=' + firstDay + ' month=' + month);
         if (_initialNavId !== _calNavSeq) {
             console.log('[Calendar] Discarding stale initial render (nav changed during load)');
             return;
@@ -2650,7 +2651,7 @@ function _calRenderGridOnly(grid) {
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var todayStr = new Date().toISOString().split('T')[0];
     var monthPrefix = year + '-' + String(month + 1).padStart(2, '0') + '-';
-    console.log('[Calendar Grid]', year, month, '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | days:', daysInMonth, '| tz:', Intl.DateTimeFormat().resolvedOptions().timeZone);
+    console.log('[Calendar Grid] navId:', navId, '| month:', year + '-' + (month+1), '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | days:', daysInMonth);
 
     loadCalendarEvents().then(function(result) {
         // Race guard: if a newer navigation happened, discard this result
