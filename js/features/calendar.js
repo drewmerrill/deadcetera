@@ -1922,6 +1922,8 @@ function _calTriggerGoogleReAuth() {
     if (_calConnecting) return; // already in progress — prevent double-click
     if (typeof tokenClient !== 'undefined' && tokenClient) {
         _calConnecting = true; // suppress Firebase listener re-renders during consent
+        // Safety: auto-reset if consent flow doesn't complete within 90 seconds
+        setTimeout(function() { _calConnecting = false; }, 90000);
         if (typeof showToast === 'function') showToast('Opening Google sign-in\u2026');
         _calTrack('auth_started');
         try {
