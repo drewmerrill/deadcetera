@@ -690,6 +690,7 @@ window.GLCalendarSync = (function() {
   // Imports events not already in GrooveLinx. Does NOT require extendedProperties.
   // Handles all-day events, multi-day spans, and timed events.
   async function pullBandCalendarEvents(timeMin, timeMax) {
+    console.log('[CalSync] pullBandCalendarEvents called. hasCalendarScope:', hasCalendarScope(), 'accessToken:', typeof accessToken !== 'undefined' && accessToken ? accessToken.substring(0,10) + '...' : 'NONE');
     if (!hasCalendarScope()) return { imported: 0, skipped: 0, fetched: 0, events: [], error: 'no scope' };
     var bandCalId = await _getBandCalendarId();
     if (!bandCalId) return { imported: 0, skipped: 0, fetched: 0, events: [], error: 'no band calendar configured' };
@@ -805,8 +806,10 @@ window.GLCalendarSync = (function() {
         return { isUnavail: false };
       }
 
+      console.log('[CalSync] Processing', googleEvents.length, 'events. Known IDs:', Object.keys(knownGoogleIds).length);
       googleEvents.forEach(function(gEv) {
         if (gEv.status === 'cancelled') { skipped.push({ id: gEv.id, reason: 'cancelled' }); return; }
+        console.log('[CalSync] Checking:', gEv.summary, '| id:', gEv.id.substring(0,12), '| known:', !!knownGoogleIds[gEv.id]);
         if (knownGoogleIds[gEv.id]) {
           // Already imported — but check if we should upgrade its type to 'unavailable'
           // (handles events imported before unavailability detection was added)
