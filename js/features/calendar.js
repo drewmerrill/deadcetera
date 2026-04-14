@@ -904,8 +904,9 @@ window._calSyncNow = async function() {
         _calConnectedCache = null;
         await _calLoadConnections();
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
-        // Re-render full calendar grid (new events may need dots)
-        renderCalendarInner();
+        // Refresh grid + Google panel (don't rebuild entire page shell)
+        var _sg = document.getElementById('calGrid');
+        if (_sg) _calRenderGridOnly(_sg);
         _calRenderGooglePanel();
         // Build explicit sync status message
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
@@ -1656,8 +1657,10 @@ window._calConnectGoogle = async function() {
                 localStorage.removeItem('gl_cal_impact_shown');
                 _calConnectedCache = null;
                 await _calLoadConnections();
-                // Full re-render to clear stale state messages
-                renderCalendarInner();
+                // Refresh Google panel + grid (don't rebuild entire shell)
+                _calRenderGooglePanel();
+                var _cg1 = document.getElementById('calGrid');
+                if (_cg1) _calRenderGridOnly(_cg1);
                 if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                 // Auto-open availability setup if first time connecting
                 if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
@@ -1789,8 +1792,10 @@ function _calTriggerGoogleReAuth() {
                         localStorage.removeItem('gl_cal_impact_shown');
                         _calConnectedCache = null;
                         await _calLoadConnections();
-                        // Full re-render — clears stale "Availability not enabled" messages
-                        renderCalendarInner();
+                        // Refresh panels (don't rebuild entire shell — destroys grid)
+                        _calRenderGooglePanel();
+                        var _cg2 = document.getElementById('calGrid');
+                        if (_cg2) _calRenderGridOnly(_cg2);
                         if (typeof showToast === 'function') showToast('\u2713 Google Calendar connected');
                         // Auto-open availability setup on first connect
                         if (!localStorage.getItem('gl_cal_settings_shown') && GLCalendarSync.listCalendars) {
