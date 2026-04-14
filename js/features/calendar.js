@@ -96,63 +96,97 @@ function _calShowModeChooser() {
     var el = document.getElementById('calendarInner');
     if (!el) return;
     var bandName = localStorage.getItem('deadcetera_band_name') || 'your band';
+    var _esc = (typeof escHtml === 'function') ? escHtml(bandName) : bandName;
+
+    // Track that chooser was shown
+    _calTrack('chooser_shown');
+
     el.innerHTML = '<div style="max-width:560px;margin:20px auto;text-align:center">'
-        + '<div style="font-size:1.3em;font-weight:800;color:var(--gl-text);margin-bottom:6px">How does ' + (typeof escHtml === 'function' ? escHtml(bandName) : bandName) + ' schedule?</div>'
-        + '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:24px">Pick the way that matches how your band works today. You can change this anytime.</div>'
+        + '<div style="font-size:1.3em;font-weight:800;color:var(--gl-text);margin-bottom:6px">How does ' + _esc + ' schedule?</div>'
+        + '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-bottom:24px">Pick what matches your band today. You can always upgrade later.</div>'
+
         // Mode A: Shared Calendar
-        + '<button onclick="_calSelectMode(\'shared_calendar\')" style="width:100%;padding:16px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
-        + '<div style="font-size:0.95em;font-weight:700;color:#86efac;margin-bottom:4px">\u2601\uFE0F We share one Google Calendar</div>'
-        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">GrooveLinx syncs two-way with your shared calendar. Events, rehearsals, and gigs stay mirrored. Best for bands with an existing shared calendar.</div>'
+        + '<button onclick="_calSelectMode(\'shared_calendar\')" style="width:100%;padding:18px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(34,197,94,0.3);background:rgba(34,197,94,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<span style="font-size:1.2em">\u2601\uFE0F</span>'
+        + '<span style="font-size:0.95em;font-weight:700;color:#86efac">Shared Calendar</span>'
+        + '</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text);margin-bottom:4px">Everything stays in sync \u2014 rehearsals, gigs, and availability in one place.</div>'
+        + '<div style="font-size:0.72em;color:var(--gl-text-tertiary)">Best if your band already uses a shared Google Calendar.</div>'
         + '</button>'
+
         // Mode B: Personal Availability
-        + '<button onclick="_calSelectMode(\'personal_availability\')" style="width:100%;padding:16px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
-        + '<div style="font-size:0.95em;font-weight:700;color:#a5b4fc;margin-bottom:4px">\uD83D\uDCC5 Everyone uses their own calendar</div>'
-        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Each member connects their personal calendar. GrooveLinx finds dates when everyone\u2019s free and recommends the best time to rehearse.</div>'
+        + '<button onclick="_calSelectMode(\'personal_availability\')" style="width:100%;padding:18px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.06);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<span style="font-size:1.2em">\uD83D\uDCC5</span>'
+        + '<span style="font-size:0.95em;font-weight:700;color:#a5b4fc">Find the Best Date</span>'
+        + '</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text);margin-bottom:4px">\u201CWednesday works for 4 of 5\u201D \u2014 GrooveLinx finds when everyone\u2019s free.</div>'
+        + '<div style="font-size:0.72em;color:var(--gl-text-tertiary)">Best if members have separate busy schedules.</div>'
         + '</button>'
-        // Mode C: Native
-        + '<button onclick="_calSelectMode(\'native\')" style="width:100%;padding:16px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
-        + '<div style="font-size:0.95em;font-weight:700;color:var(--gl-text-tertiary);margin-bottom:4px">\uD83C\uDFB8 We mostly text / wing it</div>'
-        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Schedule rehearsals and gigs right in GrooveLinx. No calendar setup needed. RSVP by tapping. Upgrade to calendar sync anytime.</div>'
+
+        // Mode C: Native — intentional, not fallback
+        + '<button onclick="_calSelectMode(\'native\')" style="width:100%;padding:18px 20px;margin-bottom:10px;border-radius:12px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.04);color:var(--gl-text);cursor:pointer;text-align:left;font-family:inherit">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<span style="font-size:1.2em">\u26A1</span>'
+        + '<span style="font-size:0.95em;font-weight:700;color:#fbbf24">Start Scheduling Now</span>'
+        + '</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text);margin-bottom:4px">Schedule rehearsals in seconds. RSVP with one tap. No setup required.</div>'
+        + '<div style="font-size:0.72em;color:var(--gl-text-tertiary)">Best if you want to get organized immediately.</div>'
         + '</button>'
         + '</div>';
 }
 
-window._calSelectMode = async function(mode) {
+// Lightweight analytics helper for calendar events
+function _calTrack(event, data) {
+    try {
+        if (typeof GLUXTracker !== 'undefined' && GLUXTracker._logEvent) {
+            GLUXTracker._logEvent('cal_' + event, Object.assign({ mode: _calSchedulingMode || 'unknown' }, data || {}));
+        }
+    } catch(e) {}
+}
+
+window._calSelectMode = async function(mode, fromUpgrade) {
+    var oldMode = _calSchedulingMode;
     var modeKey = mode === 'shared_calendar' ? 'A_SHARED_SYNC'
         : mode === 'personal_availability' ? 'B_PERSONAL_AVAILABILITY'
         : 'C_NATIVE';
+
+    // Mode switch safety: if changing from an existing mode, confirm
+    if (fromUpgrade && oldMode && oldMode !== 'NOT_SET' && oldMode !== modeKey) {
+        var _switchMsg = 'Switch scheduling mode?\n\n'
+            + '\u2022 Your existing events will NOT be deleted\n'
+            + '\u2022 Google Calendar connections stay active\n'
+            + '\u2022 Only the scheduling UI and sync behavior change\n\n'
+            + 'You can switch back anytime from Rules.';
+        if (!confirm(_switchMsg)) return;
+    }
+
     _calSchedulingMode = modeKey;
     try {
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (db && typeof bandPath === 'function') {
             await db.ref(bandPath('scheduling_mode')).set({
                 mode: mode,
+                previousMode: oldMode || null,
                 setAt: new Date().toISOString(),
                 setBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
             });
         }
     } catch(e) {}
-    console.log('[Calendar] Mode selected:', modeKey);
+    console.log('[Calendar] Mode selected:', modeKey, fromUpgrade ? '(upgrade from ' + oldMode + ')' : '');
 
-    // Track activation
-    if (typeof GLUXTracker !== 'undefined' && GLUXTracker._logEvent) {
-        GLUXTracker._logEvent('scheduling_mode_selected', { mode: mode });
-    }
+    // Track
+    _calTrack(fromUpgrade ? 'mode_upgraded' : 'mode_selected', { mode: mode, from: oldMode });
 
-    if (typeof showToast === 'function') {
-        var labels = { shared_calendar: 'Shared Calendar Sync', personal_availability: 'Personal Availability', native: 'GrooveLinx Native' };
-        showToast('\u2713 ' + (labels[mode] || mode) + ' mode activated');
-    }
+    var labels = { shared_calendar: 'Shared Calendar', personal_availability: 'Find the Best Date', native: 'Quick Scheduling' };
+    if (typeof showToast === 'function') showToast('\u2713 ' + (labels[mode] || mode) + ' activated');
 
     // Re-render calendar with the new mode
     renderCalendarInner();
 
-    // Mode A: auto-open Google connect flow
-    if (mode === 'shared_calendar') {
-        setTimeout(function() { if (typeof _calConnectGoogle === 'function') _calConnectGoogle(); }, 500);
-    }
-    // Mode B: auto-open Google connect flow for personal calendars
-    if (mode === 'personal_availability') {
+    // Mode A/B: auto-open Google connect flow
+    if (mode === 'shared_calendar' || mode === 'personal_availability') {
         setTimeout(function() { if (typeof _calConnectGoogle === 'function') _calConnectGoogle(); }, 500);
     }
 };
@@ -1324,13 +1358,15 @@ async function _calRenderWeeklyPressure() {
     }
     // Mode-specific upgrade nudge
     if (_calIsModeC() && items.length >= 2) {
+        _calTrack('upgrade_prompt_seen', { from: 'C', to: 'B' });
         items.push('<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04);color:var(--gl-indigo)">'
-            + '<button onclick="_calSelectMode(\'personal_availability\')" style="background:none;border:none;color:var(--gl-indigo);cursor:pointer;font-size:1em;padding:0;font-family:inherit;text-decoration:underline">'
-            + '\uD83D\uDCC5 Want smarter scheduling? Connect calendars</button></div>');
+            + '<button onclick="_calSelectMode(\'personal_availability\',true)" style="background:none;border:none;color:var(--gl-indigo);cursor:pointer;font-size:1em;padding:0;font-family:inherit;text-decoration:underline">'
+            + '\uD83D\uDCC5 Know who can make it \u2014 connect calendars</button></div>');
     } else if (_calIsModeB() && items.length >= 2) {
+        _calTrack('upgrade_prompt_seen', { from: 'B', to: 'A' });
         items.push('<div style="margin-top:4px;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04);color:var(--gl-green)">'
-            + '<button onclick="_calSelectMode(\'shared_calendar\')" style="background:none;border:none;color:var(--gl-green);cursor:pointer;font-size:1em;padding:0;font-family:inherit;text-decoration:underline">'
-            + '\u2601\uFE0F Want seamless sync? Connect a shared calendar</button></div>');
+            + '<button onclick="_calSelectMode(\'shared_calendar\',true)" style="background:none;border:none;color:var(--gl-green);cursor:pointer;font-size:1em;padding:0;font-family:inherit;text-decoration:underline">'
+            + '\u2601\uFE0F Keep everything in sync \u2014 connect a shared calendar</button></div>');
     }
     if (!items.length) { el.innerHTML = ''; return; }
     el.innerHTML = '<div style="padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);font-size:0.68em;color:var(--gl-text-tertiary);display:flex;flex-direction:column;gap:2px;margin-bottom:var(--gl-space-xs,4px)">'
@@ -1471,13 +1507,16 @@ window._calShowAvailabilitySettings = async function() {
     modeHtml += '<div style="font-weight:700;color:var(--gl-text);margin-bottom:4px">Scheduling Mode</div>';
     modeHtml += '<div style="font-size:0.82em;color:var(--gl-text-tertiary);margin-bottom:8px;line-height:1.4">How your band manages scheduling.</div>';
     modeHtml += '<select id="calOptSchedulingMode" style="width:100%;padding:6px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:var(--gl-text);border-radius:6px;font-size:0.9em;font-family:inherit">';
-    modeHtml += '<option value="shared_calendar"' + (_currentMode === 'shared_calendar' ? ' selected' : '') + '>\u2601\uFE0F Shared Calendar \u2014 two-way sync with Google</option>';
-    modeHtml += '<option value="personal_availability"' + (_currentMode === 'personal_availability' ? ' selected' : '') + ' disabled>\uD83D\uDCC5 Personal Availability \u2014 coming soon</option>';
-    modeHtml += '<option value="native"' + (_currentMode === 'native' ? ' selected' : '') + '>\uD83C\uDFB8 GrooveLinx Only \u2014 no external calendars</option>';
+    modeHtml += '<option value="shared_calendar"' + (_currentMode === 'shared_calendar' ? ' selected' : '') + '>\u2601\uFE0F Shared Calendar \u2014 everything stays in sync</option>';
+    modeHtml += '<option value="personal_availability"' + (_currentMode === 'personal_availability' ? ' selected' : '') + '>\uD83D\uDCC5 Find the Best Date \u2014 who can make it</option>';
+    modeHtml += '<option value="native"' + (_currentMode === 'native' ? ' selected' : '') + '>\u26A1 Quick Scheduling \u2014 no setup needed</option>';
     modeHtml += '</select>';
-    if (_currentMode === 'shared_calendar') {
-        modeHtml += '<div style="font-size:0.72em;color:var(--gl-green);margin-top:4px">\u2714 Events sync both ways with your shared Google Calendar. Changes made in Google appear here automatically.</div>';
-    }
+    var _modeDescs = {
+        shared_calendar: '\u2714 Rehearsals, gigs, and availability sync both ways with your shared Google Calendar.',
+        personal_availability: '\u2714 GrooveLinx reads each member\u2019s calendar to find when everyone\u2019s free.',
+        native: '\u2714 Schedule rehearsals and gigs right here. RSVP with one tap. No calendar setup.'
+    };
+    modeHtml += '<div style="font-size:0.72em;color:var(--gl-green);margin-top:4px">' + (_modeDescs[_currentMode] || '') + '</div>';
     modeHtml += '</div>';
 
     var calHtml = '<div style="margin-bottom:16px">';
@@ -4579,6 +4618,7 @@ async function calSaveEvent(editIdx) {
     // Clear form + re-render grid BEFORE enrichment — user sees success immediately
     document.getElementById('calEventFormArea').innerHTML = '';
     if (typeof showToast === 'function') showToast('\u2713 Event saved');
+    _calTrack('event_created', { type: ev.type });
     _calRenderGridOnly();
 
     // ── PHASE B: POST-SAVE ENRICHMENT (non-blocking) ─────────────────────────
