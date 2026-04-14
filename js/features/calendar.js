@@ -2641,6 +2641,7 @@ function _calRenderGridOnly(grid) {
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var todayStr = new Date().toISOString().split('T')[0];
     var monthPrefix = year + '-' + String(month + 1).padStart(2, '0') + '-';
+    console.log('[Calendar Grid]', year, month, '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | days:', daysInMonth, '| tz:', Intl.DateTimeFormat().resolvedOptions().timeZone);
 
     loadCalendarEvents().then(function(result) {
         // Race guard: if a newer navigation happened, discard this result
