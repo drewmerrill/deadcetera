@@ -2819,10 +2819,17 @@ function _calRenderGridOnly() {
                     blockedList.slice(0,3).forEach(function(b) {
                         var nm = (b.person || 'Member').split(' ')[0];
                         var tm = b._timeLabel || '';
+                        // Show specific reason if available (band calendar events have titles)
+                        var _reasonText = 'busy';
+                        if (b.reason && b.reason.indexOf('Busy') !== 0 && b.reason.indexOf('(') !== 0) {
+                            _reasonText = b.reason; // use the actual event title/reason
+                        } else if (tm) {
+                            _reasonText = 'busy ' + tm;
+                        }
                         var note = b._conflictType === 'soft'
-                            ? '<span style="color:var(--gl-text-tertiary)"> (same day, does not conflict)</span>'
-                            : '<span style="color:#f87171"> (conflicts with ' + _evCtx + ')</span>';
-                        hoverHtml += '<div>' + nm + ' busy' + (tm ? ' ' + tm : '') + note + '</div>';
+                            ? '<span style="color:var(--gl-text-tertiary)"> (same day)</span>'
+                            : '';
+                        hoverHtml += '<div>' + nm + ' \u2014 ' + _reasonText + note + '</div>';
                     });
                     if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                     hoverHtml += '</div>';
@@ -3184,9 +3191,16 @@ async function loadCalendarEvents() {
     });
     if (_unavailCount > 0) console.log('[Calendar] Member unavailability: injected', _unavailCount, 'blocked ranges from band calendar');
 
-    // Dedup blocked ranges by person + date + time (prevents duplicate entries from multiple sources)
+    // Dedup blocked ranges by person + date + time
+    // Prefer entries with specific reasons (band calendar titles) over generic "Busy"
     var _dedupSeen = {};
     var _beforeDedup = blocked.length;
+    // Sort so band_calendar source entries come first (they have real titles)
+    blocked.sort(function(a, b) {
+        if (a._source === 'band_calendar' && b._source !== 'band_calendar') return -1;
+        if (b._source === 'band_calendar' && a._source !== 'band_calendar') return 1;
+        return 0;
+    });
     blocked = blocked.filter(function(b) {
         var key = (b.person || '') + '|' + (b.startDate || '') + '|' + (b._timeLabel || 'allday');
         if (_dedupSeen[key]) return false;
