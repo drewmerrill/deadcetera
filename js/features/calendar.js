@@ -2811,7 +2811,7 @@ function _calRenderGridOnly() {
                 }
             } else if (isBlocked) {
                 if (blockedList.length) {
-                    var _evCtx = isGig ? 'this gig' : 'rehearsal';
+                    var _evCtx = isGig ? 'this gig' : isRehearsal ? 'rehearsal' : 'scheduling';
                     var _hCnt = blockedList.filter(function(x) { return x._conflictType !== 'soft'; }).length;
                     var _sCnt = blockedList.filter(function(x) { return x._conflictType === 'soft'; }).length;
                     hoverHtml = '<div class="gl-day-hover">';
@@ -3183,6 +3183,17 @@ async function loadCalendarEvents() {
         });
     });
     if (_unavailCount > 0) console.log('[Calendar] Member unavailability: injected', _unavailCount, 'blocked ranges from band calendar');
+
+    // Dedup blocked ranges by person + date + time (prevents duplicate entries from multiple sources)
+    var _dedupSeen = {};
+    var _beforeDedup = blocked.length;
+    blocked = blocked.filter(function(b) {
+        var key = (b.person || '') + '|' + (b.startDate || '') + '|' + (b._timeLabel || 'allday');
+        if (_dedupSeen[key]) return false;
+        _dedupSeen[key] = true;
+        return true;
+    });
+    if (blocked.length < _beforeDedup) console.log('[Calendar] Deduped blocked ranges:', _beforeDedup, '\u2192', blocked.length);
 
     // Sort blocked dates chronologically
     blocked.sort(function(a, b) { return (a.startDate || '').localeCompare(b.startDate || ''); });
