@@ -1047,13 +1047,15 @@ window._calSyncNow = async function() {
         if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
         else _syncMsg += ' \u2014 everything up to date';
         if (_syncResult.error) _syncMsg += ' (\u26A0 ' + _syncResult.error + ')';
-        if (!_hasAvail) _syncMsg += '. Availability not enabled.';
-        if (typeof showToast === 'function') showToast(_syncMsg, _hasAvail ? 4000 : 6000);
+        // Only show availability warning in Mode B (personal calendars mode)
+        if (!_hasAvail && _calIsModeB()) _syncMsg += '. Availability not enabled.';
+        if (typeof showToast === 'function') showToast(_syncMsg, 4000);
     } catch(e) {
         if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
     }
     var _hasAvailRestore = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
-    if (btn) { btn.textContent = _hasAvailRestore ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events'; btn.disabled = false; }
+    var _syncBtnLabel = _calIsModeA() ? '\u21BB Sync Calendars' : (_hasAvailRestore ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events');
+    if (btn) { btn.textContent = _syncBtnLabel; btn.disabled = false; }
 };
 
 // Dismiss date selection — return to global mode
@@ -1277,7 +1279,7 @@ function _calRenderGooglePanel() {
     if (!_isConnected) {
         html += '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.82em;font-weight:700">Connect Google Calendar</button>';
     } else {
-        var _syncLabel = _hasFreeBusy ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events';
+        var _syncLabel = (_calIsModeA() || _hasFreeBusy) ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events';
         html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
             + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">' + _syncLabel + '</button>'
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
