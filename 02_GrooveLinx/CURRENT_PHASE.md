@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-16 (Mobile setlist redesign + SWR trust states + Stronger cache invalidation)_
+_Updated: 2026-04-16 (Mobile touch reorder + Calendar repaint opt + Mode burn test)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -12,6 +12,26 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## What's Live (2026-04-13)
+
+### Mobile Touch Reorder (NEW 2026-04-16)
+- **▲/▼ move buttons** replace HTML5 drag on ≤600px (drag events don't fire on iOS Safari)
+- Buttons: 32×32px touch targets, stacked vertically next to song number
+- `_slMovesong(setIdx, songIdx, dir)` splices array + re-renders + marks dirty
+- Desktop keeps native drag-and-drop (mobile rows omit `draggable` attribute)
+- First song hides ▲, last song hides ▼
+
+### Calendar Repaint Optimization (NEW 2026-04-16)
+- `_calEventFingerprint()` checksums date+type+title+endDate+updated for all events
+- Background SWR refresh skips `_calRenderGridOnly()` when fingerprint matches cached version
+- Fingerprint seeded from cache on SWR first paint
+- Freshness indicator still updates even when grid repaint skipped
+
+### Mode A/B/C Burn Test (2026-04-16)
+- **Verified clean**: all mode-dependent UI properly gated
+- Mode A: band calendar only (no personal calendars, no availability warnings)
+- Mode B: availability + conflict rules + band calendar + partial scope warnings
+- Mode C: mode selector only (Google panel cleared, availability hidden, quick actions hidden)
+- No cross-contamination found
 
 ### Mobile Setlist Redesign (NEW 2026-04-16)
 - **2-line stacked card layout** for editor song rows on ≤600px
