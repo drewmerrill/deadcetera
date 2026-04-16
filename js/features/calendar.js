@@ -2659,6 +2659,7 @@ async function renderCalendarInner() {
             '<span id="calMonthLabel" style="font-size:1.1em;font-weight:800;color:var(--text);letter-spacing:-0.02em;transition:opacity 0.12s ease">' + mNames[month] + ' ' + year + '</span>' +
             '<button onclick="calNavMonth(1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1em;padding:6px 10px">\u2192</button>' +
         '</div>' +
+        '<div id="calFreshness" style="text-align:center;font-size:0.68em;color:var(--text-dim,#64748b);margin:-4px 0 6px;min-height:14px;transition:color 0.2s"></div>' +
         '<div id="calGrid" style="transition:opacity 0.12s ease;will-change:opacity"></div>' +
     '</div>' +
     // Contextual actions — primary inline, secondary tucked away
@@ -2919,9 +2920,24 @@ function _calBackgroundRefresh() {
         _calBuildDateMap(events);
         // Repaint grid
         _calRenderGridOnly();
+        // Update freshness indicator
+        var _calFreshEl = document.getElementById('calFreshness');
+        if (_calFreshEl) {
+            _calFreshEl.style.color = 'var(--text-dim,#64748b)';
+            _calFreshEl.textContent = 'Updated just now';
+            // Fade out after 8 seconds
+            setTimeout(function() {
+                if (_calFreshEl.textContent === 'Updated just now') _calFreshEl.textContent = '';
+            }, 8000);
+        }
         console.log('[Calendar] SWR: background refresh complete —', events.length, 'events');
     }).catch(function(e) {
         console.warn('[Calendar] SWR: background refresh failed:', e);
+        var _calFreshEl = document.getElementById('calFreshness');
+        if (_calFreshEl) {
+            _calFreshEl.style.color = '#f59e0b';
+            _calFreshEl.textContent = 'Offline \u2014 showing cached events';
+        }
     });
 }
 
@@ -2969,6 +2985,13 @@ async function loadCalendarEvents() {
         console.log('[Calendar] SWR: rendering from cache (' + GLStore.getCacheAgeLabel('calendar_events') + ')');
         var _cachedEvents = toArray(_cached.data);
         var _cachedDateMap = _calBuildDateMap(_cachedEvents);
+        // Show freshness: cached age + refreshing
+        var _calAgeLabel = GLStore.getCacheAgeLabel('calendar_events');
+        var _calFreshEl = document.getElementById('calFreshness');
+        if (_calFreshEl) {
+            _calFreshEl.style.color = '#818cf8';
+            _calFreshEl.textContent = (_calAgeLabel || 'Cached') + ' \u00B7 Refreshing\u2026';
+        }
         // Start background refresh but return cached data immediately
         _calBackgroundRefresh();
         _usedCache = true;
@@ -2981,6 +3004,15 @@ async function loadCalendarEvents() {
     // Update SWR cache
     if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {
         GLStore.setCachedBandData('calendar_events', events);
+    }
+    // Update freshness after direct load
+    var _calFreshEl2 = document.getElementById('calFreshness');
+    if (_calFreshEl2) {
+        _calFreshEl2.style.color = 'var(--text-dim,#64748b)';
+        _calFreshEl2.textContent = 'Updated just now';
+        setTimeout(function() {
+            if (_calFreshEl2.textContent === 'Updated just now') _calFreshEl2.textContent = '';
+        }, 8000);
     }
     // Build dateMap using shared helper
     var dateMap = _calBuildDateMap(events);

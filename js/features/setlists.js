@@ -27,12 +27,48 @@ function renderSetlistsPage(el) {
     el.innerHTML = '<div class="page-header"><h1>Build Your Set</h1><p>This is what you\u2019ll play. Keep it tight, clear, and fun.</p></div>'
         + '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">'
         + '<button class="btn btn-primary" onclick="createNewSetlist()" style="font-size:0.85em">+ Build a New Set</button>'
+        + '<div id="slFreshness" class="sl-freshness"></div>'
         + '<div id="slFilterBar" style="display:flex;gap:4px;margin-left:auto"></div></div>'
         + '<div id="setlistsList"></div>';
     if (typeof loadGigHistory === 'function') loadGigHistory().then(function() { loadSetlists(); }); else loadSetlists();
 }
 
 var _slLoadedFromNetwork = false;
+
+// Deep comparison for SWR invalidation — catches edits, reorders, lock changes
+function _slDataChanged(cached, fresh) {
+    if (!cached || !fresh) return true;
+    if (cached.length !== fresh.length) return true;
+    for (var i = 0; i < fresh.length; i++) {
+        var c = cached[i] || {};
+        var f = fresh[i] || {};
+        // ID change
+        if (c.setlistId !== f.setlistId) return true;
+        // Metadata changes
+        if (c.name !== f.name || c.date !== f.date || c.notes !== f.notes) return true;
+        // Lock state change
+        if (!!c.locked !== !!f.locked) return true;
+        // Updated timestamp change
+        if ((c.updated || '') !== (f.updated || '')) return true;
+        // Song count / order checksum
+        var cSongs = _slSetlistSongChecksum(c);
+        var fSongs = _slSetlistSongChecksum(f);
+        if (cSongs !== fSongs) return true;
+    }
+    return false;
+}
+
+function _slSetlistSongChecksum(sl) {
+    var parts = [];
+    (sl.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : (item.title || '');
+            var seg = typeof item === 'object' ? (item.segue || '') : '';
+            parts.push(t + ':' + seg);
+        });
+    });
+    return parts.join('|');
+}
 
 async function loadSetlists() {
     // SWR: render from cache immediately if available
@@ -48,14 +84,22 @@ async function loadSetlists() {
             _slLoadedFromNetwork = true;
             if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) GLStore.setCachedBandData('setlists', fresh);
             if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(fresh);
-            // Only repaint if data actually changed
-            if (fresh.length !== _cachedData.length || JSON.stringify(fresh.map(function(s){return s.setlistId})) !== JSON.stringify(_cachedData.map(function(s){return s.setlistId}))) {
+            // Deep comparison: check IDs, count, updated timestamps, song counts, lock state
+            var _changed = _slDataChanged(_cachedData, fresh);
+            if (_changed) {
                 _slRenderList(fresh);
                 console.log('[Setlists] SWR: background refresh — repainted (' + fresh.length + ' setlists)');
             } else {
+                // Still update freshness indicator even if data unchanged
+                var freshEl = document.getElementById('slFreshness');
+                if (freshEl) { freshEl.className = 'sl-freshness'; freshEl.textContent = 'Updated just now'; }
                 console.log('[Setlists] SWR: background refresh — no changes');
             }
-        }).catch(function(e) { console.warn('[Setlists] SWR: background refresh failed:', e); });
+        }).catch(function(e) {
+            console.warn('[Setlists] SWR: background refresh failed:', e);
+            var freshEl = document.getElementById('slFreshness');
+            if (freshEl) { freshEl.className = 'sl-freshness sl-stale'; freshEl.textContent = 'Offline \u2014 showing cached data'; }
+        });
         return;
     }
 
@@ -79,6 +123,19 @@ function _slRenderList(rawData) {
     var data = rawData.map(function(sl, origIdx) { return Object.assign({}, sl, { _origIdx: origIdx }); });
     var container = document.getElementById('setlistsList');
     if (!container) return;
+
+    // Freshness indicator
+    var freshEl = document.getElementById('slFreshness');
+    if (freshEl) {
+        var ageLabel = (typeof GLStore !== 'undefined' && GLStore.getCacheAgeLabel) ? GLStore.getCacheAgeLabel('setlists') : '';
+        if (_slLoadedFromNetwork) {
+            freshEl.className = 'sl-freshness';
+            freshEl.textContent = ageLabel || 'Updated just now';
+        } else if (ageLabel) {
+            freshEl.className = 'sl-freshness sl-stale';
+            freshEl.textContent = ageLabel + ' \u00B7 Refreshing\u2026';
+        }
+    }
 
     // Render filter bar
     var filterBar = document.getElementById('slFilterBar');
@@ -157,13 +214,46 @@ function _slRenderList(rawData) {
         '.sl-card-badge{font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#a5b4fc;text-transform:uppercase;margin-bottom:2px}',
         '.sl-card-actions{display:flex;gap:4px;flex-shrink:0;align-items:center;flex-wrap:wrap}',
         '.sl-card-actions button{font-size:0.72em;padding:4px 8px;border-radius:5px;cursor:pointer}',
-        // Mobile: stack vertically
+        // Mobile list cards: stack with title first, full-width open button
         '@media(max-width:600px){',
-        '  .sl-card{flex-direction:column;gap:6px}',
+        '  .sl-card{flex-direction:column;gap:8px;padding:12px 14px}',
         '  .sl-card-info{width:100%}',
-        '  .sl-card-actions{width:100%;justify-content:flex-start;order:-1;margin-bottom:2px}',
-        '  .sl-card-title{white-space:normal}',
-        '}'
+        '  .sl-card-actions{width:100%;gap:8px;order:1}',
+        '  .sl-card-actions button{padding:8px 12px;font-size:0.82em;min-height:40px}',
+        '  .sl-card-actions .sl-btn-open{flex:1;text-align:center}',
+        '  .sl-card-title{white-space:normal;font-size:1em}',
+        '  .sl-card-meta{font-size:0.78em;margin-top:4px}',
+        '  .sl-card-preview{font-size:0.72em;margin-top:4px;white-space:normal;line-height:1.3}',
+        '}',
+        // Mobile editor song rows: 2-line stacked card
+        '@media(max-width:600px){',
+        '  .sl-song-row{flex-wrap:wrap!important;min-height:52px!important;padding:8px 10px!important;gap:6px!important;align-content:center!important}',
+        '  .sl-song-row .sl-row-line1{display:flex;align-items:center;gap:6px;width:100%;min-width:0}',
+        '  .sl-song-row .sl-row-line2{display:flex;align-items:center;gap:6px;width:100%;padding-left:26px;flex-wrap:wrap}',
+        '  .sl-song-row .sl-drag{font-size:1.2em!important;padding:4px!important;min-width:24px;text-align:center}',
+        '  .sl-song-row .sl-segue{font-size:0.82em!important;padding:4px 8px!important;min-height:32px}',
+        '  .sl-song-row .sl-delete{min-width:32px;min-height:32px;font-size:1em!important;padding:4px 8px!important}',
+        '  .sl-break-btn{font-size:0.62em!important;padding:2px 8px!important}',
+        '}',
+        // Mobile song picker rows
+        '@media(max-width:600px){',
+        '  #slPickerList label{padding:10px 0!important;min-height:44px}',
+        '  #slPickerList label input[type=checkbox]{width:20px!important;height:20px!important}',
+        '  #slPickerList label span{font-size:0.9em!important}',
+        '}',
+        // Mobile search results
+        '@media(max-width:600px){',
+        '  .sl-search-result{padding:12px 10px!important;min-height:44px;font-size:0.9em!important}',
+        '}',
+        // Mobile bottom CTA safe area
+        '@media(max-width:600px){',
+        '  #slMobileSaveBar{padding-bottom:calc(10px + env(safe-area-inset-bottom))!important}',
+        '  #slStickyFooter{padding-bottom:calc(12px + env(safe-area-inset-bottom))!important}',
+        '}',
+        // Freshness indicator
+        '.sl-freshness{font-size:0.68em;color:var(--text-dim,#64748b);display:flex;align-items:center;gap:4px;padding:4px 0}',
+        '.sl-freshness.sl-refreshing{color:#818cf8}',
+        '.sl-freshness.sl-stale{color:#f59e0b}'
     ].join('\n');
     document.head.appendChild(s);
 })();
@@ -198,11 +288,10 @@ function _slRenderCard(sl, isNext) {
         + (preview ? '<div class="sl-card-preview">' + preview + '</div>' : '')
         + '</div>'
         + '<div class="sl-card-actions">'
-        + '<button onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Open">\u25B6 Open</button>'
+        + '<button class="sl-btn-open" onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Open">\u25B6 Open</button>'
         + '<button onclick="slPlaySetlist(' + idx + ')" style="border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;font-weight:600" title="Play">\uD83C\uDFA7</button>'
         + (sl.locked
-            ? '<button style="border:1px solid rgba(255,255,255,0.06);background:none;color:#475569;opacity:0.3;cursor:not-allowed" title="Unlock to edit">\u270F\uFE0F</button>'
-              + '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;font-weight:600" title="Click to unlock">\uD83D\uDD12 Locked</button>'
+            ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;font-weight:600" title="Click to unlock">\uD83D\uDD12 Locked</button>'
             : '<button onclick="editSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)" title="Edit">\u270F\uFE0F</button>'
               + '<button onclick="slToggleLock(' + idx + ')" style="border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e;font-weight:600" title="Lock this setlist">\uD83D\uDD13 Unlocked</button>'
               + '<button onclick="deleteSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b" title="Delete">\uD83D\uDDD1\uFE0F</button>')
@@ -350,8 +439,8 @@ async function createNewSetlist() {
         <div id="slSets"><div class="app-card" style="background:rgba(255,255,255,0.02)"><h3 style="color:var(--accent-light)">All Songs</h3><div id="slSet0Songs"></div><div style="margin-top:8px"><div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px;font-style:italic">Start with 3 songs. GrooveMate can finish the rest.</div><div style="display:flex;gap:6px;margin-bottom:4px"><input class="app-input" id="slAddSong0" placeholder="Add a song..." oninput="slSearchSong(this,0)" style="flex:1"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(0)" style="flex-shrink:0;white-space:nowrap" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="flex-shrink:0;white-space:nowrap" title="Toggle: show only gig-ready/active songs, or all songs">⚡ All Songs</button></div><div id="slSongResults0"></div></div></div></div>
         <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>
         <div style="height:60px"></div></div>
-        <div id="slStickyFooter" style="position:sticky;bottom:0;z-index:100;padding:12px 16px;background:linear-gradient(to top,#0f172a 60%,transparent);display:flex;gap:8px;justify-content:flex-end">
-            <button class="btn btn-success" onclick="slSaveSetlist()" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3)">\uD83D\uDD12 Lock This Set</button>
+        <div id="slStickyFooter" style="position:sticky;bottom:0;z-index:100;padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,#0f172a 60%,transparent);display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-success" onclick="slSaveSetlist()" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3);min-height:44px">\uD83D\uDD12 Lock This Set</button>
         </div>`;
     _slInitVenuePicker(await GLStore.getVenues(), null);
 }
@@ -398,7 +487,7 @@ function slSearchSong(input, setIdx) {
         .slice(0, 10);
     var html = matches.map(s => {
         var safeTitle = s.title.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        return `<div class="list-item" style="cursor:pointer;padding:8px 10px;font-size:0.85em" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},'${safeTitle}')">
+        return `<div class="list-item sl-search-result" style="cursor:pointer;padding:10px 10px;font-size:0.85em" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},'${safeTitle}')">
         <span style="color:var(--text-dim);font-size:0.8em;width:30px">${s.band||''}</span> ${s.title}</div>`;
     }).join('');
     // Show "Add as new song" only when no matching songs exist in the library
@@ -406,7 +495,7 @@ function slSearchSong(input, setIdx) {
     if (!exactMatch && input.value.trim().length >= 2 && matches.length === 0) {
         var safeVal = input.value.trim().replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         var displayVal = input.value.trim().replace(/</g, '&lt;');
-        html += `<div class="list-item" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},'${safeVal}')">+ Add &quot;${displayVal}&quot; to this band</div>`;
+        html += `<div class="list-item sl-search-result" style="cursor:pointer;padding:10px;font-size:0.85em;color:#818cf8;border-top:1px solid rgba(255,255,255,0.06)" onmousedown="event.preventDefault();slAddSongToSet(${setIdx},'${safeVal}')">+ Add &quot;${displayVal}&quot; to this band</div>`;
     }
     results.innerHTML = html;
     results.style.cssText = 'position:relative;z-index:100000';
@@ -475,6 +564,7 @@ function slRenderSetSongs(setIdx) {
     if (!el) return;
     const items = window._slSets[setIdx]?.songs || [];
     const allSongsList = (typeof allSongs !== 'undefined' ? allSongs : songs || []);
+    var _isMobile = window.innerWidth <= 600;
     var rows = items.map((item, i) => {
         const s = typeof item === 'string' ? item : item.title;
         const segue = typeof item === 'object' ? (item.segue || 'stop') : 'stop';
@@ -491,25 +581,52 @@ function slRenderSetSongs(setIdx) {
         if (_slBl > 0) _slBadges += '<span style="font-size:0.7em;opacity:0.7" title="Band: ' + _slBl + '/5">' + '\u2764'.repeat(Math.min(_slBl, 5)) + '</span>';
         if (_slAl > 0) _slBadges += '<span style="font-size:0.7em;opacity:0.7" title="Audience: ' + _slAl + '/5">' + '\uD83D\uDC9C'.repeat(Math.min(_slAl, 5)) + '</span>';
         if (_slRd > 0 && _slRd < 3) _slBadges += '<span style="font-size:0.6em;color:#f59e0b;font-weight:700" title="Readiness: ' + _slRd.toFixed(1) + '/5">\u26A0</span>';
-        var row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
-            style="padding:3px 6px;font-size:0.82em;gap:4px;align-items:center;cursor:default;min-height:28px" title="${histTip.replace(/"/g,'&quot;')}">
-            <span style="color:#475569;cursor:grab;font-size:0.9em;flex-shrink:0">\u2807</span>
-            <span style="color:var(--text-dim);min-width:16px;font-weight:600;flex-shrink:0;font-size:0.85em">${i + 1}</span>
-            <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
-            ${_slBadges}${keyStr}${bpmStr}
-            <select onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
-                title="Transition: · = Full Stop, → = Flow into next, ~ = Segue/blend, | = Hard cutoff"
-                style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:4px;padding:1px 3px;font-size:0.72em;font-weight:700;cursor:pointer;flex-shrink:0">
-                <option value="stop" ${segue==='stop'?'selected':''} title="Full stop between songs">·</option>
-                <option value="flow" ${segue==='flow'?'selected':''} title="Flow directly into next song">→</option>
-                <option value="segue" ${segue==='segue'?'selected':''} title="Segue / blend into next">~</option>
-                <option value="cutoff" ${segue==='cutoff'?'selected':''} title="Hard cutoff">|</option>
-            </select>
-            <button class="btn btn-sm btn-ghost" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
-        </div>`;
+        var row;
+        if (_isMobile) {
+            // Mobile: 2-line stacked card layout
+            row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
+                style="padding:8px 10px;font-size:0.88em;gap:0;align-items:stretch;cursor:default;min-height:52px;flex-direction:column" title="${histTip.replace(/"/g,'&quot;')}">
+                <div class="sl-row-line1" style="display:flex;align-items:center;gap:6px;min-width:0">
+                    <span class="sl-drag" style="color:#475569;cursor:grab;font-size:1.2em;flex-shrink:0;padding:4px;min-width:24px;text-align:center">\u2807</span>
+                    <span style="color:var(--text-dim);min-width:18px;font-weight:700;flex-shrink:0;font-size:0.85em">${i + 1}</span>
+                    <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.95em">${s}</span>
+                    <button class="btn btn-sm btn-ghost sl-delete" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:4px 8px;flex-shrink:0;font-size:1em;min-width:32px;min-height:32px;color:#64748b">\u2715</button>
+                </div>
+                <div class="sl-row-line2" style="display:flex;align-items:center;gap:6px;padding-left:30px;margin-top:4px;flex-wrap:wrap">
+                    ${keyStr}${bpmStr}${_slBadges}
+                    <span style="flex:1"></span>
+                    <select class="sl-segue" onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
+                        title="Transition"
+                        style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:6px;padding:4px 8px;font-size:0.82em;font-weight:700;cursor:pointer;flex-shrink:0;min-height:32px">
+                        <option value="stop" ${segue==='stop'?'selected':''}>· Stop</option>
+                        <option value="flow" ${segue==='flow'?'selected':''}>→ Flow</option>
+                        <option value="segue" ${segue==='segue'?'selected':''}>~ Segue</option>
+                        <option value="cutoff" ${segue==='cutoff'?'selected':''}>| Cut</option>
+                    </select>
+                </div>
+            </div>`;
+        } else {
+            // Desktop: compact single-line row
+            row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
+                style="padding:3px 6px;font-size:0.82em;gap:4px;align-items:center;cursor:default;min-height:28px" title="${histTip.replace(/"/g,'&quot;')}">
+                <span class="sl-drag" style="color:#475569;cursor:grab;font-size:0.9em;flex-shrink:0">\u2807</span>
+                <span style="color:var(--text-dim);min-width:16px;font-weight:600;flex-shrink:0;font-size:0.85em">${i + 1}</span>
+                <span style="flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}</span>
+                ${_slBadges}${keyStr}${bpmStr}
+                <select class="sl-segue" onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
+                    title="Transition: · = Full Stop, → = Flow into next, ~ = Segue/blend, | = Hard cutoff"
+                    style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:4px;padding:1px 3px;font-size:0.72em;font-weight:700;cursor:pointer;flex-shrink:0">
+                    <option value="stop" ${segue==='stop'?'selected':''} title="Full stop between songs">·</option>
+                    <option value="flow" ${segue==='flow'?'selected':''} title="Flow directly into next song">→</option>
+                    <option value="segue" ${segue==='segue'?'selected':''} title="Segue / blend into next">~</option>
+                    <option value="cutoff" ${segue==='cutoff'?'selected':''} title="Hard cutoff">|</option>
+                </select>
+                <button class="btn btn-sm btn-ghost sl-delete" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
+            </div>`;
+        }
         // Insert Set Break button between songs — always subtly visible
         if (i < items.length - 1) {
-            row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.5em;padding:0 6px;border:1px dashed rgba(245,158,11,0.2);background:rgba(15,23,42,0.95);color:#64748b;border-radius:3px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;position:relative;top:-5px;z-index:1;line-height:1.4" onmouseover="this.style.opacity='1';this.style.color='#fbbf24'" onmouseout="this.style.opacity='0.3';this.style.color='#64748b'">✂ add a break</button></div>`;
+            row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button class="sl-break-btn" onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.5em;padding:0 6px;border:1px dashed rgba(245,158,11,0.2);background:rgba(15,23,42,0.95);color:#64748b;border-radius:3px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;position:relative;top:-5px;z-index:1;line-height:1.4" onmouseover="this.style.opacity='1';this.style.color='#fbbf24'" onmouseout="this.style.opacity='0.3';this.style.color='#64748b'">✂ add a break</button></div>`;
         }
         return row;
     }).join('');
@@ -808,9 +925,10 @@ async function editSetlist(idx) {
         }).join('') + '</div>'
         // Mobile bottom save bar
         + '<div id="slShowTotal" style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim);display:flex;align-items:center;justify-content:space-between"></div>'
-        + '<div id="slMobileSaveBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(99,102,241,0.3);padding:10px 16px;gap:8px">'
-        + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.82em">Cancel</button>'
-        + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.88em;font-weight:700">\uD83D\uDD12 Lock This Set</button>'
+        + '<div style="height:80px"></div>'
+        + '<div id="slMobileSaveBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(99,102,241,0.3);padding:10px 16px;padding-bottom:calc(10px + env(safe-area-inset-bottom));gap:8px">'
+        + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.88em;min-height:44px">Cancel</button>'
+        + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.92em;font-weight:700;min-height:44px">\uD83D\uDD12 Lock This Set</button>'
         + '</div>'
         + '</div>';
     // Show mobile save bar on small screens
