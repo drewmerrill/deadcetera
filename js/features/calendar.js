@@ -2892,7 +2892,26 @@ async function loadCalendarEvents() {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     // Cache events by date for quick lookup in calDayClick
     _calEventsByDate = {};
-    events.forEach(function(ev, idx) { if (ev.date) { if (!_calEventsByDate[ev.date]) _calEventsByDate[ev.date] = []; _calEventsByDate[ev.date].push(Object.assign({}, ev, { _idx: idx })); } });
+    events.forEach(function(ev, idx) {
+        if (!ev.date) return;
+        var evCopy = Object.assign({}, ev, { _idx: idx });
+        // Multi-day events: add to every date they span
+        if (ev.endDate && ev.endDate > ev.date) {
+            var _s = new Date(ev.date + 'T12:00:00');
+            var _e = new Date(ev.endDate + 'T12:00:00');
+            var _days = Math.round((_e - _s) / 86400000) + 1; // inclusive
+            if (_days > 60) _days = 60; // safety cap
+            for (var _di = 0; _di < _days; _di++) {
+                var _d = new Date(_s.getTime() + _di * 86400000);
+                var _ds = _d.getFullYear() + '-' + String(_d.getMonth() + 1).padStart(2, '0') + '-' + String(_d.getDate()).padStart(2, '0');
+                if (!_calEventsByDate[_ds]) _calEventsByDate[_ds] = [];
+                _calEventsByDate[_ds].push(evCopy);
+            }
+        } else {
+            if (!_calEventsByDate[ev.date]) _calEventsByDate[ev.date] = [];
+            _calEventsByDate[ev.date].push(evCopy);
+        }
+    });
 
     // Expand recurring events for the viewed month (grid dots)
     var daysInViewMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
@@ -4035,6 +4054,12 @@ function calDayClick(y, m, d) {
                 var icon = ev.type === 'rehearsal' ? '\uD83C\uDFB8' : ev.type === 'gig' ? '\uD83C\uDFA4' : '\uD83D\uDCCC';
                 var label = ev.name || ev.title || (ev.type || 'Event');
                 var time = ev.time ? (' \u00B7 ' + ev.time) : '';
+                // Show date range for multi-day events
+                if (ev.endDate && ev.endDate > ev.date) {
+                    var _sLabel = new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    var _eLabel = new Date(ev.endDate + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    time = ' \u00B7 ' + _sLabel + ' \u2013 ' + _eLabel;
+                }
                 var loc = ev.location ? (' \u00B7 ' + ev.location) : (ev.venue ? (' \u00B7 ' + ev.venue) : '');
                 var evId = ev.eventId || ev.id || '';
                 var _isImported = ev._importedFromGoogle;
@@ -4329,6 +4354,7 @@ async function calAddEvent(date, editIdx, existing) {
         </select></div>
         <div class="form-row"><span class="form-label">Title</span><input class="app-input" id="calTitle" placeholder="${_titlePlaceholder}" value="${ev.title||''}"></div>
         <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark"></div>
+        <div class="form-row"><span class="form-label">End Date</span><input class="app-input" id="calEndDate" type="date" value="${ev.endDate||''}" style="color-scheme:dark" placeholder="Same day (leave blank for single day)"></div>
         <div class="form-row"><span class="form-label">Time</span><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark"></div>
         <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
             <span class="form-label">Venue</span>
@@ -4633,8 +4659,11 @@ async function calSaveEvent(editIdx) {
         if (typeof showToast === 'function') showToast('\u26A0 Form not ready — try again', 3000);
         return;
     }
+    var _endDateVal = (document.getElementById('calEndDate') || {}).value || '';
     const ev = {
         date: _dateEl.value,
+        endDate: (_endDateVal && _endDateVal > _dateEl.value) ? _endDateVal : '',
+        isAllDay: !!_endDateVal && !((document.getElementById('calTime') || {}).value),
         type: _typeEl.value,
         title: _titleEl.value,
         time: (document.getElementById('calTime') || {}).value || '',

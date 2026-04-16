@@ -78,12 +78,6 @@ window.GLCalendarSync = (function() {
     var summary = (bandName ? bandName + ' ' : '') + (typeLabel[glEvent.type] || 'Event');
     if (glEvent.title && glEvent.title !== 'Band Rehearsal') summary += ' \u2014 ' + glEvent.title;
 
-    // Parse time
-    var time = glEvent.time || '19:00';
-    var startDt = new Date(glEvent.date + 'T' + time + ':00');
-    if (isNaN(startDt.getTime())) startDt = new Date(glEvent.date + 'T19:00:00');
-    var endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
-
     // Description
     var descParts = [];
     if (opts.planSummary) descParts.push('\uD83C\uDFAF ' + opts.planSummary);
@@ -91,12 +85,32 @@ window.GLCalendarSync = (function() {
     if (descParts.length) descParts.push('');
     descParts.push('Created with GrooveLinx \u2014 groovelinx.com');
 
-    var body = {
-      summary: summary,
-      description: descParts.join('\n'),
-      start: { dateTime: startDt.toISOString(), timeZone: 'America/New_York' },
-      end: { dateTime: endDt.toISOString(), timeZone: 'America/New_York' }
-    };
+    var body = { summary: summary, description: descParts.join('\n') };
+
+    // Multi-day all-day event: use date (not dateTime) format
+    if (glEvent.endDate && glEvent.endDate > glEvent.date && (!glEvent.time && !glEvent.startTime)) {
+      // Google all-day end date is EXCLUSIVE — add one day
+      var _endExcl = new Date(glEvent.endDate + 'T12:00:00');
+      _endExcl.setDate(_endExcl.getDate() + 1);
+      var _endStr = _endExcl.getFullYear() + '-' + String(_endExcl.getMonth() + 1).padStart(2, '0') + '-' + String(_endExcl.getDate()).padStart(2, '0');
+      body.start = { date: glEvent.date };
+      body.end = { date: _endStr };
+    } else if (glEvent.isAllDay && !glEvent.time && !glEvent.startTime) {
+      // Single all-day event
+      var _nextDay = new Date(glEvent.date + 'T12:00:00');
+      _nextDay.setDate(_nextDay.getDate() + 1);
+      var _ndStr = _nextDay.getFullYear() + '-' + String(_nextDay.getMonth() + 1).padStart(2, '0') + '-' + String(_nextDay.getDate()).padStart(2, '0');
+      body.start = { date: glEvent.date };
+      body.end = { date: _ndStr };
+    } else {
+      // Timed event
+      var time = glEvent.time || glEvent.startTime || '19:00';
+      var startDt = new Date(glEvent.date + 'T' + time + ':00');
+      if (isNaN(startDt.getTime())) startDt = new Date(glEvent.date + 'T19:00:00');
+      var endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
+      body.start = { dateTime: startDt.toISOString(), timeZone: 'America/New_York' };
+      body.end = { dateTime: endDt.toISOString(), timeZone: 'America/New_York' };
+    }
 
     if (glEvent.venue || glEvent.location) {
       body.location = glEvent.venue || glEvent.location;
@@ -730,6 +744,15 @@ window.GLCalendarSync = (function() {
     existing.location = googleEvent.location || existing.location;
     existing.notes = googleEvent.description || existing.notes;
     existing.isAllDay = isAllDay;
+    // Multi-day: compute endDate from Google's exclusive end date
+    if (isAllDay && endStr) {
+      var _rEnd = new Date(endStr.substring(0, 10) + 'T12:00:00');
+      _rEnd.setDate(_rEnd.getDate() - 1);
+      var _rEndStr = _rEnd.getFullYear() + '-' + String(_rEnd.getMonth() + 1).padStart(2, '0') + '-' + String(_rEnd.getDate()).padStart(2, '0');
+      existing.endDate = _rEndStr > existing.date ? _rEndStr : '';
+    } else {
+      existing.endDate = '';
+    }
     if (!isAllDay && startStr.length > 10) {
       existing.time = startStr.substring(11, 16);
       if (endStr.length > 10) existing.endTime = endStr.substring(11, 16);
@@ -759,10 +782,19 @@ window.GLCalendarSync = (function() {
     else if (lc.indexOf('meeting') !== -1) inferredType = 'meeting';
     var eventTime = (!isAllDay && startStr.length > 10) ? startStr.substring(11, 16) : '';
     var eventEndTime = (!isAllDay && endStr.length > 10) ? endStr.substring(11, 16) : '';
+    // Multi-day all-day: store as single event with endDate (Google end is exclusive, subtract 1 day)
+    var eventEndDate = '';
+    if (isAllDay && endStr) {
+      var _endDt = new Date(endStr.substring(0, 10) + 'T12:00:00');
+      _endDt.setDate(_endDt.getDate() - 1); // Google exclusive → inclusive
+      var _endInclusive = _endDt.getFullYear() + '-' + String(_endDt.getMonth() + 1).padStart(2, '0') + '-' + String(_endDt.getDate()).padStart(2, '0');
+      if (_endInclusive > startStr.substring(0, 10)) eventEndDate = _endInclusive; // only set if multi-day
+    }
 
     return {
       id: (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       date: startStr.substring(0, 10),
+      endDate: eventEndDate,
       type: inferredType,
       title: summary,
       time: eventTime,
