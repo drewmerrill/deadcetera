@@ -2907,8 +2907,20 @@ function _calRenderGridOnly() {
 
 var _calEventsByDate = {}; // { 'YYYY-MM-DD': [event, ...] } — cached during render
 var _calEventsLoadedFromNetwork = false; // true after first successful Firebase read
+var _calLastEventFingerprint = ''; // checksum to skip redundant grid repaints
 
-// Background refresh: fetch fresh data and repaint grid if changed
+// Quick fingerprint of calendar events for change detection
+function _calEventFingerprint(events) {
+    if (!events || !events.length) return '0';
+    var parts = [];
+    for (var i = 0; i < events.length; i++) {
+        var e = events[i];
+        parts.push((e.date || '') + ':' + (e.type || '') + ':' + (e.title || '') + ':' + (e.endDate || '') + ':' + (e.updated || e.googleEventId || i));
+    }
+    return events.length + ':' + parts.join('|');
+}
+
+// Background refresh: fetch fresh data and repaint grid only if changed
 function _calBackgroundRefresh() {
     loadBandDataFromDrive('_band', 'calendar_events').then(function(data) {
         var events = (typeof toArray === 'function') ? toArray(data || []) : [];
@@ -2916,11 +2928,20 @@ function _calBackgroundRefresh() {
         if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {
             GLStore.setCachedBandData('calendar_events', events);
         }
-        // Rebuild dateMap with fresh data
-        _calBuildDateMap(events);
-        // Repaint grid
-        _calRenderGridOnly();
-        // Update freshness indicator
+        // Compare fingerprint — skip repaint if unchanged
+        var fp = _calEventFingerprint(events);
+        var changed = fp !== _calLastEventFingerprint;
+        _calLastEventFingerprint = fp;
+        if (changed) {
+            // Rebuild dateMap with fresh data
+            _calBuildDateMap(events);
+            // Repaint grid
+            _calRenderGridOnly();
+            console.log('[Calendar] SWR: background refresh — repainted (' + events.length + ' events)');
+        } else {
+            console.log('[Calendar] SWR: background refresh — no changes, skipped repaint');
+        }
+        // Update freshness indicator regardless
         var _calFreshEl = document.getElementById('calFreshness');
         if (_calFreshEl) {
             _calFreshEl.style.color = 'var(--text-dim,#64748b)';
@@ -2930,7 +2951,6 @@ function _calBackgroundRefresh() {
                 if (_calFreshEl.textContent === 'Updated just now') _calFreshEl.textContent = '';
             }, 8000);
         }
-        console.log('[Calendar] SWR: background refresh complete —', events.length, 'events');
     }).catch(function(e) {
         console.warn('[Calendar] SWR: background refresh failed:', e);
         var _calFreshEl = document.getElementById('calFreshness');
@@ -2984,6 +3004,7 @@ async function loadCalendarEvents() {
     if (_cached && _cached.data && !_calEventsLoadedFromNetwork) {
         console.log('[Calendar] SWR: rendering from cache (' + GLStore.getCacheAgeLabel('calendar_events') + ')');
         var _cachedEvents = toArray(_cached.data);
+        _calLastEventFingerprint = _calEventFingerprint(_cachedEvents);
         var _cachedDateMap = _calBuildDateMap(_cachedEvents);
         // Show freshness: cached age + refreshing
         var _calAgeLabel = GLStore.getCacheAgeLabel('calendar_events');

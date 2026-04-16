@@ -230,7 +230,6 @@ function _slRenderList(rawData) {
         '  .sl-song-row{flex-wrap:wrap!important;min-height:52px!important;padding:8px 10px!important;gap:6px!important;align-content:center!important}',
         '  .sl-song-row .sl-row-line1{display:flex;align-items:center;gap:6px;width:100%;min-width:0}',
         '  .sl-song-row .sl-row-line2{display:flex;align-items:center;gap:6px;width:100%;padding-left:26px;flex-wrap:wrap}',
-        '  .sl-song-row .sl-drag{font-size:1.2em!important;padding:4px!important;min-width:24px;text-align:center}',
         '  .sl-song-row .sl-segue{font-size:0.82em!important;padding:4px 8px!important;min-height:32px}',
         '  .sl-song-row .sl-delete{min-width:32px;min-height:32px;font-size:1em!important;padding:4px 8px!important}',
         '  .sl-break-btn{font-size:0.62em!important;padding:2px 8px!important}',
@@ -583,11 +582,13 @@ function slRenderSetSongs(setIdx) {
         if (_slRd > 0 && _slRd < 3) _slBadges += '<span style="font-size:0.6em;color:#f59e0b;font-weight:700" title="Readiness: ' + _slRd.toFixed(1) + '/5">\u26A0</span>';
         var row;
         if (_isMobile) {
-            // Mobile: 2-line stacked card layout
-            row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
+            // Mobile: 2-line stacked card layout with move buttons (no drag on iOS)
+            var _moveUp = i > 0 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},-1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 8px;min-width:32px;min-height:32px;cursor:pointer;font-size:0.9em;font-weight:700" title="Move up">\u25B2</button>` : '';
+            var _moveDn = i < items.length - 1 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 8px;min-width:32px;min-height:32px;cursor:pointer;font-size:0.9em;font-weight:700" title="Move down">\u25BC</button>` : '';
+            row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}"
                 style="padding:8px 10px;font-size:0.88em;gap:0;align-items:stretch;cursor:default;min-height:52px;flex-direction:column" title="${histTip.replace(/"/g,'&quot;')}">
                 <div class="sl-row-line1" style="display:flex;align-items:center;gap:6px;min-width:0">
-                    <span class="sl-drag" style="color:#475569;cursor:grab;font-size:1.2em;flex-shrink:0;padding:4px;min-width:24px;text-align:center">\u2807</span>
+                    <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">${_moveUp}${_moveDn}</div>
                     <span style="color:var(--text-dim);min-width:18px;font-weight:700;flex-shrink:0;font-size:0.85em">${i + 1}</span>
                     <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.95em">${s}</span>
                     <button class="btn btn-sm btn-ghost sl-delete" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:4px 8px;flex-shrink:0;font-size:1em;min-width:32px;min-height:32px;color:#64748b">\u2715</button>
@@ -803,6 +804,20 @@ function slRemoveSong(setIdx, songIdx) {
     slRenderSetSongs(setIdx);
     slRenderReadinessMeter(); // keep master list in sync
 }
+
+// Mobile move up/down (replaces drag-and-drop on touch devices)
+function _slMovesong(setIdx, songIdx, dir) {
+    var songs = window._slSets[setIdx]?.songs;
+    if (!songs) return;
+    var target = songIdx + dir;
+    if (target < 0 || target >= songs.length) return;
+    var moved = songs.splice(songIdx, 1)[0];
+    songs.splice(target, 0, moved);
+    if (typeof _slMarkDirty === 'function') _slMarkDirty();
+    slRenderSetSongs(setIdx);
+    slRenderReadinessMeter();
+}
+window._slMovesong = _slMovesong;
 
 let _slSetCount = 1;
 function slAddSet(type) {
