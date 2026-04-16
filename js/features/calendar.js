@@ -2905,20 +2905,37 @@ function _calRenderGridOnly() {
 
 
 var _calEventsByDate = {}; // { 'YYYY-MM-DD': [event, ...] } — cached during render
+var _calEventsLoadedFromNetwork = false; // true after first successful Firebase read
 
-async function loadCalendarEvents() {
-    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-    // Cache events by date for quick lookup in calDayClick
+// Background refresh: fetch fresh data and repaint grid if changed
+function _calBackgroundRefresh() {
+    loadBandDataFromDrive('_band', 'calendar_events').then(function(data) {
+        var events = (typeof toArray === 'function') ? toArray(data || []) : [];
+        _calEventsLoadedFromNetwork = true;
+        if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {
+            GLStore.setCachedBandData('calendar_events', events);
+        }
+        // Rebuild dateMap with fresh data
+        _calBuildDateMap(events);
+        // Repaint grid
+        _calRenderGridOnly();
+        console.log('[Calendar] SWR: background refresh complete —', events.length, 'events');
+    }).catch(function(e) {
+        console.warn('[Calendar] SWR: background refresh failed:', e);
+    });
+}
+
+// Build dateMap and _calEventsByDate from an events array (no Firebase call)
+function _calBuildDateMap(events) {
     _calEventsByDate = {};
     events.forEach(function(ev, idx) {
         if (!ev.date) return;
         var evCopy = Object.assign({}, ev, { _idx: idx });
-        // Multi-day events: add to every date they span
         if (ev.endDate && ev.endDate > ev.date) {
             var _s = new Date(ev.date + 'T12:00:00');
             var _e = new Date(ev.endDate + 'T12:00:00');
-            var _days = Math.round((_e - _s) / 86400000) + 1; // inclusive
-            if (_days > 60) _days = 60; // safety cap
+            var _days = Math.round((_e - _s) / 86400000) + 1;
+            if (_days > 60) _days = 60;
             for (var _di = 0; _di < _days; _di++) {
                 var _d = new Date(_s.getTime() + _di * 86400000);
                 var _ds = _d.getFullYear() + '-' + String(_d.getMonth() + 1).padStart(2, '0') + '-' + String(_d.getDate()).padStart(2, '0');
@@ -2930,20 +2947,43 @@ async function loadCalendarEvents() {
             _calEventsByDate[ev.date].push(evCopy);
         }
     });
-
-    // Expand recurring events for the viewed month (grid dots)
     var daysInViewMonth = new Date(calViewYear, calViewMonth + 1, 0).getDate();
     var monthStart = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-01';
     var monthEnd = calViewYear + '-' + String(calViewMonth + 1).padStart(2, '0') + '-' + String(daysInViewMonth).padStart(2, '0');
-    var expandedGrid = expandRecurringEvents(events, monthStart, monthEnd);
-
-    const dateMap = {};
+    var expandedGrid = (typeof expandRecurringEvents === 'function') ? expandRecurringEvents(events, monthStart, monthEnd) : events;
+    var dateMap = {};
     expandedGrid.forEach(function(e) {
         if (e.date) {
             if (!dateMap[e.date]) dateMap[e.date] = [];
             dateMap[e.date].push(Object.assign({}, e, { _idx: e._baseIdx }));
         }
     });
+    return dateMap;
+}
+
+async function loadCalendarEvents() {
+    // SWR: try localStorage cache first for instant render
+    var _cached = (typeof GLStore !== 'undefined' && GLStore.getCachedBandData) ? GLStore.getCachedBandData('calendar_events') : null;
+    var _usedCache = false;
+    if (_cached && _cached.data && !_calEventsLoadedFromNetwork) {
+        console.log('[Calendar] SWR: rendering from cache (' + GLStore.getCacheAgeLabel('calendar_events') + ')');
+        var _cachedEvents = toArray(_cached.data);
+        var _cachedDateMap = _calBuildDateMap(_cachedEvents);
+        // Start background refresh but return cached data immediately
+        _calBackgroundRefresh();
+        _usedCache = true;
+        // Return cached dateMap (blocked ranges will be empty — they require Google API)
+        return { dateMap: _cachedDateMap, blockedRanges: _calCachedBlockedRanges || [] };
+    }
+
+    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    _calEventsLoadedFromNetwork = true;
+    // Update SWR cache
+    if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {
+        GLStore.setCachedBandData('calendar_events', events);
+    }
+    // Build dateMap using shared helper
+    var dateMap = _calBuildDateMap(events);
 
     const el = document.getElementById('calendarEvents');
     // Note: el may be null if context rail hasn't rendered yet.

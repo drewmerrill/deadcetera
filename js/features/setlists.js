@@ -32,7 +32,33 @@ function renderSetlistsPage(el) {
     if (typeof loadGigHistory === 'function') loadGigHistory().then(function() { loadSetlists(); }); else loadSetlists();
 }
 
+var _slLoadedFromNetwork = false;
+
 async function loadSetlists() {
+    // SWR: render from cache immediately if available
+    var _cached = (typeof GLStore !== 'undefined' && GLStore.getCachedBandData) ? GLStore.getCachedBandData('setlists') : null;
+    if (_cached && _cached.data && !_slLoadedFromNetwork) {
+        console.log('[Setlists] SWR: rendering from cache (' + GLStore.getCacheAgeLabel('setlists') + ')');
+        var _cachedData = toArray(_cached.data);
+        if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_cachedData);
+        _slRenderList(_cachedData);
+        // Background refresh
+        loadBandDataFromDrive('_band', 'setlists').then(function(data) {
+            var fresh = toArray(data || []);
+            _slLoadedFromNetwork = true;
+            if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) GLStore.setCachedBandData('setlists', fresh);
+            if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(fresh);
+            // Only repaint if data actually changed
+            if (fresh.length !== _cachedData.length || JSON.stringify(fresh.map(function(s){return s.setlistId})) !== JSON.stringify(_cachedData.map(function(s){return s.setlistId}))) {
+                _slRenderList(fresh);
+                console.log('[Setlists] SWR: background refresh — repainted (' + fresh.length + ' setlists)');
+            } else {
+                console.log('[Setlists] SWR: background refresh — no changes');
+            }
+        }).catch(function(e) { console.warn('[Setlists] SWR: background refresh failed:', e); });
+        return;
+    }
+
     var rawData;
     try {
         rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
@@ -41,8 +67,15 @@ async function loadSetlists() {
         if (typeof GLRenderState !== 'undefined') GLRenderState.set('setlists', { status: 'error', title: 'Failed to load setlists', message: e.message, retry: "loadSetlists()" });
         return;
     }
+    _slLoadedFromNetwork = true;
+    // Update SWR cache
+    if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) GLStore.setCachedBandData('setlists', rawData);
     if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(rawData);
     else { window._glCachedSetlists = rawData; window._cachedSetlists = rawData; }
+    _slRenderList(rawData);
+}
+
+function _slRenderList(rawData) {
     var data = rawData.map(function(sl, origIdx) { return Object.assign({}, sl, { _origIdx: origIdx }); });
     var container = document.getElementById('setlistsList');
     if (!container) return;

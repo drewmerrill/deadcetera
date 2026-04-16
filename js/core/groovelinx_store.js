@@ -1867,6 +1867,48 @@
     emit('setlistsChanged', { count: 0 });
   }
 
+  // ── Stale-While-Revalidate Band Data Cache ─────────────────────────────
+  // localStorage-backed cache for instant first paint on slow connections.
+  // Pattern: render from cache immediately → fetch fresh in background → update if changed.
+  var _GL_CACHE_PREFIX = 'gl_swr_';
+  var _GL_CACHE_MAX_AGE = 24 * 3600000; // 24 hours — always show stale data, just flag staleness
+
+  function getCachedBandData(dataType) {
+    try {
+      var raw = localStorage.getItem(_GL_CACHE_PREFIX + dataType);
+      if (!raw) return null;
+      var cached = JSON.parse(raw);
+      if (cached && cached.data !== undefined) {
+        cached.age = Date.now() - (cached.ts || 0);
+        cached.stale = cached.age > _GL_CACHE_MAX_AGE;
+        return cached;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  function setCachedBandData(dataType, data) {
+    try {
+      localStorage.setItem(_GL_CACHE_PREFIX + dataType, JSON.stringify({
+        data: data,
+        ts: Date.now()
+      }));
+    } catch(e) {
+      // localStorage full — silently fail (cache is a performance optimization, not required)
+    }
+  }
+
+  function getCacheAgeLabel(dataType) {
+    var cached = getCachedBandData(dataType);
+    if (!cached) return '';
+    var mins = Math.floor(cached.age / 60000);
+    if (mins < 1) return 'Updated just now';
+    if (mins < 60) return 'Updated ' + mins + 'm ago';
+    var hrs = Math.floor(mins / 60);
+    if (hrs < 24) return 'Updated ' + hrs + 'h ago';
+    return 'Updated ' + Math.floor(hrs / 24) + 'd ago';
+  }
+
   // ── Gigs Cache (centralized) ──────────────────────────────────────────────
   function getGigs() {
     return _state.gigsCache || [];
@@ -5035,6 +5077,10 @@
     // Setlist Cache (centralized)
     getSetlists:                 getSetlists,
     setSetlistCache:             setSetlistCache,
+    // Stale-while-revalidate cache
+    getCachedBandData:           getCachedBandData,
+    setCachedBandData:           setCachedBandData,
+    getCacheAgeLabel:            getCacheAgeLabel,
     clearSetlistCache:           clearSetlistCache,
 
     // Transition Intelligence
