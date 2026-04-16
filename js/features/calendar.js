@@ -73,6 +73,24 @@ var _calSchedulingMode = null; // null = not yet loaded
 
 async function _calLoadSchedulingMode() {
     if (_calSchedulingMode) return _calSchedulingMode;
+    // Check localStorage cache first — instant on repeat visits
+    var _cachedMode = null;
+    try { _cachedMode = localStorage.getItem('gl_scheduling_mode'); } catch(e) {}
+    if (_cachedMode && _cachedMode !== 'NOT_SET') {
+        _calSchedulingMode = _cachedMode;
+        console.log('[Calendar] Scheduling mode (cached):', _calSchedulingMode);
+        // Background refresh from Firebase (non-blocking)
+        _calRefreshModeFromFirebase();
+        return _calSchedulingMode;
+    }
+    // No cache — must hit Firebase (first visit only)
+    await _calRefreshModeFromFirebase();
+    if (!_calSchedulingMode) _calSchedulingMode = 'NOT_SET';
+    console.log('[Calendar] Scheduling mode:', _calSchedulingMode);
+    return _calSchedulingMode;
+}
+
+async function _calRefreshModeFromFirebase() {
     try {
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (db && typeof bandPath === 'function') {
@@ -83,25 +101,24 @@ async function _calLoadSchedulingMode() {
                     : val.mode === 'personal_availability' ? 'B_PERSONAL_AVAILABILITY'
                     : val.mode === 'native' ? 'C_NATIVE'
                     : 'A_SHARED_SYNC';
+                try { localStorage.setItem('gl_scheduling_mode', _calSchedulingMode); } catch(e) {}
+                return;
             }
         }
     } catch(e) {}
     if (!_calSchedulingMode) {
-        // Check if band already has a band calendar configured (existing bands pre-mode-system)
         try {
             var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
             if (db2 && typeof bandPath === 'function') {
                 var _bcSnap = await db2.ref(bandPath('band_calendar')).once('value');
                 if (_bcSnap.val() && _bcSnap.val().calendarId) {
-                    _calSchedulingMode = 'A_SHARED_SYNC'; // existing band with band calendar → default to Mode A
+                    _calSchedulingMode = 'A_SHARED_SYNC';
+                    try { localStorage.setItem('gl_scheduling_mode', _calSchedulingMode); } catch(e) {}
                     console.log('[Calendar] Existing band with band calendar — defaulting to Mode A');
                 }
             }
         } catch(e) {}
     }
-    if (!_calSchedulingMode) _calSchedulingMode = 'NOT_SET'; // truly first-time: show onboarding chooser
-    console.log('[Calendar] Scheduling mode:', _calSchedulingMode);
-    return _calSchedulingMode;
 }
 
 // Onboarding chooser — shown when band hasn't picked a scheduling mode
@@ -198,6 +215,7 @@ window._calSelectMode = async function(mode, fromUpgrade) {
     }
 
     _calSchedulingMode = modeKey;
+    try { localStorage.setItem('gl_scheduling_mode', modeKey); } catch(e) {}
     try {
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (db && typeof bandPath === 'function') {
@@ -1730,6 +1748,9 @@ window._calSaveAvailabilitySettings = async function() {
     // Save scheduling mode at band level
     var _modeSelect = document.getElementById('calOptSchedulingMode');
     if (_modeSelect && _modeSelect.value) {
+        var _modeMap2 = { shared_calendar: 'A_SHARED_SYNC', personal_availability: 'B_PERSONAL_AVAILABILITY', native: 'C_NATIVE' };
+        _calSchedulingMode = _modeMap2[_modeSelect.value] || _calSchedulingMode;
+        try { localStorage.setItem('gl_scheduling_mode', _calSchedulingMode); } catch(e) {}
         try {
             var db0 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
             if (db0 && typeof bandPath === 'function') {
@@ -2614,9 +2635,11 @@ window._calNextUpGigGcal = function(date) {
 };
 
 async function renderCalendarInner() {
+    var _calT0 = performance.now();
+    console.log('[PERF] renderCalendarInner start ' + Math.round(_calT0) + 'ms');
     // Reset SWR flag so cache is always checked on page entry
     _calEventsLoadedFromNetwork = false;
-    // Load scheduling mode before rendering (with 3s timeout to prevent hang on mobile)
+    // Load scheduling mode (instant from localStorage, async Firebase update in background)
     try {
         await Promise.race([
             _calLoadSchedulingMode(),
@@ -2628,6 +2651,7 @@ async function renderCalendarInner() {
             console.warn('[Calendar] Mode load timed out — defaulting to Mode A');
         }
     }
+    console.log('[PERF] calendar mode resolved ' + Math.round(performance.now()) + 'ms (mode=' + _calSchedulingMode + ')');
     // If no scheduling mode set, show onboarding chooser instead of calendar
     if (_calSchedulingMode === 'NOT_SET') {
         var el0 = document.getElementById('calendarInner');
@@ -3000,11 +3024,13 @@ function _calBuildDateMap(events) {
 }
 
 async function loadCalendarEvents() {
+    var _lcT0 = performance.now();
+    console.log('[PERF] loadCalendarEvents start ' + Math.round(_lcT0) + 'ms');
     // SWR: try localStorage cache first for instant render
     var _cached = (typeof GLStore !== 'undefined' && GLStore.getCachedBandData) ? GLStore.getCachedBandData('calendar_events') : null;
     var _usedCache = false;
     if (_cached && _cached.data && !_calEventsLoadedFromNetwork) {
-        console.log('[Calendar] SWR: rendering from cache (' + GLStore.getCacheAgeLabel('calendar_events') + ')');
+        console.log('[PERF] calendar SWR cache HIT ' + Math.round(performance.now()) + 'ms (' + GLStore.getCacheAgeLabel('calendar_events') + ')');
         var _cachedEvents = toArray(_cached.data);
         _calLastEventFingerprint = _calEventFingerprint(_cachedEvents);
         var _cachedDateMap = _calBuildDateMap(_cachedEvents);
@@ -3022,7 +3048,9 @@ async function loadCalendarEvents() {
         return { dateMap: _cachedDateMap, blockedRanges: _calCachedBlockedRanges || [] };
     }
 
+    console.log('[PERF] calendar SWR cache MISS — fetching from Firebase ' + Math.round(performance.now()) + 'ms');
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    console.log('[PERF] calendar Firebase complete ' + Math.round(performance.now()) + 'ms (' + events.length + ' events)');
     _calEventsLoadedFromNetwork = true;
     // Update SWR cache
     if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {

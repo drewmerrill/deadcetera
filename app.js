@@ -774,6 +774,8 @@ document.addEventListener('DOMContentLoaded', function() {
             var _slArr = toArray(data || []);
             if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_slArr);
             else { window._glCachedSetlists = _slArr; window._cachedSetlists = _slArr; }
+            // Seed SWR localStorage cache so Setlists page renders instantly on first visit
+            if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) GLStore.setCachedBandData('setlists', _slArr);
             _rt.setlistsCached = true;
             if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('setlists');
         }).catch(function() {});

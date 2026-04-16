@@ -32,7 +32,9 @@ function renderSetlistsPage(el) {
         + '<div id="slFreshness" class="sl-freshness"></div>'
         + '<div id="slFilterBar" style="display:flex;gap:4px;margin-left:auto"></div></div>'
         + '<div id="setlistsList"><div style="text-align:center;padding:32px;color:var(--text-dim);font-size:0.85em">Loading setlists\u2026</div></div>';
-    if (typeof loadGigHistory === 'function') loadGigHistory().then(function() { loadSetlists(); }); else loadSetlists();
+    // Load setlists immediately — don't block on gig history (loads in parallel)
+    loadSetlists();
+    if (typeof loadGigHistory === 'function') loadGigHistory().catch(function() {});
 }
 
 var _slLoadedFromNetwork = false;
@@ -73,10 +75,12 @@ function _slSetlistSongChecksum(sl) {
 }
 
 async function loadSetlists() {
+    var _t0 = performance.now();
+    console.log('[PERF] loadSetlists start ' + Math.round(_t0) + 'ms');
     // SWR: render from cache immediately if available
     var _cached = (typeof GLStore !== 'undefined' && GLStore.getCachedBandData) ? GLStore.getCachedBandData('setlists') : null;
     if (_cached && _cached.data && !_slLoadedFromNetwork) {
-        console.log('[Setlists] SWR: rendering from cache (' + GLStore.getCacheAgeLabel('setlists') + ')');
+        console.log('[PERF] setlists SWR cache HIT ' + Math.round(performance.now()) + 'ms (' + GLStore.getCacheAgeLabel('setlists') + ')');
         var _cachedData = toArray(_cached.data);
         if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_cachedData);
         _slRenderList(_cachedData);
@@ -105,9 +109,11 @@ async function loadSetlists() {
         return;
     }
 
+    console.log('[PERF] setlists SWR cache MISS — fetching from Firebase ' + Math.round(performance.now()) + 'ms');
     var rawData;
     try {
         rawData = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        console.log('[PERF] setlists Firebase complete ' + Math.round(performance.now()) + 'ms (' + (rawData ? rawData.length : 0) + ' setlists)');
     } catch(e) {
         console.error('[RenderError] setlists data load failed:', e);
         if (typeof GLRenderState !== 'undefined') GLRenderState.set('setlists', { status: 'error', title: 'Failed to load setlists', message: e.message, retry: "loadSetlists()" });
