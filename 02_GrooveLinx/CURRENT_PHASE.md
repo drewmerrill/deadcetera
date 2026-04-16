@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-14 (Calendar render architecture + Atomic event saves + Inbound sync + Member unavailability + Availability enable fix + Stage plot)_
+_Updated: 2026-04-16 (Scheduling modes A/B/C + Two-way sync + Multi-day events + SWR cache + Mode separation + Onboarding chooser)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -12,6 +12,42 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## What's Live (2026-04-13)
+
+### Stale-While-Revalidate Cache (NEW 2026-04-16)
+- localStorage-backed SWR for Calendar + Setlists
+- `GLStore.getCachedBandData(type)` / `setCachedBandData(type, data)`
+- Calendar: renders from cache instantly, background Firebase refresh
+- Setlists: renders from cache instantly, background Firebase refresh
+- Only repaints if data actually changed (ID comparison)
+- Skeleton grid fallback if no cache exists
+- iPhone Firebase takes 45+ seconds — SWR bypasses this completely
+
+### Scheduling Modes + Onboarding (NEW 2026-04-14 → 2026-04-16)
+- Three modes: A_SHARED_SYNC, B_PERSONAL_AVAILABILITY, C_NATIVE
+- Onboarding chooser: "Get [band] on the same page" with 3 cards
+- Mode C recommended by default (fastest activation)
+- Mode saved to Firebase, persists forever, changeable in Rules
+- Rules modal content adapts to selected mode
+- Mode dropdown live-updates modal sections
+- Mode A: band calendar only (no personal calendars)
+- Mode B: availability + conflict rules + band calendar
+- Mode C: mode selector only (minimal)
+- Upgrade path prompts: C→B and B→A nudges in weekly pressure
+
+### Two-Way Sync Engine (NEW 2026-04-14 → 2026-04-16)
+- `syncBandCalendar()`: Phase 1 push → Phase 2 pull (syncToken) → Phase 3 delete propagation
+- Google Calendar syncToken for incremental sync (only deltas)
+- Delete sync: GrooveLinx deletes propagate to Google and vice versa
+- Reconciliation: Google wins for scheduling, GL preserves metadata
+- Worker: syncToken + showDeleted passthrough support
+
+### Multi-Day Events (NEW 2026-04-16)
+- Event form has End Date field
+- Single record in Firebase with date + endDate
+- Grid shows event on every day it spans
+- Delete removes entire range in one action
+- Google sync: proper all-day multi-day format (exclusive end date)
+- Inbound sync imports as single record (not per-day expansion)
 
 ### Calendar Render Architecture (NEW 2026-04-14)
 - **Single grid renderer**: `_calRenderGridOnly()` is the ONLY function that writes to `#calGrid`
