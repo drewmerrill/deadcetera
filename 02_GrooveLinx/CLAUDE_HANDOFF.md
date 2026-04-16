@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-14 (Calendar render architecture + Atomic saves + Inbound sync + Member unavailability + Stage plot + Grid alignment fix)_
+_Last updated: 2026-04-16 (Mobile setlist redesign + SWR trust states + Stronger cache invalidation)_
 
 ## Read This First
 

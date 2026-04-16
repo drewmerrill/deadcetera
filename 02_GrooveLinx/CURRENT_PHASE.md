@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-16 (Scheduling modes A/B/C + Two-way sync + Multi-day events + SWR cache + Mode separation + Onboarding chooser)_
+_Updated: 2026-04-16 (Mobile setlist redesign + SWR trust states + Stronger cache invalidation)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -13,12 +13,33 @@ Production URL: **https://app.groovelinx.com**
 
 ## What's Live (2026-04-13)
 
+### Mobile Setlist Redesign (NEW 2026-04-16)
+- **2-line stacked card layout** for editor song rows on ≤600px
+  - Line 1: drag handle + number + title + delete
+  - Line 2: key/bpm badges + love indicators + segue selector
+- **52px+ min-height** song rows (was 28px micro rows)
+- **Full-width Open button** on list view cards
+- **44px+ song picker rows** with 20px checkboxes
+- **Safe-area padding** on bottom CTA (env(safe-area-inset-bottom))
+- **80px spacer** so last song fully visible above fixed save bar
+- Search results use `sl-search-result` class for comfortable touch
+
+### SWR Trust States (NEW 2026-04-16)
+- **Calendar freshness**: "Updated Xm ago · Refreshing…" during SWR → "Updated just now" after
+- **Setlist freshness**: same pattern in page header with `sl-freshness` indicator
+- Both show "Offline — showing cached data" on network failure
+- Calendar indicator auto-fades after 8 seconds
+
+### Stronger SWR Invalidation (NEW 2026-04-16)
+- **Deep setlist comparison** via `_slDataChanged()`: checks name, date, notes, lock state, updated timestamp, song order/segue checksum
+- Replaces ID-only comparison that missed in-place edits
+
 ### Stale-While-Revalidate Cache (NEW 2026-04-16)
 - localStorage-backed SWR for Calendar + Setlists
 - `GLStore.getCachedBandData(type)` / `setCachedBandData(type, data)`
 - Calendar: renders from cache instantly, background Firebase refresh
 - Setlists: renders from cache instantly, background Firebase refresh
-- Only repaints if data actually changed (ID comparison)
+- Only repaints if data actually changed (deep comparison)
 - Skeleton grid fallback if no cache exists
 - iPhone Firebase takes 45+ seconds — SWR bypasses this completely
 
