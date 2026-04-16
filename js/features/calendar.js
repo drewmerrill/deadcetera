@@ -2854,7 +2854,7 @@ function _calRenderGridOnly() {
             else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
             else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
-            else if (hasEvent) { icon = '\uD83D\uDCC5'; }
+            else if (hasEvent) { state = 'has-event'; }
             if (isToday) stateClass += ' gl-day--today';
             // Hover content — explains the color with time-aware detail
             var hoverHtml = '';
@@ -2909,9 +2909,10 @@ function _calRenderGridOnly() {
             } else if (state === 'default' && isFuture) {
                 hoverHtml = '<div class="gl-day-hover" style="opacity:0.6">Open date</div>';
             }
+            var _dotHtml = (state === 'has-event' && !icon) ? '<div style="width:5px;height:5px;border-radius:50%;background:rgba(99,102,241,0.5);margin:1px auto 0"></div>' : '';
             g += '<div class="gl-day ' + stateClass + '" data-date="' + ds + '" data-state="' + state + '"' + (isBlocked ? ' data-blocked="true"' : '') + ' onclick="calDayClick(' + year + ',' + month + ',' + d + ')">'
                 + '<div class="gl-day-num">' + d + '</div>'
-                + (icon ? '<div class="gl-day-icon">' + icon + '</div>' : '')
+                + (icon ? '<div class="gl-day-icon">' + icon + '</div>' : _dotHtml)
                 + hoverHtml
                 + '</div>';
         }
