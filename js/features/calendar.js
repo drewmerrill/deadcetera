@@ -409,7 +409,15 @@ function renderCalendarPage(el) {
         + '<div id="calConflictPanel" style="display:none;margin-top:var(--gl-space-md)"></div>'
         + '</div>';
     _calRenderEventStrip();
-    renderCalendarInner();
+    renderCalendarInner().catch(function(err) {
+        console.error('[Calendar] renderCalendarInner failed:', err);
+        // Fallback: render basic grid even if mode/settings loading fails
+        var _fallbackGrid = document.getElementById('calGrid');
+        if (_fallbackGrid && !_fallbackGrid.innerHTML) {
+            _calSchedulingMode = _calSchedulingMode || 'A_SHARED_SYNC';
+            _calRenderGridOnly();
+        }
+    });
 }
 
 // ── Intelligence Banner — smart scheduling recommendation ────────────────────
