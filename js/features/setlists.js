@@ -24,12 +24,14 @@ function _slCountdownLabel(dateStr) { return (typeof glCountdownLabel === 'funct
 
 function renderSetlistsPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
+    // Reset SWR flag so cache is always checked on page entry
+    _slLoadedFromNetwork = false;
     el.innerHTML = '<div class="page-header"><h1>Build Your Set</h1><p>This is what you\u2019ll play. Keep it tight, clear, and fun.</p></div>'
         + '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">'
         + '<button class="btn btn-primary" onclick="createNewSetlist()" style="font-size:0.85em">+ Build a New Set</button>'
         + '<div id="slFreshness" class="sl-freshness"></div>'
         + '<div id="slFilterBar" style="display:flex;gap:4px;margin-left:auto"></div></div>'
-        + '<div id="setlistsList"></div>';
+        + '<div id="setlistsList"><div style="text-align:center;padding:32px;color:var(--text-dim);font-size:0.85em">Loading setlists\u2026</div></div>';
     if (typeof loadGigHistory === 'function') loadGigHistory().then(function() { loadSetlists(); }); else loadSetlists();
 }
 

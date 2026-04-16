@@ -2614,6 +2614,8 @@ window._calNextUpGigGcal = function(date) {
 };
 
 async function renderCalendarInner() {
+    // Reset SWR flag so cache is always checked on page entry
+    _calEventsLoadedFromNetwork = false;
     // Load scheduling mode before rendering (with 3s timeout to prevent hang on mobile)
     try {
         await Promise.race([
