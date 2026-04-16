@@ -3028,8 +3028,14 @@ async function loadCalendarEvents() {
         });
     });
 
-    // Merge Google Calendar free/busy — current user + all connected members
-    // Load availability settings for time-aware conflict classification
+    // Merge Google Calendar free/busy — Mode B only
+    // Mode A uses band calendar events for availability (not personal free/busy)
+    // Mode C has no calendar data at all
+    if (_calIsModeA() || _calIsModeC()) {
+        // Skip personal free/busy — band calendar events + member unavailability handle availability
+        console.log('[Calendar] Mode', _calSchedulingMode, '— skipping personal free/busy (band calendar is source of truth)');
+    } else {
+    // Mode B: Load availability settings for time-aware conflict classification
     var _fbOpts = { rehearsalStartHour: 17, rehearsalEndHour: 23, ignoreAllDay: true, timeAware: true, dateWindows: _dateWindows };
     try {
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getAvailabilitySettings) {
@@ -3081,6 +3087,7 @@ async function loadCalendarEvents() {
         var _softBlocks = blocked.filter(function(b) { return b._conflictType === 'soft'; }).length;
         if (_totalGoogleBlocks) console.log('[Calendar] Google free/busy merged:', _totalGoogleBlocks, 'ranges (' + _softBlocks + ' soft, all members)');
     } catch(e) { console.warn('[Calendar] Free/busy merge failed:', e); }
+    } // end Mode B free/busy block
 
     // ── CIRCULAR CONFLICT SUPPRESSION ──
     // When band events are synced to Google, members who accepted the invite
