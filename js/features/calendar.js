@@ -1247,8 +1247,8 @@ function _calRenderGooglePanel() {
         html += '<div style="margin-bottom:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02)">' + memberHtml + '</div>';
     }
 
-    // Partial scope warning
-    if (_partialScope) {
+    // Partial scope warning (Mode B only — Mode A uses band calendar, Mode C hidden)
+    if (_partialScope && _calIsModeB()) {
         // Determine the right label and action based on state
         var _enableLabel = 'Connect Google Calendar';
         var _enableAction = '_calConnectGoogle()';
@@ -2604,8 +2604,18 @@ window._calNextUpGigGcal = function(date) {
 };
 
 async function renderCalendarInner() {
-    // Load scheduling mode before rendering
-    await _calLoadSchedulingMode();
+    // Load scheduling mode before rendering (with 3s timeout to prevent hang on mobile)
+    try {
+        await Promise.race([
+            _calLoadSchedulingMode(),
+            new Promise(function(_, reject) { setTimeout(function() { reject('timeout'); }, 3000); })
+        ]);
+    } catch(e) {
+        if (!_calSchedulingMode || _calSchedulingMode === 'NOT_SET') {
+            _calSchedulingMode = 'A_SHARED_SYNC'; // fallback if mode load hangs
+            console.warn('[Calendar] Mode load timed out — defaulting to Mode A');
+        }
+    }
     // If no scheduling mode set, show onboarding chooser instead of calendar
     if (_calSchedulingMode === 'NOT_SET') {
         var el0 = document.getElementById('calendarInner');
@@ -3990,8 +4000,8 @@ function calDayClick(y, m, d) {
                 }
             });
             _conflictSummary += '<div style="height:4px"></div>';
-        } else if (!_calIsModeC() && !_hasAvailScope && ds >= new Date().toISOString().split('T')[0]) {
-            // Mode A/B: show availability setup prompt. Mode C: no availability concept.
+        } else if (_calIsModeB() && !_hasAvailScope && ds >= new Date().toISOString().split('T')[0]) {
+            // Mode B only: show availability setup prompt. Mode A uses band calendar. Mode C has no availability.
             var _hasTokenForAvail = (typeof accessToken !== 'undefined' && accessToken);
             var _availAction = _hasTokenForAvail ? '_calShowAvailabilitySettings()' : '_calConnectGoogle()';
             var _availLabel = _hasTokenForAvail ? 'Set Up Availability' : 'Connect Google Calendar';
