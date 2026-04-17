@@ -228,8 +228,9 @@
     if (!document.getElementById('glTabBarCSS')) {
       var s = document.createElement('style');
       s.id = 'glTabBarCSS';
-      s.textContent = '@media(max-width:768px){#glBottomTabs{display:flex!important}'
+      s.textContent = '@media(max-width:900px){#glBottomTabs{display:flex!important}'
         + '#gl-left-rail{display:none!important}'
+        + '.hamburger{display:none!important}'
         + '.main-content{padding-bottom:calc(56px + env(safe-area-inset-bottom))!important}'
         + '} .gl-tab[data-page].gl-tab--active{color:#a5b4fc!important}'
         + '.gl-tab[data-page].gl-tab--active span:first-child{transform:scale(1.15)}';
