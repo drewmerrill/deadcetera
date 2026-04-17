@@ -144,8 +144,16 @@
     // Milestone 4: restore workspace mode
     if (typeof GLStore !== 'undefined' && GLStore.setAppMode) GLStore.setAppMode('workspace');
     if (typeof glWakeLock !== 'undefined') glWakeLock.release('live-gig');
-    // Return to setlists
+    // Return to the setlist that launched this gig (Stage View), or setlist list
     if (typeof showPage === 'function') showPage('setlists');
+    // Re-open the same setlist if we know which one launched us
+    if (typeof window._slEditIdx === 'number' && typeof editSetlist === 'function') {
+      setTimeout(function() {
+        editSetlist(window._slEditIdx);
+        // Switch to Stage View after opening
+        setTimeout(function() { if (typeof _slSwitchMode === 'function') _slSwitchMode('stage'); }, 200);
+      }, 100);
+    }
   }
 
   function lgToggleZen() {
