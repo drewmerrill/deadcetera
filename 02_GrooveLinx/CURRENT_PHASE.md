@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-16 (Mobile touch reorder + Calendar repaint opt + Mode burn test)_
+_Updated: 2026-04-17 (Performance sprint: Firebase dedup + boot consolidation + freshness states)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -12,6 +12,21 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## What's Live (2026-04-13)
+
+### Performance Sprint (NEW 2026-04-17)
+- **Firebase read deduplication**:
+  - Home: gigs loaded once (was 2x), setlists/calendar use GLStore cache first
+  - loadGigHistory(): checks GLStore.getGigs/getSetlists before Firebase
+  - Home reduced from 6 Firebase reads to 3-4
+- **Boot render consolidation**: removed duplicate renderHomeDashboard() call — single render after readiness
+- **SWR cache fixes**: reset network flags on every page entry (Calendar + Setlists)
+- **SWR boot seeding**: setlists cached in localStorage during boot for instant first visit
+- **Calendar mode cached**: scheduling mode in localStorage — instant on repeat visits
+- **Setlists no longer blocked on loadGigHistory()**: parallel instead of serial
+- **Calendar repaint optimization**: fingerprint comparison skips redundant grid rebuilds
+- **Generic event indicator**: 📅 emoji replaced with subtle 5px indigo dot
+- **Freshness states**: Calendar, Setlists, and Home all show "Updated just now" / "Refreshing..."
+- **PERF instrumentation**: `[PERF]` tags on all critical paths for waterfall analysis
 
 ### Mobile Touch Reorder (NEW 2026-04-16)
 - **▲/▼ move buttons** replace HTML5 drag on ≤600px (drag events don't fire on iOS Safari)
