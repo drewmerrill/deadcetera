@@ -34,30 +34,49 @@
   ];
 
   // All secondary pages — value-weighted ordering for tools drawer
-  // Grouped: Quick Tools → Band → Plan & Prep → Admin
+  // Grouped: Rehearse & Practice → Gig Prep → Band → Manage
   var NAV_MORE = [
-    // Quick Tools — event-driven, critical
-    { page: 'pocketmeter',   icon: '\u23F1',        label: 'Pocket Meter', tip: 'Live BPM detection', section: 'Quick Tools' },
+    // Rehearse & Practice — things you grab at rehearsal
+    { page: 'practice',      icon: '\uD83C\uDFAF',  label: 'Practice',     tip: 'Focus songs and mixes', section: 'Rehearse & Practice' },
+    { page: 'pocketmeter',   icon: '\u23F1',         label: 'Pocket Meter', tip: 'Live BPM detection' },
     { page: 'tuner',         icon: '\uD83C\uDFB8',  label: 'Tuner',        tip: 'Tune your instrument' },
-    { page: 'metronome',     icon: '\uD83E\uDD41',  label: 'Metronome',    tip: 'Tempo and click' },
-    // Band — collaborative surfaces
-    { page: 'gigs',          icon: '\uD83C\uDFA4',  label: 'Gigs',         tip: 'Shows and performances', section: 'Band' },
-    { page: 'ideas',         icon: '\uD83D\uDCAC',  label: 'Band Room',    tip: 'Ideas, votes, decisions' },
-    { page: 'feed',          icon: '\uD83D\uDCE1',  label: 'Feed',         tip: 'Action items and assignments' },
-    { page: 'practice',      icon: '\uD83C\uDFAF',  label: 'Practice',     tip: 'Focus songs and mixes' },
-    // Plan & Prep — gig preparation
-    { page: 'stageplot',     icon: '\uD83C\uDFAD',  label: 'Stage Plot',   tip: 'Stage layout builder', section: 'Plan & Prep' },
+    { page: 'metronome',     icon: '\uD83E\uDD41',  label: 'Metronome',    tip: 'Click track' },
+    { page: 'bestshot',      icon: '\uD83C\uDFC6',  label: 'Best Shot',    tip: 'Compare recordings' },
+    { page: 'playlists',     icon: '\uD83C\uDFA7',  label: 'Playlists',    tip: 'Reference listening' },
+    // Gig Prep — before the show
+    { page: 'gigs',          icon: '\uD83C\uDFA4',  label: 'Gigs',         tip: 'Shows and performances', section: 'Gig Prep' },
+    { page: 'stageplot',     icon: '\uD83C\uDFAD',  label: 'Stage Plot',   tip: 'Stage layout builder' },
     { page: 'venues',        icon: '\uD83C\uDFDB',  label: 'Venues',       tip: 'Locations and contacts' },
-    { page: 'playlists',     icon: '\uD83C\uDFA7',  label: 'Playlists',    tip: 'Listening and learning' },
-    { page: 'bestshot',      icon: '\uD83C\uDFC6',  label: 'Best Shot',    tip: 'Performance comparisons' },
-    // Admin — infrequent but valuable
-    { page: 'equipment',     icon: '\uD83C\uDF9B',  label: 'Equipment',    tip: 'Gear inventory', section: 'Admin' },
-    { page: 'finances',      icon: '\uD83D\uDCB0',  label: 'Finances',     tip: 'Income, expenses, payouts' },
-    { page: 'notifications', icon: '\uD83D\uDD14',  label: 'Notifications',tip: 'SMS and care packages' },
-    { page: 'contacts',      icon: '\uD83D\uDC65',  label: 'Contacts',     tip: 'Booking and venue contacts' },
-    { page: 'social',        icon: '\uD83D\uDCE3',  label: 'Social Media', tip: 'Social links and promotion' },
-    { page: 'help',          icon: '\u2753',         label: 'Help',         tip: 'Guides and walkthroughs' },
+    { page: 'contacts',      icon: '\uD83D\uDC65',  label: 'Contacts',     tip: 'Booking and sound engineers' },
+    // Band — communication and coordination
+    { page: 'ideas',         icon: '\uD83D\uDCAC',  label: 'Band Room',    tip: 'Decisions, votes, ideas', section: 'Band' },
+    { page: 'feed',          icon: '\uD83D\uDCE1',  label: 'Feed',         tip: 'Action items and notes' },
+    { page: 'notifications', icon: '\uD83D\uDD14',  label: 'Care Packages',tip: 'Send charts to the band' },
+    // Manage — admin and records
+    { page: 'equipment',     icon: '\uD83C\uDF9B',  label: 'Equipment',    tip: 'Gear inventory', section: 'Manage' },
+    { page: 'finances',      icon: '\uD83D\uDCB0',  label: 'Finances',     tip: 'Income and payouts' },
+    { page: 'social',        icon: '\uD83D\uDCE3',  label: 'Social',       tip: 'Social media links' },
+    { page: 'help',          icon: '\u2753',         label: 'Help',         tip: 'Guides and support' },
   ];
+
+  // ── Recently Used tracking ──
+  function _getRecentTools() {
+    try {
+      var raw = localStorage.getItem('gl_recent_tools');
+      return raw ? JSON.parse(raw) : [];
+    } catch(e) { return []; }
+  }
+  function _trackRecentTool(page) {
+    // Core nav pages don't count as "tools"
+    var corePages = { home:1, songs:1, rehearsal:1, calendar:1, setlists:1, admin:1 };
+    if (corePages[page]) return;
+    try {
+      var recent = _getRecentTools().filter(function(p) { return p !== page; });
+      recent.unshift(page);
+      if (recent.length > 4) recent = recent.slice(0, 4);
+      localStorage.setItem('gl_recent_tools', JSON.stringify(recent));
+    } catch(e) {}
+  }
 
   // Legacy compat — keep NAV_SECTIONS for any code that reads it
   var NAV_SECTIONS = [
@@ -263,53 +282,79 @@
   }
 
   // ── Tools drawer — searchable list of all secondary pages ──
+  function _drawerItemHtml(m) {
+    return '<button class="gl-drawer-item" data-label="' + m.label.toLowerCase() + '" data-page="' + m.page + '" onclick="_glDrawerNav(\'' + m.page + '\')" style="'
+      + 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:none;border:none;border-radius:10px;color:#e2e8f0;cursor:pointer;font-size:0.88em;font-family:inherit;text-align:left;'
+      + 'min-height:48px;-webkit-tap-highlight-color:transparent">'
+      + '<span style="font-size:1.3em;width:28px;text-align:center;flex-shrink:0">' + m.icon + '</span>'
+      + '<span style="font-weight:600;flex:1">' + m.label + '</span>'
+      + '<span style="font-size:0.72em;color:#475569;flex-shrink:0">' + m.tip + '</span>'
+      + '</button>';
+  }
+
+  window._glDrawerNav = function(page) {
+    document.getElementById('glToolsDrawer')?.remove();
+    _trackRecentTool(page);
+    showPage(page);
+  };
+
   window.glOpenToolsDrawer = function() {
     var existing = document.getElementById('glToolsDrawer');
     if (existing) { existing.remove(); return; }
     var overlay = document.createElement('div');
     overlay.id = 'glToolsDrawer';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center';
-    var sheet = '<div style="background:#1e293b;border-radius:16px 16px 0 0;width:100%;max-width:480px;max-height:70vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)">';
-    sheet += '<div style="padding:14px 16px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06)">';
-    sheet += '<span style="font-weight:700;font-size:0.95em;color:#e2e8f0">Tools & Pages</span>';
-    sheet += '<button onclick="document.getElementById(\'glToolsDrawer\').remove()" style="background:none;border:none;color:#64748b;font-size:1.2em;cursor:pointer">\u2715</button></div>';
-    sheet += '<input id="glDrawerSearch" type="text" placeholder="Search tools..." oninput="glFilterDrawer(this.value)" style="margin:8px 16px;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:0.85em;font-family:inherit">';
-    sheet += '<div id="glDrawerList" style="overflow-y:auto;padding:4px 12px 12px">';
+    var sheet = '<div style="background:#1e293b;border-radius:16px 16px 0 0;width:100%;max-width:480px;max-height:75vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)">';
+    // Handle / close affordance
+    sheet += '<div style="display:flex;justify-content:center;padding:8px 0 4px"><div style="width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,0.15)"></div></div>';
+    sheet += '<div style="padding:4px 16px 8px;display:flex;align-items:center;justify-content:space-between">';
+    sheet += '<span style="font-weight:700;font-size:0.95em;color:#e2e8f0">More</span>';
+    sheet += '<button onclick="document.getElementById(\'glToolsDrawer\').remove()" style="background:none;border:none;color:#64748b;font-size:1.2em;cursor:pointer;padding:4px 8px">\u2715</button></div>';
+    sheet += '<input id="glDrawerSearch" type="text" placeholder="Search..." oninput="glFilterDrawer(this.value)" style="margin:0 16px 6px;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:0.85em;font-family:inherit">';
+    sheet += '<div id="glDrawerList" style="overflow-y:auto;padding:0 12px 12px;-webkit-overflow-scrolling:touch">';
+
+    // Recently Used — top section, only if user has history
+    var _recent = _getRecentTools();
+    if (_recent.length > 0) {
+      var _recentLookup = {};
+      NAV_MORE.forEach(function(m) { _recentLookup[m.page] = m; });
+      _recentLookup.admin = { page: 'admin', icon: '\u2699\uFE0F', label: 'Settings', tip: 'Profile, band, data' };
+      sheet += '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#64748b;text-transform:uppercase;padding:6px 10px 4px">Recent</div>';
+      _recent.forEach(function(page) {
+        var m = _recentLookup[page];
+        if (m) sheet += _drawerItemHtml(m);
+      });
+      sheet += '<div style="height:1px;background:rgba(255,255,255,0.06);margin:6px 10px"></div>';
+    }
+
+    // Categorized sections
     var _lastSection = '';
     for (var mi = 0; mi < NAV_MORE.length; mi++) {
       var m = NAV_MORE[mi];
       if (m.section && m.section !== _lastSection) {
         _lastSection = m.section;
-        sheet += '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#475569;text-transform:uppercase;padding:10px 10px 4px;margin-top:' + (mi > 0 ? '4px' : '0') + '">' + m.section + '</div>';
+        sheet += '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#64748b;text-transform:uppercase;padding:' + (mi > 0 ? '10' : '6') + 'px 10px 4px">' + m.section + '</div>';
       }
-      sheet += '<button class="gl-drawer-item" data-label="' + m.label.toLowerCase() + '" onclick="document.getElementById(\'glToolsDrawer\').remove();showPage(\'' + m.page + '\')" style="'
-        + 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:none;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;font-size:0.88em;font-family:inherit;text-align:left">'
-        + '<span style="font-size:1.3em;width:28px;text-align:center">' + m.icon + '</span>'
-        + '<span style="flex:1"><span style="font-weight:600">' + m.label + '</span><br>'
-        + '<span style="font-size:0.78em;color:#64748b">' + m.tip + '</span></span>'
-        + '</button>';
+      sheet += _drawerItemHtml(m);
     }
-    // Settings entry for mobile (since gear is in desktop rail only)
-    sheet += '<button class="gl-drawer-item" data-label="settings" onclick="document.getElementById(\'glToolsDrawer\').remove();showPage(\'admin\')" style="'
-      + 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:none;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;font-size:0.88em;font-family:inherit;text-align:left">'
-      + '<span style="font-size:1.3em;width:28px;text-align:center">\u2699\uFE0F</span>'
-      + '<span style="flex:1"><span style="font-weight:600">Settings</span><br>'
-      + '<span style="font-size:0.78em;color:#64748b">Profile, band, data</span></span>'
-      + '</button>';
+    // Settings entry for mobile
+    sheet += '<div style="height:1px;background:rgba(255,255,255,0.06);margin:6px 10px"></div>';
+    sheet += _drawerItemHtml({ page: 'admin', icon: '\u2699\uFE0F', label: 'Settings', tip: 'Profile, band, data' });
     sheet += '</div></div>';
     overlay.innerHTML = sheet;
     overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
     document.body.appendChild(overlay);
-    // Focus search on desktop
-    var searchInput = document.getElementById('glDrawerSearch');
-    if (searchInput && window.innerWidth > 768) searchInput.focus();
+    if (window.innerWidth > 900) { var s = document.getElementById('glDrawerSearch'); if (s) s.focus(); }
   };
 
   window.glFilterDrawer = function(q) {
     var lower = q.toLowerCase();
+    var sections = document.querySelectorAll('#glDrawerList > div[style*="uppercase"]');
     document.querySelectorAll('.gl-drawer-item').forEach(function(item) {
       item.style.display = (!q || item.dataset.label.indexOf(lower) !== -1) ? 'flex' : 'none';
     });
+    // Hide section headers when filtering
+    sections.forEach(function(s) { s.style.display = q ? 'none' : ''; });
   };
 
   // ── Band Room badge ────────────────────────────────────────────────────
