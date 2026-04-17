@@ -215,17 +215,20 @@
     var bar = document.createElement('div');
     bar.id = 'glBottomTabs';
     bar.style.cssText = 'display:none;position:fixed;bottom:0;left:0;right:0;z-index:8000;'
-      + 'background:rgba(15,23,42,0.97);border-top:1px solid rgba(255,255,255,0.08);'
-      + 'padding-bottom:env(safe-area-inset-bottom);height:50px;'
-      + 'align-items:center;justify-content:space-around';
+      + 'background:rgba(15,23,42,0.98);border-top:1px solid rgba(255,255,255,0.1);'
+      + 'backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);'
+      + 'padding-bottom:env(safe-area-inset-bottom);'
+      + 'align-items:stretch;justify-content:space-around';
     var tabs = [NAV_TOP].concat(NAV_CORE).concat([{ page: '_more', icon: '\u2022\u2022\u2022', label: 'More' }]);
     tabs.forEach(function(t) {
       var onclick = t.page === '_more' ? 'glOpenToolsDrawer()' : 'showPage(\'' + t.page + '\')';
       bar.innerHTML += '<button class="gl-tab" data-page="' + t.page + '" onclick="' + onclick + '" style="'
-        + 'background:none;border:none;color:var(--text-dim);display:flex;flex-direction:column;'
-        + 'align-items:center;gap:1px;padding:4px 0;min-width:0;flex:1;cursor:pointer;font-family:inherit">'
-        + '<span style="font-size:1.2em;line-height:1">' + t.icon + '</span>'
-        + '<span style="font-size:0.55em;font-weight:600;letter-spacing:0.02em">' + t.label + '</span>'
+        + 'background:none;border:none;color:#64748b;display:flex;flex-direction:column;'
+        + 'align-items:center;justify-content:center;gap:2px;padding:8px 0 6px;min-width:0;flex:1;'
+        + 'cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;'
+        + 'min-height:48px;position:relative;transition:color 0.15s">'
+        + '<span style="font-size:1.15em;line-height:1;display:block">' + t.icon + '</span>'
+        + '<span style="font-size:0.58em;font-weight:600;letter-spacing:0.02em;line-height:1">' + t.label + '</span>'
         + '</button>';
     });
     document.body.appendChild(bar);
@@ -236,9 +239,16 @@
       s.textContent = '@media(max-width:900px){#glBottomTabs{display:flex!important}'
         + '#gl-left-rail{display:none!important}'
         + '.hamburger{display:none!important}'
-        + '.main-content{padding-bottom:calc(56px + env(safe-area-inset-bottom))!important}'
-        + '} .gl-tab[data-page].gl-tab--active{color:#a5b4fc!important}'
-        + '.gl-tab[data-page].gl-tab--active span:first-child{transform:scale(1.15)}';
+        + '.main-content{padding-bottom:calc(62px + env(safe-area-inset-bottom))!important}'
+        + '}'
+        // Active tab: accent color + subtle pill background
+        + '.gl-tab[data-page].gl-tab--active{color:#a5b4fc!important}'
+        + '.gl-tab[data-page].gl-tab--active::before{'
+        + 'content:"";position:absolute;top:4px;left:50%;transform:translateX(-50%);'
+        + 'width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.12);z-index:-1}'
+        + '.gl-tab[data-page].gl-tab--active span:first-child{transform:scale(1.1)}'
+        // Tap feedback
+        + '.gl-tab:active{opacity:0.6}';
       document.head.appendChild(s);
     }
     // Update active tab
