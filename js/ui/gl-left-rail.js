@@ -59,7 +59,7 @@
     { page: 'help',          icon: '\u2753',         label: 'Help',         tip: 'Guides and support' },
   ];
 
-  // ── Recently Used tracking ──
+  // ── Recently Used tracking (stable — only changes on explicit drawer navigation) ──
   function _getRecentTools() {
     try {
       var raw = localStorage.getItem('gl_recent_tools');
@@ -67,15 +67,61 @@
     } catch(e) { return []; }
   }
   function _trackRecentTool(page) {
-    // Core nav pages don't count as "tools"
     var corePages = { home:1, songs:1, rehearsal:1, calendar:1, setlists:1, admin:1 };
     if (corePages[page]) return;
     try {
       var recent = _getRecentTools().filter(function(p) { return p !== page; });
       recent.unshift(page);
-      if (recent.length > 4) recent = recent.slice(0, 4);
+      if (recent.length > 5) recent = recent.slice(0, 5);
       localStorage.setItem('gl_recent_tools', JSON.stringify(recent));
     } catch(e) {}
+  }
+
+  // ── Context-aware suggestions (up to 2, based on current band moment) ──
+  // These appear BELOW recent items, not mixed in. Categories never move.
+  function _getContextSuggestions() {
+    var suggestions = [];
+    var recent = _getRecentTools();
+    var _hasStore = typeof GLStore !== 'undefined';
+
+    // Detect current moment
+    var today = new Date().toISOString().slice(0, 10);
+    var tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    var threeDays = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+
+    // Check for upcoming gigs (from cached calendar events)
+    var _calCache = (_hasStore && GLStore.getCachedBandData) ? GLStore.getCachedBandData('calendar_events') : null;
+    var _events = (_calCache && _calCache.data) ? (Array.isArray(_calCache.data) ? _calCache.data : []) : [];
+    var _gigSoon = _events.some(function(e) { return e.type === 'gig' && e.date && e.date >= today && e.date <= threeDays; });
+    var _rehearsalToday = _events.some(function(e) { return e.type === 'rehearsal' && e.date === today; });
+
+    // Check current page for context
+    var _curPage = (_hasStore && GLStore.getActivePage) ? GLStore.getActivePage() : '';
+
+    // Gig within 3 days → suggest Gig Prep tools the user hasn't opened recently
+    if (_gigSoon) {
+      if (recent.indexOf('stageplot') === -1) suggestions.push({ page: 'stageplot', reason: 'Gig this week' });
+      if (recent.indexOf('gigs') === -1) suggestions.push({ page: 'gigs', reason: 'Gig this week' });
+    }
+    // Rehearsal today → suggest rehearsal tools
+    if (_rehearsalToday) {
+      if (recent.indexOf('tuner') === -1) suggestions.push({ page: 'tuner', reason: 'Rehearsal today' });
+      if (recent.indexOf('pocketmeter') === -1) suggestions.push({ page: 'pocketmeter', reason: 'Rehearsal today' });
+    }
+    // On Songs/Rehearsal page → suggest Practice
+    if ((_curPage === 'songs' || _curPage === 'rehearsal') && recent.indexOf('practice') === -1) {
+      suggestions.push({ page: 'practice', reason: 'You\u2019re working on songs' });
+    }
+
+    // Only show tools the user has used at least once before (respect unfamiliarity)
+    var _allTimeTools = {};
+    try {
+      var _pvRaw = localStorage.getItem('gl_page_views');
+      if (_pvRaw) _allTimeTools = JSON.parse(_pvRaw);
+    } catch(e) {}
+    suggestions = suggestions.filter(function(s) { return _allTimeTools[s.page]; });
+
+    return suggestions.slice(0, 2);
   }
 
   // Legacy compat — keep NAV_SECTIONS for any code that reads it
@@ -313,17 +359,36 @@
     sheet += '<input id="glDrawerSearch" type="text" placeholder="Search..." oninput="glFilterDrawer(this.value)" style="margin:0 16px 6px;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:0.85em;font-family:inherit">';
     sheet += '<div id="glDrawerList" style="overflow-y:auto;padding:0 12px 12px;-webkit-overflow-scrolling:touch">';
 
-    // Recently Used — top section, only if user has history
+    // ── Top section: Recent + Context Suggestions ──
     var _recent = _getRecentTools();
-    if (_recent.length > 0) {
-      var _recentLookup = {};
-      NAV_MORE.forEach(function(m) { _recentLookup[m.page] = m; });
-      _recentLookup.admin = { page: 'admin', icon: '\u2699\uFE0F', label: 'Settings', tip: 'Profile, band, data' };
-      sheet += '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#64748b;text-transform:uppercase;padding:6px 10px 4px">Recent</div>';
-      _recent.forEach(function(page) {
-        var m = _recentLookup[page];
-        if (m) sheet += _drawerItemHtml(m);
-      });
+    var _suggestions = _getContextSuggestions();
+    var _recentLookup = {};
+    NAV_MORE.forEach(function(m) { _recentLookup[m.page] = m; });
+    _recentLookup.admin = { page: 'admin', icon: '\u2699\uFE0F', label: 'Settings', tip: 'Profile, band, data' };
+    var _hasTopSection = _recent.length > 0 || _suggestions.length > 0;
+    if (_hasTopSection) {
+      // Show recent tools (stable order — only changes when user navigates via drawer)
+      if (_recent.length > 0) {
+        sheet += '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#64748b;text-transform:uppercase;padding:6px 10px 4px">Recent</div>';
+        _recent.slice(0, 3).forEach(function(page) {
+          var m = _recentLookup[page];
+          if (m) sheet += _drawerItemHtml(m);
+        });
+      }
+      // Context suggestions — items the user has used before, relevant right now
+      var _shownPages = {};
+      _recent.forEach(function(p) { _shownPages[p] = true; });
+      var _filteredSuggestions = _suggestions.filter(function(s) { return !_shownPages[s.page]; });
+      if (_filteredSuggestions.length > 0) {
+        sheet += '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#818cf8;text-transform:uppercase;padding:8px 10px 4px">Suggested</div>';
+        _filteredSuggestions.forEach(function(s) {
+          var m = _recentLookup[s.page];
+          if (m) {
+            var enhanced = Object.assign({}, m, { tip: s.reason });
+            sheet += _drawerItemHtml(enhanced);
+          }
+        });
+      }
       sheet += '<div style="height:1px;background:rgba(255,255,255,0.06);margin:6px 10px"></div>';
     }
 
