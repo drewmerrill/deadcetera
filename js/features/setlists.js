@@ -936,10 +936,10 @@ async function editSetlist(idx) {
         + (sl.locked ? '<span style="font-size:0.68em;color:#fbbf24;font-weight:700">\uD83D\uDD12 Locked</span>' : '')
         + '<span style="font-size:0.68em;color:var(--text-dim)">' + totalSongs + ' songs</span>'
         + '</div>'
-        // Mode toggle: Plan (edit) vs Stage (pre-gig readiness)
-        + '<div style="display:flex;gap:0;margin-top:6px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.1)">'
-        + '<button id="slModePlan" onclick="_slSwitchMode(\'plan\')" style="flex:1;padding:8px;font-size:0.78em;font-weight:700;cursor:pointer;border:none;background:rgba(99,102,241,0.15);color:#a5b4fc;font-family:inherit;min-height:40px">\u270F\uFE0F Plan</button>'
-        + '<button id="slModeStage" onclick="_slSwitchMode(\'stage\')" style="flex:1;padding:8px;font-size:0.78em;font-weight:700;cursor:pointer;border:none;border-left:1px solid rgba(255,255,255,0.1);background:none;color:#64748b;font-family:inherit;min-height:40px">\uD83C\uDFA4 Stage</button>'
+        // Mode toggle: segmented control — tall, bold, unmissable
+        + '<div style="display:flex;gap:0;margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.03)">'
+        + '<button id="slModePlan" onclick="_slSwitchMode(\'plan\')" style="flex:1;padding:10px 8px;font-size:0.85em;font-weight:800;cursor:pointer;border:none;background:rgba(99,102,241,0.18);color:#a5b4fc;font-family:inherit;min-height:44px;letter-spacing:0.02em;-webkit-tap-highlight-color:transparent">\u270F\uFE0F Plan</button>'
+        + '<button id="slModeStage" onclick="_slSwitchMode(\'stage\')" style="flex:1;padding:10px 8px;font-size:0.85em;font-weight:800;cursor:pointer;border:none;border-left:1px solid rgba(255,255,255,0.1);background:transparent;color:#64748b;font-family:inherit;min-height:44px;letter-spacing:0.02em;-webkit-tap-highlight-color:transparent">\uD83C\uDFA4 Stage</button>'
         + '</div></div>';
 
     container.innerHTML = '<div class="app-card" style="padding:0 14px 14px">'
@@ -974,11 +974,11 @@ window._slSwitchMode = function(mode) {
     var planBtn = document.getElementById('slModePlan');
     var stageBtn = document.getElementById('slModeStage');
     if (planBtn) {
-        planBtn.style.background = mode === 'plan' ? 'rgba(99,102,241,0.15)' : 'none';
+        planBtn.style.background = mode === 'plan' ? 'rgba(99,102,241,0.18)' : 'transparent';
         planBtn.style.color = mode === 'plan' ? '#a5b4fc' : '#64748b';
     }
     if (stageBtn) {
-        stageBtn.style.background = mode === 'stage' ? 'rgba(34,197,94,0.12)' : 'none';
+        stageBtn.style.background = mode === 'stage' ? 'rgba(34,197,94,0.15)' : 'transparent';
         stageBtn.style.color = mode === 'stage' ? '#86efac' : '#64748b';
     }
     // Hide/show save bar
@@ -993,21 +993,27 @@ window._slSwitchMode = function(mode) {
 };
 
 // ── STAGE VIEW — pre-gig readiness + launch surface ──
-// Layout hierarchy: CTA → at-risk summary → per-set readiness cards (collapsed)
-// Optimized: pre-compute all readiness in one pass, no per-song .find()
+// Read-only. No edit controls. Only interactions: Start Gig + expand/collapse sets.
 function _slRenderStageView(idx, sl) {
     var content = document.getElementById('slModeContent');
     if (!content) return;
 
-    // Pre-compute readiness + key lookup once (O(n) not O(n²))
+    // Pre-compute readiness + key lookup once
     var _hasStore = typeof GLStore !== 'undefined';
     var _songKeyMap = {};
     (typeof allSongs !== 'undefined' ? allSongs : []).forEach(function(s) { if (s.key) _songKeyMap[s.title] = s.key; });
 
+    // Human readiness labels
+    function _readinessLabel(pct) {
+        if (pct >= 80) return { text: 'Strong', color: '#22c55e' };
+        if (pct >= 50) return { text: 'Mixed', color: '#f59e0b' };
+        if (pct > 0)   return { text: 'At Risk', color: '#ef4444' };
+        return { text: 'Unrated', color: '#475569' };
+    }
+
     // Gather per-set stats in one pass
     var setStats = [];
     var totalSongs = 0, totalReady = 0, totalWarn = 0;
-    var warnSongs = []; // songs below readiness 3
     (window._slSets || []).forEach(function(set, si) {
         var songs = set.songs || [];
         var ready = 0, warn = 0;
@@ -1015,7 +1021,7 @@ function _slRenderStageView(idx, sl) {
             var title = typeof item === 'string' ? item : (item.title || '');
             var avg = (_hasStore && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
             if (avg >= 4) ready++;
-            else if (avg > 0 && avg < 3) { warn++; warnSongs.push(title); }
+            else if (avg > 0 && avg < 3) warn++;
         });
         var pct = songs.length ? Math.round(ready / songs.length * 100) : 0;
         setStats.push({ name: set.name || 'Set ' + (si+1), count: songs.length, ready: ready, warn: warn, pct: pct, songs: songs });
@@ -1023,46 +1029,54 @@ function _slRenderStageView(idx, sl) {
         totalReady += ready;
         totalWarn += warn;
     });
+    var overallPct = totalSongs ? Math.round(totalReady / totalSongs * 100) : 0;
+    var overallLabel = _readinessLabel(overallPct);
 
     var html = '';
 
-    // ── 1. LAUNCH CTA — always above the fold ──
-    html += '<button onclick="_slLaunchLiveGig(' + idx + ')" style="display:block;width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-size:1.1em;font-weight:800;cursor:pointer;min-height:52px;box-shadow:0 4px 20px rgba(34,197,94,0.3);font-family:inherit;margin-bottom:8px;-webkit-tap-highlight-color:transparent">\uD83C\uDFA4 Start Gig</button>';
+    // ── 1. LAUNCH CTA ──
+    html += '<button onclick="_slLaunchLiveGig(' + idx + ')" style="display:block;width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-size:1.1em;font-weight:800;cursor:pointer;min-height:54px;box-shadow:0 4px 20px rgba(34,197,94,0.3);font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">\uD83C\uDFA4 Start Gig</button>';
 
-    // ── 2. AT-RISK SUMMARY — compact banner if any warnings ──
+    // ── 2. AT-RISK SUMMARY ──
     if (totalWarn > 0) {
-        html += '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);font-size:0.78em;color:#fbbf24;margin-bottom:10px">';
-        html += '<span style="font-size:1.1em">\u26A0</span>';
-        html += '<span style="flex:1">' + totalWarn + ' song' + (totalWarn > 1 ? 's' : '') + ' need work</span>';
-        html += '<span style="font-size:0.85em;color:var(--text-dim)">' + totalReady + '/' + totalSongs + ' ready</span>';
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);margin-bottom:10px">';
+        html += '<span style="font-size:1.2em">\u26A0</span>';
+        html += '<div style="flex:1"><div style="font-size:0.82em;font-weight:700;color:#fbbf24">' + totalWarn + ' song' + (totalWarn > 1 ? 's' : '') + ' need work</div>';
+        html += '<div style="font-size:0.7em;color:var(--text-dim);margin-top:1px">Run these at soundcheck</div></div>';
+        html += '<div style="text-align:right"><div style="font-size:0.95em;font-weight:800;color:' + overallLabel.color + '">' + overallLabel.text + '</div>';
+        html += '<div style="font-size:0.65em;color:var(--text-dim)">' + totalReady + '/' + totalSongs + '</div></div>';
         html += '</div>';
     } else if (totalSongs > 0) {
-        html += '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);font-size:0.78em;color:#86efac;margin-bottom:10px">';
-        html += '<span style="font-size:1.1em">\u2705</span>';
-        html += '<span>' + totalReady + '/' + totalSongs + ' songs gig-ready</span>';
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.12);margin-bottom:10px">';
+        html += '<span style="font-size:1.2em">\u2705</span>';
+        html += '<div style="flex:1"><div style="font-size:0.82em;font-weight:700;color:#86efac">Ready to play</div>';
+        html += '<div style="font-size:0.7em;color:var(--text-dim);margin-top:1px">' + totalReady + ' of ' + totalSongs + ' songs gig-ready</div></div>';
+        html += '<div style="font-size:0.95em;font-weight:800;color:#22c55e">' + overallLabel.text + '</div>';
         html += '</div>';
     }
 
-    // ── 3. PER-SET READINESS CARDS — collapsed by default ──
+    // ── 3. PER-SET READINESS CARDS (collapsed) ──
     setStats.forEach(function(stat, si) {
         if (!stat.count) return;
-        var barColor = stat.pct >= 80 ? '#22c55e' : stat.pct >= 50 ? '#f59e0b' : '#64748b';
+        var label = _readinessLabel(stat.pct);
         var setId = 'slStageSet' + si;
 
         html += '<div style="margin-bottom:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);overflow:hidden">';
-        // Collapsed header — tap to expand
-        html += '<div onclick="document.getElementById(\'' + setId + '\').style.display=document.getElementById(\'' + setId + '\').style.display===\'none\'?\'\':\'none\';this.querySelector(\'.sl-stage-chev\').style.transform=document.getElementById(\'' + setId + '\').style.display===\'none\'?\'rotate(0deg)\':\'rotate(90deg)\'" style="display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;-webkit-tap-highlight-color:transparent">';
-        html += '<span class="sl-stage-chev" style="font-size:0.7em;color:var(--text-dim);transition:transform 0.15s;transform:rotate(0deg)">\u25B8</span>';
-        html += '<span style="font-weight:700;font-size:0.88em;color:var(--text,#e2e8f0)">' + stat.name + '</span>';
-        html += '<span style="font-size:0.72em;color:var(--text-dim)">' + stat.count + ' songs</span>';
-        if (stat.warn > 0) html += '<span style="font-size:0.68em;color:#fbbf24;font-weight:600">' + stat.warn + ' \u26A0</span>';
-        html += '<div style="margin-left:auto;display:flex;align-items:center;gap:6px">';
-        html += '<div style="width:40px;height:4px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden"><div style="height:100%;width:' + stat.pct + '%;background:' + barColor + ';border-radius:2px"></div></div>';
-        html += '<span style="font-size:0.72em;font-weight:700;color:' + barColor + ';min-width:28px;text-align:right">' + stat.pct + '%</span>';
+        // Header — tap to expand
+        html += '<div onclick="var el=document.getElementById(\'' + setId + '\');el.style.display=el.style.display===\'none\'?\'\':\'none\';this.querySelector(\'.sl-chev\').style.transform=el.style.display===\'none\'?\'rotate(0)\':\'rotate(90deg)\'" style="display:flex;align-items:center;gap:8px;padding:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-height:48px">';
+        html += '<span class="sl-chev" style="font-size:0.7em;color:var(--text-dim);transition:transform 0.15s">\u25B8</span>';
+        html += '<span style="font-weight:700;font-size:0.9em;color:var(--text,#e2e8f0)">' + stat.name + '</span>';
+        html += '<span style="font-size:0.72em;color:var(--text-dim)">' + stat.count + '</span>';
+        if (stat.warn > 0) html += '<span style="font-size:0.7em;color:#fbbf24;font-weight:700">' + stat.warn + '\u26A0</span>';
+        html += '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">';
+        // Readiness bar — 5px thick, 48px wide
+        html += '<div style="width:48px;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + stat.pct + '%;background:' + label.color + ';border-radius:3px"></div></div>';
+        // Human label instead of percentage
+        html += '<span style="font-size:0.72em;font-weight:700;color:' + label.color + ';min-width:42px;text-align:right">' + label.text + '</span>';
         html += '</div></div>';
 
-        // Expandable song list — hidden by default
-        html += '<div id="' + setId + '" style="display:none;padding:0 12px 8px">';
+        // Expanded song list (hidden by default)
+        html += '<div id="' + setId + '" style="display:none;padding:2px 12px 10px">';
         stat.songs.forEach(function(item, i) {
             var title = typeof item === 'string' ? item : (item.title || '');
             var segue = typeof item === 'object' ? (item.segue || 'stop') : 'stop';
@@ -1071,12 +1085,14 @@ function _slRenderStageView(idx, sl) {
             var segStr = segue === 'flow' ? ' \u2192' : segue === 'segue' ? ' ~' : '';
             var segColor = segue === 'flow' ? '#818cf8' : segue === 'segue' ? '#34d399' : '';
 
-            html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);min-height:32px">';
-            html += '<span style="color:var(--text-dim);font-weight:600;min-width:18px;font-size:0.78em;text-align:right">' + (i + 1) + '</span>';
-            html += '<div style="width:3px;height:16px;border-radius:2px;background:' + rdColor + ';flex-shrink:0"></div>';
-            html += '<span style="flex:1;font-weight:500;font-size:0.85em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + (segStr ? '<span style="color:' + segColor + ';font-size:0.85em">' + segStr + '</span>' : '') + '</span>';
+            // Song row: 36px min-height, 6px vertical padding — comfortable thumb scanning
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);min-height:36px">';
+            html += '<span style="color:var(--text-dim);font-weight:600;min-width:20px;font-size:0.8em;text-align:right">' + (i + 1) + '</span>';
+            // Readiness indicator — 4px wide vertical bar
+            html += '<div style="width:4px;height:20px;border-radius:2px;background:' + rdColor + ';flex-shrink:0"></div>';
+            html += '<span style="flex:1;font-weight:500;font-size:0.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + (segStr ? '<span style="color:' + segColor + '">' + segStr + '</span>' : '') + '</span>';
             var key = _songKeyMap[title];
-            if (key) html += '<span style="font-size:0.65em;color:#818cf8;font-weight:600">' + key + '</span>';
+            if (key) html += '<span style="font-size:0.68em;color:#818cf8;font-weight:600">' + key + '</span>';
             html += '</div>';
         });
         html += '</div></div>';
