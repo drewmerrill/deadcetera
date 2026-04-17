@@ -593,24 +593,21 @@ function slRenderSetSongs(setIdx) {
         var row;
         if (_isMobile) {
             if (_slEditMode) {
-                // EDIT MODE: full controls — move, delete, segue, metadata
-                var _moveUp = i > 0 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},-1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 6px;min-width:28px;min-height:28px;cursor:pointer;font-size:0.82em;font-weight:700">\u25B2</button>` : '<div style="min-width:28px"></div>';
-                var _moveDn = i < items.length - 1 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 6px;min-width:28px;min-height:28px;cursor:pointer;font-size:0.82em;font-weight:700">\u25BC</button>` : '<div style="min-width:28px"></div>';
+                // EDIT MODE: title dominant, compact controls right-aligned
                 row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}"
-                    style="padding:6px 8px;gap:0;align-items:stretch;cursor:default;min-height:44px;flex-direction:column">
-                    <div style="display:flex;align-items:center;gap:4px;min-width:0">
-                        <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">${_moveUp}${_moveDn}</div>
-                        <span style="color:var(--text-dim);min-width:18px;font-weight:600;flex-shrink:0;font-size:0.8em">${i + 1}</span>
-                        <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.92em">${s}</span>
-                        <select class="sl-segue" onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
-                            style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:5px;padding:2px 6px;font-size:0.72em;font-weight:700;cursor:pointer;flex-shrink:0;min-height:28px">
-                            <option value="stop" ${segue==='stop'?'selected':''}>Stop</option>
-                            <option value="flow" ${segue==='flow'?'selected':''}>Flow</option>
-                            <option value="segue" ${segue==='segue'?'selected':''}>Segue</option>
-                            <option value="cutoff" ${segue==='cutoff'?'selected':''}>Cut</option>
-                        </select>
-                        <button onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.88em;padding:4px;min-width:28px;min-height:28px">\u2715</button>
-                    </div>
+                    style="display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:default;min-height:44px;border-bottom:1px solid rgba(255,255,255,0.03)">
+                    <span style="color:var(--text-dim);min-width:18px;font-weight:600;flex-shrink:0;font-size:0.8em;text-align:right">${i + 1}</span>
+                    <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.92em">${s}</span>
+                    ${i > 0 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},-1)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:4px;min-width:24px;min-height:24px">\u25B2</button>` : ''}
+                    ${i < items.length - 1 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},1)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.72em;padding:4px;min-width:24px;min-height:24px">\u25BC</button>` : ''}
+                    <select class="sl-segue" onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
+                        style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);color:${segueColor};border-radius:5px;padding:2px 4px;font-size:0.68em;font-weight:700;cursor:pointer;flex-shrink:0;min-height:24px">
+                        <option value="stop" ${segue==='stop'?'selected':''}>Stop</option>
+                        <option value="flow" ${segue==='flow'?'selected':''}>Flow</option>
+                        <option value="segue" ${segue==='segue'?'selected':''}>Segue</option>
+                        <option value="cutoff" ${segue==='cutoff'?'selected':''}>Cut</option>
+                    </select>
+                    <button onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.78em;padding:4px;min-width:24px;min-height:24px">\u2715</button>
                 </div>`;
             } else {
                 // CLEAN BUILD: title-dominant, minimal chrome
@@ -642,8 +639,8 @@ function slRenderSetSongs(setIdx) {
                 <button class="btn btn-sm btn-ghost sl-delete" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
             </div>`;
         }
-        // Set Break button — only in edit mode (not clean build)
-        if (i < items.length - 1 && (_slEditMode || !_isMobile)) {
+        // Set Break button — desktop only, or edit mode on mobile
+        if (i < items.length - 1 && !_isMobile) {
             row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button class="sl-break-btn" onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.5em;padding:0 6px;border:1px dashed rgba(245,158,11,0.2);background:rgba(15,23,42,0.95);color:#64748b;border-radius:3px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;position:relative;top:-5px;z-index:1;line-height:1.4" onmouseover="this.style.opacity='1';this.style.color='#fbbf24'" onmouseout="this.style.opacity='0.3';this.style.color='#64748b'">add a break</button></div>`;
         }
         return row;
@@ -1202,7 +1199,12 @@ function _slRenderPlanMode(idx, sl) {
     }
 
     html += '<div id="slLinkedGigRow" style="margin-bottom:6px"></div>';
-    html += '<div id="slReadinessMeter" style="margin-bottom:6px"></div>';
+    // Readiness meter: collapsed on mobile (full detail lives in Stage View)
+    if (_isMobile) {
+        html += '<div id="slReadinessMeter" style="display:none"></div>';
+    } else {
+        html += '<div id="slReadinessMeter" style="margin-bottom:6px"></div>';
+    }
 
     // Actions bar — includes Edit toggle on mobile
     html += '<div id="slStickyActions" style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">';
