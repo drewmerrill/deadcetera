@@ -743,8 +743,11 @@ function seedGigData() { console.log('Seed data removed — all data is in Fireb
 async function loadGigHistory() {
     if (window._gigHistory) return window._gigHistory;
     try {
-        const gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-        const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+        // Use in-memory caches first — avoid redundant Firebase reads
+        var _cachedGigs = (typeof GLStore !== 'undefined' && GLStore.getGigs) ? GLStore.getGigs() : null;
+        var _cachedSetlists = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : (window._glCachedSetlists || window._cachedSetlists || null);
+        const gigs = (_cachedGigs && _cachedGigs.length) ? _cachedGigs : toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        const setlists = (_cachedSetlists && _cachedSetlists.length) ? _cachedSetlists : toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
         const history = {};
         setlists.forEach(sl => {
             (sl.sets || []).forEach((set, si) => {

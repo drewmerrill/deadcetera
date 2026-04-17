@@ -784,9 +784,7 @@ document.addEventListener('DOMContentLoaded', function() {
             _rt.blockedDatesCached = true;
         }).catch(function() {});
 
-        // Re-render home dashboard now that Firebase is ready — gigs load correctly
-        if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
-        if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
+        // Home dashboard will re-render after readiness preload (line 766) — no need for a second call here
         // Restore home address from Firebase (ensures persistence across sessions/devices)
         if (typeof _restoreHomeAddress === 'function') _restoreHomeAddress();
         

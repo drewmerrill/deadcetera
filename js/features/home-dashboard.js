@@ -46,6 +46,8 @@ var _BANNER_DISMISS_KEY = 'gl_home_banner_dismissed';
  * Renders skeleton immediately, then loads data and populates cards.
  */
 window.renderHomeDashboard = async function renderHomeDashboard() {
+    var _hdRenderT0 = performance.now();
+    console.log('[PERF] renderHomeDashboard start ' + Math.round(_hdRenderT0) + 'ms');
     var container = document.getElementById('page-home');
     if (!container) return;
 
@@ -56,6 +58,7 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
         var bundle = await _homeDataLoad();
         var context = _computeHomeContext(bundle);
         container.innerHTML = _renderDashboard(bundle, context);
+        console.log('[PERF] renderHomeDashboard painted ' + Math.round(performance.now()) + 'ms (took ' + Math.round(performance.now() - _hdRenderT0) + 'ms)');
         _triggerDashboardEntrance();
         _scheduleWeakSongsFill(bundle);
         _scheduleActionOwedFill();
@@ -196,23 +199,45 @@ async function _homeDataLoad() {
     if (_homeBundle && (Date.now() - _homeCacheTime < _HOME_CACHE_TTL)) {
         return _homeBundle;
     }
+    var _hdT0 = performance.now();
+    console.log('[PERF] _homeDataLoad start ' + Math.round(_hdT0) + 'ms');
+
+    // Deduplicated loads: single gigs fetch, use cached setlists/calendar when available
+    var _gigsPromise = (typeof loadBandDataFromDrive === 'function')
+        ? loadBandDataFromDrive('_band', 'gigs').then(function(d) { return (typeof toArray === 'function') ? toArray(d || []) : (d || []); }).catch(function() { return []; })
+        : Promise.resolve([]);
+    var _cachedSl = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : (window._glCachedSetlists || window._cachedSetlists || null);
+    var _setlistsPromise = (_cachedSl && _cachedSl.length)
+        ? Promise.resolve(_cachedSl)
+        : ((typeof loadBandDataFromDrive === 'function') ? loadBandDataFromDrive('_band', 'setlists').then(function(d) { return (typeof toArray === 'function') ? toArray(d || []) : (d || []); }).catch(function() { return []; }) : Promise.resolve([]));
+    var _cachedCal = (typeof GLStore !== 'undefined' && GLStore.getCachedBandData) ? GLStore.getCachedBandData('calendar_events') : null;
+    var _calPromise = (_cachedCal && _cachedCal.data)
+        ? Promise.resolve(Array.isArray(_cachedCal.data) ? _cachedCal.data : Object.values(_cachedCal.data || {}))
+        : ((typeof loadBandDataFromDrive === 'function') ? loadBandDataFromDrive('_band', 'calendar_events').catch(function() { return []; }) : Promise.resolve([]));
 
     var results = await Promise.allSettled([
-        _loadUpcomingGigs(3),
+        _gigsPromise,
         _loadUpcomingPlans(2),
-        _loadSetlistSummaries(),
-        _loadRecentGigHistory(),
-        (typeof loadBandDataFromDrive === 'function') ? loadBandDataFromDrive('_band', 'calendar_events').catch(function(){return [];}) : Promise.resolve([]),
+        _setlistsPromise,
+        _calPromise,
         (typeof GLStore !== 'undefined' && GLStore.getBandInvites) ? GLStore.getBandInvites() : Promise.resolve([])
     ]);
+    console.log('[PERF] _homeDataLoad complete ' + Math.round(performance.now()) + 'ms (took ' + Math.round(performance.now() - _hdT0) + 'ms)');
+
+    var _allGigs = results[0].status === 'fulfilled' ? results[0].value : [];
+    var _allSetlists = results[2].status === 'fulfilled' ? results[2].value : [];
+    var _allCalEvents = results[3].status === 'fulfilled' ? results[3].value : [];
+    var today = _todayStr();
+    var cutoff90 = new Date(today); cutoff90.setDate(cutoff90.getDate() - 90);
+    var cutoffStr = cutoff90.toISOString().slice(0, 10);
 
     var bundle = {
-        gigs:          results[0].status === 'fulfilled' ? results[0].value : [],
+        gigs:          _allGigs.filter(function(g) { return (g.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); }).slice(0, 3),
         plans:         results[1].status === 'fulfilled' ? results[1].value : [],
-        setlists:      results[2].status === 'fulfilled' ? results[2].value : [],
-        recentSongs:   results[3].status === 'fulfilled' ? results[3].value : [],
-        _calEvents:    results[4].status === 'fulfilled' ? (Array.isArray(results[4].value) ? results[4].value : Object.values(results[4].value || {})) : [],
-        _invites:      results[5].status === 'fulfilled' ? results[5].value : [],
+        setlists:      _allSetlists.map(function(sl, i) { var sc = (sl.sets||[]).reduce(function(a,s){return a+(s.songs||[]).length;},0); return { name:sl.name||'Untitled', date:sl.date||'', venue:sl.venue||'', sets:sl.sets||[], songCount:sc, _origIdx:i }; }),
+        recentSongs:   _allGigs.filter(function(g) { return (g.date||'') >= cutoffStr && (g.date||'') < today; }).sort(function(a,b) { return (b.date||'').localeCompare(a.date||''); }).slice(0, 5),
+        _calEvents:    Array.isArray(_allCalEvents) ? _allCalEvents : Object.values(_allCalEvents || {}),
+        _invites:      results[4].status === 'fulfilled' ? results[4].value : [],
         readinessCache: (typeof readinessCache !== 'undefined') ? readinessCache : {},
         memberKey:     _getMemberKey()
     };
@@ -1435,8 +1460,13 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // Soft guidance layer
     _rightHtml += _renderRailGuidance(bundle);
 
+    var _hdFreshLabel = '';
+    if (_homeBundle && _homeCacheTime) {
+        var _hdAge = Math.floor((Date.now() - _homeCacheTime) / 60000);
+        _hdFreshLabel = _hdAge < 1 ? 'Updated just now' : 'Updated ' + _hdAge + 'm ago';
+    }
     return '<div class="home-dashboard hd-system">'
-        + '<div class="hd-date">' + dateStr + '</div>'
+        + '<div class="hd-date">' + dateStr + (_hdFreshLabel ? '<span style="font-size:0.55em;color:var(--text-dim,#64748b);margin-left:8px;font-weight:400">' + _hdFreshLabel + '</span>' : '') + '</div>'
         + '<div class="hd-layout">'
         + '<div class="hd-primary">' + _leftHtml + '</div>'
         + '<div class="hd-context">' + _rightHtml + '</div>'
