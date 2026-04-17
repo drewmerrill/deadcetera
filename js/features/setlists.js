@@ -1332,6 +1332,10 @@ async function slSaveSetlistEdit(idx) {
         return;
     }
     showToast('\u2705 Set locked');
+    if (typeof GLStore !== 'undefined' && GLStore.logBandActivity) {
+        var _slName = document.getElementById('slName') ? document.getElementById('slName').value : '';
+        GLStore.logBandActivity('setlist_locked', { name: _slName || 'Setlist' });
+    }
     // Onboarding: mark setlist step complete
     if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('setlist');
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();

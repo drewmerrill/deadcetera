@@ -685,6 +685,7 @@
           .push({ score: v, ts: _now() });
       } catch (eh) {}
       emit('readinessChanged', { songId: songId, memberKey: memberKey, value: v });
+      logBandActivity('rating', { song: songId, value: v });
       if (typeof showToast === 'function') showToast('Readiness saved');
     } catch (e) {
       if (typeof showToast === 'function') showToast('Could not save readiness');
@@ -1955,6 +1956,62 @@
     window.addEventListener('online', function() { setGlobalStatus('live', 'Live'); });
     window.addEventListener('offline', function() { setGlobalStatus('offline', 'Offline'); });
   }
+
+  // ── Band Activity Log — lightweight feed for "What's New" on Home ────────
+  // Writes to Firebase: bandPath('activity_log/{id}')
+  // Each entry: { type, member, detail, ts }
+  function logBandActivity(type, detail) {
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (!db || typeof bandPath !== 'function') return;
+      var memberName = '';
+      if (typeof currentUserName !== 'undefined' && currentUserName) memberName = currentUserName;
+      else if (typeof currentUserEmail !== 'undefined' && currentUserEmail) memberName = currentUserEmail.split('@')[0];
+      var entry = {
+        type: type,
+        member: memberName,
+        detail: detail || {},
+        ts: new Date().toISOString()
+      };
+      db.ref(bandPath('activity_log')).push(entry);
+    } catch(e) {}
+  }
+
+  // Read last N activity entries (cached in memory for 2 minutes)
+  var _activityCache = null;
+  var _activityCacheTime = 0;
+  async function getBandActivity(limit) {
+    if (_activityCache && Date.now() - _activityCacheTime < 120000) return _activityCache;
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (!db || typeof bandPath !== 'function') return [];
+      var snap = await db.ref(bandPath('activity_log')).orderByChild('ts').limitToLast(limit || 10).once('value');
+      var val = snap.val();
+      if (!val) return [];
+      var entries = Object.values(val).sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
+      _activityCache = entries;
+      _activityCacheTime = Date.now();
+      return entries;
+    } catch(e) { return []; }
+  }
+
+  // ── Page View Metrics — track navigation after simplification ─────────
+  // Stored in localStorage per session, flushed to Firebase daily
+  var _pageViewCounts = {};
+  try {
+    var _pvRaw = localStorage.getItem('gl_page_views');
+    if (_pvRaw) _pageViewCounts = JSON.parse(_pvRaw);
+    // Reset daily
+    if (_pageViewCounts._date && _pageViewCounts._date !== new Date().toISOString().slice(0, 10)) _pageViewCounts = {};
+  } catch(e) { _pageViewCounts = {}; }
+
+  function logPageView(page) {
+    _pageViewCounts[page] = (_pageViewCounts[page] || 0) + 1;
+    _pageViewCounts._date = new Date().toISOString().slice(0, 10);
+    try { localStorage.setItem('gl_page_views', JSON.stringify(_pageViewCounts)); } catch(e) {}
+  }
+
+  function getPageViewCounts() { return _pageViewCounts; }
 
   // ── Gigs Cache (centralized) ──────────────────────────────────────────────
   function getGigs() {
@@ -5130,6 +5187,10 @@
     getCacheAgeLabel:            getCacheAgeLabel,
     clearSetlistCache:           clearSetlistCache,
     setGlobalStatus:             setGlobalStatus,
+    logBandActivity:             logBandActivity,
+    getBandActivity:             getBandActivity,
+    logPageView:                 logPageView,
+    getPageViewCounts:           getPageViewCounts,
 
     // Transition Intelligence
     getTransitionIntelligence:   getTransitionIntelligence,

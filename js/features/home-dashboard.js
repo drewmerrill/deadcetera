@@ -67,6 +67,7 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
         _scheduleActionOwedFill();
         _scheduleBandAlignFill();
         _renderHdPollCard();
+        _loadActivityFeed();
     } catch (err) {
         console.warn('[Home] Load error:', err);
         container.innerHTML = _renderErrorState();
@@ -1453,6 +1454,9 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
 
     // Nudge — gentle signal below focus
     if (_nudge) _leftHtml += _nudge;
+
+    // What's New — band activity stream (loaded async after first paint)
+    _leftHtml += '<div id="hdActivityFeed"></div>';
 
     // Post-rehearsal + polls
     _leftHtml += '<div id="hdPostRehearsalPrompt"></div>';
@@ -5781,6 +5785,63 @@ function _fillWeakSongs(bundle) {
 
 function _scheduleWeakSongsFill(bundle) {
     setTimeout(function() { _fillWeakSongs(bundle); }, 220);
+}
+
+// ── "What's New" Activity Feed ──────────────────────────────────────────────
+async function _loadActivityFeed() {
+    var el = document.getElementById('hdActivityFeed');
+    if (!el) return;
+    if (typeof GLStore === 'undefined' || !GLStore.getBandActivity) return;
+    var entries = await GLStore.getBandActivity(8);
+    if (!entries || !entries.length) return;
+    var _typeLabels = {
+        practice: 'practiced',
+        rating: 'rated',
+        gig_added: 'added a gig',
+        setlist_locked: 'locked a setlist',
+        rehearsal_started: 'started rehearsal',
+        rehearsal_ended: 'finished rehearsal',
+        song_added: 'added a song',
+        status_changed: 'updated status'
+    };
+    var _typeIcons = {
+        practice: '\uD83C\uDFB5', rating: '\u2B50', gig_added: '\uD83C\uDFA4',
+        setlist_locked: '\uD83D\uDD12', rehearsal_started: '\uD83C\uDFB8',
+        rehearsal_ended: '\u2705', song_added: '\u2795', status_changed: '\uD83D\uDD04'
+    };
+    var html = '<div style="margin-top:4px;margin-bottom:12px">';
+    html += '<div class="gl-section-label" style="margin-bottom:6px">What\'s new</div>';
+    var now = Date.now();
+    entries.slice(0, 6).forEach(function(e) {
+        var ago = _hdTimeAgo(e.ts);
+        var icon = _typeIcons[e.type] || '\uD83D\uDCCC';
+        var verb = _typeLabels[e.type] || e.type;
+        var detail = '';
+        if (e.detail) {
+            if (e.detail.song) detail = ' \u2014 ' + _escHtml(e.detail.song);
+            else if (e.detail.songs && e.detail.songs.length) detail = ' \u2014 ' + e.detail.songs.length + ' songs';
+            else if (e.detail.name) detail = ' \u2014 ' + _escHtml(e.detail.name);
+            else if (e.detail.venue) detail = ' at ' + _escHtml(e.detail.venue);
+        }
+        html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:0.78em;color:var(--text-dim);border-bottom:1px solid rgba(255,255,255,0.03)">'
+            + '<span style="flex-shrink:0;font-size:1.1em">' + icon + '</span>'
+            + '<span style="flex:1;line-height:1.4"><strong style="color:var(--text,#e2e8f0)">' + _escHtml(e.member || 'Someone') + '</strong> ' + verb + detail + '</span>'
+            + '<span style="flex-shrink:0;font-size:0.85em;opacity:0.5">' + ago + '</span>'
+            + '</div>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+}
+
+function _hdTimeAgo(isoStr) {
+    if (!isoStr) return '';
+    var ms = Date.now() - new Date(isoStr).getTime();
+    var min = Math.floor(ms / 60000);
+    if (min < 1) return 'now';
+    if (min < 60) return min + 'm';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr + 'h';
+    return Math.floor(hr / 24) + 'd';
 }
 
 // ── Mission Board CSS ─────────────────────────────────────────────────────────

@@ -117,6 +117,8 @@ window.showPage = function showPage(page) {
     if (typeof GLStore !== 'undefined' && typeof GLStore.setActivePage === 'function') {
         GLStore.setActivePage(page);
     }
+    // Track page views for usage metrics
+    if (typeof GLStore !== 'undefined' && GLStore.logPageView) GLStore.logPageView(page);
     // Emit page change event (used by avatar and other listeners instead of polling)
     try { window.dispatchEvent(new CustomEvent('gl:pagechange', { detail: { page: page } })); } catch(e) {}
     // Release wake locks for utility pages when navigating away
