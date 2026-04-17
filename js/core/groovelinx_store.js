@@ -2011,6 +2011,14 @@
     try { localStorage.setItem('gl_page_views', JSON.stringify(_pageViewCounts)); } catch(e) {}
   }
 
+  // Track meaningful actions (not just views) per page
+  function logPageAction(page, action) {
+    var key = page + ':' + action;
+    _pageViewCounts[key] = (_pageViewCounts[key] || 0) + 1;
+    _pageViewCounts._date = new Date().toISOString().slice(0, 10);
+    try { localStorage.setItem('gl_page_views', JSON.stringify(_pageViewCounts)); } catch(e) {}
+  }
+
   function getPageViewCounts() { return _pageViewCounts; }
 
   // ── Gigs Cache (centralized) ──────────────────────────────────────────────
@@ -5190,6 +5198,7 @@
     logBandActivity:             logBandActivity,
     getBandActivity:             getBandActivity,
     logPageView:                 logPageView,
+    logPageAction:               logPageAction,
     getPageViewCounts:           getPageViewCounts,
 
     // Transition Intelligence

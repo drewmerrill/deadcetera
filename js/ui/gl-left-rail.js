@@ -33,25 +33,30 @@
     { page: 'setlists',  icon: '\uD83D\uDCCB', label: 'Setlists',  tip: 'Build and organize setlists' },
   ];
 
-  // All secondary pages — accessible via More / tools drawer
+  // All secondary pages — value-weighted ordering for tools drawer
+  // Grouped: Quick Tools → Band → Plan & Prep → Admin
   var NAV_MORE = [
-    { page: 'gigs',          icon: '\uD83C\uDFA4', label: 'Gigs',         tip: 'Manage gigs and performances' },
-    { page: 'ideas',         icon: '\uD83D\uDCAC', label: 'Band Room',    tip: 'Pitch songs, vote, and decisions' },
-    { page: 'feed',          icon: '\uD83D\uDCE1', label: 'Feed',         tip: 'Band notes and discussions' },
-    { page: 'practice',      icon: '\uD83C\uDFAF', label: 'Practice',     tip: 'Practice songs and track progress' },
-    { page: 'playlists',     icon: '\uD83C\uDFA7', label: 'Playlists',    tip: 'Practice and learning playlists' },
-    { page: 'pocketmeter',   icon: '\u23F1', label: 'Pocket Meter',       tip: 'Live BPM detection' },
-    { page: 'tuner',         icon: '\uD83C\uDFB8', label: 'Tuner',        tip: 'Tune your instrument' },
-    { page: 'metronome',     icon: '\uD83E\uDD41', label: 'Metronome',    tip: 'Tempo and click' },
-    { page: 'stageplot',     icon: '\uD83C\uDFAD', label: 'Stage Plot',   tip: 'Stage layouts' },
-    { page: 'venues',        icon: '\uD83C\uDFDB', label: 'Venues',       tip: 'Venue details and logistics' },
-    { page: 'equipment',     icon: '\uD83C\uDF9B', label: 'Equipment',    tip: 'Gear and setups' },
-    { page: 'bestshot',      icon: '\uD83C\uDFC6', label: 'Best Shot',    tip: 'Performance comparisons' },
-    { page: 'finances',      icon: '\uD83D\uDCB0', label: 'Finances',     tip: 'Income, expenses, payouts' },
-    { page: 'social',        icon: '\uD83D\uDCE3', label: 'Social Media', tip: 'Posts and promotion' },
-    { page: 'contacts',      icon: '\uD83D\uDC65', label: 'Contacts',     tip: 'Band and venue contacts' },
-    { page: 'notifications', icon: '\uD83D\uDD14', label: 'Notifications',tip: 'Updates and alerts' },
-    { page: 'help',          icon: '\u2753',        label: 'Help',         tip: 'Help and guides' },
+    // Quick Tools — event-driven, critical
+    { page: 'pocketmeter',   icon: '\u23F1',        label: 'Pocket Meter', tip: 'Live BPM detection', section: 'Quick Tools' },
+    { page: 'tuner',         icon: '\uD83C\uDFB8',  label: 'Tuner',        tip: 'Tune your instrument' },
+    { page: 'metronome',     icon: '\uD83E\uDD41',  label: 'Metronome',    tip: 'Tempo and click' },
+    // Band — collaborative surfaces
+    { page: 'gigs',          icon: '\uD83C\uDFA4',  label: 'Gigs',         tip: 'Shows and performances', section: 'Band' },
+    { page: 'ideas',         icon: '\uD83D\uDCAC',  label: 'Band Room',    tip: 'Ideas, votes, decisions' },
+    { page: 'feed',          icon: '\uD83D\uDCE1',  label: 'Feed',         tip: 'Action items and assignments' },
+    { page: 'practice',      icon: '\uD83C\uDFAF',  label: 'Practice',     tip: 'Focus songs and mixes' },
+    // Plan & Prep — gig preparation
+    { page: 'stageplot',     icon: '\uD83C\uDFAD',  label: 'Stage Plot',   tip: 'Stage layout builder', section: 'Plan & Prep' },
+    { page: 'venues',        icon: '\uD83C\uDFDB',  label: 'Venues',       tip: 'Locations and contacts' },
+    { page: 'playlists',     icon: '\uD83C\uDFA7',  label: 'Playlists',    tip: 'Listening and learning' },
+    { page: 'bestshot',      icon: '\uD83C\uDFC6',  label: 'Best Shot',    tip: 'Performance comparisons' },
+    // Admin — infrequent but valuable
+    { page: 'equipment',     icon: '\uD83C\uDF9B',  label: 'Equipment',    tip: 'Gear inventory', section: 'Admin' },
+    { page: 'finances',      icon: '\uD83D\uDCB0',  label: 'Finances',     tip: 'Income, expenses, payouts' },
+    { page: 'notifications', icon: '\uD83D\uDD14',  label: 'Notifications',tip: 'SMS and care packages' },
+    { page: 'contacts',      icon: '\uD83D\uDC65',  label: 'Contacts',     tip: 'Booking and venue contacts' },
+    { page: 'social',        icon: '\uD83D\uDCE3',  label: 'Social Media', tip: 'Social links and promotion' },
+    { page: 'help',          icon: '\u2753',         label: 'Help',         tip: 'Guides and walkthroughs' },
   ];
 
   // Legacy compat — keep NAV_SECTIONS for any code that reads it
@@ -260,8 +265,13 @@
     sheet += '<button onclick="document.getElementById(\'glToolsDrawer\').remove()" style="background:none;border:none;color:#64748b;font-size:1.2em;cursor:pointer">\u2715</button></div>';
     sheet += '<input id="glDrawerSearch" type="text" placeholder="Search tools..." oninput="glFilterDrawer(this.value)" style="margin:8px 16px;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:0.85em;font-family:inherit">';
     sheet += '<div id="glDrawerList" style="overflow-y:auto;padding:4px 12px 12px">';
+    var _lastSection = '';
     for (var mi = 0; mi < NAV_MORE.length; mi++) {
       var m = NAV_MORE[mi];
+      if (m.section && m.section !== _lastSection) {
+        _lastSection = m.section;
+        sheet += '<div style="font-size:0.6em;font-weight:800;letter-spacing:0.1em;color:#475569;text-transform:uppercase;padding:10px 10px 4px;margin-top:' + (mi > 0 ? '4px' : '0') + '">' + m.section + '</div>';
+      }
       sheet += '<button class="gl-drawer-item" data-label="' + m.label.toLowerCase() + '" onclick="document.getElementById(\'glToolsDrawer\').remove();showPage(\'' + m.page + '\')" style="'
         + 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:none;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;font-size:0.88em;font-family:inherit;text-align:left">'
         + '<span style="font-size:1.3em;width:28px;text-align:center">' + m.icon + '</span>'
