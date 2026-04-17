@@ -2021,6 +2021,32 @@
 
   function getPageViewCounts() { return _pageViewCounts; }
 
+  // ── Retention Metrics — track daily opens and return frequency ──────────
+  // Stores last 30 days of opens in localStorage
+  function logDailyOpen() {
+    try {
+      var today = new Date().toISOString().slice(0, 10);
+      var raw = localStorage.getItem('gl_daily_opens');
+      var opens = raw ? JSON.parse(raw) : [];
+      if (opens[opens.length - 1] !== today) {
+        opens.push(today);
+        if (opens.length > 30) opens = opens.slice(-30);
+        localStorage.setItem('gl_daily_opens', JSON.stringify(opens));
+      }
+    } catch(e) {}
+  }
+
+  function getRetentionStats() {
+    try {
+      var raw = localStorage.getItem('gl_daily_opens');
+      var opens = raw ? JSON.parse(raw) : [];
+      var now = Date.now();
+      var last7 = opens.filter(function(d) { return now - new Date(d + 'T12:00:00').getTime() < 7 * 86400000; }).length;
+      var last30 = opens.length;
+      return { daysActive7: last7, daysActive30: last30, totalDays: opens.length, history: opens };
+    } catch(e) { return { daysActive7: 0, daysActive30: 0, totalDays: 0, history: [] }; }
+  }
+
   // ── Gigs Cache (centralized) ──────────────────────────────────────────────
   function getGigs() {
     return _state.gigsCache || [];
@@ -5200,6 +5226,8 @@
     logPageView:                 logPageView,
     logPageAction:               logPageAction,
     getPageViewCounts:           getPageViewCounts,
+    logDailyOpen:                logDailyOpen,
+    getRetentionStats:           getRetentionStats,
 
     // Transition Intelligence
     getTransitionIntelligence:   getTransitionIntelligence,

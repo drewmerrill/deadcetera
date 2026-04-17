@@ -699,6 +699,9 @@ document.addEventListener('DOMContentLoaded', function() {
         GLT.activate();
     }
 
+    // Track daily app opens for retention metrics
+    if (typeof GLStore !== 'undefined' && GLStore.logDailyOpen) GLStore.logDailyOpen();
+
     // ── STAGE 1: Immediate critical render ──
     // Clear allSongs for non-Deadcetera bands — they should NOT see the hardcoded jam catalog.
     // Deadcetera keeps allSongs for instant render; Firebase will update it.

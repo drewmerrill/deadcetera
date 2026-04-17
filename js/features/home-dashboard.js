@@ -1452,6 +1452,9 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         _leftHtml += '</div>';
     }
 
+    // Weekly Band Pulse — three compact metrics
+    _leftHtml += _renderWeeklyPulse();
+
     // Nudge — gentle signal below focus
     if (_nudge) _leftHtml += _nudge;
 
@@ -5787,43 +5790,92 @@ function _scheduleWeakSongsFill(bundle) {
     setTimeout(function() { _fillWeakSongs(bundle); }, 220);
 }
 
-// ── "What's New" Activity Feed ──────────────────────────────────────────────
+// ── "What's New" Activity Feed — ranked by emotional importance ──────────────
+// Priority: band milestones > gig/rehearsal events > individual practice > metadata edits
+
+var _FEED_PRIORITY = {
+    rehearsal_ended: 5,    // "We did something together" — highest social signal
+    rehearsal_started: 4,  // Band is active right now
+    gig_added: 4,          // New event everyone cares about
+    setlist_locked: 3,     // Shared progress — set is ready
+    practice: 2,           // Individual effort (frequent but lower signal)
+    song_added: 2,         // Library growing
+    rating: 1,             // Data maintenance — lowest emotional weight
+    status_changed: 1
+};
+
 async function _loadActivityFeed() {
     var el = document.getElementById('hdActivityFeed');
     if (!el) return;
     if (typeof GLStore === 'undefined' || !GLStore.getBandActivity) return;
-    var entries = await GLStore.getBandActivity(8);
+    var entries = await GLStore.getBandActivity(12);
     if (!entries || !entries.length) return;
+
+    // ── Rank by emotional importance, then recency ──
+    // Group by time bucket: today, this week, older
+    var now = Date.now();
+    var todayStr = new Date().toISOString().slice(0, 10);
+    var weekAgo = now - 7 * 86400000;
+    entries.sort(function(a, b) {
+        var pa = _FEED_PRIORITY[a.type] || 0;
+        var pb = _FEED_PRIORITY[b.type] || 0;
+        // Within same day: priority wins. Across days: recency wins.
+        var aDay = (a.ts || '').slice(0, 10);
+        var bDay = (b.ts || '').slice(0, 10);
+        if (aDay === bDay) return pb - pa; // same day → higher priority first
+        return (b.ts || '').localeCompare(a.ts || ''); // different days → newest first
+    });
+
+    // Deduplicate: collapse multiple ratings by same member into one line
+    var deduped = [];
+    var _ratingCounts = {}; // member → count
+    entries.forEach(function(e) {
+        if (e.type === 'rating') {
+            var key = (e.member || '') + ':rating';
+            _ratingCounts[key] = (_ratingCounts[key] || 0) + 1;
+            if (_ratingCounts[key] === 1) {
+                deduped.push(Object.assign({}, e, { _ratingCount: 0 }));
+            } else {
+                // Update count on the first entry
+                var first = deduped.find(function(d) { return d.type === 'rating' && d.member === e.member; });
+                if (first) first._ratingCount = _ratingCounts[key];
+            }
+        } else {
+            deduped.push(e);
+        }
+    });
+
     var _typeLabels = {
-        practice: 'practiced',
-        rating: 'rated',
-        gig_added: 'added a gig',
-        setlist_locked: 'locked a setlist',
-        rehearsal_started: 'started rehearsal',
-        rehearsal_ended: 'finished rehearsal',
-        song_added: 'added a song',
-        status_changed: 'updated status'
+        practice: 'practiced', rating: 'rated', gig_added: 'added a gig',
+        setlist_locked: 'locked a setlist', rehearsal_started: 'started rehearsal',
+        rehearsal_ended: 'finished rehearsal', song_added: 'added a song',
+        status_changed: 'updated'
     };
     var _typeIcons = {
         practice: '\uD83C\uDFB5', rating: '\u2B50', gig_added: '\uD83C\uDFA4',
         setlist_locked: '\uD83D\uDD12', rehearsal_started: '\uD83C\uDFB8',
         rehearsal_ended: '\u2705', song_added: '\u2795', status_changed: '\uD83D\uDD04'
     };
+
     var html = '<div style="margin-top:4px;margin-bottom:12px">';
     html += '<div class="gl-section-label" style="margin-bottom:6px">What\'s new</div>';
-    var now = Date.now();
-    entries.slice(0, 6).forEach(function(e) {
+    deduped.slice(0, 6).forEach(function(e) {
         var ago = _hdTimeAgo(e.ts);
         var icon = _typeIcons[e.type] || '\uD83D\uDCCC';
         var verb = _typeLabels[e.type] || e.type;
         var detail = '';
-        if (e.detail) {
+        if (e.type === 'rating' && e._ratingCount > 1) {
+            detail = ' \u2014 ' + e._ratingCount + ' songs';
+        } else if (e.detail) {
             if (e.detail.song) detail = ' \u2014 ' + _escHtml(e.detail.song);
             else if (e.detail.songs && e.detail.songs.length) detail = ' \u2014 ' + e.detail.songs.length + ' songs';
             else if (e.detail.name) detail = ' \u2014 ' + _escHtml(e.detail.name);
             else if (e.detail.venue) detail = ' at ' + _escHtml(e.detail.venue);
         }
-        html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:0.78em;color:var(--text-dim);border-bottom:1px solid rgba(255,255,255,0.03)">'
+        // Higher priority entries get slightly more visual weight
+        var priority = _FEED_PRIORITY[e.type] || 0;
+        var textColor = priority >= 4 ? 'color:var(--text,#e2e8f0)' : 'color:var(--text-dim)';
+        html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:0.78em;' + textColor + ';border-bottom:1px solid rgba(255,255,255,0.03)">'
             + '<span style="flex-shrink:0;font-size:1.1em">' + icon + '</span>'
             + '<span style="flex:1;line-height:1.4"><strong style="color:var(--text,#e2e8f0)">' + _escHtml(e.member || 'Someone') + '</strong> ' + verb + detail + '</span>'
             + '<span style="flex-shrink:0;font-size:0.85em;opacity:0.5">' + ago + '</span>'
@@ -5842,6 +5894,89 @@ function _hdTimeAgo(isoStr) {
     var hr = Math.floor(min / 60);
     if (hr < 24) return hr + 'h';
     return Math.floor(hr / 24) + 'd';
+}
+
+// ── Weekly Band Pulse — "how's the band doing this week?" ───────────────────
+function _renderWeeklyPulse() {
+    var _hasStore = typeof GLStore !== 'undefined';
+
+    // Gather this week's signals
+    var streak = 0;
+    try {
+        var history = JSON.parse(localStorage.getItem('gl_practice_streak') || '[]');
+        var today = _todayStr();
+        var yesterday = new Date(Date.now() - 86400000).toISOString().substring(0, 10);
+        if (history.length >= 2 && (history[history.length - 1] === today || history[history.length - 1] === yesterday)) {
+            streak = 1;
+            for (var i = history.length - 2; i >= 0; i--) {
+                var expected = new Date(new Date(history[i + 1] + 'T12:00:00').getTime() - 86400000).toISOString().substring(0, 10);
+                if (history[i] === expected) streak++;
+                else break;
+            }
+        }
+    } catch(e) {}
+
+    // Active members this week (from action log)
+    var _activeMembers = 0;
+    try {
+        var _pvRaw = localStorage.getItem('gl_page_views');
+        if (_pvRaw) { _activeMembers = 1; } // at minimum, current user is active
+    } catch(e) {}
+
+    // Song readiness snapshot
+    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var readyCount = 0, totalActive = 0;
+    songs.forEach(function(s) {
+        if (!_hasStore || !GLStore.isActiveSong(s.title)) return;
+        totalActive++;
+        var avg = (_hasStore && GLStore.avgReadiness) ? GLStore.avgReadiness(s.title) : 0;
+        if (avg >= 4) readyCount++;
+    });
+    var readyPct = totalActive > 0 ? Math.round(readyCount / totalActive * 100) : 0;
+
+    // Next event
+    var _calCache = (_hasStore && GLStore.getCachedBandData) ? GLStore.getCachedBandData('calendar_events') : null;
+    var _events = (_calCache && _calCache.data) ? (Array.isArray(_calCache.data) ? _calCache.data : []) : [];
+    var _today = _todayStr();
+    var _nextEvent = null;
+    _events.filter(function(e) { return (e.date || '') >= _today && (e.type === 'gig' || e.type === 'rehearsal'); })
+        .sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); })
+        .slice(0, 1).forEach(function(e) { _nextEvent = e; });
+
+    // Build the card
+    var html = '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:12px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+    html += '<span style="font-size:0.72em;font-weight:700;color:var(--text-dim)">This week</span>';
+    if (streak >= 2) html += '<span style="font-size:0.72em;font-weight:700;color:#f59e0b">\uD83D\uDD25 ' + streak + '-day streak</span>';
+    html += '</div>';
+
+    // Three compact metrics
+    html += '<div style="display:flex;gap:8px;margin-bottom:6px">';
+    // Metric 1: Readiness
+    var _readyColor = readyPct >= 70 ? '#22c55e' : readyPct >= 40 ? '#f59e0b' : '#64748b';
+    html += '<div style="flex:1;text-align:center;padding:8px 4px;border-radius:8px;background:rgba(255,255,255,0.03)">'
+        + '<div style="font-size:1.1em;font-weight:800;color:' + _readyColor + '">' + readyPct + '%</div>'
+        + '<div style="font-size:0.6em;color:var(--text-dim);margin-top:2px">gig ready</div></div>';
+    // Metric 2: Songs locked
+    html += '<div style="flex:1;text-align:center;padding:8px 4px;border-radius:8px;background:rgba(255,255,255,0.03)">'
+        + '<div style="font-size:1.1em;font-weight:800;color:var(--text,#e2e8f0)">' + readyCount + '<span style="font-size:0.6em;color:var(--text-dim)">/' + totalActive + '</span></div>'
+        + '<div style="font-size:0.6em;color:var(--text-dim);margin-top:2px">songs locked</div></div>';
+    // Metric 3: Next event
+    if (_nextEvent) {
+        var _daysOut = Math.ceil((new Date(_nextEvent.date + 'T12:00:00') - new Date(_today + 'T12:00:00')) / 86400000);
+        var _evLabel = _nextEvent.type === 'gig' ? 'gig' : 'rehearsal';
+        var _evColor = _nextEvent.type === 'gig' ? '#f59e0b' : '#818cf8';
+        html += '<div style="flex:1;text-align:center;padding:8px 4px;border-radius:8px;background:rgba(255,255,255,0.03)">'
+            + '<div style="font-size:1.1em;font-weight:800;color:' + _evColor + '">' + (_daysOut === 0 ? 'Today' : _daysOut + 'd') + '</div>'
+            + '<div style="font-size:0.6em;color:var(--text-dim);margin-top:2px">next ' + _evLabel + '</div></div>';
+    } else {
+        html += '<div style="flex:1;text-align:center;padding:8px 4px;border-radius:8px;background:rgba(255,255,255,0.03)">'
+            + '<div style="font-size:1.1em;font-weight:800;color:var(--text-dim)">\u2014</div>'
+            + '<div style="font-size:0.6em;color:var(--text-dim);margin-top:2px">next event</div></div>';
+    }
+    html += '</div>';
+    html += '</div>';
+    return html;
 }
 
 // ── Mission Board CSS ─────────────────────────────────────────────────────────

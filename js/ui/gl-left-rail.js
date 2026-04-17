@@ -77,49 +77,64 @@
     } catch(e) {}
   }
 
-  // ── Context-aware suggestions (up to 2, based on current band moment) ──
-  // These appear BELOW recent items, not mixed in. Categories never move.
+  // ── Context-aware suggestions (max 2, high-confidence only) ──
+  // Rules:
+  //   1. Only 3 triggers exist (gig soon, rehearsal today, working on songs)
+  //   2. Only suggest tools the user has opened before
+  //   3. Cooldown: same suggestion not shown again for 24 hours after dismissal
+  //   4. Never suggest something already in Recent
+  //   5. Max 2 suggestions, even if multiple triggers fire
   function _getContextSuggestions() {
     var suggestions = [];
     var recent = _getRecentTools();
     var _hasStore = typeof GLStore !== 'undefined';
 
+    // Load cooldowns (page → timestamp of last dismissal/use)
+    var _cooldowns = {};
+    try { _cooldowns = JSON.parse(localStorage.getItem('gl_suggest_cooldown') || '{}'); } catch(e) {}
+    var _now = Date.now();
+    function _isOnCooldown(page) {
+      return _cooldowns[page] && (_now - _cooldowns[page] < 86400000); // 24 hours
+    }
+
     // Detect current moment
     var today = new Date().toISOString().slice(0, 10);
-    var tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
-    var threeDays = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-
-    // Check for upcoming gigs (from cached calendar events)
+    var threeDays = new Date(_now + 3 * 86400000).toISOString().slice(0, 10);
     var _calCache = (_hasStore && GLStore.getCachedBandData) ? GLStore.getCachedBandData('calendar_events') : null;
     var _events = (_calCache && _calCache.data) ? (Array.isArray(_calCache.data) ? _calCache.data : []) : [];
     var _gigSoon = _events.some(function(e) { return e.type === 'gig' && e.date && e.date >= today && e.date <= threeDays; });
     var _rehearsalToday = _events.some(function(e) { return e.type === 'rehearsal' && e.date === today; });
-
-    // Check current page for context
     var _curPage = (_hasStore && GLStore.getActivePage) ? GLStore.getActivePage() : '';
 
-    // Gig within 3 days → suggest Gig Prep tools the user hasn't opened recently
+    // Trigger 1: Gig within 3 days
     if (_gigSoon) {
-      if (recent.indexOf('stageplot') === -1) suggestions.push({ page: 'stageplot', reason: 'Gig this week' });
-      if (recent.indexOf('gigs') === -1) suggestions.push({ page: 'gigs', reason: 'Gig this week' });
+      if (!_isOnCooldown('stageplot') && recent.indexOf('stageplot') === -1)
+        suggestions.push({ page: 'stageplot', reason: 'Gig this week' });
+      if (!_isOnCooldown('gigs') && recent.indexOf('gigs') === -1)
+        suggestions.push({ page: 'gigs', reason: 'Gig this week' });
     }
-    // Rehearsal today → suggest rehearsal tools
+    // Trigger 2: Rehearsal today
     if (_rehearsalToday) {
-      if (recent.indexOf('tuner') === -1) suggestions.push({ page: 'tuner', reason: 'Rehearsal today' });
-      if (recent.indexOf('pocketmeter') === -1) suggestions.push({ page: 'pocketmeter', reason: 'Rehearsal today' });
+      if (!_isOnCooldown('tuner') && recent.indexOf('tuner') === -1)
+        suggestions.push({ page: 'tuner', reason: 'Rehearsal today' });
+      if (!_isOnCooldown('pocketmeter') && recent.indexOf('pocketmeter') === -1)
+        suggestions.push({ page: 'pocketmeter', reason: 'Rehearsal today' });
     }
-    // On Songs/Rehearsal page → suggest Practice
-    if ((_curPage === 'songs' || _curPage === 'rehearsal') && recent.indexOf('practice') === -1) {
+    // Trigger 3: Working on songs
+    if ((_curPage === 'songs' || _curPage === 'rehearsal') && !_isOnCooldown('practice') && recent.indexOf('practice') === -1) {
       suggestions.push({ page: 'practice', reason: 'You\u2019re working on songs' });
     }
 
-    // Only show tools the user has used at least once before (respect unfamiliarity)
+    // Only suggest tools the user has opened at least once before
     var _allTimeTools = {};
-    try {
-      var _pvRaw = localStorage.getItem('gl_page_views');
-      if (_pvRaw) _allTimeTools = JSON.parse(_pvRaw);
-    } catch(e) {}
+    try { var _pvRaw = localStorage.getItem('gl_page_views'); if (_pvRaw) _allTimeTools = JSON.parse(_pvRaw); } catch(e) {}
     suggestions = suggestions.filter(function(s) { return _allTimeTools[s.page]; });
+
+    // Mark suggested tools on cooldown (so they don't nag next open)
+    suggestions.slice(0, 2).forEach(function(s) {
+      _cooldowns[s.page] = _now;
+    });
+    try { localStorage.setItem('gl_suggest_cooldown', JSON.stringify(_cooldowns)); } catch(e) {}
 
     return suggestions.slice(0, 2);
   }
