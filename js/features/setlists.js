@@ -815,6 +815,15 @@ function slRemoveSong(setIdx, songIdx) {
     slRenderReadinessMeter(); // keep master list in sync
 }
 
+// Mobile: expand one set at a time in Plan mode
+window._slExpandSet = function(si) {
+    _slExpandedSet = si;
+    var idx = window._slEditIdx;
+    var data = window._cachedSetlists || [];
+    var sl = data[idx] || {};
+    _slRenderPlanMode(idx, sl);
+};
+
 // Mobile move up/down (replaces drag-and-drop on touch devices)
 function _slMovesong(setIdx, songIdx, dir) {
     var songs = window._slSets[setIdx]?.songs;
@@ -894,83 +903,252 @@ async function slSaveSetlist() {
     }
 }
 
+// ── Setlist mode state ──
+var _slViewMode = 'plan'; // 'plan' | 'stage'
+var _slExpandedSet = 0; // which set is expanded in plan mode (mobile)
+
 async function editSetlist(idx) {
     window._slEditIdx = idx;
     const data = window._cachedSetlists || toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     const sl = data[idx];
     if (!sl) { alert('Setlist not found'); return; }
-    
+
     window._slSets = sl.sets || [{ name: 'Set 1', songs: [] }];
     window._slEditIndex = idx;
     window._slIsLocked = !!sl.locked;
     _slSetCount = window._slSets.length;
     window._slSelectedVenueId = sl.venueId || null;
     window._slSelectedVenueName = sl.venue || null;
+    _slViewMode = 'plan';
+    _slExpandedSet = 0;
 
     const container = document.getElementById('setlistsList');
+    var _isMobile = window.innerWidth <= 900;
+
+    // ── Sticky header (shared between Plan and Live) ──
     var safeName = (sl.name||'').replace(/"/g,'&quot;');
     var safeNotes = (sl.notes||'').replace(/"/g,'&quot;');
-    container.innerHTML = '<div class="app-card" style="padding:10px 14px">'
-        // Compact header: row 1 = name + date + venue, row 2 = gig chip + notes
-        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
-        + '<input class="app-input" id="slName" value="' + safeName + '" placeholder="Setlist name" style="flex:2;min-width:120px;font-weight:700;font-size:0.9em;padding:5px 8px">'
-        + '<input class="app-input" id="slDate" type="date" value="' + (sl.date||'') + '" style="width:130px;padding:5px 8px;font-size:0.82em;box-sizing:border-box;color-scheme:dark">'
-        + '<div id="slVenuePicker" style="flex:1;min-width:100px"></div>'
+    var totalSongs = (sl.sets||[]).reduce(function(a,s){return a+(s.songs||[]).length;},0);
+    var headerHtml = '<div id="slModeHeader" style="position:sticky;top:0;z-index:10;background:#0f172a;padding:8px 14px;border-bottom:1px solid rgba(255,255,255,0.08);margin:0 -14px">'
+        + '<div style="display:flex;align-items:center;gap:8px">'
+        + '<button onclick="loadSetlists()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;padding:4px">\u2190</button>'
+        + '<span style="font-weight:700;font-size:0.95em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (sl.name||'Setlist') + '</span>'
+        + (sl.locked ? '<span style="font-size:0.68em;color:#fbbf24;font-weight:700">\uD83D\uDD12 Locked</span>' : '')
+        + '<span style="font-size:0.68em;color:var(--text-dim)">' + totalSongs + ' songs</span>'
         + '</div>'
-        + (sl.locked ? '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;margin-bottom:8px;font-size:0.78em;color:#fbbf24"><span>🔒 This setlist is locked' + (sl.lockedBy ? ' by ' + _slMemberName(sl.lockedBy) : '') + '. Editing is view-only until unlocked.</span><button onclick="slUnlockWithWarning(' + idx + ')" style="margin-left:auto;padding:3px 10px;background:none;border:1px solid rgba(245,158,11,0.4);color:#fbbf24;border-radius:6px;cursor:pointer;font-size:0.88em;font-weight:600;white-space:nowrap">🔓 Unlock</button></div>' : '')
-        + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">'
-        + '<div id="slLinkedGigRow" style="flex-shrink:0"></div>'
-        + '<input class="app-input" id="slNotes" value="' + safeNotes + '" placeholder="Notes..." style="flex:1;font-size:0.78em;padding:4px 8px;color:var(--text-dim)">'
-        + '</div>'
-        + '<div id="slReadinessMeter" style="margin-bottom:6px"></div>'
-        // Persistent sticky save bar (desktop: top sticky, mobile: bottom fixed)
-        + '<div id="slStickyActions" style="position:sticky;top:0;z-index:10;background:#1e293b;padding:6px 0;margin:0 -14px;padding-left:14px;padding-right:14px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
-        + '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">📤</button>'
-        + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700;margin-left:auto">● Unsaved</span>'
-        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">\uD83D\uDD12 Lock This Set</button>'
-        + '<button class="btn btn-ghost btn-sm" onclick="loadSetlists()" style="font-size:0.75em">Cancel</button>'
-        + '</div>'
-        // Sets
-        + '<div id="slSets">' + window._slSets.map(function(set, si) {
-            var setSongs = set.songs || [];
-            var setCount = setSongs.length;
-            var durLabel = setCount ? ' · ' + setCount + ' songs · ~' + _slDurationLabel(setSongs) : '';
-            var setActions = '';
-            if (si > 0) {
-                setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
-                    + '<button onclick="slMoveSetUp(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Move this set up">↑</button>'
-                    + '<button onclick="slMergeSets(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Merge into previous set">Merge ↑</button>'
-                    + '</div>';
-            }
-            return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
-                + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:4px"><span onclick="slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span><span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + setActions + '</div>'
-                + '<div id="slSet' + si + 'Songs"></div>'
-                + '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add a song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:4px 6px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.68em;flex-shrink:0" title="Pick songs from library">📋 Pick</button><button class="btn btn-ghost btn-sm" onclick="slToggleActiveFilter(this)" style="font-size:0.68em;flex-shrink:0">All</button></div><div id="slSongResults' + si + '"></div></div>'
-                + '</div>';
-        }).join('') + '</div>'
-        // Mobile bottom save bar
-        + '<div id="slShowTotal" style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim);display:flex;align-items:center;justify-content:space-between"></div>'
+        // Mode toggle: Plan (edit) vs Stage (pre-gig readiness)
+        + '<div style="display:flex;gap:4px;margin-top:6px">'
+        + '<button id="slModePlan" onclick="_slSwitchMode(\'plan\')" style="flex:1;padding:6px;border-radius:6px;font-size:0.78em;font-weight:700;cursor:pointer;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;font-family:inherit">Plan</button>'
+        + '<button id="slModeStage" onclick="_slSwitchMode(\'stage\')" style="flex:1;padding:6px;border-radius:6px;font-size:0.78em;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b;font-family:inherit">Stage</button>'
+        + '</div></div>';
+
+    container.innerHTML = '<div class="app-card" style="padding:0 14px 14px">'
+        + headerHtml
+        + '<div id="slModeContent" style="padding-top:8px"></div>'
         + '<div style="height:80px"></div>'
         + '<div id="slMobileSaveBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(99,102,241,0.3);padding:10px 16px;padding-bottom:calc(10px + env(safe-area-inset-bottom));gap:8px">'
         + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.88em;min-height:44px">Cancel</button>'
         + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.92em;font-weight:700;min-height:44px">\uD83D\uDD12 Lock This Set</button>'
-        + '</div>'
-        + '</div>';
-    // Show mobile save bar on small screens
-    if (window.innerWidth <= 768) {
+        + '</div></div>';
+
+    // Render plan mode content
+    _slRenderPlanMode(idx, sl);
+
+    // Init venue picker
+    GLStore.getVenues().then(function(slVenues) {
+        var slPreselected = null;
+        if (sl.venueId) slPreselected = slVenues.find(function(v){ return v.venueId === sl.venueId; });
+        if (!slPreselected && sl.venue) slPreselected = slVenues.find(function(v){ return v.name === sl.venue; });
+        _slInitVenuePicker(slVenues, slPreselected);
+    }).catch(function() {});
+
+    if (_isMobile) {
         var mBar = document.getElementById('slMobileSaveBar');
         if (mBar) mBar.style.display = 'flex';
     }
-    
-    // Init venue picker for edit form
-    var slVenues = await GLStore.getVenues();
-    var slPreselected = null;
-    if (sl.venueId) slPreselected = slVenues.find(function(v){ return v.venueId === sl.venueId; });
-    if (!slPreselected && sl.venue) slPreselected = slVenues.find(function(v){ return v.name === sl.venue; });
-    _slInitVenuePicker(slVenues, slPreselected);
+}
 
-    // Render existing songs in each set
-    window._slSets.forEach((set, si) => slRenderSetSongs(si));
+// ── Mode switching ──
+window._slSwitchMode = function(mode) {
+    _slViewMode = mode;
+    var planBtn = document.getElementById('slModePlan');
+    var stageBtn = document.getElementById('slModeStage');
+    if (planBtn) {
+        planBtn.style.background = mode === 'plan' ? 'rgba(99,102,241,0.12)' : 'none';
+        planBtn.style.borderColor = mode === 'plan' ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.08)';
+        planBtn.style.color = mode === 'plan' ? '#a5b4fc' : '#64748b';
+    }
+    if (stageBtn) {
+        stageBtn.style.background = mode === 'stage' ? 'rgba(34,197,94,0.12)' : 'none';
+        stageBtn.style.borderColor = mode === 'stage' ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)';
+        stageBtn.style.color = mode === 'stage' ? '#86efac' : '#64748b';
+    }
+    // Hide/show save bar
+    var saveBar = document.getElementById('slMobileSaveBar');
+    if (saveBar) saveBar.style.display = mode === 'plan' ? 'flex' : 'none';
+
+    var idx = window._slEditIdx;
+    var data = window._cachedSetlists || [];
+    var sl = data[idx] || {};
+    if (mode === 'plan') _slRenderPlanMode(idx, sl);
+    else _slRenderStageView(idx, sl);
+};
+
+// ── STAGE VIEW — pre-gig readiness check + launch into live gig mode ──
+function _slRenderStageView(idx, sl) {
+    var content = document.getElementById('slModeContent');
+    if (!content) return;
+    var allSongsList = (typeof allSongs !== 'undefined' ? allSongs : []);
+    var html = '';
+
+    // Launch button — the primary action
+    html += '<div style="text-align:center;padding:16px 12px;margin-bottom:16px">';
+    html += '<button onclick="_slLaunchLiveGig(' + idx + ')" style="padding:16px 32px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-size:1.1em;font-weight:800;cursor:pointer;min-height:52px;box-shadow:0 4px 20px rgba(34,197,94,0.3);font-family:inherit;width:100%">\uD83C\uDFA4 Start Gig</button>';
+    html += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:6px">Opens full-screen charts + song navigation</div>';
+    html += '</div>';
+
+    // Set overview — collapsed sets showing readiness at a glance
+    (window._slSets || []).forEach(function(set, si) {
+        var songs = set.songs || [];
+        if (!songs.length) return;
+        var readyCount = 0, warnCount = 0;
+        songs.forEach(function(item) {
+            var title = typeof item === 'string' ? item : (item.title || '');
+            var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
+            if (avg >= 4) readyCount++;
+            else if (avg > 0 && avg < 3) warnCount++;
+        });
+        var readyPct = songs.length ? Math.round(readyCount / songs.length * 100) : 0;
+        var barColor = readyPct >= 80 ? '#22c55e' : readyPct >= 50 ? '#f59e0b' : '#64748b';
+
+        html += '<div style="margin-bottom:8px;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)">';
+        // Set header with readiness bar
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+        html += '<span style="font-weight:700;font-size:0.85em;color:var(--accent-light)">' + (set.name || 'Set ' + (si+1)) + '</span>';
+        html += '<span style="font-size:0.72em;color:var(--text-dim)">' + songs.length + ' songs</span>';
+        html += '<span style="margin-left:auto;font-size:0.78em;font-weight:700;color:' + barColor + '">' + readyPct + '% ready</span>';
+        html += '</div>';
+        // Readiness bar
+        html += '<div style="height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-bottom:8px">';
+        html += '<div style="height:100%;width:' + readyPct + '%;background:' + barColor + ';border-radius:2px"></div></div>';
+        // Song list — clean, scannable
+        songs.forEach(function(item, i) {
+            var title = typeof item === 'string' ? item : (item.title || '');
+            var segue = typeof item === 'object' ? (item.segue || 'stop') : 'stop';
+            var songData = allSongsList.find(function(sd) { return sd.title === title; });
+            var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
+            var rdColor = avg >= 4 ? '#22c55e' : avg >= 3 ? '#818cf8' : avg > 0 ? '#f59e0b' : '#334155';
+            var segueIndicator = segue === 'flow' ? ' <span style="color:#818cf8;font-size:0.8em">\u2192</span>' : segue === 'segue' ? ' <span style="color:#34d399;font-size:0.8em">~</span>' : '';
+
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.03);min-height:36px">';
+            html += '<span style="color:var(--text-dim);font-weight:600;min-width:20px;font-size:0.82em;text-align:right">' + (i + 1) + '</span>';
+            html += '<div style="width:4px;height:20px;border-radius:2px;background:' + rdColor + ';flex-shrink:0"></div>';
+            html += '<span style="flex:1;font-weight:500;font-size:0.88em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + segueIndicator + '</span>';
+            if (songData && songData.key) html += '<span style="font-size:0.68em;color:#818cf8;font-weight:600">' + songData.key + '</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+    });
+
+    // Warnings
+    var totalSongs = (window._slSets || []).reduce(function(a, s) { return a + (s.songs || []).length; }, 0);
+    var totalWarn = 0;
+    (window._slSets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(item) {
+            var title = typeof item === 'string' ? item : (item.title || '');
+            var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(title) : 0;
+            if (avg > 0 && avg < 3) totalWarn++;
+        });
+    });
+    if (totalWarn > 0) {
+        html += '<div style="padding:8px 10px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);font-size:0.78em;color:#fbbf24;margin-top:4px">';
+        html += '\u26A0 ' + totalWarn + ' song' + (totalWarn > 1 ? 's' : '') + ' below readiness 3 \u2014 run those first at soundcheck';
+        html += '</div>';
+    }
+
+    content.innerHTML = html;
+}
+
+// Launch into existing Live Gig mode
+window._slLaunchLiveGig = function(idx) {
+    var data = window._cachedSetlists || [];
+    var sl = data[idx];
+    if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); return; }
+    // Set the launch handoff for live-gig.js
+    window._lgLaunchSetlistId = sl.setlistId;
+    if (typeof showPage === 'function') showPage('live-gig');
+};
+
+// ── PLAN MODE — editor view ──
+function _slRenderPlanMode(idx, sl) {
+    var content = document.getElementById('slModeContent');
+    if (!content) return;
+    var safeName = (sl.name||'').replace(/"/g,'&quot;');
+    var safeNotes = (sl.notes||'').replace(/"/g,'&quot;');
+    var _isMobile = window.innerWidth <= 900;
+
+    var html = '';
+    // Edit fields (collapsed on mobile behind details)
+    if (_isMobile) {
+        html += '<details style="margin-bottom:8px"><summary style="font-size:0.78em;color:var(--text-dim);cursor:pointer;padding:4px 0">Edit details</summary>'
+            + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'
+            + '<input class="app-input" id="slName" value="' + safeName + '" placeholder="Name" style="flex:2;min-width:120px;font-weight:700;font-size:0.85em;padding:5px 8px">'
+            + '<input class="app-input" id="slDate" type="date" value="' + (sl.date||'') + '" style="width:120px;padding:5px 8px;font-size:0.82em;color-scheme:dark">'
+            + '</div>'
+            + '<input class="app-input" id="slNotes" value="' + safeNotes + '" placeholder="Notes..." style="width:100%;margin-top:4px;font-size:0.78em;padding:4px 8px;color:var(--text-dim);box-sizing:border-box">'
+            + '<div id="slVenuePicker" style="margin-top:4px"></div>'
+            + '</details>';
+    } else {
+        html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
+            + '<input class="app-input" id="slName" value="' + safeName + '" placeholder="Setlist name" style="flex:2;min-width:120px;font-weight:700;font-size:0.9em;padding:5px 8px">'
+            + '<input class="app-input" id="slDate" type="date" value="' + (sl.date||'') + '" style="width:130px;padding:5px 8px;font-size:0.82em;color-scheme:dark">'
+            + '<div id="slVenuePicker" style="flex:1;min-width:100px"></div>'
+            + '</div>'
+            + '<input class="app-input" id="slNotes" value="' + safeNotes + '" placeholder="Notes..." style="width:100%;margin-bottom:6px;font-size:0.78em;padding:4px 8px;color:var(--text-dim);box-sizing:border-box">';
+    }
+
+    html += '<div id="slLinkedGigRow" style="margin-bottom:6px"></div>';
+    html += '<div id="slReadinessMeter" style="margin-bottom:6px"></div>';
+
+    // Actions bar
+    html += '<div id="slStickyActions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
+        + '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">\uD83D\uDCE4</button>'
+        + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700">\u25CF Unsaved</span>'
+        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">\uD83D\uDD12 Lock This Set</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="loadSetlists()" style="font-size:0.75em">Cancel</button>'
+        + '</div>';
+
+    // Sets — collapsible on mobile (one expanded at a time)
+    html += '<div id="slSets">';
+    window._slSets.forEach(function(set, si) {
+        var setSongs = set.songs || [];
+        var setCount = setSongs.length;
+        var durLabel = setCount ? ' \u00B7 ' + setCount + ' songs \u00B7 ~' + _slDurationLabel(setSongs) : '';
+        var setActions = '';
+        if (si > 0) {
+            setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
+                + '<button onclick="slMoveSetUp(' + si + ')" style="padding:2px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.68em;font-weight:600;min-height:28px">\u2191</button>'
+                + '<button onclick="slMergeSets(' + si + ')" style="padding:2px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.68em;font-weight:600;min-height:28px">Merge \u2191</button>'
+                + '</div>';
+        }
+        var isExpanded = !_isMobile || si === _slExpandedSet;
+        var toggleAttr = _isMobile ? ' onclick="_slExpandSet(' + si + ')"' : '';
+        html += '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
+            + '<div style="display:flex;align-items:center;font-size:0.78em;font-weight:700;color:var(--accent-light);margin-bottom:' + (isExpanded ? '4' : '0') + 'px;cursor:' + (_isMobile ? 'pointer' : 'default') + '"' + toggleAttr + '>'
+            + (_isMobile ? '<span style="font-size:0.8em;margin-right:4px;opacity:0.5;transition:transform 0.15s;transform:rotate(' + (isExpanded ? '90' : '0') + 'deg)">\u25B8</span>' : '')
+            + '<span onclick="event.stopPropagation();slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span>'
+            + '<span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + setActions + '</div>'
+            + '<div id="slSet' + si + 'Songs" style="' + (isExpanded ? '' : 'display:none') + '"></div>'
+            + (isExpanded ? '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add a song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:6px 8px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.72em;flex-shrink:0;min-height:36px">\uD83D\uDCCB Pick</button></div><div id="slSongResults' + si + '"></div></div>' : '')
+            + '</div>';
+    });
+    html += '</div>';
+    html += '<div id="slShowTotal" style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim);display:flex;align-items:center;justify-content:space-between"></div>';
+
+    content.innerHTML = html;
+
+    // Render songs + enrich
+    window._slSets.forEach(function(set, si) { slRenderSetSongs(si); });
     _slUpdateShowTotal();
     slEnrichKeyBpm();
     (async function() {
