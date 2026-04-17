@@ -610,14 +610,21 @@ function slRenderSetSongs(setIdx) {
                     <button onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.78em;padding:4px;min-width:24px;min-height:24px">\u2715</button>
                 </div>`;
             } else {
-                // CLEAN BUILD: title-dominant, minimal chrome
+                // CLEAN BUILD: title-dominant, BPM · Key metadata right-aligned
                 var segIndicator = segue === 'flow' ? '<span style="color:rgba(129,140,248,0.5);font-size:0.82em"> \u2192</span>'
                     : segue === 'segue' ? '<span style="color:rgba(52,211,153,0.5);font-size:0.82em"> ~</span>' : '';
+                // Compact metadata: "96 · D" or just "D" or just "96"
+                var _meta = '';
+                var _bpm = songData?.bpm ? String(songData.bpm) : '';
+                var _key = songData?.key || '';
+                if (_bpm && _key) _meta = _bpm + ' \u00B7 ' + _key;
+                else if (_bpm) _meta = _bpm;
+                else if (_key) _meta = _key;
                 row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}"
                     style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:default;min-height:40px;border-bottom:1px solid rgba(255,255,255,0.03)">
                     <span style="color:var(--text-dim);min-width:20px;font-weight:600;flex-shrink:0;font-size:0.8em;text-align:right">${i + 1}</span>
                     <span style="flex:1;font-weight:600;font-size:0.95em;color:var(--text,#e2e8f0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}${segIndicator}</span>
-                    ${keyStr ? `<span style="font-size:0.65em;color:rgba(129,140,248,0.4);font-weight:500">${songData?.key || ''}</span>` : ''}
+                    ${_meta ? `<span style="font-size:0.65em;color:rgba(148,163,184,0.45);font-weight:500;flex-shrink:0;white-space:nowrap">${_meta}</span>` : ''}
                 </div>`;
             }
         } else {
@@ -1238,7 +1245,7 @@ function _slRenderPlanMode(idx, sl) {
             + '<span onclick="event.stopPropagation();slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span>'
             + '<span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + setActions + '</div>'
             + '<div id="slSet' + si + 'Songs" style="' + (isExpanded ? '' : 'display:none') + '"></div>'
-            + (isExpanded ? '<div style="margin-top:6px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add a song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.85em;padding:8px 10px;border-radius:8px">' + (_slEditMode || !_isMobile ? '<button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.72em;flex-shrink:0;min-height:36px">\uD83D\uDCCB Pick</button>' : '') + '</div><div id="slSongResults' + si + '"></div></div>' : '')
+            + (isExpanded ? '<div style="margin-top:8px"><div style="display:flex;gap:6px;align-items:center"><input class="app-input" id="slAddSong' + si + '" placeholder="+ Add song" oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.88em;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">' + (_slEditMode || !_isMobile ? '<button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.75em;flex-shrink:0;min-height:40px;padding:0 12px">\uD83D\uDCCB Pick</button>' : '') + '</div><div id="slSongResults' + si + '"></div></div>' : '')
             + '</div>';
     });
     html += '</div>';
