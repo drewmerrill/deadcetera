@@ -25,37 +25,39 @@
   // ── Nav structure — emoji icons (recognizable, colorful, cross-platform) ──
   var NAV_TOP = { page: 'home', icon: '\uD83C\uDFE0', label: 'Home', tip: 'Your band dashboard' };
 
+  // Core nav: 5 pages always visible
+  var NAV_CORE = [
+    { page: 'songs',     icon: '\uD83C\uDFB5', label: 'Songs',     tip: 'Your song library and charts' },
+    { page: 'rehearsal', icon: '\uD83C\uDFB8', label: 'Rehearsal', tip: 'Plan and run your next rehearsal' },
+    { page: 'calendar',  icon: '\uD83D\uDCC5', label: 'Schedule',  tip: 'Gigs, rehearsals, and events' },
+    { page: 'setlists',  icon: '\uD83D\uDCCB', label: 'Setlists',  tip: 'Build and organize setlists' },
+  ];
+
+  // All secondary pages — accessible via More / tools drawer
+  var NAV_MORE = [
+    { page: 'gigs',          icon: '\uD83C\uDFA4', label: 'Gigs',         tip: 'Manage gigs and performances' },
+    { page: 'ideas',         icon: '\uD83D\uDCAC', label: 'Band Room',    tip: 'Pitch songs, vote, and decisions' },
+    { page: 'feed',          icon: '\uD83D\uDCE1', label: 'Feed',         tip: 'Band notes and discussions' },
+    { page: 'practice',      icon: '\uD83C\uDFAF', label: 'Practice',     tip: 'Practice songs and track progress' },
+    { page: 'playlists',     icon: '\uD83C\uDFA7', label: 'Playlists',    tip: 'Practice and learning playlists' },
+    { page: 'pocketmeter',   icon: '\u23F1', label: 'Pocket Meter',       tip: 'Live BPM detection' },
+    { page: 'tuner',         icon: '\uD83C\uDFB8', label: 'Tuner',        tip: 'Tune your instrument' },
+    { page: 'metronome',     icon: '\uD83E\uDD41', label: 'Metronome',    tip: 'Tempo and click' },
+    { page: 'stageplot',     icon: '\uD83C\uDFAD', label: 'Stage Plot',   tip: 'Stage layouts' },
+    { page: 'venues',        icon: '\uD83C\uDFDB', label: 'Venues',       tip: 'Venue details and logistics' },
+    { page: 'equipment',     icon: '\uD83C\uDF9B', label: 'Equipment',    tip: 'Gear and setups' },
+    { page: 'bestshot',      icon: '\uD83C\uDFC6', label: 'Best Shot',    tip: 'Performance comparisons' },
+    { page: 'finances',      icon: '\uD83D\uDCB0', label: 'Finances',     tip: 'Income, expenses, payouts' },
+    { page: 'social',        icon: '\uD83D\uDCE3', label: 'Social Media', tip: 'Posts and promotion' },
+    { page: 'contacts',      icon: '\uD83D\uDC65', label: 'Contacts',     tip: 'Band and venue contacts' },
+    { page: 'notifications', icon: '\uD83D\uDD14', label: 'Notifications',tip: 'Updates and alerts' },
+    { page: 'help',          icon: '\u2753',        label: 'Help',         tip: 'Help and guides' },
+  ];
+
+  // Legacy compat — keep NAV_SECTIONS for any code that reads it
   var NAV_SECTIONS = [
-    { title: '', primary: true, items: [
-      { page: 'songs',     icon: '\uD83C\uDFB5', label: 'Songs',     tip: 'Your song library and charts' },
-      { page: 'rehearsal', icon: '\uD83C\uDFB8', label: 'Rehearsal', tip: 'Plan and run your next rehearsal' },
-      { page: 'calendar',  icon: '\uD83D\uDCC5', label: 'Schedule',  tip: 'Gigs, rehearsals, and events' },
-      { page: 'setlists',  icon: '\uD83D\uDCCB', label: 'Setlists',  tip: 'Build and organize setlists' },
-    ]},
-    { title: 'Band', items: [
-      { page: 'gigs',      icon: '\uD83C\uDFA4', label: 'Gigs',       tip: 'Manage gigs and performances' },
-      { page: 'ideas',     icon: '\uD83D\uDCAC', label: 'Band Room',  tip: 'Pitch songs, vote, and decisions' },
-      { page: 'feed',      icon: '\uD83D\uDCE1', label: 'Feed',       tip: 'Band notes and discussions' },
-      { page: 'admin',     icon: '\u2699\uFE0F', label: 'Settings',    tip: 'Band members and settings' },
-    ]},
-    { title: 'Tools', items: [
-      { page: 'practice',    icon: '\uD83C\uDFAF', label: 'Practice',     tip: 'Practice songs and track progress' },
-      { page: 'playlists',   icon: '\uD83C\uDFA7', label: 'Playlists',    tip: 'Practice and learning playlists' },
-      { page: 'pocketmeter', icon: '\uD83C\uDF9A\uFE0F', label: 'Pocket Meter', tip: 'Timing and groove' },
-      { page: 'tuner',       icon: '\uD83D\uDD31', label: 'Tuner',        tip: 'Tune your instrument' },
-      { page: 'metronome',   icon: '\uD83E\uDD41', label: 'Metronome',    tip: 'Tempo and click' },
-      { page: 'stageplot',   icon: '\uD83C\uDFAD', label: 'Stage Plot',   tip: 'Stage layouts' },
-      { page: 'venues',      icon: '\uD83C\uDFDB\uFE0F', label: 'Venues', tip: 'Venue details and logistics' },
-      { page: 'equipment',   icon: '\uD83C\uDF9B\uFE0F', label: 'Equipment', tip: 'Gear and setups' },
-    ]},
-    { title: 'More', items: [
-      { page: 'finances',      icon: '\uD83D\uDCB0', label: 'Finances',      tip: 'Income, expenses, payouts' },
-      { page: 'social',        icon: '\uD83D\uDCE3', label: 'Social Media',  tip: 'Posts and promotion' },
-      { page: 'bestshot',      icon: '\uD83C\uDFC6', label: 'Best Shot',     tip: 'Best performances' },
-      { page: 'contacts',      icon: '\uD83D\uDC65', label: 'Contacts',      tip: 'Band and venue contacts' },
-      { page: 'notifications', icon: '\uD83D\uDD14', label: 'Notifications', tip: 'Updates and alerts' },
-      { page: 'help',          icon: '\u2753', label: 'Help',                 tip: 'Help and guides' },
-    ]},
+    { title: '', primary: true, items: NAV_CORE },
+    { title: 'More', items: NAV_MORE },
   ];
 
   // ── Public API ──────────────────────────────────────────────────────────
@@ -167,71 +169,127 @@
     }
     if (!_rail) return;
 
-    // Mode no longer drives UI — all pages always visible.
-    // These reads are retained for potential future use in copy/recommendations.
-    var currentMode = (typeof GLStore !== 'undefined' && GLStore.getProductMode)
-      ? GLStore.getProductMode() : 'sharpen';
-    var modePages = null; // DEPRECATED — all pages visible
-
     var html = '<button class="gl-rail-toggle" title="Collapse navigation">'
       + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">'
       + '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>'
       + '</svg></button>';
 
-    // Home — top-level, above all sections
+    // Home — top-level
     html += '<button class="gl-rail-item gl-rail-item--home" data-page="' + NAV_TOP.page + '"'
       + ' onclick="showPage(\'' + NAV_TOP.page + '\')" title="' + (NAV_TOP.tip || NAV_TOP.label) + '">'
       + '<span class="gl-rail-icon">' + NAV_TOP.icon + '</span>'
       + '<span class="gl-rail-label">' + NAV_TOP.label + '</span></button>';
 
-    // Sections: primary items always visible, secondary collapsed
-    var _seenPages = {}; // dedup guard — prevent duplicate nav items
-    _seenPages[NAV_TOP.page] = true;
-    for (var s = 0; s < NAV_SECTIONS.length; s++) {
-      var section = NAV_SECTIONS[s];
-      // Dedup: skip items whose page key was already rendered
-      var visibleItems = section.items.filter(function(item) {
-        if (_seenPages[item.page]) return false;
-        _seenPages[item.page] = true;
-        return true;
-      });
-
-      if (visibleItems.length === 0) continue;
-
-      // Primary section: no title, always expanded
-      if (section.primary) {
-        html += '<div class="gl-rail-section">';
-        for (var pi = 0; pi < visibleItems.length; pi++) {
-          html += _renderNavItem(visibleItems[pi]);
-        }
-        html += '</div>';
-        continue;
-      }
-
-      // Secondary sections: collapsible with clear heading
-      html += '<details class="gl-rail-section gl-rail-section--collapsible">';
-      html += '<summary class="gl-rail-section-title" style="cursor:pointer;user-select:none;border-top:1px solid rgba(255,255,255,0.06);margin-top:6px;padding-top:10px;display:flex;align-items:center;gap:4px">'
-        + '<span>' + section.title + '</span>'
-        + '<span style="font-size:0.7em;opacity:0.4;transition:transform 0.15s" class="gl-rail-chevron">\u25B8</span>'
-        + '</summary>';
-      for (var vi = 0; vi < visibleItems.length; vi++) {
-        html += _renderNavItem(visibleItems[vi]);
-      }
-      html += '</details>';
+    // Core 4 — always visible
+    html += '<div class="gl-rail-section">';
+    for (var ci = 0; ci < NAV_CORE.length; ci++) {
+      html += _renderNavItem(NAV_CORE[ci]);
     }
+    html += '</div>';
 
-    // Debug: log final nav items to detect duplicates
-    var _navDebug = [];
-    NAV_SECTIONS.forEach(function(sec) {
-      sec.items.forEach(function(item) { _navDebug.push(item.label); });
-    });
-    var _dupes = _navDebug.filter(function(label, i) { return _navDebug.indexOf(label) !== i; });
-    if (_dupes.length) console.error('[Nav] DUPLICATE LABELS FOUND:', _dupes, 'Full list:', _navDebug);
-    else console.log('[Nav] Rendered', _navDebug.length, 'items (no duplicates):', _navDebug.join(', '));
+    // Bottom: Settings + More drawer trigger
+    html += '<div class="gl-rail-bottom" style="margin-top:auto;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)">';
+    html += '<button class="gl-rail-item" data-page="admin" onclick="showPage(\'admin\')" title="Settings">'
+      + '<span class="gl-rail-icon">\u2699\uFE0F</span>'
+      + '<span class="gl-rail-label">Settings</span></button>';
+    html += '<button class="gl-rail-item gl-rail-more-btn" onclick="glOpenToolsDrawer()" title="More tools">'
+      + '<span class="gl-rail-icon">\u2022\u2022\u2022</span>'
+      + '<span class="gl-rail-label">More</span></button>';
+    html += '</div>';
 
     _rail.innerHTML = html;
     _items = _rail.querySelectorAll('.gl-rail-item');
+
+    // ── Mobile bottom tab bar ──
+    _renderBottomTabBar();
   }
+
+  // ── Mobile bottom tab bar — 5 core pages + More ──
+  function _renderBottomTabBar() {
+    if (document.getElementById('glBottomTabs')) return; // already rendered
+    var bar = document.createElement('div');
+    bar.id = 'glBottomTabs';
+    bar.style.cssText = 'display:none;position:fixed;bottom:0;left:0;right:0;z-index:8000;'
+      + 'background:rgba(15,23,42,0.97);border-top:1px solid rgba(255,255,255,0.08);'
+      + 'padding-bottom:env(safe-area-inset-bottom);height:50px;'
+      + 'align-items:center;justify-content:space-around';
+    var tabs = [NAV_TOP].concat(NAV_CORE).concat([{ page: '_more', icon: '\u2022\u2022\u2022', label: 'More' }]);
+    tabs.forEach(function(t) {
+      var onclick = t.page === '_more' ? 'glOpenToolsDrawer()' : 'showPage(\'' + t.page + '\')';
+      bar.innerHTML += '<button class="gl-tab" data-page="' + t.page + '" onclick="' + onclick + '" style="'
+        + 'background:none;border:none;color:var(--text-dim);display:flex;flex-direction:column;'
+        + 'align-items:center;gap:1px;padding:4px 0;min-width:0;flex:1;cursor:pointer;font-family:inherit">'
+        + '<span style="font-size:1.2em;line-height:1">' + t.icon + '</span>'
+        + '<span style="font-size:0.55em;font-weight:600;letter-spacing:0.02em">' + t.label + '</span>'
+        + '</button>';
+    });
+    document.body.appendChild(bar);
+    // Inject responsive CSS
+    if (!document.getElementById('glTabBarCSS')) {
+      var s = document.createElement('style');
+      s.id = 'glTabBarCSS';
+      s.textContent = '@media(max-width:768px){#glBottomTabs{display:flex!important}'
+        + '#gl-left-rail{display:none!important}'
+        + '.main-content{padding-bottom:calc(56px + env(safe-area-inset-bottom))!important}'
+        + '} .gl-tab[data-page].gl-tab--active{color:#a5b4fc!important}'
+        + '.gl-tab[data-page].gl-tab--active span:first-child{transform:scale(1.15)}';
+      document.head.appendChild(s);
+    }
+    // Update active tab
+    _updateBottomTabs(GLStore && GLStore.getActivePage ? GLStore.getActivePage() : 'home');
+  }
+
+  function _updateBottomTabs(page) {
+    var tabs = document.querySelectorAll('#glBottomTabs .gl-tab');
+    for (var i = 0; i < tabs.length; i++) {
+      tabs[i].classList.toggle('gl-tab--active', tabs[i].dataset.page === page);
+    }
+  }
+
+  // ── Tools drawer — searchable list of all secondary pages ──
+  window.glOpenToolsDrawer = function() {
+    var existing = document.getElementById('glToolsDrawer');
+    if (existing) { existing.remove(); return; }
+    var overlay = document.createElement('div');
+    overlay.id = 'glToolsDrawer';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,0.6);display:flex;align-items:flex-end;justify-content:center';
+    var sheet = '<div style="background:#1e293b;border-radius:16px 16px 0 0;width:100%;max-width:480px;max-height:70vh;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)">';
+    sheet += '<div style="padding:14px 16px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06)">';
+    sheet += '<span style="font-weight:700;font-size:0.95em;color:#e2e8f0">Tools & Pages</span>';
+    sheet += '<button onclick="document.getElementById(\'glToolsDrawer\').remove()" style="background:none;border:none;color:#64748b;font-size:1.2em;cursor:pointer">\u2715</button></div>';
+    sheet += '<input id="glDrawerSearch" type="text" placeholder="Search tools..." oninput="glFilterDrawer(this.value)" style="margin:8px 16px;padding:8px 12px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#e2e8f0;font-size:0.85em;font-family:inherit">';
+    sheet += '<div id="glDrawerList" style="overflow-y:auto;padding:4px 12px 12px">';
+    for (var mi = 0; mi < NAV_MORE.length; mi++) {
+      var m = NAV_MORE[mi];
+      sheet += '<button class="gl-drawer-item" data-label="' + m.label.toLowerCase() + '" onclick="document.getElementById(\'glToolsDrawer\').remove();showPage(\'' + m.page + '\')" style="'
+        + 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:none;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;font-size:0.88em;font-family:inherit;text-align:left">'
+        + '<span style="font-size:1.3em;width:28px;text-align:center">' + m.icon + '</span>'
+        + '<span style="flex:1"><span style="font-weight:600">' + m.label + '</span><br>'
+        + '<span style="font-size:0.78em;color:#64748b">' + m.tip + '</span></span>'
+        + '</button>';
+    }
+    // Settings entry for mobile (since gear is in desktop rail only)
+    sheet += '<button class="gl-drawer-item" data-label="settings" onclick="document.getElementById(\'glToolsDrawer\').remove();showPage(\'admin\')" style="'
+      + 'display:flex;align-items:center;gap:10px;width:100%;padding:12px 10px;background:none;border:none;border-radius:8px;color:#e2e8f0;cursor:pointer;font-size:0.88em;font-family:inherit;text-align:left">'
+      + '<span style="font-size:1.3em;width:28px;text-align:center">\u2699\uFE0F</span>'
+      + '<span style="flex:1"><span style="font-weight:600">Settings</span><br>'
+      + '<span style="font-size:0.78em;color:#64748b">Profile, band, data</span></span>'
+      + '</button>';
+    sheet += '</div></div>';
+    overlay.innerHTML = sheet;
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    // Focus search on desktop
+    var searchInput = document.getElementById('glDrawerSearch');
+    if (searchInput && window.innerWidth > 768) searchInput.focus();
+  };
+
+  window.glFilterDrawer = function(q) {
+    var lower = q.toLowerCase();
+    document.querySelectorAll('.gl-drawer-item').forEach(function(item) {
+      item.style.display = (!q || item.dataset.label.indexOf(lower) !== -1) ? 'flex' : 'none';
+    });
+  };
 
   // ── Band Room badge ────────────────────────────────────────────────────
   // Uses FeedActionState identity for correct vote key matching.
@@ -293,6 +351,7 @@
         item.classList.remove('gl-rail-item--active');
       }
     }
+    _updateBottomTabs(page);
   }
 
   // ── Collapse ────────────────────────────────────────────────────────────

@@ -10023,9 +10023,7 @@ function renderSettingsPage(el) {
         <button class="tab-btn" onclick="settingsTab('band',this)">🎸 Band</button>
         <button class="tab-btn" onclick="settingsTab('data',this)">📊 Data</button>
         <button class="tab-btn" onclick="settingsTab('notifications',this)">🔔 Notifications</button>
-        <button class="tab-btn" onclick="settingsTab('feedback',this)">🐛 Bugs</button>
-        <button class="tab-btn" onclick="settingsTab('uat',this)">\uD83E\uDDEA UAT</button>
-        <button class="tab-btn" onclick="settingsTab('plan',this)">\uD83D\uDCB3 Plan</button>
+        ${localStorage.getItem('gl_dev_mode') === 'true' ? '<button class="tab-btn" onclick="settingsTab(\'feedback\',this)">🐛 Bugs</button><button class="tab-btn" onclick="settingsTab(\'uat\',this)">\uD83E\uDDEA UAT</button><button class="tab-btn" onclick="settingsTab(\'plan\',this)">\uD83D\uDCB3 Plan</button>' : ''}
         <button class="tab-btn" onclick="settingsTab('about',this)">ℹ️ About</button>
     </div>
     <div id="settingsContent"></div>`;
