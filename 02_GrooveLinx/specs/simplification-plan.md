@@ -1,7 +1,7 @@
 # GrooveLinx Simplification Plan
 
 _Created: 2026-04-17_
-_Status: PROPOSED — awaiting Drew's review before execution_
+_Status: PHASE 1 SHIPPED (2026-04-17) — simplified nav + bottom tabs + tools drawer_
 
 ---
 

@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-17 (Performance sprint: Firebase dedup + boot consolidation + freshness states)_
+_Updated: 2026-04-17 (Nav simplification: 5 core pages + bottom tab bar + tools drawer)_
 
 ## Active Phase: Band Adoption + Polish
 
@@ -12,6 +12,13 @@ Production URL: **https://app.groovelinx.com**
 ---
 
 ## What's Live (2026-04-13)
+
+### Navigation Simplification (NEW 2026-04-17)
+- **5 core pages** in left rail: Home, Songs, Rehearsal, Schedule, Setlists
+- **Mobile bottom tab bar**: 5 icons + More, replaces hamburger menu on ≤768px
+- **Tools drawer**: ··· button opens searchable bottom sheet with all 17 secondary pages
+- **Settings cleanup**: UAT/Bugs/Plan tabs hidden behind `gl_dev_mode` flag
+- **Zero capability removed**: every page accessible via drawer, URL, or search
 
 ### Performance Sprint (NEW 2026-04-17)
 - **Firebase read deduplication**:
