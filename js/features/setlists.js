@@ -1004,20 +1004,23 @@ function _slRenderStageView(idx, sl) {
     var _songKeyMap = {};
     (typeof allSongs !== 'undefined' ? allSongs : []).forEach(function(s) { if (s.key) _songKeyMap[s.title] = s.key; });
 
+    // Confidence labels — band language, not data language
     function _readinessLabel(pct) {
-        if (pct >= 80) return { text: 'Strong', color: '#22c55e', bg: 'rgba(34,197,94,0.08)' };
-        if (pct >= 50) return { text: 'Mixed', color: '#f59e0b', bg: 'rgba(245,158,11,0.06)' };
-        if (pct > 0)   return { text: 'At Risk', color: '#ef4444', bg: 'rgba(239,68,68,0.06)' };
-        return { text: 'Unrated', color: '#475569', bg: 'rgba(255,255,255,0.02)' };
+        if (pct >= 80) return { text: 'Locked in', color: '#22c55e', level: 'strong' };
+        if (pct >= 50) return { text: 'Getting there', color: '#f59e0b', level: 'mixed' };
+        if (pct > 0)   return { text: 'Needs work', color: '#ef4444', level: 'weak' };
+        return { text: 'Not rated yet', color: '#475569', level: 'unrated' };
     }
 
-    // Dynamic coaching based on actual problems
+    // Coaching — calm bandmate voice, specific, no alarm
     function _coachingText(totalWarn, totalSongs, totalReady, warnTitles) {
         if (totalWarn === 0) return '';
-        if (totalWarn === 1) return 'Run \u201C' + warnTitles[0] + '\u201D at soundcheck';
-        if (totalWarn === 2) return 'Soundcheck \u201C' + warnTitles[0] + '\u201D and \u201C' + warnTitles[1] + '\u201D';
-        if (totalWarn <= 4) return 'Run ' + totalWarn + ' weak songs at soundcheck';
-        return totalWarn + ' songs under-rehearsed \u2014 front-load the strong ones';
+        if (totalWarn === 1) return 'Give \u201C' + warnTitles[0] + '\u201D a run before you go on';
+        if (totalWarn === 2) return 'Hit \u201C' + warnTitles[0] + '\u201D and \u201C' + warnTitles[1] + '\u201D at soundcheck';
+        if (totalWarn <= 4) return totalWarn + ' songs could use a quick run-through';
+        var strongCount = totalReady;
+        if (strongCount > totalWarn) return 'You\u2019ve got ' + strongCount + ' strong \u2014 lean on those early';
+        return totalWarn + ' songs still rough. Start with what you know.';
     }
 
     // Gather stats + collect weak song titles for coaching
@@ -1046,36 +1049,43 @@ function _slRenderStageView(idx, sl) {
 
     var html = '';
 
-    // ── 1. CONFIDENCE METER — overall band readiness at a glance ──
-    html += '<div style="text-align:center;padding:14px 12px 10px;margin-bottom:6px">';
-    // Arc visualization using CSS border trick
-    var arcSize = 72;
-    var arcStroke = 6;
-    var circumference = Math.PI * (arcSize - arcStroke); // half-circle
+    // ── 1. CONFIDENCE METER — how ready is the band? ──
+    html += '<div style="text-align:center;padding:16px 12px 12px;margin-bottom:4px">';
+    var arcSize = 80;
+    var arcStroke = 7;
+    var circumference = Math.PI * (arcSize - arcStroke);
     var filled = circumference * (overallPct / 100);
-    html += '<div style="position:relative;width:' + arcSize + 'px;height:' + (arcSize / 2 + 8) + 'px;margin:0 auto">';
-    html += '<svg width="' + arcSize + '" height="' + (arcSize / 2 + 4) + '" viewBox="0 0 ' + arcSize + ' ' + (arcSize / 2 + 4) + '">';
-    // Background arc
+    html += '<div style="position:relative;width:' + arcSize + 'px;height:' + (arcSize / 2 + 10) + 'px;margin:0 auto">';
+    html += '<svg width="' + arcSize + '" height="' + (arcSize / 2 + 6) + '" viewBox="0 0 ' + arcSize + ' ' + (arcSize / 2 + 6) + '">';
     html += '<path d="M ' + arcStroke + ' ' + (arcSize / 2) + ' A ' + (arcSize / 2 - arcStroke) + ' ' + (arcSize / 2 - arcStroke) + ' 0 0 1 ' + (arcSize - arcStroke) + ' ' + (arcSize / 2) + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="' + arcStroke + '" stroke-linecap="round"/>';
-    // Filled arc
-    html += '<path d="M ' + arcStroke + ' ' + (arcSize / 2) + ' A ' + (arcSize / 2 - arcStroke) + ' ' + (arcSize / 2 - arcStroke) + ' 0 0 1 ' + (arcSize - arcStroke) + ' ' + (arcSize / 2) + '" fill="none" stroke="' + overallLabel.color + '" stroke-width="' + arcStroke + '" stroke-linecap="round" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + (circumference - filled) + '"/>';
+    html += '<path d="M ' + arcStroke + ' ' + (arcSize / 2) + ' A ' + (arcSize / 2 - arcStroke) + ' ' + (arcSize / 2 - arcStroke) + ' 0 0 1 ' + (arcSize - arcStroke) + ' ' + (arcSize / 2) + '" fill="none" stroke="' + overallLabel.color + '" stroke-width="' + arcStroke + '" stroke-linecap="round" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + (circumference - filled) + '" style="transition:stroke-dashoffset 0.4s ease"/>';
     html += '</svg>';
-    // Center label
     html += '<div style="position:absolute;bottom:0;left:0;right:0;text-align:center">';
-    html += '<div style="font-size:1.3em;font-weight:800;color:' + overallLabel.color + ';line-height:1">' + overallLabel.text + '</div>';
+    html += '<div style="font-size:1.4em;font-weight:800;color:' + overallLabel.color + ';line-height:1">' + overallLabel.text + '</div>';
     html += '</div></div>';
-    html += '<div style="font-size:0.7em;color:var(--text-dim);margin-top:2px">' + totalReady + ' of ' + totalSongs + ' gig-ready</div>';
+    // Subtitle — human, not data-dump
+    var _meterSub = totalSongs === 0 ? 'No songs in this set'
+        : overallLabel.level === 'strong' ? totalReady + ' of ' + totalSongs + ' ready to play'
+        : overallLabel.level === 'mixed' ? totalReady + ' solid, ' + totalWarn + ' need a run'
+        : overallLabel.level === 'weak' ? 'Only ' + totalReady + ' of ' + totalSongs + ' feel tight'
+        : 'Rate your songs to see readiness';
+    html += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px">' + _meterSub + '</div>';
     html += '</div>';
 
-    // ── 2. LAUNCH CTA ──
-    html += '<button onclick="_slLaunchLiveGig(' + idx + ')" style="display:block;width:100%;padding:16px;border-radius:12px;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;font-size:1.1em;font-weight:800;cursor:pointer;min-height:54px;box-shadow:0 4px 20px rgba(34,197,94,0.3);font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">\uD83C\uDFA4 Start Gig</button>';
+    // ── 2. LAUNCH CTA — style adapts to confidence ──
+    var _ctaBg = overallLabel.level === 'strong' ? 'linear-gradient(135deg,#22c55e,#16a34a)'
+        : overallLabel.level === 'mixed' ? 'linear-gradient(135deg,#22c55e,#65a30d)'
+        : 'linear-gradient(135deg,#22c55e,#16a34a)';
+    var _ctaShadow = overallLabel.level === 'strong' ? '0 4px 20px rgba(34,197,94,0.3)'
+        : '0 4px 16px rgba(34,197,94,0.2)';
+    var _ctaLabel = '\uD83C\uDFA4 Start Gig';
+    html += '<button onclick="_slLaunchLiveGig(' + idx + ')" style="display:block;width:100%;padding:16px;border-radius:12px;border:none;background:' + _ctaBg + ';color:white;font-size:1.1em;font-weight:800;cursor:pointer;min-height:54px;box-shadow:' + _ctaShadow + ';font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">' + _ctaLabel + '</button>';
 
-    // ── 3. COACHING TEXT — dynamic, specific ──
+    // ── 3. COACHING — calm bandmate voice, no alarm icons ──
     var coaching = _coachingText(totalWarn, totalSongs, totalReady, warnTitles);
     if (coaching) {
-        html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:10px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.12);margin-bottom:10px;font-size:0.8em;color:#fbbf24">';
-        html += '<span style="flex-shrink:0;margin-top:1px">\u26A0</span>';
-        html += '<span style="line-height:1.4">' + coaching + '</span>';
+        html += '<div style="padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);margin-bottom:10px;font-size:0.8em;color:#94a3b8;line-height:1.4">';
+        html += coaching;
         html += '</div>';
     }
 
