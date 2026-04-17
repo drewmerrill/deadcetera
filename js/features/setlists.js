@@ -592,30 +592,37 @@ function slRenderSetSongs(setIdx) {
         if (_slRd > 0 && _slRd < 3) _slBadges += '<span style="font-size:0.6em;color:#f59e0b;font-weight:700" title="Readiness: ' + _slRd.toFixed(1) + '/5">\u26A0</span>';
         var row;
         if (_isMobile) {
-            // Mobile: 2-line stacked card layout with move buttons (no drag on iOS)
-            var _moveUp = i > 0 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},-1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 8px;min-width:32px;min-height:32px;cursor:pointer;font-size:0.9em;font-weight:700" title="Move up">\u25B2</button>` : '';
-            var _moveDn = i < items.length - 1 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 8px;min-width:32px;min-height:32px;cursor:pointer;font-size:0.9em;font-weight:700" title="Move down">\u25BC</button>` : '';
-            row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}"
-                style="padding:8px 10px;font-size:0.88em;gap:0;align-items:stretch;cursor:default;min-height:52px;flex-direction:column" title="${histTip.replace(/"/g,'&quot;')}">
-                <div class="sl-row-line1" style="display:flex;align-items:center;gap:6px;min-width:0">
-                    <div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0">${_moveUp}${_moveDn}</div>
-                    <span style="color:var(--text-dim);min-width:18px;font-weight:700;flex-shrink:0;font-size:0.85em">${i + 1}</span>
-                    <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.95em">${s}</span>
-                    <button class="btn btn-sm btn-ghost sl-delete" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:4px 8px;flex-shrink:0;font-size:1em;min-width:32px;min-height:32px;color:#64748b">\u2715</button>
-                </div>
-                <div class="sl-row-line2" style="display:flex;align-items:center;gap:6px;padding-left:30px;margin-top:4px;flex-wrap:wrap">
-                    ${keyStr}${bpmStr}${_slBadges}
-                    <span style="flex:1"></span>
-                    <select class="sl-segue" onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
-                        title="Transition"
-                        style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:6px;padding:4px 8px;font-size:0.82em;font-weight:700;cursor:pointer;flex-shrink:0;min-height:32px">
-                        <option value="stop" ${segue==='stop'?'selected':''}>· Stop</option>
-                        <option value="flow" ${segue==='flow'?'selected':''}>→ Flow</option>
-                        <option value="segue" ${segue==='segue'?'selected':''}>~ Segue</option>
-                        <option value="cutoff" ${segue==='cutoff'?'selected':''}>| Cut</option>
-                    </select>
-                </div>
-            </div>`;
+            if (_slEditMode) {
+                // EDIT MODE: full controls — move, delete, segue, metadata
+                var _moveUp = i > 0 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},-1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 6px;min-width:28px;min-height:28px;cursor:pointer;font-size:0.82em;font-weight:700">\u25B2</button>` : '<div style="min-width:28px"></div>';
+                var _moveDn = i < items.length - 1 ? `<button onclick="event.stopPropagation();_slMovesong(${setIdx},${i},1)" style="background:none;border:1px solid rgba(255,255,255,0.1);color:#94a3b8;border-radius:5px;padding:2px 6px;min-width:28px;min-height:28px;cursor:pointer;font-size:0.82em;font-weight:700">\u25BC</button>` : '<div style="min-width:28px"></div>';
+                row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}"
+                    style="padding:6px 8px;gap:0;align-items:stretch;cursor:default;min-height:44px;flex-direction:column">
+                    <div style="display:flex;align-items:center;gap:4px;min-width:0">
+                        <div style="display:flex;flex-direction:column;gap:1px;flex-shrink:0">${_moveUp}${_moveDn}</div>
+                        <span style="color:var(--text-dim);min-width:18px;font-weight:600;flex-shrink:0;font-size:0.8em">${i + 1}</span>
+                        <span style="flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.92em">${s}</span>
+                        <select class="sl-segue" onchange="_slMarkDirty();slSetSegue(${setIdx},${i},this.value)" onclick="event.stopPropagation()"
+                            style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);color:${segueColor};border-radius:5px;padding:2px 6px;font-size:0.72em;font-weight:700;cursor:pointer;flex-shrink:0;min-height:28px">
+                            <option value="stop" ${segue==='stop'?'selected':''}>Stop</option>
+                            <option value="flow" ${segue==='flow'?'selected':''}>Flow</option>
+                            <option value="segue" ${segue==='segue'?'selected':''}>Segue</option>
+                            <option value="cutoff" ${segue==='cutoff'?'selected':''}>Cut</option>
+                        </select>
+                        <button onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.88em;padding:4px;min-width:28px;min-height:28px">\u2715</button>
+                    </div>
+                </div>`;
+            } else {
+                // CLEAN BUILD: title-dominant, minimal chrome
+                var segIndicator = segue === 'flow' ? '<span style="color:rgba(129,140,248,0.5);font-size:0.82em"> \u2192</span>'
+                    : segue === 'segue' ? '<span style="color:rgba(52,211,153,0.5);font-size:0.82em"> ~</span>' : '';
+                row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}"
+                    style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:default;min-height:40px;border-bottom:1px solid rgba(255,255,255,0.03)">
+                    <span style="color:var(--text-dim);min-width:20px;font-weight:600;flex-shrink:0;font-size:0.8em;text-align:right">${i + 1}</span>
+                    <span style="flex:1;font-weight:600;font-size:0.95em;color:var(--text,#e2e8f0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}${segIndicator}</span>
+                    ${keyStr ? `<span style="font-size:0.65em;color:rgba(129,140,248,0.4);font-weight:500">${songData?.key || ''}</span>` : ''}
+                </div>`;
+            }
         } else {
             // Desktop: compact single-line row
             row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}" draggable="true"
@@ -635,9 +642,9 @@ function slRenderSetSongs(setIdx) {
                 <button class="btn btn-sm btn-ghost sl-delete" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
             </div>`;
         }
-        // Insert Set Break button between songs — always subtly visible
-        if (i < items.length - 1) {
-            row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button class="sl-break-btn" onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.5em;padding:0 6px;border:1px dashed rgba(245,158,11,0.2);background:rgba(15,23,42,0.95);color:#64748b;border-radius:3px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;position:relative;top:-5px;z-index:1;line-height:1.4" onmouseover="this.style.opacity='1';this.style.color='#fbbf24'" onmouseout="this.style.opacity='0.3';this.style.color='#64748b'">✂ add a break</button></div>`;
+        // Set Break button — only in edit mode (not clean build)
+        if (i < items.length - 1 && (_slEditMode || !_isMobile)) {
+            row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button class="sl-break-btn" onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.5em;padding:0 6px;border:1px dashed rgba(245,158,11,0.2);background:rgba(15,23,42,0.95);color:#64748b;border-radius:3px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;position:relative;top:-5px;z-index:1;line-height:1.4" onmouseover="this.style.opacity='1';this.style.color='#fbbf24'" onmouseout="this.style.opacity='0.3';this.style.color='#64748b'">add a break</button></div>`;
         }
         return row;
     }).join('');
@@ -815,6 +822,21 @@ function slRemoveSong(setIdx, songIdx) {
     slRenderReadinessMeter(); // keep master list in sync
 }
 
+// Toggle edit mode in Plan view — shows/hides row controls
+window._slToggleEditMode = function() {
+    _slEditMode = !_slEditMode;
+    // Re-render all set songs with new mode
+    (window._slSets || []).forEach(function(set, si) { slRenderSetSongs(si); });
+    // Update toggle button appearance
+    var btn = document.getElementById('slEditToggle');
+    if (btn) {
+        btn.textContent = _slEditMode ? '\u2713 Editing' : '\u270F Edit';
+        btn.style.borderColor = _slEditMode ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)';
+        btn.style.background = _slEditMode ? 'rgba(99,102,241,0.12)' : 'none';
+        btn.style.color = _slEditMode ? '#a5b4fc' : '#64748b';
+    }
+};
+
 // Mobile: expand one set at a time in Plan mode
 window._slExpandSet = function(si) {
     _slExpandedSet = si;
@@ -906,6 +928,7 @@ async function slSaveSetlist() {
 // ── Setlist mode state ──
 var _slViewMode = 'plan'; // 'plan' | 'stage'
 var _slExpandedSet = 0; // which set is expanded in plan mode (mobile)
+var _slEditMode = false; // false = clean build (titles only), true = full controls
 
 async function editSetlist(idx) {
     window._slEditIdx = idx;
@@ -920,6 +943,7 @@ async function editSetlist(idx) {
     window._slSelectedVenueId = sl.venueId || null;
     window._slSelectedVenueName = sl.venue || null;
     _slViewMode = 'plan';
+    _slEditMode = false;
     _slExpandedSet = 0;
 
     const container = document.getElementById('setlistsList');
@@ -1180,9 +1204,12 @@ function _slRenderPlanMode(idx, sl) {
     html += '<div id="slLinkedGigRow" style="margin-bottom:6px"></div>';
     html += '<div id="slReadinessMeter" style="margin-bottom:6px"></div>';
 
-    // Actions bar
-    html += '<div id="slStickyActions" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">'
-        + '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">\uD83D\uDCE4</button>'
+    // Actions bar — includes Edit toggle on mobile
+    html += '<div id="slStickyActions" style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.06)">';
+    if (_isMobile) {
+        html += '<button id="slEditToggle" onclick="_slToggleEditMode()" style="font-size:0.75em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_slEditMode ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)') + ';background:' + (_slEditMode ? 'rgba(99,102,241,0.12)' : 'none') + ';color:' + (_slEditMode ? '#a5b4fc' : '#64748b') + ';font-family:inherit;min-height:30px">' + (_slEditMode ? '\u2713 Editing' : '\u270F Edit') + '</button>';
+    }
+    html += '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">\uD83D\uDCE4</button>'
         + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700">\u25CF Unsaved</span>'
         + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">\uD83D\uDD12 Lock This Set</button>'
         + '<button class="btn btn-ghost btn-sm" onclick="loadSetlists()" style="font-size:0.75em">Cancel</button>'
@@ -1209,7 +1236,7 @@ function _slRenderPlanMode(idx, sl) {
             + '<span onclick="event.stopPropagation();slRenameSet(' + si + ')" style="cursor:pointer;border-bottom:1px dashed rgba(255,255,255,0.15)" title="Click to rename">' + (set.name || 'Set ' + (si+1)) + '</span>'
             + '<span style="font-weight:400;color:var(--text-dim);font-size:0.88em">' + durLabel + '</span>' + setActions + '</div>'
             + '<div id="slSet' + si + 'Songs" style="' + (isExpanded ? '' : 'display:none') + '"></div>'
-            + (isExpanded ? '<div style="margin-top:4px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add a song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.78em;padding:6px 8px"><button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.72em;flex-shrink:0;min-height:36px">\uD83D\uDCCB Pick</button></div><div id="slSongResults' + si + '"></div></div>' : '')
+            + (isExpanded ? '<div style="margin-top:6px"><div style="display:flex;gap:4px"><input class="app-input" id="slAddSong' + si + '" placeholder="Add a song..." oninput="slSearchSong(this,' + si + ')" style="flex:1;font-size:0.85em;padding:8px 10px;border-radius:8px">' + (_slEditMode || !_isMobile ? '<button class="btn btn-ghost btn-sm" onclick="slOpenSongPicker(' + si + ')" style="font-size:0.72em;flex-shrink:0;min-height:36px">\uD83D\uDCCB Pick</button>' : '') + '</div><div id="slSongResults' + si + '"></div></div>' : '')
             + '</div>';
     });
     html += '</div>';
