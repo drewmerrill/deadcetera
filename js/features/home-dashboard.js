@@ -51,8 +51,11 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
     var container = document.getElementById('page-home');
     if (!container) return;
 
-    // Render skeleton immediately — user sees structure before data loads
-    container.innerHTML = _renderSkeletonHTML();
+    // Progressive: only show skeleton on COLD renders (no existing content)
+    // Warm renders keep stale content visible while data refreshes
+    if (!container.textContent.trim() || container.textContent.trim().length < 50) {
+        container.innerHTML = _renderSkeletonHTML();
+    }
 
     try {
         var bundle = await _homeDataLoad();

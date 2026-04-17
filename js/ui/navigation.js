@@ -96,9 +96,12 @@ window.showPage = function showPage(page) {
     var _thisNav = ++_navSeq; // Capture sequence for this navigation
     window.GL_PAGE_READY = null; // Reset until renderer completes
     var el = document.getElementById('page-' + page);
+    // Warm page detection: if page has substantial content from a prior render,
+    // show it immediately (no white flash). Renderer will refresh data in place.
+    var _isWarm = el && el.textContent.trim().length > 50;
     if (el) {
         el.classList.remove('hidden');
-        el.classList.add('fade-in');
+        if (!_isWarm) el.classList.add('fade-in');
     } else {
         console.warn('⚠️ showPage("' + page + '"): #page-' + page + ' not found in DOM');
     }
@@ -133,7 +136,8 @@ window.showPage = function showPage(page) {
         }
     }
     window._glNavFromPopstate = false;
-    window.scrollTo(0, 0);
+    // Only scroll to top on cold renders — warm pages preserve scroll position
+    if (!_isWarm) window.scrollTo(0, 0);
     try { localStorage.setItem('glLastPage', page); } catch(e) {}
 
     // Run renderer (songs page is rendered by selectSong / renderSongs, not here)
@@ -143,11 +147,13 @@ window.showPage = function showPage(page) {
     }
     if (el && page !== 'songs') {
         if (_glPageScripts[page]) {
-            // Show loading state immediately via GLRenderState — never blank
-            if (typeof GLRenderState !== 'undefined') {
-                GLRenderState.set(page, { status: 'loading' });
-            } else if (!el.textContent.trim()) {
-                el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-dim)">Loading\u2026</div>';
+            // Show loading state only for COLD pages — warm pages show stale content
+            if (!_isWarm) {
+                if (typeof GLRenderState !== 'undefined') {
+                    GLRenderState.set(page, { status: 'loading' });
+                } else {
+                    el.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--text-dim)">Loading\u2026</div>';
+                }
             }
             // Lazy-load page scripts, then render
             var _lazyStart = performance.now();
