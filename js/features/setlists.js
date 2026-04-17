@@ -81,6 +81,7 @@ async function loadSetlists() {
     var _cached = (typeof GLStore !== 'undefined' && GLStore.getCachedBandData) ? GLStore.getCachedBandData('setlists') : null;
     if (_cached && _cached.data && !_slLoadedFromNetwork) {
         console.log('[PERF] setlists SWR cache HIT ' + Math.round(performance.now()) + 'ms (' + GLStore.getCacheAgeLabel('setlists') + ')');
+        if (GLStore.setGlobalStatus) GLStore.setGlobalStatus('refreshing', 'Refreshing');
         var _cachedData = toArray(_cached.data);
         if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_cachedData);
         _slRenderList(_cachedData);
@@ -92,6 +93,7 @@ async function loadSetlists() {
             if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(fresh);
             // Deep comparison: check IDs, count, updated timestamps, song counts, lock state
             var _changed = _slDataChanged(_cachedData, fresh);
+            if (typeof GLStore !== 'undefined' && GLStore.setGlobalStatus) GLStore.setGlobalStatus('live', 'Live');
             if (_changed) {
                 _slRenderList(fresh);
                 console.log('[Setlists] SWR: background refresh — repainted (' + fresh.length + ' setlists)');

@@ -2959,10 +2959,9 @@ function _calBackgroundRefresh() {
         var fp = _calEventFingerprint(events);
         var changed = fp !== _calLastEventFingerprint;
         _calLastEventFingerprint = fp;
+        if (typeof GLStore !== 'undefined' && GLStore.setGlobalStatus) GLStore.setGlobalStatus('live', 'Live');
         if (changed) {
-            // Rebuild dateMap with fresh data
             _calBuildDateMap(events);
-            // Repaint grid
             _calRenderGridOnly();
             console.log('[Calendar] SWR: background refresh — repainted (' + events.length + ' events)');
         } else {
@@ -2980,6 +2979,7 @@ function _calBackgroundRefresh() {
         }
     }).catch(function(e) {
         console.warn('[Calendar] SWR: background refresh failed:', e);
+        if (typeof GLStore !== 'undefined' && GLStore.setGlobalStatus) GLStore.setGlobalStatus('cached', 'Cached');
         var _calFreshEl = document.getElementById('calFreshness');
         if (_calFreshEl) {
             _calFreshEl.style.color = '#f59e0b';
@@ -3032,6 +3032,7 @@ async function loadCalendarEvents() {
     var _usedCache = false;
     if (_cached && _cached.data && !_calEventsLoadedFromNetwork) {
         console.log('[PERF] calendar SWR cache HIT ' + Math.round(performance.now()) + 'ms (' + GLStore.getCacheAgeLabel('calendar_events') + ')');
+        if (GLStore.setGlobalStatus) GLStore.setGlobalStatus('refreshing', 'Refreshing');
         var _cachedEvents = toArray(_cached.data);
         _calLastEventFingerprint = _calEventFingerprint(_cachedEvents);
         var _cachedDateMap = _calBuildDateMap(_cachedEvents);

@@ -2265,13 +2265,16 @@ if (typeof pageRenderers !== 'undefined') {
 // Watches for new polls/ideas and fires local notifications when backgrounded.
 
 (function _feedRealtimeNotifs() {
+    var _feedRealtimeSetup = false; // guard against duplicate listeners
     function setup() {
+        if (_feedRealtimeSetup) return; // prevent listener accumulation
         var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (!fas || !db || typeof bandPath !== 'function') return;
         if (!fas.isPushEnabled()) return;
         var myVoteKey = fas.getMyVoteKey();
         if (!myVoteKey) return;
+        _feedRealtimeSetup = true;
 
         db.ref(bandPath('polls')).orderByChild('ts').limitToLast(1).on('child_added', function(snap) {
             var p = snap.val();

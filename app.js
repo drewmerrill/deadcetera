@@ -668,10 +668,21 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-    // ── Startup profiling ──
+    // ── Startup profiling + TTI measurement ──
     var _bootStart = performance.now();
-    console.log('[Startup] DOMContentLoaded at ' + Math.round(_bootStart) + 'ms');
+    window._glBootStart = _bootStart;
+    console.log('[PERF] DOMContentLoaded ' + Math.round(_bootStart) + 'ms');
     window._glBootTimings = { domContentLoaded: _bootStart };
+    // TTI: mark when page becomes tap/scroll ready
+    requestAnimationFrame(function() {
+        window._glBootTimings.firstFrame = performance.now();
+        console.log('[PERF] first-frame ' + Math.round(performance.now()) + 'ms');
+    });
+    // Deferred TTI: interactive after all blocking work settles
+    setTimeout(function() {
+        window._glBootTimings.tti = performance.now();
+        console.log('[PERF] TTI (tap-ready) ' + Math.round(performance.now()) + 'ms (' + Math.round(performance.now() - _bootStart) + 'ms from DOMContentLoaded)');
+    }, 0);
 
     // Parachute: render gig pack if URL has ?gigpack=1#...
     if (parachuteCheckUrlHash()) return;
@@ -697,7 +708,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('[Startup] Cleared allSongs for band: ' + _bootSlug);
     }
     renderSongs();
-    console.log('[Startup] Initial render at ' + Math.round(performance.now()) + 'ms');
+    console.log('[PERF] shell-painted ' + Math.round(performance.now()) + 'ms');
     window._glBootTimings.initialRender = performance.now();
 
     // Hide hero immediately if user was previously signed in (suppress flash).
@@ -708,14 +719,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ── STAGE 2: Firebase init + data preloads ──
     initFirebaseOnly().then(() => {
-        console.log('[Startup] Firebase ready at ' + Math.round(performance.now()) + 'ms');
+        console.log('[PERF] firebase-ready ' + Math.round(performance.now()) + 'ms');
         window._glBootTimings.firebaseReady = performance.now();
         if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('firebase');
         // Load band members from Firebase FIRST (canonical source), then custom songs
         _seedDeadceteraMembersIfNeeded().then(function() {
             return loadBandMembersFromFirebase();
         }).then(function() {
-            console.log('[Startup] Band members ready at ' + Math.round(performance.now()) + 'ms');
+            console.log('[PERF] members-ready ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.membersReady = performance.now();
             if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('members');
             // Re-render settings if on that page
@@ -737,7 +748,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }).then(function() {
             // First render: songs + DNA are ready (key/bpm/lead populated)
             if (typeof renderSongs === 'function') renderSongs();
-            console.log('[Startup] Songs rendered (with DNA) at ' + Math.round(performance.now()) + 'ms');
+            console.log('[PERF] songs-with-dna ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songsRendered = performance.now();
         });
 
@@ -835,14 +846,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Boot summary — logged after everything settles
     setTimeout(function() {
         var t = window._glBootTimings || {};
+        var elapsed = Math.round(performance.now() - (window._glBootStart || 0));
+        console.log('[PERF] boot-complete ' + Math.round(performance.now()) + 'ms (total ' + elapsed + 'ms)');
         var summary = '[Startup] Boot summary:';
         if (t.domContentLoaded) summary += ' DOM=' + Math.round(t.domContentLoaded) + 'ms';
         if (t.initialRender) summary += ' Render=' + Math.round(t.initialRender) + 'ms';
         if (t.firebaseReady) summary += ' Firebase=' + Math.round(t.firebaseReady) + 'ms';
         if (t.membersReady) summary += ' Members=' + Math.round(t.membersReady) + 'ms';
         if (t.songsRendered) summary += ' Songs=' + Math.round(t.songsRendered) + 'ms';
+        if (t.tti) summary += ' TTI=' + Math.round(t.tti) + 'ms';
         if (t.firebaseError) summary += ' ERROR=' + t.firebaseError;
         console.log(summary);
+        // Set global badge to Live after boot
+        if (typeof GLStore !== 'undefined' && GLStore.setGlobalStatus) GLStore.setGlobalStatus('live', 'Live');
     }, 6000);
     setupSearchAndFilters();
     setupInstrumentSelector();

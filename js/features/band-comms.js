@@ -112,6 +112,8 @@ function _bcRenderMentions(escapedText, mentions) {
 function _bcWireMentionInput(songTitle) {
   var input = document.getElementById('bcDiscussionInput');
   if (!input) return;
+  if (input._bcMentionWired) return; // prevent listener accumulation on re-render
+  input._bcMentionWired = true;
   var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
   if (!members.length) return;
 
