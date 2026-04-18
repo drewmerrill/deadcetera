@@ -1113,6 +1113,14 @@
       this._sourceMode    = 'mic';    // 'mic' | 'recording' | 'stem'
       this._offlineResult = null;     // last OfflineAnalyser result
       this._onsets        = [];       // raw onset timestamps for live mode
+
+      // ── Guided Mode (v2) ──────────────────────────────────────────────────
+      // Default on. User can fall back to the legacy auto-detect via the
+      // Experimental toggle in the chooser. Everything legacy stays mounted
+      // and functional; guided mode just lays an overlay on top when active.
+      this._guided     = localStorage.getItem('pm_guided_mode') !== '0';
+      this._lockedBPM  = null;           // null = chooser visible
+      this._lockedAtMs = null;           // performance.now() at lock moment
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -1167,6 +1175,8 @@
     setTargetBPM(bpm) {
       this.targetBPM = bpm;
       this._updateTarget();
+      // Keep the guided chooser's "Use song BPM" value in sync.
+      if (this._lockedBPM == null) this._renderGuidedState();
     }
 
     // ── Firebase ───────────────────────────────────────────────────────────────
@@ -2340,7 +2350,184 @@
       `;
       this.container.appendChild(div);
       this.el = div;
+
+      // Guided overlay — lays over the legacy chrome when guided mode is on.
+      // Purely additive: setting `_guided = false` hides this overlay and the
+      // original UI is fully functional underneath.
+      this._buildGuidedOverlay();
+      this._renderGuidedState();
     }
+
+    // ── Guided Mode (v2) ──────────────────────────────────────────────────────
+    _buildGuidedOverlay() {
+      if (!this.el || this.el.querySelector('.pm-guided')) return;
+      const overlay = document.createElement('div');
+      overlay.className = 'pm-guided';
+      overlay.innerHTML = `
+        <!-- CHOOSER: shown when unlocked -->
+        <div class="pm-guided-chooser">
+          <div class="pm-guided-title">Lock the groove to start</div>
+          <button class="pm-guided-opt pm-opt-song" type="button">
+            <span class="pm-opt-icon">&#127919;</span>
+            <span class="pm-opt-label">Use song BPM</span>
+            <span class="pm-opt-value pm-opt-song-val">—</span>
+          </button>
+          <div class="pm-guided-opt pm-opt-type">
+            <span class="pm-opt-icon">&#9000;</span>
+            <span class="pm-opt-label">Type BPM</span>
+            <input type="number" class="pm-opt-input" min="40" max="220" step="1" placeholder="120" inputmode="numeric">
+            <button class="pm-opt-go" type="button">Lock</button>
+          </div>
+          <div class="pm-guided-foot">
+            <label class="pm-guided-exp">
+              <input type="checkbox" class="pm-exp-toggle">
+              <span>Experimental auto-detect</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- LOCKED: shown once a BPM is locked -->
+        <div class="pm-guided-locked pm-hidden">
+          <div class="pm-locked-head">
+            <span class="pm-locked-label">LOCKED AT</span>
+            <span class="pm-locked-bpm">120</span>
+            <span class="pm-locked-unit">BPM</span>
+          </div>
+          <div class="pm-locked-meter">
+            <span class="pm-meter-left">Rushing</span>
+            <div class="pm-meter-track"><div class="pm-meter-dot"></div></div>
+            <span class="pm-meter-right">Dragging</span>
+          </div>
+          <div class="pm-locked-tier">Listening…</div>
+          <div class="pm-locked-conf">—</div>
+          <div class="pm-locked-feel">
+            <span class="pm-feel-label">Groove Feel:</span>
+            <div class="pm-feel-seg">
+              <button class="pm-feel-btn" data-feel="tight" type="button">Tight</button>
+              <button class="pm-feel-btn pm-feel-active" data-feel="normal" type="button">Normal</button>
+              <button class="pm-feel-btn" data-feel="loose" type="button">Loose</button>
+            </div>
+          </div>
+          <button class="pm-locked-reset" type="button">Reset lock</button>
+        </div>
+      `;
+      this.el.insertBefore(overlay, this.el.firstChild);
+      this._wireGuidedOverlay();
+    }
+
+    _wireGuidedOverlay() {
+      const self = this;
+      const overlay = this.el.querySelector('.pm-guided');
+      if (!overlay) return;
+
+      // Use song BPM
+      const songBtn = overlay.querySelector('.pm-opt-song');
+      if (songBtn) songBtn.addEventListener('click', function () {
+        const bpm = Number(self.targetBPM);
+        if (!bpm || bpm < 40 || bpm > 220) return;
+        self._enterLockedMode(Math.round(bpm));
+      });
+
+      // Type BPM
+      const typeInput = overlay.querySelector('.pm-opt-input');
+      const typeGo = overlay.querySelector('.pm-opt-go');
+      const submitTyped = function () {
+        const v = Number(typeInput && typeInput.value);
+        if (!v || v < 40 || v > 220) {
+          if (typeInput) { typeInput.classList.add('pm-shake'); setTimeout(function () { typeInput.classList.remove('pm-shake'); }, 300); }
+          return;
+        }
+        self._enterLockedMode(Math.round(v));
+      };
+      if (typeGo) typeGo.addEventListener('click', submitTyped);
+      if (typeInput) typeInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submitTyped(); }
+      });
+
+      // Experimental auto-detect toggle
+      const expToggle = overlay.querySelector('.pm-exp-toggle');
+      if (expToggle) {
+        expToggle.checked = !this._guided;
+        expToggle.addEventListener('change', function () {
+          self._guided = !expToggle.checked;
+          localStorage.setItem('pm_guided_mode', self._guided ? '1' : '0');
+          self._renderGuidedState();
+        });
+      }
+
+      // Reset lock
+      const resetBtn = overlay.querySelector('.pm-locked-reset');
+      if (resetBtn) resetBtn.addEventListener('click', function () { self._resetLock(); });
+
+      // Groove Feel selector (wired in commit 3; visible but cosmetic for now)
+      const feelBtns = overlay.querySelectorAll('.pm-feel-btn');
+      feelBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          feelBtns.forEach(function (b) { b.classList.remove('pm-feel-active'); });
+          btn.classList.add('pm-feel-active');
+        });
+      });
+    }
+
+    _enterLockedMode(bpm) {
+      this._lockedBPM = bpm;
+      this._lockedAtMs = performance.now();
+      this._renderGuidedState();
+    }
+
+    _resetLock() {
+      this._lockedBPM = null;
+      this._lockedAtMs = null;
+      this._renderGuidedState();
+    }
+
+    _renderGuidedState() {
+      if (!this.el) return;
+      const overlay = this.el.querySelector('.pm-guided');
+      if (!overlay) return;
+
+      // Toggle overlay visibility based on guided mode setting.
+      if (this._guided) {
+        overlay.classList.remove('pm-hidden');
+        this.el.classList.add('pm-guided-active');
+      } else {
+        overlay.classList.add('pm-hidden');
+        this.el.classList.remove('pm-guided-active');
+        return;
+      }
+
+      const chooser = overlay.querySelector('.pm-guided-chooser');
+      const locked  = overlay.querySelector('.pm-guided-locked');
+
+      if (this._lockedBPM == null) {
+        // CHOOSER view
+        chooser.classList.remove('pm-hidden');
+        locked.classList.add('pm-hidden');
+
+        // Populate / gate the song-BPM option
+        const songBtn = overlay.querySelector('.pm-opt-song');
+        const songVal = overlay.querySelector('.pm-opt-song-val');
+        const tgt = Number(this.targetBPM);
+        if (tgt && tgt >= 40 && tgt <= 220) {
+          songBtn.removeAttribute('disabled');
+          songBtn.classList.remove('pm-opt-disabled');
+          if (songVal) songVal.textContent = String(Math.round(tgt));
+        } else {
+          songBtn.setAttribute('disabled', 'disabled');
+          songBtn.classList.add('pm-opt-disabled');
+          if (songVal) songVal.textContent = '— not set —';
+        }
+      } else {
+        // LOCKED view
+        chooser.classList.add('pm-hidden');
+        locked.classList.remove('pm-hidden');
+        const bpmEl = overlay.querySelector('.pm-locked-bpm');
+        if (bpmEl) bpmEl.textContent = String(this._lockedBPM);
+      }
+    }
+
+    // Override existing setTargetBPM so the chooser's "Use song BPM" stays fresh.
+    // ── End Guided Mode (v2) ──────────────────────────────────────────────────
 
     // ── Styles ─────────────────────────────────────────────────────────────────
 
@@ -2792,6 +2979,158 @@
         .pm-root.pm-float .pm-graph-section,
         .pm-root.pm-float .pm-drift-report,
         .pm-root.pm-float .pm-settings-panel { display: none !important; }
+
+        /* ── Guided Mode (v2) overlay ─────────────────────────────────────── */
+        .pm-root .pm-guided {
+          position: absolute; inset: 0; background: #161616;
+          z-index: 20; display: flex; flex-direction: column;
+          align-items: stretch; justify-content: center;
+          padding: 20px 18px;
+          border-radius: inherit;
+        }
+        .pm-root.pm-guided-active { position: relative; }
+        /* Hide legacy UI beneath the overlay while guided mode is active */
+        .pm-root.pm-guided-active > *:not(.pm-guided) { visibility: hidden; pointer-events: none; }
+
+        /* Chooser */
+        .pm-guided-title {
+          font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase;
+          color: #94a3b8; font-weight: 700; text-align: center; margin-bottom: 16px;
+        }
+        .pm-guided-opt {
+          display: flex; align-items: center; gap: 10px;
+          width: 100%; padding: 14px 14px; margin-bottom: 10px;
+          background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 10px; color: #e0e0e0; cursor: pointer;
+          font-family: inherit; font-size: 0.92rem; text-align: left;
+          min-height: 52px; -webkit-tap-highlight-color: transparent;
+        }
+        .pm-guided-opt:hover:not(.pm-opt-disabled):not([disabled]),
+        .pm-guided-opt:active:not(.pm-opt-disabled):not([disabled]) {
+          background: rgba(129,140,248,0.1); border-color: rgba(129,140,248,0.35);
+        }
+        .pm-guided-opt.pm-opt-disabled, .pm-guided-opt[disabled] {
+          opacity: 0.45; cursor: not-allowed;
+        }
+        .pm-opt-icon { font-size: 1.1rem; flex-shrink: 0; width: 24px; text-align: center; }
+        .pm-opt-label { flex: 1; font-weight: 600; }
+        .pm-opt-value {
+          font-size: 0.85rem; color: #a5b4fc; font-weight: 700; font-variant-numeric: tabular-nums;
+        }
+        .pm-opt-disabled .pm-opt-value { color: #64748b; font-weight: 400; font-size: 0.75rem; }
+
+        .pm-opt-type { cursor: default; }
+        .pm-opt-type:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+        .pm-opt-input {
+          width: 68px; padding: 8px 10px; background: #0a0a0a; border: 1px solid #333;
+          border-radius: 6px; color: #e0e0e0; font-family: inherit; font-size: 0.95rem;
+          font-weight: 700; text-align: center; font-variant-numeric: tabular-nums;
+        }
+        .pm-opt-input:focus { outline: none; border-color: #818cf8; }
+        .pm-opt-input.pm-shake { animation: pm-shake 0.28s ease; border-color: #ef4444; }
+        @keyframes pm-shake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-4px); }
+          40% { transform: translateX(4px); }
+          60% { transform: translateX(-2px); }
+          80% { transform: translateX(2px); }
+        }
+        .pm-opt-go {
+          padding: 8px 14px; background: #818cf8; border: none; border-radius: 6px;
+          color: #0a0a0a; font-family: inherit; font-weight: 800; font-size: 0.78rem;
+          letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
+          min-height: 36px;
+        }
+        .pm-opt-go:active { background: #6366f1; }
+
+        .pm-guided-foot { margin-top: 14px; text-align: center; }
+        .pm-guided-exp {
+          display: inline-flex; align-items: center; gap: 8px;
+          color: #64748b; font-size: 0.78rem; cursor: pointer;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .pm-guided-exp input { width: 14px; height: 14px; cursor: pointer; }
+
+        /* Locked */
+        .pm-locked-head {
+          text-align: center; margin-bottom: 18px;
+          display: flex; flex-direction: column; align-items: center; gap: 2px;
+        }
+        .pm-locked-label {
+          font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: #64748b; font-weight: 700;
+        }
+        .pm-locked-bpm {
+          font-size: 2.8rem; font-weight: 800; color: #e0e0e0;
+          font-variant-numeric: tabular-nums; line-height: 1; margin-top: 2px;
+        }
+        .pm-locked-unit { font-size: 0.72rem; letter-spacing: 0.14em; color: #64748b; font-weight: 700; }
+
+        .pm-locked-meter {
+          display: flex; align-items: center; gap: 10px;
+          margin: 6px 0 18px; padding: 0 4px;
+        }
+        .pm-meter-left, .pm-meter-right {
+          font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase;
+          color: #64748b; font-weight: 700; flex-shrink: 0;
+        }
+        .pm-meter-track {
+          flex: 1; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; position: relative;
+          overflow: visible;
+        }
+        .pm-meter-track::after {
+          content: ''; position: absolute; left: 50%; top: -3px; width: 2px; height: 12px;
+          background: rgba(255,255,255,0.15); transform: translateX(-50%);
+        }
+        .pm-meter-dot {
+          position: absolute; top: 50%; left: 50%;
+          width: 14px; height: 14px; border-radius: 50%;
+          background: #22c55e; transform: translate(-50%, -50%);
+          transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.25s;
+          box-shadow: 0 0 8px rgba(34,197,94,0.5);
+        }
+
+        .pm-locked-tier {
+          text-align: center; font-size: 1.4rem; font-weight: 800; letter-spacing: 0.02em;
+          color: #22c55e; margin: 4px 0 2px; line-height: 1.2;
+        }
+        .pm-locked-tier.pm-tier-rushing,
+        .pm-locked-tier.pm-tier-dragging { color: #f59e0b; }
+        .pm-locked-tier.pm-tier-uncertain { color: #64748b; }
+        .pm-locked-tier.pm-tier-listening { color: #64748b; font-size: 1.1rem; font-weight: 600; font-style: italic; }
+
+        .pm-locked-conf {
+          text-align: center; font-size: 0.78rem; color: #94a3b8; margin-bottom: 18px; min-height: 18px;
+        }
+
+        .pm-locked-feel {
+          display: flex; align-items: center; justify-content: center; gap: 10px;
+          margin-bottom: 14px;
+        }
+        .pm-feel-label { font-size: 0.72rem; color: #94a3b8; font-weight: 600; }
+        .pm-feel-seg {
+          display: inline-flex; border-radius: 7px; overflow: hidden;
+          border: 1px solid rgba(255,255,255,0.1);
+        }
+        .pm-feel-btn {
+          padding: 6px 12px; background: transparent; border: none; color: #64748b;
+          font-family: inherit; font-size: 0.75rem; font-weight: 700; cursor: pointer;
+          letter-spacing: 0.04em; min-height: 32px;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .pm-feel-btn + .pm-feel-btn { border-left: 1px solid rgba(255,255,255,0.1); }
+        .pm-feel-btn.pm-feel-active { background: rgba(129,140,248,0.18); color: #a5b4fc; }
+
+        .pm-locked-reset {
+          display: block; margin: 6px auto 0; padding: 10px 20px;
+          background: transparent; border: 1px solid rgba(255,255,255,0.14);
+          border-radius: 8px; color: #94a3b8;
+          font-family: inherit; font-size: 0.8rem; font-weight: 700;
+          letter-spacing: 0.04em; cursor: pointer; min-height: 40px;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .pm-locked-reset:active { background: rgba(255,255,255,0.04); color: #e0e0e0; }
+
+        .pm-guided .pm-hidden { display: none !important; }
       `;
       document.head.appendChild(s);
     }
