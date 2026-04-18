@@ -1151,7 +1151,7 @@ button[style*="background: var(--red)"],
 }
 .lg-layout { display:flex; flex-direction:column; height:100%; width:100%; box-sizing:border-box; padding:0; }
 /* Header: compact — 40px, no wasted space */
-.lg-header { display:flex; align-items:center; justify-content:space-between; padding:6px 12px; border-bottom:1px solid #1a1a1a; flex-shrink:0; min-height:40px; }
+.lg-header { display:flex; align-items:center; justify-content:space-between; padding:calc(6px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 6px calc(12px + env(safe-area-inset-left)); border-bottom:1px solid #1a1a1a; flex-shrink:0; min-height:40px; }
 .lg-header-center { display:flex; flex-direction:column; align-items:center; line-height:1.1; }
 .lg-band-name { font-size:0.6rem; letter-spacing:0.18em; text-transform:uppercase; color:#555; }
 .lg-setlist-name { font-size:0.75rem; color:#888; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

@@ -566,13 +566,17 @@
 
     _lg._touchStartHandler = function (e) {
       _lg.touchStartX = e.touches[0].clientX;
+      _lg.touchStartY = e.touches[0].clientY;
     };
 
     _lg._touchEndHandler = function (e) {
       if (_lg.touchStartX === null) return;
       var dx = e.changedTouches[0].clientX - _lg.touchStartX;
+      var dy = e.changedTouches[0].clientY - _lg.touchStartY;
       _lg.touchStartX = null;
-      if (Math.abs(dx) < 50) return; // threshold
+      _lg.touchStartY = null;
+      if (Math.abs(dx) < 50) return;              // horizontal threshold
+      if (Math.abs(dy) > Math.abs(dx)) return;    // vertical scroll, not a swipe
       if (dx < 0) lgNext();
       else         lgPrev();
     };
