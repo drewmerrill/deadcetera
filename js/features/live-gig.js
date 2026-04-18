@@ -345,7 +345,10 @@
         '<div class="lg-no-chart" id="lgNoChart" style="display:none">No chord chart for this song.</div>' +
       '</div>' +
 
-      /* Controls */
+      /* Up-next queue (above controls — keeps it off the home indicator and puts buttons in the thumb zone) */
+      '<div class="lg-queue" id="lgQueue"></div>' +
+
+      /* Controls (last element — anchors to safe-area-inset-bottom) */
       '<div class="lg-controls">' +
         '<button class="lg-ctrl-btn lg-btn-prev" id="lgPrevBtn" onclick="lgPrev()">&#9664; PREV</button>' +
         '<div class="lg-jump-wrap">' +
@@ -354,9 +357,6 @@
         '</div>' +
         '<button class="lg-ctrl-btn lg-btn-next" id="lgNextBtn" onclick="lgNext()">NEXT &#9654;</button>' +
       '</div>' +
-
-      /* Up-next queue */
-      '<div class="lg-queue" id="lgQueue"></div>' +
 
     '</div>';
   }
