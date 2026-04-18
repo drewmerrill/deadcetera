@@ -1123,6 +1123,7 @@
       this._guided     = localStorage.getItem('pm_guided_mode') !== '0';
       this._lockedBPM  = null;           // null = chooser visible
       this._lockedAtMs = null;           // performance.now() at lock moment
+      this._lastLabel  = null;           // label hysteresis (prev paint)
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -2414,9 +2415,10 @@
 
         <!-- LOCKED: shown once a BPM is locked -->
         <div class="pm-guided-locked pm-hidden">
+          <div class="pm-locked-ref">Locked at <span class="pm-locked-bpm">120</span> BPM</div>
           <div class="pm-locked-head">
-            <span class="pm-locked-label">LOCKED AT</span>
-            <span class="pm-locked-bpm">120</span>
+            <span class="pm-locked-label">YOU&#39;RE AT</span>
+            <span class="pm-actual-bpm">—</span>
             <span class="pm-locked-unit">BPM</span>
           </div>
           <div class="pm-locked-meter">
@@ -2514,6 +2516,8 @@
       this._lockedBPM  = null;
       this._lockedAtMs = null;
       this._guidedOnsets = [];
+      this._smoothedActualBPM = null;
+      this._dotPct = 50;
       if (this._classifierInterval) { clearInterval(this._classifierInterval); this._classifierInterval = null; }
       // Leave the engine running if the user was in legacy mic mode previously;
       // otherwise tear it down so the mic indicator clears.
@@ -2553,102 +2557,79 @@
 
     _onGuidedOnset(tMs) {
       if (this._lockedBPM == null) return;
-
-      const beatMs = 60000 / this._lockedBPM;
-      const lastOnset = this._guidedOnsets.length ? this._guidedOnsets[this._guidedOnsets.length - 1] : null;
-
-      // Auto re-sync: if nothing's arrived for >3s (band stopped / we fell out
-      // of phase / mic glitch), the phase anchor is almost certainly stale.
-      // Snap _lockedAtMs to the nearest beat that lands on this onset, so the
-      // classifier re-engages on the very next beat instead of staying silent.
-      if (!lastOnset || tMs - lastOnset > 3000) {
-        const n = Math.round((tMs - this._lockedAtMs) / beatMs);
-        this._lockedAtMs = tMs - n * beatMs;
-      } else {
-        // Gentle phase-lock nudge (simple PLL) — each confirmed beat drifts
-        // the anchor ~8% toward the actual onset time. Keeps the grid tracking
-        // the band when tempo drifts slightly, without chasing noise.
-        const n = Math.round((tMs - this._lockedAtMs) / beatMs);
-        const predicted = this._lockedAtMs + n * beatMs;
-        const offset = tMs - predicted;
-        if (Math.abs(offset) <= beatMs * 0.25) {
-          this._lockedAtMs += offset * 0.08;
-        }
-      }
-
       this._guidedOnsets.push(tMs);
-      // Keep last 6 seconds of onsets (enough for a 4s window + buffer).
+      // Keep last 6 seconds of onsets (4s window + buffer).
       var cutoff = tMs - 6000;
       while (this._guidedOnsets.length && this._guidedOnsets[0] < cutoff) {
         this._guidedOnsets.shift();
       }
     }
 
-    // Pure classifier — takes onsets + locked BPM + lock time, returns label +
-    // confidence + dot position. Rolling 4-second window. Groove Feel param
-    // is a placeholder for commit 3; commit 2 uses Normal thresholds.
+    // Pure classifier — IOI-based tempo comparison (not phase). Measures
+    // the actual BPM you're playing at from the median inter-onset interval,
+    // compares to the locked BPM, and labels the delta. Phase-insensitive, so
+    // large tempo mismatches don't alias onto the wrong beat (the bug at 131
+    // vs 120 that showed "Dragging" because claps drifted >half a beat off).
     _classifyGuided(onsets, lockedBPM, lockedAtMs) {
-      const beatMs    = 60000 / lockedBPM;
-      const tolerance = beatMs * 0.15;   // inner window (Normal)
-      const outerTol  = beatMs * 0.40;   // discard onsets beyond this (spurious)
-      const now       = performance.now();
-      const windowMs  = 4000;
-      const cutoff    = now - windowMs;
+      const lockedBeatMs = 60000 / lockedBPM;
+      const now      = performance.now();
+      const windowMs = 4000;
+      const cutoff   = now - windowMs;
 
       const inWindow = [];
       for (var i = 0; i < onsets.length; i++) if (onsets[i] > cutoff) inWindow.push(onsets[i]);
 
-      // Predicted beats in window — how many beats *should* have occurred.
-      const firstN = Math.max(0, Math.ceil((cutoff - lockedAtMs) / beatMs));
-      const lastN  = Math.max(firstN, Math.floor((now - lockedAtMs) / beatMs));
-      const expectedBeats = Math.max(1, lastN - firstN + 1);
-
-      // Snap each onset to nearest predicted beat, keep signed offset if close.
-      const accepted = [];
-      for (var j = 0; j < inWindow.length; j++) {
-        const t  = inWindow[j];
-        const n  = Math.round((t - lockedAtMs) / beatMs);
-        const pr = lockedAtMs + n * beatMs;
-        const dt = t - pr;
-        if (Math.abs(dt) <= outerTol) accepted.push(dt);
+      if (inWindow.length < 3) {
+        return { label: 'Listening\u2026', tierClass: 'listening', confLabel: '\u2014', dotPct: 50, actualBPM: null };
       }
 
-      if (accepted.length < 3) {
-        return { label: 'Listening\u2026', tierClass: 'listening', confLabel: '\u2014', dotPct: 50, meanOffsetMs: 0 };
+      // Inter-onset intervals
+      const iois = [];
+      for (var j = 1; j < inWindow.length; j++) iois.push(inWindow[j] - inWindow[j - 1]);
+
+      // Reject obvious outliers (rests, skipped beats, double-triggers).
+      // Keep intervals within ~40%..250% of the locked beat period.
+      const valid = iois.filter(function (v) {
+        return v >= lockedBeatMs * 0.4 && v <= lockedBeatMs * 2.5;
+      });
+      if (valid.length < 4) {
+        return { label: 'Finding the groove\u2026', tierClass: 'listening', confLabel: 'Warming up', dotPct: 50, actualBPM: null };
       }
-      // Warmup gate: median-of-N is noisy for small N. Require ~a measure
-      // of accepted beats before committing to Rushing/Dragging/Locked In.
-      if (accepted.length < 6) {
-        return { label: 'Finding the groove\u2026', tierClass: 'listening', confLabel: 'Warming up', dotPct: 50, meanOffsetMs: 0 };
-      }
 
-      const matched = accepted.filter(function (o) { return Math.abs(o) <= tolerance; }).length;
-      const pickupRate = Math.min(1, matched / expectedBeats);
+      // Median IOI → actual BPM (robust to occasional mis-detections).
+      const sorted = valid.slice().sort(function (a, b) { return a - b; });
+      const medianIOI = sorted[Math.floor(sorted.length / 2)];
+      const actualBPM = 60000 / medianIOI;
 
-      // Median offset — robust to the occasional outlier inside ±outerTol.
-      const sorted = accepted.slice().sort(function (a, b) { return a - b; });
-      const meanOffsetMs = sorted[Math.floor(sorted.length / 2)];
+      // Confidence: how tight are the IOIs around the median?
+      var variance = 0;
+      for (var k = 0; k < valid.length; k++) variance += (valid[k] - medianIOI) * (valid[k] - medianIOI);
+      variance /= valid.length;
+      const stdDev = Math.sqrt(variance);
 
-      var confLabel;
-      var confidence;
-      if (pickupRate >= 0.80)      { confidence = 'strong'; confLabel = 'Solid Lock'; }
-      else if (pickupRate >= 0.55) { confidence = 'medium'; confLabel = 'Medium Lock'; }
-      else                         { confidence = 'weak';   confLabel = 'Uncertain'; }
+      var confidence, confLabel;
+      if (stdDev < 12)      { confidence = 'strong'; confLabel = 'Solid Lock'; }
+      else if (stdDev < 28) { confidence = 'medium'; confLabel = 'Medium Lock'; }
+      else                  { confidence = 'weak';   confLabel = 'Uncertain'; }
 
+      const bpmDelta = actualBPM - lockedBPM;
+
+      // Label with forgiving threshold — human clapping has 1–3 BPM jitter
+      // even when perfectly on tempo. 2 BPM = ~8ms at 120, comfortably inside
+      // a musician's sense of "on."
       var label, tierClass;
-      if (confidence === 'weak')              { label = 'Uncertain'; tierClass = 'uncertain'; }
-      else if (Math.abs(meanOffsetMs) <= 12)  { label = 'Locked In'; tierClass = 'locked'; }
-      else if (meanOffsetMs < 0)              { label = 'Rushing';   tierClass = 'rushing'; }
-      else                                    { label = 'Dragging';  tierClass = 'dragging'; }
+      if (confidence === 'weak')        { label = 'Uncertain'; tierClass = 'uncertain'; }
+      else if (Math.abs(bpmDelta) <= 2) { label = 'Locked In'; tierClass = 'locked'; }
+      else if (bpmDelta > 0)            { label = 'Rushing';   tierClass = 'rushing'; }
+      else                              { label = 'Dragging';  tierClass = 'dragging'; }
 
-      // Dot position: clamp offset to ±50ms for display.
-      // Musician-intuitive axis: Rushing = right (forward momentum),
-      // Dragging = left (pulling back). Negative offset = ahead = rushing.
-      const dispMax = 50;
-      const clamped = Math.max(-dispMax, Math.min(dispMax, meanOffsetMs));
-      const dotPct  = 50 - (clamped / dispMax) * 50;
+      // Dot position: ±10 BPM = full meter deflection.
+      // Positive delta = rushing = right (matches the UI labels).
+      const maxDelta = 10;
+      const clamped  = Math.max(-maxDelta, Math.min(maxDelta, bpmDelta));
+      const dotPct   = 50 + (clamped / maxDelta) * 50;
 
-      return { label: label, tierClass: tierClass, confLabel: confLabel, dotPct: dotPct, meanOffsetMs: meanOffsetMs };
+      return { label: label, tierClass: tierClass, confLabel: confLabel, dotPct: dotPct, actualBPM: actualBPM, bpmDelta: bpmDelta };
     }
 
     _tickGuidedClassifier() {
@@ -2687,6 +2668,20 @@
 
       const confEl = overlay.querySelector('.pm-locked-conf');
       if (confEl) confEl.textContent = r.confLabel;
+
+      // Actual BPM — the primary reading. EMA-damped so it reads like a
+      // speedometer, not a dice roll.
+      const actualEl = overlay.querySelector('.pm-actual-bpm');
+      if (actualEl) {
+        if (r.actualBPM == null) {
+          actualEl.textContent = '\u2014';
+          this._smoothedActualBPM = null;
+        } else {
+          if (this._smoothedActualBPM == null) this._smoothedActualBPM = r.actualBPM;
+          else this._smoothedActualBPM = this._smoothedActualBPM * 0.7 + r.actualBPM * 0.3;
+          actualEl.textContent = this._smoothedActualBPM.toFixed(1);
+        }
+      }
     }
 
     _guidedShowError(msg) {
@@ -3270,16 +3265,23 @@
         }
         .pm-guided-exp input { width: 14px; height: 14px; cursor: pointer; }
 
-        /* Locked */
+        /* Locked — reference chip above, actual BPM primary */
+        .pm-locked-ref {
+          text-align: center; font-size: 0.72rem; letter-spacing: 0.06em;
+          color: #64748b; font-weight: 600; margin-bottom: 8px;
+        }
+        .pm-locked-ref .pm-locked-bpm {
+          color: #a5b4fc; font-weight: 700; font-variant-numeric: tabular-nums;
+        }
         .pm-locked-head {
           text-align: center; margin-bottom: 18px;
           display: flex; flex-direction: column; align-items: center; gap: 2px;
         }
         .pm-locked-label {
-          font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: #64748b; font-weight: 700;
+          font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase; color: #64748b; font-weight: 700;
         }
-        .pm-locked-bpm {
-          font-size: 2.8rem; font-weight: 800; color: #e0e0e0;
+        .pm-actual-bpm {
+          font-size: 3.2rem; font-weight: 800; color: #e0e0e0;
           font-variant-numeric: tabular-nums; line-height: 1; margin-top: 2px;
         }
         .pm-locked-unit { font-size: 0.72rem; letter-spacing: 0.14em; color: #64748b; font-weight: 700; }
