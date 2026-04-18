@@ -60,6 +60,7 @@
     }
 
     _renderStage();
+    _lgApplyFont(); // restore saved font size
     _attachInputListeners();
     _preloadLinksBackground();
     // Milestone 4: notify shell we're entering performance mode
@@ -319,9 +320,8 @@
         '</div>' +
         '<div class="lg-header-right">' +
           '<span class="lg-song-counter" id="lgCounter">1 / ' + totalSongs + '</span>' +
-          '<button class="lg-btn-fs" id="lgAudioBtn" onclick="lgToggleAudio()" title="Play audio" style="font-size:0.7em">&#x1F3A7;</button>' +
-          '<button class="lg-btn-fs" id="lgFsBtn" onclick="lgToggleFullscreen()" title="Fullscreen">&#x26F6;</button>' +
-          '<button class="lg-btn-fs" id="lgZenBtn" onclick="lgToggleZen()" title="Zen mode">&#x1F9D8;</button>' +
+          '<button class="lg-btn-fs" id="lgAudioBtn" onclick="lgToggleAudio()" title="Play audio">&#x1F3A7;</button>' +
+          '<button class="lg-btn-fs" onclick="lgOpenSettings()" title="Settings">&#x2699;</button>' +
         '</div>' +
       '</div>' +
 
@@ -635,6 +635,80 @@
   }
 
   /* ─────────────────────────────────────────────────────────────
+     SETTINGS MENU — font size, zen mode, fullscreen, keep awake
+  ───────────────────────────────────────────────────────────── */
+  var _lgFontSize = parseInt(localStorage.getItem('gl_lg_font') || '15', 10);
+  var _lgLineHeight = parseFloat(localStorage.getItem('gl_lg_lh') || '1.55');
+
+  function _lgApplyFont() {
+    var overlay = document.getElementById('lgOverlay');
+    if (overlay) {
+      overlay.style.setProperty('--lg-font-size', _lgFontSize + 'px');
+      overlay.style.setProperty('--lg-line-height', String(_lgLineHeight));
+    }
+  }
+
+  function lgOpenSettings() {
+    var existing = document.getElementById('lgSettingsOverlay');
+    if (existing) { existing.remove(); return; }
+    var el = document.createElement('div');
+    el.id = 'lgSettingsOverlay';
+    el.className = 'lg-settings';
+    el.innerHTML = '<div class="lg-settings-sheet">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      + '<span style="font-weight:700;font-size:0.95rem;color:#e2e8f0">Settings</span>'
+      + '<button onclick="document.getElementById(\'lgSettingsOverlay\').remove()" style="background:none;border:none;color:#666;font-size:1.2em;cursor:pointer;padding:4px">\u2715</button>'
+      + '</div>'
+      // Font size
+      + '<div class="lg-settings-row">'
+      + '<span class="lg-settings-label">Chart text</span>'
+      + '<div class="lg-settings-btns">'
+      + '<button class="lg-settings-btn" onclick="lgFontChange(-2)">A\u2212</button>'
+      + '<span id="lgFontLabel" style="font-size:0.78rem;color:#888;min-width:32px;text-align:center">' + _lgFontSize + 'px</span>'
+      + '<button class="lg-settings-btn" onclick="lgFontChange(2)">A+</button>'
+      + '</div></div>'
+      // Line spacing
+      + '<div class="lg-settings-row">'
+      + '<span class="lg-settings-label">Line spacing</span>'
+      + '<div class="lg-settings-btns">'
+      + '<button class="lg-settings-btn" onclick="lgLineChange(-0.1)">Tight</button>'
+      + '<button class="lg-settings-btn" onclick="lgLineChange(0.1)">Loose</button>'
+      + '</div></div>'
+      // Zen mode
+      + '<div class="lg-settings-row">'
+      + '<span class="lg-settings-label">Zen mode</span>'
+      + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleZen()">Toggle</button>'
+      + '</div>'
+      // Fullscreen
+      + '<div class="lg-settings-row">'
+      + '<span class="lg-settings-label">Fullscreen</span>'
+      + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleFullscreen()">Toggle</button>'
+      + '</div>'
+      // Keep awake
+      + '<div class="lg-settings-row">'
+      + '<span class="lg-settings-label">Keep screen on</span>'
+      + '<span style="font-size:0.72rem;color:#4caf74">\u2713 Active</span>'
+      + '</div>'
+      + '</div>';
+    el.addEventListener('click', function(e) { if (e.target === el) el.remove(); });
+    document.body.appendChild(el);
+  }
+
+  function lgFontChange(delta) {
+    _lgFontSize = Math.max(11, Math.min(28, _lgFontSize + delta));
+    localStorage.setItem('gl_lg_font', String(_lgFontSize));
+    _lgApplyFont();
+    var label = document.getElementById('lgFontLabel');
+    if (label) label.textContent = _lgFontSize + 'px';
+  }
+
+  function lgLineChange(delta) {
+    _lgLineHeight = Math.max(1.2, Math.min(2.2, Math.round((_lgLineHeight + delta) * 10) / 10));
+    localStorage.setItem('gl_lg_lh', String(_lgLineHeight));
+    _lgApplyFont();
+  }
+
+  /* ─────────────────────────────────────────────────────────────
      EXPORTS
   ───────────────────────────────────────────────────────────── */
   // ── Audio float player integration ─────────────────────────────────────
@@ -757,5 +831,8 @@
   window.lgToggleAudio      = lgToggleAudio;
   window.lgExit             = lgExit;
   window.lgToggleJumpMenu   = lgToggleJumpMenu;
+  window.lgOpenSettings     = lgOpenSettings;
+  window.lgFontChange       = lgFontChange;
+  window.lgLineChange       = lgLineChange;
 
 })();
