@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-184054 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-184943 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -69,6 +69,30 @@ _Bugs believed fixed but needing confirmation from Drew or band._
   **Root cause:** `#lgOverlay` is `position:fixed`, bypassing body's safe-area padding. `.lg-header` had `padding:6px 12px` with no top inset, so Exit / setlist name / headphones / settings icons sat under the notch / time / wifi / battery.
   **Fix:** `.lg-header` padding now uses `env(safe-area-inset-top/right/left)` (`app-shell.css:1154`).
   **Verification:** Launch live gig mode on iPhone. All header controls should sit fully below the status bar and be tappable.
+
+- [ ] **Chord-over-lyric alignment breaks at larger font sizes**
+  **Area:** live-gig mode chart
+  **Reported in build:** 20260418-184054 (on-device, Grizz Fest → Bird Song)
+  **Fix build:** 20260418-184943 (commit `356cd3ad`)
+  **Root cause:** `.lg-chart-text` used `white-space:pre-wrap; word-wrap:break-word`. At larger fonts, long chord+lyric lines wrapped, causing chord rows to desync from lyric rows — chords landed on wrong syllables.
+  **Fix:** `white-space:pre` on `.lg-chart-text`, `overflow-x:auto` on `.lg-chart-region`. Lines never wrap; user horizontal-pans if a line exceeds width.
+  **Verification:** Live gig → Bird Song → settings → bump font to 22–28px. Chord symbols should remain directly above the syllable they belong to. No chord stacking.
+
+- [ ] **"COMING UP …" queue clipped by iPhone home indicator**
+  **Area:** live-gig mode
+  **Reported in build:** 20260418-184054 (on-device screenshot)
+  **Fix build:** 20260418-184943 (commit `356cd3ad`)
+  **Root cause:** `.lg-queue` was the last DOM child but had no `safe-area-inset-bottom` padding; iOS home indicator obscured it.
+  **Fix:** DOM reordered — queue now sits above controls. Controls become final row and use `padding-bottom:calc(8px + env(safe-area-inset-bottom))`. Queue also gains safe-area left/right padding.
+  **Verification:** Live gig on iPhone. "COMING UP → [song]" should be fully visible above the PREV/JUMP/NEXT buttons, never clipped.
+
+- [ ] **PREV/JUMP/NEXT buttons too high for thumb reach on iPhone/iPad**
+  **Area:** live-gig mode
+  **Reported in build:** 20260418-184054 (user feedback)
+  **Fix build:** 20260418-184943 (commit `356cd3ad`)
+  **Root cause:** Queue sat below controls and consumed the space that safe-area-bottom padding was reserving for controls, pushing buttons upward by ~28px.
+  **Fix:** DOM swap (see above) — controls are now the final row and anchor to the bottom safe-area edge.
+  **Verification:** Live gig on iPhone/iPad. PREV / JUMP / NEXT should sit at the bottom of the screen just above the home indicator, comfortable for thumb reach.
 
 - [ ] **Focus mode: Exit button hidden behind iPhone status bar**
   **Area:** live-gig mode (focus)
