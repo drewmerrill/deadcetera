@@ -446,6 +446,18 @@
       if (/^(rep|repeat|solo|turn|break|intro|outro|riff|vamp|fill)$/i.test(t)) return true;
       return false;
     }
+    function _isChordRun(t) {
+      // Dash-joined chord sequence like "G-F#-F-E" or "Am-Em-G-D" — common
+      // shorthand for a fast walkdown. Each piece must itself be a chord.
+      if (t.indexOf('-') < 0) return false;
+      var parts = t.split('-');
+      if (parts.length < 2) return false;
+      for (var i = 0; i < parts.length; i++) {
+        if (!parts[i]) return false;
+        if (!_isChordToken(parts[i])) return false;
+      }
+      return true;
+    }
     function _isChordLine(line) {
       var trimmed = line.trim();
       if (!trimmed) return false;
@@ -458,9 +470,10 @@
       return tokens.length > 0;
     }
     function _isChordishLine(line) {
-      // A chord line that may include annotation tokens (-->, 3x, etc.) and
-      // parenthesized instructions like "(slow down)". Must contain at least
-      // one real chord and no prose tokens outside parens.
+      // A chord line that may include annotation tokens (-->, 3x, etc.),
+      // dash-joined chord runs (G-F#-F-E), and parenthesized instructions
+      // like "(slow down)". Must contain at least one real chord and no
+      // prose tokens outside parens.
       var trimmed = line.trim();
       if (!trimmed) return false;
       if (/^\[/.test(trimmed)) return false;
@@ -474,6 +487,7 @@
         var closes = (t.match(/\)/g) || []).length;
         if (depth > 0) { depth += opens - closes; continue; }
         if (_isChordToken(t)) { chordCount++; depth += opens - closes; continue; }
+        if (_isChordRun(t)) { chordCount++; depth += opens - closes; continue; }
         if (_isAnnotationToken(t)) { depth += opens - closes; continue; }
         // Token opens a paren group like "(slow" — start of annotation group.
         if (opens > closes) { depth += opens - closes; continue; }
@@ -497,6 +511,13 @@
         var insideParens = depth > 0 || opens > closes;
         if (!insideParens && _isChordToken(t)) {
           html += '<span class="cl-inline-chord">' + _esc(t) + '</span>';
+        } else if (!insideParens && _isChordRun(t)) {
+          // Chord run like "G-F#-F-E" — each chord colored, dashes dim.
+          var parts = t.split('-');
+          for (var p = 0; p < parts.length; p++) {
+            if (p > 0) html += '<span class="cl-inline-note">-</span>';
+            html += '<span class="cl-inline-chord">' + _esc(parts[p]) + '</span>';
+          }
         } else {
           html += '<span class="cl-inline-note">' + _esc(t) + '</span>';
         }

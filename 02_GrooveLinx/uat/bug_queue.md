@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-195205 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-195900 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -100,6 +100,7 @@ _Bugs believed fixed but needing confirmation from Drew or band._
     - **Ain't Life Grand — Bridge** — line `F --> Am C C 3x F --> Am` renders with `F`, `Am`, `C` in chord-indigo color and `-->` / `3x` in dimmer italic. Not plain white prose.
     - **Ain't Life Grand — Outro** — line with `Am (slow down) Em` (or similar): `Am` and `Em` indigo, `(slow down)` dim italic.
     - **Jack Straw — Verse 7 outro** — two chord lines above "One man gone and another to go, my old buddy you're moving much too slow." now merge into one paired row. Every chord (D Bm A E A D G D + G F# F E Esus4 E Esus4 E) sits directly above the syllable it belongs to, not as two disconnected chord rows with independent wrapping.
+    - **Jack Straw — final orphan chord line** — line immediately after "moving much too slow." reading `G-F#-F-E  Esus4 E Esus4 E` now colorizes correctly. Dash-joined chord runs (new `_isChordRun` path) render each chord indigo with the `-` separators dim. Previously the whole line dropped to plain text because `G-F#-F-E` failed the single-chord regex.
     - No horizontal scrollbar at any font size (22–28px). Section markers (`[Chorus]`) render as accent text.
 
 - [ ] **Horizontal swipe in chart region hijacks as prev/next song**
