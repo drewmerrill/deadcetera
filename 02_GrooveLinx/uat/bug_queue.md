@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-184943 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-185724 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -69,6 +69,22 @@ _Bugs believed fixed but needing confirmation from Drew or band._
   **Root cause:** `#lgOverlay` is `position:fixed`, bypassing body's safe-area padding. `.lg-header` had `padding:6px 12px` with no top inset, so Exit / setlist name / headphones / settings icons sat under the notch / time / wifi / battery.
   **Fix:** `.lg-header` padding now uses `env(safe-area-inset-top/right/left)` (`app-shell.css:1154`).
   **Verification:** Launch live gig mode on iPhone. All header controls should sit fully below the status bar and be tappable.
+
+- [ ] **Horizontal swipe in chart region hijacks as prev/next song**
+  **Area:** live-gig mode chart (non-focus)
+  **Reported in build:** 20260418-184943 (on-device)
+  **Fix build:** 20260418-185724 (commit `23a705aa`)
+  **Root cause:** After adding `overflow-x:auto` to allow panning wide chord lines, the overlay-level swipe handler still caught horizontal gestures inside the chart and fired `lgNext`/`lgPrev`, making it impossible to read the right side of wide lines.
+  **Fix:** `touchStartHandler` bails when the gesture begins inside `.lg-chart-region` AND the overlay is not in focus mode. Non-focus has PREV/NEXT buttons for navigation, so the chart can own its gestures. Focus mode keeps swipe navigation since all controls are hidden.
+  **Verification:** Live gig on iPhone with large font → horizontal pan inside the chart should scroll the chart sideways (never change song). PREV / NEXT buttons still navigate. In Focus mode, horizontal swipe on chart should still change song.
+
+- [ ] **Controls too high — thumb zone reclaim**
+  **Area:** live-gig mode controls
+  **Reported in build:** 20260418-184943 (user feedback: "thumb buttons can be lower")
+  **Fix build:** 20260418-185724 (commit `23a705aa`)
+  **Root cause:** `.lg-controls` had `padding:8px … calc(8px + safe-area-inset-bottom) …`, leaving ~16px of dead space around the button row.
+  **Fix:** Tightened to `padding:4px … calc(2px + safe-area-inset-bottom) …`. Reclaims ~10px for the chart region; buttons sit closer to the home indicator.
+  **Verification:** Live gig on iPhone. PREV/JUMP/NEXT buttons should feel anchored at the bottom with only a hair of space below them (above the home indicator). More chart visible above.
 
 - [ ] **Chord-over-lyric alignment breaks at larger font sizes**
   **Area:** live-gig mode chart
