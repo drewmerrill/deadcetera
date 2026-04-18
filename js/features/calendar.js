@@ -2674,23 +2674,24 @@ async function renderCalendarInner() {
     var year = calViewYear, month = calViewMonth;
     var mNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-    // Render shell immediately, then load events async and paint dots
+    // Render shell — mobile: compact spacing, grid-first
+    var _calMobile = window.innerWidth <= 640;
     el.innerHTML =
-    // Decision anchor — lightweight recommendation
-    '<div id="calDecisionAnchor" style="margin-bottom:var(--gl-space-md,16px)"></div>' +
-    // Monthly Calendar — clean, borderless, dominant
-    '<div style="margin-bottom:var(--gl-space-md,16px);padding:12px 0">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--gl-space-sm,8px)">' +
+    // Decision anchor — hidden on mobile to save space (grid is priority)
+    '<div id="calDecisionAnchor" style="' + (_calMobile ? 'display:none' : 'margin-bottom:var(--gl-space-md,16px)') + '"></div>' +
+    // Monthly Calendar — tight spacing on mobile
+    '<div style="margin-bottom:' + (_calMobile ? '8px' : 'var(--gl-space-md,16px)') + ';padding:' + (_calMobile ? '4px 0' : '12px 0') + '">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:' + (_calMobile ? '4px' : 'var(--gl-space-sm,8px)') + '">' +
             '<button onclick="calNavMonth(-1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1em;padding:6px 10px">\u2190</button>' +
             '<span id="calMonthLabel" style="font-size:1.1em;font-weight:800;color:var(--text);letter-spacing:-0.02em;transition:opacity 0.12s ease">' + mNames[month] + ' ' + year + '</span>' +
             '<button onclick="calNavMonth(1)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1em;padding:6px 10px">\u2192</button>' +
         '</div>' +
-        '<div id="calFreshness" style="text-align:center;font-size:0.68em;color:var(--text-dim,#64748b);margin:-4px 0 6px;min-height:14px;transition:color 0.2s"></div>' +
+        '<div id="calFreshness" style="text-align:center;font-size:0.68em;color:var(--text-dim,#64748b);margin:-4px 0 ' + (_calMobile ? '2px' : '6px') + ';min-height:14px;transition:color 0.2s"></div>' +
         '<div id="calGrid" style="transition:opacity 0.12s ease;will-change:opacity"></div>' +
     '</div>' +
-    // Contextual actions — primary inline, secondary tucked away
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--gl-space-md,16px)">' +
-        '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()">Schedule Rehearsal</button>' +
+    // Contextual actions — compact on mobile
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:' + (_calMobile ? '8px' : 'var(--gl-space-md,16px)') + '">' +
+        '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()" style="' + (_calMobile ? 'font-size:0.78em;padding:8px 14px' : '') + '">Schedule Rehearsal</button>' +
         '<span style="margin-left:auto;display:flex;gap:6px">' +
             '<button onclick="calBlockDates()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px 8px;opacity:0.6" title="Block a date">\uD83D\uDEAB Block</button>' +
             '<button onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px 8px;opacity:0.6" title="Subscribe to calendar feed">\uD83D\uDCC5 Subscribe</button>' +
