@@ -1219,7 +1219,15 @@ button[style*="background: var(--red)"],
 .lg-error-msg { font-size:1.1rem; color:#e05a2b; text-align:center; max-width:320px; line-height:1.5; }
 /* Zen mode: hide everything except chart */
 .lg-focus .lg-header,.lg-focus .lg-song-bar,.lg-focus .lg-readiness-row,.lg-focus .lg-controls,.lg-focus .lg-queue,.lg-focus .lg-links-row { display:none!important; }
-.lg-focus .lg-chart-region { padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); touch-action:pan-y; }
+.lg-focus .lg-chart-region { padding:calc(16px + env(safe-area-inset-top)) calc(56px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); touch-action:pan-y; }
+/* Extra right padding in normal mode too so long chord lines don't sit under the pill. */
+.lg-chart-region { padding-right:calc(56px + env(safe-area-inset-right)); }
+/* Auto-scroll pill: right edge, vertical stack, thumb-reachable. Stays visible in focus mode. */
+.lg-scroll-pill { position:fixed; right:calc(8px + env(safe-area-inset-right)); top:50%; transform:translateY(-50%); z-index:9400; display:flex; flex-direction:column; align-items:center; gap:4px; padding:6px 4px; background:rgba(15,23,42,0.78); border:1px solid rgba(99,102,241,0.2); border-radius:24px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+.lg-pill-btn { width:40px; height:40px; border-radius:50%; border:none; background:rgba(255,255,255,0.04); color:#a5b4fc; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; font-family:inherit; -webkit-tap-highlight-color:transparent; touch-action:manipulation; user-select:none; }
+.lg-pill-btn:active { background:rgba(99,102,241,0.25); color:#e0e7ff; }
+.lg-pill-play { background:rgba(99,102,241,0.18); color:#e0e7ff; }
+.lg-pill-speed { font-size:0.58rem; letter-spacing:0.05em; color:#64748b; font-weight:700; min-height:10px; line-height:1; padding:2px 0; font-variant-numeric:tabular-nums; }
 /* Responsive: iPad / wider */
 @media (min-width:480px) {
   .lg-chart-text { font-size:var(--lg-font-size,17px); }

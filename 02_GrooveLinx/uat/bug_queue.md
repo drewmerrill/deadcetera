@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-195900 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-202619 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -61,6 +61,25 @@ _Bugs currently being investigated or fixed._
 ## Ready to Verify
 
 _Bugs believed fixed but needing confirmation from Drew or band._
+
+- [ ] **Live gig — Full Screen Mode replaced with auto-scroll (iPad freeze + UX redesign)**
+  **Area:** live-gig mode
+  **Reported in build:** 20260418-195900 (on-device, iPad: toggling Full Screen froze the screen)
+  **Fix build:** 20260418-202619
+  **Root cause:** `lgToggleFullscreen` called the browser's `requestFullscreen()` API, which is unreliable on iPad Safari — the call silently fails but the UI state transitions, leaving the screen stuck. Functionally redundant too: Focus Mode already hides all chrome and maxes chart area, so the marginal win of losing the iOS status bar wasn't worth a second toggle.
+  **Fix:**
+    - Removed `lgToggleFullscreen`, `_updateFullscreenIcon`, the `'f'` keydown shortcut, the settings-menu row, the `_lg.fullscreen` state, and the `lgExit` branch that called `exitFullscreen`.
+    - Added auto-scroll engine (`_lg.autoScroll`): rAF loop that advances `.lg-chart-region.scrollTop` at a saved px/sec rate. Fractional accumulator prevents integer-rounding stutter. `dt` capped at 250ms so a backgrounded tab resuming doesn't jump the chart.
+    - Default speed per song is BPM-derived (`bpm / 4`, clamped to 5–120 px/sec); once the user adjusts, the speed is saved to `gl_lg_scroll_speed_{songSlug}` and used on re-open. Changing songs resets `scrollTop`, pauses scrolling, and loads the new song's saved speed.
+    - Right-edge vertical pill (`.lg-scroll-pill`): ▲ slower / ▶⏸ / ▼ faster, with tap = single step (5 px/sec) and long-press = repeat at 100ms after a 400ms hold. Stays visible in Focus Mode. Chart region gains `padding-right: 56px` so chord lines don't sit under the pill. Speed number shows below the play button.
+    - New keyboard shortcut: `s` toggles auto-scroll (replaces `f` for fullscreen).
+  **Verification:**
+    - **iPad:** open live gig → the old "Full Screen" setting row is gone. No freeze possible.
+    - **Any device:** tap ▶ on the right-edge pill → chart scrolls downward smoothly at the shown speed. Tap ⏸ → stops cleanly.
+    - **Speed:** tap ▼ or ▲ → speed increments/decrements by 5 px/sec; long-press accelerates the change. Number updates in real time. Range 5–120.
+    - **Per-song memory:** adjust speed on Jack Straw → advance to next song → speed resets (BPM-default or saved). Return to Jack Straw → your saved speed restores.
+    - **Focus mode:** toggle Focus → pill still visible on right, controls still work.
+    - **End of chart:** scrolling auto-stops at the bottom instead of running past.
 
 - [ ] **Stage View — horizontal pan triggered on iPhone + vertical scroll broken after**
   **Area:** setlists / Stage View (mobile)

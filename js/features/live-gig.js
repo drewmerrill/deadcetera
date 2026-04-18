@@ -14,12 +14,19 @@
     songs:      [],   // [{title, key, bpm, notes, position, readiness, statusTag}]
     cursor:     0,
     preloaded:  {},   // { titleKey: { archive, relisten, phishin } }
-    fullscreen: false,
     touchStartX: null,
     _keyHandler: null,
     _touchStartHandler: null,
-    _touchEndHandler: null
+    _touchEndHandler: null,
+    // Auto-scroll engine: px/sec, per-song speed cached in localStorage,
+    // rAF-driven accumulator prevents integer-rounding stutter.
+    autoScroll: { enabled: false, speed: 25, raf: null, lastT: 0, accum: 0 }
   };
+
+  /* ── Auto-scroll tuning ─────────────────────────────────────── */
+  var _LG_SCROLL_STEP = 5;    // px/sec per tap/interval tick
+  var _LG_SCROLL_MIN  = 5;    // px/sec floor
+  var _LG_SCROLL_MAX  = 120;  // px/sec ceiling
 
   /* ── Constants ────────────────────────────────────────────── */
   var MEMBER_KEYS   = ['drew', 'chris', 'brian', 'pierce', 'jay'];
@@ -117,24 +124,9 @@
     _closeJumpMenu();
   }
 
-  function lgToggleFullscreen() {
-    if (!document.fullscreenElement) {
-      var el = document.getElementById('lgOverlay');
-      if (el && el.requestFullscreen) el.requestFullscreen();
-      _lg.fullscreen = true;
-    } else {
-      if (document.exitFullscreen) document.exitFullscreen();
-      _lg.fullscreen = false;
-    }
-    _updateFullscreenIcon();
-  }
-
   function lgExit() {
     _detachInputListeners();
-    if (document.fullscreenElement && document.exitFullscreen) {
-      document.exitFullscreen();
-    }
-    _lg.fullscreen = false;
+    _lgStopScroll();
     var overlay = document.getElementById('lgOverlay');
     if (overlay) overlay.style.display = 'none';
     // Restore rehearsal-mode floating buttons
@@ -312,6 +304,7 @@
       }
     });
 
+    _lgWirePillListeners();
     _updateSongCard();
   }
 
@@ -343,6 +336,14 @@
         '<div class="lg-chart-loading" id="lgChartLoading">Loading chart…</div>' +
         '<div class="lg-chart-doc" id="lgChartText"></div>' +
         '<div class="lg-no-chart" id="lgNoChart" style="display:none">No chord chart for this song.</div>' +
+      '</div>' +
+
+      /* Auto-scroll pill (vertical, right edge, visible in normal + focus) */
+      '<div class="lg-scroll-pill" id="lgScrollPill">' +
+        '<button class="lg-pill-btn" id="lgPillSlower" aria-label="Slower">&#9650;</button>' +
+        '<button class="lg-pill-btn lg-pill-play" id="lgPillPlay" onclick="lgAutoScrollToggle()" aria-label="Play/pause">&#9654;</button>' +
+        '<span class="lg-pill-speed" id="lgPillSpeed">25</span>' +
+        '<button class="lg-pill-btn" id="lgPillFaster" aria-label="Faster">&#9660;</button>' +
       '</div>' +
 
       /* Up-next queue (above controls — keeps it off the home indicator and puts buttons in the thumb zone) */
@@ -396,7 +397,12 @@
       setTimeout(function() { songBar.style.background = ''; }, 400);
     }
 
-    // Load chart
+    // Load chart (also reset auto-scroll for the new song)
+    _lgStopScroll();
+    _lg.autoScroll.speed = _loadSongScrollSpeed(song);
+    _lgUpdatePillUI();
+    var region = document.querySelector('.lg-chart-region');
+    if (region) region.scrollTop = 0;
     _loadChart(song.title);
 
     // Up-next queue — clear visual separation
@@ -770,15 +776,6 @@
   }
 
   /* ─────────────────────────────────────────────────────────────
-     FULLSCREEN ICON UPDATE
-  ───────────────────────────────────────────────────────────── */
-  function _updateFullscreenIcon() {
-    var btn = document.getElementById('lgFsBtn');
-    if (!btn) return;
-    btn.innerHTML = _lg.fullscreen ? '&#x2715;' : '&#x26F6;';
-  }
-
-  /* ─────────────────────────────────────────────────────────────
      INPUT LISTENERS: keyboard + touch swipe
   ───────────────────────────────────────────────────────────── */
   function _attachInputListeners() {
@@ -798,9 +795,10 @@
         case 'Escape':
           lgExit();
           break;
-        case 'f':
-        case 'F':
-          lgToggleFullscreen();
+        case 's':
+        case 'S':
+          e.preventDefault();
+          lgAutoScrollToggle();
           break;
       }
     };
@@ -901,7 +899,134 @@
   }
 
   /* ─────────────────────────────────────────────────────────────
-     SETTINGS MENU — font size, zen mode, fullscreen, keep awake
+     AUTO-SCROLL ENGINE
+     Replaces browser-Fullscreen (which was broken on iPad). Hands-free
+     chart reading during a song. Per-song speed saved to localStorage;
+     first-time default comes from BPM (falls back to 25 px/sec).
+     Controls live in a right-edge vertical pill (▲ / ⏸▶ / ▼).
+  ───────────────────────────────────────────────────────────── */
+  function _songStorageKey(song) {
+    if (!song) return '';
+    return String(song.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  }
+  function _defaultScrollSpeedForSong(song) {
+    var bpm = song && song.bpm ? parseFloat(song.bpm) : NaN;
+    if (!isFinite(bpm) || bpm <= 0) return 25;
+    // Rough BPM mapping: a song at ~90 bpm starts around 22 px/sec, at 120
+    // around 30. Clamped to the button range so users never start stuck.
+    var s = bpm / 4;
+    return Math.max(_LG_SCROLL_MIN, Math.min(_LG_SCROLL_MAX, Math.round(s)));
+  }
+  function _loadSongScrollSpeed(song) {
+    var k = _songStorageKey(song);
+    if (!k) return _defaultScrollSpeedForSong(song);
+    var saved = localStorage.getItem('gl_lg_scroll_speed_' + k);
+    if (saved) {
+      var n = parseFloat(saved);
+      if (isFinite(n) && n >= _LG_SCROLL_MIN && n <= _LG_SCROLL_MAX) return n;
+    }
+    return _defaultScrollSpeedForSong(song);
+  }
+  function _saveSongScrollSpeed(song, speed) {
+    var k = _songStorageKey(song);
+    if (!k) return;
+    localStorage.setItem('gl_lg_scroll_speed_' + k, String(Math.round(speed)));
+  }
+  function _lgScrollFrame(ts) {
+    var as = _lg.autoScroll;
+    if (!as.enabled) { as.raf = null; as.lastT = 0; as.accum = 0; return; }
+    var region = document.querySelector('.lg-chart-region');
+    if (!region) { as.raf = null; return; }
+    if (!as.lastT) {
+      as.lastT = ts;
+      as.raf = requestAnimationFrame(_lgScrollFrame);
+      return;
+    }
+    var dt = (ts - as.lastT) / 1000;
+    as.lastT = ts;
+    // Cap dt so a backgrounded tab resuming doesn't jump the chart forward.
+    if (dt > 0.25) dt = 0.25;
+    as.accum += as.speed * dt;
+    var whole = Math.floor(as.accum);
+    if (whole > 0) {
+      region.scrollTop += whole;
+      as.accum -= whole;
+    }
+    if (region.scrollTop + region.clientHeight >= region.scrollHeight - 1) {
+      _lgStopScroll();
+      return;
+    }
+    as.raf = requestAnimationFrame(_lgScrollFrame);
+  }
+  function _lgStartScroll() {
+    var as = _lg.autoScroll;
+    if (as.enabled) return;
+    as.enabled = true;
+    as.lastT = 0;
+    as.accum = 0;
+    as.raf = requestAnimationFrame(_lgScrollFrame);
+    _lgUpdatePillUI();
+  }
+  function _lgStopScroll() {
+    var as = _lg.autoScroll;
+    if (!as.enabled) { _lgUpdatePillUI(); return; }
+    as.enabled = false;
+    if (as.raf) cancelAnimationFrame(as.raf);
+    as.raf = null;
+    as.lastT = 0;
+    as.accum = 0;
+    _lgUpdatePillUI();
+  }
+  function lgAutoScrollToggle() {
+    if (_lg.autoScroll.enabled) _lgStopScroll();
+    else _lgStartScroll();
+  }
+  function lgAutoScrollStep(delta) {
+    var as = _lg.autoScroll;
+    var next = Math.max(_LG_SCROLL_MIN, Math.min(_LG_SCROLL_MAX, as.speed + delta));
+    if (next === as.speed) return;
+    as.speed = next;
+    var song = _lg.songs[_lg.cursor];
+    if (song) _saveSongScrollSpeed(song, next);
+    _lgUpdatePillUI();
+  }
+  function _lgUpdatePillUI() {
+    var play = document.getElementById('lgPillPlay');
+    if (play) play.innerHTML = _lg.autoScroll.enabled ? '&#x23F8;' : '&#x25B6;';
+    var speedLabel = document.getElementById('lgPillSpeed');
+    if (speedLabel) speedLabel.textContent = Math.round(_lg.autoScroll.speed);
+  }
+  function _lgWireLongPress(btn, onStep) {
+    // Tap = single step. Hold past 400ms = repeat at 100ms. Works on touch + mouse.
+    var holdTimer = null, repeat = null;
+    function begin(e) {
+      if (e.cancelable) e.preventDefault();
+      onStep();
+      holdTimer = setTimeout(function () {
+        repeat = setInterval(onStep, 100);
+      }, 400);
+    }
+    function end() {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+      if (repeat) { clearInterval(repeat); repeat = null; }
+    }
+    btn.addEventListener('touchstart', begin, { passive: false });
+    btn.addEventListener('touchend', end);
+    btn.addEventListener('touchcancel', end);
+    btn.addEventListener('mousedown', begin);
+    btn.addEventListener('mouseup', end);
+    btn.addEventListener('mouseleave', end);
+  }
+  function _lgWirePillListeners() {
+    var slower = document.getElementById('lgPillSlower');
+    var faster = document.getElementById('lgPillFaster');
+    if (slower) _lgWireLongPress(slower, function () { lgAutoScrollStep(-_LG_SCROLL_STEP); });
+    if (faster) _lgWireLongPress(faster, function () { lgAutoScrollStep(_LG_SCROLL_STEP); });
+    _lgUpdatePillUI();
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     SETTINGS MENU — font size, line spacing, focus mode, keep awake
   ───────────────────────────────────────────────────────────── */
   var _lgFontSize = parseInt(localStorage.getItem('gl_lg_font') || '15', 10);
   var _lgLineHeight = parseFloat(localStorage.getItem('gl_lg_lh') || '1.55');
@@ -945,12 +1070,6 @@
       + '<span class="lg-settings-label">Focus mode</span>'
       + '<span style="font-size:0.62em;color:#475569">Chart only, swipe to navigate</span>'
       + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleFocus()">Toggle</button>'
-      + '</div>'
-      // Fullscreen (browser fullscreen — hides address bar)
-      + '<div class="lg-settings-row">'
-      + '<span class="lg-settings-label">Fullscreen</span>'
-      + '<span style="font-size:0.62em;color:#475569">Tap ESC or swipe down to exit</span>'
-      + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleFullscreen()">Toggle</button>'
       + '</div>'
       // Keep awake
       + '<div class="lg-settings-row">'
@@ -1097,12 +1216,13 @@
   window.lgNext             = lgNext;
   window.lgPrev             = lgPrev;
   window.lgJumpTo           = lgJumpTo;
-  window.lgToggleFullscreen = lgToggleFullscreen;
   window.lgToggleAudio      = lgToggleAudio;
   window.lgExit             = lgExit;
   window.lgToggleJumpMenu   = lgToggleJumpMenu;
   window.lgOpenSettings     = lgOpenSettings;
   window.lgFontChange       = lgFontChange;
   window.lgLineChange       = lgLineChange;
+  window.lgAutoScrollToggle = lgAutoScrollToggle;
+  window.lgAutoScrollStep   = lgAutoScrollStep;
 
 })();
