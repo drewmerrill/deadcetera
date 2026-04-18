@@ -167,7 +167,7 @@
         exitBtn = document.createElement('button');
         exitBtn.id = 'lgFocusExit';
         exitBtn.onclick = lgToggleFocus;
-        exitBtn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9500;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.15);color:#999;padding:8px 14px;border-radius:8px;font-size:0.75em;cursor:pointer;font-family:inherit;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+        exitBtn.style.cssText = 'position:fixed;top:calc(12px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));z-index:9500;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.15);color:#999;padding:8px 14px;border-radius:8px;font-size:0.75em;cursor:pointer;font-family:inherit;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
         exitBtn.textContent = 'Exit Focus';
         overlay.appendChild(exitBtn);
     } else if (!isZen && exitBtn) {
