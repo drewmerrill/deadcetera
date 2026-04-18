@@ -2420,9 +2420,9 @@
             <span class="pm-locked-unit">BPM</span>
           </div>
           <div class="pm-locked-meter">
-            <span class="pm-meter-left">Rushing</span>
+            <span class="pm-meter-left">Dragging</span>
             <div class="pm-meter-track"><div class="pm-meter-dot"></div></div>
-            <span class="pm-meter-right">Dragging</span>
+            <span class="pm-meter-right">Rushing</span>
           </div>
           <div class="pm-locked-tier">Listening…</div>
           <div class="pm-locked-conf">—</div>
@@ -2616,6 +2616,11 @@
       if (accepted.length < 3) {
         return { label: 'Listening\u2026', tierClass: 'listening', confLabel: '\u2014', dotPct: 50, meanOffsetMs: 0 };
       }
+      // Warmup gate: median-of-N is noisy for small N. Require ~a measure
+      // of accepted beats before committing to Rushing/Dragging/Locked In.
+      if (accepted.length < 6) {
+        return { label: 'Finding the groove\u2026', tierClass: 'listening', confLabel: 'Warming up', dotPct: 50, meanOffsetMs: 0 };
+      }
 
       const matched = accepted.filter(function (o) { return Math.abs(o) <= tolerance; }).length;
       const pickupRate = Math.min(1, matched / expectedBeats);
@@ -2636,10 +2641,12 @@
       else if (meanOffsetMs < 0)              { label = 'Rushing';   tierClass = 'rushing'; }
       else                                    { label = 'Dragging';  tierClass = 'dragging'; }
 
-      // Dot position: clamp offset to ±50ms for display. Left = rushing.
+      // Dot position: clamp offset to ±50ms for display.
+      // Musician-intuitive axis: Rushing = right (forward momentum),
+      // Dragging = left (pulling back). Negative offset = ahead = rushing.
       const dispMax = 50;
       const clamped = Math.max(-dispMax, Math.min(dispMax, meanOffsetMs));
-      const dotPct  = 50 + (clamped / dispMax) * 50;
+      const dotPct  = 50 - (clamped / dispMax) * 50;
 
       return { label: label, tierClass: tierClass, confLabel: confLabel, dotPct: dotPct, meanOffsetMs: meanOffsetMs };
     }
