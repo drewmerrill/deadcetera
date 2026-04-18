@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-193820 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-194519 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -38,12 +38,6 @@ Audience Love + Setlist Intelligence + Personal Overrides + Rehearsal Scorecard 
 ## Active
 
 _New bugs discovered but not yet investigated._
-
-- [ ] **Jack Straw outro — chords messed up around "One Man Gone / another to go / moving much to slow"**
-  **Area:** live-gig chart rendering
-  **Reported in build:** 20260418-193125 (on-device, user feedback)
-  **Steps to reproduce:** Live gig → Jack Straw → scroll to outro section.
-  **Notes:** Can't inspect Firebase chart source from here. Need raw chord+lyric lines to diagnose. Candidate hypotheses: (a) chord positioned past lyric length leaves a trailing chord rendering beside instead of over a syllable; (b) dense run of descending chords all resolve to the same word-start and group into one seg; (c) wrap occurs mid-lyric and chord looks separated. Ask Drew to paste the raw chart text for that section so it can be reproduced deterministically.
 
 <!-- Template:
 - [ ] Bug title
@@ -86,16 +80,18 @@ _Bugs believed fixed but needing confirmation from Drew or band._
     2. Repeated chords on the same word collapsed — two chords resolving to the same word-start produced an empty first segment, rendering as "AmAm" with no space.
     3. Mixed chord+annotation lines (`F --> Am C C 3x F --> Am`) failed the strict chord-line check and rendered as plain text with no chord color.
     4. Chord lines with parenthesized instructions (`Am (slow down) Em` at end of Ain't Life Grand) — `(slow` and `down)` weren't annotation tokens, so the whole line dropped to plain prose.
-  **Fix (20260418-193820, supersedes 20260418-193125):**
+  **Fix (20260418-194519, supersedes 193820 / 193125):**
     - `_segmentPair` now walks `_wordStart` back from each chord's column and groups consecutive chords that share a word start. The chord text for a group is taken verbatim from the chord line (preserves "Am   Am" spacing with `white-space:pre` on `.cl-chord`).
     - Each chord now sits above the first char of its actual syllable — no mid-word drift.
     - `_isChordishLine` / `_renderChordishRow` handle chord lines with annotation tokens (`-->`, `3x`, `(2x)`, `solo`, `riff`, etc.).
     - Paren-depth tracking: anything between `(` and `)` is treated as annotation even if it's plain words. Covers `(slow down)`, `(rit.)`, `(hold)`, etc.
+    - **Multi-line chord runs now merge**: consecutive chord lines above a single lyric collapse into one paired row so every chord aligns to its syllable (fixes Jack Straw outro where two chord lines previously rendered as disconnected orphan rows that wrapped out of alignment with the lyric below).
   **Verification:** Live gig on iPhone. Test songs:
     - **Jack Straw** (Verse 1) — `E`/`F#m` line and `C#m`/`A` line: each chord sits directly above the syllable it belongs to (e.g. `A` over "we've", not "got"). Long lyric lines wrap without losing chord alignment.
     - **Ain't Life Grand** — repeated chords like `Am   Am` preserve their spacing; no "AmAm" squish.
     - **Ain't Life Grand — Bridge** — line `F --> Am C C 3x F --> Am` renders with `F`, `Am`, `C` in chord-indigo color and `-->` / `3x` in dimmer italic. Not plain white prose.
     - **Ain't Life Grand — Outro** — line with `Am (slow down) Em` (or similar): `Am` and `Em` indigo, `(slow down)` dim italic.
+    - **Jack Straw — Verse 7 outro** — two chord lines above "One man gone and another to go, my old buddy you're moving much too slow." now merge into one paired row. Every chord (D Bm A E A D G D + G F# F E Esus4 E Esus4 E) sits directly above the syllable it belongs to, not as two disconnected chord rows with independent wrapping.
     - No horizontal scrollbar at any font size (22–28px). Section markers (`[Chorus]`) render as accent text.
 
 - [ ] **Horizontal swipe in chart region hijacks as prev/next song**
