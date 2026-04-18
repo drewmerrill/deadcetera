@@ -4977,6 +4977,9 @@ async function calSaveEvent(editIdx) {
                 }
             }
             console.log('[Calendar] Phase B1: Gig record sync SUCCEEDED | gigId:', ev.gigId);
+            if (typeof GLStore !== 'undefined' && GLStore.logBandActivity) {
+                GLStore.logBandActivity('gig_added', { venue: gigRecord.venue || '', date: gigRecord.date || '' });
+            }
         } catch(gigErr) {
             console.error('[Calendar] Phase B1: Gig record sync FAILED (event still saved):', gigErr);
             if (typeof showToast === 'function') showToast('\u26A0 Event saved, but gig record sync failed', 4000);

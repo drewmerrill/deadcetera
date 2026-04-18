@@ -5859,7 +5859,17 @@ async function _loadActivityFeed() {
 
     var html = '<div style="margin-top:4px;margin-bottom:12px">';
     html += '<div class="gl-section-label" style="margin-bottom:6px">What\'s new</div>';
-    deduped.slice(0, 6).forEach(function(e) {
+    // Group by day: Today / Yesterday / Earlier
+    var _todayDate = _todayStr();
+    var _yesterdayDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    var _lastDayGroup = '';
+    deduped.slice(0, 8).forEach(function(e) {
+        var eDay = (e.ts || '').slice(0, 10);
+        var dayGroup = eDay === _todayDate ? 'Today' : eDay === _yesterdayDate ? 'Yesterday' : 'Earlier';
+        if (dayGroup !== _lastDayGroup) {
+            _lastDayGroup = dayGroup;
+            html += '<div style="font-size:0.6em;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.08em;padding:6px 0 2px">' + dayGroup + '</div>';
+        }
         var ago = _hdTimeAgo(e.ts);
         var icon = _typeIcons[e.type] || '\uD83D\uDCCC';
         var verb = _typeLabels[e.type] || e.type;
@@ -5868,11 +5878,11 @@ async function _loadActivityFeed() {
             detail = ' \u2014 ' + e._ratingCount + ' songs';
         } else if (e.detail) {
             if (e.detail.song) detail = ' \u2014 ' + _escHtml(e.detail.song);
-            else if (e.detail.songs && e.detail.songs.length) detail = ' \u2014 ' + e.detail.songs.length + ' songs';
+            else if (e.detail.songs) detail = ' \u2014 ' + (typeof e.detail.songs === 'number' ? e.detail.songs : e.detail.songs.length) + ' songs';
             else if (e.detail.name) detail = ' \u2014 ' + _escHtml(e.detail.name);
             else if (e.detail.venue) detail = ' at ' + _escHtml(e.detail.venue);
+            else if (e.detail.duration) detail = ' \u2014 ' + _escHtml(e.detail.duration);
         }
-        // Higher priority entries get slightly more visual weight
         var priority = _FEED_PRIORITY[e.type] || 0;
         var textColor = priority >= 4 ? 'color:var(--text,#e2e8f0)' : 'color:var(--text-dim)';
         html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:0.78em;' + textColor + ';border-bottom:1px solid rgba(255,255,255,0.03)">'
@@ -5881,6 +5891,9 @@ async function _loadActivityFeed() {
             + '<span style="flex-shrink:0;font-size:0.85em;opacity:0.5">' + ago + '</span>'
             + '</div>';
     });
+    if (!deduped.length) {
+        html += '<div style="font-size:0.78em;color:#475569;padding:8px 0">No band activity yet. Rate a song or start a rehearsal to see updates here.</div>';
+    }
     html += '</div>';
     el.innerHTML = html;
 }

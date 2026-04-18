@@ -107,6 +107,8 @@ window.openRehearsalModeWithQueue = function(queue) {
     rmIndex = 0;
     // Onboarding: mark rehearsal started
     if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('rehearsal');
+    // Log band activity
+    if (typeof GLStore !== 'undefined' && GLStore.logBandActivity) GLStore.logBandActivity('rehearsal_started', { songs: queue.length });
     // Init session timing
     _rmSessionStart = Date.now();
     _rmBlockStartTime = Date.now();
@@ -1245,6 +1247,7 @@ function _rmShowSessionSummary(summary) {
     html += '<div style="text-align:center;margin-bottom:20px">';
     html += '<div style="width:56px;height:56px;margin:0 auto 10px;border-radius:50%;background:linear-gradient(135deg,rgba(34,197,94,0.2),rgba(99,102,241,0.2));display:flex;align-items:center;justify-content:center;animation:rmCheckIn 0.5s ease 0.2s both"><span style="font-size:1.6em">\u2705</span></div>';
     html += '<div style="font-size:1.2em;font-weight:800;letter-spacing:-0.01em">Rehearsal saved.</div>';
+    if (typeof GLStore !== 'undefined' && GLStore.logBandActivity) GLStore.logBandActivity('rehearsal_ended', { songs: songCount, duration: durLabel });
     html += '<div style="font-size:0.72em;color:#64748b;margin-top:2px">You can edit or discard this anytime.</div>';
     html += '<div style="font-size:0.75em;color:#64748b;margin-top:3px">' + new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + '</div>';
     html += '</div>';

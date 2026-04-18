@@ -480,7 +480,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 _upNextHtml += '<div style="font-size:0.6em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Up next</div>';
                 _focus.list.slice(1, 4).forEach(function(s) {
                     var _nSafe = s.title.replace(/'/g, "\\'");
-                    _upNextHtml += '<div onclick="selectSong(\'' + _nSafe + '\')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;font-size:0.78em;color:var(--text-dim)">'
+                    _upNextHtml += '<div onclick="if(typeof GLStore!==\'undefined\'&&GLStore.logBandActivity)GLStore.logBandActivity(\'practice\',{song:\'' + _nSafe + '\'});selectSong(\'' + _nSafe + '\')" style="display:flex;align-items:center;gap:6px;padding:5px 0;cursor:pointer;font-size:0.78em;color:var(--text-dim);min-height:32px">'
                         + '<span style="width:5px;height:5px;border-radius:50%;background:' + (s.avg < 2 ? '#ef4444' : s.avg < 3 ? '#fbbf24' : '#94a3b8') + ';flex-shrink:0"></span>'
                         + '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.title + '</span></div>';
                 });
@@ -495,7 +495,7 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">' + (_focus.reason || '') + '</div>'
                 + _sgBuildExplanation(_focus.primary.title)
                 + '</div>'
-                + '<button onclick="selectSong(\'' + _sgSafe + '\')" style="font-size:0.8em;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;white-space:nowrap">\u25B6 Practice Now</button>'
+                + '<button onclick="if(typeof GLStore!==\'undefined\'&&GLStore.logBandActivity)GLStore.logBandActivity(\'practice\',{song:\'' + _sgSafe + '\'});selectSong(\'' + _sgSafe + '\')" style="font-size:0.8em;font-weight:700;padding:9px 18px;border-radius:8px;cursor:pointer;border:none;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;white-space:nowrap;min-height:40px">\u25B6 Practice Now</button>'
                 + '</div>'
                 + _upNextHtml
                 + '</div>';

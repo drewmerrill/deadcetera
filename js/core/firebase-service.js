@@ -750,6 +750,7 @@ window.ensureBandSong = async function ensureBandSong(title) {
         await firebaseDB.ref(window.bandPath('song_library/' + songId)).set(record);
         _addSongToLocalCache(record);
         console.log('[SongLib] Created:', title);
+        if (typeof GLStore !== 'undefined' && GLStore.logBandActivity) GLStore.logBandActivity('song_added', { song: title });
     } catch(e) {
         console.warn('[SongLib] Failed to create:', title, e.message);
     }
