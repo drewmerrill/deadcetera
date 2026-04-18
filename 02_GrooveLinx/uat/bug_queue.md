@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-191010 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-193125 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -73,10 +73,21 @@ _Bugs believed fixed but needing confirmation from Drew or band._
 - [ ] **Chart should never require horizontal pan — chords should stay locked over lyrics when wrapping**
   **Area:** live-gig chart rendering
   **Reported in build:** 20260418-185724 (user feedback: "Why should I have to pan right at all?")
-  **Fix build:** 20260418-191010 (commit `b97534ef`)
-  **Root cause:** Prior fixes used `white-space:pre` + `overflow-x:auto` to preserve chord-over-lyric alignment but forced horizontal pan on wide lines. Existing app-wide `_formatChart` (`charts.js:106`) uses `white-space:pre-wrap` which wraps chord rows and lyric rows independently — chords land on wrong syllables after wrap.
-  **Fix:** New `_renderChartHTML` parser in `live-gig.js` splits the chart into chord+lyric pairs. Each pair becomes an inline-block segment containing one chord stacked over its lyric text (extended to the next word boundary). Whole segments wrap as atomic units — chord stays locked over its syllable on whatever screen width. No horizontal pan anywhere. Scope: live gig only (Song Detail / Rehearsal Mode still use old colorizer; harmonize later if this works).
-  **Verification:** Live gig on iPhone, multiple songs (Bird Song, Fire, Scarlet). Bump font to 22–28px. No horizontal scrollbar, no need to pan. Chord symbols always sit directly above the syllable they belong to — even when a line wraps to 2 or 3 rows. Section markers ([Chorus], [Solo]) render as accent text. Orphan chord lines (chord lines not paired with immediate lyric) wrap cleanly without overflow.
+  **Fix build:** 20260418-193125 (commit pending — supersedes earlier `b97534ef`)
+  **Root cause (original):** Prior fixes used `white-space:pre` + `overflow-x:auto` to preserve chord-over-lyric alignment but forced horizontal pan on wide lines. Existing app-wide `_formatChart` (`charts.js:106`) uses `white-space:pre-wrap` which wraps chord rows and lyric rows independently — chords land on wrong syllables after wrap.
+  **Follow-up bugs seen on-device in b97534ef (Jack Straw / Ain't Life Grand):**
+    1. Chord-over-syllable alignment shifted — `_segmentPair` extended each segment past the next chord's word, so chord N+1 visually landed on the word AFTER its true syllable (e.g. `A` chord appeared over "got" instead of "we've").
+    2. Repeated chords on the same word collapsed — two chords resolving to the same word-start produced an empty first segment, rendering as "AmAm" with no space.
+    3. Mixed chord+annotation lines (`F --> Am C C 3x F --> Am`) failed the strict chord-line check and rendered as plain text with no chord color.
+  **Fix (20260418-193125):**
+    - `_segmentPair` now walks `_wordStart` back from each chord's column and groups consecutive chords that share a word start. The chord text for a group is taken verbatim from the chord line (preserves "Am   Am" spacing with `white-space:pre` on `.cl-chord`).
+    - Each chord now sits above the first char of its actual syllable — no mid-word drift.
+    - New `_isChordishLine` / `_renderChordishRow` path handles chord lines with annotation tokens (`-->`, `3x`, `(2x)`, `solo`, `riff`, etc.). Tokens colorize per-role: chords indigo, annotations dim italic. Replaces the old flatten-spaces orphan-chord handler (which was stripping meaningful spacing).
+  **Verification:** Live gig on iPhone. Test songs:
+    - **Jack Straw** (Verse 1) — `E`/`F#m` line and `C#m`/`A` line: each chord sits directly above the syllable it belongs to (e.g. `A` over "we've", not "got"). Long lyric lines wrap without losing chord alignment.
+    - **Ain't Life Grand** — repeated chords like `Am   Am` preserve their spacing; no "AmAm" squish.
+    - **Ain't Life Grand — Bridge** — line `F --> Am C C 3x F --> Am` renders with `F`, `Am`, `C` in chord-indigo color and `-->` / `3x` in dimmer italic. Not plain white prose.
+    - No horizontal scrollbar at any font size (22–28px). Section markers (`[Chorus]`) render as accent text.
 
 - [ ] **Horizontal swipe in chart region hijacks as prev/next song**
   **Area:** live-gig mode chart (non-focus)

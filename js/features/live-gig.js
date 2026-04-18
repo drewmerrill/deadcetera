@@ -436,6 +436,16 @@
     function _isChordToken(t) {
       return /^[A-G][#b\u266d\u266f]?(?:(?:maj|min|aug|dim|sus|add|m|M)\d?)?(?:\d{1,2})?(?:sus\d)?(?:add\d)?(?:\/[A-G][#b\u266d\u266f]?)?$/.test(t);
     }
+    function _isAnnotationToken(t) {
+      // Performance directions commonly found on chord lines: arrows, repeats,
+      // section hints. Not chords themselves but legitimate on a chord row.
+      if (/^[-=>\u2192|()]+$/.test(t)) return true;              // -->, ->, →, |, (
+      if (/^\d{1,2}[xX]$/.test(t)) return true;                   // 3x, 2X
+      if (/^[xX]\d{1,2}$/.test(t)) return true;                   // x3
+      if (/^\(\d{1,2}[xX]\)$/.test(t)) return true;               // (3x)
+      if (/^(rep|repeat|solo|turn|break|intro|outro|riff|vamp|fill)$/i.test(t)) return true;
+      return false;
+    }
     function _isChordLine(line) {
       var trimmed = line.trim();
       if (!trimmed) return false;
@@ -447,6 +457,40 @@
       }
       return tokens.length > 0;
     }
+    function _isChordishLine(line) {
+      // A chord line that may include annotation tokens (-->, 3x, etc.).
+      // Must contain at least one real chord and no prose tokens.
+      var trimmed = line.trim();
+      if (!trimmed) return false;
+      if (/^[\[(]/.test(trimmed)) return false;
+      if (/:\s*$/.test(trimmed)) return false;
+      var tokens = trimmed.split(/\s+/);
+      var chordCount = 0;
+      for (var i = 0; i < tokens.length; i++) {
+        if (_isChordToken(tokens[i])) { chordCount++; continue; }
+        if (_isAnnotationToken(tokens[i])) continue;
+        return false;
+      }
+      return chordCount > 0;
+    }
+    function _renderChordishRow(line) {
+      // Render per-token with chord color on actual chords, dimmer tone on
+      // annotations, preserving original inter-token spacing via white-space:pre-wrap.
+      var re = /(\s+|\S+)/g;
+      var m;
+      var html = '';
+      while ((m = re.exec(line)) !== null) {
+        var t = m[0];
+        if (/^\s+$/.test(t)) {
+          html += _esc(t);
+        } else if (_isChordToken(t)) {
+          html += '<span class="cl-inline-chord">' + _esc(t) + '</span>';
+        } else {
+          html += '<span class="cl-inline-note">' + _esc(t) + '</span>';
+        }
+      }
+      return '<div class="cl-chord-row">' + html + '</div>';
+    }
     function _findChordPositions(line) {
       var positions = [];
       var re = /\S+/g;
@@ -456,32 +500,54 @@
       }
       return positions;
     }
+    function _wordStart(s, col) {
+      // If col sits on/past end or on whitespace, segment starts at col itself.
+      if (col >= s.length) return s.length;
+      if (/\s/.test(s.charAt(col))) return col;
+      // Otherwise walk back to the start of the current word so the chord
+      // renders above the first character of its syllable (not mid-word).
+      var i = col;
+      while (i > 0 && /\S/.test(s.charAt(i - 1))) i--;
+      return i;
+    }
     function _segmentPair(chordLine, lyricLine) {
       var positions = _findChordPositions(chordLine);
       if (positions.length === 0) return null;
-      var segs = [];
-      var cursor = 0;
-      // Lyric before the first chord (renders under an empty chord slot)
-      if (positions[0].col > 0) {
-        segs.push({ chord: '', lyric: lyricLine.substring(0, positions[0].col) });
-        cursor = positions[0].col;
-      }
+      // Compute word-aligned start for each chord so the chord sits above the
+      // first char of its syllable (not mid-word).
+      var starts = [];
       for (var i = 0; i < positions.length; i++) {
-        var segStart = Math.max(cursor, positions[i].col);
-        if (segStart > lyricLine.length) segStart = lyricLine.length;
-        var nextCol = (i + 1 < positions.length) ? positions[i + 1].col : lyricLine.length;
-        var segEnd = nextCol;
-        // Extend end to next whitespace so we don't split a word
-        if (segEnd < lyricLine.length && /\S/.test(lyricLine.charAt(segEnd))) {
-          var sp = lyricLine.substring(segEnd).search(/\s/);
-          segEnd = (sp >= 0) ? segEnd + sp + 1 : lyricLine.length;
-        }
-        if (segEnd > lyricLine.length) segEnd = lyricLine.length;
-        segs.push({ chord: positions[i].chord, lyric: lyricLine.substring(segStart, segEnd) });
-        cursor = segEnd;
+        var ws = _wordStart(lyricLine, positions[i].col);
+        if (i > 0 && ws < starts[i - 1]) ws = starts[i - 1];
+        starts.push(ws);
       }
-      if (cursor < lyricLine.length) {
-        segs[segs.length - 1].lyric += lyricLine.substring(cursor);
+      // Group consecutive chords that resolve to the same word. Their chord
+      // text is preserved verbatim from the chord line (with original spacing)
+      // so "Am   Am" over "Livin'" renders as "Am   Am", not "AmAm".
+      var groups = [];
+      for (var i = 0; i < positions.length; i++) {
+        var last = groups.length ? groups[groups.length - 1] : null;
+        if (last && last.start === starts[i]) {
+          last.lastPos = positions[i];
+        } else {
+          groups.push({ start: starts[i], firstPos: positions[i], lastPos: positions[i] });
+        }
+      }
+      var segs = [];
+      if (groups[0].start > 0) {
+        segs.push({ chord: '', lyric: lyricLine.substring(0, groups[0].start) });
+      }
+      for (var g = 0; g < groups.length; g++) {
+        var gr = groups[g];
+        var chordText = chordLine.substring(
+          gr.firstPos.col,
+          gr.lastPos.col + gr.lastPos.chord.length
+        );
+        var segStart = Math.min(gr.start, lyricLine.length);
+        var segEnd = (g + 1 < groups.length)
+          ? Math.min(groups[g + 1].start, lyricLine.length)
+          : lyricLine.length;
+        segs.push({ chord: chordText, lyric: lyricLine.substring(segStart, segEnd) });
       }
       return segs;
     }
@@ -514,9 +580,10 @@
         html += '<div class="cl-blank"></div>';
       } else if (/^\s*\[/.test(line)) {
         html += '<div class="cl-section">' + _esc(line) + '</div>';
-      } else if (_isChordLine(line)) {
-        // Orphan chord line: flatten extra spacing so it wraps cleanly
-        html += '<div class="cl-orphan-chord">' + _esc(line.trim().replace(/\s+/g, ' ')) + '</div>';
+      } else if (_isChordishLine(line)) {
+        // Orphan chord line (pure chords OR chord+annotation like "F --> Am 3x").
+        // Per-token color; original spacing preserved via white-space:pre-wrap.
+        html += _renderChordishRow(line);
       } else {
         html += '<div class="cl-plain">' + _esc(line) + '</div>';
       }
