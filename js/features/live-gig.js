@@ -565,6 +565,17 @@
     };
 
     _lg._touchStartHandler = function (e) {
+      // In non-focus mode, gestures that start inside the chart region belong
+      // to the chart (horizontal pan for wide lines, vertical scroll). PREV /
+      // NEXT buttons handle song navigation. In focus mode the chart IS the
+      // whole screen, so horizontal swipe remains the only way to navigate.
+      var overlay = document.getElementById('lgOverlay');
+      var inFocus = overlay && overlay.classList.contains('lg-focus');
+      if (!inFocus && e.target && e.target.closest && e.target.closest('.lg-chart-region')) {
+        _lg.touchStartX = null;
+        _lg.touchStartY = null;
+        return;
+      }
       _lg.touchStartX = e.touches[0].clientX;
       _lg.touchStartY = e.touches[0].clientY;
     };

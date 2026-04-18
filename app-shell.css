@@ -1161,7 +1161,7 @@ button[style*="background: var(--red)"],
 /* Song bar: single line, compact */
 .lg-song-bar { display:flex; align-items:center; gap:8px; flex-wrap:nowrap; padding:4px 12px; border-bottom:1px solid #141414; flex-shrink:0; min-height:32px; overflow:hidden; }
 /* Chart: MAXIMUM space — reduced padding */
-.lg-chart-region { flex:1 1 auto; overflow-y:auto; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:8px 12px 16px; min-height:0; }
+.lg-chart-region { flex:1 1 auto; overflow-y:auto; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:8px 12px 16px; min-height:0; touch-action:pan-x pan-y; }
 .lg-chart-text { font-family:'SF Mono','Fira Code','Consolas',monospace; font-size:var(--lg-font-size,15px); line-height:var(--lg-line-height,1.55); color:#e2e8f0; white-space:pre; margin:0; tab-size:4; display:inline-block; min-width:100%; }
 .lg-chart-loading { color:#555; font-size:0.85rem; padding:20px 0; }
 .lg-no-chart { color:#555; font-size:0.9rem; padding:40px 0; text-align:center; }
@@ -1179,7 +1179,7 @@ button[style*="background: var(--red)"],
 .lg-dot { width:6px; height:6px; border-radius:50%; background:#1a1a1a; border:1px solid #2a2a2a; display:inline-block; }
 .lg-dot.lg-dot-on { background:#4caf74; border-color:#4caf74; box-shadow:0 0 3px #4caf7460; }
 /* Controls: slim — 48px buttons, not 64-72px */
-.lg-controls { display:flex; align-items:center; justify-content:space-between; padding:8px calc(12px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); gap:8px; flex-shrink:0; }
+.lg-controls { display:flex; align-items:center; justify-content:space-between; padding:4px calc(12px + env(safe-area-inset-right)) calc(2px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); gap:8px; flex-shrink:0; }
 .lg-ctrl-btn { flex:1; min-height:48px; background:#111; border:1px solid #252525; color:#ccc; font-size:0.82rem; letter-spacing:0.08em; font-weight:700; border-radius:8px; cursor:pointer; transition:background 0.12s,border-color 0.12s; font-family:inherit; }
 .lg-ctrl-btn:hover, .lg-ctrl-btn:active { background:#1a1a1a; border-color:#444; color:#fff; }
 .lg-btn-next { background:#0d1f18; border-color:#1d4530; color:#4caf74; }
