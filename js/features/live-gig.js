@@ -341,7 +341,7 @@
       /* Chart area */
       '<div class="lg-chart-region">' +
         '<div class="lg-chart-loading" id="lgChartLoading">Loading chart…</div>' +
-        '<pre class="lg-chart-text" id="lgChartText"></pre>' +
+        '<div class="lg-chart-doc" id="lgChartText"></div>' +
         '<div class="lg-no-chart" id="lgNoChart" style="display:none">No chord chart for this song.</div>' +
       '</div>' +
 
@@ -420,6 +420,110 @@
     }
   }
 
+  /* ─────────────────────────────────────────────────────────────
+     SMART CHART RENDERER
+     Parses plaintext chord charts and renders each chord+lyric pair
+     as an inline-block segment. When a line is wider than the screen,
+     whole segments wrap to the next row — chord stays locked over its
+     syllable, no horizontal pan required.
+  ───────────────────────────────────────────────────────────── */
+  function _renderChartHTML(raw) {
+    function _esc(s) {
+      return String(s).replace(/[&<>]/g, function (c) {
+        return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;';
+      });
+    }
+    function _isChordToken(t) {
+      return /^[A-G][#b\u266d\u266f]?(?:(?:maj|min|aug|dim|sus|add|m|M)\d?)?(?:\d{1,2})?(?:sus\d)?(?:add\d)?(?:\/[A-G][#b\u266d\u266f]?)?$/.test(t);
+    }
+    function _isChordLine(line) {
+      var trimmed = line.trim();
+      if (!trimmed) return false;
+      if (/^[\[(]/.test(trimmed)) return false;   // [Chorus], (capo 2)
+      if (/:\s*$/.test(trimmed)) return false;    // "Bridge:"
+      var tokens = trimmed.split(/\s+/);
+      for (var i = 0; i < tokens.length; i++) {
+        if (!_isChordToken(tokens[i])) return false;
+      }
+      return tokens.length > 0;
+    }
+    function _findChordPositions(line) {
+      var positions = [];
+      var re = /\S+/g;
+      var m;
+      while ((m = re.exec(line)) !== null) {
+        positions.push({ chord: m[0], col: m.index });
+      }
+      return positions;
+    }
+    function _segmentPair(chordLine, lyricLine) {
+      var positions = _findChordPositions(chordLine);
+      if (positions.length === 0) return null;
+      var segs = [];
+      var cursor = 0;
+      // Lyric before the first chord (renders under an empty chord slot)
+      if (positions[0].col > 0) {
+        segs.push({ chord: '', lyric: lyricLine.substring(0, positions[0].col) });
+        cursor = positions[0].col;
+      }
+      for (var i = 0; i < positions.length; i++) {
+        var segStart = Math.max(cursor, positions[i].col);
+        if (segStart > lyricLine.length) segStart = lyricLine.length;
+        var nextCol = (i + 1 < positions.length) ? positions[i + 1].col : lyricLine.length;
+        var segEnd = nextCol;
+        // Extend end to next whitespace so we don't split a word
+        if (segEnd < lyricLine.length && /\S/.test(lyricLine.charAt(segEnd))) {
+          var sp = lyricLine.substring(segEnd).search(/\s/);
+          segEnd = (sp >= 0) ? segEnd + sp + 1 : lyricLine.length;
+        }
+        if (segEnd > lyricLine.length) segEnd = lyricLine.length;
+        segs.push({ chord: positions[i].chord, lyric: lyricLine.substring(segStart, segEnd) });
+        cursor = segEnd;
+      }
+      if (cursor < lyricLine.length) {
+        segs[segs.length - 1].lyric += lyricLine.substring(cursor);
+      }
+      return segs;
+    }
+
+    var lines = String(raw).split('\n');
+    var html = '';
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var next = lines[i + 1];
+      var nextTrim = next ? next.trim() : '';
+      // Pair a chord line with the following lyric line when the lyric line
+      // is plain prose (not a chord line, section marker, or blank).
+      if (_isChordLine(line) && next != null && nextTrim && !_isChordLine(next) && !/^[\[(]/.test(nextTrim)) {
+        var segs = _segmentPair(line, next);
+        if (segs) {
+          var blockHtml = '<div class="cl-line">';
+          for (var s = 0; s < segs.length; s++) {
+            blockHtml += '<span class="cl-seg">'
+              + '<span class="cl-chord">' + _esc(segs[s].chord) + '</span>'
+              + '<span class="cl-lyric">' + _esc(segs[s].lyric) + '</span>'
+              + '</span>';
+          }
+          blockHtml += '</div>';
+          html += blockHtml;
+          i++; // consume the lyric line
+          continue;
+        }
+      }
+      if (!line.trim()) {
+        html += '<div class="cl-blank"></div>';
+      } else if (/^\s*\[/.test(line)) {
+        html += '<div class="cl-section">' + _esc(line) + '</div>';
+      } else if (_isChordLine(line)) {
+        // Orphan chord line: flatten extra spacing so it wraps cleanly
+        html += '<div class="cl-orphan-chord">' + _esc(line.trim().replace(/\s+/g, ' ')) + '</div>';
+      } else {
+        html += '<div class="cl-plain">' + _esc(line) + '</div>';
+      }
+    }
+    return html;
+  }
+
   async function _loadChart(songTitle) {
     var loading = document.getElementById('lgChartLoading');
     var chartEl = document.getElementById('lgChartText');
@@ -434,7 +538,7 @@
       var cd = await loadBandDataFromDrive(songTitle, 'chart');
       if (loading) loading.style.display = 'none';
       if (cd && cd.text && cd.text.trim()) {
-        chartEl.textContent = cd.text;
+        chartEl.innerHTML = _renderChartHTML(cd.text);
         chartEl.style.display = 'block';
       } else {
         if (noChart) noChart.style.display = 'block';
