@@ -2,7 +2,116 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-16 (Mobile setlist redesign + SWR trust states + Stronger cache invalidation)_
+_Last updated: 2026-04-18 (Stage View + Plan Clean Build/Edit split + Play tab speed fix + Zen→Focus + Live gig layout)_
+
+## Session 2026-04-18 — Stage View, Clean Build, Play-Tab Speed, Chart-Surface Cleanup
+
+**Session was interrupted by a forced reboot — this block reconstructs context from git log + an external strategy thread.** Repo is clean, all work below is committed on `main`.
+
+### Commits in this arc (oldest → newest)
+
+- `59ae98e9` fix: Stage View — confidence label below arc + Start Gig launches correctly
+- `e7afb54f` feat: live gig mode — maximize chart area + settings menu + font controls
+- `e22973d1` fix: float player — add close/drag/seek/transport + preload YouTube API
+- `e9cfc928` fix: float player minimize + zen exit button + settings clarity
+- `03121861` feat: chart loads first + cached for instant display + Zen→Focus rename
+
+Earlier in the same arc (already in repo): Stage View redesign with Confidence Meter + dynamic coaching; Plan Mode Clean Build (default) vs Edit Mode split; BPM · Key metadata in Clean Build rows (BPM first); removal of readiness grid + break buttons from mobile Plan; single-line Edit rows.
+
+### Canonical jobs (architectural rule — One Job Per Screen)
+
+Applies to all chart/performance surfaces going forward:
+
+- **Song Workspace** — learn / practice / edit chart
+- **Setlist Plan** — organize / build (Clean Build default, Edit Mode on demand)
+- **Setlist Stage View** — confidence check + launch (sacred: only `Start Gig` + set expand/collapse are clickable)
+- **Live Performance Mode** — perform (sacred: max chart real estate, minimal chrome, gesture-friendly)
+
+Naming cleanups done: **Zen → Focus** everywhere (`lgToggleFocus`, `.lg-focus`, `lgFocusExit`). Still open: **"Rehearsal Mode" editor → "Chart Editor"** (naming confusion when users click "edit chart" and land in a screen called Rehearsal Mode).
+
+### Mobile setlist state (as of this session)
+
+**Plan Mode — Clean Build (default, mobile):**
+- Rows: `1  Title  →    96 · D` — title dominant, BPM · Key compact right side at 0.45 opacity
+- No edit chrome: no arrows, no delete, no hearts, no readiness bars, no break buttons
+- Sets collapsible, one expanded at a time
+- Band readiness grid hidden on mobile (lives in Stage View only)
+
+**Plan Mode — Edit Mode (opt-in, mobile):**
+- Single-line rows: `1  Title  ▲ ▼  Stop▾  ✕`
+- No BPM/key shown in edit (reduces distraction while reordering)
+- Stop / Flow / Segue / Cut labels kept (jam-band genre standard, validated)
+
+**Stage View:**
+- Confidence Meter (SVG arc) at top — human labels (Strong / Mixed / At Risk), color-coded
+- Dynamic coaching text: names specific songs, adapts to count ("Run X and Y at soundcheck" / "Heavy night. Open with strongest 3.")
+- Per-set readiness cards (collapsed by default)
+- Expanded rows: weak songs **amber + bold + 5px bar**; strong songs normal weight + 3px dim bar
+- Sacred read-only — only `Start Gig` and set expand/collapse are interactive
+- `Start Gig` hands off to existing `live-gig.js` via `_lgLaunchSetlistId` (no duplicate performance code)
+
+**Metadata strategy per surface (current):**
+| Surface | Metadata | Notes |
+|---|---|---|
+| Clean Build | `BPM · Key` | Drummer needs BPM, everyone scans |
+| Edit Mode | none | Focus on reordering |
+| Stage View | `BPM · Key` (expanded) | Already implemented at `setlists.js:1168-1172`; falls back to whichever value exists if one is missing |
+| Live Gig | Key + BPM badges | Unchanged |
+
+### Play tab speed fix (03121861)
+
+**Before:** 9 parallel Firebase reads (lead_singer, status, metadata, personal_tabs, rehearsal_notes, section_ratings, chart, key, bpm) blocked render. iPhone hang 15–45s.
+
+**After:**
+- Chart loads via its own `await` — paints as soon as chart data arrives
+- Other 8 reads start in parallel but don't block
+- Status pulled from in-memory cache (no Firebase wait)
+- `localStorage` cache at `gl_chart_{songKey}` — instant paint on repeat opens, background refresh updates cache if changed
+
+This established a permanent SLA: **music-use screens must render useful content in <1s.** Apply this critical-content-first pattern to Songs, Home, Schedule next.
+
+### Live gig mode reclamation (e7afb54f + follow-ups)
+
+- Controls shrunk to 48px; header 40px
+- Settings menu with font size +/- (persists via localStorage)
+- Focus mode (renamed from Zen) — immersive chart view, always-visible exit button
+- Float player: minimize / close / drag / seek / transport controls; preloads YouTube API to avoid cold-start lag
+
+### In-flight / not yet done (carried forward)
+
+Priority order recommended at session close:
+
+1. **Real-world gig simulation QA** — test on iPhone/iPad: dark room, bright sunlight, weak Wi-Fi, one-hand use while holding instrument, stand distance readability, lock/unlock resume, font persistence survives refresh, chart cache survives offline. Assumptions die on stage.
+2. **Edit Chart path clarity** — the "edit chart" button should jump directly to the chart tab in rehearsal mode editor. Candidate rename: "Rehearsal Mode editor" → "Chart Editor."
+3. **Songs page inline Practice** — surface a Practice CTA on focus songs only (not every row — keep Songs calm). Part of making Songs a workspace, not a spreadsheet.
+4. **Home feed quality + wire remaining activity types** — currently logging `rating` and `setlist_locked`. Still to wire: `rehearsal_started` / `rehearsal_ended`, `song_added`, `gig_added`, `practice`, `status_changed`. Also: rank feed by emotional importance (Tier A: rehearsal scheduled, setlist locked, bandmate practiced, new gig. Tier B: readiness rated, song added. Tier C: admin changes — show less).
+5. **Weekly Band Pulse card** on Home ("4/5 members active this week · 9 songs practiced · readiness +6% · next gig in 12 days").
+6. **Gig context on Schedule page** — gigs become events on the calendar rather than a separate page.
+7. **Merge Contacts into Venues** — one drawer item removed.
+8. **Shared chart renderer** (code quality, not user-facing) — one component used by Song Detail, Play tab, Practice tab, Rehearsal editor. Reduces duplicate chart preview surfaces. Defer until user-facing pain is cleared.
+
+### Strategic principles adopted this session (saved to memory)
+
+- **One Job Per Screen** — challenge any screen that accumulates secondary jobs
+- **<1s SLA for music-use screens** — critical content first, enrichment async, cache aggressively
+- **Layered IA, not deletion** — low page-views ≠ low value. Use frequency × value scoring. Reposition, don't prune. Keep drawer stable (muscle memory).
+
+### Restart prompt (for next session)
+
+```
+GrooveLinx session restart. Repo is on main, clean. Read:
+- 02_GrooveLinx/CLAUDE_HANDOFF.md (Session 2026-04-18 block)
+- 02_GrooveLinx/CURRENT_PHASE.md
+
+Priority 1 is real-device QA of live mode + Stage View on iPhone. Before
+any new code, inspect:
+  git show --stat 03121861 e7afb54f 59ae98e9
+Then ask Drew what was in-flight when the previous session was interrupted.
+Do not assume — the prior session ended mid-thought via forced reboot.
+```
+
+---
+
 
 ## Read This First
 

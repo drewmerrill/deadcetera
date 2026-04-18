@@ -39,3 +39,7 @@ agents/outbox/
 
 # --- Archive (kept locally, not deployed) ---
 archive/
+
+# --- Deploy / Python service envs ---
+.vercel/
+services/**/venv/

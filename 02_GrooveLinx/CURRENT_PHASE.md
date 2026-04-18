@@ -1,8 +1,66 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-17 (Nav simplification: 5 core pages + bottom tab bar + tools drawer)_
+_Updated: 2026-04-18 (Stage View + Plan Clean Build/Edit + Play tab speed + Zen→Focus + Live gig layout)_
 
 ## Active Phase: Band Adoption + Polish
+
+## What's Live (2026-04-18)
+
+### Setlists — Stage View + Plan Clean Build / Edit split
+
+**Stage View** (pre-gig confidence + launch):
+- SVG Confidence Meter arc at top — human labels (Strong / Mixed / At Risk), color-coded
+- Dynamic coaching: names specific weak songs, tone adapts to count
+- Per-set readiness cards, collapsed by default
+- Expanded rows: weak songs amber + bold + 5px bar; strong songs dim 3px bar
+- Sacred read-only: only `Start Gig` and set expand/collapse clickable
+- `Start Gig` hands off to existing `live-gig.js` via `_lgLaunchSetlistId` (no duplicate performance code)
+
+**Plan Mode — Clean Build (default, mobile):**
+- Rows: `1  Title  →    96 · D` — BPM · Key at 0.45 opacity, title dominant
+- No edit chrome, no readiness grid, no break buttons on mobile
+- Sets collapsible, one expanded at a time
+
+**Plan Mode — Edit Mode (opt-in):**
+- Single-line rows: `1  Title  ▲ ▼  Stop▾  ✕`
+- No BPM/key in edit (reduces distraction)
+- Stop / Flow / Segue / Cut labels kept (jam-band standard)
+
+### Play tab speed fix (song-detail.js)
+
+- Chart loads via own `await`, paints instantly
+- 8 other Firebase reads run async, don't block
+- `localStorage` cache at `gl_chart_{songKey}` — instant paint on repeat opens
+- Before: 15–45s iPhone hang. After: <1s.
+- Established permanent SLA: **music-use screens must render useful content in <1s**
+
+### Live gig mode reclamation
+
+- Controls 48px, header 40px → more chart real estate
+- Settings menu with font size +/- (persists via localStorage)
+- **Zen → Focus** rename everywhere (`lgToggleFocus`, `.lg-focus`, `lgFocusExit`)
+- Focus mode has always-visible exit button
+- Float player: minimize / close / drag / seek / transport controls; YouTube API preloaded
+
+### Architectural rules adopted this session
+
+- **One Job Per Screen** — canonical jobs: Song Workspace (learn/practice/edit), Setlist Plan (organize), Stage View (confidence/launch), Live Mode (perform). Challenge any screen accumulating secondary jobs.
+- **<1s SLA for music-use screens** — critical content first, enrichment async, cache aggressively.
+- **Layered IA, not deletion** — features repositioned via Core Nav / Contextual / Tools Drawer. Never prune by page-views alone; use frequency × value scoring.
+
+### In-flight / next priorities
+
+1. Real-world gig simulation QA on iPhone/iPad (sunlight, weak Wi-Fi, one-hand, stand distance)
+2. Edit Chart path clarity — rename "Rehearsal Mode editor" → "Chart Editor"
+3. Songs page inline Practice (focus songs only, keep Songs calm)
+4. Home feed: wire remaining activity types (rehearsal_started/ended, song_added, gig_added, practice, status_changed); rank by emotional importance
+5. Weekly Band Pulse card on Home
+6. Gig context on Schedule page
+7. Merge Contacts into Venues
+8. Shared chart renderer (code quality; defer until user-facing pain clear)
+
+---
+
 
 Build: **local stamp via `scripts/stamp-version.py`** (GitHub Actions auto-stamp disabled)
 Deploy: **Vercel** (auto-deploy on push to main)
