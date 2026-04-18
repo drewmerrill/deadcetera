@@ -1206,8 +1206,8 @@ button[style*="background: var(--red)"],
 .lg-error-layout { justify-content:center; align-items:center; gap:24px; padding:40px; }
 .lg-error-msg { font-size:1.1rem; color:#e05a2b; text-align:center; max-width:320px; line-height:1.5; }
 /* Zen mode: hide everything except chart */
-.lg-zen .lg-header,.lg-zen .lg-song-bar,.lg-zen .lg-readiness-row,.lg-zen .lg-controls,.lg-zen .lg-queue,.lg-zen .lg-links-row { display:none!important; }
-.lg-zen .lg-chart-region { padding:16px; }
+.lg-focus .lg-header,.lg-focus .lg-song-bar,.lg-focus .lg-readiness-row,.lg-focus .lg-controls,.lg-focus .lg-queue,.lg-focus .lg-links-row { display:none!important; }
+.lg-focus .lg-chart-region { padding:16px; }
 /* Responsive: iPad / wider */
 @media (min-width:480px) {
   .lg-chart-text { font-size:var(--lg-font-size,17px); }

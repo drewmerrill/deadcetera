@@ -282,31 +282,48 @@ async function _sdPopulateBandLens(title) {
     var songKey = typeof sanitizeFirebasePath==='function' ? sanitizeFirebasePath(title) : title;
     var safeSong = title.replace(/'/g,"\\'");
     var lead='', status='', cribData=null, rehearsalNotes=null, sectionRatings={}, songMeta={}, chartText=null;
+    var firebaseKey = '', firebaseBpm = '';
 
+    // ── FAST PATH: chart loads first (or from cache), other data in parallel ──
+    // On iPhone, each Firebase read can take 15s+. Chart is the priority.
     try {
-        var res = await Promise.all([
+        // Check localStorage cache for instant chart display
+        var _chartCacheKey = 'gl_chart_' + songKey;
+        var _cachedChart = null;
+        try { _cachedChart = localStorage.getItem(_chartCacheKey); } catch(e) {}
+        if (_cachedChart) chartText = _cachedChart;
+
+        var _chartPromise = loadBandDataFromDrive(title,'chart').catch(function(){return null;});
+        // Start all other loads in parallel (non-blocking)
+        var _otherPromises = Promise.all([
             loadBandDataFromDrive(title,'lead_singer').catch(function(){return null;}),
             loadBandDataFromDrive(title,'song_status').catch(function(){return null;}),
             _sdGet('songs/'+songKey+'/metadata'),
             loadBandDataFromDrive(title,'personal_tabs').catch(function(){return null;}),
             loadBandDataFromDrive(title,'rehearsal_notes').catch(function(){return null;}),
             _sdGet('songs/'+songKey+'/section_ratings'),
-            loadBandDataFromDrive(title,'chart').catch(function(){return null;}),
             loadBandDataFromDrive(title,'key').catch(function(){return null;}),
             loadBandDataFromDrive(title,'song_bpm').catch(function(){return null;}),
         ]);
-        // lead_singer stored as { singer: 'drew' }, song_status as { status: 'gig_ready', ... }
-        lead   = (res[0] && res[0].singer) ? res[0].singer : (typeof res[0]==='string' ? res[0] : '');
-        // Status: prefer statusCache (master file, migrated) over per-song Firebase
-        // to avoid stale legacy values. Fall back to Firebase if cache is empty.
-        var _fbStatus = (res[1] && res[1].status) ? res[1].status : (typeof res[1]==='string' ? res[1] : '');
+        // Wait for chart — renders immediately (cache already showed stale version)
+        var _chartRes = await _chartPromise;
+        var _freshChart = (_chartRes && _chartRes.text && _chartRes.text.trim()) ? _chartRes.text : null;
+        if (_freshChart) {
+            chartText = _freshChart;
+            try { localStorage.setItem(_chartCacheKey, _freshChart); } catch(e) {}
+        }
+        // Use cached status (already in memory from boot preloads)
         var _cacheStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(title) || '') : '';
-        status = _cacheStatus || _fbStatus;
+        status = _cacheStatus;
+        // Now wait for the rest (they've been loading in parallel this whole time)
+        var res = await _otherPromises;
+        lead   = (res[0] && res[0].singer) ? res[0].singer : (typeof res[0]==='string' ? res[0] : '');
+        var _fbStatus = (res[1] && res[1].status) ? res[1].status : (typeof res[1]==='string' ? res[1] : '');
+        if (!status) status = _fbStatus;
         songMeta=res[2]||{};
         cribData=res[3]; rehearsalNotes=res[4]; sectionRatings=res[5]||{};
-        chartText=(res[6] && res[6].text && res[6].text.trim()) ? res[6].text : null;
-        var firebaseKey = res[7] ? (res[7].key || (typeof res[7]==='string' ? res[7] : '')) : '';
-        var firebaseBpm = res[8] ? (res[8].bpm ? String(res[8].bpm) : '') : '';
+        firebaseKey = res[6] ? (res[6].key || (typeof res[6]==='string' ? res[6] : '')) : '';
+        firebaseBpm = res[7] ? (res[7].bpm ? String(res[7].bpm) : '') : '';
     } catch(e) {}
 
     var songObj=(typeof allSongs!=='undefined')?allSongs.find(function(s){return s.title===title;}):null;

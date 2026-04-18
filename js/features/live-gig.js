@@ -157,16 +157,16 @@
     }
   }
 
-  function lgToggleZen() {
+  function lgToggleFocus() {
     var overlay = document.getElementById('lgOverlay');
     if (!overlay) return;
-    var isZen = overlay.classList.toggle('lg-zen');
+    var isZen = overlay.classList.toggle('lg-focus');
     // Show/hide exit button for zen mode
-    var exitBtn = document.getElementById('lgZenExit');
+    var exitBtn = document.getElementById('lgFocusExit');
     if (isZen && !exitBtn) {
         exitBtn = document.createElement('button');
-        exitBtn.id = 'lgZenExit';
-        exitBtn.onclick = lgToggleZen;
+        exitBtn.id = 'lgFocusExit';
+        exitBtn.onclick = lgToggleFocus;
         exitBtn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9500;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.15);color:#999;padding:8px 14px;border-radius:8px;font-size:0.75em;cursor:pointer;font-family:inherit;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
         exitBtn.textContent = 'Exit Focus';
         overlay.appendChild(exitBtn);
@@ -174,7 +174,7 @@
         exitBtn.remove();
     }
   }
-  window.lgToggleZen = lgToggleZen;
+  window.lgToggleFocus = lgToggleFocus;
 
   function lgToggleJumpMenu() {
     var menu = document.getElementById('lgJumpMenu');
@@ -688,7 +688,7 @@
       + '<div class="lg-settings-row">'
       + '<span class="lg-settings-label">Focus mode</span>'
       + '<span style="font-size:0.62em;color:#475569">Chart only, swipe to navigate</span>'
-      + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleZen()">Toggle</button>'
+      + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleFocus()">Toggle</button>'
       + '</div>'
       // Fullscreen (browser fullscreen — hides address bar)
       + '<div class="lg-settings-row">'
