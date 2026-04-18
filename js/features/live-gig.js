@@ -458,36 +458,50 @@
       return tokens.length > 0;
     }
     function _isChordishLine(line) {
-      // A chord line that may include annotation tokens (-->, 3x, etc.).
-      // Must contain at least one real chord and no prose tokens.
+      // A chord line that may include annotation tokens (-->, 3x, etc.) and
+      // parenthesized instructions like "(slow down)". Must contain at least
+      // one real chord and no prose tokens outside parens.
       var trimmed = line.trim();
       if (!trimmed) return false;
-      if (/^[\[(]/.test(trimmed)) return false;
+      if (/^\[/.test(trimmed)) return false;
       if (/:\s*$/.test(trimmed)) return false;
       var tokens = trimmed.split(/\s+/);
       var chordCount = 0;
+      var depth = 0;
       for (var i = 0; i < tokens.length; i++) {
-        if (_isChordToken(tokens[i])) { chordCount++; continue; }
-        if (_isAnnotationToken(tokens[i])) continue;
+        var t = tokens[i];
+        var opens = (t.match(/\(/g) || []).length;
+        var closes = (t.match(/\)/g) || []).length;
+        if (depth > 0) { depth += opens - closes; continue; }
+        if (_isChordToken(t)) { chordCount++; depth += opens - closes; continue; }
+        if (_isAnnotationToken(t)) { depth += opens - closes; continue; }
+        // Token opens a paren group like "(slow" — start of annotation group.
+        if (opens > closes) { depth += opens - closes; continue; }
         return false;
       }
       return chordCount > 0;
     }
     function _renderChordishRow(line) {
-      // Render per-token with chord color on actual chords, dimmer tone on
-      // annotations, preserving original inter-token spacing via white-space:pre-wrap.
+      // Render per-token with chord color on actual chords, dimmer italic on
+      // annotations (including everything inside parens). Original spacing
+      // preserved via white-space:pre-wrap on the row.
       var re = /(\s+|\S+)/g;
       var m;
       var html = '';
+      var depth = 0;
       while ((m = re.exec(line)) !== null) {
         var t = m[0];
-        if (/^\s+$/.test(t)) {
-          html += _esc(t);
-        } else if (_isChordToken(t)) {
+        if (/^\s+$/.test(t)) { html += _esc(t); continue; }
+        var opens = (t.match(/\(/g) || []).length;
+        var closes = (t.match(/\)/g) || []).length;
+        var insideParens = depth > 0 || opens > closes;
+        if (!insideParens && _isChordToken(t)) {
           html += '<span class="cl-inline-chord">' + _esc(t) + '</span>';
         } else {
           html += '<span class="cl-inline-note">' + _esc(t) + '</span>';
         }
+        depth += opens - closes;
+        if (depth < 0) depth = 0;
       }
       return '<div class="cl-chord-row">' + html + '</div>';
     }
