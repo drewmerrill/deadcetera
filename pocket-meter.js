@@ -1153,6 +1153,10 @@
     destroy() {
       this._stopListening();
       if (this._classifierInterval) { clearInterval(this._classifierInterval); this._classifierInterval = null; }
+      if (this._visibilityHandler) {
+        document.removeEventListener('visibilitychange', this._visibilityHandler);
+        this._visibilityHandler = null;
+      }
       if (this.fbRef) this.fbRef.off();
       if (this._pulseRaf) cancelAnimationFrame(this._pulseRaf);
       if (this.el) this.el.remove();
@@ -2531,10 +2535,47 @@
         }
       }
       this.engine.onOnset = function (t) { self._onGuidedOnset(t); };
+
+      // iOS aggressively suspends AudioContext on tab switch / other audio
+      // events. Resume when the tab becomes visible again — otherwise the
+      // analyser goes silent and the meter hangs on "Listening…".
+      if (!this._visibilityHandler) {
+        this._visibilityHandler = function () {
+          if (document.visibilityState === 'visible' &&
+              self.engine && self.engine.audioCtx &&
+              self.engine.audioCtx.state === 'suspended') {
+            self.engine.audioCtx.resume().catch(function () {});
+          }
+        };
+        document.addEventListener('visibilitychange', this._visibilityHandler);
+      }
     }
 
     _onGuidedOnset(tMs) {
       if (this._lockedBPM == null) return;
+
+      const beatMs = 60000 / this._lockedBPM;
+      const lastOnset = this._guidedOnsets.length ? this._guidedOnsets[this._guidedOnsets.length - 1] : null;
+
+      // Auto re-sync: if nothing's arrived for >3s (band stopped / we fell out
+      // of phase / mic glitch), the phase anchor is almost certainly stale.
+      // Snap _lockedAtMs to the nearest beat that lands on this onset, so the
+      // classifier re-engages on the very next beat instead of staying silent.
+      if (!lastOnset || tMs - lastOnset > 3000) {
+        const n = Math.round((tMs - this._lockedAtMs) / beatMs);
+        this._lockedAtMs = tMs - n * beatMs;
+      } else {
+        // Gentle phase-lock nudge (simple PLL) — each confirmed beat drifts
+        // the anchor ~8% toward the actual onset time. Keeps the grid tracking
+        // the band when tempo drifts slightly, without chasing noise.
+        const n = Math.round((tMs - this._lockedAtMs) / beatMs);
+        const predicted = this._lockedAtMs + n * beatMs;
+        const offset = tMs - predicted;
+        if (Math.abs(offset) <= beatMs * 0.25) {
+          this._lockedAtMs += offset * 0.08;
+        }
+      }
+
       this._guidedOnsets.push(tMs);
       // Keep last 6 seconds of onsets (enough for a 4s window + buffer).
       var cutoff = tMs - 6000;
