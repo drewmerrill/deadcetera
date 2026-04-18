@@ -718,6 +718,8 @@
     var E = window.GLPlayerEngine;
     var UI = window.GLPlayerUI;
     if (!E || !UI) { if (typeof showToast === 'function') showToast('Player not available'); return; }
+    // Preload YouTube API immediately to avoid serial delays
+    if (E.ensureYouTubeAPI) E.ensureYouTubeAPI();
 
     if (_lgAudioActive) {
       // Stop audio

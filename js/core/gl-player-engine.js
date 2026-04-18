@@ -467,6 +467,7 @@ window.GLPlayerEngine = (function() {
 
         // YouTube
         createYouTubePlayer: createYouTubePlayer,
+        ensureYouTubeAPI: _ensureYouTubeAPI,
 
         // Manual
         playYouTubeUrl: playYouTubeUrl,

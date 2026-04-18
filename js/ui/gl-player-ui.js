@@ -126,21 +126,63 @@ window.GLPlayerUI = (function() {
         _removeFloat();
         _floatEl = document.createElement('div');
         _floatEl.id = 'glpFloat';
-        _floatEl.style.cssText = 'position:fixed;bottom:80px;right:12px;z-index:9800;width:280px;background:rgba(15,23,42,0.96);border:1px solid rgba(99,102,241,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)';
+        _floatEl.style.cssText = 'position:fixed;bottom:80px;right:12px;z-index:9800;width:280px;background:rgba(15,23,42,0.97);border:1px solid rgba(99,102,241,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:none';
         _floatEl.innerHTML = ''
-            + '<div id="glpFloatVideo" style="width:100%;aspect-ratio:16/9;background:#000"></div>'
-            + '<div style="padding:10px 12px">'
-            + '<div id="glpFloatTitle" style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song ? song.title : '') + '</div>'
-            + '<div id="glpFloatSource" style="font-size:0.68em;color:#475569;margin-top:2px"></div>'
-            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">'
-            + '<div style="display:flex;gap:8px">'
-            + '<button onclick="GLPlayerEngine.prev()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:0.9em">\u23EE</button>'
-            + '<button id="glpFloatPlayPause" onclick="GLPlayerEngine.togglePlay()" style="background:none;border:none;color:#a5b4fc;cursor:pointer;font-size:1.1em">\u23F8</button>'
-            + '<button onclick="GLPlayerEngine.next()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:0.9em">\u23ED</button>'
+            // Drag handle + close button
+            + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:grab;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.06)">'
+            + '<span style="font-size:0.6em;color:#475569;letter-spacing:0.08em;text-transform:uppercase;font-weight:700">Player</span>'
+            + '<button onclick="GLPlayerUI.closeAll()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:2px 4px">\u2715</button>'
             + '</div>'
-            + '<button onclick="GLPlayerUI.showOverlay()" style="background:none;border:none;color:#818cf8;cursor:pointer;font-size:0.72em;font-weight:600">Expand</button>'
-            + '</div></div>';
+            // Video area
+            + '<div id="glpFloatVideo" style="width:100%;aspect-ratio:16/9;background:#000"></div>'
+            // Song info
+            + '<div style="padding:8px 10px 6px">'
+            + '<div id="glpFloatTitle" style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song ? song.title : '') + '</div>'
+            + '<div id="glpFloatSource" style="font-size:0.65em;color:#475569;margin-top:1px"></div>'
+            + '</div>'
+            // Transport: ±10s seek + prev/play/next
+            + '<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 10px 10px">'
+            + '<button onclick="GLPlayerEngine.seekRelative(-30)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.62em;padding:4px;min-width:28px">-30s</button>'
+            + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.68em;padding:4px;min-width:28px">-10s</button>'
+            + '<button onclick="GLPlayerEngine.prev()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1em;padding:4px">\u23EE</button>'
+            + '<button id="glpFloatPlayPause" onclick="GLPlayerEngine.togglePlay()" style="background:none;border:none;color:#a5b4fc;cursor:pointer;font-size:1.3em;padding:4px">\u23F8</button>'
+            + '<button onclick="GLPlayerEngine.next()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1em;padding:4px">\u23ED</button>'
+            + '<button onclick="GLPlayerEngine.seekRelative(10)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.68em;padding:4px;min-width:28px">+10s</button>'
+            + '<button onclick="GLPlayerEngine.seekRelative(30)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.62em;padding:4px;min-width:28px">+30s</button>'
+            + '</div>';
         document.body.appendChild(_floatEl);
+
+        // ── Drag to move ──
+        var _drag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
+        var handle = document.getElementById('glpFloatDragHandle');
+        if (handle) {
+            handle.addEventListener('pointerdown', function(e) {
+                if (e.target.tagName === 'BUTTON') return; // don't drag on close button
+                _drag.active = true;
+                _drag.startX = e.clientX;
+                _drag.startY = e.clientY;
+                var rect = _floatEl.getBoundingClientRect();
+                _drag.origX = rect.left;
+                _drag.origY = rect.top;
+                handle.style.cursor = 'grabbing';
+                e.preventDefault();
+            });
+            document.addEventListener('pointermove', function(e) {
+                if (!_drag.active) return;
+                var dx = e.clientX - _drag.startX;
+                var dy = e.clientY - _drag.startY;
+                _floatEl.style.left = (_drag.origX + dx) + 'px';
+                _floatEl.style.top = (_drag.origY + dy) + 'px';
+                _floatEl.style.right = 'auto';
+                _floatEl.style.bottom = 'auto';
+            });
+            document.addEventListener('pointerup', function() {
+                if (_drag.active) {
+                    _drag.active = false;
+                    if (handle) handle.style.cursor = 'grab';
+                }
+            });
+        }
     }
 
     // ── Bar Mode (Now-Playing Bottom Bar) ───────────────────────────────────
