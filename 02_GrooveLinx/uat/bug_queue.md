@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-183304 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-184054 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -69,6 +69,30 @@ _Bugs believed fixed but needing confirmation from Drew or band._
   **Root cause:** `#lgOverlay` is `position:fixed`, bypassing body's safe-area padding. `.lg-header` had `padding:6px 12px` with no top inset, so Exit / setlist name / headphones / settings icons sat under the notch / time / wifi / battery.
   **Fix:** `.lg-header` padding now uses `env(safe-area-inset-top/right/left)` (`app-shell.css:1154`).
   **Verification:** Launch live gig mode on iPhone. All header controls should sit fully below the status bar and be tappable.
+
+- [ ] **Focus mode: Exit button hidden behind iPhone status bar**
+  **Area:** live-gig mode (focus)
+  **Reported in build:** 20260418-183304 (on-device)
+  **Fix build:** 20260418-184054 (commit `2bc7e33e`)
+  **Root cause:** Floating Exit Focus button positioned at `top:12px;right:12px` with no safe-area inset. Sat under notch / time / wifi / battery.
+  **Fix:** `top` / `right` now use `calc(12px + env(safe-area-inset-top/right))` (`live-gig.js:170`).
+  **Verification:** Live gig on iPhone → settings → toggle Focus. Exit button should sit fully below status bar and be tappable.
+
+- [ ] **Focus mode: chart text rendered under notch / status bar on iPhone**
+  **Area:** live-gig mode (focus)
+  **Reported in build:** 20260418-183304 (on-device)
+  **Fix build:** 20260418-184054 (commit `2bc7e33e`)
+  **Root cause:** `.lg-focus .lg-chart-region` had flat `padding:16px`. When focus hides the header, chart expands to full viewport but ignored safe-area on all sides.
+  **Fix:** all four sides use `calc(16px + env(safe-area-inset-*))` (`app-shell.css:1210`).
+  **Verification:** Enter focus mode on iPhone. Chart text should start below the notch and end above the home indicator.
+
+- [ ] **Focus mode: initial swipe up/down doesn't scroll (scroll bar moves, chart still)**
+  **Area:** live-gig mode (focus)
+  **Reported in build:** 20260418-183304 (on-device)
+  **Fix build:** 20260418-184054 (commit `2bc7e33e`)
+  **Root cause (suspected):** iOS first-touch disambiguation latency — browser hadn't committed to vertical scroll as the native gesture, so the first drag produced visible scroll-indicator movement without engaging content scroll.
+  **Fix:** `touch-action:pan-y` on `.lg-focus .lg-chart-region` — tells iOS vertical pan is the native action. Horizontal gestures still fall through to the existing swipe handler for `lgNext`/`lgPrev`, so swipe-to-navigate is preserved.
+  **Verification:** Enter focus mode on iPhone. First vertical drag should scroll chart immediately. Horizontal swipes should still advance / rewind songs.
 
 - [ ] **iPad chart pull-down triggers next song**
   **Area:** live-gig mode
