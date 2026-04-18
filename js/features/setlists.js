@@ -1030,7 +1030,11 @@ function _slRenderStageView(idx, sl) {
 
     var _hasStore = typeof GLStore !== 'undefined';
     var _songKeyMap = {};
-    (typeof allSongs !== 'undefined' ? allSongs : []).forEach(function(s) { if (s.key) _songKeyMap[s.title] = s.key; });
+    var _songBpmMap = {};
+    (typeof allSongs !== 'undefined' ? allSongs : []).forEach(function(s) {
+        if (s.key) _songKeyMap[s.title] = s.key;
+        if (s.bpm) _songBpmMap[s.title] = String(s.bpm);
+    });
 
     // Confidence labels — band language, not data language
     function _readinessLabel(pct) {
@@ -1155,10 +1159,13 @@ function _slRenderStageView(idx, sl) {
             html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.03);min-height:40px">';
             html += '<span style="color:' + (isWeak ? '#f59e0b' : 'var(--text-dim)') + ';font-weight:600;min-width:20px;font-size:0.78em;text-align:right">' + (i + 1) + '</span>';
             html += '<div style="width:' + rdBarW + ';height:' + rdBarH + ';border-radius:2px;background:' + rdColor + ';flex-shrink:0"></div>';
-            // Title dominant, key demoted
+            // Title dominant, BPM · Key right-aligned
             html += '<span style="flex:1;font-weight:' + titleWeight + ';font-size:0.92em;color:' + titleColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + (segStr ? '<span style="color:' + segColor + ';font-size:0.82em">' + segStr + '</span>' : '') + '</span>';
-            var key = _songKeyMap[title];
-            if (key) html += '<span style="font-size:0.62em;color:rgba(129,140,248,0.4);font-weight:500">' + key + '</span>';
+            // Compact metadata: "96·D" or just one, aligned in fixed-width slot
+            var _sKey = _songKeyMap[title] || '';
+            var _sBpm = _songBpmMap[title] || '';
+            var _sMeta = _sBpm && _sKey ? _sBpm + '\u00B7' + _sKey : _sBpm || _sKey;
+            html += '<span style="font-size:0.62em;color:rgba(148,163,184,' + (isWeak ? '0.6' : '0.35') + ');font-weight:500;min-width:36px;text-align:right;flex-shrink:0;white-space:nowrap">' + _sMeta + '</span>';
             html += '</div>';
         });
         html += '</div></div>';
