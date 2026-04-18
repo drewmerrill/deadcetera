@@ -1,7 +1,7 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260411 (local stamp via stamp-version.py)
-**Last Updated:** 2026-04-11
+**Build Under Test:** 20260418-183304 (local stamp via stamp-version.py)
+**Last Updated:** 2026-04-18
 
 ---
 
@@ -61,6 +61,22 @@ _Bugs currently being investigated or fixed._
 ## Ready to Verify
 
 _Bugs believed fixed but needing confirmation from Drew or band._
+
+- [ ] **Live gig header hidden behind iPhone status bar**
+  **Area:** live-gig mode
+  **Reported in build:** 20260418-155636 (on-device)
+  **Fix build:** 20260418-183304 (commit `a6aa4f01`)
+  **Root cause:** `#lgOverlay` is `position:fixed`, bypassing body's safe-area padding. `.lg-header` had `padding:6px 12px` with no top inset, so Exit / setlist name / headphones / settings icons sat under the notch / time / wifi / battery.
+  **Fix:** `.lg-header` padding now uses `env(safe-area-inset-top/right/left)` (`app-shell.css:1154`).
+  **Verification:** Launch live gig mode on iPhone. All header controls should sit fully below the status bar and be tappable.
+
+- [ ] **iPad chart pull-down triggers next song**
+  **Area:** live-gig mode
+  **Reported in build:** 20260418-155636 (Grizz Fest Setlist, first song)
+  **Fix build:** 20260418-183304 (commit `a6aa4f01`)
+  **Root cause:** Swipe handler at `live-gig.js:567-578` tracked only `clientX`. Any vertical gesture with >50px incidental X drift fired `lgNext()` / `lgPrev()`.
+  **Fix:** handler now also tracks `clientY` and bails when `|dy| > |dx|` (dominantly-vertical gestures are treated as scroll, not swipe).
+  **Verification:** On iPad, load Grizz Fest Setlist, enter live gig, on first song pull chart down to scroll. Chart should scroll; song should not change. Horizontal swipes should still navigate prev/next.
 
 <!-- Template:
 - [ ] Bug title
