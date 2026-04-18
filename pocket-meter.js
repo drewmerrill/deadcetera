@@ -2355,7 +2355,26 @@
       // Purely additive: setting `_guided = false` hides this overlay and the
       // original UI is fully functional underneath.
       this._buildGuidedOverlay();
+      this._buildGuidedReturnChip();
       this._renderGuidedState();
+    }
+
+    // Small pinned chip that appears only when _guided is false, giving users
+    // a way back to the guided chooser from anywhere in the legacy UI.
+    _buildGuidedReturnChip() {
+      if (!this.el || this.el.querySelector('.pm-guided-return')) return;
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'pm-guided-return';
+      chip.innerHTML = '&#9664; Guided mode';
+      chip.title = 'Return to guided pocket meter';
+      const self = this;
+      chip.addEventListener('click', function () {
+        self._guided = true;
+        localStorage.setItem('pm_guided_mode', '1');
+        self._renderGuidedState();
+      });
+      this.el.appendChild(chip);
     }
 
     // ── Guided Mode (v2) ──────────────────────────────────────────────────────
@@ -2484,15 +2503,18 @@
     _renderGuidedState() {
       if (!this.el) return;
       const overlay = this.el.querySelector('.pm-guided');
+      const returnChip = this.el.querySelector('.pm-guided-return');
       if (!overlay) return;
 
       // Toggle overlay visibility based on guided mode setting.
       if (this._guided) {
         overlay.classList.remove('pm-hidden');
         this.el.classList.add('pm-guided-active');
+        if (returnChip) returnChip.classList.add('pm-hidden');
       } else {
         overlay.classList.add('pm-hidden');
         this.el.classList.remove('pm-guided-active');
+        if (returnChip) returnChip.classList.remove('pm-hidden');
         return;
       }
 
@@ -3131,6 +3153,20 @@
         .pm-locked-reset:active { background: rgba(255,255,255,0.04); color: #e0e0e0; }
 
         .pm-guided .pm-hidden { display: none !important; }
+
+        /* Return-to-guided chip — shown only when in legacy auto-detect */
+        .pm-guided-return {
+          position: absolute; top: 10px; right: 10px; z-index: 30;
+          padding: 6px 12px; background: rgba(15,23,42,0.92);
+          border: 1px solid rgba(129,140,248,0.4); border-radius: 999px;
+          color: #a5b4fc; font-family: inherit; font-size: 0.72rem; font-weight: 700;
+          letter-spacing: 0.04em; cursor: pointer;
+          backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+          -webkit-tap-highlight-color: transparent;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .pm-guided-return:active { background: rgba(99,102,241,0.3); color: #e0e7ff; }
+        .pm-guided-return.pm-hidden { display: none !important; }
       `;
       document.head.appendChild(s);
     }
