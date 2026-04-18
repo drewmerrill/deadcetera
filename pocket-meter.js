@@ -123,6 +123,8 @@
           this.onsets.push(now);
           if (this.onsets.length > 32) this.onsets.shift();
           this._calcBPM();
+          // Guided mode subscriber — gets raw onset timestamps for phase-lock.
+          if (typeof this.onOnset === 'function') this.onOnset(now);
         }
       }
 
@@ -1150,6 +1152,7 @@
 
     destroy() {
       this._stopListening();
+      if (this._classifierInterval) { clearInterval(this._classifierInterval); this._classifierInterval = null; }
       if (this.fbRef) this.fbRef.off();
       if (this._pulseRaf) cancelAnimationFrame(this._pulseRaf);
       if (this.el) this.el.remove();
@@ -2488,16 +2491,162 @@
       });
     }
 
-    _enterLockedMode(bpm) {
-      this._lockedBPM = bpm;
+    async _enterLockedMode(bpm) {
+      this._lockedBPM  = bpm;
       this._lockedAtMs = performance.now();
+      this._guidedOnsets = [];
+      this._dotPct = 50;
       this._renderGuidedState();
+      // Start mic (user gesture = the Lock button tap).
+      await this._startGuidedListening();
+      // Run the classifier on a steady 250ms tick independent of onset rate
+      // so the UI always reflects current state (including "Listening…").
+      if (this._classifierInterval) clearInterval(this._classifierInterval);
+      var self = this;
+      this._classifierInterval = setInterval(function () { self._tickGuidedClassifier(); }, 250);
     }
 
     _resetLock() {
-      this._lockedBPM = null;
+      this._lockedBPM  = null;
       this._lockedAtMs = null;
+      this._guidedOnsets = [];
+      if (this._classifierInterval) { clearInterval(this._classifierInterval); this._classifierInterval = null; }
+      // Leave the engine running if the user was in legacy mic mode previously;
+      // otherwise tear it down so the mic indicator clears.
+      if (!this.listening && this.engine) {
+        try { this.engine.stop(); } catch (e) {}
+        this.engine = null;
+      }
       this._renderGuidedState();
+    }
+
+    async _startGuidedListening() {
+      var self = this;
+      if (!this.engine) {
+        this.engine = new BPMEngine(function (bpm) { /* guided ignores BPM; uses onsets */ });
+        const ok = await this.engine.start();
+        if (!ok) {
+          this._guidedShowError('Mic access denied — tap Reset and allow mic access in Settings.');
+          return;
+        }
+      }
+      this.engine.onOnset = function (t) { self._onGuidedOnset(t); };
+    }
+
+    _onGuidedOnset(tMs) {
+      if (this._lockedBPM == null) return;
+      this._guidedOnsets.push(tMs);
+      // Keep last 6 seconds of onsets (enough for a 4s window + buffer).
+      var cutoff = tMs - 6000;
+      while (this._guidedOnsets.length && this._guidedOnsets[0] < cutoff) {
+        this._guidedOnsets.shift();
+      }
+    }
+
+    // Pure classifier — takes onsets + locked BPM + lock time, returns label +
+    // confidence + dot position. Rolling 4-second window. Groove Feel param
+    // is a placeholder for commit 3; commit 2 uses Normal thresholds.
+    _classifyGuided(onsets, lockedBPM, lockedAtMs) {
+      const beatMs    = 60000 / lockedBPM;
+      const tolerance = beatMs * 0.15;   // inner window (Normal)
+      const outerTol  = beatMs * 0.40;   // discard onsets beyond this (spurious)
+      const now       = performance.now();
+      const windowMs  = 4000;
+      const cutoff    = now - windowMs;
+
+      const inWindow = [];
+      for (var i = 0; i < onsets.length; i++) if (onsets[i] > cutoff) inWindow.push(onsets[i]);
+
+      // Predicted beats in window — how many beats *should* have occurred.
+      const firstN = Math.max(0, Math.ceil((cutoff - lockedAtMs) / beatMs));
+      const lastN  = Math.max(firstN, Math.floor((now - lockedAtMs) / beatMs));
+      const expectedBeats = Math.max(1, lastN - firstN + 1);
+
+      // Snap each onset to nearest predicted beat, keep signed offset if close.
+      const accepted = [];
+      for (var j = 0; j < inWindow.length; j++) {
+        const t  = inWindow[j];
+        const n  = Math.round((t - lockedAtMs) / beatMs);
+        const pr = lockedAtMs + n * beatMs;
+        const dt = t - pr;
+        if (Math.abs(dt) <= outerTol) accepted.push(dt);
+      }
+
+      if (accepted.length < 3) {
+        return { label: 'Listening\u2026', tierClass: 'listening', confLabel: '\u2014', dotPct: 50, meanOffsetMs: 0 };
+      }
+
+      const matched = accepted.filter(function (o) { return Math.abs(o) <= tolerance; }).length;
+      const pickupRate = Math.min(1, matched / expectedBeats);
+
+      // Median offset — robust to the occasional outlier inside ±outerTol.
+      const sorted = accepted.slice().sort(function (a, b) { return a - b; });
+      const meanOffsetMs = sorted[Math.floor(sorted.length / 2)];
+
+      var confLabel;
+      var confidence;
+      if (pickupRate >= 0.80)      { confidence = 'strong'; confLabel = 'Solid Lock'; }
+      else if (pickupRate >= 0.55) { confidence = 'medium'; confLabel = 'Medium Lock'; }
+      else                         { confidence = 'weak';   confLabel = 'Uncertain'; }
+
+      var label, tierClass;
+      if (confidence === 'weak')              { label = 'Uncertain'; tierClass = 'uncertain'; }
+      else if (Math.abs(meanOffsetMs) <= 12)  { label = 'Locked In'; tierClass = 'locked'; }
+      else if (meanOffsetMs < 0)              { label = 'Rushing';   tierClass = 'rushing'; }
+      else                                    { label = 'Dragging';  tierClass = 'dragging'; }
+
+      // Dot position: clamp offset to ±50ms for display. Left = rushing.
+      const dispMax = 50;
+      const clamped = Math.max(-dispMax, Math.min(dispMax, meanOffsetMs));
+      const dotPct  = 50 + (clamped / dispMax) * 50;
+
+      return { label: label, tierClass: tierClass, confLabel: confLabel, dotPct: dotPct, meanOffsetMs: meanOffsetMs };
+    }
+
+    _tickGuidedClassifier() {
+      if (this._lockedBPM == null || this._lockedAtMs == null) return;
+      const r = this._classifyGuided(this._guidedOnsets, this._lockedBPM, this._lockedAtMs);
+      this._paintGuidedResult(r);
+    }
+
+    _paintGuidedResult(r) {
+      if (!this.el) return;
+      const overlay = this.el.querySelector('.pm-guided-locked');
+      if (!overlay) return;
+
+      // EMA-damped dot — calm motion, never twitchy.
+      if (this._dotPct == null) this._dotPct = 50;
+      const alpha = 0.22;
+      this._dotPct = this._dotPct * (1 - alpha) + r.dotPct * alpha;
+
+      const dot = overlay.querySelector('.pm-meter-dot');
+      if (dot) {
+        dot.style.left = this._dotPct.toFixed(1) + '%';
+        // Color: green when locked, amber when drifting, grey when uncertain/listening
+        const color = r.tierClass === 'locked'   ? '#22c55e'
+                    : r.tierClass === 'rushing'  ? '#f59e0b'
+                    : r.tierClass === 'dragging' ? '#f59e0b'
+                    : '#475569';
+        dot.style.background = color;
+        dot.style.boxShadow = '0 0 8px ' + color + '55';
+      }
+
+      const tierEl = overlay.querySelector('.pm-locked-tier');
+      if (tierEl) {
+        tierEl.textContent = r.label;
+        tierEl.className = 'pm-locked-tier pm-tier-' + r.tierClass;
+      }
+
+      const confEl = overlay.querySelector('.pm-locked-conf');
+      if (confEl) confEl.textContent = r.confLabel;
+    }
+
+    _guidedShowError(msg) {
+      if (!this.el) return;
+      const tier = this.el.querySelector('.pm-locked-tier');
+      const conf = this.el.querySelector('.pm-locked-conf');
+      if (tier) { tier.textContent = '\u26A0 ' + msg; tier.className = 'pm-locked-tier pm-tier-uncertain'; }
+      if (conf) conf.textContent = '';
     }
 
     _renderGuidedState() {
