@@ -1131,19 +1131,19 @@ function _slRenderStageView(idx, sl) {
         var label = _readinessLabel(stat.pct);
         var setId = 'slStageSet' + si;
 
-        html += '<div style="margin-bottom:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);overflow:hidden">';
-        html += '<div onclick="var el=document.getElementById(\'' + setId + '\');el.style.display=el.style.display===\'none\'?\'\':\'none\';this.querySelector(\'.sl-chev\').style.transform=el.style.display===\'none\'?\'rotate(0)\':\'rotate(90deg)\'" style="display:flex;align-items:center;gap:8px;padding:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-height:48px">';
-        html += '<span class="sl-chev" style="font-size:0.7em;color:var(--text-dim);transition:transform 0.15s">\u25B8</span>';
-        html += '<span style="font-weight:700;font-size:0.9em;color:var(--text,#e2e8f0)">' + stat.name + '</span>';
-        html += '<span style="font-size:0.72em;color:var(--text-dim)">' + stat.count + '</span>';
-        if (stat.warn > 0) html += '<span style="font-size:0.7em;color:#fbbf24;font-weight:700">' + stat.warn + '\u26A0</span>';
-        html += '<div style="margin-left:auto;display:flex;align-items:center;gap:8px">';
+        html += '<div style="margin-bottom:6px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);overflow:hidden;max-width:100%">';
+        html += '<div onclick="var el=document.getElementById(\'' + setId + '\');el.style.display=el.style.display===\'none\'?\'\':\'none\';this.querySelector(\'.sl-chev\').style.transform=el.style.display===\'none\'?\'rotate(0)\':\'rotate(90deg)\'" style="display:flex;align-items:center;gap:8px;padding:12px;cursor:pointer;-webkit-tap-highlight-color:transparent;min-height:48px;min-width:0">';
+        html += '<span class="sl-chev" style="font-size:0.7em;color:var(--text-dim);transition:transform 0.15s;flex-shrink:0">\u25B8</span>';
+        html += '<span style="font-weight:700;font-size:0.9em;color:var(--text,#e2e8f0);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">' + stat.name + '</span>';
+        html += '<span style="font-size:0.72em;color:var(--text-dim);flex-shrink:0">' + stat.count + '</span>';
+        if (stat.warn > 0) html += '<span style="font-size:0.7em;color:#fbbf24;font-weight:700;flex-shrink:0">' + stat.warn + '\u26A0</span>';
+        html += '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">';
         html += '<div style="width:48px;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + stat.pct + '%;background:' + label.color + ';border-radius:3px"></div></div>';
         html += '<span style="font-size:0.72em;font-weight:700;color:' + label.color + ';min-width:42px;text-align:right">' + label.text + '</span>';
         html += '</div></div>';
 
         // Expanded song list (hidden by default)
-        html += '<div id="' + setId + '" style="display:none;padding:2px 12px 10px">';
+        html += '<div id="' + setId + '" style="display:none;padding:2px 12px 10px;overflow:hidden">';
         stat.songs.forEach(function(item, i) {
             var title = typeof item === 'string' ? item : (item.title || '');
             var segue = typeof item === 'object' ? (item.segue || 'stop') : 'stop';
@@ -1159,12 +1159,15 @@ function _slRenderStageView(idx, sl) {
             var segStr = segue === 'flow' ? ' \u2192' : segue === 'segue' ? ' ~' : '';
             var segColor = segue === 'flow' ? 'rgba(129,140,248,0.5)' : segue === 'segue' ? 'rgba(52,211,153,0.5)' : '';
 
-            // 40px min-height, 7px vertical padding — iPhone thumb safe
-            html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.03);min-height:40px">';
-            html += '<span style="color:' + (isWeak ? '#f59e0b' : 'var(--text-dim)') + ';font-weight:600;min-width:20px;font-size:0.78em;text-align:right">' + (i + 1) + '</span>';
+            // 40px min-height, 7px vertical padding — iPhone thumb safe.
+            // min-width:0 lets flex children shrink; prevents long titles like
+            // "West L.A. Fadeaway" from pushing the row past the viewport and
+            // triggering iOS horizontal pan that breaks vertical scroll.
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.03);min-height:40px;min-width:0">';
+            html += '<span style="color:' + (isWeak ? '#f59e0b' : 'var(--text-dim)') + ';font-weight:600;min-width:20px;font-size:0.78em;text-align:right;flex-shrink:0">' + (i + 1) + '</span>';
             html += '<div style="width:' + rdBarW + ';height:' + rdBarH + ';border-radius:2px;background:' + rdColor + ';flex-shrink:0"></div>';
             // Title dominant, BPM · Key right-aligned
-            html += '<span style="flex:1;font-weight:' + titleWeight + ';font-size:0.92em;color:' + titleColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + (segStr ? '<span style="color:' + segColor + ';font-size:0.82em">' + segStr + '</span>' : '') + '</span>';
+            html += '<span style="flex:1;min-width:0;font-weight:' + titleWeight + ';font-size:0.92em;color:' + titleColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + (segStr ? '<span style="color:' + segColor + ';font-size:0.82em">' + segStr + '</span>' : '') + '</span>';
             // Compact metadata: "96·D" or just one, aligned in fixed-width slot
             var _sKey = _songKeyMap[title] || '';
             var _sBpm = _songBpmMap[title] || '';

@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-194519 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-195205 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -61,6 +61,14 @@ _Bugs currently being investigated or fixed._
 ## Ready to Verify
 
 _Bugs believed fixed but needing confirmation from Drew or band._
+
+- [ ] **Stage View — horizontal pan triggered on iPhone + vertical scroll broken after**
+  **Area:** setlists / Stage View (mobile)
+  **Reported in build:** 20260418-194519 (on-device, user observed on West L.A. Fadeaway row)
+  **Fix build:** 20260418-195205
+  **Root cause:** The song row inside an expanded set used `flex:1` on the title span but no `min-width:0`. Flex items default to `min-width:auto`, so a long song title with `white-space:nowrap` refuses to shrink below its intrinsic width and pushes the whole row past the viewport. On iOS Safari that triggers horizontal pan, and the touch-gesture engine sometimes latches into pan-horizontal mode so subsequent vertical swipes produce a scroll-indicator flash without the page actually scrolling.
+  **Fix:** Added `min-width:0` to the title span and the parent flex row in `_slRenderStageView` (`setlists.js:1163-1167`). Also added `flex-shrink:0` on the fixed-width row siblings (index, readiness bar, BPM/key) so only the title absorbs the slack. Set header row got the same treatment. Set card and expanded list wrappers now carry `overflow:hidden` / `max-width:100%` as belt-and-braces guards.
+  **Verification:** iPhone → open a setlist containing West L.A. Fadeaway (or any long-title song) → Stage tab → expand the set containing that song. Row should truncate with ellipsis if needed, never push off the right edge. Vertical swipe should scroll the page smoothly. No horizontal pan possible anywhere in Stage View.
 
 - [ ] **Live gig header hidden behind iPhone status bar**
   **Area:** live-gig mode
