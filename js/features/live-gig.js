@@ -161,8 +161,18 @@
     var overlay = document.getElementById('lgOverlay');
     if (!overlay) return;
     var isZen = overlay.classList.toggle('lg-zen');
-    var zenBtn = document.getElementById('lgZenBtn');
-    if (zenBtn) zenBtn.style.opacity = isZen ? '0.3' : '1';
+    // Show/hide exit button for zen mode
+    var exitBtn = document.getElementById('lgZenExit');
+    if (isZen && !exitBtn) {
+        exitBtn = document.createElement('button');
+        exitBtn.id = 'lgZenExit';
+        exitBtn.onclick = lgToggleZen;
+        exitBtn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9500;background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.15);color:#999;padding:8px 14px;border-radius:8px;font-size:0.75em;cursor:pointer;font-family:inherit;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)';
+        exitBtn.textContent = 'Exit Focus';
+        overlay.appendChild(exitBtn);
+    } else if (!isZen && exitBtn) {
+        exitBtn.remove();
+    }
   }
   window.lgToggleZen = lgToggleZen;
 
@@ -674,14 +684,16 @@
       + '<button class="lg-settings-btn" onclick="lgLineChange(-0.1)">Tight</button>'
       + '<button class="lg-settings-btn" onclick="lgLineChange(0.1)">Loose</button>'
       + '</div></div>'
-      // Zen mode
+      // Focus mode (zen — hides all chrome, chart fills screen)
       + '<div class="lg-settings-row">'
-      + '<span class="lg-settings-label">Zen mode</span>'
+      + '<span class="lg-settings-label">Focus mode</span>'
+      + '<span style="font-size:0.62em;color:#475569">Chart only, swipe to navigate</span>'
       + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleZen()">Toggle</button>'
       + '</div>'
-      // Fullscreen
+      // Fullscreen (browser fullscreen — hides address bar)
       + '<div class="lg-settings-row">'
       + '<span class="lg-settings-label">Fullscreen</span>'
+      + '<span style="font-size:0.62em;color:#475569">Tap ESC or swipe down to exit</span>'
       + '<button class="lg-settings-btn" onclick="document.getElementById(\'lgSettingsOverlay\').remove();lgToggleFullscreen()">Toggle</button>'
       + '</div>'
       // Keep awake

@@ -128,11 +128,13 @@ window.GLPlayerUI = (function() {
         _floatEl.id = 'glpFloat';
         _floatEl.style.cssText = 'position:fixed;bottom:80px;right:12px;z-index:9800;width:280px;background:rgba(15,23,42,0.97);border:1px solid rgba(99,102,241,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:none';
         _floatEl.innerHTML = ''
-            // Drag handle + close button
+            // Drag handle + minimize + close
             + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:grab;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.06)">'
             + '<span style="font-size:0.6em;color:#475569;letter-spacing:0.08em;text-transform:uppercase;font-weight:700">Player</span>'
-            + '<button onclick="GLPlayerUI.closeAll()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:2px 4px">\u2715</button>'
-            + '</div>'
+            + '<div style="display:flex;gap:4px">'
+            + '<button onclick="GLPlayerUI.toggleMinimize()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.78em;padding:2px 4px" title="Minimize">\u2014</button>'
+            + '<button onclick="GLPlayerUI.closeAll()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:2px 4px" title="Close">\u2715</button>'
+            + '</div></div>'
             // Video area
             + '<div id="glpFloatVideo" style="width:100%;aspect-ratio:16/9;background:#000"></div>'
             // Song info
@@ -221,6 +223,18 @@ window.GLPlayerUI = (function() {
 
     function _removeFloat() { if (_floatEl) { _floatEl.remove(); _floatEl = null; } }
     function _removeBar() { if (_barEl) { _barEl.remove(); _barEl = null; } }
+
+    // Minimize: collapse float to just the drag handle bar (title + controls hidden)
+    var _floatMinimized = false;
+    function toggleMinimize() {
+        if (!_floatEl) return;
+        _floatMinimized = !_floatMinimized;
+        var children = _floatEl.children;
+        for (var ci = 1; ci < children.length; ci++) {
+            children[ci].style.display = _floatMinimized ? 'none' : '';
+        }
+        _floatEl.style.width = _floatMinimized ? '160px' : '280px';
+    }
 
     function closeAll() {
         if (_overlayEl) { _overlayEl.remove(); _overlayEl = null; }
@@ -583,6 +597,7 @@ window.GLPlayerUI = (function() {
         showFloat: showFloat,
         showBar: showBar,
         minimize: minimize,
+        toggleMinimize: toggleMinimize,
         closeAll: closeAll,
         getMode: function() { return _mode; },
         _onPrefChange: _onPrefChange,
