@@ -1082,20 +1082,24 @@ function _slRenderStageView(idx, sl) {
     var html = '';
 
     // ── 1. CONFIDENCE METER — how ready is the band? ──
-    html += '<div style="text-align:center;padding:16px 12px 12px;margin-bottom:4px">';
+    html += '<div style="text-align:center;padding:16px 12px 8px;margin-bottom:4px">';
+    // SVG arc — semicircle gauge
     var arcSize = 80;
     var arcStroke = 7;
-    var circumference = Math.PI * (arcSize - arcStroke);
+    var arcRadius = (arcSize / 2) - arcStroke;
+    var circumference = Math.PI * arcRadius;
     var filled = circumference * (overallPct / 100);
-    html += '<div style="position:relative;width:' + arcSize + 'px;height:' + (arcSize / 2 + 10) + 'px;margin:0 auto">';
-    html += '<svg width="' + arcSize + '" height="' + (arcSize / 2 + 6) + '" viewBox="0 0 ' + arcSize + ' ' + (arcSize / 2 + 6) + '">';
-    html += '<path d="M ' + arcStroke + ' ' + (arcSize / 2) + ' A ' + (arcSize / 2 - arcStroke) + ' ' + (arcSize / 2 - arcStroke) + ' 0 0 1 ' + (arcSize - arcStroke) + ' ' + (arcSize / 2) + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="' + arcStroke + '" stroke-linecap="round"/>';
-    html += '<path d="M ' + arcStroke + ' ' + (arcSize / 2) + ' A ' + (arcSize / 2 - arcStroke) + ' ' + (arcSize / 2 - arcStroke) + ' 0 0 1 ' + (arcSize - arcStroke) + ' ' + (arcSize / 2) + '" fill="none" stroke="' + overallLabel.color + '" stroke-width="' + arcStroke + '" stroke-linecap="round" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + (circumference - filled) + '" style="transition:stroke-dashoffset 0.4s ease"/>';
-    html += '</svg>';
-    html += '<div style="position:absolute;bottom:0;left:0;right:0;text-align:center">';
-    html += '<div style="font-size:1.4em;font-weight:800;color:' + overallLabel.color + ';line-height:1">' + overallLabel.text + '</div>';
-    html += '</div></div>';
-    // Subtitle — human, not data-dump
+    var arcY = arcRadius + arcStroke; // center Y of the arc
+    var svgH = arcY + arcStroke + 2; // just enough for the half-circle
+    html += '<div style="margin:0 auto 8px;width:' + arcSize + 'px">';
+    html += '<svg width="' + arcSize + '" height="' + svgH + '" viewBox="0 0 ' + arcSize + ' ' + svgH + '">';
+    // Background arc
+    html += '<path d="M ' + arcStroke + ' ' + arcY + ' A ' + arcRadius + ' ' + arcRadius + ' 0 0 1 ' + (arcSize - arcStroke) + ' ' + arcY + '" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="' + arcStroke + '" stroke-linecap="round"/>';
+    // Filled arc
+    html += '<path d="M ' + arcStroke + ' ' + arcY + ' A ' + arcRadius + ' ' + arcRadius + ' 0 0 1 ' + (arcSize - arcStroke) + ' ' + arcY + '" fill="none" stroke="' + overallLabel.color + '" stroke-width="' + arcStroke + '" stroke-linecap="round" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + (circumference - filled) + '" style="transition:stroke-dashoffset 0.4s ease"/>';
+    html += '</svg></div>';
+    // Label BELOW the arc, not overlapping
+    html += '<div style="font-size:1.4em;font-weight:800;color:' + overallLabel.color + ';line-height:1;margin-top:-4px">' + overallLabel.text + '</div>';
     var _meterSub = totalSongs === 0 ? 'No songs in this set'
         : overallLabel.level === 'strong' ? totalReady + ' of ' + totalSongs + ' ready to play'
         : overallLabel.level === 'mixed' ? totalReady + ' solid, ' + totalWarn + ' need a run'
@@ -1174,14 +1178,20 @@ function _slRenderStageView(idx, sl) {
     content.innerHTML = html;
 }
 
-// Launch into existing Live Gig mode
+// Launch into existing Live Gig mode (full-screen overlay, not a page)
 window._slLaunchLiveGig = function(idx) {
     var data = window._cachedSetlists || [];
     var sl = data[idx];
     if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); return; }
-    // Set the launch handoff for live-gig.js
-    window._lgLaunchSetlistId = sl.setlistId;
-    if (typeof showPage === 'function') showPage('live-gig');
+    // Use the existing launcher in app.js which handles lazy-loading
+    if (typeof launchLiveGig === 'function') {
+        launchLiveGig(sl.setlistId);
+    } else {
+        // Fallback: set handoff and try direct init
+        window._lgLaunchSetlistId = sl.setlistId;
+        if (typeof initLiveGig === 'function') initLiveGig();
+        else if (typeof showToast === 'function') showToast('Loading live gig mode...');
+    }
 };
 
 // ── PLAN MODE — editor view ──
