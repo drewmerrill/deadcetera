@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-185724 (local stamp via stamp-version.py)
+**Build Under Test:** 20260418-191010 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-18
 
 ---
@@ -69,6 +69,14 @@ _Bugs believed fixed but needing confirmation from Drew or band._
   **Root cause:** `#lgOverlay` is `position:fixed`, bypassing body's safe-area padding. `.lg-header` had `padding:6px 12px` with no top inset, so Exit / setlist name / headphones / settings icons sat under the notch / time / wifi / battery.
   **Fix:** `.lg-header` padding now uses `env(safe-area-inset-top/right/left)` (`app-shell.css:1154`).
   **Verification:** Launch live gig mode on iPhone. All header controls should sit fully below the status bar and be tappable.
+
+- [ ] **Chart should never require horizontal pan — chords should stay locked over lyrics when wrapping**
+  **Area:** live-gig chart rendering
+  **Reported in build:** 20260418-185724 (user feedback: "Why should I have to pan right at all?")
+  **Fix build:** 20260418-191010 (commit `b97534ef`)
+  **Root cause:** Prior fixes used `white-space:pre` + `overflow-x:auto` to preserve chord-over-lyric alignment but forced horizontal pan on wide lines. Existing app-wide `_formatChart` (`charts.js:106`) uses `white-space:pre-wrap` which wraps chord rows and lyric rows independently — chords land on wrong syllables after wrap.
+  **Fix:** New `_renderChartHTML` parser in `live-gig.js` splits the chart into chord+lyric pairs. Each pair becomes an inline-block segment containing one chord stacked over its lyric text (extended to the next word boundary). Whole segments wrap as atomic units — chord stays locked over its syllable on whatever screen width. No horizontal pan anywhere. Scope: live gig only (Song Detail / Rehearsal Mode still use old colorizer; harmonize later if this works).
+  **Verification:** Live gig on iPhone, multiple songs (Bird Song, Fire, Scarlet). Bump font to 22–28px. No horizontal scrollbar, no need to pan. Chord symbols always sit directly above the syllable they belong to — even when a line wraps to 2 or 3 rows. Section markers ([Chorus], [Solo]) render as accent text. Orphan chord lines (chord lines not paired with immediate lyric) wrap cleanly without overflow.
 
 - [ ] **Horizontal swipe in chart region hijacks as prev/next song**
   **Area:** live-gig mode chart (non-focus)
