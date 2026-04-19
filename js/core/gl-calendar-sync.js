@@ -1742,11 +1742,14 @@ window.GLCalendarSync = (function() {
   }
 
   // ── Re-push times to Google ───────────────────────────────────────────────
-  // Walks every gig in the band data, reconciles the calendar_event record
-  // (so `time`/`endTime` match the gig source of truth), then PATCHes the
-  // already-synced Google event with the correct dateTime range. Used as a
-  // one-shot fix for existing Google events that were created with the old
-  // 7–9 PM default because endTime was never plumbed through.
+  // Walks every synced calendar_event and PATCHes its Google counterpart with
+  // the correct start/end times. Two sources of truth:
+  //   (1) If the event is linked to a Gig (by gigId or venue+date), the Gig's
+  //       startTime/endTime win — reconciles calendar_event from Gig first.
+  //   (2) If no matching Gig, uses the calendar_event's own time/endTime.
+  //       Covers events created directly via the Calendar "Add Event" form.
+  // One-shot fix for existing Google events still showing the 7-9 PM default
+  // because endTime was never plumbed through the old pipeline.
   async function refreshGigTimesOnGoogle() {
     if (!hasCalendarScope()) return { error: 'no scope', updated: 0, scanned: 0 };
     var calId = await _getBandCalendarId();
@@ -1767,12 +1770,14 @@ window.GLCalendarSync = (function() {
       return { error: e.message || 'load failed', updated: 0, scanned: 0 };
     }
 
-    var byGigId = {};
-    var byVenueDate = {};
-    events.forEach(function (ev, idx) {
-      if (ev.gigId) byGigId[ev.gigId] = idx;
-      var key = (ev.venue || ev.title || '') + '|' + (ev.date || '');
-      if (!byVenueDate[key]) byVenueDate[key] = idx;
+    // Index Gigs by gigId + venue|date for fast lookup.
+    var gigById = {};
+    var gigByVenueDate = {};
+    gigs.forEach(function (g) {
+      if (!g || !g.date) return;
+      if (g.gigId) gigById[g.gigId] = g;
+      var key = (g.venue || '') + '|' + g.date;
+      if (!gigByVenueDate[key]) gigByVenueDate[key] = g;
     });
 
     var updated = 0;
@@ -1780,48 +1785,53 @@ window.GLCalendarSync = (function() {
     var firebaseChanged = false;
     var errors = [];
 
-    for (var i = 0; i < gigs.length; i++) {
-      var gig = gigs[i];
-      if (!gig || !gig.date) continue;
-      scanned++;
-      var idx = (gig.gigId && byGigId[gig.gigId] != null)
-        ? byGigId[gig.gigId]
-        : byVenueDate[(gig.venue || '') + '|' + gig.date];
-      if (idx == null) continue;
-      var ev = events[idx];
-      if (!ev) continue;
-      // Reconcile the local calendar_event record with gig as source of truth.
-      var needFirebaseUpdate = false;
-      if (gig.startTime && ev.time !== gig.startTime) { ev.time = gig.startTime; needFirebaseUpdate = true; }
-      if (gig.endTime && ev.endTime !== gig.endTime)  { ev.endTime = gig.endTime; needFirebaseUpdate = true; }
-      if (needFirebaseUpdate) { ev.updated = new Date().toISOString(); firebaseChanged = true; }
-
-      // Push the corrected time to Google if this event is already linked.
+    // Iterate calendar_events — the canonical list of what's on Google.
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (!ev || !ev.date) continue;
       var externalId = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
-      if (externalId && ev.time) {
-        var glEvent = {
-          id: ev.id || '',
-          eventId: ev.id || '',
-          summary: ev.title,
-          date: ev.date,
-          startTime: ev.time,
-          endTime: ev.endTime || '',
-          location: ev.location || ev.venue || '',
-          description: ev.notes || '',
-          type: ev.type
-        };
-        try {
-          var res = await update(externalId, glEvent);
-          if (res && res.success) {
-            updated++;
-            ev.lastSyncedAt = new Date().toISOString();
-            firebaseChanged = true;
-          } else {
-            errors.push((gig.venue || 'event') + ' ' + gig.date);
-          }
-        } catch (e) {
-          errors.push((gig.venue || 'event') + ' ' + gig.date + ': ' + (e.message || 'error'));
+      if (!externalId) continue; // nothing to update on Google
+      if (ev.isAllDay || ev.endDate) continue; // skip multi-day / all-day events
+
+      scanned++;
+
+      // Prefer Gig record as source of truth when one exists.
+      var gig = (ev.gigId && gigById[ev.gigId])
+        || gigByVenueDate[(ev.venue || ev.title || '') + '|' + ev.date]
+        || null;
+
+      var desiredStart = gig && gig.startTime ? gig.startTime : (ev.time || '');
+      var desiredEnd   = gig && gig.endTime   ? gig.endTime   : (ev.endTime || '');
+
+      if (!desiredStart) continue; // can't push a time we don't have
+
+      // Reconcile local calendar_event with whichever source we used.
+      if (ev.time !== desiredStart) { ev.time = desiredStart; firebaseChanged = true; }
+      if (desiredEnd && ev.endTime !== desiredEnd) { ev.endTime = desiredEnd; firebaseChanged = true; }
+      if (firebaseChanged) ev.updated = new Date().toISOString();
+
+      var glEvent = {
+        id: ev.id || '',
+        eventId: ev.id || '',
+        summary: ev.title,
+        date: ev.date,
+        startTime: desiredStart,
+        endTime: desiredEnd,
+        location: ev.location || ev.venue || '',
+        description: ev.notes || '',
+        type: ev.type
+      };
+      try {
+        var res = await update(externalId, glEvent);
+        if (res && res.success) {
+          updated++;
+          ev.lastSyncedAt = new Date().toISOString();
+          firebaseChanged = true;
+        } else {
+          errors.push((ev.venue || ev.title || 'event') + ' ' + ev.date);
         }
+      } catch (e) {
+        errors.push((ev.venue || ev.title || 'event') + ' ' + ev.date + ': ' + (e.message || 'error'));
       }
     }
 

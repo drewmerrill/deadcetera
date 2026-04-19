@@ -4594,7 +4594,8 @@ async function calAddEvent(date, editIdx, existing) {
         <div class="form-row"><span class="form-label">Title</span><input class="app-input" id="calTitle" placeholder="${_titlePlaceholder}" value="${ev.title||''}"></div>
         <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark"></div>
         <div class="form-row"><span class="form-label">End Date</span><input class="app-input" id="calEndDate" type="date" value="${ev.endDate||''}" style="color-scheme:dark" placeholder="Same day (leave blank for single day)"></div>
-        <div class="form-row"><span class="form-label">Time</span><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark"></div>
+        <div class="form-row"><span class="form-label">Start Time</span><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark"></div>
+        <div class="form-row"><span class="form-label">End Time</span><input class="app-input" id="calEndTime" type="time" value="${ev.endTime||''}" style="color-scheme:dark" placeholder="Optional — defaults to +2 hrs"></div>
         <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
             <span class="form-label">Venue</span>
             <div id="calVenuePicker"></div>
@@ -4906,6 +4907,7 @@ async function calSaveEvent(editIdx) {
         type: _typeEl.value,
         title: _titleEl.value,
         time: (document.getElementById('calTime') || {}).value || '',
+        endTime: (document.getElementById('calEndTime') || {}).value || '',
         notes: (document.getElementById('calNotes') || {}).value || '',
         linkedSetlist: (document.getElementById('calLinkedSetlist') || {}).value || null,
         venueId: window._calSelectedVenueId || null,
