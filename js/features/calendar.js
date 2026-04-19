@@ -1041,19 +1041,41 @@ window._calSyncNow = async function() {
     var btn = document.getElementById('calSyncBtn');
     if (btn) { btn.textContent = '\u21BB Syncing...'; btn.disabled = true; }
     try {
+        // Reclassify first — pure local op, doesn't need a Google token, so it
+        // runs even when Google sign-in has lapsed (which is the common state
+        // after page reload because accessToken is session-scoped).
+        var _rcCount = 0;
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.reclassifyUnavailability) {
+            try {
+                var _rc = await GLCalendarSync.reclassifyUnavailability();
+                if (_rc && _rc.updated > 0) {
+                    _rcCount = _rc.updated;
+                    console.log('[CalSync] Reclassified', _rc.updated, 'events as unavailable');
+                }
+            } catch (e) { /* non-fatal */ }
+        }
+
+        // Google sync needs a live token. If missing, auto-trigger reconnect
+        // so Sync Calendars feels like "one tap = everything refreshed."
+        var _tokenLive = !(typeof accessToken === 'undefined' || !accessToken);
+        if (!_tokenLive && typeof _calConnectGoogle === 'function') {
+            if (typeof showToast === 'function') showToast('Signing back into Google\u2026', 3000);
+            try { await _calConnectGoogle(); } catch (e) {}
+            _tokenLive = !(typeof accessToken === 'undefined' || !accessToken);
+        }
+
         // Use two-way sync engine (Mode A: Shared Calendar)
         var _syncResult = { pushed: 0, pulled: 0, updated: 0, deleted: 0, error: null };
-        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.syncBandCalendar && GLCalendarSync.hasCalendarScope()) {
+        if (_tokenLive && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.syncBandCalendar && GLCalendarSync.hasCalendarScope()) {
             _syncResult = await GLCalendarSync.syncBandCalendar();
-            // Backfill: reclassify any pre-existing generic events whose titles
-            // now indicate unavailability. Silent — no toast unless something
-            // actually changed.
+            // Re-run reclassify AFTER Google pull — new events just imported
+            // need to be classified too.
             if (GLCalendarSync.reclassifyUnavailability) {
                 try {
-                    var _rc = await GLCalendarSync.reclassifyUnavailability();
-                    if (_rc && _rc.updated > 0) {
-                        console.log('[CalSync] Reclassified', _rc.updated, 'events as unavailable');
-                        _syncResult.reclassified = _rc.updated;
+                    var _rc2 = await GLCalendarSync.reclassifyUnavailability();
+                    if (_rc2 && _rc2.updated > 0) {
+                        _rcCount += _rc2.updated;
+                        console.log('[CalSync] Reclassified', _rc2.updated, 'events as unavailable (post-pull)');
                     }
                 } catch (e) { /* non-fatal */ }
             }
@@ -1068,18 +1090,24 @@ window._calSyncNow = async function() {
 
         // Build sync status message
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
-        var _syncMsg = '\u2713 Sync complete';
+        var _syncMsg;
+        if (!_tokenLive) {
+            _syncMsg = '\u26A0 Google sign-in cancelled \u2014 local reclassify only';
+        } else {
+            _syncMsg = '\u2713 Sync complete';
+        }
         var _syncParts = [];
         if (_syncResult.pushed > 0) _syncParts.push(_syncResult.pushed + ' pushed');
         if (_syncResult.pulled > 0) _syncParts.push(_syncResult.pulled + ' imported');
         if (_syncResult.updated > 0) _syncParts.push(_syncResult.updated + ' updated');
         if (_syncResult.deleted > 0) _syncParts.push(_syncResult.deleted + ' deleted');
+        if (_rcCount > 0) _syncParts.push(_rcCount + ' reclassified');
         if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
-        else _syncMsg += ' \u2014 everything up to date';
+        else if (_tokenLive) _syncMsg += ' \u2014 everything up to date';
         if (_syncResult.error) _syncMsg += ' (\u26A0 ' + _syncResult.error + ')';
         // Only show availability warning in Mode B (personal calendars mode)
         if (!_hasAvail && _calIsModeB()) _syncMsg += '. Availability not enabled.';
-        if (typeof showToast === 'function') showToast(_syncMsg, 4000);
+        if (typeof showToast === 'function') showToast(_syncMsg, 5000);
     } catch(e) {
         if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
     }
