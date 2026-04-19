@@ -4,12 +4,18 @@
 // banners still work on good connections but never hang at the gig).
 // Firebase / external APIs: bypassed — handled by page code.
 
-const CACHE_NAME = 'groovelinx-20260419-131004';
+const CACHE_NAME = 'groovelinx-20260419-131500';
 const BASE = self.registration.scope;
 
 // Cross-origin hosts we cache because the app depends on them to boot.
-// Firebase SDK, Google Fonts — without these cached, offline load = white page.
-const CDN_HOSTS = ['www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+// Firebase SDK + the Google Fonts CSS manifest. The actual woff2 font files
+// (fonts.gstatic.com) are NOT intercepted — CSS @font-face loads them in
+// cors mode, but our SW would have cached them as opaque (no-cors) during
+// pre-cache. Browsers reject opaque responses for cors requests: "opaque
+// response was used for a request whose type is not no-cors". Letting the
+// browser's built-in HTTP cache handle font files silences the error and
+// is more reliable since font files are cached aggressively by browsers.
+const CDN_HOSTS = ['www.gstatic.com', 'fonts.googleapis.com'];
 const CDN_PRECACHE = [
     'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
     'https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js',
