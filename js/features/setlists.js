@@ -1117,6 +1117,11 @@ function _slRenderStageView(idx, sl) {
     var _ctaLabel = '\uD83C\uDFA4 Start Gig';
     html += '<button onclick="_slLaunchLiveGig(' + idx + ')" style="display:block;width:100%;padding:16px;border-radius:12px;border:none;background:' + _ctaBg + ';color:white;font-size:1.1em;font-weight:800;cursor:pointer;min-height:54px;box-shadow:' + _ctaShadow + ';font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">' + _ctaLabel + '</button>';
 
+    // ── Prep for Gig — pre-warm every chart + metadata into offline cache ──
+    var totalCount = setStats.reduce(function(a, s) { return a + s.count; }, 0);
+    html += '<button id="slPrepGigBtn" onclick="_slPrepForGig(' + idx + ')" style="display:block;width:100%;padding:12px;border-radius:10px;border:1px solid rgba(129,140,248,0.35);background:rgba(129,140,248,0.08);color:#a5b4fc;font-size:0.9em;font-weight:700;cursor:pointer;min-height:44px;font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">\u2B07 Prep for Gig \u00B7 Download ' + totalCount + ' charts offline</button>';
+    html += '<div id="slPrepGigStatus" style="font-size:0.72em;color:#64748b;text-align:center;margin-top:-4px;margin-bottom:10px;min-height:16px"></div>';
+
     // ── 3. COACHING — calm bandmate voice, no alarm icons ──
     var coaching = _coachingText(totalWarn, totalSongs, totalReady, warnTitles);
     if (coaching) {
@@ -1180,6 +1185,77 @@ function _slRenderStageView(idx, sl) {
 
     content.innerHTML = html;
 }
+
+// Pre-warm every chart + per-song metadata for this setlist into localStorage
+// so everything works offline at the gig (no wifi = no problem).
+window._slPrepForGig = async function(idx) {
+    var data = window._cachedSetlists || [];
+    var sl = data[idx];
+    if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); return; }
+    var btn = document.getElementById('slPrepGigBtn');
+    var status = document.getElementById('slPrepGigStatus');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+
+    // Flatten songs across all sets
+    var titles = [];
+    (sl.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : (item && item.title);
+            if (t) titles.push(t);
+        });
+    });
+    var uniqueTitles = [];
+    var seen = {};
+    titles.forEach(function(t) { if (!seen[t]) { seen[t] = 1; uniqueTitles.push(t); } });
+
+    // What live gig + chart rendering needs to work offline.
+    var perSongTypes = ['chart', 'key', 'bpm', 'lead_singer', 'status', 'structure', 'rehearsal_notes', 'lyrics'];
+    // Band-level essentials for setlist + gig context
+    var bandTypes = ['setlists', 'gigs', 'song_statuses', 'calendar_events'];
+
+    var total = uniqueTitles.length * perSongTypes.length + bandTypes.length;
+    var done = 0;
+    var failed = 0;
+    function tick(ok) {
+        done++;
+        if (!ok) failed++;
+        if (status) status.textContent = 'Downloading… ' + done + ' / ' + total + (failed ? ' (' + failed + ' skipped)' : '');
+    }
+
+    if (status) status.textContent = 'Downloading… 0 / ' + total;
+
+    // Pre-warm band-level data
+    for (var b = 0; b < bandTypes.length; b++) {
+        try {
+            await window.prewarmBandData('_band', bandTypes[b]);
+            tick(true);
+        } catch(e) { tick(false); }
+    }
+
+    // Pre-warm per-song data — 6 songs in parallel to avoid hammering Firebase
+    var BATCH = 6;
+    for (var i = 0; i < uniqueTitles.length; i += BATCH) {
+        var chunk = uniqueTitles.slice(i, i + BATCH);
+        await Promise.all(chunk.map(function(title) {
+            return Promise.all(perSongTypes.map(function(type) {
+                return window.prewarmBandData(title, type).then(function() { tick(true); }).catch(function() { tick(false); });
+            }));
+        }));
+    }
+
+    if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.innerHTML = '\u2705 Ready for gig \u00B7 ' + uniqueTitles.length + ' songs cached';
+        btn.style.background = 'rgba(34,197,94,0.12)';
+        btn.style.borderColor = 'rgba(34,197,94,0.4)';
+        btn.style.color = '#86efac';
+    }
+    if (status) status.textContent = failed
+        ? 'Done. ' + (total - failed) + ' of ' + total + ' cached (offline-ready).'
+        : 'All ' + uniqueTitles.length + ' songs cached for offline use.';
+    if (typeof showToast === 'function') showToast('Ready for gig — ' + uniqueTitles.length + ' songs offline');
+};
 
 // Launch into existing Live Gig mode (full-screen overlay, not a page)
 window._slLaunchLiveGig = function(idx) {

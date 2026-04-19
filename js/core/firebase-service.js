@@ -504,49 +504,106 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
  *
  * @returns {Promise<any>} data or null
  */
-window.loadBandDataFromDrive = async function loadBandDataFromDrive(songTitle, dataType) {
-    if (firebaseDB) {
-        try {
-            var path = (songTitle === '_band')
-                ? window.bandPath(window.sanitizeFirebasePath(dataType))
-                : window.songPath(songTitle, dataType);
-            var snapshot = await firebaseDB.ref(path).once('value');
-            var data = snapshot.val();
-            if (data !== null) return data;
+// ── Offline cache layer ────────────────────────────────────────────────────
+// SWR (stale-while-revalidate): every successful Firebase read is written to
+// localStorage. Every subsequent read returns the cached value immediately and
+// fires Firebase in the background to refresh. If Firebase is unreachable
+// (gig with no wifi), the cache serves — the app stays usable.
+function _glCacheKey(songTitle, dataType) {
+    return 'gl_cache_' + String(songTitle) + '_' + String(dataType);
+}
+function _glCacheRead(songTitle, dataType) {
+    try {
+        var raw = localStorage.getItem(_glCacheKey(songTitle, dataType));
+        if (!raw) return undefined;
+        return JSON.parse(raw);
+    } catch (e) { return undefined; }
+}
+function _glCacheWrite(songTitle, dataType, data) {
+    try {
+        localStorage.setItem(_glCacheKey(songTitle, dataType), JSON.stringify(data));
+    } catch (e) { /* quota — non-fatal */ }
+}
 
-            // Legacy fallback: if v2 path returned null, check legacy path
-            // This handles data not yet migrated to songs_v2
-            if (songTitle !== '_band' && _SONG_V2_TYPES[dataType]) {
-                var legacySongPath = window.bandPath(
-                    'songs/' + window.sanitizeFirebasePath(songTitle) +
-                    '/' + window.sanitizeFirebasePath(dataType));
-                if (legacySongPath !== path) {
-                    var legacySongSnap = await firebaseDB.ref(legacySongPath).once('value');
-                    if (legacySongSnap.val() !== null) {
-                        console.warn('⚠️ [legacy-read] Loaded ' + dataType + ' for "' + songTitle + '" from legacy songs/ path');
-                        window._glLegacyReads = (window._glLegacyReads || 0) + 1;
-                        return legacySongSnap.val();
-                    }
+// The raw Firebase read — no cache, no timeout. Used internally by the SWR
+// wrapper so we can race it against a timeout and fire in background.
+async function _loadBandDataRaw(songTitle, dataType) {
+    if (!firebaseDB) return null;
+    try {
+        var path = (songTitle === '_band')
+            ? window.bandPath(window.sanitizeFirebasePath(dataType))
+            : window.songPath(songTitle, dataType);
+        var snapshot = await firebaseDB.ref(path).once('value');
+        var data = snapshot.val();
+        if (data !== null) return data;
+
+        // Legacy fallback: if v2 path returned null, check legacy path
+        if (songTitle !== '_band' && _SONG_V2_TYPES[dataType]) {
+            var legacySongPath = window.bandPath(
+                'songs/' + window.sanitizeFirebasePath(songTitle) +
+                '/' + window.sanitizeFirebasePath(dataType));
+            if (legacySongPath !== path) {
+                var legacySongSnap = await firebaseDB.ref(legacySongPath).once('value');
+                if (legacySongSnap.val() !== null) {
+                    window._glLegacyReads = (window._glLegacyReads || 0) + 1;
+                    return legacySongSnap.val();
                 }
             }
-
-            // Legacy fallback for _band data that hasn't been migrated yet
-            if (songTitle === '_band') {
-                var legacyPath = window.songPath(songTitle, dataType);
-                if (legacyPath !== path) {
-                    var legacySnap = await firebaseDB.ref(legacyPath).once('value');
-                    if (legacySnap.val() !== null) {
-                        console.warn('⚠️ [legacy-read] Loaded ' + dataType + ' from songs/_band/ — run migrateBandLevelData() to fix');
-                        window._glLegacyReads = (window._glLegacyReads || 0) + 1;
-                        return legacySnap.val();
-                    }
-                }
-            }
-        } catch (error) {
-            console.log('⚠️ Firebase error for ' + dataType + ':', error.message);
         }
+        if (songTitle === '_band') {
+            var legacyPath = window.songPath(songTitle, dataType);
+            if (legacyPath !== path) {
+                var legacySnap = await firebaseDB.ref(legacyPath).once('value');
+                if (legacySnap.val() !== null) {
+                    window._glLegacyReads = (window._glLegacyReads || 0) + 1;
+                    return legacySnap.val();
+                }
+            }
+        }
+        return null;
+    } catch (error) {
+        throw error;
     }
+}
+
+// Public: SWR-cached read. Offline-safe. Returns cached data instantly when
+// available; background-refreshes from Firebase for next call.
+window.loadBandDataFromDrive = async function loadBandDataFromDrive(songTitle, dataType) {
+    var cached = _glCacheRead(songTitle, dataType);
+
+    // Always fire background refresh — updates cache for next call. Silent on
+    // failure (e.g. no network). Track in-flight so duplicate callers share.
+    var refreshPromise = _loadBandDataRaw(songTitle, dataType).then(function (data) {
+        if (data !== null && data !== undefined) _glCacheWrite(songTitle, dataType, data);
+        return data;
+    }).catch(function () { return undefined; });
+
+    // Cache hit → return immediately. Fresh data lands in cache for next call.
+    if (cached !== undefined) return cached;
+
+    // Cache miss → await Firebase with a hard 5s cap so a dead network
+    // doesn't hang every caller (critical at the gig on bad venue wifi).
+    try {
+        var result = await Promise.race([
+            refreshPromise,
+            new Promise(function (resolve) { setTimeout(function () { resolve(undefined); }, 5000); })
+        ]);
+        if (result !== undefined && result !== null) return result;
+    } catch (e) { /* fall through to legacy fallback */ }
+
+    // Last resort: legacy per-song localStorage keys written by older code paths.
     return window.loadFromLocalStorageFallback(songTitle, dataType);
+};
+
+// Public: force-refresh from Firebase, bypassing cache (also updates cache).
+// Used by the "Prep for gig" warmer when the user wants fresh copies before
+// leaving wifi.
+window.prewarmBandData = async function prewarmBandData(songTitle, dataType) {
+    try {
+        var data = await _loadBandDataRaw(songTitle, dataType);
+        if (data !== null && data !== undefined) _glCacheWrite(songTitle, dataType, data);
+        return data;
+    } catch (e) { return null; }
 };
 
 window.loadFromLocalStorageFallback = function loadFromLocalStorageFallback(songTitle, dataType) {

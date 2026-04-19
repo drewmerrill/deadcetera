@@ -1,7 +1,10 @@
-// GrooveLinx Service Worker — Simplified for reliable updates
-// Strategy: network-first for everything. Cache is offline fallback only.
+// GrooveLinx Service Worker — cache-first for shell (gig-safe on weak wifi)
+// Static app shell (HTML/JS/CSS/images): cache-first, background refresh.
+// version.json: network-first with a short timeout (so "Update available"
+// banners still work on good connections but never hang at the gig).
+// Firebase / external APIs: bypassed — handled by page code.
 
-const CACHE_NAME = 'groovelinx-20260418-225101';
+const CACHE_NAME = 'groovelinx-20260419-100323';
 const BASE = self.registration.scope;
 
 // ── Install: pre-cache index.html for offline nav, then activate immediately ─
@@ -22,7 +25,29 @@ self.addEventListener('activate', event => {
     );
 });
 
-// ── Fetch: network-first for everything. Cache only as offline fallback. ────
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function _navOfflineFallback() {
+    return caches.match(BASE + 'index.html')
+        .then(r => r || caches.match(BASE))
+        .then(r => r || caches.match('/index.html'))
+        .then(r => r || caches.match('./index.html'))
+        .then(r => r || new Response(
+            '<html><body style="background:#0f172a;color:#f1f5f9;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>GrooveLinx is offline</h2><p>Check your connection and reload.</p></div></body></html>',
+            { status: 503, headers: { 'Content-Type': 'text/html' } }
+        ));
+}
+
+// Background-refresh a cached response so next load gets fresh code.
+function _bgRefresh(request) {
+    fetch(request).then(response => {
+        if (response && response.ok && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone).catch(() => {}));
+        }
+    }).catch(() => {});
+}
+
+// ── Fetch: cache-first for app shell, network-first-with-timeout for version.json ─
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
@@ -30,31 +55,45 @@ self.addEventListener('fetch', event => {
     if (event.request.method !== 'GET') return;
     if (url.origin !== self.location.origin) return;
 
+    const path = url.pathname;
+
+    // version.json: network-first, 1.5s timeout, cache fallback. Keeps the
+    // "update available" banner working on good networks without hanging at a
+    // venue with weak wifi.
+    if (path.endsWith('/version.json')) {
+        event.respondWith(
+            Promise.race([
+                fetch(event.request).then(r => {
+                    if (r && r.ok) {
+                        const clone = r.clone();
+                        caches.open(CACHE_NAME).then(c => c.put(event.request, clone).catch(() => {}));
+                    }
+                    return r;
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+            ]).catch(() => caches.match(event.request).then(r => r || new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })))
+        );
+        return;
+    }
+
+    // App shell: cache-first. Instant load from cache, background-refresh so
+    // the next visit picks up new code. This is the critical change for gig
+    // reliability — no more network waits on venue wifi.
     event.respondWith(
-        fetch(event.request).then(response => {
-            // Cache successful responses for offline use (guard against network errors during clone)
-            if (response.ok && response.status === 200) {
-                try {
+        caches.match(event.request).then(cached => {
+            if (cached) {
+                _bgRefresh(event.request);
+                return cached;
+            }
+            // Cache miss: fetch from network, cache for next time.
+            return fetch(event.request).then(response => {
+                if (response && response.ok && response.status === 200) {
                     const clone = response.clone();
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone).catch(() => {}));
-                } catch(e) {}
-            }
-            return response;
-        }).catch(() => {
-            // Offline: try cache
-            return caches.match(event.request).then(cached => {
-                if (cached) return cached;
-                // Offline navigation: serve cached index.html (try all possible keys)
-                if (event.request.mode === 'navigate') {
-                    return caches.match(BASE + 'index.html')
-                        .then(r => r || caches.match(BASE))
-                        .then(r => r || caches.match('/index.html'))
-                        .then(r => r || caches.match('./index.html'))
-                        .then(r => r || new Response(
-                            '<html><body style="background:#0f172a;color:#f1f5f9;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>GrooveLinx is offline</h2><p>Check your connection and reload.</p></div></body></html>',
-                            { status: 503, headers: { 'Content-Type': 'text/html' } }
-                        ));
                 }
+                return response;
+            }).catch(() => {
+                if (event.request.mode === 'navigate') return _navOfflineFallback();
                 return new Response('', { status: 503 });
             });
         })
