@@ -1196,6 +1196,14 @@ window._slPrepForGig = async function(idx) {
     var status = document.getElementById('slPrepGigStatus');
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
 
+    // Ask the service worker to pre-cache the entire app shell (every JS + CSS
+    // + icon referenced by index.html with its current ?v= stamp). Required
+    // because each build rewrites the cache-busting query string, so one
+    // online visit isn't enough on its own to have everything ready.
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'GL_PRECACHE_SHELL' });
+    }
+
     // Flatten songs across all sets
     var titles = [];
     (sl.sets || []).forEach(function(set) {

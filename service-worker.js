@@ -4,7 +4,7 @@
 // banners still work on good connections but never hang at the gig).
 // Firebase / external APIs: bypassed — handled by page code.
 
-const CACHE_NAME = 'groovelinx-20260419-104144';
+const CACHE_NAME = 'groovelinx-20260419-105252';
 const BASE = self.registration.scope;
 
 // Cross-origin hosts we cache because the app depends on them to boot.
@@ -18,18 +18,52 @@ const CDN_PRECACHE = [
     'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
 ];
 
-// ── Install: pre-cache shell + critical CDN deps, then activate immediately ─
+// ── Install: pre-cache shell + parse index.html for every local asset ──────
+// Each build stamps a new `?v=BUILD` on every script/CSS URL. If we only
+// pre-cache index.html, all 80+ JS files and 5 CSS files are uncached until
+// the browser happens to fetch them — so going offline immediately leaves a
+// white page. Here we fetch index.html fresh and pre-cache every local URL
+// it references, so one online visit is enough to be fully offline-ready.
+async function _precacheShellAndAssets(cache) {
+    await cache.addAll(['./', './index.html']);
+    try {
+        // Bypass browser + SW caches to get the latest index.html with current ?v= stamps
+        const res = await fetch('./index.html?sw_install=1', { cache: 'no-cache' });
+        if (!res || !res.ok) return;
+        const html = await res.text();
+        const urls = new Set();
+        const re = /\s(?:src|href)\s*=\s*["']([^"'>]+)["']/gi;
+        let m;
+        while ((m = re.exec(html)) !== null) {
+            const u = m[1].trim();
+            if (!u) continue;
+            if (u.startsWith('#') || u.startsWith('data:') || u.startsWith('mailto:')) continue;
+            // Skip absolute external URLs (Firebase SDK + fonts handled by CDN_PRECACHE)
+            if (/^https?:\/\//i.test(u) || u.startsWith('//')) continue;
+            try {
+                const abs = new URL(u, self.registration.scope).href;
+                urls.add(abs);
+            } catch (e) {}
+        }
+        // Fetch each asset and cache it. Failures are non-fatal — if the build
+        // has a broken reference we still want the rest cached.
+        await Promise.all([...urls].map(url =>
+            fetch(url).then(r => {
+                if (r && r.ok) return cache.put(url, r.clone());
+            }).catch(() => {})
+        ));
+    } catch (e) { /* best-effort */ }
+}
+
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache =>
             Promise.all([
-                cache.addAll(['./', './index.html']),
-                // CDN scripts served opaque (no-cors) — caching an opaque response
-                // still lets the browser serve it as a script tag later.
+                _precacheShellAndAssets(cache),
                 Promise.all(CDN_PRECACHE.map(url =>
                     fetch(url, { mode: 'no-cors' })
                         .then(r => cache.put(url, r))
-                        .catch(() => { /* pre-cache best-effort, not fatal */ })
+                        .catch(() => {})
                 ))
             ])
         ).then(() => self.skipWaiting())
@@ -189,7 +223,23 @@ self.addEventListener('notificationclick', event => {
     );
 });
 
-// ── SKIP_WAITING message (legacy support) ────────────────────────────────────
+// ── Messages ────────────────────────────────────────────────────────────────
 self.addEventListener('message', event => {
     if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
+    if (event.data?.type === 'GL_PRECACHE_SHELL') {
+        // Triggered by the "Prep for Gig" button so the user can force a
+        // full shell re-cache without waiting for the next build deploy.
+        event.waitUntil((async () => {
+            const cache = await caches.open(CACHE_NAME);
+            await _precacheShellAndAssets(cache);
+            await Promise.all(CDN_PRECACHE.map(url =>
+                fetch(url, { mode: 'no-cors' })
+                    .then(r => cache.put(url, r))
+                    .catch(() => {})
+            ));
+            if (event.source && event.source.postMessage) {
+                event.source.postMessage({ type: 'GL_PRECACHE_DONE' });
+            }
+        })());
+    }
 });
