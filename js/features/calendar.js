@@ -173,6 +173,7 @@ function _calShowModeChooser() {
         + '</div>'
         + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Two-way sync with your shared Google Calendar. Create in one place, see everywhere.</div>'
         + '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-top:2px">\u2714 Works with the Google Calendar you already use.</div>'
+        + '<div style="font-size:0.62em;color:var(--gl-amber);margin-top:4px;line-height:1.4">\u26A0 Events must be on the <strong>shared band calendar</strong> (not personal) with <strong>Default</strong> visibility. Private events on the shared calendar are hidden by Google\u2019s API.</div>'
         + '</button>'
         + '</div>';
 }
@@ -1869,11 +1870,28 @@ window._calShowAvailabilitySettings = async function() {
         + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
         + '</div>';
 
+    // Mode A contract callout — surfaces the two rules that catch bands off
+    // guard (events on PERSONAL calendar, or created with Private visibility,
+    // won't block in GrooveLinx because Google's API won't surface them to
+    // other members).
+    var modeAContractHtml = ''
+        + '<div style="margin-bottom:16px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.18)">'
+        + '<div style="font-size:0.82em;font-weight:700;color:#86efac;margin-bottom:8px">How shared calendar mode works</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5">'
+        + 'For an event to affect the band\u2019s availability, it must be:'
+        + '<ol style="margin:6px 0 0;padding-left:20px">'
+        + '<li style="margin-bottom:4px">Created <strong>on the shared band calendar</strong> \u2014 not someone\u2019s personal calendar. When adding in Google, pick the band calendar from the dropdown before saving.</li>'
+        + '<li>Set to <strong>Default</strong> or <strong>Public</strong> visibility \u2014 not Private. Private events are hidden from other members by Google\u2019s API even when they\u2019re on the shared calendar.</li>'
+        + '</ol>'
+        + '<div style="margin-top:8px;font-size:0.72em;color:var(--gl-text-tertiary)">GrooveLinx reads only the shared band calendar in this mode. Personal calendar events are ignored.</div>'
+        + '</div>'
+        + '</div>';
+
     // Mode A: band calendar only — personal calendars and conflict rules are not relevant
     // Mode B: availability calendars + conflict rules (primary), band calendar (secondary)
     // Mode C: minimal — just the mode selector + save
     if (_calIsModeA()) {
-        body.innerHTML = modeHtml + bandCalHtml + saveHtml;
+        body.innerHTML = modeHtml + modeAContractHtml + bandCalHtml + saveHtml;
     } else if (_calIsModeC()) {
         body.innerHTML = modeHtml + saveHtml;
     } else {
