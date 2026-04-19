@@ -2051,14 +2051,17 @@ window.GLCalendarSync = (function() {
     }
   }
 
-  // Debug helper — fetch raw Google API response for the band calendar over
+  // Debug helper — fetch raw Google API response for any calendar over
   // a date range. Shows what's actually on Google (vs what we have locally).
-  // Usage: await GLCalendarSync.debugBandCalendarRaw('2026-06-01', '2026-06-30')
-  async function debugBandCalendarRaw(startDate, endDate) {
+  // Usage:
+  //   await GLCalendarSync.debugBandCalendarRaw('2026-06-01', '2026-06-30')
+  //   await GLCalendarSync.debugBandCalendarRaw('2026-06-01', '2026-06-30', 'primary')
+  //   await GLCalendarSync.debugBandCalendarRaw('2026-06-01', '2026-06-30', 'drewmerrill1029@gmail.com')
+  async function debugBandCalendarRaw(startDate, endDate, calIdOverride) {
     if (!hasCalendarScope()) { console.log('[debug] no calendar scope'); return; }
-    var calId = await _getBandCalendarId();
-    if (!calId) { console.log('[debug] no band calendar configured'); return; }
-    console.log('[debug] querying band calendar:', calId);
+    var calId = calIdOverride || (await _getBandCalendarId());
+    if (!calId) { console.log('[debug] no calendar id'); return; }
+    console.log('[debug] querying calendar:', calId);
     var timeMin = startDate + 'T00:00:00Z';
     var timeMax = endDate + 'T23:59:59Z';
     var url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId)
