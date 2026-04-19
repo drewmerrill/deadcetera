@@ -1085,10 +1085,14 @@ window._calDedupeGoogle = async function() {
         return;
     }
     if (typeof accessToken === 'undefined' || !accessToken) {
-        if (typeof showToast === 'function') {
-            showToast('\u26A0 Google Calendar not signed in. Tap Reconnect on the Google panel, then try again.', 7000);
+        if (typeof showToast === 'function') showToast('Signing back into Google\u2026', 3000);
+        if (typeof _calConnectGoogle === 'function') {
+            try { await _calConnectGoogle(); } catch (e) {}
         }
-        return;
+        if (typeof accessToken === 'undefined' || !accessToken) {
+            if (typeof showToast === 'function') showToast('\u26A0 Google sign-in cancelled. Try again when ready.', 5000);
+            return;
+        }
     }
     if (!confirm('Scan the band Google Calendar and remove duplicate events created by past sync races?\n\nThe earliest copy of each event is kept; extras are deleted from Google. This cannot be undone, but it only affects events tagged as GrooveLinx-created.')) {
         return;
@@ -1125,14 +1129,18 @@ window._calRefreshGigTimes = async function() {
         if (typeof showToast === 'function') showToast('Calendar sync module not loaded');
         return;
     }
-    // Google token must be loaded for PATCH requests — if not, the sync call
-    // will fail with "no scope" (misleading — the scope is granted, the token
-    // just isn't live in this session).
+    // Google token must be loaded for PATCH requests. Token is session-scoped
+    // (lost on reload) even though scope was granted in the past. Auto-trigger
+    // the reconnect flow so the user doesn't need to hunt for a button.
     if (typeof accessToken === 'undefined' || !accessToken) {
-        if (typeof showToast === 'function') {
-            showToast('\u26A0 Google Calendar not signed in. Tap Reconnect on the Google panel, then try again.', 7000);
+        if (typeof showToast === 'function') showToast('Signing back into Google\u2026', 3000);
+        if (typeof _calConnectGoogle === 'function') {
+            try { await _calConnectGoogle(); } catch (e) {}
         }
-        return;
+        if (typeof accessToken === 'undefined' || !accessToken) {
+            if (typeof showToast === 'function') showToast('\u26A0 Google sign-in cancelled. Try again when ready.', 5000);
+            return;
+        }
     }
     if (!confirm('Push correct start and end times from Gigs to Google Calendar?\n\nThis reads each gig\'s Start Time and End Time and updates the matching Google event. Use this once to fix existing gigs that are showing the 7–9 PM default.')) {
         return;
