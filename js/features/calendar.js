@@ -4643,6 +4643,26 @@ async function calAddEvent(date, editIdx, existing) {
                 ${setlistOpts}
             </select>
         </div>
+        <div class="form-row calGigOnly" style="${showSetlist?'':'display:none'}">
+            <span class="form-label">Arrival Time</span>
+            <input class="app-input" id="calArrivalTime" type="time" value="${ev.arrivalTime||''}" style="color-scheme:dark">
+        </div>
+        <div class="form-row calGigOnly" style="${showSetlist?'':'display:none'}">
+            <span class="form-label">Soundcheck</span>
+            <input class="app-input" id="calSoundcheckTime" type="time" value="${ev.soundcheckTime||''}" style="color-scheme:dark">
+        </div>
+        <div class="form-row calGigOnly" style="${showSetlist?'':'display:none'}">
+            <span class="form-label">Pay</span>
+            <input class="app-input" id="calGigPay" placeholder="e.g. $600 or $150/member" value="${(ev.pay||'').toString().replace(/"/g,'&quot;')}">
+        </div>
+        <div class="form-row calGigOnly" style="${showSetlist?'':'display:none'}">
+            <span class="form-label">Sound Person</span>
+            <input class="app-input" id="calGigSound" placeholder="Name" value="${(ev.soundPerson||'').toString().replace(/"/g,'&quot;')}">
+        </div>
+        <div class="form-row calGigOnly" style="${showSetlist?'':'display:none'}">
+            <span class="form-label">Contact</span>
+            <input class="app-input" id="calGigContact" placeholder="Venue contact (name/email/phone)" value="${(ev.contact||'').toString().replace(/"/g,'&quot;')}">
+        </div>
     </div>
     <div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="calNotes" placeholder="Optional notes" style="height:60px">${ev.notes||''}</textarea></div>
     <div style="display:flex;gap:8px;margin-top:10px">
@@ -4766,16 +4786,18 @@ function calTypeChanged(sel) {
         }
         return;
     }
-    var slRow = document.getElementById('calSetlistRow');
-    var vRow  = document.getElementById('calVenueRow');
-    var locRow = document.getElementById('calLocationRow');
     var virtualRow = document.getElementById('calVirtualRow');
     var titleInput = document.getElementById('calTitle');
     var isGig = sel.value === 'gig';
     var isRehearsal = sel.value === 'rehearsal';
-    if (slRow) slRow.style.display = isGig ? '' : 'none';
-    if (vRow)  vRow.style.display  = isGig ? '' : 'none';
-    if (locRow) locRow.style.display = isRehearsal ? '' : 'none';
+    // Class-based show/hide covers every row tagged calGigOnly (Venue, Setlist,
+    // Arrival, Soundcheck, Pay, Sound Person, Contact) and every calRehearsalOnly.
+    document.querySelectorAll('.calGigOnly').forEach(function (el) {
+        el.style.display = isGig ? '' : 'none';
+    });
+    document.querySelectorAll('.calRehearsalOnly').forEach(function (el) {
+        el.style.display = isRehearsal ? '' : 'none';
+    });
     if (virtualRow && !isRehearsal) virtualRow.style.display = 'none';
     // Update title placeholder
     if (titleInput) titleInput.placeholder = isGig ? 'e.g. HighTower Drinks' : isRehearsal ? 'e.g. Band Rehearsal' : 'e.g. Band meeting';
@@ -4833,11 +4855,48 @@ function _calInitVenuePicker(venues, preselected) {
 }
 
 
+// Hydrate a calendar event with its matching Gig record (if type=gig).
+// Lets the unified calendar editor render Arrival / Soundcheck / Pay /
+// Contact / etc. even though those live in `bands/X/gigs`, not in
+// calendar_events. Match by gigId first, then fall back to venue+date.
+async function _calHydrateGigFields(ev) {
+    if (!ev || ev.type !== 'gig') return ev;
+    try {
+        var raw = await loadBandDataFromDrive('_band', 'gigs') || [];
+        var gigs = Array.isArray(raw) ? raw : Object.keys(raw).map(function (k) { return raw[k]; });
+        var match = null;
+        if (ev.gigId) match = gigs.find(function (g) { return g && g.gigId === ev.gigId; });
+        if (!match) {
+            var key = (ev.venue || '') + '|' + (ev.date || '');
+            match = gigs.find(function (g) { return g && ((g.venue || '') + '|' + (g.date || '')) === key; });
+        }
+        if (!match) return ev;
+        // Merge gig fields onto a shallow copy so we don't mutate the array.
+        return Object.assign({}, ev, {
+            gigId:          match.gigId || ev.gigId || null,
+            arrivalTime:    match.arrivalTime || '',
+            soundcheckTime: match.soundcheckTime || '',
+            endTime:        match.endTime || ev.endTime || '',
+            pay:            match.pay || '',
+            soundPerson:    match.soundPerson || '',
+            contact:        match.contact || '',
+            // Gig startTime wins if both present (gigs page is source of truth)
+            time:           match.startTime || ev.time || ''
+        });
+    } catch (e) {
+        console.warn('[Calendar] gig hydrate failed:', e && e.message);
+        return ev;
+    }
+}
+
 async function calEditEvent(idx) {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     const today = new Date().toISOString().split('T')[0];
     const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
-    if (upcoming[idx]) calAddEvent(upcoming[idx].date, idx, upcoming[idx]);
+    if (upcoming[idx]) {
+        var _hydrated = await _calHydrateGigFields(upcoming[idx]);
+        calAddEvent(upcoming[idx].date, idx, _hydrated);
+    }
 }
 
 async function calDeleteEvent(idx) {
@@ -4858,7 +4917,8 @@ async function calEditEventById(eventId) {
     var ev = events.find(function(e) { return e.id === eventId; });
     if (!ev) return;
     var rawIdx = events.indexOf(ev);
-    calAddEvent(ev.date, rawIdx, ev);
+    var hydrated = await _calHydrateGigFields(ev);
+    calAddEvent(ev.date, rawIdx, hydrated);
 }
 
 async function calDeleteEventById(eventId) {
@@ -4916,6 +4976,14 @@ async function calSaveEvent(editIdx) {
         location: null,
         locationAddress: null,
         meetingLink: (document.getElementById('calMeetingLink') || {}).value || null,
+        // Gig-specific fields — populated only when type === 'gig'. The
+        // unified calendar editor now captures these so band members don't
+        // have to hop to the Gigs page.
+        arrivalTime: (document.getElementById('calArrivalTime') || {}).value || '',
+        soundcheckTime: (document.getElementById('calSoundcheckTime') || {}).value || '',
+        pay: (document.getElementById('calGigPay') || {}).value || '',
+        soundPerson: (document.getElementById('calGigSound') || {}).value || '',
+        contact: (document.getElementById('calGigContact') || {}).value || '',
     };
     // Resolve rehearsal location from dropdown
     var _locSel = (document.getElementById('calLocationSelect') || {}).value || '';
@@ -5029,7 +5097,16 @@ async function calSaveEvent(editIdx) {
 
             var gigRecord = {
                 venueId: ev.venueId || null, venue: ev.venue || ev.title || '',
-                date: ev.date || '', startTime: ev.time || '', notes: ev.notes || '',
+                date: ev.date || '', startTime: ev.time || '',
+                // Full gig fields now captured in the Calendar editor — write
+                // them through so Gigs-page list view shows the same data.
+                endTime: ev.endTime || '',
+                arrivalTime: ev.arrivalTime || '',
+                soundcheckTime: ev.soundcheckTime || '',
+                pay: ev.pay || '',
+                soundPerson: ev.soundPerson || '',
+                contact: ev.contact || '',
+                notes: ev.notes || '',
                 linkedSetlist: linkedSl ? (linkedSl.name || '') : (ev.linkedSetlist || ''),
                 setlistId: linkedSl ? (linkedSl.setlistId || null) : null,
                 updated: new Date().toISOString()
