@@ -643,6 +643,7 @@ async function _syncGigToCalendar(gig, createdKey) {
         date: gig.date || '',
         title: gig.venue || '',
         time: gig.startTime || '',
+        endTime: gig.endTime || '',
         venue: gig.venue || '',
         notes: gig.notes || '',
         linkedSetlist: gig.linkedSetlist || null,

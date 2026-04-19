@@ -1111,6 +1111,39 @@ window._calDedupeGoogle = async function() {
     if (btn) { btn.textContent = 'Clean duplicates'; btn.disabled = false; }
 };
 
+// One-time fix: push correct gig times from Gigs (source of truth) to Google
+// Calendar. Fixes the "every gig shows 7-9 PM" artifact from the old pipeline
+// that dropped endTime and defaulted startTime to 19:00.
+window._calRefreshGigTimes = async function() {
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.refreshGigTimesOnGoogle) {
+        if (typeof showToast === 'function') showToast('Calendar sync module not loaded');
+        return;
+    }
+    if (!confirm('Push correct start and end times from Gigs to Google Calendar?\n\nThis reads each gig\'s Start Time and End Time and updates the matching Google event. Use this once to fix existing gigs that are showing the 7–9 PM default.')) {
+        return;
+    }
+    var btn = document.getElementById('calRefreshTimesBtn');
+    if (btn) { btn.textContent = 'Updating...'; btn.disabled = true; }
+    try {
+        var result = await GLCalendarSync.refreshGigTimesOnGoogle();
+        var msg;
+        if (result.error) {
+            msg = 'Refresh failed: ' + result.error;
+        } else if (result.updated === 0) {
+            msg = '\u2713 Scanned ' + (result.scanned || 0) + ' gigs — nothing to update';
+        } else {
+            msg = '\u2713 Updated ' + result.updated + ' gig' + (result.updated === 1 ? '' : 's') + ' on Google Calendar';
+            if (result.errors) msg += ' (' + result.errors + ' errors — check console)';
+        }
+        if (typeof showToast === 'function') showToast(msg, 6000);
+        if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+        _calRenderGridOnly();
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Refresh failed: ' + (e.message || 'unknown error'));
+    }
+    if (btn) { btn.textContent = 'Refresh gig times'; btn.disabled = false; }
+};
+
 // Dismiss date selection — return to global mode
 window._calDismissDateSelection = function() {
     var card = document.getElementById('calSelectedDayCard');
@@ -1337,7 +1370,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">' + _syncLabel + '</button>'
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
             + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
-            + '<button onclick="_calDedupeGoogle()" id="calDedupeBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove duplicate Google Calendar events created by past sync races">Clean duplicates</button>';
+            + '<button onclick="_calDedupeGoogle()" id="calDedupeBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove duplicate Google Calendar events created by past sync races">Clean duplicates</button>'
+            + '<button onclick="_calRefreshGigTimes()" id="calRefreshTimesBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Push correct start/end times from Gigs to Google Calendar (one-time fix for events showing 7-9 PM default)">Refresh gig times</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }

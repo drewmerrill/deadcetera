@@ -107,7 +107,18 @@ window.GLCalendarSync = (function() {
       var time = glEvent.time || glEvent.startTime || '19:00';
       var startDt = new Date(glEvent.date + 'T' + time + ':00');
       if (isNaN(startDt.getTime())) startDt = new Date(glEvent.date + 'T19:00:00');
-      var endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
+      // Use provided end time if we have one, else fall back to the default
+      // duration. Previously this always added 2 hours, so every gig looked
+      // identical (7–9 PM for defaulted starts).
+      var endDt;
+      if (glEvent.endTime) {
+        endDt = new Date(glEvent.date + 'T' + glEvent.endTime + ':00');
+        if (isNaN(endDt.getTime()) || endDt.getTime() <= startDt.getTime()) {
+          endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
+        }
+      } else {
+        endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
+      }
       body.start = { dateTime: startDt.toISOString(), timeZone: 'America/New_York' };
       body.end = { dateTime: endDt.toISOString(), timeZone: 'America/New_York' };
     }
@@ -954,6 +965,7 @@ window.GLCalendarSync = (function() {
         var glEvent = {
           id: ev.id || '', eventId: ev.id || '',
           summary: ev.title, date: ev.date, startTime: ev.time || '19:00',
+          endTime: ev.endTime || '',
           location: ev.location || ev.venue || '', description: ev.notes || '', type: ev.type
         };
         var sync = await create(glEvent);
@@ -1729,6 +1741,98 @@ window.GLCalendarSync = (function() {
     };
   }
 
+  // ── Re-push times to Google ───────────────────────────────────────────────
+  // Walks every gig in the band data, reconciles the calendar_event record
+  // (so `time`/`endTime` match the gig source of truth), then PATCHes the
+  // already-synced Google event with the correct dateTime range. Used as a
+  // one-shot fix for existing Google events that were created with the old
+  // 7–9 PM default because endTime was never plumbed through.
+  async function refreshGigTimesOnGoogle() {
+    if (!hasCalendarScope()) return { error: 'no scope', updated: 0, scanned: 0 };
+    var calId = await _getBandCalendarId();
+    if (!calId) return { error: 'no band calendar configured', updated: 0, scanned: 0 };
+
+    if (typeof loadBandDataFromDrive !== 'function' || typeof saveBandDataToDrive !== 'function') {
+      return { error: 'firebase helpers unavailable', updated: 0, scanned: 0 };
+    }
+
+    var gigs = [], events = [];
+    try {
+      var rawGigs = await loadBandDataFromDrive('_band', 'gigs') || {};
+      gigs = Array.isArray(rawGigs) ? rawGigs : Object.keys(rawGigs).map(function (k) { return rawGigs[k]; });
+      events = (typeof toArray === 'function')
+        ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+        : [];
+    } catch (e) {
+      return { error: e.message || 'load failed', updated: 0, scanned: 0 };
+    }
+
+    var byGigId = {};
+    var byVenueDate = {};
+    events.forEach(function (ev, idx) {
+      if (ev.gigId) byGigId[ev.gigId] = idx;
+      var key = (ev.venue || ev.title || '') + '|' + (ev.date || '');
+      if (!byVenueDate[key]) byVenueDate[key] = idx;
+    });
+
+    var updated = 0;
+    var scanned = 0;
+    var firebaseChanged = false;
+    var errors = [];
+
+    for (var i = 0; i < gigs.length; i++) {
+      var gig = gigs[i];
+      if (!gig || !gig.date) continue;
+      scanned++;
+      var idx = (gig.gigId && byGigId[gig.gigId] != null)
+        ? byGigId[gig.gigId]
+        : byVenueDate[(gig.venue || '') + '|' + gig.date];
+      if (idx == null) continue;
+      var ev = events[idx];
+      if (!ev) continue;
+      // Reconcile the local calendar_event record with gig as source of truth.
+      var needFirebaseUpdate = false;
+      if (gig.startTime && ev.time !== gig.startTime) { ev.time = gig.startTime; needFirebaseUpdate = true; }
+      if (gig.endTime && ev.endTime !== gig.endTime)  { ev.endTime = gig.endTime; needFirebaseUpdate = true; }
+      if (needFirebaseUpdate) { ev.updated = new Date().toISOString(); firebaseChanged = true; }
+
+      // Push the corrected time to Google if this event is already linked.
+      var externalId = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
+      if (externalId && ev.time) {
+        var glEvent = {
+          id: ev.id || '',
+          eventId: ev.id || '',
+          summary: ev.title,
+          date: ev.date,
+          startTime: ev.time,
+          endTime: ev.endTime || '',
+          location: ev.location || ev.venue || '',
+          description: ev.notes || '',
+          type: ev.type
+        };
+        try {
+          var res = await update(externalId, glEvent);
+          if (res && res.success) {
+            updated++;
+            ev.lastSyncedAt = new Date().toISOString();
+            firebaseChanged = true;
+          } else {
+            errors.push((gig.venue || 'event') + ' ' + gig.date);
+          }
+        } catch (e) {
+          errors.push((gig.venue || 'event') + ' ' + gig.date + ': ' + (e.message || 'error'));
+        }
+      }
+    }
+
+    if (firebaseChanged) {
+      try { await saveBandDataToDrive('_band', 'calendar_events', events); }
+      catch (e) { console.warn('[CalSync] Firebase save failed:', e && e.message); }
+    }
+
+    return { scanned: scanned, updated: updated, errors: errors.length };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -1763,6 +1867,7 @@ window.GLCalendarSync = (function() {
     getBandEventTimeSlots: _getBandEventTimeSlots,
     syncBandCalendar: syncBandCalendar,
     deduplicateBandCalendar: deduplicateBandCalendar,
+    refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
