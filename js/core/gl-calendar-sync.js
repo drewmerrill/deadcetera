@@ -2024,6 +2024,33 @@ window.GLCalendarSync = (function() {
     return { scanned: scanned, updated: updated };
   }
 
+  // Debug helper — bypass every guard and hit the worker's /calendar/list
+  // directly. Used to diagnose when listCalendars() returns [] because
+  // _calendarScopeFailed got stuck to true earlier in the session.
+  // Usage: await GLCalendarSync.debugListCalendarsRaw()
+  async function debugListCalendarsRaw() {
+    if (typeof accessToken === 'undefined' || !accessToken) {
+      console.log('[debug] no accessToken — run a sync first');
+      return;
+    }
+    try {
+      var res = await fetch(WORKER_BASE + '/calendar/list', {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      console.log('[debug] HTTP status:', res.status);
+      var txt = await res.text();
+      if (!res.ok) { console.log('[debug] body:', txt); return; }
+      var data = JSON.parse(txt);
+      console.log('[debug] returned', (data.items || []).length, 'calendars');
+      (data.items || []).forEach(function (c) {
+        console.log('  ', JSON.stringify(c.summary), '| id:', c.id, '| access:', c.accessRole, '| primary:', !!c.primary);
+      });
+      return data.items || [];
+    } catch (e) {
+      console.log('[debug] error:', e && e.message);
+    }
+  }
+
   // Debug helper — fetch raw Google API response for the band calendar over
   // a date range. Shows what's actually on Google (vs what we have locally).
   // Usage: await GLCalendarSync.debugBandCalendarRaw('2026-06-01', '2026-06-30')
@@ -2121,6 +2148,7 @@ window.GLCalendarSync = (function() {
     reclassifyUnavailability: reclassifyUnavailability,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
+    debugListCalendarsRaw: debugListCalendarsRaw,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
