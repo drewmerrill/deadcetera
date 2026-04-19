@@ -1084,6 +1084,12 @@ window._calDedupeGoogle = async function() {
         if (typeof showToast === 'function') showToast('Calendar sync module not loaded');
         return;
     }
+    if (typeof accessToken === 'undefined' || !accessToken) {
+        if (typeof showToast === 'function') {
+            showToast('\u26A0 Google Calendar not signed in. Tap Reconnect on the Google panel, then try again.', 7000);
+        }
+        return;
+    }
     if (!confirm('Scan the band Google Calendar and remove duplicate events created by past sync races?\n\nThe earliest copy of each event is kept; extras are deleted from Google. This cannot be undone, but it only affects events tagged as GrooveLinx-created.')) {
         return;
     }
@@ -1119,6 +1125,15 @@ window._calRefreshGigTimes = async function() {
         if (typeof showToast === 'function') showToast('Calendar sync module not loaded');
         return;
     }
+    // Google token must be loaded for PATCH requests — if not, the sync call
+    // will fail with "no scope" (misleading — the scope is granted, the token
+    // just isn't live in this session).
+    if (typeof accessToken === 'undefined' || !accessToken) {
+        if (typeof showToast === 'function') {
+            showToast('\u26A0 Google Calendar not signed in. Tap Reconnect on the Google panel, then try again.', 7000);
+        }
+        return;
+    }
     if (!confirm('Push correct start and end times from Gigs to Google Calendar?\n\nThis reads each gig\'s Start Time and End Time and updates the matching Google event. Use this once to fix existing gigs that are showing the 7–9 PM default.')) {
         return;
     }
@@ -1127,15 +1142,17 @@ window._calRefreshGigTimes = async function() {
     try {
         var result = await GLCalendarSync.refreshGigTimesOnGoogle();
         var msg;
-        if (result.error) {
+        if (result.error === 'no scope') {
+            msg = '\u26A0 Google session expired. Tap Reconnect on the Google panel, then try again.';
+        } else if (result.error) {
             msg = 'Refresh failed: ' + result.error;
         } else if (result.updated === 0) {
-            msg = '\u2713 Scanned ' + (result.scanned || 0) + ' gigs — nothing to update';
+            msg = '\u2713 Scanned ' + (result.scanned || 0) + ' gigs \u2014 nothing to update (do your gigs have Start Time + End Time filled in?)';
         } else {
             msg = '\u2713 Updated ' + result.updated + ' gig' + (result.updated === 1 ? '' : 's') + ' on Google Calendar';
-            if (result.errors) msg += ' (' + result.errors + ' errors — check console)';
+            if (result.errors) msg += ' (' + result.errors + ' errors \u2014 check console)';
         }
-        if (typeof showToast === 'function') showToast(msg, 6000);
+        if (typeof showToast === 'function') showToast(msg, 7000);
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
         _calRenderGridOnly();
     } catch (e) {
