@@ -926,6 +926,12 @@ var _calExternalEventsCache = {};
 
 async function _calOverlayExternalEvents(monthPrefix, daysInMonth) {
     if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.hasCalendarScope()) return;
+    // Mode A contract: the shared band calendar is the ONLY source of truth.
+    // The overlay queries the user's primary (personal) calendar, which
+    // would leak non-band events into the view and contradict the contract.
+    // Mode B still needs the overlay — that's where personal availability
+    // matters.
+    if (typeof _calIsModeA === 'function' && _calIsModeA()) return;
     var timeMin = monthPrefix + '01T00:00:00Z';
     var lastDay = String(daysInMonth).padStart(2, '0');
     var timeMax = monthPrefix + lastDay + 'T23:59:59Z';
@@ -1064,12 +1070,25 @@ window._calSyncNow = async function() {
         // runs even when Google sign-in has lapsed (which is the common state
         // after page reload because accessToken is session-scoped).
         var _rcCount = 0;
+        var _purgeCount = 0;
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.reclassifyUnavailability) {
             try {
                 var _rc = await GLCalendarSync.reclassifyUnavailability();
                 if (_rc && _rc.updated > 0) {
                     _rcCount = _rc.updated;
                     console.log('[CalSync] Reclassified', _rc.updated, 'events as unavailable');
+                }
+            } catch (e) { /* non-fatal */ }
+        }
+        // Mode A purge: any imported event whose calendarId doesn't match the
+        // configured band calendar came from personal-calendar free/busy pulls
+        // or a stale source. In Mode A, only the shared calendar counts.
+        if (_calIsModeA() && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.purgeNonBandEvents) {
+            try {
+                var _pr = await GLCalendarSync.purgeNonBandEvents();
+                if (_pr && _pr.removed > 0) {
+                    _purgeCount = _pr.removed;
+                    console.log('[CalSync] Purged', _pr.removed, 'non-band imported events (Mode A)');
                 }
             } catch (e) { /* non-fatal */ }
         }
@@ -1121,6 +1140,7 @@ window._calSyncNow = async function() {
         if (_syncResult.updated > 0) _syncParts.push(_syncResult.updated + ' updated');
         if (_syncResult.deleted > 0) _syncParts.push(_syncResult.deleted + ' deleted');
         if (_rcCount > 0) _syncParts.push(_rcCount + ' reclassified');
+        if (_purgeCount > 0) _syncParts.push(_purgeCount + ' purged');
         if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
         else if (_tokenLive) _syncMsg += ' \u2014 everything up to date';
         if (_syncResult.error) _syncMsg += ' (\u26A0 ' + _syncResult.error + ')';

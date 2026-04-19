@@ -1964,6 +1964,41 @@ window.GLCalendarSync = (function() {
     return { scanned: scanned, updated: updated, errors: errors.length };
   }
 
+  // ── Purge events not on the configured band calendar ─────────────────────
+  // Mode A contract: ONLY the shared band calendar contributes. Legacy free/
+  // busy imports (from when the band was in Mode B) live in calendar_events
+  // as type='other' with title='Busy' and calendarId either missing or
+  // pointing at a different calendar. This sweep removes them so they stop
+  // polluting Mode A scheduling.
+  // Preserves:
+  //   - GrooveLinx-authored events (no _importedFromGoogle flag)
+  //   - Events whose calendarId matches the currently-configured band calendar
+  async function purgeNonBandEvents() {
+    if (typeof loadBandDataFromDrive !== 'function' || typeof saveBandDataToDrive !== 'function') {
+      return { error: 'firebase helpers unavailable', removed: 0, scanned: 0 };
+    }
+    var bandCalId = await _getBandCalendarId();
+    if (!bandCalId) return { error: 'no band calendar configured', removed: 0, scanned: 0 };
+    var events = (typeof toArray === 'function')
+      ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+      : [];
+    var kept = [];
+    var removed = 0;
+    events.forEach(function (ev) {
+      if (!ev || !ev._importedFromGoogle) { kept.push(ev); return; }
+      var evCal = ev.calendarId || (ev.sync && ev.sync.calendarId) || '';
+      if (evCal === bandCalId) { kept.push(ev); return; }
+      // Imported but not from the band calendar — remove.
+      removed++;
+      console.log('[CalSync] purge removing:', ev.date, '|', JSON.stringify(ev.title), '| calendarId:', evCal || '(none)');
+    });
+    if (removed > 0) {
+      try { await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(kept)); }
+      catch (e) { console.warn('[CalSync] purge save failed:', e && e.message); }
+    }
+    return { scanned: events.length, removed: removed, kept: kept.length };
+  }
+
   // ── Backfill: re-classify already-imported events ────────────────────────
   // Walks local calendar_events and re-runs the unavailability title check on
   // every event that isn't a rehearsal/gig. Needed because events imported
@@ -2149,6 +2184,7 @@ window.GLCalendarSync = (function() {
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
+    purgeNonBandEvents: purgeNonBandEvents,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,
