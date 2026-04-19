@@ -165,6 +165,13 @@ window.GLCalendarSync = (function() {
       if (!res.ok) return [];
       var data = await res.json();
       var items = data.items || [];
+      // Defense in depth: even if the worker hasn't been redeployed with
+      // privateExtendedProperty passthrough, filter client-side so we never
+      // link-to-wrong-event. Only keep items actually tagged with this glEventId.
+      items = items.filter(function (ev) {
+        var ep = ev.extendedProperties && ev.extendedProperties.private;
+        return ep && ep.glEventId === glEventId && ev.status !== 'cancelled';
+      });
       items.sort(function (a, b) {
         var ta = Date.parse(a.created || 0), tb = Date.parse(b.created || 0);
         return ta - tb;
