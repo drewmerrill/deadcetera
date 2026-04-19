@@ -1028,6 +1028,11 @@ async function handleCalendarListEvents(request) {
     params.set('maxResults', url.searchParams.get('maxResults') || '250');
     if (url.searchParams.get('pageToken')) params.set('pageToken', url.searchParams.get('pageToken'));
     if (url.searchParams.get('showDeleted')) params.set('showDeleted', 'true');
+    // Pass through privateExtendedProperty filter(s) — used for pre-push
+    // dedupe by glEventId. Format: privateExtendedProperty=key=value.
+    url.searchParams.getAll('privateExtendedProperty').forEach(function (v) {
+      params.append('privateExtendedProperty', v);
+    });
     const calId = url.searchParams.get('calendarId') || 'primary';
     const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events?' + params.toString();
     const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });

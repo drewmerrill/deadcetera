@@ -144,15 +144,84 @@ window.GLCalendarSync = (function() {
   }
 
   // ── CREATE event in Google Calendar ───────────────────────────────────────
+  // Query Google for events already tagged with this glEventId. Used as a
+  // pre-push dedupe: if a previous sync (same user or a concurrent run on
+  // another device) already created this event, we find it and reuse its
+  // ID instead of creating a duplicate. Returns array of matching events,
+  // oldest first by `created`.
+  async function _findByGlEventId(calId, glEventId) {
+    if (!calId || !glEventId) return [];
+    try {
+      var now = new Date();
+      var timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+      var timeMax = new Date(now.getFullYear() + 2, 11, 31).toISOString();
+      var url = WORKER_BASE + '/calendar/events'
+        + '?calendarId=' + encodeURIComponent(calId)
+        + '&timeMin=' + encodeURIComponent(timeMin)
+        + '&timeMax=' + encodeURIComponent(timeMax)
+        + '&maxResults=250'
+        + '&privateExtendedProperty=' + encodeURIComponent('glEventId=' + glEventId);
+      var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+      if (!res.ok) return [];
+      var data = await res.json();
+      var items = data.items || [];
+      items.sort(function (a, b) {
+        var ta = Date.parse(a.created || 0), tb = Date.parse(b.created || 0);
+        return ta - tb;
+      });
+      return items;
+    } catch (e) {
+      console.warn('[CalSync] _findByGlEventId error:', e && e.message);
+      return [];
+    }
+  }
+
   async function create(glEvent, opts) {
     if (!hasCalendarScope()) {
       return _fallbackUrl(glEvent, opts);
     }
 
-    var _opts = Object.assign({}, opts, { glEventId: glEvent.id || glEvent.eventId || '' });
+    var glEventId = glEvent.id || glEvent.eventId || '';
+    var _opts = Object.assign({}, opts, { glEventId: glEventId });
     var body = _buildEventBody(glEvent, _opts);
     var calId = await _getBandCalendarId();
     if (!calId) return { success: false, error: 'No band calendar configured. Open Rules to set one up.' };
+
+    // Pre-push dedupe: if an event with this glEventId already exists on the
+    // band calendar (any member previously pushed it), link to the earliest
+    // one and delete any orphan siblings. Prevents the Brian/Drew duplicate
+    // race mode where both users pushed the same event in separate sessions.
+    if (glEventId) {
+      var existing = await _findByGlEventId(calId, glEventId);
+      if (existing.length > 0) {
+        var keeper = existing[0];
+        console.log('[CalSync] Pre-push dedupe: found', existing.length, 'existing for glEventId=' + glEventId + ' — reusing', keeper.id);
+        // Clean up any orphan siblings created by earlier race conditions.
+        for (var ei = 1; ei < existing.length; ei++) {
+          try {
+            await remove(existing[ei].id);
+            console.log('[CalSync] Pre-push dedupe: deleted orphan', existing[ei].id);
+          } catch (e) { console.warn('[CalSync] Failed to delete orphan', existing[ei].id, e.message); }
+        }
+        return {
+          success: true,
+          deduped: true,
+          sync: {
+            provider: 'google',
+            externalEventId: keeper.id,
+            calendarId: calId,
+            htmlLink: keeper.htmlLink || null,
+            status: 'synced',
+            lastSyncedAt: new Date().toISOString(),
+            lastSyncDirection: 'link-existing',
+            syncedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '',
+            etag: keeper.etag || null,
+            attendees: _getBandEmails()
+          },
+          htmlLink: keeper.htmlLink
+        };
+      }
+    }
 
     try {
       var res = await fetch(WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId), {
@@ -814,11 +883,52 @@ window.GLCalendarSync = (function() {
     };
   }
 
+  // ── Sync lock ─────────────────────────────────────────────────────────────
+  // Firebase-based soft lock to prevent concurrent syncBandCalendar() runs
+  // across devices. Each run acquires the lock with a 60s TTL; other runs
+  // see the lock and back off. Prevents the Brian/Drew race where both
+  // devices pushed the same event because neither had yet written the
+  // googleEventId back to Firebase.
+  var LOCK_TTL_MS = 60 * 1000;
+  async function _acquireSyncLock() {
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return true;
+    try {
+      var ref = firebaseDB.ref(bandPath('sync_locks/calendar'));
+      var result = await ref.transaction(function (curr) {
+        var now = Date.now();
+        if (curr && curr.expires && curr.expires > now) return; // abort — someone else holds
+        return { owner: (typeof currentUserEmail !== 'undefined' ? currentUserEmail : 'unknown'), expires: now + LOCK_TTL_MS };
+      });
+      return !!result.committed;
+    } catch (e) {
+      console.warn('[CalSync] lock acquire failed, proceeding:', e && e.message);
+      return true; // fail open — don't block sync on Firebase lock issues
+    }
+  }
+  async function _releaseSyncLock() {
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return;
+    try { await firebaseDB.ref(bandPath('sync_locks/calendar')).remove(); }
+    catch (e) { /* non-fatal — lock will expire via TTL */ }
+  }
+
   async function syncBandCalendar() {
     if (!hasCalendarScope()) return { error: 'no scope', pushed: 0, pulled: 0, deleted: 0 };
     var bandCalId = await _getBandCalendarId();
     if (!bandCalId) return { error: 'no band calendar configured', pushed: 0, pulled: 0, deleted: 0 };
 
+    var gotLock = await _acquireSyncLock();
+    if (!gotLock) {
+      console.log('[CalSync] Another device is syncing — skipping this run');
+      return { error: 'another_device_syncing', pushed: 0, pulled: 0, deleted: 0, skipped: true };
+    }
+    try {
+      return await _syncBandCalendarImpl(bandCalId);
+    } finally {
+      await _releaseSyncLock();
+    }
+  }
+
+  async function _syncBandCalendarImpl(bandCalId) {
     console.log('[CalSync] === TWO-WAY SYNC START ===');
     var syncState = await _loadSyncState();
     var events = (typeof toArray === 'function')
@@ -944,6 +1054,22 @@ window.GLCalendarSync = (function() {
         if (_glId) {
           var _localMatch = events.findIndex(function(e) { return e.id === _glId; });
           if (_localMatch >= 0) {
+            var _local = events[_localMatch];
+            var _localGid = _local.googleEventId || (_local.sync && _local.sync.externalEventId);
+            if (_localGid && _localGid !== gEv.id) {
+              // Local is already linked to a DIFFERENT Google event. This
+              // incoming one is a duplicate orphan from an earlier race.
+              // Delete it rather than overwriting the good link (that was
+              // the bug that kept creating duplicates).
+              console.log('[CalSync] Dedupe: orphan Google event', gEv.id,
+                          '— local already linked to', _localGid);
+              remove(gEv.id).catch(function (e) {
+                console.warn('[CalSync] Orphan delete failed:', gEv.id, e && e.message);
+              });
+              result.deleted++;
+              dirty = true;
+              return;
+            }
             // Re-link: local event exists but lost its googleEventId
             events[_localMatch].googleEventId = gEv.id;
             events[_localMatch].sync = events[_localMatch].sync || {};
@@ -1521,6 +1647,81 @@ window.GLCalendarSync = (function() {
     return _bandCalAccessCache;
   }
 
+  // ── One-time cleanup sweep ────────────────────────────────────────────────
+  // Scans the band calendar, groups events by glEventId tag, keeps the
+  // earliest in each group, deletes the rest. Run after the pre-push dedupe
+  // ships to clean up duplicates created by prior buggy behavior.
+  async function deduplicateBandCalendar() {
+    if (!hasCalendarScope()) return { error: 'no scope', removed: 0, groups: 0 };
+    var calId = await _getBandCalendarId();
+    if (!calId) return { error: 'no band calendar configured', removed: 0, groups: 0 };
+
+    var all = [];
+    var pageToken = null;
+    try {
+      do {
+        var now = new Date();
+        var timeMin = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+        var timeMax = new Date(now.getFullYear() + 2, 11, 31).toISOString();
+        var url = WORKER_BASE + '/calendar/events'
+          + '?calendarId=' + encodeURIComponent(calId)
+          + '&timeMin=' + encodeURIComponent(timeMin)
+          + '&timeMax=' + encodeURIComponent(timeMax)
+          + '&maxResults=250';
+        if (pageToken) url += '&pageToken=' + encodeURIComponent(pageToken);
+        var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+        if (!res.ok) return { error: 'Google API ' + res.status, removed: 0, groups: 0 };
+        var data = await res.json();
+        all = all.concat(data.items || []);
+        pageToken = data.nextPageToken || null;
+      } while (pageToken);
+    } catch (e) {
+      return { error: e.message || 'fetch failed', removed: 0, groups: 0 };
+    }
+
+    // Group by glEventId — only GrooveLinx-tagged events qualify.
+    var groups = {};
+    for (var i = 0; i < all.length; i++) {
+      var ev = all[i];
+      if (ev.status === 'cancelled') continue;
+      var ep = ev.extendedProperties && ev.extendedProperties.private;
+      var gid = ep && ep.glEventId;
+      if (!gid) continue;
+      if (!groups[gid]) groups[gid] = [];
+      groups[gid].push(ev);
+    }
+
+    var removed = 0;
+    var groupsProcessed = 0;
+    var errors = [];
+    var groupKeys = Object.keys(groups);
+    for (var g = 0; g < groupKeys.length; g++) {
+      var list = groups[groupKeys[g]];
+      if (list.length < 2) continue;
+      groupsProcessed++;
+      list.sort(function (a, b) {
+        var ta = Date.parse(a.created || 0), tb = Date.parse(b.created || 0);
+        return ta - tb;
+      });
+      // Keep list[0], delete list[1..]
+      for (var d = 1; d < list.length; d++) {
+        try {
+          var r = await remove(list[d].id);
+          if (r && r.success !== false) removed++;
+          else errors.push(list[d].id);
+        } catch (e) { errors.push(list[d].id); }
+      }
+    }
+
+    console.log('[CalSync] Dedupe sweep: removed', removed, 'from', groupsProcessed, 'groups');
+    return {
+      scanned: all.length,
+      groups: groupsProcessed,
+      removed: removed,
+      errors: errors.length
+    };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -1554,6 +1755,7 @@ window.GLCalendarSync = (function() {
     canWriteBandCalendar: canWriteBandCalendar,
     getBandEventTimeSlots: _getBandEventTimeSlots,
     syncBandCalendar: syncBandCalendar,
+    deduplicateBandCalendar: deduplicateBandCalendar,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody

@@ -1076,6 +1076,41 @@ window._calSyncNow = async function() {
     if (btn) { btn.textContent = _syncBtnLabel; btn.disabled = false; }
 };
 
+// One-time cleanup: walk the band Google calendar and remove duplicate
+// GrooveLinx-created events (same glEventId tag, multiple copies). Keeps the
+// earliest created event in each group and deletes the rest.
+window._calDedupeGoogle = async function() {
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.deduplicateBandCalendar) {
+        if (typeof showToast === 'function') showToast('Calendar sync module not loaded');
+        return;
+    }
+    if (!confirm('Scan the band Google Calendar and remove duplicate events created by past sync races?\n\nThe earliest copy of each event is kept; extras are deleted from Google. This cannot be undone, but it only affects events tagged as GrooveLinx-created.')) {
+        return;
+    }
+    var btn = document.getElementById('calDedupeBtn');
+    if (btn) { btn.textContent = 'Scanning...'; btn.disabled = true; }
+    try {
+        var result = await GLCalendarSync.deduplicateBandCalendar();
+        var msg;
+        if (result.error) {
+            msg = 'Dedupe failed: ' + result.error;
+        } else if (result.removed === 0) {
+            msg = '\u2713 No duplicates found — scanned ' + (result.scanned || 0) + ' events';
+        } else {
+            msg = '\u2713 Removed ' + result.removed + ' duplicate' + (result.removed === 1 ? '' : 's')
+                + ' across ' + result.groups + ' event' + (result.groups === 1 ? '' : 's');
+            if (result.errors) msg += ' (' + result.errors + ' delete errors)';
+        }
+        if (typeof showToast === 'function') showToast(msg, 6000);
+        // Refresh the grid so cleanup is visible
+        if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+        _calRenderGridOnly();
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Dedupe failed: ' + (e.message || 'unknown error'));
+    }
+    if (btn) { btn.textContent = 'Clean duplicates'; btn.disabled = false; }
+};
+
 // Dismiss date selection — return to global mode
 window._calDismissDateSelection = function() {
     var card = document.getElementById('calSelectedDayCard');
@@ -1301,7 +1336,8 @@ function _calRenderGooglePanel() {
         html += '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
             + '<button onclick="_calSyncNow()" id="calSyncBtn" style="font-size:0.68em;font-weight:700;padding:5px 12px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;font-family:inherit">' + _syncLabel + '</button>'
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
-            + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>';
+            + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
+            + '<button onclick="_calDedupeGoogle()" id="calDedupeBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove duplicate Google Calendar events created by past sync races">Clean duplicates</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }
