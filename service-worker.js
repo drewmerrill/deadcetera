@@ -4,14 +4,34 @@
 // banners still work on good connections but never hang at the gig).
 // Firebase / external APIs: bypassed — handled by page code.
 
-const CACHE_NAME = 'groovelinx-20260419-100323';
+const CACHE_NAME = 'groovelinx-20260419-104144';
 const BASE = self.registration.scope;
 
-// ── Install: pre-cache index.html for offline nav, then activate immediately ─
+// Cross-origin hosts we cache because the app depends on them to boot.
+// Firebase SDK, Google Fonts — without these cached, offline load = white page.
+const CDN_HOSTS = ['www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+const CDN_PRECACHE = [
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js',
+    'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js',
+    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
+];
+
+// ── Install: pre-cache shell + critical CDN deps, then activate immediately ─
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(cache =>
-            cache.addAll(['./', './index.html'])
+            Promise.all([
+                cache.addAll(['./', './index.html']),
+                // CDN scripts served opaque (no-cors) — caching an opaque response
+                // still lets the browser serve it as a script tag later.
+                Promise.all(CDN_PRECACHE.map(url =>
+                    fetch(url, { mode: 'no-cors' })
+                        .then(r => cache.put(url, r))
+                        .catch(() => { /* pre-cache best-effort, not fatal */ })
+                ))
+            ])
         ).then(() => self.skipWaiting())
     );
 });
@@ -47,13 +67,49 @@ function _bgRefresh(request) {
     }).catch(() => {});
 }
 
+// Cross-origin variant — opaque responses aren't `.ok`, so cache any that
+// arrive without throwing. Serves Firebase SDK + Google Fonts after first fetch.
+function _bgRefreshCrossOrigin(request) {
+    fetch(request, { mode: 'no-cors' }).then(response => {
+        try {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone).catch(() => {}));
+        } catch (e) {}
+    }).catch(() => {});
+}
+
 // ── Fetch: cache-first for app shell, network-first-with-timeout for version.json ─
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
 
-    // Skip non-GET and cross-origin
+    // Skip non-GET
     if (event.request.method !== 'GET') return;
-    if (url.origin !== self.location.origin) return;
+
+    const sameOrigin = url.origin === self.location.origin;
+    const isCdnHost = CDN_HOSTS.indexOf(url.host) >= 0;
+
+    // Skip cross-origin EXCEPT for the CDN hosts we depend on to boot.
+    if (!sameOrigin && !isCdnHost) return;
+
+    // Cross-origin CDN: cache-first with opaque-response caching.
+    if (!sameOrigin && isCdnHost) {
+        event.respondWith(
+            caches.match(event.request).then(cached => {
+                if (cached) {
+                    _bgRefreshCrossOrigin(event.request);
+                    return cached;
+                }
+                return fetch(event.request, { mode: 'no-cors' }).then(response => {
+                    try {
+                        const clone = response.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone).catch(() => {}));
+                    } catch (e) {}
+                    return response;
+                }).catch(() => new Response('', { status: 503 }));
+            })
+        );
+        return;
+    }
 
     const path = url.pathname;
 
