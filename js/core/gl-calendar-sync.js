@@ -1971,12 +1971,22 @@ window.GLCalendarSync = (function() {
       : [];
     var updated = 0;
     var scanned = 0;
+    // Diagnostic: confirm member index is populated. If bandMembers isn't
+    // globally loaded yet, we'd silently match zero names.
+    var _memDiag = _buildMemberNameIndex();
+    console.log('[CalSync] reclassify: memberNames =', Object.keys(_memDiag.memberNames));
+
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
       if (!ev || !ev.title) continue;
       if (ev.type === 'rehearsal' || ev.type === 'gig') continue;
       scanned++;
       var r = _detectUnavailability(ev.title);
+      // Log every candidate for visibility — most of these should be quick
+      // to scan through when diagnosing "why isn't my event flagged".
+      if (r.isUnavail || /busy|off|out|away|unavail|conflict|blocked/i.test(ev.title)) {
+        console.log('[CalSync] reclassify check:', ev.date, '|', JSON.stringify(ev.title), '| type:', ev.type, '| result:', r);
+      }
       if (!r.isUnavail) continue;
       var nextType = r.scope === 'unassigned' ? 'unavailable_unassigned' : 'unavailable';
       var changed = false;
@@ -1991,13 +2001,46 @@ window.GLCalendarSync = (function() {
       if (changed) {
         ev.updated_at = new Date().toISOString();
         updated++;
+        console.log('[CalSync] reclassify UPGRADED:', ev.date, '|', ev.title, '→', ev.type, ev.assignedMembers || []);
       }
     }
     if (updated > 0) {
-      try { await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events)); }
+      try {
+        await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
+        console.log('[CalSync] reclassify saved', updated, 'changes to Firebase');
+      }
       catch (e) { console.warn('[CalSync] reclassify save failed:', e && e.message); }
+    } else {
+      console.log('[CalSync] reclassify: scanned', scanned, 'non-rehearsal/gig events, no upgrades needed');
     }
     return { scanned: scanned, updated: updated };
+  }
+
+  // Debug helper — paste into console to inspect what's actually stored.
+  // Usage: await GLCalendarSync.debugUnavailableScan()
+  async function debugUnavailableScan() {
+    if (typeof loadBandDataFromDrive !== 'function') {
+      console.log('[debug] loadBandDataFromDrive not available');
+      return;
+    }
+    var events = (typeof toArray === 'function')
+      ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+      : [];
+    console.log('[debug] memberNames:', Object.keys(_buildMemberNameIndex().memberNames));
+    console.log('[debug] total events:', events.length);
+    var ofInterest = events.filter(function (ev) {
+      return ev && ev.title && /busy|off|out|away|unavail|conflict|blocked/i.test(ev.title);
+    });
+    console.log('[debug] potentially-unavailable events (' + ofInterest.length + '):');
+    ofInterest.forEach(function (ev) {
+      var r = _detectUnavailability(ev.title);
+      console.log('  ', ev.date, '|', JSON.stringify(ev.title),
+        '| type:', ev.type,
+        '| assignedMembers:', ev.assignedMembers,
+        '| blockScope:', ev.blockScope,
+        '| detectResult:', r);
+    });
+    return ofInterest;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -2036,6 +2079,7 @@ window.GLCalendarSync = (function() {
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
+    debugUnavailableScan: debugUnavailableScan,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
