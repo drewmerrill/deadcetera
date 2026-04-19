@@ -361,7 +361,7 @@ window.GLCalendarSync = (function() {
       var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
       if (events[eventIndex]) {
         events[eventIndex].sync = syncObj;
-        await saveBandDataToDrive('_band', 'calendar_events', events);
+        await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
       }
     } catch (e) {
       console.warn('[CalSync] Failed to save sync state:', e);
@@ -747,6 +747,26 @@ window.GLCalendarSync = (function() {
     }
   }
 
+  // Firebase .set() rejects any object containing undefined values and
+  // silently fails the whole save. Walks an object or array tree and
+  // replaces undefined with null in place. Safe to call on plain data.
+  function _sanitizeForFirebase(value) {
+    if (value === undefined) return null;
+    if (value === null) return null;
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i++) value[i] = _sanitizeForFirebase(value[i]);
+      return value;
+    }
+    if (typeof value === 'object') {
+      Object.keys(value).forEach(function (k) {
+        if (value[k] === undefined) { value[k] = null; return; }
+        value[k] = _sanitizeForFirebase(value[k]);
+      });
+      return value;
+    }
+    return value;
+  }
+
   // ── Unavailability detection ───────────────────────────────────────────────
   // Classifies an event title as blocking for members / band / unassigned based
   // on keyword + member-name matching. Extracted to module scope so both the
@@ -886,11 +906,14 @@ window.GLCalendarSync = (function() {
     var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
     var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
     var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
-    // Scheduling fields — Google is source of truth
-    existing.date = startStr.substring(0, 10);
-    existing.title = googleEvent.summary || existing.title;
-    existing.location = googleEvent.location || existing.location;
-    existing.notes = googleEvent.description || existing.notes;
+    // Scheduling fields — Google is source of truth. Default to '' rather
+    // than letting undefined propagate: Firebase .set() rejects the entire
+    // document if any field is undefined, which silently loses reclassify
+    // and every other Phase 2 update in the same save.
+    existing.date = startStr.substring(0, 10) || '';
+    existing.title = googleEvent.summary || existing.title || '';
+    existing.location = googleEvent.location || existing.location || '';
+    existing.notes = googleEvent.description || existing.notes || '';
     existing.isAllDay = isAllDay;
     // Multi-day: compute endDate from Google's exclusive end date
     if (isAllDay && endStr) {
@@ -975,9 +998,10 @@ window.GLCalendarSync = (function() {
       notes: googleEvent.description || '',
       venue: (inferredType === 'gig') ? summary : '',
       // When type is unavailable, record which members are blocked so the
-      // availability engine can apply it.
-      assignedMembers: (_unavailImport && _unavailImport.isUnavail && _unavailImport.scope !== 'unassigned') ? _unavailImport.members : undefined,
-      blockScope: (_unavailImport && _unavailImport.isUnavail) ? _unavailImport.scope : undefined,
+      // availability engine can apply it. Default to null (not undefined —
+      // Firebase rejects undefined values and fails the whole save).
+      assignedMembers: (_unavailImport && _unavailImport.isUnavail && _unavailImport.scope !== 'unassigned') ? _unavailImport.members : null,
+      blockScope: (_unavailImport && _unavailImport.isUnavail) ? _unavailImport.scope : null,
       isAllDay: isAllDay,
       _importedFromGoogle: true,
       googleEventId: googleEvent.id,
@@ -1069,7 +1093,7 @@ window.GLCalendarSync = (function() {
       } catch(e) { console.warn('[CalSync] Push failed for', ev.title, e.message); }
     }
     if (result.pushed > 0) {
-      await saveBandDataToDrive('_band', 'calendar_events', events);
+      await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
       console.log('[CalSync] Phase 1: Pushed', result.pushed, 'events');
     }
 
@@ -1217,7 +1241,7 @@ window.GLCalendarSync = (function() {
 
     // Save all changes
     if (dirty) {
-      await saveBandDataToDrive('_band', 'calendar_events', events);
+      await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
     }
 
     // Save sync token for next incremental sync
@@ -1489,7 +1513,7 @@ window.GLCalendarSync = (function() {
       // ── Save to Firebase — new imports + upgraded existing events ──
       if (imported.length > 0 || _upgraded > 0) {
         var allEvents = _upgraded > 0 ? existingEvents.concat(imported) : existingEvents.concat(imported);
-        await saveBandDataToDrive('_band', 'calendar_events', allEvents);
+        await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(allEvents));
         console.log('[CalSync] Inbound sync: saved', imported.length, 'new +', _upgraded, 'upgraded event records to Firebase');
       }
 
@@ -1925,7 +1949,7 @@ window.GLCalendarSync = (function() {
     }
 
     if (firebaseChanged) {
-      try { await saveBandDataToDrive('_band', 'calendar_events', events); }
+      try { await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events)); }
       catch (e) { console.warn('[CalSync] Firebase save failed:', e && e.message); }
     }
 
@@ -1970,7 +1994,7 @@ window.GLCalendarSync = (function() {
       }
     }
     if (updated > 0) {
-      try { await saveBandDataToDrive('_band', 'calendar_events', events); }
+      try { await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events)); }
       catch (e) { console.warn('[CalSync] reclassify save failed:', e && e.message); }
     }
     return { scanned: scanned, updated: updated };
