@@ -3541,16 +3541,16 @@ async function loadCalendarEvents() {
             if (!ev._importedFromGoogle) return;
             if (ev.type === 'rehearsal' || ev.type === 'gig' || ev.type === 'meeting') return;
 
-            // Attribute: organizerEmail → specific member; else whole band.
+            // Attribute via organizer email. If there's no attribution, we
+            // deliberately SKIP — legacy free/busy imports (titled "Busy"
+            // without a creator) would otherwise block the whole band on
+            // every day that has any member's personal calendar event.
+            // The fix for those is to purge them (separate command) or re-
+            // import via the band calendar path.
             var orgEmail = (ev.organizerEmail || '').toLowerCase();
             var orgKey = orgEmail && _emailToMember[orgEmail];
             if (orgKey) {
                 _pushBlock(ev, dateKey, orgKey, '(from ' + (_bm2[orgKey].name.split(' ')[0]) + ')');
-            } else {
-                // No attribution — conservative: block whole band. They can
-                // always delete the event on Google if it was personal.
-                _bandKeys.forEach(function (k) { _pushBlock(ev, dateKey, k); });
-                _wholeBandCount++;
             }
         });
     });

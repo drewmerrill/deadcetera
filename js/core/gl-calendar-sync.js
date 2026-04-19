@@ -2022,6 +2022,38 @@ window.GLCalendarSync = (function() {
     return { scanned: scanned, updated: updated };
   }
 
+  // Debug helper — fetch raw Google API response for the band calendar over
+  // a date range. Shows what's actually on Google (vs what we have locally).
+  // Usage: await GLCalendarSync.debugBandCalendarRaw('2026-06-01', '2026-06-30')
+  async function debugBandCalendarRaw(startDate, endDate) {
+    if (!hasCalendarScope()) { console.log('[debug] no calendar scope'); return; }
+    var calId = await _getBandCalendarId();
+    if (!calId) { console.log('[debug] no band calendar configured'); return; }
+    console.log('[debug] querying band calendar:', calId);
+    var timeMin = startDate + 'T00:00:00Z';
+    var timeMax = endDate + 'T23:59:59Z';
+    var url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId)
+      + '&timeMin=' + encodeURIComponent(timeMin)
+      + '&timeMax=' + encodeURIComponent(timeMax)
+      + '&maxResults=250';
+    try {
+      var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+      if (!res.ok) { console.log('[debug] fetch failed:', res.status, await res.text()); return; }
+      var data = await res.json();
+      console.log('[debug] Google returned', (data.items || []).length, 'events on', calId);
+      (data.items || []).forEach(function (ev) {
+        console.log('  ', (ev.start && (ev.start.date || ev.start.dateTime)) || '?',
+          '|', JSON.stringify(ev.summary || '(no title)'),
+          '| id:', ev.id,
+          '| creator:', ev.creator && ev.creator.email,
+          '| organizer:', ev.organizer && ev.organizer.email);
+      });
+      return data.items || [];
+    } catch (e) {
+      console.log('[debug] fetch error:', e && e.message);
+    }
+  }
+
   // Debug helper — paste into console to inspect what's actually stored.
   // Usage: await GLCalendarSync.debugUnavailableScan()
   async function debugUnavailableScan() {
@@ -2086,6 +2118,7 @@ window.GLCalendarSync = (function() {
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
     debugUnavailableScan: debugUnavailableScan,
+    debugBandCalendarRaw: debugBandCalendarRaw,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
