@@ -747,6 +747,67 @@ window.GLCalendarSync = (function() {
     }
   }
 
+  // ── Unavailability detection ───────────────────────────────────────────────
+  // Classifies an event title as blocking for members / band / unassigned based
+  // on keyword + member-name matching. Extracted to module scope so both the
+  // two-way sync (syncBandCalendar) and the legacy inbound pull
+  // (pullBandCalendarEvents) use the same logic. Previously only the latter
+  // ran this check, so "Brian busy" events imported via Sync Calendars stayed
+  // as type='other' and never blocked availability.
+  var _STRONG_UNAVAIL_KW = ['out', 'unavailable', 'pto', 'vacation', 'away', 'travel'];
+  var _WEAK_UNAVAIL_KW = ['busy', 'conflict', 'off', 'blocked'];
+  var _WHOLE_BAND_PHRASES = ['band off', 'full band off', 'everyone out', 'no rehearsal', 'band unavailable', 'all out', 'band away'];
+
+  function _buildMemberNameIndex() {
+    var memberNames = {};
+    var allKeys = [];
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    Object.keys(bm).forEach(function (k) {
+      var name = bm[k] && bm[k].name ? bm[k].name : '';
+      if (name) {
+        memberNames[name.split(' ')[0].toLowerCase()] = k;
+        memberNames[name.toLowerCase()] = k;
+      }
+      allKeys.push(k);
+    });
+    return { memberNames: memberNames, allKeys: allKeys };
+  }
+
+  function _detectUnavailability(title) {
+    if (!title) return { isUnavail: false };
+    var lc = title.toLowerCase().trim();
+    for (var wp = 0; wp < _WHOLE_BAND_PHRASES.length; wp++) {
+      if (lc.indexOf(_WHOLE_BAND_PHRASES[wp]) !== -1) {
+        var idx = _buildMemberNameIndex();
+        return { isUnavail: true, scope: 'band', members: idx.allKeys.slice() };
+      }
+    }
+    var hasStrongKw = _STRONG_UNAVAIL_KW.some(function (kw) {
+      var i = lc.indexOf(kw);
+      if (i === -1) return false;
+      var before = i > 0 ? lc[i - 1] : ' ';
+      var after = i + kw.length < lc.length ? lc[i + kw.length] : ' ';
+      var okBefore = /[\s\-\u2013\u2014,.:;!?/]/.test(before) || i === 0;
+      var okAfter  = /[\s\-\u2013\u2014,.:;!?/]/.test(after) || i + kw.length === lc.length;
+      return okBefore && okAfter;
+    });
+    var hasWeakKw = !hasStrongKw && _WEAK_UNAVAIL_KW.some(function (kw) { return lc.indexOf(kw) !== -1; });
+    if (!hasStrongKw && !hasWeakKw) return { isUnavail: false };
+    var idx = _buildMemberNameIndex();
+    var matched = [];
+    Object.keys(idx.memberNames).forEach(function (n) {
+      if (n.length < 2) return;
+      if (lc.indexOf(n) !== -1) {
+        var key = idx.memberNames[n];
+        if (matched.indexOf(key) === -1) matched.push(key);
+      }
+    });
+    if (hasStrongKw && matched.length > 0) return { isUnavail: true, scope: 'member', members: matched };
+    if (hasWeakKw && matched.length > 0)   return { isUnavail: true, scope: 'member', members: matched };
+    if (hasStrongKw && matched.length === 0) return { isUnavail: true, scope: 'unassigned', members: [] };
+    return { isUnavail: false };
+  }
+
   // ── EVENT IMPORT — list Google Calendar events for a date range ──────────
   async function listGoogleEvents(timeMin, timeMax) {
     if (!hasCalendarScope()) return [];
@@ -851,8 +912,22 @@ window.GLCalendarSync = (function() {
     existing.sync = existing.sync || {};
     existing.sync.lastSyncedAt = new Date().toISOString();
     existing.sync.status = 'synced';
+    // Upgrade type when the (possibly renamed) Google title now indicates
+    // unavailability and the local type wasn't a protected kind (rehearsal/
+    // gig stay put — they're authored on our side, not inferred from title).
+    if (existing.type !== 'rehearsal' && existing.type !== 'gig') {
+      var _un = _detectUnavailability(googleEvent.summary || '');
+      if (_un.isUnavail && _un.scope !== 'unassigned') {
+        existing.type = 'unavailable';
+        existing.assignedMembers = _un.members;
+        existing.blockScope = _un.scope;
+      } else if (_un.isUnavail && _un.scope === 'unassigned' && existing.type !== 'unavailable') {
+        existing.type = 'unavailable_unassigned';
+      }
+    }
     // Preserve GrooveLinx-only metadata: type, venueId, linkedSetlist, availability,
-    // assignedMembers, gigId, blockScope, _importedFromGoogle — these are NEVER overwritten
+    // assignedMembers, gigId, blockScope, _importedFromGoogle — these are never
+    // overwritten by the scheduling-field sync above.
     return existing;
   }
 
@@ -867,6 +942,16 @@ window.GLCalendarSync = (function() {
     if (lc.indexOf('rehearsal') !== -1 || lc.indexOf('practice') !== -1) inferredType = 'rehearsal';
     else if (lc.indexOf('gig') !== -1 || lc.indexOf('show') !== -1 || lc.indexOf('concert') !== -1) inferredType = 'gig';
     else if (lc.indexOf('meeting') !== -1) inferredType = 'meeting';
+    // Unavailability classification (only if not already a rehearsal/gig).
+    // Without this the sync-pull path imported "Brian busy" as type='other'
+    // and never blocked anyone's availability.
+    var _unavailImport = { isUnavail: false };
+    if (inferredType !== 'rehearsal' && inferredType !== 'gig') {
+      _unavailImport = _detectUnavailability(summary);
+      if (_unavailImport.isUnavail) {
+        inferredType = _unavailImport.scope === 'unassigned' ? 'unavailable_unassigned' : 'unavailable';
+      }
+    }
     var eventTime = (!isAllDay && startStr.length > 10) ? startStr.substring(11, 16) : '';
     var eventEndTime = (!isAllDay && endStr.length > 10) ? endStr.substring(11, 16) : '';
     // Multi-day all-day: store as single event with endDate (Google end is exclusive, subtract 1 day)
@@ -889,6 +974,10 @@ window.GLCalendarSync = (function() {
       location: googleEvent.location || '',
       notes: googleEvent.description || '',
       venue: (inferredType === 'gig') ? summary : '',
+      // When type is unavailable, record which members are blocked so the
+      // availability engine can apply it.
+      assignedMembers: (_unavailImport && _unavailImport.isUnavail && _unavailImport.scope !== 'unassigned') ? _unavailImport.members : undefined,
+      blockScope: (_unavailImport && _unavailImport.isUnavail) ? _unavailImport.scope : undefined,
       isAllDay: isAllDay,
       _importedFromGoogle: true,
       googleEventId: googleEvent.id,
@@ -1843,6 +1932,50 @@ window.GLCalendarSync = (function() {
     return { scanned: scanned, updated: updated, errors: errors.length };
   }
 
+  // ── Backfill: re-classify already-imported events ────────────────────────
+  // Walks local calendar_events and re-runs the unavailability title check on
+  // every event that isn't a rehearsal/gig. Needed because events imported
+  // before detection shipped (or before it was added to the syncBandCalendar
+  // path) are sitting at type='other' with no assignedMembers — they fail to
+  // block availability silently.
+  async function reclassifyUnavailability() {
+    if (typeof loadBandDataFromDrive !== 'function' || typeof saveBandDataToDrive !== 'function') {
+      return { error: 'firebase helpers unavailable', updated: 0, scanned: 0 };
+    }
+    var events = (typeof toArray === 'function')
+      ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+      : [];
+    var updated = 0;
+    var scanned = 0;
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      if (!ev || !ev.title) continue;
+      if (ev.type === 'rehearsal' || ev.type === 'gig') continue;
+      scanned++;
+      var r = _detectUnavailability(ev.title);
+      if (!r.isUnavail) continue;
+      var nextType = r.scope === 'unassigned' ? 'unavailable_unassigned' : 'unavailable';
+      var changed = false;
+      if (ev.type !== nextType) { ev.type = nextType; changed = true; }
+      if (r.scope !== 'unassigned') {
+        var priorMembers = ev.assignedMembers || [];
+        var sameMembers = priorMembers.length === r.members.length
+          && priorMembers.every(function (m) { return r.members.indexOf(m) !== -1; });
+        if (!sameMembers) { ev.assignedMembers = r.members.slice(); changed = true; }
+        if (ev.blockScope !== r.scope) { ev.blockScope = r.scope; changed = true; }
+      }
+      if (changed) {
+        ev.updated_at = new Date().toISOString();
+        updated++;
+      }
+    }
+    if (updated > 0) {
+      try { await saveBandDataToDrive('_band', 'calendar_events', events); }
+      catch (e) { console.warn('[CalSync] reclassify save failed:', e && e.message); }
+    }
+    return { scanned: scanned, updated: updated };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -1878,6 +2011,7 @@ window.GLCalendarSync = (function() {
     syncBandCalendar: syncBandCalendar,
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
+    reclassifyUnavailability: reclassifyUnavailability,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody

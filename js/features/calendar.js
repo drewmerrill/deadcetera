@@ -1045,6 +1045,18 @@ window._calSyncNow = async function() {
         var _syncResult = { pushed: 0, pulled: 0, updated: 0, deleted: 0, error: null };
         if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.syncBandCalendar && GLCalendarSync.hasCalendarScope()) {
             _syncResult = await GLCalendarSync.syncBandCalendar();
+            // Backfill: reclassify any pre-existing generic events whose titles
+            // now indicate unavailability. Silent — no toast unless something
+            // actually changed.
+            if (GLCalendarSync.reclassifyUnavailability) {
+                try {
+                    var _rc = await GLCalendarSync.reclassifyUnavailability();
+                    if (_rc && _rc.updated > 0) {
+                        console.log('[CalSync] Reclassified', _rc.updated, 'events as unavailable');
+                        _syncResult.reclassified = _rc.updated;
+                    }
+                } catch (e) { /* non-fatal */ }
+            }
         }
 
         // Pull latest connections
