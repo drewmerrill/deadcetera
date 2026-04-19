@@ -856,6 +856,8 @@ window.GLCalendarSync = (function() {
           time: start.length > 10 ? start.substring(11, 16) : '',
           endDate: end.substring(0, 10),
           location: ev.location || '',
+          description: ev.description || '',
+          organizerEmail: (ev.organizer && ev.organizer.email) || (ev.creator && ev.creator.email) || '',
           type: 'external',
           _source: 'google',
           _htmlLink: ev.htmlLink || ''

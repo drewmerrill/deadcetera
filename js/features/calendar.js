@@ -957,10 +957,29 @@ async function _calOverlayExternalEvents(monthPrefix, daysInMonth) {
             dot.className = 'gl-day-external';
             dot.title = byDate[date].map(function(e) { return e.title; }).join(', ');
             cell.appendChild(dot);
-            // Build external event hover lines
+            // Build external event hover lines. For shared-calendar events
+            // we want the full title + description + who created it — that's
+            // why the band put it on the shared calendar.
+            var _extBm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+            var _extEmailLookup = {};
+            Object.keys(_extBm).forEach(function (k) {
+                var em = _extBm[k] && _extBm[k].email ? String(_extBm[k].email).toLowerCase() : '';
+                if (em) _extEmailLookup[em] = _extBm[k].name.split(' ')[0];
+            });
             var _extLines = byDate[date].slice(0, 3).map(function(e) {
-                return '<div>' + (e.title || 'Busy') + (e.time ? ' \u00B7 ' + e.time : '') + '</div>';
-            }).join('');
+                var parts = [];
+                var head = '<span style="font-weight:600">' + (e.title || 'Busy') + '</span>';
+                if (e.time) head += ' <span style="color:var(--gl-text-tertiary)">' + e.time + '</span>';
+                parts.push('<div>' + head + '</div>');
+                var who = _extEmailLookup[(e.organizerEmail || '').toLowerCase()];
+                if (who) parts.push('<div style="font-size:0.85em;color:var(--gl-text-tertiary)">by ' + who + '</div>');
+                if (e.description) {
+                    var desc = String(e.description).replace(/<[^>]+>/g, '').trim();
+                    if (desc.length > 140) desc = desc.slice(0, 140) + '\u2026';
+                    parts.push('<div style="font-size:0.85em;color:var(--gl-text-muted);margin-top:2px">' + desc + '</div>');
+                }
+                return parts.join('');
+            }).join('<div style="border-top:1px solid var(--gl-border-subtle);margin:4px 0"></div>');
             if (byDate[date].length > 3) _extLines += '<div style="opacity:0.6">+' + (byDate[date].length - 3) + ' more</div>';
             _extLines += '<div style="opacity:0.4;margin-top:2px">Google Calendar</div>';
             // If this is a "best" day, downgrade the hover to acknowledge the conflict
@@ -3031,6 +3050,13 @@ function _calRenderGridOnly() {
                             ? '<span style="color:var(--gl-text-tertiary)"> (same day)</span>'
                             : '';
                         hoverHtml += '<div>' + nm + ' \u2014 ' + _reasonText + note + '</div>';
+                        // Surface the event description (shared-calendar notes).
+                        // Band members add these for context; show them here.
+                        if (b.description) {
+                            var _desc = String(b.description).replace(/<[^>]+>/g, '').trim();
+                            if (_desc.length > 140) _desc = _desc.slice(0, 140) + '\u2026';
+                            hoverHtml += '<div style="font-size:0.82em;color:var(--gl-text-muted);margin-left:8px">' + _desc + '</div>';
+                        }
                     });
                     if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
                     hoverHtml += '</div>';
@@ -3516,6 +3542,7 @@ async function loadCalendarEvents() {
             startDate: dateKey,
             endDate: dateKey,
             reason: reason,
+            description: ev.notes || '', // shared-calendar description — surfaced in hover
             status: 'unavailable',
             _source: 'band_calendar',
             _conflictType: 'hard',
