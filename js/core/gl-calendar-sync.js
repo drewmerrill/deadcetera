@@ -935,6 +935,9 @@ window.GLCalendarSync = (function() {
     existing.sync = existing.sync || {};
     existing.sync.lastSyncedAt = new Date().toISOString();
     existing.sync.status = 'synced';
+    // Capture organizer email (Mode A attribution fallback).
+    if (googleEvent.organizer && googleEvent.organizer.email) existing.organizerEmail = googleEvent.organizer.email;
+    else if (googleEvent.creator && googleEvent.creator.email) existing.organizerEmail = googleEvent.creator.email;
     // Upgrade type when the (possibly renamed) Google title now indicates
     // unavailability and the local type wasn't a protected kind (rehearsal/
     // gig stay put — they're authored on our side, not inferred from title).
@@ -1002,6 +1005,9 @@ window.GLCalendarSync = (function() {
       // Firebase rejects undefined values and fails the whole save).
       assignedMembers: (_unavailImport && _unavailImport.isUnavail && _unavailImport.scope !== 'unassigned') ? _unavailImport.members : null,
       blockScope: (_unavailImport && _unavailImport.isUnavail) ? _unavailImport.scope : null,
+      // Google event creator email — used in Mode A to attribute un-keyworded
+      // events ("Out", "Vacation") to the member who created them.
+      organizerEmail: (googleEvent.organizer && googleEvent.organizer.email) || (googleEvent.creator && googleEvent.creator.email) || null,
       isAllDay: isAllDay,
       _importedFromGoogle: true,
       googleEventId: googleEvent.id,

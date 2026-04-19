@@ -3484,37 +3484,77 @@ async function loadCalendarEvents() {
     }
 
     // ── MEMBER UNAVAILABILITY from band calendar events ──
-    // Inject blocked ranges from imported unavailable events (type: 'unavailable')
-    // These were imported from the band calendar with member assignment.
-    // Does NOT apply to 'unavailable_unassigned' (ambiguous — no auto-blocking).
+    // Two branches:
+    //   (A) Mode A — band calendar is source of truth. ANY imported event
+    //       that isn't a band activity (rehearsal/gig/meeting) blocks somebody.
+    //       Attribution priority: explicit assignedMembers → organizerEmail
+    //       lookup → whole band (conservative fallback).
+    //   (B) Other modes — keep legacy behavior: only block when we have an
+    //       explicit assignedMembers list, to avoid false conflicts from noisy
+    //       personal calendars.
+    var _bm2 = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var _bandKeys = Object.keys(_bm2);
+    // Build email → memberKey lookup for organizerEmail attribution.
+    var _emailToMember = {};
+    _bandKeys.forEach(function (k) {
+        var em = _bm2[k] && _bm2[k].email ? String(_bm2[k].email).toLowerCase() : '';
+        if (em) _emailToMember[em] = k;
+    });
+    var _modeA = (typeof _calIsModeA === 'function') && _calIsModeA();
     var _unavailCount = 0;
-    Object.keys(_calEventsByDate).forEach(function(dateKey) {
-        _calEventsByDate[dateKey].forEach(function(ev) {
-            if (ev.type !== 'unavailable') return; // skip unassigned and non-unavailable
-            if (!ev.assignedMembers || !ev.assignedMembers.length) return;
-            var _bm2 = (typeof bandMembers !== 'undefined') ? bandMembers : {};
-            ev.assignedMembers.forEach(function(mKey) {
-                var memberName = _bm2[mKey] ? _bm2[mKey].name : mKey;
-                var shortName = memberName.split(' ')[0];
-                var reason = ev.isAllDay
-                    ? (ev._googleSource || ev.title || 'Unavailable') + ' (all day)'
-                    : (ev._googleSource || ev.title || 'Unavailable') + (ev.time ? ' ' + ev.time + (ev.endTime ? '\u2013' + ev.endTime : '') : '');
-                blocked.push({
-                    person: shortName,
-                    startDate: dateKey,
-                    endDate: dateKey,
-                    reason: reason,
-                    status: 'unavailable',
-                    _source: 'band_calendar',
-                    _conflictType: 'hard',
-                    _isAllDay: !!ev.isAllDay,
-                    _timeLabel: ev.time && ev.endTime ? ev.time + '\u2013' + ev.endTime : ''
-                });
-                _unavailCount++;
-            });
+    var _wholeBandCount = 0;
+
+    function _pushBlock(ev, dateKey, memberKey, reasonSuffix) {
+        var memberName = _bm2[memberKey] ? _bm2[memberKey].name : memberKey;
+        var shortName = memberName.split(' ')[0];
+        var baseReason = ev._googleSource || ev.title || 'Unavailable';
+        var reason = ev.isAllDay ? (baseReason + ' (all day)')
+            : (baseReason + (ev.time ? ' ' + ev.time + (ev.endTime ? '\u2013' + ev.endTime : '') : ''));
+        if (reasonSuffix) reason += ' ' + reasonSuffix;
+        blocked.push({
+            person: shortName,
+            startDate: dateKey,
+            endDate: dateKey,
+            reason: reason,
+            status: 'unavailable',
+            _source: 'band_calendar',
+            _conflictType: 'hard',
+            _isAllDay: !!ev.isAllDay,
+            _timeLabel: ev.time && ev.endTime ? ev.time + '\u2013' + ev.endTime : ''
+        });
+        _unavailCount++;
+    }
+
+    Object.keys(_calEventsByDate).forEach(function (dateKey) {
+        _calEventsByDate[dateKey].forEach(function (ev) {
+            if (!ev) return;
+
+            // Explicit "unavailable" with assigned members — always block.
+            if (ev.type === 'unavailable' && ev.assignedMembers && ev.assignedMembers.length) {
+                ev.assignedMembers.forEach(function (mKey) { _pushBlock(ev, dateKey, mKey); });
+                return;
+            }
+
+            // Mode A extension: also block for imported-from-band-calendar events
+            // that aren't scheduled band activities.
+            if (!_modeA) return;
+            if (!ev._importedFromGoogle) return;
+            if (ev.type === 'rehearsal' || ev.type === 'gig' || ev.type === 'meeting') return;
+
+            // Attribute: organizerEmail → specific member; else whole band.
+            var orgEmail = (ev.organizerEmail || '').toLowerCase();
+            var orgKey = orgEmail && _emailToMember[orgEmail];
+            if (orgKey) {
+                _pushBlock(ev, dateKey, orgKey, '(from ' + (_bm2[orgKey].name.split(' ')[0]) + ')');
+            } else {
+                // No attribution — conservative: block whole band. They can
+                // always delete the event on Google if it was personal.
+                _bandKeys.forEach(function (k) { _pushBlock(ev, dateKey, k); });
+                _wholeBandCount++;
+            }
         });
     });
-    if (_unavailCount > 0) console.log('[Calendar] Member unavailability: injected', _unavailCount, 'blocked ranges from band calendar');
+    if (_unavailCount > 0) console.log('[Calendar] Band calendar unavailability: injected', _unavailCount, 'blocks' + (_modeA ? ' (Mode A, ' + _wholeBandCount + ' whole-band)' : ''));
 
     // Dedup blocked ranges by person + date + time
     // Prefer entries with specific reasons (band calendar titles) over generic "Busy"
