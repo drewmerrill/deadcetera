@@ -399,7 +399,11 @@ async function _sdPopulateBandLens(title) {
     var ytQuery=encodeURIComponent(title);
 
     // ── PLAY MODE: stage-ready with set navigation ──
-    if (mode === 'play') {
+    // Legacy branch: `mode` was never actually declared/parameterized into
+    // this function. typeof-guard prevents ReferenceError for the common
+    // "undefined" case (which is every call today). If a future caller wants
+    // to enable Play Mode here, they'll need to introduce the parameter.
+    if (typeof mode !== 'undefined' && mode === 'play') {
         var _playNav = _sdBuildPlayNav(title);
         var _playCue = _sdBuildPlayCue(title, avgReadiness, _siIntel);
         panel.innerHTML =
