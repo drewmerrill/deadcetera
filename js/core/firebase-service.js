@@ -488,6 +488,19 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
             ? window.bandPath(window.sanitizeFirebasePath(dataType))
             : window.songPath(songTitle, dataType);
         await firebaseDB.ref(path).set(data);
+        // Keep the SWR cache in sync on write. Without this, the next
+        // loadBandDataFromDrive() call returns the STALE cached value
+        // from before this save — because cache-first returns instantly
+        // and the background refresh only updates the cache for the NEXT
+        // read after this one. That's why Drew's "Lock This Set" appeared
+        // to succeed but then re-render showed the pre-save setlist.
+        try {
+            if (typeof _glCacheWrite === 'function') {
+                _glCacheWrite(songTitle, dataType, data);
+            } else {
+                localStorage.setItem('gl_cache_' + songTitle + '_' + dataType, JSON.stringify(data));
+            }
+        } catch (e) { /* quota — non-fatal, next refresh will heal */ }
         return true;
     } catch (error) {
         console.error('❌ Failed to save to Firebase:', error.message || error);
