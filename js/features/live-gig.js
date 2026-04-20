@@ -188,18 +188,23 @@
 
     if (cache) {
       var setlistsArr = Array.isArray(cache) ? cache : Object.values(cache);
-      var idx = parseInt(setlistId, 10);
-      // Match by numeric _origIdx first, then by .id string
-      if (!isNaN(idx)) {
-        setlist = setlistsArr[idx] || null;
-      }
-      if (!setlist) {
-        for (var i = 0; i < setlistsArr.length; i++) {
-          if (setlistsArr[i] && (setlistsArr[i].id === setlistId || setlistsArr[i].setlistId === setlistId)) {
-            setlist = setlistsArr[i];
-            break;
-          }
+      // CRITICAL: match by string ID first. Previously we tried parseInt
+      // as a legacy numeric-index path — but generateShortId uses an
+      // alphabet that includes digits (23456789), so a setlistId like
+      // "3p7kqn5m2wxy" parsed to 3 and selected setlistsArr[3] regardless
+      // of which setlist the user actually tapped. This caused 420 FEST to
+      // launch Meth Shed's songs. String match first, numeric only as a
+      // legacy fallback for PURE numeric IDs.
+      for (var i = 0; i < setlistsArr.length; i++) {
+        if (setlistsArr[i] && (setlistsArr[i].id === setlistId || setlistsArr[i].setlistId === setlistId)) {
+          setlist = setlistsArr[i];
+          break;
         }
+      }
+      if (!setlist && typeof setlistId === 'string' && /^\d+$/.test(setlistId)) {
+        // Pure-numeric legacy: interpret as array index.
+        var idx = parseInt(setlistId, 10);
+        setlist = setlistsArr[idx] || null;
       }
     }
     if (!setlist) return false;
@@ -262,8 +267,19 @@
     if (!cache) return null;
     var arr = Array.isArray(cache) ? cache : Object.values(cache);
     if (arr.length === 0) return null;
-    // Return first one as fallback
-    return arr[0] && arr[0].id ? arr[0].id : null;
+    // Fallback when the explicit handoff (window._lgLaunchSetlistId) was
+    // consumed or never set. Pick the most-recently-updated setlist rather
+    // than arr[0] (which is array order — often not what the user wants).
+    // Match on setlistId first since that's the canonical ID; .id is legacy.
+    var best = null, bestTs = 0;
+    for (var i = 0; i < arr.length; i++) {
+      var s = arr[i];
+      if (!s) continue;
+      var ts = Date.parse(s.updated || s.updated_at || s.created || 0) || 0;
+      if (ts >= bestTs) { best = s; bestTs = ts; }
+    }
+    if (!best) best = arr[0];
+    return best ? (best.setlistId || best.id || null) : null;
   }
 
   function _safeGetAllReadiness() {
