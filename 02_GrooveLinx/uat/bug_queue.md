@@ -1,13 +1,51 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260418-202619 (local stamp via stamp-version.py)
-**Last Updated:** 2026-04-18
+**Build Under Test:** 20260420-131317 (local stamp via stamp-version.py)
+**Last Updated:** 2026-04-20
 
 ---
 
 ## Session Focus
 
-Audience Love + Setlist Intelligence + Personal Overrides + Rehearsal Scorecard + Analyzer Calibration + Deploy Hardening (2026-04-11). Queue is clean.
+**2026-04-19 → 2026-04-20 (two-day arc, gig on 4/20):** Live gig chart rendering polish, offline-for-gig infrastructure, calendar sync deep cleanup (duplicates, attribution, Mode A contract enforcement, visibility cleanup), critical reliability fixes (wrong-setlist launch, stale post-save render, stripped iOS chord spacing). Queue is clean at gig-time.
+
+### Bugs Fixed in 2026-04-20 Session (wrap-up before 420 gig)
+
+- [x] **Live Gig iPhone: multi-space runs in chord cells collapsed** (e.g. "F7  F#7  G7" → "F7F#7 G7") — iOS Safari quirk with `white-space:pre` inside `display:block` inside `inline-block`. Fixed: convert spaces in chord text to non-breaking spaces.
+- [x] **Live Gig: `(hold)` / `(HOLD)` tokens dropped chord lines to plain text** — balanced-paren tokens failed `_isChordishLine` check. Fixed: any token with parens counts as annotation.
+- [x] **Live Gig Start Gig launched the wrong setlist** — `_loadSetlistFromStore` used `parseInt(setlistId)` as array index. `generateShortId` produces alphanumeric IDs starting with digits (e.g. "3p7kqn..."), which parsed to 3 and grabbed `setlistsArr[3]`. Fixed: string-ID match first; numeric-index path only for pure-numeric IDs.
+- [x] **Lock This Set silently lost changes** — `saveBandDataToDrive` didn't update the SWR cache. Next read returned stale cached data. Fixed: write to SWR cache after successful Firebase save. Applies to every save path app-wide.
+- [x] **"No chart yet" shown for transient network failures** — SWR timeout was 5s; on cold start this fired even on good wifi. Fixed: raised timeout to 20s; song-detail now distinguishes "chart doesn't exist" from "couldn't load chart" (Retry button instead of Add Chart).
+- [x] **Prep for Gig button forgot its "Ready" state after sleep/wake** — state was held in DOM only. Fixed: on render, scan localStorage for every song's cached chart and reflect real state (Ready / Top-up / Download).
+- [x] **Calendar Mode A: personal calendar events leaked into the band view** — `_calOverlayExternalEvents` queried user's primary calendar. Fixed: disabled in Mode A, `purgeNonBandEvents()` removes legacy free/busy imports, and blocked-ranges now only attribute via explicit `assignedMembers` or matched `organizerEmail`.
+- [x] **Mode A contract not documented in onboarding or Rules** — bands would create events on personal calendars expecting them to sync, or mark events Private by mistake. Fixed: amber warning on Mode A card in chooser + green "How shared calendar mode works" callout at top of Rules modal when Mode A is active.
+- [x] **Calendar duplicates on band calendar** — 3 mechanisms (race, re-link bug, absent pre-push check). Fixed earlier in 2026-04-18; verified in production with clean debug output on 4/19.
+- [x] **Gig end-time not syncing to Google (always defaulted to 7–9 PM)** — `endTime` dropped in gig → calendar_event → Google pipeline. Fixed across 3 sites + one-shot "Refresh gig times" admin button.
+- [x] **Unified Gig editor in Calendar** — Gig fields (Arrival, Soundcheck, Pay, Sound Person, Contact) now editable inline from the Calendar event form when type=gig. Dual-write to `bands/X/gigs` so Gigs page list stays in sync.
+- [x] **Chart showed `&amp;` literally instead of `&`** — stored text had already-HTML-escaped ampersands; every render re-escaped them. Fixed: new `glDecodeHtmlEntities` helper; all three chart renderers decode-first-then-escape (self-healing).
+- [x] **Auto-scroll engine for live gig + vertical pill UI** — hands-free chart reading at the gig; per-song speed saved, BPM-derived default, long-press repeat. Replaces broken Full Screen Mode (which froze on iPad).
+- [x] **Wrap-safe chord chart renderer** — chord+lyric pairs render as atomic inline-block segments. Chords stay locked above syllables when lines wrap at narrow width. Supports dash-runs, annotations, parens, multi-line chord groups.
+- [x] **Offline-for-gig infrastructure** — SWR Firebase cache, "Prep for Gig" one-tap warmer, cache-first service worker, cross-origin CDN caching (Firebase SDK + Google Fonts CSS). No-wifi gig use works after one online Prep tap.
+- [x] **Pocket Meter v2 Guided Mode shipped (MVP)** — chooser (Use song BPM / Type BPM), locked screen with "YOU'RE AT" + reference lock, PLL phase-lock with auto re-sync, IOI-based tempo classifier (abandoned phase-based — was aliasing direction on large drifts).
+
+### Known-open (documented but intentionally deferred)
+
+- [ ] **Firebase `activity_log` index warning** — requires rules update in Firebase Console. Snippet in `02_GrooveLinx/docs/firebase-rules-snippet.md`. Not code; user to apply.
+- [ ] **Chris sees 3 copies of today's gig on his iCal, 1 on shared Google Calendar** — diagnosed as Chris-side multi-subscription setup in Apple Calendar (not a GrooveLinx data bug). Remediation in Apple Calendar: Settings → Accounts → remove duplicate DeadCetera subscriptions.
+- [ ] **Brian's "Brian busy" test events don't surface via API despite appearing in his Google Calendar UI as DeadCetera** — comprehensive diagnostic (`debugFindEvent` across all event types + calendars) returned zero matches. Most likely a Google Calendar UI vs API discrepancy: either event-level Private visibility hiding from API, iOS Calendar app stale cache, or a Workspace-domain admin restriction on hrestoration.com. Not a code bug.
+
+### Bugs Fixed This Session (2026-04-11)
+
+- [x] **Love cards not rendering in panel mode** — `_sdPopulateRightPanel` gated behind `!_sdPanelMode`, skipping all love/readiness/DNA rendering on Songs page right panel. Fixed: removed gate.
+- [x] **Duplicate DNA in right panel** — Key/BPM/Lead appeared twice (header + right panel). Fixed: removed right panel duplicate.
+- [x] **Analyze Recording broken** — `RecordingAnalyzer.setContext()` doesn't exist (private var), silent error before analysis. Fixed: `analyze()` now accepts opts directly.
+- [x] **Setlist search click-to-add broken** — mousedown handler lost `this.dataset.title` due to focus/blur timing. Fixed: passes title as string literal.
+- [x] **"Add to band" shown misleadingly** — appeared even with matching search results. Fixed: only shows when zero matches.
+- [x] **Cross-midnight event misclassification** — 10pm-1am events classified as soft (endHour 1 < rehearsalStart 17). Fixed: detect cross-midnight wrap, add 24 to effective end.
+- [x] **dateWindows built after freeBusy calls** — gig-specific time windows never used by recommendation engine. Fixed: moved construction before freeBusy merge.
+- [x] **_recOpts scoped inside conditional** — other members' free/busy used empty defaults when current user lacked calendar scope. Fixed: moved settings outside conditional.
+- [x] **index.html bloated to 1.1MB** — 64 duplicate head sections from auto-stamp. Fixed: rebuilt to 55KB.
+- [x] **Plan cascade in song matching** — planMatch weight 0.35 caused cascading "segment N = plan song N" behavior. Fixed: weight 0.15, position scoring removed.
 
 ### Bugs Fixed This Session (2026-04-11)
 

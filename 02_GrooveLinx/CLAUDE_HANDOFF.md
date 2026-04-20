@@ -2,7 +2,81 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-18 (Stage View + Plan Clean Build/Edit split + Play tab speed fix + Zen→Focus + Live gig layout)_
+_Last updated: 2026-04-20 (420 FEST gig wrap-up — chart rendering hardening, offline infrastructure, Mode A contract, Pocket Meter v2, reliability fixes)_
+
+## Session 2026-04-20 — Pre-Gig Polish + Session Close
+
+**Status:** Repo clean on `main`. Drew heading to 420 FEST. Last build: `20260420-131317` (commit `f3a4bbea`).
+
+### What shipped in this two-day arc (2026-04-19 → 2026-04-20)
+
+Roughly 40 commits across several thematic areas. Summary:
+
+**Chart rendering (live gig):**
+- Wrap-safe chord/lyric pair renderer (chords locked to syllables through wraps)
+- Auto-scroll engine with right-edge vertical pill (replaces broken Fullscreen Mode)
+- iOS-specific NBSP fix for chord cells (desktop always worked; iPhone collapsed multi-space runs)
+- Self-healing HTML-entity decoder across all three chart renderers
+- Parenthesized annotations `(hold)`, `(slow down)`, dash-joined chord runs, chord+annotation mixed lines
+
+**Offline-for-gig:**
+- SWR Firebase cache (20s timeout — was 5s, too tight for cold starts)
+- Prep for Gig one-tap warmer with state-reflecting button
+- Cache-first service worker with CDN pre-cache (Firebase SDK, Google Fonts)
+- Save-path writes to SWR cache (fixes silent "saved but didn't stick" bugs)
+
+**Calendar — strict Mode A contract:**
+- External-events overlay disabled in Mode A (no personal-calendar bleed)
+- `purgeNonBandEvents` auto-runs to remove legacy free/busy imports
+- Dedupe: pre-push check, sync lock, re-link fix, admin button
+- Gig end-time end-to-end through pipeline + "Refresh gig times" button
+- Unified Gig editor in Calendar (Arrival/Soundcheck/Pay/Sound Person/Contact inline)
+- Unavailability classification in main sync path (was only in legacy path)
+- Contract copy in onboarding + Rules modal
+- Auto-reconnect on Sync / Dedupe / Refresh
+
+**Pocket Meter v2 Guided Mode (MVP):**
+- Chooser (Use song BPM / Type BPM / Tap 4)
+- Locked screen with actual-BPM primary + reference chip
+- IOI-based classifier (phase-based was aliasing at large drift)
+- Groove Feel (Tight/Normal/Loose) stored per user
+- Warmup + hysteresis + listening gap
+
+**Reliability:**
+- Start Gig launched wrong setlist (ID/index collision — `parseInt("3p7...")` = 3)
+- Lock This Set silently stale (SWR cache not written on save)
+- Transient "No chart yet" false-fails (cold-start timeout)
+- Stage View horizontal-pan trap on iPhone (flex `min-width:0`)
+- Firebase undefined-field save rejection (`_sanitizeForFirebase`)
+- `mode is not defined` unhandled rejection in song-detail
+
+**Docs:**
+- New `02_GrooveLinx/docs/firebase-rules-snippet.md` documenting the `.indexOn` rule needed in the Firebase Console.
+
+### Known open / intentionally deferred
+
+1. **Firebase activity_log index warning** — not code; user needs to paste snippet into Firebase Console. See `docs/firebase-rules-snippet.md`.
+2. **Chris seeing 3 copies of today's gig on iCal, 1 on Google** — diagnosed as Apple Calendar multi-subscription setup on Chris's device. Remediation in his settings, not our code.
+3. **Brian's "Brian busy" test events don't surface via Google API despite showing on his UI** — `debugFindEvent` across all calendars × 4 event types returned zero. Google UI vs API discrepancy (likely event-level Private visibility, stale iOS Calendar cache, or hrestoration.com Workspace admin restriction). Not fixable from code.
+
+### Restart prompt (next session)
+
+```
+GrooveLinx session restart. Repo on main, clean. Last build 20260420-131317.
+Read first:
+  - 02_GrooveLinx/CLAUDE_HANDOFF.md (this block)
+  - 02_GrooveLinx/CURRENT_PHASE.md (what's live 2026-04-19 → 2026-04-20)
+  - 02_GrooveLinx/uat/bug_queue.md (known-open items)
+  - 02_GrooveLinx/docs/firebase-rules-snippet.md (Firebase console rules Drew needs to apply)
+
+Drew played 420 FEST on 2026-04-20 using Live Gig mode with Prep for Gig pre-warming charts. First real gig-use of the wrap-safe renderer + auto-scroll pill + offline cache. Ask Drew how it went and whether any new bugs surfaced on stage.
+
+Carried forward: Pocket Meter v2 commit 3 (Groove Feel selector wired into classifier) was started but the IOI-based rewrite happened instead. Commit 3 is partially obsolete; revisit the per-song Groove Feel override if Drew wants that polish pass.
+```
+
+---
+
+
 
 ## Session 2026-04-18 — Stage View, Clean Build, Play-Tab Speed, Chart-Surface Cleanup
 

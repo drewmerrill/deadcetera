@@ -1,8 +1,55 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-18 (Stage View + Plan Clean Build/Edit + Play tab speed + Zen→Focus + Live gig layout)_
+_Updated: 2026-04-20 (420 FEST gig day — chart rendering hardening, offline infrastructure, calendar Mode A contract, Pocket Meter v2 guided mode, critical reliability fixes)_
 
 ## Active Phase: Band Adoption + Polish
+
+## What's Live (2026-04-19 → 2026-04-20 — gig-hardening arc)
+
+### Live Gig Chart Rendering
+- **Wrap-safe chord chart renderer** — chord+lyric pairs as atomic inline-block segments; chords stay locked above their syllables when lines wrap at narrow widths. Supports dash-runs ("G-F#-F-E"), parenthesized annotations ("(slow down)", "(hold)"), multi-line chord groups merging over a single lyric, and chord+annotation lines like "F --> Am C 3x".
+- **Auto-scroll engine with right-edge vertical pill** — ▲ / ▶⏸ / ▼ hands-free chart reading. Per-song speed saved to localStorage, BPM-derived default, long-press repeat, visible in Focus mode. Replaced broken browser Full Screen mode (froze on iPad).
+- **iPhone multi-space collapse fix** — chord cells use non-breaking spaces so "F7  F#7  G7" renders with real spacing on iOS (desktop was always fine).
+- **Self-healing entity decode** — charts with stored `&amp;` now render as `&` without DB migration (`glDecodeHtmlEntities` runs before all render paths).
+- **Focus mode polish** — safe-area insets, touch-action pan-y, exit button pinned, thumb-zone controls reclaimed.
+
+### Offline-for-Gig Infrastructure
+- **SWR Firebase cache** — `loadBandDataFromDrive` checks localStorage first, returns instantly, refreshes in background. 20s timeout on cache-miss (was too-tight 5s before).
+- **"Prep for Gig" one-tap warmer** — Stage View button walks every song in the setlist, pre-fetches chart + 8 metadata fields per song + band-level setlists/gigs/calendar. Button label reflects real cache state on every render (Ready / Top-up / Download).
+- **Cache-first service worker** — parses index.html on install and pre-caches every local asset + Firebase SDK + Google Fonts CSS. Font woff2 files now served by browser (SW intercept was causing opaque-response errors).
+- **Save-path writes to SWR cache** — `saveBandDataToDrive` now updates the SWR cache after Firebase write, so next read returns fresh data synchronously. Fixed silent "I saved but it didn't stick" class of bugs.
+
+### Calendar Mode A Contract (strict)
+- **Only the shared band calendar contributes in Mode A.** Personal-calendar overlays disabled, legacy free/busy imports auto-purged on every sync (`purgeNonBandEvents`).
+- **Dedupe sweep shipped** — pre-push check via `privateExtendedProperty=glEventId`, sync lock via Firebase transaction, re-link path fixed, admin "Clean duplicates" button.
+- **Gig end-time end-to-end** — `endTime` now plumbs through gig → calendar_event → Google; `_buildEventBody` respects provided end time; one-shot "Refresh gig times" admin button to migrate existing events.
+- **Unified Gig editor in Calendar** — Arrival / Soundcheck / Pay / Sound Person / Contact editable inline from Calendar event form when type=gig. Dual-writes to `bands/X/gigs` so Gigs-page list stays in sync. Step 1 of the Calendar/Gigs merge.
+- **Unavailability classification runs in main sync path** — extracted `_detectUnavailability` to module scope, wired into `_importGoogleEvent` + `_reconcileEvent`, one-shot `reclassifyUnavailability` runs after every Sync Calendars tap.
+- **Mode A contract copy in UI** — amber warning on onboarding Mode A card, green "How shared calendar mode works" callout at top of Rules modal when Mode A is active. Documents the two gotchas (must be on shared calendar + must not be Private visibility).
+- **Auto-reconnect to Google** — Sync Calendars / Clean duplicates / Refresh gig times now auto-trigger OAuth re-auth when `accessToken` is missing (common after page reload since token is session-scoped).
+- **Hover details enriched** — day hover shows title + organizer name ("by Brian") + event description (truncated) for shared-calendar events.
+
+### Pocket Meter v2 — Guided Mode (MVP)
+- **Chooser UI** — Use song BPM / Type BPM / Tap 4 to lock. Default guided mode (legacy auto-detect moved behind "Experimental auto-detect" toggle with a return chip).
+- **Locked screen** — "YOU'RE AT {actualBPM}" big, "Locked at {target} BPM" reference chip, rushing↔dragging meter with damped dot, tier label (Locked In / Rushing / Dragging / Uncertain), confidence pill (Solid / Medium / Uncertain).
+- **IOI-based classifier** — measures actual BPM from median inter-onset interval, compares to locked BPM. Replaced phase-based approach that was aliasing (clapping at 131 against 120 was showing Dragging).
+- **Groove Feel per user** — Tight / Normal / Loose, stored globally. Tight flips to Rushing/Dragging faster; Loose is forgiving (jam band mode).
+- **False-positive protection** — warmup state, listening gap detection, hysteresis on flip-out.
+
+### Reliability Fixes
+- **Start Gig launched wrong setlist** — ID/index collision in `_loadSetlistFromStore`. Setlist IDs contain digits so `parseInt` was interpreting "3p7kqn..." as index 3. Fixed: string-ID match first, numeric-index only for pure-numeric IDs.
+- **Lock This Set silently lost changes** — save path didn't write SWR cache; next read returned stale data. Fixed app-wide.
+- **Transient "No chart yet"** — 5s SWR timeout was firing on cold-start even on good wifi. Raised to 20s; song-detail distinguishes "doesn't exist" from "couldn't load" (Retry button).
+- **Stage View horizontal-pan trap on iPhone** — flex row missing `min-width:0` let long titles push past viewport, triggering iOS pan-horizontal lock that broke vertical scroll.
+- **Firebase save rejecting calendar_events** — undefined fields from a couple reconcile paths. Fixed, plus added `_sanitizeForFirebase` defense-in-depth on every save.
+- **`mode is not defined` silent error** — typeof-guarded the legacy Play-mode branch in `_sdPopulateBandLens`.
+
+### Docs
+- **`02_GrooveLinx/docs/firebase-rules-snippet.md`** — canonical reference for the `.indexOn` declaration needed for `/bands/*/activity_log`. Rules live in Firebase Console, not repo.
+
+---
+
+## What's Live (2026-04-18 — earlier that same day)
 
 ## What's Live (2026-04-18)
 
