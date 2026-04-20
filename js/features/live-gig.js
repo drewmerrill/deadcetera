@@ -462,7 +462,12 @@
       });
     }
     function _isChordToken(t) {
-      return /^[A-G][#b\u266d\u266f]?(?:(?:maj|min|aug|dim|sus|add|m|M)\d?)?(?:\d{1,2})?(?:sus\d)?(?:add\d)?(?:\/[A-G][#b\u266d\u266f]?)?$/.test(t);
+      // Supports: plain (C), sharp/flat (C#, Db), quality (m, maj, min, aug,
+      // dim, sus, add), extension number (7, 9, 11, 13, etc.), altered
+      // extensions (G7#5, C7b9, F#m7b5, Dmaj7#11 — chord extensions with
+      // #/b suffixes), slash bass (C/G), and a trailing chart annotation
+      // mark (D7* — asterisk as a notation cue).
+      return /^[A-G][#b\u266d\u266f]?(?:(?:maj|min|aug|dim|sus|add|m|M)\d?)?(?:\d{1,2})?(?:sus\d)?(?:add\d)?(?:[#b\u266d\u266f]\d+)*(?:\/[A-G][#b\u266d\u266f]?)?\*?$/.test(t);
     }
     function _isAnnotationToken(t) {
       // Performance directions commonly found on chord lines: arrows, repeats,
@@ -715,6 +720,12 @@
 
     try {
       var cd = await loadBandDataFromDrive(songTitle, 'chart');
+      // Guard against stale fetches completing after the user advanced to
+      // another song. Without this, rapid PREV/NEXT taps can cause an
+      // earlier song's chart to overwrite the current one once its fetch
+      // resolves. Verify the fetched title still matches the cursor.
+      var _currentSong = _lg.songs[_lg.cursor];
+      if (_currentSong && _currentSong.title !== songTitle) return;
       if (loading) loading.style.display = 'none';
       if (cd && cd.text && cd.text.trim()) {
         chartEl.innerHTML = _renderChartHTML(cd.text);

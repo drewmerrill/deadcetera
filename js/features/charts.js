@@ -112,7 +112,10 @@ window.ChartSystem = (function() {
         }
         return _esc(text)
             .replace(/\[([^\]]+)\]/g, '<span style="color:#a5b4fc;font-weight:700">[$1]</span>')
-            .replace(/\b([A-G][#b]?(?:m|maj|min|dim|aug|sus|add|7|9|11|13|6)?(?:\/[A-G][#b]?)?)\b/g, '<span style="color:#fbbf24;font-weight:600">$1</span>');
+            // Chord pattern supports: plain, sharp/flat, quality (m/maj/dim/etc),
+            // extension number, altered extensions (G7#5, C7b9, F#m7b5), slash
+            // bass, and a trailing * annotation mark.
+            .replace(/\b([A-G][#b]?(?:m|maj|min|dim|aug|sus|add|7|9|11|13|6)?(?:[#b]\d+)*(?:\/[A-G][#b]?)?\*?)\b/g, '<span style="color:#fbbf24;font-weight:600">$1</span>');
     }
 
     // ── Edit Handlers ───────────────────────────────────────────────────────
