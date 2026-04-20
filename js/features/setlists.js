@@ -1118,9 +1118,40 @@ function _slRenderStageView(idx, sl) {
     html += '<button onclick="_slLaunchLiveGig(' + idx + ')" style="display:block;width:100%;padding:16px;border-radius:12px;border:none;background:' + _ctaBg + ';color:white;font-size:1.1em;font-weight:800;cursor:pointer;min-height:54px;box-shadow:' + _ctaShadow + ';font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">' + _ctaLabel + '</button>';
 
     // ── Prep for Gig — pre-warm every chart + metadata into offline cache ──
+    // Inspect localStorage to see which songs already have a cached chart.
+    // The cache key format matches what window.prewarmBandData writes via
+    // _glCacheWrite: gl_cache_{songTitle}_chart. If every song in the setlist
+    // is present, render the button in its "ready" state so users don't re-
+    // download unnecessarily after a page reload / iPad sleep.
+    var _prepTitles = [];
+    var _prepSeen = {};
+    (window._slSets || []).forEach(function (set) {
+        (set.songs || []).forEach(function (item) {
+            var t = typeof item === 'string' ? item : (item && item.title);
+            if (t && !_prepSeen[t]) { _prepSeen[t] = 1; _prepTitles.push(t); }
+        });
+    });
+    var _prepCachedCount = 0;
+    _prepTitles.forEach(function (t) {
+        try { if (localStorage.getItem('gl_cache_' + t + '_chart')) _prepCachedCount++; } catch (e) {}
+    });
+    var _prepAllReady = _prepTitles.length > 0 && _prepCachedCount === _prepTitles.length;
+    var _prepPartial = _prepCachedCount > 0 && !_prepAllReady;
     var totalCount = setStats.reduce(function(a, s) { return a + s.count; }, 0);
-    html += '<button id="slPrepGigBtn" onclick="_slPrepForGig(' + idx + ')" style="display:block;width:100%;padding:12px;border-radius:10px;border:1px solid rgba(129,140,248,0.35);background:rgba(129,140,248,0.08);color:#a5b4fc;font-size:0.9em;font-weight:700;cursor:pointer;min-height:44px;font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">\u2B07 Prep for Gig \u00B7 Download ' + totalCount + ' charts offline</button>';
-    html += '<div id="slPrepGigStatus" style="font-size:0.72em;color:#64748b;text-align:center;margin-top:-4px;margin-bottom:10px;min-height:16px"></div>';
+
+    var _prepBtnLabel, _prepBtnStyle;
+    if (_prepAllReady) {
+        _prepBtnLabel = '\u2705 Ready for gig \u00B7 ' + _prepTitles.length + ' songs cached';
+        _prepBtnStyle = 'border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.12);color:#86efac';
+    } else if (_prepPartial) {
+        _prepBtnLabel = '\u2B07 Top up cache \u00B7 ' + (_prepTitles.length - _prepCachedCount) + ' of ' + _prepTitles.length + ' charts missing';
+        _prepBtnStyle = 'border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.08);color:#fbbf24';
+    } else {
+        _prepBtnLabel = '\u2B07 Prep for Gig \u00B7 Download ' + totalCount + ' charts offline';
+        _prepBtnStyle = 'border:1px solid rgba(129,140,248,0.35);background:rgba(129,140,248,0.08);color:#a5b4fc';
+    }
+    html += '<button id="slPrepGigBtn" onclick="_slPrepForGig(' + idx + ')" style="display:block;width:100%;padding:12px;border-radius:10px;' + _prepBtnStyle + ';font-size:0.9em;font-weight:700;cursor:pointer;min-height:44px;font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">' + _prepBtnLabel + '</button>';
+    html += '<div id="slPrepGigStatus" style="font-size:0.72em;color:#64748b;text-align:center;margin-top:-4px;margin-bottom:10px;min-height:16px">' + (_prepAllReady ? 'Charts stored locally \u2014 no wifi needed at the gig.' : '') + '</div>';
 
     // ── 3. COACHING — calm bandmate voice, no alarm icons ──
     var coaching = _coachingText(totalWarn, totalSongs, totalReady, warnTitles);
