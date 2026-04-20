@@ -2059,6 +2059,79 @@ window.GLCalendarSync = (function() {
     return { scanned: scanned, updated: updated };
   }
 
+  // Debug helper — comprehensive search across event types for a specific
+  // title across all accessible calendars. Hunts down events the default
+  // events.list query doesn't return: Out of Office, Focus Time, Working
+  // Location, soft-deleted, and events on calendars we forgot we had.
+  // Usage:
+  //   await GLCalendarSync.debugFindEvent('brian busy', '2026-06-01', '2026-06-30')
+  async function debugFindEvent(titleFragment, startDate, endDate) {
+    if (!hasCalendarScope() || !accessToken) { console.log('[debug] no token'); return; }
+    var frag = (titleFragment || '').toLowerCase();
+    var timeMin = (startDate || '2026-01-01') + 'T00:00:00Z';
+    var timeMax = (endDate || '2026-12-31') + 'T23:59:59Z';
+    var cals = [];
+    try {
+      var listRes = await fetch(WORKER_BASE + '/calendar/list', {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      var listData = await listRes.json();
+      cals = (listData.items || []).map(function (c) { return { id: c.id, summary: c.summary || c.id }; });
+    } catch (e) { console.log('[debug] list failed:', e.message); return; }
+
+    console.log('[debug] searching', cals.length, 'calendars for:', JSON.stringify(frag));
+
+    // eventType variants Google exposes — default scope misses OOO/focusTime
+    // /workingLocation events even when they're on the queried calendar.
+    var types = ['default', 'outOfOffice', 'focusTime', 'workingLocation'];
+    var total = 0;
+
+    for (var ci = 0; ci < cals.length; ci++) {
+      var c = cals[ci];
+      var calTotal = 0;
+      for (var ti = 0; ti < types.length; ti++) {
+        var t = types[ti];
+        try {
+          // Worker doesn't pass eventTypes through — fetch Google directly.
+          var url = 'https://www.googleapis.com/calendar/v3/calendars/'
+            + encodeURIComponent(c.id)
+            + '/events?timeMin=' + encodeURIComponent(timeMin)
+            + '&timeMax=' + encodeURIComponent(timeMax)
+            + '&singleEvents=true&maxResults=250&showDeleted=true'
+            + '&eventTypes=' + encodeURIComponent(t);
+          var r = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+          if (!r.ok) continue;
+          var d = await r.json();
+          var items = d.items || [];
+          items.forEach(function (ev) {
+            var title = (ev.summary || '').toLowerCase();
+            if (!frag || title.indexOf(frag) !== -1) {
+              console.log('  [HIT]',
+                'cal:', c.summary, '|',
+                'type:', t, '|',
+                (ev.start && (ev.start.dateTime || ev.start.date)) || '?', '|',
+                JSON.stringify(ev.summary || '(no title)'), '|',
+                'status:', ev.status, '|',
+                'visibility:', ev.visibility || 'default', '|',
+                'eventType:', ev.eventType || 'default', '|',
+                'creator:', ev.creator && ev.creator.email);
+              calTotal++; total++;
+            }
+          });
+        } catch (e) { /* skip */ }
+      }
+      if (calTotal > 0) console.log('  (' + calTotal + ' match(es) on "' + c.summary + '")');
+    }
+    if (total === 0) {
+      console.log('[debug] ZERO matches found across', cals.length, 'calendars × 4 event types.');
+      console.log('[debug] If Brian says the event exists, it may be:');
+      console.log('         - A Google Task (separate API, not Calendar)');
+      console.log('         - On a calendar not shared with this account');
+      console.log('         - On a Workspace calendar with domain-restricted visibility');
+    }
+    return total;
+  }
+
   // Debug helper — bypass every guard and hit the worker's /calendar/list
   // directly. Used to diagnose when listCalendars() returns [] because
   // _calendarScopeFailed got stuck to true earlier in the session.
@@ -2188,6 +2261,7 @@ window.GLCalendarSync = (function() {
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,
+    debugFindEvent: debugFindEvent,
     pullBandCalendarEvents: pullBandCalendarEvents,
     _getBandEmails: _getBandEmails,
     _buildEventBody: _buildEventBody
