@@ -581,12 +581,15 @@ window.loadBandDataFromDrive = async function loadBandDataFromDrive(songTitle, d
     // Cache hit → return immediately. Fresh data lands in cache for next call.
     if (cached !== undefined) return cached;
 
-    // Cache miss → await Firebase with a hard 5s cap so a dead network
-    // doesn't hang every caller (critical at the gig on bad venue wifi).
+    // Cache miss → await Firebase with a generous cap. 5s was too tight —
+    // a brief WebSocket stall or Firebase cold start would exceed it even on
+    // good wifi, and the caller would falsely conclude "data doesn't exist".
+    // 20s is still short enough that a truly dead network doesn't hang UX,
+    // but long enough that real Firebase responses virtually always arrive.
     try {
         var result = await Promise.race([
             refreshPromise,
-            new Promise(function (resolve) { setTimeout(function () { resolve(undefined); }, 5000); })
+            new Promise(function (resolve) { setTimeout(function () { resolve(undefined); }, 20000); })
         ]);
         if (result !== undefined && result !== null) return result;
     } catch (e) { /* fall through to legacy fallback */ }

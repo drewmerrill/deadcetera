@@ -227,6 +227,17 @@ function _sdSkeleton() {
 // ── Band Chart (primary display) ──────────────────────────────────────────────
 function _sdRenderBandChart(title, safeSong, chartText) {
     if (!chartText) {
+        // Distinguish "never had a chart" (prompt to add) from "load failed"
+        // (prompt to retry) — the latter is what Drew hit when the chart was
+        // on Firebase but the read timed out.
+        if (window._sdChartLoadFailed) {
+            return '<div class="sd-card" style="text-align:center;padding:24px;border-color:rgba(251,191,36,0.25);background:rgba(251,191,36,0.04)">'
+                + '<div style="font-size:1.4em;margin-bottom:8px">\u26A0</div>'
+                + '<div style="font-size:0.88em;font-weight:700;color:#fbbf24;margin-bottom:4px">Couldn\u2019t load chart</div>'
+                + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">Network hiccup or Firebase slow to respond. The chart may still exist.</div>'
+                + '<button class="sd-pm-btn" onclick="renderSongDetail(\'' + safeSong + '\')">Retry</button>'
+                + '</div>';
+        }
         return '<div class="sd-card" style="text-align:center;padding:24px;border-color:rgba(99,102,241,0.12)">'
             + '<div style="font-size:1.4em;margin-bottom:8px">\uD83D\uDCDD</div>'
             + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:4px">No chart yet</div>'
@@ -293,7 +304,14 @@ async function _sdPopulateBandLens(title) {
         try { _cachedChart = localStorage.getItem(_chartCacheKey); } catch(e) {}
         if (_cachedChart) chartText = _cachedChart;
 
-        var _chartPromise = loadBandDataFromDrive(title,'chart').catch(function(){return null;});
+        // Track whether the chart call failed so we can show "retry" UI
+        // instead of falsely claiming the song has no chart on a transient
+        // network error.
+        var _chartLoadFailed = false;
+        var _chartPromise = loadBandDataFromDrive(title,'chart').catch(function(){
+            _chartLoadFailed = true;
+            return null;
+        });
         // Start all other loads in parallel (non-blocking)
         var _otherPromises = Promise.all([
             loadBandDataFromDrive(title,'lead_singer').catch(function(){return null;}),
@@ -311,7 +329,15 @@ async function _sdPopulateBandLens(title) {
         if (_freshChart) {
             chartText = _freshChart;
             try { localStorage.setItem(_chartCacheKey, _freshChart); } catch(e) {}
+        } else if (!chartText && _chartRes === null) {
+            // Nothing cached locally AND Firebase returned null/timeout.
+            // Could be either "chart doesn't exist" or "network hiccup" — we
+            // can't tell. Mark as unresolved so the Play tab shows a retry
+            // affordance instead of "No chart yet".
+            _chartLoadFailed = true;
         }
+        // Expose for render branches
+        window._sdChartLoadFailed = _chartLoadFailed;
         // Use cached status (already in memory from boot preloads)
         var _cacheStatus = (typeof GLStore !== 'undefined' && GLStore.getStatus) ? (GLStore.getStatus(title) || '') : '';
         status = _cacheStatus;
@@ -383,7 +409,9 @@ async function _sdPopulateBandLens(title) {
             // Clean chart
             (chartText
                 ? '<div class="sd-card" style="padding:24px;border-color:rgba(99,102,241,0.12)"><pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:15px;line-height:1.8;color:#e2e8f0;margin:0;letter-spacing:0.02em">' + _sdEsc(chartText) + '</pre></div>'
-                : '<div class="sd-card" style="text-align:center;padding:32px;color:var(--text-dim)"><div style="font-size:1.6em;margin-bottom:10px">📖</div><div style="font-size:0.95em;margin-bottom:12px">No chart yet</div><button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">Get Chart</button></div>'
+                : window._sdChartLoadFailed
+                    ? '<div class="sd-card" style="text-align:center;padding:32px;color:var(--text-dim)"><div style="font-size:1.6em;margin-bottom:10px">\u26A0</div><div style="font-size:0.95em;margin-bottom:4px;color:#fbbf24">Couldn\u2019t load chart</div><div style="font-size:0.78em;margin-bottom:12px">Network hiccup or Firebase slow to respond. The chart may still exist.</div><button class="sd-pm-btn" onclick="renderSongDetail(\''+safeSong+'\')">Retry</button></div>'
+                    : '<div class="sd-card" style="text-align:center;padding:32px;color:var(--text-dim)"><div style="font-size:1.6em;margin-bottom:10px">📖</div><div style="font-size:0.95em;margin-bottom:12px">No chart yet</div><button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">Get Chart</button></div>'
             ) +
             // Crib notes
             (cribData && toArray(cribData).length
