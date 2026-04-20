@@ -517,8 +517,12 @@
         if (_isChordToken(t)) { chordCount++; depth += opens - closes; continue; }
         if (_isChordRun(t)) { chordCount++; depth += opens - closes; continue; }
         if (_isAnnotationToken(t)) { depth += opens - closes; continue; }
-        // Token opens a paren group like "(slow" — start of annotation group.
-        if (opens > closes) { depth += opens - closes; continue; }
+        // Any token containing parens — including balanced tokens like
+        // "(hold)" as well as partials "(slow" / "down)" — counts as
+        // annotation. Previously only unbalanced tokens passed, which
+        // dropped whole chord lines to plain rendering when they contained
+        // a balanced cue in the middle.
+        if (opens > 0 || closes > 0) { depth += opens - closes; continue; }
         return false;
       }
       return chordCount > 0;
@@ -537,7 +541,10 @@
         if (/^\s+$/.test(t)) { html += t.replace(/ /g, '\u00A0'); continue; }
         var opens = (t.match(/\(/g) || []).length;
         var closes = (t.match(/\)/g) || []).length;
-        var insideParens = depth > 0 || opens > closes;
+        // A token is "annotation" (dim italic) if it's inside an open paren
+        // group, OR if it contains ANY paren itself — covers "(hold)",
+        // "(slow", "down)" alike.
+        var insideParens = depth > 0 || opens > 0 || closes > 0;
         if (!insideParens && _isChordToken(t)) {
           html += '<span class="cl-inline-chord">' + _esc(t) + '</span>';
         } else if (!insideParens && _isChordRun(t)) {
