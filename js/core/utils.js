@@ -209,6 +209,28 @@ window.formatPracticeDate = function formatPracticeDate(dateStr) {
  * Generate a short random alphanumeric ID (avoids visually confusing chars).
  * @param {number} length  Default 8
  */
+// Decode HTML entities repeatedly until stable. Used by chart renderers to
+// recover plain text from stored values that were double-escaped at some
+// point (e.g. "1 &amp; 2 &amp;" stored literally instead of "1 & 2 &").
+// Loop-decode handles the double-encoded "&amp;amp;" case.
+window.glDecodeHtmlEntities = function glDecodeHtmlEntities(s) {
+    var out = String(s || ''), prev;
+    do {
+        prev = out;
+        out = out
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/&quot;/gi, '"')
+            .replace(/&apos;/gi, "'")
+            .replace(/&#39;/g, "'")
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&#(\d+);/g, function(_, n) { return String.fromCharCode(+n); })
+            .replace(/&#x([0-9a-f]+);/gi, function(_, h) { return String.fromCharCode(parseInt(h, 16)); });
+    } while (out !== prev);
+    return out;
+};
+
 window.generateShortId = function generateShortId(length) {
     length = length || 8;
     var chars = 'abcdefghjkmnpqrstuvwxyz23456789';

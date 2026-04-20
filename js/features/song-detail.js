@@ -250,7 +250,7 @@ function _sdRenderBandChart(title, safeSong, chartText) {
         + '<div class="sd-card-title" style="margin:0">\uD83C\uDFBC Your Chart</div>'
         + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u270F\uFE0F Edit</button>'
         + '</div>'
-        + '<pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:13px;line-height:1.7;color:#e2e8f0;margin:0;letter-spacing:0.01em;max-height:400px;overflow-y:auto">' + _sdEsc(chartText) + '</pre>'
+        + '<pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:13px;line-height:1.7;color:#e2e8f0;margin:0;letter-spacing:0.01em;max-height:400px;overflow-y:auto">' + _sdEsc(typeof window.glDecodeHtmlEntities === 'function' ? window.glDecodeHtmlEntities(chartText) : chartText) + '</pre>'
         + '</div>';
 }
 
@@ -329,7 +329,13 @@ async function _sdPopulateBandLens(title) {
         if (_freshChart) {
             chartText = _freshChart;
             try { localStorage.setItem(_chartCacheKey, _freshChart); } catch(e) {}
-        } else if (!chartText && _chartRes === null) {
+        }
+        // Decode any stored HTML entities so "1 &amp; 2 &amp;" renders as
+        // "1 & 2 &" regardless of whether an old save stored the escaped form.
+        if (chartText && typeof window.glDecodeHtmlEntities === 'function') {
+            chartText = window.glDecodeHtmlEntities(chartText);
+        }
+        if (!_freshChart && !chartText && _chartRes === null) {
             // Nothing cached locally AND Firebase returned null/timeout.
             // Could be either "chart doesn't exist" or "network hiccup" — we
             // can't tell. Mark as unresolved so the Play tab shows a retry

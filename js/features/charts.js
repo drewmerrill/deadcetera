@@ -105,6 +105,11 @@ window.ChartSystem = (function() {
 
     function _formatChart(text) {
         if (!text) return '';
+        // Decode any stored HTML entities first so double-escape
+        // artefacts ("&amp;" instead of "&") surface as clean text.
+        if (typeof window.glDecodeHtmlEntities === 'function') {
+            text = window.glDecodeHtmlEntities(text);
+        }
         return _esc(text)
             .replace(/\[([^\]]+)\]/g, '<span style="color:#a5b4fc;font-weight:700">[$1]</span>')
             .replace(/\b([A-G][#b]?(?:m|maj|min|dim|aug|sus|add|7|9|11|13|6)?(?:\/[A-G][#b]?)?)\b/g, '<span style="color:#fbbf24;font-weight:600">$1</span>');

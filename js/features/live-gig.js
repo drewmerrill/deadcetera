@@ -450,6 +450,12 @@
      syllable, no horizontal pan required.
   ───────────────────────────────────────────────────────────── */
   function _renderChartHTML(raw) {
+    // Recover plain text from stored values that may have been HTML-escaped
+    // at some point (e.g. "1 &amp; 2 &amp;" shows literal "&amp;" in the UI
+    // after a second escape pass). Decode once, escape once for HTML safety.
+    if (typeof window.glDecodeHtmlEntities === 'function') {
+      raw = window.glDecodeHtmlEntities(raw);
+    }
     function _esc(s) {
       return String(s).replace(/[&<>]/g, function (c) {
         return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;';
