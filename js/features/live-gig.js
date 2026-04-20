@@ -526,14 +526,15 @@
     function _renderChordishRow(line) {
       // Render per-token with chord color on actual chords, dimmer italic on
       // annotations (including everything inside parens). Original spacing
-      // preserved via white-space:pre-wrap on the row.
+      // preserved via non-breaking spaces so iOS Safari doesn't collapse
+      // multi-space runs (it sometimes does despite white-space:pre-wrap).
       var re = /(\s+|\S+)/g;
       var m;
       var html = '';
       var depth = 0;
       while ((m = re.exec(line)) !== null) {
         var t = m[0];
-        if (/^\s+$/.test(t)) { html += _esc(t); continue; }
+        if (/^\s+$/.test(t)) { html += t.replace(/ /g, '\u00A0'); continue; }
         var opens = (t.match(/\(/g) || []).length;
         var closes = (t.match(/\)/g) || []).length;
         var insideParens = depth > 0 || opens > closes;
@@ -616,6 +617,12 @@
           // Chords merged from multiple source lines — join tokens with single space.
           chordText = gr.chords.map(function (p) { return p.chord; }).join(' ');
         }
+        // iOS Safari collapses runs of plain spaces inside display:block content
+        // with white-space:pre when the parent is inline-block (desktop Safari
+        // renders them fine). Swap regular spaces for non-breaking spaces so
+        // "F7  F#7  G7" stays readable as three tokens instead of "F7F#7 G7".
+        // This only affects chord cells — lyrics keep normal spaces for wrap.
+        chordText = chordText.replace(/ /g, '\u00A0');
         var segStart = Math.min(gr.start, lyricLine.length);
         var segEnd = (g + 1 < groups.length)
           ? Math.min(groups[g + 1].start, lyricLine.length)
