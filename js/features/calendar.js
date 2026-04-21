@@ -1269,6 +1269,74 @@ window._calRefreshGigTimes = async function() {
     if (btn) { btn.textContent = 'Refresh gig times'; btn.disabled = false; }
 };
 
+// One-time cleanup: remove legacy auto-pushed "Busy" / "Busy (all day)" events
+// that were created by the old conflict-push path before it tagged events with
+// glBlockId. These clutter the conflict list as "Busy (all day) (from X)" rows
+// with no editable backing.
+window._calCleanLegacyBusy = async function() {
+    if (typeof accessToken === 'undefined' || !accessToken) {
+        if (typeof showToast === 'function') showToast('Signing back into Google\u2026', 3000);
+        if (typeof _calConnectGoogle === 'function') { try { await _calConnectGoogle(); } catch (e) {} }
+        if (typeof accessToken === 'undefined' || !accessToken) {
+            if (typeof showToast === 'function') showToast('\u26A0 Google sign-in cancelled.', 5000);
+            return;
+        }
+    }
+    // Scan calendar_events for legacy orphans
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    var orphans = events.filter(function(e) {
+        if (!e) return false;
+        if (e.type === 'rehearsal' || e.type === 'gig' || e.type === 'meeting') return false;
+        var title = (e.title || '').trim().toLowerCase();
+        // Match: "busy", "busy (all day)", or "busy (personal calendar)"
+        if (title !== 'busy' && title.indexOf('busy (') !== 0) return false;
+        // Must have been imported (not a user-created conflict)
+        var wasImported = e._importedFromGoogle || (e.sync && e.sync.source === 'google');
+        return wasImported;
+    });
+    if (!orphans.length) {
+        if (typeof showToast === 'function') showToast('\u2713 No legacy Busy events found \u2014 nothing to clean');
+        return;
+    }
+    if (!confirm('Found ' + orphans.length + ' legacy "Busy" event' + (orphans.length === 1 ? '' : 's') + ' in GrooveLinx.\n\nRemove from GrooveLinx AND from Google Calendar?\n\n(This will not affect your current schedule blocks.)')) {
+        return;
+    }
+    var btn = document.getElementById('calCleanBusyBtn');
+    if (btn) { btn.textContent = 'Cleaning...'; btn.disabled = true; }
+    var removedGoogle = 0;
+    var removedLocal = 0;
+    for (var i = 0; i < orphans.length; i++) {
+        var orp = orphans[i];
+        var gid = orp.googleEventId || (orp.sync && orp.sync.externalEventId) || '';
+        var cal = orp.calendarId || (orp.sync && orp.sync.calendarId) || '';
+        if (gid && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.deleteConflictFromGoogle) {
+            try {
+                var r = await GLCalendarSync.deleteConflictFromGoogle(gid, { calendarId: cal });
+                if (r && r.success) removedGoogle++;
+            } catch (e) { /* non-fatal */ }
+        }
+    }
+    // Rebuild without orphans and save
+    var orphanIds = {};
+    orphans.forEach(function(o) { if (o.id) orphanIds[o.id] = true; });
+    var kept = events.filter(function(e) { return !(e && e.id && orphanIds[e.id]); });
+    removedLocal = events.length - kept.length;
+    try {
+        await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase ? _sanitizeForFirebase(kept) : kept);
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Save failed: ' + (e.message || 'unknown'));
+        if (btn) { btn.textContent = 'Clean legacy Busy'; btn.disabled = false; }
+        return;
+    }
+    if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+    _calRenderGridOnly();
+    if (typeof _calRenderConflictPanel === 'function') _calRenderConflictPanel();
+    var msg = '\u2713 Removed ' + removedLocal + ' locally';
+    if (removedGoogle > 0) msg += ' + ' + removedGoogle + ' from Google';
+    if (typeof showToast === 'function') showToast(msg, 6000);
+    if (btn) { btn.textContent = 'Clean legacy Busy'; btn.disabled = false; }
+};
+
 // Dismiss date selection — return to global mode
 window._calDismissDateSelection = function() {
     var card = document.getElementById('calSelectedDayCard');
@@ -1496,7 +1564,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
             + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
             + '<button onclick="_calDedupeGoogle()" id="calDedupeBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove duplicate Google Calendar events created by past sync races">Clean duplicates</button>'
-            + '<button onclick="_calRefreshGigTimes()" id="calRefreshTimesBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Push correct start/end times from Gigs to Google Calendar (one-time fix for events showing 7-9 PM default)">Refresh gig times</button>';
+            + '<button onclick="_calRefreshGigTimes()" id="calRefreshTimesBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Push correct start/end times from Gigs to Google Calendar (one-time fix for events showing 7-9 PM default)">Refresh gig times</button>'
+            + '<button onclick="_calCleanLegacyBusy()" id="calCleanBusyBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove legacy auto-pushed &quot;Busy&quot; / &quot;Busy (all day)&quot; events that pollute the conflict list">Clean legacy Busy</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }

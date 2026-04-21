@@ -1,11 +1,13 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260421-194359 (local stamp via stamp-version.py)
+**Build Under Test:** 20260421-195241 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-21
 
 ---
 
 ## Session Focus
+
+**2026-04-21 (fourth fix):** (a) Phase 1.5 block push wasn't migrating blocks already linked to the user's personal calendar — it fell into `updateConflictInGoogle` which PATCHed the old personal-cal event instead of creating a new one on DeadCetera. Fixed: in Phase 1.5, detect stale `calendarId` mismatch, clear the stale link, take the CREATE path on band cal, and best-effort delete the old personal event. (b) Added a "Clean legacy Busy" admin button that scans calendar_events for imported rows titled "Busy" / "Busy (all day)" and removes them from Firebase + Google. (c) Added a Phase 2 diagnostic: logs the title+date of every event Google returns, so "event X is missing" reports can be answered via console log rather than guessing.
 
 **2026-04-21 (third fix):** Pencil/delete buttons on the conflict-list panel did nothing on derived "Busy (all day) (from X)" rows. Those rows aren't schedule_blocks — they're blocked ranges derived from imported band-calendar events via organizer-email attribution. `b._block` was undefined so both handlers bailed on `!blockId`. Fixed: `_pushBlock` now attaches `_eventId` / `_googleEventId` / `_calendarId` to the blocked range; `_calEditScheduleBlock(blockId, {eventId})` opens the underlying event in the normal editor when no block backs the row; `_calDeleteScheduleBlock(blockId, {eventId})` removes the underlying calendar_event (local + Google) when no block backs the row.
 

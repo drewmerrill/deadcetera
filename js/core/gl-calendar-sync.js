@@ -1142,11 +1142,30 @@ window.GLCalendarSync = (function() {
             var _reason = (blk.summary || '').trim();
             // Compose GrooveLinx-style title: "Drew — busy" or "Drew — Out"
             var _summary = _display + ' \u2014 ' + (_reason || 'busy');
+            // Migrate: if previously synced to a DIFFERENT calendar (e.g. the
+            // legacy "Add to Google" button pushed to primary), clear the stale
+            // link so we take the CREATE path on the band calendar. Best-effort
+            // delete the old event from the old calendar afterwards.
+            var _staleGid = null, _staleCal = null;
+            if (blk.googleEventId && blk.calendarId && blk.calendarId !== bandCalId) {
+              _staleGid = blk.googleEventId;
+              _staleCal = blk.calendarId;
+              blk.googleEventId = null;
+              blk.syncedToGoogle = false;
+              blk.calendarId = null;
+            }
             var _res = await syncConflictToGoogle(blk, {
               calendarId: bandCalId,
               summary: _summary,
               visibility: 'default'
             });
+            // Clean up the old personal-calendar event (non-fatal)
+            if (_res && _res.success && _staleGid) {
+              try {
+                await deleteConflictFromGoogle(_staleGid, { calendarId: _staleCal });
+                console.log('[CalSync] Phase 1.5: Cleaned stale event from', _staleCal);
+              } catch(e) { /* non-fatal */ }
+            }
             if (_res && _res.success) {
               blk.googleEventId = _res.googleEventId;
               blk.calendarId = bandCalId;
@@ -1220,6 +1239,15 @@ window.GLCalendarSync = (function() {
     }
 
     console.log('[CalSync] Phase 2: Fetched', googleEvents.length, 'changes', useSyncToken ? '(incremental)' : '(full)');
+    // Diagnostic: enumerate what we actually got back so "event X is missing"
+    // reports can be answered by checking the console rather than guessing.
+    if (googleEvents.length) {
+      var _titles = googleEvents.slice(0, 50).map(function(g) {
+        var _d = (g.start && (g.start.date || g.start.dateTime)) || '(no-date)';
+        return (g.status === 'cancelled' ? '[CANCELLED] ' : '') + (g.summary || '(no title)') + ' @ ' + _d;
+      });
+      console.log('[CalSync] Phase 2: Events returned by Google:', _titles);
+    }
 
     var dirty = false;
     for (var gi = 0; gi < googleEvents.length; gi++) {
