@@ -1,11 +1,13 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260420-131317 (local stamp via stamp-version.py)
-**Last Updated:** 2026-04-20
+**Build Under Test:** 20260421-191931 (local stamp via stamp-version.py)
+**Last Updated:** 2026-04-21
 
 ---
 
 ## Session Focus
+
+**2026-04-21:** Diagnosed why Brian's + Pierce's shared-calendar events weren't appearing in GrooveLinx despite being visible in Google Calendar UI. Root cause was a stale in-memory `accessToken` — present but expired/revoked — that passed our truthy-check but failed the actual Google fetch with 401. Phase 2 pull aborted, no events imported, yet the toast said "Sync complete — everything up to date (⚠ Google API 401)". Fixed: detect 401/403 → silent re-auth → retry sync once; toast is now honest when sync errors out. Updates the 2026-04-20 note that guessed this was a Google UI/API discrepancy — it was actually our stale-token handling.
 
 **2026-04-19 → 2026-04-20 (two-day arc, gig on 4/20):** Live gig chart rendering polish, offline-for-gig infrastructure, calendar sync deep cleanup (duplicates, attribution, Mode A contract enforcement, visibility cleanup), critical reliability fixes (wrong-setlist launch, stale post-save render, stripped iOS chord spacing). Queue is clean at gig-time.
 
@@ -32,7 +34,7 @@
 
 - [ ] **Firebase `activity_log` index warning** — requires rules update in Firebase Console. Snippet in `02_GrooveLinx/docs/firebase-rules-snippet.md`. Not code; user to apply.
 - [ ] **Chris sees 3 copies of today's gig on his iCal, 1 on shared Google Calendar** — diagnosed as Chris-side multi-subscription setup in Apple Calendar (not a GrooveLinx data bug). Remediation in Apple Calendar: Settings → Accounts → remove duplicate DeadCetera subscriptions.
-- [ ] **Brian's "Brian busy" test events don't surface via API despite appearing in his Google Calendar UI as DeadCetera** — comprehensive diagnostic (`debugFindEvent` across all event types + calendars) returned zero matches. Most likely a Google Calendar UI vs API discrepancy: either event-level Private visibility hiding from API, iOS Calendar app stale cache, or a Workspace-domain admin restriction on hrestoration.com. Not a code bug.
+- [x] **Shared-calendar events (Brian's + Pierce's) invisible in GrooveLinx despite being on the DeadCetera Google calendar** — previously guessed to be a Google UI/API discrepancy. Real cause: stale in-memory `accessToken` passed our truthy-check, Google returned 401, Phase 2 pull aborted, toast lied ("Sync complete — everything up to date (⚠ Google API 401)"). Fixed 2026-04-21: `gl-calendar-sync.js` flags `needsReauth=true` on 401/403; `calendar.js` runs `_calConnectGoogle()` and retries sync once; toast opens with "⚠ Sync failed — Google sign-in expired" when pull truly fails. Context: Brian previously cleared cookies every session, which killed Google SSO silent-refresh and forced stale-token states. He's now set cookies to persist for our domain, which should prevent recurrence on his side.
 
 ### Bugs Fixed This Session (2026-04-11)
 

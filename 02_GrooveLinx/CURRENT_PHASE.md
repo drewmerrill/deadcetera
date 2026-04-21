@@ -1,8 +1,18 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-20 (420 FEST gig day — chart rendering hardening, offline infrastructure, calendar Mode A contract, Pocket Meter v2 guided mode, critical reliability fixes)_
+_Updated: 2026-04-21 (calendar sync stale-token recovery — 401 now triggers silent re-auth + retry; honest toast)_
 
 ## Active Phase: Band Adoption + Polish
+
+## What's Live (2026-04-21)
+
+### Calendar Sync — Stale-Token Recovery
+- **401/403 → silent re-auth → retry once.** In-memory `accessToken` can be truthy-but-stale (expired / revoked / cookie-cleared). Previous code passed the truthy check, hit Google, got 401, aborted Phase 2 pull, and imported zero events — while the toast still said "Sync complete — everything up to date". Fixed: `gl-calendar-sync.js` sets `result.needsReauth` on 401/403; `calendar.js` calls `_calConnectGoogle()` and re-runs `syncBandCalendar()` once.
+- **Honest sync toast.** An errored sync that landed nothing now opens with "⚠ Sync failed — Google sign-in expired. Tap Sync Calendars again." If some events landed but errors occurred on other pages, the error is labeled "partial" instead of sharing the leading checkmark.
+- **Resolved the 2026-04-20 "Brian's events invisible via API" mystery.** That diagnosis (Google UI/API discrepancy) was wrong. Real cause was our stale-token handling; Brian's cookie-clearing habit amplified the frequency on his side.
+
+---
+
 
 ## What's Live (2026-04-19 → 2026-04-20 — gig-hardening arc)
 

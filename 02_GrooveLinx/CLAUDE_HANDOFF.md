@@ -2,7 +2,54 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-20 (420 FEST gig wrap-up — chart rendering hardening, offline infrastructure, Mode A contract, Pocket Meter v2, reliability fixes)_
+_Last updated: 2026-04-21 (stale-token calendar sync fix — 401 now triggers silent re-auth + retry, toast is honest when sync fails)_
+
+## Session 2026-04-21 — Calendar Sync Stale-Token Recovery
+
+**Status:** Repo clean on `main` after push. Build `20260421-191931`.
+
+### Problem
+
+Drew reported that Brian's "Brian out" (6/23), "Brian busy at night test" (6/25), "brian busy" (6/26), and "Pierce out" (6/12–14) were visible on the DeadCetera Google Calendar but not in GrooveLinx. Sync toast said **"✓ Sync complete — everything up to date (⚠ Google API 401)"** — deeply misleading; sync had actually failed.
+
+### Root cause
+
+`accessToken` held in memory was present (truthy) but expired/revoked. The `_tokenLive` gate in `js/features/calendar.js` only checks truthiness, so the code proceeded to call Google, got 401 at `gl-calendar-sync.js:1144`, aborted Phase 2 pull, and returned `{ error: 'Google API 401' }` with zero imports. The 2026-04-20 auto-reconnect only fired when `accessToken` was *missing*, not when it was *stale*.
+
+### Fix
+
+1. `js/core/gl-calendar-sync.js` — set `result.needsReauth = true` on 401/403 alongside the error string.
+2. `js/features/calendar.js` sync handler — when `_syncResult.needsReauth`, call `_calConnectGoogle()` then re-run `syncBandCalendar()` once. Show "Google sign-in expired — refreshing…" toast during the retry.
+3. `js/features/calendar.js` toast copy — if sync errored AND nothing landed, open with **"⚠ Sync failed — Google sign-in expired. Tap Sync Calendars again."** instead of "✓ Sync complete". If errors AND some stuff landed, label the error as "partial".
+
+### Brian-specific context captured
+
+- Brian previously cleared cookies every session. That wipes Google SSO state, so silent refresh can't mint a new access token → stale-token stays in memory → 401. He's now set cookies to persist for our domain, which should prevent recurrence.
+- Brian's Gmail is aliased to `brian@hrestoration.com`. Reading events from the shared calendar is unaffected (API returns events regardless of viewer alias). Alias can only matter for unavailability attribution where we try to match `organizerEmail` to a band member email — soft issue, title-matching still works.
+
+### Restart prompt (next session)
+
+```
+GrooveLinx session restart. Repo on main, clean. Last build 20260421-191931.
+Read first:
+  - 02_GrooveLinx/CLAUDE_HANDOFF.md (this block — 2026-04-21 stale-token fix)
+  - 02_GrooveLinx/CURRENT_PHASE.md
+  - 02_GrooveLinx/uat/bug_queue.md (known-open items)
+
+Ask Drew to tap Sync Calendars on Schedule and confirm Brian's 6/23/6/25/6/26
+events and Pierce's 6/12–14 event now appear. On first tap the Google popup may
+appear (silent re-auth); on subsequent taps it should be invisible.
+
+Still open: the persistent "Apr 21, 3:08 PM" Last-synced timestamp — if Drew
+sees this stuck despite sync apparently succeeding, investigate whether the
+sync-complete event updates the timestamp OR only the retry path does.
+```
+
+---
+
+
+
+
 
 ## Session 2026-04-20 — Pre-Gig Polish + Session Close
 

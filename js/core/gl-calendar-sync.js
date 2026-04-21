@@ -1144,6 +1144,7 @@ window.GLCalendarSync = (function() {
         if (!res.ok) {
           console.warn('[CalSync] Pull failed:', res.status);
           result.error = 'Google API ' + res.status;
+          if (res.status === 401 || res.status === 403) result.needsReauth = true;
           break;
         }
         var data = await res.json();

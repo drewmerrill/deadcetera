@@ -1107,6 +1107,17 @@ window._calSyncNow = async function() {
         var _syncResult = { pushed: 0, pulled: 0, updated: 0, deleted: 0, error: null };
         if (_tokenLive && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.syncBandCalendar && GLCalendarSync.hasCalendarScope()) {
             _syncResult = await GLCalendarSync.syncBandCalendar();
+            // Stale-token recovery: if Google returned 401/403, the in-memory
+            // accessToken passed our truthy check but is actually expired/
+            // revoked. Trigger silent re-auth and retry the sync once.
+            if (_syncResult && _syncResult.needsReauth && typeof _calConnectGoogle === 'function') {
+                if (typeof showToast === 'function') showToast('Google sign-in expired \u2014 refreshing\u2026', 3000);
+                try { await _calConnectGoogle(); } catch (e) {}
+                var _tokenLiveAfter = !(typeof accessToken === 'undefined' || !accessToken);
+                if (_tokenLiveAfter) {
+                    _syncResult = await GLCalendarSync.syncBandCalendar();
+                }
+            }
             // Re-run reclassify AFTER Google pull — new events just imported
             // need to be classified too.
             if (GLCalendarSync.reclassifyUnavailability) {
@@ -1129,12 +1140,6 @@ window._calSyncNow = async function() {
 
         // Build sync status message
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
-        var _syncMsg;
-        if (!_tokenLive) {
-            _syncMsg = '\u26A0 Google sign-in cancelled \u2014 local reclassify only';
-        } else {
-            _syncMsg = '\u2713 Sync complete';
-        }
         var _syncParts = [];
         if (_syncResult.pushed > 0) _syncParts.push(_syncResult.pushed + ' pushed');
         if (_syncResult.pulled > 0) _syncParts.push(_syncResult.pulled + ' imported');
@@ -1142,9 +1147,23 @@ window._calSyncNow = async function() {
         if (_syncResult.deleted > 0) _syncParts.push(_syncResult.deleted + ' deleted');
         if (_rcCount > 0) _syncParts.push(_rcCount + ' reclassified');
         if (_purgeCount > 0) _syncParts.push(_purgeCount + ' purged');
-        if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
-        else if (_tokenLive) _syncMsg += ' \u2014 everything up to date';
-        if (_syncResult.error) _syncMsg += ' (\u26A0 ' + _syncResult.error + ')';
+        var _syncMsg;
+        if (!_tokenLive) {
+            _syncMsg = '\u26A0 Google sign-in cancelled \u2014 local reclassify only';
+            if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
+        } else if (_syncResult.error && _syncParts.length === 0) {
+            // Pull/push failed AND nothing landed — be honest: sync failed.
+            if (_syncResult.needsReauth) {
+                _syncMsg = '\u26A0 Sync failed \u2014 Google sign-in expired. Tap Sync Calendars again.';
+            } else {
+                _syncMsg = '\u26A0 Sync failed \u2014 ' + _syncResult.error;
+            }
+        } else {
+            _syncMsg = '\u2713 Sync complete';
+            if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
+            else _syncMsg += ' \u2014 everything up to date';
+            if (_syncResult.error) _syncMsg += ' (\u26A0 partial: ' + _syncResult.error + ')';
+        }
         // Only show availability warning in Mode B (personal calendars mode)
         if (!_hasAvail && _calIsModeB()) _syncMsg += '. Availability not enabled.';
         if (typeof showToast === 'function') showToast(_syncMsg, 5000);
