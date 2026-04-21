@@ -1137,7 +1137,9 @@ window.GLCalendarSync = (function() {
         // current user's first/full name.
         var _myNameLower = (_myName || '').toLowerCase();
         var _myFirst = _myNameLower.split(' ')[0];
+        console.log('[CalSync] Phase 1.5: match criteria — myKey=', _myKey, '| myNameLower=', _myNameLower, '| myFirst=', _myFirst);
         var _skipReasons = { bad: 0, notMine: 0, alreadySynced: 0 };
+        var _notMineLogged = 0;
         for (var bi = 0; bi < blocks.length; bi++) {
           var blk = blocks[bi];
           if (!blk || !blk.blockId || !blk.startDate || !blk.endDate) { _skipReasons.bad++; continue; }
@@ -1145,8 +1147,7 @@ window.GLCalendarSync = (function() {
           // ownerName). Match against:
           // - the keyed identifier ("drew")
           // - the full bandMember name ("Drew")
-          // - the first word ("Drew" == "Andrew Merrill".split(' ')[0] fails
-          //   by design — we prefer bandMember short-name over Google profile)
+          // - the first word
           var _blkOwnerLower = String(blk.ownerName || '').toLowerCase().trim();
           var _ownedByMe = (blk.ownerKey && blk.ownerKey === _myKey)
             || (blk.ownerName && (
@@ -1155,7 +1156,16 @@ window.GLCalendarSync = (function() {
                 || _blkOwnerLower.split(' ')[0] === _myFirst
             ));
           if (!_ownedByMe) {
-            if (bi < 5) console.log('[CalSync] Phase 1.5: skip (not mine):', blk.blockId, '| ownerKey=', blk.ownerKey, '| ownerName=', blk.ownerName, '| startDate=', blk.startDate);
+            if (_notMineLogged < 5) {
+              console.log('[CalSync] Phase 1.5: skip (not mine):',
+                'blockId=', blk.blockId,
+                '| ownerKey=', JSON.stringify(blk.ownerKey),
+                '| ownerName=', JSON.stringify(blk.ownerName),
+                '| startDate=', blk.startDate,
+                '| endDate=', blk.endDate,
+                '| summary=', JSON.stringify(blk.summary));
+              _notMineLogged++;
+            }
             _skipReasons.notMine++;
             continue;
           }
