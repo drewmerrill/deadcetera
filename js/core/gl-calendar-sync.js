@@ -1114,9 +1114,17 @@ window.GLCalendarSync = (function() {
     result.blocksDeleted = 0;
     try {
       var _myKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
-      var _myName = (typeof currentUserName !== 'undefined' && currentUserName)
-        || (typeof getBandMemberName === 'function' && _myKey ? getBandMemberName(_myKey) : '')
-        || '';
+      // Prefer the band-member-stored name ("Drew") over the Google profile
+      // name ("Andrew Merrill") — schedule blocks store ownerName as the
+      // short band-member name.
+      var _myName = '';
+      if (_myKey && typeof bandMembers !== 'undefined' && bandMembers[_myKey] && bandMembers[_myKey].name) {
+        _myName = bandMembers[_myKey].name;
+      } else if (typeof getBandMemberName === 'function' && _myKey) {
+        _myName = getBandMemberName(_myKey);
+      } else if (typeof currentUserName !== 'undefined' && currentUserName) {
+        _myName = currentUserName;
+      }
       console.log('[CalSync] Phase 1.5: start — myKey =', _myKey, '| myName =', _myName);
       if (!_myKey) {
         console.log('[CalSync] Phase 1.5: SKIPPED — getCurrentMemberKey() returned null. Your signed-in email may not match any bandMembers entry. Check localStorage.deadcetera_current_user or bandMembers emails.');
@@ -1133,12 +1141,18 @@ window.GLCalendarSync = (function() {
         for (var bi = 0; bi < blocks.length; bi++) {
           var blk = blocks[bi];
           if (!blk || !blk.blockId || !blk.startDate || !blk.endDate) { _skipReasons.bad++; continue; }
-          // Accept ownerKey match OR (no ownerKey + name match) — picks up older
-          // blocks stored without a keyed owner.
+          // Accept ownerKey match OR name match (old blocks stored only
+          // ownerName). Match against:
+          // - the keyed identifier ("drew")
+          // - the full bandMember name ("Drew")
+          // - the first word ("Drew" == "Andrew Merrill".split(' ')[0] fails
+          //   by design — we prefer bandMember short-name over Google profile)
+          var _blkOwnerLower = String(blk.ownerName || '').toLowerCase().trim();
           var _ownedByMe = (blk.ownerKey && blk.ownerKey === _myKey)
-            || (!blk.ownerKey && blk.ownerName && (
-                String(blk.ownerName).toLowerCase() === _myNameLower
-                || String(blk.ownerName).toLowerCase().split(' ')[0] === _myFirst
+            || (blk.ownerName && (
+                _blkOwnerLower === _myNameLower
+                || _blkOwnerLower === (_myKey || '').toLowerCase()
+                || _blkOwnerLower.split(' ')[0] === _myFirst
             ));
           if (!_ownedByMe) {
             if (bi < 5) console.log('[CalSync] Phase 1.5: skip (not mine):', blk.blockId, '| ownerKey=', blk.ownerKey, '| ownerName=', blk.ownerName, '| startDate=', blk.startDate);
