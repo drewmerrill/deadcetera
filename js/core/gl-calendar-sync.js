@@ -1117,8 +1117,13 @@ window.GLCalendarSync = (function() {
       var _myName = (typeof currentUserName !== 'undefined' && currentUserName)
         || (typeof getBandMemberName === 'function' && _myKey ? getBandMemberName(_myKey) : '')
         || '';
+      console.log('[CalSync] Phase 1.5: start — myKey =', _myKey, '| myName =', _myName);
+      if (!_myKey) {
+        console.log('[CalSync] Phase 1.5: SKIPPED — getCurrentMemberKey() returned null. Your signed-in email may not match any bandMembers entry. Check localStorage.deadcetera_current_user or bandMembers emails.');
+      }
       if (_myKey && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks && GLStore.saveScheduleBlock) {
         var blocks = await GLStore.getScheduleBlocks();
+        console.log('[CalSync] Phase 1.5: scanning', blocks.length, 'schedule blocks');
         for (var bi = 0; bi < blocks.length; bi++) {
           var blk = blocks[bi];
           if (!blk || !blk.blockId || !blk.startDate || !blk.endDate) continue;
@@ -1247,6 +1252,25 @@ window.GLCalendarSync = (function() {
         return (g.status === 'cancelled' ? '[CANCELLED] ' : '') + (g.summary || '(no title)') + ' @ ' + _d;
       });
       console.log('[CalSync] Phase 2: Events returned by Google:', _titles);
+      // Detail dump for cross-referencing when a specific event is missing from
+      // the Google UI: creator, organizer, visibility, and our bandCalId so
+      // we can tell "this event is actually on your personal calendar" apart
+      // from "the UI is stale."
+      console.log('[CalSync] Phase 2: Details:', googleEvents.slice(0, 50).map(function(g) {
+        return {
+          id: g.id,
+          title: g.summary,
+          date: (g.start && (g.start.date || g.start.dateTime)) || '',
+          creator: g.creator && g.creator.email,
+          organizer: g.organizer && g.organizer.email,
+          visibility: g.visibility || 'default',
+          status: g.status,
+          // Google returns the calendar this event actually lives on in the
+          // extended calendarListEntry, but since we query per-calendarId,
+          // anything returned is by definition on bandCalId.
+          queriedCalendar: bandCalId
+        };
+      }));
     }
 
     var dirty = false;
