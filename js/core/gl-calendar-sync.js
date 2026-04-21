@@ -1124,13 +1124,27 @@ window.GLCalendarSync = (function() {
       if (_myKey && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks && GLStore.saveScheduleBlock) {
         var blocks = await GLStore.getScheduleBlocks();
         console.log('[CalSync] Phase 1.5: scanning', blocks.length, 'schedule blocks');
+        // Build a case-insensitive name-match fallback. Some older blocks stored
+        // only ownerName ("Drew") without ownerKey — match those against the
+        // current user's first/full name.
+        var _myNameLower = (_myName || '').toLowerCase();
+        var _myFirst = _myNameLower.split(' ')[0];
+        var _skipReasons = { bad: 0, notMine: 0, alreadySynced: 0 };
         for (var bi = 0; bi < blocks.length; bi++) {
           var blk = blocks[bi];
-          if (!blk || !blk.blockId || !blk.startDate || !blk.endDate) continue;
-          // Only push blocks owned by the current user, created manually.
-          // Derived/free-busy blocks (sourceType != 'manual' or no ownerKey) stay local.
-          var _ownedByMe = (blk.ownerKey && blk.ownerKey === _myKey);
-          if (!_ownedByMe) continue;
+          if (!blk || !blk.blockId || !blk.startDate || !blk.endDate) { _skipReasons.bad++; continue; }
+          // Accept ownerKey match OR (no ownerKey + name match) — picks up older
+          // blocks stored without a keyed owner.
+          var _ownedByMe = (blk.ownerKey && blk.ownerKey === _myKey)
+            || (!blk.ownerKey && blk.ownerName && (
+                String(blk.ownerName).toLowerCase() === _myNameLower
+                || String(blk.ownerName).toLowerCase().split(' ')[0] === _myFirst
+            ));
+          if (!_ownedByMe) {
+            if (bi < 5) console.log('[CalSync] Phase 1.5: skip (not mine):', blk.blockId, '| ownerKey=', blk.ownerKey, '| ownerName=', blk.ownerName, '| startDate=', blk.startDate);
+            _skipReasons.notMine++;
+            continue;
+          }
           // Propagate local delete
           if (blk._deleted && blk.googleEventId) {
             try {
@@ -1141,7 +1155,7 @@ window.GLCalendarSync = (function() {
             continue;
           }
           // Skip if already synced TO THE BAND CALENDAR
-          if (blk.syncedToGoogle && blk.googleEventId && blk.calendarId === bandCalId) continue;
+          if (blk.syncedToGoogle && blk.googleEventId && blk.calendarId === bandCalId) { _skipReasons.alreadySynced++; continue; }
           try {
             var _display = (blk.ownerName || _myName || 'Member').trim();
             var _reason = (blk.summary || '').trim();
@@ -1188,6 +1202,7 @@ window.GLCalendarSync = (function() {
             }
           } catch(e) { console.warn('[CalSync] Phase 1.5 error:', blk.blockId, e.message); }
         }
+        console.log('[CalSync] Phase 1.5: done — pushed', result.blocksPushed, '| skipped:', _skipReasons);
       }
     } catch(e) { console.warn('[CalSync] Phase 1.5 outer error:', e && e.message); }
 
@@ -1256,21 +1271,16 @@ window.GLCalendarSync = (function() {
       // the Google UI: creator, organizer, visibility, and our bandCalId so
       // we can tell "this event is actually on your personal calendar" apart
       // from "the UI is stale."
-      console.log('[CalSync] Phase 2: Details:', googleEvents.slice(0, 50).map(function(g) {
-        return {
-          id: g.id,
-          title: g.summary,
-          date: (g.start && (g.start.date || g.start.dateTime)) || '',
-          creator: g.creator && g.creator.email,
-          organizer: g.organizer && g.organizer.email,
-          visibility: g.visibility || 'default',
-          status: g.status,
-          // Google returns the calendar this event actually lives on in the
-          // extended calendarListEntry, but since we query per-calendarId,
-          // anything returned is by definition on bandCalId.
-          queriedCalendar: bandCalId
-        };
-      }));
+      googleEvents.slice(0, 50).forEach(function(g) {
+        var _d = (g.start && (g.start.date || g.start.dateTime)) || '';
+        console.log('[CalSync] E:',
+          _d,
+          '| title:', g.summary,
+          '| creator:', (g.creator && g.creator.email) || '-',
+          '| organizer:', (g.organizer && g.organizer.email) || '-',
+          '| visibility:', g.visibility || 'default',
+          '| status:', g.status);
+      });
     }
 
     var dirty = false;
