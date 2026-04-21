@@ -1322,7 +1322,7 @@ window._calCleanLegacyBusy = async function() {
     var kept = events.filter(function(e) { return !(e && e.id && orphanIds[e.id]); });
     removedLocal = events.length - kept.length;
     try {
-        await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase ? _sanitizeForFirebase(kept) : kept);
+        await saveBandDataToDrive('_band', 'calendar_events', kept);
     } catch (e) {
         if (typeof showToast === 'function') showToast('Save failed: ' + (e.message || 'unknown'));
         if (btn) { btn.textContent = 'Clean legacy Busy'; btn.disabled = false; }
@@ -4149,7 +4149,7 @@ window._calDeleteScheduleBlock = async function(blockId, opts) {
             var gid = target.googleEventId || (target.sync && target.sync.externalEventId) || '';
             var calId = target.calendarId || (target.sync && target.sync.calendarId) || '';
             events.splice(idx, 1);
-            await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase ? _sanitizeForFirebase(events) : events);
+            await saveBandDataToDrive('_band', 'calendar_events', events);
             if (gid && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
                 try { await GLCalendarSync.deleteConflictFromGoogle(gid, { calendarId: calId }); } catch(e) {}
             }
