@@ -2641,8 +2641,12 @@ function _calRenderConflictPanel() {
             var _isSynced = _origBlock && _origBlock.syncedToGoogle && _origBlock.googleEventId;
             var _isMyConflict = (typeof FeedActionState !== 'undefined' && FeedActionState.isMe) ? FeedActionState.isMe(b.person) : false;
             var _hasGoogleScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
-            var deleteAction = '_calDeleteScheduleBlock(\'' + (blockId || '') + '\')';
-            var editAction = '_calEditScheduleBlock(\'' + (blockId || '') + '\')';
+            // Fallback attribution for derived rows (no schedule_block backing)
+            var _evtId = (b._eventId || '').replace(/'/g, "\\'");
+            var _deleteArg = blockId ? "'" + blockId + "'" : "'',{eventId:'" + _evtId + "'}";
+            var _editArg = blockId ? "'" + blockId + "'" : "'',{eventId:'" + _evtId + "'}";
+            var deleteAction = '_calDeleteScheduleBlock(' + _deleteArg + ')';
+            var editAction = '_calEditScheduleBlock(' + _editArg + ')';
             // Action buttons
             var actionsHtml = '';
             if (_isMyConflict && _hasGoogleScope && blockId && !_isSynced) {
@@ -3605,7 +3609,11 @@ async function loadCalendarEvents() {
             _source: 'band_calendar',
             _conflictType: 'hard',
             _isAllDay: !!ev.isAllDay,
-            _timeLabel: ev.time && ev.endTime ? ev.time + '\u2013' + ev.endTime : ''
+            _timeLabel: ev.time && ev.endTime ? ev.time + '\u2013' + ev.endTime : '',
+            // Attribution for edit/delete on derived rows (no schedule_block backing)
+            _eventId: ev.id || ev.eventId || '',
+            _googleEventId: ev.googleEventId || (ev.sync && ev.sync.externalEventId) || '',
+            _calendarId: ev.calendarId || (ev.sync && ev.sync.calendarId) || ''
         });
         _unavailCount++;
     }
@@ -4058,14 +4066,41 @@ async function saveBlockedDatesEdit(idx) {
 }
 
 // Schedule block CRUD (handles both new-model and legacy blocks)
-window._calDeleteScheduleBlock = async function(blockId) {
+window._calDeleteScheduleBlock = async function(blockId, opts) {
+    opts = opts || {};
+    // Fallback path: row was a derived blocked-range backed by a calendar_event,
+    // not a schedule_block. Delete the underlying event (local + Google).
+    if (!blockId && opts.eventId) {
+        if (!confirm('Remove this calendar event? (Also removes from Google Calendar)')) return;
+        try {
+            var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+            var idx = events.findIndex(function(e) { return e && (e.id === opts.eventId || e.eventId === opts.eventId); });
+            if (idx < 0) { if (typeof showToast === 'function') showToast('Couldn\u2019t find the event'); return; }
+            var target = events[idx];
+            var gid = target.googleEventId || (target.sync && target.sync.externalEventId) || '';
+            var calId = target.calendarId || (target.sync && target.sync.calendarId) || '';
+            events.splice(idx, 1);
+            await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase ? _sanitizeForFirebase(events) : events);
+            if (gid && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
+                try { await GLCalendarSync.deleteConflictFromGoogle(gid, { calendarId: calId }); } catch(e) {}
+            }
+            if (typeof showToast === 'function') showToast('\u2713 Removed');
+            if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+            _calRenderGridOnly();
+            _calRenderConflictPanel();
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || 'unknown'));
+        }
+        return;
+    }
     if (!blockId || !confirm('Remove this schedule block?')) return;
     // Check if synced to Google before deleting
     var googleEventId = null;
+    var _blockCalId = null;
     if (blockId.indexOf('_legacy_') !== 0 && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks) {
         var _blocks = await GLStore.getScheduleBlocks();
         var _block = _blocks.find(function(b) { return b.blockId === blockId; });
-        if (_block && _block.googleEventId) googleEventId = _block.googleEventId;
+        if (_block && _block.googleEventId) { googleEventId = _block.googleEventId; _blockCalId = _block.calendarId || null; }
     }
     // Legacy blocks have blockId like '_legacy_N' — delete from blocked_dates array
     if (blockId.indexOf('_legacy_') === 0) {
@@ -4081,7 +4116,7 @@ window._calDeleteScheduleBlock = async function(blockId) {
     // If was synced to Google, ask to remove there too
     if (googleEventId && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
         if (confirm('Also remove from your Google Calendar?')) {
-            var result = await GLCalendarSync.deleteConflictFromGoogle(googleEventId);
+            var result = await GLCalendarSync.deleteConflictFromGoogle(googleEventId, { calendarId: _blockCalId });
             if (result.success) {
                 if (typeof showToast === 'function') showToast('Removed from Google Calendar');
             } else {
@@ -4156,7 +4191,26 @@ window._calSyncExistingConflict = async function(blockId) {
     }
 };
 
-window._calEditScheduleBlock = async function(blockId) {
+window._calEditScheduleBlock = async function(blockId, opts) {
+    opts = opts || {};
+    // Fallback: derived row backed by a calendar_event (no schedule_block).
+    // Open the normal event editor on the underlying event.
+    if (!blockId && opts.eventId) {
+        try {
+            var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+            var ev = events.find(function(e) { return e && (e.id === opts.eventId || e.eventId === opts.eventId); });
+            if (!ev) { if (typeof showToast === 'function') showToast('Event not found — try Sync Calendars'); return; }
+            if (typeof calAddEvent === 'function') {
+                // calAddEvent(date, editIdx, existing) — editIdx any truthy value triggers edit mode
+                calAddEvent(ev.date, 0, ev);
+                return;
+            }
+            if (typeof showToast === 'function') showToast('Editor not available');
+        } catch (e) {
+            if (typeof showToast === 'function') showToast('Couldn\u2019t open event: ' + (e.message || 'unknown'));
+        }
+        return;
+    }
     if (!blockId || typeof GLStore === 'undefined') return;
     var blocks = await GLStore.getScheduleBlocks();
     var block = blocks.find(function(b) { return b.blockId === blockId; });

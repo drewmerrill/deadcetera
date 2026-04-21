@@ -1,11 +1,13 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260421-193504 (local stamp via stamp-version.py)
+**Build Under Test:** 20260421-194359 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-21
 
 ---
 
 ## Session Focus
+
+**2026-04-21 (third fix):** Pencil/delete buttons on the conflict-list panel did nothing on derived "Busy (all day) (from X)" rows. Those rows aren't schedule_blocks — they're blocked ranges derived from imported band-calendar events via organizer-email attribution. `b._block` was undefined so both handlers bailed on `!blockId`. Fixed: `_pushBlock` now attaches `_eventId` / `_googleEventId` / `_calendarId` to the blocked range; `_calEditScheduleBlock(blockId, {eventId})` opens the underlying event in the normal editor when no block backs the row; `_calDeleteScheduleBlock(blockId, {eventId})` removes the underlying calendar_event (local + Google) when no block backs the row.
 
 **2026-04-21 (second fix):** Drew's "Drew — busy" 5/16 block wasn't pushing to DeadCetera despite many Sync attempts. Root cause: schedule blocks (from Block button) live in a separate Firebase store and were never iterated by the sync's Phase 1 push. Even the manual per-block "Add to Google" button targeted the personal primary calendar, not the band calendar. Fixed: new Phase 1.5 in `_syncBandCalendarImpl` pushes the current user's schedule blocks to the band calendar with visibility=default, ownerName-prefixed summary ("Drew — busy"), and `glBlockId` extended property for re-link safety. Phase 2 re-link path added for incoming events carrying `glBlockId`. Plus dark-mode CSS to fix Brian's Windows white-dropdown UI issue.
 
