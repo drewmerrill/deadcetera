@@ -1068,7 +1068,7 @@ window.GLCalendarSync = (function() {
   }
 
   async function _syncBandCalendarImpl(bandCalId) {
-    console.log('[CalSync] === TWO-WAY SYNC START ===');
+    console.log('[CalSync] === TWO-WAY SYNC START === | bandCalId=', bandCalId);
     var syncState = await _loadSyncState();
     var events = (typeof toArray === 'function')
       ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
@@ -1247,6 +1247,7 @@ window.GLCalendarSync = (function() {
       do {
         var url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(bandCalId)
           + '&maxResults=250&showDeleted=true';
+        console.log('[CalSync] Phase 2: fetch URL (before syncToken/pageToken):', url);
         if (useSyncToken && syncState.syncToken && !pageToken) {
           url += '&syncToken=' + encodeURIComponent(syncState.syncToken);
         } else if (!useSyncToken) {
