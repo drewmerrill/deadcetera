@@ -1105,6 +1105,68 @@ window.GLCalendarSync = (function() {
       console.log('[CalSync] Phase 1: Pushed', result.pushed, 'events');
     }
 
+    // ── PHASE 1.5: Push MY schedule blocks (Mode A only) ──
+    // In Mode A the band calendar is the source of truth for availability.
+    // Personal "Drew — busy" blocks must land on the shared calendar so the
+    // whole band sees them; otherwise they live only in GrooveLinx's local
+    // grid and never affect Google-side scheduling.
+    result.blocksPushed = 0;
+    result.blocksDeleted = 0;
+    try {
+      var _myKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+      var _myName = (typeof currentUserName !== 'undefined' && currentUserName)
+        || (typeof getBandMemberName === 'function' && _myKey ? getBandMemberName(_myKey) : '')
+        || '';
+      if (_myKey && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks && GLStore.saveScheduleBlock) {
+        var blocks = await GLStore.getScheduleBlocks();
+        for (var bi = 0; bi < blocks.length; bi++) {
+          var blk = blocks[bi];
+          if (!blk || !blk.blockId || !blk.startDate || !blk.endDate) continue;
+          // Only push blocks owned by the current user, created manually.
+          // Derived/free-busy blocks (sourceType != 'manual' or no ownerKey) stay local.
+          var _ownedByMe = (blk.ownerKey && blk.ownerKey === _myKey);
+          if (!_ownedByMe) continue;
+          // Propagate local delete
+          if (blk._deleted && blk.googleEventId) {
+            try {
+              await deleteConflictFromGoogle(blk.googleEventId, { calendarId: blk.calendarId || bandCalId });
+              await GLStore.deleteScheduleBlock(blk.blockId);
+              result.blocksDeleted++;
+            } catch(e) { console.warn('[CalSync] Block delete failed:', blk.blockId, e.message); }
+            continue;
+          }
+          // Skip if already synced TO THE BAND CALENDAR
+          if (blk.syncedToGoogle && blk.googleEventId && blk.calendarId === bandCalId) continue;
+          try {
+            var _display = (blk.ownerName || _myName || 'Member').trim();
+            var _reason = (blk.summary || '').trim();
+            // Compose GrooveLinx-style title: "Drew — busy" or "Drew — Out"
+            var _summary = _display + ' \u2014 ' + (_reason || 'busy');
+            var _res = await syncConflictToGoogle(blk, {
+              calendarId: bandCalId,
+              summary: _summary,
+              visibility: 'default'
+            });
+            if (_res && _res.success) {
+              blk.googleEventId = _res.googleEventId;
+              blk.calendarId = bandCalId;
+              blk.syncedToGoogle = true;
+              blk.lastSyncedAt = new Date().toISOString();
+              await GLStore.saveScheduleBlock(blk);
+              result.blocksPushed++;
+              console.log('[CalSync] Phase 1.5: Pushed block', _summary, blk.startDate);
+            } else {
+              console.warn('[CalSync] Phase 1.5 push failed:', _summary, _res && _res.error);
+              if (_res && (_res.status === 401 || _res.status === 403)) {
+                result.needsReauth = true;
+                break;
+              }
+            }
+          } catch(e) { console.warn('[CalSync] Phase 1.5 error:', blk.blockId, e.message); }
+        }
+      }
+    } catch(e) { console.warn('[CalSync] Phase 1.5 outer error:', e && e.message); }
+
     // ── PHASE 2: Pull remote changes from Google (incremental or full) ──
     console.log('[CalSync] Phase 2: Pull remote changes...');
     var knownGoogleIds = {};
@@ -1160,8 +1222,9 @@ window.GLCalendarSync = (function() {
     console.log('[CalSync] Phase 2: Fetched', googleEvents.length, 'changes', useSyncToken ? '(incremental)' : '(full)');
 
     var dirty = false;
-    googleEvents.forEach(function(gEv) {
-      if (!gEv.id) return;
+    for (var gi = 0; gi < googleEvents.length; gi++) {
+      var gEv = googleEvents[gi];
+      if (!gEv.id) continue;
       var existIdx = eventsByGoogleId[gEv.id];
 
       if (gEv.status === 'cancelled') {
@@ -1178,7 +1241,7 @@ window.GLCalendarSync = (function() {
           result.deleted++;
           dirty = true;
         }
-        return;
+        continue;
       }
 
       if (existIdx !== undefined && existIdx >= 0) {
@@ -1191,6 +1254,32 @@ window.GLCalendarSync = (function() {
         // Safety: check extendedProperties to see if this is a GrooveLinx-created event
         // that we somehow lost locally. If so, match by glEventId before importing as new.
         var _extProp = gEv.extendedProperties && gEv.extendedProperties.private;
+        // glBlockId: incoming event is a mirror of someone's schedule_block.
+        // If it's MY block coming back from the band calendar, re-link the block
+        // and skip importing as a calendar_event (prevents duplicate grid render).
+        // If it belongs to another member, fall through to normal import so the
+        // unavailability classifier picks it up via event title ("X — busy").
+        var _glBlockId = _extProp && _extProp.glBlockId;
+        var _skipAsBlockLink = false;
+        if (_glBlockId && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks && GLStore.saveScheduleBlock) {
+          try {
+            var _myKey2 = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+            var _blks = await GLStore.getScheduleBlocks();
+            var _mine = _blks.find(function(b) { return b.blockId === _glBlockId && b.ownerKey && b.ownerKey === _myKey2; });
+            if (_mine) {
+              if (!_mine.googleEventId || _mine.googleEventId !== gEv.id) {
+                _mine.googleEventId = gEv.id;
+                _mine.calendarId = bandCalId;
+                _mine.syncedToGoogle = true;
+                _mine.lastSyncedAt = new Date().toISOString();
+                await GLStore.saveScheduleBlock(_mine);
+                console.log('[CalSync] Phase 2: Re-linked block', _mine.blockId, '→', gEv.id);
+              }
+              _skipAsBlockLink = true; // my own block — don't also import as calendar_event
+            }
+          } catch(e) { console.warn('[CalSync] Phase 2 block re-link error:', e && e.message); }
+        }
+        if (_skipAsBlockLink) continue;
         var _glId = _extProp && _extProp.glEventId;
         if (_glId) {
           var _localMatch = events.findIndex(function(e) { return e.id === _glId; });
@@ -1209,7 +1298,7 @@ window.GLCalendarSync = (function() {
               });
               result.deleted++;
               dirty = true;
-              return;
+              continue;
             }
             // Re-link: local event exists but lost its googleEventId
             events[_localMatch].googleEventId = gEv.id;
@@ -1221,7 +1310,7 @@ window.GLCalendarSync = (function() {
             result.updated++;
             dirty = true;
             console.log('[CalSync] Re-linked:', gEv.summary, '→ local id:', _glId);
-            return; // skip import — it's a re-link
+            continue; // skip import — it's a re-link
           }
         }
         var newEv = _importGoogleEvent(gEv, bandCalId);
@@ -1231,7 +1320,7 @@ window.GLCalendarSync = (function() {
         dirty = true;
         console.log('[CalSync] Inbound NEW:', newEv.title, newEv.date);
       }
-    });
+    }
 
     // ── PHASE 3: Propagate local deletions to Google ──
     var deletedLocally = events.filter(function(e) { return e.sync && e.sync.status === 'deleted_locally'; });
@@ -1541,80 +1630,90 @@ window.GLCalendarSync = (function() {
   // Creates a private "Busy" event in the user's Google Calendar.
   // Never auto-syncs — only triggered by explicit user action.
 
-  async function syncConflictToGoogle(block) {
+  async function syncConflictToGoogle(block, opts) {
     if (!hasCalendarScope() || !block) return { success: false, error: 'no scope' };
     var startDate = block.startDate;
     var endDate = block.endDate;
     if (!startDate || !endDate) return { success: false, error: 'no dates' };
+    opts = opts || {};
     // All-day event: use date (not dateTime), end is exclusive in Google API
     var endExclusive = new Date(endDate + 'T00:00:00');
     endExclusive.setDate(endExclusive.getDate() + 1);
     var endStr = endExclusive.getFullYear() + '-' + String(endExclusive.getMonth() + 1).padStart(2, '0') + '-' + String(endExclusive.getDate()).padStart(2, '0');
 
     var body = {
-      summary: 'Busy',
+      summary: opts.summary || 'Busy',
       description: 'Created by GrooveLinx (band scheduling)',
       start: { date: startDate },
       end: { date: endStr },
-      visibility: 'private',
+      visibility: opts.visibility || 'private',
       transparency: 'opaque',
       reminders: { useDefault: false, overrides: [] },
-      extendedProperties: { private: { groovelinxConflictId: block.blockId || '' } }
+      extendedProperties: { private: { groovelinxConflictId: block.blockId || '', glBlockId: block.blockId || '' } }
     };
 
     try {
       // Check for existing event to prevent duplicates
       if (block.googleEventId) {
-        return await updateConflictInGoogle(block);
+        return await updateConflictInGoogle(block, opts);
       }
-      var res = await fetch(WORKER_BASE + '/calendar/events', {
+      var _url = WORKER_BASE + '/calendar/events'
+        + (opts.calendarId ? ('?calendarId=' + encodeURIComponent(opts.calendarId)) : '');
+      var res = await fetch(_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
         body: JSON.stringify(body)
       });
       if (!res.ok) {
         console.warn('[CalSync] Conflict sync failed:', res.status);
-        return { success: false, error: 'Google returned ' + res.status };
+        return { success: false, error: 'Google returned ' + res.status, status: res.status };
       }
       var data = await res.json();
-      return { success: true, googleEventId: data.id, htmlLink: data.htmlLink || '' };
+      return { success: true, googleEventId: data.id, htmlLink: data.htmlLink || '', calendarId: opts.calendarId || 'primary' };
     } catch (err) {
       console.warn('[CalSync] Conflict sync error:', err);
       return { success: false, error: err.message };
     }
   }
 
-  async function updateConflictInGoogle(block) {
+  async function updateConflictInGoogle(block, opts) {
     if (!hasCalendarScope() || !block || !block.googleEventId) return { success: false };
+    opts = opts || {};
     var endExclusive = new Date(block.endDate + 'T00:00:00');
     endExclusive.setDate(endExclusive.getDate() + 1);
     var endStr = endExclusive.getFullYear() + '-' + String(endExclusive.getMonth() + 1).padStart(2, '0') + '-' + String(endExclusive.getDate()).padStart(2, '0');
 
     var body = {
-      summary: 'Busy',
+      summary: opts.summary || 'Busy',
       description: 'Created by GrooveLinx (band scheduling)',
       start: { date: block.startDate },
       end: { date: endStr },
-      visibility: 'private',
+      visibility: opts.visibility || 'private',
       transparency: 'opaque'
     };
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(block.googleEventId), {
+      var _calId = opts.calendarId || block.calendarId;
+      var _url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(block.googleEventId)
+        + (_calId ? ('?calendarId=' + encodeURIComponent(_calId)) : '');
+      var res = await fetch(_url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
         body: JSON.stringify(body)
       });
-      if (!res.ok) return { success: false, error: 'Update failed: ' + res.status };
+      if (!res.ok) return { success: false, error: 'Update failed: ' + res.status, status: res.status };
       return { success: true, googleEventId: block.googleEventId };
     } catch (err) {
       return { success: false, error: err.message };
     }
   }
 
-  async function deleteConflictFromGoogle(googleEventId) {
+  async function deleteConflictFromGoogle(googleEventId, opts) {
     if (!hasCalendarScope() || !googleEventId) return { success: false };
+    opts = opts || {};
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(googleEventId), {
+      var _url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(googleEventId)
+        + (opts.calendarId ? ('?calendarId=' + encodeURIComponent(opts.calendarId)) : '');
+      var res = await fetch(_url, {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });

@@ -2,7 +2,62 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-21 (stale-token calendar sync fix — 401 now triggers silent re-auth + retry, toast is honest when sync fails)_
+_Last updated: 2026-04-21 (Phase 1.5: schedule-blocks auto-push to band calendar in Mode A; stale-token 401 re-auth; honest toast; dark native form controls on Windows)_
+
+## Session 2026-04-21 — Phase 1.5: Schedule-Blocks to Band Calendar
+
+**Status:** Repo clean on `main`. Build `20260421-193504`.
+
+### Problem
+
+Drew's "Drew — busy" block on 5/16 was visible in GrooveLinx but never pushed to the DeadCetera Google calendar, no matter how many times he synced. Mode A contract violation: the shared band calendar is supposed to be the source of truth for availability, but member-specific blocks were stuck local-only.
+
+### Root cause
+
+Schedule blocks are a separate Firebase store (`bands/{slug}/schedule_blocks/{blockId}`) from calendar events (`bands/{slug}/calendar_events`). Phase 1 of `syncBandCalendar()` only iterated `calendar_events`. A manual per-block "Add to Google" button exists, but (a) it's opt-in, (b) `syncConflictToGoogle()` didn't pass a `calendarId`, so even the manual path dumped blocks onto the user's primary personal calendar with `summary: 'Busy'` and `visibility: 'private'` — hidden from the band by Google's API.
+
+### Fix
+
+1. **`syncConflictToGoogle(block, opts)`** — now accepts `{ calendarId, summary, visibility }` (back-compat: old call sites still work; old behavior preserved). Also adds `extendedProperties.private.glBlockId` for re-link safety. Returns `status` on failure.
+2. **Phase 1.5 in `_syncBandCalendarImpl`** — iterates `GLStore.getScheduleBlocks()`, filters to `ownerKey === currentUserKey` + not-yet-synced-to-band-calendar, pushes to `bandCalId` with:
+   - `summary: ownerName + ' — ' + (block.summary || 'busy')`
+   - `visibility: 'default'` (band can see)
+   - `glBlockId` extended property
+   - Saves `googleEventId + calendarId + syncedToGoogle + lastSyncedAt` back to the block
+3. **Phase 2 block re-link** — incoming events carrying `glBlockId` matching a local MY-block re-link the googleEventId (in case we lost the link) and skip import-as-calendar-event (prevents duplicate grid render). Events from OTHER members' blocks still import normally so the unavailability classifier picks up "Drew — busy" → blocks Drew on their grid.
+4. **Phase 2 loop converted** — `googleEvents.forEach(cb)` → `for (...)` so Phase 2's new `await GLStore.getScheduleBlocks()` works correctly.
+5. **Toast surfaces block counts** — "✓ Sync complete — 1 block pushed" etc.
+
+### UX after this change
+
+- Drew taps Sync on Schedule → 5/16 "Drew — busy" lands on DeadCetera calendar as "Drew — busy" (visibility default, band can see).
+- Brian's "brian busy" block on his own device → pushes to DeadCetera → imports on Drew's device as a calendar_event → unavailability classifier blocks Brian → appears on Drew's grid as Brian unavailable.
+- Local edit/delete of a block still needs separate wiring (currently Phase 1.5 pushes new + already-linked blocks; delete path is stubbed via `_deleted` flag but `deleteScheduleBlock` doesn't set that flag yet — TODO if needed).
+
+### Restart prompt (next session)
+
+```
+GrooveLinx session restart. Repo on main, clean. Last build 20260421-193504.
+Read first:
+  - 02_GrooveLinx/CLAUDE_HANDOFF.md (this block — 2026-04-21 Phase 1.5 + stale-token fix)
+  - 02_GrooveLinx/CURRENT_PHASE.md
+  - 02_GrooveLinx/uat/bug_queue.md
+
+Ask Drew:
+  - Did Sync push "Drew — busy" 5/16 to DeadCetera?
+  - Did Brian's prior "brian busy" events show up on Drew's grid after Sync?
+  - Is there a stuck "Last synced Apr 21 3:08 PM" timestamp bug?
+
+Still open (low priority):
+  - Schedule-block DELETE propagation to Google (need to hook deleteScheduleBlock
+    to set _deleted flag or call deleteConflictFromGoogle inline).
+  - Manual "Add to Google" per-block button still targets personal calendar;
+    Mode A users should have it target the band calendar.
+```
+
+---
+
+
 
 ## Session 2026-04-21 — Calendar Sync Stale-Token Recovery
 

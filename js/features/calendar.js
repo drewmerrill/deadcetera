@@ -1142,6 +1142,7 @@ window._calSyncNow = async function() {
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
         var _syncParts = [];
         if (_syncResult.pushed > 0) _syncParts.push(_syncResult.pushed + ' pushed');
+        if (_syncResult.blocksPushed > 0) _syncParts.push(_syncResult.blocksPushed + ' block' + (_syncResult.blocksPushed === 1 ? '' : 's') + ' pushed');
         if (_syncResult.pulled > 0) _syncParts.push(_syncResult.pulled + ' imported');
         if (_syncResult.updated > 0) _syncParts.push(_syncResult.updated + ' updated');
         if (_syncResult.deleted > 0) _syncParts.push(_syncResult.deleted + ' deleted');

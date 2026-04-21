@@ -1,13 +1,15 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260421-191931 (local stamp via stamp-version.py)
+**Build Under Test:** 20260421-193504 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-21
 
 ---
 
 ## Session Focus
 
-**2026-04-21:** Diagnosed why Brian's + Pierce's shared-calendar events weren't appearing in GrooveLinx despite being visible in Google Calendar UI. Root cause was a stale in-memory `accessToken` — present but expired/revoked — that passed our truthy-check but failed the actual Google fetch with 401. Phase 2 pull aborted, no events imported, yet the toast said "Sync complete — everything up to date (⚠ Google API 401)". Fixed: detect 401/403 → silent re-auth → retry sync once; toast is now honest when sync errors out. Updates the 2026-04-20 note that guessed this was a Google UI/API discrepancy — it was actually our stale-token handling.
+**2026-04-21 (second fix):** Drew's "Drew — busy" 5/16 block wasn't pushing to DeadCetera despite many Sync attempts. Root cause: schedule blocks (from Block button) live in a separate Firebase store and were never iterated by the sync's Phase 1 push. Even the manual per-block "Add to Google" button targeted the personal primary calendar, not the band calendar. Fixed: new Phase 1.5 in `_syncBandCalendarImpl` pushes the current user's schedule blocks to the band calendar with visibility=default, ownerName-prefixed summary ("Drew — busy"), and `glBlockId` extended property for re-link safety. Phase 2 re-link path added for incoming events carrying `glBlockId`. Plus dark-mode CSS to fix Brian's Windows white-dropdown UI issue.
+
+**2026-04-21 (first fix):** Diagnosed why Brian's + Pierce's shared-calendar events weren't appearing in GrooveLinx despite being visible in Google Calendar UI. Root cause was a stale in-memory `accessToken` — present but expired/revoked — that passed our truthy-check but failed the actual Google fetch with 401. Phase 2 pull aborted, no events imported, yet the toast said "Sync complete — everything up to date (⚠ Google API 401)". Fixed: detect 401/403 → silent re-auth → retry sync once; toast is now honest when sync errors out. Updates the 2026-04-20 note that guessed this was a Google UI/API discrepancy — it was actually our stale-token handling.
 
 **2026-04-19 → 2026-04-20 (two-day arc, gig on 4/20):** Live gig chart rendering polish, offline-for-gig infrastructure, calendar sync deep cleanup (duplicates, attribution, Mode A contract enforcement, visibility cleanup), critical reliability fixes (wrong-setlist launch, stale post-save render, stripped iOS chord spacing). Queue is clean at gig-time.
 

@@ -1,10 +1,21 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-21 (calendar sync stale-token recovery — 401 now triggers silent re-auth + retry; honest toast)_
+_Updated: 2026-04-21 (Phase 1.5 schedule-block push to band calendar in Mode A; stale-token recovery; honest toast; Windows dark form controls)_
 
 ## Active Phase: Band Adoption + Polish
 
 ## What's Live (2026-04-21)
+
+### Calendar Sync — Phase 1.5: Schedule Blocks → Band Calendar
+- **Mode A auto-push of member unavailability blocks.** Previously "Drew — busy" blocks lived only in GrooveLinx's local grid; the shared band calendar never saw them. Now `_syncBandCalendarImpl` has a Phase 1.5 that iterates the current user's schedule blocks and pushes them to the band calendar with visibility=default + `glBlockId` extended property.
+- **`syncConflictToGoogle(block, opts)` extended** — accepts `{ calendarId, summary, visibility }`. Legacy call sites still use the old defaults (primary calendar, "Busy" summary, private visibility).
+- **Phase 2 block re-link** — incoming Google events with `glBlockId` matching a local MY-block save `googleEventId` back and skip import (prevents duplicate grid render). Other members' block-events import normally so the unavailability classifier picks them up.
+- **Phase 2 converted** from `forEach` to `for` loop so the new `await` calls work.
+- **Toast surfaces block counts** — "1 block pushed" etc.
+- **Known unfinished:** delete propagation for schedule blocks (Phase 1.5 handles create and update only; delete relies on a `_deleted` flag that isn't set anywhere yet). Also the manual per-block "Add to Google" button still targets personal calendar in all modes.
+
+### Windows Dark Form Controls
+- `html { color-scheme: dark }` in `index.html` — fixes Brian's white `<select>` popup on Windows Chromium. All 101 selects + date/time pickers + scrollbars now render dark on Windows. macOS was already correct.
 
 ### Calendar Sync — Stale-Token Recovery
 - **401/403 → silent re-auth → retry once.** In-memory `accessToken` can be truthy-but-stale (expired / revoked / cookie-cleared). Previous code passed the truthy check, hit Google, got 401, aborted Phase 2 pull, and imported zero events — while the toast still said "Sync complete — everything up to date". Fixed: `gl-calendar-sync.js` sets `result.needsReauth` on 401/403; `calendar.js` calls `_calConnectGoogle()` and re-runs `syncBandCalendar()` once.
