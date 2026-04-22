@@ -1355,7 +1355,7 @@ function _slRenderPlanMode(idx, sl) {
     }
     html += '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">\uD83D\uDCE4</button>'
         + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700">\u25CF Unsaved</span>'
-        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">\uD83D\uDD12 Lock This Set</button>'
+        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">\uD83D\uDCBE Save &amp; Lock</button>'
         + '<button class="btn btn-ghost btn-sm" onclick="loadSetlists()" style="font-size:0.75em">Cancel</button>'
         + '</div>';
 
@@ -1408,10 +1408,27 @@ function _slRenderPlanMode(idx, sl) {
             if (match) {
                 var gigIdx = gigs.indexOf(match);
                 var label = match.title || match.venue || "Gig";
+                // Linked gig is source of truth for date — override stale setlist.date
+                // in the input, and lock the field so user edits the gig to change it.
+                var _dateInput = document.getElementById('slDate');
+                if (_dateInput && match.date && match.date !== _dateInput.value) {
+                    _dateInput.value = match.date;
+                }
+                if (_dateInput) {
+                    _dateInput.readOnly = true;
+                    _dateInput.title = 'Date follows linked gig — edit on the Gig page';
+                    _dateInput.style.opacity = '0.65';
+                    _dateInput.style.cursor = 'not-allowed';
+                }
                 var html = '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(99,102,241,0.12);border-radius:8px;font-size:0.85em">';
                 html += '<span style="color:var(--accent-light)">🎤 Linked Gig:</span>';
                 html += '<span style="color:#fff;font-weight:600">' + label + '</span>';
                 html += '<button onclick="showPage(\'gigs\');setTimeout(function(){editGig(' + gigIdx + ');},400);" style="margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.82em;cursor:pointer">Open →</button></div>';
+                // Date mismatch (stored vs gig): auto-healed above, but surface it
+                if (sl.date && match.date && sl.date !== match.date) {
+                    html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;margin-top:6px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:8px;font-size:0.8em;color:#fbbf24">'
+                        + '<span>Date updated to match linked gig (' + match.date + '). Tap Save to persist.</span></div>';
+                }
                 // Venue mismatch info bar — only when both have venueId and they differ
                 if (sl.venueId && match.venueId && sl.venueId !== match.venueId) {
                     html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;margin-top:6px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:8px;font-size:0.8em;color:#fbbf24">'
@@ -1733,12 +1750,21 @@ async function slSaveSetlistEdit(idx) {
     if (!requireSignIn()) return;
     const data = window._cachedSetlists ? [...window._cachedSetlists] : toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var prev = data[idx] || {};
+    // If linked to a gig, force date to match the gig (gig is source of truth).
+    var _finalDate = document.getElementById('slDate')?.value || '';
+    if (prev.gigId) {
+        try {
+            var _gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+            var _linked = _gigs.find(function(g) { return g.gigId === prev.gigId; });
+            if (_linked && _linked.date) _finalDate = _linked.date;
+        } catch(e) {}
+    }
     data[idx] = {
         ...prev,
         setlistId: prev.setlistId || generateShortId(12),
         gigId: prev.gigId || null,
         name: document.getElementById('slName')?.value || ('Setlist ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
-        date: document.getElementById('slDate')?.value || '',
+        date: _finalDate,
         venueId: window._slVenueTouched ? (window._slSelectedVenueId || null) : (prev.venueId || null),
         venue: window._slVenueTouched ? (window._slSelectedVenueName || '') : (prev.venue || ''),
         notes: document.getElementById('slNotes')?.value || '',
