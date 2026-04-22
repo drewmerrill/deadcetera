@@ -449,6 +449,32 @@ footer p{color:var(--text-dim)!important;}
     .card-grid{grid-template-columns:repeat(2,1fr);}
 }
 
+/* Task #10 (mobile scheduling audit): larger tap targets on the Google panel
+   admin button bar. Desktop keeps the small 0.62em look; mobile boosts to a
+   readable, tappable size so scheduling workflows aren't thumb-hostile. */
+@media(max-width:640px){
+    #calGooglePanel button{min-height:36px}
+    #calGooglePanel button[onclick*="_calDedupeGoogle"],
+    #calGooglePanel button[onclick*="_calRefreshGigTimes"],
+    #calGooglePanel button[onclick*="_calCleanLegacyBusy"],
+    #calGooglePanel button[onclick*="_calMigrateMisplacedEvents"],
+    #calGooglePanel button[onclick*="_calShowVisibilityHelp"],
+    #calGooglePanel button[onclick*="_calShowSyncActivity"],
+    #calGooglePanel button[onclick*="_calShowManageConnections"],
+    #calGooglePanel button[onclick*="_calShowAvailabilitySettings"],
+    #calGooglePanel button[onclick*="_calCopyBandSyncInvite"]{
+        font-size:0.78em!important;
+        padding:6px 10px!important;
+        opacity:0.85!important;
+        border-radius:6px!important;
+    }
+    /* New hidden-event + stale-member banner buttons — ensure tappable */
+    #calGooglePanel button[onclick*="_calShowHiddenEventDetails"],
+    #calGooglePanel button[onclick*="_calShowVisibilityHelp"]{
+        min-height:40px
+    }
+}
+
 /* Gig notes / performance tips — force dark theme, no yellow */
 #gigNotesSection, #gigNotesSection * { background-color: unset; }
 #gigNotesSection { background: rgba(255,255,255,0.02) !important; border: 1px solid var(--border) !important; border-left: 1px solid var(--border) !important; }

@@ -1169,11 +1169,77 @@ window.GLCalendarSync = (function() {
       console.log('[CalSync] Another device is syncing — skipping this run');
       return { error: 'another_device_syncing', pushed: 0, pulled: 0, deleted: 0, skipped: true };
     }
+    var _started = Date.now();
     try {
-      return await _syncBandCalendarImpl(bandCalId);
+      var _r = await _syncBandCalendarImpl(bandCalId);
+      _r._durationMs = Date.now() - _started;
+      // Task #13: log sync activity. Non-fatal on failure.
+      _logSyncActivity(_r).catch(function(){});
+      return _r;
     } finally {
       await _releaseSyncLock();
     }
+  }
+
+  // Task #13: Sync activity log. Each sync run appends an entry at
+  // `bands/{slug}/sync_activity`. Trimmed to last 100 entries band-wide on
+  // each write. Visible in the Google panel → "Sync activity" modal.
+  async function _logSyncActivity(r) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+      var _myKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey)
+        ? FeedActionState.getMyMemberKey() : null;
+      var _myName = '';
+      if (_myKey && typeof bandMembers !== 'undefined' && bandMembers[_myKey] && bandMembers[_myKey].name) {
+        _myName = bandMembers[_myKey].name;
+      } else if (typeof currentUserName !== 'undefined' && currentUserName) {
+        _myName = currentUserName;
+      }
+      var entry = {
+        ts: new Date().toISOString(),
+        memberKey: _myKey || 'unknown',
+        memberName: _myName || 'unknown',
+        pushed: r.pushed || 0,
+        pulled: r.pulled || 0,
+        updated: r.updated || 0,
+        deleted: r.deleted || 0,
+        blocksPushed: r.blocksPushed || 0,
+        blocksDeleted: r.blocksDeleted || 0,
+        hiddenCount: (r.hiddenRanges || []).length,
+        error: r.error || null,
+        needsReauth: !!r.needsReauth,
+        skipped: !!r.skipped,
+        durationMs: r._durationMs || 0
+      };
+      await db.ref(bandPath('sync_activity')).push(entry);
+      // Trim to last 100 — one extra read+writes per sync, acceptable.
+      var snap = await db.ref(bandPath('sync_activity')).orderByKey().once('value');
+      var val = snap.val() || {};
+      var keys = Object.keys(val);
+      if (keys.length > 100) {
+        keys.sort();
+        var toDrop = keys.slice(0, keys.length - 100);
+        var updates = {};
+        toDrop.forEach(function(k) { updates[k] = null; });
+        await db.ref(bandPath('sync_activity')).update(updates);
+      }
+    } catch(e) { /* non-fatal */ }
+  }
+
+  async function getSyncActivity(limit) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return [];
+    try {
+      var snap = await db.ref(bandPath('sync_activity'))
+        .orderByKey()
+        .limitToLast(limit || 50)
+        .once('value');
+      var val = snap.val() || {};
+      return Object.keys(val).sort().reverse().map(function(k) {
+        var v = val[k]; v._id = k; return v;
+      });
+    } catch(e) { return []; }
   }
 
   // ── Path B: Hidden-event detection (freebusy-vs-events-list diff) ─────────
@@ -2779,6 +2845,7 @@ window.GLCalendarSync = (function() {
     syncBandCalendar: syncBandCalendar,
     getSyncState: getSyncState,
     runHiddenEventCheck: _runHiddenEventCheck,
+    getSyncActivity: getSyncActivity,
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,

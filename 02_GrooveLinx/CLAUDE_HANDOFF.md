@@ -2,7 +2,60 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-22 (Paths B + C + D#6 shipped — hidden-event safety net, Mode A welcome wizard, stale-member nudges)_
+_Last updated: 2026-04-22 (all Week 1 sprint items complete — Paths B/C/D#6 + #10 + #13)_
+
+## Session 2026-04-22 (latest) — #10 + #13
+
+**Status:** Build `20260422-223450`. Closes the last two deferred Week 1 items.
+
+### What shipped
+
+**Task #13 — Sync activity log** (`js/core/gl-calendar-sync.js` + `js/features/calendar.js`):
+- Schema: Firebase `bands/{slug}/sync_activity`, push()-keyed entries. Fields: ts, memberKey, memberName, pushed, pulled, updated, deleted, blocksPushed, blocksDeleted, hiddenCount, error, needsReauth, skipped, durationMs.
+- `_logSyncActivity(r)` runs at the end of every `syncBandCalendar()` call (success or error), writes entry, then trims to last 100 via `orderByKey().once('value')` + batched-null `update()`. Non-fatal on any Firebase error.
+- New public API: `GLCalendarSync.getSyncActivity(limit)` returns newest-first, default 50.
+- Render: "Sync activity" admin-bar button opens `_calShowSyncActivity` modal. Each row shows short first name, hidden-count pill if > 0, relative time, duration pill (ms or s), and counts line (or error message / needs-reauth / skipped / "nothing to sync").
+
+**Task #10 — Mobile scheduling audit** (`app-shell.css` + `js/features/calendar.js` + new spec doc):
+- CSS: new `@media(max-width:640px)` block targets every Google-panel admin button by onclick selector — `min-height:36px`, 6/10px padding, 0.78em font, rounded. Fixes the "tap-precision-required" admin bar on phones.
+- JS: all primary/secondary action buttons in modals added this session (Paths B/C + #13) bumped to `font-size:0.88em`, `padding:10px 18px`, `min-height:44px` (Apple HIG compliance).
+- New doc: `02_GrooveLinx/specs/mobile_scheduling_audit.md`. Documents what was fixed, what still needs a physical device, and a 10-point device-verification punch list.
+- Left for hands-on session: viewport pinch-zoom lock (WCAG 1.4.4 — requires form-wide regression pass), admin-overflow menu on mobile (needs device evidence it's still painful), event-form → sheet modal on mobile (large refactor, evidence-gated).
+
+### Files touched
+
+- `js/core/gl-calendar-sync.js` — +~90 lines (`_logSyncActivity`, `getSyncActivity`, sync wrapper records duration, 1 new export)
+- `js/features/calendar.js` — +~80 lines (`_calShowSyncActivity` modal, 1 new admin button, modal button sizing bumps)
+- `app-shell.css` — +~24 lines (mobile tap-target media block)
+- `02_GrooveLinx/specs/mobile_scheduling_audit.md` — new
+- `version.json`, `index.html`, `service-worker.js` — stamped to `20260422-223450`
+- `02_GrooveLinx/CURRENT_PHASE.md`, `CLAUDE_HANDOFF.md`, `uat/bug_queue.md` — updated
+
+### Remaining Week 1 work
+
+- **Physical-device mobile verification** only — not a code task. See the 10-point checklist in `mobile_scheduling_audit.md`.
+
+### Restart prompt (next session)
+
+```
+GrooveLinx session restart. All Week 1 sprint items complete (2026-04-22, build 20260422-223450).
+
+Read first:
+  - 02_GrooveLinx/CLAUDE_HANDOFF.md (this block — #10 + #13)
+  - 02_GrooveLinx/CURRENT_PHASE.md
+  - 02_GrooveLinx/specs/mobile_scheduling_audit.md
+  - 02_GrooveLinx/uat/bug_queue.md
+
+Validation tasks for next session:
+  - Confirm hidden-events banner fires correctly against the DeadCetera band
+    calendar (Path B). If Pierce's block is still private, banner should
+    show 6/12-6/14 as hidden busy time.
+  - Open Sync activity modal after any member syncs. Verify each member's
+    sync-age, duration, and counts display correctly.
+  - Run the 10-point mobile-device checklist on iPhone + iPad.
+  - Optional: start the provider-refactor planning per the 2-week DoD gate
+    (expires 2026-05-06).
+```
 
 ## Session 2026-04-22 (late) — Paths B + C + D#6
 

@@ -1815,7 +1815,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calRefreshGigTimes()" id="calRefreshTimesBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Push correct start/end times from Gigs to Google Calendar (one-time fix for events showing 7-9 PM default)">Refresh gig times</button>'
             + '<button onclick="_calCleanLegacyBusy()" id="calCleanBusyBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove legacy auto-pushed &quot;Busy&quot; / &quot;Busy (all day)&quot; events that pollute the conflict list">Clean legacy Busy</button>'
             + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>'
-            + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="How to fix hidden events — set default visibility to Public">Visibility help</button>';
+            + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="How to fix hidden events — set default visibility to Public">Visibility help</button>'
+            + '<button onclick="_calShowSyncActivity()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Recent sync runs across all connected band members">Sync activity</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }
@@ -1948,8 +1949,8 @@ window._calShowHiddenEventDetails = function() {
         + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:12px">These dates/times show as busy on your shared band calendar but have no visible event. A member likely set visibility to Private or Default. Ask around and switch those events to <b>Public</b>.</div>'
         + '<div style="margin-bottom:14px">' + body + '</div>'
         + '<div style="display:flex;gap:8px;justify-content:flex-end">'
-        + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer">How to fix</button>'
-        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600">Close</button>'
+        + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer;min-height:44px">How to fix</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600;min-height:44px">Close</button>'
         + '</div>'
         + '</div></div>';
     var wrap = document.createElement('div');
@@ -1979,12 +1980,88 @@ window._calShowVisibilityHelp = function() {
         + '<p style="margin:0;font-size:0.92em;color:var(--gl-text-tertiary)">Public visibility only affects events on your <i>shared band calendar</i> — it does not change visibility of your personal events.</p>'
         + '</div>'
         + '<div style="display:flex;justify-content:flex-end;margin-top:14px">'
-        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600">Got it</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600;min-height:44px">Got it</button>'
         + '</div>'
         + '</div></div>';
     var wrap = document.createElement('div');
     wrap.innerHTML = html;
     document.body.appendChild(wrap.firstChild);
+};
+
+// Task #13: Sync activity log viewer — lists recent sync runs across the band.
+window._calShowSyncActivity = async function() {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
+    wrap.innerHTML = '<div style="background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.05em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Sync activity</div>'
+        + '<div style="font-size:0.76em;color:var(--gl-text-secondary);margin-bottom:12px">Recent sync runs from every band member whose device is connected.</div>'
+        + '<div id="calSyncActivityBody" style="font-size:0.78em;color:var(--gl-text-secondary)">Loading\u2026</div>'
+        + '<div style="display:flex;justify-content:flex-end;margin-top:14px">'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600;min-height:44px">Close</button>'
+        + '</div></div>';
+    document.body.appendChild(wrap);
+
+    var rows = [];
+    try {
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getSyncActivity) {
+            rows = await GLCalendarSync.getSyncActivity(50);
+        }
+    } catch(e) {}
+
+    var body = document.getElementById('calSyncActivityBody');
+    if (!body) return;
+    if (!rows.length) {
+        body.innerHTML = '<div style="color:var(--gl-text-tertiary);font-size:0.88em;padding:12px 0">No sync activity recorded yet. Run a sync to see it here.</div>';
+        return;
+    }
+
+    var html = '';
+    rows.forEach(function(r) {
+        var mins = Math.floor((Date.now() - new Date(r.ts).getTime()) / 60000);
+        var ago;
+        if (mins < 1) ago = 'just now';
+        else if (mins < 60) ago = mins + ' min ago';
+        else if (mins < 60 * 24) ago = Math.floor(mins / 60) + 'h ago';
+        else ago = Math.floor(mins / (60 * 24)) + 'd ago';
+        var nm = (r.memberName || 'unknown').split(' ')[0];
+        var parts = [];
+        if (r.pushed) parts.push(r.pushed + ' pushed');
+        if (r.pulled) parts.push(r.pulled + ' imported');
+        if (r.updated) parts.push(r.updated + ' updated');
+        if (r.deleted) parts.push(r.deleted + ' deleted');
+        if (r.blocksPushed) parts.push(r.blocksPushed + ' block' + (r.blocksPushed === 1 ? '' : 's'));
+        if (r.blocksDeleted) parts.push(r.blocksDeleted + ' block del');
+        var summary;
+        var color = 'var(--gl-text-tertiary)';
+        if (r.needsReauth) {
+            summary = '\u26A0 sign-in expired';
+            color = '#fbbf24';
+        } else if (r.error) {
+            summary = '\u26A0 ' + r.error;
+            color = '#f87171';
+        } else if (r.skipped) {
+            summary = 'skipped (another device syncing)';
+        } else if (parts.length) {
+            summary = parts.join(' \u00B7 ');
+            color = 'var(--gl-text-secondary)';
+        } else {
+            summary = 'nothing to sync';
+        }
+        var hiddenPill = '';
+        if (r.hiddenCount > 0) {
+            hiddenPill = ' <span style="background:rgba(245,158,11,0.12);color:#fbbf24;padding:1px 6px;border-radius:4px;font-size:0.82em;margin-left:4px">' + r.hiddenCount + ' hidden</span>';
+        }
+        var durLabel = r.durationMs ? ' \u00B7 ' + (r.durationMs < 1000 ? r.durationMs + 'ms' : (r.durationMs / 1000).toFixed(1) + 's') : '';
+        html += '<div style="padding:8px 0;border-bottom:1px solid var(--gl-border-subtle)">'
+            + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
+            + '<div style="font-weight:600;color:var(--gl-text)">' + nm + hiddenPill + '</div>'
+            + '<div style="font-size:0.88em;color:var(--gl-text-tertiary);white-space:nowrap">' + ago + durLabel + '</div>'
+            + '</div>'
+            + '<div style="color:' + color + ';margin-top:2px">' + summary + '</div>'
+            + '</div>';
+    });
+    body.innerHTML = html;
 };
 
 // Path C: Mode A welcome wizard — one-time setup checklist shown after first
@@ -2014,8 +2091,8 @@ window._calShowModeAWelcome = function() {
         + '<div style="font-size:0.72em;color:var(--gl-text-tertiary);line-height:1.5;margin-bottom:14px">GrooveLinx runs a background safety check on every sync. If any event ever ends up hidden (private visibility), you\u2019ll see a yellow warning banner here with the affected dates.</div>'
 
         + '<div style="display:flex;gap:8px;justify-content:flex-end">'
-        + '<button onclick="this.closest(\'[style*=fixed]\').remove();_calShowAvailabilitySettings()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer">Open Rules</button>'
-        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600">Got it</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove();_calShowAvailabilitySettings()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer;min-height:44px">Open Rules</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600;min-height:44px">Got it</button>'
         + '</div>'
         + '</div></div>';
     var wrap = document.createElement('div');

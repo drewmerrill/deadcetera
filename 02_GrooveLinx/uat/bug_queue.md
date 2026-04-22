@@ -1,11 +1,15 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260422-222724 (local stamp via stamp-version.py)
+**Build Under Test:** 20260422-223450 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-22
 
 ---
 
 ## Session Focus
+
+**2026-04-22 Mode A Sprint (#10 + #13):** Final two Week 1 deferred items closed.
+- **#13 Sync activity log (`gl-calendar-sync.js` + `calendar.js`):** Every sync (success or error) appends an entry to `bands/{slug}/sync_activity` via push() — ts, memberKey, memberName, pushed/pulled/updated/deleted/blocksPushed/blocksDeleted, hiddenCount, error, needsReauth, skipped, durationMs. Trim-to-100 on each write. New public `GLCalendarSync.getSyncActivity(limit)`. "Sync activity" admin button opens a modal with per-member rows: "Drew · 4 pushed · 2 imported · 3 hidden" + relative time + duration pill.
+- **#10 Mobile scheduling audit (code-only pass):** Fixed Google panel admin button bar tap targets at ≤640px (min-height 36px, font 0.78em, visible padding). All new Paths B/C/D#6/#13 modal action buttons bumped to 44px min-height + 0.88em font. Created `02_GrooveLinx/specs/mobile_scheduling_audit.md` with documented fixes and a 10-point device-verification punch list for the next hands-on session. Three larger fixes (viewport pinch-zoom lock, admin overflow menu, event form → sheet modal on mobile) deferred pending physical-device evidence.
 
 **2026-04-22 Mode A Sprint (Paths B + C + D #6):** Structural fix for the "invisible event" failure mode that prompted the Pierce-is-missing debugging loop, plus onboarding + stale-member nudges. All three are generic (no band name in copy).
 - **Path B — Freebusy overlay safety net:** Every sync now diffs the shared calendar's `freebusy` output against its `events.list` output. Any busy range with no matching visible event = a hidden event (Private or Default visibility hiding it from API callers). Stored in `calendar_sync_state.lastSyncResult.hiddenRanges`. Yellow banner on the Google panel lists affected dates and links to a fix-it guide. New exports: `GLCalendarSync.runHiddenEventCheck()`.

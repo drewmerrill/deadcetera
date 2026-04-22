@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-22 (Paths B + C + D#6 shipped — hidden-event safety net, Mode A onboarding wizard, stale-member nudges)_
+_Updated: 2026-04-22 (all Week 1 deferred items now closed — #10 mobile audit (code-only), #13 sync activity log; only physical-device verification remains)_
 
 ## Active Phase: Mode A Hardening (2-week sprint)
 
@@ -23,9 +23,9 @@ Shipped:
 
 Admin button added: **"Move misplaced events"** in Google panel — one-shot fix for the Drew/Brian personal-calendar leak. Runs per-user; only moves events the current token owns.
 
-Deferred to Week 2:
-- **#10 mobile scheduling audit** — physical device walkthrough
-- **#13 sync activity log** — needs storage schema (Firebase vs localStorage, retention)
+Week 2 cleanup (now closed — 2026-04-22 build 20260422-223450):
+- **#10 mobile scheduling audit** — code-only audit complete. Tap-target fixes for Google panel admin bar + all new modals. Full doc: `02_GrooveLinx/specs/mobile_scheduling_audit.md` (10-point physical-device checklist).
+- **#13 sync activity log** — shipped. Firebase `bands/{slug}/sync_activity`, trim-to-100 on write. "Sync activity" admin-bar button → per-member row modal.
 
 ## Mode A Sprint — Paths B + C + D#6 (2026-04-22, build 20260422-222724)
 
