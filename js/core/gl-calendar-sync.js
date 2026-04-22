@@ -1336,8 +1336,12 @@ window.GLCalendarSync = (function() {
   async function _runHiddenEventCheck(bandCalId) {
     if (!bandCalId || !accessToken) return null;
     try {
+      // Window: 7 days back (to catch recent-past items the band may still be
+      // reconciling) through 6 months forward. Past history beyond that is
+      // noise and inflates the banner list unhelpfully.
       var _now = new Date();
-      var _min = new Date(_now.getFullYear(), _now.getMonth() - 6, 1).toISOString();
+      var _minDate = new Date(_now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      var _min = _minDate.toISOString();
       var _max = new Date(_now.getFullYear(), _now.getMonth() + 6, 0, 23, 59, 59).toISOString();
 
       // Paginated full-window events.list

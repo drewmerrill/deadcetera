@@ -1917,17 +1917,44 @@ window._calShowManageConnections = function() {
 window._calShowHiddenEventDetails = function() {
     var ranges = window._calHiddenRanges || [];
     var byDay = {};
+    var _sameDay = function(a, b) {
+        return a.getFullYear() === b.getFullYear()
+            && a.getMonth() === b.getMonth()
+            && a.getDate() === b.getDate();
+    };
+    var _dayKeyOf = function(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    var _dayLabelOf = function(d) {
+        return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    };
     ranges.forEach(function(r) {
         try {
             var s = new Date(r.start);
             var e = new Date(r.end);
-            var dayKey = s.getFullYear() + '-' + String(s.getMonth() + 1).padStart(2, '0') + '-' + String(s.getDate()).padStart(2, '0');
-            var dayLabel = s.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-            var isAllDay = (e.getTime() - s.getTime()) >= 24 * 60 * 60 * 1000 - 60000;
-            var timeLabel = isAllDay ? 'all day' :
-                (s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) +
-                 ' \u2013 ' +
-                 e.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+            var dayKey = _dayKeyOf(s);
+            var dayLabel = _dayLabelOf(s);
+            var durMs = e.getTime() - s.getTime();
+            var spansFullDay = durMs >= 24 * 60 * 60 * 1000 - 60000;
+            var timeLabel;
+            if (spansFullDay && _sameDay(s, new Date(s.getTime() + durMs - 1))) {
+                // Exactly one calendar day, midnight-to-midnight
+                timeLabel = 'all day';
+            } else if (spansFullDay) {
+                // Multi-day span — label with the full range
+                var eEndDate = new Date(e.getTime() - 1); // end is exclusive for all-day
+                timeLabel = 'all day through ' + eEndDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+            } else if (_sameDay(s, e)) {
+                timeLabel = s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                    + ' \u2013 '
+                    + e.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+            } else {
+                // Timed range that crosses midnight
+                timeLabel = s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                    + ' \u2013 '
+                    + e.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+                    + ' (' + e.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ')';
+            }
             if (!byDay[dayKey]) byDay[dayKey] = { label: dayLabel, times: [] };
             byDay[dayKey].times.push(timeLabel);
         } catch(e) {}
