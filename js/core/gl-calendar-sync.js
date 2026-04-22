@@ -1923,19 +1923,42 @@ window.GLCalendarSync = (function() {
   // Get the band calendar ID for WRITES (rehearsals, gigs)
   // Checks band-level setting first (shared), then user-level fallback
   async function _getBandCalendarId() {
-    // Band-level setting (shared across all members)
+    // Band-level setting (shared across all members) — source of truth.
     try {
       var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
       if (db && typeof bandPath === 'function') {
         var snap = await db.ref(bandPath('band_calendar/calendarId')).once('value');
-        if (snap.val()) return snap.val();
+        var _bandLevel = snap.val();
+        if (_bandLevel) {
+          if (!_isGroupCalendarId(_bandLevel)) {
+            console.warn('[CalSync] band-level calendarId is NOT a group calendar — refusing to use it:', _bandLevel);
+            return null;
+          }
+          return _bandLevel;
+        }
       }
     } catch(e) {}
-    // User-level fallback
+    // User-level fallback — ONLY accept group-calendar IDs so we never silently
+    // write band events to someone's personal calendar (bug where Brian's device
+    // pushed 6/20 and 6/28 gigs to brian@hrestoration.com instead of DeadCetera).
     var settings = await getAvailabilitySettings();
-    if (settings && settings.bandCalendarId) return settings.bandCalendarId;
-    // No band calendar configured — return null (callers must check)
+    if (settings && settings.bandCalendarId) {
+      if (!_isGroupCalendarId(settings.bandCalendarId)) {
+        console.warn('[CalSync] user-level bandCalendarId is a personal calendar — refusing fallback. Band calendar must be configured at band level:', settings.bandCalendarId);
+        return null;
+      }
+      return settings.bandCalendarId;
+    }
     return null;
+  }
+
+  function _isGroupCalendarId(id) {
+    if (!id || typeof id !== 'string') return false;
+    // Google group calendars end in @group.calendar.google.com
+    // Personal gmail accounts or 'primary' are never valid band calendars.
+    if (id === 'primary') return false;
+    if (id.indexOf('@group.calendar.google.com') > -1) return true;
+    return false;
   }
 
   // Get the default rehearsal window (user-configurable)
