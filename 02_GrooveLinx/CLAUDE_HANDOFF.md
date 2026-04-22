@@ -2,7 +2,80 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-21 (Phase 1.5: schedule-blocks auto-push to band calendar in Mode A; stale-token 401 re-auth; honest toast; dark native form controls on Windows)_
+_Last updated: 2026-04-22 (Mode A hardening sprint Week 1 — 9 punch-list items shipped; DoD "boringly reliable" set for DeadCetera; provider refactor deferred 14 days)_
+
+## Session 2026-04-22 — Mode A Hardening Sprint, Week 1
+
+**Status:** Repo clean on `main`. Build `20260422-141326`. Three commits, 9 punch-list items closed.
+
+### Decision context
+
+Drew set policy: no provider-architecture refactor for 2 weeks. All calendar effort goes to making Mode A "boringly reliable" for the DeadCetera band. Provider work starts only after 14 days of stable real-world use.
+
+### Shipped this session
+
+**Commit `bc5fede3` — Block CRUD parity:**
+- #1 UPDATE propagation — Phase 1.5 no longer always-skips synced blocks. Dirty-check compares `updatedAt > lastSyncedAt` (falls back to `needsSync` flag). Introduced `saveScheduleBlock(block, syncOnly=true)` so write-backs from sync don't bump updatedAt and cause infinite dirty-loop.
+- #2 DELETE propagation — removed the "also remove from Google?" prompt (Mode A contract = always mirror). Auto-propagates on delete. Tombstones (`_deleted=true`) if Google delete fails; Phase 1.5 retries. Phase 1.5's delete path now checks return value before hard-deleting local (previously silently orphaned Google events on failure).
+
+**Commit `5a953cc3` — Reliability signals:**
+- #7 Accurate Last Synced — sync engine now writes `calendar_sync_state.lastSyncAt` + `lastSyncResult` on every run. UI reads from it. Previously read connection-record timestamps (= when user linked Google, not when sync ran) — this is why Drew saw "Last synced Apr 21 3:08 PM" stuck across sessions.
+- #4 Misconfig banner — red banner on Google panel when `_getBandCalendarId()` returns null (rejected personal-cal fallback). One-tap "Fix in Rules →".
+- #11 Pending-push indicators — amber "⏳ pending" on conflict rows for unsynced/dirty blocks; red "⏳ delete pending" for tombstones awaiting retry.
+- #12 Explicit success copy — persistent "✓ Last run: 2 pushed · 1 imported" line below Last Synced. Survives toast fade.
+- #14 Specific failure messaging — `_calTranslateSyncError` maps 401/403/404/5xx/network/no-scope/another_device_syncing to actionable user copy with fix hints.
+- Public API: `GLCalendarSync.getSyncState()`.
+
+**Commit (this one) — Admin tools + dedupe:**
+- #3 "Move misplaced events" admin button — one-shot fix for Drew/Brian personal-calendar leak. Scans `calendar_events` for `calendarId !== bandCalId`, creates fresh on band cal via `GLCalendarSync.create()`, best-effort deletes old. Per-user (only moves events this token owns); graceful 403 handling.
+- #8 Title+date dedupe — new `_findByTitleAndDate(calId, title, date)` helper. Runs inside `create()` right after the glEventId dedupe. Catches the case where Brian creates an event directly on Google (no glEventId tag) and Drew then creates the same gig in GrooveLinx — we'd double-post before.
+- #9 Broadened legacy cleanup — scan now matches GrooveLinx description signatures ("Created by GrooveLinx (band scheduling)", "Created with GrooveLinx") in addition to "Busy" titles. Excludes events with matching schedule_block googleEventId (prevents accidentally removing legit linked blocks).
+
+### Deferred to Week 2
+
+- **#10 Mobile audit** — needs physical iPhone/iPad testing; produces a punch list rather than code.
+- **#13 Sync activity log** — needs schema decision (Firebase vs localStorage, retention window, render surface).
+- **#6 Cross-member nudges** — Drew chose behavior-only (stale-sync alert, tap-to-refresh CTA); not yet built.
+
+### Restart prompt (next session)
+
+```
+GrooveLinx session restart. Mode A Hardening Sprint Week 1 — COMPLETE.
+Build 20260422-141326, repo clean on main.
+
+Read first:
+  - 02_GrooveLinx/CLAUDE_HANDOFF.md (this block — 2026-04-22 Mode A sprint)
+  - 02_GrooveLinx/CURRENT_PHASE.md
+  - 02_GrooveLinx/uat/bug_queue.md (batches 1–3 documented)
+
+Priority order:
+  1. Ask Drew what broke after batch 1–3 validation
+  2. If clean, tackle #6 (stale-sync nudges) + #13 (activity log) + #10 (mobile audit)
+  3. Day 14 from 2026-04-22 = 2026-05-06. If DeadCetera usage is stable
+     through that date, Phase 1 provider refactor can begin.
+
+DO NOT start provider refactor until the 14-day Mode A stability window
+has closed. Drew is explicit about this.
+
+Exercise before coding:
+  - Open Schedule page. Confirm "Last Synced" shows recent actual sync
+    time (not connection time).
+  - Confirm "Last run" line shows counts from last sync.
+  - Check conflict list for "⏳ pending" badges on any unsynced blocks.
+  - Verify Google panel has "Move misplaced events" button next to
+    "Clean legacy Busy".
+  - Ask Drew whether Brian successfully moved his 6/20 + 6/28 gigs.
+```
+
+### Admin buttons on Google panel (reference)
+
+Rules · Connections · Clean duplicates · Refresh gig times · Clean legacy Busy · **Move misplaced events** · Invite band (if members unconnected)
+
+---
+
+
+
+
 
 ## Session 2026-04-21 — Phase 1.5: Schedule-Blocks to Band Calendar
 

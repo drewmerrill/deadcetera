@@ -1,11 +1,17 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260421-195241 (local stamp via stamp-version.py)
-**Last Updated:** 2026-04-21
+**Build Under Test:** 20260422-141326 (local stamp via stamp-version.py)
+**Last Updated:** 2026-04-22
 
 ---
 
 ## Session Focus
+
+**2026-04-22 Mode A Sprint Week 1 (batches 1-3):** Drew set a DoD for Mode A to be "boringly reliable" at DeadCetera before any provider refactor. 3 batches shipped in one session, closing 9 punch-list items.
+- Batch 1 (`bc5fede3`): #1 schedule-block UPDATE propagation (dirty-check via updatedAt > lastSyncedAt; syncOnly param on saveScheduleBlock to prevent loops), #2 DELETE propagation (Mode A auto-propagates; tombstone on Google failure for Phase 1.5 retry).
+- Batch 2 (`5a953cc3`): #7 accurate Last Synced (reads from calendar_sync_state.lastSyncAt written on every sync, not connection-record timestamps), #12 persistent "Last run: N pushed · N imported" line, #4 red misconfig banner when bandCalendarId is a personal cal, #11 amber ⏳ pending / red ⏳ delete pending badges on conflict rows, #14 _calTranslateSyncError maps 401/403/404/5xx/network/no-scope to actionable copy.
+- Batch 3 (this commit): #3 "Move misplaced events" admin button (runs per-user, creates fresh on bandCalId + deletes old on personal), #8 title+date pre-push dedupe via _findByTitleAndDate (catches events created directly on Google by one member when another pushes via GrooveLinx), #9 legacy-Busy cleanup extended to match GrooveLinx signature in description (not just "Busy" titles).
+- Deferred: #10 mobile audit (needs physical iPhone/iPad testing), #13 sync activity log (needs storage schema decision).
 
 **2026-04-21 (fourth fix):** (a) Phase 1.5 block push wasn't migrating blocks already linked to the user's personal calendar — it fell into `updateConflictInGoogle` which PATCHed the old personal-cal event instead of creating a new one on DeadCetera. Fixed: in Phase 1.5, detect stale `calendarId` mismatch, clear the stale link, take the CREATE path on band cal, and best-effort delete the old personal event. (b) Added a "Clean legacy Busy" admin button that scans calendar_events for imported rows titled "Busy" / "Busy (all day)" and removes them from Firebase + Google. (c) Added a Phase 2 diagnostic: logs the title+date of every event Google returns, so "event X is missing" reports can be answered via console log rather than guessing.
 

@@ -1,8 +1,36 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-21 (Phase 1.5 schedule-block push to band calendar in Mode A; stale-token recovery; honest toast; Windows dark form controls)_
+_Updated: 2026-04-22 (Mode A hardening sprint Week 1 — 9 punch-list items shipped; DoD: "boringly reliable" for DeadCetera; provider refactor deferred 2 weeks)_
 
-## Active Phase: Band Adoption + Polish
+## Active Phase: Mode A Hardening (2-week sprint)
+
+**Decision 2026-04-22:** Do NOT begin Phase 1 provider refactor yet. For the next 2 weeks, all calendar effort goes to Mode A operational hardening. Provider architecture starts only after 14 days of stable DeadCetera use.
+
+**Mode A DoD:** (1) shared calendar mirrors into GrooveLinx, (2) GL events reliably appear in shared cal, (3) deletes propagate, (4) no duplicates, (5) clear last-sync timestamps, (6) conflict logic trusted, (7) Brian's device works without handholding, (8) mobile feels usable.
+
+## Mode A Sprint — Week 1 (2026-04-22)
+
+Shipped:
+- **#1 block UPDATE propagation** — Phase 1.5 falls through on dirty blocks (updatedAt > lastSyncedAt); `saveScheduleBlock(block, syncOnly)` prevents dirty-loop when writing back sync metadata
+- **#2 block DELETE propagation** — Mode A auto-propagates without prompt; tombstones on Google failure; Phase 1.5 retries on next sync; Phase 1.5 delete path checks return value before hard-deleting local
+- **#4 misconfig banner** — red banner on Google panel when `_getBandCalendarId` returns null due to personal cal rejection; one-tap "Fix in Rules →"
+- **#7 accurate Last Synced** — `calendar_sync_state.lastSyncAt` written on every sync (not just when syncToken issues); panel reads from it; `GLCalendarSync.getSyncState()` public API
+- **#8 title+date dedupe** — `_findByTitleAndDate` catches direct-Google events created by one member when another pushes via GrooveLinx; prevents duplicates
+- **#9 broadened legacy cleanup** — scan now matches events by GrooveLinx description signature, not just "Busy" title; excludes events with matching schedule_block
+- **#11 pending-push indicators** — amber ⏳ pending for unsynced/dirty blocks; red ⏳ delete pending for tombstones
+- **#12 explicit success copy** — persistent "✓ Last run: N pushed · N imported" line below Last Synced; survives toast fade
+- **#14 specific failure messaging** — `_calTranslateSyncError` maps 401/403/404/5xx/network/no-scope/another_device_syncing to actionable user copy + fix hints
+
+Admin button added: **"Move misplaced events"** in Google panel — one-shot fix for the Drew/Brian personal-calendar leak. Runs per-user; only moves events the current token owns.
+
+Deferred to Week 2:
+- **#10 mobile scheduling audit** — physical device walkthrough
+- **#13 sync activity log** — needs storage schema (Firebase vs localStorage, retention)
+- **#6 cross-member sync orchestration** — behavior nudges only (stale-sync alerts, tap-to-refresh CTA)
+
+---
+
+## Previous Phase: Band Adoption + Polish
 
 ## What's Live (2026-04-21)
 

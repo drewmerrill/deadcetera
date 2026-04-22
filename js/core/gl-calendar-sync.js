@@ -194,6 +194,48 @@ window.GLCalendarSync = (function() {
     }
   }
 
+  // Find an event on the band calendar by title + date — used for dedupe
+  // when a user creates an event directly on Google (no glEventId tag) and
+  // another user later pushes the same gig via GrooveLinx. Returns the
+  // earliest-created match, or null. Time-of-day is intentionally ignored
+  // — gig start times can drift between the direct-created event and the
+  // GrooveLinx version, and we'd rather match once than double-create.
+  async function _findByTitleAndDate(calId, title, dateStr) {
+    if (!calId || !title || !dateStr) return null;
+    try {
+      // Query a narrow window — start of target day to end of next day
+      var _start = new Date(dateStr + 'T00:00:00').toISOString();
+      var _endDate = new Date(dateStr + 'T00:00:00');
+      _endDate.setDate(_endDate.getDate() + 1);
+      var _end = _endDate.toISOString();
+      var url = WORKER_BASE + '/calendar/events'
+        + '?calendarId=' + encodeURIComponent(calId)
+        + '&timeMin=' + encodeURIComponent(_start)
+        + '&timeMax=' + encodeURIComponent(_end)
+        + '&maxResults=50';
+      var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+      if (!res.ok) return null;
+      var data = await res.json();
+      var items = (data.items || []).filter(function(ev) {
+        if (!ev || ev.status === 'cancelled') return false;
+        // Skip events that already have a glEventId tag — those are dedupe'd
+        // via _findByGlEventId and aren't the target of this fallback.
+        var ep = ev.extendedProperties && ev.extendedProperties.private;
+        if (ep && ep.glEventId) return false;
+        return String(ev.summary || '').trim() === String(title).trim();
+      });
+      if (!items.length) return null;
+      items.sort(function(a, b) {
+        var ta = Date.parse(a.created || 0), tb = Date.parse(b.created || 0);
+        return ta - tb;
+      });
+      return items[0];
+    } catch(e) {
+      console.warn('[CalSync] _findByTitleAndDate error:', e && e.message);
+      return null;
+    }
+  }
+
   async function create(glEvent, opts) {
     if (!hasCalendarScope()) {
       return _fallbackUrl(glEvent, opts);
@@ -240,6 +282,38 @@ window.GLCalendarSync = (function() {
         };
       }
     }
+
+    // Title+date dedupe (#8): catches the case where a member created the event
+    // directly on Google Calendar (so it has no glEventId tag) and another
+    // member then creates the same gig/rehearsal in GrooveLinx. Without this,
+    // we'd POST a duplicate. Match by summary + start-date; tolerate time skew.
+    try {
+      var _matchTitle = body.summary || '';
+      var _matchDate = glEvent.date || '';
+      if (_matchTitle && _matchDate) {
+        var _twin = await _findByTitleAndDate(calId, _matchTitle, _matchDate);
+        if (_twin) {
+          console.log('[CalSync] Title-match dedupe: linking to existing untagged event', _twin.id, _matchTitle, _matchDate);
+          return {
+            success: true,
+            deduped: true,
+            sync: {
+              provider: 'google',
+              externalEventId: _twin.id,
+              calendarId: calId,
+              htmlLink: _twin.htmlLink || null,
+              status: 'synced',
+              lastSyncedAt: new Date().toISOString(),
+              lastSyncDirection: 'link-existing-by-title',
+              syncedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '',
+              etag: _twin.etag || null,
+              attendees: _getBandEmails()
+            },
+            htmlLink: _twin.htmlLink
+          };
+        }
+      }
+    } catch(e) { console.warn('[CalSync] Title-match dedupe skipped:', e && e.message); }
 
     try {
       var res = await fetch(WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId), {

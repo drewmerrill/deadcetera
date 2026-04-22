@@ -1314,15 +1314,36 @@ window._calCleanLegacyBusy = async function() {
             return;
         }
     }
-    // Scan calendar_events for legacy orphans
+    // Load schedule_blocks so we can exclude legitimate synced blocks from the
+    // orphan sweep — an event with title "Drew — busy" that matches an
+    // existing schedule_block is NOT an orphan; it's a re-imported copy.
+    var _blockGids = {};
+    try {
+        if (typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks) {
+            var _blks = await GLStore.getScheduleBlocks();
+            _blks.forEach(function(b) { if (b && b.googleEventId) _blockGids[b.googleEventId] = true; });
+        }
+    } catch(e) {}
+    // Scan calendar_events for legacy orphans. (#9) Broader heuristic:
+    // 1. Classic "Busy" / "Busy (all day)" titled events (pre-glBlockId push)
+    // 2. Events whose description matches a GrooveLinx push signature AND
+    //    have no matching schedule_block (truly orphaned).
     var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     var orphans = events.filter(function(e) {
         if (!e) return false;
         if (e.type === 'rehearsal' || e.type === 'gig' || e.type === 'meeting') return false;
-        var title = (e.title || '').trim().toLowerCase();
-        // Match: "busy", "busy (all day)", or "busy (personal calendar)"
-        if (title !== 'busy' && title.indexOf('busy (') !== 0) return false;
-        // Must have been imported (not a user-created conflict)
+        // Never sweep legit synced schedule_blocks
+        var gid = e.googleEventId || (e.sync && e.sync.externalEventId) || '';
+        if (gid && _blockGids[gid]) return false;
+        var title = String(e.title || '').trim().toLowerCase();
+        var desc = String(e.notes || e.description || '').toLowerCase();
+        // Pattern 1: legacy "Busy" titles
+        var titleMatch = (title === 'busy' || title.indexOf('busy (') === 0);
+        // Pattern 2: description bears GrooveLinx push signature
+        var descMatch = desc.indexOf('created by groovelinx (band scheduling)') !== -1
+            || desc.indexOf('created with groovelinx') !== -1;
+        if (!titleMatch && !descMatch) return false;
+        // Must be imported (not a freshly-created local conflict awaiting push)
         var wasImported = e._importedFromGoogle || (e.sync && e.sync.source === 'google');
         return wasImported;
     });
@@ -1367,6 +1388,94 @@ window._calCleanLegacyBusy = async function() {
     if (removedGoogle > 0) msg += ' + ' + removedGoogle + ' from Google';
     if (typeof showToast === 'function') showToast(msg, 6000);
     if (btn) { btn.textContent = 'Clean legacy Busy'; btn.disabled = false; }
+};
+
+// One-time migration (#3): re-push events that landed on a non-band calendar
+// (typically the user's personal primary) to the correct band calendar. Runs
+// per-user — only moves events whose googleEventId belongs to a calendar this
+// user's token owns. Matches Drew's / Brian's "6/20 and 6/28 gigs on personal
+// calendar" case.
+window._calMigrateMisplacedEvents = async function() {
+    if (typeof accessToken === 'undefined' || !accessToken) {
+        if (typeof showToast === 'function') showToast('Signing back into Google\u2026', 3000);
+        if (typeof _calConnectGoogle === 'function') { try { await _calConnectGoogle(); } catch(e) {} }
+        if (typeof accessToken === 'undefined' || !accessToken) {
+            if (typeof showToast === 'function') showToast('\u26A0 Google sign-in cancelled.', 5000);
+            return;
+        }
+    }
+    var bandCalId = null;
+    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getBandCalendarId) {
+        bandCalId = await GLCalendarSync.getBandCalendarId();
+    }
+    if (!bandCalId) {
+        if (typeof showToast === 'function') showToast('\u26A0 Band calendar not configured. Open Rules first.', 5000);
+        return;
+    }
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    // Candidates: locally-created events (not imported) that are linked to a
+    // different Google calendar. Misplaced = calendarId exists AND != bandCalId.
+    var misplaced = events.filter(function(ev) {
+        if (!ev || ev._importedFromGoogle) return false;
+        var evCal = ev.calendarId || (ev.sync && ev.sync.calendarId) || '';
+        var evGid = ev.googleEventId || (ev.sync && ev.sync.externalEventId) || '';
+        return evGid && evCal && evCal !== bandCalId;
+    });
+    if (!misplaced.length) {
+        if (typeof showToast === 'function') showToast('\u2713 No misplaced events found \u2014 nothing to migrate');
+        return;
+    }
+    if (!confirm('Found ' + misplaced.length + ' event' + (misplaced.length === 1 ? '' : 's') + ' on a non-band calendar.\n\nMove to DeadCetera?\n\n(Creates fresh on band calendar, deletes old copy. Only works for events this account owns.)')) {
+        return;
+    }
+    var btn = document.getElementById('calMigrateMisplacedBtn');
+    if (btn) { btn.textContent = 'Migrating...'; btn.disabled = true; }
+    var moved = 0, failed = 0;
+    for (var i = 0; i < misplaced.length; i++) {
+        var ev = misplaced[i];
+        var oldGid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
+        var oldCal = ev.calendarId || (ev.sync && ev.sync.calendarId);
+        try {
+            // Create fresh on band calendar (routes through create() which uses
+            // _getBandCalendarId internally — guaranteed band cal target now).
+            var createRes = await GLCalendarSync.create(ev);
+            if (!createRes || !createRes.success) {
+                console.warn('[Migrate] Create failed for', ev.title, createRes && createRes.error);
+                failed++;
+                continue;
+            }
+            // Update local sync metadata to point to the new band-cal event
+            var evIdx = events.findIndex(function(e) { return e.id === ev.id; });
+            if (evIdx >= 0) {
+                events[evIdx].googleEventId = createRes.sync && createRes.sync.externalEventId;
+                events[evIdx].calendarId = bandCalId;
+                events[evIdx].sync = createRes.sync;
+            }
+            // Best-effort delete of the orphan on the old calendar (often 410 if
+            // already deleted by someone else — not an error).
+            if (oldGid && oldCal) {
+                try {
+                    await GLCalendarSync.deleteConflictFromGoogle(oldGid, { calendarId: oldCal });
+                } catch (e) { /* non-fatal — maybe someone else's calendar */ }
+            }
+            moved++;
+            console.log('[Migrate] Moved', ev.title, ev.date, 'from', oldCal, 'to', bandCalId);
+        } catch (e) {
+            console.warn('[Migrate] Error on', ev.title, e && e.message);
+            failed++;
+        }
+    }
+    if (moved > 0) {
+        try { await saveBandDataToDrive('_band', 'calendar_events', events); } catch(e) {}
+    }
+    if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+    _calRenderGridOnly();
+    var msg;
+    if (moved > 0 && failed === 0) msg = '\u2713 Moved ' + moved + ' event' + (moved === 1 ? '' : 's') + ' to DeadCetera';
+    else if (moved > 0 && failed > 0) msg = '\u2713 Moved ' + moved + ' \u2014 ' + failed + ' failed (likely other members\u2019 events)';
+    else msg = '\u26A0 Migration failed for all ' + failed + ' events. You may not own these events (ask creator to run this).';
+    if (typeof showToast === 'function') showToast(msg, 7000);
+    if (btn) { btn.textContent = 'Move misplaced events'; btn.disabled = false; }
 };
 
 // Dismiss date selection — return to global mode
@@ -1656,7 +1765,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
             + '<button onclick="_calDedupeGoogle()" id="calDedupeBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove duplicate Google Calendar events created by past sync races">Clean duplicates</button>'
             + '<button onclick="_calRefreshGigTimes()" id="calRefreshTimesBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Push correct start/end times from Gigs to Google Calendar (one-time fix for events showing 7-9 PM default)">Refresh gig times</button>'
-            + '<button onclick="_calCleanLegacyBusy()" id="calCleanBusyBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove legacy auto-pushed &quot;Busy&quot; / &quot;Busy (all day)&quot; events that pollute the conflict list">Clean legacy Busy</button>';
+            + '<button onclick="_calCleanLegacyBusy()" id="calCleanBusyBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove legacy auto-pushed &quot;Busy&quot; / &quot;Busy (all day)&quot; events that pollute the conflict list">Clean legacy Busy</button>'
+            + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }
