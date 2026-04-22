@@ -991,12 +991,27 @@ window.GLCalendarSync = (function() {
     existing.location = googleEvent.location || existing.location || '';
     existing.notes = googleEvent.description || existing.notes || '';
     existing.isAllDay = isAllDay;
-    // Multi-day: compute endDate from Google's exclusive end date
+    // Multi-day span → set endDate so _calBuildDateMap expands the event across
+    // every covered day. All-day spans use Google's exclusive end date (minus 1);
+    // timed spans use the date portion, treating midnight-to-midnight like
+    // all-day (end-midnight is effectively the prior day).
+    var _startDateR = (startStr || '').substring(0, 10);
+    var _endDateR = (endStr || '').substring(0, 10);
     if (isAllDay && endStr) {
-      var _rEnd = new Date(endStr.substring(0, 10) + 'T12:00:00');
+      var _rEnd = new Date(_endDateR + 'T12:00:00');
       _rEnd.setDate(_rEnd.getDate() - 1);
       var _rEndStr = _rEnd.getFullYear() + '-' + String(_rEnd.getMonth() + 1).padStart(2, '0') + '-' + String(_rEnd.getDate()).padStart(2, '0');
-      existing.endDate = _rEndStr > existing.date ? _rEndStr : '';
+      existing.endDate = _rEndStr > _startDateR ? _rEndStr : '';
+    } else if (!isAllDay && endStr && _endDateR > _startDateR) {
+      var _rIsEndMid = endStr.length > 10 && endStr.substring(11, 16) === '00:00';
+      if (_rIsEndMid) {
+        var _rEnd2 = new Date(_endDateR + 'T12:00:00');
+        _rEnd2.setDate(_rEnd2.getDate() - 1);
+        var _rEndStr2 = _rEnd2.getFullYear() + '-' + String(_rEnd2.getMonth() + 1).padStart(2, '0') + '-' + String(_rEnd2.getDate()).padStart(2, '0');
+        existing.endDate = _rEndStr2 > _startDateR ? _rEndStr2 : '';
+      } else {
+        existing.endDate = _endDateR;
+      }
     } else {
       existing.endDate = '';
     }
@@ -1056,13 +1071,33 @@ window.GLCalendarSync = (function() {
     }
     var eventTime = (!isAllDay && startStr.length > 10) ? startStr.substring(11, 16) : '';
     var eventEndTime = (!isAllDay && endStr.length > 10) ? endStr.substring(11, 16) : '';
-    // Multi-day all-day: store as single event with endDate (Google end is exclusive, subtract 1 day)
+    // Multi-day spans: store as single event with endDate so the calendar-grid
+    // expansion (in _calBuildDateMap) places the event on every day in range.
+    // - All-day: Google's end.date is exclusive → subtract 1 day.
+    // - Timed: derive from end.dateTime. Midnight-to-midnight spans are treated
+    //   like all-day (the end midnight is effectively the prior day), which
+    //   matches how Google's UI renders "Pierce out 6/12–15 midnight-to-midnight"
+    //   as a 3-day banner across 6/12, 6/13, 6/14.
     var eventEndDate = '';
+    var _startDateOnly = startStr.substring(0, 10);
+    var _endDateOnly = endStr.substring(0, 10);
     if (isAllDay && endStr) {
-      var _endDt = new Date(endStr.substring(0, 10) + 'T12:00:00');
+      var _endDt = new Date(_endDateOnly + 'T12:00:00');
       _endDt.setDate(_endDt.getDate() - 1); // Google exclusive → inclusive
       var _endInclusive = _endDt.getFullYear() + '-' + String(_endDt.getMonth() + 1).padStart(2, '0') + '-' + String(_endDt.getDate()).padStart(2, '0');
-      if (_endInclusive > startStr.substring(0, 10)) eventEndDate = _endInclusive; // only set if multi-day
+      if (_endInclusive > _startDateOnly) eventEndDate = _endInclusive;
+    } else if (!isAllDay && endStr && _endDateOnly > _startDateOnly) {
+      // Timed multi-day event. If end is exactly midnight, the effective last
+      // day is the day before (Google UI also renders it that way).
+      var _isEndMidnight = endStr.length > 10 && endStr.substring(11, 16) === '00:00';
+      if (_isEndMidnight) {
+        var _endDt2 = new Date(_endDateOnly + 'T12:00:00');
+        _endDt2.setDate(_endDt2.getDate() - 1);
+        var _endInc2 = _endDt2.getFullYear() + '-' + String(_endDt2.getMonth() + 1).padStart(2, '0') + '-' + String(_endDt2.getDate()).padStart(2, '0');
+        if (_endInc2 > _startDateOnly) eventEndDate = _endInc2;
+      } else {
+        eventEndDate = _endDateOnly;
+      }
     }
 
     return {
