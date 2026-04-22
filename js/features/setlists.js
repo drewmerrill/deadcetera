@@ -74,6 +74,38 @@ function _slSetlistSongChecksum(sl) {
     return parts.join('|');
 }
 
+// Walk setlists; for any with a gigId that points to a gig whose date differs
+// from the setlist's own stored date, update the setlist date to match (the
+// gig is the source of truth). Silently saves once if any drift was healed
+// and returns the corrected array. Safe to call repeatedly.
+async function _slHealLinkedGigDates(setlists) {
+    try {
+        if (!setlists || !setlists.length) return { setlists: setlists, healed: false };
+        var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        if (!gigs.length) return { setlists: setlists, healed: false };
+        var gigById = {};
+        gigs.forEach(function(g) { if (g && g.gigId) gigById[g.gigId] = g; });
+        var healed = false;
+        var out = setlists.map(function(sl) {
+            if (!sl || !sl.gigId) return sl;
+            var g = gigById[sl.gigId];
+            if (!g || !g.date) return sl;
+            if (sl.date === g.date) return sl;
+            console.log('[Setlists] Auto-heal: setlist "' + (sl.name || '?') + '" date ' + sl.date + ' -> ' + g.date + ' (linked gig)');
+            healed = true;
+            return Object.assign({}, sl, { date: g.date, updated: new Date().toISOString() });
+        });
+        if (healed) {
+            try { await saveBandDataToDrive('_band', 'setlists', out); }
+            catch(e) { console.warn('[Setlists] Auto-heal save failed:', e && e.message); return { setlists: setlists, healed: false }; }
+        }
+        return { setlists: out, healed: healed };
+    } catch(e) {
+        console.warn('[Setlists] _slHealLinkedGigDates error:', e && e.message);
+        return { setlists: setlists, healed: false };
+    }
+}
+
 async function loadSetlists() {
     var _t0 = performance.now();
     console.log('[PERF] loadSetlists start ' + Math.round(_t0) + 'ms');
@@ -86,17 +118,20 @@ async function loadSetlists() {
         if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(_cachedData);
         _slRenderList(_cachedData);
         // Background refresh
-        loadBandDataFromDrive('_band', 'setlists').then(function(data) {
+        loadBandDataFromDrive('_band', 'setlists').then(async function(data) {
             var fresh = toArray(data || []);
+            // Auto-heal linked-gig date drift before caching/rendering
+            var _heal = await _slHealLinkedGigDates(fresh);
+            fresh = _heal.setlists;
             _slLoadedFromNetwork = true;
             if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) GLStore.setCachedBandData('setlists', fresh);
             if (typeof GLStore !== 'undefined' && GLStore.setSetlistCache) GLStore.setSetlistCache(fresh);
             // Deep comparison: check IDs, count, updated timestamps, song counts, lock state
-            var _changed = _slDataChanged(_cachedData, fresh);
+            var _changed = _heal.healed || _slDataChanged(_cachedData, fresh);
             if (typeof GLStore !== 'undefined' && GLStore.setGlobalStatus) GLStore.setGlobalStatus('live', 'Live');
             if (_changed) {
                 _slRenderList(fresh);
-                console.log('[Setlists] SWR: background refresh — repainted (' + fresh.length + ' setlists)');
+                console.log('[Setlists] SWR: background refresh — repainted (' + fresh.length + ' setlists)' + (_heal.healed ? ' [date-healed]' : ''));
             } else {
                 // Still update freshness indicator even if data unchanged
                 var freshEl = document.getElementById('slFreshness');
@@ -121,6 +156,9 @@ async function loadSetlists() {
         if (typeof GLRenderState !== 'undefined') GLRenderState.set('setlists', { status: 'error', title: 'Failed to load setlists', message: e.message, retry: "loadSetlists()" });
         return;
     }
+    // Auto-heal linked-gig date drift — persists any corrections before cache+render
+    var _heal = await _slHealLinkedGigDates(rawData);
+    rawData = _heal.setlists;
     _slLoadedFromNetwork = true;
     // Update SWR cache
     if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) GLStore.setCachedBandData('setlists', rawData);
