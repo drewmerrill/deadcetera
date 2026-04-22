@@ -1256,7 +1256,9 @@ window.GLCalendarSync = (function() {
         body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: [{ id: bandCalId }] })
       });
       if (!res.ok) {
-        console.warn('[CalSync] Hidden-check freebusy failed:', res.status);
+        var _err = '';
+        try { _err = await res.text(); } catch(e) {}
+        console.warn('[CalSync] Hidden-check freebusy failed:', res.status, _err);
         return null;
       }
       var data = await res.json();
@@ -1360,8 +1362,22 @@ window.GLCalendarSync = (function() {
         pageToken = data.nextPageToken || null;
       } while (pageToken);
 
-      var fb = await _queryBandCalendarFreeBusy(bandCalId, _min, _max);
-      if (fb === null) return null;
+      // Google's freeBusy.query caps range width per request. Some accounts
+      // hard-fail at > ~90 days with a 400; chunk into 30-day windows to be
+      // safe across account types. Merge results.
+      var CHUNK_MS = 30 * 24 * 60 * 60 * 1000;
+      var _minMs = new Date(_min).getTime();
+      var _maxMs = new Date(_max).getTime();
+      var fb = [];
+      var fbFailed = false;
+      for (var _c = _minMs; _c < _maxMs; _c += CHUNK_MS) {
+        var cMin = new Date(_c).toISOString();
+        var cMax = new Date(Math.min(_c + CHUNK_MS, _maxMs)).toISOString();
+        var part = await _queryBandCalendarFreeBusy(bandCalId, cMin, cMax);
+        if (part === null) { fbFailed = true; break; }
+        fb = fb.concat(part);
+      }
+      if (fbFailed) return null;
 
       var hidden = _computeHiddenRanges(fb, allEvents);
       console.log('[CalSync] Hidden-event check:',
