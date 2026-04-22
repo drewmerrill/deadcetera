@@ -173,7 +173,7 @@ function _calShowModeChooser() {
         + '</div>'
         + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.4">Two-way sync with your shared Google Calendar. Create in one place, see everywhere.</div>'
         + '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-top:2px">\u2714 Works with the Google Calendar you already use.</div>'
-        + '<div style="font-size:0.62em;color:var(--gl-amber);margin-top:4px;line-height:1.4">\u26A0 Events must be on the <strong>shared band calendar</strong> (not personal) with <strong>Default</strong> visibility. Private events on the shared calendar are hidden by Google\u2019s API.</div>'
+        + '<div style="font-size:0.62em;color:var(--gl-amber);margin-top:4px;line-height:1.4">\u26A0 Events must be on the <strong>shared band calendar</strong> (not personal) with <strong>Public</strong> visibility. Private or Default-visibility events can be hidden by Google\u2019s API depending on the creator\u2019s account settings. See Rules for details.</div>'
         + '</button>'
         + '</div>';
 }
@@ -2160,20 +2160,34 @@ window._calShowAvailabilitySettings = async function() {
         + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
         + '</div>';
 
-    // Mode A contract callout — surfaces the two rules that catch bands off
-    // guard (events on PERSONAL calendar, or created with Private visibility,
-    // won't block in GrooveLinx because Google's API won't surface them to
-    // other members).
+    // Mode A contract callout — surfaces the rules that catch bands off guard
+    // (events on personal calendar, or Private visibility, or Default visibility
+    // when the creator's account-level default is Private — Google's API hides
+    // all of these from other band members silently).
     var modeAContractHtml = ''
         + '<div style="margin-bottom:16px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.18)">'
         + '<div style="font-size:0.82em;font-weight:700;color:#86efac;margin-bottom:8px">How shared calendar mode works</div>'
         + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5">'
-        + 'For an event to affect the band\u2019s availability, it must be:'
+        + 'For an event to sync to the whole band, it must be:'
         + '<ol style="margin:6px 0 0;padding-left:20px">'
-        + '<li style="margin-bottom:4px">Created <strong>on the shared band calendar</strong> \u2014 not someone\u2019s personal calendar. When adding in Google, pick the band calendar from the dropdown before saving.</li>'
-        + '<li>Set to <strong>Default</strong> or <strong>Public</strong> visibility \u2014 not Private. Private events are hidden from other members by Google\u2019s API even when they\u2019re on the shared calendar.</li>'
+        + '<li style="margin-bottom:4px">Created <strong>on your shared band calendar</strong> \u2014 not someone\u2019s personal calendar. When adding in Google, pick the band calendar from the dropdown before saving.</li>'
+        + '<li style="margin-bottom:4px">Set to <strong>Public</strong> visibility. <em>Avoid "Default visibility"</em> \u2014 it inherits from each user\u2019s account-level setting, which may silently be Private. "Public" is the only setting guaranteed to sync for everyone.</li>'
+        + '<li>You do <strong>not</strong> need to add other band members as guests. Everyone gets the event automatically through the shared band calendar.</li>'
         + '</ol>'
         + '<div style="margin-top:8px;font-size:0.72em;color:var(--gl-text-tertiary)">GrooveLinx reads only the shared band calendar in this mode. Personal calendar events are ignored.</div>'
+        + '<details style="margin-top:10px;cursor:pointer">'
+        + '<summary style="font-size:0.78em;font-weight:600;color:#86efac;list-style:none;padding:4px 0">\u203A Why isn\u2019t my event syncing?</summary>'
+        + '<div style="margin-top:6px;font-size:0.74em;color:var(--gl-text-secondary);line-height:1.55;padding-left:14px;border-left:2px solid rgba(34,197,94,0.2)">'
+        + '<strong style="color:var(--gl-text)">Most common causes:</strong>'
+        + '<ol style="margin:4px 0 8px;padding-left:18px">'
+        + '<li style="margin-bottom:3px"><strong>Event is on a personal calendar, not the shared band calendar.</strong> Open the event in Google Calendar; the "Calendar" field should name your shared band calendar. If it says a personal email, re-create it on the band calendar.</li>'
+        + '<li style="margin-bottom:3px"><strong>Visibility is set to "Private."</strong> Even on a shared calendar, private events are visible only to the creator and explicit guests. Change to Public.</li>'
+        + '<li style="margin-bottom:3px"><strong>Visibility is "Default" and your account default is Private.</strong> Google Calendar \u2192 Settings \u2192 Event settings \u2192 <strong>Default event visibility</strong>. If it\u2019s set to Private, every new event of yours is silently private. Switch it to Default or Public, and explicitly set this event\u2019s visibility to Public.</li>'
+        + '<li>Other members haven\u2019t synced yet. Each person must tap <em>Sync Calendars</em> on their own device to pull the latest.</li>'
+        + '</ol>'
+        + '<strong style="color:var(--gl-text)">Quick test:</strong> have the creator explicitly set the event\u2019s visibility dropdown to <strong>Public</strong> and save. Then the other members tap Sync Calendars. If it shows up, it was a visibility issue. If not, check that the event is actually on the shared band calendar (rule 1).'
+        + '</div>'
+        + '</details>'
         + '</div>'
         + '</div>';
 
