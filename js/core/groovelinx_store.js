@@ -3869,11 +3869,17 @@
   }
 
   // CRUD
-  async function saveScheduleBlock(block) {
+  // syncOnly=true is used by the calendar-sync engine when writing back sync
+  // metadata (googleEventId, lastSyncedAt, syncedToGoogle). In that case we
+  // must NOT bump updatedAt or the dirty-detection (updatedAt > lastSyncedAt)
+  // would flag the block as needing another push on every sync — infinite loop.
+  async function saveScheduleBlock(block, syncOnly) {
     var db = _db(); if (!db) return;
     if (!block.blockId) block.blockId = _sbGenId();
-    block.updatedAt = new Date().toISOString();
-    if (!block.createdAt) block.createdAt = block.updatedAt;
+    if (!syncOnly) {
+      block.updatedAt = new Date().toISOString();
+      if (!block.createdAt) block.createdAt = block.updatedAt;
+    }
     await db.ref(bandPath('schedule_blocks/' + block.blockId)).set(block);
     _scheduleBlocksCache = null;
     return block;

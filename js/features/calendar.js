@@ -4163,15 +4163,7 @@ window._calDeleteScheduleBlock = async function(blockId, opts) {
         return;
     }
     if (!blockId || !confirm('Remove this schedule block?')) return;
-    // Check if synced to Google before deleting
-    var googleEventId = null;
-    var _blockCalId = null;
-    if (blockId.indexOf('_legacy_') !== 0 && typeof GLStore !== 'undefined' && GLStore.getScheduleBlocks) {
-        var _blocks = await GLStore.getScheduleBlocks();
-        var _block = _blocks.find(function(b) { return b.blockId === blockId; });
-        if (_block && _block.googleEventId) { googleEventId = _block.googleEventId; _blockCalId = _block.calendarId || null; }
-    }
-    // Legacy blocks have blockId like '_legacy_N' — delete from blocked_dates array
+    // Legacy blocks (from old blocked_dates array) have no Google link by design
     if (blockId.indexOf('_legacy_') === 0) {
         var legacyIdx = parseInt(blockId.replace('_legacy_', ''), 10);
         var blocked = toArray(await loadBandDataFromDrive('_band', 'blocked_dates') || []);
@@ -4179,21 +4171,42 @@ window._calDeleteScheduleBlock = async function(blockId, opts) {
             blocked.splice(legacyIdx, 1);
             await saveBandDataToDrive('_band', 'blocked_dates', blocked);
         }
-    } else if (typeof GLStore !== 'undefined' && GLStore.deleteScheduleBlock) {
-        await GLStore.deleteScheduleBlock(blockId);
+        _calRenderGridOnly();
+        if (typeof showToast === 'function') showToast('\u2713 Removed');
+        return;
     }
-    // If was synced to Google, ask to remove there too
+    if (typeof GLStore === 'undefined' || !GLStore.getScheduleBlocks) { _calRenderGridOnly(); return; }
+    // Look up the block to find its Google link
+    var _blocks = await GLStore.getScheduleBlocks();
+    var _block = _blocks.find(function(b) { return b.blockId === blockId; });
+    var googleEventId = _block && _block.googleEventId;
+    var _blockCalId = _block && _block.calendarId;
+    // Mode A contract: block deletion mirrors to shared calendar automatically.
+    // Best-effort Google delete. If it fails (network/expired token), leave a
+    // tombstone (_deleted=true) for Phase 1.5 to retry on next sync rather
+    // than silently orphaning the Google event.
+    var _googleOk = true;
     if (googleEventId && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
-        if (confirm('Also remove from your Google Calendar?')) {
-            var result = await GLCalendarSync.deleteConflictFromGoogle(googleEventId, { calendarId: _blockCalId });
-            if (result.success) {
-                if (typeof showToast === 'function') showToast('Removed from Google Calendar');
-            } else {
-                if (typeof showToast === 'function') showToast('Couldn\u2019t remove from Google Calendar');
-            }
-        }
+        try {
+            var _res = await GLCalendarSync.deleteConflictFromGoogle(googleEventId, { calendarId: _blockCalId });
+            _googleOk = !!(_res && _res.success);
+        } catch(e) { _googleOk = false; }
+    }
+    if (_googleOk) {
+        // Hard delete — no tombstone needed
+        if (GLStore.deleteScheduleBlock) await GLStore.deleteScheduleBlock(blockId);
+        if (typeof showToast === 'function') showToast('\u2713 Removed');
+    } else if (_block && GLStore.saveScheduleBlock) {
+        // Tombstone for retry — Phase 1.5 will complete the Google delete later
+        _block._deleted = true;
+        await GLStore.saveScheduleBlock(_block);
+        if (typeof showToast === 'function') showToast('\u26A0 Removed locally \u2014 Google delete will retry on next sync');
+    } else {
+        if (GLStore.deleteScheduleBlock) await GLStore.deleteScheduleBlock(blockId);
+        if (typeof showToast === 'function') showToast('\u2713 Removed');
     }
     _calRenderGridOnly();
+    if (typeof _calRenderConflictPanel === 'function') _calRenderConflictPanel();
 };
 
 // ── Google Calendar sync prompt after conflict save ──────────────────────────

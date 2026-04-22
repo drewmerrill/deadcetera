@@ -1169,17 +1169,28 @@ window.GLCalendarSync = (function() {
             _skipReasons.notMine++;
             continue;
           }
-          // Propagate local delete
+          // Propagate local delete (tombstone)
           if (blk._deleted && blk.googleEventId) {
             try {
-              await deleteConflictFromGoogle(blk.googleEventId, { calendarId: blk.calendarId || bandCalId });
-              await GLStore.deleteScheduleBlock(blk.blockId);
-              result.blocksDeleted++;
+              var _del = await deleteConflictFromGoogle(blk.googleEventId, { calendarId: blk.calendarId || bandCalId });
+              if (_del && _del.success) {
+                await GLStore.deleteScheduleBlock(blk.blockId);
+                result.blocksDeleted++;
+                console.log('[CalSync] Phase 1.5: Deleted block from Google', blk.blockId);
+              } else {
+                console.warn('[CalSync] Phase 1.5: Google delete failed — leaving tombstone for retry:', blk.blockId, _del && _del.error);
+              }
             } catch(e) { console.warn('[CalSync] Block delete failed:', blk.blockId, e.message); }
             continue;
           }
-          // Skip if already synced TO THE BAND CALENDAR
-          if (blk.syncedToGoogle && blk.googleEventId && blk.calendarId === bandCalId) { _skipReasons.alreadySynced++; continue; }
+          // If already synced and NOT dirty (no UI edit since last sync), skip.
+          // Dirty = updatedAt is newer than lastSyncedAt, or sync metadata says
+          // so explicitly via needsSync flag.
+          var _isDirty = !!blk.needsSync
+            || (blk.updatedAt && blk.lastSyncedAt && new Date(blk.updatedAt) > new Date(blk.lastSyncedAt));
+          if (blk.syncedToGoogle && blk.googleEventId && blk.calendarId === bandCalId && !_isDirty) {
+            _skipReasons.alreadySynced++; continue;
+          }
           try {
             var _display = (blk.ownerName || _myName || 'Member').trim();
             var _reason = (blk.summary || '').trim();
@@ -1210,13 +1221,15 @@ window.GLCalendarSync = (function() {
               } catch(e) { /* non-fatal */ }
             }
             if (_res && _res.success) {
-              blk.googleEventId = _res.googleEventId;
+              blk.googleEventId = _res.googleEventId || blk.googleEventId;
               blk.calendarId = bandCalId;
               blk.syncedToGoogle = true;
               blk.lastSyncedAt = new Date().toISOString();
-              await GLStore.saveScheduleBlock(blk);
+              blk.needsSync = false;
+              // syncOnly: true — don't bump updatedAt or dirty-check loops forever
+              await GLStore.saveScheduleBlock(blk, true);
               result.blocksPushed++;
-              console.log('[CalSync] Phase 1.5: Pushed block', _summary, blk.startDate);
+              console.log('[CalSync] Phase 1.5: Pushed block', _summary, blk.startDate, '(update=' + !!blk.googleEventId + ')');
             } else {
               console.warn('[CalSync] Phase 1.5 push failed:', _summary, _res && _res.error);
               if (_res && (_res.status === 401 || _res.status === 403)) {
@@ -1359,7 +1372,7 @@ window.GLCalendarSync = (function() {
                 _mine.calendarId = bandCalId;
                 _mine.syncedToGoogle = true;
                 _mine.lastSyncedAt = new Date().toISOString();
-                await GLStore.saveScheduleBlock(_mine);
+                await GLStore.saveScheduleBlock(_mine, true);
                 console.log('[CalSync] Phase 2: Re-linked block', _mine.blockId, '→', gEv.id);
               }
               _skipAsBlockLink = true; // my own block — don't also import as calendar_event
