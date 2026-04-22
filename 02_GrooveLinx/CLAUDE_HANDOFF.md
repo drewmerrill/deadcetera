@@ -2,9 +2,77 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-22 (Mode A hardening sprint Week 1 — 9 punch-list items shipped; DoD "boringly reliable" set for DeadCetera; provider refactor deferred 14 days)_
+_Last updated: 2026-04-22 (Paths B + C + D#6 shipped — hidden-event safety net, Mode A welcome wizard, stale-member nudges)_
 
-## Session 2026-04-22 — Mode A Hardening Sprint, Week 1
+## Session 2026-04-22 (late) — Paths B + C + D#6
+
+**Status:** Build `20260422-222724`. Builds on earlier Week 1 sprint in same date. Structural fix for the private/default-visibility failure mode that kept hiding Pierce's event, plus onboarding + cross-member behavior nudges.
+
+### What shipped
+
+**Path B — Freebusy overlay safety net** (`js/core/gl-calendar-sync.js`):
+- `_queryBandCalendarFreeBusy(bandCalId, timeMin, timeMax)` — POSTs to existing `/calendar/freebusy` worker endpoint for the band calendar only.
+- `_computeHiddenRanges(fbRanges, visibleEvents)` — merges visible intervals, subtracts them from each busy range; remainders ≥ 5 min are "hidden."
+- `_runHiddenEventCheck(bandCalId)` — paginates `events.list` over ±6-month window (cap 10 pages) + issues freebusy query; returns diff.
+- Wired at end of `_syncBandCalendarImpl` (after Phase 2/3, before final saveSyncState). Gated off when `needsReauth`.
+- Result lives in `calendar_sync_state.lastSyncResult.{hiddenCount, hiddenRanges}` (ranges capped at 50 for Firebase doc size).
+- Exported as `GLCalendarSync.runHiddenEventCheck`.
+
+**Path B UI** (`js/features/calendar.js`):
+- Yellow banner on Google panel when `window._calHiddenEventCount > 0`: "⚠ Hidden events on shared band calendar" with "Show which dates" + "How to fix" buttons.
+- `_calShowHiddenEventDetails` — modal grouping ranges by day with time labels (all-day vs timed). Reads from `window._calHiddenRanges`.
+- `_calShowVisibilityHelp` — generic fix-it guide: step-by-step for one-event fix + account default visibility fix. No band name in copy.
+- `getSyncState` handler now extracts hiddenCount + hiddenRanges and re-renders when they change.
+
+**Path C — Mode A welcome wizard + always-available help:**
+- `_calShowModeAWelcome` — 3-card modal (pick a shared group calendar, set Default visibility to Public, share with band). Triggers after first successful Mode A connect (gated by `localStorage.gl_cal_mode_a_welcome_shown`).
+- "Visibility help" button added to admin button bar next to "Move misplaced events."
+
+**Path D #6 — Stale-member nudge:**
+- `_syncBandCalendarImpl` now stamps `bands/{slug}/google_connections/{myKey}/lastSyncAt` after every successful sync (skipped on needsReauth).
+- `_calMemberSyncStatus(memberKey, connsMap)` classifier:
+  - not connected → amber ⚠ "not connected"
+  - no timestamp yet → green ✓ "synced"
+  - < 1h → green "just synced"
+  - 1-23h → green "Nh ago"
+  - 1-7d → green "Nd ago"
+  - > 7d → amber/red ⚠ "Nd stale" (isStale=true)
+- Connections popover: color-coded dot + age label per row + one-line "Ask them to open GrooveLinx → Schedule" hint under stale rows.
+- Yellow banner on Google panel when ≥1 member is stale, listing them by first name. "See who" button opens the Connections popover.
+
+All copy is band-agnostic ("your shared band calendar") per multi-band generic-copy rule.
+
+### Files touched
+
+- `js/core/gl-calendar-sync.js` — +~130 lines (hidden-check + freebusy helper + lastSyncAt stamp + export)
+- `js/features/calendar.js` — +~170 lines (2 banners, 3 modals, classifier, Connections popover update, admin-bar button, welcome trigger)
+- `version.json`, `index.html`, `service-worker.js` — stamped to `20260422-222724`
+- `02_GrooveLinx/CURRENT_PHASE.md`, `CLAUDE_HANDOFF.md`, `uat/bug_queue.md` — updated
+
+### Still deferred
+
+- **#10 Mobile scheduling audit** — physical device walkthrough (produces punch list, not code).
+- **#13 Sync activity log** — schema decision pending (Firebase vs localStorage, retention, render surface).
+
+### Restart prompt (next session)
+
+```
+GrooveLinx session restart. Paths B + C + D#6 shipped 2026-04-22 (build 20260422-222724).
+
+Read first:
+  - 02_GrooveLinx/CLAUDE_HANDOFF.md (this block — 2026-04-22 Paths B/C/D#6)
+  - 02_GrooveLinx/CURRENT_PHASE.md
+  - 02_GrooveLinx/uat/bug_queue.md
+
+Next eligible work (Week 2):
+  - #10 Mobile scheduling audit (physical device required)
+  - #13 Sync activity log (needs schema decision first)
+  - Validate Path B in the wild — once next sync runs at DeadCetera, the
+    hidden-events banner should appear if Pierce's event is still private.
+    The yellow banner dates should cover 6/12–6/14.
+```
+
+## Session 2026-04-22 (earlier) — Mode A Hardening Sprint, Week 1
 
 **Status:** Repo clean on `main`. Build `20260422-141326`. Three commits, 9 punch-list items closed.
 

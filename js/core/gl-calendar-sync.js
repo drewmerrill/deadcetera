@@ -1176,6 +1176,145 @@ window.GLCalendarSync = (function() {
     }
   }
 
+  // ── Path B: Hidden-event detection (freebusy-vs-events-list diff) ─────────
+  // Freebusy returns busy ranges for ALL events on a calendar, including those
+  // with Private visibility that events.list hides from API callers. Diffing
+  // the two surfaces "ghost busy time" — almost always a member who created an
+  // event with Default visibility while their account default is Private.
+  async function _queryBandCalendarFreeBusy(bandCalId, timeMin, timeMax) {
+    if (!bandCalId) return null;
+    try {
+      var res = await fetch(WORKER_BASE + '/calendar/freebusy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+        body: JSON.stringify({ timeMin: timeMin, timeMax: timeMax, items: [{ id: bandCalId }] })
+      });
+      if (!res.ok) {
+        console.warn('[CalSync] Hidden-check freebusy failed:', res.status);
+        return null;
+      }
+      var data = await res.json();
+      var cal = data.calendars && data.calendars[bandCalId];
+      if (!cal) return [];
+      if (cal.errors && cal.errors.length) {
+        console.warn('[CalSync] Hidden-check freebusy calendar errors:', cal.errors);
+        return null;
+      }
+      return cal.busy || [];
+    } catch(e) {
+      console.warn('[CalSync] Hidden-check freebusy error:', e && e.message);
+      return null;
+    }
+  }
+
+  function _computeHiddenRanges(fbRanges, visibleEvents) {
+    if (!fbRanges || !fbRanges.length) return [];
+    // Merge visible event intervals
+    var intervals = [];
+    (visibleEvents || []).forEach(function(g) {
+      if (!g || g.status === 'cancelled' || !g.start) return;
+      var sStr = g.start.dateTime || g.start.date;
+      var eStr = (g.end && (g.end.dateTime || g.end.date)) || sStr;
+      if (!sStr || !eStr) return;
+      var s = new Date(sStr).getTime();
+      var e = new Date(eStr).getTime();
+      if (isNaN(s) || isNaN(e) || e <= s) return;
+      intervals.push({ start: s, end: e });
+    });
+    intervals.sort(function(a, b) { return a.start - b.start; });
+    var merged = [];
+    intervals.forEach(function(r) {
+      if (merged.length && r.start <= merged[merged.length - 1].end) {
+        merged[merged.length - 1].end = Math.max(merged[merged.length - 1].end, r.end);
+      } else {
+        merged.push({ start: r.start, end: r.end });
+      }
+    });
+
+    var MIN_GAP_MS = 5 * 60 * 1000; // ignore < 5 min slivers (timezone/rounding noise)
+    var hidden = [];
+    fbRanges.forEach(function(b) {
+      var bs = new Date(b.start).getTime();
+      var be = new Date(b.end).getTime();
+      if (isNaN(bs) || isNaN(be) || be <= bs) return;
+      var cur = [{ start: bs, end: be }];
+      merged.forEach(function(sub) {
+        var next = [];
+        cur.forEach(function(seg) {
+          if (sub.end <= seg.start || sub.start >= seg.end) {
+            next.push(seg);
+          } else {
+            if (sub.start > seg.start) next.push({ start: seg.start, end: sub.start });
+            if (sub.end < seg.end) next.push({ start: sub.end, end: seg.end });
+          }
+        });
+        cur = next;
+      });
+      cur.forEach(function(seg) {
+        if (seg.end - seg.start >= MIN_GAP_MS) {
+          hidden.push({
+            start: new Date(seg.start).toISOString(),
+            end: new Date(seg.end).toISOString()
+          });
+        }
+      });
+    });
+    return hidden;
+  }
+
+  // Fetch ALL visible events for the band cal over the full window, then diff
+  // against freebusy. Runs on every sync (not gated by syncToken), so hidden
+  // events are caught even on incremental syncs.
+  async function _runHiddenEventCheck(bandCalId) {
+    if (!bandCalId || !accessToken) return null;
+    try {
+      var _now = new Date();
+      var _min = new Date(_now.getFullYear(), _now.getMonth() - 6, 1).toISOString();
+      var _max = new Date(_now.getFullYear(), _now.getMonth() + 6, 0, 23, 59, 59).toISOString();
+
+      // Paginated full-window events.list
+      var allEvents = [];
+      var pageToken = null;
+      var pages = 0;
+      do {
+        pages++;
+        if (pages > 10) break; // safety cap
+        var url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(bandCalId)
+          + '&timeMin=' + encodeURIComponent(_min)
+          + '&timeMax=' + encodeURIComponent(_max)
+          + '&maxResults=250';
+        if (pageToken) url += '&pageToken=' + encodeURIComponent(pageToken);
+        var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+        if (!res.ok) {
+          console.warn('[CalSync] Hidden-check events.list failed:', res.status);
+          return null;
+        }
+        var data = await res.json();
+        allEvents = allEvents.concat(data.items || []);
+        pageToken = data.nextPageToken || null;
+      } while (pageToken);
+
+      var fb = await _queryBandCalendarFreeBusy(bandCalId, _min, _max);
+      if (fb === null) return null;
+
+      var hidden = _computeHiddenRanges(fb, allEvents);
+      console.log('[CalSync] Hidden-event check:',
+        fb.length, 'freebusy ranges |',
+        allEvents.length, 'visible events |',
+        hidden.length, 'hidden');
+      if (hidden.length) {
+        console.log('[CalSync] Hidden ranges (first 10):');
+        hidden.slice(0, 10).forEach(function(h) {
+          console.log('  ', h.start, '\u2192', h.end);
+        });
+      }
+      return hidden;
+    } catch(e) {
+      console.warn('[CalSync] Hidden-event check error:', e && e.message);
+      return null;
+    }
+  }
+
   async function _syncBandCalendarImpl(bandCalId) {
     console.log('[CalSync] === TWO-WAY SYNC START === | bandCalId=', bandCalId);
     var syncState = await _loadSyncState();
@@ -1563,10 +1702,18 @@ window.GLCalendarSync = (function() {
     }
 
     console.log('[CalSync] === TWO-WAY SYNC COMPLETE: pushed', result.pushed, '| pulled', result.pulled, '| updated', result.updated, '| deleted', result.deleted, '===');
+
+    // ── Path B: Hidden-event safety net ──
+    // Detects busy time on the shared band calendar that has no visible event.
+    // This catches events created with Private/Default visibility that get
+    // hidden from the events.list API but still show as busy in freebusy.
+    var _hiddenRanges = null;
+    if (!result.needsReauth) {
+      _hiddenRanges = await _runHiddenEventCheck(bandCalId);
+    }
+
     // Always record the sync result timestamp so UI can show an accurate
-    // "Last synced" regardless of whether a new syncToken was issued. The
-    // previous code only wrote the timestamp when a syncToken came back,
-    // leaving the UI stuck showing connection time instead of sync time.
+    // "Last synced" regardless of whether a new syncToken was issued.
     try {
       var _prev = await _loadSyncState();
       await _saveSyncState({
@@ -1582,11 +1729,26 @@ window.GLCalendarSync = (function() {
           blocksPushed: result.blocksPushed || 0,
           blocksDeleted: result.blocksDeleted || 0,
           error: result.error || null,
-          needsReauth: !!result.needsReauth
+          needsReauth: !!result.needsReauth,
+          hiddenCount: (_hiddenRanges && _hiddenRanges.length) || 0,
+          hiddenRanges: (_hiddenRanges || []).slice(0, 50)
         },
         syncVersion: _prev.syncVersion || 2
       });
+      if (_hiddenRanges) result.hiddenRanges = _hiddenRanges;
     } catch(e) { console.warn('[CalSync] Failed to record sync result:', e && e.message); }
+
+    // Path D #6: stamp my per-member lastSyncAt so other members can see
+    // whether my device is up to date. Firebase-only; no push to other devices.
+    try {
+      var _db3 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      var _myKeyStamp = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey)
+        ? FeedActionState.getMyMemberKey() : null;
+      if (_db3 && _myKeyStamp && typeof bandPath === 'function' && !result.needsReauth) {
+        await _db3.ref(bandPath('google_connections/' + _myKeyStamp + '/lastSyncAt'))
+          .set(new Date().toISOString());
+      }
+    } catch(e) { /* non-fatal */ }
     // Track first sync success
     if ((result.pushed > 0 || result.pulled > 0) && typeof GLUXTracker !== 'undefined' && GLUXTracker._logEvent) {
       if (!localStorage.getItem('gl_cal_first_sync')) {
@@ -2616,6 +2778,7 @@ window.GLCalendarSync = (function() {
     getBandEventTimeSlots: _getBandEventTimeSlots,
     syncBandCalendar: syncBandCalendar,
     getSyncState: getSyncState,
+    runHiddenEventCheck: _runHiddenEventCheck,
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,

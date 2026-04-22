@@ -1,11 +1,16 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260422-141326 (local stamp via stamp-version.py)
+**Build Under Test:** 20260422-222724 (local stamp via stamp-version.py)
 **Last Updated:** 2026-04-22
 
 ---
 
 ## Session Focus
+
+**2026-04-22 Mode A Sprint (Paths B + C + D #6):** Structural fix for the "invisible event" failure mode that prompted the Pierce-is-missing debugging loop, plus onboarding + stale-member nudges. All three are generic (no band name in copy).
+- **Path B — Freebusy overlay safety net:** Every sync now diffs the shared calendar's `freebusy` output against its `events.list` output. Any busy range with no matching visible event = a hidden event (Private or Default visibility hiding it from API callers). Stored in `calendar_sync_state.lastSyncResult.hiddenRanges`. Yellow banner on the Google panel lists affected dates and links to a fix-it guide. New exports: `GLCalendarSync.runHiddenEventCheck()`.
+- **Path C — Mode A welcome wizard + visibility help:** First successful Mode A connect now triggers a 3-step checklist modal (right calendar, Public default visibility, share with band). Always-available "Visibility help" button in the admin bar. "How to fix" button on hidden-event banner opens the same guide.
+- **Path D #6 — Stale-member nudge:** Every successful sync stamps `google_connections/{memberKey}/lastSyncAt`. Connections popover shows each member's last-sync age with color-coded dot (green <1d, amber 1-7d, red >7d). Yellow banner on Google panel lists members whose device hasn't synced in over a week — their schedule changes haven't reached the band calendar. Behavior-only (no server-side push).
 
 **2026-04-22 Mode A Sprint Week 1 (batches 1-3):** Drew set a DoD for Mode A to be "boringly reliable" at DeadCetera before any provider refactor. 3 batches shipped in one session, closing 9 punch-list items.
 - Batch 1 (`bc5fede3`): #1 schedule-block UPDATE propagation (dirty-check via updatedAt > lastSyncedAt; syncOnly param on saveScheduleBlock to prevent loops), #2 DELETE propagation (Mode A auto-propagates; tombstone on Google failure for Phase 1.5 retry).

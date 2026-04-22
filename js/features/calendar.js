@@ -1633,12 +1633,20 @@ function _calRenderGooglePanel() {
         window._calSyncStateLoading = true;
         GLCalendarSync.getSyncState().then(function(st) {
             window._calSyncStateLoading = false;
+            var _needsRerender = false;
             if (st && st.lastSyncAt) {
                 var prev = window._calLastSyncAt || '';
                 window._calLastSyncAt = st.lastSyncAt;
                 window._calLastSyncResult = st.lastSyncResult || null;
-                if (prev !== st.lastSyncAt) _calRenderGooglePanel();
+                if (prev !== st.lastSyncAt) _needsRerender = true;
             }
+            // Path B: hidden-event ghost-busy warning
+            var _newHiddenCount = (st && st.lastSyncResult && st.lastSyncResult.hiddenCount) || 0;
+            var _prevHidden = window._calHiddenEventCount || 0;
+            window._calHiddenEventCount = _newHiddenCount;
+            window._calHiddenRanges = (st && st.lastSyncResult && st.lastSyncResult.hiddenRanges) || [];
+            if (_prevHidden !== _newHiddenCount) _needsRerender = true;
+            if (_needsRerender) _calRenderGooglePanel();
         }).catch(function() { window._calSyncStateLoading = false; });
     }
 
@@ -1743,6 +1751,46 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.82em;font-weight:700;padding:5px 10px;border-radius:5px;border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer">Fix in Rules \u2192</button>'
             + '</div>';
     }
+    // Path B: Hidden-events banner — freebusy shows busy time but events.list
+    // has no matching event. Almost always a member created an event with
+    // Private or Default visibility (and their account default is Private).
+    if (_calIsModeA() && _isConnected && (window._calHiddenEventCount || 0) > 0) {
+        var _hCount = window._calHiddenEventCount;
+        html += '<div style="padding:8px 10px;margin-bottom:8px;border-radius:8px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);font-size:0.72em;line-height:1.4">'
+            + '<div style="font-weight:700;color:#fbbf24;margin-bottom:3px">\u26A0 Hidden events on shared band calendar</div>'
+            + '<div style="color:var(--gl-text-secondary);margin-bottom:6px">Your shared band calendar shows <b>' + _hCount + '</b> busy time range' + (_hCount === 1 ? '' : 's') + ' with no visible event. A band member likely created the event with <b>Private</b> or <b>Default</b> visibility. Ask them to change it to <b>Public</b> so everyone can see it.</div>'
+            + '<button onclick="_calShowHiddenEventDetails()" style="font-size:0.72em;font-weight:700;padding:5px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.35);background:rgba(245,158,11,0.10);color:#fcd34d;cursor:pointer;margin-right:6px">Show which dates</button>'
+            + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.72em;padding:5px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:transparent;color:#fbbf24;cursor:pointer">How to fix</button>'
+            + '</div>';
+    }
+
+    // Path D #6: Stale-member banner — behavior-only nudge. When another
+    // member hasn't synced in > 7 days, their schedule changes haven't reached
+    // the band calendar. We can't push-sync their device; we can only surface
+    // the state so someone pings them.
+    if (_calIsModeA() && _isConnected) {
+        var _staleNames = [];
+        members.forEach(function(m) {
+            var key = (typeof m === 'object') ? m.key : m;
+            if (key === cov.myKey) return;
+            var stat = _calMemberSyncStatus(key, _calConnectedCache || {});
+            if (stat.isStale) {
+                var nm = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
+                _staleNames.push(nm);
+            }
+        });
+        if (_staleNames.length) {
+            var _who = _staleNames.length === 1
+                ? _staleNames[0] + '\u2019s'
+                : _staleNames.slice(0, -1).join(', ') + ' and ' + _staleNames[_staleNames.length - 1] + '\u2019s';
+            html += '<div style="padding:8px 10px;margin-bottom:8px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.20);font-size:0.72em;line-height:1.4">'
+                + '<div style="font-weight:700;color:#fbbf24;margin-bottom:3px">\u23F1 ' + _staleNames.length + ' member' + (_staleNames.length === 1 ? '' : 's') + ' out of date</div>'
+                + '<div style="color:var(--gl-text-secondary);margin-bottom:6px">' + _who + ' device hasn\u2019t synced in over a week. Their schedule changes won\u2019t reach the band calendar until they open GrooveLinx \u2192 Schedule. Ping them so you\u2019re not planning around stale data.</div>'
+                + '<button onclick="_calShowManageConnections()" style="font-size:0.72em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.08);color:#fcd34d;cursor:pointer">See who</button>'
+                + '</div>';
+        }
+    }
+
     // Kick off a check so the banner shows on next render if misconfigured
     if (_calIsModeA() && _isConnected && typeof GLCalendarSync !== 'undefined' && !window._calBandCalChecking) {
         window._calBandCalChecking = true;
@@ -1766,7 +1814,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calDedupeGoogle()" id="calDedupeBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove duplicate Google Calendar events created by past sync races">Clean duplicates</button>'
             + '<button onclick="_calRefreshGigTimes()" id="calRefreshTimesBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Push correct start/end times from Gigs to Google Calendar (one-time fix for events showing 7-9 PM default)">Refresh gig times</button>'
             + '<button onclick="_calCleanLegacyBusy()" id="calCleanBusyBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove legacy auto-pushed &quot;Busy&quot; / &quot;Busy (all day)&quot; events that pollute the conflict list">Clean legacy Busy</button>'
-            + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>';
+            + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>'
+            + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="How to fix hidden events — set default visibility to Public">Visibility help</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }
@@ -1777,22 +1826,81 @@ function _calRenderGooglePanel() {
     el.innerHTML = html;
 }
 
+// Path D #6: Per-member sync staleness classifier.
+// Reads google_connections/{memberKey}/lastSyncAt (stamped after each sync).
+// Thresholds: fresh <24h, warn 1-7d, stale >7d, never=no stamp.
+function _calMemberSyncStatus(memberKey, connsMap) {
+    var cov = _calGetSyncCoverage();
+    var connected = cov.connectedKeys.indexOf(memberKey) !== -1 || (memberKey === cov.myKey && cov.hasScope);
+    if (!connected) {
+        return {
+            connected: false, isStale: false,
+            dotChar: '\u26A0', dotColor: 'var(--gl-amber)',
+            label: 'not connected', textColor: 'var(--gl-text-tertiary)'
+        };
+    }
+    var rec = (connsMap && connsMap[memberKey]) || {};
+    var ts = rec.lastSyncAt || null;
+    if (!ts) {
+        return {
+            connected: true, isStale: false,
+            dotChar: '\u2713', dotColor: 'var(--gl-green)',
+            label: 'synced', textColor: 'var(--gl-text-tertiary)'
+        };
+    }
+    var mins = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+    var days = Math.floor(mins / (60 * 24));
+    if (days > 7) {
+        return {
+            connected: true, isStale: true,
+            dotChar: '\u26A0', dotColor: '#fbbf24',
+            label: days + 'd stale', textColor: '#fbbf24'
+        };
+    }
+    if (days >= 1) {
+        return {
+            connected: true, isStale: false,
+            dotChar: '\u2713', dotColor: 'var(--gl-green)',
+            label: days + 'd ago', textColor: 'var(--gl-text-tertiary)'
+        };
+    }
+    if (mins >= 60) {
+        return {
+            connected: true, isStale: false,
+            dotChar: '\u2713', dotColor: 'var(--gl-green)',
+            label: Math.floor(mins / 60) + 'h ago', textColor: 'var(--gl-text-tertiary)'
+        };
+    }
+    return {
+        connected: true, isStale: false,
+        dotChar: '\u2713', dotColor: 'var(--gl-green)',
+        label: 'just synced', textColor: 'var(--gl-text-tertiary)'
+    };
+}
+
 // Manage connections popover — shows member list with disconnect option
 window._calShowManageConnections = function() {
     var cov = _calGetSyncCoverage();
     var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var conns = _calConnectedCache || {};
     var html = '<div style="padding:10px 12px;border-radius:10px;background:var(--gl-surface);border:1px solid var(--gl-border-subtle);margin-bottom:var(--gl-space-sm)">';
     html += '<div style="font-size:0.78em;font-weight:600;color:var(--gl-text);margin-bottom:6px">Connections</div>';
     members.forEach(function(m) {
         var key = (typeof m === 'object') ? m.key : m;
         var name = bm[key] ? (bm[key].name || key).split(' ')[0] : key;
         var connected = cov.connectedKeys.indexOf(key) !== -1 || (key === cov.myKey && cov.hasScope);
+        // Path D #6: staleness label + color from google_connections/{key}/lastSyncAt
+        var stat = _calMemberSyncStatus(key, conns);
         html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:0.72em">';
-        html += '<span style="color:' + (connected ? 'var(--gl-green)' : 'var(--gl-amber)') + '">' + (connected ? '\u2713' : '\u26A0') + '</span>';
+        html += '<span style="color:' + stat.dotColor + '">' + stat.dotChar + '</span>';
         html += '<span style="color:var(--gl-text);flex:1">' + name + '</span>';
-        html += '<span style="color:var(--gl-text-tertiary);font-size:0.85em">' + (connected ? 'synced' : 'not connected') + '</span>';
+        html += '<span style="color:' + stat.textColor + ';font-size:0.85em">' + stat.label + '</span>';
         html += '</div>';
+        if (connected && stat.isStale) {
+            html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin:-1px 0 3px 14px;line-height:1.35">'
+                + 'Ask them to open GrooveLinx \u2192 Schedule so their device re-syncs. Their schedule changes won\u2019t reach the band calendar until they do.</div>';
+        }
     });
     if (cov.hasScope) {
         html += '<button onclick="_calDisconnectGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;margin-top:4px;padding:0">Disconnect my calendar</button>';
@@ -1801,6 +1909,118 @@ window._calShowManageConnections = function() {
     html += '</div>';
     var el = document.getElementById('calGooglePanel');
     if (el) el.innerHTML = html;
+};
+
+// Path B: Hidden-event details — list the ghost-busy time ranges so the band
+// can cross-reference their calendars and find who created the private event.
+window._calShowHiddenEventDetails = function() {
+    var ranges = window._calHiddenRanges || [];
+    var byDay = {};
+    ranges.forEach(function(r) {
+        try {
+            var s = new Date(r.start);
+            var e = new Date(r.end);
+            var dayKey = s.getFullYear() + '-' + String(s.getMonth() + 1).padStart(2, '0') + '-' + String(s.getDate()).padStart(2, '0');
+            var dayLabel = s.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+            var isAllDay = (e.getTime() - s.getTime()) >= 24 * 60 * 60 * 1000 - 60000;
+            var timeLabel = isAllDay ? 'all day' :
+                (s.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) +
+                 ' \u2013 ' +
+                 e.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+            if (!byDay[dayKey]) byDay[dayKey] = { label: dayLabel, times: [] };
+            byDay[dayKey].times.push(timeLabel);
+        } catch(e) {}
+    });
+    var body = '';
+    if (!ranges.length) {
+        body = '<div style="color:var(--gl-text-secondary);font-size:0.82em">No hidden events detected.</div>';
+    } else {
+        Object.keys(byDay).sort().forEach(function(k) {
+            body += '<div style="padding:6px 0;border-bottom:1px solid var(--gl-border-subtle);font-size:0.82em">'
+                + '<div style="font-weight:700;color:var(--gl-text)">' + byDay[k].label + '</div>'
+                + '<div style="color:var(--gl-text-secondary);margin-top:2px">' + byDay[k].times.join(' \u00B7 ') + '</div>'
+                + '</div>';
+        });
+    }
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.remove()">'
+        + '<div style="background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:12px;padding:20px;max-width:520px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.05em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Hidden busy time on shared band calendar</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:12px">These dates/times show as busy on your shared band calendar but have no visible event. A member likely set visibility to Private or Default. Ask around and switch those events to <b>Public</b>.</div>'
+        + '<div style="margin-bottom:14px">' + body + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer">How to fix</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600">Close</button>'
+        + '</div>'
+        + '</div></div>';
+    var wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap.firstChild);
+};
+
+// Path B/C: visibility help — generic instructions (not band-specific)
+window._calShowVisibilityHelp = function() {
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.remove()">'
+        + '<div style="background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:12px;padding:20px;max-width:560px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.05em;font-weight:700;color:var(--gl-text);margin-bottom:10px">Fix a hidden event on your shared band calendar</div>'
+        + '<div style="font-size:0.82em;color:var(--gl-text-secondary);line-height:1.6">'
+        + '<p style="margin:0 0 8px 0"><b>Why this happens:</b> Google hides events with <i>Private</i> visibility from other apps, even though they still show up as busy time. If a member\u2019s account is set to default events to Private, every event they create inherits that setting.</p>'
+        + '<p style="margin:0 0 6px 0"><b>To fix one event</b> (the person who created it):</p>'
+        + '<ol style="margin:0 0 10px 20px;padding:0">'
+        + '<li>Open the event in Google Calendar.</li>'
+        + '<li>Click the lock icon (or the <b>Default visibility</b> dropdown).</li>'
+        + '<li>Change it to <b>Public</b>.</li>'
+        + '<li>Save.</li>'
+        + '</ol>'
+        + '<p style="margin:0 0 6px 0"><b>To prevent it from happening again</b> (every member):</p>'
+        + '<ol style="margin:0 0 10px 20px;padding:0">'
+        + '<li>Open Google Calendar settings \u2192 <b>Event settings</b>.</li>'
+        + '<li>Set <b>Default visibility</b> to <b>Public</b>.</li>'
+        + '</ol>'
+        + '<p style="margin:0;font-size:0.92em;color:var(--gl-text-tertiary)">Public visibility only affects events on your <i>shared band calendar</i> — it does not change visibility of your personal events.</p>'
+        + '</div>'
+        + '<div style="display:flex;justify-content:flex-end;margin-top:14px">'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600">Got it</button>'
+        + '</div>'
+        + '</div></div>';
+    var wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap.firstChild);
+};
+
+// Path C: Mode A welcome wizard — one-time setup checklist shown after first
+// successful shared-calendar connection. Generic copy (no band name baked in).
+window._calShowModeAWelcome = function() {
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.remove()">'
+        + '<div style="background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:14px;padding:22px;max-width:580px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.15em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Shared Calendar is connected \u2014 three quick setup steps</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">These steps make sure every band member sees every event. Do them once; they apply forever.</div>'
+
+        + '<div style="padding:10px 12px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.18);margin-bottom:10px">'
+        + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text);margin-bottom:4px">1. Pick the right calendar</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5">Your band calendar must be a <b>shared group calendar</b> \u2014 not your personal calendar. Group calendars end in <code style="font-size:0.92em;background:rgba(0,0,0,0.2);padding:0 4px;border-radius:3px">@group.calendar.google.com</code>. You can create or join one in Google Calendar \u2192 Other calendars \u2192 +.</div>'
+        + '</div>'
+
+        + '<div style="padding:10px 12px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.18);margin-bottom:10px">'
+        + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text);margin-bottom:4px">2. Set default visibility to Public</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:6px">If your account default is <i>Private</i>, every event you create will be hidden from the rest of the band \u2014 and from GrooveLinx. Everyone in the band should check this.</div>'
+        + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.78em;font-weight:700;padding:5px 12px;border-radius:6px;border:1px solid rgba(245,158,11,0.35);background:rgba(245,158,11,0.10);color:#fcd34d;cursor:pointer">Show me how</button>'
+        + '</div>'
+
+        + '<div style="padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.18);margin-bottom:14px">'
+        + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text);margin-bottom:4px">3. Share the band calendar with everyone</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5">In Google Calendar, open the band calendar settings and add every member with <b>Make changes to events</b> access. GrooveLinx won\u2019t sync an event unless the signed-in user has write access to the shared calendar.</div>'
+        + '</div>'
+
+        + '<div style="font-size:0.72em;color:var(--gl-text-tertiary);line-height:1.5;margin-bottom:14px">GrooveLinx runs a background safety check on every sync. If any event ever ends up hidden (private visibility), you\u2019ll see a yellow warning banner here with the affected dates.</div>'
+
+        + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove();_calShowAvailabilitySettings()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer">Open Rules</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.78em;padding:7px 14px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600">Got it</button>'
+        + '</div>'
+        + '</div></div>';
+    var wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap.firstChild);
 };
 
 // ── Band Availability Health (compact) ──────────────────────────────────────
@@ -2399,6 +2619,11 @@ window._calConnectGoogle = async function() {
                         localStorage.setItem('gl_cal_settings_shown', '1');
                         setTimeout(function() { _calShowAvailabilitySettings(); }, 500);
                     }
+                }
+                // Path C: Mode A welcome wizard — one-time, after first successful connect.
+                if (_calIsModeA() && !localStorage.getItem('gl_cal_mode_a_welcome_shown')) {
+                    localStorage.setItem('gl_cal_mode_a_welcome_shown', '1');
+                    setTimeout(function() { _calShowModeAWelcome(); }, 900);
                 }
             }
             return;

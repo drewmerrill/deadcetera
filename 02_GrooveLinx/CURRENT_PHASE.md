@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-22 (Mode A hardening sprint Week 1 — 9 punch-list items shipped; DoD: "boringly reliable" for DeadCetera; provider refactor deferred 2 weeks)_
+_Updated: 2026-04-22 (Paths B + C + D#6 shipped — hidden-event safety net, Mode A onboarding wizard, stale-member nudges)_
 
 ## Active Phase: Mode A Hardening (2-week sprint)
 
@@ -26,7 +26,17 @@ Admin button added: **"Move misplaced events"** in Google panel — one-shot fix
 Deferred to Week 2:
 - **#10 mobile scheduling audit** — physical device walkthrough
 - **#13 sync activity log** — needs storage schema (Firebase vs localStorage, retention)
-- **#6 cross-member sync orchestration** — behavior nudges only (stale-sync alerts, tap-to-refresh CTA)
+
+## Mode A Sprint — Paths B + C + D#6 (2026-04-22, build 20260422-222724)
+
+Structural fix for the "invisible event" class of bugs (hidden/private events failing to sync) + the operational gaps it exposed.
+
+- **Path B — Freebusy overlay safety net (`gl-calendar-sync.js`):** `_runHiddenEventCheck(bandCalId)` runs on every sync after Phase 2. Fetches full events.list window + freebusy over same window; `_computeHiddenRanges` subtracts visible intervals from busy ranges. Remainders ≥ 5 min = hidden events. Stored in `calendar_sync_state.lastSyncResult.{hiddenCount, hiddenRanges}` (capped at 50 ranges). Public API: `GLCalendarSync.runHiddenEventCheck`.
+- **Path B UI (`calendar.js`):** Yellow banner on Google panel when `hiddenCount > 0`; "Show which dates" opens a details modal grouping ranges by day; "How to fix" opens generic visibility-help modal with instructions for changing one event's visibility + account-level default.
+- **Path C — Mode A welcome wizard:** First successful Mode A connect triggers `_calShowModeAWelcome` (gated by `localStorage.gl_cal_mode_a_welcome_shown`) — 3-card checklist: pick a shared group calendar, set Default visibility to Public (with fix guide), share the calendar with the band. "Visibility help" button in admin bar for on-demand access.
+- **Path D #6 — Stale-member nudge:** Every successful sync stamps `google_connections/{myKey}/lastSyncAt`. `_calMemberSyncStatus(key, connsMap)` classifies each member: fresh (<1d green), recent (1-7d amber), stale (>7d red). Connections popover shows age label per row + "their schedule changes won't reach the band calendar" hint for stale rows. Yellow banner on Google panel lists stale members by first name.
+
+All copy is band-agnostic ("your shared band calendar", not "DeadCetera") per multi-band generic-copy rule.
 
 ---
 
