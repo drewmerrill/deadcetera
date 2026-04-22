@@ -1062,6 +1062,40 @@ function _calRenderSyncCoverage() {
     _calRenderGooglePanel();
 }
 
+// Turn raw sync errors into user-facing copy with an actionable hint. Keeps
+// the toast short (returns the suffix only) but specific enough that users
+// know whether to re-auth, fix Rules, reconnect wifi, or contact support.
+// #14 of the Mode A hardening punch-list.
+function _calTranslateSyncError(result, shortForm) {
+    result = result || {};
+    var err = result.error || '';
+    var errLower = String(err).toLowerCase();
+    // Most specific first
+    if (result.needsReauth || errLower.indexOf('401') !== -1) {
+        return shortForm ? 'sign-in expired' : '\u26A0 Sync failed \u2014 Google sign-in expired. Tap Sync Calendars again to reconnect.';
+    }
+    if (errLower.indexOf('403') !== -1) {
+        return shortForm ? 'access denied' : '\u26A0 Sync failed \u2014 Google denied access (403). Check that your account has edit access to the shared band calendar.';
+    }
+    if (errLower.indexOf('404') !== -1) {
+        return shortForm ? 'calendar not found' : '\u26A0 Sync failed \u2014 Google returned 404. The band calendar may have been deleted or unshared. Open Rules to reconfigure.';
+    }
+    if (errLower.indexOf('no band calendar') !== -1 || errLower.indexOf('no scope') !== -1) {
+        return shortForm ? 'not configured' : '\u26A0 Sync failed \u2014 band calendar not configured. Open Rules to select the shared DeadCetera calendar.';
+    }
+    if (errLower.indexOf('another_device_syncing') !== -1) {
+        return shortForm ? 'another device syncing' : '\u26A0 Sync skipped \u2014 another band member is syncing right now. Try again in a moment.';
+    }
+    if (errLower.indexOf('network') !== -1 || errLower.indexOf('fetch') !== -1 || errLower.indexOf('failed to fetch') !== -1) {
+        return shortForm ? 'network error' : '\u26A0 Sync failed \u2014 can\u2019t reach Google. Check your internet connection and try again.';
+    }
+    if (errLower.indexOf('500') !== -1 || errLower.indexOf('502') !== -1 || errLower.indexOf('503') !== -1) {
+        return shortForm ? 'Google temporarily down' : '\u26A0 Sync failed \u2014 Google is having issues (' + err + '). Try again in a few minutes.';
+    }
+    // Unknown error — surface the raw message so we can diagnose
+    return shortForm ? err : '\u26A0 Sync failed \u2014 ' + err;
+}
+
 // Manual sync: push unsynced events + pull latest availability
 window._calSyncNow = async function() {
     var btn = document.getElementById('calSyncBtn');
@@ -1146,30 +1180,28 @@ window._calSyncNow = async function() {
         if (_syncResult.pulled > 0) _syncParts.push(_syncResult.pulled + ' imported');
         if (_syncResult.updated > 0) _syncParts.push(_syncResult.updated + ' updated');
         if (_syncResult.deleted > 0) _syncParts.push(_syncResult.deleted + ' deleted');
+        if (_syncResult.blocksDeleted > 0) _syncParts.push(_syncResult.blocksDeleted + ' block' + (_syncResult.blocksDeleted === 1 ? '' : 's') + ' deleted');
         if (_rcCount > 0) _syncParts.push(_rcCount + ' reclassified');
         if (_purgeCount > 0) _syncParts.push(_purgeCount + ' purged');
         var _syncMsg;
         if (!_tokenLive) {
-            _syncMsg = '\u26A0 Google sign-in cancelled \u2014 local reclassify only';
-            if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
+            _syncMsg = '\u26A0 Google sign-in cancelled \u2014 nothing synced';
+            if (_syncParts.length) _syncMsg += ' (' + _syncParts.join(', ') + ' applied locally)';
         } else if (_syncResult.error && _syncParts.length === 0) {
-            // Pull/push failed AND nothing landed — be honest: sync failed.
-            if (_syncResult.needsReauth) {
-                _syncMsg = '\u26A0 Sync failed \u2014 Google sign-in expired. Tap Sync Calendars again.';
-            } else {
-                _syncMsg = '\u26A0 Sync failed \u2014 ' + _syncResult.error;
-            }
+            // Pull/push failed AND nothing landed. Translate error codes to
+            // actionable user-facing copy (#14 specific failure messaging).
+            _syncMsg = _calTranslateSyncError(_syncResult);
         } else {
             _syncMsg = '\u2713 Sync complete';
-            if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(', ');
+            if (_syncParts.length) _syncMsg += ' \u2014 ' + _syncParts.join(' \u00B7 ');
             else _syncMsg += ' \u2014 everything up to date';
-            if (_syncResult.error) _syncMsg += ' (\u26A0 partial: ' + _syncResult.error + ')';
+            if (_syncResult.error) _syncMsg += ' (\u26A0 partial: ' + _calTranslateSyncError(_syncResult, true) + ')';
         }
         // Only show availability warning in Mode B (personal calendars mode)
         if (!_hasAvail && _calIsModeB()) _syncMsg += '. Availability not enabled.';
-        if (typeof showToast === 'function') showToast(_syncMsg, 5000);
+        if (typeof showToast === 'function') showToast(_syncMsg, 7000);
     } catch(e) {
-        if (typeof showToast === 'function') showToast('Sync failed: ' + (e.message || 'unknown error'));
+        if (typeof showToast === 'function') showToast('\u26A0 Sync failed: ' + _calTranslateSyncError({ error: e.message || 'unknown error' }), 7000);
     }
     var _hasAvailRestore = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
     var _syncBtnLabel = _calIsModeA() ? '\u21BB Sync Calendars' : (_hasAvailRestore ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events');
@@ -1464,23 +1496,42 @@ function _calRenderGooglePanel() {
     var _hasFreeBusy = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope) ? GLCalendarSync.hasFreeBusyScope() : true;
     var _partialScope = _isConnected && !_hasFreeBusy;
 
-    // Last synced time
+    // Last synced time — prefer real sync timestamp from calendar_sync_state
+    // over connection-record timestamps (which just say when the user linked
+    // their Google account, not when a sync actually ran).
     var lastSync = '';
-    try {
-        if (_calConnectedCache) {
-            var times = Object.values(_calConnectedCache).map(function(c) { return c.updatedAt || c.connectedAt || ''; }).filter(Boolean);
-            if (times.length) {
-                var latest = times.sort().reverse()[0];
-                var mins = Math.floor((Date.now() - new Date(latest).getTime()) / 60000);
-                lastSync = mins < 2 ? 'just now' : (mins < 60 ? mins + ' min ago' : Math.floor(mins / 60) + 'h ago');
+    var _lastResult = null;
+    if (window._calLastSyncAt) {
+        var mins = Math.floor((Date.now() - new Date(window._calLastSyncAt).getTime()) / 60000);
+        lastSync = mins < 2 ? 'just now' : (mins < 60 ? mins + ' min ago' : Math.floor(mins / 60) + 'h ago');
+        _lastResult = window._calLastSyncResult || null;
+    } else {
+        // Fallback to connection-time only when we have no sync history at all
+        try {
+            if (_calConnectedCache) {
+                var times = Object.values(_calConnectedCache).map(function(c) { return c.updatedAt || c.connectedAt || ''; }).filter(Boolean);
+                if (times.length) {
+                    var latest = times.sort().reverse()[0];
+                    var mins2 = Math.floor((Date.now() - new Date(latest).getTime()) / 60000);
+                    lastSync = (mins2 < 2 ? 'just now' : (mins2 < 60 ? mins2 + ' min ago' : Math.floor(mins2 / 60) + 'h ago')) + ' (connect time)';
+                }
             }
-        }
-        // Fallback: if no timestamps in records, use cache load time
-        if (!lastSync && _calConnectedCacheTime > 0) {
-            var _cacheAge = Math.floor((Date.now() - _calConnectedCacheTime) / 60000);
-            lastSync = _cacheAge < 2 ? 'just now' : (_cacheAge < 60 ? _cacheAge + ' min ago' : Math.floor(_cacheAge / 60) + 'h ago');
-        }
-    } catch(e) {}
+        } catch(e) {}
+    }
+    // Kick off a background load if we haven't yet — on next render, the
+    // panel will show the true last-sync time.
+    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getSyncState && !window._calSyncStateLoading) {
+        window._calSyncStateLoading = true;
+        GLCalendarSync.getSyncState().then(function(st) {
+            window._calSyncStateLoading = false;
+            if (st && st.lastSyncAt) {
+                var prev = window._calLastSyncAt || '';
+                window._calLastSyncAt = st.lastSyncAt;
+                window._calLastSyncResult = st.lastSyncResult || null;
+                if (prev !== st.lastSyncAt) _calRenderGooglePanel();
+            }
+        }).catch(function() { window._calSyncStateLoading = false; });
+    }
 
     // ── SINGLE member list (rendered once, used in all states) ──
     var memberHtml = '';
@@ -1510,6 +1561,25 @@ function _calRenderGooglePanel() {
                 + '<span style="color:var(--gl-green);font-size:0.82em">\u2713</span>'
                 + '<span style="font-size:0.78em;font-weight:600;color:var(--gl-text)">Shared Calendar Sync</span></div>';
             if (lastSync) html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:2px">Last synced ' + lastSync + '</div>';
+            // Last sync result summary (explicit counts) — makes success visible
+            // even after the toast fades. Replaces the "did it work?" ambiguity.
+            if (_lastResult) {
+                var _parts = [];
+                if (_lastResult.pushed > 0) _parts.push(_lastResult.pushed + ' pushed');
+                if (_lastResult.blocksPushed > 0) _parts.push(_lastResult.blocksPushed + ' block' + (_lastResult.blocksPushed === 1 ? '' : 's'));
+                if (_lastResult.pulled > 0) _parts.push(_lastResult.pulled + ' imported');
+                if (_lastResult.updated > 0) _parts.push(_lastResult.updated + ' updated');
+                if (_lastResult.deleted > 0 || _lastResult.blocksDeleted > 0) _parts.push(((_lastResult.deleted || 0) + (_lastResult.blocksDeleted || 0)) + ' deleted');
+                if (_lastResult.error) {
+                    var _errColor = _lastResult.needsReauth ? '#f59e0b' : '#f87171';
+                    var _errLabel = _lastResult.needsReauth ? 'sign-in expired' : _lastResult.error;
+                    html += '<div style="font-size:0.62em;color:' + _errColor + ';margin-bottom:2px">\u26A0 Last run: ' + _errLabel + '</div>';
+                } else if (_parts.length) {
+                    html += '<div style="font-size:0.62em;color:var(--gl-green);margin-bottom:2px">\u2713 Last run: ' + _parts.join(' \u00B7 ') + '</div>';
+                } else {
+                    html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:2px">\u2713 Last run: nothing to sync</div>';
+                }
+            }
             html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:6px">Band calendar: <span style="color:var(--gl-text)">\u2714 configured</span></div>';
         } else {
             // Mode B: Personal Availability — show connection count
@@ -1552,6 +1622,27 @@ function _calRenderGooglePanel() {
         }
         html += '<div style="padding:6px 8px;margin-bottom:8px;border-radius:6px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.12);font-size:0.68em;color:var(--gl-amber)">'
             + '\u26A0 Availability not enabled \u2014 <button onclick="' + _enableAction + '" style="background:none;border:none;color:var(--gl-amber);cursor:pointer;font-weight:700;padding:0;font-size:1em;text-decoration:underline">' + _enableLabel + '</button></div>';
+    }
+
+    // Band-calendar misconfig banner (#4). If we've persisted a bandCalendarId
+    // that isn't a @group.calendar.google.com ID, the hardened getter silently
+    // returns null and syncs fail with no visible cause. Surface this loudly.
+    if (_calIsModeA() && _isConnected && window._calBandCalMisconfig) {
+        html += '<div style="padding:8px 10px;margin-bottom:8px;border-radius:8px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);font-size:0.72em;line-height:1.4">'
+            + '<div style="font-weight:700;color:#f87171;margin-bottom:3px">\u26A0 Band calendar misconfigured</div>'
+            + '<div style="color:var(--gl-text-secondary);margin-bottom:6px">Your band calendar setting points to a personal calendar, not a shared group calendar. Syncs will do nothing until this is fixed.</div>'
+            + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.82em;font-weight:700;padding:5px 10px;border-radius:5px;border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.12);color:#fca5a5;cursor:pointer">Fix in Rules \u2192</button>'
+            + '</div>';
+    }
+    // Kick off a check so the banner shows on next render if misconfigured
+    if (_calIsModeA() && _isConnected && typeof GLCalendarSync !== 'undefined' && !window._calBandCalChecking) {
+        window._calBandCalChecking = true;
+        GLCalendarSync.getBandCalendarId().then(function(cid) {
+            window._calBandCalChecking = false;
+            var _wasMisconfig = !!window._calBandCalMisconfig;
+            window._calBandCalMisconfig = (cid === null);
+            if (_wasMisconfig !== window._calBandCalMisconfig) _calRenderGooglePanel();
+        }).catch(function() { window._calBandCalChecking = false; });
     }
 
     // CTA: connect (if never connected) OR sync + manage (if connected)
@@ -2708,6 +2799,15 @@ function _calRenderConflictPanel() {
             var endFmt = (typeof glFormatDate === 'function') ? glFormatDate(b.endDate, true) : b.endDate;
             var _origBlock = b._block || null;
             var _isSynced = _origBlock && _origBlock.syncedToGoogle && _origBlock.googleEventId;
+            // Dirty = edited since last sync (needs a push). Also treat tombstones
+            // (_deleted) as pending — they're awaiting a Google delete.
+            var _isDirty = _origBlock && (
+                _origBlock._deleted
+                || _origBlock.needsSync
+                || (_isSynced && _origBlock.updatedAt && _origBlock.lastSyncedAt
+                    && new Date(_origBlock.updatedAt) > new Date(_origBlock.lastSyncedAt))
+            );
+            var _isPendingPush = _origBlock && (!_isSynced || _isDirty);
             var _isMyConflict = (typeof FeedActionState !== 'undefined' && FeedActionState.isMe) ? FeedActionState.isMe(b.person) : false;
             var _hasGoogleScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope());
             // Fallback attribution for derived rows (no schedule_block backing)
@@ -2732,8 +2832,14 @@ function _calRenderConflictPanel() {
             html += '</div>';
             // Status chip
             html += '<span style="font-size:0.62em;padding:2px 6px;border-radius:4px;background:' + statusColor + ';color:' + statusTextColor + ';white-space:nowrap;flex-shrink:0">' + statusLabel + '</span>';
-            // Synced badge
-            if (_isSynced) html += '<span style="font-size:0.65em;color:var(--gl-green);flex-shrink:0" title="Synced to Google Calendar">\u2705</span>';
+            // Sync state badge — prioritize pending over synced so users see what's queued
+            if (_origBlock && _origBlock._deleted) {
+                html += '<span style="font-size:0.62em;padding:2px 6px;border-radius:4px;background:rgba(239,68,68,0.12);color:#f87171;white-space:nowrap;flex-shrink:0" title="Awaiting Google delete — will retry on next sync">\u23F3 delete pending</span>';
+            } else if (_isMyConflict && _isPendingPush && _hasGoogleScope) {
+                html += '<span style="font-size:0.62em;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,0.12);color:#fbbf24;white-space:nowrap;flex-shrink:0" title="Not yet synced to DeadCetera — tap Sync Calendars">\u23F3 pending</span>';
+            } else if (_isSynced) {
+                html += '<span style="font-size:0.65em;color:var(--gl-green);flex-shrink:0" title="Synced to DeadCetera">\u2705</span>';
+            }
             // Actions
             html += '<div style="display:flex;gap:4px;flex-shrink:0">' + actionsHtml + '</div>';
             html += '</div>';

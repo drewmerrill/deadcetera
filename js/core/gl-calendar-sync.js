@@ -1454,6 +1454,30 @@ window.GLCalendarSync = (function() {
     }
 
     console.log('[CalSync] === TWO-WAY SYNC COMPLETE: pushed', result.pushed, '| pulled', result.pulled, '| updated', result.updated, '| deleted', result.deleted, '===');
+    // Always record the sync result timestamp so UI can show an accurate
+    // "Last synced" regardless of whether a new syncToken was issued. The
+    // previous code only wrote the timestamp when a syncToken came back,
+    // leaving the UI stuck showing connection time instead of sync time.
+    try {
+      var _prev = await _loadSyncState();
+      await _saveSyncState({
+        syncToken: _prev.syncToken || null,
+        lastFullSync: _prev.lastFullSync || null,
+        lastIncrementalSync: _prev.lastIncrementalSync || null,
+        lastSyncAt: new Date().toISOString(),
+        lastSyncResult: {
+          pushed: result.pushed || 0,
+          pulled: result.pulled || 0,
+          updated: result.updated || 0,
+          deleted: result.deleted || 0,
+          blocksPushed: result.blocksPushed || 0,
+          blocksDeleted: result.blocksDeleted || 0,
+          error: result.error || null,
+          needsReauth: !!result.needsReauth
+        },
+        syncVersion: _prev.syncVersion || 2
+      });
+    } catch(e) { console.warn('[CalSync] Failed to record sync result:', e && e.message); }
     // Track first sync success
     if ((result.pushed > 0 || result.pulled > 0) && typeof GLUXTracker !== 'undefined' && GLUXTracker._logEvent) {
       if (!localStorage.getItem('gl_cal_first_sync')) {
@@ -1462,6 +1486,11 @@ window.GLCalendarSync = (function() {
       }
     }
     return result;
+  }
+
+  // Public: read last-sync metadata for UI rendering
+  async function getSyncState() {
+    return await _loadSyncState();
   }
 
   // ── INBOUND SYNC (legacy — kept as fallback for Mode C) ────────────────
@@ -2477,6 +2506,7 @@ window.GLCalendarSync = (function() {
     canWriteBandCalendar: canWriteBandCalendar,
     getBandEventTimeSlots: _getBandEventTimeSlots,
     syncBandCalendar: syncBandCalendar,
+    getSyncState: getSyncState,
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
