@@ -1413,6 +1413,9 @@ window.GLCalendarSync = (function() {
     console.log('[CalSync] Phase 1: Push local changes...');
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
+      // Path B.2: synthetic hidden-event rows are derived from freebusy, not
+      // real events. Never push them back to Google.
+      if (ev && (ev._syntheticFromFreeBusy || ev.syncStatus === 'synthetic')) continue;
       var alreadySynced = (ev.syncStatus === 'synced' && ev.googleEventId)
         || (ev.sync && ev.sync.externalEventId && ev.sync.status === 'synced');
       if (alreadySynced || !ev.date || !ev.title) continue;
@@ -1796,6 +1799,98 @@ window.GLCalendarSync = (function() {
     var _hiddenRanges = null;
     if (!result.needsReauth) {
       _hiddenRanges = await _runHiddenEventCheck(bandCalId);
+    }
+
+    // ── Path B.2: Materialize hidden ranges as synthetic calendar_events ──
+    // The banner alone tells you WHICH dates are ghost-busy; writing them as
+    // synthetic events makes the grid actually render them as blocked time so
+    // scheduling UIs flag the conflict. Tagged _syntheticFromFreeBusy so
+    // Phase 1 doesn't push them back to Google.
+    try {
+      var _synthKeys = {};
+      var _synthDirty = false;
+      var _toDateStr = function(d) {
+        return d.getFullYear() + '-'
+          + String(d.getMonth() + 1).padStart(2, '0') + '-'
+          + String(d.getDate()).padStart(2, '0');
+      };
+      var _toTimeStr = function(d) {
+        return String(d.getHours()).padStart(2, '0') + ':'
+          + String(d.getMinutes()).padStart(2, '0');
+      };
+      (_hiddenRanges || []).forEach(function(h) {
+        var s = new Date(h.start);
+        var e = new Date(h.end);
+        var durMs = e.getTime() - s.getTime();
+        var isAllDay = durMs >= 24 * 3600 * 1000 - 60000;
+        var baseKey = 'synth_hidden_' + h.start + '_' + h.end;
+        if (isAllDay) {
+          // Materialize one row per day in the span so each calendar cell
+          // renders the blocked state.
+          var _d = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+          var _endExcl = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+          // If end aligns exactly on midnight, it's exclusive (Google all-day
+          // convention). If not, include the end day too.
+          if (e.getHours() !== 0 || e.getMinutes() !== 0) _endExcl.setDate(_endExcl.getDate() + 1);
+          while (_d < _endExcl) {
+            var dStr = _toDateStr(_d);
+            var key = baseKey + '_' + dStr;
+            _synthKeys[key] = true;
+            var idx = events.findIndex(function(ex) { return ex.id === key; });
+            var evObj = {
+              id: key, eventId: key,
+              title: 'Busy (hidden event)',
+              date: dStr, time: '', endTime: '', endDate: '',
+              isAllDay: true,
+              type: 'unavailable',
+              notes: 'Hidden event on shared band calendar. Visibility is Private or Default \u2014 ask band members to check their account default visibility and set it to Public to see details.',
+              _syntheticFromFreeBusy: true,
+              _hiddenRangeKey: key,
+              syncStatus: 'synthetic'
+            };
+            if (idx >= 0) { events[idx] = evObj; } else { events.push(evObj); _synthDirty = true; }
+            _d.setDate(_d.getDate() + 1);
+          }
+        } else {
+          var dStr2 = _toDateStr(s);
+          var key2 = baseKey;
+          _synthKeys[key2] = true;
+          var idx2 = events.findIndex(function(ex) { return ex.id === key2; });
+          var sameDay = s.getFullYear() === e.getFullYear()
+            && s.getMonth() === e.getMonth()
+            && s.getDate() === e.getDate();
+          var evObj2 = {
+            id: key2, eventId: key2,
+            title: 'Busy (hidden event)',
+            date: dStr2,
+            time: _toTimeStr(s),
+            endTime: sameDay ? _toTimeStr(e) : '23:59',
+            endDate: '',
+            isAllDay: false,
+            type: 'unavailable',
+            notes: 'Hidden event on shared band calendar. Visibility is Private or Default \u2014 ask band members to check their account default visibility and set it to Public to see details.',
+            _syntheticFromFreeBusy: true,
+            _hiddenRangeKey: key2,
+            syncStatus: 'synthetic'
+          };
+          if (idx2 >= 0) { events[idx2] = evObj2; } else { events.push(evObj2); _synthDirty = true; }
+        }
+      });
+      // Remove stale synthetic rows that are no longer in the freebusy output
+      for (var _si = events.length - 1; _si >= 0; _si--) {
+        var _sev = events[_si];
+        if (_sev && _sev._syntheticFromFreeBusy && !_synthKeys[_sev._hiddenRangeKey]) {
+          events.splice(_si, 1);
+          _synthDirty = true;
+        }
+      }
+      if (_synthDirty) {
+        await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
+        console.log('[CalSync] Path B.2: Wrote', Object.keys(_synthKeys).length,
+          'synthetic hidden-event rows (stale removed)');
+      }
+    } catch(e) {
+      console.warn('[CalSync] Path B.2 synthetic-write error:', e && e.message);
     }
 
     // Always record the sync result timestamp so UI can show an accurate

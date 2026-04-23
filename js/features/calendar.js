@@ -4250,6 +4250,30 @@ async function loadCalendarEvents() {
         _calEventsByDate[dateKey].forEach(function (ev) {
             if (!ev) return;
 
+            // Path B.2: synthetic hidden-event rows block the whole band with
+            // a "(hidden)" attribution. No creator info available (private
+            // visibility hid it from the API), but the conflict is real.
+            if (ev._syntheticFromFreeBusy) {
+                var _timeSpan = ev.isAllDay
+                    ? 'all day'
+                    : (ev.time + (ev.endTime ? '\u2013' + ev.endTime : ''));
+                blocked.push({
+                    person: '(hidden)',
+                    startDate: dateKey, endDate: dateKey,
+                    reason: '\uD83D\uDD12 Hidden event \u2014 ' + _timeSpan,
+                    description: ev.notes || '',
+                    status: 'unavailable',
+                    _source: 'band_calendar_hidden',
+                    _conflictType: 'hard',
+                    _isAllDay: !!ev.isAllDay,
+                    _timeLabel: ev.time && ev.endTime ? ev.time + '\u2013' + ev.endTime : '',
+                    _isSyntheticHidden: true,
+                    _eventId: ev.id || ''
+                });
+                _unavailCount++;
+                return;
+            }
+
             // Explicit "unavailable" with assigned members — always block.
             if (ev.type === 'unavailable' && ev.assignedMembers && ev.assignedMembers.length) {
                 ev.assignedMembers.forEach(function (mKey) { _pushBlock(ev, dateKey, mKey); });
