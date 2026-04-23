@@ -5397,10 +5397,12 @@ window._calCloseMobileCard = function() {
 };
 
 async function calAddEvent(date, editIdx, existing) {
+    console.log('[Calendar] calAddEvent fired — date=' + date + ', editIdx=' + editIdx + ', hasExisting=' + !!existing);
     // Mode C (Native): skip all Google auth gates — events are local only
     // Mode A/B: require Google token
     var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
     if (!_calIsModeC() && !_hasToken) {
+        console.warn('[Calendar] calAddEvent gate: no accessToken — rendering sign-in prompt');
         // Show inline sign-in prompt (no confirm() — Safari blocks OAuth popups after confirm dialogs)
         var _area = document.getElementById('calEventFormArea');
         if (_area) {
@@ -5419,6 +5421,7 @@ async function calAddEvent(date, editIdx, existing) {
     // Also check band calendar access (Mode A/B only — Mode C skips this)
     if (!_calIsModeC() && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.canWriteBandCalendar) {
         var _canWrite = await GLCalendarSync.canWriteBandCalendar();
+        console.log('[Calendar] calAddEvent gate: canWriteBandCalendar =', _canWrite);
         if (!_canWrite) {
             var _area2 = document.getElementById('calEventFormArea');
             if (_area2) {
@@ -5439,7 +5442,12 @@ async function calAddEvent(date, editIdx, existing) {
         }
     }
     const area = document.getElementById('calEventFormArea');
-    if (!area) return;
+    if (!area) {
+        console.warn('[Calendar] calAddEvent gate: #calEventFormArea not in DOM — aborting');
+        if (typeof showToast === 'function') showToast('\u26A0 Form container not ready. Try refreshing the Schedule page.', 4000);
+        return;
+    }
+    console.log('[Calendar] calAddEvent — rendering form into #calEventFormArea');
     const isEdit = editIdx !== undefined;
     const ev = existing || {};
     window._calVenuePicker = null;
@@ -5796,13 +5804,41 @@ async function calDeleteEvent(idx) {
 }
 
 async function calEditEventById(eventId) {
-    if (!eventId) return;
+    console.log('[Calendar] Edit click:', eventId);
+    if (!eventId) {
+        console.warn('[Calendar] Edit aborted — no eventId');
+        if (typeof showToast === 'function') showToast('\u26A0 Event id missing');
+        return;
+    }
     var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     var ev = events.find(function(e) { return e.id === eventId; });
-    if (!ev) return;
+    if (!ev) {
+        console.warn('[Calendar] Edit aborted — event not found in calendar_events:', eventId);
+        if (typeof showToast === 'function') showToast('\u26A0 Event not found');
+        return;
+    }
+    console.log('[Calendar] Edit found event:', ev.title, ev.date, 'type=' + ev.type);
     var rawIdx = events.indexOf(ev);
     var hydrated = await _calHydrateGigFields(ev);
-    calAddEvent(ev.date, rawIdx, hydrated);
+    await calAddEvent(ev.date, rawIdx, hydrated);
+    // Hardened scroll: the form area sits above the calendar grid on the
+    // Schedule page; block:'nearest' isn't aggressive enough when the user
+    // is scrolled down looking at a distant month.
+    var _area = document.getElementById('calEventFormArea');
+    if (_area) {
+        try { _area.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch(e) {}
+        // Double-nudge: also ensure window scroll puts the form header visible
+        setTimeout(function() {
+            try {
+                var rect = _area.getBoundingClientRect();
+                if (rect.top < 0 || rect.top > window.innerHeight * 0.6) {
+                    window.scrollTo({ top: window.scrollY + rect.top - 80, behavior: 'smooth' });
+                }
+            } catch(e) {}
+        }, 150);
+    } else {
+        console.warn('[Calendar] Edit — #calEventFormArea not in DOM');
+    }
 }
 
 async function calDeleteEventById(eventId) {
