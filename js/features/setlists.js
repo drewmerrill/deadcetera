@@ -2326,34 +2326,52 @@ function slPickerUpdateCount() {
 }
 
 function slPickerConfirm(setIdx) {
-    if (!window._slSets[setIdx]) window._slSets[setIdx] = { name: 'Set ' + (setIdx + 1), songs: [] };
-    var existingTitles = {};
-    (window._slSets[setIdx].songs || []).forEach(function(item) {
-        var t = typeof item === 'string' ? item : (item.title || '');
-        if (t) existingTitles[t] = true;
-    });
-
-    var checkboxes = document.querySelectorAll('.sl-picker-cb:checked');
-    var added = 0;
-    checkboxes.forEach(function(cb) {
-        var title = cb.dataset.song;
-        if (title && !existingTitles[title]) {
-            window._slSets[setIdx].songs.push({ title: title, segue: 'stop' });
-            added++;
+    console.log('[Setlists] Add Selected click — setIdx=' + setIdx + ', _slSets defined=' + (typeof window._slSets !== 'undefined'));
+    try {
+        if (typeof window._slSets === 'undefined' || !Array.isArray(window._slSets)) {
+            console.error('[Setlists] Add Selected aborted — window._slSets not initialised');
+            if (typeof showToast === 'function') showToast('\u26A0 Setlist editor state missing \u2014 close the picker and reopen the setlist.', 4000);
+            return;
         }
-    });
+        if (!window._slSets[setIdx]) window._slSets[setIdx] = { name: 'Set ' + (setIdx + 1), songs: [] };
+        var existingTitles = {};
+        (window._slSets[setIdx].songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : (item.title || '');
+            if (t) existingTitles[t] = true;
+        });
 
-    var checkedTitles = {};
-    checkboxes.forEach(function(cb) { if (cb.dataset.song) checkedTitles[cb.dataset.song] = true; });
-    window._slSets[setIdx].songs = window._slSets[setIdx].songs.filter(function(item) {
-        var t = typeof item === 'string' ? item : (item.title || '');
-        return checkedTitles[t];
-    });
+        var checkboxes = document.querySelectorAll('.sl-picker-cb:checked');
+        console.log('[Setlists] Add Selected — ' + checkboxes.length + ' checkbox(es) checked');
+        var added = 0;
+        checkboxes.forEach(function(cb) {
+            var title = cb.dataset.song;
+            if (title && !existingTitles[title]) {
+                window._slSets[setIdx].songs.push({ title: title, segue: 'stop' });
+                added++;
+            }
+        });
 
-    document.getElementById('slSongPickerOverlay').remove();
-    if (typeof _slMarkDirty === 'function') _slMarkDirty();
-    slRenderSetSongs(setIdx);
-    if (typeof showToast === 'function') showToast(added > 0 ? added + ' song' + (added > 1 ? 's' : '') + ' added' : 'Setlist updated');
+        var checkedTitles = {};
+        checkboxes.forEach(function(cb) { if (cb.dataset.song) checkedTitles[cb.dataset.song] = true; });
+        window._slSets[setIdx].songs = window._slSets[setIdx].songs.filter(function(item) {
+            var t = typeof item === 'string' ? item : (item.title || '');
+            return checkedTitles[t];
+        });
+
+        var ov = document.getElementById('slSongPickerOverlay');
+        if (ov) ov.remove();
+        if (typeof _slMarkDirty === 'function') _slMarkDirty();
+        if (typeof slRenderSetSongs === 'function') {
+            slRenderSetSongs(setIdx);
+        } else {
+            console.warn('[Setlists] slRenderSetSongs not defined — set list re-render skipped');
+        }
+        console.log('[Setlists] Add Selected — added ' + added + ' new song(s) to set ' + setIdx);
+        if (typeof showToast === 'function') showToast(added > 0 ? added + ' song' + (added > 1 ? 's' : '') + ' added' : 'Setlist updated');
+    } catch (err) {
+        console.error('[Setlists] Add Selected threw:', err);
+        if (typeof showToast === 'function') showToast('\u26A0 Add failed: ' + (err && err.message ? err.message : 'unknown error'), 4500);
+    }
 }
 
 function slPickerToggleLibrary() {
