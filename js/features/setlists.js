@@ -578,6 +578,7 @@ window.slAddNewSongToSet = slAddNewSongToSet;
 function slAddSongToSet(setIdx, title) {
     if (!requireSignIn()) return;
     if (!window._slSets[setIdx]) window._slSets[setIdx] = { songs: [] };
+    if (!Array.isArray(window._slSets[setIdx].songs)) window._slSets[setIdx].songs = [];
     window._slSets[setIdx].songs.push({title: title, segue: 'stop'});
     // Auto-create song record in band library if it doesn't exist
     if (typeof ensureBandSong === 'function') ensureBandSong(title);
@@ -2353,8 +2354,14 @@ function slPickerConfirm(setIdx) {
             return;
         }
         if (!window._slSets[setIdx]) window._slSets[setIdx] = { name: 'Set ' + (setIdx + 1), songs: [] };
+        // Hard-guard: an existing set object may have been created without a
+        // songs array (older code paths / partial state). Always ensure it
+        // exists before push() is called on it.
+        if (!Array.isArray(window._slSets[setIdx].songs)) {
+            window._slSets[setIdx].songs = [];
+        }
         var existingTitles = {};
-        (window._slSets[setIdx].songs || []).forEach(function(item) {
+        window._slSets[setIdx].songs.forEach(function(item) {
             var t = typeof item === 'string' ? item : (item.title || '');
             if (t) existingTitles[t] = true;
         });
