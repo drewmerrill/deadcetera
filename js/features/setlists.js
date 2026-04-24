@@ -487,10 +487,29 @@ async function createNewSetlist() {
         <div id="slShowTotal" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.15);font-size:0.75em;color:var(--text-dim)"></div>
         <div style="height:60px"></div></div>
         <div id="slStickyFooter" style="position:sticky;bottom:0;z-index:100;padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,#0f172a 60%,transparent);display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn btn-ghost" onclick="slCancelNewSetlist()" style="padding:12px 18px;font-size:0.88em;min-height:44px">Cancel</button>
             <button class="btn btn-success" onclick="slSaveSetlist()" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3);min-height:44px">\uD83D\uDD12 Lock This Set</button>
         </div>`;
     _slInitVenuePicker(await GLStore.getVenues(), null);
 }
+
+// Cancel out of the New Setlist editor. Confirms only if real work would be
+// lost (any set with at least one song). Clears in-memory state and returns
+// to the setlist index.
+function slCancelNewSetlist() {
+    var hasWork = false;
+    try {
+        (window._slSets || []).forEach(function(set) {
+            if (set && set.songs && set.songs.length > 0) hasWork = true;
+        });
+        var nameEl = document.getElementById('slName');
+        if (nameEl && nameEl.value && nameEl.value.trim()) hasWork = true;
+    } catch(e) {}
+    if (hasWork && !confirm('Discard this setlist? Any songs and notes you\u2019ve added will be lost.')) return;
+    window._slSets = null;
+    if (typeof loadSetlists === 'function') loadSetlists();
+}
+window.slCancelNewSetlist = slCancelNewSetlist;
 
 var _slOnlyActive = false; // Pierce filter: show only prospect/wip/gig_ready songs
 var _slPickerShowLibrary = false; // When true, song picker shows inactive/shelved songs too
