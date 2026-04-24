@@ -2455,6 +2455,89 @@ window.GLCalendarSync = (function() {
     return false;
   }
 
+  // Diagnostic: prints everything needed to triage a member's calendar
+  // configuration in their browser console. Usage:
+  //   GLCalendarSync.debugMyConfig()
+  // Prints email, memberKey, raw stored bandCalendarId (band-level + user-level
+  // fallback), the resolved value after the group-cal guard, write access,
+  // OAuth scopes, and last sync metadata. Designed to be paste-ready for
+  // troubleshooting without bothering the user with a UI surface.
+  async function debugMyConfig() {
+    var out = { ts: new Date().toISOString() };
+    try {
+      out.email = (typeof currentUserEmail !== 'undefined' && currentUserEmail) || '(unknown)';
+      out.memberKey = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey)
+        ? FeedActionState.getMyMemberKey() : null;
+      out.hasCalendarScope = hasCalendarScope();
+      out.hasFreeBusyScope = hasFreeBusyScope();
+      out.hasAccessToken = !!accessToken;
+
+      // Raw stored values (band-level + user-level)
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        try {
+          var bsnap = await db.ref(bandPath('band_calendar/calendarId')).once('value');
+          out.bandLevel_calendarId_raw = bsnap.val();
+        } catch(e) { out.bandLevel_calendarId_raw = '(read error: ' + (e && e.message) + ')'; }
+        try {
+          var nsnap = await db.ref(bandPath('band_calendar/calendarName')).once('value');
+          out.bandLevel_calendarName = nsnap.val();
+        } catch(e) {}
+      }
+      try {
+        var s = await getAvailabilitySettings();
+        out.userLevel_bandCalendarId_raw = (s && s.bandCalendarId) || null;
+      } catch(e) {}
+
+      out.bandLevel_isGroupCal = out.bandLevel_calendarId_raw
+        ? _isGroupCalendarId(out.bandLevel_calendarId_raw) : null;
+      out.userLevel_isGroupCal = out.userLevel_bandCalendarId_raw
+        ? _isGroupCalendarId(out.userLevel_bandCalendarId_raw) : null;
+
+      // Resolved value (after guard)
+      out.resolved_bandCalendarId = await _getBandCalendarId();
+      out.resolved_isGroupCal = out.resolved_bandCalendarId
+        ? _isGroupCalendarId(out.resolved_bandCalendarId) : false;
+
+      // Write access (HEAD on the cal)
+      try { out.canWriteBandCalendar = await canWriteBandCalendar(); }
+      catch(e) { out.canWriteBandCalendar = '(check error: ' + (e && e.message) + ')'; }
+
+      // Last sync state
+      try {
+        var st = await _loadSyncState();
+        out.lastSyncAt = (st && st.lastSyncAt) || null;
+        out.lastSyncResult = (st && st.lastSyncResult) || null;
+      } catch(e) {}
+
+      // Verdict
+      var verdict;
+      if (!out.hasAccessToken) verdict = 'NO TOKEN — sign in';
+      else if (!out.hasCalendarScope) verdict = 'NO CALENDAR SCOPE — reconnect Google Calendar';
+      else if (!out.resolved_bandCalendarId) {
+        if (out.bandLevel_calendarId_raw && !out.bandLevel_isGroupCal) {
+          verdict = 'BAND-LEVEL CAL ID IS NOT A GROUP CAL — fix in Rules (this is the misconfig that posts events to a personal calendar).';
+        } else if (out.userLevel_bandCalendarId_raw && !out.userLevel_isGroupCal) {
+          verdict = 'USER-LEVEL CAL ID IS NOT A GROUP CAL — fix in Rules (band-level not set, user fallback rejected).';
+        } else {
+          verdict = 'NO BAND CAL CONFIGURED — open Rules and pick the shared calendar.';
+        }
+      } else if (!out.canWriteBandCalendar) verdict = 'NO WRITE ACCESS to band cal — ask the calendar owner to give you "Make changes to events".';
+      else verdict = 'OK — config looks correct.';
+      out.verdict = verdict;
+
+      console.log('%c[CalSync] === MY CONFIG ===', 'font-weight:bold;color:#a5b4fc');
+      Object.keys(out).forEach(function(k) {
+        console.log('  ' + k + ':', out[k]);
+      });
+      console.log('%c  → ' + verdict, 'font-weight:bold;color:' + (verdict.indexOf('OK') === 0 ? '#86efac' : '#fbbf24'));
+      return out;
+    } catch (err) {
+      console.error('[CalSync] debugMyConfig threw:', err);
+      return { error: err && err.message };
+    }
+  }
+
   // Get the default rehearsal window (user-configurable)
   async function _getRehearsalWindow() {
     var settings = await getAvailabilitySettings();
@@ -2961,6 +3044,7 @@ window.GLCalendarSync = (function() {
     getSyncState: getSyncState,
     runHiddenEventCheck: _runHiddenEventCheck,
     getSyncActivity: getSyncActivity,
+    debugMyConfig: debugMyConfig,
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
