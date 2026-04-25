@@ -833,7 +833,13 @@ window.GLCalendarSync = (function() {
     if (!hasCalendarScope() || !externalEventId) return null;
     if (_calendarScopeFailed) return null;
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId), {
+      // Always read from the band cal — the worker's previous hardcode to
+      // 'primary' meant attendee status was being read from the user's
+      // personal calendar (wrong/empty data for events that live on DC).
+      var _calId = await _getBandCalendarId();
+      var _url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId)
+        + (_calId ? ('?calendarId=' + encodeURIComponent(_calId)) : '');
+      var res = await fetch(_url, {
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
       if (!res.ok) return null;
@@ -2451,13 +2457,26 @@ window.GLCalendarSync = (function() {
     if (!hasCalendarScope() || !googleEventId) return { success: false };
     opts = opts || {};
     try {
+      // Same routing-bug guard as syncConflictToGoogle/updateConflictInGoogle:
+      // never let opts default to undefined. Validate the calendarId is a
+      // group cal; if not, resolve via _getBandCalendarId(). Refuses to
+      // DELETE without a valid group cal — better to fail loudly than
+      // silently delete from the user's primary calendar.
+      var _calId = opts.calendarId;
+      if (!_calId || !_isGroupCalendarId(_calId)) {
+        _calId = await _getBandCalendarId();
+      }
+      if (!_calId || !_isGroupCalendarId(_calId)) {
+        console.warn('[CalSync] deleteConflictFromGoogle aborted — no group band calendar resolved');
+        return { success: false, error: 'No band calendar configured' };
+      }
       var _url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(googleEventId)
-        + (opts.calendarId ? ('?calendarId=' + encodeURIComponent(opts.calendarId)) : '');
+        + '?calendarId=' + encodeURIComponent(_calId);
       var res = await fetch(_url, {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
-      if (res.status === 204 || res.status === 410) return { success: true };
+      if (res.status === 204 || res.status === 410 || res.status === 404) return { success: true };
       return { success: false, error: 'Delete failed: ' + res.status };
     } catch (err) {
       return { success: false, error: err.message };

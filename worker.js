@@ -72,9 +72,19 @@ export default {
       return handleFetchChart(request);
     if (path === '/transcribe' && request.method === 'POST')
       return handleTranscribe(request, env);
-    // Google Calendar API proxy — forwards user's access token to Google
-    // Calendar CRUD — calendarId from query param or default to 'primary'
-    var _calId = url.searchParams.get('calendarId') || 'primary';
+    // Google Calendar API proxy — forwards user's access token to Google.
+    // calendarId comes from the query param. We log a clear warning when a
+    // mutating call (POST/PATCH/DELETE) arrives without an explicit
+    // calendarId — that's almost always a routing bug on the client side
+    // (an event is about to land on the user's personal cal). We still
+    // honor the request to avoid breaking unknown legacy paths, but the
+    // warning makes the bug visible in worker logs.
+    var _calId = url.searchParams.get('calendarId');
+    var _isMutating = path.startsWith('/calendar/events') && (request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE');
+    if (_isMutating && !_calId) {
+      console.warn('[Worker] WARNING: mutating /calendar/events request with no calendarId — falling back to "primary". Caller should pass ?calendarId=...');
+    }
+    _calId = _calId || 'primary';
     if (path === '/calendar/events' && request.method === 'POST')
       return handleCalendarProxy(request, 'POST', _calId);
     if (path.startsWith('/calendar/events/') && request.method === 'PATCH')
@@ -1049,7 +1059,13 @@ async function handleCalendarGetEvent(request, eventId) {
   const authHeader = request.headers.get('Authorization');
   if (!authHeader) return cors(new Response('Unauthorized', { status: 401 }));
   try {
-    const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/primary/events/' + encodeURIComponent(eventId);
+    // Honor the calendarId query param so callers can read events from the
+    // band group calendar (or any other shared cal). Previously hardcoded to
+    // 'primary', which silently routed reads to the user's personal calendar
+    // — wrong attendee data, missing events, etc.
+    const url = new URL(request.url);
+    const calId = url.searchParams.get('calendarId') || 'primary';
+    const googleUrl = 'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events/' + encodeURIComponent(eventId);
     const res = await fetch(googleUrl, { headers: { 'Authorization': authHeader } });
     const data = await res.text();
     return cors(new Response(data, { status: res.status, headers: { 'Content-Type': 'application/json' } }));
