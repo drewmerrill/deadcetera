@@ -2928,43 +2928,55 @@ window.GLCalendarSync = (function() {
     var pollutionGids = (decisions.pollutionGoogleIds || []);
     var pollutionGidSet = {};
     pollutionGids.forEach(function(g) { pollutionGidSet[g] = true; });
-    for (var pi = 0; pi < pollutionGids.length; pi++) {
-      var gid = pollutionGids[pi];
-      try {
-        var delUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(gid)
+    var onProgress = decisions.onProgress || function() {};
+    var sleep = function(ms) { return new Promise(function(r) { setTimeout(r, ms); }); };
+    var doDelete = async function(gid, attempt) {
+      attempt = attempt || 1;
+      var delUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(gid)
+        + '?calendarId=' + encodeURIComponent(bandCalId);
+      var delRes = await fetch(delUrl, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      if (delRes.status === 204 || delRes.status === 410 || delRes.status === 404) return { ok: true };
+      // Transient — retry with exponential backoff up to 4 attempts
+      if ((delRes.status === 429 || delRes.status === 500 || delRes.status === 502 || delRes.status === 503) && attempt < 4) {
+        var backoff = 250 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 200);
+        await sleep(backoff);
+        return doDelete(gid, attempt + 1);
+      }
+      // Recurring-instance fallback
+      if (delRes.status === 400 && /_\d{8}$/.test(gid)) {
+        var parentId = gid.replace(/_\d{8}$/, '');
+        var retryUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(parentId)
           + '?calendarId=' + encodeURIComponent(bandCalId);
-        var delRes = await fetch(delUrl, {
+        var retryRes = await fetch(retryUrl, {
           method: 'DELETE',
           headers: { 'Authorization': 'Bearer ' + accessToken }
         });
-        if (delRes.status === 204 || delRes.status === 410 || delRes.status === 404) {
+        if (retryRes.status === 204 || retryRes.status === 410 || retryRes.status === 404) return { ok: true };
+        return { ok: false, status: retryRes.status, parentRetry: true };
+      }
+      return { ok: false, status: delRes.status };
+    };
+
+    var totalP = pollutionGids.length;
+    for (var pi = 0; pi < pollutionGids.length; pi++) {
+      var gid = pollutionGids[pi];
+      try {
+        var r = await doDelete(gid);
+        if (r.ok) {
           result.pollutionDeleted++;
-        } else if (delRes.status === 400 && /_\d{8}$/.test(gid)) {
-          // Recurring-instance ID slipped through (audit didn't see the
-          // recurringEventId field for some reason). Strip the date suffix
-          // and retry against the parent series.
-          var parentId = gid.replace(/_\d{8}$/, '');
-          var retryUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(parentId)
-            + '?calendarId=' + encodeURIComponent(bandCalId);
-          try {
-            var retryRes = await fetch(retryUrl, {
-              method: 'DELETE',
-              headers: { 'Authorization': 'Bearer ' + accessToken }
-            });
-            if (retryRes.status === 204 || retryRes.status === 410 || retryRes.status === 404) {
-              result.pollutionDeleted++;
-            } else {
-              result.errors.push('delete_failed_' + retryRes.status + '_' + parentId + '_(parent retry)');
-            }
-          } catch(e2) {
-            result.errors.push('delete_retry_exception_' + (e2 && e2.message));
-          }
         } else {
-          result.errors.push('delete_failed_' + delRes.status + '_' + gid);
+          result.errors.push('delete_failed_' + r.status + '_' + gid + (r.parentRetry ? '_(parent retry)' : ''));
         }
       } catch(e) {
         result.errors.push('delete_exception_' + (e && e.message));
       }
+      // Pace: ~5 req/sec stays well under Google's 10 req/sec quota and
+      // avoids the burst-induced 500/503 storm Brian's audit was hitting.
+      await sleep(180);
+      try { onProgress({ done: pi + 1, total: totalP, deleted: result.pollutionDeleted, errors: result.errors.length }); } catch(_e) {}
     }
     // Clean local rows that referenced deleted Google events
     if (pollutionGids.length) {

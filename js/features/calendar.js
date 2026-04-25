@@ -2236,11 +2236,20 @@ window._calShowCalendarAudit = async function() {
             if (!byCreator[key]) byCreator[key] = [];
             byCreator[key].push(p);
         });
+        // Stash for copy handlers (avoids re-running audit just to copy)
+        window._calAuditOthersByCreator = byCreator;
         html += '<div style="margin-bottom:18px;padding:10px 12px;border-radius:10px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.16)">'
-            + '<div style="font-size:0.85em;font-weight:800;color:var(--gl-text);margin-bottom:4px">Other members\u2019 pollution (' + report.othersPollution.length + ')</div>'
-            + '<div style="font-size:0.74em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.5">Events on the band calendar created by other members that don\u2019t look like band events. <b>You can\u2019t delete these</b> \u2014 Google only lets the creator delete their own events. Forward this list to them to clean up on their end.</div>';
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap">'
+            + '<span style="font-size:0.85em;font-weight:800;color:var(--gl-text);flex:1;min-width:0">Other members\u2019 pollution (' + report.othersPollution.length + ')</span>'
+            + '<button onclick="_calAuditCopyAllOthers()" style="font-size:0.72em;padding:5px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:700;flex-shrink:0">\uD83D\uDCCB Copy summary</button>'
+            + '</div>'
+            + '<div style="font-size:0.74em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.5">Events created by other members that don\u2019t look like band events. <b>You can\u2019t delete these</b> \u2014 Google only lets the creator delete their own events. Use the per-member <b>Copy</b> buttons below to grab a paste-ready text message you can send each member.</div>';
         Object.keys(byCreator).forEach(function(creator) {
-            html += '<div style="margin-top:10px"><div style="font-size:0.75em;font-weight:700;color:#a5b4fc;margin-bottom:4px">' + creator + ' \u00B7 ' + byCreator[creator].length + '</div>';
+            var creatorSafe = creator.replace(/'/g, "\\'");
+            html += '<div style="margin-top:10px"><div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">'
+                + '<span style="font-size:0.75em;font-weight:700;color:#a5b4fc;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">' + creator + ' \u00B7 ' + byCreator[creator].length + '</span>'
+                + '<button onclick="_calAuditCopyForCreator(\'' + creatorSafe + '\')" style="font-size:0.7em;padding:4px 8px;border-radius:5px;border:1px solid rgba(99,102,241,0.25);background:none;color:#a5b4fc;cursor:pointer;font-weight:600;flex-shrink:0">\uD83D\uDCCB Copy for ' + creator.split('@')[0] + '</button>'
+                + '</div>';
             byCreator[creator].slice(0, 8).forEach(function(p) {
                 var rec = p.isRecurring ? ' \u00B7 \u21BB recurring \u00D7' + (p.instanceCount || '?') : '';
                 html += '<div style="font-size:0.72em;color:var(--gl-text-secondary);padding:2px 0">\u2022 ' + (p.title || '(untitled)') + ' \u00B7 ' + (p.date || '?') + rec + '</div>';
@@ -2269,33 +2278,144 @@ window._calShowCalendarAudit = async function() {
     body.innerHTML = html;
 };
 
+// Build a friendly per-creator pollution message that the auditing user
+// can paste into a text/Slack/email to the affected member. Includes the
+// list of titles + dates + a clear remediation action.
+function _calAuditBuildCreatorMessage(creator, items) {
+    var firstName = (creator || '').split('@')[0].split('.')[0];
+    if (firstName) firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+    var lines = [];
+    lines.push('Hey ' + (firstName || 'there') + ' \u2014 the band\u2019s shared calendar has ' + items.length + ' event' + (items.length === 1 ? '' : 's') + ' you created that look like personal stuff (no band keywords, private/default visibility). Could you clean these up?');
+    lines.push('');
+    lines.push('Easiest path:');
+    lines.push('  1. Open GrooveLinx \u2192 Schedule \u2192 click "Audit calendar"');
+    lines.push('  2. Look at "Your pollution" section');
+    lines.push('  3. Tick the ones that don\u2019t belong on the band cal \u2192 Delete selected');
+    lines.push('');
+    lines.push('Also: change your Google account default visibility to Public so this stops happening (Google Calendar \u2192 Settings \u2192 Event settings \u2192 Default visibility \u2192 Public).');
+    lines.push('');
+    lines.push('Examples of what I\u2019m seeing on the band cal under your name:');
+    items.slice(0, 20).forEach(function(p) {
+        var rec = p.isRecurring ? ' (recurring)' : '';
+        lines.push('  \u2022 ' + (p.title || '(untitled)') + ' \u00B7 ' + (p.date || '?') + rec);
+    });
+    if (items.length > 20) {
+        lines.push('  \u2026 and ' + (items.length - 20) + ' more');
+    }
+    lines.push('');
+    lines.push('Thanks!');
+    return lines.join('\n');
+}
+
+window._calAuditCopyForCreator = function(creator) {
+    var byCreator = window._calAuditOthersByCreator || {};
+    var items = byCreator[creator] || [];
+    if (!items.length) {
+        if (typeof showToast === 'function') showToast('No items for that member.', 3000);
+        return;
+    }
+    var msg = _calAuditBuildCreatorMessage(creator, items);
+    _calAuditCopyToClipboard(msg, items.length + ' items copied for ' + (creator.split('@')[0]) + ' \u2014 paste into a text/email');
+};
+
+window._calAuditCopyAllOthers = function() {
+    var byCreator = window._calAuditOthersByCreator || {};
+    var creators = Object.keys(byCreator);
+    if (!creators.length) {
+        if (typeof showToast === 'function') showToast('Nothing to copy.', 3000);
+        return;
+    }
+    var lines = [];
+    lines.push('DeadCetera shared-calendar pollution audit');
+    lines.push('Run on ' + new Date().toLocaleDateString());
+    lines.push('');
+    lines.push('Each member: open GrooveLinx \u2192 Schedule \u2192 Audit calendar \u2192 "Your pollution" section to clean up your own events. Google only lets the creator delete their own events.');
+    lines.push('');
+    creators.forEach(function(creator) {
+        var items = byCreator[creator];
+        lines.push('\u2014\u2014 ' + creator + ' \u2014 ' + items.length + ' event' + (items.length === 1 ? '' : 's') + ' \u2014\u2014');
+        items.slice(0, 10).forEach(function(p) {
+            var rec = p.isRecurring ? ' (recurring)' : '';
+            lines.push('  \u2022 ' + (p.title || '(untitled)') + ' \u00B7 ' + (p.date || '?') + rec);
+        });
+        if (items.length > 10) lines.push('  \u2026 and ' + (items.length - 10) + ' more');
+        lines.push('');
+    });
+    _calAuditCopyToClipboard(lines.join('\n'), 'Summary copied \u2014 paste into a band thread or email');
+};
+
+function _calAuditCopyToClipboard(text, successMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+            if (typeof showToast === 'function') showToast('\u2713 ' + successMsg, 4000);
+        }).catch(function() {
+            _calAuditCopyFallback(text, successMsg);
+        });
+    } else {
+        _calAuditCopyFallback(text, successMsg);
+    }
+}
+
+function _calAuditCopyFallback(text, successMsg) {
+    // Older / non-https paths: classic textarea + execCommand
+    try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (typeof showToast === 'function') showToast('\u2713 ' + successMsg, 4000);
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('\u26A0 Copy failed \u2014 select the text and copy manually.', 4000);
+    }
+}
+
 window._calApplyCalendarAudit = async function() {
     var btn = document.getElementById('calAuditApplyBtn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Deleting\u2026'; }
     var zombieIds = Array.from(document.querySelectorAll('.calAuditZombieRow:checked')).map(function(c) { return c.dataset.id; }).filter(Boolean);
     var pollutionGids = Array.from(document.querySelectorAll('.calAuditPollRow:checked')).map(function(c) { return c.dataset.gid; }).filter(Boolean);
 
     if (!zombieIds.length && !pollutionGids.length) {
         if (typeof showToast === 'function') showToast('Nothing selected.', 3000);
-        if (btn) { btn.disabled = false; btn.textContent = 'Delete selected'; }
         return;
     }
     var msg = 'Delete ' + zombieIds.length + ' zombie' + (zombieIds.length === 1 ? '' : 's')
         + ' + ' + pollutionGids.length + ' pollution event' + (pollutionGids.length === 1 ? '' : 's')
-        + '?\n\nPollution events will be deleted FROM GOOGLE CALENDAR (not just locally). This is permanent.';
-    if (!confirm(msg)) {
-        if (btn) { btn.disabled = false; btn.textContent = 'Delete selected'; }
-        return;
+        + '?\n\nPollution events will be deleted FROM GOOGLE CALENDAR (not just locally). This is permanent.\n\nLarge batches take a minute or two — the modal will show progress.';
+    if (!confirm(msg)) return;
+
+    // Replace the modal body with a progress view so the user sees what's
+    // happening. The delete loop is paced at ~5 req/sec to avoid Google's
+    // rate-limit-induced 500/503 errors.
+    var body = document.getElementById('calAuditBody');
+    if (body) {
+        body.innerHTML = '<div style="padding:24px 16px;text-align:center">'
+            + '<div style="font-size:1.05em;font-weight:700;color:var(--gl-text);margin-bottom:8px">Cleaning up\u2026</div>'
+            + '<div style="font-size:0.82em;color:var(--gl-text-secondary);margin-bottom:14px">Pacing requests so Google doesn\u2019t rate-limit. This will take about ' + Math.ceil(pollutionGids.length * 0.2 / 60) + ' min for ' + pollutionGids.length + ' events.</div>'
+            + '<div style="height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden;margin-bottom:8px"><div id="calAuditBar" style="height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#86efac);transition:width 0.2s"></div></div>'
+            + '<div id="calAuditProgress" style="font-size:0.78em;color:var(--gl-text-secondary)">Starting\u2026</div>'
+            + '</div>';
     }
+    if (btn) { btn.disabled = true; btn.textContent = 'Deleting\u2026'; }
     try {
         var result = await GLCalendarSync.applyAuditDecisions({
             zombieIds: zombieIds,
-            pollutionGoogleIds: pollutionGids
+            pollutionGoogleIds: pollutionGids,
+            onProgress: function(p) {
+                var bar = document.getElementById('calAuditBar');
+                var label = document.getElementById('calAuditProgress');
+                var pct = p.total ? Math.round(p.done / p.total * 100) : 100;
+                if (bar) bar.style.width = pct + '%';
+                if (label) label.textContent = p.done + ' of ' + p.total + ' \u00B7 ' + p.deleted + ' deleted'
+                    + (p.errors ? ' \u00B7 ' + p.errors + ' error' + (p.errors === 1 ? '' : 's') : '');
+            }
         });
         var summary = '\u2713 ' + result.zombiesDeleted + ' zombie' + (result.zombiesDeleted === 1 ? '' : 's')
             + ' deleted, ' + result.pollutionDeleted + ' pollution event' + (result.pollutionDeleted === 1 ? '' : 's') + ' removed.';
-        if (result.errors && result.errors.length) summary += ' (' + result.errors.length + ' error' + (result.errors.length === 1 ? '' : 's') + ')';
-        if (typeof showToast === 'function') showToast(summary, 6000);
+        if (result.errors && result.errors.length) summary += ' (' + result.errors.length + ' could not be deleted \u2014 likely Google rate limits or events you don\u2019t own)';
+        if (typeof showToast === 'function') showToast(summary, 8000);
         var p = document.getElementById('calAuditPanel');
         if (p) p.parentElement && p.parentElement.remove && p.parentElement.remove();
         if (typeof _calRenderGridOnly === 'function') _calRenderGridOnly();
