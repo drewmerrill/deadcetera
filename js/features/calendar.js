@@ -1839,7 +1839,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="How to fix hidden events — set default visibility to Public">Visibility help</button>'
             + '<button onclick="_calShowSyncActivity()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Recent sync runs across all connected band members">Sync activity</button>'
             + '<button onclick="_calShowDiagnostics()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Run all calendar checks and show a detailed report">Run diagnostics</button>'
-            + '<button onclick="_calRefreshTitlesFromGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-shot: pull current titles from Google for every synced event (fixes stale &quot;deadcetera Gig&quot; titles after a band member renamed)">Refresh titles</button>';
+            + '<button onclick="_calRefreshTitlesFromGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-shot: pull current titles from Google for every synced event (fixes stale &quot;deadcetera Gig&quot; titles after a band member renamed)">Refresh titles</button>'
+            + '<button onclick="_calShowCalendarAudit()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Audit the band calendar for stale references and personal events that don\'t belong">Audit calendar</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }
@@ -2129,6 +2130,150 @@ window._calShowSyncActivity = async function() {
             + '</div>';
     });
     body.innerHTML = html;
+};
+
+// Calendar audit + cleanup — surfaces zombie local rows (stale googleEventId)
+// and personal-pollution events (band-member-created with non-band title +
+// private/default visibility). Read-only audit by default; explicit checkbox
+// approval required before any deletion.
+window._calShowCalendarAudit = async function() {
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.auditCalendarPollution) {
+        if (typeof showToast === 'function') showToast('\u26A0 Audit not available — sign in to Google Calendar first.', 4000);
+        return;
+    }
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:0;overflow-y:auto';
+    wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
+    wrap.innerHTML = '<div id="calAuditPanel" style="background:var(--gl-surface,#0f172a);border:1px solid var(--gl-border,rgba(255,255,255,0.08));border-radius:0;padding:18px 14px;width:100%;max-width:720px;height:100vh;max-height:100vh;overflow-y:auto;box-sizing:border-box">'
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;position:sticky;top:-18px;padding-top:18px;background:var(--gl-surface,#0f172a);z-index:5">'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1.4em;padding:0">\u2190</button>'
+        + '<span style="font-size:1.05em;font-weight:800;color:var(--gl-text);flex:1">\uD83D\uDDC4 Calendar audit</span>'
+        + '</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">Scans your local copy + the shared Google calendar for cleanup candidates. Nothing is deleted until you approve below.</div>'
+        + '<div id="calAuditBody"><div style="padding:30px 20px;text-align:center;color:var(--gl-text-tertiary)">Running audit\u2026 this may take a minute on a large calendar.</div></div>'
+        + '</div>';
+    document.body.appendChild(wrap);
+
+    var report;
+    try {
+        report = await GLCalendarSync.auditCalendarPollution();
+    } catch (err) {
+        var bod = document.getElementById('calAuditBody');
+        if (bod) bod.innerHTML = '<div style="color:#fca5a5;padding:20px">Audit failed: ' + (err && err.message) + '</div>';
+        return;
+    }
+    var body = document.getElementById('calAuditBody');
+    if (!body) return;
+
+    if (report.error) {
+        body.innerHTML = '<div style="color:#fca5a5;padding:20px;font-size:0.88em">Audit error: ' + report.error + '</div>';
+        return;
+    }
+
+    var html = '';
+    // Summary
+    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+        + '<div style="flex:1;min-width:140px;padding:10px 12px;border-radius:10px;background:rgba(248,113,113,0.06);border:1px solid rgba(248,113,113,0.2)">'
+        + '<div style="font-size:1.4em;font-weight:900;color:#fca5a5">' + report.zombies.length + '</div>'
+        + '<div style="font-size:0.7em;color:var(--gl-text-secondary);text-transform:uppercase;letter-spacing:0.06em">zombies</div>'
+        + '<div style="font-size:0.7em;color:var(--gl-text-tertiary);margin-top:2px">stale local refs</div>'
+        + '</div>'
+        + '<div style="flex:1;min-width:140px;padding:10px 12px;border-radius:10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2)">'
+        + '<div style="font-size:1.4em;font-weight:900;color:#fbbf24">' + report.personalPollution.length + '</div>'
+        + '<div style="font-size:0.7em;color:var(--gl-text-secondary);text-transform:uppercase;letter-spacing:0.06em">pollution</div>'
+        + '<div style="font-size:0.7em;color:var(--gl-text-tertiary);margin-top:2px">non-band events on DC</div>'
+        + '</div>'
+        + '<div style="flex:1;min-width:140px;padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.18)">'
+        + '<div style="font-size:1.4em;font-weight:900;color:#86efac">' + report.normalCount + '</div>'
+        + '<div style="font-size:0.7em;color:var(--gl-text-secondary);text-transform:uppercase;letter-spacing:0.06em">normal</div>'
+        + '<div style="font-size:0.7em;color:var(--gl-text-tertiary);margin-top:2px">band events, kept as-is</div>'
+        + '</div>'
+        + '</div>';
+
+    // Zombies section
+    if (report.zombies.length) {
+        html += '<div style="margin-bottom:18px">'
+            + '<div style="font-size:0.85em;font-weight:800;color:var(--gl-text);margin-bottom:4px">Zombies (' + report.zombies.length + ')</div>'
+            + '<div style="font-size:0.74em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.5">Local entries that point at Google events that no longer exist. Safe to delete \u2014 nothing is on Google to lose.</div>'
+            + '<label style="display:flex;align-items:center;gap:6px;font-size:0.78em;font-weight:700;color:#fca5a5;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="calAuditZombieAll" checked onchange="document.querySelectorAll(\'.calAuditZombieRow\').forEach(function(c){c.checked=event.target.checked})"> Select all</label>';
+        report.zombies.forEach(function(z) {
+            html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--gl-border-subtle);font-size:0.78em;cursor:pointer">'
+                + '<input type="checkbox" class="calAuditZombieRow" data-id="' + (z.id || '').replace(/"/g, '&quot;') + '" checked>'
+                + '<div style="flex:1;min-width:0">'
+                + '<div style="color:var(--gl-text);font-weight:600;overflow:hidden;text-overflow:ellipsis">' + (z.title || '(untitled)') + '</div>'
+                + '<div style="color:var(--gl-text-tertiary);font-size:0.88em;margin-top:1px">' + (z.date || '(no date)') + ' \u00B7 missing on Google</div>'
+                + '</div></label>';
+        });
+        html += '</div>';
+    }
+
+    // Pollution section
+    if (report.personalPollution.length) {
+        html += '<div style="margin-bottom:18px">'
+            + '<div style="font-size:0.85em;font-weight:800;color:var(--gl-text);margin-bottom:4px">Personal pollution (' + report.personalPollution.length + ')</div>'
+            + '<div style="font-size:0.74em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.5">Events on the band calendar created by a band member but not titled like a band event \u2014 likely personal events that landed here by mistake. Deleting will remove them from Google AND your local copy. <b>Review carefully.</b></div>'
+            + '<label style="display:flex;align-items:center;gap:6px;font-size:0.78em;font-weight:700;color:#fbbf24;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="calAuditPollAll" onchange="document.querySelectorAll(\'.calAuditPollRow\').forEach(function(c){c.checked=event.target.checked})"> Select all</label>';
+        report.personalPollution.forEach(function(p) {
+            html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--gl-border-subtle);font-size:0.78em;cursor:pointer">'
+                + '<input type="checkbox" class="calAuditPollRow" data-gid="' + (p.googleEventId || '').replace(/"/g, '&quot;') + '">'
+                + '<div style="flex:1;min-width:0">'
+                + '<div style="color:var(--gl-text);font-weight:600;overflow:hidden;text-overflow:ellipsis">' + (p.title || '(untitled)') + '</div>'
+                + '<div style="color:var(--gl-text-tertiary);font-size:0.88em;margin-top:1px">' + (p.date || '(no date)') + ' \u00B7 ' + (p.creator || 'unknown') + ' \u00B7 ' + (p.visibility || 'default') + '</div>'
+                + '</div></label>';
+        });
+        html += '</div>';
+    }
+
+    if (!report.zombies.length && !report.personalPollution.length) {
+        html += '<div style="padding:30px 20px;text-align:center"><div style="font-size:2em;margin-bottom:6px">\u2728</div>'
+            + '<div style="font-size:0.95em;font-weight:700;color:var(--gl-green)">Calendar is clean</div>'
+            + '<div style="font-size:0.78em;color:var(--gl-text-secondary);margin-top:4px">No zombies or pollution detected.</div></div>';
+    }
+
+    // Action bar
+    html += '<div style="position:sticky;bottom:0;background:var(--gl-surface,#0f172a);padding:14px 0;border-top:1px solid var(--gl-border-subtle);display:flex;gap:8px;justify-content:flex-end;margin-top:14px">'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer;min-height:44px">Cancel</button>'
+        + (report.zombies.length || report.personalPollution.length
+            ? '<button id="calAuditApplyBtn" onclick="_calApplyCalendarAudit()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:#dc2626;color:#fff;cursor:pointer;font-weight:700;min-height:44px">Delete selected</button>'
+            : '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:700;min-height:44px">Done</button>')
+        + '</div>';
+    body.innerHTML = html;
+};
+
+window._calApplyCalendarAudit = async function() {
+    var btn = document.getElementById('calAuditApplyBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Deleting\u2026'; }
+    var zombieIds = Array.from(document.querySelectorAll('.calAuditZombieRow:checked')).map(function(c) { return c.dataset.id; }).filter(Boolean);
+    var pollutionGids = Array.from(document.querySelectorAll('.calAuditPollRow:checked')).map(function(c) { return c.dataset.gid; }).filter(Boolean);
+
+    if (!zombieIds.length && !pollutionGids.length) {
+        if (typeof showToast === 'function') showToast('Nothing selected.', 3000);
+        if (btn) { btn.disabled = false; btn.textContent = 'Delete selected'; }
+        return;
+    }
+    var msg = 'Delete ' + zombieIds.length + ' zombie' + (zombieIds.length === 1 ? '' : 's')
+        + ' + ' + pollutionGids.length + ' pollution event' + (pollutionGids.length === 1 ? '' : 's')
+        + '?\n\nPollution events will be deleted FROM GOOGLE CALENDAR (not just locally). This is permanent.';
+    if (!confirm(msg)) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Delete selected'; }
+        return;
+    }
+    try {
+        var result = await GLCalendarSync.applyAuditDecisions({
+            zombieIds: zombieIds,
+            pollutionGoogleIds: pollutionGids
+        });
+        var summary = '\u2713 ' + result.zombiesDeleted + ' zombie' + (result.zombiesDeleted === 1 ? '' : 's')
+            + ' deleted, ' + result.pollutionDeleted + ' pollution event' + (result.pollutionDeleted === 1 ? '' : 's') + ' removed.';
+        if (result.errors && result.errors.length) summary += ' (' + result.errors.length + ' error' + (result.errors.length === 1 ? '' : 's') + ')';
+        if (typeof showToast === 'function') showToast(summary, 6000);
+        var p = document.getElementById('calAuditPanel');
+        if (p) p.parentElement && p.parentElement.remove && p.parentElement.remove();
+        if (typeof _calRenderGridOnly === 'function') _calRenderGridOnly();
+    } catch(err) {
+        if (typeof showToast === 'function') showToast('\u26A0 Cleanup failed: ' + (err && err.message), 5000);
+        if (btn) { btn.disabled = false; btn.textContent = 'Delete selected'; }
+    }
 };
 
 // One-shot: pull current titles from Google Calendar for every synced

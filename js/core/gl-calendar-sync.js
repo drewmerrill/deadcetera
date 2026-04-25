@@ -2749,6 +2749,196 @@ window.GLCalendarSync = (function() {
     };
   }
 
+  // ── Calendar pollution audit ──────────────────────────────────────────────
+  // Returns a structured report classifying:
+  //  - "zombie": local calendar_events with a googleEventId that no longer
+  //    resolves on Google (404). Safe to delete locally; no Google call.
+  //  - "personalPollution": events on the band Google cal that look like
+  //    personal stuff (private/default visibility + non-band-keyword title +
+  //    creator is a band member). Likely accumulated from past misconfig.
+  //  - "stale": past-dated events older than 60 days (informational only).
+  // Read-only — never deletes anything. UI reviews + approves before any
+  // destructive action.
+  async function auditCalendarPollution(opts) {
+    opts = opts || {};
+    var report = { zombies: [], personalPollution: [], stale: [], normalCount: 0, error: null };
+    if (!hasCalendarScope()) { report.error = 'no_scope'; return report; }
+    var bandCalId = await _getBandCalendarId();
+    if (!bandCalId) { report.error = 'no_band_cal'; return report; }
+
+    // Band keyword patterns — anything matching is probably a real band event.
+    var bandPatterns = [
+      /deadcetera/i, /\brehears/i, /\bgig\b/i, /\bshow\b/i,
+      /\bconcert\b/i, /\bsoundcheck\b/i, /\bvenue\b/i,
+      /\bband\b/i, /\bopen mic\b/i, /\bjam\b/i
+    ];
+    function looksLikeBandEvent(title) {
+      if (!title) return false;
+      return bandPatterns.some(function(p) { return p.test(title); });
+    }
+
+    // Build set of known band-member emails so we can flag events created by
+    // band members but NOT titled like a band event.
+    var bandEmails = await _getBandEmails();
+    var bandEmailSet = {};
+    (bandEmails || []).forEach(function(em) { bandEmailSet[em.toLowerCase()] = true; });
+
+    // ── 1. Local zombies — events in calendar_events whose Google id is gone ──
+    var localEvents = [];
+    try {
+      localEvents = (typeof toArray === 'function')
+        ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+        : [];
+    } catch(e) { /* fall through with empty */ }
+
+    for (var i = 0; i < localEvents.length; i++) {
+      var ev = localEvents[i];
+      if (!ev || ev._syntheticFromFreeBusy) continue;
+      var gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
+      if (!gid) continue;
+      try {
+        var url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(gid)
+          + '?calendarId=' + encodeURIComponent(bandCalId);
+        var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+        if (res.status === 404 || res.status === 410) {
+          report.zombies.push({
+            id: ev.id,
+            title: ev.title || '(untitled)',
+            date: ev.date || '',
+            googleEventId: gid
+          });
+        }
+      } catch(e) { /* network — ignore for this run */ }
+    }
+
+    // ── 2. Personal pollution + stale — full scan of band Google cal ──
+    try {
+      var now = new Date();
+      var min = new Date(now.getFullYear() - 1, 0, 1).toISOString();
+      var max = new Date(now.getFullYear() + 1, 11, 31).toISOString();
+      var pageToken = null;
+      var pages = 0;
+      var staleCutoffMs = now.getTime() - (60 * 24 * 60 * 60 * 1000);
+      do {
+        pages++;
+        if (pages > 20) break;
+        var listUrl = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(bandCalId)
+          + '&timeMin=' + encodeURIComponent(min)
+          + '&timeMax=' + encodeURIComponent(max)
+          + '&maxResults=250';
+        if (pageToken) listUrl += '&pageToken=' + encodeURIComponent(pageToken);
+        var listRes = await fetch(listUrl, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+        if (!listRes.ok) { report.error = 'list_failed_' + listRes.status; break; }
+        var data = await listRes.json();
+        (data.items || []).forEach(function(g) {
+          if (!g || g.status === 'cancelled') return;
+          var title = g.summary || '';
+          var creatorEmail = ((g.creator && g.creator.email) || (g.organizer && g.organizer.email) || '').toLowerCase();
+          var startStr = (g.start && (g.start.dateTime || g.start.date)) || '';
+          var startMs = startStr ? new Date(startStr).getTime() : 0;
+          var visibility = g.visibility || 'default';
+          var isBandEvent = looksLikeBandEvent(title);
+          var isPrivateOrDefault = (visibility === 'private' || visibility === 'confidential' || visibility === 'default');
+          var isMemberCreated = bandEmailSet[creatorEmail];
+          // Personal pollution heuristic: created by a band member, NOT titled
+          // like a band event, with private/default visibility — strong signal
+          // it was a personal event accidentally landed on DC.
+          if (isMemberCreated && !isBandEvent && isPrivateOrDefault) {
+            report.personalPollution.push({
+              googleEventId: g.id,
+              title: title || '(untitled)',
+              date: startStr.substring(0, 10) || '',
+              startStr: startStr,
+              creator: creatorEmail,
+              visibility: visibility
+            });
+          } else if (startMs && startMs < staleCutoffMs && isBandEvent) {
+            // Past band event > 60 days old — informational only
+            report.stale.push({
+              googleEventId: g.id,
+              title: title,
+              date: startStr.substring(0, 10) || ''
+            });
+          } else {
+            report.normalCount++;
+          }
+        });
+        pageToken = data.nextPageToken || null;
+      } while (pageToken);
+    } catch(e) {
+      report.error = report.error || ('list_exception: ' + (e && e.message));
+    }
+
+    // Newest-first ordering for the UI
+    report.zombies.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    report.personalPollution.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    return report;
+  }
+
+  // Apply audit decisions: delete zombies locally + delete pollution from
+  // Google (and remove from local calendar_events if linked). Returns counts.
+  async function applyAuditDecisions(decisions) {
+    decisions = decisions || {};
+    var result = { zombiesDeleted: 0, pollutionDeleted: 0, errors: [] };
+    if (!hasCalendarScope()) { result.errors.push('no_scope'); return result; }
+    var bandCalId = await _getBandCalendarId();
+    if (!bandCalId) { result.errors.push('no_band_cal'); return result; }
+
+    // 1. Zombies — local-only deletes by id
+    var localEvents = (typeof toArray === 'function')
+      ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+      : [];
+    var zombieIds = (decisions.zombieIds || []);
+    if (zombieIds.length) {
+      var zombieSet = {};
+      zombieIds.forEach(function(id) { zombieSet[id] = true; });
+      var beforeZ = localEvents.length;
+      localEvents = localEvents.filter(function(e) { return !(e && zombieSet[e.id]); });
+      result.zombiesDeleted = beforeZ - localEvents.length;
+    }
+
+    // 2. Pollution — delete on Google AND remove any matching local entry
+    var pollutionGids = (decisions.pollutionGoogleIds || []);
+    var pollutionGidSet = {};
+    pollutionGids.forEach(function(g) { pollutionGidSet[g] = true; });
+    for (var pi = 0; pi < pollutionGids.length; pi++) {
+      var gid = pollutionGids[pi];
+      try {
+        var delUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(gid)
+          + '?calendarId=' + encodeURIComponent(bandCalId);
+        var delRes = await fetch(delUrl, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        if (delRes.status === 204 || delRes.status === 410 || delRes.status === 404) {
+          result.pollutionDeleted++;
+        } else {
+          result.errors.push('delete_failed_' + delRes.status + '_' + gid);
+        }
+      } catch(e) {
+        result.errors.push('delete_exception_' + (e && e.message));
+      }
+    }
+    // Clean local rows that referenced deleted Google events
+    if (pollutionGids.length) {
+      localEvents = localEvents.filter(function(e) {
+        if (!e) return false;
+        var gid = e.googleEventId || (e.sync && e.sync.externalEventId);
+        return !gid || !pollutionGidSet[gid];
+      });
+    }
+
+    // Persist whatever changed
+    if (result.zombiesDeleted > 0 || result.pollutionDeleted > 0) {
+      try {
+        await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(localEvents));
+      } catch(e) {
+        result.errors.push('save_failed_' + (e && e.message));
+      }
+    }
+    return result;
+  }
+
   // Diagnostic: prints everything needed to triage a member's calendar
   // configuration in their browser console. Usage:
   //   GLCalendarSync.debugMyConfig()
@@ -3363,6 +3553,8 @@ window.GLCalendarSync = (function() {
     debugMyConfig: debugMyConfig,
     detectAccountDefaultVisibility: detectAccountDefaultVisibility,
     runCalendarHealthCheck: runCalendarHealthCheck,
+    auditCalendarPollution: auditCalendarPollution,
+    applyAuditDecisions: applyAuditDecisions,
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
