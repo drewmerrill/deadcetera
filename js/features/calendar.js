@@ -1838,7 +1838,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>'
             + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="How to fix hidden events — set default visibility to Public">Visibility help</button>'
             + '<button onclick="_calShowSyncActivity()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Recent sync runs across all connected band members">Sync activity</button>'
-            + '<button onclick="_calShowDiagnostics()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Run all calendar checks and show a detailed report">Run diagnostics</button>';
+            + '<button onclick="_calShowDiagnostics()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Run all calendar checks and show a detailed report">Run diagnostics</button>'
+            + '<button onclick="_calRefreshTitlesFromGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-shot: pull current titles from Google for every synced event (fixes stale &quot;deadcetera Gig&quot; titles after a band member renamed)">Refresh titles</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }
@@ -2128,6 +2129,59 @@ window._calShowSyncActivity = async function() {
             + '</div>';
     });
     body.innerHTML = html;
+};
+
+// One-shot: pull current titles from Google Calendar for every synced
+// calendar_event and overwrite the local title. Useful after a band member
+// renamed an event on Google (e.g., "deadcetera Gig" → "FTE show") and the
+// local title got out of sync. Doesn't change any other field — just title.
+window._calRefreshTitlesFromGoogle = async function() {
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.hasCalendarScope()) {
+        if (typeof showToast === 'function') showToast('\u26A0 Sign in to Google Calendar first.', 4000);
+        return;
+    }
+    if (!confirm('Pull current titles from Google for every synced event? This overwrites local titles to match what\u2019s on the band calendar right now.')) return;
+    var btn = event && event.target;
+    if (btn) { btn.disabled = true; btn.textContent = 'Refreshing\u2026'; }
+    try {
+        var bandCalId = await GLCalendarSync.getBandCalendarId();
+        if (!bandCalId) {
+            if (typeof showToast === 'function') showToast('\u26A0 No band calendar configured.', 4000);
+            return;
+        }
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var updated = 0, skipped = 0, missing = 0;
+        for (var i = 0; i < events.length; i++) {
+            var ev = events[i];
+            if (!ev || ev._syntheticFromFreeBusy) { skipped++; continue; }
+            var gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
+            if (!gid) { skipped++; continue; }
+            try {
+                var url = 'https://deadcetera-proxy.drewmerrill.workers.dev/calendar/events/'
+                    + encodeURIComponent(gid) + '?calendarId=' + encodeURIComponent(bandCalId);
+                var token = (typeof accessToken !== 'undefined') ? accessToken : '';
+                var res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+                if (!res.ok) { missing++; continue; }
+                var g = await res.json();
+                var newTitle = g.summary || '';
+                if (newTitle && newTitle !== ev.title) {
+                    ev.title = newTitle;
+                    updated++;
+                }
+            } catch(_e) { missing++; }
+        }
+        if (updated > 0) {
+            await saveBandDataToDrive('_band', 'calendar_events', events);
+        }
+        if (typeof showToast === 'function') {
+            showToast('\u2713 Title refresh complete \u2014 ' + updated + ' updated, ' + skipped + ' skipped, ' + missing + ' missing on Google.', 6000);
+        }
+        if (typeof _calRenderGridOnly === 'function') _calRenderGridOnly();
+    } catch (err) {
+        if (typeof showToast === 'function') showToast('\u26A0 Refresh failed: ' + (err && err.message), 5000);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Refresh titles'; }
+    }
 };
 
 // UX sprint #8: live calendar event form validation. Runs on input change.
@@ -6348,10 +6402,17 @@ async function calSaveEvent(editIdx) {
         try {
             var glEvent = {
                 id: ev.id, eventId: ev.id,
+                title: ev.title || '',
                 summary: ev.title || (ev.type === 'rehearsal' ? 'Rehearsal' : ev.type === 'gig' ? 'Gig' : 'Band Event'),
-                date: ev.date, startTime: ev.time || '19:00',
+                date: ev.date, endDate: ev.endDate || '', startTime: ev.time || '19:00',
+                endTime: ev.endTime || '',
+                // Pass venue + location separately so _buildEventBody can use
+                // the venue as the primary title for gigs (instead of bot-speak
+                // "deadcetera Gig"). Venue wins over location when both exist.
+                venue: ev.venue || '',
                 location: ev.location || ev.venue || '',
-                description: ev.notes || '', type: ev.type
+                description: ev.notes || '', type: ev.type,
+                isAllDay: !!ev.isAllDay
             };
             var _existingEvt = events[_savedIdx] || ev;
             // Check both sync metadata patterns

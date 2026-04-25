@@ -636,12 +636,24 @@ async function _syncGigToCalendar(gig, createdKey) {
         const matchKey = (gig.venue||'') + '|' + (gig.date||'');
         existIdx = calEvents.findIndex(function(e) { return e.type === 'gig' && ((e.venue||'')+'|'+(e.date||'')) === matchKey; });
     }
+    // Title resolution: prefer venue (human-readable) over bot-speak. But
+    // preserve any existing title that ISN'T the venue — that means a band
+    // member typed a custom name (e.g., "Birthday show") or Google sync
+    // pulled a rename from another member ("FTE show"). Only overwrite when
+    // the existing title is empty, the legacy "deadcetera Gig" / "Gig" string,
+    // or already matches the venue.
+    var existingTitle = (existIdx >= 0 && calEvents[existIdx] && calEvents[existIdx].title) || '';
+    var venueLabel = gig.venue || '';
+    var legacyDefaults = /^(deadcetera\s+gig|band\s+gig|gig)$/i;
+    var resolvedTitle = (!existingTitle || existingTitle === venueLabel || legacyDefaults.test(existingTitle))
+        ? venueLabel
+        : existingTitle;
     const calRecord = {
         type: 'gig',
         gigId: gig.gigId || null,
         venueId: gig.venueId || null,
         date: gig.date || '',
-        title: gig.venue || '',
+        title: resolvedTitle,
         time: gig.startTime || '',
         endTime: gig.endTime || '',
         venue: gig.venue || '',

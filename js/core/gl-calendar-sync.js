@@ -75,8 +75,29 @@ window.GLCalendarSync = (function() {
     else if (typeof window.currentBandSlug !== 'undefined') bandName = window.currentBandSlug;
 
     var typeLabel = { rehearsal: 'Rehearsal', gig: 'Gig', meeting: 'Meeting' };
-    var summary = (bandName ? bandName + ' ' : '') + (typeLabel[glEvent.type] || 'Event');
-    if (glEvent.title && glEvent.title !== 'Band Rehearsal') summary += ' \u2014 ' + glEvent.title;
+    // Title generator: prefer human-readable names over bot-speak.
+    // - Gigs: prefer venue name (e.g., "From The Earth Brewing") over "{band} Gig".
+    //   The venue is what humans recognize. Falls back to "{band} Gig" only if
+    //   no venue is set.
+    // - Rehearsals/meetings: keep the existing "{band} Rehearsal" pattern since
+    //   it's the natural label and there's no per-event venue to substitute.
+    var summary;
+    var explicitTitle = (glEvent.title && glEvent.title !== 'Band Rehearsal' && glEvent.title !== 'Rehearsal' && glEvent.title !== 'Gig') ? glEvent.title : '';
+    if (glEvent.type === 'gig') {
+      var venueName = glEvent.venue || glEvent.location || '';
+      if (venueName) {
+        summary = venueName;
+        // If user typed a different title (e.g., "Birthday show"), append it.
+        if (explicitTitle && explicitTitle !== venueName) summary += ' \u2014 ' + explicitTitle;
+      } else if (explicitTitle) {
+        summary = explicitTitle;
+      } else {
+        summary = (bandName ? bandName + ' ' : '') + 'Gig';
+      }
+    } else {
+      summary = (bandName ? bandName + ' ' : '') + (typeLabel[glEvent.type] || 'Event');
+      if (explicitTitle) summary += ' \u2014 ' + explicitTitle;
+    }
 
     // Description
     var descParts = [];
