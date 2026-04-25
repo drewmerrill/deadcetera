@@ -2369,8 +2369,22 @@ window.GLCalendarSync = (function() {
       if (block.googleEventId) {
         return await updateConflictInGoogle(block, opts);
       }
-      var _url = WORKER_BASE + '/calendar/events'
-        + (opts.calendarId ? ('?calendarId=' + encodeURIComponent(opts.calendarId)) : '');
+      // BUG FIX: callers (e.g., _calSyncConflictToGoogle, _calSyncExistingConflict)
+      // sometimes invoke this without opts.calendarId. The previous code then
+      // dropped the calendarId param, which made the worker proxy default to
+      // 'primary' and silently posted the block to the user's PERSONAL Google
+      // calendar instead of the shared band cal. Always self-resolve via
+      // _getBandCalendarId() and refuse to push if the band cal is missing.
+      var _calId = opts.calendarId;
+      if (!_calId || !_isGroupCalendarId(_calId)) {
+        _calId = await _getBandCalendarId();
+      }
+      if (!_calId || !_isGroupCalendarId(_calId)) {
+        console.warn('[CalSync] syncConflictToGoogle aborted — no group band calendar resolved (got:', _calId, ')');
+        return { success: false, error: 'No band calendar configured', status: 'no_band_cal' };
+      }
+      console.log('[CalSync] syncConflictToGoogle POST URL =', WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(_calId));
+      var _url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(_calId);
       var res = await fetch(_url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
@@ -2381,7 +2395,7 @@ window.GLCalendarSync = (function() {
         return { success: false, error: 'Google returned ' + res.status, status: res.status };
       }
       var data = await res.json();
-      return { success: true, googleEventId: data.id, htmlLink: data.htmlLink || '', calendarId: opts.calendarId || 'primary' };
+      return { success: true, googleEventId: data.id, htmlLink: data.htmlLink || '', calendarId: _calId };
     } catch (err) {
       console.warn('[CalSync] Conflict sync error:', err);
       return { success: false, error: err.message };
@@ -2404,9 +2418,23 @@ window.GLCalendarSync = (function() {
       transparency: 'opaque'
     };
     try {
-      var _calId = opts.calendarId || block.calendarId;
+      // Same bug-fix as syncConflictToGoogle: never trust opts/block to have
+      // a valid group cal ID. Resolve via _getBandCalendarId() so we never
+      // accidentally PATCH against the user's personal calendar.
+      var _calId = opts.calendarId;
+      if (!_calId || !_isGroupCalendarId(_calId)) {
+        if (block.calendarId && _isGroupCalendarId(block.calendarId)) {
+          _calId = block.calendarId;
+        } else {
+          _calId = await _getBandCalendarId();
+        }
+      }
+      if (!_calId || !_isGroupCalendarId(_calId)) {
+        console.warn('[CalSync] updateConflictInGoogle aborted — no group band calendar resolved');
+        return { success: false, error: 'No band calendar configured' };
+      }
       var _url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(block.googleEventId)
-        + (_calId ? ('?calendarId=' + encodeURIComponent(_calId)) : '');
+        + '?calendarId=' + encodeURIComponent(_calId);
       var res = await fetch(_url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
