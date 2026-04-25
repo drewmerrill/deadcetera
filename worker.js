@@ -1362,6 +1362,38 @@ function renderStagePlotHtml(plot, bandSlug) {
     monHtml += '</table>';
   }
 
+  // Logistics — setup time + load-in window
+  var logisticsHtml = '';
+  if (plot.setupTime || plot.loadIn) {
+    logisticsHtml = '<div style="margin:18px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    if (plot.setupTime) logisticsHtml += '<div style="padding:10px;border:1px solid #ddd;border-radius:4px;background:#fff"><div style="font-size:11px;font-weight:700;color:' + brandColor + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Setup / Soundcheck</div><div style="font-size:13px;color:#222">' + spEsc(plot.setupTime) + '</div></div>';
+    if (plot.loadIn) logisticsHtml += '<div style="padding:10px;border:1px solid #ddd;border-radius:4px;background:#fff"><div style="font-size:11px;font-weight:700;color:' + brandColor + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Load-in Window</div><div style="font-size:13px;color:#222">' + spEsc(plot.loadIn) + '</div></div>';
+    logisticsHtml += '</div>';
+  }
+
+  // Backline
+  var backlineHtml = '';
+  if (plot.backline && plot.backline.length) {
+    backlineHtml = '<h2 style="margin:18px 0 8px;font-size:16px;color:' + brandColor + '">Backline</h2><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:' + brandColor + ';color:#fff"><th style="padding:6px 8px;text-align:left">Item</th><th style="padding:6px 8px;text-align:left;width:90px">By</th></tr></thead><tbody>';
+    plot.backline.forEach(function(b, i) {
+      if (!b.label) return;
+      var byTxt = b.by === 'venue' ? 'Venue' : (b.by === 'rental' ? 'Rental' : 'Band');
+      backlineHtml += '<tr style="background:' + (i % 2 ? '#f7f7fa' : '#fff') + '"><td style="border:1px solid #ddd;padding:5px 8px">' + spEsc(b.label) + '</td><td style="border:1px solid #ddd;padding:5px 8px;font-weight:600">' + byTxt + '</td></tr>';
+    });
+    backlineHtml += '</tbody></table>';
+  }
+
+  // Wireless
+  var wirelessHtml = '';
+  if (plot.wireless && plot.wireless.length) {
+    wirelessHtml = '<h2 style="margin:18px 0 8px;font-size:16px;color:' + brandColor + '">Wireless Frequencies</h2><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:' + brandColor + ';color:#fff"><th style="padding:6px 8px;text-align:left;width:80px">Channel</th><th style="padding:6px 8px;text-align:left">Use / Member</th><th style="padding:6px 8px;text-align:right;width:120px">Frequency</th></tr></thead><tbody>';
+    plot.wireless.forEach(function(w, i) {
+      if (!w.use && !w.freq && !w.channel) return;
+      wirelessHtml += '<tr style="background:' + (i % 2 ? '#f7f7fa' : '#fff') + '"><td style="border:1px solid #ddd;padding:5px 8px">' + spEsc(w.channel || '') + '</td><td style="border:1px solid #ddd;padding:5px 8px">' + spEsc(w.use || '') + '</td><td style="border:1px solid #ddd;padding:5px 8px;text-align:right;font-family:ui-monospace,monospace">' + spEsc(w.freq || '') + '</td></tr>';
+    });
+    wirelessHtml += '</tbody></table>';
+  }
+
   // Rider + contact
   var riderHtml = '';
   if (plot.riderNotes) {
@@ -1371,6 +1403,12 @@ function renderStagePlotHtml(plot, bandSlug) {
   if (plot.contact) {
     contactHtml = '<div style="margin-top:18px;font-size:13px;padding:10px 14px;border:1px solid #ddd;border-radius:4px;background:#fff"><strong style="color:' + brandColor + '">Band Contact:</strong> ' + spEsc(plot.contact) + '</div>';
   }
+
+  // QR code linking back to this same page — useful for promoters who want
+  // to print and pin the plot to a wall. api.qrserver.com is free / no-key.
+  var pageUrl = 'https://share.groovelinx.com/stageplot/' + encodeURIComponent(bandSlug) + '/' + encodeURIComponent(plot.id || '');
+  var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(pageUrl);
+  var qrHtml = '<div class="no-print" style="margin-top:24px;padding:16px;border:1px solid #eee;border-radius:6px;background:#fafafa;display:flex;align-items:center;gap:14px"><img src="' + qrUrl + '" alt="QR code" style="width:120px;height:120px;background:#fff;border-radius:4px"><div style="font-size:12px;color:#555;line-height:1.5"><strong style="color:#222">Scan or share</strong><br>This QR code points to this same live stage plot — anyone scanning will always see the latest version.</div></div>';
 
   var logoTag = plot.brandLogo ? '<img src="' + plot.brandLogo + '" style="max-height:48px;max-width:140px;background:#fff;padding:4px;border-radius:4px;margin-bottom:8px" alt="logo">' : '';
 
@@ -1383,10 +1421,14 @@ function renderStagePlotHtml(plot, bandSlug) {
     + '<div style="font-size:11px;color:#666;text-align:right">Live link · current as of ' + date + '<br>Stage ' + (plot.stageWidth || 24) + '\' × ' + (plot.stageDepth || 16) + '\'</div>'
     + '</div>'
     + stageHtml
+    + logisticsHtml
     + inputHtml
     + monHtml
+    + backlineHtml
+    + wirelessHtml
     + riderHtml
     + contactHtml
+    + qrHtml
     + '<button class="no-print" onclick="window.print()" style="position:fixed;top:14px;right:14px;padding:8px 18px;background:' + brandColor + ';color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.2)">🖨 Print / PDF</button>'
     + '<div class="no-print" style="margin-top:30px;padding-top:14px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center">This is a live link — bookmark it to always see the latest version. Powered by GrooveLinx.</div>'
     + '</body></html>';

@@ -484,6 +484,7 @@ async function _spLoadPlots() {
       var snap = await firebaseDB.ref(bandPath('stage_plots')).once('value');
       var val = snap.val();
       _spPlots = val ? Object.values(val) : [];
+      window._spPlotsCache = _spPlots;
     }
   } catch(e) { _spPlots = []; }
 
@@ -642,6 +643,25 @@ function _spRender() {
 
     // Monitor mixes
     html += _spRenderMonitorMixes(plot);
+
+    // Setup time + load-in window — promoters always ask. Two short text
+    // fields prominent on the rider so they get answered upfront.
+    html += '<div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+    html += '<div>'
+      + '<div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px">Setup / soundcheck time needed</div>'
+      + '<input value="' + _spEsc(plot.setupTime || '') + '" onchange="_spUpdatePlotField(\'setupTime\',this.value)" placeholder="e.g. 60 min setup + 30 min soundcheck" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82em;box-sizing:border-box">'
+      + '</div>';
+    html += '<div>'
+      + '<div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px">Load-in window</div>'
+      + '<input value="' + _spEsc(plot.loadIn || '') + '" onchange="_spUpdatePlotField(\'loadIn\',this.value)" placeholder="e.g. 4–5 PM" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:6px 10px;border-radius:6px;font-size:0.82em;box-sizing:border-box">'
+      + '</div>';
+    html += '</div>';
+
+    // ── Backline list (what band brings vs venue provides) ──
+    html += _spRenderBacklineList(plot);
+
+    // ── Wireless frequency list ──
+    html += _spRenderWirelessList(plot);
 
     // Tech rider notes
     html += '<div style="margin-top:20px">';
@@ -873,6 +893,7 @@ function _spRenderChannelList(plot) {
   html += '<div style="display:flex;gap:6px">';
   html += '<button onclick="_spAddChannel()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 8px;border-radius:5px;cursor:pointer;font-size:0.68em">+ Add row</button>';
   html += '<button onclick="_spAutoBuildInputList()" title="Generate input list from placed mics/DIs on the stage" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:#a5b4fc;padding:3px 8px;border-radius:5px;cursor:pointer;font-size:0.68em;font-weight:700">Auto from stage</button>';
+  html += '<button onclick="_spShowSoundcheckOrder()" title="Suggest a soundcheck order following standard FOH practice" style="background:rgba(168,85,247,0.08);border:1px solid rgba(168,85,247,0.25);color:#c4b5fd;padding:3px 8px;border-radius:5px;cursor:pointer;font-size:0.68em;font-weight:700">Soundcheck order</button>';
   html += '</div></div>';
 
   if (!plot.channels || !plot.channels.length) {
@@ -952,6 +973,238 @@ function _spRenderCableSummary(plot) {
   html += '</div>';
   return html;
 }
+
+function _spRenderBacklineList(plot) {
+  var hasItems = plot.backline && plot.backline.length;
+  var html = '<div style="margin-top:20px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">Backline</span>';
+  html += '<button onclick="_spAddBacklineItem()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 8px;border-radius:5px;cursor:pointer;font-size:0.68em">+ Add item</button>';
+  html += '</div>';
+  if (!hasItems) {
+    html += '<div style="color:var(--text-dim);font-size:0.78em;padding:6px 0">List the gear that needs to be on stage. Mark whether the band brings it (B) or the venue provides (V).</div>';
+  } else {
+    html += '<div style="display:grid;grid-template-columns:1fr 60px 22px;gap:6px;padding:4px 0;font-size:0.62em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">'
+      + '<span>Item</span><span style="text-align:center">By</span><span></span></div>';
+    plot.backline.forEach(function(item, i) {
+      html += '<div style="display:grid;grid-template-columns:1fr 60px 22px;gap:6px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);align-items:center">'
+        + '<input value="' + _spEsc(item.label || '') + '" onchange="_spUpdateBacklineItem(' + i + ',\'label\',this.value)" placeholder="e.g. Kick drum, snare, 4-piece kit" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.78em">'
+        + '<select onchange="_spUpdateBacklineItem(' + i + ',\'by\',this.value)" class="sp-select" style="font-size:0.72em;padding:4px 6px">'
+        + '<option value="band"' + (item.by === 'band' ? ' selected' : '') + '>Band</option>'
+        + '<option value="venue"' + (item.by === 'venue' ? ' selected' : '') + '>Venue</option>'
+        + '<option value="rental"' + (item.by === 'rental' ? ' selected' : '') + '>Rental</option>'
+        + '</select>'
+        + '<button onclick="_spRemoveBacklineItem(' + i + ')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.7em">✕</button>'
+        + '</div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function _spRenderWirelessList(plot) {
+  var hasItems = plot.wireless && plot.wireless.length;
+  var html = '<div style="margin-top:20px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">Wireless Frequencies</span>';
+  html += '<button onclick="_spAddWirelessItem()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 8px;border-radius:5px;cursor:pointer;font-size:0.68em">+ Add freq</button>';
+  html += '</div>';
+  if (!hasItems) {
+    html += '<div style="color:var(--text-dim);font-size:0.78em;padding:6px 0">Optional — list IEM packs and wireless mic frequencies so FOH can avoid conflicts with house systems.</div>';
+  } else {
+    html += '<div style="display:grid;grid-template-columns:80px 1fr 100px 22px;gap:6px;padding:4px 0;font-size:0.62em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em">'
+      + '<span>Channel</span><span>Use / Member</span><span style="text-align:right">Frequency</span><span></span></div>';
+    plot.wireless.forEach(function(item, i) {
+      html += '<div style="display:grid;grid-template-columns:80px 1fr 100px 22px;gap:6px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);align-items:center">'
+        + '<input value="' + _spEsc(item.channel || '') + '" onchange="_spUpdateWirelessItem(' + i + ',\'channel\',this.value)" placeholder="ch / pack" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:4px 6px;border-radius:4px;font-size:0.74em">'
+        + '<input value="' + _spEsc(item.use || '') + '" onchange="_spUpdateWirelessItem(' + i + ',\'use\',this.value)" placeholder="e.g. Lead vocal — Brian" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:4px 8px;border-radius:4px;font-size:0.78em">'
+        + '<input value="' + _spEsc(item.freq || '') + '" onchange="_spUpdateWirelessItem(' + i + ',\'freq\',this.value)" placeholder="e.g. 539.250 MHz" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:4px 6px;border-radius:4px;font-size:0.74em;text-align:right">'
+        + '<button onclick="_spRemoveWirelessItem(' + i + ')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.7em">✕</button>'
+        + '</div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function _spUpdatePlotField(field, val) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  plot[field] = val;
+  _spDirty = true;
+}
+function _spAddBacklineItem() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  if (!plot.backline) plot.backline = [];
+  plot.backline.push({ label: '', by: 'band' });
+  _spDirty = true;
+  _spRender();
+}
+function _spUpdateBacklineItem(idx, field, val) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.backline || !plot.backline[idx]) return;
+  plot.backline[idx][field] = val;
+  _spDirty = true;
+}
+function _spRemoveBacklineItem(idx) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.backline) return;
+  plot.backline.splice(idx, 1);
+  _spDirty = true;
+  _spRender();
+}
+function _spAddWirelessItem() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  if (!plot.wireless) plot.wireless = [];
+  plot.wireless.push({ channel: '', use: '', freq: '' });
+  _spDirty = true;
+  _spRender();
+}
+function _spUpdateWirelessItem(idx, field, val) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.wireless || !plot.wireless[idx]) return;
+  plot.wireless[idx][field] = val;
+  _spDirty = true;
+}
+function _spRemoveWirelessItem(idx) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.wireless) return;
+  plot.wireless.splice(idx, 1);
+  _spDirty = true;
+  _spRender();
+}
+
+// Soundcheck order suggester — classifies each channel by family, then sorts
+// in standard FOH order: drums first (kick→snare→toms→OH→hi-hat), then bass,
+// then guitars, keys, aux instruments, BGVs, lead vox, and click/talkback
+// last. Recipe matches what most monitor engineers do at line-check.
+function _spClassifyChannel(ch) {
+  var label = ((ch.label || '') + ' ' + (ch.mic || '')).toLowerCase();
+  // Order of these checks matters: more specific patterns first.
+  if (/click|metronome|talkback/.test(label)) return { fam: 'click', rank: 90 };
+  if (/lead vocal|lead vox|vocal\s*1|vocal lead|main vocal/.test(label)) return { fam: 'leadVox', rank: 80 };
+  if (/vocal|vox|sm58|beta\s*58|ksm/.test(label)) return { fam: 'bgv', rank: 70 };
+  if (/kick|d6|beta 91|beta 52/.test(label)) return { fam: 'kick', rank: 10 };
+  if (/snare|sm57.*snare|i5.*snare/.test(label)) return { fam: 'snare', rank: 12 };
+  if (/tom|e604|e904/.test(label)) return { fam: 'tom', rank: 14 };
+  if (/overhead|oh\b|c414|c451|km184/.test(label)) return { fam: 'oh', rank: 16 };
+  if (/hi-?hat|hat|sm81/.test(label)) return { fam: 'hh', rank: 18 };
+  if (/ride|crash|cymbal/.test(label)) return { fam: 'cymbal', rank: 19 };
+  if (/drum/.test(label)) return { fam: 'drum', rank: 20 };
+  if (/bass|di\s*bass|sansamp|bass\s*amp/.test(label)) return { fam: 'bass', rank: 30 };
+  if (/electric guitar|gtr|guitar amp|cab|sm57.*amp|md421.*amp/.test(label)) return { fam: 'gtr', rank: 40 };
+  if (/acoustic|martin|taylor|ac gtr|ac. gtr/.test(label)) return { fam: 'acoustic', rank: 50 };
+  if (/keys|piano|rhodes|hammond|synth|nord|moog/.test(label)) return { fam: 'keys', rank: 55 };
+  if (/sax|horn|trumpet|trombone|brass/.test(label)) return { fam: 'horn', rank: 60 };
+  if (/perc|conga|shaker|tamb/.test(label)) return { fam: 'perc', rank: 25 };
+  if (/di\b/.test(label)) return { fam: 'di', rank: 45 };
+  return { fam: 'other', rank: 75 };
+}
+
+var SP_FAM_LABELS = {
+  kick: 'Kick', snare: 'Snare', tom: 'Toms', oh: 'Overheads', hh: 'Hi-Hat',
+  cymbal: 'Cymbals', drum: 'Other drums', perc: 'Percussion',
+  bass: 'Bass', gtr: 'Electric guitar', acoustic: 'Acoustic instruments',
+  di: 'DI inputs', keys: 'Keys / synth', horn: 'Horns',
+  bgv: 'Backing vocals', leadVox: 'Lead vocal', click: 'Click / talkback',
+  other: 'Other'
+};
+
+function _spShowSoundcheckOrder() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.channels || !plot.channels.length) {
+    if (typeof showToast === 'function') showToast('Add some inputs first — soundcheck order pulls from the input list.');
+    return;
+  }
+  // Tag every channel with its family + rank, then sort stable.
+  var tagged = plot.channels.map(function(ch, i) {
+    var c = _spClassifyChannel(ch);
+    return { idx: i, ch: ch, fam: c.fam, rank: c.rank };
+  });
+  tagged.sort(function(a, b) { return a.rank - b.rank || a.idx - b.idx; });
+
+  // Group by family for display.
+  var groups = [];
+  var currentFam = null;
+  tagged.forEach(function(item) {
+    if (item.fam !== currentFam) {
+      groups.push({ fam: item.fam, items: [] });
+      currentFam = item.fam;
+    }
+    groups[groups.length - 1].items.push(item);
+  });
+
+  // Build modal HTML
+  var rows = '';
+  var step = 1;
+  groups.forEach(function(g) {
+    rows += '<div style="margin-top:14px"><div style="font-size:0.7em;font-weight:700;color:#c4b5fd;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:4px">' + (SP_FAM_LABELS[g.fam] || g.fam) + '</div>';
+    g.items.forEach(function(item) {
+      rows += '<div style="display:grid;grid-template-columns:32px 1fr 1fr;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.84em">'
+        + '<span style="color:#a5b4fc;font-weight:700;text-align:right">' + step + '.</span>'
+        + '<span style="color:var(--text)">' + _spEsc(item.ch.label || '—') + '</span>'
+        + '<span style="color:var(--text-dim);font-size:0.85em">' + _spEsc(item.ch.mic || '') + '</span>'
+        + '</div>';
+      step++;
+    });
+    rows += '</div>';
+  });
+
+  var modal = document.createElement('div');
+  modal.id = 'spSoundcheckModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  modal.innerHTML = '<div style="background:var(--bg-card,#0f172a);border:1px solid rgba(168,85,247,0.25);border-radius:12px;max-width:560px;width:100%;max-height:88vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,0.6)">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+    + '<h3 style="margin:0;font-size:1.1em;color:#c4b5fd">🎚 Suggested Soundcheck Order</h3>'
+    + '<button onclick="document.getElementById(\'spSoundcheckModal\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.4em;cursor:pointer">×</button>'
+    + '</div>'
+    + '<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:6px;line-height:1.5">Standard FOH practice — line-check drums first (loudest fixes affect everyone), then rhythm section, then top of mix. Hand this to your engineer at load-in.</div>'
+    + rows
+    + '<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">'
+    + '<button onclick="_spCopySoundcheckOrder()" style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:700">Copy as text</button>'
+    + '<button onclick="document.getElementById(\'spSoundcheckModal\').remove()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.85em">Close</button>'
+    + '</div>'
+    + '</div>';
+  document.body.appendChild(modal);
+
+  // Stash plain-text version for the Copy button.
+  var lines = ['Soundcheck order — ' + (plot.name || 'Stage plot')];
+  var n = 1;
+  groups.forEach(function(g) {
+    lines.push('');
+    lines.push('— ' + (SP_FAM_LABELS[g.fam] || g.fam) + ' —');
+    g.items.forEach(function(item) {
+      lines.push(n + '. ' + (item.ch.label || '—') + (item.ch.mic ? ' (' + item.ch.mic + ')' : ''));
+      n++;
+    });
+  });
+  window._spSoundcheckText = lines.join('\n');
+}
+
+function _spCopySoundcheckOrder() {
+  var txt = window._spSoundcheckText || '';
+  if (!txt) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(function() {
+      if (typeof showToast === 'function') showToast('✓ Soundcheck order copied');
+    });
+  } else {
+    prompt('Copy this:', txt);
+  }
+}
+
+window._spShowSoundcheckOrder = _spShowSoundcheckOrder;
+window._spCopySoundcheckOrder = _spCopySoundcheckOrder;
+
+window._spUpdatePlotField = _spUpdatePlotField;
+window._spAddBacklineItem = _spAddBacklineItem;
+window._spUpdateBacklineItem = _spUpdateBacklineItem;
+window._spRemoveBacklineItem = _spRemoveBacklineItem;
+window._spAddWirelessItem = _spAddWirelessItem;
+window._spUpdateWirelessItem = _spUpdateWirelessItem;
+window._spRemoveWirelessItem = _spRemoveWirelessItem;
 
 function _spRenderMonitorMixes(plot) {
   var html = '<div style="margin-top:20px">';
@@ -1791,6 +2044,19 @@ async function _spSave() {
 
 function _spRenderShareDetails(plot) {
   var html = '';
+  // QR code — points at the public live link so the user can flash their
+  // phone at FOH or print the page. api.qrserver.com is keyless / free.
+  if (plot.id) {
+    var bandSlug = (typeof window.currentBandSlug !== 'undefined' && window.currentBandSlug)
+      || (typeof localStorage !== 'undefined' && localStorage.getItem('deadcetera_band_slug'))
+      || 'deadcetera';
+    var pubUrl = 'https://share.groovelinx.com/stageplot/' + encodeURIComponent(bandSlug) + '/' + encodeURIComponent(plot.id);
+    var qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=' + encodeURIComponent(pubUrl);
+    html += '<div style="margin-top:12px;padding:10px;border:1px solid rgba(255,255,255,0.08);border-radius:8px;background:rgba(255,255,255,0.02);display:flex;align-items:center;gap:10px">'
+      + '<img src="' + qrSrc + '" alt="QR code" style="width:90px;height:90px;background:#fff;border-radius:4px;flex-shrink:0">'
+      + '<div style="font-size:0.72em;color:var(--text-muted);line-height:1.4"><div style="font-weight:700;color:var(--text);margin-bottom:2px">Scan for the live link</div>Always reflects the latest stage plot. Hand your phone to the FOH engineer or screenshot to text.</div>'
+      + '</div>';
+  }
   // Channel list (compact table)
   if (plot.channels && plot.channels.length) {
     html += '<div style="margin-top:12px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Input List</div>';
@@ -1805,6 +2071,32 @@ function _spRenderShareDetails(plot) {
     html += '<div style="margin-top:10px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Monitor Mixes</div>';
     plot.monitors.forEach(function(mon, i) {
       html += '<div style="font-size:0.72em;color:var(--text-muted);padding:1px 0"><span style="font-weight:700;color:var(--text-dim)">Mix ' + (i + 1) + ':</span> ' + _spEsc(mon.label || '—') + '</div>';
+    });
+    html += '</div>';
+  }
+  // Setup time / load-in
+  if (plot.setupTime || plot.loadIn) {
+    html += '<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+    if (plot.setupTime) html += '<div><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px">Setup / Soundcheck</div><div style="font-size:0.72em;color:var(--text-muted)">' + _spEsc(plot.setupTime) + '</div></div>';
+    if (plot.loadIn) html += '<div><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px">Load-in</div><div style="font-size:0.72em;color:var(--text-muted)">' + _spEsc(plot.loadIn) + '</div></div>';
+    html += '</div>';
+  }
+  // Backline
+  if (plot.backline && plot.backline.length) {
+    html += '<div style="margin-top:10px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Backline</div>';
+    plot.backline.forEach(function(item) {
+      if (!item.label) return;
+      var byTag = item.by === 'venue' ? '<span style="color:#10b981">venue</span>' : (item.by === 'rental' ? '<span style="color:#f59e0b">rental</span>' : '<span style="color:#60a5fa">band</span>');
+      html += '<div style="font-size:0.72em;color:var(--text-muted);padding:1px 0">• ' + _spEsc(item.label) + ' <span style="font-size:0.85em">(' + byTag + ')</span></div>';
+    });
+    html += '</div>';
+  }
+  // Wireless
+  if (plot.wireless && plot.wireless.length) {
+    html += '<div style="margin-top:10px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Wireless Frequencies</div>';
+    plot.wireless.forEach(function(item) {
+      if (!item.use && !item.freq) return;
+      html += '<div style="font-size:0.72em;color:var(--text-muted);padding:1px 0">' + _spEsc(item.channel || '—') + ' · ' + _spEsc(item.use || '') + (item.freq ? ' · <span style="color:var(--text-dim)">' + _spEsc(item.freq) + '</span>' : '') + '</div>';
     });
     html += '</div>';
   }
@@ -2007,6 +2299,55 @@ function _spExportView() {
     page3 += '</tbody></table></section>';
   }
 
+  // Page 3.5: Logistics (setup time, load-in, backline, wireless)
+  var hasLogistics = plot.setupTime || plot.loadIn || (plot.backline && plot.backline.length) || (plot.wireless && plot.wireless.length);
+  var pageLogistics = '';
+  if (hasLogistics) {
+    pageLogistics = '<section style="page-break-after:always">' + headerBar('Logistics');
+    if (plot.setupTime || plot.loadIn) {
+      pageLogistics += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">';
+      if (plot.setupTime) pageLogistics += '<div style="padding:10px;border:1px solid #ddd;border-radius:4px;background:#fff"><div style="font-size:11px;font-weight:700;color:' + brandColor + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Setup / Soundcheck</div><div style="font-size:13px;color:#222">' + _spEsc(plot.setupTime) + '</div></div>';
+      if (plot.loadIn) pageLogistics += '<div style="padding:10px;border:1px solid #ddd;border-radius:4px;background:#fff"><div style="font-size:11px;font-weight:700;color:' + brandColor + ';text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Load-in Window</div><div style="font-size:13px;color:#222">' + _spEsc(plot.loadIn) + '</div></div>';
+      pageLogistics += '</div>';
+    }
+    if (plot.backline && plot.backline.length) {
+      pageLogistics += '<div style="margin-bottom:14px"><div style="font-size:13px;font-weight:700;color:' + brandColor + ';margin-bottom:6px">Backline</div>'
+        + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+        + '<thead><tr style="background:' + brandColor + ';color:#fff">'
+        + '<th style="border:1px solid ' + brandColor + ';padding:5px 8px;text-align:left">Item</th>'
+        + '<th style="border:1px solid ' + brandColor + ';padding:5px 8px;text-align:left;width:90px">Provided by</th>'
+        + '</tr></thead><tbody>';
+      plot.backline.forEach(function(item, i) {
+        if (!item.label) return;
+        var byTxt = item.by === 'venue' ? 'Venue' : (item.by === 'rental' ? 'Rental' : 'Band');
+        pageLogistics += '<tr style="background:' + (i % 2 ? '#f7f7fa' : '#fff') + '">'
+          + '<td style="border:1px solid #ddd;padding:5px 8px">' + _spEsc(item.label) + '</td>'
+          + '<td style="border:1px solid #ddd;padding:5px 8px;font-weight:600">' + byTxt + '</td>'
+          + '</tr>';
+      });
+      pageLogistics += '</tbody></table></div>';
+    }
+    if (plot.wireless && plot.wireless.length) {
+      pageLogistics += '<div><div style="font-size:13px;font-weight:700;color:' + brandColor + ';margin-bottom:6px">Wireless Frequencies</div>'
+        + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+        + '<thead><tr style="background:' + brandColor + ';color:#fff">'
+        + '<th style="border:1px solid ' + brandColor + ';padding:5px 8px;text-align:left;width:80px">Channel</th>'
+        + '<th style="border:1px solid ' + brandColor + ';padding:5px 8px;text-align:left">Use / Member</th>'
+        + '<th style="border:1px solid ' + brandColor + ';padding:5px 8px;text-align:right;width:120px">Frequency</th>'
+        + '</tr></thead><tbody>';
+      plot.wireless.forEach(function(item, i) {
+        if (!item.use && !item.freq && !item.channel) return;
+        pageLogistics += '<tr style="background:' + (i % 2 ? '#f7f7fa' : '#fff') + '">'
+          + '<td style="border:1px solid #ddd;padding:5px 8px">' + _spEsc(item.channel || '') + '</td>'
+          + '<td style="border:1px solid #ddd;padding:5px 8px">' + _spEsc(item.use || '') + '</td>'
+          + '<td style="border:1px solid #ddd;padding:5px 8px;text-align:right;font-family:ui-monospace,monospace">' + _spEsc(item.freq || '') + '</td>'
+          + '</tr>';
+      });
+      pageLogistics += '</tbody></table></div>';
+    }
+    pageLogistics += '</section>';
+  }
+
   // Page 4: Rider + contact
   var page4 = '';
   if (plot.riderNotes || plot.contact) {
@@ -2030,6 +2371,7 @@ function _spExportView() {
     + page1
     + page2
     + page3
+    + pageLogistics
     + page4
     + '<button onclick="window.print()" style="position:fixed;top:14px;right:14px;padding:8px 18px;background:' + brandColor + ';color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.2)">🖨 Print / Save as PDF</button>'
     + '</body></html>';

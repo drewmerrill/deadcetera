@@ -263,6 +263,8 @@ function _slRenderList(rawData) {
     var container = document.getElementById('setlistsList');
     if (!container) return;
 
+    _slEnsureStagePlotsCache();
+
     // Freshness indicator
     var freshEl = document.getElementById('slFreshness');
     if (freshEl) {
@@ -396,10 +398,51 @@ function _slRenderList(rawData) {
     document.head.appendChild(s);
 })();
 
+// Look up a stage plot tied to this setlist (via shared gigId or explicit
+// linkedSetlistId). Cached cheaply on window so we don't refetch per-card.
+function _slLookupStagePlot(sl) {
+    var plots = window._spPlotsCache;
+    if (!plots || !plots.length) return null;
+    return plots.find(function(p) {
+        if (sl.id && p.linkedSetlistId === sl.id) return true;
+        if (sl.gigId && p.linkedGigId === sl.gigId) return true;
+        return false;
+    }) || null;
+}
+
+// Lazy-load stage plot cache from Firebase if stage-plot.js hasn't been
+// loaded yet (e.g. user lands directly on Setlists). Keeps it cheap — one
+// fetch per session, no UI block.
+function _slEnsureStagePlotsCache() {
+    if (window._spPlotsCache) return;
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return;
+    if (window._slStagePlotsFetching) return;
+    window._slStagePlotsFetching = true;
+    firebaseDB.ref(bandPath('stage_plots')).once('value').then(function(snap) {
+        var val = snap.val();
+        window._spPlotsCache = val ? Object.values(val) : [];
+        window._slStagePlotsFetching = false;
+        // Re-render so badges appear after fetch completes
+        if (window._cachedData && _slRenderList) _slRenderList(window._cachedData);
+    }).catch(function() { window._slStagePlotsFetching = false; });
+}
+
+function _slOpenStagePlotForSetlist(plotId) {
+    if (!plotId) return;
+    window._spPendingShareId = plotId;
+    if (typeof showPage === 'function') showPage('stageplot');
+}
+window._slOpenStagePlotForSetlist = _slOpenStagePlotForSetlist;
+
 function _slRenderCard(sl, isNext) {
     var songCount = (sl.sets || []).reduce(function(a,s) { return a + (s.songs || []).length; }, 0);
     var setCount = (sl.sets || []).length;
     var idx = sl._origIdx;
+    var plot = _slLookupStagePlot(sl);
+    var plotIdEsc = plot ? String(plot.id || '').replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
+    var plotBadge = plot
+        ? '<button onclick="event.stopPropagation();_slOpenStagePlotForSetlist(\'' + plotIdEsc + '\')" style="font-size:0.62em;font-weight:700;padding:2px 7px;border-radius:5px;border:1px solid rgba(168,85,247,0.3);background:rgba(168,85,247,0.08);color:#c4b5fd;cursor:pointer;letter-spacing:0.04em" title="Open the stage plot tied to this setlist">\uD83C\uDFAD Plot</button>'
+        : '';
 
     var dateDisplay = _slFormatDate(sl.date, true);
     var dateLabel = _slCountdownLabel(sl.date);
@@ -418,7 +461,7 @@ function _slRenderCard(sl, isNext) {
     return '<div class="sl-card" style="border:1px solid ' + borderColor + ';background:' + bgColor + '">'
         + '<div class="sl-card-info">'
         + (isNext ? '<div class="sl-card-badge">NEXT UP' + (dateLabel ? ' \u00B7 ' + dateLabel : '') + ' \u00B7 ' + dateDisplay + '</div>' : '')
-        + '<div class="sl-card-title">' + (sl.locked ? '\uD83D\uDD12 ' : '') + (sl.name || 'Untitled') + '</div>'
+        + '<div class="sl-card-title">' + (sl.locked ? '\uD83D\uDD12 ' : '') + (sl.name || 'Untitled') + (plotBadge ? ' ' + plotBadge : '') + '</div>'
         + '<div class="sl-card-meta">'
         + dateDisplay + ' \u00B7 ' + songCount + ' songs \u00B7 ' + setCount + ' set' + (setCount !== 1 ? 's' : '')
         + (!isNext && dateLabel ? ' \u00B7 ' + dateLabel : '')
