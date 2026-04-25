@@ -148,10 +148,14 @@ window.GLCalendarSync = (function() {
       body.location = glEvent.venue || glEvent.location;
     }
 
-    // Attendees
-    var attendees = opts.attendees || _getBandEmails();
-    if (attendees.length) {
-      body.attendees = attendees.map(function(email) { return { email: email }; });
+    // Attendees — opt-in only. Auto-adding the band on every event causes
+    // Google to replicate invite copies onto every member's personal
+    // calendar, which makes it look like events are landing in the wrong
+    // place + clutters everyone's view. GrooveLinx has its own in-app RSVP
+    // so the Google-level invitations are redundant. Only add attendees if
+    // the caller explicitly passed an opts.attendees array.
+    if (opts.attendees && opts.attendees.length) {
+      body.attendees = opts.attendees.map(function(email) { return { email: email }; });
     }
 
     // Tag as GrooveLinx-created for deterministic circular-conflict suppression
@@ -337,7 +341,14 @@ window.GLCalendarSync = (function() {
     } catch(e) { console.warn('[CalSync] Title-match dedupe skipped:', e && e.message); }
 
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId), {
+      var _postUrl = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId);
+      // Diagnostic: log exactly what calendar the create POST targets so
+      // "did the event land on the right calendar?" can be answered in 5
+      // seconds from the console without right-click-investigating in
+      // Google Calendar.
+      console.log('[CalSync] create() POST URL =', _postUrl);
+      console.log('[CalSync] create() event:', { title: body.summary, type: glEvent.type, date: glEvent.date });
+      var res = await fetch(_postUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
