@@ -1836,7 +1836,12 @@ function _spCopyShareLink() {
   var bandSlug = (typeof window.currentBandSlug !== 'undefined' && window.currentBandSlug)
     || (typeof localStorage !== 'undefined' && localStorage.getItem('deadcetera_band_slug'))
     || 'deadcetera';
-  var publicUrl = 'https://deadcetera-proxy.drewmerrill.workers.dev/stageplot/'
+  // Public share URL uses share.groovelinx.com — Cloudflare worker route
+  // configured to map this hostname to the same worker that serves
+  // /stageplot/:bandSlug/:plotId. The legacy *.workers.dev URL keeps
+  // working as a fallback (same worker) — both routes serve the same
+  // handler, so nothing breaks if DNS is mid-flight.
+  var publicUrl = 'https://share.groovelinx.com/stageplot/'
     + encodeURIComponent(bandSlug) + '/' + encodeURIComponent(plot.id);
   var inBandUrl = window.location.origin + window.location.pathname
     + '#stageplot-share/' + encodeURIComponent(plot.id);
