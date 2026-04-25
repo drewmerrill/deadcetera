@@ -1818,6 +1818,14 @@ window.GLCalendarSync = (function() {
         return String(d.getHours()).padStart(2, '0') + ':'
           + String(d.getMinutes()).padStart(2, '0');
       };
+      // Path B.2 #37: if the hidden-event check failed (returned null), do
+      // NOT clean up existing synthetics — that would wipe the grid every
+      // time freebusy 401s. Skip the entire write/cleanup phase and preserve
+      // last-known state until next successful check.
+      var _checkFailed = (_hiddenRanges === null);
+      if (_checkFailed) {
+        console.warn('[CalSync] Path B.2: hidden-event check failed; preserving existing synthetic blocks until next successful check');
+      } else {
       (_hiddenRanges || []).forEach(function(h) {
         var s = new Date(h.start);
         var e = new Date(h.end);
@@ -1852,28 +1860,72 @@ window.GLCalendarSync = (function() {
             _d.setDate(_d.getDate() + 1);
           }
         } else {
-          var dStr2 = _toDateStr(s);
-          var key2 = baseKey;
-          _synthKeys[key2] = true;
-          var idx2 = events.findIndex(function(ex) { return ex.id === key2; });
+          // Single-day OR midnight-crossing timed range.
+          // For midnight-crossing events (e.g., 9 PM Sat → 1 AM Sun), write
+          // ONE synthetic per affected day so each day's grid cell shows the
+          // block. Without this, scheduling Sunday morning would look free
+          // even though members were busy until 1 AM. Real correctness bug.
           var sameDay = s.getFullYear() === e.getFullYear()
             && s.getMonth() === e.getMonth()
             && s.getDate() === e.getDate();
-          var evObj2 = {
-            id: key2, eventId: key2,
-            title: 'Busy (hidden event)',
-            date: dStr2,
-            time: _toTimeStr(s),
-            endTime: sameDay ? _toTimeStr(e) : '23:59',
-            endDate: '',
-            isAllDay: false,
-            type: 'unavailable',
-            notes: 'Hidden event on shared band calendar. Visibility is Private or Default \u2014 ask band members to check their account default visibility and set it to Public to see details.',
-            _syntheticFromFreeBusy: true,
-            _hiddenRangeKey: key2,
-            syncStatus: 'synthetic'
-          };
-          if (idx2 >= 0) { events[idx2] = evObj2; } else { events.push(evObj2); _synthDirty = true; }
+          if (sameDay) {
+            var dStr2 = _toDateStr(s);
+            var key2 = baseKey;
+            _synthKeys[key2] = true;
+            var idx2 = events.findIndex(function(ex) { return ex.id === key2; });
+            var evObj2 = {
+              id: key2, eventId: key2,
+              title: 'Busy (hidden event)',
+              date: dStr2,
+              time: _toTimeStr(s),
+              endTime: _toTimeStr(e),
+              endDate: '',
+              isAllDay: false,
+              type: 'unavailable',
+              notes: 'Hidden event on shared band calendar. Visibility is Private or Default \u2014 ask band members to check their account default visibility and set it to Public to see details.',
+              _syntheticFromFreeBusy: true,
+              _hiddenRangeKey: key2,
+              syncStatus: 'synthetic'
+            };
+            if (idx2 >= 0) { events[idx2] = evObj2; } else { events.push(evObj2); _synthDirty = true; }
+          } else {
+            // Multi-day timed: walk each day in the span. First day uses the
+            // real start time + 23:59. Middle days are 00:00–23:59 (effectively
+            // all-day). Last day uses 00:00 + the real end time.
+            var _walkD = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+            var _lastD = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+            while (_walkD <= _lastD) {
+              var _isFirst = _walkD.getTime() === new Date(s.getFullYear(), s.getMonth(), s.getDate()).getTime();
+              var _isLast = _walkD.getTime() === _lastD.getTime();
+              var _segStart = _isFirst ? _toTimeStr(s) : '00:00';
+              var _segEnd = _isLast ? _toTimeStr(e) : '23:59';
+              // Skip degenerate end-on-midnight last day — Google freebusy
+              // ranges that end exactly at 00:00 on the next day are
+              // equivalent to "ends at end of previous day"; don't write a
+              // 0-min block for the trailing day.
+              if (_isLast && _segEnd === '00:00') break;
+              var dStrN = _toDateStr(_walkD);
+              var keyN = baseKey + '_' + dStrN;
+              _synthKeys[keyN] = true;
+              var idxN = events.findIndex(function(ex) { return ex.id === keyN; });
+              var evObjN = {
+                id: keyN, eventId: keyN,
+                title: 'Busy (hidden event)',
+                date: dStrN,
+                time: _segStart,
+                endTime: _segEnd,
+                endDate: '',
+                isAllDay: (_segStart === '00:00' && _segEnd === '23:59'),
+                type: 'unavailable',
+                notes: 'Hidden event on shared band calendar. Visibility is Private or Default \u2014 ask band members to check their account default visibility and set it to Public to see details.',
+                _syntheticFromFreeBusy: true,
+                _hiddenRangeKey: keyN,
+                syncStatus: 'synthetic'
+              };
+              if (idxN >= 0) { events[idxN] = evObjN; } else { events.push(evObjN); _synthDirty = true; }
+              _walkD.setDate(_walkD.getDate() + 1);
+            }
+          }
         }
       });
       // Remove stale synthetic rows that are no longer in the freebusy output
@@ -1889,6 +1941,7 @@ window.GLCalendarSync = (function() {
         console.log('[CalSync] Path B.2: Wrote', Object.keys(_synthKeys).length,
           'synthetic hidden-event rows (stale removed)');
       }
+      } // end else (check succeeded)
     } catch(e) {
       console.warn('[CalSync] Path B.2 synthetic-write error:', e && e.message);
     }
@@ -1912,7 +1965,8 @@ window.GLCalendarSync = (function() {
           error: result.error || null,
           needsReauth: !!result.needsReauth,
           hiddenCount: (_hiddenRanges && _hiddenRanges.length) || 0,
-          hiddenRanges: (_hiddenRanges || []).slice(0, 50)
+          hiddenRanges: (_hiddenRanges || []).slice(0, 50),
+          hiddenCheckFailed: (_hiddenRanges === null)
         },
         syncVersion: _prev.syncVersion || 2
       });

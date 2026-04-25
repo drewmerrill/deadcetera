@@ -378,8 +378,13 @@ function calExportICS(ev) {
  */
 function calExportAllICS(events) {
     if (!events || !events.length) { alert('No events to export.'); return; }
+    // Path B.2: skip synthetic hidden-event blocks. They're derived from
+    // freebusy on the band calendar — anyone subscribed to both this .ics
+    // feed AND the underlying Google calendar would see duplicate busy time.
+    var realEvents = events.filter(function(ev) { return !ev._syntheticFromFreeBusy; });
+    if (!realEvents.length) { alert('No events to export.'); return; }
     var nowStr   = _icsUTCStr(new Date());
-    var vevents  = events.map(function(ev) { return _buildVEvent(ev, nowStr); }).filter(Boolean).join('\r\n');
+    var vevents  = realEvents.map(function(ev) { return _buildVEvent(ev, nowStr); }).filter(Boolean).join('\r\n');
     var ics      = _buildVCalendar(vevents, 'GrooveLinx Band Calendar');
     _downloadICS(ics, 'groovelinx-band-calendar.ics');
 }

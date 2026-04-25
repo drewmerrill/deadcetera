@@ -689,6 +689,32 @@ async function saveGig() {
     };
     if (!gig.venue) { alert('Venue required'); return; }
 
+    // Path B.2 #38: warn if the gig date has any unavailability blocks (real
+    // schedule_blocks OR synthetic hidden-event blocks). Cheap pre-flight
+    // check — keeps users from booking a gig on a date the band can't make.
+    if (gig.date) {
+        try {
+            var _calEvts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+            var _conflicts = _calEvts.filter(function(e) {
+                if (!e || e.type !== 'unavailable') return false;
+                if (e.date !== gig.date) {
+                    // multi-day check
+                    if (!(e.date && e.endDate && e.date <= gig.date && gig.date <= e.endDate)) return false;
+                }
+                return true;
+            });
+            if (_conflicts.length) {
+                var _hiddenCount = _conflicts.filter(function(c) { return c._syntheticFromFreeBusy; }).length;
+                var _realCount = _conflicts.length - _hiddenCount;
+                var _msgParts = [];
+                if (_hiddenCount > 0) _msgParts.push(_hiddenCount + ' hidden-event block' + (_hiddenCount === 1 ? '' : 's'));
+                if (_realCount > 0) _msgParts.push(_realCount + ' member conflict' + (_realCount === 1 ? '' : 's'));
+                var _msg = '\u26A0 ' + gig.date + ' has ' + _msgParts.join(' + ') + '.\n\nBook this gig anyway?';
+                if (!confirm(_msg)) return;
+            }
+        } catch (_e) { /* non-fatal — continue with save */ }
+    }
+
     // Resolve setlist link by setlistId only
     var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var linkedSl = null;

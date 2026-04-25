@@ -263,6 +263,9 @@ function _calRepeatRuleToValue(rule) {
 // ── Shared RSVP row builder — used by both "Upcoming Schedule" and "Next Up" ──
 function _buildEventRsvpRow(ev, idx, eventAvail, gigs, members, bm, myKey) {
     if (!members || members.length < 2) return '';
+    // Path B.2: synthetic hidden-event blocks have no real Google event to
+    // RSVP against — skip the row.
+    if (ev && ev._syntheticFromFreeBusy) return '';
     var _safeDk = (ev.date || '').replace(/-/g, '');
     var _eaForDate = eventAvail[_safeDk] || {};
     var _matchGig = gigs.find(function(g) { return g.date === ev.date; });
@@ -1527,6 +1530,11 @@ window._calDeleteFromPanel = async function(eventId, dateStr) {
     // Check if event is synced to Google and whether we can reach Google
     var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     var ev = events.find(function(e) { return (e.eventId || e.id) === eventId; });
+    // Path B.2 guard: synthetics regenerate on next sync, so deleting is futile.
+    if (ev && ev._syntheticFromFreeBusy) {
+        if (typeof showToast === 'function') showToast('\uD83D\uDD12 Hidden events are auto-generated and will return on the next sync. Ask the event creator to switch visibility to Public.', 6000);
+        return;
+    }
     var _isSynced = ev && ev.googleEventId;
     var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
 
@@ -3271,11 +3279,18 @@ function _calRenderConflictPanel() {
             var editAction = '_calEditScheduleBlock(' + _editArg + ')';
             // Action buttons
             var actionsHtml = '';
-            if (_isMyConflict && _hasGoogleScope && blockId && !_isSynced) {
-                actionsHtml += '<button onclick="_calSyncExistingConflict(\'' + (blockId || '').replace(/'/g, "\\'") + '\')" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;white-space:nowrap">\uD83D\uDCC5 Push to Google</button>';
+            if (b._isSyntheticHidden) {
+                // Path B.2 #39: synthetic blocks can't be edited/deleted (would
+                // regenerate next sync). Replace controls with a "Why hidden?"
+                // help link to the visibility-help modal.
+                actionsHtml += '<button onclick="_calShowVisibilityHelp()" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;white-space:nowrap" title="Why is this event hidden?">\uD83D\uDD12 Why hidden?</button>';
+            } else {
+                if (_isMyConflict && _hasGoogleScope && blockId && !_isSynced) {
+                    actionsHtml += '<button onclick="_calSyncExistingConflict(\'' + (blockId || '').replace(/'/g, "\\'") + '\')" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;white-space:nowrap">\uD83D\uDCC5 Push to Google</button>';
+                }
+                actionsHtml += '<button onclick="' + editAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer">\u270F\uFE0F</button>';
+                actionsHtml += '<button onclick="' + deleteAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:none;background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer">\u2715</button>';
             }
-            actionsHtml += '<button onclick="' + editAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer">\u270F\uFE0F</button>';
-            actionsHtml += '<button onclick="' + deleteAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:none;background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer">\u2715</button>';
 
             html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:4px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">';
             // Date range
@@ -3928,7 +3943,11 @@ async function loadCalendarEvents() {
     const today = new Date().toISOString().split('T')[0];
     var futureEnd = new Date(Date.now() + 90 * 86400000).toISOString().split('T')[0];
     var expandedUpcoming = expandRecurringEvents(events, today, futureEnd);
-    const upcoming = expandedUpcoming.filter(function(e) { return (e.date || '') >= today; })
+    const upcoming = expandedUpcoming
+        // Path B.2: hide synthetic hidden-event rows from the Upcoming list —
+        // they're not real schedule items, just blocked-time markers.
+        .filter(function(e) { return !e._syntheticFromFreeBusy; })
+        .filter(function(e) { return (e.date || '') >= today; })
         .sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
     if (!el) {
         // calendarEvents not in DOM yet — skip upcoming rendering, proceed to blocked data
@@ -5174,6 +5193,22 @@ function calDayClick(y, m, d) {
         var _members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
         if (_dateEvents.length > 0) {
             _dateEvents.forEach(function(ev) {
+                // Path B.2: synthetic hidden-event blocks — render a compact
+                // read-only row without RSVP / Edit / Delete buttons (none of
+                // those operations make sense on a derived block).
+                if (ev._syntheticFromFreeBusy) {
+                    var _hidTime = ev.isAllDay ? 'all day'
+                        : (ev.time + (ev.endTime ? '\u2013' + ev.endTime : ''));
+                    _existingHtml += '<div style="padding:8px 8px;margin-bottom:4px;border-radius:6px;background:rgba(245,158,11,0.04);border:1px solid rgba(245,158,11,0.18)">'
+                        + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">'
+                        + '<span style="font-size:0.85em">\uD83D\uDD12</span>'
+                        + '<span style="font-size:0.75em;font-weight:600;color:#fcd34d;flex:1">Hidden event</span>'
+                        + '</div>'
+                        + '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-bottom:6px">' + _hidTime + ' \u00B7 details not visible to GrooveLinx</div>'
+                        + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;padding:3px 10px;border-radius:4px;border:1px solid rgba(245,158,11,0.25);background:none;color:#fbbf24;cursor:pointer;font-family:inherit">Why hidden?</button>'
+                        + '</div>';
+                    return;
+                }
                 var icon = ev.type === 'rehearsal' ? '\uD83C\uDFB8' : ev.type === 'gig' ? '\uD83C\uDFA4' : '\uD83D\uDCCC';
                 var label = ev.name || ev.title || (ev.type || 'Event');
                 var time = ev.time ? (' \u00B7 ' + ev.time) : '';
@@ -5817,6 +5852,12 @@ async function calEditEventById(eventId) {
         if (typeof showToast === 'function') showToast('\u26A0 Event not found');
         return;
     }
+    // Path B.2 guard: synthetic hidden-event blocks are auto-generated from
+    // freebusy and cannot be edited (any edit would be lost on next sync).
+    if (ev._syntheticFromFreeBusy) {
+        if (typeof showToast === 'function') showToast('\uD83D\uDD12 Hidden events are auto-detected from the band calendar and can\u2019t be edited here. Edit the underlying event in Google Calendar.', 5000);
+        return;
+    }
     console.log('[Calendar] Edit found event:', ev.title, ev.date, 'type=' + ev.type);
     var rawIdx = events.indexOf(ev);
     var hydrated = await _calHydrateGigFields(ev);
@@ -5846,6 +5887,12 @@ async function calDeleteEventById(eventId) {
     var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     var ev = events.find(function(e) { return e.id === eventId; });
     if (!ev) return;
+    // Path B.2 guard: deleting a synthetic locally just makes it return on the
+    // next sync. Tell the user instead of silently re-creating it.
+    if (ev._syntheticFromFreeBusy) {
+        if (typeof showToast === 'function') showToast('\uD83D\uDD12 Hidden events are auto-generated and will return on the next sync. Ask the event creator to switch visibility to Public, or hide their account default.', 6000);
+        return;
+    }
     var isRecurring = ev.repeatRule && ev.repeatRule.frequency;
     var msg = isRecurring
         ? 'Delete this recurring event? All future occurrences will be removed.'
