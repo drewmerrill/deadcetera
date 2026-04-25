@@ -66,6 +66,8 @@ export default {
       return handleFadrDiag(request, env);
     if (path.startsWith('/ical/') && request.method === 'GET')
       return handleICalFeed(request, env, path);
+    if (path.startsWith('/stageplot/') && request.method === 'GET')
+      return handleStagePlotPublic(request, env, path);
     if (path === '/tts' && request.method === 'POST')
       return handleTTS(request, env);
     if (path === '/fetch-chart' && request.method === 'POST')
@@ -1234,6 +1236,160 @@ function icsVEvent(ev, nowStr) {
   } catch(e) {
     return ''; // Malformed event — skip silently, don't break the feed
   }
+}
+
+// ── Public stage-plot view ──────────────────────────────────────────────────
+// GET /stageplot/:bandSlug/:plotId  →  Standalone HTML page rendering the
+// stage plot in read-only mode. No GrooveLinx login required — perfect for
+// FOH engineers / venue contacts who just need to see the plot.
+//
+// Reads from Firebase REST (same pattern as /ical/). Stage plots are stored
+// as an array at /bands/{slug}/stage_plots, so we fetch the whole array
+// and find by id.
+async function handleStagePlotPublic(request, env, path) {
+  try {
+    var parts = path.replace('/stageplot/', '').split('/');
+    var bandSlug = (parts[0] || '').replace(/[^a-z0-9_-]/gi, '').toLowerCase();
+    var plotId = parts[1] ? decodeURIComponent(parts[1]) : '';
+    if (!bandSlug || !plotId) {
+      return cors(new Response('<h1>Bad request</h1><p>URL must be /stageplot/{bandSlug}/{plotId}.</p>', { status: 400, headers: { 'Content-Type': 'text/html' } }));
+    }
+    var fbUrl = FIREBASE_BASE + '/bands/' + bandSlug + '/stage_plots.json';
+    var fbRes = await fetch(fbUrl, { headers: { 'Accept': 'application/json' } });
+    if (fbRes.status === 404) {
+      return cors(new Response('<h1>Not found</h1><p>No stage plots for this band.</p>', { status: 404, headers: { 'Content-Type': 'text/html' } }));
+    }
+    if (!fbRes.ok) {
+      return cors(new Response('<h1>Firebase error ' + fbRes.status + '</h1>', { status: 502, headers: { 'Content-Type': 'text/html' } }));
+    }
+    var raw = await fbRes.json();
+    var plots = Array.isArray(raw) ? raw.filter(Boolean) : (raw ? Object.values(raw).filter(Boolean) : []);
+    var plot = plots.find(function(p) { return p && p.id === plotId; });
+    if (!plot) {
+      return cors(new Response('<h1>Plot not found</h1><p>Plot id "' + plotId + '" doesn\'t exist on band "' + bandSlug + '".</p>', { status: 404, headers: { 'Content-Type': 'text/html' } }));
+    }
+    return cors(new Response(renderStagePlotHtml(plot, bandSlug), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } }));
+  } catch (e) {
+    return cors(new Response('<h1>Error</h1><pre>' + (e && e.message) + '</pre>', { status: 500, headers: { 'Content-Type': 'text/html' } }));
+  }
+}
+
+function spEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function renderStagePlotHtml(plot, bandSlug) {
+  var brandColor = plot.brandColor || '#667eea';
+  var bandName = (bandSlug.charAt(0).toUpperCase() + bandSlug.slice(1));
+  var date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  var elements = plot.elements || [];
+  var stations = plot.stations || [];
+  var isStationMode = plot.layoutMode === 'stations' && stations.length > 0;
+  var isFreeMode = plot.placementMode === 'free' && !isStationMode;
+
+  var COMPACT = { 'Vocal':'Vox','Guitar':'Gtr','Bass':'Bass','Keys':'Keys','Drums':'Drums','Percussion':'Perc',
+    'Guitar Amp':'GAmp','Bass Amp':'BAmp','Keyboard Rig':'KRig','Drum Kit':'Kit','Pedalboard':'PB','Laptop':'PC','IEM Rack':'IEM',
+    'Vocal Mic':'V Mic','Inst Mic':'Mic','Kick Mic':'Kick','Snare Mic':'Sn','Overhead Mic':'OH','Cab Mic':'Cab','DI Box':'DI','Floor Monitor':'Mon','Side Fill':'SF','IEM Pack':'IEM',
+    'Riser':'Riser','Drum Riser':'Riser','Power Drop':'Pwr' };
+
+  // Stage canvas
+  var stageHtml = '';
+  if (isStationMode) {
+    stageHtml = '<div style="display:grid;grid-template-columns:repeat(' + Math.max(6, stations.length + 2) + ',1fr);gap:6px;background:#f5f5f7;border:2px solid #ddd;border-radius:8px;padding:14px 10px 8px;position:relative">';
+    stageHtml += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#fff;padding:0 8px;font-size:10px;font-weight:700;color:#999;letter-spacing:0.1em">STAGE — ' + (plot.stageWidth || 24) + '\' × ' + (plot.stageDepth || 16) + '\'</div>';
+    var cellMap = {};
+    stations.forEach(function(st, i) { cellMap[st.x + ',' + st.y] = i; });
+    var maxCol = Math.max(6, stations.length + 2);
+    for (var r = 0; r < 5; r++) {
+      for (var c = 0; c < maxCol; c++) {
+        var stIdx = cellMap[c + ',' + r];
+        if (stIdx !== undefined) {
+          var st = stations[stIdx];
+          var name = (st.musicianName || '').split(' ')[0];
+          stageHtml += '<div style="grid-column:' + (c + 1) + ';grid-row:' + (r + 1) + ';background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);border-radius:5px;padding:6px;text-align:center;font-size:11px"><div style="font-weight:700;color:#222">' + spEsc(name) + '</div><div style="font-size:9px;color:#666">' + spEsc(st.role || '') + '</div></div>';
+        }
+      }
+    }
+    stageHtml += '</div>';
+  } else if (isFreeMode) {
+    stageHtml = '<div style="position:relative;background:#f5f5f7;border:2px solid #ddd;border-radius:8px;padding:14px 10px 8px;height:300px;overflow:hidden">';
+    stageHtml += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#fff;padding:0 8px;font-size:10px;font-weight:700;color:#999;letter-spacing:0.1em">STAGE — ' + (plot.stageWidth || 24) + '\' × ' + (plot.stageDepth || 16) + '\'</div>';
+    elements.forEach(function(el) {
+      var xPct = el.xPct !== undefined ? el.xPct : (el.x + 0.5) / 10 * 100;
+      var yPct = el.yPct !== undefined ? el.yPct : (el.y + 0.5) / 5 * 100;
+      var baseLabel = (el.label || '').split(' – ')[0].trim();
+      stageHtml += '<div style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%);width:60px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);border-radius:5px;padding:4px;text-align:center;font-size:11px"><div>' + spEsc(el.icon || '') + '</div><div style="font-size:9px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + spEsc(COMPACT[baseLabel] || baseLabel) + '</div></div>';
+    });
+    stageHtml += '<div style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:9px;color:#999;letter-spacing:0.15em">▼ AUDIENCE ▼</div>';
+    stageHtml += '</div>';
+  } else {
+    var cols = Math.min(10, Math.max(6, elements.length + 2));
+    var rows = 5;
+    stageHtml = '<table style="width:100%;border-collapse:collapse;background:#f5f5f7;border:2px solid #ddd;border-radius:8px"><caption style="caption-side:top;font-size:10px;font-weight:700;color:#999;padding:4px">STAGE — ' + (plot.stageWidth || 24) + '\' × ' + (plot.stageDepth || 16) + '\'</caption>';
+    for (var rr = 0; rr < rows; rr++) {
+      stageHtml += '<tr>';
+      for (var cc = 0; cc < cols; cc++) {
+        var found = elements.find(function(e) { return e.x === cc && e.y === rr; });
+        stageHtml += '<td style="border:1px solid #e5e5e5;padding:5px 3px;text-align:center;height:36px;vertical-align:middle;font-size:11px">';
+        if (found) {
+          var blab = (found.label || '').split(' – ')[0].trim();
+          stageHtml += '<div>' + spEsc(found.icon) + '</div><div style="font-size:9px;color:#666;font-weight:600">' + spEsc(COMPACT[blab] || blab) + '</div>';
+        }
+        stageHtml += '</td>';
+      }
+      stageHtml += '</tr>';
+    }
+    stageHtml += '</table>';
+  }
+
+  // Input list
+  var inputHtml = '';
+  if (plot.channels && plot.channels.length) {
+    inputHtml = '<h2 style="margin:24px 0 8px;font-size:16px;color:' + brandColor + '">Input List</h2><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:' + brandColor + ';color:#fff"><th style="padding:6px 8px;text-align:right;width:30px">#</th><th style="padding:6px 8px;text-align:left">Source</th><th style="padding:6px 8px;text-align:left">Mic / DI</th><th style="padding:6px 8px;text-align:center;width:50px">+48V</th><th style="padding:6px 8px;text-align:left;width:120px">Stand</th></tr></thead><tbody>';
+    plot.channels.forEach(function(ch, i) {
+      inputHtml += '<tr style="background:' + (i % 2 ? '#f7f7fa' : '#fff') + '"><td style="border:1px solid #ddd;padding:5px 8px;text-align:right;font-weight:700;color:' + brandColor + '">' + (i + 1) + '</td><td style="border:1px solid #ddd;padding:5px 8px">' + spEsc(ch.label || '') + '</td><td style="border:1px solid #ddd;padding:5px 8px">' + spEsc(ch.mic || '—') + '</td><td style="border:1px solid #ddd;padding:5px 8px;text-align:center;font-weight:700">' + (ch.phantom ? '✓' : '') + '</td><td style="border:1px solid #ddd;padding:5px 8px;font-size:11px">' + spEsc(ch.stand || '') + '</td></tr>';
+    });
+    inputHtml += '</tbody></table>';
+  }
+
+  // Monitors
+  var monHtml = '';
+  if (plot.monitors && plot.monitors.length) {
+    monHtml = '<h2 style="margin:18px 0 8px;font-size:16px;color:' + brandColor + '">Monitor Mixes</h2><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    plot.monitors.forEach(function(m, i) {
+      monHtml += '<tr><td style="border:1px solid #ddd;padding:5px 8px;width:60px;font-weight:700;color:' + brandColor + '">Mix ' + (i + 1) + '</td><td style="border:1px solid #ddd;padding:5px 8px">' + spEsc(m.label || '') + '</td></tr>';
+    });
+    monHtml += '</table>';
+  }
+
+  // Rider + contact
+  var riderHtml = '';
+  if (plot.riderNotes) {
+    riderHtml = '<h2 style="margin:18px 0 8px;font-size:16px;color:' + brandColor + '">Tech Rider</h2><div style="white-space:pre-wrap;font-size:12px;line-height:1.6;border-left:3px solid ' + brandColor + ';padding:8px 14px;background:#f9f9fb">' + spEsc(plot.riderNotes) + '</div>';
+  }
+  var contactHtml = '';
+  if (plot.contact) {
+    contactHtml = '<div style="margin-top:18px;font-size:13px;padding:10px 14px;border:1px solid #ddd;border-radius:4px;background:#fff"><strong style="color:' + brandColor + '">Band Contact:</strong> ' + spEsc(plot.contact) + '</div>';
+  }
+
+  var logoTag = plot.brandLogo ? '<img src="' + plot.brandLogo + '" style="max-height:48px;max-width:140px;background:#fff;padding:4px;border-radius:4px;margin-bottom:8px" alt="logo">' : '';
+
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>' + spEsc(bandName) + ' — ' + spEsc(plot.name || 'Stage Plot') + '</title>'
+    + '<style>body{font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;max-width:880px;margin:0 auto;padding:24px;background:#fff;color:#1a1a1a}h1{font-size:24px;margin:0}@media print{body{padding:0;max-width:none}.no-print{display:none}}</style>'
+    + '</head><body>'
+    + '<div style="border-bottom:3px solid ' + brandColor + ';padding-bottom:12px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:flex-end;gap:14px">'
+    + '<div>' + logoTag + '<h1>' + spEsc(bandName) + '</h1><div style="font-size:14px;color:' + brandColor + ';font-weight:700;margin-top:4px">' + spEsc(plot.name || 'Stage Plot') + (plot.setVariantLabel ? ' · ' + spEsc(plot.setVariantLabel) : '') + '</div></div>'
+    + '<div style="font-size:11px;color:#666;text-align:right">Live link · current as of ' + date + '<br>Stage ' + (plot.stageWidth || 24) + '\' × ' + (plot.stageDepth || 16) + '\'</div>'
+    + '</div>'
+    + stageHtml
+    + inputHtml
+    + monHtml
+    + riderHtml
+    + contactHtml
+    + '<button class="no-print" onclick="window.print()" style="position:fixed;top:14px;right:14px;padding:8px 18px;background:' + brandColor + ';color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.2)">🖨 Print / PDF</button>'
+    + '<div class="no-print" style="margin-top:30px;padding-top:14px;border-top:1px solid #eee;font-size:11px;color:#999;text-align:center">This is a live link — bookmark it to always see the latest version. Powered by GrooveLinx.</div>'
+    + '</body></html>';
 }
 
 // ── ICS utilities (worker-side, no DOM) ──────────────────────────────────────

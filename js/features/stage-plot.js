@@ -233,14 +233,20 @@ function _spRenderStation(station, idx, share) {
     + (cellSpan > 1 ? ';grid-column:span ' + cellSpan : '') + '"'
     + (share ? '' : ' onclick="_spClickStation(' + idx + ')"') + '>';
 
-  // Initials avatar — colored circle with member's initials. Substitute for
-  // a real photo (members don't have photo fields). Helps FOH/MON match
-  // face → name when looking at the stage during line check.
-  var initials = _spInitials(station.musicianName);
-  var avatarColor = _spInitialsColor(station.musicianName);
+  // Avatar — uses uploaded photo if available, else colored initials.
+  // Photo is per-station (band members can have different photos per plot
+  // if they dress differently for different gigs, which sometimes happens).
   var avatarSize = share ? '14px' : '18px';
+  var avatarHtml;
+  if (station.photo) {
+    avatarHtml = '<div style="width:' + avatarSize + ';height:' + avatarSize + ';border-radius:50%;background-image:url(\'' + station.photo + '\');background-size:cover;background-position:center;flex-shrink:0;border:1px solid rgba(255,255,255,0.15)"></div>';
+  } else {
+    var initials = _spInitials(station.musicianName);
+    var avatarColor = _spInitialsColor(station.musicianName);
+    avatarHtml = '<div style="width:' + avatarSize + ';height:' + avatarSize + ';border-radius:50%;background:' + avatarColor + ';color:#fff;font-size:' + (share ? '0.42em' : '0.5em') + ';font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + _spEsc(initials) + '</div>';
+  }
   html += '<div style="display:flex;align-items:center;gap:3px;line-height:1">'
-    + '<div style="width:' + avatarSize + ';height:' + avatarSize + ';border-radius:50%;background:' + avatarColor + ';color:#fff;font-size:' + (share ? '0.42em' : '0.5em') + ';font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">' + _spEsc(initials) + '</div>'
+    + avatarHtml
     + '<span style="font-size:' + (share ? '0.7em' : '0.75em') + ';line-height:1">' + roleIcon + '</span>'
     + '</div>';
   html += '<span style="font-size:' + (share ? '0.44em' : '0.48em') + ';font-weight:700;color:var(--text);line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:' + (share ? '58px' : '66px') + '">' + _spEsc(shortName) + '</span>';
@@ -320,7 +326,7 @@ function _spClickStation(idx) {
   if (!st.components.monitor) st.components.monitor = { enabled: true, kind: 'wedge', position: 'front_left' };
 
   var action = prompt(
-    st.musicianName + ' (' + st.role + ')\n\n1 = Edit name/role\n2 = Move\n3 = Toggle pedalboard\n4 = Toggle mic\n5 = Toggle monitor\n6 = Change monitor type\n7 = Change size\n8 = Cancel',
+    st.musicianName + ' (' + st.role + ')\n\n1 = Edit name/role\n2 = Move\n3 = Toggle pedalboard\n4 = Toggle mic\n5 = Toggle monitor\n6 = Change monitor type\n7 = Change size\n8 = Upload photo' + (st.photo ? ' (replace)' : '') + '\n9 = Remove photo\n0 = Cancel',
     '1'
   );
   if (action === '1') {
@@ -348,7 +354,49 @@ function _spClickStation(idx) {
   } else if (action === '7') {
     st.sizeClass = st.sizeClass === 'lg' ? 'md' : 'lg';
     _spDirty = true; _spRender();
+  } else if (action === '8') {
+    // Trigger a hidden file input for photo upload — capped at 200KB so
+    // Firebase docs don't bloat. Resized client-side via canvas before save.
+    var fi = document.createElement('input');
+    fi.type = 'file';
+    fi.accept = 'image/*';
+    fi.onchange = function() {
+      if (!fi.files || !fi.files[0]) return;
+      _spReadAndResizePhoto(fi.files[0], function(dataUrl) {
+        st.photo = dataUrl;
+        _spDirty = true;
+        _spRender();
+        if (typeof showToast === 'function') showToast('✓ Photo uploaded');
+      });
+    };
+    fi.click();
+  } else if (action === '9') {
+    if (st.photo) { delete st.photo; _spDirty = true; _spRender(); }
   }
+}
+
+// Resize an uploaded image to 96×96px JPEG via canvas, returns data URL.
+// Keeps Firebase doc size manageable (~5KB per photo) while still being
+// crisp at the avatar render size.
+function _spReadAndResizePhoto(file, callback) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var img = new Image();
+    img.onload = function() {
+      var size = 96;
+      var canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      var ctx = canvas.getContext('2d');
+      // Center-crop to square then scale to 96x96
+      var src = img.width > img.height
+        ? { sx: (img.width - img.height) / 2, sy: 0, sw: img.height, sh: img.height }
+        : { sx: 0, sy: (img.height - img.width) / 2, sw: img.width, sh: img.width };
+      ctx.drawImage(img, src.sx, src.sy, src.sw, src.sh, 0, 0, size, size);
+      callback(canvas.toDataURL('image/jpeg', 0.85));
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 function _spAddStation() {
@@ -529,9 +577,16 @@ function _spRender() {
     html += '</div></div>';
 
     // Display toggles
-    html += '<div style="display:flex;gap:8px;margin-bottom:8px">';
+    html += '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">';
     html += '<label for="spToggleLabels" style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="spToggleLabels" name="spLabels" ' + (_spShowLabels ? 'checked' : '') + ' onchange="_spToggleLabels(this.checked)" style="accent-color:#667eea"> Labels</label>';
     html += '<label for="spToggleDirections" style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="spToggleDirections" name="spDirections" ' + (_spShowDirections ? 'checked' : '') + ' onchange="_spToggleDirections(this.checked)" style="accent-color:#667eea"> Stage directions</label>';
+    if (!isStationMode) {
+      var placementMode = plot.placementMode || 'grid';
+      html += '<span style="margin-left:auto;display:inline-flex;border:1px solid rgba(255,255,255,0.1);border-radius:6px;overflow:hidden">'
+        + '<button onclick="_spSetPlacementMode(\'grid\')" style="font-size:0.68em;padding:3px 10px;border:none;cursor:pointer;background:' + (placementMode === 'grid' ? 'rgba(99,102,241,0.18)' : 'transparent') + ';color:' + (placementMode === 'grid' ? '#a5b4fc' : 'var(--text-dim)') + ';font-weight:700">⊞ Grid</button>'
+        + '<button onclick="_spSetPlacementMode(\'free\')" style="font-size:0.68em;padding:3px 10px;border:none;border-left:1px solid rgba(255,255,255,0.1);cursor:pointer;background:' + (placementMode === 'free' ? 'rgba(99,102,241,0.18)' : 'transparent') + ';color:' + (placementMode === 'free' ? '#a5b4fc' : 'var(--text-dim)') + ';font-weight:700">✦ Free</button>'
+        + '</span>';
+    }
     html += '</div>';
   } else {
     // ── Share Mode Header ──
@@ -548,7 +603,10 @@ function _spRender() {
 
   // Stage canvas — branch by layout mode
   var isStationMode = plot.layoutMode === 'stations' && plot.stations && plot.stations.length > 0;
-  html += isStationMode ? _spRenderStationLayout(plot) : _spRenderStage(plot);
+  var isFreeMode = plot.placementMode === 'free' && !isStationMode;
+  html += isStationMode ? _spRenderStationLayout(plot)
+    : isFreeMode ? _spRenderStageFree(plot)
+    : _spRenderStage(plot);
 
   if (!share) {
     if (isStationMode) {
@@ -578,6 +636,9 @@ function _spRender() {
 
     // Channel list
     html += _spRenderChannelList(plot);
+
+    // Cable runs summary
+    html += _spRenderCableSummary(plot);
 
     // Monitor mixes
     html += _spRenderMonitorMixes(plot);
@@ -765,6 +826,35 @@ function _spRenderStage(plot) {
   }
   html += '</div>';
 
+  // ── Cable routing overlay (SVG, absolutely positioned over the grid) ──
+  // Lines drawn from each cable's fromEl center to its toEl center, color-
+  // coded by type. Only computed when share=false OR cables exist; share
+  // mode keeps cables visible so FOH sees the patch.
+  if (plot.cables && plot.cables.length) {
+    // Build element-id → grid-cell map for quick lookup
+    var byId = {};
+    plot.elements.forEach(function(ev, idx) {
+      if (ev.id) byId[ev.id] = ev;
+    });
+    var cableSvg = '<svg style="position:absolute;inset:14px 10px 8px;width:calc(100% - 20px);height:calc(100% - 22px);pointer-events:none;overflow:visible" preserveAspectRatio="none" viewBox="0 0 ' + cols + ' ' + rows + '">';
+    plot.cables.forEach(function(cable) {
+      var f = byId[cable.fromId], t = byId[cable.toId];
+      if (!f || !t) return;
+      var cfg = SP_CABLE_TYPES[cable.type] || SP_CABLE_TYPES.other;
+      // Cell centers in grid units (each cell is 1×1 in viewBox)
+      var x1 = f.x + 0.5, y1 = f.y + 0.5;
+      var x2 = t.x + 0.5, y2 = t.y + 0.5;
+      cableSvg += '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" '
+        + 'stroke="' + cfg.color + '" stroke-width="0.07" stroke-dasharray="0.2 0.15" stroke-linecap="round" opacity="0.85"/>';
+      // Label at midpoint with type + length
+      var mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      var label = cfg.label + (cable.length ? ' ' + cable.length + '\'' : '');
+      cableSvg += '<text x="' + mx + '" y="' + my + '" font-size="0.18" fill="' + cfg.color + '" text-anchor="middle" font-weight="700" style="paint-order:stroke;stroke:rgba(15,23,42,0.85);stroke-width:0.05">' + label + '</text>';
+    });
+    cableSvg += '</svg>';
+    html += cableSvg;
+  }
+
   // Audience marker
   html += '<div style="text-align:center;margin-top:6px;font-size:0.52em;font-weight:700;color:rgba(255,255,255,0.12);letter-spacing:0.15em;text-transform:uppercase">';
   if (_spShowDirections && !share) html += '<span style="font-size:0.8em;color:rgba(255,255,255,0.05);margin-right:8px">DS</span>';
@@ -814,6 +904,49 @@ function _spRenderChannelList(plot) {
       html += '<input value="' + _spEsc(stand) + '" onchange="_spUpdateChannel(' + i + ',\'stand\',this.value)" placeholder="Stand" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:4px 6px;border-radius:4px;font-size:0.72em;min-width:0">';
       html += '<button onclick="_spRemoveChannel(' + i + ')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.7em">✕</button>';
       html += '</div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function _spRenderCableSummary(plot) {
+  var hasCables = plot.cables && plot.cables.length;
+  var html = '<div style="margin-top:20px">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+  html += '<span style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">Cable Runs</span>';
+  html += '<span style="font-size:0.62em;color:var(--text-dim)">Click any element on the stage → "Connect cable from here" to start a run.</span>';
+  html += '</div>';
+  if (!hasCables) {
+    html += '<div style="color:var(--text-dim);font-size:0.78em;padding:6px 0">No cable runs yet. Optional — only useful if you need a cable budget.</div>';
+  } else {
+    var byType = _spCableLengthSummary(plot);
+    var totalLen = 0, totalCount = 0;
+    Object.keys(byType).forEach(function(t) { totalLen += byType[t].length; totalCount += byType[t].count; });
+    // Per-type summary line
+    html += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">';
+    Object.keys(byType).forEach(function(t) {
+      var cfg = SP_CABLE_TYPES[t] || SP_CABLE_TYPES.other;
+      html += '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:5px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);font-size:0.72em">'
+        + '<span style="display:inline-block;width:10px;height:3px;background:' + cfg.color + ';border-radius:1px"></span>'
+        + '<span style="font-weight:700;color:' + cfg.color + '">' + cfg.label + '</span>'
+        + '<span style="color:var(--text-muted)">×' + byType[t].count + (byType[t].length ? ' · ' + byType[t].length + '\'' : '') + '</span>'
+        + '</span>';
+    });
+    html += '<span style="margin-left:auto;font-size:0.72em;color:var(--text-dim);font-weight:600">Total ' + totalCount + ' runs · ' + totalLen + '\'</span>';
+    html += '</div>';
+    // Per-cable rows for management
+    plot.cables.forEach(function(c) {
+      var fromEl = (plot.elements || []).find(function(e) { return e.id === c.fromId; });
+      var toEl = (plot.elements || []).find(function(e) { return e.id === c.toId; });
+      if (!fromEl || !toEl) return;
+      var cfg = SP_CABLE_TYPES[c.type] || SP_CABLE_TYPES.other;
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.74em">'
+        + '<span style="color:' + cfg.color + ';font-weight:700;min-width:46px">' + cfg.label + '</span>'
+        + '<span style="color:var(--text-muted);flex:1;overflow:hidden;text-overflow:ellipsis">' + _spEsc(fromEl.label) + ' → ' + _spEsc(toEl.label) + '</span>'
+        + '<span style="color:var(--text-dim);min-width:36px;text-align:right">' + (c.length ? c.length + '\'' : '—') + '</span>'
+        + '<button onclick="_spRemoveCable(\'' + c.id + '\')" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.85em">✕</button>'
+        + '</div>';
     });
   }
   html += '</div>';
@@ -936,6 +1069,84 @@ window._spTouchEnd = _spTouchEnd;
 
 var _spPendingElement = null;
 
+// Cable routing — connects two placed elements with an annotated line
+// (mic cable, DI line, power, etc.). Stored on plot as plot.cables[].
+// Visualized as an SVG overlay on top of the grid. Each cable has:
+//   { id, fromId, toId, type, length, label, color }
+var SP_CABLE_TYPES = {
+  'mic-cable': { color: '#fbbf24', label: 'XLR' },
+  'instrument': { color: '#f87171', label: 'Inst' },
+  'di-line':   { color: '#86efac', label: 'DI' },
+  'power':     { color: '#a5b4fc', label: 'AC' },
+  'iem':       { color: '#fb923c', label: 'IEM' },
+  'speaker':   { color: '#94a3b8', label: 'Spkr' },
+  'mon-send':  { color: '#34d399', label: 'Mon' },
+  'other':     { color: '#cbd5e1', label: '—' }
+};
+
+var _spCableFromIdx = -1; // when in "draw cable" mode, this is the source element
+
+function _spStartCableFrom(idx) {
+  _spCableFromIdx = idx;
+  if (typeof showToast === 'function') showToast('Pick another element to connect to (or click the same element to cancel)');
+  _spRender();
+}
+
+function _spCableConnect(toIdx) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) { _spCableFromIdx = -1; return; }
+  if (_spCableFromIdx === toIdx) { _spCableFromIdx = -1; _spRender(); return; }
+  var fromEl = plot.elements[_spCableFromIdx];
+  var toEl = plot.elements[toIdx];
+  if (!fromEl || !toEl) { _spCableFromIdx = -1; _spRender(); return; }
+  // Ensure both have IDs (legacy elements may not)
+  if (!fromEl.id) fromEl.id = 'el_' + Date.now() + '_a';
+  if (!toEl.id) toEl.id = 'el_' + Date.now() + '_b';
+  // Pick cable type
+  var type = prompt(
+    'Cable type:\n1 = XLR (mic cable)\n2 = Instrument\n3 = DI line\n4 = Power (AC)\n5 = IEM\n6 = Speaker\n7 = Monitor send\n8 = Other',
+    '1'
+  );
+  var typeMap = { '1':'mic-cable', '2':'instrument', '3':'di-line', '4':'power', '5':'iem', '6':'speaker', '7':'mon-send', '8':'other' };
+  var cableType = typeMap[type] || 'other';
+  var lengthStr = prompt('Length (ft, optional):', '25');
+  var length = parseFloat(lengthStr) || 0;
+  if (!plot.cables) plot.cables = [];
+  plot.cables.push({
+    id: 'cable_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+    fromId: fromEl.id,
+    toId: toEl.id,
+    type: cableType,
+    length: length
+  });
+  _spCableFromIdx = -1;
+  _spDirty = true;
+  _spRender();
+}
+
+function _spRemoveCable(cableId) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot || !plot.cables) return;
+  plot.cables = plot.cables.filter(function(c) { return c.id !== cableId; });
+  _spDirty = true;
+  _spRender();
+}
+
+function _spCableLengthSummary(plot) {
+  if (!plot.cables || !plot.cables.length) return null;
+  var byType = {};
+  plot.cables.forEach(function(c) {
+    if (!byType[c.type]) byType[c.type] = { count: 0, length: 0 };
+    byType[c.type].count++;
+    byType[c.type].length += (c.length || 0);
+  });
+  return byType;
+}
+
+window._spStartCableFrom = _spStartCableFrom;
+window._spCableConnect = _spCableConnect;
+window._spRemoveCable = _spRemoveCable;
+
 function _spAddElement(type, icon, label, mic) {
   _spMoveIdx = -1; // cancel any move in progress
   _spPendingElement = { type: type, icon: icon, label: label, mic: mic || '' };
@@ -995,11 +1206,13 @@ function _spClickElement(idx) {
   if (!plot || !plot.elements[idx]) return;
   var el = plot.elements[idx];
 
+  // If a cable is being drawn, this click is the destination
+  if (_spCableFromIdx >= 0) { _spCableConnect(idx); return; }
   // If already in move mode for this element, cancel
   if (_spMoveIdx === idx) { _spMoveIdx = -1; _spRender(); return; }
 
   var action = prompt(
-    el.label + '\n\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Cancel',
+    el.label + '\n\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Cancel',
     '1'
   );
   if (action === '1') {
@@ -1016,8 +1229,156 @@ function _spClickElement(idx) {
   } else if (action === '4') {
     var num = prompt('Input/channel number (e.g. 3):', el.inputNum || '');
     if (num !== null) { el.inputNum = num.trim(); _spDirty = true; _spRender(); }
+  } else if (action === '5') {
+    _spStartCableFrom(idx);
   }
 }
+
+function _spSetPlacementMode(mode) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  if (mode === 'free' && (plot.placementMode || 'grid') === 'grid') {
+    // Convert existing grid coords → % so elements appear in similar
+    // positions when entering free mode for the first time.
+    var cols = Math.min(10, Math.max(6, (plot.elements || []).length + 2));
+    var rows = 5;
+    (plot.elements || []).forEach(function(el) {
+      if (el.xPct === undefined) el.xPct = (el.x + 0.5) / cols * 100;
+      if (el.yPct === undefined) el.yPct = (el.y + 0.5) / rows * 100;
+    });
+  }
+  plot.placementMode = mode;
+  _spDirty = true;
+  _spRender();
+}
+window._spSetPlacementMode = _spSetPlacementMode;
+
+// Free-form render: absolute-positioned elements on a fixed-aspect canvas.
+// Elements use xPct/yPct (% of canvas dimensions). Drag updates these
+// percentages so the layout scales gracefully across screen sizes.
+function _spRenderStageFree(plot) {
+  var share = _spShareMode;
+  var canvasH = share ? '260px' : '320px';
+  var html = '<div id="spFreeCanvas" class="' + (share ? 'sp-share' : '') + '"'
+    + ' ondragover="_spFreeDragOver(event)"'
+    + ' ondrop="_spFreeDrop(event)"'
+    + ' onclick="_spFreeCanvasClick(event)"'
+    + ' style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 10px 8px;height:' + canvasH + ';overflow:hidden">';
+  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'') + '</div>';
+  if (_spShowDirections && !share) {
+    html += '<div style="position:absolute;top:50%;left:-2px;transform:translateY(-50%) rotate(-90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SL</div>';
+    html += '<div style="position:absolute;top:50%;right:-2px;transform:translateY(-50%) rotate(90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SR</div>';
+  }
+
+  // Elements
+  (plot.elements || []).forEach(function(el, idx) {
+    var xPct = el.xPct !== undefined ? el.xPct : (el.x + 0.5) / 10 * 100;
+    var yPct = el.yPct !== undefined ? el.yPct : (el.y + 0.5) / 5 * 100;
+    var baseLabel = (el.label || '').split(' – ')[0].trim();
+    var sc = SP_SIZE_CLASS[baseLabel] || 'sm';
+    var w = sc === 'lg' ? 84 : sc === 'md' ? 64 : 50;
+    var iconSize = share ? '0.85em' : '1em';
+    var bg = sc === 'lg' ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.07)';
+    var border = sc === 'lg' ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.18)';
+    var displayLabel = share && el.label.indexOf(' – ') >= 0 ? el.label.split(' – ')[0].split(' ')[0] : (SP_COMPACT[baseLabel] || baseLabel);
+    var rot = el.rotation || 0;
+    html += '<div data-el-idx="' + idx + '"'
+      + (share ? '' : ' draggable="true"'
+        + ' ondragstart="_spDragStart(event,' + idx + ')"'
+        + ' ondragend="_spDragEnd(event)"'
+        + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"')
+      + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);width:' + w + 'px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:4px;text-align:center;cursor:' + (share ? 'default' : 'grab') + ';font-size:' + iconSize + ';line-height:1.2;user-select:none">';
+    html += '<div style="font-size:1em">' + el.icon + '</div>';
+    if (_spShowLabels || share) {
+      html += '<div style="font-size:0.5em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _spEsc(displayLabel) + '</div>';
+    }
+    if (!share) {
+      html += '<button class="sp-del" onclick="event.stopPropagation();_spRemoveElement(' + idx + ')" style="position:absolute;top:-2px;right:-2px;background:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.15);border-radius:50%;color:#94a3b8;cursor:pointer;font-size:0.6em;padding:0;width:14px;height:14px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.15s">✕</button>';
+    }
+    html += '</div>';
+  });
+
+  // Cable overlay (SVG)
+  if (plot.cables && plot.cables.length) {
+    var byId = {};
+    plot.elements.forEach(function(ev) { if (ev.id) byId[ev.id] = ev; });
+    html += '<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none" preserveAspectRatio="none" viewBox="0 0 100 100">';
+    plot.cables.forEach(function(c) {
+      var f = byId[c.fromId], t = byId[c.toId];
+      if (!f || !t) return;
+      var fx = f.xPct !== undefined ? f.xPct : (f.x + 0.5) / 10 * 100;
+      var fy = f.yPct !== undefined ? f.yPct : (f.y + 0.5) / 5 * 100;
+      var tx = t.xPct !== undefined ? t.xPct : (t.x + 0.5) / 10 * 100;
+      var ty = t.yPct !== undefined ? t.yPct : (t.y + 0.5) / 5 * 100;
+      var cfg = SP_CABLE_TYPES[c.type] || SP_CABLE_TYPES.other;
+      html += '<line x1="' + fx + '" y1="' + fy + '" x2="' + tx + '" y2="' + ty + '" stroke="' + cfg.color + '" stroke-width="0.4" stroke-dasharray="1.2 0.9" stroke-linecap="round" opacity="0.85" vector-effect="non-scaling-stroke"/>';
+    });
+    html += '</svg>';
+  }
+
+  // Audience marker
+  html += '<div style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:0.52em;font-weight:700;color:rgba(255,255,255,0.18);letter-spacing:0.15em;text-transform:uppercase">▼ AUDIENCE ▼</div>';
+  html += '</div>';
+  return html;
+}
+
+// Free-mode drag handlers
+function _spFreeDragOver(ev) { ev.preventDefault(); }
+function _spFreeDrop(ev) {
+  ev.preventDefault();
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var canvas = document.getElementById('spFreeCanvas');
+  if (!canvas) return;
+  var rect = canvas.getBoundingClientRect();
+  var xPct = ((ev.clientX - rect.left) / rect.width) * 100;
+  var yPct = ((ev.clientY - rect.top) / rect.height) * 100;
+  // Clamp
+  xPct = Math.max(2, Math.min(98, xPct));
+  yPct = Math.max(4, Math.min(96, yPct));
+  var idx = _spDragIdx;
+  if (idx < 0) {
+    var d = ev.dataTransfer && ev.dataTransfer.getData ? ev.dataTransfer.getData('text/plain') : '';
+    idx = parseInt(d, 10);
+  }
+  if (isNaN(idx) || idx < 0 || !plot.elements[idx]) return;
+  plot.elements[idx].xPct = xPct;
+  plot.elements[idx].yPct = yPct;
+  _spDragIdx = -1;
+  _spDirty = true;
+  _spRender();
+}
+// Click empty canvas → place pending element at click coords
+function _spFreeCanvasClick(ev) {
+  if (!_spPendingElement) return;
+  var canvas = document.getElementById('spFreeCanvas');
+  if (!canvas) return;
+  var rect = canvas.getBoundingClientRect();
+  var xPct = ((ev.clientX - rect.left) / rect.width) * 100;
+  var yPct = ((ev.clientY - rect.top) / rect.height) * 100;
+  xPct = Math.max(2, Math.min(98, xPct));
+  yPct = Math.max(4, Math.min(96, yPct));
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var newEl = {
+    id: 'el_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+    type: _spPendingElement.type,
+    icon: _spPendingElement.icon,
+    label: _spPendingElement.label,
+    x: 0, y: 0,
+    xPct: xPct, yPct: yPct,
+    rotation: 0
+  };
+  if (_spPendingElement.mic) newEl.mic = _spPendingElement.mic;
+  plot.elements.push(newEl);
+  _spPendingElement = null;
+  _spDirty = true;
+  _spRender();
+}
+
+window._spFreeDragOver = _spFreeDragOver;
+window._spFreeDrop = _spFreeDrop;
+window._spFreeCanvasClick = _spFreeCanvasClick;
 
 function _spApplyPreset(name) {
   var preset = SP_PRESETS[name];
@@ -1461,20 +1822,39 @@ function _spRenderShareDetails(plot) {
 
 // ── Export / Print View ──────────────────────────────────────────────────────
 
-// Generate a deep link to this plot. Format: #stageplot-share/{plotId}.
-// When the app loads with this hash, it auto-jumps to the stage plot
-// page and selects/displays the plot in share mode. Always shows the
-// current Firebase state, so the venue's bookmark stays fresh.
+// Generate a share link. Two flavors offered:
+//   1. Public link (worker route /stageplot/...) — no GrooveLinx login
+//      required, perfect for FOH engineers who don't have band accounts.
+//   2. In-band link (#stageplot-share/...) — requires GrooveLinx login,
+//      lands in the app's share mode with full editor access.
+// Both always show the current Firebase state.
 function _spCopyShareLink() {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
-  var base = window.location.origin + window.location.pathname;
-  var url = base + '#stageplot-share/' + encodeURIComponent(plot.id);
-  // Save current state first so the link points at fresh data.
   if (_spDirty) _spSave();
+
+  var bandSlug = (typeof window.currentBandSlug !== 'undefined' && window.currentBandSlug)
+    || (typeof localStorage !== 'undefined' && localStorage.getItem('deadcetera_band_slug'))
+    || 'deadcetera';
+  var publicUrl = 'https://deadcetera-proxy.drewmerrill.workers.dev/stageplot/'
+    + encodeURIComponent(bandSlug) + '/' + encodeURIComponent(plot.id);
+  var inBandUrl = window.location.origin + window.location.pathname
+    + '#stageplot-share/' + encodeURIComponent(plot.id);
+
+  var pick = prompt(
+    'Pick a share link to copy:\n\n'
+    + '1 = Public link (no GrooveLinx login required — best for FOH engineers / venue contacts)\n'
+    + '2 = In-band link (GrooveLinx login required — best for the band)\n'
+    + '3 = Cancel',
+    '1'
+  );
+  if (pick !== '1' && pick !== '2') return;
+  var url = pick === '1' ? publicUrl : inBandUrl;
+  var label = pick === '1' ? 'Public link' : 'In-band link';
+
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(url).then(function() {
-      if (typeof showToast === 'function') showToast('✓ Share link copied — paste into a text/email. Always shows the current plot.', 5000);
+      if (typeof showToast === 'function') showToast('✓ ' + label + ' copied. Always shows the latest version.', 5000);
     }).catch(function() {
       _spShareLinkFallback(url);
     });
