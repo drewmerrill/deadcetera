@@ -2207,24 +2207,53 @@ window._calShowCalendarAudit = async function() {
         html += '</div>';
     }
 
-    // Pollution section
+    // Pollution section — events YOU created (deletable)
     if (report.personalPollution.length) {
         html += '<div style="margin-bottom:18px">'
-            + '<div style="font-size:0.85em;font-weight:800;color:var(--gl-text);margin-bottom:4px">Personal pollution (' + report.personalPollution.length + ')</div>'
-            + '<div style="font-size:0.74em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.5">Events on the band calendar created by a band member but not titled like a band event \u2014 likely personal events that landed here by mistake. Deleting will remove them from Google AND your local copy. <b>Review carefully.</b></div>'
+            + '<div style="font-size:0.85em;font-weight:800;color:var(--gl-text);margin-bottom:4px">Your pollution (' + report.personalPollution.length + ')</div>'
+            + '<div style="font-size:0.74em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.5">Events YOU created on the band calendar that don\u2019t look like band events \u2014 likely personal stuff that landed here by mistake. Deleting will remove them from Google AND your local copy. <b>Review carefully.</b></div>'
             + '<label style="display:flex;align-items:center;gap:6px;font-size:0.78em;font-weight:700;color:#fbbf24;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="calAuditPollAll" onchange="document.querySelectorAll(\'.calAuditPollRow\').forEach(function(c){c.checked=event.target.checked})"> Select all</label>';
         report.personalPollution.forEach(function(p) {
+            var recurringBadge = p.isRecurring
+                ? '<span style="font-size:0.78em;padding:1px 6px;border-radius:4px;background:rgba(251,146,60,0.15);color:#fb923c;font-weight:700;margin-left:6px;white-space:nowrap">\u21BB recurring \u00B7 ' + (p.instanceCount || '?') + '\u00D7</span>'
+                : '';
             html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--gl-border-subtle);font-size:0.78em;cursor:pointer">'
                 + '<input type="checkbox" class="calAuditPollRow" data-gid="' + (p.googleEventId || '').replace(/"/g, '&quot;') + '">'
                 + '<div style="flex:1;min-width:0">'
-                + '<div style="color:var(--gl-text);font-weight:600;overflow:hidden;text-overflow:ellipsis">' + (p.title || '(untitled)') + '</div>'
-                + '<div style="color:var(--gl-text-tertiary);font-size:0.88em;margin-top:1px">' + (p.date || '(no date)') + ' \u00B7 ' + (p.creator || 'unknown') + ' \u00B7 ' + (p.visibility || 'default') + '</div>'
+                + '<div style="color:var(--gl-text);font-weight:600;overflow:hidden;text-overflow:ellipsis">' + (p.title || '(untitled)') + recurringBadge + '</div>'
+                + '<div style="color:var(--gl-text-tertiary);font-size:0.88em;margin-top:1px">' + (p.date || '(no date)') + ' \u00B7 ' + (p.creator || 'unknown') + ' \u00B7 ' + (p.visibility || 'default') + (p.isRecurring ? ' \u00B7 deleting removes the entire series' : '') + '</div>'
                 + '</div></label>';
         });
         html += '</div>';
     }
 
-    if (!report.zombies.length && !report.personalPollution.length) {
+    // Others' pollution — informational only (Google blocks cross-user deletes)
+    if (report.othersPollution && report.othersPollution.length) {
+        // Group by creator for readability
+        var byCreator = {};
+        report.othersPollution.forEach(function(p) {
+            var key = p.creator || 'unknown';
+            if (!byCreator[key]) byCreator[key] = [];
+            byCreator[key].push(p);
+        });
+        html += '<div style="margin-bottom:18px;padding:10px 12px;border-radius:10px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.16)">'
+            + '<div style="font-size:0.85em;font-weight:800;color:var(--gl-text);margin-bottom:4px">Other members\u2019 pollution (' + report.othersPollution.length + ')</div>'
+            + '<div style="font-size:0.74em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.5">Events on the band calendar created by other members that don\u2019t look like band events. <b>You can\u2019t delete these</b> \u2014 Google only lets the creator delete their own events. Forward this list to them to clean up on their end.</div>';
+        Object.keys(byCreator).forEach(function(creator) {
+            html += '<div style="margin-top:10px"><div style="font-size:0.75em;font-weight:700;color:#a5b4fc;margin-bottom:4px">' + creator + ' \u00B7 ' + byCreator[creator].length + '</div>';
+            byCreator[creator].slice(0, 8).forEach(function(p) {
+                var rec = p.isRecurring ? ' \u00B7 \u21BB recurring \u00D7' + (p.instanceCount || '?') : '';
+                html += '<div style="font-size:0.72em;color:var(--gl-text-secondary);padding:2px 0">\u2022 ' + (p.title || '(untitled)') + ' \u00B7 ' + (p.date || '?') + rec + '</div>';
+            });
+            if (byCreator[creator].length > 8) {
+                html += '<div style="font-size:0.7em;color:var(--gl-text-tertiary);padding:2px 0;font-style:italic">\u2026 and ' + (byCreator[creator].length - 8) + ' more</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    if (!report.zombies.length && !report.personalPollution.length && (!report.othersPollution || !report.othersPollution.length)) {
         html += '<div style="padding:30px 20px;text-align:center"><div style="font-size:2em;margin-bottom:6px">\u2728</div>'
             + '<div style="font-size:0.95em;font-weight:700;color:var(--gl-green)">Calendar is clean</div>'
             + '<div style="font-size:0.78em;color:var(--gl-text-secondary);margin-top:4px">No zombies or pollution detected.</div></div>';

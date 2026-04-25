@@ -2782,6 +2782,13 @@ window.GLCalendarSync = (function() {
     var bandEmails = await _getBandEmails();
     var bandEmailSet = {};
     (bandEmails || []).forEach(function(em) { bandEmailSet[em.toLowerCase()] = true; });
+    // Track the current user's email — Google permissions only allow each
+    // user to delete events THEY created (even on a shared cal with "make
+    // changes to events"). Cross-user deletes return 403. So only propose
+    // deletion of events the running user owns; everything else is shown
+    // as informational so the band can chase the right person.
+    var myEmail = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.toLowerCase() : '';
+    report.othersPollution = [];
 
     // ── 1. Local zombies — events in calendar_events whose Google id is gone ──
     var localEvents = [];
@@ -2844,13 +2851,32 @@ window.GLCalendarSync = (function() {
           // like a band event, with private/default visibility — strong signal
           // it was a personal event accidentally landed on DC.
           if (isMemberCreated && !isBandEvent && isPrivateOrDefault) {
-            report.personalPollution.push({
-              googleEventId: g.id,
+            var deleteId = g.recurringEventId || g.id;
+            var isRecurring = !!g.recurringEventId;
+            var isMine = myEmail && creatorEmail === myEmail;
+            // Pick the bucket: only events the current user owns can actually
+            // be deleted via this token (Google returns 403 otherwise).
+            var bucket = isMine ? report.personalPollution : report.othersPollution;
+            // Dedupe recurring instances regardless of bucket.
+            if (isRecurring) {
+              var existing = bucket.find(function(p) {
+                return p.googleEventId === deleteId;
+              });
+              if (existing) {
+                existing.instanceCount = (existing.instanceCount || 1) + 1;
+                return;
+              }
+            }
+            bucket.push({
+              googleEventId: deleteId,
               title: title || '(untitled)',
               date: startStr.substring(0, 10) || '',
               startStr: startStr,
               creator: creatorEmail,
-              visibility: visibility
+              visibility: visibility,
+              isRecurring: isRecurring,
+              instanceCount: isRecurring ? 1 : 0,
+              isMine: isMine
             });
           } else if (startMs && startMs < staleCutoffMs && isBandEvent) {
             // Past band event > 60 days old — informational only
@@ -2872,6 +2898,7 @@ window.GLCalendarSync = (function() {
     // Newest-first ordering for the UI
     report.zombies.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
     report.personalPollution.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+    report.othersPollution.sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
     return report;
   }
 
@@ -2912,6 +2939,26 @@ window.GLCalendarSync = (function() {
         });
         if (delRes.status === 204 || delRes.status === 410 || delRes.status === 404) {
           result.pollutionDeleted++;
+        } else if (delRes.status === 400 && /_\d{8}$/.test(gid)) {
+          // Recurring-instance ID slipped through (audit didn't see the
+          // recurringEventId field for some reason). Strip the date suffix
+          // and retry against the parent series.
+          var parentId = gid.replace(/_\d{8}$/, '');
+          var retryUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(parentId)
+            + '?calendarId=' + encodeURIComponent(bandCalId);
+          try {
+            var retryRes = await fetch(retryUrl, {
+              method: 'DELETE',
+              headers: { 'Authorization': 'Bearer ' + accessToken }
+            });
+            if (retryRes.status === 204 || retryRes.status === 410 || retryRes.status === 404) {
+              result.pollutionDeleted++;
+            } else {
+              result.errors.push('delete_failed_' + retryRes.status + '_' + parentId + '_(parent retry)');
+            }
+          } catch(e2) {
+            result.errors.push('delete_retry_exception_' + (e2 && e2.message));
+          }
         } else {
           result.errors.push('delete_failed_' + delRes.status + '_' + gid);
         }
