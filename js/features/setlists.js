@@ -12,6 +12,97 @@
 'use strict';
 
 // ============================================================================
+// BPM HELPERS — shared across Plan/Stage/Live Gig/Drummer prep surfaces.
+// ============================================================================
+// Color-zone BPM lookup: at-a-glance read of "this is fast/slow" for the
+// drummer behind a kit. Returns visual + label + tap-pulse fields used by
+// every BPM render site.
+window._glBpmZone = function(bpm) {
+    var n = parseFloat(bpm);
+    if (!isFinite(n) || n <= 0) return null;
+    var rounded = Math.round(n);
+    if (rounded < 70)        return { bpm: rounded, color: '#60a5fa', bg: 'rgba(96,165,250,0.18)',  border: 'rgba(96,165,250,0.5)',  label: 'slow',     emoji: '\uD83C\uDF0A' }; // blue
+    if (rounded < 95)        return { bpm: rounded, color: '#86efac', bg: 'rgba(134,239,172,0.18)', border: 'rgba(134,239,172,0.5)', label: 'mid-slow', emoji: '\uD83C\uDF31' }; // green-ish
+    if (rounded < 120)       return { bpm: rounded, color: '#34d399', bg: 'rgba(52,211,153,0.18)',  border: 'rgba(52,211,153,0.5)',  label: 'mid',      emoji: '\uD83C\uDFB5' }; // teal-green
+    if (rounded < 140)       return { bpm: rounded, color: '#fbbf24', bg: 'rgba(251,191,36,0.20)',  border: 'rgba(251,191,36,0.55)', label: 'driving', emoji: '\u26A1' }; // amber
+    if (rounded < 165)       return { bpm: rounded, color: '#fb923c', bg: 'rgba(251,146,60,0.22)',  border: 'rgba(251,146,60,0.6)',  label: 'fast',     emoji: '\uD83D\uDD25' }; // orange
+    return                   { bpm: rounded, color: '#f87171', bg: 'rgba(248,113,113,0.22)', border: 'rgba(248,113,113,0.6)', label: 'burner', emoji: '\uD83D\uDE80' }; // red
+};
+
+// Render a compact BPM pill (used in setlist rows). Compact mode = mobile
+// (just the number, ~36px wide). Full mode = laptop/iPad ("♩=124", ~58px).
+// onclick triggers the visual tap-pulse.
+window._glBpmPillHTML = function(bpm, opts) {
+    opts = opts || {};
+    var z = window._glBpmZone(bpm);
+    if (!z) return '';
+    var compact = !!opts.compact;
+    var label = compact ? z.bpm : ('\u266A=' + z.bpm);
+    var size = opts.fontSize || (compact ? '0.7em' : '0.78em');
+    var pad = compact ? '2px 6px' : '3px 8px';
+    var minW = compact ? '32px' : '50px';
+    return '<button onclick="event.stopPropagation();_glBpmPulse(' + z.bpm + ');" class="gl-bpm-pill" style="display:inline-flex;align-items:center;justify-content:center;font-size:' + size + ';font-weight:800;font-family:inherit;color:' + z.color + ';background:' + z.bg + ';border:1px solid ' + z.border + ';border-radius:6px;padding:' + pad + ';min-width:' + minW + ';cursor:pointer;flex-shrink:0;line-height:1;-webkit-tap-highlight-color:transparent" title="Tap to pulse this tempo (' + z.label + ')">' + label + '</button>';
+};
+
+// Visual tap-to-pulse: full-screen tempo pulse for ~6 beats so the drummer
+// can lock in mentally before the count-in. Click anywhere or wait it out.
+window._glBpmPulse = function(bpm) {
+    var n = parseFloat(bpm);
+    if (!isFinite(n) || n <= 0) return;
+    // Kill any existing pulse before starting a new one
+    var existing = document.getElementById('glBpmPulseOverlay');
+    if (existing) existing.remove();
+    var z = window._glBpmZone(n) || { color: '#fbbf24', bg: 'rgba(251,191,36,0.2)', label: '', bpm: Math.round(n) };
+    var beatMs = 60000 / n;
+    var beats = 8;
+    var overlay = document.createElement('div');
+    overlay.id = 'glBpmPulseOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent';
+    overlay.innerHTML = '<div id="glBpmPulseCircle" style="width:160px;height:160px;border-radius:50%;background:' + z.bg + ';border:4px solid ' + z.color + ';display:flex;align-items:center;justify-content:center;font-size:3em;font-weight:900;color:' + z.color + ';font-family:inherit;transition:transform 80ms ease-out,opacity 80ms ease-out">' + z.bpm + '</div>'
+        + '<div style="margin-top:18px;font-size:1em;color:#fff;font-weight:600">\u266A=' + z.bpm + ' \u00B7 ' + (z.label || 'tempo') + '</div>'
+        + '<div id="glBpmPulseCounter" style="margin-top:8px;font-size:0.85em;color:#94a3b8">Beat 1 of ' + beats + '</div>'
+        + '<div style="margin-top:14px;font-size:0.78em;color:#64748b">Tap anywhere to stop</div>';
+    overlay.onclick = function() { if (overlay._cancel) overlay._cancel(); overlay.remove(); };
+    document.body.appendChild(overlay);
+
+    var beat = 0;
+    var circle = document.getElementById('glBpmPulseCircle');
+    var counter = document.getElementById('glBpmPulseCounter');
+    function tick() {
+        beat++;
+        if (counter) counter.textContent = 'Beat ' + beat + ' of ' + beats;
+        if (circle) {
+            circle.style.transform = 'scale(1.18)';
+            setTimeout(function() { if (circle) circle.style.transform = 'scale(1)'; }, Math.min(140, beatMs * 0.4));
+        }
+        // light haptic on supported devices (only fires on user-initiated chain)
+        if (navigator.vibrate) try { navigator.vibrate(40); } catch(_e) {}
+        if (beat >= beats) {
+            setTimeout(function() {
+                var o = document.getElementById('glBpmPulseOverlay');
+                if (o) o.remove();
+            }, beatMs);
+            return;
+        }
+        var t = setTimeout(tick, beatMs);
+        overlay._cancel = function() { clearTimeout(t); };
+    }
+    // First beat fires almost immediately so the user gets feedback fast
+    setTimeout(tick, 60);
+};
+
+// Compute BPM transition label (e.g. "92 → 130") between consecutive songs.
+window._glBpmTransition = function(prevBpm, nextBpm) {
+    var a = parseFloat(prevBpm), b = parseFloat(nextBpm);
+    if (!isFinite(a) || !isFinite(b) || a <= 0 || b <= 0) return null;
+    var aR = Math.round(a), bR = Math.round(b);
+    var diff = bR - aR;
+    var arrow = diff === 0 ? '\u2192' : diff > 0 ? '\u2191' : '\u2193';
+    var color = Math.abs(diff) < 8 ? '#94a3b8' : Math.abs(diff) < 20 ? '#fbbf24' : '#fb923c';
+    return { from: aR, to: bR, diff: diff, arrow: arrow, color: color };
+};
+
+// ============================================================================
 // SETLIST BUILDER
 // ============================================================================
 var _slFilter = 'all'; // 'all' | 'upcoming' | 'past'
@@ -640,7 +731,8 @@ function slRenderSetSongs(setIdx) {
         const segue = typeof item === 'object' ? (item.segue || 'stop') : 'stop';
         const songData = allSongsList.find(sd => sd.title === s);
         const keyStr = songData?.key ? `<span style="font-size:0.7em;color:#818cf8;background:rgba(129,140,248,0.12);padding:1px 5px;border-radius:4px;border:1px solid rgba(129,140,248,0.2)">${songData.key}</span>` : '';
-        const bpmStr = songData?.bpm ? `<span style="font-size:0.7em;color:#94a3b8">\u26a1${songData.bpm}</span>` : '';
+        // BPM pill with color zone + tap-to-pulse. Compact on mobile.
+        const bpmStr = songData?.bpm ? window._glBpmPillHTML(songData.bpm, { compact: _isMobile }) : '';
         const segueColor = { stop:'#64748b', flow:'#818cf8', segue:'#34d399', cutoff:'#f87171' }[segue] || '#64748b';
         const histTip = typeof getSongHistoryTooltip === 'function' ? getSongHistoryTooltip(s) : '';
         // Compact love + readiness badges
@@ -671,21 +763,18 @@ function slRenderSetSongs(setIdx) {
                     <button onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.78em;padding:4px;min-width:24px;min-height:24px">\u2715</button>
                 </div>`;
             } else {
-                // CLEAN BUILD: title-dominant, BPM · Key metadata right-aligned
+                // CLEAN BUILD: title-dominant, BPM pill + Key right-aligned.
+                // BPM pill has fixed width (~36px) so iPhone real estate stays
+                // intact; tap to trigger visual pulse.
                 var segIndicator = segue === 'flow' ? '<span style="color:rgba(129,140,248,0.5);font-size:0.82em"> \u2192</span>'
                     : segue === 'segue' ? '<span style="color:rgba(52,211,153,0.5);font-size:0.82em"> ~</span>' : '';
-                // Compact metadata: "96 · D" or just "D" or just "96"
-                var _meta = '';
-                var _bpm = songData?.bpm ? String(songData.bpm) : '';
-                var _key = songData?.key || '';
-                if (_bpm && _key) _meta = _bpm + ' \u00B7 ' + _key;
-                else if (_bpm) _meta = _bpm;
-                else if (_key) _meta = _key;
+                var _bpmPill = songData?.bpm ? window._glBpmPillHTML(songData.bpm, { compact: true }) : '';
+                var _keyTag = songData?.key ? '<span style="font-size:0.62em;color:#a5b4fc;font-weight:600;flex-shrink:0">' + songData.key + '</span>' : '';
                 row = `<div class="list-item sl-song-row" data-set="${setIdx}" data-idx="${i}"
-                    style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:default;min-height:40px;border-bottom:1px solid rgba(255,255,255,0.03)">
+                    style="display:flex;align-items:center;gap:6px;padding:8px 10px;cursor:default;min-height:40px;border-bottom:1px solid rgba(255,255,255,0.03)">
                     <span style="color:var(--text-dim);min-width:20px;font-weight:600;flex-shrink:0;font-size:0.8em;text-align:right">${i + 1}</span>
-                    <span style="flex:1;font-weight:600;font-size:0.95em;color:var(--text,#e2e8f0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}${segIndicator}</span>
-                    ${_meta ? `<span style="font-size:0.65em;color:rgba(148,163,184,0.45);font-weight:500;flex-shrink:0;white-space:nowrap">${_meta}</span>` : ''}
+                    <span style="flex:1;min-width:0;font-weight:600;font-size:0.95em;color:var(--text,#e2e8f0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s}${segIndicator}</span>
+                    ${_keyTag}${_bpmPill}
                 </div>`;
             }
         } else {
@@ -1223,7 +1312,10 @@ function _slRenderStageView(idx, sl) {
         _prepBtnLabel = '\u2B07 Prep for Gig \u00B7 Download ' + totalCount + ' charts offline';
         _prepBtnStyle = 'border:1px solid rgba(129,140,248,0.35);background:rgba(129,140,248,0.08);color:#a5b4fc';
     }
-    html += '<button id="slPrepGigBtn" onclick="_slPrepForGig(' + idx + ')" style="display:block;width:100%;padding:12px;border-radius:10px;' + _prepBtnStyle + ';font-size:0.9em;font-weight:700;cursor:pointer;min-height:44px;font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">' + _prepBtnLabel + '</button>';
+    html += '<button id="slPrepGigBtn" onclick="_slPrepForGig(' + idx + ')" style="display:block;width:100%;padding:12px;border-radius:10px;' + _prepBtnStyle + ';font-size:0.9em;font-weight:700;cursor:pointer;min-height:44px;font-family:inherit;margin-bottom:6px;-webkit-tap-highlight-color:transparent">' + _prepBtnLabel + '</button>'
+        // Drummer Prep — walks through BPMs in setlist order, big numbers,
+        // tap-to-pulse on each. iPhone-friendly (full-width sheet).
+        + '<button onclick="_slShowDrummerPrep(' + idx + ')" style="display:block;width:100%;padding:10px;border-radius:10px;border:1px solid rgba(251,146,60,0.35);background:rgba(251,146,60,0.08);color:#fb923c;font-size:0.85em;font-weight:700;cursor:pointer;min-height:40px;font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">\uD83E\uDD41 Drummer Prep \u00B7 walk the BPMs</button>';
     html += '<div id="slPrepGigStatus" style="font-size:0.72em;color:#64748b;text-align:center;margin-top:-4px;margin-bottom:10px;min-height:16px">' + (_prepAllReady ? 'Charts stored locally \u2014 no wifi needed at the gig.' : '') + '</div>';
 
     // ── 3. COACHING — calm bandmate voice, no alarm icons ──
@@ -1275,13 +1367,15 @@ function _slRenderStageView(idx, sl) {
             html += '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.03);min-height:40px;min-width:0">';
             html += '<span style="color:' + (isWeak ? '#f59e0b' : 'var(--text-dim)') + ';font-weight:600;min-width:20px;font-size:0.78em;text-align:right;flex-shrink:0">' + (i + 1) + '</span>';
             html += '<div style="width:' + rdBarW + ';height:' + rdBarH + ';border-radius:2px;background:' + rdColor + ';flex-shrink:0"></div>';
-            // Title dominant, BPM · Key right-aligned
+            // Title dominant, BPM pill + Key right-aligned. Stage View is the
+            // drummer-facing surface — BPM gets the color-zone pill treatment,
+            // tap-to-pulse, and is more prominent than in Plan mode.
             html += '<span style="flex:1;min-width:0;font-weight:' + titleWeight + ';font-size:0.92em;color:' + titleColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + title + (segStr ? '<span style="color:' + segColor + ';font-size:0.82em">' + segStr + '</span>' : '') + '</span>';
-            // Compact metadata: "96·D" or just one, aligned in fixed-width slot
             var _sKey = _songKeyMap[title] || '';
             var _sBpm = _songBpmMap[title] || '';
-            var _sMeta = _sBpm && _sKey ? _sBpm + '\u00B7' + _sKey : _sBpm || _sKey;
-            html += '<span style="font-size:0.62em;color:rgba(148,163,184,' + (isWeak ? '0.6' : '0.35') + ');font-weight:500;min-width:36px;text-align:right;flex-shrink:0;white-space:nowrap">' + _sMeta + '</span>';
+            var _isMobileStage = window.innerWidth <= 600;
+            if (_sKey) html += '<span style="font-size:0.65em;color:#a5b4fc;font-weight:700;flex-shrink:0">' + _sKey + '</span>';
+            if (_sBpm) html += window._glBpmPillHTML(_sBpm, { compact: _isMobileStage });
             html += '</div>';
         });
         html += '</div></div>';
@@ -1289,6 +1383,76 @@ function _slRenderStageView(idx, sl) {
 
     content.innerHTML = html;
 }
+
+// Drummer Prep — full-screen modal showing every song's BPM in setlist
+// order, with transition cues between songs and tap-to-pulse on each. Built
+// for the drummer to walk the gig before count-in.
+window._slShowDrummerPrep = function(idx) {
+    var data = window._cachedSetlists || [];
+    var sl = data[idx];
+    if (!sl) return;
+    var allSongsList = (typeof allSongs !== 'undefined' ? allSongs : []);
+    var bpmMap = {};
+    var keyMap = {};
+    allSongsList.forEach(function(s) {
+        if (s.bpm) bpmMap[s.title] = String(s.bpm);
+        if (s.key) keyMap[s.title] = s.key;
+    });
+    // Flatten all songs across sets in order
+    var all = [];
+    (sl.sets || []).forEach(function(set, si) {
+        (set.songs || []).forEach(function(item) {
+            var t = typeof item === 'string' ? item : (item.title || '');
+            if (!t) return;
+            all.push({ title: t, setName: set.name || ('Set ' + (si + 1)), setIdx: si });
+        });
+    });
+
+    var rows = '';
+    all.forEach(function(s, i) {
+        var bpm = bpmMap[s.title] || '';
+        var key = keyMap[s.title] || '';
+        var z = bpm ? window._glBpmZone(bpm) : null;
+        var prevBpm = i > 0 ? bpmMap[all[i - 1].title] : null;
+        var trans = (i > 0 && prevBpm && bpm) ? window._glBpmTransition(prevBpm, bpm) : null;
+        var newSet = (i === 0) || (all[i - 1].setIdx !== s.setIdx);
+        if (newSet) {
+            rows += '<div style="font-size:0.7em;font-weight:800;letter-spacing:0.12em;color:#94a3b8;text-transform:uppercase;margin:14px 0 4px;padding-left:4px">' + s.setName + '</div>';
+        } else if (trans) {
+            // Transition cue between consecutive songs
+            rows += '<div style="text-align:center;font-size:0.78em;font-weight:700;color:' + trans.color + ';padding:2px 0;letter-spacing:0.04em">' + trans.from + ' ' + trans.arrow + ' ' + trans.to + (trans.diff !== 0 ? '  (' + (trans.diff > 0 ? '+' : '') + trans.diff + ')' : '') + '</div>';
+        }
+        rows += '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);margin-bottom:4px">'
+            + '<span style="min-width:24px;font-size:0.85em;font-weight:700;color:var(--gl-text-tertiary);text-align:right">' + (i + 1) + '</span>'
+            + '<span style="flex:1;min-width:0;font-weight:700;font-size:0.95em;color:var(--gl-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.title + '</span>'
+            + (key ? '<span style="font-size:0.72em;color:#a5b4fc;font-weight:700;flex-shrink:0">' + key + '</span>' : '');
+        if (z) {
+            // Bigger pill in this surface — tappable, color-zoned.
+            rows += '<button onclick="_glBpmPulse(' + z.bpm + ')" style="display:inline-flex;flex-direction:column;align-items:center;justify-content:center;font-family:inherit;color:' + z.color + ';background:' + z.bg + ';border:2px solid ' + z.border + ';border-radius:10px;padding:6px 10px;min-width:62px;cursor:pointer;flex-shrink:0;-webkit-tap-highlight-color:transparent">'
+                + '<span style="font-size:1.15em;font-weight:900;line-height:1">' + z.bpm + '</span>'
+                + '<span style="font-size:0.55em;font-weight:700;opacity:0.75;text-transform:uppercase;letter-spacing:0.06em;margin-top:1px">' + z.label + '</span>'
+                + '</button>';
+        } else {
+            rows += '<span style="font-size:0.72em;color:var(--gl-text-tertiary);font-style:italic;flex-shrink:0">no BPM</span>';
+        }
+        rows += '</div>';
+    });
+    if (!rows) rows = '<div style="padding:30px 20px;text-align:center;color:var(--gl-text-tertiary);font-size:0.88em">No songs in this setlist yet.</div>';
+
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:0;overflow-y:auto" onclick="if(event.target===this)this.remove()">'
+        + '<div style="background:var(--gl-surface,#0f172a);border:1px solid var(--gl-border,rgba(255,255,255,0.08));border-radius:0;padding:18px 14px;width:100%;max-width:520px;height:100vh;max-height:100vh;overflow-y:auto;box-sizing:border-box">'
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;position:sticky;top:-18px;padding-top:18px;background:var(--gl-surface,#0f172a);z-index:5">'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1.4em;padding:0">\u2190</button>'
+        + '<span style="font-size:1.1em;font-weight:800;color:var(--gl-text);flex:1">\uD83E\uDD41 Drummer Prep</span>'
+        + '</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);margin-bottom:14px;line-height:1.5">Walk the BPMs in setlist order. Tap any tempo to feel a visual pulse before the count-in. Arrows between songs show the tempo change.</div>'
+        + rows
+        + '<div style="text-align:center;padding:14px 0 30px;font-size:0.72em;color:var(--gl-text-tertiary)">Tap outside or \u2190 to close</div>'
+        + '</div></div>';
+    var wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap.firstChild);
+};
 
 // Pre-warm every chart + per-song metadata for this setlist into localStorage
 // so everything works offline at the gig (no wifi = no problem).

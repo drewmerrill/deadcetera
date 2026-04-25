@@ -393,10 +393,42 @@
     // Counter
     if (counter) counter.textContent = (_lg.cursor + 1) + ' / ' + total;
 
-    // Song info bar — emphasized current song + badges + quick note
+    // Song info bar — emphasized current song + badges + quick note.
+    // BPM gets the color-zone pill treatment + tap-to-pulse for the drummer.
     if (songBar) {
       var keyStr = song.key ? ('<span class="lg-key-badge">' + _esc(song.key) + '</span>') : '';
-      var bpmStr = song.bpm ? ('<span class="lg-bpm-badge">&#9834; ' + _esc(String(song.bpm)) + '</span>') : '';
+      var bpmStr = '';
+      if (song.bpm && typeof window._glBpmZone === 'function') {
+        var z = window._glBpmZone(song.bpm);
+        if (z) {
+          // Big, glanceable BPM block. Tappable for visual pulse.
+          bpmStr = '<button class="lg-bpm-big" onclick="event.stopPropagation();_glBpmPulse(' + z.bpm + ')" '
+            + 'style="display:inline-flex;flex-direction:column;align-items:center;justify-content:center;'
+            + 'font-family:inherit;color:' + z.color + ';background:' + z.bg + ';border:2px solid ' + z.border + ';'
+            + 'border-radius:10px;padding:4px 10px;min-width:62px;cursor:pointer;line-height:1;-webkit-tap-highlight-color:transparent" '
+            + 'title="Tap to pulse this tempo (' + z.label + ')">'
+            + '<span style="font-size:1.35rem;font-weight:900">' + z.bpm + '</span>'
+            + '<span style="font-size:0.5rem;font-weight:700;opacity:0.75;letter-spacing:0.06em;text-transform:uppercase;margin-top:1px">\u266A ' + z.label + '</span>'
+            + '</button>';
+        }
+      } else if (song.bpm) {
+        bpmStr = '<span class="lg-bpm-badge">&#9834; ' + _esc(String(song.bpm)) + '</span>';
+      }
+      // Transition cue — show next song's BPM delta if we know what's coming up
+      var transStr = '';
+      var nextSong = _lg.songs[_lg.cursor + 1];
+      if (song.bpm && nextSong && nextSong.bpm && typeof window._glBpmTransition === 'function') {
+        var t = window._glBpmTransition(song.bpm, nextSong.bpm);
+        if (t) {
+          transStr = '<span title="Next song tempo (' + _esc(nextSong.title || '') + ')" '
+            + 'style="display:inline-flex;flex-direction:column;align-items:center;justify-content:center;'
+            + 'font-family:inherit;font-size:0.62rem;color:' + t.color + ';background:rgba(255,255,255,0.04);'
+            + 'border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:2px 8px;min-width:50px;line-height:1.1;flex-shrink:0">'
+            + '<span style="font-size:0.55rem;font-weight:700;opacity:0.7;letter-spacing:0.04em;text-transform:uppercase">next</span>'
+            + '<span style="font-weight:800;font-size:0.78rem;margin-top:1px">' + t.arrow + ' ' + t.to + '</span>'
+            + '</span>';
+        }
+      }
       var statusStr = '';
       if (song.statusTag && STATUS_LABELS[song.statusTag]) {
         var col = STATUS_COLORS[song.statusTag] || '#888';
@@ -405,7 +437,7 @@
       }
       songBar.innerHTML =
         '<span class="lg-song-title" style="font-size:1.3rem;text-shadow:0 0 12px rgba(99,102,241,0.2)">' + _esc(song.title) + '</span>' +
-        '<span class="lg-song-badges">' + keyStr + bpmStr + statusStr + '</span>' +
+        '<span class="lg-song-badges" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">' + keyStr + bpmStr + transStr + statusStr + '</span>' +
         '<button onclick="lgQuickNote()" style="margin-left:auto;padding:3px 8px;border-radius:5px;font-size:0.6em;font-weight:700;border:1px solid rgba(255,255,255,0.1);background:none;color:#64748b;cursor:pointer;flex-shrink:0" title="Add a quick note">+ Note</button>';
       // Pulse animation on song change
       songBar.style.transition = 'background 0.3s ease';
