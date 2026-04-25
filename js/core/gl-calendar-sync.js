@@ -2857,15 +2857,37 @@ window.GLCalendarSync = (function() {
   // Check if current user can write to the band calendar
   var _bandCalAccessCache = null;
   async function canWriteBandCalendar() {
-    if (_bandCalAccessCache !== null) return _bandCalAccessCache;
+    // Use cached `true` if we've previously confirmed write access. Don't
+    // cache `false` — early-render or transient listCalendars errors would
+    // otherwise lock the Health Card to "Read-only" until full reload.
+    if (_bandCalAccessCache === true) return true;
     var calId = await _getBandCalendarId();
-    if (!calId) { _bandCalAccessCache = false; return false; }
-    // Check if user's calendar list includes the band calendar
+    if (!calId) return false;
+    // Verify accessRole meaningfully — `writer` or `owner` actually grants
+    // "Make changes to events"; `reader` / `freeBusyReader` should NOT
+    // pass this check despite being in the user's calendar list.
     try {
       var cals = await listCalendars();
-      _bandCalAccessCache = cals.some(function(c) { return c.id === calId; });
-    } catch(e) { _bandCalAccessCache = false; }
-    return _bandCalAccessCache;
+      if (!cals || !cals.length) return false; // transient empty result — don't cache false
+      var match = cals.find(function(c) { return c.id === calId; });
+      if (!match) {
+        // Calendar not in list at all — definitely no write access.
+        _bandCalAccessCache = false;
+        return false;
+      }
+      var role = (match.accessRole || '').toLowerCase();
+      var hasWrite = role === 'writer' || role === 'owner';
+      if (hasWrite) {
+        _bandCalAccessCache = true;
+        return true;
+      }
+      // Role is reader / freeBusyReader / unknown — return false but DON'T
+      // cache it; next call may reflect updated permissions.
+      return false;
+    } catch(e) {
+      console.warn('[CalSync] canWriteBandCalendar check failed:', e && e.message);
+      return false; // don't cache transient errors
+    }
   }
 
   // ── One-time cleanup sweep ────────────────────────────────────────────────
