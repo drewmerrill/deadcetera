@@ -2509,6 +2509,225 @@ window.GLCalendarSync = (function() {
     return false;
   }
 
+  // ── Account-default-visibility detector (UX idea #1) ──────────────────────
+  // Creates a tiny throwaway event on the BAND calendar with visibility:
+  // 'default', reads it back, and returns the visibility Google actually
+  // assigned (which reveals the user's account-level default). Result cached
+  // in localStorage for 7 days so we don't repeatedly create test events.
+  // Returns: { visibility: 'public'|'private'|'default'|'unknown', cached: bool, ts: ISO }
+  async function detectAccountDefaultVisibility(opts) {
+    opts = opts || {};
+    var cacheKey = 'gl_cal_default_vis_' + (currentUserEmail || 'unknown');
+    var ttlMs = 7 * 24 * 60 * 60 * 1000;
+    if (!opts.force) {
+      try {
+        var cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached && cached.ts && (Date.now() - new Date(cached.ts).getTime()) < ttlMs) {
+          return Object.assign({}, cached, { cached: true });
+        }
+      } catch(e) {}
+    }
+    var result = { visibility: 'unknown', cached: false, ts: new Date().toISOString() };
+    if (!hasCalendarScope() || !accessToken) {
+      result.error = 'no_scope';
+      return result;
+    }
+    var bandCalId = await _getBandCalendarId();
+    if (!bandCalId) {
+      result.error = 'no_band_cal';
+      return result;
+    }
+    try {
+      // Far-future date to avoid showing in any sane calendar view if it
+      // somehow doesn't get cleaned up. 2099 = will be deleted by then.
+      var farFuture = '2099-12-31';
+      var body = {
+        summary: '[GrooveLinx visibility test — safe to delete]',
+        description: 'Auto-created by GrooveLinx to detect your account default visibility. This event is deleted immediately after the check.',
+        start: { date: farFuture },
+        end: { date: '2100-01-01' },
+        visibility: 'default',
+        transparency: 'transparent',
+        extendedProperties: { private: { glVisibilityProbe: '1' } }
+      };
+      var createUrl = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(bandCalId);
+      var createRes = await fetch(createUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+        body: JSON.stringify(body)
+      });
+      if (!createRes.ok) {
+        result.error = 'create_failed_' + createRes.status;
+        return result;
+      }
+      var created = await createRes.json();
+      // Read it back to see what visibility Google actually assigned. If user
+      // account default is Private, Google rewrites visibility:'default' to
+      // visibility:'private' on save.
+      var readUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(created.id) + '?calendarId=' + encodeURIComponent(bandCalId);
+      var readRes = await fetch(readUrl, {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
+      if (readRes.ok) {
+        var readBack = await readRes.json();
+        result.visibility = readBack.visibility || 'default';
+      } else {
+        result.error = 'read_failed_' + readRes.status;
+      }
+      // Always delete the probe event, even if read failed.
+      try {
+        await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(created.id) + '?calendarId=' + encodeURIComponent(bandCalId), {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+      } catch(_e) { /* best-effort cleanup */ }
+      try { localStorage.setItem(cacheKey, JSON.stringify(result)); } catch(_e) {}
+      return result;
+    } catch (err) {
+      result.error = 'exception: ' + (err && err.message);
+      return result;
+    }
+  }
+
+  // ── Calendar Health Check (UX idea #2/#3) ─────────────────────────────────
+  // Returns a structured result with one entry per check the Calendar Health
+  // Card and "Run diagnostics" troubleshooter both render. Each entry:
+  // { id, label, status: 'ok'|'warn'|'error'|'unknown', message, fixAction? }
+  async function runCalendarHealthCheck(opts) {
+    opts = opts || {};
+    var checks = [];
+    var hasToken = !!accessToken && hasCalendarScope();
+    checks.push({
+      id: 'signin',
+      label: 'Signed in to Google',
+      status: hasToken ? 'ok' : 'error',
+      message: hasToken ? 'Calendar scope granted' : 'Sign in or reconnect Google Calendar',
+      fixAction: hasToken ? null : '_calConnectGoogle()'
+    });
+    if (!hasToken) return { checks: checks, verdict: 'error' };
+
+    var bandCalId = await _getBandCalendarId();
+    var rawBandLevel = null;
+    try {
+      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+      if (db && typeof bandPath === 'function') {
+        var snap = await db.ref(bandPath('band_calendar/calendarId')).once('value');
+        rawBandLevel = snap.val();
+      }
+    } catch(_e) {}
+    if (!bandCalId) {
+      checks.push({
+        id: 'bandcal',
+        label: 'Band calendar configured',
+        status: 'error',
+        message: rawBandLevel
+          ? 'Stored cal ID is not a group calendar ("' + rawBandLevel + '") \u2014 events would land on a personal calendar.'
+          : 'No band calendar selected yet.',
+        fixAction: '_calShowAvailabilitySettings()'
+      });
+      return { checks: checks, verdict: 'error' };
+    }
+    checks.push({
+      id: 'bandcal',
+      label: 'Band calendar configured',
+      status: 'ok',
+      message: 'Group calendar selected'
+    });
+
+    // Write access (HEAD on the cal — fast)
+    var canWrite = false;
+    try { canWrite = await canWriteBandCalendar(); } catch(_e) {}
+    checks.push({
+      id: 'write',
+      label: 'Write access to band calendar',
+      status: canWrite ? 'ok' : 'error',
+      message: canWrite
+        ? '"Make changes to events" granted'
+        : 'Read-only access \u2014 ask the calendar owner to grant "Make changes to events".',
+      fixAction: canWrite ? null : null
+    });
+
+    // Visibility default
+    var vis = await detectAccountDefaultVisibility(opts);
+    if (vis.error) {
+      checks.push({
+        id: 'visibility',
+        label: 'Default event visibility',
+        status: 'unknown',
+        message: 'Could not check (' + vis.error + ')'
+      });
+    } else if (vis.visibility === 'private' || vis.visibility === 'confidential') {
+      checks.push({
+        id: 'visibility',
+        label: 'Default event visibility',
+        status: 'warn',
+        message: 'Set to PRIVATE \u2014 events you create will be hidden from GrooveLinx.',
+        fixAction: '_calShowVisibilityHelp()'
+      });
+    } else if (vis.visibility === 'public') {
+      checks.push({
+        id: 'visibility',
+        label: 'Default event visibility',
+        status: 'ok',
+        message: 'Set to Public — events visible to band'
+      });
+    } else {
+      // 'default' = inherits from calendar default. For a group cal that
+      // typically resolves to public, but it's worth flagging so the user
+      // can confirm.
+      checks.push({
+        id: 'visibility',
+        label: 'Default event visibility',
+        status: 'ok',
+        message: 'Default (inherits calendar setting)'
+      });
+    }
+
+    // Last sync recency
+    try {
+      var st = await _loadSyncState();
+      if (!st.lastSyncAt) {
+        checks.push({
+          id: 'lastsync',
+          label: 'Last sync',
+          status: 'warn',
+          message: 'Never synced \u2014 try Sync Calendars to verify everything works.',
+          fixAction: '_calSyncNow()'
+        });
+      } else {
+        var ageMs = Date.now() - new Date(st.lastSyncAt).getTime();
+        var ageHrs = Math.floor(ageMs / 3600000);
+        if (ageHrs >= 24 * 7) {
+          checks.push({
+            id: 'lastsync',
+            label: 'Last sync',
+            status: 'warn',
+            message: 'Over a week ago \u2014 your changes may not have reached the band.',
+            fixAction: '_calSyncNow()'
+          });
+        } else {
+          var label = ageHrs < 1 ? 'just now' : (ageHrs < 24 ? ageHrs + 'h ago' : Math.floor(ageHrs / 24) + 'd ago');
+          checks.push({
+            id: 'lastsync',
+            label: 'Last sync',
+            status: 'ok',
+            message: label
+          });
+        }
+      }
+    } catch(_e) {}
+
+    // Verdict
+    var hasError = checks.some(function(c) { return c.status === 'error'; });
+    var hasWarn = checks.some(function(c) { return c.status === 'warn'; });
+    return {
+      checks: checks,
+      verdict: hasError ? 'error' : (hasWarn ? 'warn' : 'ok'),
+      bandCalId: bandCalId,
+      visibility: vis
+    };
+  }
+
   // Diagnostic: prints everything needed to triage a member's calendar
   // configuration in their browser console. Usage:
   //   GLCalendarSync.debugMyConfig()
@@ -3099,6 +3318,8 @@ window.GLCalendarSync = (function() {
     runHiddenEventCheck: _runHiddenEventCheck,
     getSyncActivity: getSyncActivity,
     debugMyConfig: debugMyConfig,
+    detectAccountDefaultVisibility: detectAccountDefaultVisibility,
+    runCalendarHealthCheck: runCalendarHealthCheck,
     deduplicateBandCalendar: deduplicateBandCalendar,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,

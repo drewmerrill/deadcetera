@@ -755,7 +755,9 @@ async function saveGig() {
     await saveBandDataToDrive('_band', 'gigs', existing);
     // Sync to calendar as a gig event
     await _syncGigToCalendar(gig, null);
-    showToast('✅ Gig saved!');
+    // UX sprint #9: specific receipt — confirms what was saved.
+    var _gigWhen = (gig.date || '') + (gig.startTime ? ' \u00B7 ' + gig.startTime : '') + (gig.endTime ? '\u2013' + gig.endTime : '');
+    showToast('\u2705 Gig saved: ' + (gig.venue || 'Untitled') + ' \u00B7 ' + _gigWhen + (gig.linkedSetlist ? ' \u00B7 \u201C' + gig.linkedSetlist + '\u201D' : ''), 5000);
     loadGigs();
 }
 

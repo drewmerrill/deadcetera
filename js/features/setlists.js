@@ -940,6 +940,18 @@ function slAddSet(type) {
 
 async function slSaveSetlist() {
     if (!requireSignIn()) return;
+    // UX sprint #6: gating with explicit reason — don't silently allow an
+    // empty-set save the user will then have to undo.
+    var _totalSongs = 0;
+    (window._slSets || []).forEach(function(s) {
+        if (s && Array.isArray(s.songs)) _totalSongs += s.songs.length;
+    });
+    if (_totalSongs === 0) {
+        if (typeof showToast === 'function') showToast('\u26A0 Add at least one song before locking the set.', 4000);
+        var _addInput = document.getElementById('slAddSong0');
+        if (_addInput && _addInput.focus) _addInput.focus();
+        return;
+    }
     const sl = {
         setlistId: generateShortId(12),
         gigId: null,

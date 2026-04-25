@@ -1203,6 +1203,10 @@ window._calSyncNow = async function() {
         // Only show availability warning in Mode B (personal calendars mode)
         if (!_hasAvail && _calIsModeB()) _syncMsg += '. Availability not enabled.';
         if (typeof showToast === 'function') showToast(_syncMsg, 7000);
+        // UX sprint #10: stash the sync result so users can inspect what
+        // changed via the Sync activity admin button (which already lists
+        // recent runs). Toast already conveys the high-level counts.
+        window._calLastSyncChangeSummary = _syncResult;
     } catch(e) {
         if (typeof showToast === 'function') showToast('\u26A0 Sync failed: ' + _calTranslateSyncError({ error: e.message || 'unknown error' }), 7000);
     }
@@ -1700,7 +1704,8 @@ function _calRenderGooglePanel() {
                     var _errLabel = _lastResult.needsReauth ? 'sign-in expired' : _lastResult.error;
                     html += '<div style="font-size:0.62em;color:' + _errColor + ';margin-bottom:2px">\u26A0 Last run: ' + _errLabel + '</div>';
                 } else if (_parts.length) {
-                    html += '<div style="font-size:0.62em;color:var(--gl-green);margin-bottom:2px">\u2713 Last run: ' + _parts.join(' \u00B7 ') + '</div>';
+                    // UX sprint #10: clickable last-run line opens Sync activity for details
+                    html += '<div style="font-size:0.62em;color:var(--gl-green);margin-bottom:2px;cursor:pointer" onclick="_calShowSyncActivity()" title="Click for full sync details across all members">\u2713 Last run: ' + _parts.join(' \u00B7 ') + ' <span style="color:var(--gl-text-tertiary);text-decoration:underline">details</span></div>';
                 } else {
                     html += '<div style="font-size:0.62em;color:var(--gl-text-tertiary);margin-bottom:2px">\u2713 Last run: nothing to sync</div>';
                 }
@@ -1810,6 +1815,14 @@ function _calRenderGooglePanel() {
         }).catch(function() { window._calBandCalChecking = false; });
     }
 
+    // ── Calendar Health Card (UX idea #3) — anchors all the auto-detected
+    // status checks so users always know if something is wrong instead of
+    // discovering it via a failed action. Renders a placeholder; the actual
+    // card content fills in async via _calRefreshHealthCard().
+    if (_calIsModeA() && _isConnected) {
+        html += '<div id="calHealthCard" style="margin-bottom:8px"></div>';
+    }
+
     // CTA: connect (if never connected) OR sync + manage (if connected)
     if (!_isConnected) {
         html += '<button onclick="_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px 14px;font-size:0.82em;font-weight:700">Connect Google Calendar</button>';
@@ -1824,7 +1837,8 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calCleanLegacyBusy()" id="calCleanBusyBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove legacy auto-pushed &quot;Busy&quot; / &quot;Busy (all day)&quot; events that pollute the conflict list">Clean legacy Busy</button>'
             + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>'
             + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="How to fix hidden events — set default visibility to Public">Visibility help</button>'
-            + '<button onclick="_calShowSyncActivity()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Recent sync runs across all connected band members">Sync activity</button>';
+            + '<button onclick="_calShowSyncActivity()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Recent sync runs across all connected band members">Sync activity</button>'
+            + '<button onclick="_calShowDiagnostics()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Run all calendar checks and show a detailed report">Run diagnostics</button>';
         if (connectedCount < totalCount) {
             html += '<button onclick="_calCopyBandSyncInvite()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.6;padding:0">Invite band</button>';
         }
@@ -1833,6 +1847,23 @@ function _calRenderGooglePanel() {
 
     html += '</div>';
     el.innerHTML = html;
+
+    // UX sprint #2/#3: kick off the Health Card refresh whenever the panel
+    // re-renders. Async, won't block paint. Also wires up the visibility
+    // detector follow-up modal if the result comes back as Private.
+    if (_calIsModeA() && _isConnected && document.getElementById('calHealthCard')) {
+        _calRefreshHealthCard().then(function() {
+            try {
+                var r = window._calHealthCardLastResult;
+                if (r && r.visibility && (r.visibility.visibility === 'private' || r.visibility.visibility === 'confidential')) {
+                    if (!localStorage.getItem('gl_cal_visibility_warned_' + (currentUserEmail || ''))) {
+                        localStorage.setItem('gl_cal_visibility_warned_' + (currentUserEmail || ''), '1');
+                        setTimeout(function() { _calShowVisibilityDetected(); }, 700);
+                    }
+                }
+            } catch(_e) {}
+        }).catch(function(){});
+    }
 }
 
 // Path D #6: Per-member sync staleness classifier.
@@ -2099,6 +2130,174 @@ window._calShowSyncActivity = async function() {
     body.innerHTML = html;
 };
 
+// UX sprint #8: live calendar event form validation. Runs on input change.
+// Shows inline yellow/red hints near each field — saves users a confused
+// "why did my save fail?" trip through the alert stack.
+window._calFormValidate = function() {
+    var dateEl = document.getElementById('calDate');
+    var endDateEl = document.getElementById('calEndDate');
+    var timeEl = document.getElementById('calTime');
+    var endTimeEl = document.getElementById('calEndTime');
+    var dateErr = document.getElementById('calDateErr');
+    var endDateErr = document.getElementById('calEndDateErr');
+    var timeErr = document.getElementById('calTimeErr');
+    var setErr = function(el, msg, color) {
+        if (!el) return;
+        if (!msg) { el.style.display = 'none'; el.textContent = ''; return; }
+        el.style.display = 'block';
+        el.textContent = msg;
+        if (color) el.style.color = color;
+    };
+    setErr(dateErr, '');
+    setErr(endDateErr, '');
+    setErr(timeErr, '');
+    if (dateEl && dateEl.value) {
+        var today = new Date(); today.setHours(0,0,0,0);
+        var picked = new Date(dateEl.value + 'T12:00:00');
+        if (picked < today) {
+            setErr(dateErr, '\u26A0 Date is in the past', '#fbbf24');
+        }
+        if (endDateEl && endDateEl.value && endDateEl.value < dateEl.value) {
+            setErr(endDateErr, '\u2716 End date is before start date', '#fca5a5');
+        }
+    }
+    if (timeEl && endTimeEl && timeEl.value && endTimeEl.value) {
+        if (endTimeEl.value <= timeEl.value) {
+            setErr(timeErr, '\u2716 End time must be after start time', '#fca5a5');
+        }
+    }
+};
+
+// UX sprint #3: Calendar Health Card — persistent green/yellow/red summary
+// of the 5 things that have to be true for Mode A to work. Renders into
+// #calHealthCard placeholder. Refreshed on demand and on every sync.
+async function _calRefreshHealthCard() {
+    var el = document.getElementById('calHealthCard');
+    if (!el) return;
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.runCalendarHealthCheck) {
+        el.innerHTML = '';
+        return;
+    }
+    if (window._calHealthCardLoading) return;
+    window._calHealthCardLoading = true;
+
+    // Show a subtle loading state while the async checks run.
+    if (!window._calHealthCardLastResult) {
+        el.innerHTML = '<div style="padding:6px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);font-size:0.68em;color:var(--gl-text-tertiary)">Running health check\u2026</div>';
+    }
+
+    try {
+        var report = await GLCalendarSync.runCalendarHealthCheck();
+        window._calHealthCardLastResult = report;
+        var color = report.verdict === 'ok' ? 'rgba(34,197,94,0.06)'
+            : report.verdict === 'warn' ? 'rgba(245,158,11,0.05)'
+            : 'rgba(239,68,68,0.05)';
+        var border = report.verdict === 'ok' ? 'rgba(34,197,94,0.25)'
+            : report.verdict === 'warn' ? 'rgba(245,158,11,0.25)'
+            : 'rgba(239,68,68,0.25)';
+        var iconColor = report.verdict === 'ok' ? '#86efac'
+            : report.verdict === 'warn' ? '#fbbf24' : '#fca5a5';
+        var headlineIcon = report.verdict === 'ok' ? '\u2714'
+            : report.verdict === 'warn' ? '\u26A0' : '\u2716';
+        var headline = report.verdict === 'ok' ? 'Calendar healthy'
+            : report.verdict === 'warn' ? 'Calendar mostly OK \u2014 ' + report.checks.filter(function(c) { return c.status === 'warn'; }).length + ' warning'
+            : 'Calendar needs attention';
+
+        var html = '<div style="padding:8px 10px;border-radius:8px;background:' + color + ';border:1px solid ' + border + ';font-size:0.72em;line-height:1.4">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">'
+            + '<span style="color:' + iconColor + ';font-weight:700">' + headlineIcon + '</span>'
+            + '<span style="font-weight:700;color:var(--gl-text);flex:1">' + headline + '</span>'
+            + '<button onclick="_calRefreshHealthCard()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:1em;opacity:0.5" title="Re-run checks">\u21BB</button>'
+            + '</div>';
+        report.checks.forEach(function(c) {
+            var rowIcon = c.status === 'ok' ? '\u2714'
+                : c.status === 'warn' ? '\u26A0'
+                : c.status === 'error' ? '\u2716'
+                : '\u003F';
+            var rowColor = c.status === 'ok' ? 'var(--gl-green)'
+                : c.status === 'warn' ? '#fbbf24'
+                : c.status === 'error' ? '#fca5a5'
+                : 'var(--gl-text-tertiary)';
+            html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:2px 0">'
+                + '<span style="color:' + rowColor + ';flex-shrink:0;width:14px">' + rowIcon + '</span>'
+                + '<span style="flex:1">'
+                + '<span style="color:var(--gl-text)">' + c.label + '</span>'
+                + ' <span style="color:var(--gl-text-tertiary)">\u2014 ' + c.message + '</span>'
+                + (c.fixAction ? ' <button onclick="' + c.fixAction + '" style="font-size:0.92em;background:none;border:none;color:#a5b4fc;cursor:pointer;text-decoration:underline;padding:0;margin-left:2px">Fix</button>' : '')
+                + '</span></div>';
+        });
+        html += '</div>';
+        el.innerHTML = html;
+    } catch (err) {
+        el.innerHTML = '<div style="padding:6px 10px;border-radius:8px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);font-size:0.68em;color:#fca5a5">Health check failed: ' + (err && err.message) + '</div>';
+    } finally {
+        window._calHealthCardLoading = false;
+    }
+}
+window._calRefreshHealthCard = _calRefreshHealthCard;
+
+// UX sprint #4: full Diagnostics modal — runs everything and shows it.
+window._calShowDiagnostics = async function() {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
+    wrap.innerHTML = '<div style="background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.05em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Calendar diagnostics</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">Runs every check we know how to run. Use this if something looks wrong.</div>'
+        + '<div id="calDiagBody" style="font-size:0.82em;color:var(--gl-text-secondary)">Running checks\u2026</div>'
+        + '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">'
+        + '<button onclick="_calShowDiagnostics()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer;min-height:44px">\u21BB Re-run</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600;min-height:44px">Close</button>'
+        + '</div></div>';
+    document.body.appendChild(wrap);
+    try {
+        var report = await GLCalendarSync.runCalendarHealthCheck({ force: true });
+        var body = document.getElementById('calDiagBody');
+        if (!body) return;
+        var html = '';
+        report.checks.forEach(function(c) {
+            var icon = c.status === 'ok' ? '\u2714'
+                : c.status === 'warn' ? '\u26A0'
+                : c.status === 'error' ? '\u2716'
+                : '\u003F';
+            var color = c.status === 'ok' ? 'var(--gl-green)'
+                : c.status === 'warn' ? '#fbbf24'
+                : c.status === 'error' ? '#fca5a5' : 'var(--gl-text-tertiary)';
+            html += '<div style="padding:10px 0;border-bottom:1px solid var(--gl-border-subtle);display:flex;gap:8px;align-items:flex-start">'
+                + '<span style="color:' + color + ';font-size:1.1em;flex-shrink:0">' + icon + '</span>'
+                + '<div style="flex:1">'
+                + '<div style="font-weight:600;color:var(--gl-text)">' + c.label + '</div>'
+                + '<div style="color:' + color + ';margin-top:2px">' + c.message + '</div>'
+                + (c.fixAction ? '<button onclick="' + c.fixAction + ';this.closest(\'[style*=fixed]\').remove()" style="margin-top:6px;font-size:0.88em;padding:6px 12px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">Fix this \u2192</button>' : '')
+                + '</div></div>';
+        });
+        html += '<div style="padding:10px 0;color:var(--gl-text-tertiary);font-size:0.82em">Tip: paste <code>GLCalendarSync.debugMyConfig()</code> into your browser console for the raw config dump if you need to share details with someone.</div>';
+        body.innerHTML = html;
+    } catch (err) {
+        var body2 = document.getElementById('calDiagBody');
+        if (body2) body2.innerHTML = '<div style="color:#fca5a5">Diagnostics failed: ' + (err && err.message) + '</div>';
+    }
+};
+
+// UX sprint #1: Visibility detector follow-up modal. Shown when first connect
+// (or first sync) finds the user's account default is Private. Different
+// from _calShowVisibilityHelp because it's specifically reactive to a
+// detected condition.
+window._calShowVisibilityDetected = function() {
+    var html = '<div style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px" onclick="if(event.target===this)this.remove()">'
+        + '<div style="background:var(--gl-surface);border:1px solid rgba(245,158,11,0.3);border-radius:14px;padding:22px;max-width:560px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.15em;font-weight:700;color:#fbbf24;margin-bottom:8px">\u26A0 Your default visibility is Private</div>'
+        + '<div style="font-size:0.85em;color:var(--gl-text-secondary);line-height:1.55;margin-bottom:14px">Every event you create on the shared band calendar will be set to <b>Private</b>, which means GrooveLinx can\u2019t see the details. The band will see "(hidden)" instead of your event\u2019s title and time. Most band conflict-detection won\u2019t work for events you create.</div>'
+        + '<div style="font-size:0.85em;color:var(--gl-text-secondary);line-height:1.55;margin-bottom:14px"><b>To fix this:</b><ol style="margin:6px 0 0 20px;padding:0"><li>Open Google Calendar settings \u2192 <b>Event settings</b></li><li>Set <b>Default visibility</b> to <b>Public</b></li><li>Come back here and click <b>Re-test</b> to confirm</li></ol></div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="(async function(b){b.disabled=true;b.textContent=\'Testing\u2026\';var r=await GLCalendarSync.detectAccountDefaultVisibility({force:true});b.disabled=false;b.textContent=\'\u21BB Re-test\';if(r.visibility===\'public\'||r.visibility===\'default\'){b.closest(\'[style*=fixed]\').remove();if(typeof showToast===\'function\')showToast(\'\u2713 Default visibility now public!\');if(typeof _calRefreshHealthCard===\'function\')_calRefreshHealthCard();}else{if(typeof showToast===\'function\')showToast(\'Still set to \'+r.visibility+\' \u2014 check Google Calendar settings again.\');}})(this)" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer;min-height:44px">\u21BB Re-test</button>'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove();_calShowVisibilityHelp()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600;min-height:44px">Show me how</button>'
+        + '</div></div></div>';
+    var wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    document.body.appendChild(wrap.firstChild);
+};
+
 // Path C: Mode A welcome wizard — one-time setup checklist shown after first
 // successful shared-calendar connection. Generic copy (no band name baked in).
 window._calShowModeAWelcome = function() {
@@ -2114,8 +2313,12 @@ window._calShowModeAWelcome = function() {
 
         + '<div style="padding:10px 12px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.18);margin-bottom:10px">'
         + '<div style="font-size:0.88em;font-weight:700;color:var(--gl-text);margin-bottom:4px">2. Set default visibility to Public</div>'
-        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:6px">If your account default is <i>Private</i>, every event you create will be hidden from the rest of the band \u2014 and from GrooveLinx. Everyone in the band should check this.</div>'
+        + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:6px">If your account default is <i>Private</i>, every event you create will be hidden from the rest of the band \u2014 and from GrooveLinx. Click <b>Test mine</b> below to check.</div>'
+        + '<div id="calWelcomeVisStatus" style="font-size:0.78em;margin-bottom:6px;color:var(--gl-text-tertiary)">Status: not tested yet</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        + '<button onclick="(async function(b){b.disabled=true;b.textContent=\'Testing\u2026\';var r=await GLCalendarSync.detectAccountDefaultVisibility({force:true});b.disabled=false;b.textContent=\'\u21BB Test mine\';var s=document.getElementById(\'calWelcomeVisStatus\');if(!s)return;if(r.visibility===\'public\'||r.visibility===\'default\'){s.innerHTML=\'<span style=\\\'color:#86efac\\\'>\u2714 Status: Public (events will be visible)</span>\';}else if(r.visibility===\'private\'||r.visibility===\'confidential\'){s.innerHTML=\'<span style=\\\'color:#fca5a5\\\'>\u26A0 Status: PRIVATE \u2014 fix this in Google Calendar settings</span>\';}else if(r.error){s.innerHTML=\'<span style=\\\'color:var(--gl-text-tertiary)\\\'>Could not check (\'+r.error+\')</span>\';}else{s.innerHTML=\'<span style=\\\'color:var(--gl-text-tertiary)\\\'>Status: \'+r.visibility+\'</span>\';}})(this)" style="font-size:0.78em;font-weight:700;padding:5px 12px;border-radius:6px;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.10);color:#86efac;cursor:pointer">\u21BB Test mine</button>'
         + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.78em;font-weight:700;padding:5px 12px;border-radius:6px;border:1px solid rgba(245,158,11,0.35);background:rgba(245,158,11,0.10);color:#fcd34d;cursor:pointer">Show me how</button>'
+        + '</div>'
         + '</div>'
 
         + '<div style="padding:10px 12px;border-radius:10px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.18);margin-bottom:14px">'
@@ -3229,7 +3432,13 @@ function _calRenderConflictPanel() {
     if (!panel) return;
     var blocked = _calCachedBlockedRanges || [];
     if (!blocked.length) {
-        panel.innerHTML = '<div style="padding:16px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);text-align:center;font-size:0.82em;color:var(--gl-text-tertiary)">No conflicts or blocked dates</div>';
+        // UX sprint #7: rich empty state — explain what conflicts are + how to add
+        panel.innerHTML = '<div style="padding:24px 20px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);text-align:center">'
+            + '<div style="font-size:1.5em;margin-bottom:6px">\u2728</div>'
+            + '<div style="font-size:0.92em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Everyone\u2019s clear</div>'
+            + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">No member conflicts or blocked dates have been recorded for the next 90 days. Conflicts appear here when band members add unavailability via Block, mark themselves out on a date, or import busy time from their personal calendar.</div>'
+            + '<button onclick="calBlockDates()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.82em">\uD83D\uDEAB Add a Block</button>'
+            + '</div>';
         return;
     }
     // Group by person
@@ -5519,10 +5728,10 @@ async function calAddEvent(date, editIdx, existing) {
             <option value="_conflict">\uD83D\uDEAB Conflict / Blocked</option>
         </select></div>
         <div class="form-row"><span class="form-label">Title</span><input class="app-input" id="calTitle" placeholder="${_titlePlaceholder}" value="${ev.title||''}"></div>
-        <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark"></div>
-        <div class="form-row"><span class="form-label">End Date</span><input class="app-input" id="calEndDate" type="date" value="${ev.endDate||''}" style="color-scheme:dark" placeholder="Same day (leave blank for single day)"></div>
-        <div class="form-row"><span class="form-label">Start Time</span><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark"></div>
-        <div class="form-row"><span class="form-label">End Time</span><input class="app-input" id="calEndTime" type="time" value="${ev.endTime||''}" style="color-scheme:dark" placeholder="Optional — defaults to +2 hrs"></div>
+        <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark" oninput="_calFormValidate()"><div id="calDateErr" style="font-size:0.7em;color:#fbbf24;margin-top:3px;display:none"></div></div>
+        <div class="form-row"><span class="form-label">End Date</span><input class="app-input" id="calEndDate" type="date" value="${ev.endDate||''}" style="color-scheme:dark" placeholder="Same day (leave blank for single day)" oninput="_calFormValidate()"><div id="calEndDateErr" style="font-size:0.7em;color:#fca5a5;margin-top:3px;display:none"></div></div>
+        <div class="form-row"><span class="form-label">Start Time</span><input class="app-input" id="calTime" type="time" value="${ev.time||''}" style="color-scheme:dark" oninput="_calFormValidate()"></div>
+        <div class="form-row"><span class="form-label">End Time</span><input class="app-input" id="calEndTime" type="time" value="${ev.endTime||''}" style="color-scheme:dark" placeholder="Optional — defaults to +2 hrs" oninput="_calFormValidate()"><div id="calTimeErr" style="font-size:0.7em;color:#fca5a5;margin-top:3px;display:none"></div></div>
         <div class="form-row calGigOnly" id="calVenueRow" style="${showVenue?'':'display:none'}">
             <span class="form-label">Venue</span>
             <div id="calVenuePicker"></div>
@@ -6033,7 +6242,13 @@ async function calSaveEvent(editIdx) {
     // ── IMMEDIATE UI UPDATE ──────────────────────────────────────────────────
     // Clear form + re-render grid BEFORE enrichment — user sees success immediately
     document.getElementById('calEventFormArea').innerHTML = '';
-    if (typeof showToast === 'function') showToast('\u2713 Event saved');
+    if (typeof showToast === 'function') {
+        // UX sprint #9: specific receipt — confirms exactly what got saved.
+        var _typeLabel = ev.type === 'gig' ? 'Gig' : ev.type === 'rehearsal' ? 'Rehearsal' : (ev.type === 'unavailable' ? 'Block' : 'Event');
+        var _whenLabel = ev.date + (ev.time ? ' \u00B7 ' + ev.time : '') + (ev.endTime ? '\u2013' + ev.endTime : '');
+        var _whereLabel = (ev.venue || ev.location) ? ' \u00B7 ' + (ev.venue || ev.location) : '';
+        showToast('\u2713 ' + _typeLabel + ' saved \u2014 ' + (ev.title || _typeLabel) + ' \u00B7 ' + _whenLabel + _whereLabel, 4500);
+    }
     _calTrack('event_created', { type: ev.type });
     // First-value milestones
     if (ev.type === 'rehearsal' && !localStorage.getItem('gl_cal_first_rehearsal')) {
