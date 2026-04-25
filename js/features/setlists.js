@@ -335,12 +335,17 @@ function _slRenderCard(sl, isNext) {
         + (preview ? '<div class="sl-card-preview">' + preview + '</div>' : '')
         + '</div>'
         + '<div class="sl-card-actions">'
-        + '<button class="sl-btn-open" onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Open">\u25B6 Open</button>'
+        // Context-aware primary button: locked sets show "Open" (implies
+        // read-only browse); unlocked sets show "Edit" (signals editable).
+        // Both go to the same editor — the label communicates state at a
+        // glance and removes the redundant pencil button beside it.
+        + (sl.locked
+            ? '<button class="sl-btn-open" onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="View this locked setlist">\u25B6 Open</button>'
+            : '<button class="sl-btn-open" onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Edit this setlist">\u270F\uFE0F Edit</button>')
         + '<button onclick="slPlaySetlist(' + idx + ')" style="border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;font-weight:600" title="Play">\uD83C\uDFA7</button>'
         + (sl.locked
             ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;font-weight:600" title="Click to unlock">\uD83D\uDD12 Locked</button>'
-            : '<button onclick="editSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)" title="Edit">\u270F\uFE0F</button>'
-              + '<button onclick="slToggleLock(' + idx + ')" style="border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e;font-weight:600" title="Lock this setlist">\uD83D\uDD13 Unlocked</button>'
+            : '<button onclick="slToggleLock(' + idx + ')" style="border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.05);color:#22c55e;font-weight:600" title="Lock this setlist">\uD83D\uDD13 Unlocked</button>'
               + '<button onclick="deleteSetlist(' + idx + ')" style="border:1px solid rgba(255,255,255,0.08);background:none;color:#64748b" title="Delete">\uD83D\uDDD1\uFE0F</button>')
         + '</div></div>';
 }
