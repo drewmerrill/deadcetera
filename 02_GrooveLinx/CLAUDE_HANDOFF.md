@@ -2,9 +2,54 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-22 (all Week 1 sprint items complete — Paths B/C/D#6 + #10 + #13)_
+_Last updated: 2026-04-25 — Stage Plot v4 batch shipped (logistics fields, soundcheck order suggester, QR codes, setlist plot badges)._
 
-## Session 2026-04-22 (latest) — #10 + #13
+## Session 2026-04-25 — Stage Plot v4
+
+**Status:** Build `20260425-235033`. Four v4 features wired across editor, share view, PDF export, and worker public page.
+
+### What shipped
+
+**Logistics fields** (`js/features/stage-plot.js` + `worker.js`):
+- New plot fields: `setupTime`, `loadIn`, `backline[]` (label + by: band/venue/rental), `wireless[]` (channel + use + freq).
+- Editor: inline grid for setup/load-in above Tech Rider Notes; full add/edit/remove rows for backline + wireless with handlers `_spUpdatePlotField`, `_spAddBacklineItem`/`_spUpdateBacklineItem`/`_spRemoveBacklineItem`, `_spAddWirelessItem`/`_spUpdateWirelessItem`/`_spRemoveWirelessItem` (all on `window`).
+- Share details (in-app): renders all four fields when present.
+- PDF export: new "Logistics" page sandwiched between Monitor Mixes and Tech Rider — table-formatted backline + wireless.
+- Worker public page (`renderStagePlotHtml`): logistics card grid + backline/wireless tables.
+
+**Soundcheck order suggester** (`_spShowSoundcheckOrder` / `_spClassifyChannel`):
+- New "Soundcheck order" button on the input list header (next to "+ Add row" / "Auto from stage").
+- Classifies each channel by family (kick → snare → toms → OH → hi-hat → cymbals → other drums → percussion → bass → guitar → acoustic → DI → keys → horns → BGV → lead vox → click) using label/mic-name regex against standard FOH practice.
+- Modal lists ordered groups with copy-as-text button (`_spCopySoundcheckOrder` writes to clipboard / falls back to prompt).
+
+**QR code on share view**:
+- `_spRenderShareDetails` now leads with a QR card (90×90) pointing at the public live URL — band can flash a phone at FOH.
+- Worker public page also embeds a QR card linking back to itself for promoter print/pin.
+- Uses `api.qrserver.com` (free, no API key).
+
+**Per-setlist stage plot badge** (`js/features/setlists.js`):
+- 🎭 **Plot** chip on each setlist card if a stage plot has matching `linkedSetlistId === sl.id` or `linkedGigId === sl.gigId`.
+- Click jumps directly into stage plot page (`_slOpenStagePlotForSetlist` sets `_spPendingShareId` then `showPage('stageplot')`).
+- Cache: `stage-plot.js` exposes `window._spPlotsCache` after first load; `_slEnsureStagePlotsCache` lazy-fetches if user lands on Setlists cold (one fetch per session, then re-renders).
+
+### Files touched
+
+- `js/features/stage-plot.js` — +~290 lines (logistics editor + share/PDF rendering + soundcheck suggester + QR + cache export)
+- `js/features/setlists.js` — +~40 lines (lookup helper, cache loader, plot badge wired into card title)
+- `worker.js` — +~40 lines (logistics card, backline/wireless tables, QR card)
+- `version.json`, `index.html`, `index-dev.html`, `service-worker.js` — stamped to `20260425-235033`
+
+### ⚠️ Worker deploy required
+
+`worker.js` was modified. The Cloudflare worker does **not** auto-deploy from GitHub — Drew must paste `worker.js` into the Cloudflare dashboard editor (`deadcetera-proxy` worker) and click Deploy for the public stage-plot page to render the new logistics/QR sections. Without redeploy, public links keep serving the old layout (still works, just missing v4 sections).
+
+### Restart prompt (next session)
+
+> Stage Plot v4 batch shipped 2026-04-25 (build 20260425-235033) — logistics, soundcheck order, QR, setlist badges. Worker deploy still pending. What's next?
+
+---
+
+## Session 2026-04-22 — #10 + #13
 
 **Status:** Build `20260422-223450`. Closes the last two deferred Week 1 items.
 

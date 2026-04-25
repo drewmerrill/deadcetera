@@ -1,6 +1,17 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-22 (all Week 1 deferred items now closed — #10 mobile audit (code-only), #13 sync activity log; only physical-device verification remains)_
+_Updated: 2026-04-25 — Stage Plot v4 batch shipped (build 20260425-235033). Worker deploy still pending._
+
+## Stage Plot v4 — shipped 2026-04-25
+
+- **Logistics fields**: setupTime, loadIn, backline[] (band/venue/rental), wireless[] (channel/use/freq) — wired through editor, share view, multi-page PDF, worker public page.
+- **Soundcheck order suggester**: button on input list header → modal grouping channels by family in standard FOH order with copy-as-text.
+- **QR codes**: in-app share view + worker public page both embed QR pointing at the live link.
+- **Setlist plot badge**: 🎭 Plot chip on cards with a matching stage plot, one-click jump to that plot.
+
+**Action item:** Drew must paste `worker.js` into Cloudflare dashboard `deadcetera-proxy` worker and Deploy — does not auto-deploy from GitHub.
+
+
 
 ## Active Phase: Mode A Hardening (2-week sprint)
 
