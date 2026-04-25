@@ -301,7 +301,7 @@ window.GLCalendarSync = (function() {
             lastSyncDirection: 'link-existing',
             syncedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '',
             etag: keeper.etag || null,
-            attendees: _getBandEmails()
+            attendees: []
           },
           htmlLink: keeper.htmlLink
         };
@@ -332,7 +332,7 @@ window.GLCalendarSync = (function() {
               lastSyncDirection: 'link-existing-by-title',
               syncedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '',
               etag: _twin.etag || null,
-              attendees: _getBandEmails()
+              attendees: []
             },
             htmlLink: _twin.htmlLink
           };
@@ -374,7 +374,7 @@ window.GLCalendarSync = (function() {
         lastSyncDirection: 'push',
         syncedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '',
         etag: data.etag || null,
-        attendees: _getBandEmails()
+        attendees: []
       };
 
       return { success: true, sync: syncObj, htmlLink: data.htmlLink };

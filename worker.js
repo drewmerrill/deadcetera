@@ -959,12 +959,18 @@ async function handleCalendarProxy(request, method, calendarId, eventId) {
     }
   };
 
-  // Forward request body for POST and PATCH
+  // Forward request body for POST and PATCH.
+  // sendUpdates default is now 'none' — auto-attendees were removed
+  // from the client (events no longer auto-include the band as guests),
+  // so the previous 'all' was producing zero notifications anyway. If
+  // a future feature opts into attendees, the caller should pass an
+  // explicit ?sendUpdates=all in the URL to signal intent.
   if (method === 'POST' || method === 'PATCH') {
     const body = await request.text();
     fetchOpts.body = body;
-    // Add sendUpdates=all to automatically send invite emails
-    googleUrl += (googleUrl.includes('?') ? '&' : '?') + 'sendUpdates=all';
+    const requestUrl = new URL(request.url);
+    const sendUpdates = requestUrl.searchParams.get('sendUpdates') || 'none';
+    googleUrl += (googleUrl.includes('?') ? '&' : '?') + 'sendUpdates=' + encodeURIComponent(sendUpdates);
   }
 
   try {
