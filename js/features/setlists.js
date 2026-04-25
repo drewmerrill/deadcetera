@@ -335,13 +335,11 @@ function _slRenderCard(sl, isNext) {
         + (preview ? '<div class="sl-card-preview">' + preview + '</div>' : '')
         + '</div>'
         + '<div class="sl-card-actions">'
-        // Context-aware primary button: locked sets show "Open" (implies
-        // read-only browse); unlocked sets show "Edit" (signals editable).
-        // Both go to the same editor — the label communicates state at a
-        // glance and removes the redundant pencil button beside it.
-        + (sl.locked
-            ? '<button class="sl-btn-open" onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="View this locked setlist">\u25B6 Open</button>'
-            : '<button class="sl-btn-open" onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Edit this setlist">\u270F\uFE0F Edit</button>')
+        // Universal "Open" button — non-committal verb, works for both locked
+        // and unlocked. The 🔒/🔓 badge next to it signals lock state, and
+        // the editor itself shows a reassurance banner so users know nothing
+        // saves until they explicitly Lock This Set.
+        + '<button class="sl-btn-open" onclick="editSetlist(' + idx + ')" style="font-size:0.75em;padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;font-weight:600" title="Open this setlist">\u25B6 Open</button>'
         + '<button onclick="slPlaySetlist(' + idx + ')" style="border:1px solid rgba(99,102,241,0.2);background:none;color:#818cf8;font-weight:600" title="Play">\uD83C\uDFA7</button>'
         + (sl.locked
             ? '<button onclick="slUnlockWithWarning(' + idx + ')" style="border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;font-weight:600" title="Click to unlock">\uD83D\uDD12 Locked</button>'
@@ -1396,6 +1394,14 @@ function _slRenderPlanMode(idx, sl) {
     var _isMobile = window.innerWidth <= 900;
 
     var html = '';
+    // Reassurance banner: tells the user nothing saves until they explicitly
+    // act, so opening a setlist to look at it is risk-free. Only shown on
+    // unlocked sets — on locked sets the lock badge already conveys safety.
+    if (!sl.locked) {
+        html += '<div style="padding:6px 10px;margin-bottom:8px;border-radius:6px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);font-size:0.7em;color:var(--gl-text-tertiary);line-height:1.4">'
+            + '<span style="color:var(--gl-text-secondary)">Browsing this setlist?</span> Your changes only save when you click <span style="color:#86efac;font-weight:600">\uD83D\uDD12 Lock This Set</span> \u2014 hit <span style="color:var(--gl-text)">Cancel</span> to back out without changes.'
+            + '</div>';
+    }
     // Edit fields (collapsed on mobile behind details)
     if (_isMobile) {
         html += '<details style="margin-bottom:8px"><summary style="font-size:0.78em;color:var(--text-dim);cursor:pointer;padding:4px 0">Edit details</summary>'
