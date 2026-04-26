@@ -1683,14 +1683,33 @@ function _slRenderPlanMode(idx, sl) {
     (async function() {
         var row = document.getElementById("slLinkedGigRow");
         if (!row) return;
+        // Default state: clear any previously-rendered linked-gig pill and
+        // unlock the date input. The match block below will re-lock if a
+        // gig is linked. Past code only set readOnly=true on link; never
+        // cleared it on unlink, so the date stayed locked forever.
+        row.innerHTML = '';
+        var _dateReset = document.getElementById('slDate');
+        if (_dateReset) {
+            _dateReset.readOnly = false;
+            _dateReset.removeAttribute('title');
+            _dateReset.style.opacity = '';
+            _dateReset.style.cursor = '';
+        }
         try {
             var gigs = toArray(await loadBandDataFromDrive("_band", "gigs") || []);
-            // Match by gigId first (stable), fallback to date match (legacy compat)
+            // Match by gigId only when set. Past code also fell back to a
+            // date-match if gigId was empty, which auto-re-linked any setlist
+            // whose date happened to match a gig — including ones the user
+            // had just explicitly unlinked. The Unlink button looked broken
+            // because the UI kept re-linking via this back door.
+            // Now: an explicit unlink (gigId === null / undefined / '' AND
+            // _gigUnlinked === true) bypasses the date fallback entirely.
+            // The fallback still runs for setlists that have never had a
+            // gigId set (true legacy compat).
             var match = null;
             if (sl.gigId) {
                 match = gigs.find(function(g){ return g.gigId === sl.gigId; });
-            }
-            if (!match && sl.date) {
+            } else if (!sl._gigUnlinked && sl.date) {
                 match = gigs.find(function(g){ return g.date === sl.date; });
             }
             if (match) {
@@ -2471,6 +2490,10 @@ window.slUnlinkGigFromSetlist = async function(idx) {
     if (!confirm(msg)) return;
     var oldGigId = sl.gigId;
     delete sl.gigId;
+    // Mark as explicitly unlinked so the linked-gig row's date-fallback
+    // doesn't immediately re-link this setlist to whatever gig happens to
+    // share its date.
+    sl._gigUnlinked = true;
     sl.updatedAt = new Date().toISOString();
     await saveBandDataToDrive('_band', 'setlists', data);
     // Also clear the back-pointer on the gig so they don't re-link via
