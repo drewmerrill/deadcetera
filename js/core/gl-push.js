@@ -288,8 +288,8 @@
     return notifyBand({
       title: 'Test push from GrooveLinx',
       body: 'If you see this on this device, push is working end-to-end.',
-      tag: 'gl-test',
-      excludeMemberKey: '__none__' // bypass the self-exclusion
+      tag: 'gl-test-' + Date.now(),
+      excludeMemberKey: '__none__'
     });
   }
 
