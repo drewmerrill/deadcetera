@@ -2320,7 +2320,16 @@ function _renderEventRiskCard(bundle) {
     // Pre-rehearsal checklist for events < 24h
     if (daysOut <= 1) {
         var html = '<div style="padding:12px 14px;margin-bottom:12px;border-radius:10px;border-left:3px solid ' + borderColor + ';background:' + bgColor + '">';
-        html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:6px">' + eventLabel + ' ' + dateLabel + '</div>';
+        html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:2px">' + eventLabel + ' ' + dateLabel + '</div>';
+        // Surface the actual event so the user can verify it's real (and
+        // jump to the calendar to delete if it's stale).
+        var _eventDetail = (nextEvent.title || nextEvent.venue || '(untitled event)')
+            + ' \u00B7 ' + (nextEvent.date || '')
+            + (nextEvent.time ? ' @ ' + nextEvent.time : '');
+        html += '<div style="font-size:0.66em;color:var(--text-dim);margin-bottom:6px;display:flex;align-items:center;gap:6px">'
+            + '<span style="flex:1">' + _eventDetail + '</span>'
+            + '<button onclick="showPage(\'calendar\')" style="background:none;border:1px solid rgba(255,255,255,0.08);color:var(--text-dim);font-size:0.92em;padding:1px 8px;border-radius:4px;cursor:pointer">Open</button>'
+            + '</div>';
         html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">Before you go</div>';
         // Checklist items
         var checkItems = [];
