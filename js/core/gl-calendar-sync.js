@@ -228,7 +228,18 @@ window.GLCalendarSync = (function() {
   // Order: rehearsal/practice wins over jam (a "studio jam" is rehearsal,
   // not a gig). Meeting wins over generic gig keywords.
   function _classifyEventType(summary) {
-    var lc = String(summary || '').toLowerCase();
+    var lc = String(summary || '').toLowerCase().replace(/\u2019/g, "'");
+    // Negation guard — "Pierce can't rehearse", "No rehearsal", "rehearsal
+    // cancelled", "won't make practice" — these are unavailability or
+    // cancellation signals, NOT a scheduled rehearsal/gig. Returning 'other'
+    // lets _detectUnavailability and the band-cal-source rule pick them up
+    // (member name + "can't" → that member's block; "no rehearsal" →
+    // whole-band phrase already handled).
+    var _negated = /\b(can'?t|cannot|won'?t|wont|not|no)\s+\S+(\s+\S+){0,3}\s*(rehears|practice|gig|show|concert)/i.test(lc)
+      || /^(no|cancel+ed|cancelling)\s+(rehears|practice|gig|show|concert)/i.test(lc)
+      || /(rehears|practice|gig|show|concert)\w*\s+(is\s+)?(cancel+ed|canceled|cancelling|cancellation|off)\b/i.test(lc)
+      || /\brehearsal\s+cancel/i.test(lc);
+    if (_negated) return 'other';
     if (/\brehears|\bpractice/.test(lc)) return 'rehearsal';
     if (/\bband meeting|\bband sync|\bgear talk|\blogistics\b|\bset planning|\bband call/.test(lc)) return 'meeting';
     if (/\bgig\b|\bshow\b|\bconcert\b|\bfest\b|\bfestival\b|\bjam\b|\blive at\b|\bplaying\b|\bopening for\b|\bset @|\balbum release|\brecording session|fb\/event\//.test(lc)) return 'gig';
@@ -997,9 +1008,9 @@ window.GLCalendarSync = (function() {
   // (pullBandCalendarEvents) use the same logic. Previously only the latter
   // ran this check, so "Brian busy" events imported via Sync Calendars stayed
   // as type='other' and never blocked availability.
-  var _STRONG_UNAVAIL_KW = ['out', 'unavailable', 'pto', 'vacation', 'away', 'travel'];
+  var _STRONG_UNAVAIL_KW = ['out', 'unavailable', 'pto', 'vacation', 'away', 'travel', "can't", 'cannot', "won't"];
   var _WEAK_UNAVAIL_KW = ['busy', 'conflict', 'off', 'blocked'];
-  var _WHOLE_BAND_PHRASES = ['band off', 'full band off', 'everyone out', 'no rehearsal', 'band unavailable', 'all out', 'band away'];
+  var _WHOLE_BAND_PHRASES = ['band off', 'full band off', 'everyone out', 'no rehearsal', 'rehearsal cancelled', 'rehearsal canceled', 'band unavailable', 'all out', 'band away'];
 
   function _buildMemberNameIndex() {
     var memberNames = {};
@@ -1018,7 +1029,9 @@ window.GLCalendarSync = (function() {
 
   function _detectUnavailability(title) {
     if (!title) return { isUnavail: false };
-    var lc = title.toLowerCase().trim();
+    // Normalize curly apostrophes (Google's mobile autocorrect produces \u2019)
+    // to straight ' so "can't" matches whether typed on iOS or web.
+    var lc = title.toLowerCase().trim().replace(/\u2019/g, "'");
     for (var wp = 0; wp < _WHOLE_BAND_PHRASES.length; wp++) {
       if (lc.indexOf(_WHOLE_BAND_PHRASES[wp]) !== -1) {
         var idx = _buildMemberNameIndex();
@@ -1259,6 +1272,32 @@ window.GLCalendarSync = (function() {
         var _classified = _classifyEventType(googleEvent.summary || '');
         if (_classified === 'gig' || _classified === 'rehearsal' || _classified === 'meeting') {
           existing.type = _classified;
+          existing.assignedMembers = null;
+          existing.blockScope = null;
+        }
+      }
+    } else if ((existing.type === 'rehearsal' || existing.type === 'gig') && !_epRec.glType) {
+      // Auto-DOWNGRADE: an event imported with no glType stamp that's
+      // currently typed as rehearsal/gig — re-test the classifier. If the
+      // classifier now says 'other' (e.g. negation detected like "Pierce
+      // can't rehearse" or "NO Rehearsal Due To Weather"), correct it.
+      // GL-stamped events skip this branch — their type is authoritative.
+      var _reClassified = _classifyEventType(googleEvent.summary || '');
+      if (_reClassified === 'other') {
+        var _unCorrect = _detectUnavailability(googleEvent.summary || '');
+        if (_unCorrect.isUnavail && _unCorrect.scope !== 'unassigned') {
+          console.log('[CalSync] Auto-downgrade: "' + googleEvent.summary + '" was', existing.type, '→ unavailable (' + _unCorrect.members.join(',') + ')');
+          existing.type = 'unavailable';
+          existing.assignedMembers = _unCorrect.members;
+          existing.blockScope = _unCorrect.scope;
+        } else if (_unCorrect.isUnavail && _unCorrect.scope === 'band') {
+          console.log('[CalSync] Auto-downgrade: "' + googleEvent.summary + '" was', existing.type, '→ band-wide unavailable');
+          existing.type = 'unavailable';
+          existing.assignedMembers = _unCorrect.members;
+          existing.blockScope = 'band';
+        } else {
+          console.log('[CalSync] Auto-downgrade: "' + googleEvent.summary + '" was', existing.type, '→ other (negation detected, no member match)');
+          existing.type = 'other';
           existing.assignedMembers = null;
           existing.blockScope = null;
         }
