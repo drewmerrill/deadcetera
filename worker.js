@@ -84,7 +84,17 @@ export default {
     var _calId = url.searchParams.get('calendarId');
     var _isMutating = path.startsWith('/calendar/events') && (request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE');
     if (_isMutating && !_calId) {
-      console.warn('[Worker] WARNING: mutating /calendar/events request with no calendarId — falling back to "primary". Caller should pass ?calendarId=...');
+      // 2026-04-26: HARDENED — refuse to silently fall back to 'primary'.
+      // Past behavior pushed updates to the user's personal calendar when a
+      // client-side routing bug omitted calendarId. That happened in real
+      // prod (the "420 festival" gig update landed on Drew's personal cal
+      // instead of DeadCetera). Now the worker returns 400 so the caller
+      // fixes the bug instead of polluting personal calendars.
+      console.error('[Worker] REJECTED: mutating /calendar/events with no calendarId. Method=', request.method, 'Path=', path);
+      return cors(new Response(JSON.stringify({
+        error: 'missing_calendarId',
+        message: 'Mutating calendar requests must include ?calendarId=... — refusing to fall back to primary.'
+      }), { status: 400, headers: { 'Content-Type': 'application/json' } }));
     }
     _calId = _calId || 'primary';
     if (path === '/calendar/events' && request.method === 'POST')

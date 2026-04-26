@@ -6109,8 +6109,13 @@ async function calAddEvent(date, editIdx, existing) {
     // Load setlists + venues for gig-type dropdowns
     const setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     setlists.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    // Saved events store the setlist link as ev.linkedSetlist (per calSaveEvent).
+    // ev.setlistId was the old field name and never gets populated, so reopen
+    // always showed "-- None --" no matter what was selected. Match against
+    // either field for forward + backward compat.
+    const _evLinkedSl = ev.linkedSetlist || ev.setlistId || '';
     const setlistOpts = setlists.map(sl =>
-        `<option value="${sl.setlistId||''}" ${sl.setlistId&&ev.setlistId===sl.setlistId?'selected':''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
+        `<option value="${sl.setlistId||''}" ${sl.setlistId && _evLinkedSl === sl.setlistId ? 'selected' : ''}>${sl.name||'Untitled'}${sl.date?' ('+sl.date+')':''}</option>`
     ).join('');
     const venues = await GLStore.getVenues();
     window._calSelectedVenueId = ev.venueId || null;
