@@ -7092,8 +7092,41 @@ async function calSaveEvent(editIdx) {
             var existingIdx = -1;
             if (ev.gigId) existingIdx = existingGigs.findIndex(function(g) { return g.gigId === ev.gigId; });
             if (existingIdx < 0) {
+                // First try exact venue + date match — strictest, safest.
                 var gigKey = (ev.venue||'') + '|' + (ev.date||'');
                 existingIdx = existingGigs.findIndex(function(g) { return ((g.venue||'')+'|'+(g.date||'')) === gigKey; });
+            }
+            if (existingIdx < 0 && ev.date) {
+                // Fallback: case-insensitive venue match on the same date.
+                // Catches "From The Earth Brewing" vs "from the earth brewing"
+                // and similar casing differences.
+                var _evVenueLc = (ev.venue || '').toLowerCase().trim();
+                if (_evVenueLc) {
+                    existingIdx = existingGigs.findIndex(function(g) {
+                        return (g.date || '') === ev.date
+                            && (g.venue || '').toLowerCase().trim() === _evVenueLc;
+                    });
+                }
+            }
+            if (existingIdx < 0 && ev.date) {
+                // Last fallback: if there's exactly ONE gig on the same date,
+                // assume it's the same gig under a different venue spelling
+                // ("FTE show" vs "From The Earth Brewing"). User's mental
+                // model: one gig per calendar event per date. Better to
+                // merge with a console warning than create silent duplicates.
+                var _sameDateIdxs = [];
+                existingGigs.forEach(function(g, i) {
+                    if ((g.date || '') === ev.date) _sameDateIdxs.push(i);
+                });
+                if (_sameDateIdxs.length === 1) {
+                    existingIdx = _sameDateIdxs[0];
+                    console.warn('[Calendar] Phase B1: gig dedupe used date-only match —',
+                        '"' + (existingGigs[existingIdx].venue || '?') + '" → "' + (ev.venue || '?') + '"',
+                        'on', ev.date, '(one existing gig that day; merging instead of creating duplicate)');
+                } else if (_sameDateIdxs.length > 1) {
+                    console.warn('[Calendar] Phase B1:', _sameDateIdxs.length, 'gigs already exist on', ev.date,
+                        '— creating a new one. User may want to merge manually.');
+                }
             }
             var calSetlistVal = ev.linkedSetlist || '';
             var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
