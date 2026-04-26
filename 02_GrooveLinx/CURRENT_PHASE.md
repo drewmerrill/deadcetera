@@ -1,6 +1,17 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-25 — Stage Plot v4 batch shipped (build 20260425-235033). Worker deploy still pending._
+_Updated: 2026-04-26 — Calendar correctness sprint shipped (build 20260426-105917). Stage Plot v4 worker deploy still pending._
+
+## Calendar correctness — shipped 2026-04-26
+
+- **Classifier expansion + band-cal-source rule**: events on the shared cal that don't match keywords now attribute to creator email and become member-blocking. No more silent blue dots.
+- **`meeting` type**: purple cell + 📋 icon, doesn't count as a hard conflict.
+- **Unified red-cell hover**: shows "Brian — daughter's wedding", "Drew — out of town" pulled from both schedule_blocks and band-cal calendar_events.
+- **Audit hardening — data-loss fix**: dropped `default` visibility from the pollution heuristic (was flagging real venue-titled gigs as pollution; user confirmed past gigs/rehearsals went missing). Pre-delete confirm now lists actual titles+dates. Stamps `lastAuditApplied` for future undo banner.
+
+**Recovery in progress:** Drew checking Google Calendar Trash (~30-day retention) for events deleted by past audit runs.
+
+
 
 ## Stage Plot v4 — shipped 2026-04-25
 

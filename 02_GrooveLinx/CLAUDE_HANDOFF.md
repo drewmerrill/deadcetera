@@ -2,7 +2,51 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-25 — Stage Plot v4 batch shipped (logistics fields, soundcheck order suggester, QR codes, setlist plot badges)._
+_Last updated: 2026-04-26 — Calendar correctness sprint: band-cal-source rule, classifier expansion, meeting type, audit hardening (data-loss fix)._
+
+## Session 2026-04-26 — Calendar correctness
+
+**Status:** Build `20260426-105917`. Two distinct issues found and fixed in one batch.
+
+### What shipped
+
+**1. Classifier + band-cal-source rule** (`js/core/gl-calendar-sync.js`):
+- New shared `_classifyEventType(summary)` used by both `_importGoogleEvent` (live import) and the Path B.2 multi-day expansion. Order: rehearsal/practice > meeting > gig > meeting (generic) > other. Gig keywords now include `fest`, `festival`, `jam`, `live at`, `playing`, `opening for`, `set @`, `album release`, `recording session`, and `fb/event/`.
+- Mode A band-cal-source rule: any event on the shared band cal that classifies as `other` and has a creator email matching a band member becomes member-attributed unavailability. Title becomes the reason. Catches venue-only or weird titles ("FALL FEST JERRY JAM", "Brian's daughter's wedding") so they actually block availability.
+- New `_memberKeyFromEmail(email)` reverse lookup.
+
+**2. New `meeting` type** (`js/features/calendar.js` + `app-shell.css`):
+- Grid cell: `gl-day--meeting` purple/indigo (`#3B2557`/`#A78BFA`) + 📋 icon. Priority: gig > rehearsal > unavailable > blocked > **meeting** > soft > best — so a meeting never hides a harder state.
+- Hover line: "Meeting — does not block gig booking".
+- Already excluded from `blockedRanges` filter at calendar.js:1341, so booking flow still treats it as a free day.
+
+**3. Unified red-cell hover**:
+- Old: only walked `blockedList` from `schedule_blocks` — calendar_events of type='unavailable' from Google were red but had no hover.
+- New: merges `blockedList` + `dayEvents.filter(type === 'unavailable')` into a single `unifiedItems` array. Each row shows first-name + reason ("Brian — daughter's wedding", "Drew — out of town"). Soft-conflict tagging preserved.
+
+**4. Audit hardening — DATA-LOSS FIX** (`js/core/gl-calendar-sync.js`):
+- **Root cause of missing past gigs/rehearsals:** `auditCalendarPollution` flagged events with `visibility === 'default'` as personal pollution. `default` is what every Google event gets if you don't change anything — including legitimate venue-titled gigs. Apply → those gigs deleted from Google → next full sync's Phase 2.5 zombie sweep removed them locally.
+- **Fix:** require *explicit* `private`/`confidential` visibility (drops `default`). Add a second negative signal: no location OR description shorter than 20 chars. Title alone can no longer flip the verdict.
+- `looksLikeBandEvent` now scans description as well as title and includes the same keyword expansion as the live classifier — so the audit can't propose deleting events the live classifier would (correctly) call gigs.
+- Pre-delete confirm dialog lists actual titles + dates of selected rows (sample of 8, "+N more") so users can catch any remaining false positives BEFORE the delete loop runs.
+- Stamps `lastAuditApplied` + `lastAuditDeleted` on `calendar_sync_state` (via `update()`, not `set()` — preserves `syncToken`/`lastFullSync`).
+
+### Recovery for already-deleted events
+
+Drew checking Google Calendar Trash (calendar.google.com → settings → Trash) — Google retains for ~30 days. Anything restored will reappear on next full sync.
+
+### Files touched
+
+- `js/core/gl-calendar-sync.js` — +shared classifier, +member-key lookup, +band-cal rule (2 sites), +tightened pollution heuristic, +audit timestamp stamp
+- `js/features/calendar.js` — +meeting state, +unified hover, +audit preview confirm, +data-title/data-date on audit rows
+- `app-shell.css` — `.gl-day--meeting` rule
+- `version.json`, `index.html`, `index-dev.html`, `service-worker.js` — stamped to `20260426-105917`
+
+### Restart prompt
+
+> Calendar correctness sprint shipped 2026-04-26 (build 20260426-105917) — band-cal-source rule, meeting type, audit hardening. Drew checking Google Trash for any deleted gigs. What's next?
+
+---
 
 ## Session 2026-04-25 — Stage Plot v4
 
