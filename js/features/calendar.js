@@ -1179,6 +1179,7 @@ window._calSyncNow = async function() {
         var _hasAvail = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
         var _syncParts = [];
         if (_syncResult.pushed > 0) _syncParts.push(_syncResult.pushed + ' pushed');
+        if (_syncResult.pushedUpdates > 0) _syncParts.push(_syncResult.pushedUpdates + ' update' + (_syncResult.pushedUpdates === 1 ? '' : 's') + ' pushed');
         if (_syncResult.blocksPushed > 0) _syncParts.push(_syncResult.blocksPushed + ' block' + (_syncResult.blocksPushed === 1 ? '' : 's') + ' pushed');
         if (_syncResult.pulled > 0) _syncParts.push(_syncResult.pulled + ' imported');
         if (_syncResult.updated > 0) _syncParts.push(_syncResult.updated + ' updated');
@@ -6633,8 +6634,19 @@ async function calSaveEvent(editIdx) {
         }
         if (i >= 0) {
             var existingId = events[i].id;
+            var existingGid = events[i].googleEventId;
+            var existingSync = events[i].sync;
             events[i] = Object.assign({}, events[i], ev);
             if (existingId) events[i].id = existingId;
+            // Preserve the Google link AND mark dirty so Phase 1 of the
+            // next sync can push our edits up if Phase B2 below fails.
+            // Without dirty marking, Phase 2 reconcile would clobber the
+            // user's edits with Google's older data on the next sync.
+            if (existingGid) events[i].googleEventId = existingGid;
+            if (existingSync) events[i].sync = existingSync;
+            events[i].syncStatus = 'dirty';
+            events[i].sync = events[i].sync || {};
+            events[i].sync.status = 'dirty';
             events[i].updated_at = new Date().toISOString();
             _savedIdx = i;
         }
@@ -6807,6 +6819,18 @@ async function calSaveEvent(editIdx) {
             if (_existingGoogleId) {
                 var upd = await GLCalendarSync.update(_existingGoogleId, glEvent);
                 console.log('[Calendar] Phase B2: Google update', upd.success ? 'SUCCEEDED' : 'FAILED');
+                if (upd.success) {
+                    // Flip dirty → synced now that Google has the new data.
+                    // Phase 1 retry on next sync would otherwise re-push.
+                    var dbS = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                    if (dbS && typeof bandPath === 'function' && _savedIdx >= 0) {
+                        var _evSPath = bandPath('calendar_events/' + _savedIdx);
+                        await dbS.ref(_evSPath + '/syncStatus').set('synced');
+                        await dbS.ref(_evSPath + '/lastSyncedAt').set(new Date().toISOString());
+                        await dbS.ref(_evSPath + '/sync/status').set('synced');
+                        await dbS.ref(_evSPath + '/sync/lastSyncedAt').set(new Date().toISOString());
+                    }
+                }
                 // Orphan recovery: stored googleEventId points to an event
                 // that doesn't exist on the band cal (legacy auto-attendee
                 // replica, deleted on Google, etc.). Clear it and create
@@ -6827,6 +6851,8 @@ async function calSaveEvent(editIdx) {
                         if (typeof showToast === 'function') showToast('\u2713 Re-linked to band calendar (old Google copy was orphaned)', 5000);
                     }
                 }
+                // If update failed for any other reason, leave syncStatus as
+                // 'dirty' so Phase 1 of the next sync retries the push.
             } else {
                 var sync = await GLCalendarSync.create(glEvent);
                 if (sync.success && sync.sync) {

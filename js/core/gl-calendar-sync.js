@@ -1088,6 +1088,17 @@ window.GLCalendarSync = (function() {
   // DELETION: Google deletion removes from GrooveLinx. GrooveLinx deletion
   //   removes from Google (via Phase 3). Last-delete-wins.
   function _reconcileEvent(existing, googleEvent) {
+    // App-side dirty edits MUST NOT be clobbered by Google's older data.
+    // If the user updated the event in GrooveLinx and the push back to
+    // Google hasn't landed yet (e.g. Phase B2 silent failure, network
+    // glitch), reconcile would otherwise reset times/title to whatever
+    // Google still has. Skip — Phase 1 update push will take care of
+    // landing the dirty edits on Google on the next sync.
+    var _existingStatus = (existing && (existing.syncStatus || (existing.sync && existing.sync.status))) || '';
+    if (_existingStatus === 'dirty') {
+      console.log('[CalSync] _reconcileEvent: SKIPPING reconcile for dirty local event "' + (existing.title || existing.id) + '" — app-side edits not yet pushed.');
+      return existing;
+    }
     var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
     var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
     var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
@@ -1583,16 +1594,68 @@ window.GLCalendarSync = (function() {
       : [];
     var result = { pushed: 0, pulled: 0, updated: 0, deleted: 0, error: null };
 
-    // ── PHASE 1: Push local unsynced events to Google ──
+    // ── PHASE 1: Push local changes to Google ──
+    // Two flavors: CREATE for events that have never synced, UPDATE for
+    // events whose sync.status === 'dirty' (user edited in the app since
+    // last sync). Without the UPDATE flavor, app-side edits to imported
+    // events would only push via calSaveEvent's immediate Phase B2 — and
+    // if that ever failed silently, the changes would be invisible until
+    // Phase 2 reconcile clobbered them with Google's older data.
     console.log('[CalSync] Phase 1: Push local changes...');
+    result.pushedUpdates = 0;
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
       // Path B.2: synthetic hidden-event rows are derived from freebusy, not
       // real events. Never push them back to Google.
       if (ev && (ev._syntheticFromFreeBusy || ev.syncStatus === 'synthetic')) continue;
-      var alreadySynced = (ev.syncStatus === 'synced' && ev.googleEventId)
-        || (ev.sync && ev.sync.externalEventId && ev.sync.status === 'synced');
-      if (alreadySynced || !ev.date || !ev.title) continue;
+      if (!ev || !ev.date || !ev.title) continue;
+      var _gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
+      var _status = ev.syncStatus || (ev.sync && ev.sync.status) || '';
+      // Dirty + already-synced → UPDATE (app-side edit needs to land on Google).
+      if (_gid && _status === 'dirty') {
+        try {
+          var _gle = {
+            id: ev.id || '', eventId: ev.id || '',
+            title: ev.title || '',
+            summary: ev.title || '',
+            date: ev.date, endDate: ev.endDate || '',
+            time: ev.time || '', startTime: ev.time || '',
+            endTime: ev.endTime || '',
+            venue: ev.venue || '',
+            location: ev.location || ev.venue || '',
+            description: ev.notes || '',
+            type: ev.type,
+            isAllDay: !!ev.isAllDay
+          };
+          var _upd = await update(_gid, _gle);
+          if (_upd.success) {
+            events[i].syncStatus = 'synced';
+            events[i].lastSyncedAt = new Date().toISOString();
+            events[i].sync = events[i].sync || {};
+            events[i].sync.status = 'synced';
+            events[i].sync.lastSyncedAt = events[i].lastSyncedAt;
+            result.pushedUpdates++;
+            dirty = true;
+            console.log('[CalSync] Phase 1 UPDATE pushed:', ev.title, ev.date);
+          } else if (_upd.status === 'orphan') {
+            // Stored googleEventId no longer resolves on the band cal —
+            // clear it and let CREATE run on the next iteration of Phase 1.
+            console.log('[CalSync] Phase 1: orphan googleEventId for', ev.title, '— clearing for fresh CREATE');
+            delete events[i].googleEventId;
+            if (events[i].sync) delete events[i].sync.externalEventId;
+            events[i].syncStatus = '';
+            // Don't break — fall through to CREATE block below by re-setting status.
+            _gid = null;
+            _status = '';
+          } else {
+            console.warn('[CalSync] Phase 1 UPDATE failed for', ev.title, ':', _upd.error);
+          }
+        } catch(e) { console.warn('[CalSync] Phase 1 UPDATE error for', ev.title, e.message); }
+      }
+      // Already synced + clean → skip
+      var alreadySynced = (_gid && _status === 'synced');
+      if (alreadySynced) continue;
+      // Unsynced → CREATE
       try {
         var glEvent = {
           id: ev.id || '', eventId: ev.id || '',
