@@ -1,6 +1,29 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-26 — Calendar correctness sprint shipped (build 20260426-105917). Stage Plot v4 worker deploy still pending._
+_Updated: 2026-04-26 (PM) — 3-Layer Notification System: Layer 2 (FCM browser push) shipped end-to-end (build 20260426-234233). Service account key rotated. Layer 3 SMS pending Twilio 10DLC approval._
+
+## 3-Layer Notification System — Layer 2 shipped 2026-04-26 (PM)
+
+**Status:** Confirmed working end-to-end on both Mac Chrome and iPhone Safari (PWA). Drew's two devices are live FCM subscribers.
+
+**Layer 1 — In-app banner:** ✅ Live (was already shipped pre-session)
+**Layer 2 — Browser/OS push:** ✅ Shipped 2026-04-26 PM (build `20260426-234233`)
+**Layer 3 — Twilio SMS:** ⏳ Pending 10DLC carrier approval (~3 days from 2026-04-26). Phone number +14085398813 registered. Compliance pages live at groovelinx.com/privacy.html + /terms.html.
+
+**Architecture (Layer 2):**
+- New worker endpoint `/push/send`: service-account JWT → OAuth2 → FCM v1 messages:send. Worker secrets `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`. Auto-cleans dead tokens.
+- New client module `js/core/gl-push.js` exposes `window.GLPush`. Storage: `bands/{slug}/push_subscriptions/{memberKey}/{tokenHash}`.
+- New service worker `firebase-messaging-sw.js` at root. Uses raw `push` event listener (Firebase SDK's `onBackgroundMessage` was unreliable on Mac Chrome).
+- Settings master toggle redirected from legacy Web Push (`feed-action-state.js`) to `GLPush.subscribe/unsubscribe`.
+- All band-feed events (poll/idea/note/link/photo) auto-fire `GLPush.notifyBand()` to all subscribers except sender.
+
+**Five hard-won FCM/push quirks:** documented in `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` — data-only payload requirement, raw listener vs SDK, SW activation wait, macOS same-tag dedup, DevTools Push button limitation. Read this BEFORE touching anything in the push path.
+
+**Service account key rotation completed:** new key generated, Cloudflare secrets updated, old leaked key deleted from Google Cloud IAM. Procedure documented in session notes.
+
+**Outstanding security cleanup:** Browser API key currently has Application restrictions = None (was loosened during troubleshooting). Re-tighten to HTTP referrers limited to known domains + add Firebase Installations API and FCM Registration API to API restrictions list.
+
+---
 
 ## Calendar correctness — shipped 2026-04-26
 

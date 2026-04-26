@@ -2,7 +2,65 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-26 — Calendar correctness sprint: band-cal-source rule, classifier expansion, meeting type, audit hardening (data-loss fix)._
+_Last updated: 2026-04-26 — 3-Layer Notification System: Layer 2 (FCM browser push) shipped end-to-end on Mac Chrome + iPhone Safari. Service account key rotated. Layer 3 SMS pending Twilio 10DLC approval._
+
+## Session 2026-04-26 (PM) — 3-Layer Notification System (Layer 2 Complete)
+
+**Status:** Build `20260426-234233`. Layer 2 (browser/OS push via FCM) confirmed working end-to-end on both Mac Chrome and iPhone Safari (PWA). Layer 1 (in-app banner) was already live. Layer 3 (Twilio SMS) gated on 10DLC approval.
+
+**📘 Full detail:** `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` — includes the five FCM/push quirks discovered (data-only payload requirement, raw push listener vs SDK, SW activation wait, macOS same-tag dedup, DevTools Push button limitation), diagnostic surface reference, key rotation procedure, and Twilio setup notes.
+
+### What shipped
+
+**Layer 2 — FCM Browser Push** (new files: `firebase-messaging-sw.js`, `js/core/gl-push.js`):
+- Worker endpoint `/push/send` with service-account JWT (RS256) → OAuth2 → FCM v1 `/messages:send` flow. Worker secrets: `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`. Auto-cleans 404/UNREGISTERED tokens.
+- `window.GLPush = { init, subscribe, unsubscribe, isSubscribed, getPermissionState, notifyBand, testSelf }` — token storage at `bands/{slug}/push_subscriptions/{memberKey}/{tokenHash}` with `{ token, memberKey, ua, createdAt, lastSeenAt }`.
+- Service worker uses **raw `self.addEventListener('push', ...)`** — Firebase SDK's `onBackgroundMessage` was unreliable on Mac Chrome.
+- Settings master toggle redirected from legacy Web Push (`feed-action-state.js` `enablePush()` w/ `{endpoint, keys}` shape) to `GLPush.subscribe/unsubscribe`.
+- Wired into `js/features/band-feed.js` so every poll/idea/note/link/photo creation fires `GLPush.notifyBand()`.
+
+**Service account key rotation:**
+- New service account JSON generated, Cloudflare worker secrets updated (`FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`), push verified working with new key, old leaked key deleted from Google Cloud IAM. Procedure documented in session notes.
+
+**Twilio 10DLC registration:**
+- A2P Sole Proprietor brand "Andrew Merrill" + campaign registered. Phone number +14085398813 awaiting carrier approval (~3 days from 2026-04-26).
+- Compliance pages live at `groovelinx.com/privacy.html` and `terms.html` (HELP/STOP, message rates, frequency).
+
+### Five hard-won FCM/push quirks (see session notes for full detail)
+
+1. **Top-level `notification` field skips your custom handler** — Chrome auto-handles display when present, even with a custom SW. Use data-only payload (move title/body into `data.{title,body}`).
+2. **Firebase SDK's `onBackgroundMessage` is unreliable** — replace with raw `self.addEventListener('push', ...)`. Keep `firebase.messaging()` init for `getToken()` but bypass the SDK display path.
+3. **`navigator.serviceWorker.ready` resolves on the wrong registration** when multiple SWs are registered. After registering the FCM SW, wait specifically for *that* registration to reach `'activated'` via `statechange`, not the global ready promise.
+4. **macOS Chrome silences same-tag re-pushes even with `renotify: true`** — append a unique suffix (e.g. `Date.now()`) to the tag for tests; design choice for real events (consolidation vs. always-alert).
+5. **DevTools synthetic Push button doesn't trigger FCM SDK's `onBackgroundMessage`** (test payload doesn't match FCM shape) — but it DOES trigger raw `push` listeners. Another reason to prefer the raw approach.
+
+### Outstanding security cleanup
+
+- Browser API key `AIzaSyC3sMU2S8...` currently has **Application restrictions = None** (was loosened to unblock FCM Installations API during troubleshooting). Should be re-tightened to HTTP referrers `https://groovelinx.vercel.app/*`, `https://app.groovelinx.com/*`, `https://drewmerrill.github.io/*`, `http://localhost/*` and API restrictions including Firebase Installations API + FCM Registration API.
+
+### Files touched
+
+- **New:** `firebase-messaging-sw.js`, `js/core/gl-push.js`, `02_GrooveLinx/notes/session_2026-04-26_notification_system.md`
+- **Modified:** `worker.js` (+ paste-deploy to Cloudflare with new secrets), `js/core/firebase-service.js`, `index.html`, `js/features/notifications.js`, `js/features/band-feed.js`, `app.js`, `app-dev.js`
+- **Stamped to `20260426-234233`:** `version.json`, `index.html`, `service-worker.js`
+- **Separate repo (groovelinx-site):** `privacy.html`, `terms.html` (Twilio-compliant)
+
+### Builds shipped (chronological)
+
+| Build | What |
+|---|---|
+| `20260426-220801` | Initial FCM scaffolding + correct API key alignment in SW |
+| `20260426-222507` | Settings master toggle migrated to GLPush; legacy push removal |
+| `20260426-230843` | Data-only FCM payload + correct SW icon paths |
+| `20260426-231855` | Raw push handler replaces FCM SDK `onBackgroundMessage` |
+| `20260426-233717` | Wait for FCM SW to reach `'activated'` before `getToken()` |
+| `20260426-234233` | Unique tag per `testSelf()` call (final) |
+
+### Restart prompt
+
+> Notification system Layer 2 (FCM browser push) shipped 2026-04-26 (build 20260426-234233). End-to-end confirmed on Mac Chrome + iPhone Safari. Service account key rotated, leaked key deleted. Outstanding: re-tighten browser API key HTTP referrer restrictions (currently None); Layer 3 Twilio SMS pending 10DLC approval (~3 days). Full session detail in `02_GrooveLinx/notes/session_2026-04-26_notification_system.md`. What's next?
+
+---
 
 ## Session 2026-04-26 — Calendar correctness
 
