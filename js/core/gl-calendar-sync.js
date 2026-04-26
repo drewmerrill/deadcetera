@@ -2060,49 +2060,21 @@ window.GLCalendarSync = (function() {
       });
     }
 
-    // ── Phase 2.5: Zombie sweep (full-sync only) ──
-    // Catches deletions that the incremental cancelled-event path missed —
-    // e.g., when a gig is deleted on Google between syncs and the changelog
-    // doesn't surface it cleanly. Any local event with a googleEventId that
-    // wasn't in Google's response (and is dated within the fetch window) is
-    // treated as deleted and removed locally. Skipped on incremental syncs
-    // because they don't return the full set.
-    if (!useSyncToken) {
-      var fetchedIds = {};
-      googleEvents.forEach(function(g) { if (g.id) fetchedIds[g.id] = true; });
-      // Window matches the full-sync query above (±6 months).
-      var _zNow = new Date();
-      var _zMinDate = new Date(_zNow.getFullYear(), _zNow.getMonth() - 6, 1);
-      var _zMaxDate = new Date(_zNow.getFullYear(), _zNow.getMonth() + 6, 0);
-      var _zMin = _zMinDate.toISOString().substring(0, 10);
-      var _zMax = _zMaxDate.toISOString().substring(0, 10);
-      var zombieRemoved = 0;
-      for (var zi = events.length - 1; zi >= 0; zi--) {
-        var ze = events[zi];
-        if (!ze) continue;
-        if (ze._syntheticFromFreeBusy) continue;
-        var zgid = ze.googleEventId || (ze.sync && ze.sync.externalEventId);
-        if (!zgid) continue;
-        if (fetchedIds[zgid]) continue;
-        // Only remove if event date is within our fetch window (don't wipe
-        // events that were just outside the timeMin/timeMax bounds).
-        var zdate = ze.date || '';
-        if (!zdate) continue;
-        if (zdate < _zMin || zdate > _zMax) continue;
-        console.log('[CalSync] Phase 2.5 zombie sweep: removing', ze.title, ze.date, '(googleEventId=' + zgid + ' not returned by full-sync fetch)');
-        events.splice(zi, 1);
-        zombieRemoved++;
-        dirty = true;
-        result.deleted++;
-      }
-      if (zombieRemoved > 0) {
-        // Rebuild eventsByGoogleId after splicing
-        eventsByGoogleId = {};
-        events.forEach(function(e, idx) {
-          if (e.googleEventId) eventsByGoogleId[e.googleEventId] = idx;
-          if (e.sync && e.sync.externalEventId) eventsByGoogleId[e.sync.externalEventId] = idx;
-        });
-      }
+    // ── Phase 2.5: Zombie sweep — DISABLED 2026-04-26 ──
+    // The sweep was nuking real events whose googleEventId pointed to an
+    // orphan/personal-cal copy (legacy auto-attendee replicas). Phase 1's
+    // new dirty UPDATE flow could also create fresh events mid-sync that
+    // weren't in Phase 2's events.list response yet, causing the same
+    // sweep to delete them seconds after creation. Real prod data loss
+    // (420 Festival gig).
+    //
+    // Until we can rewrite this with a recently-touched-grace-period and
+    // explicit cancelled-status check from Google's response, leave the
+    // sweep OFF. Stale googleEventIds in calendar_events are harmless
+    // (the import path dedupes by googleEventId on next fetch). Real
+    // event loss is not.
+    if (false && !useSyncToken) {
+      // intentionally dead — see comment above
     }
 
     // Save all changes
