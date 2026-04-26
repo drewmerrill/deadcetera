@@ -856,6 +856,36 @@ window._feedSubmitCreate = async function(type) {
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('item_created', { method: 'structured', targeted: _feedCreateTargetType === 'specific' });
         _feedShowToast('Shared with the band');
+        // Fire push notifications to other band members. Fire-and-forget —
+        // we don't await or block on push success since the item is already
+        // saved and the originator doesn't need to know if delivery worked.
+        if (typeof GLPush !== 'undefined' && GLPush.notifyBand) {
+            var _pushTitle, _pushBody;
+            if (type === 'poll') {
+                _pushTitle = author + ' started a poll';
+                _pushBody = text.length > 120 ? text.slice(0, 117) + '\u2026' : text;
+            } else if (type === 'idea') {
+                _pushTitle = author + ' shared an idea';
+                _pushBody = text.length > 120 ? text.slice(0, 117) + '\u2026' : text;
+            } else if (type === 'note') {
+                _pushTitle = author + ' posted a note';
+                _pushBody = text.length > 120 ? text.slice(0, 117) + '\u2026' : text;
+            } else if (type === 'link') {
+                _pushTitle = author + ' shared a link';
+                _pushBody = text.length > 120 ? text.slice(0, 117) + '\u2026' : text;
+            } else if (type === 'photo') {
+                _pushTitle = author + ' shared a photo';
+                _pushBody = text || 'Photo';
+            }
+            if (_pushTitle) {
+                GLPush.notifyBand({
+                    title: _pushTitle,
+                    body: _pushBody,
+                    tag: 'gl-feed-' + type,
+                    data: { feedType: type }
+                }).catch(function(e) { console.warn('[Feed] notifyBand failed:', e && e.message); });
+            }
+        }
         _feedRenderCreateBar();
         // Reload feed to show new item
         var el = document.getElementById('page-feed');

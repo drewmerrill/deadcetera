@@ -201,13 +201,79 @@
     }
     init();
   }
+  // Fan out a push notification to all band members. Reads every member's
+  // FCM tokens from Firebase, calls the worker's /push/send endpoint to
+  // dispatch via FCM. Caller usually wants this fire-and-forget — failures
+  // don't block the originating action.
+  //
+  // Args: { title, body, click_action?, tag?, data?, excludeMemberKey? }
+  // excludeMemberKey defaults to the current user (we don't push to ourselves).
+  async function notifyBand(opts) {
+    opts = opts || {};
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    var excludeKey = (opts.excludeMemberKey !== undefined) ? opts.excludeMemberKey : memberKey;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return { ok: false, reason: 'no_firebase' };
+    try {
+      var snap = await db.ref(bandPath('push_subscriptions')).once('value');
+      var byMember = snap.val() || {};
+      var tokens = [];
+      Object.keys(byMember).forEach(function(mKey) {
+        if (excludeKey && mKey === excludeKey) return;
+        var hashes = byMember[mKey] || {};
+        Object.keys(hashes).forEach(function(h) {
+          var entry = hashes[h];
+          if (entry && entry.token) tokens.push({ token: entry.token, memberKey: mKey, hash: h });
+        });
+      });
+      if (!tokens.length) return { ok: true, sent: 0, total: 0 };
+      var WORKER_BASE = (typeof window !== 'undefined' && window.WORKER_BASE) ? window.WORKER_BASE : 'https://deadcetera-proxy.drewmerrill.workers.dev';
+      var res = await fetch(WORKER_BASE + '/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokens: tokens.map(function(t) { return t.token; }),
+          title: opts.title || 'Band update',
+          body: opts.body || '',
+          click_action: opts.click_action || (window.location.origin + '/'),
+          tag: opts.tag || 'gl-feed',
+          data: opts.data || {}
+        })
+      });
+      if (!res.ok) {
+        var errText = await res.text();
+        console.warn('[GLPush] notifyBand worker error', res.status, errText);
+        return { ok: false, reason: 'worker_' + res.status };
+      }
+      var json = await res.json();
+      // Clean up invalid tokens: walk the subscriptions and remove any
+      // whose token is in invalidTokens, so we don't keep retrying dead
+      // devices.
+      if (json.invalidTokens && json.invalidTokens.length) {
+        var invalidSet = {}; json.invalidTokens.forEach(function(t) { invalidSet[t] = true; });
+        for (var i = 0; i < tokens.length; i++) {
+          if (invalidSet[tokens[i].token]) {
+            try { await db.ref(bandPath('push_subscriptions/' + tokens[i].memberKey + '/' + tokens[i].hash)).remove(); }
+            catch(_e) {}
+          }
+        }
+      }
+      console.log('[GLPush] notifyBand:', json.sent, 'of', json.total, 'sent', json.failed ? '| ' + json.failed + ' failed' : '');
+      return { ok: true, sent: json.sent, total: json.total, failed: json.failed };
+    } catch(e) {
+      console.warn('[GLPush] notifyBand failed:', e && e.message);
+      return { ok: false, reason: e && e.message };
+    }
+  }
+
   if (typeof window !== 'undefined') {
     window.GLPush = {
       init: init,
       subscribe: subscribe,
       unsubscribe: unsubscribe,
       isSubscribed: isSubscribed,
-      getPermissionState: getPermissionState
+      getPermissionState: getPermissionState,
+      notifyBand: notifyBand
     };
     // Defer init until after page load + Firebase ready
     if (document.readyState === 'complete') _autoInit();

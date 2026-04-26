@@ -74,6 +74,10 @@ export default {
       return handleFetchChart(request);
     if (path === '/transcribe' && request.method === 'POST')
       return handleTranscribe(request, env);
+    // FCM push send — fans out a notification to a list of FCM tokens.
+    // Body: { tokens: [...], title, body, click_action?, data? }
+    if (path === '/push/send' && request.method === 'POST')
+      return handleFcmPushSend(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -1471,4 +1475,148 @@ function icsFold(line) {
 function icsGenId() {
   // Simple random ID for last-resort UID generation (no crypto needed in worker)
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+
+// ── FCM push send ───────────────────────────────────────────────────────────
+// Sends a Firebase Cloud Messaging notification to a list of device tokens.
+// Authenticates via service-account JWT (RS256) → OAuth2 token → FCM v1
+// /messages:send endpoint. Secrets come from Cloudflare Worker env:
+//   FCM_CLIENT_EMAIL — service account email
+//   FCM_PRIVATE_KEY  — PEM private key (multi-line, includes BEGIN/END markers)
+//   FCM_PROJECT_ID   — Firebase project id (e.g. "deadcetera-35424")
+//
+// Request body: { tokens: [string], title, body, click_action?, data?, tag? }
+// Returns: { sent: N, failed: N, invalidTokens: [string] }
+async function handleFcmPushSend(request, env) {
+  if (!env.FCM_CLIENT_EMAIL || !env.FCM_PRIVATE_KEY || !env.FCM_PROJECT_ID) {
+    return cors(jsonError('FCM secrets not configured on worker', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const tokens = Array.isArray(body.tokens) ? body.tokens.filter(Boolean) : [];
+  if (!tokens.length) return cors(jsonError('no_tokens', 400));
+  const title = String(body.title || 'Band update').slice(0, 200);
+  const text  = String(body.body  || '').slice(0, 500);
+  const click = String(body.click_action || body.url || '/');
+  const tag   = String(body.tag || 'gl-feed');
+  const data  = (body.data && typeof body.data === 'object') ? body.data : {};
+
+  // Get OAuth2 access token (cached in module scope for reuse during a sync run)
+  let accessToken;
+  try { accessToken = await fcmGetAccessToken(env); }
+  catch (e) { return cors(jsonError('fcm_auth_failed: ' + (e && e.message), 502)); }
+
+  const sendOne = async (token) => {
+    const fcmBody = {
+      message: {
+        token: token,
+        notification: { title: title, body: text },
+        data: Object.assign({ title: title, body: text, click_action: click, tag: tag }, data),
+        webpush: {
+          headers: { TTL: '3600', Urgency: 'high' },
+          notification: { title: title, body: text, tag: tag, requireInteraction: false }
+        }
+      }
+    };
+    const res = await fetch(
+      'https://fcm.googleapis.com/v1/projects/' + encodeURIComponent(env.FCM_PROJECT_ID) + '/messages:send',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + accessToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(fcmBody)
+      }
+    );
+    if (res.ok) return { ok: true };
+    const errBody = await res.text();
+    // 404 / 400 with UNREGISTERED → token is dead (user uninstalled, etc).
+    // Surface so the caller can clean up Firebase.
+    const isInvalid = res.status === 404
+      || (res.status === 400 && /UNREGISTERED|INVALID_ARGUMENT.*registration token/.test(errBody));
+    return { ok: false, status: res.status, body: errBody, invalid: isInvalid, token: token };
+  };
+
+  // Pace requests so we don't hammer FCM. 5/sec is well under their limit.
+  const results = [];
+  for (let i = 0; i < tokens.length; i++) {
+    results.push(await sendOne(tokens[i]));
+    if (i < tokens.length - 1) await new Promise(r => setTimeout(r, 200));
+  }
+  const sent = results.filter(r => r.ok).length;
+  const failed = results.length - sent;
+  const invalidTokens = results.filter(r => r.invalid).map(r => r.token);
+  return cors(jsonResp({ sent: sent, failed: failed, invalidTokens: invalidTokens, total: tokens.length }));
+}
+
+// ── FCM OAuth2 helpers ──
+let _fcmTokenCache = { token: null, expiresAt: 0 };
+
+async function fcmGetAccessToken(env) {
+  const now = Math.floor(Date.now() / 1000);
+  // Reuse cached token if it still has > 5 min left
+  if (_fcmTokenCache.token && _fcmTokenCache.expiresAt > now + 300) {
+    return _fcmTokenCache.token;
+  }
+  const jwt = await fcmBuildJwt(env, now);
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')
+        + '&assertion=' + encodeURIComponent(jwt)
+  });
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error('OAuth2 ' + res.status + ': ' + t);
+  }
+  const data = await res.json();
+  _fcmTokenCache = { token: data.access_token, expiresAt: now + (data.expires_in || 3600) };
+  return data.access_token;
+}
+
+async function fcmBuildJwt(env, now) {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const payload = {
+    iss: env.FCM_CLIENT_EMAIL,
+    scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600
+  };
+  const enc = (obj) => fcmB64Url(new TextEncoder().encode(JSON.stringify(obj)));
+  const headerB64 = enc(header);
+  const payloadB64 = enc(payload);
+  const signingInput = headerB64 + '.' + payloadB64;
+  const sig = await fcmSignRS256(env.FCM_PRIVATE_KEY, signingInput);
+  return signingInput + '.' + sig;
+}
+
+async function fcmSignRS256(pemKey, data) {
+  // Cloudflare Workers expose crypto.subtle, which can import PKCS8 RSA keys.
+  const pem = pemKey.replace(/\\n/g, '\n');
+  const pemBody = pem.replace(/-----BEGIN PRIVATE KEY-----/, '')
+                     .replace(/-----END PRIVATE KEY-----/, '')
+                     .replace(/\s+/g, '');
+  const der = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
+  const cryptoKey = await crypto.subtle.importKey(
+    'pkcs8', der.buffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, new TextEncoder().encode(data));
+  return fcmB64Url(new Uint8Array(sig));
+}
+
+function fcmB64Url(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function jsonError(msg, status) {
+  return new Response(JSON.stringify({ error: msg }), {
+    status: status || 500, headers: { 'Content-Type': 'application/json' }
+  });
 }
