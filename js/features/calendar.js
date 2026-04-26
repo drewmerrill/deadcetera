@@ -4970,8 +4970,13 @@ async function loadCalendarEvents() {
             // import via the band calendar path.
             var orgEmail = (ev.organizerEmail || '').toLowerCase();
             var orgKey = orgEmail && _emailToMember[orgEmail];
-            if (orgKey) {
-                _pushBlock(ev, dateKey, orgKey, '(from ' + (_bm2[orgKey].name.split(' ')[0]) + ')');
+            // Defensive: orgKey may point to a member who was removed from
+            // the band after this event was created. _bm2[orgKey] would be
+            // undefined and accessing .name throws. Skip gracefully.
+            if (orgKey && _bm2[orgKey] && _bm2[orgKey].name) {
+                _pushBlock(ev, dateKey, orgKey, '(from ' + _bm2[orgKey].name.split(' ')[0] + ')');
+            } else if (orgKey) {
+                console.warn('[Calendar] Mode A attribution: orgKey="' + orgKey + '" missing from bandMembers — skipping block injection for "' + (ev.title || ev.id) + '"');
             }
         });
     });
@@ -6089,6 +6094,18 @@ window._calCloseMobileCard = function() {
 };
 
 async function calAddEvent(date, editIdx, existing) {
+    // Snapshot the event's last-known updated_at so calSaveEvent can detect
+    // concurrent edits — if another tab (or another band member's device)
+    // updated this same event between when we opened the form and when we
+    // saved, prompt before overwriting.
+    if (existing && existing.id) {
+        window._calEditOpenedAt = {
+            id: existing.id,
+            updated_at: existing.updated_at || ''
+        };
+    } else {
+        window._calEditOpenedAt = null;
+    }
     console.log('[Calendar] calAddEvent fired — date=' + date + ', editIdx=' + editIdx + ', hasExisting=' + !!existing);
     // Mode C (Native): skip all Google auth gates — events are local only
     // Mode A/B: require Google token
@@ -6657,6 +6674,25 @@ async function calSaveEvent(editIdx) {
     console.log('[Calendar] Phase A: Core save starting...');
     if (typeof showToast === 'function') showToast('Saving\u2026');
     var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    // Concurrent-edit detection: if another tab/member updated this event
+    // since we opened the form, the fresh updated_at differs from the
+    // snapshot we took. Prompt before overwriting their changes.
+    if (window._calEditOpenedAt && window._calEditOpenedAt.id) {
+        var _opened = window._calEditOpenedAt;
+        var _live = events.find(function(e) { return e && e.id === _opened.id; });
+        if (_live && _live.updated_at && _opened.updated_at && _live.updated_at !== _opened.updated_at) {
+            console.warn('[Calendar] Concurrent edit detected — opened-at:', _opened.updated_at, 'live:', _live.updated_at);
+            var _proceed = confirm(
+                'Heads up: this event was edited elsewhere (another tab or another band member) while you had the form open.\n\n'
+                + 'Their changes will be replaced if you save. Continue anyway?'
+            );
+            if (!_proceed) {
+                if (typeof showToast === 'function') showToast('Save cancelled — refresh the page to see the latest version', 5000);
+                return;
+            }
+        }
+        window._calEditOpenedAt = null;
+    }
     var _savedIdx = -1; // index of this event in the array (for targeted updates later)
     if (editIdx !== undefined) {
         var i = -1;

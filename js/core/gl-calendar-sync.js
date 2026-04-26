@@ -299,10 +299,17 @@ window.GLCalendarSync = (function() {
       return null;
     }
     try {
-      // Query a narrow window — start of target day to end of next day
-      var _start = new Date(dateStr + 'T00:00:00').toISOString();
-      var _endDate = new Date(dateStr + 'T00:00:00');
-      _endDate.setDate(_endDate.getDate() + 1);
+      // Query window: 1 day before through 1 day after the target. Wider
+      // than just "the target day" because Google all-day events use UTC
+      // midnight in their date-only format — for an ET-timezone user, our
+      // local-midnight timeMin would skip the start of an all-day event
+      // by 4 hours, and we'd miss the dedupe match. Expand to ±1 day so
+      // it doesn't matter where the timezone boundary falls.
+      var _startDate = new Date(dateStr + 'T00:00:00Z');
+      _startDate.setUTCDate(_startDate.getUTCDate() - 1);
+      var _start = _startDate.toISOString();
+      var _endDate = new Date(dateStr + 'T00:00:00Z');
+      _endDate.setUTCDate(_endDate.getUTCDate() + 2);
       var _end = _endDate.toISOString();
       var url = WORKER_BASE + '/calendar/events'
         + '?calendarId=' + encodeURIComponent(calId)
@@ -488,6 +495,17 @@ window.GLCalendarSync = (function() {
     var patchUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId);
     console.log('[CalSync] update() PATCH URL =', patchUrl);
     console.log('[CalSync] update() PATCH body.start =', body.start, '| body.end =', body.end, '| body.summary =', body.summary);
+    // Recurring-event awareness: if the eventId looks like an instance ID
+    // (parent_YYYYMMDD), the PATCH creates a single-instance override on
+    // Google. If it's a parent series ID, the PATCH updates the entire
+    // series. The user usually intends "this one only" — but the current
+    // UI doesn't expose the choice, so log so any "why did all my Mondays
+    // change?" questions are diagnosable.
+    if (/_\d{8}$/.test(externalEventId)) {
+      console.log('[CalSync] update(): event ID looks like a single recurring INSTANCE — PATCH will create an instance override. The series remains unchanged.');
+    } else if (glEvent.recurrence || glEvent.recurringEventId) {
+      console.warn('[CalSync] update(): event has recurrence — PATCH may update the ENTIRE SERIES. If you only meant to edit one date, this affects every occurrence.');
+    }
     try {
       var res = await fetch(patchUrl, {
         method: 'PATCH',
@@ -1206,6 +1224,12 @@ window.GLCalendarSync = (function() {
     // Capture organizer email (Mode A attribution fallback).
     if (googleEvent.organizer && googleEvent.organizer.email) existing.organizerEmail = googleEvent.organizer.email;
     else if (googleEvent.creator && googleEvent.creator.email) existing.organizerEmail = googleEvent.creator.email;
+    // Track recurring relationship so a future PATCH targets the right ID
+    // (parent series vs single instance). Currently informational + a
+    // warning surface in update(); deeper handling (instance overrides,
+    // "edit series vs this only" UX) is queued.
+    if (googleEvent.recurringEventId) existing.recurringEventId = googleEvent.recurringEventId;
+    if (googleEvent.recurrence && googleEvent.recurrence.length) existing.recurrence = googleEvent.recurrence;
     // Type-correction pass — runs on every reconcile so prior misclassifications
     // self-heal once the source signals are right.
     var _epRec = (googleEvent.extendedProperties && googleEvent.extendedProperties.private) || {};
@@ -1336,6 +1360,10 @@ window.GLCalendarSync = (function() {
       // events ("Out", "Vacation") to the member who created them.
       organizerEmail: (googleEvent.organizer && googleEvent.organizer.email) || (googleEvent.creator && googleEvent.creator.email) || null,
       isAllDay: isAllDay,
+      // Recurring relationship — informational. PATCH path uses this to
+      // log a warning when editing a recurring instance.
+      recurringEventId: googleEvent.recurringEventId || null,
+      recurrence: (googleEvent.recurrence && googleEvent.recurrence.length) ? googleEvent.recurrence : null,
       _importedFromGoogle: true,
       googleEventId: googleEvent.id,
       calendarId: bandCalId,
@@ -2573,9 +2601,19 @@ window.GLCalendarSync = (function() {
         if (isAllDay) {
           var endDate = endStr.substring(0, 10);
           // Google all-day end dates are exclusive (Jun 26 means through Jun 25)
-          var _start = new Date(startDate + 'T12:00:00');
-          var _end = new Date(endDate + 'T12:00:00');
-          var dayCount = Math.round((_end - _start) / 86400000);
+          // DST-safe day count: count by parts, not ms division. Mar/Nov DST
+          // transitions make local days 23 or 25 hours, which used to off-by-
+          // one the day count near those boundaries.
+          var _startParts = startDate.split('-');
+          var _endParts = endDate.split('-');
+          var _startD = new Date(parseInt(_startParts[0], 10), parseInt(_startParts[1], 10) - 1, parseInt(_startParts[2], 10));
+          var _endD = new Date(parseInt(_endParts[0], 10), parseInt(_endParts[1], 10) - 1, parseInt(_endParts[2], 10));
+          var dayCount = 0;
+          var _walk = new Date(_startD);
+          while (_walk < _endD && dayCount < 60) {
+            dayCount++;
+            _walk.setDate(_walk.getDate() + 1);
+          }
           if (dayCount < 1) dayCount = 1;
 
           if (dayCount > 1) {
@@ -2583,7 +2621,8 @@ window.GLCalendarSync = (function() {
           }
 
           for (var di = 0; di < dayCount; di++) {
-            var _d = new Date(_start.getTime() + di * 86400000);
+            var _d = new Date(_startD);
+            _d.setDate(_d.getDate() + di);
             var _ds = _d.getFullYear() + '-' + String(_d.getMonth() + 1).padStart(2, '0') + '-' + String(_d.getDate()).padStart(2, '0');
             var _rec = {
               id: _genId(),
