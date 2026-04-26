@@ -6651,7 +6651,10 @@ async function calSaveEvent(editIdx) {
     }
 
     // ── IMMEDIATE UI UPDATE ──────────────────────────────────────────────────
-    // Clear form + re-render grid BEFORE enrichment — user sees success immediately
+    // Clear form + re-render grid + re-render the right-rail day-detail BEFORE
+    // enrichment — user sees success immediately. Without these, the right
+    // rail kept showing the pre-save event list until the user manually hit
+    // "Sync calendars" — looked broken.
     document.getElementById('calEventFormArea').innerHTML = '';
     if (typeof showToast === 'function') {
         // UX sprint #9: specific receipt — confirms exactly what got saved.
@@ -6666,7 +6669,28 @@ async function calSaveEvent(editIdx) {
         localStorage.setItem('gl_cal_first_rehearsal', '1');
         _calTrack('first_rehearsal_scheduled');
     }
+    // Force the SWR layer to re-fetch from Firebase on next read so the
+    // grid + right rail can never display pre-save state.
+    _calEventsLoadedFromNetwork = false;
+    if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {
+        GLStore.setCachedBandData('calendar_events', events);
+    }
     _calRenderGridOnly();
+    // Re-open the day-detail right rail for the saved event's date so the
+    // user immediately sees the new event there (it was the most common
+    // surface they were checking, and previously didn't refresh).
+    try {
+        if (ev.date && typeof calDayClick === 'function') {
+            var _ds = ev.date.split('-');
+            var _y = parseInt(_ds[0], 10);
+            var _m = parseInt(_ds[1], 10) - 1;
+            var _d = parseInt(_ds[2], 10);
+            if (!isNaN(_y) && !isNaN(_m) && !isNaN(_d)) {
+                // Defer one frame so the grid render commits first.
+                setTimeout(function() { calDayClick(_y, _m, _d); }, 0);
+            }
+        }
+    } catch(_e) { /* non-fatal */ }
 
     // ── PHASE B: POST-SAVE ENRICHMENT (non-blocking) ─────────────────────────
     // Gig record + setlist creation + Google sync
