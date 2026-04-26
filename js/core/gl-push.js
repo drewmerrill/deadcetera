@@ -266,6 +266,20 @@
     }
   }
 
+  // Self-test: send a push to all the current user's own devices. Bypasses
+  // the excludeMemberKey rule so Drew can test push delivery without needing
+  // a second login. Type GLPush.testSelf() in the console.
+  async function testSelf() {
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    if (!memberKey) return { ok: false, reason: 'not_signed_in' };
+    return notifyBand({
+      title: 'Test push from GrooveLinx',
+      body: 'If you see this on this device, push is working end-to-end.',
+      tag: 'gl-test',
+      excludeMemberKey: '__none__' // bypass the self-exclusion
+    });
+  }
+
   if (typeof window !== 'undefined') {
     window.GLPush = {
       init: init,
@@ -273,7 +287,8 @@
       unsubscribe: unsubscribe,
       isSubscribed: isSubscribed,
       getPermissionState: getPermissionState,
-      notifyBand: notifyBand
+      notifyBand: notifyBand,
+      testSelf: testSelf
     };
     // Defer init until after page load + Firebase ready
     if (document.readyState === 'complete') _autoInit();
