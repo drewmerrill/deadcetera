@@ -4244,21 +4244,29 @@ function _calRenderGridOnly() {
     console.log('[GRID RENDER]', year, month + 1, '| firstDay:', firstDay, '(' + dNames[firstDay] + ') | navId:', navId);
 
     // ── IMMEDIATE: render skeleton grid with day numbers (no events, no colors) ──
-    // This ensures the grid is visible instantly, even if Firebase takes 45+ seconds
-    var _skelHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
-    dNames.forEach(function(d, i) {
-        var w = i === 0 || i === 6;
-        _skelHtml += '<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:' + (w ? 'var(--accent-light)' : 'var(--gl-text-tertiary)') + ';text-align:center;padding:6px 0">' + d + '</div>';
-    });
-    for (var _si = 0; _si < firstDay; _si++) _skelHtml += '<div></div>';
-    for (var _sd = 1; _sd <= daysInMonth; _sd++) {
-        var _sds = monthPrefix + String(_sd).padStart(2, '0');
-        var _sToday = _sds === todayStr;
-        _skelHtml += '<div class="gl-day' + (_sToday ? ' gl-day--today' : '') + '" data-date="' + _sds + '" onclick="calDayClick(' + year + ',' + month + ',' + _sd + ')">'
-            + '<div class="gl-day-num">' + _sd + '</div></div>';
+    // This ensures the grid is visible instantly on FIRST paint, even if
+    // Firebase takes 45+ seconds. On re-renders (e.g. after a save), skip
+    // the skeleton — wiping the colored grid first creates a flash where
+    // the user's just-saved blue rehearsal cell briefly disappears, which
+    // makes the save look like it didn't work. Leave the existing grid up
+    // and let the async repaint replace it once events arrive.
+    var _isFirstPaint = !grid.innerHTML || grid.innerHTML.indexOf('gl-day') === -1;
+    if (_isFirstPaint) {
+        var _skelHtml = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px">';
+        dNames.forEach(function(d, i) {
+            var w = i === 0 || i === 6;
+            _skelHtml += '<div style="font-size:0.6em;font-weight:700;text-transform:uppercase;color:' + (w ? 'var(--accent-light)' : 'var(--gl-text-tertiary)') + ';text-align:center;padding:6px 0">' + d + '</div>';
+        });
+        for (var _si = 0; _si < firstDay; _si++) _skelHtml += '<div></div>';
+        for (var _sd = 1; _sd <= daysInMonth; _sd++) {
+            var _sds = monthPrefix + String(_sd).padStart(2, '0');
+            var _sToday = _sds === todayStr;
+            _skelHtml += '<div class="gl-day' + (_sToday ? ' gl-day--today' : '') + '" data-date="' + _sds + '" onclick="calDayClick(' + year + ',' + month + ',' + _sd + ')">'
+                + '<div class="gl-day-num">' + _sd + '</div></div>';
+        }
+        _skelHtml += '</div>';
+        grid.innerHTML = _skelHtml;
     }
-    _skelHtml += '</div>';
-    grid.innerHTML = _skelHtml;
 
     // ── ASYNC: load events and repaint with colors/icons/states ──
     loadCalendarEvents().then(function(result) {
