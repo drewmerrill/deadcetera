@@ -10478,14 +10478,15 @@ window._glActivateFounderCode = function() {
     }
 };
 
-function _renderNotifSettings() {
+async function _renderNotifSettings() {
     var el = document.getElementById('notifSettingsContent');
     if (!el) return;
     var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
     if (!fas) { el.innerHTML = 'Notification engine not available.'; return; }
 
-    var pushState = fas.getPushState();
-    var enabled = fas.isPushEnabled();
+    var hasGlPush = (typeof GLPush !== 'undefined');
+    var pushState = hasGlPush ? GLPush.getPermissionState() : fas.getPushState();
+    var enabled = hasGlPush ? await GLPush.isSubscribed() : fas.isPushEnabled();
     var prefs = fas.getNotifPrefs();
 
     var html = '';
