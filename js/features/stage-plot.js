@@ -571,6 +571,12 @@ function _spRender() {
     html += '<button onclick="_spAddPlot()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">+ New</button>';
     html += '<button onclick="_spSaveAs()" style="background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);color:#a5b4fc;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Save As</button>';
     html += '<button onclick="_spDuplicatePlot()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">Dup</button>';
+    // Delete is destructive — guarded by confirm() in _spDeletePlot. Hidden
+    // when only one plot remains (we always keep at least one so the editor
+    // has something to render).
+    if (_spPlots.length > 1) {
+      html += '<button onclick="_spDeletePlot()" title="Delete this stage plot" style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.25);color:#fca5a5;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.72em;font-weight:600">\uD83D\uDDD1 Delete</button>';
+    }
     html += '<select onchange="_spApplyPreset(this.value)" class="sp-select" style="font-size:0.72em;padding:4px 6px"><option value="">Presets...</option>' + Object.keys(SP_PRESETS).map(function(k) { return '<option value="' + k + '">' + k + '</option>'; }).join('') + '</select>';
     html += '<div style="margin-left:auto;display:flex;gap:6px">';
     html += '<button onclick="_spToggleShareMode()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">&#x1F4E4; Share View</button>';
@@ -1795,6 +1801,26 @@ function _spDuplicatePlot() {
   if (typeof showToast === 'function') showToast('Layout duplicated');
 }
 
+function _spDeletePlot() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  if (_spPlots.length <= 1) {
+    if (typeof showToast === 'function') showToast('Cannot delete — at least one stage plot is required. Use Reset to clear contents instead.', 5000);
+    return;
+  }
+  var msg = 'Delete stage plot "' + plot.name + '"?\n\nThis cannot be undone. Any share links pointing at this plot will stop working.';
+  if (!confirm(msg)) return;
+  _spPlots.splice(_spCurrentIdx, 1);
+  // Reset index — clamp to last available plot.
+  if (_spCurrentIdx >= _spPlots.length) _spCurrentIdx = _spPlots.length - 1;
+  _spDirty = true;
+  // Persist immediately so the deletion sticks even if the user navigates
+  // away before triggering Save manually.
+  _spSave();
+  _spRender();
+  if (typeof showToast === 'function') showToast('Deleted "' + plot.name + '"');
+}
+
 function _spRenamePlot() {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
@@ -2409,6 +2435,7 @@ window._spAddPlot = _spAddPlot;
 window._spSwitchPlot = _spSwitchPlot;
 window._spSave = _spSave;
 window._spDuplicatePlot = _spDuplicatePlot;
+window._spDeletePlot = _spDeletePlot;
 window._spRenamePlot = _spRenamePlot;
 window._spSaveAs = _spSaveAs;
 window._spResetToDefault = _spResetToDefault;
