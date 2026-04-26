@@ -3882,10 +3882,26 @@ function _calRenderConflictPanel() {
     html += '<button onclick="document.getElementById(\'calConflictPanel\').style.display=\'none\'" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:0.85em;opacity:0.5">\u2715 Close</button>';
     html += '</div>';
 
+    // Persisted collapsed state — remembers which member groups the user
+    // has collapsed across page reloads.
+    var _collapsedKey = 'gl_cal_conflict_collapsed';
+    var _collapsedState = {};
+    try { _collapsedState = JSON.parse(localStorage.getItem(_collapsedKey) || '{}') || {}; } catch(e) {}
     Object.keys(groups).forEach(function(person) {
         var items = groups[person];
+        var _personId = person.replace(/[^a-zA-Z0-9]/g, '_');
+        var _isCollapsed = !!_collapsedState[person];
+        var _arrow = _isCollapsed ? '\u25B6' : '\u25BC'; // ▶ collapsed / ▼ expanded
+        var _personSafe = (typeof escHtml === 'function' ? escHtml(person) : person);
         html += '<div style="margin-bottom:var(--gl-space-md,16px)">';
-        html += '<div style="font-size:0.75em;font-weight:700;color:var(--gl-text-secondary);margin-bottom:6px">' + (typeof escHtml === 'function' ? escHtml(person) : person) + ' <span style="font-weight:400;color:var(--gl-text-tertiary)">(' + items.length + ')</span></div>';
+        html += '<div onclick="_calToggleConflictGroup(\'' + person.replace(/'/g, "\\'") + '\')" '
+            + 'style="font-size:0.75em;font-weight:700;color:var(--gl-text-secondary);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px"'
+            + ' title="Click to ' + (_isCollapsed ? 'expand' : 'collapse') + '">'
+            + '<span style="font-size:0.7em;opacity:0.7;transition:transform 0.15s">' + _arrow + '</span>'
+            + '<span>' + _personSafe + '</span>'
+            + '<span style="font-weight:400;color:var(--gl-text-tertiary)">(' + items.length + ')</span>'
+            + '</div>';
+        html += '<div id="calConflictGroup_' + _personId + '" style="display:' + (_isCollapsed ? 'none' : 'block') + '">';
         items.forEach(function(b) {
             var blockId = b._block ? b._block.blockId : null;
             var isSoft = b.status === 'tentative' || b.status === 'hold';
@@ -3948,11 +3964,39 @@ function _calRenderConflictPanel() {
             html += '<div style="display:flex;gap:4px;flex-shrink:0">' + actionsHtml + '</div>';
             html += '</div>';
         });
-        html += '</div>';
+        html += '</div>'; // close inner items wrapper
+        html += '</div>'; // close person group
     });
+    // Expand/Collapse all controls
+    html += '<div style="display:flex;gap:8px;margin-top:6px;font-size:0.7em">'
+        + '<button onclick="_calConflictExpandAll()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;text-decoration:underline">Expand all</button>'
+        + '<button onclick="_calConflictCollapseAll()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;text-decoration:underline">Collapse all</button>'
+        + '</div>';
     html += '</div>';
     panel.innerHTML = html;
 }
+
+window._calToggleConflictGroup = function(person) {
+    var _key = 'gl_cal_conflict_collapsed';
+    var state = {};
+    try { state = JSON.parse(localStorage.getItem(_key) || '{}') || {}; } catch(e) {}
+    state[person] = !state[person];
+    try { localStorage.setItem(_key, JSON.stringify(state)); } catch(e) {}
+    _calRenderConflictPanel();
+};
+
+window._calConflictExpandAll = function() {
+    try { localStorage.setItem('gl_cal_conflict_collapsed', '{}'); } catch(e) {}
+    _calRenderConflictPanel();
+};
+
+window._calConflictCollapseAll = function() {
+    var blocked = _calCachedBlockedRanges || [];
+    var state = {};
+    blocked.forEach(function(b) { if (b.person) state[b.person] = true; });
+    try { localStorage.setItem('gl_cal_conflict_collapsed', JSON.stringify(state)); } catch(e) {}
+    _calRenderConflictPanel();
+};
 
 async function _calRenderNextUp() {
     var el = document.getElementById('calNextUpSection');
