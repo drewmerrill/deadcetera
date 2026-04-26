@@ -3785,7 +3785,17 @@ window._calViewConflicts = function() {
     grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
     // Semantic selector: data-blocked="true" added by grid renderers
     var blockedCells = grid.querySelectorAll('[data-blocked="true"]');
-    if (!blockedCells.length) { if (typeof showToast === 'function') showToast('No conflicts this month'); return; }
+    if (!blockedCells.length) {
+        // Don't claim "no conflicts" if we haven't loaded conflicts.
+        var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
+        var _hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope && GLCalendarSync.hasCalendarScope());
+        if (!_hasToken || !_hasScope) {
+            if (typeof showToast === 'function') showToast('\uD83D\uDD12 Sign in to Google to load conflicts', 4000);
+        } else if (typeof showToast === 'function') {
+            showToast('\u2728 No conflicts this month');
+        }
+        return;
+    }
     blockedCells.forEach(function(cell) {
         cell.classList.add('gl-day--pulse');
         setTimeout(function() { cell.classList.remove('gl-day--pulse'); }, 2000);
@@ -3812,11 +3822,48 @@ function _calRenderConflictPanel() {
     if (!panel) return;
     var blocked = _calCachedBlockedRanges || [];
     if (!blocked.length) {
-        // UX sprint #7: rich empty state — explain what conflicts are + how to add
+        // Differentiate the empty state. "Everyone's clear" is a lie if
+        // (a) the user isn't signed in to Google so we never loaded
+        // conflicts, or (b) sync hasn't completed yet, or (c) the grid
+        // is showing red days (so calendar_events does contain conflicts
+        // but blockedRanges hasn't been populated). Surface the actual
+        // reason instead of false reassurance.
+        var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
+        var _hasScope = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope && GLCalendarSync.hasCalendarScope());
+        var _gridHasRed = !!document.querySelector('#calGrid [data-blocked="true"]');
+        var _eventsLoaded = !!(typeof _calEventsLoadedFromNetwork !== 'undefined' && _calEventsLoadedFromNetwork);
+
+        if (!_hasToken || !_hasScope) {
+            panel.innerHTML = '<div style="padding:24px 20px;border-radius:12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);text-align:center">'
+                + '<div style="font-size:1.5em;margin-bottom:6px">\uD83D\uDD12</div>'
+                + '<div style="font-size:0.92em;font-weight:700;color:#fbbf24;margin-bottom:4px">Sign in to load conflicts</div>'
+                + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">Conflicts and blocked dates pull from the shared band calendar. You\u2019re not currently signed in to Google, so the latest data isn\u2019t available. Sign in to see who\u2019s out when.</div>'
+                + '<button onclick="_calConnectGoogle && _calConnectGoogle()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.82em">\uD83D\uDD11 Sign in to Google</button>'
+                + '</div>';
+            return;
+        }
+        if (_gridHasRed) {
+            panel.innerHTML = '<div style="padding:24px 20px;border-radius:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);text-align:center">'
+                + '<div style="font-size:1.5em;margin-bottom:6px">\u23F3</div>'
+                + '<div style="font-size:0.92em;font-weight:700;color:#a5b4fc;margin-bottom:4px">Loading conflict details\u2026</div>'
+                + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">Red days are visible on the grid but the per-member breakdown hasn\u2019t finished syncing. Try Sync Calendars in the Google panel, or refresh the page.</div>'
+                + '<button onclick="syncBandCalendar && syncBandCalendar()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.82em">\u21BB Sync Calendars</button>'
+                + '</div>';
+            return;
+        }
+        if (!_eventsLoaded) {
+            panel.innerHTML = '<div style="padding:24px 20px;border-radius:12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.2);text-align:center">'
+                + '<div style="font-size:1.5em;margin-bottom:6px">\u23F3</div>'
+                + '<div style="font-size:0.92em;font-weight:700;color:#a5b4fc;margin-bottom:4px">Loading\u2026</div>'
+                + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">Calendar data is still loading from Firebase. Conflicts will appear here once the load completes.</div>'
+                + '</div>';
+            return;
+        }
+        // Genuinely empty — signed in, sync done, no conflicts
         panel.innerHTML = '<div style="padding:24px 20px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);text-align:center">'
             + '<div style="font-size:1.5em;margin-bottom:6px">\u2728</div>'
             + '<div style="font-size:0.92em;font-weight:700;color:var(--gl-text);margin-bottom:4px">Everyone\u2019s clear</div>'
-            + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">No member conflicts or blocked dates have been recorded for the next 90 days. Conflicts appear here when band members add unavailability via Block, mark themselves out on a date, or import busy time from their personal calendar.</div>'
+            + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:14px">No member conflicts or blocked dates recorded for the next 90 days. Conflicts appear here when band members add unavailability via Block, mark themselves out on a date, or post busy time on the band calendar.</div>'
             + '<button onclick="calBlockDates()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.82em">\uD83D\uDEAB Add a Block</button>'
             + '</div>';
         return;
