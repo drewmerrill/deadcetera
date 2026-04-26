@@ -83,12 +83,26 @@ window.GLCalendarSync = (function() {
     //   it's the natural label and there's no per-event venue to substitute.
     var summary;
     var explicitTitle = (glEvent.title && glEvent.title !== 'Band Rehearsal' && glEvent.title !== 'Rehearsal' && glEvent.title !== 'Gig') ? glEvent.title : '';
+    // Normalize for the "already-prefixed" comparison: case-insensitive,
+    // collapse whitespace, strip trailing punctuation. Without this, a title
+    // like "MoonShadow Tavern — Moonshadow" would not equal venue
+    // "MoonShadow Tavern" and the prepend would loop, growing the title by
+    // one venue prefix every sync (real bug seen in prod).
+    var _norm = function(s) { return String(s || '').trim().replace(/\s+/g, ' ').toLowerCase(); };
     if (glEvent.type === 'gig') {
       var venueName = glEvent.venue || glEvent.location || '';
       if (venueName) {
-        summary = venueName;
-        // If user typed a different title (e.g., "Birthday show"), append it.
-        if (explicitTitle && explicitTitle !== venueName) summary += ' \u2014 ' + explicitTitle;
+        var _vn = _norm(venueName);
+        var _et = _norm(explicitTitle);
+        // If the explicit title already starts with (or equals) the venue,
+        // it's already canonical — use as-is, don't re-prepend the venue.
+        if (_et && (_et === _vn || _et.indexOf(_vn) === 0)) {
+          summary = explicitTitle;
+        } else if (_et) {
+          summary = venueName + ' \u2014 ' + explicitTitle;
+        } else {
+          summary = venueName;
+        }
       } else if (explicitTitle) {
         summary = explicitTitle;
       } else {
@@ -96,7 +110,11 @@ window.GLCalendarSync = (function() {
       }
     } else {
       summary = (bandName ? bandName + ' ' : '') + (typeLabel[glEvent.type] || 'Event');
-      if (explicitTitle) summary += ' \u2014 ' + explicitTitle;
+      if (explicitTitle && _norm(explicitTitle) !== _norm(summary) && _norm(explicitTitle).indexOf(_norm(summary)) !== 0) {
+        summary += ' \u2014 ' + explicitTitle;
+      } else if (explicitTitle) {
+        summary = explicitTitle;
+      }
     }
 
     // Description
@@ -1062,7 +1080,30 @@ window.GLCalendarSync = (function() {
     // document if any field is undefined, which silently loses reclassify
     // and every other Phase 2 update in the same save.
     existing.date = startStr.substring(0, 10) || '';
-    existing.title = googleEvent.summary || existing.title || '';
+    var _rawTitle = googleEvent.summary || existing.title || '';
+    // Self-heal: collapse repeated venue prefixes in gig titles.
+    // Past _buildEventBody bug compounded "Venue — Title" into
+    // "Venue — Venue — Venue — Title" once per sync. Detect, strip, and
+    // mark dirty so the push back to Google fixes the source copy too.
+    var _titleWasCorrupt = false;
+    if (existing.type === 'gig' && existing.venue && _rawTitle) {
+      var _vRaw = existing.venue.trim();
+      if (_vRaw) {
+        var _esc = _vRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var _repeatRe = new RegExp('^(?:' + _esc + '\\s*\\u2014\\s*){2,}', 'i');
+        if (_repeatRe.test(_rawTitle)) {
+          var _cleaned = _rawTitle.replace(_repeatRe, _vRaw + ' \u2014 ');
+          // If after collapse the trailing segment is just the venue, drop the dash.
+          _cleaned = _cleaned.replace(new RegExp('^' + _esc + '\\s*\\u2014\\s*' + _esc + '\\s*$', 'i'), _vRaw);
+          if (_cleaned !== _rawTitle) {
+            console.log('[CalSync] Cleaned compounded title "' + _rawTitle + '" -> "' + _cleaned + '"');
+            _rawTitle = _cleaned;
+            _titleWasCorrupt = true;
+          }
+        }
+      }
+    }
+    existing.title = _rawTitle;
     existing.location = googleEvent.location || existing.location || '';
     existing.notes = googleEvent.description || existing.notes || '';
     existing.isAllDay = isAllDay;
@@ -1100,7 +1141,10 @@ window.GLCalendarSync = (function() {
     existing.updated_at = new Date().toISOString();
     existing.sync = existing.sync || {};
     existing.sync.lastSyncedAt = new Date().toISOString();
-    existing.sync.status = 'synced';
+    // If we just stripped a corrupted compounded title, mark dirty so the
+    // next push pass writes the cleaned version back to Google. Otherwise
+    // the source copy stays corrupt forever.
+    existing.sync.status = _titleWasCorrupt ? 'dirty' : 'synced';
     // Capture organizer email (Mode A attribution fallback).
     if (googleEvent.organizer && googleEvent.organizer.email) existing.organizerEmail = googleEvent.organizer.email;
     else if (googleEvent.creator && googleEvent.creator.email) existing.organizerEmail = googleEvent.creator.email;
