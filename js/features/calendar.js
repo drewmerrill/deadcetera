@@ -3868,12 +3868,55 @@ function _calRenderConflictPanel() {
             + '</div>';
         return;
     }
-    // Group by person
+    // Group by person, then merge consecutive single-day blocks of the same
+    // person + title + status into a single display row. The user often
+    // ends up with N separate Google events (one per day) for a single
+    // trip — they share a title but have distinct googleEventIds, so the
+    // fold-up can't collapse them. A display-only merge keeps the data
+    // intact while the UI shows "Apr 5 → Apr 10" instead of 6 rows.
+    var _addDays = function(dateStr, n) {
+        var p = dateStr.split('-');
+        var d = new Date(parseInt(p[0],10), parseInt(p[1],10) - 1, parseInt(p[2],10));
+        d.setDate(d.getDate() + n);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    var _mergeKey = function(b) {
+        return [
+            (b.reason || '').toLowerCase().trim(),
+            b.status || 'unavailable',
+            b._isAllDay ? 'allday' : (b._timeLabel || 'notime')
+        ].join('|');
+    };
     var groups = {};
     blocked.forEach(function(b) {
         var person = b.person || 'Unknown';
         if (!groups[person]) groups[person] = [];
         groups[person].push(b);
+    });
+    // Within each person, sort by start date and merge consecutive runs.
+    // Always clone before mutating — the source `blocked` array feeds other
+    // surfaces (grid hover, stats) and shouldn't be touched.
+    Object.keys(groups).forEach(function(person) {
+        var items = groups[person].slice().sort(function(a, b) {
+            return (a.startDate || '').localeCompare(b.startDate || '');
+        });
+        var merged = [];
+        items.forEach(function(b) {
+            var prev = merged.length ? merged[merged.length - 1] : null;
+            if (prev && _mergeKey(prev) === _mergeKey(b)
+                && prev.endDate && b.startDate
+                && _addDays(prev.endDate, 1) === b.startDate) {
+                // Extend the cloned prev's range; track originals for actions.
+                prev.endDate = b.endDate || b.startDate;
+                prev._mergedFrom.push(b);
+            } else {
+                // Clone so we don't mutate the underlying blocked entry.
+                var clone = Object.assign({}, b);
+                clone._mergedFrom = [b];
+                merged.push(clone);
+            }
+        });
+        groups[person] = merged;
     });
     var statusLabels = { unavailable:'Hard conflict', tentative:'Soft conflict', booked_elsewhere:'Booked elsewhere', vacation:'Vacation', travel:'Travel', personal_block:'Personal', hold:'Hold' };
     var html = '<div style="padding:16px 20px;border-radius:12px;background:rgba(255,255,255,0.015);border:1px solid rgba(255,255,255,0.06)">';
@@ -3940,8 +3983,20 @@ function _calRenderConflictPanel() {
                 if (_isMyConflict && _hasGoogleScope && blockId && !_isSynced) {
                     actionsHtml += '<button onclick="_calSyncExistingConflict(\'' + (blockId || '').replace(/'/g, "\\'") + '\')" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(66,133,244,0.2);background:rgba(66,133,244,0.06);color:#4285f4;cursor:pointer;white-space:nowrap">\uD83D\uDCC5 Push to Google</button>';
                 }
-                actionsHtml += '<button onclick="' + editAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer">\u270F\uFE0F</button>';
-                actionsHtml += '<button onclick="' + deleteAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:none;background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer">\u2715</button>';
+                // For merged display rows, the edit/delete actions need to
+                // touch every backing record. Stash them on window so the
+                // handlers can find them by index.
+                var _mergedCount = (b._mergedFrom && b._mergedFrom.length) || 1;
+                if (_mergedCount > 1) {
+                    var _stashKey = 'mergedConflict_' + Math.random().toString(36).slice(2, 10);
+                    window._calMergedConflictStash = window._calMergedConflictStash || {};
+                    window._calMergedConflictStash[_stashKey] = b._mergedFrom;
+                    actionsHtml += '<span style="font-size:0.62em;padding:2px 6px;border-radius:4px;background:rgba(99,102,241,0.08);color:#a5b4fc;white-space:nowrap" title="' + _mergedCount + ' consecutive day records merged for display">' + _mergedCount + ' days</span>';
+                    actionsHtml += '<button onclick="_calDeleteMergedConflict(\'' + _stashKey + '\')" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:none;background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer" title="Delete all ' + _mergedCount + ' day records in this range">\u2715 \u00D7' + _mergedCount + '</button>';
+                } else {
+                    actionsHtml += '<button onclick="' + editAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer">\u270F\uFE0F</button>';
+                    actionsHtml += '<button onclick="' + deleteAction + '" style="font-size:0.68em;padding:3px 8px;border-radius:4px;border:none;background:rgba(239,68,68,0.1);color:#f87171;cursor:pointer">\u2715</button>';
+                }
             }
 
             html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin-bottom:4px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">';
@@ -3983,6 +4038,42 @@ window._calToggleConflictGroup = function(person) {
     state[person] = !state[person];
     try { localStorage.setItem(_key, JSON.stringify(state)); } catch(e) {}
     _calRenderConflictPanel();
+};
+
+window._calDeleteMergedConflict = async function(stashKey) {
+    var stash = (window._calMergedConflictStash || {})[stashKey];
+    if (!stash || !stash.length) {
+        if (typeof showToast === 'function') showToast('\u26A0 Merged-conflict data missing — refresh and try again', 4000);
+        return;
+    }
+    var msg = 'Delete ALL ' + stash.length + ' day records in this range?\n\n'
+        + 'Each day was created as its own block on the band calendar. This will remove every one of them.';
+    if (!confirm(msg)) return;
+    var deleted = 0;
+    var failed = 0;
+    for (var i = 0; i < stash.length; i++) {
+        var b = stash[i];
+        try {
+            var blockId = b._block ? b._block.blockId : null;
+            var evtId = b._eventId || '';
+            if (blockId) {
+                await _calDeleteScheduleBlock(blockId);
+            } else if (evtId) {
+                await _calDeleteScheduleBlock('', { eventId: evtId, _suppressConfirm: true });
+            }
+            deleted++;
+        } catch(e) {
+            failed++;
+            console.warn('[Calendar] merged-conflict delete failed:', e && e.message);
+        }
+    }
+    if (typeof showToast === 'function') {
+        showToast('\u2713 Removed ' + deleted + ' day record' + (deleted === 1 ? '' : 's')
+            + (failed ? ' (\u26A0 ' + failed + ' failed)' : ''), 4500);
+    }
+    delete window._calMergedConflictStash[stashKey];
+    if (typeof _calRenderConflictPanel === 'function') _calRenderConflictPanel();
+    if (typeof _calRenderGridOnly === 'function') _calRenderGridOnly();
 };
 
 window._calConflictExpandAll = function() {
