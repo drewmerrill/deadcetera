@@ -1180,6 +1180,12 @@ window._calSyncNow = async function() {
         var _syncParts = [];
         if (_syncResult.pushed > 0) _syncParts.push(_syncResult.pushed + ' pushed');
         if (_syncResult.pushedUpdates > 0) _syncParts.push(_syncResult.pushedUpdates + ' update' + (_syncResult.pushedUpdates === 1 ? '' : 's') + ' pushed');
+        // Surface UPDATE failures so they don't slip past silently — these
+        // events stay 'dirty' and will retry on the next sync, but the user
+        // should know.
+        if (_syncResult.updateErrors > 0) _syncParts.push('\u26A0 ' + _syncResult.updateErrors + ' update' + (_syncResult.updateErrors === 1 ? '' : 's') + ' failed (will retry)');
+        // Phase 2 partial fetch — surface so user knows pull was incomplete.
+        if (_syncResult.partialFetch) _syncParts.push('\u26A0 partial fetch (Google API issue)');
         if (_syncResult.blocksPushed > 0) _syncParts.push(_syncResult.blocksPushed + ' block' + (_syncResult.blocksPushed === 1 ? '' : 's') + ' pushed');
         if (_syncResult.pulled > 0) _syncParts.push(_syncResult.pulled + ' imported');
         if (_syncResult.updated > 0) _syncParts.push(_syncResult.updated + ' updated');

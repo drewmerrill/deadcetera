@@ -288,6 +288,16 @@ window.GLCalendarSync = (function() {
   // GrooveLinx version, and we'd rather match once than double-create.
   async function _findByTitleAndDate(calId, title, dateStr) {
     if (!calId || !title || !dateStr) return null;
+    // Don't auto-dedupe unavailability events. Two members can both have
+    // "Out" or "Busy" on the same day — those are distinct people's blocks,
+    // not a single event we should collapse. Generic words like "rehearsal"
+    // also collide; only run the dedupe for titles that look gig-specific.
+    var _lc = String(title).toLowerCase().trim();
+    if (/^(busy|out|off|away|unavailable|blocked|conflict|free|tbd|hold)\b/.test(_lc)
+        || /\b(busy|out|off|unavail)\b/.test(_lc) && _lc.length < 25) {
+      console.log('[CalSync] _findByTitleAndDate: skipping dedupe for unavailability-pattern title:', JSON.stringify(title));
+      return null;
+    }
     try {
       // Query a narrow window — start of target day to end of next day
       var _start = new Date(dateStr + 'T00:00:00').toISOString();
@@ -468,7 +478,12 @@ window.GLCalendarSync = (function() {
         console.warn('[CalSync] update() refused — event', externalEventId, 'does not exist on band calendar', calId, '. Likely an orphaned googleEventId from legacy auto-attendee era. Caller should clear googleEventId and create fresh.');
         return { success: false, error: 'orphan_event_id', status: 'orphan', orphanGoogleId: externalEventId };
       }
-    } catch(_e) { /* network — proceed and let the PATCH speak for itself */ }
+    } catch(_e) {
+      // Network error — proceed to PATCH anyway (Google API will give us the
+      // real verdict). Log so any post-hoc "why did the orphan check skip"
+      // questions can be answered without guessing.
+      console.warn('[CalSync] update() pre-check network error — proceeding to PATCH anyway:', _e && _e.message);
+    }
 
     var patchUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId);
     console.log('[CalSync] update() PATCH URL =', patchUrl);
@@ -1103,7 +1118,16 @@ window.GLCalendarSync = (function() {
     // landing the dirty edits on Google on the next sync.
     var _existingStatus = (existing && (existing.syncStatus || (existing.sync && existing.sync.status))) || '';
     if (_existingStatus === 'dirty') {
-      console.log('[CalSync] _reconcileEvent: SKIPPING reconcile for dirty local event "' + (existing.title || existing.id) + '" — app-side edits not yet pushed.');
+      // CONFLICT WARNING: if Google's copy has a NEWER updated time than
+      // our local dirty edit, another band member updated it after our edit
+      // started. Skipping reconcile preserves our edit but loses theirs
+      // until next push lands. Surface the gap so it's diagnosable.
+      var _googleUpdated = googleEvent.updated || (googleEvent.start && googleEvent.start.dateTime) || '';
+      var _localUpdated = existing.updated_at || '';
+      var _hasNewerGoogle = _googleUpdated && _localUpdated && _googleUpdated > _localUpdated;
+      console.log('[CalSync] _reconcileEvent: SKIPPING dirty event "' + (existing.title || existing.id) + '" @ ' + (existing.date || '?')
+        + ' — local edits will be pushed on next sync.'
+        + (_hasNewerGoogle ? ' \u26A0 Google has newer changes (' + _googleUpdated + ' vs local ' + _localUpdated + ') — those will be lost when our push lands.' : ''));
       return existing;
     }
     var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
@@ -1635,6 +1659,14 @@ window.GLCalendarSync = (function() {
             isAllDay: !!ev.isAllDay
           };
           var _upd = await update(_gid, _gle);
+          // Single retry for transient errors (Google API has occasional
+          // 500/502/503/429 spikes). Backoff small to avoid blocking sync.
+          var _isTransient = !_upd.success && /^Update failed: (500|502|503|429)/.test(_upd.error || '');
+          if (_isTransient) {
+            console.log('[CalSync] Phase 1 UPDATE transient error for', ev.title, '(' + _upd.error + ') — retrying in 400ms');
+            await new Promise(function(r) { setTimeout(r, 400); });
+            _upd = await update(_gid, _gle);
+          }
           if (_upd.success) {
             events[i].syncStatus = 'synced';
             events[i].lastSyncedAt = new Date().toISOString();
@@ -1655,9 +1687,15 @@ window.GLCalendarSync = (function() {
             _gid = null;
             _status = '';
           } else {
-            console.warn('[CalSync] Phase 1 UPDATE failed for', ev.title, ':', _upd.error);
+            // Stays dirty → next sync retries. Track in result so the toast
+            // can surface "N updates failed — will retry" instead of swallowing.
+            console.warn('[CalSync] Phase 1 UPDATE failed for', ev.title, ':', _upd.error, '— left dirty for next-sync retry');
+            result.updateErrors = (result.updateErrors || 0) + 1;
           }
-        } catch(e) { console.warn('[CalSync] Phase 1 UPDATE error for', ev.title, e.message); }
+        } catch(e) {
+          console.warn('[CalSync] Phase 1 UPDATE error for', ev.title, e.message);
+          result.updateErrors = (result.updateErrors || 0) + 1;
+        }
       }
       // Already synced + clean → skip
       var alreadySynced = (_gid && _status === 'synced');
@@ -1862,8 +1900,14 @@ window.GLCalendarSync = (function() {
           continue; // restart the do-while with full query
         }
         if (!res.ok) {
-          console.warn('[CalSync] Pull failed:', res.status);
-          result.error = 'Google API ' + res.status;
+          // Phase 2 paginated fetch failure — partial sync risk. Log the
+          // page number + how many events we got so far so the user / a
+          // post-hoc diagnosis can see exactly what's missing.
+          console.warn('[CalSync] Phase 2 page fetch failed:', res.status,
+            '| collected so far:', googleEvents.length, 'events',
+            '| pageToken:', pageToken ? pageToken.substring(0, 12) + '...' : '(first page)');
+          result.error = 'Google API ' + res.status + ' on page fetch';
+          result.partialFetch = googleEvents.length > 0;
           if (res.status === 401 || res.status === 403) result.needsReauth = true;
           break;
         }
@@ -2126,9 +2170,38 @@ window.GLCalendarSync = (function() {
       // time freebusy 401s. Skip the entire write/cleanup phase and preserve
       // last-known state until next successful check.
       var _checkFailed = (_hiddenRanges === null);
+      // Helper: update sync state without overwriting existing fields.
+      var _updateMissStreak = async function(val) {
+        try {
+          var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+          if (db && typeof bandPath === 'function') {
+            await db.ref(bandPath('calendar_sync_state')).update({ hiddenCheckMissStreak: val });
+          }
+        } catch(_e) { /* non-fatal */ }
+      };
       if (_checkFailed) {
-        console.warn('[CalSync] Path B.2: hidden-event check failed; preserving existing synthetic blocks until next successful check');
+        // Bump a counter — if freebusy has failed N consecutive syncs, the
+        // synthetics are likely stale (event was deleted and we have no way
+        // to know). After 3 misses, clear them to avoid permanent ghosts.
+        var _miss = (syncState.hiddenCheckMissStreak || 0) + 1;
+        if (_miss >= 3) {
+          console.warn('[CalSync] Path B.2: hidden-event check failed', _miss, 'syncs in a row — clearing stale synthetics to avoid permanent ghosts');
+          for (var _ci = events.length - 1; _ci >= 0; _ci--) {
+            if (events[_ci] && events[_ci]._syntheticFromFreeBusy) {
+              events.splice(_ci, 1);
+              _synthDirty = true;
+            }
+          }
+          await _updateMissStreak(0);
+        } else {
+          console.warn('[CalSync] Path B.2: hidden-event check failed (streak ' + _miss + '/3); preserving existing synthetic blocks until next successful check');
+          await _updateMissStreak(_miss);
+        }
       } else {
+        // Reset streak on success
+        if (syncState.hiddenCheckMissStreak) {
+          await _updateMissStreak(0);
+        }
       (_hiddenRanges || []).forEach(function(h) {
         var s = new Date(h.start);
         var e = new Date(h.end);
@@ -3311,13 +3384,20 @@ window.GLCalendarSync = (function() {
     };
 
     var totalP = pollutionGids.length;
+    var _successfullyDeletedGids = {};
     for (var pi = 0; pi < pollutionGids.length; pi++) {
       var gid = pollutionGids[pi];
       try {
         var r = await doDelete(gid);
         if (r.ok) {
           result.pollutionDeleted++;
+          _successfullyDeletedGids[gid] = true;
         } else {
+          // Failure logged but local row NOT cleaned — if Google still has
+          // the event (e.g. a 500 hit), removing local would create a
+          // phantom that re-imports on the next sync. Leave both intact
+          // so the next audit run can retry.
+          console.warn('[CalSync] Audit: delete failed for', gid, 'status:', r.status, '— leaving local row in place for retry');
           result.errors.push('delete_failed_' + r.status + '_' + gid + (r.parentRetry ? '_(parent retry)' : ''));
         }
       } catch(e) {
@@ -3328,12 +3408,14 @@ window.GLCalendarSync = (function() {
       await sleep(180);
       try { onProgress({ done: pi + 1, total: totalP, deleted: result.pollutionDeleted, errors: result.errors.length }); } catch(_e) {}
     }
-    // Clean local rows that referenced deleted Google events
-    if (pollutionGids.length) {
+    // Clean local rows ONLY for gids whose Google delete actually succeeded.
+    // Past code cleaned local for every attempted gid, which created phantoms
+    // when a transient 5xx prevented Google delete.
+    if (Object.keys(_successfullyDeletedGids).length) {
       localEvents = localEvents.filter(function(e) {
         if (!e) return false;
-        var gid = e.googleEventId || (e.sync && e.sync.externalEventId);
-        return !gid || !pollutionGidSet[gid];
+        var _g = e.googleEventId || (e.sync && e.sync.externalEventId);
+        return !_g || !_successfullyDeletedGids[_g];
       });
     }
 
@@ -3737,16 +3819,20 @@ window.GLCalendarSync = (function() {
     var _memDiag = _buildMemberNameIndex();
     console.log('[CalSync] reclassify: memberNames =', Object.keys(_memDiag.memberNames));
 
+    // Track candidates that LOOK like unavailability but didn't match — these
+    // are the diagnostic-worthy ones (most logs every-event-spam was noise).
+    var _ambiguousCandidates = [];
     for (var i = 0; i < events.length; i++) {
       var ev = events[i];
       if (!ev || !ev.title) continue;
       if (ev.type === 'rehearsal' || ev.type === 'gig') continue;
       scanned++;
       var r = _detectUnavailability(ev.title);
-      // Log every candidate for visibility — most of these should be quick
-      // to scan through when diagnosing "why isn't my event flagged".
-      if (r.isUnavail || /busy|off|out|away|unavail|conflict|blocked/i.test(ev.title)) {
-        console.log('[CalSync] reclassify check:', ev.date, '|', JSON.stringify(ev.title), '| type:', ev.type, '| result:', r);
+      // Only log the AMBIGUOUS cases — events whose title hints at busy/out
+      // but didn't classify. These are the ones worth investigating. The
+      // matched-and-upgraded case logs separately below.
+      if (!r.isUnavail && /busy|off|out|away|unavail|conflict|blocked/i.test(ev.title)) {
+        _ambiguousCandidates.push({ date: ev.date, title: ev.title, type: ev.type });
       }
       if (!r.isUnavail) continue;
       var nextType = r.scope === 'unassigned' ? 'unavailable_unassigned' : 'unavailable';
@@ -3772,7 +3858,11 @@ window.GLCalendarSync = (function() {
       }
       catch (e) { console.warn('[CalSync] reclassify save failed:', e && e.message); }
     } else {
-      console.log('[CalSync] reclassify: scanned', scanned, 'non-rehearsal/gig events, no upgrades needed');
+      console.log('[CalSync] reclassify: scanned', scanned, 'events, no upgrades needed');
+    }
+    if (_ambiguousCandidates.length) {
+      console.log('[CalSync] reclassify: ' + _ambiguousCandidates.length + ' ambiguous title(s) (busy-ish but not matched):',
+        _ambiguousCandidates.slice(0, 5).map(function(c) { return c.title; }));
     }
     return { scanned: scanned, updated: updated };
   }
