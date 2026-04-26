@@ -6487,8 +6487,9 @@ async function calAddEvent(date, editIdx, existing) {
             <option value="rehearsal" ${(ev.type||'rehearsal')==='rehearsal'?'selected':''}>\uD83C\uDFB8 Rehearsal</option>
             <option value="gig" ${ev.type==='gig'?'selected':''}>\uD83C\uDFA4 Gig</option>
             <option value="meeting" ${ev.type==='meeting'?'selected':''}>\uD83D\uDC65 Meeting</option>
+            <option value="unavailable" ${(ev.type==='unavailable' || ev.type==='unavailable_unassigned')?'selected':''}>\uD83D\uDEAB Unavailable / Block</option>
             <option value="other" ${ev.type==='other'?'selected':''}>\uD83D\uDCCC Other</option>
-            <option value="_conflict">\uD83D\uDEAB Conflict / Blocked</option>
+            <option value="_conflict">\uD83D\uDEAB Conflict / Blocked (open block editor)</option>
         </select></div>
         <div class="form-row"><span class="form-label">Title</span><input class="app-input" id="calTitle" placeholder="${_titlePlaceholder}" value="${ev.title||''}"></div>
         <div class="form-row"><span class="form-label">Date</span><input class="app-input" id="calDate" type="date" value="${date||ev.date||''}" style="color-scheme:dark" oninput="_calFormValidate()"><div id="calDateErr" style="font-size:0.7em;color:#fbbf24;margin-top:3px;display:none"></div></div>
