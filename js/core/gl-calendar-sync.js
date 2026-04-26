@@ -2158,7 +2158,14 @@ window.GLCalendarSync = (function() {
       _gidGroups[_gid].push(_idx);
     });
     var _scoreEv = function(e) {
-      return (e.time ? 1 : 0) + (e.endTime ? 1 : 0) + (e.updated_at ? 1 : 0)
+      // endDate weighted heavily — for multi-day all-day events, the record
+      // that has endDate set is the one Phase 2 reconcile updated. Others
+      // are leftover per-day expansions from the old import path. Without
+      // this weight, all 6 (or N) per-day records tie on metadata and
+      // ties go to lowest index — which is the WRONG one (no endDate).
+      var endDateWeight = (e.endDate && e.endDate > (e.date || '')) ? 5 : 0;
+      return endDateWeight
+        + (e.time ? 1 : 0) + (e.endTime ? 1 : 0) + (e.updated_at ? 1 : 0)
         + (e.lastSyncedAt ? 1 : 0) + (e.venue ? 1 : 0) + (e.location ? 1 : 0);
     };
     var _toDrop = [];
