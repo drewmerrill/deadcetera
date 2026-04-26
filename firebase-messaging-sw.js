@@ -9,7 +9,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyB__AzCVDpgPjE-zTr3BrT9ti6D9exFba8',
+  apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
   authDomain: 'deadcetera-35424.firebaseapp.com',
   databaseURL: 'https://deadcetera-35424-default-rtdb.firebaseio.com',
   projectId: 'deadcetera-35424',
