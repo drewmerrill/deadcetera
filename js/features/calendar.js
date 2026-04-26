@@ -4308,7 +4308,11 @@ function _calRenderGridOnly() {
             if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
             else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
             else if (isUnavailable) { state = 'unavailable'; stateClass = 'gl-day--blocked'; icon = '\uD83D\uDEAB'; }
-            else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            // Show 🚫 icon for ANY red-cell state (unavailable OR blocked-from-
+            // schedule-blocks). Past behavior only iconed unavailable, so days
+            // blocked purely via schedule_blocks looked iconless even though
+            // the color was identical. Inconsistent visual signal.
+            else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; icon = '\uD83D\uDEAB'; }
             else if (isMeeting) { state = 'meeting'; stateClass = 'gl-day--meeting'; icon = '\uD83D\uDCCB'; }
             else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
@@ -4900,8 +4904,16 @@ async function loadCalendarEvents() {
         var memberName = _bm2[memberKey] ? _bm2[memberKey].name : memberKey;
         var shortName = memberName.split(' ')[0];
         var baseReason = ev._googleSource || ev.title || 'Unavailable';
-        var reason = ev.isAllDay ? (baseReason + ' (all day)')
-            : (baseReason + (ev.time ? ' ' + ev.time + (ev.endTime ? '\u2013' + ev.endTime : '') : ''));
+        // Degenerate ranges: events created in Google Calendar without
+        // adjusting the default time often save as 00:00–00:00 (start ===
+        // end at midnight). That's not a real time window — treat as
+        // all-day for display purposes so the hover doesn't show "Pierce
+        // out 00:00–00:00".
+        var _hasRealTime = ev.time
+            && !(ev.time === '00:00' && (!ev.endTime || ev.endTime === '00:00' || ev.endTime === ev.time));
+        var reason = (ev.isAllDay || !_hasRealTime)
+            ? (baseReason + ' (all day)')
+            : (baseReason + ' ' + ev.time + (ev.endTime ? '\u2013' + ev.endTime : ''));
         if (reasonSuffix) reason += ' ' + reasonSuffix;
         blocked.push({
             person: shortName,
