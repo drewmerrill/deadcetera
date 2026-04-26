@@ -1514,8 +1514,19 @@ function _gigRenderAvailability(gig) {
         }
     }
 
-    // Collapsible member list
-    html += '<details id="' + detailId + '"' + (isUpcoming ? ' open' : '') + ' style="margin-top:8px">'
+    // Collapsible member list. Default state by need-to-look-at-it:
+    //   - Past gigs always collapsed.
+    //   - Upcoming gigs with NO gaps (all roles covered, nothing maybe,
+    //     nobody awaiting) → collapsed (compact card, no real estate
+    //     wasted on the "everything's fine" case).
+    //   - Upcoming gigs with ANY gap → open by default so the missing
+    //     piece is immediately visible.
+    var _allClear = isUpcoming
+        && s.missingRoles.length === 0
+        && s.maybeRoles.length === 0
+        && (s.awaitingCount || 0) === 0;
+    var _detailsOpen = isUpcoming && !_allClear;
+    html += '<details id="' + detailId + '"' + (_detailsOpen ? ' open' : '') + ' style="margin-top:8px">'
         + '<summary style="font-size:0.68em;color:var(--text-dim);cursor:pointer;padding:4px 0">Member details</summary>';
 
     members.forEach(function(memberRef) {
