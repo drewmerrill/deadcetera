@@ -4773,6 +4773,32 @@ async function loadCalendarEvents() {
     console.log('[PERF] calendar Firebase complete ' + Math.round(performance.now()) + 'ms (' + events.length + ' events)');
     _calEventsLoadedFromNetwork = true;
 
+    // ── Type self-heal: any event with gigId should be type='gig' ──────────
+    // If a calendar_event has a gigId pointing to a gig record but its type
+    // drifted to 'rehearsal' (or anything else), the grid still colors gold
+    // (because some sibling event on the same date IS type='gig'), but
+    // clicking Edit opens the rehearsal form. Confusing data corruption.
+    // Heal on read so the data converges.
+    try {
+        var _typeFixed = 0;
+        events.forEach(function(e) {
+            if (e && e.gigId && e.type !== 'gig') {
+                console.warn('[Calendar] type self-heal: event "' + (e.title || e.id) + '" has gigId=' + e.gigId + ' but type=' + e.type + ' — auto-correcting to gig');
+                e.type = 'gig';
+                e.updated_at = new Date().toISOString();
+                _typeFixed++;
+            }
+        });
+        if (_typeFixed) {
+            console.log('[Calendar] type self-heal: corrected', _typeFixed, 'event(s) to type=gig');
+            try {
+                if (typeof saveBandDataToDrive === 'function') {
+                    saveBandDataToDrive('_band', 'calendar_events', events);
+                }
+            } catch(_e) { /* non-fatal */ }
+        }
+    } catch(_e) { /* non-fatal */ }
+
     // ── Client-side multi-day fold-up ──────────────────────────────────────
     // Old data has per-day records (one per day) for multi-day events from
     // before the importer was fixed to store single records. Phase 2.4
