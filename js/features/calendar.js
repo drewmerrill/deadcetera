@@ -4287,7 +4287,11 @@ function _calRenderGridOnly() {
             var hasEvent = dayEvents.length > 0;
             var w = dow === 0 || dow === 6;
             var isFuture = ds >= todayStr;
-            var isBest = !_calIsModeC() && isFuture && !hasEvent && !isBlocked && !w;
+            // Green = "nothing booked" regardless of day of week. Weekends
+            // used to be excluded because the original semantic was "good
+            // rehearsal target" — but Drew uses green as a generic "free"
+            // signal, so weekends count too.
+            var isBest = !_calIsModeC() && isFuture && !hasEvent && !isBlocked;
             var state = 'default';
             var stateClass = '';
             var icon = '';
