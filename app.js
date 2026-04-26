@@ -10428,17 +10428,22 @@ function _renderNotifSettings() {
 }
 
 window._toggleNotifMaster = async function() {
-    var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
-    if (!fas) return;
-    if (fas.isPushEnabled()) {
-        await fas.disablePush();
-    } else {
-        var result = await fas.enablePush();
-        if (!result.ok) {
-            if (typeof showToast === 'function') showToast('Could not enable: ' + (result.reason || 'unknown'));
-        }
+    // Redirect to GLPush (FCM v1) — the legacy fas.enablePush() used the
+    // raw Web Push API and stored a different shape that our worker can't
+    // send to. Both the master toggle here and the Notifications page
+    // gold card now route through the same FCM pipeline.
+    if (typeof GLPush === 'undefined') {
+        if (typeof showToast === 'function') showToast('Push module not loaded — refresh the page.');
+        return;
     }
-    _renderNotifSettings();
+    var subscribed = await GLPush.isSubscribed();
+    var result = subscribed ? await GLPush.unsubscribe() : await GLPush.subscribe();
+    if (!result.ok) {
+        if (typeof showToast === 'function') showToast('\u26A0 ' + (result.userMessage || result.reason || 'Failed'), 5000);
+    } else {
+        if (typeof showToast === 'function') showToast(subscribed ? '\u2713 Push notifications disabled' : '\u2713 Push notifications enabled', 4000);
+    }
+    if (typeof _renderNotifSettings === 'function') _renderNotifSettings();
 };
 
 window._toggleNotifPref = function(key) {
