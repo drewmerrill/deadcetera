@@ -7031,6 +7031,37 @@ async function calSaveEvent(editIdx) {
     if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {
         GLStore.setCachedBandData('calendar_events', events);
     }
+    // Optimistic instant paint — flip the saved cell to its new color
+    // BEFORE the async _calRenderGridOnly fires. Avoids any microtask /
+    // cache race that could delay the visual feedback by a few hundred ms.
+    // The full render runs right after and reconciles everything else.
+    try {
+        if (ev.date) {
+            var _cell = document.querySelector('#calGrid .gl-day[data-date="' + ev.date + '"]');
+            if (_cell) {
+                // Strip any prior state class so we don't stack them.
+                _cell.classList.remove('gl-day--gig', 'gl-day--rehearsal', 'gl-day--blocked', 'gl-day--meeting', 'gl-day--soft', 'gl-day--best');
+                var _newClass = '';
+                var _icon = '';
+                if (ev.type === 'gig')             { _newClass = 'gl-day--gig'; _icon = '\uD83C\uDFA4'; }
+                else if (ev.type === 'rehearsal')  { _newClass = 'gl-day--rehearsal'; _icon = '\uD83C\uDFB8'; }
+                else if (ev.type === 'meeting')    { _newClass = 'gl-day--meeting'; _icon = '\uD83D\uDCCB'; }
+                else if (ev.type === 'unavailable'){ _newClass = 'gl-day--blocked'; _icon = '\uD83D\uDEAB'; }
+                if (_newClass) {
+                    _cell.classList.add(_newClass);
+                    // Replace any existing icon span with the new one
+                    var _existingIcon = _cell.querySelector('.gl-day-icon');
+                    if (_existingIcon) _existingIcon.textContent = _icon;
+                    else if (_icon) {
+                        var _iconEl = document.createElement('div');
+                        _iconEl.className = 'gl-day-icon';
+                        _iconEl.textContent = _icon;
+                        _cell.appendChild(_iconEl);
+                    }
+                }
+            }
+        }
+    } catch(_e) { /* non-fatal — the async render will catch up */ }
     _calRenderGridOnly();
     // Re-open the day-detail right rail for the saved event's date so the
     // user immediately sees the new event there (it was the most common
