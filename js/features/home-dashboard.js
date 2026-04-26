@@ -2265,7 +2265,14 @@ function _renderEventRiskCard(bundle) {
         if (!calEvents.length && bundle._calEvents) calEvents = bundle._calEvents;
     } catch(e) {}
     var today = _todayStr();
-    var upcoming = calEvents.filter(function(e) { return (e.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
+    // Only consider rehearsals + gigs for the pre-event prep card. Other
+    // event types (unavailable blocks, meetings, "other") don't need an
+    // RSVP / practice / readiness checklist and showing the card for them
+    // mislabels them as "Rehearsal tomorrow" (the eventLabel logic below
+    // falls back to Rehearsal for everything that isn't a gig).
+    var upcoming = calEvents
+        .filter(function(e) { return (e.date || '') >= today && (e.type === 'rehearsal' || e.type === 'gig'); })
+        .sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); });
     var nextEvent = upcoming[0];
     if (!nextEvent) return '';
 
