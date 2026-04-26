@@ -30,10 +30,10 @@ messaging.onBackgroundMessage(function(payload) {
   var body  = notif.body  || data.body  || 'You have a new band update.';
   var click = data.click_action || data.url || '/';
 
-  self.registration.showNotification(title, {
+  return self.registration.showNotification(title, {
     body: body,
-    icon: '/groovelinx_app_icon.png',
-    badge: '/groovelinx_badge.png',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     data: { click: click, ts: Date.now() },
     tag: data.tag || 'gl-feed',
     renotify: true

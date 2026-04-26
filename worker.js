@@ -1508,14 +1508,16 @@ async function handleFcmPushSend(request, env) {
   catch (e) { return cors(jsonError('fcm_auth_failed: ' + (e && e.message), 502)); }
 
   const sendOne = async (token) => {
+    // Data-only payload — the SW's onBackgroundMessage handler is the only display
+    // path. Including a top-level `notification` field causes some browsers to
+    // auto-handle the message and skip our handler, leaving the icon/click logic
+    // we configure in the SW dead.
     const fcmBody = {
       message: {
         token: token,
-        notification: { title: title, body: text },
         data: Object.assign({ title: title, body: text, click_action: click, tag: tag }, data),
         webpush: {
-          headers: { TTL: '3600', Urgency: 'high' },
-          notification: { title: title, body: text, tag: tag, requireInteraction: false }
+          headers: { TTL: '3600', Urgency: 'high' }
         }
       }
     };
