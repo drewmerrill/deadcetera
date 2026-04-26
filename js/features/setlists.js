@@ -1708,10 +1708,13 @@ function _slRenderPlanMode(idx, sl) {
                     _dateInput.style.opacity = '0.65';
                     _dateInput.style.cursor = 'not-allowed';
                 }
-                var html = '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(99,102,241,0.12);border-radius:8px;font-size:0.85em">';
+                var html = '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(99,102,241,0.12);border-radius:8px;font-size:0.85em;flex-wrap:wrap">';
                 html += '<span style="color:var(--accent-light)">🎤 Linked Gig:</span>';
                 html += '<span style="color:#fff;font-weight:600">' + label + '</span>';
-                html += '<button onclick="showPage(\'gigs\');setTimeout(function(){editGig(' + gigIdx + ');},400);" style="margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.82em;cursor:pointer">Open →</button></div>';
+                html += '<div style="margin-left:auto;display:flex;gap:6px">';
+                html += '<button onclick="showPage(\'gigs\');setTimeout(function(){editGig(' + gigIdx + ');},400);" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.82em;cursor:pointer" title="Open the gig record">Open →</button>';
+                html += '<button onclick="slUnlinkGigFromSetlist(' + idx + ')" style="background:rgba(239,68,68,0.12);color:#fca5a5;border:1px solid rgba(239,68,68,0.25);border-radius:6px;padding:3px 10px;font-size:0.82em;cursor:pointer" title="Unlink this setlist from the gig — date becomes editable">\uD83D\uDD17 Unlink</button>';
+                html += '</div></div>';
                 // Date mismatch (stored vs gig): auto-healed above, but surface it
                 if (sl.date && match.date && sl.date !== match.date) {
                     html += '<div style="display:flex;align-items:center;gap:6px;padding:5px 10px;margin-top:6px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.2);border-radius:8px;font-size:0.8em;color:#fbbf24">'
@@ -2451,6 +2454,47 @@ window.slUnlockWithWarning = async function(idx) {
 window.slInsertSetBreak = slInsertSetBreak;
 window.slMergeSets = slMergeSets;
 window.slToggleLock = slToggleLock;
+
+// Unlink a setlist from its gig. After unlinking, the date field
+// becomes editable again — the gig was previously the source of
+// truth for the setlist's date. The gig record is left intact;
+// only the setlist's gigId is cleared.
+window.slUnlinkGigFromSetlist = async function(idx) {
+    var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    var sl = data[idx];
+    if (!sl) { showToast('Setlist not found'); return; }
+    if (!sl.gigId) { showToast('No gig linked'); return; }
+    var msg = 'Unlink this setlist from its gig?\n\n'
+        + 'The gig record stays intact. Only this setlist\'s link is cleared, '
+        + 'and its date becomes editable again. You can re-link later by '
+        + 'editing the gig\'s setlist field.';
+    if (!confirm(msg)) return;
+    var oldGigId = sl.gigId;
+    delete sl.gigId;
+    sl.updatedAt = new Date().toISOString();
+    await saveBandDataToDrive('_band', 'setlists', data);
+    // Also clear the back-pointer on the gig so they don't re-link via
+    // setlist match on next sync.
+    try {
+        var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        var changed = false;
+        gigs.forEach(function(g) {
+            if (g.gigId === oldGigId && g.setlistId === sl.setlistId) {
+                delete g.setlistId;
+                delete g.linkedSetlist;
+                g.updated = new Date().toISOString();
+                changed = true;
+            }
+        });
+        if (changed) await saveBandDataToDrive('_band', 'gigs', gigs);
+    } catch(_e) { /* non-fatal */ }
+    if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+    else { window._cachedSetlists = null; window._glCachedSetlists = null; }
+    showToast('\uD83D\uDD17 Unlinked from gig — date is now editable', 4000);
+    // Re-render the editor so the date field unlocks
+    if (typeof editSetlist === 'function') editSetlist(idx);
+    else loadSetlists();
+};
 
 // ── Song Picker Modal ────────────────────────────────────────────────────────
 // Checkbox-based song selection for fast setlist building.
