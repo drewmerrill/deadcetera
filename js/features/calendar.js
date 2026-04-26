@@ -4350,10 +4350,21 @@ function _calRenderGridOnly() {
                 // why" — so we render them in one list with name + reason.
                 var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
                 var unifiedItems = [];
+                // Dedupe key = name + lowercased reason. Drew's "In Orlando"
+                // can appear in both schedule_blocks AND calendar_events
+                // (imported back from Google after Phase 1.5 push). Render
+                // each unique (name, reason) once.
+                var _seenItem = {};
+                var _pushItem = function(item) {
+                    var _k = (item.name || '').toLowerCase() + '|' + String(item.reason || '').toLowerCase().trim();
+                    if (_seenItem[_k]) return;
+                    _seenItem[_k] = true;
+                    unifiedItems.push(item);
+                };
                 blockedList.forEach(function(b) {
                     var _reason = (b.reason && b.reason.indexOf('Busy') !== 0 && b.reason.indexOf('(') !== 0)
                         ? b.reason : (b._timeLabel ? 'busy ' + b._timeLabel : 'busy');
-                    unifiedItems.push({
+                    _pushItem({
                         name: (b.person || 'Member').split(' ')[0],
                         reason: _reason,
                         soft: b._conflictType === 'soft',
@@ -4368,7 +4379,7 @@ function _calRenderGridOnly() {
                     });
                     if (!memberNames.length) memberNames = ['Member'];
                     memberNames.forEach(function(nm) {
-                        unifiedItems.push({
+                        _pushItem({
                             name: nm,
                             reason: ev.title || 'busy',
                             soft: false,

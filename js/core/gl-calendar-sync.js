@@ -1493,15 +1493,30 @@ window.GLCalendarSync = (function() {
 
   function _computeHiddenRanges(fbRanges, visibleEvents) {
     if (!fbRanges || !fbRanges.length) return [];
-    // Merge visible event intervals
+    // Merge visible event intervals.
+    //
+    // CRITICAL: Google's all-day events use {start.date, end.date} (no time).
+    // `new Date('2026-04-27')` parses as UTC midnight, but Google's freebusy
+    // API returns busy ranges aligned to the user's LOCAL timezone. For ET
+    // that's a 4-hour offset, which produces phantom "20:00–23:59" hidden
+    // ranges at the trailing edge of every multi-day all-day event.
+    //
+    // Fix: treat date-only start/end as midnight in local time, then convert
+    // to UTC by adding the local offset. This makes our intervals match
+    // freebusy exactly.
+    var _localizeAllDay = function(dateStr) {
+      // `new Date('2026-04-27T00:00:00')` (no Z) is parsed as LOCAL by JS.
+      return new Date(dateStr + 'T00:00:00').getTime();
+    };
     var intervals = [];
     (visibleEvents || []).forEach(function(g) {
       if (!g || g.status === 'cancelled' || !g.start) return;
       var sStr = g.start.dateTime || g.start.date;
       var eStr = (g.end && (g.end.dateTime || g.end.date)) || sStr;
       if (!sStr || !eStr) return;
-      var s = new Date(sStr).getTime();
-      var e = new Date(eStr).getTime();
+      var _isAllDay = !g.start.dateTime; // start.date only → all-day
+      var s = _isAllDay ? _localizeAllDay(sStr) : new Date(sStr).getTime();
+      var e = _isAllDay ? _localizeAllDay(eStr) : new Date(eStr).getTime();
       if (isNaN(s) || isNaN(e) || e <= s) return;
       intervals.push({ start: s, end: e });
     });
