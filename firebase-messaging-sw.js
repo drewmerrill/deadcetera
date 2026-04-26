@@ -18,26 +18,39 @@ firebase.initializeApp({
   appId: '1:218400123401:web:7f64ad84231dcaba6966d8'
 });
 
-const messaging = firebase.messaging();
+// Initialize messaging so the SDK registers itself as a recognized FCM SW
+// (required for getToken() in the page to succeed). We don't use
+// onBackgroundMessage — the raw 'push' listener below handles display directly,
+// which is more reliable across browsers.
+firebase.messaging();
 
-// Background handler — fires when the app isn't focused. Show a native OS
-// notification so the user gets phone-side / desktop-side feedback.
-messaging.onBackgroundMessage(function(payload) {
-  console.log('[FCM-SW] Background message:', payload);
-  var data = payload.data || {};
+// Raw push handler — fires whenever a push arrives, regardless of FCM SDK
+// payload-shape detection. We parse the FCM data envelope ourselves.
+self.addEventListener('push', function(event) {
+  console.log('[FCM-SW] push event received', event);
+  var payload = {};
+  if (event.data) {
+    try { payload = event.data.json(); }
+    catch(e) { try { payload.body = event.data.text(); } catch(e2) {} }
+  }
+  // FCM v1 wraps the user payload at payload.data; webpush.notification (if any)
+  // shows up at payload.notification. Fall back to top-level fields too.
+  var data  = payload.data || payload || {};
   var notif = payload.notification || {};
   var title = notif.title || data.title || 'GrooveLinx';
   var body  = notif.body  || data.body  || 'You have a new band update.';
   var click = data.click_action || data.url || '/';
 
-  return self.registration.showNotification(title, {
-    body: body,
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    data: { click: click, ts: Date.now() },
-    tag: data.tag || 'gl-feed',
-    renotify: true
-  });
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { click: click, ts: Date.now() },
+      tag: data.tag || 'gl-feed',
+      renotify: true
+    })
+  );
 });
 
 // Click handler — focus an existing tab if one's open, else open a new one.
