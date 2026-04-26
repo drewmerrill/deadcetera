@@ -158,12 +158,17 @@ window.GLCalendarSync = (function() {
       body.attendees = opts.attendees.map(function(email) { return { email: email }; });
     }
 
-    // Tag as GrooveLinx-created for deterministic circular-conflict suppression
-    // Google extended properties are string-only key/value pairs
+    // Tag as GrooveLinx-created for deterministic circular-conflict suppression.
+    // Also persist the original GL event type so on re-import the classifier
+    // can preserve "gig" instead of falling back to title-keyword guessing —
+    // a venue-only title like "MoonShadow Tavern" was getting tagged 'other'
+    // and then converted to member unavailability by the band-cal-source rule.
+    // Google extended properties are string-only key/value pairs.
     body.extendedProperties = {
       private: {
         groovelinx: 'true',
-        glEventId: opts.glEventId || ''
+        glEventId: opts.glEventId || '',
+        glType: glEvent.type || ''
       }
     };
 
@@ -203,6 +208,10 @@ window.GLCalendarSync = (function() {
     if (/\brehears|\bpractice/.test(lc)) return 'rehearsal';
     if (/\bband meeting|\bband sync|\bgear talk|\blogistics\b|\bset planning|\bband call/.test(lc)) return 'meeting';
     if (/\bgig\b|\bshow\b|\bconcert\b|\bfest\b|\bfestival\b|\bjam\b|\blive at\b|\bplaying\b|\bopening for\b|\bset @|\balbum release|\brecording session|fb\/event\//.test(lc)) return 'gig';
+    // Venue-name fallback — GrooveLinx-stamped gigs already win via glType,
+    // but events created directly on Google with venue-only titles benefit
+    // from these. Match common venue suffixes.
+    if (/\btavern\b|\bbar\b|\bpub\b|\bbrewery\b|\blounge\b|\btap\s?room\b|\bmusic hall\b|\btheatre\b|\btheater\b|\bamphitheat|\bopry\b|\boutpost\b|\bbluebird\b|\bcafe\b|\bcoffeehouse\b/.test(lc)) return 'gig';
     if (/\bmeeting\b/.test(lc)) return 'meeting';
     return 'other';
   }
@@ -1095,10 +1104,20 @@ window.GLCalendarSync = (function() {
     // Capture organizer email (Mode A attribution fallback).
     if (googleEvent.organizer && googleEvent.organizer.email) existing.organizerEmail = googleEvent.organizer.email;
     else if (googleEvent.creator && googleEvent.creator.email) existing.organizerEmail = googleEvent.creator.email;
-    // Upgrade type when the (possibly renamed) Google title now indicates
-    // unavailability and the local type wasn't a protected kind (rehearsal/
-    // gig stay put — they're authored on our side, not inferred from title).
-    if (existing.type !== 'rehearsal' && existing.type !== 'gig') {
+    // Type-correction pass — runs on every reconcile so prior misclassifications
+    // self-heal once the source signals are right.
+    var _epRec = (googleEvent.extendedProperties && googleEvent.extendedProperties.private) || {};
+    var _glTypeRec = (_epRec.glType || '').toLowerCase();
+    var _validRec = { gig: 1, rehearsal: 1, meeting: 1, unavailable: 1, other: 1 };
+    if (_validRec[_glTypeRec]) {
+      // Authoritative: GrooveLinx stamped this event with its type — adopt it.
+      existing.type = _glTypeRec;
+      // Drop stale member attribution when the type isn't unavailable.
+      if (_glTypeRec !== 'unavailable' && _glTypeRec !== 'unavailable_unassigned') {
+        existing.assignedMembers = null;
+        existing.blockScope = null;
+      }
+    } else if (existing.type !== 'rehearsal' && existing.type !== 'gig' && existing.type !== 'meeting') {
       var _un = _detectUnavailability(googleEvent.summary || '');
       if (_un.isUnavail && _un.scope !== 'unassigned') {
         existing.type = 'unavailable';
@@ -1106,6 +1125,17 @@ window.GLCalendarSync = (function() {
         existing.blockScope = _un.scope;
       } else if (_un.isUnavail && _un.scope === 'unassigned' && existing.type !== 'unavailable') {
         existing.type = 'unavailable_unassigned';
+      } else {
+        // No glType, no unavailability signal — try the title classifier.
+        // Heals records that were imported as 'other' (or auto-attributed
+        // to unavailability by the band-cal-source rule) before the
+        // classifier knew about venue keywords.
+        var _classified = _classifyEventType(googleEvent.summary || '');
+        if (_classified === 'gig' || _classified === 'rehearsal' || _classified === 'meeting') {
+          existing.type = _classified;
+          existing.assignedMembers = null;
+          existing.blockScope = null;
+        }
       }
     }
     // Preserve GrooveLinx-only metadata: type, venueId, linkedSetlist, availability,
@@ -1120,7 +1150,14 @@ window.GLCalendarSync = (function() {
     var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
     var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
     var summary = googleEvent.summary || 'Google Event';
-    var inferredType = _classifyEventType(summary);
+    // GrooveLinx-stamped events carry their original type as a private
+    // extended property — trust it over the title-keyword classifier so a
+    // gig at "MoonShadow Tavern" stays a gig instead of being downgraded
+    // to 'other' (and then to unavailable by the band-cal-source rule).
+    var _epPrivate = (googleEvent.extendedProperties && googleEvent.extendedProperties.private) || {};
+    var _glType = (_epPrivate.glType || '').toLowerCase();
+    var _validGlTypes = { gig: 1, rehearsal: 1, meeting: 1, unavailable: 1, other: 1 };
+    var inferredType = _validGlTypes[_glType] ? _glType : _classifyEventType(summary);
     // Unavailability classification (only if not already a rehearsal/gig/meeting).
     // Without this the sync-pull path imported "Brian busy" as type='other'
     // and never blocked anyone's availability.
@@ -1135,9 +1172,11 @@ window.GLCalendarSync = (function() {
     // calendar and didn't classify as anything specific, treat it as a
     // member-attributed unavailability — title becomes the reason, creator
     // email maps to the member key. The band cal is source of truth in
-    // Mode A; anything on it is band-relevant by definition.
+    // Mode A; anything on it is band-relevant by definition. SKIP for
+    // GrooveLinx-stamped events — those already have a real type.
     var _creatorEmail = (googleEvent.creator && googleEvent.creator.email) || (googleEvent.organizer && googleEvent.organizer.email) || '';
-    if (inferredType === 'other' && bandCalId && !_unavailImport.isUnavail) {
+    var _isGlStamped = _epPrivate.groovelinx === 'true';
+    if (inferredType === 'other' && bandCalId && !_unavailImport.isUnavail && !_isGlStamped) {
       var _creatorKey = _memberKeyFromEmail(_creatorEmail);
       if (_creatorKey) {
         inferredType = 'unavailable';
@@ -1849,6 +1888,48 @@ window.GLCalendarSync = (function() {
       }
     }
 
+    // ── Phase 2.4: Dedupe by googleEventId ──
+    // Past sync races + the recent band-cal-source rule retag created cases
+    // where two calendar_events rows pointed at the same googleEventId — the
+    // red-day hover then showed "Brian — MoonShadow Tavern" twice. Score
+    // each row by metadata richness, keep the highest, drop the rest.
+    var _gidGroups = {};
+    events.forEach(function(_e, _idx) {
+      if (!_e || _e._syntheticFromFreeBusy) return;
+      var _gid = _e.googleEventId || (_e.sync && _e.sync.externalEventId);
+      if (!_gid) return;
+      if (!_gidGroups[_gid]) _gidGroups[_gid] = [];
+      _gidGroups[_gid].push(_idx);
+    });
+    var _scoreEv = function(e) {
+      return (e.time ? 1 : 0) + (e.endTime ? 1 : 0) + (e.updated_at ? 1 : 0)
+        + (e.lastSyncedAt ? 1 : 0) + (e.venue ? 1 : 0) + (e.location ? 1 : 0);
+    };
+    var _toDrop = [];
+    Object.keys(_gidGroups).forEach(function(gid) {
+      var idxs = _gidGroups[gid];
+      if (idxs.length < 2) return;
+      // Pick the keeper: highest score; ties go to the lowest index (oldest).
+      var keeper = idxs[0];
+      var keeperScore = _scoreEv(events[keeper]);
+      for (var k = 1; k < idxs.length; k++) {
+        var s = _scoreEv(events[idxs[k]]);
+        if (s > keeperScore) { keeper = idxs[k]; keeperScore = s; }
+      }
+      idxs.forEach(function(i) { if (i !== keeper) _toDrop.push(i); });
+    });
+    if (_toDrop.length) {
+      _toDrop.sort(function(a, b) { return b - a; });
+      _toDrop.forEach(function(i) { events.splice(i, 1); });
+      console.log('[CalSync] Phase 2.4 dedupe: removed', _toDrop.length, 'duplicate calendar_events rows by googleEventId');
+      dirty = true;
+      eventsByGoogleId = {};
+      events.forEach(function(e, idx) {
+        if (e.googleEventId) eventsByGoogleId[e.googleEventId] = idx;
+        if (e.sync && e.sync.externalEventId) eventsByGoogleId[e.sync.externalEventId] = idx;
+      });
+    }
+
     // ── Phase 2.5: Zombie sweep (full-sync only) ──
     // Catches deletions that the incremental cancelled-event path missed —
     // e.g., when a gig is deleted on Google between syncs and the changelog
@@ -2266,15 +2347,20 @@ window.GLCalendarSync = (function() {
         var startDate = startStr.substring(0, 10);
         var summary = gEv.summary || 'Google Event';
 
-        // Infer type from summary (shared classifier — see _classifyEventType)
-        var inferredType = _classifyEventType(summary);
+        // Trust GrooveLinx-stamped glType, else use title classifier
+        var _epPriv2 = (gEv.extendedProperties && gEv.extendedProperties.private) || {};
+        var _glType2 = (_epPriv2.glType || '').toLowerCase();
+        var _validGl2 = { gig: 1, rehearsal: 1, meeting: 1, unavailable: 1, other: 1 };
+        var inferredType = _validGl2[_glType2] ? _glType2 : _classifyEventType(summary);
 
         // Mode A band-cal-source rule: un-keyworded band-cal events become
         // member-attributed unavailability so they actually block the day.
+        // Skip for GrooveLinx-stamped events.
         var _creatorEmail2 = (gEv.creator && gEv.creator.email) || (gEv.organizer && gEv.organizer.email) || '';
+        var _isGlStamped2 = _epPriv2.groovelinx === 'true';
         // ── Unavailability detection ──
         var _unavail = (inferredType !== 'rehearsal' && inferredType !== 'gig' && inferredType !== 'meeting') ? _detectUnavailability(summary) : { isUnavail: false };
-        if (inferredType === 'other' && bandCalId && !_unavail.isUnavail) {
+        if (inferredType === 'other' && bandCalId && !_unavail.isUnavail && !_isGlStamped2) {
           var _creatorKey2 = _memberKeyFromEmail(_creatorEmail2);
           if (_creatorKey2) {
             inferredType = 'unavailable';
