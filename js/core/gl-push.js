@@ -68,12 +68,25 @@
 
     // Make sure the FCM service worker is registered. FCM normally
     // auto-registers /firebase-messaging-sw.js but we register explicitly
-    // so we can pass a fixed scope.
+    // so we can pass a fixed scope. We must also wait for THIS specific
+    // registration to reach 'activated' — `navigator.serviceWorker.ready`
+    // resolves on whichever SW controls the page (the main app SW), not
+    // necessarily on our FCM SW.
     var swReg = null;
     try {
       if ('serviceWorker' in navigator) {
         swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/firebase-cloud-messaging-push-scope' });
-        await navigator.serviceWorker.ready;
+        if (!swReg.active) {
+          var sw = swReg.installing || swReg.waiting;
+          if (sw) {
+            await new Promise(function (resolve) {
+              if (sw.state === 'activated') return resolve();
+              sw.addEventListener('statechange', function () {
+                if (sw.state === 'activated') resolve();
+              });
+            });
+          }
+        }
       }
     } catch (e) {
       console.warn('[GLPush] SW registration failed:', e);
