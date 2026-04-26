@@ -126,23 +126,29 @@ window.GLCalendarSync = (function() {
 
     var body = { summary: summary, description: descParts.join('\n') };
 
-    // Multi-day all-day event: use date (not dateTime) format
+    // Multi-day all-day event: use date (not dateTime) format.
+    // Explicit dateTime:null clears any pre-existing timed values so a
+    // PATCH from timed → all-day takes effect. Without this, Google
+    // sometimes leaves the old dateTime in place alongside the new date.
     if (glEvent.endDate && glEvent.endDate > glEvent.date && (!glEvent.time && !glEvent.startTime)) {
       // Google all-day end date is EXCLUSIVE — add one day
       var _endExcl = new Date(glEvent.endDate + 'T12:00:00');
       _endExcl.setDate(_endExcl.getDate() + 1);
       var _endStr = _endExcl.getFullYear() + '-' + String(_endExcl.getMonth() + 1).padStart(2, '0') + '-' + String(_endExcl.getDate()).padStart(2, '0');
-      body.start = { date: glEvent.date };
-      body.end = { date: _endStr };
+      body.start = { date: glEvent.date, dateTime: null, timeZone: null };
+      body.end = { date: _endStr, dateTime: null, timeZone: null };
     } else if (glEvent.isAllDay && !glEvent.time && !glEvent.startTime) {
       // Single all-day event
       var _nextDay = new Date(glEvent.date + 'T12:00:00');
       _nextDay.setDate(_nextDay.getDate() + 1);
       var _ndStr = _nextDay.getFullYear() + '-' + String(_nextDay.getMonth() + 1).padStart(2, '0') + '-' + String(_nextDay.getDate()).padStart(2, '0');
-      body.start = { date: glEvent.date };
-      body.end = { date: _ndStr };
+      body.start = { date: glEvent.date, dateTime: null, timeZone: null };
+      body.end = { date: _ndStr, dateTime: null, timeZone: null };
     } else {
-      // Timed event
+      // Timed event. Explicit date:null clears any pre-existing all-day
+      // value so a PATCH from all-day → timed takes effect — the common
+      // workflow where someone creates a placeholder all-day "420 fest"
+      // on DC and the band fills in real start/end times in GrooveLinx.
       var time = glEvent.time || glEvent.startTime || '19:00';
       var startDt = new Date(glEvent.date + 'T' + time + ':00');
       if (isNaN(startDt.getTime())) startDt = new Date(glEvent.date + 'T19:00:00');
@@ -158,8 +164,8 @@ window.GLCalendarSync = (function() {
       } else {
         endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
       }
-      body.start = { dateTime: startDt.toISOString(), timeZone: 'America/New_York' };
-      body.end = { dateTime: endDt.toISOString(), timeZone: 'America/New_York' };
+      body.start = { dateTime: startDt.toISOString(), timeZone: 'America/New_York', date: null };
+      body.end = { dateTime: endDt.toISOString(), timeZone: 'America/New_York', date: null };
     }
 
     if (glEvent.venue || glEvent.location) {
@@ -466,6 +472,7 @@ window.GLCalendarSync = (function() {
 
     var patchUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId);
     console.log('[CalSync] update() PATCH URL =', patchUrl);
+    console.log('[CalSync] update() PATCH body.start =', body.start, '| body.end =', body.end, '| body.summary =', body.summary);
     try {
       var res = await fetch(patchUrl, {
         method: 'PATCH',
