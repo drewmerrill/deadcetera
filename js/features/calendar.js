@@ -6807,6 +6807,26 @@ async function calSaveEvent(editIdx) {
             if (_existingGoogleId) {
                 var upd = await GLCalendarSync.update(_existingGoogleId, glEvent);
                 console.log('[Calendar] Phase B2: Google update', upd.success ? 'SUCCEEDED' : 'FAILED');
+                // Orphan recovery: stored googleEventId points to an event
+                // that doesn't exist on the band cal (legacy auto-attendee
+                // replica, deleted on Google, etc.). Clear it and create
+                // fresh on DC so the next save lands correctly.
+                if (!upd.success && upd.status === 'orphan') {
+                    console.log('[Calendar] Phase B2: orphan googleEventId — clearing and creating fresh on band cal');
+                    var sync2 = await GLCalendarSync.create(glEvent);
+                    if (sync2.success && sync2.sync) {
+                        var db3 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                        if (db3 && typeof bandPath === 'function' && _savedIdx >= 0) {
+                            var _ev3Path = bandPath('calendar_events/' + _savedIdx);
+                            await db3.ref(_ev3Path + '/googleEventId').set(sync2.sync.externalEventId);
+                            await db3.ref(_ev3Path + '/calendarId').set(sync2.sync.calendarId);
+                            await db3.ref(_ev3Path + '/syncStatus').set('synced');
+                            await db3.ref(_ev3Path + '/lastSyncedAt').set(new Date().toISOString());
+                            await db3.ref(_ev3Path + '/sync').set(sync2.sync);
+                        }
+                        if (typeof showToast === 'function') showToast('\u2713 Re-linked to band calendar (old Google copy was orphaned)', 5000);
+                    }
+                }
             } else {
                 var sync = await GLCalendarSync.create(glEvent);
                 if (sync.success && sync.sync) {

@@ -450,8 +450,24 @@ window.GLCalendarSync = (function() {
     var calId = await _getBandCalendarId();
     if (!calId) return { success: false, error: 'No band calendar configured.' };
 
+    // Defensive: verify the event actually exists on the band cal before
+    // PATCHing. If the stored googleEventId is an orphan (e.g. from a
+    // legacy auto-attendee replica that lived on someone's personal cal),
+    // the PATCH could route somewhere unexpected. Pre-check so we fail
+    // loudly instead of mutating the wrong calendar.
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId), {
+      var checkUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId);
+      var checkRes = await fetch(checkUrl, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+      if (checkRes.status === 404 || checkRes.status === 410) {
+        console.warn('[CalSync] update() refused — event', externalEventId, 'does not exist on band calendar', calId, '. Likely an orphaned googleEventId from legacy auto-attendee era. Caller should clear googleEventId and create fresh.');
+        return { success: false, error: 'orphan_event_id', status: 'orphan', orphanGoogleId: externalEventId };
+      }
+    } catch(_e) { /* network — proceed and let the PATCH speak for itself */ }
+
+    var patchUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId);
+    console.log('[CalSync] update() PATCH URL =', patchUrl);
+    try {
+      var res = await fetch(patchUrl, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
