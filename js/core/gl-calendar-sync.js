@@ -2636,59 +2636,52 @@ window.GLCalendarSync = (function() {
           }
         }
 
-        // ── Multi-day all-day events: expand to one record per day ──
+        // ── All-day events: single record with endDate (no per-day expansion) ──
+        // Past code expanded multi-day all-day events into one record per day,
+        // which made the conflict list show "Drew Busy - Family Reunion in
+        // Cape Cod" 8 times for a single 8-day trip. Grid render already
+        // expands single records via _calBuildDateMap when endDate is set,
+        // so we can store ONE record and color every covered day correctly.
+        // Existing per-day records collapse via Phase 2.4 dedupe (same
+        // googleEventId).
         if (isAllDay) {
-          var endDate = endStr.substring(0, 10);
-          // Google all-day end dates are exclusive (Jun 26 means through Jun 25)
-          // DST-safe day count: count by parts, not ms division. Mar/Nov DST
-          // transitions make local days 23 or 25 hours, which used to off-by-
-          // one the day count near those boundaries.
-          var _startParts = startDate.split('-');
-          var _endParts = endDate.split('-');
-          var _startD = new Date(parseInt(_startParts[0], 10), parseInt(_startParts[1], 10) - 1, parseInt(_startParts[2], 10));
+          var _endStr = endStr.substring(0, 10);
+          // Google all-day end dates are EXCLUSIVE — subtract 1 day to get
+          // inclusive endDate for our local format. DST-safe via setDate.
+          var _endParts = _endStr.split('-');
           var _endD = new Date(parseInt(_endParts[0], 10), parseInt(_endParts[1], 10) - 1, parseInt(_endParts[2], 10));
-          var dayCount = 0;
-          var _walk = new Date(_startD);
-          while (_walk < _endD && dayCount < 60) {
-            dayCount++;
-            _walk.setDate(_walk.getDate() + 1);
+          _endD.setDate(_endD.getDate() - 1);
+          var _endInclusive = _endD.getFullYear() + '-' + String(_endD.getMonth() + 1).padStart(2, '0') + '-' + String(_endD.getDate()).padStart(2, '0');
+          var _hasMultiDay = _endInclusive > startDate;
+          if (_hasMultiDay) {
+            console.log('[CalSync] Inbound: importing multi-day event "' + summary + '" as single record (' + startDate + ' \u2192 ' + _endInclusive + ')');
           }
-          if (dayCount < 1) dayCount = 1;
-
-          if (dayCount > 1) {
-            console.log('[CalSync] Inbound: expanding multi-day event "' + summary + '" across', dayCount, 'days (' + startDate + ' \u2192 ' + endDate + ')');
+          var _rec = {
+            id: _genId(),
+            date: startDate,
+            endDate: _hasMultiDay ? _endInclusive : '',
+            type: inferredType,
+            title: summary,
+            time: '',
+            endTime: '',
+            location: gEv.location || '',
+            notes: gEv.description || '',
+            isAllDay: true,
+            _importedFromGoogle: true,
+            _googleSource: summary,
+            googleEventId: gEv.id,
+            calendarId: bandCalId,
+            syncStatus: 'synced',
+            lastSyncedAt: new Date().toISOString(),
+            sync: { provider: 'google', externalEventId: gEv.id, calendarId: bandCalId, status: 'synced', direction: 'inbound', lastSyncedAt: new Date().toISOString() },
+            created: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          if (_unavail.isUnavail) {
+            _rec.assignedMembers = _unavail.members;
+            _rec.blockScope = _unavail.scope; // 'member', 'band', or 'unassigned'
           }
-
-          for (var di = 0; di < dayCount; di++) {
-            var _d = new Date(_startD);
-            _d.setDate(_d.getDate() + di);
-            var _ds = _d.getFullYear() + '-' + String(_d.getMonth() + 1).padStart(2, '0') + '-' + String(_d.getDate()).padStart(2, '0');
-            var _rec = {
-              id: _genId(),
-              date: _ds,
-              type: inferredType,
-              title: summary + (dayCount > 1 ? ' (day ' + (di + 1) + '/' + dayCount + ')' : ''),
-              time: '',
-              endTime: '',
-              location: gEv.location || '',
-              notes: gEv.description || '',
-              isAllDay: true,
-              _importedFromGoogle: true,
-              _googleSource: summary,
-              googleEventId: gEv.id,
-              calendarId: bandCalId,
-              syncStatus: 'synced',
-              lastSyncedAt: new Date().toISOString(),
-              sync: { provider: 'google', externalEventId: gEv.id, calendarId: bandCalId, status: 'synced', direction: 'inbound', lastSyncedAt: new Date().toISOString() },
-              created: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            };
-            if (_unavail.isUnavail) {
-              _rec.assignedMembers = _unavail.members;
-              _rec.blockScope = _unavail.scope; // 'member', 'band', or 'unassigned'
-            }
-            imported.push(_rec);
-          }
+          imported.push(_rec);
         } else {
           // ── Timed event: single record ──
           var eventTime = startStr.length > 10 ? startStr.substring(11, 16) : '';
