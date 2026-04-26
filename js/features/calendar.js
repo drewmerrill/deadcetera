@@ -4350,18 +4350,33 @@ function _calRenderGridOnly() {
                 // why" — so we render them in one list with name + reason.
                 var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
                 var unifiedItems = [];
-                // Dedupe key = name + lowercased reason. Drew's "In Orlando"
-                // can appear in both schedule_blocks AND calendar_events
-                // (imported back from Google after Phase 1.5 push). Render
-                // each unique (name, reason) once.
+                // Track event IDs already represented by blockedList so we
+                // don't re-render the same calendar_event from dayEvents.
+                // (Past bug: _pushBlock decorated reason with " (all day)"
+                // while dayEvents kept the bare title, so dedupe-by-reason
+                // failed and Drew's Orlando trip showed twice.)
+                var _claimedEventIds = {};
+                // Normalize reason for dedupe — strip cosmetic suffixes that
+                // get added by different render paths so comparable keys
+                // match. Last line of defense if event-id dedupe misses.
+                var _normReason = function(s) {
+                    return String(s || '').toLowerCase().trim()
+                        .replace(/\s*\(all day\)\s*$/i, '')
+                        .replace(/\s*\(from [^)]+\)\s*$/i, '')
+                        .replace(/\s+\d{1,2}:\d{2}(\s*[\u2013-]\s*\d{1,2}:\d{2})?\s*$/, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                };
                 var _seenItem = {};
                 var _pushItem = function(item) {
-                    var _k = (item.name || '').toLowerCase() + '|' + String(item.reason || '').toLowerCase().trim();
+                    var _k = (item.name || '').toLowerCase() + '|' + _normReason(item.reason);
                     if (_seenItem[_k]) return;
                     _seenItem[_k] = true;
                     unifiedItems.push(item);
                 };
                 blockedList.forEach(function(b) {
+                    if (b._eventId) _claimedEventIds[b._eventId] = true;
+                    if (b._googleEventId) _claimedEventIds[b._googleEventId] = true;
                     var _reason = (b.reason && b.reason.indexOf('Busy') !== 0 && b.reason.indexOf('(') !== 0)
                         ? b.reason : (b._timeLabel ? 'busy ' + b._timeLabel : 'busy');
                     _pushItem({
@@ -4372,6 +4387,10 @@ function _calRenderGridOnly() {
                     });
                 });
                 dayEvents.filter(function(e) { return e.type === 'unavailable' || e.type === 'unavailable_unassigned'; }).forEach(function(ev) {
+                    // If a block already represents this calendar_event,
+                    // skip — otherwise we'd render the same trip twice.
+                    var _evGid = ev.googleEventId || (ev.sync && ev.sync.externalEventId) || '';
+                    if ((ev.id && _claimedEventIds[ev.id]) || (_evGid && _claimedEventIds[_evGid])) return;
                     var memberNames = [];
                     (ev.assignedMembers || []).forEach(function(k) {
                         if (bm[k] && bm[k].name) memberNames.push(bm[k].name.split(' ')[0]);
