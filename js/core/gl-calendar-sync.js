@@ -179,6 +179,34 @@ window.GLCalendarSync = (function() {
     return emails;
   }
 
+  // Reverse lookup: email → member key. Used to attribute un-keyworded
+  // band-cal events ("daughter's wedding", "out of town") to whoever
+  // created them, so the red-day hover can show "Brian — daughter's
+  // wedding" instead of an anonymous block.
+  function _memberKeyFromEmail(email) {
+    if (!email) return null;
+    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var lc = String(email).toLowerCase();
+    var found = null;
+    Object.keys(bm).forEach(function(k) {
+      if (bm[k] && bm[k].email && String(bm[k].email).toLowerCase() === lc) found = k;
+    });
+    return found;
+  }
+
+  // Shared classifier — both the live import path (_importGoogleEvent) and
+  // the Path B.2 multi-day expansion use this so they can't drift apart.
+  // Order: rehearsal/practice wins over jam (a "studio jam" is rehearsal,
+  // not a gig). Meeting wins over generic gig keywords.
+  function _classifyEventType(summary) {
+    var lc = String(summary || '').toLowerCase();
+    if (/\brehears|\bpractice/.test(lc)) return 'rehearsal';
+    if (/\bband meeting|\bband sync|\bgear talk|\blogistics\b|\bset planning|\bband call/.test(lc)) return 'meeting';
+    if (/\bgig\b|\bshow\b|\bconcert\b|\bfest\b|\bfestival\b|\bjam\b|\blive at\b|\bplaying\b|\bopening for\b|\bset @|\balbum release|\brecording session|fb\/event\//.test(lc)) return 'gig';
+    if (/\bmeeting\b/.test(lc)) return 'meeting';
+    return 'other';
+  }
+
   // ── CREATE event in Google Calendar ───────────────────────────────────────
   // Query Google for events already tagged with this glEventId. Used as a
   // pre-push dedupe: if a previous sync (same user or a concurrent run on
@@ -1092,19 +1120,28 @@ window.GLCalendarSync = (function() {
     var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
     var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
     var summary = googleEvent.summary || 'Google Event';
-    var lc = summary.toLowerCase();
-    var inferredType = 'other';
-    if (lc.indexOf('rehearsal') !== -1 || lc.indexOf('practice') !== -1) inferredType = 'rehearsal';
-    else if (lc.indexOf('gig') !== -1 || lc.indexOf('show') !== -1 || lc.indexOf('concert') !== -1) inferredType = 'gig';
-    else if (lc.indexOf('meeting') !== -1) inferredType = 'meeting';
-    // Unavailability classification (only if not already a rehearsal/gig).
+    var inferredType = _classifyEventType(summary);
+    // Unavailability classification (only if not already a rehearsal/gig/meeting).
     // Without this the sync-pull path imported "Brian busy" as type='other'
     // and never blocked anyone's availability.
     var _unavailImport = { isUnavail: false };
-    if (inferredType !== 'rehearsal' && inferredType !== 'gig') {
+    if (inferredType !== 'rehearsal' && inferredType !== 'gig' && inferredType !== 'meeting') {
       _unavailImport = _detectUnavailability(summary);
       if (_unavailImport.isUnavail) {
         inferredType = _unavailImport.scope === 'unassigned' ? 'unavailable_unassigned' : 'unavailable';
+      }
+    }
+    // Mode A band-cal-source rule: if the event landed on the shared band
+    // calendar and didn't classify as anything specific, treat it as a
+    // member-attributed unavailability — title becomes the reason, creator
+    // email maps to the member key. The band cal is source of truth in
+    // Mode A; anything on it is band-relevant by definition.
+    var _creatorEmail = (googleEvent.creator && googleEvent.creator.email) || (googleEvent.organizer && googleEvent.organizer.email) || '';
+    if (inferredType === 'other' && bandCalId && !_unavailImport.isUnavail) {
+      var _creatorKey = _memberKeyFromEmail(_creatorEmail);
+      if (_creatorKey) {
+        inferredType = 'unavailable';
+        _unavailImport = { isUnavail: true, scope: 'member', members: [_creatorKey] };
       }
     }
     var eventTime = (!isAllDay && startStr.length > 10) ? startStr.substring(11, 16) : '';
@@ -2229,15 +2266,21 @@ window.GLCalendarSync = (function() {
         var startDate = startStr.substring(0, 10);
         var summary = gEv.summary || 'Google Event';
 
-        // Infer type from summary
-        var inferredType = 'other';
-        var lc = summary.toLowerCase();
-        if (lc.indexOf('rehearsal') !== -1 || lc.indexOf('practice') !== -1) inferredType = 'rehearsal';
-        else if (lc.indexOf('gig') !== -1 || lc.indexOf('show') !== -1 || lc.indexOf('concert') !== -1) inferredType = 'gig';
-        else if (lc.indexOf('meeting') !== -1) inferredType = 'meeting';
+        // Infer type from summary (shared classifier — see _classifyEventType)
+        var inferredType = _classifyEventType(summary);
 
+        // Mode A band-cal-source rule: un-keyworded band-cal events become
+        // member-attributed unavailability so they actually block the day.
+        var _creatorEmail2 = (gEv.creator && gEv.creator.email) || (gEv.organizer && gEv.organizer.email) || '';
         // ── Unavailability detection ──
-        var _unavail = (inferredType !== 'rehearsal' && inferredType !== 'gig') ? _detectUnavailability(summary) : { isUnavail: false };
+        var _unavail = (inferredType !== 'rehearsal' && inferredType !== 'gig' && inferredType !== 'meeting') ? _detectUnavailability(summary) : { isUnavail: false };
+        if (inferredType === 'other' && bandCalId && !_unavail.isUnavail) {
+          var _creatorKey2 = _memberKeyFromEmail(_creatorEmail2);
+          if (_creatorKey2) {
+            inferredType = 'unavailable';
+            _unavail = { isUnavail: true, scope: 'member', members: [_creatorKey2] };
+          }
+        }
         if (_unavail.isUnavail) {
           inferredType = _unavail.scope === 'unassigned' ? 'unavailable_unassigned' : 'unavailable';
           if (_unavail.scope === 'member') {
@@ -2870,14 +2913,20 @@ window.GLCalendarSync = (function() {
     if (!bandCalId) { report.error = 'no_band_cal'; return report; }
 
     // Band keyword patterns — anything matching is probably a real band event.
+    // Expanded 2026-04-26 to match _classifyEventType so the audit doesn't
+    // propose deletion of events the live classifier (correctly) tags as gigs.
     var bandPatterns = [
-      /deadcetera/i, /\brehears/i, /\bgig\b/i, /\bshow\b/i,
+      /deadcetera/i, /\brehears/i, /\bpractice\b/i, /\bgig\b/i, /\bshow\b/i,
       /\bconcert\b/i, /\bsoundcheck\b/i, /\bvenue\b/i,
-      /\bband\b/i, /\bopen mic\b/i, /\bjam\b/i
+      /\bband\b/i, /\bopen mic\b/i, /\bjam\b/i, /\bfest\b/i, /\bfestival\b/i,
+      /\blive at\b/i, /\bplaying\b/i, /\bopening for\b/i, /\bset @/i,
+      /\balbum release/i, /\brecording session/i, /fb\/event\//i,
+      /\bband meeting\b/i, /\bband sync\b/i, /\bgear talk\b/i, /\bset planning\b/i
     ];
-    function looksLikeBandEvent(title) {
-      if (!title) return false;
-      return bandPatterns.some(function(p) { return p.test(title); });
+    function looksLikeBandEvent(title, description) {
+      var blob = (title || '') + ' ' + (description || '');
+      if (!blob.trim()) return false;
+      return bandPatterns.some(function(p) { return p.test(blob); });
     }
 
     // Build set of known band-member emails so we can flag events created by
@@ -2947,13 +2996,23 @@ window.GLCalendarSync = (function() {
           var startStr = (g.start && (g.start.dateTime || g.start.date)) || '';
           var startMs = startStr ? new Date(startStr).getTime() : 0;
           var visibility = g.visibility || 'default';
-          var isBandEvent = looksLikeBandEvent(title);
-          var isPrivateOrDefault = (visibility === 'private' || visibility === 'confidential' || visibility === 'default');
+          var isBandEvent = looksLikeBandEvent(title, g.description);
+          // 2026-04-26 hardening: 'default' visibility is what every Google
+          // event gets if you don't change anything — including legitimate
+          // gigs. Restrict to *explicit* private/confidential signals only.
+          // Previously this caused real venue-titled gigs ("Eddie's Attic",
+          // "Vista Room") to be flagged as pollution and deleted on Apply.
+          var isExplicitlyPrivate = (visibility === 'private' || visibility === 'confidential');
           var isMemberCreated = bandEmailSet[creatorEmail];
+          // Additional negative signals required (any one is enough — title
+          // alone shouldn't flip the verdict).
+          var hasNoLocation = !g.location;
+          var hasShortDesc = !g.description || g.description.length < 20;
+          var multiSignal = isExplicitlyPrivate && (hasNoLocation || hasShortDesc);
           // Personal pollution heuristic: created by a band member, NOT titled
-          // like a band event, with private/default visibility — strong signal
-          // it was a personal event accidentally landed on DC.
-          if (isMemberCreated && !isBandEvent && isPrivateOrDefault) {
+          // like a band event, EXPLICITLY marked private (not default), AND
+          // missing location/description — multiple signals required.
+          if (isMemberCreated && !isBandEvent && multiSignal) {
             var deleteId = g.recurringEventId || g.id;
             var isRecurring = !!g.recurringEventId;
             var isMine = myEmail && creatorEmail === myEmail;
@@ -3088,6 +3147,22 @@ window.GLCalendarSync = (function() {
         var gid = e.googleEventId || (e.sync && e.sync.externalEventId);
         return !gid || !pollutionGidSet[gid];
       });
+    }
+
+    // Stamp audit timestamp for the undo banner — Google Trash retains
+    // deletions for ~30 days, so the UI can show a recovery hint while
+    // the window is still open. Merge (don't overwrite) so syncToken etc.
+    // stay intact.
+    if (result.pollutionDeleted > 0) {
+      try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+          await db.ref(bandPath('calendar_sync_state')).update({
+            lastAuditApplied: new Date().toISOString(),
+            lastAuditDeleted: result.pollutionDeleted
+          });
+        }
+      } catch(_e) { /* non-fatal */ }
     }
 
     // Persist whatever changed

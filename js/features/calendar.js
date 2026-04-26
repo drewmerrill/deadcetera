@@ -2218,7 +2218,10 @@ window._calShowCalendarAudit = async function() {
                 ? '<span style="font-size:0.78em;padding:1px 6px;border-radius:4px;background:rgba(251,146,60,0.15);color:#fb923c;font-weight:700;margin-left:6px;white-space:nowrap">\u21BB recurring \u00B7 ' + (p.instanceCount || '?') + '\u00D7</span>'
                 : '';
             html += '<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--gl-border-subtle);font-size:0.78em;cursor:pointer">'
-                + '<input type="checkbox" class="calAuditPollRow" data-gid="' + (p.googleEventId || '').replace(/"/g, '&quot;') + '">'
+                + '<input type="checkbox" class="calAuditPollRow"'
+                + ' data-gid="' + (p.googleEventId || '').replace(/"/g, '&quot;') + '"'
+                + ' data-title="' + (p.title || '').replace(/"/g, '&quot;') + '"'
+                + ' data-date="' + (p.date || '').replace(/"/g, '&quot;') + '">'
                 + '<div style="flex:1;min-width:0">'
                 + '<div style="color:var(--gl-text);font-weight:600;overflow:hidden;text-overflow:ellipsis">' + (p.title || '(untitled)') + recurringBadge + '</div>'
                 + '<div style="color:var(--gl-text-tertiary);font-size:0.88em;margin-top:1px">' + (p.date || '(no date)') + ' \u00B7 ' + (p.creator || 'unknown') + ' \u00B7 ' + (p.visibility || 'default') + (p.isRecurring ? ' \u00B7 deleting removes the entire series' : '') + '</div>'
@@ -2381,9 +2384,31 @@ window._calApplyCalendarAudit = async function() {
         if (typeof showToast === 'function') showToast('Nothing selected.', 3000);
         return;
     }
+
+    // Final preview: list the actual titles + dates we're about to delete.
+    // Past audits silently nuked real venue-titled gigs ("Eddie's Attic",
+    // "Vista Room") because the heuristic accepted Google's 'default'
+    // visibility. Hardened heuristic + this preview means the user can
+    // catch any false positives BEFORE the delete loop runs.
+    var pickedRows = Array.from(document.querySelectorAll('.calAuditPollRow:checked')).map(function(c) {
+        return {
+            title: c.dataset.title || '(untitled)',
+            date: c.dataset.date || ''
+        };
+    });
+    var preview = '';
+    if (pickedRows.length) {
+        var sample = pickedRows.slice(0, 8).map(function(r) {
+            return '  • ' + (r.date ? r.date + ' — ' : '') + r.title;
+        }).join('\n');
+        if (pickedRows.length > 8) sample += '\n  • …and ' + (pickedRows.length - 8) + ' more';
+        preview = '\n\nYou are about to permanently delete:\n' + sample + '\n';
+    }
     var msg = 'Delete ' + zombieIds.length + ' zombie' + (zombieIds.length === 1 ? '' : 's')
         + ' + ' + pollutionGids.length + ' pollution event' + (pollutionGids.length === 1 ? '' : 's')
-        + '?\n\nPollution events will be deleted FROM GOOGLE CALENDAR (not just locally). This is permanent.\n\nLarge batches take a minute or two — the modal will show progress.';
+        + '?\n\nPollution events will be deleted FROM GOOGLE CALENDAR (not just locally). This is permanent — but Google retains deleted events in Trash for ~30 days.'
+        + preview
+        + '\nLarge batches take a minute or two — the modal will show progress.';
     if (!confirm(msg)) return;
 
     // Replace the modal body with a progress view so the user sees what's
@@ -4257,6 +4282,7 @@ function _calRenderGridOnly() {
             var isSoftOnly = isBlocked && !hasHardConflict;
             var isGig = dayEvents.some(function(e) { return e.type === 'gig'; });
             var isRehearsal = dayEvents.some(function(e) { return e.type === 'rehearsal'; });
+            var isMeeting = dayEvents.some(function(e) { return e.type === 'meeting'; });
             var isUnavailable = dayEvents.some(function(e) { return e.type === 'unavailable' || e.type === 'unavailable_unassigned'; });
             var hasEvent = dayEvents.length > 0;
             var w = dow === 0 || dow === 6;
@@ -4265,10 +4291,14 @@ function _calRenderGridOnly() {
             var state = 'default';
             var stateClass = '';
             var icon = '';
+            // Priority order: gig > rehearsal > unavailable (red) > blocked
+            // > meeting (purple, non-conflict) > soft > best. Meeting only
+            // shows if no harder state would have lit the cell.
             if (isGig) { state = 'gig'; stateClass = 'gl-day--gig'; icon = '\uD83C\uDFA4'; }
             else if (isRehearsal) { state = 'rehearsal'; stateClass = 'gl-day--rehearsal'; icon = '\uD83C\uDFB8'; }
             else if (isUnavailable) { state = 'unavailable'; stateClass = 'gl-day--blocked'; icon = '\uD83D\uDEAB'; }
             else if (isBlocked && !isSoftOnly) { state = 'blocked'; stateClass = 'gl-day--blocked'; }
+            else if (isMeeting) { state = 'meeting'; stateClass = 'gl-day--meeting'; icon = '\uD83D\uDCCB'; }
             else if (isSoftOnly) { state = 'soft'; stateClass = 'gl-day--soft'; }
             else if (isBest) { state = 'best'; stateClass = 'gl-day--best'; }
             else if (hasEvent) { state = 'has-event'; }
@@ -4291,36 +4321,65 @@ function _calRenderGridOnly() {
                     if (ev.location || ev.venue) hoverHtml += '<div>' + (ev.location || ev.venue) + '</div>';
                     hoverHtml += '</div>';
                 }
-            } else if (isBlocked) {
-                if (blockedList.length) {
-                    var _evCtx = isGig ? 'this gig' : isRehearsal ? 'rehearsal' : 'scheduling';
-                    var _hCnt = blockedList.filter(function(x) { return x._conflictType !== 'soft'; }).length;
-                    var _sCnt = blockedList.filter(function(x) { return x._conflictType === 'soft'; }).length;
+            } else if (state === 'meeting') {
+                var ev = dayEvents.find(function(e) { return e.type === 'meeting'; });
+                if (ev) {
+                    hoverHtml = '<div class="gl-day-hover">';
+                    hoverHtml += '<div style="font-weight:600;color:var(--gl-text)">' + (ev.title || 'Band meeting') + '</div>';
+                    if (ev.time) hoverHtml += '<div>' + ev.time + '</div>';
+                    if (ev.location || ev.venue) hoverHtml += '<div>' + (ev.location || ev.venue) + '</div>';
+                    hoverHtml += '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-top:2px">Meeting — does not block gig booking</div>';
+                    hoverHtml += '</div>';
+                }
+            } else if (isUnavailable || isBlocked) {
+                // Unified hover: merge schedule_blocks (blockedList) with
+                // band-cal calendar_events that classified as unavailable
+                // (creator-attributed via _memberKeyFromEmail upstream). Both
+                // sources tell the same story — "this member is busy, here's
+                // why" — so we render them in one list with name + reason.
+                var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+                var unifiedItems = [];
+                blockedList.forEach(function(b) {
+                    var _reason = (b.reason && b.reason.indexOf('Busy') !== 0 && b.reason.indexOf('(') !== 0)
+                        ? b.reason : (b._timeLabel ? 'busy ' + b._timeLabel : 'busy');
+                    unifiedItems.push({
+                        name: (b.person || 'Member').split(' ')[0],
+                        reason: _reason,
+                        soft: b._conflictType === 'soft',
+                        description: b.description
+                    });
+                });
+                dayEvents.filter(function(e) { return e.type === 'unavailable' || e.type === 'unavailable_unassigned'; }).forEach(function(ev) {
+                    var memberNames = [];
+                    (ev.assignedMembers || []).forEach(function(k) {
+                        if (bm[k] && bm[k].name) memberNames.push(bm[k].name.split(' ')[0]);
+                        else memberNames.push(k);
+                    });
+                    if (!memberNames.length) memberNames = ['Member'];
+                    memberNames.forEach(function(nm) {
+                        unifiedItems.push({
+                            name: nm,
+                            reason: ev.title || 'busy',
+                            soft: false,
+                            description: ev.notes
+                        });
+                    });
+                });
+                if (unifiedItems.length) {
+                    var _hCnt = unifiedItems.filter(function(x) { return !x.soft; }).length;
+                    var _sCnt = unifiedItems.filter(function(x) { return x.soft; }).length;
                     hoverHtml = '<div class="gl-day-hover">';
                     if (_hCnt && _sCnt) hoverHtml += '<div style="font-size:0.9em;color:var(--gl-text-tertiary);margin-bottom:3px">' + _hCnt + ' conflict' + (_hCnt > 1 ? 's' : '') + ', ' + _sCnt + ' same-day</div>';
-                    blockedList.slice(0,3).forEach(function(b) {
-                        var nm = (b.person || 'Member').split(' ')[0];
-                        var tm = b._timeLabel || '';
-                        // Show specific reason if available (band calendar events have titles)
-                        var _reasonText = 'busy';
-                        if (b.reason && b.reason.indexOf('Busy') !== 0 && b.reason.indexOf('(') !== 0) {
-                            _reasonText = b.reason; // use the actual event title/reason
-                        } else if (tm) {
-                            _reasonText = 'busy ' + tm;
-                        }
-                        var note = b._conflictType === 'soft'
-                            ? '<span style="color:var(--gl-text-tertiary)"> (same day)</span>'
-                            : '';
-                        hoverHtml += '<div>' + nm + ' \u2014 ' + _reasonText + note + '</div>';
-                        // Surface the event description (shared-calendar notes).
-                        // Band members add these for context; show them here.
-                        if (b.description) {
-                            var _desc = String(b.description).replace(/<[^>]+>/g, '').trim();
+                    unifiedItems.slice(0,4).forEach(function(it) {
+                        var note = it.soft ? '<span style="color:var(--gl-text-tertiary)"> (same day)</span>' : '';
+                        hoverHtml += '<div>' + it.name + ' \u2014 ' + it.reason + note + '</div>';
+                        if (it.description) {
+                            var _desc = String(it.description).replace(/<[^>]+>/g, '').trim();
                             if (_desc.length > 140) _desc = _desc.slice(0, 140) + '\u2026';
                             hoverHtml += '<div style="font-size:0.82em;color:var(--gl-text-muted);margin-left:8px">' + _desc + '</div>';
                         }
                     });
-                    if (blockedList.length > 3) hoverHtml += '<div style="opacity:0.6">+' + (blockedList.length - 3) + ' more</div>';
+                    if (unifiedItems.length > 4) hoverHtml += '<div style="opacity:0.6">+' + (unifiedItems.length - 4) + ' more</div>';
                     hoverHtml += '</div>';
                 }
             } else if (isBest) {
