@@ -267,6 +267,23 @@ async function renderNotificationsPage(el) {
         <p>Install the app, share the link, manage contacts &amp; push alerts</p>
     </div>
 
+    <!-- BROWSER PUSH NOTIFICATIONS CARD -->
+    <div class="app-card" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(245,158,11,0.10),rgba(245,158,11,0.04));border-color:rgba(245,158,11,0.30)">
+        <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+            <div style="font-size:2em;flex-shrink:0">🔔</div>
+            <div style="flex:1;min-width:180px">
+                <h3 style="margin:0 0 4px 0">Browser Push Notifications</h3>
+                <p style="color:var(--text-dim);font-size:0.82em;margin:0 0 10px">Get phone-side / desktop alerts the moment something needs your attention — new polls, gig confirmations, schedule changes. Works even when GrooveLinx isn't open.</p>
+                <div id="glPushStatus" style="font-size:0.78em;color:var(--text-muted);margin-bottom:8px"></div>
+                <div id="glPushControls"></div>
+                <p style="font-size:0.7em;color:var(--text-muted);margin:10px 0 0;line-height:1.5">
+                    <strong>iPhone/iPad:</strong> install the app first (button above) and open it from your home screen — Apple requires PWA install before push works.<br>
+                    <strong>Mac/PC/Android:</strong> just click Enable — no install needed.
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- INSTALL APP CARD -->
     <div class="app-card" style="margin-bottom:16px;background:linear-gradient(135deg,rgba(99,102,241,0.12),rgba(129,140,248,0.06));border-color:rgba(99,102,241,0.35)">
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
@@ -388,7 +405,53 @@ async function renderNotificationsPage(el) {
 
     renderBandContactList(contacts);
     notifPopulateRehearsalPicker();
+    notifRenderPushControls();
 }
+
+// Render the Browser Push Notifications status + button. Called after the
+// page renders. Pulls state from window.GLPush.
+async function notifRenderPushControls() {
+    var statusEl = document.getElementById('glPushStatus');
+    var ctrlEl = document.getElementById('glPushControls');
+    if (!statusEl || !ctrlEl) return;
+    if (typeof GLPush === 'undefined') {
+        statusEl.innerHTML = '<span style="color:#f59e0b">\u26A0 Push notification module not loaded — refresh the page.</span>';
+        return;
+    }
+    var perm = GLPush.getPermissionState();
+    var subscribed = await GLPush.isSubscribed();
+
+    if (perm === 'unsupported') {
+        statusEl.innerHTML = '<span style="color:#fbbf24">\u26A0 This browser doesn\u2019t support web push (likely Safari without PWA install).</span>';
+        ctrlEl.innerHTML = '';
+        return;
+    }
+    if (perm === 'denied') {
+        statusEl.innerHTML = '<span style="color:#fca5a5">\uD83D\uDD12 Notifications are blocked. Click the lock icon in the address bar and re-allow.</span>';
+        ctrlEl.innerHTML = '';
+        return;
+    }
+    if (subscribed) {
+        statusEl.innerHTML = '<span style="color:#86efac">\u2713 You\u2019re subscribed on this device.</span>';
+        ctrlEl.innerHTML = '<button class="btn btn-ghost" onclick="notifTogglePush(false)">Disable on this device</button>';
+        return;
+    }
+    statusEl.innerHTML = '<span style="color:var(--text-dim)">Not enabled yet on this device.</span>';
+    ctrlEl.innerHTML = '<button class="btn btn-primary" onclick="notifTogglePush(true)">\uD83D\uDD14 Enable Push Notifications</button>';
+}
+
+window.notifTogglePush = async function(enable) {
+    if (typeof GLPush === 'undefined') return;
+    var btn = document.querySelector('#glPushControls button');
+    if (btn) { btn.disabled = true; btn.textContent = enable ? 'Subscribing\u2026' : 'Disabling\u2026'; }
+    var result = enable ? await GLPush.subscribe() : await GLPush.unsubscribe();
+    if (!result.ok) {
+        if (typeof showToast === 'function') showToast('\u26A0 ' + (result.userMessage || result.reason || 'Failed'), 6000);
+    } else {
+        if (typeof showToast === 'function') showToast(enable ? '\u2713 Push notifications enabled' : '\u2713 Push notifications disabled', 4000);
+    }
+    notifRenderPushControls();
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BAND CONTACT DIRECTORY — editable, stored in Firebase by member key

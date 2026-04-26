@@ -278,6 +278,10 @@ window.initFirebaseOnly = async function initFirebaseOnly() {
 
     await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
     await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js');
+    // Cloud Messaging — for browser push notifications. Loaded as part of
+    // the core init so GLPush can grab it whenever a user opts in.
+    try { await loadScript('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js'); }
+    catch(_e) { console.warn('[Firebase] messaging SDK failed to load — push notifications disabled'); }
 
     if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
     firebaseDB = firebase.database();
