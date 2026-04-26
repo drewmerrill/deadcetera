@@ -1409,6 +1409,42 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // No separate cards — flows as a single story
     var _leftHtml = '';
 
+    // Band Feed pending — TOP of dashboard so unread/unvoted items are
+    // impossible to miss when the user lands on the home page. Pulls from
+    // FeedActionState which tracks "needs my input" across polls, ideas,
+    // and announcements. Only shown when count > 0.
+    try {
+        var _fasFeed = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
+        var _feedPending = _fasFeed ? (_fasFeed.getActionCount() || 0) : 0;
+        if (_feedPending > 0) {
+            _leftHtml += '<div onclick="showPage(\'feed\')" '
+                + 'style="padding:14px 16px;margin-bottom:12px;border-radius:12px;cursor:pointer;'
+                + 'background:linear-gradient(135deg,rgba(245,158,11,0.18),rgba(245,158,11,0.08));'
+                + 'border:1px solid rgba(245,158,11,0.35);'
+                + 'box-shadow:0 4px 14px rgba(245,158,11,0.12);'
+                + 'display:flex;align-items:center;gap:12px;'
+                + 'animation:gl-feed-pulse 2.4s ease-in-out infinite">'
+                + '<div style="width:36px;height:36px;border-radius:50%;background:#f59e0b;color:#0f172a;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1em;flex-shrink:0">'
+                + (_feedPending > 9 ? '9+' : _feedPending)
+                + '</div>'
+                + '<div style="flex:1;min-width:0">'
+                + '<div style="font-size:0.86em;font-weight:800;color:#fbbf24">\uD83D\uDCE1 Band Feed needs you</div>'
+                + '<div style="font-size:0.74em;color:var(--text-muted);margin-top:2px">'
+                + _feedPending + ' item' + (_feedPending === 1 ? '' : 's') + ' waiting on your response \u2014 votes, ideas, or replies.'
+                + '</div>'
+                + '</div>'
+                + '<div style="font-size:0.85em;color:#fbbf24;flex-shrink:0">\u2192</div>'
+                + '</div>';
+            // Inject the pulse animation once
+            if (!document.getElementById('gl-feed-pulse-css')) {
+                var _pulseCss = document.createElement('style');
+                _pulseCss.id = 'gl-feed-pulse-css';
+                _pulseCss.textContent = '@keyframes gl-feed-pulse { 0%,100% { box-shadow:0 4px 14px rgba(245,158,11,0.12); } 50% { box-shadow:0 4px 22px rgba(245,158,11,0.28); } }';
+                document.head.appendChild(_pulseCss);
+            }
+        }
+    } catch(_e) { /* non-fatal */ }
+
     // Risk context (if any) — opens the narrative
     if (_riskCard) _leftHtml += _riskCard;
 
