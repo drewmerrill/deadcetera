@@ -2479,10 +2479,32 @@ window.slToggleLock = slToggleLock;
 // truth for the setlist's date. The gig record is left intact;
 // only the setlist's gigId is cleared.
 window.slUnlinkGigFromSetlist = async function(idx) {
+    console.log('[Setlist] slUnlinkGigFromSetlist called with idx=', idx);
     var data = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    console.log('[Setlist] Loaded', data.length, 'setlists from Firebase');
     var sl = data[idx];
-    if (!sl) { showToast('Setlist not found'); return; }
-    if (!sl.gigId) { showToast('No gig linked'); return; }
+    console.log('[Setlist] sl[' + idx + '] =', sl ? { name: sl.name, gigId: sl.gigId, _gigUnlinked: sl._gigUnlinked } : 'undefined');
+    if (!sl) {
+        console.warn('[Setlist] No setlist at idx', idx, '— sl[', idx, '] is undefined. The list may have been re-sorted since the editor opened.');
+        showToast('\u26A0 Setlist not found at index ' + idx + ' — the list may have re-sorted. Close this setlist and reopen it, then try Unlink again.', 7000);
+        return;
+    }
+    if (!sl.gigId) {
+        // Already unlinked in a prior session, but the date-match fallback
+        // (now disabled with _gigUnlinked) was still rendering the linked-
+        // gig row. Set the flag now so the fallback stops re-linking. No
+        // confirm needed — there's no gig record relationship to break.
+        console.log('[Setlist] sl.gigId already empty — setting _gigUnlinked=true to suppress the date-match fallback that was still rendering the link');
+        sl._gigUnlinked = true;
+        sl.updatedAt = new Date().toISOString();
+        await saveBandDataToDrive('_band', 'setlists', data);
+        if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+        else { window._cachedSetlists = null; window._glCachedSetlists = null; }
+        showToast('\u2713 Cleared the stale gig link — date is now editable', 4000);
+        if (typeof editSetlist === 'function') editSetlist(idx);
+        else loadSetlists();
+        return;
+    }
     var msg = 'Unlink this setlist from its gig?\n\n'
         + 'The gig record stays intact. Only this setlist\'s link is cleared, '
         + 'and its date becomes editable again. You can re-link later by '
