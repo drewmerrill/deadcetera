@@ -4678,9 +4678,74 @@ async function loadCalendarEvents() {
     }
 
     console.log('[PERF] calendar SWR cache MISS — fetching from Firebase ' + Math.round(performance.now()) + 'ms');
-    const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+    var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     console.log('[PERF] calendar Firebase complete ' + Math.round(performance.now()) + 'ms (' + events.length + ' events)');
     _calEventsLoadedFromNetwork = true;
+
+    // ── Client-side multi-day fold-up ──────────────────────────────────────
+    // Old data has per-day records (one per day) for multi-day events from
+    // before the importer was fixed to store single records. Phase 2.4
+    // dedupe collapses these on next sync, but we shouldn't make the user
+    // wait — heal the UI on every load. Detect groups by googleEventId,
+    // pick the broadest date range, write one keeper, drop the rest.
+    try {
+        var _foldGroups = {};
+        events.forEach(function(e, idx) {
+            if (!e || e._syntheticFromFreeBusy) return;
+            if (!e.isAllDay) return; // only fold all-day duplicates
+            var _gid = e.googleEventId || (e.sync && e.sync.externalEventId);
+            if (!_gid) return;
+            if (!_foldGroups[_gid]) _foldGroups[_gid] = [];
+            _foldGroups[_gid].push(idx);
+        });
+        var _foldDrop = [];
+        var _foldedCount = 0;
+        Object.keys(_foldGroups).forEach(function(gid) {
+            var idxs = _foldGroups[gid];
+            if (idxs.length < 2) return;
+            // Find the broadest range across the duplicates.
+            var minDate = null, maxDate = null;
+            idxs.forEach(function(i) {
+                var d = events[i].date;
+                var ed = events[i].endDate || events[i].date;
+                if (d && (!minDate || d < minDate)) minDate = d;
+                if (ed && (!maxDate || ed > maxDate)) maxDate = ed;
+            });
+            // Pick keeper: prefer one whose date === minDate so the kept
+            // record's start aligns with the actual range start.
+            var keeper = idxs[0];
+            for (var k = 0; k < idxs.length; k++) {
+                if (events[idxs[k]].date === minDate) { keeper = idxs[k]; break; }
+            }
+            // Set endDate on keeper if multi-day. Strip "(day N/M)" title
+            // suffix from old expansion path.
+            if (maxDate && maxDate > minDate) {
+                events[keeper].endDate = maxDate;
+            }
+            if (events[keeper].title) {
+                events[keeper].title = String(events[keeper].title).replace(/\s*\(day\s+\d+\/\d+\)\s*$/i, '');
+            }
+            idxs.forEach(function(i) {
+                if (i !== keeper) {
+                    _foldDrop.push(i);
+                    _foldedCount++;
+                }
+            });
+        });
+        if (_foldDrop.length) {
+            _foldDrop.sort(function(a, b) { return b - a; });
+            _foldDrop.forEach(function(i) { events.splice(i, 1); });
+            console.log('[Calendar] Multi-day fold-up: collapsed', _foldedCount, 'per-day duplicate records into multi-day singles');
+            // Persist the fold to Firebase + cache so the change survives
+            // page reloads instead of healing every render.
+            try {
+                if (typeof saveBandDataToDrive === 'function') {
+                    saveBandDataToDrive('_band', 'calendar_events', events);
+                }
+            } catch(_e) { /* non-fatal */ }
+        }
+    } catch(_e) { console.warn('[Calendar] fold-up error:', _e && _e.message); }
+
     // Update SWR cache
     if (typeof GLStore !== 'undefined' && GLStore.setCachedBandData) {
         GLStore.setCachedBandData('calendar_events', events);
