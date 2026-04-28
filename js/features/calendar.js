@@ -1267,6 +1267,54 @@ window._calDedupeGoogle = async function() {
     if (btn) { btn.textContent = 'Clean duplicates'; btn.disabled = false; }
 };
 
+// Merge calendar_events rows that represent the same event but were never
+// linked (e.g. local user record + a separate "From Google" import on the
+// same date). Self-heals compounded "Venue — Venue — Venue" titles in the
+// process. Server-side: deletes the sibling Google events. Local: collapses
+// to one row per real event. The keeper is marked dirty so the next push
+// reconciles correct time back to Google.
+window._calMergeOrphanDupes = async function() {
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync.mergeOrphanDuplicates) {
+        if (typeof showToast === 'function') showToast('Calendar sync module not loaded');
+        return;
+    }
+    if (typeof accessToken === 'undefined' || !accessToken) {
+        if (typeof showToast === 'function') showToast('Signing back into Google…', 3000);
+        if (typeof _calConnectGoogle === 'function') {
+            try { await _calConnectGoogle(); } catch (e) {}
+        }
+        if (typeof accessToken === 'undefined' || !accessToken) {
+            if (typeof showToast === 'function') showToast('⚠ Google sign-in cancelled. Try again when ready.', 5000);
+            return;
+        }
+    }
+    if (!confirm('Merge orphan duplicate rows?\n\nFinds calendar rows on the same date with the same venue/title (including triplicated "Venue — Venue — Venue" titles) and collapses them to one row. The duplicate Google Calendar events are deleted server-side. The kept row is marked for the next sync to refresh its time on Google.\n\nSafe: only merges rows that are clearly the same event.')) {
+        return;
+    }
+    var btn = document.getElementById('calMergeOrphanBtn');
+    if (btn) { btn.textContent = 'Merging...'; btn.disabled = true; }
+    try {
+        var result = await GLCalendarSync.mergeOrphanDuplicates();
+        var msg;
+        if (result.error) {
+            msg = 'Merge failed: ' + result.error;
+        } else if (!result.merged) {
+            msg = '✓ No orphan duplicates found';
+        } else {
+            msg = '✓ Merged ' + result.merged + ' group' + (result.merged === 1 ? '' : 's')
+                + ' — removed ' + (result.removedRows || 0) + ' row' + ((result.removedRows || 0) === 1 ? '' : 's')
+                + ', deleted ' + (result.deleted || 0) + ' from Google';
+            if (result.deleteErrors) msg += ' (' + result.deleteErrors + ' delete errors)';
+        }
+        if (typeof showToast === 'function') showToast(msg, 7000);
+        if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
+        _calRenderGridOnly();
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Merge failed: ' + (e.message || 'unknown error'));
+    }
+    if (btn) { btn.textContent = 'Merge orphan dupes'; btn.disabled = false; }
+};
+
 // One-time fix: push correct gig times from Gigs (source of truth) to Google
 // Calendar. Fixes the "every gig shows 7-9 PM" artifact from the old pipeline
 // that dropped endTime and defaulted startTime to 19:00.
@@ -1840,6 +1888,7 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calShowAvailabilitySettings()" style="font-size:0.62em;background:none;border:none;color:var(--gl-indigo);cursor:pointer;opacity:0.7;padding:0">Rules</button>'
             + '<button onclick="_calShowManageConnections()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0">Connections</button>'
             + '<button onclick="_calDedupeGoogle()" id="calDedupeBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove duplicate Google Calendar events created by past sync races">Clean duplicates</button>'
+            + '<button onclick="_calMergeOrphanDupes()" id="calMergeOrphanBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Merge same-day same-event rows that were never linked (one local + one From Google duplicate)">Merge orphan dupes</button>'
             + '<button onclick="_calRefreshGigTimes()" id="calRefreshTimesBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Push correct start/end times from Gigs to Google Calendar (one-time fix for events showing 7-9 PM default)">Refresh gig times</button>'
             + '<button onclick="_calCleanLegacyBusy()" id="calCleanBusyBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Remove legacy auto-pushed &quot;Busy&quot; / &quot;Busy (all day)&quot; events that pollute the conflict list">Clean legacy Busy</button>'
             + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>'

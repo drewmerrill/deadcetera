@@ -223,6 +223,80 @@ window.GLCalendarSync = (function() {
     return found;
   }
 
+  // Band timezone — single source for date/time extraction from Google's
+  // RFC3339 datetime strings. Currently hardcoded; matches the timeZone
+  // we set in _buildEventBody. Future: read from band record.
+  var BAND_TZ = 'America/New_York';
+
+  // Extract local HH:MM from a Google RFC3339 datetime in BAND_TZ. Google's
+  // dateTime field comes back EITHER with explicit offset
+  // ("2026-05-30T20:00:00-04:00") or in UTC ("2026-05-31T00:00:00Z"),
+  // depending on the calendar's default timezone setting. Naive
+  // substring(11,16) silently breaks on the UTC case (gives "00:00" for a
+  // 20:00 ET event). Parse → format in BAND_TZ to get the right local
+  // time regardless of input form. Returns '' for date-only or invalid input.
+  function _extractLocalHM(isoStr) {
+    if (!isoStr || typeof isoStr !== 'string' || isoStr.length <= 10) return '';
+    try {
+      var d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr.substring(11, 16);
+      var parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: BAND_TZ, hour: '2-digit', minute: '2-digit', hour12: false
+      }).formatToParts(d);
+      var hh = '', mm = '';
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].type === 'hour') hh = parts[i].value;
+        else if (parts[i].type === 'minute') mm = parts[i].value;
+      }
+      if (hh === '24') hh = '00'; // some Intl impls emit 24 for midnight
+      return (hh && mm) ? (hh + ':' + mm) : isoStr.substring(11, 16);
+    } catch (e) { return isoStr.substring(11, 16); }
+  }
+
+  // Extract local YYYY-MM-DD from a Google RFC3339 datetime in BAND_TZ.
+  // Same UTC-vs-offset issue as _extractLocalHM: a 20:00 ET event returned
+  // as "2026-05-31T00:00:00Z" would give "2026-05-31" via substring, but
+  // it's actually on 5/30 in the band's timezone. Date-only strings (the
+  // all-day case) are passed through as-is.
+  function _extractLocalDate(isoStr) {
+    if (!isoStr || typeof isoStr !== 'string') return '';
+    if (isoStr.length === 10) return isoStr;
+    try {
+      var d = new Date(isoStr);
+      if (isNaN(d.getTime())) return isoStr.substring(0, 10);
+      // en-CA produces YYYY-MM-DD; safer than building from parts.
+      var s = new Intl.DateTimeFormat('en-CA', {
+        timeZone: BAND_TZ, year: 'numeric', month: '2-digit', day: '2-digit'
+      }).format(d);
+      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : isoStr.substring(0, 10);
+    } catch (e) { return isoStr.substring(0, 10); }
+  }
+
+  // Self-heal compounded titles like "Venue — Venue — Venue" or
+  // "Venue — Venue — Title". Past _buildEventBody bugs accumulated repeats
+  // each sync. Generalized so it doesn't need the venue field as input —
+  // detects any leading run of identical segments separated by em-dash.
+  // Returns { title, wasCorrupt }.
+  //   "A — A — A"     -> "A"
+  //   "A — A — B"     -> "A — B"
+  //   "A — A — A — B" -> "A — B"
+  //   "A — B"         -> "A — B" (unchanged)
+  function _cleanCompoundedTitle(title) {
+    if (!title || typeof title !== 'string') return { title: title || '', wasCorrupt: false };
+    var EM = '—';
+    var segs = title.split(new RegExp('\\s*' + EM + '\\s*'));
+    if (segs.length < 2) return { title: title, wasCorrupt: false };
+    var trimmed = segs.map(function(s) { return s.trim(); });
+    var norm = trimmed.map(function(s) { return s.toLowerCase(); });
+    var run = 1;
+    while (run < norm.length && norm[run] === norm[0]) run++;
+    if (run < 2) return { title: title, wasCorrupt: false };
+    var head = trimmed[0];
+    if (run === segs.length) return { title: head, wasCorrupt: true };
+    var tail = trimmed.slice(run).join(' ' + EM + ' ');
+    return { title: head + ' ' + EM + ' ' + tail, wasCorrupt: true };
+  }
+
   // Shared classifier — both the live import path (_importGoogleEvent) and
   // the Path B.2 multi-day expansion use this so they can't drift apart.
   // Order: rehearsal/practice wins over jam (a "studio jam" is rehearsal,
@@ -1168,29 +1242,15 @@ window.GLCalendarSync = (function() {
     // than letting undefined propagate: Firebase .set() rejects the entire
     // document if any field is undefined, which silently loses reclassify
     // and every other Phase 2 update in the same save.
-    existing.date = startStr.substring(0, 10) || '';
+    existing.date = _extractLocalDate(startStr) || '';
     var _rawTitle = googleEvent.summary || existing.title || '';
-    // Self-heal: collapse repeated venue prefixes in gig titles.
-    // Past _buildEventBody bug compounded "Venue — Title" into
-    // "Venue — Venue — Venue — Title" once per sync. Detect, strip, and
-    // mark dirty so the push back to Google fixes the source copy too.
-    var _titleWasCorrupt = false;
-    if (existing.type === 'gig' && existing.venue && _rawTitle) {
-      var _vRaw = existing.venue.trim();
-      if (_vRaw) {
-        var _esc = _vRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        var _repeatRe = new RegExp('^(?:' + _esc + '\\s*\\u2014\\s*){2,}', 'i');
-        if (_repeatRe.test(_rawTitle)) {
-          var _cleaned = _rawTitle.replace(_repeatRe, _vRaw + ' \u2014 ');
-          // If after collapse the trailing segment is just the venue, drop the dash.
-          _cleaned = _cleaned.replace(new RegExp('^' + _esc + '\\s*\\u2014\\s*' + _esc + '\\s*$', 'i'), _vRaw);
-          if (_cleaned !== _rawTitle) {
-            console.log('[CalSync] Cleaned compounded title "' + _rawTitle + '" -> "' + _cleaned + '"');
-            _rawTitle = _cleaned;
-            _titleWasCorrupt = true;
-          }
-        }
-      }
+    // Self-heal compounded titles ("Venue — Venue — Venue") and mark dirty
+    // so the cleaned version pushes back to Google on the next sync.
+    var _cleanRes = _cleanCompoundedTitle(_rawTitle);
+    var _titleWasCorrupt = _cleanRes.wasCorrupt;
+    if (_titleWasCorrupt) {
+      console.log('[CalSync] Cleaned compounded title "' + _rawTitle + '" -> "' + _cleanRes.title + '"');
+      _rawTitle = _cleanRes.title;
     }
     existing.title = _rawTitle;
     existing.location = googleEvent.location || existing.location || '';
@@ -1200,15 +1260,15 @@ window.GLCalendarSync = (function() {
     // every covered day. All-day spans use Google's exclusive end date (minus 1);
     // timed spans use the date portion, treating midnight-to-midnight like
     // all-day (end-midnight is effectively the prior day).
-    var _startDateR = (startStr || '').substring(0, 10);
-    var _endDateR = (endStr || '').substring(0, 10);
+    var _startDateR = _extractLocalDate(startStr);
+    var _endDateR = _extractLocalDate(endStr);
     if (isAllDay && endStr) {
       var _rEnd = new Date(_endDateR + 'T12:00:00');
       _rEnd.setDate(_rEnd.getDate() - 1);
       var _rEndStr = _rEnd.getFullYear() + '-' + String(_rEnd.getMonth() + 1).padStart(2, '0') + '-' + String(_rEnd.getDate()).padStart(2, '0');
       existing.endDate = _rEndStr > _startDateR ? _rEndStr : '';
     } else if (!isAllDay && endStr && _endDateR > _startDateR) {
-      var _rIsEndMid = endStr.length > 10 && endStr.substring(11, 16) === '00:00';
+      var _rIsEndMid = endStr.length > 10 && _extractLocalHM(endStr) === '00:00';
       if (_rIsEndMid) {
         var _rEnd2 = new Date(_endDateR + 'T12:00:00');
         _rEnd2.setDate(_rEnd2.getDate() - 1);
@@ -1221,8 +1281,8 @@ window.GLCalendarSync = (function() {
       existing.endDate = '';
     }
     if (!isAllDay && startStr.length > 10) {
-      existing.time = startStr.substring(11, 16);
-      if (endStr.length > 10) existing.endTime = endStr.substring(11, 16);
+      existing.time = _extractLocalHM(startStr);
+      if (endStr.length > 10) existing.endTime = _extractLocalHM(endStr);
     } else {
       existing.time = '';
       existing.endTime = '';
@@ -1314,7 +1374,16 @@ window.GLCalendarSync = (function() {
     var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
     var startStr = googleEvent.start ? (googleEvent.start.dateTime || googleEvent.start.date || '') : '';
     var endStr = googleEvent.end ? (googleEvent.end.dateTime || googleEvent.end.date || '') : '';
-    var summary = googleEvent.summary || 'Google Event';
+    // Self-heal compounded titles on first import too (not just reconcile),
+    // so newly-discovered "Venue — Venue — Venue" rows don't enter the system
+    // corrupt. _titleWasCorruptOnImport flips syncStatus to 'dirty' on the
+    // returned record so the cleaned title pushes back to Google.
+    var _importClean = _cleanCompoundedTitle(googleEvent.summary || 'Google Event');
+    var summary = _importClean.title;
+    var _titleWasCorruptOnImport = _importClean.wasCorrupt;
+    if (_titleWasCorruptOnImport) {
+      console.log('[CalSync] Import: cleaned compounded title -> "' + summary + '" (will mark dirty for write-back)');
+    }
     // GrooveLinx-stamped events carry their original type as a private
     // extended property — trust it over the title-keyword classifier so a
     // gig at "MoonShadow Tavern" stays a gig instead of being downgraded
@@ -1348,8 +1417,8 @@ window.GLCalendarSync = (function() {
         _unavailImport = { isUnavail: true, scope: 'member', members: [_creatorKey] };
       }
     }
-    var eventTime = (!isAllDay && startStr.length > 10) ? startStr.substring(11, 16) : '';
-    var eventEndTime = (!isAllDay && endStr.length > 10) ? endStr.substring(11, 16) : '';
+    var eventTime = (!isAllDay && startStr.length > 10) ? _extractLocalHM(startStr) : '';
+    var eventEndTime = (!isAllDay && endStr.length > 10) ? _extractLocalHM(endStr) : '';
     // Multi-day spans: store as single event with endDate so the calendar-grid
     // expansion (in _calBuildDateMap) places the event on every day in range.
     // - All-day: Google's end.date is exclusive → subtract 1 day.
@@ -1358,8 +1427,8 @@ window.GLCalendarSync = (function() {
     //   matches how Google's UI renders "Pierce out 6/12–15 midnight-to-midnight"
     //   as a 3-day banner across 6/12, 6/13, 6/14.
     var eventEndDate = '';
-    var _startDateOnly = startStr.substring(0, 10);
-    var _endDateOnly = endStr.substring(0, 10);
+    var _startDateOnly = _extractLocalDate(startStr);
+    var _endDateOnly = _extractLocalDate(endStr);
     if (isAllDay && endStr) {
       var _endDt = new Date(_endDateOnly + 'T12:00:00');
       _endDt.setDate(_endDt.getDate() - 1); // Google exclusive → inclusive
@@ -1368,7 +1437,7 @@ window.GLCalendarSync = (function() {
     } else if (!isAllDay && endStr && _endDateOnly > _startDateOnly) {
       // Timed multi-day event. If end is exactly midnight, the effective last
       // day is the day before (Google UI also renders it that way).
-      var _isEndMidnight = endStr.length > 10 && endStr.substring(11, 16) === '00:00';
+      var _isEndMidnight = endStr.length > 10 && _extractLocalHM(endStr) === '00:00';
       if (_isEndMidnight) {
         var _endDt2 = new Date(_endDateOnly + 'T12:00:00');
         _endDt2.setDate(_endDt2.getDate() - 1);
@@ -1381,7 +1450,7 @@ window.GLCalendarSync = (function() {
 
     return {
       id: (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      date: startStr.substring(0, 10),
+      date: _extractLocalDate(startStr),
       endDate: eventEndDate,
       type: inferredType,
       title: summary,
@@ -1406,9 +1475,9 @@ window.GLCalendarSync = (function() {
       _importedFromGoogle: true,
       googleEventId: googleEvent.id,
       calendarId: bandCalId,
-      syncStatus: 'synced',
+      syncStatus: _titleWasCorruptOnImport ? 'dirty' : 'synced',
       lastSyncedAt: new Date().toISOString(),
-      sync: { provider: 'google', externalEventId: googleEvent.id, calendarId: bandCalId, status: 'synced', direction: 'inbound', lastSyncedAt: new Date().toISOString() },
+      sync: { provider: 'google', externalEventId: googleEvent.id, calendarId: bandCalId, status: _titleWasCorruptOnImport ? 'dirty' : 'synced', direction: 'inbound', lastSyncedAt: new Date().toISOString() },
       created: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -2118,6 +2187,57 @@ window.GLCalendarSync = (function() {
             dirty = true;
             console.log('[CalSync] Re-linked:', gEv.summary, '→ local id:', _glId);
             continue; // skip import — it's a re-link
+          }
+        }
+        // Fallback re-link for orphan locals — same gig was created on
+        // another device (no glEventId) so the existing dedupe paths can't
+        // bridge it. Match by date + type + (close time OR exact title).
+        // Conservative: only re-link when EXACTLY ONE candidate matches, to
+        // avoid mismerging two real same-day events.
+        var _gIsAllDay = !!(gEv.start && gEv.start.date && !gEv.start.dateTime);
+        var _gStart = gEv.start ? (gEv.start.dateTime || gEv.start.date || '') : '';
+        var _gDate = _extractLocalDate(_gStart);
+        var _gTime = (!_gIsAllDay && _gStart.length > 10) ? _extractLocalHM(_gStart) : '';
+        var _glStampedType = (_extProp && _extProp.glType ? _extProp.glType : '').toLowerCase();
+        var _gValidTypes = { gig: 1, rehearsal: 1, meeting: 1 };
+        var _gType = _gValidTypes[_glStampedType] ? _glStampedType : _classifyEventType(gEv.summary || '');
+        var _gTitleNorm = String(gEv.summary || '').trim().toLowerCase();
+        if (_gDate && _gValidTypes[_gType]) {
+          var _hmToMin = function(hm) { if (!hm) return -1; var p = hm.split(':'); return parseInt(p[0],10)*60 + parseInt(p[1],10); };
+          var _candIdxs = [];
+          for (var _ci = 0; _ci < events.length; _ci++) {
+            var _cand = events[_ci];
+            if (!_cand) continue;
+            if (_cand.googleEventId || (_cand.sync && _cand.sync.externalEventId)) continue;
+            if (_cand._syntheticFromFreeBusy || _cand._deleted) continue;
+            if (_cand.date !== _gDate) continue;
+            if (_cand.type !== _gType) continue;
+            var _timeMatch = false;
+            if (_gIsAllDay && (!_cand.time || _cand.isAllDay)) _timeMatch = true;
+            else if (_cand.time && _gTime) {
+              var _diff = Math.abs(_hmToMin(_cand.time) - _hmToMin(_gTime));
+              _timeMatch = _diff >= 0 && _diff <= 60;
+            }
+            var _titleMatch = _gTitleNorm && _cand.title && String(_cand.title).trim().toLowerCase() === _gTitleNorm;
+            if (_timeMatch || _titleMatch) _candIdxs.push(_ci);
+          }
+          if (_candIdxs.length === 1) {
+            var _ti = _candIdxs[0];
+            events[_ti].googleEventId = gEv.id;
+            events[_ti].sync = events[_ti].sync || {};
+            events[_ti].sync.externalEventId = gEv.id;
+            // Mark dirty so the next push pass reconciles our local edits
+            // (e.g. corrected time) back to Google. Reconcile will skip
+            // dirty records, so Google's potentially-stale time won't clobber.
+            events[_ti].sync.status = 'dirty';
+            events[_ti].syncStatus = 'dirty';
+            eventsByGoogleId[gEv.id] = _ti;
+            result.updated++;
+            dirty = true;
+            console.log('[CalSync] Orphan re-link by date+type+time/title: local', events[_ti].id, '<-', gEv.id, '(' + _gDate + ' ' + _gType + ' ' + (_gTime || 'all-day') + ')');
+            continue; // skip import — re-linked
+          } else if (_candIdxs.length > 1) {
+            console.log('[CalSync] Skipping orphan re-link for', gEv.id, '—', _candIdxs.length, 'candidates on', _gDate);
           }
         }
         var newEv = _importGoogleEvent(gEv, bandCalId);
@@ -3857,6 +3977,144 @@ window.GLCalendarSync = (function() {
     return { scanned: scanned, updated: updated, errors: errors.length };
   }
 
+  // ── Merge orphan duplicates ───────────────────────────────────────────────
+  // Collapses calendar_events rows that represent the same gig/rehearsal but
+  // were created on different devices and never linked. Groups by
+  // date + type + normalized venue/title (with self-heal applied to absorb
+  // "Venue — Venue — Venue" rows). Keeps the local non-imported row when one
+  // exists; otherwise the oldest. Deletes the sibling Google events
+  // server-side and removes the sibling rows from Firebase. Marks the keeper
+  // dirty so the next push reconciles the correct time back to Google.
+  async function mergeOrphanDuplicates() {
+    if (!hasCalendarScope()) return { error: 'no scope', merged: 0, deleted: 0, scanned: 0 };
+    if (typeof loadBandDataFromDrive !== 'function' || typeof saveBandDataToDrive !== 'function') {
+      return { error: 'firebase helpers unavailable', merged: 0, deleted: 0, scanned: 0 };
+    }
+    var calId = await _getBandCalendarId();
+    if (!calId) return { error: 'no band calendar configured', merged: 0, deleted: 0, scanned: 0 };
+
+    var events = [];
+    try {
+      events = (typeof toArray === 'function')
+        ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
+        : [];
+    } catch (e) {
+      return { error: e.message || 'load failed', merged: 0, deleted: 0, scanned: 0 };
+    }
+
+    var validTypes = { gig: 1, rehearsal: 1, meeting: 1 };
+    var groups = {};
+    events.forEach(function (ev, idx) {
+      if (!ev || !ev.date || !validTypes[ev.type]) return;
+      if (ev._deleted) return;
+      var key = ev.date + '|' + ev.type;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push({ ev: ev, idx: idx });
+    });
+
+    var _normLabel = function (ev) {
+      var raw = ev.venue || ev.title || '';
+      var clean = _cleanCompoundedTitle(raw).title;
+      return String(clean).trim().toLowerCase().replace(/\s+/g, ' ');
+    };
+
+    var indicesToRemove = [];
+    var pendingDeletes = []; // { gid: string }
+    var mergedCount = 0;
+
+    Object.keys(groups).forEach(function (groupKey) {
+      var members = groups[groupKey];
+      if (members.length < 2) return;
+      var clusters = {};
+      members.forEach(function (m) {
+        var label = _normLabel(m.ev);
+        if (!label) return;
+        if (!clusters[label]) clusters[label] = [];
+        clusters[label].push(m);
+      });
+      Object.keys(clusters).forEach(function (lbl) {
+        var cluster = clusters[lbl];
+        if (cluster.length < 2) return;
+        cluster.sort(function (a, b) {
+          var aImp = a.ev._importedFromGoogle ? 1 : 0;
+          var bImp = b.ev._importedFromGoogle ? 1 : 0;
+          if (aImp !== bImp) return aImp - bImp;
+          var aHasTime = a.ev.time ? 1 : 0;
+          var bHasTime = b.ev.time ? 1 : 0;
+          if (aHasTime !== bHasTime) return bHasTime - aHasTime;
+          var ac = Date.parse(a.ev.created || a.ev.updated_at || 0) || 0;
+          var bc = Date.parse(b.ev.created || b.ev.updated_at || 0) || 0;
+          return ac - bc;
+        });
+        var keeper = cluster[0].ev;
+        var kc = _cleanCompoundedTitle(keeper.title || '');
+        if (kc.wasCorrupt) keeper.title = kc.title;
+        if (keeper.venue) {
+          var vc = _cleanCompoundedTitle(keeper.venue);
+          if (vc.wasCorrupt) keeper.venue = vc.title;
+        }
+        var keeperGid = keeper.googleEventId || (keeper.sync && keeper.sync.externalEventId) || '';
+        for (var s = 1; s < cluster.length; s++) {
+          var sib = cluster[s].ev;
+          var sibGid = sib.googleEventId || (sib.sync && sib.sync.externalEventId) || '';
+          if (!keeperGid && sibGid) {
+            keeper.googleEventId = sibGid;
+            keeper.sync = keeper.sync || {};
+            keeper.sync.externalEventId = sibGid;
+            keeper.sync.provider = 'google';
+            keeper.sync.calendarId = sib.calendarId || calId;
+            keeperGid = sibGid;
+          } else if (sibGid && sibGid !== keeperGid) {
+            pendingDeletes.push({ gid: sibGid });
+          }
+          indicesToRemove.push(cluster[s].idx);
+        }
+        keeper.sync = keeper.sync || {};
+        keeper.sync.status = 'dirty';
+        keeper.syncStatus = 'dirty';
+        keeper.updated_at = new Date().toISOString();
+        mergedCount++;
+        console.log('[CalSync] mergeOrphanDuplicates: keeping', keeper.id, '(' + keeper.date + ' ' + keeper.type + ' "' + lbl + '") merged ' + (cluster.length - 1) + ' sibling(s)');
+      });
+    });
+
+    var deletedCount = 0;
+    var deleteErrors = 0;
+    for (var di = 0; di < pendingDeletes.length; di++) {
+      try {
+        var rres = await remove(pendingDeletes[di].gid);
+        if (rres && rres.success !== false) deletedCount++;
+        else deleteErrors++;
+      } catch (e) { deleteErrors++; }
+    }
+
+    indicesToRemove.sort(function (a, b) { return b - a; });
+    var seen = {};
+    indicesToRemove.forEach(function (i) {
+      if (seen[i]) return;
+      seen[i] = 1;
+      if (i >= 0 && i < events.length) events.splice(i, 1);
+    });
+
+    try {
+      await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
+    } catch (e) {
+      return {
+        error: 'save failed: ' + (e.message || ''),
+        merged: mergedCount, deleted: deletedCount, deleteErrors: deleteErrors, scanned: events.length
+      };
+    }
+
+    return {
+      merged: mergedCount,
+      deleted: deletedCount,
+      deleteErrors: deleteErrors,
+      removedRows: indicesToRemove.length,
+      scanned: events.length
+    };
+  }
+
+
   // ── Purge events not on the configured band calendar ─────────────────────
   // Mode A contract: ONLY the shared band calendar contributes. Legacy free/
   // busy imports (from when the band was in Mode B) live in calendar_events
@@ -4164,6 +4422,7 @@ window.GLCalendarSync = (function() {
     auditCalendarPollution: auditCalendarPollution,
     applyAuditDecisions: applyAuditDecisions,
     deduplicateBandCalendar: deduplicateBandCalendar,
+    mergeOrphanDuplicates: mergeOrphanDuplicates,
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
     purgeNonBandEvents: purgeNonBandEvents,
