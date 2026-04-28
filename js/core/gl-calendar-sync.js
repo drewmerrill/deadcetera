@@ -4012,33 +4012,73 @@ window.GLCalendarSync = (function() {
       groups[key].push({ ev: ev, idx: idx });
     });
 
-    var _normLabel = function (ev) {
-      var raw = ev.venue || ev.title || '';
-      var clean = _cleanCompoundedTitle(raw).title;
-      return String(clean).trim().toLowerCase().replace(/\s+/g, ' ');
+    var _norm = function (s) {
+      return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    };
+    var _normVenue = function (ev) {
+      return _norm(_cleanCompoundedTitle(ev.venue || '').title);
+    };
+    var _normTitle = function (ev) {
+      return _norm(_cleanCompoundedTitle(ev.title || '').title);
+    };
+    // Two records on same date+type are "the same event" when ANY of these
+    // holds. Time alone is too loose (matinee + evening at same venue would
+    // merge); require a name signal.
+    //   - normalized titles match exactly
+    //   - normalized venues match exactly
+    //   - one's venue is a substring of the other's title (or vice versa) —
+    //     handles the "deadcetera Gig" local + "Southern Roots Tavern …"
+    //     Google twin case
+    var _isSameEvent = function (a, b) {
+      var aT = _normTitle(a), bT = _normTitle(b);
+      var aV = _normVenue(a), bV = _normVenue(b);
+      if (aT && bT && aT === bT) return true;
+      if (aV && bV && aV === bV) return true;
+      if (aV && bT && bT.indexOf(aV) >= 0) return true;
+      if (bV && aT && aT.indexOf(bV) >= 0) return true;
+      if (aT && bV && aT.indexOf(bV) >= 0) return true;
+      if (bT && aV && bT.indexOf(aV) >= 0) return true;
+      return false;
     };
 
     var indicesToRemove = [];
-    var pendingDeletes = []; // { gid: string }
+    var pendingDeletes = [];
     var mergedCount = 0;
 
     Object.keys(groups).forEach(function (groupKey) {
       var members = groups[groupKey];
       if (members.length < 2) return;
-      var clusters = {};
-      members.forEach(function (m) {
-        var label = _normLabel(m.ev);
-        if (!label) return;
-        if (!clusters[label]) clusters[label] = [];
-        clusters[label].push(m);
-      });
-      Object.keys(clusters).forEach(function (lbl) {
-        var cluster = clusters[lbl];
+      // Union-find over members — two members union when they're plausibly
+      // the same event by any of the criteria above. Transitive: if A~B
+      // and B~C then {A,B,C} all collapse, even if A and C don't match
+      // directly. That's how the 5/30 trio (local "deadcetera Gig" venue
+      // SRT, Google "deadcetera Gig", Google "SRT — Southern Roots")
+      // collapses through the local record's venue field bridging the two
+      // Google rows.
+      var parent = members.map(function (_, i) { return i; });
+      var find = function (i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+      var union = function (i, j) { var ri = find(i), rj = find(j); if (ri !== rj) parent[ri] = rj; };
+      for (var i = 0; i < members.length; i++) {
+        for (var j = i + 1; j < members.length; j++) {
+          if (_isSameEvent(members[i].ev, members[j].ev)) union(i, j);
+        }
+      }
+      var components = {};
+      for (var k = 0; k < members.length; k++) {
+        var root = find(k);
+        if (!components[root]) components[root] = [];
+        components[root].push(members[k]);
+      }
+      Object.keys(components).forEach(function (rootKey) {
+        var cluster = components[rootKey];
         if (cluster.length < 2) return;
         cluster.sort(function (a, b) {
           var aImp = a.ev._importedFromGoogle ? 1 : 0;
           var bImp = b.ev._importedFromGoogle ? 1 : 0;
           if (aImp !== bImp) return aImp - bImp;
+          var aHasVenue = a.ev.venue ? 1 : 0;
+          var bHasVenue = b.ev.venue ? 1 : 0;
+          if (aHasVenue !== bHasVenue) return bHasVenue - aHasVenue;
           var aHasTime = a.ev.time ? 1 : 0;
           var bHasTime = b.ev.time ? 1 : 0;
           if (aHasTime !== bHasTime) return bHasTime - aHasTime;
@@ -4074,7 +4114,8 @@ window.GLCalendarSync = (function() {
         keeper.syncStatus = 'dirty';
         keeper.updated_at = new Date().toISOString();
         mergedCount++;
-        console.log('[CalSync] mergeOrphanDuplicates: keeping', keeper.id, '(' + keeper.date + ' ' + keeper.type + ' "' + lbl + '") merged ' + (cluster.length - 1) + ' sibling(s)');
+        var keeperLbl = _normVenue(keeper) || _normTitle(keeper);
+        console.log('[CalSync] mergeOrphanDuplicates: keeping', keeper.id, '(' + keeper.date + ' ' + keeper.type + ' "' + keeperLbl + '") merged ' + (cluster.length - 1) + ' sibling(s)');
       });
     });
 

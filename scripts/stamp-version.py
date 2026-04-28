@@ -76,9 +76,14 @@ html_new = re.sub(
     html
 )
 
-# 2b. ?v= params — count before, replace, count after
-old_v_count = html_new.count(f'?v={old_ver}')
-html_new = html_new.replace(f'?v={old_ver}', f'?v={new_ver}')
+# 2b. ?v= params — replace ALL build-version cache busters regardless of
+# what they currently say. Past bug: this only matched ?v={old_ver}, so if
+# index.html drifted to a different older version (partial stamp, manual
+# edit, merge conflict), the regex missed everything and silently shipped
+# stale ?v= params — browser kept loading old JS.
+v_pattern = re.compile(r'\?v=\d{8}-\d{6}')
+old_v_count = len(v_pattern.findall(html_new))
+html_new = v_pattern.sub(f'?v={new_ver}', html_new)
 new_v_count = html_new.count(f'?v={new_ver}')
 
 # Verify no stale versions remain
