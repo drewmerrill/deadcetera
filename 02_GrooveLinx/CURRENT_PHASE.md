@@ -1,6 +1,24 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-26 (PM) — 3-Layer Notification System: Layer 2 (FCM browser push) shipped end-to-end (build 20260426-234233). Service account key rotated. Layer 3 SMS pending Twilio 10DLC approval._
+_Updated: 2026-04-28 (PM) — Calendar sync layer hardening pass shipped (build 20260428-210842): timezone-safe extraction, generalized title self-heal, orphan re-link fallback, "Merge orphan dupes" admin button._
+
+## Calendar sync hardening — shipped 2026-04-28 (build 20260428-210842)
+
+Diagnosis from a user report (5/30 cell rendered three rows: local "deadcetera Gig" at 20:00, a separate "From Google" twin at 19:00, and a third row with title "Southern Roots Tavern — Southern Roots Tavern — Southern Roots Tavern" at 20:00). Three connected bugs in the sync layer; bundled the fixes since they share helpers.
+
+**1. Timezone-safe extraction (`_extractLocalHM`, `_extractLocalDate` in `js/core/gl-calendar-sync.js`)**
+`startStr.substring(11,16)` and `substring(0,10)` were silently wrong when Google returned `dateTime` in UTC form (`2026-05-31T00:00:00Z`) instead of offset form (`2026-05-30T20:00:00-04:00`). UTC return rolled the displayed date forward by a day and reported the time as `00:00`. Replaced with `Date` + `Intl.DateTimeFormat` in `BAND_TZ = 'America/New_York'`. Applied at all five call sites in `_reconcileEvent` and `_importGoogleEvent`.
+
+**2. Generalized compounded-title self-heal (`_cleanCompoundedTitle`)**
+Old regex required `existing.venue` to be set and only ran in `_reconcileEvent`. Now generic: detects any leading run of identical em-dash-separated segments and collapses, regardless of whether the data has a venue field. Wired into `_importGoogleEvent` so newly-discovered corrupt rows arrive cleaned. Cleaned-on-import rows ship with `syncStatus = 'dirty'` so the next push writes the cleaned title back to Google.
+
+**3. Orphan re-link fallback (inbound sync path)**
+Between the existing `glEventId`-match branch and the new-import branch, added a date+type+(time-within-60min OR exact-title) match against unlinked local events. Conservative: only re-links when EXACTLY ONE candidate matches; logs and skips when 2+ candidates exist. Marks the linked row dirty so a corrected local time pushes back to Google rather than getting clobbered by Google's stale value.
+
+**4. "Merge orphan dupes" admin button (`mergeOrphanDuplicates` + `_calMergeOrphanDupes`)**
+One-shot cleanup for already-existing duplicates that the on-the-fly fixes can't reach (different googleEventIds, three rows of same gig). Groups `calendar_events` by `date + type + normalized venue/title` (with self-heal applied to absorb triplicated rows). Keeps the local non-imported row when present, otherwise the oldest. Deletes the sibling Google events server-side and removes sibling rows from Firebase. Marks keeper dirty so next push reconciles correct time. Lives in the Google panel admin bar next to "Clean duplicates".
+
+---
 
 ## 3-Layer Notification System — Layer 2 shipped 2026-04-26 (PM)
 
