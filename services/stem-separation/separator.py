@@ -128,6 +128,15 @@ def separate_stems(source_url: str, song_id: str) -> dict:
                 "nocheckcertificate": True,
                 "format": "bestaudio/best",
             }
+            # Route yt-dlp through a residential proxy when configured.
+            # YouTube/Google bot-challenges Modal's cloud IPs; a residential
+            # proxy (e.g., IPRoyal pay-as-you-go) bypasses the challenge.
+            # Only the yt-dlp path uses the proxy — direct fetches of our
+            # own R2/worker URLs don't need to burn residential bandwidth.
+            proxy = os.environ.get("IPROYAL_PROXY_URL", "").strip()
+            if proxy:
+                ydl_opts["proxy"] = proxy
+                print("[Stems] yt-dlp routing through residential proxy")
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.extract_info(source_url, download=True)
