@@ -1560,7 +1560,9 @@ async function handleFcmPushSend(request, env) {
 
 // ── Stem Separation (Modal proxy) ────────────────────────────────────────────
 // POST /stems/separate
-// Body: { songId, sourceUrl } | { songId, driveFileId, accessToken }
+// Body: { songId, sourceUrl }
+//     | { songId, driveFileId, accessToken }
+//     | { songId, audioBase64DataUrl }   ← stages bytes to R2 first
 // Holds the Modal shared secret server-side so clients never see it.
 async function handleStemsSeparate(request, env) {
   if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
@@ -1572,9 +1574,36 @@ async function handleStemsSeparate(request, env) {
   let sourceUrl = String(body.sourceUrl || '').trim();
   const driveFileId = String(body.driveFileId || '').trim();
   const accessToken = String(body.accessToken || '').trim();
+  const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
   if (!songId) return cors(jsonError('missing songId', 400));
-  if (!sourceUrl && !(driveFileId && accessToken)) {
-    return cors(jsonError('missing sourceUrl or { driveFileId, accessToken }', 400));
+  if (!sourceUrl && !audioDataUrl && !(driveFileId && accessToken)) {
+    return cors(jsonError('missing sourceUrl, { driveFileId, accessToken }, or audioBase64DataUrl', 400));
+  }
+  // Stage base64 audio to R2 so Modal can fetch a public URL. Used for
+  // firebase-audio:// Best Shot takes (base64 stored in Firebase) where
+  // there's no other public URL available. Bucket binding `STEMS_BUCKET`
+  // must be set on the worker (Cloudflare → Settings → R2 bindings).
+  if (audioDataUrl) {
+    if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
+      return cors(jsonError('staging_not_configured: STEMS_BUCKET binding and STEMS_R2_PUBLIC_BASE var required', 500));
+    }
+    const m = audioDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) return cors(jsonError('invalid audioBase64DataUrl: expected data:<mime>;base64,<payload>', 400));
+    const mime = m[1];
+    const b64 = m[2];
+    let bin;
+    try { bin = atob(b64); }
+    catch (e) { return cors(jsonError('invalid base64 payload', 400)); }
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ext = (mime.split('/')[1] || 'bin').replace(/[^a-z0-9]+/gi, '').slice(0, 8) || 'bin';
+    const key = '_staging/' + songId + '.' + ext;
+    try {
+      await env.STEMS_BUCKET.put(key, bytes, { httpMetadata: { contentType: mime } });
+    } catch (e) {
+      return cors(jsonError('r2_stage_failed: ' + (e && e.message), 502));
+    }
+    sourceUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
   }
   // Drive files aren't directly fetchable by Modal (auth required). Route
   // them through our own /drive-stream proxy — Modal hits that URL with

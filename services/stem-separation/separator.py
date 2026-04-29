@@ -55,7 +55,15 @@ image = (
         "demucs==4.0.1",
         "soundfile==0.12.1",
         "boto3==1.34.0",
-        "requests==2.31.0",
+        # yt-dlp 2024.10.x needs requests>=2.32.2; bump from 2.31 to satisfy.
+        "requests==2.32.3",
+        # yt-dlp handles YouTube/SoundCloud/Bandcamp/etc — used as fallback
+        # when direct HTTP fetch returns HTML instead of audio bytes (e.g.
+        # user pastes a youtube.com/watch?v=… URL into the stems picker).
+        # Unpinned: YouTube changes extractors frequently; we want the
+        # latest the day the image is built. Image rebuilds daily anyway
+        # because the Modal slug changes when separator.py changes.
+        "yt-dlp",
         # Modal 1.x requires fastapi to be explicit in the image for
         # @modal.fastapi_endpoint functions. Used to be auto-installed.
         "fastapi[standard]==0.115.0",
@@ -97,11 +105,47 @@ def separate_stems(source_url: str, song_id: str) -> dict:
         f"[Stems] Downloaded {len(audio_bytes) / 1024 / 1024:.1f} MB "
         f"(content-type: {ctype})"
     )
+    # If we got HTML instead of audio, try yt-dlp — most likely the user
+    # pasted a YouTube/SoundCloud/Bandcamp watch URL. yt-dlp handles
+    # extraction across ~1700 sites. Spotify still won't work (DRM).
     if ctype.startswith("text/") or len(audio_bytes) < 1024:
-        raise RuntimeError(
-            f"Source URL did not return audio (content-type={ctype}, "
-            f"size={len(audio_bytes)} bytes)"
-        )
+        print("[Stems] HTML/empty response — falling back to yt-dlp")
+        import tempfile
+
+        import yt_dlp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outtmpl = os.path.join(tmpdir, "audio.%(ext)s")
+            # YouTube throttles many cloud-provider IPs for audio-only DASH
+            # streams. The android/ios/tv player_clients use different
+            # extractor paths that are often still served. Try them in order
+            # and accept any combined or audio-only format that downloads.
+            ydl_opts = {
+                "outtmpl": outtmpl,
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "nocheckcertificate": True,
+                "format": "bestaudio/best",
+            }
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.extract_info(source_url, download=True)
+            except Exception as e:
+                raise RuntimeError(
+                    f"yt-dlp could not extract audio from {source_url[:80]}: {e}"
+                )
+            files = [f for f in os.listdir(tmpdir) if f.startswith("audio.")]
+            if not files:
+                raise RuntimeError(
+                    f"yt-dlp ran but produced no audio file for {source_url[:80]}"
+                )
+            with open(os.path.join(tmpdir, files[0]), "rb") as f:
+                audio_bytes = f.read()
+            print(
+                f"[Stems] yt-dlp produced {len(audio_bytes) / 1024 / 1024:.1f} MB "
+                f"({files[0]})"
+            )
 
     # ffmpeg is the universal decoder (installed via apt above). Pipe input
     # bytes via stdin → pcm_f32le stereo @ 44.1k on stdout. Avoids torchaudio's

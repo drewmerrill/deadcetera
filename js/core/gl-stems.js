@@ -41,7 +41,7 @@ window.GLStems = (function () {
 
   async function hasStems(title) { return !!(await getStems(title)); }
 
-  // opts: { sourceUrl?, driveFileId?, accessToken?, sourceLabel? }
+  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?, sourceLabel? }
   async function separate(title, opts) {
     if (!title) throw new Error('title required');
     opts = opts || {};
@@ -51,8 +51,12 @@ window.GLStems = (function () {
     } else if (opts.driveFileId) {
       body.driveFileId = opts.driveFileId;
       if (opts.accessToken) body.accessToken = opts.accessToken;
+    } else if (opts.audioDataUrl) {
+      // For firebase-audio:// Best Shots — base64 stored in Firebase. The
+      // worker stages this to R2 and passes a public URL to Modal.
+      body.audioBase64DataUrl = opts.audioDataUrl;
     } else {
-      throw new Error('sourceUrl or driveFileId required');
+      throw new Error('sourceUrl, driveFileId, or audioDataUrl required');
     }
 
     var res = await fetch(_workerBase() + '/stems/separate', {

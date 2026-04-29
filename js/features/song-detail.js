@@ -1736,25 +1736,31 @@ async function _sdLoadStemsSourcePicker(title) {
         if (!url) return '';
         var label = (take.label || ('Take ' + (idx + 1))) + (take.crowned ? ' 👑' : '');
         var who = take.uploadedByName ? ' · ' + take.uploadedByName : '';
-        // Classify: gdrive / firebase-audio / direct
+        // Classify: firebase / gdrive / direct
         var kind = 'direct';
         var driveFileId = '';
-        if (url.startsWith('firebase-audio://')) {
-            // base64 in Firebase — Modal can't fetch a data URL we'd build,
-            // and we don't want to pay R2 storage to round-trip it. Skip.
-            return '';
-        }
-        var norm = (typeof normalizeAudioUrl === 'function') ? normalizeAudioUrl(url) : url;
-        if (norm && norm.indexOf('gdrive:') === 0) {
-            kind = 'gdrive';
-            driveFileId = norm.replace('gdrive:', '');
+        var fbTitle = '', fbKey = '';
+        if (url.indexOf('firebase-audio://') === 0) {
+            kind = 'firebase';
+            var parts = url.replace('firebase-audio://', '').split('/');
+            fbTitle = decodeURIComponent(parts[0] || '');
+            fbKey = parts.slice(1).join('/');
+        } else {
+            var norm = (typeof normalizeAudioUrl === 'function') ? normalizeAudioUrl(url) : url;
+            if (norm && norm.indexOf('gdrive:') === 0) {
+                kind = 'gdrive';
+                driveFileId = norm.replace('gdrive:', '');
+            }
         }
         var dataAttrs = 'data-kind="' + kind + '" data-url="' + _sdEsc(url) + '"' +
                         (driveFileId ? ' data-drive-id="' + _sdEsc(driveFileId) + '"' : '') +
+                        (fbTitle ? ' data-fb-title="' + _sdEsc(fbTitle) + '"' : '') +
+                        (fbKey ? ' data-fb-key="' + _sdEsc(fbKey) + '"' : '') +
                         ' data-label="' + _sdEsc(label) + '"';
-        var pill = (kind === 'gdrive')
-            ? '<span style="font-size:0.7em;color:#86efac;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);padding:2px 6px;border-radius:6px">Drive</span>'
-            : '<span style="font-size:0.7em;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);padding:2px 6px;border-radius:6px">URL</span>';
+        var pill;
+        if (kind === 'gdrive')        pill = '<span style="font-size:0.7em;color:#86efac;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);padding:2px 6px;border-radius:6px">Drive</span>';
+        else if (kind === 'firebase') pill = '<span style="font-size:0.7em;color:#a5b4fc;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.25);padding:2px 6px;border-radius:6px">Firebase</span>';
+        else                          pill = '<span style="font-size:0.7em;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);padding:2px 6px;border-radius:6px">URL</span>';
         return '<div style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">' +
           '<div style="flex:1;min-width:0">' +
             '<div style="font-size:0.85em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(label) + '</div>' +
@@ -1768,7 +1774,7 @@ async function _sdLoadStemsSourcePicker(title) {
     host.innerHTML = '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:6px">From Best Shot</div>' + rows;
     // Wire up picker buttons
     host.querySelectorAll('.sd-stems-pick').forEach(function(btn) {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', async function() {
             var kind = btn.dataset.kind;
             var label = btn.dataset.label || 'Best Shot';
             if (kind === 'gdrive') {
@@ -1779,6 +1785,20 @@ async function _sdLoadStemsSourcePicker(title) {
                     return;
                 }
                 _sdRunStemSeparationFromTake(title, { driveFileId: fid, accessToken: accessToken, sourceLabel: label });
+            } else if (kind === 'firebase') {
+                // Fetch base64 audio from Firebase and let the worker stage it to R2.
+                var sTitle = btn.dataset.fbTitle;
+                var aKey = btn.dataset.fbKey;
+                if (!sTitle || !aKey) { alert('Firebase audio reference is malformed.'); return; }
+                btn.disabled = true; btn.textContent = 'Fetching…';
+                try {
+                    var data = await loadBandDataFromDrive(sTitle, aKey);
+                    if (!data || !data.data) throw new Error('Firebase audio not found');
+                    _sdRunStemSeparationFromTake(title, { audioDataUrl: data.data, sourceLabel: label });
+                } catch (e) {
+                    btn.disabled = false; btn.textContent = 'Use this';
+                    alert('Could not load Firebase audio: ' + (e.message || e));
+                }
             } else {
                 _sdRunStemSeparationFromTake(title, { sourceUrl: btn.dataset.url, sourceLabel: label });
             }
@@ -1877,6 +1897,11 @@ window._sdStemsToggle = function() {
     var btn = document.getElementById('sdStemsPlay');
     var audios = (_sdContainer||document).querySelectorAll('.sd-stem-audio');
     if (!audios.length) return;
+    // First play resumes the suspended AudioContext (iOS Safari requires
+    // a user gesture). Safe to call repeatedly.
+    if (_sdStemsState && _sdStemsState.ctx && _sdStemsState.ctx.state === 'suspended') {
+        try { _sdStemsState.ctx.resume(); } catch(e) {}
+    }
     var anyPlaying = Array.prototype.some.call(audios, function(a){return !a.paused;});
     if (anyPlaying) {
         audios.forEach(function(a){a.pause();});
@@ -1898,10 +1923,10 @@ window._sdStemsRedo = async function(title) {
     _sdPopulateStemsLens(title);
 };
 
-// Per-mount state. Once Tone.js is engaged (user clicks ±N pitch), each
-// <audio> is permanently routed through Web Audio — its `audio.volume`
-// property no longer affects output, so volume/mute/solo switch to
-// gainNode.gain.value. Until then, native <audio> playback + audio.volume.
+// Per-mount state. WebAudio routing is set up at mount time so volume/mute/
+// solo always flow through GainNodes — no transition between native and
+// engaged states. Tone.js is still lazy-loaded for PitchShift only, spliced
+// into the existing chain on first ±semitone click.
 var _sdStemsState = null;
 
 function _sdInitStemsPlayer() {
@@ -1914,9 +1939,35 @@ function _sdInitStemsPlayer() {
 
     var fmt = function(s){ s = Math.floor(s||0); return Math.floor(s/60) + ':' + ('0' + (s%60)).slice(-2); };
 
-    // Apply a stem's effective volume (slider × mute × solo) to whichever
-    // output node is active (gain node when WebAudio is engaged, else
-    // audio.volume).
+    // ── Always-on WebAudio chain ─────────────────────────────────────────
+    // MES → Gain → destination per stem. Created at mount; AudioContext
+    // starts suspended and resumes on first play (user gesture). Once a
+    // MediaElementSource is created on an <audio>, the element's audio
+    // output is permanently routed through WebAudio — but since we set
+    // this up consistently at mount, there's no "engaged vs not" branch.
+    var AC = window.AudioContext || window.webkitAudioContext;
+    var ctx = null;
+    var nodes = {}; // stemId → { src, gain, pitch? }
+    if (AC) {
+        try {
+            ctx = new AC();
+            audios.forEach(function(audio) {
+                audio.volume = 1; // bypass native — gain node controls output
+                var src = ctx.createMediaElementSource(audio);
+                var gain = ctx.createGain();
+                gain.gain.value = 0.8;
+                src.connect(gain).connect(ctx.destination);
+                nodes[audio.dataset.stem] = { src: src, gain: gain };
+            });
+        } catch (e) {
+            // Same-element MES double-create or AC not allowed — fall back to native volume.
+            console.warn('[Stems] WebAudio init failed, falling back to native:', e);
+            ctx = null;
+            nodes = {};
+        }
+    }
+    _sdStemsState = { ctx: ctx, nodes: nodes };
+
     var applyVol = function(audio) {
         if (!audio) return;
         var slider = root.querySelector('.sd-stem-vol[data-stem="' + audio.dataset.stem + '"]');
@@ -1924,18 +1975,15 @@ function _sdInitStemsPlayer() {
         var muted = audio.dataset.muted === '1';
         var soloOff = audio.dataset.soloOff === '1';
         var v = (muted || soloOff) ? 0 : Math.max(0, Math.min(1, sliderVal/100));
-        if (_sdStemsState && _sdStemsState.nodes && _sdStemsState.nodes[audio.dataset.stem]) {
-            try { _sdStemsState.nodes[audio.dataset.stem].gain.gain.value = v; } catch(e) {}
-            // While WebAudio drives output, keep audio.volume at 1 so we don't
-            // double-attenuate.
-            audio.volume = 1;
+        var node = nodes[audio.dataset.stem];
+        if (node) {
+            try { node.gain.gain.value = v; } catch (e) {}
         } else {
             audio.volume = v;
         }
     };
 
     audios.forEach(function(audio) {
-        audio.volume = 0.8;
         var slider = root.querySelector('.sd-stem-vol[data-stem="' + audio.dataset.stem + '"]');
         if (slider) slider.addEventListener('input', function(){ applyVol(audio); });
     });
@@ -1990,13 +2038,14 @@ function _sdInitStemsPlayer() {
     if (preservePitchEl) preservePitchEl.addEventListener('change', applyTempo);
     applyTempo();
 
-    // ── Pitch shift (lazy Tone.js engage) ───────────────────────────────────
-    // First click on ±1 lazy-loads Tone.js, wires each <audio> through
-    // MediaElementSource → PitchShift → Gain → destination, and from then
-    // on volume/mute/solo flow through gain nodes. Reset goes back to 0
-    // semitones but keeps the WebAudio routing (we can't undo it).
+    // ── Pitch shift (Tone.js spliced into existing chain) ───────────────────
+    // Tone.js is lazy-loaded on first ±N click. We point Tone at our
+    // existing AudioContext (Tone.setContext) so the PitchShift node can
+    // be inserted between MES and Gain without crossing contexts. Reset
+    // sets pitch=0; the node stays in the chain as a pass-through.
     var pitchVal = root.querySelector('#sdStemsPitchVal');
     var currentPitch = 0;
+    var pitchEngaged = false;
     var setPitchUI = function() {
         if (pitchVal) pitchVal.textContent = (currentPitch > 0 ? '+' : '') + currentPitch;
     };
@@ -2011,34 +2060,40 @@ function _sdInitStemsPlayer() {
         });
         return window.Tone;
     };
-    var engageWebAudio = async function() {
-        if (_sdStemsState && _sdStemsState.engaged) return _sdStemsState;
+    var splicePitchShift = async function() {
+        if (pitchEngaged) return;
+        if (!ctx) throw new Error('WebAudio unavailable — pitch shift not supported');
         var Tone = await ensureTone();
-        await Tone.start();
-        var nodes = {};
-        audios.forEach(function(audio) {
+        // Bridge Tone to our existing context so nodes are interoperable.
+        try {
+            if (typeof Tone.setContext === 'function') Tone.setContext(ctx);
+        } catch (e) { /* older Tone or different API; nodes may still work */ }
+        try { if (typeof Tone.start === 'function') await Tone.start(); } catch(e) {}
+        Object.keys(nodes).forEach(function(id) {
+            var n = nodes[id];
             try {
-                var src = new Tone.MediaElementSource(audio);
-                var pitch = new Tone.PitchShift(0);
-                var gain = new Tone.Gain(0.8).toDestination();
-                src.connect(pitch);
-                pitch.connect(gain);
-                nodes[audio.dataset.stem] = { src: src, pitch: pitch, gain: gain };
-            } catch(e) { /* createMediaElementSource throws on 2nd call — ignore */ }
+                var ps = new Tone.PitchShift(0);
+                // Disconnect existing src→gain edge; insert pitchShift between them.
+                n.src.disconnect();
+                // Tone nodes have a native input/output; connecting via raw
+                // WebAudio connect() works when both are in the same context.
+                n.src.connect(ps.input);
+                ps.connect(n.gain);
+                n.pitch = ps;
+            } catch (e) { console.warn('[Stems] PitchShift splice failed for', id, e); }
         });
-        _sdStemsState = { engaged: true, nodes: nodes };
-        // Re-apply current volumes through gains
-        audios.forEach(applyVol);
-        return _sdStemsState;
+        pitchEngaged = true;
     };
     var setPitch = async function(semitones) {
         currentPitch = Math.max(-12, Math.min(12, semitones));
         setPitchUI();
-        if (currentPitch === 0 && (!_sdStemsState || !_sdStemsState.engaged)) return;
+        if (currentPitch === 0 && !pitchEngaged) return; // nothing to do
         try {
-            var st = await engageWebAudio();
-            Object.keys(st.nodes).forEach(function(k){ st.nodes[k].pitch.pitch = currentPitch; });
-        } catch(e) {
+            await splicePitchShift();
+            Object.keys(nodes).forEach(function(k){
+                if (nodes[k].pitch) nodes[k].pitch.pitch = currentPitch;
+            });
+        } catch (e) {
             if (typeof showToast === 'function') showToast('Pitch shift unavailable: ' + (e.message || 'load failed'));
             currentPitch = 0; setPitchUI();
         }
