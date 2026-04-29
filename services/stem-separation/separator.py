@@ -133,10 +133,28 @@ def separate_stems(source_url: str, song_id: str) -> dict:
             # proxy (e.g., IPRoyal pay-as-you-go) bypasses the challenge.
             # Only the yt-dlp path uses the proxy — direct fetches of our
             # own R2/worker URLs don't need to burn residential bandwidth.
+            #
+            # CRITICAL: inject a sticky-session modifier so all yt-dlp HTTP
+            # requests in this extraction share the same exit IP. Without
+            # it, the rotating pool gives one IP for the manifest fetch
+            # and a different IP for the audio download — YouTube signs
+            # the audio URL against the manifest-fetch IP, so the audio
+            # download returns HTTP 403 Forbidden. country-us also tends
+            # to give cleaner audio formats than random geo.
             proxy = os.environ.get("IPROYAL_PROXY_URL", "").strip()
             if proxy:
+                import re
+                import uuid
+                session = uuid.uuid4().hex[:10]
+                # IPRoyal modifiers go in the password field, suffixed with
+                # underscores: PASSWORD_country-us_session-X_lifetime-10m
+                proxy = re.sub(
+                    r"^(https?://[^:]+:)([^@]+)(@)",
+                    rf"\1\2_country-us_session-{session}_lifetime-10m\3",
+                    proxy,
+                )
                 ydl_opts["proxy"] = proxy
-                print("[Stems] yt-dlp routing through residential proxy")
+                print(f"[Stems] yt-dlp via residential proxy (sticky session={session})")
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.extract_info(source_url, download=True)
