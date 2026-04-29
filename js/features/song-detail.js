@@ -1875,6 +1875,16 @@ function _sdRenderStemsPlayer(title, stems) {
         { id:'vocals', label:'Vocals', color:'#818cf8', icon:'🎤' },
         { id:'other',  label:'Other',  color:'#94a3b8', icon:'🎹' }
     ];
+    // Stable cache-bust per separation. The R2 stems are sent with
+    // Cache-Control: immutable, so once a browser caches a response
+    // (e.g. an early non-CORS fetch from before the crossorigin
+    // attribute existed), the bad entry sticks for a year and breaks
+    // WebAudio routing. The ?v= keyed off separatedAt sidesteps any
+    // pre-existing cache entries while still de-duping fetches within
+    // the same separation.
+    var bust = stems.separatedAt
+        ? '?v=' + new Date(stems.separatedAt).getTime()
+        : '?v=' + Date.now();
     var rows = stemDefs.filter(function(st){return !!s[st.id];}).map(function(st) {
         var dlName = (title || 'song').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60) + '_' + st.id + '.flac';
         return '<div class="sd-stem-row" data-stem="' + st.id + '" style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.02);margin-bottom:8px">' +
@@ -1891,7 +1901,7 @@ function _sdRenderStemsPlayer(title, stems) {
           // it, the audio plays through the <audio> element itself but goes
           // silent the moment we route through Web Audio. R2 bucket needs
           // matching CORS policy (Allowed-Origin: *) for this to work.
-          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" crossorigin="anonymous" src="' + _sdEsc(s[st.id]) + '"></audio>' +
+          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" crossorigin="anonymous" src="' + _sdEsc(s[st.id] + bust) + '"></audio>' +
         '</div>';
     }).join('');
     var when = stems.separatedAt ? new Date(stems.separatedAt).toLocaleString() : '';
