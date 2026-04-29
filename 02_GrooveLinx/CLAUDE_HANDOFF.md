@@ -2,7 +2,59 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-26 — 3-Layer Notification System: Layer 2 (FCM browser push) shipped end-to-end on Mac Chrome + iPhone Safari. Service account key rotated. Layer 3 SMS pending Twilio 10DLC approval._
+_Last updated: 2026-04-29 — Self-hosted stem separation shipped end-to-end (Modal + HT-Demucs + Cloudflare R2 + Worker proxy). New "Stems" lens in Song Detail with synced 4-track mixer. Replaces dependence on Moises._
+
+## Session 2026-04-29 — Self-Hosted Stem Separation (Modal + Demucs + R2)
+
+**Status:** Build `20260429-024251`. Live & working end-to-end. First stems generated for "Black Peter" and playing back in the new Stems lens with vol/mute/solo. Cost ~$0.005/song on T4.
+
+### What shipped
+
+**Modal app** (`services/stem-separation/separator.py` + `README.md`):
+- HT-Demucs on T4 GPU, scale-to-zero (`scaledown_window=60`)
+- ffmpeg-via-subprocess decoder (handles MP3/WAV/M4A/FLAC universally — torchaudio/soundfile backends were too brittle on test files)
+- `numpy<2.0` pinned first in `pip_install` — torch 2.1.x silently fails on numpy 2.x with "Numpy is not available"
+- boto3 with `region_name="auto"` and `put_object` (R2 token rejected multipart)
+- Endpoint: `https://drewmerrill--groovelinx-stem-separator-separate.modal.run`
+- Modal secret `groovelinx-stems` holds R2 creds + `STEMS_SHARED_SECRET`
+
+**R2 bucket** `groovelinx-stems`:
+- Public dev URL: `https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev`
+- Stems live at `stems/{slug-timestamp}/{drums|bass|vocals|other}.flac`
+- **Key gotcha:** the R2 API token MUST be "Object Read & Write" — initial token shipped read-only despite UI checkbox showing R/W. Direct boto3 PutObject test isolated the perm issue (HeadBucket OK, PutObject AccessDenied). Rotated secret to fix.
+
+**Worker** `POST /stems/separate` (`worker.js`):
+- Body: `{ songId, sourceUrl }` OR `{ songId, driveFileId, accessToken }`
+- For Drive: rewrites source to `<worker>/drive-stream?fileId=…&token=…` so Modal can fetch
+- Holds `STEMS_SHARED_SECRET` server-side; client never sees it
+- Worker secrets needed: `STEMS_MODAL_URL`, `STEMS_SHARED_SECRET` (added by Drew via Cloudflare dashboard)
+
+**Client** `js/core/gl-stems.js` exposes `window.GLStems`:
+- `separate(title, { sourceUrl | driveFileId+accessToken, sourceLabel? })`
+- `getStems(title)`, `hasStems(title)`, `clearStems(title)`
+- Persists to `bands/{slug}/songs/{title}/stems` via `saveBandDataToDrive`
+
+**UI** new "🎚 Stems" lens between Harmony and Inspire (`song-detail.js`):
+- Setup card → URL paste → "Separate Stems" button (~30s warm, ~60-120s cold)
+- Once stems exist: 4-track synced mixer with per-stem volume slider, mute, exclusive solo, master scrub/play. Audio elements time-synced off `audios[0]` (drums).
+
+### Two latent bugs surfaced & fixed
+
+1. **`mode is not defined` at `_sdPopulateBandLens` line 441** — pre-existing. Line 408 has `typeof mode !== 'undefined'` guard for the `play` branch but the `sharpen` branch on 441 didn't. Has been throwing on every Song Detail render. Same guard applied.
+
+2. **CORS on R2 `<audio>` tags** — I added `crossorigin="anonymous"` which forces preflight; R2 public buckets don't return CORS headers. Dropped the attribute — `<audio>` plays cross-origin sources natively without it. We don't need WebAudio access to stem buffers.
+
+### Future stems work (not now)
+
+- Source picker auto-pulls from Best Shot or North Star (Drive auth-token plumbing)
+- Per-stem download buttons
+- Tempo/key shift on stems (extra Modal processing)
+- Stem-isolated practice loop in Practice mode
+- AI lick extraction from individual stems (Claude vision/audio)
+
+---
+
+## Session 2026-04-26 (PM) — 3-Layer Notification System (Layer 2 Complete)
 
 ## Session 2026-04-26 (PM) — 3-Layer Notification System (Layer 2 Complete)
 

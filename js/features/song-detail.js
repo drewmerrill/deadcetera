@@ -1685,6 +1685,10 @@ window.sdVoteProspect = async function(songId, vote) {
 async function _sdPopulateStemsLens(title) {
     var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
     if (!panel) return;
+    // New audio elements coming — abandon any prior WebAudio routing. The
+    // old MediaElementSource nodes are dangling but the elements themselves
+    // are about to be removed from the DOM.
+    _sdStemsState = null;
     panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:24px;color:var(--text-dim)">Loading stems…</div></div>';
     var stems = null;
     try { if (window.GLStems) stems = await GLStems.getStems(title); } catch(e) {}
@@ -1692,7 +1696,9 @@ async function _sdPopulateStemsLens(title) {
         panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsPlayer(title, stems) + '</div>';
         _sdInitStemsPlayer();
     } else {
+        // Setup view — render shell first, then async-load Best Shot takes for picker
         panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsSetup(title) + '</div>';
+        _sdLoadStemsSourcePicker(title);
     }
 }
 
@@ -1701,19 +1707,93 @@ function _sdRenderStemsSetup(title) {
     return '<div class="sd-card">' +
       '<div class="sd-card-title">🎚 Separate Stems <span class="sd-title-badge">Demucs</span></div>' +
       '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:14px">Split a recording into <b>drums</b>, <b>bass</b>, <b>vocals</b>, and <b>other</b>. Great for studying parts in isolation. Runs on a GPU (~30s once warm, ~$0.005 per song).</div>' +
+      '<div id="sdStemsBestShotPicker" style="margin-bottom:14px"></div>' +
       '<div style="margin-bottom:10px">' +
-        '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Audio source URL</label>' +
-        '<input id="sdStemsSourceUrl" class="app-input" placeholder="Paste a direct audio URL — mp3, wav, m4a, flac" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px;font-size:0.85em;box-sizing:border-box">' +
-        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Tip: From <b>Best Shot</b> or a North Star Spotify track? Use a direct media URL — Spotify/YouTube need to be downloaded first.</div>' +
+        '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Or paste an audio URL</label>' +
+        '<input id="sdStemsSourceUrl" class="app-input" placeholder="https://… (mp3, wav, m4a, flac)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px;font-size:0.85em;box-sizing:border-box">' +
+        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Spotify/YouTube need to be downloaded first — paste a direct media URL.</div>' +
       '</div>' +
-      '<button onclick="_sdRunStemSeparation(\'' + safeSong + '\')" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;width:100%">▶ Separate Stems</button>' +
+      '<button onclick="_sdRunStemSeparation(\'' + safeSong + '\')" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;width:100%">▶ Separate from URL</button>' +
     '</div>';
+}
+
+// Best Shot picker — fetches takes async and renders a button per usable
+// take. Drive takes pass the user's access token so Modal can fetch via
+// our /drive-stream proxy. Direct http URLs (or dropbox links normalized
+// by normalizeAudioUrl) pass through as sourceUrl.
+async function _sdLoadStemsSourcePicker(title) {
+    var host = (_sdContainer || document).querySelector('#sdStemsBestShotPicker');
+    if (!host) return;
+    var takes = null;
+    try {
+        var raw = await loadBandDataFromDrive(title, 'best_shot_takes').catch(function(){return null;});
+        takes = (typeof toArray === 'function') ? toArray(raw) : (Array.isArray(raw) ? raw : []);
+    } catch(e) { takes = []; }
+    if (!takes || !takes.length) return; // silent — user can still paste a URL
+    var safeSong = title.replace(/'/g,"\\'");
+    var rows = takes.map(function(take, idx) {
+        var url = take && take.audioUrl ? take.audioUrl : '';
+        if (!url) return '';
+        var label = (take.label || ('Take ' + (idx + 1))) + (take.crowned ? ' 👑' : '');
+        var who = take.uploadedByName ? ' · ' + take.uploadedByName : '';
+        // Classify: gdrive / firebase-audio / direct
+        var kind = 'direct';
+        var driveFileId = '';
+        if (url.startsWith('firebase-audio://')) {
+            // base64 in Firebase — Modal can't fetch a data URL we'd build,
+            // and we don't want to pay R2 storage to round-trip it. Skip.
+            return '';
+        }
+        var norm = (typeof normalizeAudioUrl === 'function') ? normalizeAudioUrl(url) : url;
+        if (norm && norm.indexOf('gdrive:') === 0) {
+            kind = 'gdrive';
+            driveFileId = norm.replace('gdrive:', '');
+        }
+        var dataAttrs = 'data-kind="' + kind + '" data-url="' + _sdEsc(url) + '"' +
+                        (driveFileId ? ' data-drive-id="' + _sdEsc(driveFileId) + '"' : '') +
+                        ' data-label="' + _sdEsc(label) + '"';
+        var pill = (kind === 'gdrive')
+            ? '<span style="font-size:0.7em;color:#86efac;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);padding:2px 6px;border-radius:6px">Drive</span>'
+            : '<span style="font-size:0.7em;color:#fbbf24;background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);padding:2px 6px;border-radius:6px">URL</span>';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:0.85em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(label) + '</div>' +
+            '<div style="font-size:0.7em;color:var(--text-dim)">Best Shot' + _sdEsc(who) + '</div>' +
+          '</div>' +
+          pill +
+          '<button class="sd-stems-pick" ' + dataAttrs + ' style="padding:6px 12px;border-radius:6px;border:1px solid rgba(102,126,234,0.35);background:rgba(102,126,234,0.18);color:#a5b4fc;cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">Use this</button>' +
+        '</div>';
+    }).filter(Boolean).join('');
+    if (!rows) return;
+    host.innerHTML = '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:6px">From Best Shot</div>' + rows;
+    // Wire up picker buttons
+    host.querySelectorAll('.sd-stems-pick').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var kind = btn.dataset.kind;
+            var label = btn.dataset.label || 'Best Shot';
+            if (kind === 'gdrive') {
+                var fid = btn.dataset.driveId;
+                if (!fid) return;
+                if (typeof accessToken === 'undefined' || !accessToken) {
+                    alert('Sign in with Google first — Drive files need an auth token to fetch.');
+                    return;
+                }
+                _sdRunStemSeparationFromTake(title, { driveFileId: fid, accessToken: accessToken, sourceLabel: label });
+            } else {
+                _sdRunStemSeparationFromTake(title, { sourceUrl: btn.dataset.url, sourceLabel: label });
+            }
+        });
+    });
 }
 
 window._sdRunStemSeparation = async function(title) {
     var input = document.getElementById('sdStemsSourceUrl');
     var url = input ? input.value.trim() : '';
-    if (!url) { alert('Paste an audio URL first'); return; }
+    if (!url) { alert('Paste an audio URL or pick a Best Shot take.'); return; }
+    _sdRunStemSeparationFromTake(title, { sourceUrl: url, sourceLabel: 'URL' });
+};
+
+async function _sdRunStemSeparationFromTake(title, opts) {
     var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
     if (!panel) return;
     var safeSong = title.replace(/'/g,"\\'");
@@ -1721,10 +1801,10 @@ window._sdRunStemSeparation = async function(title) {
       '<div style="font-size:2em;margin-bottom:10px">🎚</div>' +
       '<div style="font-weight:700;color:var(--text);margin-bottom:6px">Separating stems…</div>' +
       '<div style="font-size:0.82em">Cold start can take 60-120s. Warm runs are ~30s.</div>' +
-      '<div style="font-size:0.7em;margin-top:14px;opacity:0.7">Hang tight — don’t close the tab.</div>' +
+      '<div style="font-size:0.7em;margin-top:14px;opacity:0.7">Source: ' + _sdEsc(opts.sourceLabel || '—') + ' · don’t close the tab</div>' +
     '</div></div>';
     try {
-        await GLStems.separate(title, { sourceUrl: url, sourceLabel: 'URL' });
+        await GLStems.separate(title, opts);
         _sdLensPopulated.stems = false;
         _sdPopulateStemsLens(title);
         if (typeof showToast === 'function') showToast('Stems ready for ' + title);
@@ -1736,7 +1816,7 @@ window._sdRunStemSeparation = async function(title) {
           '<button onclick="(function(){window._sdLensPopulated&&(_sdLensPopulated.stems=false);_sdPopulateStemsLens(\'' + safeSong + '\')})()" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer">Try again</button>' +
         '</div></div>';
     }
-};
+}
 
 function _sdRenderStemsPlayer(title, stems) {
     var safeSong = title.replace(/'/g, "\\'");
@@ -1748,6 +1828,7 @@ function _sdRenderStemsPlayer(title, stems) {
         { id:'other',  label:'Other',  color:'#94a3b8', icon:'🎹' }
     ];
     var rows = stemDefs.filter(function(st){return !!s[st.id];}).map(function(st) {
+        var dlName = (title || 'song').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60) + '_' + st.id + '.flac';
         return '<div class="sd-stem-row" data-stem="' + st.id + '" style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.02);margin-bottom:8px">' +
           '<span style="font-size:1.4em;width:1.6em;text-align:center;flex-shrink:0">' + st.icon + '</span>' +
           '<div style="flex:1;min-width:0">' +
@@ -1756,10 +1837,26 @@ function _sdRenderStemsPlayer(title, stems) {
           '</div>' +
           '<button class="sd-stem-mute" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Mute</button>' +
           '<button class="sd-stem-solo" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Solo</button>' +
+          '<a class="sd-stem-dl" href="' + _sdEsc(s[st.id]) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" title="Download FLAC" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);text-decoration:none;font-size:0.85em;line-height:1">⬇</a>' +
           '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" src="' + _sdEsc(s[st.id]) + '"></audio>' +
         '</div>';
     }).join('');
     var when = stems.separatedAt ? new Date(stems.separatedAt).toLocaleString() : '';
+    // Tempo/pitch controls — tempo is native (preservesPitch=true by default).
+    // Pitch nudge (-2..+2 semitones) lazy-engages Tone.js for true independent
+    // shift so tempo and key are not coupled.
+    var fxRow = '<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;flex-wrap:wrap;font-size:0.78em;color:var(--text-dim)">' +
+        '<span style="font-weight:700;color:var(--text-muted)">Speed</span>' +
+        '<input id="sdStemsTempo" type="range" min="50" max="150" step="1" value="100" style="flex:1;min-width:120px">' +
+        '<span id="sdStemsTempoVal" style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right">1.00×</span>' +
+        '<label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input id="sdStemsPreservePitch" type="checkbox" checked> Preserve pitch</label>' +
+        '<span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>' +
+        '<span style="font-weight:700;color:var(--text-muted)">Key</span>' +
+        '<button class="sd-stems-pitch" data-delta="-1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-weight:700">−1</button>' +
+        '<span id="sdStemsPitchVal" style="font-variant-numeric:tabular-nums;min-width:36px;text-align:center;font-weight:700;color:var(--text)">0</span>' +
+        '<button class="sd-stems-pitch" data-delta="1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-weight:700">+1</button>' +
+        '<button id="sdStemsPitchReset" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.85em">reset</button>' +
+    '</div>';
     return '<div class="sd-card">' +
       '<div class="sd-card-title">🎚 Stems <span class="sd-title-badge">Demucs</span></div>' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">' +
@@ -1767,6 +1864,7 @@ function _sdRenderStemsPlayer(title, stems) {
         '<input id="sdStemsScrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:140px">' +
         '<span id="sdStemsTime" style="font-size:0.78em;color:var(--text-dim);font-variant-numeric:tabular-nums;min-width:80px;text-align:right">0:00 / 0:00</span>' +
       '</div>' +
+      fxRow +
       rows +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.7em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
         '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + '</span>' +
@@ -1800,6 +1898,12 @@ window._sdStemsRedo = async function(title) {
     _sdPopulateStemsLens(title);
 };
 
+// Per-mount state. Once Tone.js is engaged (user clicks ±N pitch), each
+// <audio> is permanently routed through Web Audio — its `audio.volume`
+// property no longer affects output, so volume/mute/solo switch to
+// gainNode.gain.value. Until then, native <audio> playback + audio.volume.
+var _sdStemsState = null;
+
 function _sdInitStemsPlayer() {
     var root = _sdContainer || document;
     var audios = root.querySelectorAll('.sd-stem-audio');
@@ -1809,29 +1913,40 @@ function _sdInitStemsPlayer() {
     var master = audios[0];
 
     var fmt = function(s){ s = Math.floor(s||0); return Math.floor(s/60) + ':' + ('0' + (s%60)).slice(-2); };
-    var setVol = function(audio, sliderVal) {
+
+    // Apply a stem's effective volume (slider × mute × solo) to whichever
+    // output node is active (gain node when WebAudio is engaged, else
+    // audio.volume).
+    var applyVol = function(audio) {
         if (!audio) return;
+        var slider = root.querySelector('.sd-stem-vol[data-stem="' + audio.dataset.stem + '"]');
+        var sliderVal = slider ? Number(slider.value) : 80;
         var muted = audio.dataset.muted === '1';
         var soloOff = audio.dataset.soloOff === '1';
-        audio.volume = (muted || soloOff) ? 0 : Math.max(0, Math.min(1, sliderVal/100));
+        var v = (muted || soloOff) ? 0 : Math.max(0, Math.min(1, sliderVal/100));
+        if (_sdStemsState && _sdStemsState.nodes && _sdStemsState.nodes[audio.dataset.stem]) {
+            try { _sdStemsState.nodes[audio.dataset.stem].gain.gain.value = v; } catch(e) {}
+            // While WebAudio drives output, keep audio.volume at 1 so we don't
+            // double-attenuate.
+            audio.volume = 1;
+        } else {
+            audio.volume = v;
+        }
     };
 
     audios.forEach(function(audio) {
         audio.volume = 0.8;
         var slider = root.querySelector('.sd-stem-vol[data-stem="' + audio.dataset.stem + '"]');
-        if (slider) {
-            slider.addEventListener('input', function(){ setVol(audio, slider.value); });
-        }
+        if (slider) slider.addEventListener('input', function(){ applyVol(audio); });
     });
 
     root.querySelectorAll('.sd-stem-mute').forEach(function(btn) {
         btn.addEventListener('click', function() {
             var audio = root.querySelector('.sd-stem-audio[data-stem="' + btn.dataset.stem + '"]');
-            var slider = root.querySelector('.sd-stem-vol[data-stem="' + btn.dataset.stem + '"]');
             if (!audio) return;
             var muted = audio.dataset.muted === '1';
             audio.dataset.muted = muted ? '' : '1';
-            setVol(audio, slider ? slider.value : 80);
+            applyVol(audio);
             btn.style.background = muted ? 'rgba(255,255,255,0.04)' : 'rgba(239,68,68,0.18)';
             btn.style.color = muted ? 'var(--text-dim)' : '#fca5a5';
         });
@@ -1844,8 +1959,7 @@ function _sdInitStemsPlayer() {
             soloed = (soloed === stemId) ? null : stemId;
             root.querySelectorAll('.sd-stem-audio').forEach(function(a) {
                 a.dataset.soloOff = (soloed && a.dataset.stem !== soloed) ? '1' : '';
-                var sl = root.querySelector('.sd-stem-vol[data-stem="' + a.dataset.stem + '"]');
-                setVol(a, sl ? sl.value : 80);
+                applyVol(a);
             });
             root.querySelectorAll('.sd-stem-solo').forEach(function(b) {
                 var on = (soloed === b.dataset.stem);
@@ -1855,6 +1969,87 @@ function _sdInitStemsPlayer() {
         });
     });
 
+    // ── Tempo (native playbackRate + preservesPitch) ────────────────────────
+    var tempoSlider = root.querySelector('#sdStemsTempo');
+    var tempoVal = root.querySelector('#sdStemsTempoVal');
+    var preservePitchEl = root.querySelector('#sdStemsPreservePitch');
+    var applyTempo = function() {
+        var rate = tempoSlider ? (Number(tempoSlider.value) / 100) : 1;
+        var preserve = preservePitchEl ? !!preservePitchEl.checked : true;
+        audios.forEach(function(a) {
+            try {
+                a.playbackRate = rate;
+                a.preservesPitch = preserve;
+                a.mozPreservesPitch = preserve;
+                a.webkitPreservesPitch = preserve;
+            } catch(e) {}
+        });
+        if (tempoVal) tempoVal.textContent = rate.toFixed(2) + '×';
+    };
+    if (tempoSlider) tempoSlider.addEventListener('input', applyTempo);
+    if (preservePitchEl) preservePitchEl.addEventListener('change', applyTempo);
+    applyTempo();
+
+    // ── Pitch shift (lazy Tone.js engage) ───────────────────────────────────
+    // First click on ±1 lazy-loads Tone.js, wires each <audio> through
+    // MediaElementSource → PitchShift → Gain → destination, and from then
+    // on volume/mute/solo flow through gain nodes. Reset goes back to 0
+    // semitones but keeps the WebAudio routing (we can't undo it).
+    var pitchVal = root.querySelector('#sdStemsPitchVal');
+    var currentPitch = 0;
+    var setPitchUI = function() {
+        if (pitchVal) pitchVal.textContent = (currentPitch > 0 ? '+' : '') + currentPitch;
+    };
+    var ensureTone = async function() {
+        if (window.Tone) return window.Tone;
+        await new Promise(function(resolve, reject) {
+            var s = document.createElement('script');
+            s.src = 'https://unpkg.com/tone@14.7.77/build/Tone.js';
+            s.onload = resolve;
+            s.onerror = function(){ reject(new Error('Tone.js failed to load')); };
+            document.head.appendChild(s);
+        });
+        return window.Tone;
+    };
+    var engageWebAudio = async function() {
+        if (_sdStemsState && _sdStemsState.engaged) return _sdStemsState;
+        var Tone = await ensureTone();
+        await Tone.start();
+        var nodes = {};
+        audios.forEach(function(audio) {
+            try {
+                var src = new Tone.MediaElementSource(audio);
+                var pitch = new Tone.PitchShift(0);
+                var gain = new Tone.Gain(0.8).toDestination();
+                src.connect(pitch);
+                pitch.connect(gain);
+                nodes[audio.dataset.stem] = { src: src, pitch: pitch, gain: gain };
+            } catch(e) { /* createMediaElementSource throws on 2nd call — ignore */ }
+        });
+        _sdStemsState = { engaged: true, nodes: nodes };
+        // Re-apply current volumes through gains
+        audios.forEach(applyVol);
+        return _sdStemsState;
+    };
+    var setPitch = async function(semitones) {
+        currentPitch = Math.max(-12, Math.min(12, semitones));
+        setPitchUI();
+        if (currentPitch === 0 && (!_sdStemsState || !_sdStemsState.engaged)) return;
+        try {
+            var st = await engageWebAudio();
+            Object.keys(st.nodes).forEach(function(k){ st.nodes[k].pitch.pitch = currentPitch; });
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Pitch shift unavailable: ' + (e.message || 'load failed'));
+            currentPitch = 0; setPitchUI();
+        }
+    };
+    root.querySelectorAll('.sd-stems-pitch').forEach(function(btn) {
+        btn.addEventListener('click', function(){ setPitch(currentPitch + Number(btn.dataset.delta)); });
+    });
+    var pitchReset = root.querySelector('#sdStemsPitchReset');
+    if (pitchReset) pitchReset.addEventListener('click', function(){ setPitch(0); });
+
+    // ── Time sync / scrub / play-end ────────────────────────────────────────
     master.addEventListener('timeupdate', function() {
         if (master.duration && scrub) scrub.value = (master.currentTime / master.duration) * 1000;
         if (timeEl && master.duration) timeEl.textContent = fmt(master.currentTime) + ' / ' + fmt(master.duration);
