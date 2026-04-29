@@ -1708,14 +1708,42 @@ function _sdRenderStemsSetup(title) {
       '<div class="sd-card-title">🎚 Separate Stems <span class="sd-title-badge">Demucs</span></div>' +
       '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:14px">Split a recording into <b>drums</b>, <b>bass</b>, <b>vocals</b>, and <b>other</b>. Great for studying parts in isolation. Runs on a GPU (~30s once warm, ~$0.005 per song).</div>' +
       '<div id="sdStemsBestShotPicker" style="margin-bottom:14px"></div>' +
+      // ── File upload (primary path — most reliable) ───────────────────────
+      '<div style="margin-bottom:14px;padding:10px;border:1px solid rgba(34,197,94,0.25);border-radius:10px;background:rgba(34,197,94,0.05)">' +
+        '<label style="font-size:0.78em;font-weight:700;color:#86efac;display:block;margin-bottom:6px">⬆ Upload an audio file <span style="font-weight:400;opacity:0.75">(recommended)</span></label>' +
+        '<input type="file" id="sdStemsFile" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac" onchange="_sdRunStemSeparationFromFile(\'' + safeSong + '\', this)" style="width:100%;font-size:0.85em;color:var(--text)">' +
+        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Works with any audio file up to ~50MB. The most reliable path.</div>' +
+      '</div>' +
+      // ── URL input (secondary — best effort) ─────────────────────────────
       '<div style="margin-bottom:10px">' +
-        '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Or paste an audio URL</label>' +
-        '<input id="sdStemsSourceUrl" class="app-input" placeholder="https://… (mp3, wav, m4a, flac)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px;font-size:0.85em;box-sizing:border-box">' +
-        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Spotify/YouTube need to be downloaded first — paste a direct media URL.</div>' +
+        '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Or paste a URL <span style="font-weight:400;opacity:0.75">(best effort)</span></label>' +
+        '<input id="sdStemsSourceUrl" class="app-input" placeholder="https://… (mp3, wav, m4a, flac, soundcloud, bandcamp)" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px;font-size:0.85em;box-sizing:border-box">' +
+        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px"><b>YouTube</b> often blocks our cloud IP with a bot challenge. If it fails, download the audio yourself (<a href="https://cobalt.tools" target="_blank" rel="noopener" style="color:#a5b4fc">cobalt.tools</a> works in your browser) and upload the file above. <b>Spotify</b> can\'t be ripped — DRM blocks everything.</div>' +
       '</div>' +
       '<button onclick="_sdRunStemSeparation(\'' + safeSong + '\')" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;width:100%">▶ Separate from URL</button>' +
     '</div>';
 }
+
+window._sdRunStemSeparationFromFile = function(title, input) {
+    if (!input || !input.files || !input.files[0]) return;
+    var file = input.files[0];
+    // Cloudflare Workers default body cap is 100MB; base64 is ~33% larger
+    // than raw, so 50MB raw is the safe ceiling. Worker also decodes the
+    // whole payload in memory.
+    if (file.size > 50 * 1024 * 1024) {
+        alert('File is ' + Math.round(file.size / 1024 / 1024) + 'MB — please use a file under 50MB. Try compressing to MP3 first.');
+        input.value = '';
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function() {
+        _sdRunStemSeparationFromTake(title, { audioDataUrl: reader.result, sourceLabel: file.name });
+    };
+    reader.onerror = function() {
+        alert('Failed to read file.');
+    };
+    reader.readAsDataURL(file);
+};
 
 // Best Shot picker — fetches takes async and renders a button per usable
 // take. Drive takes pass the user's access token so Modal can fetch via
