@@ -1886,7 +1886,12 @@ function _sdRenderStemsPlayer(title, stems) {
           '<button class="sd-stem-mute" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Mute</button>' +
           '<button class="sd-stem-solo" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Solo</button>' +
           '<a class="sd-stem-dl" href="' + _sdEsc(s[st.id]) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" title="Download FLAC" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);text-decoration:none;font-size:0.85em;line-height:1">⬇</a>' +
-          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" src="' + _sdEsc(s[st.id]) + '"></audio>' +
+          // crossorigin="anonymous" is REQUIRED for createMediaElementSource()
+          // to produce non-silent output on cross-origin sources (R2). Without
+          // it, the audio plays through the <audio> element itself but goes
+          // silent the moment we route through Web Audio. R2 bucket needs
+          // matching CORS policy (Allowed-Origin: *) for this to work.
+          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" crossorigin="anonymous" src="' + _sdEsc(s[st.id]) + '"></audio>' +
         '</div>';
     }).join('');
     var when = stems.separatedAt ? new Date(stems.separatedAt).toLocaleString() : '';
