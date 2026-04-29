@@ -2120,12 +2120,26 @@ function _sdInitStemsPlayer() {
                 var ps = new Tone.PitchShift(0);
                 // Disconnect existing src→gain edge; insert pitchShift between them.
                 n.src.disconnect();
-                // Tone nodes have a native input/output; connecting via raw
-                // WebAudio connect() works when both are in the same context.
-                n.src.connect(ps.input);
-                ps.connect(n.gain);
+                // Tone v15 made native↔Tone connection stricter. Native
+                // AudioNode.connect() rejects ToneAudioNode targets ("Overload
+                // resolution failed"). The canonical bridge is Tone.connect()
+                // which handles native, Tone, and mixed graphs uniformly.
+                if (typeof Tone.connect === 'function') {
+                    Tone.connect(n.src, ps);
+                    Tone.connect(ps, n.gain);
+                } else {
+                    // Tone v14 fallback path
+                    n.src.connect(ps.input);
+                    ps.connect(n.gain);
+                }
                 n.pitch = ps;
-            } catch (e) { console.warn('[Stems] PitchShift splice failed for', id, e); }
+            } catch (e) {
+                console.warn('[Stems] PitchShift splice failed for', id, e);
+                // Splice failed mid-rewire — n.src was disconnected before the
+                // exception. Restore the original src→gain edge so audio
+                // doesn't go silent. User loses pitch shift but keeps audio.
+                try { n.src.connect(n.gain); } catch (re) {}
+            }
         });
         pitchEngaged = true;
     };
