@@ -15,6 +15,7 @@ var SD_LENSES_FULL = [
     { id:'band',     icon:'\uD83D\uDCCA', label:'Play'     },
     { id:'listen',   icon:'\uD83C\uDFA7', label:'Versions' },
     { id:'sing',     icon:'\uD83C\uDFA4', label:'Harmony'  },
+    { id:'stems',    icon:'\ud83c\udf9a', label:'Stems'    },
     { id:'inspire',  icon:'\u2728', label:'Inspire' },
 ];
 
@@ -58,6 +59,7 @@ window.switchLens = function switchLens(lens) {
         if (lens==='listen')  _sdPopulateListenLens(_sdCurrentSong);
         if (lens==='learn')   _sdPopulateLearnLens(_sdCurrentSong);
         if (lens==='sing')    _sdPopulateSingLens(_sdCurrentSong);
+        if (lens==='stems')   _sdPopulateStemsLens(_sdCurrentSong);
         if (lens==='inspire') _sdPopulateInspireLens(_sdCurrentSong);
     }
 };
@@ -1670,6 +1672,204 @@ window.sdVoteProspect = async function(songId, vote) {
 };
 
 // ── Listen Lens ───────────────────────────────────────────────────────────────
+// ── Stems Lens ──────────────────────────────────────────────────────────────
+// Demucs 4-stem separation (drums/bass/vocals/other) via Modal+R2. UI is a
+// synced 4-track mixer once stems exist; otherwise a setup card asking for a
+// source URL. Audio elements are kept in-DOM and time-synced off the first
+// stem (master). Solo is exclusive; mute is per-stem.
+
+async function _sdPopulateStemsLens(title) {
+    var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
+    if (!panel) return;
+    panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:24px;color:var(--text-dim)">Loading stems…</div></div>';
+    var stems = null;
+    try { if (window.GLStems) stems = await GLStems.getStems(title); } catch(e) {}
+    if (stems && stems.stems && stems.stems.drums) {
+        panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsPlayer(title, stems) + '</div>';
+        _sdInitStemsPlayer();
+    } else {
+        panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsSetup(title) + '</div>';
+    }
+}
+
+function _sdRenderStemsSetup(title) {
+    var safeSong = title.replace(/'/g, "\\'");
+    return '<div class="sd-card">' +
+      '<div class="sd-card-title">🎚 Separate Stems <span class="sd-title-badge">Demucs</span></div>' +
+      '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:14px">Split a recording into <b>drums</b>, <b>bass</b>, <b>vocals</b>, and <b>other</b>. Great for studying parts in isolation. Runs on a GPU (~30s once warm, ~$0.005 per song).</div>' +
+      '<div style="margin-bottom:10px">' +
+        '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:4px">Audio source URL</label>' +
+        '<input id="sdStemsSourceUrl" class="app-input" placeholder="Paste a direct audio URL — mp3, wav, m4a, flac" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px;font-size:0.85em;box-sizing:border-box">' +
+        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Tip: From <b>Best Shot</b> or a North Star Spotify track? Use a direct media URL — Spotify/YouTube need to be downloaded first.</div>' +
+      '</div>' +
+      '<button onclick="_sdRunStemSeparation(\'' + safeSong + '\')" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;width:100%">▶ Separate Stems</button>' +
+    '</div>';
+}
+
+window._sdRunStemSeparation = async function(title) {
+    var input = document.getElementById('sdStemsSourceUrl');
+    var url = input ? input.value.trim() : '';
+    if (!url) { alert('Paste an audio URL first'); return; }
+    var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
+    if (!panel) return;
+    var safeSong = title.replace(/'/g,"\\'");
+    panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:36px;color:var(--text-dim)">' +
+      '<div style="font-size:2em;margin-bottom:10px">🎚</div>' +
+      '<div style="font-weight:700;color:var(--text);margin-bottom:6px">Separating stems…</div>' +
+      '<div style="font-size:0.82em">Cold start can take 60-120s. Warm runs are ~30s.</div>' +
+      '<div style="font-size:0.7em;margin-top:14px;opacity:0.7">Hang tight — don’t close the tab.</div>' +
+    '</div></div>';
+    try {
+        await GLStems.separate(title, { sourceUrl: url, sourceLabel: 'URL' });
+        _sdLensPopulated.stems = false;
+        _sdPopulateStemsLens(title);
+        if (typeof showToast === 'function') showToast('Stems ready for ' + title);
+    } catch(e) {
+        var msg = (e && e.message) ? e.message : String(e);
+        panel.innerHTML = '<div class="sd-panel-inner"><div style="padding:24px;text-align:center">' +
+          '<div style="color:#ef4444;font-weight:700;margin-bottom:8px">Separation failed</div>' +
+          '<div style="color:var(--text-dim);font-size:0.85em;margin-bottom:14px;word-break:break-word">' + _sdEsc(msg) + '</div>' +
+          '<button onclick="(function(){window._sdLensPopulated&&(_sdLensPopulated.stems=false);_sdPopulateStemsLens(\'' + safeSong + '\')})()" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer">Try again</button>' +
+        '</div></div>';
+    }
+};
+
+function _sdRenderStemsPlayer(title, stems) {
+    var safeSong = title.replace(/'/g, "\\'");
+    var s = stems.stems;
+    var stemDefs = [
+        { id:'drums',  label:'Drums',  color:'#f59e0b', icon:'🥁' },
+        { id:'bass',   label:'Bass',   color:'#10b981', icon:'🎸' },
+        { id:'vocals', label:'Vocals', color:'#818cf8', icon:'🎤' },
+        { id:'other',  label:'Other',  color:'#94a3b8', icon:'🎹' }
+    ];
+    var rows = stemDefs.filter(function(st){return !!s[st.id];}).map(function(st) {
+        return '<div class="sd-stem-row" data-stem="' + st.id + '" style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.02);margin-bottom:8px">' +
+          '<span style="font-size:1.4em;width:1.6em;text-align:center;flex-shrink:0">' + st.icon + '</span>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="font-size:0.88em;font-weight:700;color:' + st.color + '">' + st.label + '</div>' +
+            '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + st.id + '" style="width:100%;margin-top:4px">' +
+          '</div>' +
+          '<button class="sd-stem-mute" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Mute</button>' +
+          '<button class="sd-stem-solo" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Solo</button>' +
+          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" src="' + _sdEsc(s[st.id]) + '" crossorigin="anonymous"></audio>' +
+        '</div>';
+    }).join('');
+    var when = stems.separatedAt ? new Date(stems.separatedAt).toLocaleString() : '';
+    return '<div class="sd-card">' +
+      '<div class="sd-card-title">🎚 Stems <span class="sd-title-badge">Demucs</span></div>' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">' +
+        '<button id="sdStemsPlay" onclick="_sdStemsToggle()" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer;min-width:90px">▶ Play</button>' +
+        '<input id="sdStemsScrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:140px">' +
+        '<span id="sdStemsTime" style="font-size:0.78em;color:var(--text-dim);font-variant-numeric:tabular-nums;min-width:80px;text-align:right">0:00 / 0:00</span>' +
+      '</div>' +
+      rows +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.7em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
+        '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + '</span>' +
+        '<button onclick="_sdStemsRedo(\'' + safeSong + '\')" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">Re-separate</button>' +
+      '</div>' +
+    '</div>';
+}
+
+window._sdStemsToggle = function() {
+    var btn = document.getElementById('sdStemsPlay');
+    var audios = (_sdContainer||document).querySelectorAll('.sd-stem-audio');
+    if (!audios.length) return;
+    var anyPlaying = Array.prototype.some.call(audios, function(a){return !a.paused;});
+    if (anyPlaying) {
+        audios.forEach(function(a){a.pause();});
+        if (btn) btn.textContent = '▶ Play';
+    } else {
+        var t = audios[0].currentTime || 0;
+        audios.forEach(function(a){
+            try { a.currentTime = t; } catch(e) {}
+            a.play().catch(function(){});
+        });
+        if (btn) btn.textContent = '⏸ Pause';
+    }
+};
+
+window._sdStemsRedo = async function(title) {
+    if (!confirm('Replace these stems with a new separation?')) return;
+    if (window.GLStems) await GLStems.clearStems(title);
+    _sdLensPopulated.stems = false;
+    _sdPopulateStemsLens(title);
+};
+
+function _sdInitStemsPlayer() {
+    var root = _sdContainer || document;
+    var audios = root.querySelectorAll('.sd-stem-audio');
+    var scrub = root.querySelector('#sdStemsScrub');
+    var timeEl = root.querySelector('#sdStemsTime');
+    if (!audios.length) return;
+    var master = audios[0];
+
+    var fmt = function(s){ s = Math.floor(s||0); return Math.floor(s/60) + ':' + ('0' + (s%60)).slice(-2); };
+    var setVol = function(audio, sliderVal) {
+        if (!audio) return;
+        var muted = audio.dataset.muted === '1';
+        var soloOff = audio.dataset.soloOff === '1';
+        audio.volume = (muted || soloOff) ? 0 : Math.max(0, Math.min(1, sliderVal/100));
+    };
+
+    audios.forEach(function(audio) {
+        audio.volume = 0.8;
+        var slider = root.querySelector('.sd-stem-vol[data-stem="' + audio.dataset.stem + '"]');
+        if (slider) {
+            slider.addEventListener('input', function(){ setVol(audio, slider.value); });
+        }
+    });
+
+    root.querySelectorAll('.sd-stem-mute').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var audio = root.querySelector('.sd-stem-audio[data-stem="' + btn.dataset.stem + '"]');
+            var slider = root.querySelector('.sd-stem-vol[data-stem="' + btn.dataset.stem + '"]');
+            if (!audio) return;
+            var muted = audio.dataset.muted === '1';
+            audio.dataset.muted = muted ? '' : '1';
+            setVol(audio, slider ? slider.value : 80);
+            btn.style.background = muted ? 'rgba(255,255,255,0.04)' : 'rgba(239,68,68,0.18)';
+            btn.style.color = muted ? 'var(--text-dim)' : '#fca5a5';
+        });
+    });
+
+    var soloed = null;
+    root.querySelectorAll('.sd-stem-solo').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var stemId = btn.dataset.stem;
+            soloed = (soloed === stemId) ? null : stemId;
+            root.querySelectorAll('.sd-stem-audio').forEach(function(a) {
+                a.dataset.soloOff = (soloed && a.dataset.stem !== soloed) ? '1' : '';
+                var sl = root.querySelector('.sd-stem-vol[data-stem="' + a.dataset.stem + '"]');
+                setVol(a, sl ? sl.value : 80);
+            });
+            root.querySelectorAll('.sd-stem-solo').forEach(function(b) {
+                var on = (soloed === b.dataset.stem);
+                b.style.background = on ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.04)';
+                b.style.color = on ? '#fbbf24' : 'var(--text-dim)';
+            });
+        });
+    });
+
+    master.addEventListener('timeupdate', function() {
+        if (master.duration && scrub) scrub.value = (master.currentTime / master.duration) * 1000;
+        if (timeEl && master.duration) timeEl.textContent = fmt(master.currentTime) + ' / ' + fmt(master.duration);
+    });
+    master.addEventListener('loadedmetadata', function() {
+        if (timeEl && master.duration) timeEl.textContent = '0:00 / ' + fmt(master.duration);
+    });
+    master.addEventListener('ended', function() {
+        var btn = document.getElementById('sdStemsPlay');
+        if (btn) btn.textContent = '▶ Play';
+        audios.forEach(function(a){ try { a.pause(); a.currentTime = 0; } catch(e){} });
+    });
+    if (scrub) scrub.addEventListener('input', function() {
+        if (!master.duration) return;
+        var t = (scrub.value / 1000) * master.duration;
+        audios.forEach(function(a){ try { a.currentTime = t; } catch(e) {} });
+    });
+}
+
 window._sdPopulateListenLensPublic = function(title) { _sdPopulateListenLens(title); };
 async function _sdPopulateListenLens(title) {
     var panel=(_sdContainer||document).querySelector('.sd-lens-panel[data-lens="listen"]');

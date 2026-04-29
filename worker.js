@@ -78,6 +78,11 @@ export default {
     // Body: { tokens: [...], title, body, click_action?, data? }
     if (path === '/push/send' && request.method === 'POST')
       return handleFcmPushSend(request, env);
+    // Stem separation — proxies to Modal HT-Demucs endpoint, holds the
+    // shared secret server-side, accepts either a public URL or a Drive
+    // fileId+token (which we re-route through our own /drive-stream).
+    if (path === '/stems/separate' && request.method === 'POST')
+      return handleStemsSeparate(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -1551,6 +1556,61 @@ async function handleFcmPushSend(request, env) {
   const failed = results.length - sent;
   const invalidTokens = results.filter(r => r.invalid).map(r => r.token);
   return cors(jsonResp({ sent: sent, failed: failed, invalidTokens: invalidTokens, total: tokens.length }));
+}
+
+// ── Stem Separation (Modal proxy) ────────────────────────────────────────────
+// POST /stems/separate
+// Body: { songId, sourceUrl } | { songId, driveFileId, accessToken }
+// Holds the Modal shared secret server-side so clients never see it.
+async function handleStemsSeparate(request, env) {
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('stems_not_configured: STEMS_MODAL_URL and STEMS_SHARED_SECRET secrets required on worker', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const songId = String(body.songId || '').trim();
+  let sourceUrl = String(body.sourceUrl || '').trim();
+  const driveFileId = String(body.driveFileId || '').trim();
+  const accessToken = String(body.accessToken || '').trim();
+  if (!songId) return cors(jsonError('missing songId', 400));
+  if (!sourceUrl && !(driveFileId && accessToken)) {
+    return cors(jsonError('missing sourceUrl or { driveFileId, accessToken }', 400));
+  }
+  // Drive files aren't directly fetchable by Modal (auth required). Route
+  // them through our own /drive-stream proxy — Modal hits that URL with
+  // the user's short-lived token in the query string.
+  if (!sourceUrl) {
+    const origin = new URL(request.url).origin;
+    sourceUrl = origin + '/drive-stream?fileId=' + encodeURIComponent(driveFileId)
+              + '&token=' + encodeURIComponent(accessToken);
+  }
+
+  // Modal cold-start can take 60-120s. Worker request budget is generous
+  // but bounded — keep an explicit timeout in case Modal hangs.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 240000); // 4 min ceiling
+  try {
+    const modalRes = await fetch(env.STEMS_MODAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_url: sourceUrl,
+        song_id: songId,
+        token: env.STEMS_SHARED_SECRET
+      }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
 }
 
 // ── FCM OAuth2 helpers ──
