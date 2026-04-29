@@ -70,7 +70,7 @@ function renderHelpPage(el) {
             '<h4 style="color:var(--accent-light);margin:20px 0 10px">Step 6 \u2014 The Woodshed \uD83E\uDEB5</h4>' +
             '<p>All the practice infrastructure for a song:</p>' +
             helpGrid([
-                {icon:'\uD83C\uDF9A\uFE0F', label:'Moises Stems', desc:'Isolated instrument tracks for focused practice'},
+                {icon:'\uD83C\uDF9A\uFE0F', label:'Stems', desc:'Self-hosted AI stem separation — drums, bass, guitar, keys, vocals, other'},
                 {icon:'\uD83C\uDFB8', label:'Practice Tracks', desc:'YouTube links or MP3 uploads, by instrument'},
                 {icon:'\uD83C\uDFA4', label:'Harmony Parts', desc:'Who sings what, section by section'},
                 {icon:'\uD83D\uDCCB', label:'Rehearsal Notes', desc:'Band feedback anyone can add \u2014 timestamped with your name'},
@@ -201,18 +201,6 @@ function renderHelpPage(el) {
             helpCallout('tip','Pre-gig checklist','Scroll through Equipment before load-in to make sure you have everything.')
         )}
 
-        ${helpSection('moises','\uD83C\uDF9A\uFE0F','The Moises Stem Workflow','How to isolate individual instrument parts for practice.',
-            '<p><a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">Moises.ai</a> is an AI tool that separates a full recording into individual instrument stems \u2014 vocals, guitar, bass, keys, drums.</p>' +
-            helpNumberedSteps([
-                {icon:'\u2B07\uFE0F', title:'Find a recording', body:'Go to Step 3 (North Star) or Archive.org versions. You want a clean live recording.'},
-                {icon:'\uD83D\uDCCB', title:'Copy the URL', body:'On Archive.org, find the specific MP3 for the song. Right-click \u2192 Copy Link.'},
-                {icon:'\uD83C\uDF10', title:'Open Moises.ai', body:'Sign in (free tier works). Upload or paste the URL.'},
-                {icon:'\u2699\uFE0F', title:'Choose 6 Stems', body:'Select "AI Music Separation" \u2192 "6 Stems". Wait 1\u20132 minutes.'},
-                {icon:'\uD83C\uDFA7', title:'Solo your instrument', body:'Click Solo on your instrument. Adjust tempo without changing pitch. Loop sections.'},
-                {icon:'\u2B06\uFE0F', title:'Upload back to GrooveLinx', body:'Download stems, upload via Step 6 \u2192 Moises Stems.'},
-            ]) +
-            helpCallout('tip','Show Splitter','If the Archive.org file is a full show, use the Show Splitter tool to note the timestamp for your song before sending to Moises.')
-        )}
 
         ${helpSection('chopper','\u2702\uFE0F','Rehearsal Chopper','Slice a long rehearsal recording into individual songs.',
             '<p>The <strong>Rehearsal Chopper</strong> takes a single long recording and lets you mark timestamps where each song starts and ends.</p>' +

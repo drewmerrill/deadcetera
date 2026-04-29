@@ -1140,8 +1140,8 @@ function _gmEnsureOverlay() {
         '#gmOverlay .rm-panel.active{display:block}',
         // Hide non-essential tabs in gig mode (Know/Mem/Listen stay but are accessible; we hide tab buttons for space)
         '#gmOverlay .rm-tab[data-tab="know"],#gmOverlay .rm-tab[data-tab="memory"],#gmOverlay .rm-tab[data-tab="harmony"]{display:none}',
-        // Hide YouTube and Moises footer buttons in gig mode
-        '#gmOverlay .rm-footer .rm-action-btn:nth-child(1),#gmOverlay .rm-footer .rm-action-btn:nth-child(2){display:none}',
+        // Hide YouTube footer button in gig mode
+        '#gmOverlay .rm-footer .rm-action-btn:nth-child(1){display:none}',
         // FAB stack — monkey, capture, utility all right-side, evenly spaced, same size
         'body > .rm-monkey-float{position:fixed!important;bottom:186px!important;right:12px!important;width:36px!important;height:36px!important;padding:0!important;display:flex!important;align-items:center!important;justify-content:center!important;z-index:3500!important;border-radius:8px!important}',
         '#rmCaptureMomentBtn{bottom:142px!important;right:12px!important;width:36px!important;height:36px!important}',

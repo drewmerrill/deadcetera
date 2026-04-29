@@ -341,15 +341,6 @@ h1 {
     box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
 }
 
-.moises-btn {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3);
-}
-
-.moises-btn:hover {
-    box-shadow: 0 6px 20px rgba(245, 87, 108, 0.4);
-}
-
 .secondary-btn {
     padding: 15px 30px;
     border: 2px solid #667eea;
@@ -1040,31 +1031,6 @@ footer {
     margin-bottom: 8px;
     font-size: 0.95em;
     color: #78350f;
-}
-
-/* Moises Stems Grid */
-.stems-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 12px;
-    margin-top: 15px;
-}
-
-.stem-button {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 15px;
-    border-radius: 8px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: none;
-    font-weight: 600;
-}
-
-.stem-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .stem-label {

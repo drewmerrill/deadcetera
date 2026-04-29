@@ -1627,10 +1627,9 @@ function selectVersion(songTitle, rank) {
 
 function showDownloadStep(songTitle, version) {
     const step4 = document.getElementById('step4');
-    const step5 = document.getElementById('step5');
     const resetContainer = document.getElementById('resetContainer');
     const infoDiv = document.getElementById('selectedInfo');
-    
+
     infoDiv.innerHTML = `
         <div class="selected-song-name">${songTitle}</div>
         <div class="selected-version-name">${version.venue} (${version.date})</div>
@@ -1641,17 +1640,17 @@ function showDownloadStep(songTitle, version) {
             </div>
         </div>
     `;
-    
+
     // Setup Smart Download button
     const smartDownloadBtn = document.getElementById('smartDownloadBtn');
     smartDownloadBtn.onclick = () => handleSmartDownload(songTitle, version);
-    
+
     // Setup regular download button
     const downloadBtn = document.getElementById('downloadBtn');
     downloadBtn.onclick = () => {
         const urls = generateArchiveUrls(version.archiveId, version.trackNumber);
         window.open(urls.download, '_blank');
-        
+
         setTimeout(() => {
             alert(`📥 DOWNLOADING FULL SHOW:
 
@@ -1662,29 +1661,20 @@ Track ${version.trackNumber} is "${songTitle}"
 
 Right-click the MP3 filename → Save Link As...`);
         }, 500);
-        
-        step5.classList.remove('hidden');
+
         resetContainer.classList.remove('hidden');
     };
-    
-    // Setup Moises button
-    const moisesBtn = document.getElementById('moisesBtn');
-    moisesBtn.onclick = () => {
-        window.open('https://studio.moises.ai/library/', '_blank');
-        step5.classList.remove('hidden');
-        resetContainer.classList.remove('hidden');
-    };
-    
+
     // Setup Setlist.fm button
     const setlistBtn = document.getElementById('setlistBtn');
     setlistBtn.onclick = () => handleSetlistClick(version.archiveId);
-    
+
     // Setup YouTube search button (if you have it)
     const youtubeBtn = document.getElementById('youtubeSearchBtn');
     if (youtubeBtn) {
         youtubeBtn.onclick = () => searchYouTube(songTitle);
     }
-    
+
     step4.classList.remove('hidden');
     resetContainer.classList.remove('hidden');
 }
@@ -1730,9 +1720,7 @@ function handleSmartDownload(songTitle, version) {
             
             setTimeout(() => {
                 progressContainer.classList.add('hidden');
-                alert(`✅ Downloaded: ${songTitle}
-
-Now upload to Moises.ai to separate stems!`);
+                alert(`✅ Downloaded: ${songTitle}`);
             }, 1000);
         })
         .catch(error => {
@@ -1812,7 +1800,6 @@ function resetWorkflow() {
     document.getElementById('step2').classList.add('hidden');
     document.getElementById('step3').classList.add('hidden');
     document.getElementById('step4').classList.add('hidden');
-    document.getElementById('step5').classList.add('hidden');
     document.getElementById('resetContainer').classList.add('hidden');
     var vhStep = document.getElementById('stepVersionHub');
     if (vhStep) vhStep.classList.add('hidden');
@@ -2126,354 +2113,6 @@ async function loadPersonalTabs(songTitle) {
 }
 
 console.log('📑 Personal tabs system loaded');
-
-// ============================================================================
-// MOISES STEMS
-// ============================================================================
-
-async function renderMoisesStems(songTitle, bandData) {
-    const container = document.getElementById('moisesStemsContainer');
-    
-    // Load from Google Drive
-    const stems = await loadMoisesStems(songTitle) || bandData.moisesParts || {};
-    
-    if (!stems.folderUrl && (!stems.stems || Object.keys(stems.stems).length === 0)) {
-        container.innerHTML = `
-            <div style="padding: 16px;">
-                <p style="color:var(--text-dim,#6b7280);margin-bottom:12px">No stems uploaded yet. Add a source to isolate parts:</p>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-                    <button onclick="moisesAddYouTube()" class="btn btn-primary" style="padding:10px">📺 YouTube Link</button>
-                    <button onclick="showMoisesUploadForm()" class="btn btn-ghost" style="padding:10px">📤 Upload MP3</button>
-                </div>
-                <button onclick="moisesShowSplitter()" class="btn btn-ghost" style="width:100%;padding:10px;color:var(--yellow,#f59e0b)">✂️ Split Long Show Recording (Moises 20min limit)</button>
-                <p style="margin-top:8px;color:var(--text-dim,#6b7280);font-size:0.78em">Or <a href="#" onclick="addMoisesStems();return false;" style="color:var(--accent-light,#667eea)">paste Drive links</a> if already uploaded</p>
-            </div>
-        `;
-        return;
-    }
-    
-    // Check if we have individual stem links
-    const stemKeys = ['bass', 'drums', 'guitar', 'keys', 'vocals', 'other'];
-    const instrumentIcons = {
-        bass: '🎸',
-        drums: '🥁', 
-        guitar: '🎸',
-        keys: '🎹',
-        vocals: '🎤',
-        other: '🎵'
-    };
-    
-    // Show stem buttons
-    const stemButtons = stemKeys.map(key => {
-        const url = stems.stems && stems.stems[key];
-        const label = key.charAt(0).toUpperCase() + key.slice(1);
-        const icon = instrumentIcons[key] || '🎵';
-        
-        if (url) {
-            // Has URL - clickable download
-            return `
-                <button class="stem-button" onclick="window.open('${url}', '_blank')" style="background: white; border: 2px solid #e2e8f0; padding: 12px; border-radius: 8px; cursor: pointer; text-align: center;">
-                    <div class="stem-label" style="font-weight: 600; margin-bottom: 4px;">${icon} ${label}</div>
-                    <div class="stem-info" style="font-size: 0.85em; color: #6b7280;">Click to download</div>
-                </button>
-            `;
-        }
-        return '';
-    }).filter(Boolean).join('');
-    
-    container.innerHTML = `
-        <div style="position: relative;">
-            <button onclick="showMoisesUploadForm()" style="position: absolute; top: 0; right: 60px; background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">📤 Upload</button>
-            <button onclick="editMoisesStems()" style="position: absolute; top: 0; right: 0; background: #667eea; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;">Edit</button>
-            
-            ${stems.sourceVersion ? `<p style="margin-bottom: 15px; color: #6b7280;">Source: <strong>${stems.sourceVersion}</strong></p>` : ''}
-            
-            ${stemButtons ? `
-                <div class="stems-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 15px;">
-                    ${stemButtons}
-                </div>
-            ` : '<p style="color: #6b7280; margin-bottom: 15px;">No individual stems added yet</p>'}
-            
-            ${stems.folderUrl ? `
-                <button class="drive-folder-btn" onclick="window.open('${stems.folderUrl}', '_blank')" style="background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;">
-                    📂 Open Google Drive Folder
-                </button>
-            ` : ''}
-            
-            ${stems.notes ? `<p style="margin-top: 12px; color: #6b7280; font-size: 0.9em;">${stems.notes}</p>` : ''}
-        </div>
-    `;
-}
-
-function showMoisesUploadForm() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    
-    const container = document.getElementById('moisesStemsContainer');
-    container.innerHTML = `
-        <div style="background: #f9fafb; padding: 20px; border-radius: 12px; border: 2px solid #667eea;">
-            <h4 style="margin: 0 0 15px 0; color: #667eea;">📤 Upload Moises Stems</h4>
-            
-            <div style="margin-bottom: 15px;">
-                <span style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
-                    Source Version (optional)
-                </span>
-                <input type="text" id="stemsSourceInput" 
-                    placeholder="e.g., Cornell 5/8/77, Studio version, etc."
-                    style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit;">
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-                <span style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
-                    Select Stem Files
-                </span>
-                <p style="font-size: 0.85em; color: #6b7280; margin-bottom: 10px;">
-                    Select all your Moises-separated tracks (bass.mp3, drums.mp3, etc.)
-                </p>
-                <input type="file" id="stemsFileInput" multiple accept="audio/*,.mp3,.wav,.m4a,.aac"
-                    style="width: 100%; padding: 10px; border: 2px dashed #d1d5db; border-radius: 6px; background: white; cursor: pointer;">
-                <p style="font-size: 0.85em; color: #6b7280; margin-top: 5px;">
-                    💡 Name your files clearly (e.g., bass.mp3, drums.mp3, guitar.mp3, keys.mp3, vocals.mp3)
-                </p>
-            </div>
-            
-            <div style="margin-bottom: 15px;">
-                <span style="display: block; margin-bottom: 8px; font-weight: 600; color: #1f2937;">
-                    Notes (optional)
-                </span>
-                <textarea id="stemsNotesInput" 
-                    placeholder="e.g., Bass is really clear in this version"
-                    style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; resize: vertical;"
-                    rows="2"></textarea>
-            </div>
-            
-            <div id="uploadProgress" style="display: none; margin-bottom: 15px;">
-                <div style="background: #e5e7eb; height: 30px; border-radius: 6px; overflow: hidden; position: relative;">
-                    <div id="uploadProgressBar" style="background: #10b981; height: 100%; width: 0%; transition: width 0.3s;"></div>
-                    <div id="uploadProgressText" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-weight: 600; color: #1f2937;"></div>
-                </div>
-            </div>
-            
-            <div style="display: flex; gap: 10px;">
-                <button onclick="uploadMoisesStems()" 
-                    style="flex: 1; background: #10b981; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 1em;">
-                    📤 Upload Stems
-                </button>
-                <button onclick="renderMoisesStems('${songTitle.replace(/'/g, "\\'")}', {})" 
-                    style="background: #6b7280; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer;">
-                    Cancel
-                </button>
-            </div>
-        </div>
-    `;
-}
-
-async function uploadMoisesStems() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    
-    const fileInput = document.getElementById('stemsFileInput');
-    const sourceInput = document.getElementById('stemsSourceInput');
-    const notesInput = document.getElementById('stemsNotesInput');
-    
-    if (!fileInput.files || fileInput.files.length === 0) {
-        alert('Please select at least one stem file!');
-        return;
-    }
-    
-    // Show progress
-    const progressDiv = document.getElementById('uploadProgress');
-    const progressBar = document.getElementById('uploadProgressBar');
-    const progressText = document.getElementById('uploadProgressText');
-    progressDiv.style.display = 'block';
-    
-    try {
-        // Create folder name
-        const folderName = `${songTitle} - Moises Stems`;
-        
-        progressText.textContent = 'Creating folder...';
-        progressBar.style.width = '10%';
-        
-        // Create folder in shared Drive folder
-        const folderId = await createDriveFolder(folderName);
-        
-        if (!folderId) {
-            throw new Error('Failed to create folder');
-        }
-        
-        console.log(`📁 Created folder: ${folderId}`);
-        
-        // Upload each file
-        const files = Array.from(fileInput.files);
-        const uploadedStems = {};
-        
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            const progress = ((i + 1) / files.length) * 80 + 10; // 10-90%
-            
-            progressText.textContent = `Uploading ${file.name}... (${i + 1}/${files.length})`;
-            progressBar.style.width = `${progress}%`;
-            
-            console.log(`Uploading ${file.name}...`);
-            
-            // Upload file to folder
-            const fileId = await uploadFileToDrive(file, folderId);
-            
-            if (fileId) {
-                // Determine instrument type from filename
-                const fileName = file.name.toLowerCase();
-                let instrument = 'other';
-                
-                if (fileName.includes('bass')) instrument = 'bass';
-                else if (fileName.includes('drum')) instrument = 'drums';
-                else if (fileName.includes('guitar')) instrument = 'guitar';
-                else if (fileName.includes('key') || fileName.includes('piano')) instrument = 'keys';
-                else if (fileName.includes('vocal') || fileName.includes('voice')) instrument = 'vocals';
-                
-                // fileId is now a direct download URL from Firebase Storage
-                uploadedStems[instrument] = fileId;
-                
-                console.log(`✅ Uploaded ${file.name} as ${instrument}`);
-            }
-        }
-        
-        progressText.textContent = 'Saving metadata...';
-        progressBar.style.width = '95%';
-        
-        // Save stems metadata
-        const stemsData = {
-            folderUrl: '', // No folder URL with Firebase Storage
-            folderId: folderId,
-            sourceVersion: sourceInput.value.trim(),
-            stems: uploadedStems,
-            notes: notesInput.value.trim(),
-            uploadedBy: currentUserEmail,
-            dateAdded: new Date().toLocaleDateString()
-        };
-        
-        await saveMoisesStems(songTitle, stemsData);
-        
-        progressText.textContent = 'Complete! ✅';
-        progressBar.style.width = '100%';
-        
-        console.log('✅ All stems uploaded successfully!');
-        
-        setTimeout(async () => {
-            const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
-            await renderMoisesStems(songTitle, bandData);
-        }, 1000);
-        
-    } catch (error) {
-        console.error('Upload error:', error);
-        alert('Upload failed: ' + error.message);
-        progressDiv.style.display = 'none';
-    }
-}
-
-// createDriveFolder and uploadFileToDrive are defined in Firebase storage section below
-// (original Drive versions removed)
-
-async function addMoisesStems() {
-    if (!requireSignIn()) return;
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    
-    editMoisesStems();
-}
-
-async function editMoisesStems() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    if (document.getElementById('moisesModal')) return;
-    const stems = await loadMoisesStems(songTitle) || {};
-    const fields = [
-        { id: 'msBass',    label: 'Bass track URL',       val: stems.stems?.bass || '' },
-        { id: 'msDrums',   label: 'Drums track URL',      val: stems.stems?.drums || '' },
-        { id: 'msGuitar',  label: 'Guitar track URL',     val: stems.stems?.guitar || '' },
-        { id: 'msKeys',    label: 'Keys track URL',       val: stems.stems?.keys || '' },
-        { id: 'msVocals',  label: 'Vocals track URL',     val: stems.stems?.vocals || '' },
-        { id: 'msOther',   label: 'Other/Mix track URL',  val: stems.stems?.other || '' },
-    ];
-    const modal = document.createElement('div');
-    modal.id = 'moisesModal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
-    modal.innerHTML = `
-        <div style="background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px;max-width:540px;width:100%;max-height:90vh;overflow-y:auto">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-                <h3 style="margin:0;color:white">🎛️ Moises Stems</h3>
-                <button onclick="document.getElementById('moisesModal').remove()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:12px">
-                <div>
-                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Google Drive folder URL</span>
-                    <input id="msFolderUrl" class="app-input" placeholder="https://drive.google.com/drive/folders/..."
-                        value="${stems.folderUrl || ''}" autocomplete="off">
-                </div>
-                <div>
-                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Source version</span>
-                    <input id="msSourceVersion" class="app-input" placeholder='e.g. "11/3/1985 Richmond"'
-                        value="${stems.sourceVersion || ''}" autocomplete="off">
-                </div>
-                <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:12px;margin-top:4px">
-                    <p style="color:#9ca3af;font-size:0.8em;margin:0 0 10px">Individual stem URLs (from Moises):</p>
-                    ${fields.map(f => `
-                        <div style="margin-bottom:10px">
-                            <span style="display:block;font-size:0.78em;color:#6b7280;margin-bottom:4px">${f.label}</span>
-                            <input id="${f.id}" class="app-input" placeholder="https://..." value="${f.val}" autocomplete="off">
-                        </div>
-                    `).join('')}
-                </div>
-                <div>
-                    <span style="display:block;font-size:0.82em;color:#9ca3af;margin-bottom:5px">Notes</span>
-                    <textarea id="msNotes" class="app-input" placeholder="Any notes about this version..."
-                        style="min-height:70px;resize:vertical;font-family:inherit">${stems.notes || ''}</textarea>
-                </div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:20px">
-                <button onclick="saveMoisesStems()" class="btn btn-primary" style="flex:1">💾 Save Stems</button>
-                <button onclick="document.getElementById('moisesModal').remove()" class="btn btn-ghost">Cancel</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-    document.getElementById('msFolderUrl')?.focus();
-}
-
-async function saveMoisesStems() {
-    if (!requireSignIn()) return;
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    const newStems = {
-        folderUrl:     document.getElementById('msFolderUrl')?.value?.trim() || '',
-        sourceVersion: document.getElementById('msSourceVersion')?.value?.trim() || '',
-        stems: {
-            bass:   document.getElementById('msBass')?.value?.trim() || '',
-            drums:  document.getElementById('msDrums')?.value?.trim() || '',
-            guitar: document.getElementById('msGuitar')?.value?.trim() || '',
-            keys:   document.getElementById('msKeys')?.value?.trim() || '',
-            vocals: document.getElementById('msVocals')?.value?.trim() || '',
-            other:  document.getElementById('msOther')?.value?.trim() || '',
-        },
-        notes:     document.getElementById('msNotes')?.value?.trim() || '',
-        updatedAt: new Date().toISOString(),
-        updatedBy: currentUserEmail
-    };
-    await saveMoisesData(songTitle, newStems);
-    document.getElementById('moisesModal')?.remove();
-    showToast('✅ Stems saved');
-    const bandData = {} /* Firebase is canonical */;
-    if (bandData && typeof renderMoisesStems === 'function') renderMoisesStems(songTitle, bandData);
-}
-
-async function saveMoisesStems(songTitle, stems) {
-    return await saveBandDataToDrive(songTitle, 'moises_stems', stems);
-}
-
-async function loadMoisesStems(songTitle) {
-    return await loadBandDataFromDrive(songTitle, 'moises_stems');
-}
-
-console.log('🎵 Moises stems editor loaded');
 
 // ============================================================================
 // REHEARSAL NOTES
@@ -5189,7 +4828,7 @@ async function importABCFromAudio(sectionIndex) {
             
             <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.2);border-radius:8px;padding:14px;margin-bottom:16px;font-size:0.85em;color:#c7d2fe;line-height:1.6">
                 <strong style="color:white">How this works:</strong><br>
-                1. Use <strong>Moises</strong> to isolate the vocal stem from a recording<br>
+                1. Use the GrooveLinx <strong>Stems</strong> lens to isolate the vocal stem from a recording<br>
                 2. Upload the isolated vocal audio file here<br>
                 3. We send it to <strong>Basic Pitch</strong> (Spotify's free AI) to detect notes<br>
                 4. The note data converts to ABC notation automatically
@@ -5207,7 +4846,7 @@ async function importABCFromAudio(sectionIndex) {
             
             <div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:12px;font-size:0.8em;color:#6b7280;line-height:1.6">
                 <strong style="color:#9ca3af">💡 Best results:</strong><br>
-                • Use Moises or Spleeter to isolate vocals first — mixed audio gives messy results<br>
+                • Use the GrooveLinx Stems lens to isolate vocals first — mixed audio gives messy results<br>
                 • Short clips (one section, 8-16 bars) work better than full songs<br>
                 • The AI detects the main pitch — harmony lines need separate passes<br>
                 • Basic Pitch works best on clear, monophonic (single-note) vocal lines
@@ -5679,7 +5318,7 @@ async function recoverLocalStorageToFirebase() {
         const withoutPrefix = key.replace('deadcetera_', '');
         const dataTypes = ['spotify_versions','song_status','song_metadata','song_structure',
                           'best_shot_takes','best_shot_ratings','best_shot_section_notes',
-                          'practice_tracks','rehearsal_notes','gig_notes','moises_stems',
+                          'practice_tracks','rehearsal_notes','gig_notes',
                           'harmony_metadata','part_notes','custom_songs','calendar_events',
                           'blocked_dates','gig_history','setlists','equipment','contacts',
                           'playlists','finances','finances_meta','social_profiles','best_shots'];
@@ -7185,33 +6824,6 @@ async function loadHarmonyMetadataFromDrive(songTitle, sectionIndex) {
     const key = `${songTitle}_section${sectionIndex}`;
     return await loadBandDataFromDrive(key, BAND_DATA_TYPES.HARMONY_METADATA) || {};
 }
-
-// ============================================================================
-// MOISES STEMS UPLOAD (Firebase Storage)
-// ============================================================================
-
-async function createDriveFolder(folderName, parentFolderId) {
-    // No-op for Firebase - we don't need folders
-    // Return a dummy ID for compatibility
-    return sanitizeFirebasePath(folderName);
-}
-
-async function uploadFileToDrive(file, parentFolderId) {
-    // Upload to Firebase Storage instead
-    try {
-        const safeName = sanitizeFirebasePath(`${parentFolderId}/${file.name}`);
-        const storageRef = firebaseStorage.ref(bandPath(`stems/${safeName}`));
-        await storageRef.put(file);
-        const downloadURL = await storageRef.getDownloadURL();
-        console.log(`✅ Uploaded ${file.name} to Firebase Storage`);
-        return downloadURL; // Return URL instead of Drive file ID
-    } catch (error) {
-        console.error('Error uploading file:', error);
-        return null;
-    }
-}
-
-console.log('🔥 Firebase storage system loaded');
 
 // ============================================================================
 // FIREBASE HELPER FUNCTIONS (replaces Drive folder/file management)
@@ -12161,91 +11773,6 @@ function filterByBand(band) {
     renderSongs(currentFilter, searchTerm);
 }
 
-// ---- MOISES ENHANCED (#18) ----
-function moisesAddYouTube() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    const container = document.getElementById('moisesStemsContainer');
-    container.innerHTML = `
-    <div class="app-card" style="background:rgba(255,255,255,0.03)">
-        <h4 style="color:var(--accent-light);margin-bottom:10px">📺 Add YouTube Link for Stem Separation</h4>
-        <div class="form-row"><span class="form-label">YouTube URL</span>
-            <input class="app-input" id="moisesYTUrl" placeholder="https://youtube.com/watch?v=..."></div>
-        <div class="form-row"><span class="form-label">Version Description</span>
-            <input class="app-input" id="moisesYTDesc" placeholder="e.g. Grateful Dead 5/8/77 Cornell"></div>
-        <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
-            <b>Workflow:</b> Copy the YouTube link → Go to <a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">moises.ai</a> → 
-            Paste link → Download separated stems → Upload stems back here<br>
-            <b>Note:</b> Moises has a 20-minute limit. Use the Show Splitter for longer recordings.
-        </div>
-        <div style="display:flex;gap:8px">
-            <button class="btn btn-primary" onclick="saveMoisesYTLink()">💾 Save Link</button>
-            <button class="btn btn-ghost" onclick="window.open('https://moises.ai','_blank')">🔗 Open Moises</button>
-            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',{})">Cancel</button>
-        </div>
-    </div>`;
-}
-
-async function saveMoisesYTLink() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    const url = document.getElementById('moisesYTUrl')?.value;
-    const desc = document.getElementById('moisesYTDesc')?.value;
-    if (!url) { alert('URL required'); return; }
-    const existing = await loadMoisesStems(songTitle) || {};
-    if (!existing.sourceLinks) existing.sourceLinks = [];
-    existing.sourceLinks.push({ url, description: desc, type: 'youtube', addedBy: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() });
-    existing.sourceVersion = desc || url;
-    await saveMoisesStems(songTitle, existing);
-    alert('✅ YouTube link saved!');
-    renderMoisesStems(songTitle, {} /* Firebase is canonical */||{});
-}
-
-function moisesShowSplitter() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    const container = document.getElementById('moisesStemsContainer');
-    container.innerHTML = `
-    <div class="app-card" style="background:rgba(255,255,255,0.03)">
-        <h4 style="color:var(--yellow);margin-bottom:10px">✂️ Show Splitter — Break Long Recordings for Moises</h4>
-        <p style="font-size:0.85em;color:var(--text-muted);margin-bottom:12px">
-            Moises.ai has a <b>20-minute limit</b>. If you have a full show recording, you need to split it into sections first.
-        </p>
-        <div class="form-row"><span class="form-label">Source URL or File</span>
-            <input class="app-input" id="splitterSource" placeholder="YouTube URL or archive.org link"></div>
-        <div class="form-row"><span class="form-label">Song start time</span>
-            <input class="app-input" id="splitterStart" placeholder="e.g. 45:30 (minutes:seconds)"></div>
-        <div class="form-row"><span class="form-label">Song end time</span>
-            <input class="app-input" id="splitterEnd" placeholder="e.g. 52:15"></div>
-        <div style="font-size:0.78em;color:var(--text-dim);margin:8px 0;line-height:1.5">
-            <b>How to split:</b><br>
-            1. Note the start/end times for "${songTitle}" in the recording<br>
-            2. Use a free tool like <a href="https://mp3cut.net" target="_blank" style="color:var(--accent-light)">mp3cut.net</a> or 
-               <a href="https://audiotrimmer.com" target="_blank" style="color:var(--accent-light)">audiotrimmer.com</a><br>
-            3. Download the trimmed clip (under 20 min)<br>
-            4. Upload to <a href="https://moises.ai" target="_blank" style="color:var(--accent-light)">moises.ai</a> for stem separation<br>
-            5. Upload the stems back here
-        </div>
-        <div style="display:flex;gap:8px">
-            <button class="btn btn-primary" onclick="saveSplitterInfo()">💾 Save Timestamps</button>
-            <button class="btn btn-ghost" onclick="renderMoisesStems('${songTitle.replace(/'/g,"\\'")}',{})">Cancel</button>
-        </div>
-    </div>`;
-}
-
-async function saveSplitterInfo() {
-    const songTitle = selectedSong?.title || selectedSong;
-    if (!songTitle) return;
-    const source = document.getElementById('splitterSource')?.value;
-    const start = document.getElementById('splitterStart')?.value;
-    const end = document.getElementById('splitterEnd')?.value;
-    const existing = await loadMoisesStems(songTitle) || {};
-    existing.showSplitter = { source, startTime: start, endTime: end, addedBy: localStorage.getItem('deadcetera_current_user')||'anon', date: new Date().toISOString() };
-    await saveMoisesStems(songTitle, existing);
-    alert('✅ Timestamps saved!');
-    renderMoisesStems(songTitle, {} /* Firebase is canonical */||{});
-}
-
 // ---- SETLIST SONG HISTORY (#24) ----
 // Store gig history for hover tooltips
 window._gigHistory = null;
@@ -12296,7 +11823,7 @@ function getSongHistoryTooltip(title) {
     document.head.appendChild(s);
 })();
 
-console.log('🔧 Moises enhanced, gig history, tab CSS loaded');
+console.log('🔧 Gig history, tab CSS loaded');
 
 // PLAYLISTS — PHASE 1: DATA LAYER
 // ============================================================================

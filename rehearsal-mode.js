@@ -361,7 +361,6 @@ function rmEnsureOverlay() {
         <!-- FOOTER QUICK ACTIONS -->
         <div class="rm-footer">
             <button class="rm-action-btn" onclick="rmOpenYouTube()">🎥 YouTube</button>
-            <button class="rm-action-btn" onclick="rmOpenMoises()">🎛️ Moises</button>
             <button class="rm-action-btn" onclick="rmAddSongToQueue()">➕ Queue</button>
             <button class="rm-action-btn" onclick="rmAddNote()">📋 Note</button>
         </div>
@@ -2891,7 +2890,6 @@ function rmOpenPocketMeter() {
         if (typeof showToast === 'function') showToast('Pocket Meter not available');
     }
 }
-function rmOpenMoises(){window.open('https://studio.moises.ai/library/','_blank');}
 
 // ── Touch swipe ──────────────────────────────────────────────────────────────
 (function(){let sx=0;document.addEventListener('touchstart',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;sx=e.touches[0].clientX;},{passive:true});document.addEventListener('touchend',e=>{if(document.getElementById('rmPalaceWalkOverlay'))return;const o=document.getElementById('rmOverlay');if(!o?.classList.contains('rm-visible')||rmEditing)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>60)rmNavigate(dx<0?1:-1);},{passive:true});})();

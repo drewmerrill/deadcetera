@@ -138,7 +138,6 @@ features = {
     "Equipment save/delete":            "saveEquip" in app and "deleteEquip" in app,
     "No iOS prompt() blockers":         (app.count("prompt('") + app.count('prompt("')) <= 3,
     "Song structure modal":             "songStructureModal" in app,
-    "Moises stems modal":               "moisesModal" in app,
     "Update banner":                    "showUpdateBanner" in app,
 }
 
