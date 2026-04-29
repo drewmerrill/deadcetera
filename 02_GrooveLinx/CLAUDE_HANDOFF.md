@@ -49,9 +49,17 @@ Confirmed `0/449` songs had `moises_stems` records in Firebase. Self-hosted Demu
 
 > Continue Stems Intelligence Plan v4 (`02_GrooveLinx/specs/stems_intelligence_plan.md`, see also `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`). Build `20260429-205047`. Moises ripped out (commit `2713bb3f`). Plan approved: harmony first, Dead guitar second, intelligence third, polish fourth. **Next step: Phase 0 quality bake-off (§6, 0.5–1 day) — Drew picks 5 representative Deadcetera songs spanning easy → CSN-hard. Run each through Fadr / MelBand-Roformer Karaoke / +MDX-Voc_FT cascade / LALAL.AI Master / SepACap. Score blind on 4-criterion scale (5 for SepACap). 5×5 matrix picks Phase 1 production default. DO NOT WRITE PHASE 1 CODE UNTIL PHASE 0 RESULTS ARE IN.** Read §4.4 (dual-view principle) before any UI work — vocal stems are first-class stems in the Stems lens mixer; Harmony Lab is a specialized view of the same audio. Mixer state shared via `GLStore.mixerState`. Per-action source picker (Option A, §4.6) lives at the Auto-Split button. Pan knob ships in P1. Phase 1 success metric: "bandmates learn parts faster than YouTube + manual transcription," not SDR.
 
-### Layer 3 SMS status (carried forward)
+### Layer 3 SMS status (verified 2026-04-29 PM)
 
-Twilio 10DLC approval check scheduled for 2026-04-29 morning (one-time agent). If approved, Layer 3 SMS unblocks per `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` build plan: new `/sms/send` worker endpoint mirroring FCM pattern, storage at `bands/{slug}/sms_subscriptions/{memberKey}`.
+**Twilio Campaign already submitted on 2026-04-26 with strong content.** Earlier confusion: Twilio's overview page shows step 3 as "Not registered" until full carrier verification completes — that label means "not yet **approved**," not "not yet **submitted**." Sole Proprietor brand limit (1 campaign per brand) is what blocked retry attempts.
+
+- Campaign SID: `CMd3c50db7c82d07e1951e0e23a9493da5`
+- Status: **In progress** — under TCR + carrier review
+- ETA: "couple of days to several weeks" per Twilio (carrier review is the slow part)
+- Compliance pages live at `groovelinx.com/privacy.html` + `terms.html`
+- Submitted content audited 2026-04-29 PM — strong, no edits needed; optional Help-message polish noted in `CURRENT_PHASE.md` Layer 3 section
+
+**No action required from Drew or Claude until Twilio emails approval.** When status flips to "Verified," Layer 3 SMS unblocks per `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` build plan: new `/sms/send` worker endpoint mirroring FCM pattern, storage at `bands/{slug}/sms_subscriptions/{memberKey}`.
 
 ---
 

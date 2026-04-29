@@ -50,9 +50,28 @@ All studio sources. Live-SBD slot deferred to P1 UAT.
 
 ---
 
-## Layer 3 SMS — pending Twilio 10DLC approval (carried forward from 2026-04-26)
+## Layer 3 SMS — Twilio Campaign in carrier review (verified status 2026-04-29 PM)
 
-Phone number +14085398813 awaiting carrier approval. One-time scheduled agent checks status 2026-04-29 morning. When approved, build plan in `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` — new `/sms/send` worker endpoint, storage `bands/{slug}/sms_subscriptions/{memberKey}`, mirrors FCM Layer 2 pattern.
+**Campaign already submitted on 2026-04-26** with strong content (described in detail below). Earlier confusion: Twilio's A2P 10DLC overview page shows step 3 as "Not registered" until full carrier verification completes — that label means "not yet **approved**," not "not yet **submitted**." When attempts to "Continue registration" hit "Campaign limit reached on Brand," that was Twilio correctly enforcing Sole Proprietor's one-campaign-per-brand rule, not telling us a campaign was missing.
+
+**Campaign state (snapshot 2026-04-29 19:42):**
+- Campaign SID: `CMd3c50db7c82d07e1951e0e23a9493da5`
+- Brand: Andrew Merrill (Sole Proprietor) — `BN690df404c69f445c14c1be8383f1de93`
+- Linked Messaging Service: `MG6281103d4ebc3161ca33c728de1f3fe2`
+- Status: **In progress** (submitted 2026-04-26; under TCR + carrier review)
+- ETA: "couple of days to several weeks" per Twilio's banner — carrier review (T-Mobile / AT&T / Verizon) is the slow part, not Twilio's auto-vetting
+
+**Submitted content (already strong, no edits needed):**
+- Description: "private band, 5 members, explicitly enabled SMS notifications" — better than generic draft because it leans into Sole-Prop low-volume / known-recipient framing
+- 5 sample messages (rehearsal/gig/poll/availability/setlist) with STOP keywords
+- Embedded links: Yes · Embedded phone: No · Age-gated: No · Direct lending: No
+- Privacy: `groovelinx.com/privacy.html` · Terms: `groovelinx.com/terms.html`
+- Consent description calls out "personally invited by band leader, direct relationship" — strengthens Sole-Prop justification
+- Twilio managing opt-out keywords (OPTOUT/CANCEL/END/QUIT/UNSUBSCRIBE/REVOKE/STOP/STOPALL) and HELP/INFO
+
+**Optional polish (skip if you don't want to disturb the in-flight review):** Help auto-reply could be tightened to include brand name + frequency. Current: *"Reply STOP to unsubscribe. Msg&Data Rates May Apply."* Suggested: *"GrooveLinx: Band coordination notifications. ~5-15 msgs/mo. Msg&data rates may apply. Reply STOP to unsubscribe. Support: drewmerrill@comcast.net"*. Edit via Campaign → Messaging Service - Opt-Out Management.
+
+**No further action required from Drew or Claude until Twilio emails approval.** When status flips to "Verified" / "Approved," Layer 3 SMS unblocks per build plan in `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` — new `/sms/send` worker endpoint, storage `bands/{slug}/sms_subscriptions/{memberKey}`, mirrors FCM Layer 2 pattern.
 
 ---
 
