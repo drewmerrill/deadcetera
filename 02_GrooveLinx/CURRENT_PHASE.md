@@ -1,12 +1,12 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-29 (PM) — Moises ripped out. Stems Intelligence Plan v4 authored & committed. Build `20260429-205047`. Active phase: **Phase 0 Quality Bake-Off** — awaiting Drew's 5-song test corpus picks._
+_Updated: 2026-04-29 (PM) — Phase 0 corpus locked + Stage B Modal deployment approved. Build `20260429-205047`. Active phase: **Phase 0 Quality Bake-Off — Stage B (instrument build)**._
 
 ---
 
 ## Active Phase: Stems Intelligence — Phase 0 Quality Bake-Off (2026-04-29 →)
 
-**Status:** Plan approved. Implementation NOT started. Bake-off blocks all Phase 1 work.
+**Status:** Corpus locked, Stage B (Modal instrument build) approved & in-flight. Client UI work blocked until P0 names a winner.
 
 **Master plan:** `02_GrooveLinx/specs/stems_intelligence_plan.md` (v4, research-hardened, ChatGPT-reviewed)
 **Session notes:** `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`
@@ -14,14 +14,23 @@ _Updated: 2026-04-29 (PM) — Moises ripped out. Stems Intelligence Plan v4 auth
 **ROI-ordered roadmap:**
 | # | Phase | Effort | Status |
 |---|---|---|---|
-| 0 | Quality bake-off (5 songs × 5 separators) | 0.5–1 day | ⏳ Awaiting Drew's test corpus |
+| 0 | Quality bake-off (5 songs × 5 separators) | 0.5–1 day | 🔧 Stage B in-flight (Modal split_vocals + sepacap) |
 | 1 | Harmony Painkiller (split + notate + Harmony Lab + source picker + pan knob) | 5–10 days | Blocked by P0 |
 | 2 | Dead Guitar Split (Jerry/Bob via stereo pan) | 1.5–2 days | Blocked by P1 |
 | 3 | Song Intelligence Pass (BPM/key/sections/chords/lyrics) | 3–4 days | Blocked by P2 |
 | 4 | Cheap Polish (waveform, A-B loop, presets) | 1 day | Blocked by P3 |
-| 5 | SepACap multi-voice (experimental, gated on P0 result) | 0.5–1 day | Blocked by P0 result |
+| 5 | SepACap multi-voice (experimental, gated on P0 result) | 0.5–1 day | Stage B builds the eval; P1 promotion gated on result |
 
-**Phase 0 next step:** Drew picks 5 representative Deadcetera songs spanning easy → CSN-hard. Run each through Fadr / MelBand-Roformer Karaoke / +MDX-Voc_FT cascade / LALAL.AI Master / SepACap. Score blind on the 4-criterion scale (5 criteria for SepACap — adds cross-genre transfer evaluation). 5×5 matrix picks Phase 1 production default. **No Phase 1 code until P0 results are in.**
+**Phase 0 corpus (locked 2026-04-29):**
+1. **Because** — Beatles (Abbey Road) — clean studio multitrack, control floor
+2. **Brokedown Palace** — Grateful Dead (American Beauty) — three-part stack, spacious
+3. **Cumberland Blues** — Grateful Dead (Workingman's Dead) — busy mix, multi-singer
+4. **Attics of My Life** — Grateful Dead (American Beauty) — close-harmony trio, tight thirds
+5. **Helplessly Hoping** — CSN — shared-mic harmonies, physics ceiling
+
+All studio sources. Live-SBD slot deferred to P1 UAT.
+
+**Bake-off plan:** Each song × 5 pipelines (Fadr / MelBand-Roformer Karaoke / +MDX-Voc_FT cascade / LALAL.AI Master / SepACap chained on backing-stack). Score blind on 4-criterion scale (5 criteria for SepACap — adds cross-genre transfer eval). 5×5 matrix picks Phase 1 production default. **No Phase 1 client code until P0 picks the winner.**
 
 **Drew's resolved decisions (§14 of plan):**
 - ✅ $50 LALAL.AI Master pack budget approved for bake-off
@@ -29,7 +38,8 @@ _Updated: 2026-04-29 (PM) — Moises ripped out. Stems Intelligence Plan v4 auth
 - ✅ Phrase loops with manual markers in P1, auto-populated by P3
 - ✅ Pan knob ships in Phase 1 (moved from P4)
 - ✅ Per-action source picker (Option A from §4.6) — defaults to North Star, lets band override per-split for cleaner studio source
-- ⏳ Phase 0 test corpus song picks — pending
+- ✅ Phase 0 corpus locked (5 studio masters listed above)
+- ✅ Stage B Modal deployment approved — MelBand-Roformer + SepACap build as bake-off instruments; client UI frozen until P0 names winner
 - ⏳ Phase 2 pan-split confidence-gate threshold — tune during P2 implementation
 - ⏳ Keep ROI order (Dead Guitar before Intelligence) — revisit after P0+P1 ships
 

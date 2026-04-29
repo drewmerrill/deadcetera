@@ -2,7 +2,7 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-29 (PM) — Moises integration ripped out (commit `2713bb3f`). Stems Intelligence Plan v4 authored — research-hardened, ChatGPT-reviewed, ready for Phase 0 quality bake-off. Build `20260429-205047`._
+_Last updated: 2026-04-29 (PM, late) — Phase 0 corpus locked + Stage B Modal deployment approved. Bake-off instruments (MelBand-Roformer Karaoke + SepACap on Modal) build now; client UI frozen until P0 picks winner. Build `20260429-205047`._
 
 ## Session 2026-04-29 (PM) — Moises Rip-Out + Stems Intelligence Plan v4
 
@@ -34,13 +34,14 @@ Confirmed `0/449` songs had `moises_stems` records in Firebase. Self-hosted Demu
 
 **Drew's resolved decisions:**
 1. ✅ $50 LALAL.AI Master pack budget approved for Phase 0 bake-off
-2. ⏳ Phase 0 test corpus — Drew to pick 5 songs (easy → CSN-hard) before Phase 0 begins
+2. ✅ Phase 0 corpus locked — Because (Beatles) / Brokedown / Cumberland / Attics / Helplessly Hoping (CSN). All studio masters; no live-SBD slot
 3. ✅ Coexist with Fadr via `source` flag (no destructive cutover)
 4. ✅ Phrase loops with manual markers in P1, auto-populated by P3
 5. ⏳ P2 pan-split default — confidence-gate-only recommendation, tune during implementation
 6. ✅ **Pan knob ships in Phase 1** (moved from P4)
 7. ✅ Per-action source picker (Option A) implemented in P1
 8. ⏳ Keep ROI ordering as-is (Dead Guitar before Intelligence) — revisit after P0+P1
+9. ✅ Stage B Modal deployment approved — MelBand-Roformer Karaoke + SepACap build now as bake-off instruments; client UI frozen
 
 **Cost reality:** Self-hosted Modal stack ~$18 for full 449-song catalog re-separation. $50 LALAL Master held in reserve for opt-in per-song fallback. Total Phase 0–4 effort: 11–17 days realistic.
 

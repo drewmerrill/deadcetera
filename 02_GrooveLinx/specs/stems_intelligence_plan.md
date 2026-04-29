@@ -285,13 +285,17 @@ When SepACap drops or we re-run with a better separator, what happens to the old
 
 Before committing the production pipeline, prove it works on Deadcetera's real catalog. ChatGPT's advice was right: don't trust marketing claims; trust ears.
 
-### 6.1 Test corpus (5 songs, varied difficulty)
-Drew picks 5 from Active songs covering the difficulty spectrum:
-1. **Easy** — clean studio recording, well-panned (e.g. Touch of Grey studio)
-2. **Medium** — 1980s+ Dead live with separated vocal mic feeds (e.g. recent Dave's Picks)
-3. **Hard** — 1970s SBD with shared mics (Cornell 5/8/77 vocal sections)
-4. **Very Hard** — CSN-style close-harmony Dead moment (e.g. Attics of My Life vocal-trio sections)
-5. **Wildcard** — a non-Dead cover the band actually plays
+### 6.1 Test corpus (5 songs, locked 2026-04-29)
+
+Drew's picks, all studio masters (no live-SBD slot — deliberate; live data lands during P1 UAT):
+
+1. **Because** — The Beatles (Abbey Road, 1969). Clean studio multitrack, three stacked vocal lines (Lennon/McCartney/Harrison). **Easy / control floor.**
+2. **Brokedown Palace** — Grateful Dead (American Beauty, 1970). Three-part stack, spacious arrangement. **Medium.**
+3. **Cumberland Blues** — Grateful Dead (Workingman's Dead, 1970). Busy mix, multi-singer trade-offs and unison sections. **Hard.**
+4. **Attics of My Life** — Grateful Dead (American Beauty, 1970). Tight close-harmony trio, stacked thirds. **Very Hard.**
+5. **Helplessly Hoping** — CSN (Crosby Stills & Nash, 1969). Shared-mic CSN harmonies. **Physics ceiling — expected to defeat the pipeline; measures the upper bound.**
+
+Catalog status: Brokedown, Cumberland, Attics already in Active library. Because and Helplessly Hoping pulled from Spotify/YouTube for the bake-off.
 
 ### 6.2 Run each through 5 pipelines
 | Pipeline | Output kind | Why |
@@ -580,18 +584,19 @@ A Dead band's #1 hassle: "what notes does the lead sing on this verse" + "how do
 
 ### Drew's resolved decisions (2026-04-29)
 1. ✅ **$50 LALAL.AI Master pack budget approved** for Phase 0 bake-off
-2. ⏳ **Phase 0 test corpus** — Drew to pick 5 songs spanning easy → CSN-hard before Phase 0 begins
+2. ✅ **Phase 0 test corpus locked** — Because (Beatles) / Brokedown / Cumberland / Attics / Helplessly Hoping (CSN). All studio masters; no live-SBD slot — defer live testing to P1 UAT
 3. ✅ **Coexist with Fadr** via `source` flag (Option A in §4.6 / 4.5)
 4. ✅ **Phrase loops ship with manual markers in Phase 1**, auto-populated by Phase 3
 5. ⏳ **Phase 2 pan-split default rule** — recommend: confidence-gate-only (no artist tag dependency); revisit if confidence gate underperforms
 6. ✅ **Pan knob ships in Phase 1** (per Drew, helps Harmony Lab mixer)
 7. ✅ **Per-action source picker** (Option A from §4.6) — implemented in Phase 1
 8. ⏳ **ROI ordering (Dead Guitar before Intelligence)** — keep Drew's order; revisit if usage data shows Intelligence is more reached-for during real rehearsals
+9. ✅ **Stage B (Modal MelBand-Roformer + SepACap deployment) approved** — Modal-side bake-off instruments build now; client UI / Harmony Lab integration / source picker stay frozen until P0 results pick the winner
 
 ### Remaining open questions
-- Phase 0 test corpus song picks (Drew, before bake-off)
 - Phase 2 confidence-gate threshold tuning (during Phase 2 implementation)
 - Whether to keep ROI order as-is after Phase 0+1 ships and band uses it for a few weeks
+- Whether to add a 1970s SBD live slot to the bake-off matrix (deferred to P1 UAT — current corpus is studio-only)
 
 ---
 
