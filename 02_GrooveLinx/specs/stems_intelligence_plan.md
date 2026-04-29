@@ -84,44 +84,63 @@ class VocalSeparator:
 
 ### 4.2 Default Phase 1 stack (self-hosted, $0 licensing)
 
+> **2026-04-29 Path-A pivot — what this checkpoint actually does.** Phase 0
+> bake-off proved empirically that the `jarredou/aufr33-viperx-karaoke-
+> melroformer-model` checkpoint is a **vocals/instrumental separator**
+> (its actual training target), not a lead/backing splitter. Earlier
+> revisions of this section described it doing lead/backing — that was
+> wrong. **No reliable self-hosted lead/backing checkpoint exists in
+> the public hub today.** Self-hosted lead/backing remains an open
+> research problem; see §11 for hosted alternatives.
+>
+> The Phase 1 stack below has been rewritten to reflect what's actually
+> achievable with the tooling we have — MelBand-Roformer Karaoke is now
+> a **vocal-isolation comparison row** (versus Demucs vocals), not the
+> harmony-splitter the plan v1–v4 misidentified it as. Lead/backing
+> capability is provided by Fadr (existing) or LALAL.AI / MVSEP Duet
+> (hosted, opt-in). See §11 for the hosted lead/backing options.
+
 ```
                     ┌─────────────────────────────────────┐
                     │ Source song (URL/Drive/Best Shot)   │
                     └──────────────────┬──────────────────┘
-                                       ▼
-                     ┌─────────────────────────────────────┐
-                     │  Demucs htdemucs_ft  (already shipped)  │
-                     │  → vocals.wav + instrumental stems │
-                     └──────────────────┬──────────────────┘
-                                        ▼
-                     ┌─────────────────────────────────────┐
-                     │ MelBand-Roformer Karaoke (NEW)      │
-                     │  → lead.wav + backing_stack.wav     │
-                     │  Self-hosted on Modal T4            │
-                     │  Free (HuggingFace checkpoint)      │
-                     │  Better fit for GrooveLinx's        │
-                     │  harmony workflow than Fadr's       │
-                     │  black-box pipeline                 │
-                     └──────────────────┬──────────────────┘
-                                        ▼
-                     ┌─────────────────────────────────────┐
-                     │ Optional cascade:                   │
-                     │ MDX-Net Voc_FT on the residual      │
-                     │  → cleaner backing if needed        │
-                     │  Self-hosted on Modal               │
-                     └──────────────────┬──────────────────┘
-                                        ▼
-                     ┌─────────────────────────────────────┐
-                     │ Basic Pitch on LEAD ONLY            │
-                     │  → MIDI → ABC notation              │
-                     │  (existing pipeline, app.js:4859)   │
-                     │  Backing stack: audio-only          │
-                     └──────────────────┬──────────────────┘
-                                        ▼
-                     ┌─────────────────────────────────────┐
-                     │ Save to existing harmonies_data     │
-                     │ schema with source: 'melband_v1'    │
-                     └─────────────────────────────────────┘
+                                       │
+                    ┌──────────────────┴──────────────────┐
+                    ▼                                     ▼
+        ┌───────────────────────┐           ┌─────────────────────────┐
+        │ Demucs htdemucs_6s    │           │ MelBand-Roformer Karaoke │
+        │ (already shipped)     │           │ Full mix → instrumental │
+        │ → 6 stems incl. vocals│           │   + vocals (residual)   │
+        │ Self-hosted Modal T4  │           │ Self-hosted Modal T4    │
+        └───────────┬───────────┘           └────────────┬────────────┘
+                    │                                    │
+                    │ vocals.flac                        │ other.flac (vocals)
+                    └────────────┬───────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────┐
+                │ Best vocal isolation wins (P0       │
+                │ scoring) — passed downstream.       │
+                └────────────────┬────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────┐
+                │ Lead/backing split — HOSTED ONLY    │
+                │  · Fadr (existing path)             │
+                │  · LALAL.AI Master ($50, opt-in)    │
+                │  · MVSEP Duet (~$0.04/min, opt-in)  │
+                └────────────────┬────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────┐
+                │ Basic Pitch on LEAD vocal           │
+                │  → MIDI → ABC notation              │
+                │  (existing pipeline, app.js:4859)   │
+                │  Backing stack: audio-only          │
+                └────────────────┬────────────────────┘
+                                 ▼
+                ┌─────────────────────────────────────┐
+                │ Save to existing harmonies_data     │
+                │ schema with source flag             │
+                │ (e.g. 'fadr_v1' / 'lalal_v1')       │
+                └─────────────────────────────────────┘
 ```
 
 ### 4.3 Fallback/comparison stack (hosted, optional, opt-in)
@@ -297,39 +316,52 @@ Drew's picks, all studio masters (no live-SBD slot — deliberate; live data lan
 
 Catalog status: Brokedown, Cumberland, Attics already in Active library. Because and Helplessly Hoping pulled from Spotify/YouTube for the bake-off.
 
-### 6.2 Run each through 5 pipelines
-| Pipeline | Output kind | Why |
+### 6.2 Pipelines under test (path-A revision)
+
+> **2026-04-29 path-A scope reduction.** The original 5-pipeline matrix
+> (Fadr / MelBand-Roformer / cascade / LALAL.AI / SepACap) assumed all
+> five solved the same task. Empirical truth (§4.2 note): no public
+> self-hosted checkpoint reliably splits LEAD from BACKING. Drew picked
+> path A: keep Fadr as the lead/backing tool of record. Bake-off
+> rescoped to **vocal-isolation comparison + experimental multi-voice
+> eval** — not lead/backing comparison.
+
+| Pipeline | Output kind | Why in bake-off |
 |---|---|---|
-| **Fadr** (existing) | lead + N harmony | Baseline; what we have today |
-| **MelBand-Roformer Karaoke** (self-hosted, new) | lead + backing-stack | Proposed Phase 1 default |
-| **MelBand-Roformer Karaoke + MDX-Net Voc_FT cascade** | lead + cleaner backing | Proposed Phase 1 with optional cleanup |
-| **LALAL.AI Master pack** ($50, 750min) | lead + backing | Hosted control / sanity check |
-| **SepACap** (self-hosted, experimental) | S / A / T / B / Lead / V-Perc | **Cross-domain test — first known eval on English rock content.** Run AFTER MelBand-Roformer (chains on the vocals-only output). If it works on close-harmony Dead/CSN, generational advantage. If it doesn't, lose 30 min and we have authoritative answer. |
+| **Demucs** (existing baseline) | full vocals stem | baseline — does any pre-stage beat this? |
+| **MelBand-Roformer Karaoke** (self-hosted, new) | full mix → instrumental + vocals (residual) | does its `other` (vocals) cleanliness beat Demucs's vocals.flac? If yes, add as production pre-stage. |
+| **SepACap** (self-hosted, experimental) | up to 7 voice stems (alto/bass/finger_snap/lead_vocal/soprano/tenor/vocal_percussion) | cross-domain JaCappella → English rock. Does anything come through? |
 
-Total cost: ~$50 (LALAL trial) + Modal compute ~$3.
+Out of bake-off scope (settled production tools, no comparison needed):
+- **Fadr** — confirmed Phase 1 lead/backing source (path A decision)
+- **LALAL.AI Master** — opt-in fallback per §4.6 source picker; not gating P1 ship
+- **MelBand-Roformer + MDX-Voc_FT cascade** — deferred until M-alone scoring shows weak vocal cleanliness
 
-**Note on SepACap chaining:** SepACap expects pure-vocal input (it's an a cappella separator, not a vocals-vs-band stemmer). Run on the **Demucs vocals stem**, not the full mix. The Phase 1 pipeline naturally produces a clean vocals stem — SepACap slots in *after* that.
+Total Modal cost for the 3-pipeline bake-off: ~$0.50 across 5 songs.
+
+**Note on SepACap chaining:** SepACap expects pure-vocal input. Chain order in path A: Demucs (vocals) **OR** MelBand-Roformer (other) → SepACap. Bake-off runs SepACap on whichever vocal stem scored highest cleanliness for that song.
 
 ### 6.3 Score each output (Drew + 1–2 band members listen blind)
-| Criterion | Scale |
-|---|---|
-| Lead vocal isolation quality | 1 (artifact-heavy) → 5 (clean) |
-| Backing-stack quality | 1–5 |
-| Notation usefulness on lead | 1 (unusable) → 5 (sing-along ready) |
-| Bleed (instruments leaking into vocal) | 1 (heavy) → 5 (none) |
-| **(SepACap only)** Individual line separation quality | 1 (mush) → 5 (cleanly distinct voices) |
 
-Output: a 5-row × 5-pipeline matrix. **Pick the production default based on actual band ears, not paper specs.**
+For each song, listen to:
+- Demucs `vocals.flac`
+- MelBand-Roformer `melband_v1/other.flac` (vocals residual)
+- SepACap's 7 voice stems
 
-If SepACap works on even one of the test songs, plan for an experimental "🧪 Try SepACap (Multi-Voice Split)" button in Phase 1 that lets the user opt in per song.
+| Criterion | 1 | 3 | 5 |
+|---|---|---|---|
+| Vocal isolation cleanliness | Heavy instrumental bleed | Recognizable vocals, some bleed | Clean vocals, no audible instrumental |
+| Backing harmony preservation | Backing voices smeared/lost | Backing audible but blurry | All harmony parts clearly preserved |
+| **(SepACap only)** Useful voice stems | All 7 stems mush/silence | 1–2 stems contain plausible isolated voice | 3+ stems clearly distinct voices |
+
+Output: 5-row × 3-pipeline matrix in `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md`.
 
 ### 6.4 Phase 0 exit criteria
-- [ ] Bake-off matrix populated for all 5 songs × 5 pipelines
-- [ ] Decision: which pipeline becomes Phase 1 default
-- [ ] Decision: do we keep LALAL.AI Master as opt-in fallback ($50 buys 750 min, covers ~150 songs)
-- [ ] **Decision on SepACap:** does it generalize to English rock content? If yes, becomes opt-in "experimental multi-voice split" feature in Phase 1. If no, archive and revisit when fine-tuned variants appear
-- [ ] Plan §7 (Phase 1) updated with chosen pipeline
-- [ ] **Bonus:** if SepACap shows surprising results, write up findings — first published cross-genre eval would be reputation-building for GrooveLinx
+- [ ] Bake-off matrix populated for all 5 songs × 3 pipelines
+- [ ] **Decision: should production pipeline run MelBand-Roformer as a vocal-cleanup pre-stage** before Fadr / Basic Pitch? (Yes if M consistently scores higher cleanliness than Demucs vocals.)
+- [ ] **Decision on SepACap:** does it produce useful voice stems on rock content? If yes, ship as opt-in "🧪 Experimental: Multi-Voice Split" button in Phase 1. If no, archive and revisit when fine-tuned variants appear.
+- [ ] Plan §7 (Phase 1) updated with chosen vocal-cleanup config
+- [ ] **Bonus:** if SepACap surprises, write up findings — first published cross-genre JaCappella eval is reputation-building for GrooveLinx
 
 ---
 
@@ -532,7 +564,7 @@ A Dead band's #1 hassle: "what notes does the lead sing on this verse" + "how do
 - Paper: [arXiv 2509.26580](https://arxiv.org/abs/2509.26580), [OpenReview oERJ6K8FIn](https://openreview.net/forum?id=oERJ6K8FIn)
 - **Trained ONLY on JaCappella** (Japanese a cappella children's songs, 35 tracks, 0.57h augmented to 145h)
 - **Cross-genre generalization completely untested** — paper never evaluates on English / popular / live recordings
-- **Architectural constraint:** It's a pure-vocal multi-singer separator. Chain order: full mix → Demucs (existing) → vocals stem → MelBand-Roformer Karaoke (Phase 1) → backing-stack → **SepACap on backing-stack** to attempt SATB/Lead split
+- **Architectural constraint:** It's a pure-vocal multi-singer separator. Path-A chain order (revised 2026-04-29): full mix → Demucs OR MelBand-Roformer Karaoke → vocals stem → **SepACap on vocals stem** to attempt voice-by-voice splits. Earlier plan revisions described chaining on a non-existent "backing stack" produced by MelBand-Roformer; that was based on the v1–v4 misidentification of MelBand-Roformer's training target (it's a vocals/instrumental separator, not lead/backing). Path-A pipeline feeds SepACap whichever vocals stem scored cleanest in the Phase 0 bake-off.
 - **Phase 0 evaluates this empirically.** If the bake-off shows SepACap produces meaningful individual voice splits on a Dead/CSN test song, becomes a Phase 1 opt-in feature. If not, archive
 - **Add as `VocalSeparator` plugin** with `source: 'sepacap_v1'` per the modular architecture in §4. When fine-tuned variants on English/rock corpora appear, swap is trivial
 - **No replyCount on OpenReview** — the workshop track doesn't open peer reviews publicly, so any "positive reviews" online are blog posts, not peer assessments. Treat with appropriate skepticism
@@ -592,6 +624,7 @@ A Dead band's #1 hassle: "what notes does the lead sing on this verse" + "how do
 7. ✅ **Per-action source picker** (Option A from §4.6) — implemented in Phase 1
 8. ⏳ **ROI ordering (Dead Guitar before Intelligence)** — keep Drew's order; revisit if usage data shows Intelligence is more reached-for during real rehearsals
 9. ✅ **Stage B (Modal MelBand-Roformer + SepACap deployment) approved** — Modal-side bake-off instruments build now; client UI / Harmony Lab integration / source picker stay frozen until P0 results pick the winner
+10. ✅ **Path A locked (2026-04-29)** — Phase 0 empirical finding killed plan v4's premise that MelBand-Roformer Karaoke does lead/backing splitting. No public self-hosted checkpoint does this on rock content. Drew chose path A: **Fadr remains the lead/backing tool of record**; MelBand-Roformer pivots to a vocal-cleanup pre-stage candidate; SepACap stays as experimental multi-voice eval. MVSEP API integration (path B) deferred unless P1 UAT shows Fadr's quality is insufficient.
 
 ### Remaining open questions
 - Phase 2 confidence-gate threshold tuning (during Phase 2 implementation)

@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-29 (PM) — Phase 0 corpus locked + Stage B Modal deployment approved. Build `20260429-205047`. Active phase: **Phase 0 Quality Bake-Off — Stage B (instrument build)**._
+_Updated: 2026-04-29 (PM, late) — Phase 0 path-A locked. Empirical bake-off proved no public self-hosted lead/backing checkpoint exists; Drew chose Fadr as lead/backing tool of record. MelBand-Roformer pivots to vocal-cleanup pre-stage candidate, SepACap stays as experimental multi-voice eval. Build `20260429-205047`. Active phase: **Phase 0 Quality Bake-Off — Stage C scoring (path A)**._
 
 ---
 
@@ -11,15 +11,15 @@ _Updated: 2026-04-29 (PM) — Phase 0 corpus locked + Stage B Modal deployment a
 **Master plan:** `02_GrooveLinx/specs/stems_intelligence_plan.md` (v4, research-hardened, ChatGPT-reviewed)
 **Session notes:** `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`
 
-**ROI-ordered roadmap:**
+**ROI-ordered roadmap (path-A revision):**
 | # | Phase | Effort | Status |
 |---|---|---|---|
-| 0 | Quality bake-off (5 songs × 5 separators) | 0.5–1 day | 🔧 Stage B in-flight (Modal split_vocals + sepacap) |
-| 1 | Harmony Painkiller (split + notate + Harmony Lab + source picker + pan knob) | 5–10 days | Blocked by P0 |
+| 0 | Quality bake-off (5 songs × 3 pipelines: Demucs / MelBand / SepACap) | 0.5 day | 🎧 Stage C scoring underway — awaiting blind listen |
+| 1 | Harmony Painkiller — **lead/backing via Fadr (existing)** + Basic Pitch notation + Harmony Lab + source picker + pan knob | 5–10 days | Blocked by P0 vocal-cleanup decision |
 | 2 | Dead Guitar Split (Jerry/Bob via stereo pan) | 1.5–2 days | Blocked by P1 |
 | 3 | Song Intelligence Pass (BPM/key/sections/chords/lyrics) | 3–4 days | Blocked by P2 |
 | 4 | Cheap Polish (waveform, A-B loop, presets) | 1 day | Blocked by P3 |
-| 5 | SepACap multi-voice (experimental, gated on P0 result) | 0.5–1 day | Stage B builds the eval; P1 promotion gated on result |
+| 5 | SepACap multi-voice (experimental, gated on P0 result) | 0.5–1 day | Stage B built the eval; P1 promotion gated on Stage C result |
 
 **Phase 0 corpus (locked 2026-04-29):**
 1. **Because** — Beatles (Abbey Road) — clean studio multitrack, control floor
@@ -39,7 +39,8 @@ All studio sources. Live-SBD slot deferred to P1 UAT.
 - ✅ Pan knob ships in Phase 1 (moved from P4)
 - ✅ Per-action source picker (Option A from §4.6) — defaults to North Star, lets band override per-split for cleaner studio source
 - ✅ Phase 0 corpus locked (5 studio masters listed above)
-- ✅ Stage B Modal deployment approved — MelBand-Roformer + SepACap build as bake-off instruments; client UI frozen until P0 names winner
+- ✅ Stage B Modal deployment approved — MelBand-Roformer + SepACap built as bake-off instruments; client UI frozen until P0 names winner
+- ✅ **Path A locked (2026-04-29)** — no public self-hosted lead/backing checkpoint exists; Fadr stays as lead/backing tool of record. MelBand-Roformer pivots to vocal-cleanup pre-stage candidate. Path B (MVSEP API) deferred unless P1 UAT shows Fadr insufficient.
 - ⏳ Phase 2 pan-split confidence-gate threshold — tune during P2 implementation
 - ⏳ Keep ROI order (Dead Guitar before Intelligence) — revisit after P0+P1 ships
 

@@ -1,104 +1,107 @@
 # Phase 0 Quality Bake-Off — Run Sheet
 
-**Status:** Stage B Modal instruments built (commit pending). Awaiting deploy + source acquisition before Stage C scoring begins.
+**Status:** Path-A pivot locked 2026-04-29. Original lead-vs-backing matrix abandoned after empirical proof that no public self-hosted lead/backing checkpoint exists; Fadr remains lead/backing tool of record (no bake-off needed for it). Bake-off purpose pivoted to **vocal-isolation comparison** + **SepACap multi-voice cross-domain eval**.
 
-**Plan:** `02_GrooveLinx/specs/stems_intelligence_plan.md` §6.
+**Plan:** `02_GrooveLinx/specs/stems_intelligence_plan.md` §6 (now reflects path-A reality).
 
 ---
 
 ## Corpus (locked 2026-04-29)
 
-| # | Song | Album / Year | Difficulty | Source acquired? |
-|---|---|---|---|---|
-| 1 | Because | Beatles · Abbey Road · 1969 | Easy / control floor | ☐ |
-| 2 | Brokedown Palace | Grateful Dead · American Beauty · 1970 | Medium | ☐ |
-| 3 | Cumberland Blues | Grateful Dead · Workingman's Dead · 1970 | Hard | ☐ |
-| 4 | Attics of My Life | Grateful Dead · American Beauty · 1970 | Very Hard | ☐ |
-| 5 | Helplessly Hoping | CSN · self-titled · 1969 | Physics ceiling | ☐ |
+| # | Song | Album / Year | Difficulty |
+|---|---|---|---|
+| 1 | Because | Beatles · Abbey Road · 1969 | Easy / control floor |
+| 2 | Brokedown Palace | Grateful Dead · American Beauty · 1970 | Medium |
+| 3 | Cumberland Blues | Grateful Dead · Workingman's Dead · 1970 | Hard |
+| 4 | Attics of My Life | Grateful Dead · American Beauty · 1970 | Very Hard |
+| 5 | Helplessly Hoping | CSN · self-titled · 1969 | Physics ceiling |
 
-All studio masters. Live-SBD slot deferred to P1 UAT.
+All studio masters via YouTube. Live-SBD slot deferred to P1 UAT.
 
 ---
 
-## Pipelines under test
+## Bake-off purpose (revised, path A)
 
-| Code | Pipeline | Where | Cost |
-|---|---|---|---|
-| **F** | Fadr (existing) | `app.js:4947` Fadr import path | Existing sub |
-| **M** | MelBand-Roformer Karaoke | Modal `split_vocals` | ~$0.04/song T4 |
-| **MC** | MelBand-Roformer + MDX-Voc_FT cascade | Deferred — adds in follow-up if M alone underperforms | TBD |
-| **L** | LALAL.AI Master pack | lalal.ai web UI, manual upload | $50 / 750 min |
-| **S** | SepACap (multi-voice, experimental) | Modal `sepacap_split` chained on M's backing-stack | ~$0.04/song T4 |
+The bake-off no longer measures "which tool does lead/backing best" — that's settled (Fadr stays). Bake-off now answers two narrower questions:
+
+1. **Should the production pipeline run MelBand-Roformer on the full mix as a vocal-cleanup pre-stage before Fadr / Basic Pitch?** Tested by: listening blind to Demucs `vocals.flac` vs MelBand `other.flac` for each song; whichever has cleaner vocal isolation feeds downstream tools.
+
+2. **Does SepACap produce anything useful on rock content?** First known cross-domain eval. Output: 7 voice stems per song. Listening test identifies which (if any) stems contain plausibly-isolated voices vs mush/silence/noise.
+
+---
+
+## Pipelines under test (revised)
+
+| Code | Pipeline | Where | Cost | Bake-off question |
+|---|---|---|---|---|
+| **D** | Demucs (existing) | Modal `separate_stems` | ~$0.005/song | baseline vocals — does the pre-stage beat this? |
+| **M** | MelBand-Roformer Karaoke | Modal `split_vocals` | ~$0.04/song T4 | better vocals than D? |
+| **S** | SepACap | Modal `sepacap_split` chained on best vocals | ~$0.04/song T4 | does anything come through on rock content? |
+
+Fadr (lead/backing) and LALAL.AI (opt-in fallback) are out of scope for this bake-off — they're settled production tools, not under test.
 
 ---
 
 ## Scoring rubric (blind listen, Drew + 1–2 band members)
 
-For each cell, score 1–5 (5 = best). Fill after listening blind to which pipeline produced the stem.
-
 | Criterion | 1 | 3 | 5 |
 |---|---|---|---|
-| **Lead isolation** | Artifact-heavy, lots of bleed | Recognizable lead, some warble | Clean isolated lead, sing-along-ready |
-| **Backing-stack quality** | Mush, lost voices | Voices audible, some smear | All harmony parts clearly distinguishable |
-| **Notation usefulness** (lead → ABC via Basic Pitch — applied later) | Wrong notes, unusable | Most notes right, edits needed | Singing-perfect transcription |
-| **Bleed** (instruments leaking into vocal) | Drums/guitar audible in vocal | Some instrumental shadow | None |
-| **(SepACap only) Individual voice separation** | All 7 stems are mush or silence | Some stems plausibly distinct voices | Cleanly distinct soprano/alto/tenor/etc |
+| **Vocal isolation cleanliness** | Heavy instrumental bleed | Recognizable vocals, some bleed | Clean vocals, no audible instrumental |
+| **Backing harmony preservation** | Backing voices smeared/lost | Backing audible but blurry | All harmony parts clearly preserved |
+| **(SepACap only) Useful voice stems** | All 7 stems mush/silence | 1–2 stems contain plausible isolated voice | 3+ stems clearly distinct voices |
 
 ---
 
-## Run matrix
+## Run matrix (revised)
 
-Format: each cell holds `[R2 link · score · score · score · score]` once produced and listened. Empty `—` until that pipeline×song run lands.
+R2 base: `https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/`
 
-### 1. Because — Beatles
+Stems live at predictable paths:
+- Demucs vocals: `{song-id}/vocals.flac`
+- MelBand vocals (residual): `{song-id}/melband_v1/other.flac`
+- MelBand instrumental: `{song-id}/melband_v1/karaoke.wav`
+- SepACap voices: `{song-id}/sepacap_v1/{voice}.flac` (alto, bass, finger_snap, lead_vocal, soprano, tenor, vocal_percussion)
 
-| Pipeline | Lead | Backing | Notation | Bleed | Multi-voice | Notes |
-|---|---|---|---|---|---|---|
-| F  | — | — | — | — | n/a | |
-| M  | — | — | — | — | n/a | |
-| MC | — | — | — | — | n/a | |
-| L  | — | — | — | — | n/a | |
-| S  | — | — | n/a | — | — | chains on M backing |
+### 1. Because — Beatles · `bakeoff-because`
+Status: ☑ ran (build 4) — Demucs ✓ MelBand ✓ SepACap ✗ (shape error, fixed in build 5)
 
-### 2. Brokedown Palace — Grateful Dead
+| Pipeline | Vocal cleanliness | Backing preserved | Useful voices | Listen + notes |
+|---|---|---|---|---|
+| Demucs vocals | — | — | n/a | `bakeoff-because/vocals.flac` |
+| MelBand other | — | — | n/a | `bakeoff-because/melband_v1/other.flac` |
+| SepACap | n/a | n/a | — | (re-run pending after shape fix) |
 
-| Pipeline | Lead | Backing | Notation | Bleed | Multi-voice | Notes |
-|---|---|---|---|---|---|---|
-| F  | — | — | — | — | n/a | |
-| M  | — | — | — | — | n/a | |
-| MC | — | — | — | — | n/a | |
-| L  | — | — | — | — | n/a | |
-| S  | — | — | n/a | — | — | chains on M backing |
+### 2. Brokedown Palace · `bakeoff-brokedown`
 
-### 3. Cumberland Blues — Grateful Dead
+| Pipeline | Vocal cleanliness | Backing preserved | Useful voices | Listen + notes |
+|---|---|---|---|---|
+| Demucs vocals | — | — | n/a | `bakeoff-brokedown/vocals.flac` |
+| MelBand other | — | — | n/a | `bakeoff-brokedown/melband_v1/other.flac` |
+| SepACap | n/a | n/a | — | `bakeoff-brokedown/sepacap_v1/...` |
 
-| Pipeline | Lead | Backing | Notation | Bleed | Multi-voice | Notes |
-|---|---|---|---|---|---|---|
-| F  | — | — | — | — | n/a | |
-| M  | — | — | — | — | n/a | |
-| MC | — | — | — | — | n/a | |
-| L  | — | — | — | — | n/a | |
-| S  | — | — | n/a | — | — | chains on M backing |
+### 3. Cumberland Blues · `bakeoff-cumberland`
 
-### 4. Attics of My Life — Grateful Dead
+| Pipeline | Vocal cleanliness | Backing preserved | Useful voices | Listen + notes |
+|---|---|---|---|---|
+| Demucs vocals | — | — | n/a | `bakeoff-cumberland/vocals.flac` |
+| MelBand other | — | — | n/a | `bakeoff-cumberland/melband_v1/other.flac` |
+| SepACap | n/a | n/a | — | `bakeoff-cumberland/sepacap_v1/...` |
 
-| Pipeline | Lead | Backing | Notation | Bleed | Multi-voice | Notes |
-|---|---|---|---|---|---|---|
-| F  | — | — | — | — | n/a | |
-| M  | — | — | — | — | n/a | |
-| MC | — | — | — | — | n/a | |
-| L  | — | — | — | — | n/a | |
-| S  | — | — | n/a | — | — | chains on M backing |
+### 4. Attics of My Life · `bakeoff-attics`
 
-### 5. Helplessly Hoping — CSN
+| Pipeline | Vocal cleanliness | Backing preserved | Useful voices | Listen + notes |
+|---|---|---|---|---|
+| Demucs vocals | — | — | n/a | `bakeoff-attics/vocals.flac` |
+| MelBand other | — | — | n/a | `bakeoff-attics/melband_v1/other.flac` |
+| SepACap | n/a | n/a | — | `bakeoff-attics/sepacap_v1/...` |
 
-| Pipeline | Lead | Backing | Notation | Bleed | Multi-voice | Notes |
-|---|---|---|---|---|---|---|
-| F  | — | — | — | — | n/a | |
-| M  | — | — | — | — | n/a | |
-| MC | — | — | — | — | n/a | |
-| L  | — | — | — | — | n/a | |
-| S  | — | — | n/a | — | — | chains on M backing |
+### 5. Helplessly Hoping · `bakeoff-helplessly`
+
+| Pipeline | Vocal cleanliness | Backing preserved | Useful voices | Listen + notes |
+|---|---|---|---|---|
+| Demucs vocals | — | — | n/a | `bakeoff-helplessly/vocals.flac` |
+| MelBand other | — | — | n/a | `bakeoff-helplessly/melband_v1/other.flac` |
+| SepACap | n/a | n/a | — | `bakeoff-helplessly/sepacap_v1/...` |
 
 ---
 

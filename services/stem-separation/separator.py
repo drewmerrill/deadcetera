@@ -39,6 +39,87 @@ import modal
 
 app = modal.App("groovelinx-stem-separator")
 
+
+def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
+    """Fetch audio bytes from a URL.
+
+    Direct HTTP GET first; if the response is HTML or under 1 KB the
+    URL is most likely a YouTube/SoundCloud/etc. watch page and we
+    fall back to yt-dlp through the IPRoyal residential proxy
+    (YouTube bot-challenges Modal cloud IPs).
+
+    Used by every Modal function that accepts a source URL — the
+    Demucs `separate_stems`, the MelBand-Roformer `split_vocals`, and
+    SepACap when called with a non-R2 URL.
+    """
+    import re
+    import tempfile
+    import uuid
+
+    import requests
+
+    print(f"{log_prefix} Downloading source: {source_url[:80]}...")
+    r = requests.get(source_url, timeout=120, allow_redirects=True)
+    r.raise_for_status()
+    ctype = r.headers.get("content-type", "")
+    audio_bytes = r.content
+    print(
+        f"{log_prefix} Downloaded {len(audio_bytes) / 1024 / 1024:.1f} MB "
+        f"(content-type: {ctype})"
+    )
+
+    if ctype.startswith("text/") or len(audio_bytes) < 1024:
+        print(f"{log_prefix} HTML/empty response — falling back to yt-dlp")
+        import yt_dlp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outtmpl = os.path.join(tmpdir, "audio.%(ext)s")
+            ydl_opts = {
+                "outtmpl": outtmpl,
+                "quiet": True,
+                "no_warnings": True,
+                "noplaylist": True,
+                "nocheckcertificate": True,
+                "format": "bestaudio/best",
+            }
+            # Sticky-session residential proxy — YouTube signs audio URLs
+            # against the manifest-fetch IP, so all requests in one
+            # extraction must share an exit IP. country-us also gives
+            # cleaner audio formats than random geo.
+            proxy = os.environ.get("IPROYAL_PROXY_URL", "").strip()
+            if proxy:
+                session = uuid.uuid4().hex[:10]
+                proxy = re.sub(
+                    r"^(https?://[^:]+:)([^@]+)(@)",
+                    rf"\1\2_country-us_session-{session}_lifetime-10m\3",
+                    proxy,
+                )
+                ydl_opts["proxy"] = proxy
+                print(
+                    f"{log_prefix} yt-dlp via residential proxy "
+                    f"(sticky session={session})"
+                )
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.extract_info(source_url, download=True)
+            except Exception as e:
+                raise RuntimeError(
+                    f"yt-dlp could not extract audio from {source_url[:80]}: {e}"
+                )
+            files = [f for f in os.listdir(tmpdir) if f.startswith("audio.")]
+            if not files:
+                raise RuntimeError(
+                    f"yt-dlp ran but produced no audio file for {source_url[:80]}"
+                )
+            with open(os.path.join(tmpdir, files[0]), "rb") as f:
+                audio_bytes = f.read()
+            print(
+                f"{log_prefix} yt-dlp produced "
+                f"{len(audio_bytes) / 1024 / 1024:.1f} MB ({files[0]})"
+            )
+
+    return audio_bytes
+
 # Image: Demucs needs torch + torchaudio + ffmpeg for MP3 input. We pin
 # torch 2.1 because demucs 4.0.x is tested against it; newer torch versions
 # occasionally regress on CUDA wheel availability for T4.
@@ -102,83 +183,7 @@ def separate_stems(
 
     started = time.time()
 
-    print(f"[Stems] Downloading source: {source_url[:80]}...")
-    r = requests.get(source_url, timeout=120, allow_redirects=True)
-    r.raise_for_status()
-    ctype = r.headers.get("content-type", "")
-    audio_bytes = r.content
-    print(
-        f"[Stems] Downloaded {len(audio_bytes) / 1024 / 1024:.1f} MB "
-        f"(content-type: {ctype})"
-    )
-    # If we got HTML instead of audio, try yt-dlp — most likely the user
-    # pasted a YouTube/SoundCloud/Bandcamp watch URL. yt-dlp handles
-    # extraction across ~1700 sites. Spotify still won't work (DRM).
-    if ctype.startswith("text/") or len(audio_bytes) < 1024:
-        print("[Stems] HTML/empty response — falling back to yt-dlp")
-        import tempfile
-
-        import yt_dlp
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            outtmpl = os.path.join(tmpdir, "audio.%(ext)s")
-            # YouTube throttles many cloud-provider IPs for audio-only DASH
-            # streams. The android/ios/tv player_clients use different
-            # extractor paths that are often still served. Try them in order
-            # and accept any combined or audio-only format that downloads.
-            ydl_opts = {
-                "outtmpl": outtmpl,
-                "quiet": True,
-                "no_warnings": True,
-                "noplaylist": True,
-                "nocheckcertificate": True,
-                "format": "bestaudio/best",
-            }
-            # Route yt-dlp through a residential proxy when configured.
-            # YouTube/Google bot-challenges Modal's cloud IPs; a residential
-            # proxy (e.g., IPRoyal pay-as-you-go) bypasses the challenge.
-            # Only the yt-dlp path uses the proxy — direct fetches of our
-            # own R2/worker URLs don't need to burn residential bandwidth.
-            #
-            # CRITICAL: inject a sticky-session modifier so all yt-dlp HTTP
-            # requests in this extraction share the same exit IP. Without
-            # it, the rotating pool gives one IP for the manifest fetch
-            # and a different IP for the audio download — YouTube signs
-            # the audio URL against the manifest-fetch IP, so the audio
-            # download returns HTTP 403 Forbidden. country-us also tends
-            # to give cleaner audio formats than random geo.
-            proxy = os.environ.get("IPROYAL_PROXY_URL", "").strip()
-            if proxy:
-                import re
-                import uuid
-                session = uuid.uuid4().hex[:10]
-                # IPRoyal modifiers go in the password field, suffixed with
-                # underscores: PASSWORD_country-us_session-X_lifetime-10m
-                proxy = re.sub(
-                    r"^(https?://[^:]+:)([^@]+)(@)",
-                    rf"\1\2_country-us_session-{session}_lifetime-10m\3",
-                    proxy,
-                )
-                ydl_opts["proxy"] = proxy
-                print(f"[Stems] yt-dlp via residential proxy (sticky session={session})")
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.extract_info(source_url, download=True)
-            except Exception as e:
-                raise RuntimeError(
-                    f"yt-dlp could not extract audio from {source_url[:80]}: {e}"
-                )
-            files = [f for f in os.listdir(tmpdir) if f.startswith("audio.")]
-            if not files:
-                raise RuntimeError(
-                    f"yt-dlp ran but produced no audio file for {source_url[:80]}"
-                )
-            with open(os.path.join(tmpdir, files[0]), "rb") as f:
-                audio_bytes = f.read()
-            print(
-                f"[Stems] yt-dlp produced {len(audio_bytes) / 1024 / 1024:.1f} MB "
-                f"({files[0]})"
-            )
+    audio_bytes = _fetch_audio_bytes(source_url, log_prefix="[Stems]")
 
     # ffmpeg is the universal decoder (installed via apt above). Pipe input
     # bytes via stdin → pcm_f32le stereo @ 44.1k on stdout. Avoids torchaudio's
@@ -347,6 +352,23 @@ vocals_image = (
         "scipy",
         "pytorch-lightning==2.1.4",
         "ml_collections",
+        # ZFTurbo's MSS framework imports these at module-import time
+        # even though they're training-only — installing them here
+        # keeps `from inference import proc_folder` from blowing up.
+        "matplotlib",
+        "wandb",
+        "loralib",
+        "beartype",
+        # SepACap's import path — `src.model` pulls in `src.utils.decorators`
+        # which imports loguru. Plus speechbrain + HyperPyYAML are likely
+        # required by the SepACap Model class. Adding fat-front since
+        # iteration cost on missing deps adds up.
+        "loguru",
+        "speechbrain",
+        "HyperPyYAML",
+        "julius",
+        "typeguard",
+        "huggingface-hub",
     )
     .run_commands(
         "git clone --depth 1 https://github.com/ZFTurbo/Music-Source-Separation-Training.git /opt/mss",
@@ -373,19 +395,30 @@ vocals_image = (
     secrets=[modal.Secret.from_name("groovelinx-stems")],
     scaledown_window=60,
 )
-def split_vocals(vocals_url: str, song_id: str) -> dict:
-    """MelBand-Roformer Karaoke: vocals stem → lead/backing split.
+def split_vocals(source_url: str, song_id: str) -> dict:
+    """MelBand-Roformer Karaoke: full mix → vocals/instrumental.
 
-    Input is typically the vocals.flac stem produced by separate_stems
-    (Demucs), but accepts any stereo audio URL. The karaoke MelBand-
-    Roformer was trained to split a vocal-only mix into 'karaoke' and
-    'other' tracks per its YAML labels — the bake-off identifies which
-    label corresponds to lead vs backing on first listen.
+    Path A pivot (2026-04-29): empirical bake-off proved this checkpoint
+    is a vocals/instrumental separator (its actual training target), not
+    a lead/backing splitter as plan §4.2 originally assumed. Plan was
+    updated to reflect reality. This function now takes the FULL MIX URL
+    (not the Demucs vocals stem) and produces:
+
+      - karaoke.flac  → instrumental component (no vocals)
+      - other.flac    → vocals component (computed as source - karaoke
+                        residual since ZFTurbo's writer only emits the
+                        primary target stem by default)
+
+    The bake-off uses this checkpoint to test "is MelBand a *better
+    vocal isolator* than Demucs?" — its `other.flac` output competes
+    with Demucs's `vocals.flac` as the cleaner input for SepACap and
+    for downstream lead/backing tools.
 
     YAML config: stereo, 44.1 kHz, chunk_size 352800 (8 s),
     num_overlap 4, batch_size 1. Fits 16 GB T4.
     """
     import glob
+    import io as _io
     import subprocess
     import sys
     import tempfile
@@ -393,17 +426,15 @@ def split_vocals(vocals_url: str, song_id: str) -> dict:
     sys.path.insert(0, "/opt/mss")
 
     import boto3
+    import numpy as np
     import requests
+    import soundfile as sf
     from botocore.config import Config
     from inference import proc_folder  # ZFTurbo's MSS framework
 
     started = time.time()
 
-    print(f"[SplitVocals] Downloading source: {vocals_url[:80]}...")
-    r = requests.get(vocals_url, timeout=120, allow_redirects=True)
-    r.raise_for_status()
-    audio_bytes = r.content
-    print(f"[SplitVocals] Downloaded {len(audio_bytes) / 1024 / 1024:.1f} MB")
+    audio_bytes = _fetch_audio_bytes(source_url, log_prefix="[SplitVocals]")
 
     with tempfile.TemporaryDirectory() as tmp:
         in_dir = os.path.join(tmp, "in")
@@ -444,9 +475,38 @@ def split_vocals(vocals_url: str, song_id: str) -> dict:
         })
 
         outputs = sorted(
-            glob.glob(os.path.join(out_dir, "**", "*"), recursive=True)
+            glob.glob(os.path.join(out_dir, "**", "*.wav"), recursive=True)
+            + glob.glob(os.path.join(out_dir, "**", "*.flac"), recursive=True)
         )
-        print(f"[SplitVocals] Output files: {[os.path.basename(p) for p in outputs]}")
+        print(f"[SplitVocals] Output audio files: "
+              f"{[os.path.basename(p) for p in outputs]}")
+
+        # Find the karaoke (instrumental) stem ZFTurbo produced.
+        karaoke_path = None
+        for path in outputs:
+            if "karaoke" in os.path.basename(path).lower():
+                karaoke_path = path
+                break
+        if not karaoke_path:
+            raise RuntimeError(
+                f"MelBand-Roformer produced no 'karaoke' stem. "
+                f"Files: {[os.path.basename(p) for p in outputs]}"
+            )
+
+        # Compute the residual 'other' stem (= vocals component) by
+        # subtracting karaoke from source. Both files are 44.1 kHz
+        # stereo at this point so subtraction is sample-aligned.
+        karaoke_audio, sr_k = sf.read(karaoke_path, always_2d=True)
+        source_audio, sr_s = sf.read(in_path, always_2d=True)
+        if sr_k != sr_s:
+            raise RuntimeError(
+                f"Sample-rate mismatch karaoke={sr_k} source={sr_s}"
+            )
+        n = min(len(karaoke_audio), len(source_audio))
+        other_audio = source_audio[:n].astype(np.float32) - \
+                      karaoke_audio[:n].astype(np.float32)
+        print(f"[SplitVocals] Computed residual 'other' stem: "
+              f"{n / sr_k:.1f}s, peak={np.max(np.abs(other_audio)):.3f}")
 
         s3 = boto3.client(
             "s3",
@@ -460,40 +520,36 @@ def split_vocals(vocals_url: str, song_id: str) -> dict:
         public_base = os.environ["R2_PUBLIC_BASE"].rstrip("/")
 
         urls = {}
-        for path in outputs:
-            if not path.lower().endswith((".wav", ".flac")):
-                continue
-            fname = os.path.basename(path).lower()
-            # ZFTurbo's filename template is {fname}_{instr}.{codec}.
-            # Karaoke config exposes instruments 'karaoke' and 'other'.
-            label = None
-            for instr in ("karaoke", "other"):
-                if instr in fname:
-                    label = instr
-                    break
-            if not label:
-                print(f"[SplitVocals] WARN: unrecognized output {fname}")
-                continue
-            with open(path, "rb") as f:
-                body = f.read()
-            key = f"stems/{song_id}/melband_v1/{label}.flac"
-            # If output is WAV (peak-amplitude clip avoidance), upload
-            # as-is — bake-off scoring tolerates either codec.
-            content_type = "audio/wav" if path.lower().endswith(".wav") else "audio/flac"
-            if content_type == "audio/wav":
-                key = key.replace(".flac", ".wav")
-            s3.put_object(
-                Bucket=bucket,
-                Key=key,
-                Body=body,
-                ContentType=content_type,
-                CacheControl="public, max-age=31536000, immutable",
-            )
-            urls[label] = f"{public_base}/{key}"
-            print(
-                f"[SplitVocals] Uploaded {label}: "
-                f"{len(body) / 1024 / 1024:.1f} MB -> {urls[label]}"
-            )
+
+        # Upload karaoke (as-is from ZFTurbo)
+        with open(karaoke_path, "rb") as f:
+            karaoke_body = f.read()
+        karaoke_key = f"stems/{song_id}/melband_v1/karaoke.wav" \
+            if karaoke_path.lower().endswith(".wav") \
+            else f"stems/{song_id}/melband_v1/karaoke.flac"
+        karaoke_ctype = "audio/wav" if karaoke_key.endswith(".wav") else "audio/flac"
+        s3.put_object(
+            Bucket=bucket, Key=karaoke_key, Body=karaoke_body,
+            ContentType=karaoke_ctype,
+            CacheControl="public, max-age=31536000, immutable",
+        )
+        urls["karaoke"] = f"{public_base}/{karaoke_key}"
+        print(f"[SplitVocals] Uploaded karaoke: "
+              f"{len(karaoke_body) / 1024 / 1024:.1f} MB -> {urls['karaoke']}")
+
+        # Upload other (residual we just computed) as FLAC
+        buf = _io.BytesIO()
+        sf.write(buf, other_audio, sr_k, format="FLAC")
+        other_body = buf.getvalue()
+        other_key = f"stems/{song_id}/melband_v1/other.flac"
+        s3.put_object(
+            Bucket=bucket, Key=other_key, Body=other_body,
+            ContentType="audio/flac",
+            CacheControl="public, max-age=31536000, immutable",
+        )
+        urls["other"] = f"{public_base}/{other_key}"
+        print(f"[SplitVocals] Uploaded other: "
+              f"{len(other_body) / 1024 / 1024:.1f} MB -> {urls['other']}")
 
     elapsed = time.time() - started
     print(f"[SplitVocals] Done in {elapsed:.1f}s")
@@ -504,6 +560,7 @@ def split_vocals(vocals_url: str, song_id: str) -> dict:
         "source": "melband_roformer_karaoke_v1",
         "model_sdr_benchmark": 10.1956,
         "elapsed_sec": elapsed,
+        "note": "karaoke=instrumental, other=vocals (residual from source-karaoke)",
     }
 
 
@@ -521,13 +578,16 @@ def split_vocals_http(item: dict):
     if item.get("token", "") != expected_token:
         return {"success": False, "error": "unauthorized"}
 
-    vocals_url = item.get("vocals_url", "")
+    # Accept legacy `vocals_url` body field as alias for `source_url`
+    # so any in-flight callers don't break — but document `source_url`
+    # going forward.
+    source_url = item.get("source_url", item.get("vocals_url", ""))
     song_id = item.get("song_id", "")
-    if not vocals_url or not song_id:
-        return {"success": False, "error": "missing vocals_url or song_id"}
+    if not source_url or not song_id:
+        return {"success": False, "error": "missing source_url or song_id"}
 
     try:
-        return split_vocals.remote(vocals_url, song_id)
+        return split_vocals.remote(source_url, song_id)
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -605,9 +665,13 @@ def sepacap_split(backing_url: str, song_id: str) -> dict:
     # may OOM on T4. If this trips, the fix is sliding-window inference —
     # for now we attempt the whole-song pass as the first data point and
     # let the bake-off run record success/failure.
+    #
+    # Shape fix (2026-04-29): SepACap's AudioEncoder adds its own batch
+    # dim internally — passing [1, samples] (mono, 2D) lets the model
+    # take it to [1, 1, samples] for conv1d. Earlier unsqueeze made it 4D.
     print("[SepACap] Running inference (no chunking — research path)...")
     with torch.no_grad():
-        audio_input = audio.to(device).unsqueeze(0)  # [1, 1, samples]
+        audio_input = audio.to(device)  # [1, samples] mono
         separated_sources, _ = model(audio_input)
 
     voice_names = [

@@ -62,16 +62,15 @@ def run_song(source_url: str, song_id: str, *, do_sepacap: bool = True) -> dict:
         print(f"    {stem:12s} → {url}")
     result["demucs"] = demucs
 
-    vocals_url = demucs["stems"].get("vocals")
-    if not vocals_url:
-        print("  WARN: no vocals stem returned, skipping downstream stages")
-        return result
-
-    # Stage 2: MelBand-Roformer Karaoke
+    # Stage 2: MelBand-Roformer Karaoke (full mix → instrumental + vocals).
+    # Path A pivot: this checkpoint is a vocals/instrumental separator
+    # (its actual training target), not lead/backing as plan §4.2 once
+    # assumed. We feed it the FULL MIX, not the Demucs vocals stem, and
+    # use its `other` output (= vocals) for the downstream SepACap eval.
     print("\n[2/3] Running MelBand-Roformer Karaoke (split_vocals)...")
     t0 = time.time()
     split_vocals = _lookup("split_vocals")
-    melband = split_vocals.remote(vocals_url, song_id)
+    melband = split_vocals.remote(source_url, song_id)
     if not melband.get("success"):
         print(f"  FAIL: {melband}")
         result["melband"] = melband
@@ -86,20 +85,19 @@ def run_song(source_url: str, song_id: str, *, do_sepacap: bool = True) -> dict:
         print("\n[3/3] Skipping SepACap (--no-sepacap)")
         return result
 
-    # Stage 3: SepACap on the backing-stack
-    backing_url = melband["stems"].get("karaoke")
-    if not backing_url:
-        print("\n  WARN: no 'karaoke' stem returned by split_vocals — "
-              "trying 'other' as fallback for SepACap input")
-        backing_url = melband["stems"].get("other")
-    if not backing_url:
-        print("\n  WARN: no usable stem for SepACap, skipping")
+    # Stage 3: SepACap on MelBand's vocals output (the `other` stem).
+    # SepACap is a pure-vocal multi-singer separator; feed it the
+    # cleanest vocals we have. Falls back to Demucs vocals if MelBand
+    # didn't produce an `other` stem for some reason.
+    sepacap_input = melband["stems"].get("other") or demucs["stems"].get("vocals")
+    if not sepacap_input:
+        print("\n  WARN: no usable vocal stem for SepACap, skipping")
         return result
 
-    print(f"\n[3/3] Running SepACap on backing-stack ({backing_url[:60]}...)")
+    print(f"\n[3/3] Running SepACap on vocals stem ({sepacap_input[:60]}...)")
     t0 = time.time()
     sepacap = _lookup("sepacap_split")
-    sa = sepacap.remote(backing_url, song_id)
+    sa = sepacap.remote(sepacap_input, song_id)
     if not sa.get("success"):
         print(f"  FAIL: {sa}")
         result["sepacap"] = sa
