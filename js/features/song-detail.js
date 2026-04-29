@@ -438,7 +438,11 @@ async function _sdPopulateBandLens(title) {
     }
 
     // ── SHARPEN MODE: band lens shows chart + band context (Song Info lives in right panel) ──
-    if (mode === 'sharpen') {
+    // `mode` was never actually parameterized into this function (same as the
+    // play branch above). typeof-guard prevents ReferenceError on every render
+    // — the only call sites today never set `mode`, so this branch is dead
+    // until a future caller introduces the parameter.
+    if (typeof mode !== 'undefined' && mode === 'sharpen') {
         panel.innerHTML =
             '<div class="sd-panel-inner">'+
             _sdRenderBandChart(title, safeSong, chartText)+
@@ -1752,7 +1756,7 @@ function _sdRenderStemsPlayer(title, stems) {
           '</div>' +
           '<button class="sd-stem-mute" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Mute</button>' +
           '<button class="sd-stem-solo" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Solo</button>' +
-          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" src="' + _sdEsc(s[st.id]) + '" crossorigin="anonymous"></audio>' +
+          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" src="' + _sdEsc(s[st.id]) + '"></audio>' +
         '</div>';
     }).join('');
     var when = stems.separatedAt ? new Date(stems.separatedAt).toLocaleString() : '';
