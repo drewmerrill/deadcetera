@@ -1,8 +1,19 @@
 # Stem Separation Service
 
 HT-Demucs running on Modal (T4 GPU, scale-to-zero). Triggered by the Cloudflare
-Worker's `/stems/separate` route. Source audio in → 4 stems out (drums, bass,
-vocals, other), uploaded to Cloudflare R2 as FLAC.
+Worker's `/stems/separate` route. Source audio in → 4 (or 6) stems out, uploaded
+to Cloudflare R2 as FLAC.
+
+This service also hosts the **Phase 0 bake-off instruments** for the Stems
+Intelligence plan (`02_GrooveLinx/specs/stems_intelligence_plan.md`):
+
+- `split_vocals` — MelBand-Roformer Karaoke checkpoint, splits a vocals stem
+  into lead/backing tracks.
+- `sepacap_split` — SepACap experimental multi-voice separator (cross-domain
+  eval — model trained only on JaCappella).
+
+Neither is wired to the GrooveLinx client yet; Phase 1 promotion is gated on
+the bake-off matrix in `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md`.
 
 ## One-time setup
 
@@ -103,6 +114,49 @@ Expected: ~60-120s on cold start, ~30s warm. Response shape:
 - **Concurrency:** Modal autoscales up to 100 containers by default. For a
   band tool, 1 concurrent request is fine — set `max_containers=2` on the
   function decorator if cost becomes a concern.
+
+## Phase 0 bake-off endpoints
+
+After `modal deploy` redeploys the app, two new HTTP endpoints come online:
+
+```
+POST <modal-base>--split-vocals-http
+  body: { vocals_url, song_id, token }
+  → { stems: { karaoke, other }, source: "melband_roformer_karaoke_v1", ... }
+
+POST <modal-base>--sepacap-http
+  body: { backing_url, song_id, token }
+  → { stems: { alto, bass, finger_snap, lead_vocal, soprano, tenor, vocal_percussion },
+      source: "sepacap_v1", ... }
+```
+
+Modal will print the exact URLs after deploy. The token is the same
+`STEMS_SHARED_SECRET` already configured in the Modal secret.
+
+**Image growth:** baking the MelBand-Roformer checkpoint (913 MB) and
+SepACap weights (161 MB) into the image adds ~1.07 GB. Image rebuilds
+are layer-cached, so changes to `separator.py` that don't touch the
+weight-download `run_commands` rebuild fast. First deploy after this
+change will take 5–10 minutes (HF pulls run inside Modal builders).
+
+**Smoke-test the new functions:**
+
+```bash
+# 1. Run regular Demucs to get a vocals stem URL
+curl -X POST <SEPARATE_URL> -H 'Content-Type: application/json' \
+  -d '{"source_url":"<song-url>","song_id":"bakeoff-because","token":"<TOKEN>"}'
+
+# 2. Pipe the vocals.flac URL through MelBand-Roformer Karaoke
+curl -X POST <SPLIT_VOCALS_URL> -H 'Content-Type: application/json' \
+  -d '{"vocals_url":"<from step 1>","song_id":"bakeoff-because","token":"<TOKEN>"}'
+
+# 3. Pipe the backing-stack URL ("karaoke" stem) through SepACap
+curl -X POST <SEPACAP_URL> -H 'Content-Type: application/json' \
+  -d '{"backing_url":"<from step 2>","song_id":"bakeoff-because","token":"<TOKEN>"}'
+```
+
+The bake-off run sheet (`02_GrooveLinx/notes/session_2026-04-29_bakeoff.md`)
+tracks the 5×5 matrix Drew + band score blind.
 
 ## Architecture notes
 

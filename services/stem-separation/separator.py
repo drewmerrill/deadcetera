@@ -321,3 +321,377 @@ def separate(item: dict):
         return separate_stems.remote(source_url, song_id, model_name)
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ============================================================================
+# Phase 0 bake-off instruments
+# ============================================================================
+# MelBand-Roformer Karaoke (lead/backing split) and SepACap (multi-voice
+# cross-domain eval). These deploy as Modal functions only — no client UI
+# wires to them yet. Phase 1 promotion gated on the bake-off matrix in
+# 02_GrooveLinx/specs/stems_intelligence_plan.md §6.
+#
+# The image bakes both checkpoints into the layer (1.07 GB total) so cold
+# starts skip the HuggingFace pull. ZFTurbo's MSS framework drives MelBand-
+# Roformer; SepACap's research repo drives the multi-voice path.
+# ============================================================================
+
+vocals_image = (
+    image.apt_install("git", "wget")
+    .pip_install(
+        "omegaconf",
+        "einops",
+        "rotary_embedding_torch",
+        "librosa",
+        "PyYAML",
+        "scipy",
+        "pytorch-lightning==2.1.4",
+        "ml_collections",
+    )
+    .run_commands(
+        "git clone --depth 1 https://github.com/ZFTurbo/Music-Source-Separation-Training.git /opt/mss",
+        "git clone --depth 1 https://github.com/ETH-DISCO/SepACap.git /opt/sepacap",
+        "mkdir -p /opt/models/melband /opt/models/sepacap",
+        "wget -q -O /opt/models/melband/karaoke.ckpt "
+        "https://huggingface.co/jarredou/aufr33-viperx-karaoke-melroformer-model/resolve/main/"
+        "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt",
+        "wget -q -O /opt/models/melband/karaoke.yaml "
+        "https://huggingface.co/jarredou/aufr33-viperx-karaoke-melroformer-model/resolve/main/"
+        "config_mel_band_roformer_karaoke.yaml",
+        "wget -q -O /opt/models/sepacap/SepACap.pth "
+        "https://huggingface.co/Tino3141/sepacap/resolve/main/SepACap.pth",
+        "wget -q -O /opt/models/sepacap/modelMusicSep.yaml "
+        "https://huggingface.co/Tino3141/sepacap/resolve/main/modelMusicSep.yaml",
+    )
+)
+
+
+@app.function(
+    image=vocals_image,
+    gpu="T4",
+    timeout=900,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+    scaledown_window=60,
+)
+def split_vocals(vocals_url: str, song_id: str) -> dict:
+    """MelBand-Roformer Karaoke: vocals stem → lead/backing split.
+
+    Input is typically the vocals.flac stem produced by separate_stems
+    (Demucs), but accepts any stereo audio URL. The karaoke MelBand-
+    Roformer was trained to split a vocal-only mix into 'karaoke' and
+    'other' tracks per its YAML labels — the bake-off identifies which
+    label corresponds to lead vs backing on first listen.
+
+    YAML config: stereo, 44.1 kHz, chunk_size 352800 (8 s),
+    num_overlap 4, batch_size 1. Fits 16 GB T4.
+    """
+    import glob
+    import subprocess
+    import sys
+    import tempfile
+
+    sys.path.insert(0, "/opt/mss")
+
+    import boto3
+    import requests
+    from botocore.config import Config
+    from inference import proc_folder  # ZFTurbo's MSS framework
+
+    started = time.time()
+
+    print(f"[SplitVocals] Downloading source: {vocals_url[:80]}...")
+    r = requests.get(vocals_url, timeout=120, allow_redirects=True)
+    r.raise_for_status()
+    audio_bytes = r.content
+    print(f"[SplitVocals] Downloaded {len(audio_bytes) / 1024 / 1024:.1f} MB")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        in_dir = os.path.join(tmp, "in")
+        out_dir = os.path.join(tmp, "out")
+        os.makedirs(in_dir)
+        os.makedirs(out_dir)
+
+        # Decode source to stereo 44.1 kHz WAV via ffmpeg before handing
+        # to ZFTurbo's loader. Avoids torchaudio backend brittleness.
+        in_path = os.path.join(in_dir, f"{song_id}.wav")
+        subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error",
+                "-i", "pipe:0",
+                "-ac", "2", "-ar", "44100",
+                "-c:a", "pcm_s16le",
+                in_path,
+            ],
+            input=audio_bytes,
+            capture_output=True,
+            check=True,
+        )
+
+        print("[SplitVocals] Running MelBand-Roformer Karaoke...")
+        proc_folder({
+            "model_type": "mel_band_roformer",
+            "config_path": "/opt/models/melband/karaoke.yaml",
+            "start_check_point": "/opt/models/melband/karaoke.ckpt",
+            "input_folder": in_dir,
+            "store_dir": out_dir,
+            "extract_instrumental": False,
+            "force_cpu": False,
+            "use_tta": False,
+            "pcm_type": "FLOAT",
+            "disable_detailed_pbar": True,
+            "draw_spectro": 0,
+            "device_ids": [0],
+        })
+
+        outputs = sorted(
+            glob.glob(os.path.join(out_dir, "**", "*"), recursive=True)
+        )
+        print(f"[SplitVocals] Output files: {[os.path.basename(p) for p in outputs]}")
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=os.environ["R2_ENDPOINT"],
+            aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            region_name="auto",
+            config=Config(signature_version="s3v4"),
+        )
+        bucket = os.environ["R2_BUCKET"]
+        public_base = os.environ["R2_PUBLIC_BASE"].rstrip("/")
+
+        urls = {}
+        for path in outputs:
+            if not path.lower().endswith((".wav", ".flac")):
+                continue
+            fname = os.path.basename(path).lower()
+            # ZFTurbo's filename template is {fname}_{instr}.{codec}.
+            # Karaoke config exposes instruments 'karaoke' and 'other'.
+            label = None
+            for instr in ("karaoke", "other"):
+                if instr in fname:
+                    label = instr
+                    break
+            if not label:
+                print(f"[SplitVocals] WARN: unrecognized output {fname}")
+                continue
+            with open(path, "rb") as f:
+                body = f.read()
+            key = f"stems/{song_id}/melband_v1/{label}.flac"
+            # If output is WAV (peak-amplitude clip avoidance), upload
+            # as-is — bake-off scoring tolerates either codec.
+            content_type = "audio/wav" if path.lower().endswith(".wav") else "audio/flac"
+            if content_type == "audio/wav":
+                key = key.replace(".flac", ".wav")
+            s3.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=body,
+                ContentType=content_type,
+                CacheControl="public, max-age=31536000, immutable",
+            )
+            urls[label] = f"{public_base}/{key}"
+            print(
+                f"[SplitVocals] Uploaded {label}: "
+                f"{len(body) / 1024 / 1024:.1f} MB -> {urls[label]}"
+            )
+
+    elapsed = time.time() - started
+    print(f"[SplitVocals] Done in {elapsed:.1f}s")
+    return {
+        "success": True,
+        "song_id": song_id,
+        "stems": urls,
+        "source": "melband_roformer_karaoke_v1",
+        "model_sdr_benchmark": 10.1956,
+        "elapsed_sec": elapsed,
+    }
+
+
+@app.function(
+    image=vocals_image,
+    timeout=900,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def split_vocals_http(item: dict):
+    """HTTP entry: validate token, dispatch to GPU."""
+    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected_token:
+        return {"success": False, "error": "server misconfigured: no shared secret"}
+    if item.get("token", "") != expected_token:
+        return {"success": False, "error": "unauthorized"}
+
+    vocals_url = item.get("vocals_url", "")
+    song_id = item.get("song_id", "")
+    if not vocals_url or not song_id:
+        return {"success": False, "error": "missing vocals_url or song_id"}
+
+    try:
+        return split_vocals.remote(vocals_url, song_id)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.function(
+    image=vocals_image,
+    gpu="T4",
+    timeout=900,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+    scaledown_window=60,
+)
+def sepacap_split(backing_url: str, song_id: str) -> dict:
+    """SepACap multi-voice cross-domain eval. EXPERIMENTAL.
+
+    First known eval of SepACap on English close-harmony rock content —
+    the model is trained ONLY on JaCappella (35 Japanese a cappella
+    children's songs, 0.57 h augmented to 145 h). Cross-genre
+    generalization untested in the literature; treat output as
+    research data. See plan §11.1.
+
+    Input: backing-stack stem from MelBand-Roformer (NOT full mix —
+    SepACap is a pure-vocal multi-singer separator). 24 kHz mono
+    expected; this wrapper resamples + downmixes.
+
+    Output: 7 voice stems per JaCappella labeling — alto / bass /
+    finger_snap / lead_vocal / soprano / tenor / vocal_percussion.
+    Some will be empty/noise on rock content; that's the eval signal.
+    """
+    import sys
+    import tempfile
+
+    sys.path.insert(0, "/opt/sepacap")
+
+    import boto3
+    import requests
+    import soundfile as sf
+    import torch
+    import torchaudio
+    from botocore.config import Config
+
+    from src.model import Model
+    from src.utils import util_system
+
+    started = time.time()
+
+    print(f"[SepACap] Downloading backing stack: {backing_url[:80]}...")
+    r = requests.get(backing_url, timeout=120, allow_redirects=True)
+    r.raise_for_status()
+
+    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as tmpf:
+        tmpf.write(r.content)
+        in_path = tmpf.name
+    print(f"[SepACap] Saved {len(r.content) / 1024 / 1024:.1f} MB to {in_path}")
+
+    print("[SepACap] Loading model + checkpoint...")
+    config = util_system.parse_yaml(
+        "/opt/models/sepacap/modelMusicSep.yaml"
+    )["config"]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = Model(**config["model"]).to(device)
+    checkpoint = torch.load(
+        "/opt/models/sepacap/SepACap.pth", map_location=device
+    )
+    model.load_state_dict(checkpoint["model_state"], strict=False)
+    model.eval()
+
+    audio, sr = torchaudio.load(in_path)
+    if audio.shape[0] > 1:
+        audio = audio.mean(dim=0, keepdim=True)
+    if sr != 24000:
+        audio = torchaudio.transforms.Resample(sr, 24000)(audio)
+    print(f"[SepACap] Audio prepped: shape={tuple(audio.shape)} 24 kHz mono")
+
+    # JaCappella songs are short (~30 s); rock-song-length inputs (3–7 min)
+    # may OOM on T4. If this trips, the fix is sliding-window inference —
+    # for now we attempt the whole-song pass as the first data point and
+    # let the bake-off run record success/failure.
+    print("[SepACap] Running inference (no chunking — research path)...")
+    with torch.no_grad():
+        audio_input = audio.to(device).unsqueeze(0)  # [1, 1, samples]
+        separated_sources, _ = model(audio_input)
+
+    voice_names = [
+        "alto", "bass", "finger_snap", "lead_vocal",
+        "soprano", "tenor", "vocal_percussion",
+    ]
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT"],
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
+    )
+    bucket = os.environ["R2_BUCKET"]
+    public_base = os.environ["R2_PUBLIC_BASE"].rstrip("/")
+
+    urls = {}
+    n_sources = (
+        separated_sources.shape[0]
+        if hasattr(separated_sources, "shape")
+        else len(separated_sources)
+    )
+    for i in range(min(len(voice_names), n_sources)):
+        voice = voice_names[i]
+        stem = separated_sources[i]
+        if hasattr(stem, "cpu"):
+            stem = stem.cpu().numpy()
+        # Normalize to (samples,) — SepACap may emit (1, samples) or
+        # (samples,) depending on internal squeeze.
+        while stem.ndim > 1:
+            stem = stem.squeeze(0) if stem.shape[0] == 1 else stem.mean(axis=0)
+        buf = io.BytesIO()
+        sf.write(buf, stem, 24000, format="FLAC")
+        body = buf.getvalue()
+        key = f"stems/{song_id}/sepacap_v1/{voice}.flac"
+        s3.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=body,
+            ContentType="audio/flac",
+            CacheControl="public, max-age=31536000, immutable",
+        )
+        urls[voice] = f"{public_base}/{key}"
+        print(
+            f"[SepACap] Uploaded {voice}: "
+            f"{len(body) / 1024 / 1024:.1f} MB"
+        )
+
+    os.unlink(in_path)
+    elapsed = time.time() - started
+    print(f"[SepACap] Done in {elapsed:.1f}s")
+    return {
+        "success": True,
+        "song_id": song_id,
+        "stems": urls,
+        "source": "sepacap_v1",
+        "voices": voice_names,
+        "elapsed_sec": elapsed,
+        "note": "EXPERIMENTAL — first cross-domain eval of JaCappella-trained model on English rock content",
+    }
+
+
+@app.function(
+    image=vocals_image,
+    timeout=900,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def sepacap_http(item: dict):
+    """HTTP entry: validate token, dispatch to GPU."""
+    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected_token:
+        return {"success": False, "error": "server misconfigured: no shared secret"}
+    if item.get("token", "") != expected_token:
+        return {"success": False, "error": "unauthorized"}
+
+    backing_url = item.get("backing_url", "")
+    song_id = item.get("song_id", "")
+    if not backing_url or not song_id:
+        return {"success": False, "error": "missing backing_url or song_id"}
+
+    try:
+        return sepacap_split.remote(backing_url, song_id)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
