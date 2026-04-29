@@ -80,8 +80,14 @@ image = (
     # minute skip the cold start. Idle longer than that scales to zero.
     scaledown_window=60,
 )
-def separate_stems(source_url: str, song_id: str) -> dict:
-    """Download → Demucs → upload 4 stems to R2 → return URLs."""
+def separate_stems(
+    source_url: str, song_id: str, model_name: str = "htdemucs_6s"
+) -> dict:
+    """Download → Demucs → upload N stems to R2 → return URLs.
+
+    model_name: 'htdemucs' (4 stems: drums/bass/vocals/other) or
+                'htdemucs_6s' (6 stems: + piano + guitar).
+    """
     import subprocess
 
     import boto3
@@ -205,8 +211,15 @@ def separate_stems(source_url: str, song_id: str) -> dict:
         waveform = resampler(waveform)
         sr = 44100
 
-    print("[Stems] Loading htdemucs model...")
-    model = get_model("htdemucs")
+    # Whitelist allowed models — loading arbitrary names from a request
+    # body would let a caller waste GPU time on huge unrelated weights.
+    allowed_models = {"htdemucs", "htdemucs_6s"}
+    if model_name not in allowed_models:
+        raise ValueError(
+            f"Unsupported model_name '{model_name}'. Allowed: {sorted(allowed_models)}"
+        )
+    print(f"[Stems] Loading {model_name} model...")
+    model = get_model(model_name)
     model.eval()
     if torch.cuda.is_available():
         model.cuda()
@@ -224,8 +237,9 @@ def separate_stems(source_url: str, song_id: str) -> dict:
             progress=False,
         )[0]
 
-    # sources shape: (4, channels, samples). htdemucs source order:
-    stem_names = model.sources  # ["drums", "bass", "other", "vocals"]
+    # sources shape: (N, channels, samples). htdemucs    → 4 stems: drums, bass, other, vocals
+    #                                        htdemucs_6s → 6 stems: drums, bass, other, vocals, piano, guitar
+    stem_names = model.sources
     print(f"[Stems] Separation complete. Stems: {stem_names}")
 
     # Upload each stem to R2
@@ -275,7 +289,7 @@ def separate_stems(source_url: str, song_id: str) -> dict:
         "stems": urls,
         "sample_rate": sr,
         "elapsed_sec": elapsed,
-        "model": "htdemucs",
+        "model": model_name,
     }
 
 
@@ -297,12 +311,13 @@ def separate(item: dict):
 
     source_url = item.get("source_url", "")
     song_id = item.get("song_id", "")
+    model_name = item.get("model_name", "htdemucs_6s")
     if not source_url or not song_id:
         return {"success": False, "error": "missing source_url or song_id"}
 
     # .remote() runs on the GPU function above. Synchronous wait — caller
     # (Cloudflare Worker) handles the timeout and surfaces progress to client.
     try:
-        return separate_stems.remote(source_url, song_id)
+        return separate_stems.remote(source_url, song_id, model_name)
     except Exception as e:
         return {"success": False, "error": str(e)}

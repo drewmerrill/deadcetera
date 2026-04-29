@@ -41,11 +41,15 @@ window.GLStems = (function () {
 
   async function hasStems(title) { return !!(await getStems(title)); }
 
-  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?, sourceLabel? }
+  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?, sourceLabel?, model? }
+  // model: 'htdemucs' (4 stems) or 'htdemucs_6s' (6 stems, default)
   async function separate(title, opts) {
     if (!title) throw new Error('title required');
     opts = opts || {};
     var body = { songId: _stemsKey(title) };
+    if (opts.model === 'htdemucs' || opts.model === 'htdemucs_6s') {
+      body.model = opts.model;
+    }
     if (opts.sourceUrl) {
       body.sourceUrl = opts.sourceUrl;
     } else if (opts.driveFileId) {

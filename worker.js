@@ -1575,6 +1575,10 @@ async function handleStemsSeparate(request, env) {
   const driveFileId = String(body.driveFileId || '').trim();
   const accessToken = String(body.accessToken || '').trim();
   const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
+  // Whitelist on the server side too so a malicious client can't make
+  // Modal load random model weights.
+  const allowedModels = new Set(['htdemucs', 'htdemucs_6s']);
+  const modelName = allowedModels.has(body.model) ? body.model : 'htdemucs_6s';
   if (!songId) return cors(jsonError('missing songId', 400));
   if (!sourceUrl && !audioDataUrl && !(driveFileId && accessToken)) {
     return cors(jsonError('missing sourceUrl, { driveFileId, accessToken }, or audioBase64DataUrl', 400));
@@ -1625,6 +1629,7 @@ async function handleStemsSeparate(request, env) {
       body: JSON.stringify({
         source_url: sourceUrl,
         song_id: songId,
+        model_name: modelName,
         token: env.STEMS_SHARED_SECRET
       }),
       signal: ctrl.signal

@@ -1706,7 +1706,22 @@ function _sdRenderStemsSetup(title) {
     var safeSong = title.replace(/'/g, "\\'");
     return '<div class="sd-card">' +
       '<div class="sd-card-title">🎚 Separate Stems <span class="sd-title-badge">Demucs</span></div>' +
-      '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:14px">Split a recording into <b>drums</b>, <b>bass</b>, <b>vocals</b>, and <b>other</b>. Great for studying parts in isolation. Runs on a GPU (~30s once warm, ~$0.005 per song).</div>' +
+      '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:14px">Split a recording into separate tracks for studying parts in isolation. Runs on a GPU (~30s once warm, ~$0.005 per song).</div>' +
+      // ── Model toggle (4-stem vs 6-stem) ────────────────────────────────
+      '<div style="margin-bottom:14px">' +
+        '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:6px">Model</label>' +
+        '<div style="display:flex;gap:8px">' +
+          '<label class="sd-stems-model-opt" style="flex:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:rgba(255,255,255,0.02);font-size:0.82em">' +
+            '<input type="radio" name="sdStemsModel" value="htdemucs"> ' +
+            '<span><b>4 stems</b><br><span style="font-size:0.85em;color:var(--text-dim)">drums · bass · vocals · other</span></span>' +
+          '</label>' +
+          '<label class="sd-stems-model-opt" style="flex:1;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid rgba(102,126,234,0.35);border-radius:8px;cursor:pointer;background:rgba(102,126,234,0.05);font-size:0.82em">' +
+            '<input type="radio" name="sdStemsModel" value="htdemucs_6s" checked> ' +
+            '<span><b>6 stems</b> <span style="font-size:0.7em;color:#a5b4fc;font-weight:700">DEFAULT</span><br><span style="font-size:0.85em;color:var(--text-dim)">+ keys · guitar</span></span>' +
+          '</label>' +
+        '</div>' +
+        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px"><b>Keys</b> captures all keyboards — piano, organ, electric piano, synth. Lead vs rhythm guitar can\'t be split.</div>' +
+      '</div>' +
       '<div id="sdStemsBestShotPicker" style="margin-bottom:14px"></div>' +
       // ── URL input (primary — works for YouTube et al via residential proxy) ──
       '<div style="margin-bottom:12px">' +
@@ -1736,8 +1751,9 @@ window._sdRunStemSeparationFromFile = function(title, input) {
         return;
     }
     var reader = new FileReader();
+    var model = _sdStemsSelectedModel();
     reader.onload = function() {
-        _sdRunStemSeparationFromTake(title, { audioDataUrl: reader.result, sourceLabel: file.name });
+        _sdRunStemSeparationFromTake(title, { audioDataUrl: reader.result, sourceLabel: file.name, model: model });
     };
     reader.onerror = function() {
         alert('Failed to read file.');
@@ -1805,6 +1821,7 @@ async function _sdLoadStemsSourcePicker(title) {
         btn.addEventListener('click', async function() {
             var kind = btn.dataset.kind;
             var label = btn.dataset.label || 'Best Shot';
+            var model = _sdStemsSelectedModel();
             if (kind === 'gdrive') {
                 var fid = btn.dataset.driveId;
                 if (!fid) return;
@@ -1812,7 +1829,7 @@ async function _sdLoadStemsSourcePicker(title) {
                     alert('Sign in with Google first — Drive files need an auth token to fetch.');
                     return;
                 }
-                _sdRunStemSeparationFromTake(title, { driveFileId: fid, accessToken: accessToken, sourceLabel: label });
+                _sdRunStemSeparationFromTake(title, { driveFileId: fid, accessToken: accessToken, sourceLabel: label, model: model });
             } else if (kind === 'firebase') {
                 // Fetch base64 audio from Firebase and let the worker stage it to R2.
                 var sTitle = btn.dataset.fbTitle;
@@ -1822,23 +1839,31 @@ async function _sdLoadStemsSourcePicker(title) {
                 try {
                     var data = await loadBandDataFromDrive(sTitle, aKey);
                     if (!data || !data.data) throw new Error('Firebase audio not found');
-                    _sdRunStemSeparationFromTake(title, { audioDataUrl: data.data, sourceLabel: label });
+                    _sdRunStemSeparationFromTake(title, { audioDataUrl: data.data, sourceLabel: label, model: model });
                 } catch (e) {
                     btn.disabled = false; btn.textContent = 'Use this';
                     alert('Could not load Firebase audio: ' + (e.message || e));
                 }
             } else {
-                _sdRunStemSeparationFromTake(title, { sourceUrl: btn.dataset.url, sourceLabel: label });
+                _sdRunStemSeparationFromTake(title, { sourceUrl: btn.dataset.url, sourceLabel: label, model: model });
             }
         });
     });
+}
+
+// Read the currently-selected model from the setup card. Defaults to
+// htdemucs_6s if the radio group isn't present (e.g. picker view rendered
+// before the toggle was added in a stale DOM).
+function _sdStemsSelectedModel() {
+    var sel = (_sdContainer || document).querySelector('input[name="sdStemsModel"]:checked');
+    return (sel && sel.value === 'htdemucs') ? 'htdemucs' : 'htdemucs_6s';
 }
 
 window._sdRunStemSeparation = async function(title) {
     var input = document.getElementById('sdStemsSourceUrl');
     var url = input ? input.value.trim() : '';
     if (!url) { alert('Paste an audio URL or pick a Best Shot take.'); return; }
-    _sdRunStemSeparationFromTake(title, { sourceUrl: url, sourceLabel: 'URL' });
+    _sdRunStemSeparationFromTake(title, { sourceUrl: url, sourceLabel: 'URL', model: _sdStemsSelectedModel() });
 };
 
 async function _sdRunStemSeparationFromTake(title, opts) {
@@ -1872,8 +1897,14 @@ function _sdRenderStemsPlayer(title, stems) {
     var stemDefs = [
         { id:'drums',  label:'Drums',  color:'#f59e0b', icon:'🥁' },
         { id:'bass',   label:'Bass',   color:'#10b981', icon:'🎸' },
+        { id:'guitar', label:'Guitar', color:'#ef4444', icon:'🎸' }, // 6-stem only
+        // Demucs's "piano" class is actually all keyboard-family content —
+        // piano, organ, electric piano, synth pads, clavinet — they all
+        // land here. "Keys" is more honest labeling. Storage id stays
+        // 'piano' to match Demucs's output and existing R2/Firebase paths.
+        { id:'piano',  label:'Keys',   color:'#06b6d4', icon:'🎹' }, // 6-stem only
         { id:'vocals', label:'Vocals', color:'#818cf8', icon:'🎤' },
-        { id:'other',  label:'Other',  color:'#94a3b8', icon:'🎹' }
+        { id:'other',  label:'Other',  color:'#94a3b8', icon:'🎵' }
     ];
     // Stable cache-bust per separation. The R2 stems are sent with
     // Cache-Control: immutable, so once a browser caches a response
