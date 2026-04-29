@@ -607,9 +607,18 @@
   var _initAttempts = 0;
   function _initWhenReady() {
     _initAttempts++;
-    // Check if Firebase is actually initialized
-    var db = (typeof firebase !== 'undefined' && firebase.database) ? firebase.database()
-           : (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    // Prefer the already-initialized firebaseDB global. Fall back to
+    // firebase.database() only when at least one app is initialized —
+    // firebase.database is truthy as soon as the compat SDK loads (before
+    // initializeApp runs), so calling it without checking firebase.apps
+    // throws "No Firebase App '[DEFAULT]' has been created" and that
+    // exception propagates to the global error handler.
+    var db = null;
+    if (typeof firebaseDB !== 'undefined' && firebaseDB) {
+        db = firebaseDB;
+    } else if (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length && firebase.database) {
+        try { db = firebase.database(); } catch (e) { db = null; }
+    }
     if (db) {
       loadIssues().catch(function(e) { console.warn('[GLInsights] Init load failed:', e.message); });
       return;
