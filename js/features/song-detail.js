@@ -2053,7 +2053,9 @@ function _sdInitStemsPlayer() {
         if (window.Tone) return window.Tone;
         await new Promise(function(resolve, reject) {
             var s = document.createElement('script');
-            s.src = 'https://unpkg.com/tone@14.7.77/build/Tone.js';
+            // Tone v15+ uses AudioWorkletNode (vs v14's deprecated
+            // ScriptProcessorNode). API for PitchShift + setContext is unchanged.
+            s.src = 'https://unpkg.com/tone@15.1.22/build/Tone.js';
             s.onload = resolve;
             s.onerror = function(){ reject(new Error('Tone.js failed to load')); };
             document.head.appendChild(s);
