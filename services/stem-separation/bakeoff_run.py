@@ -97,7 +97,15 @@ def run_song(source_url: str, song_id: str, *, do_sepacap: bool = True) -> dict:
     print(f"\n[3/3] Running SepACap on vocals stem ({sepacap_input[:60]}...)")
     t0 = time.time()
     sepacap = _lookup("sepacap_split")
-    sa = sepacap.remote(sepacap_input, song_id)
+    # SepACap is the experimental row (plan §11.1) — its failure
+    # shouldn't kill the rest of the bake-off. Catch + report.
+    try:
+        sa = sepacap.remote(sepacap_input, song_id)
+    except Exception as e:
+        msg = str(e).split("\n")[0]
+        print(f"  ✗ SepACap raised: {msg[:160]}")
+        result["sepacap"] = {"success": False, "error": msg}
+        return result
     if not sa.get("success"):
         print(f"  FAIL: {sa}")
         result["sepacap"] = sa

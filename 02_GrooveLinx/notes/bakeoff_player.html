@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 0 Bake-Off — Vocal Isolation Listening Test</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; }
+  .lede { color: #94a3b8; margin-bottom: 24px; line-height: 1.5; }
+  .lede code { background: #1e293b; padding: 1px 5px; border-radius: 3px; }
+  .song {
+    background: #1e293b;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+    border: 1px solid #334155;
+  }
+  .song h2 {
+    font-size: 1.08rem;
+    margin: 0 0 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .song .difficulty {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: normal;
+  }
+  .player-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .player {
+    background: #0f172a;
+    border-radius: 6px;
+    padding: 10px 12px;
+    border: 1px solid #334155;
+  }
+  .player .label {
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #cbd5e1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .player .reveal {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: normal;
+    font-family: monospace;
+  }
+  .player audio {
+    width: 100%;
+    height: 32px;
+  }
+  .rating {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .rating label { color: #94a3b8; font-size: 0.9rem; }
+  .rating select {
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-size: 0.9rem;
+    font-family: inherit;
+  }
+  .actions {
+    margin-top: 24px;
+    display: flex;
+    gap: 12px;
+  }
+  button {
+    background: #2563eb;
+    color: white;
+    border: 0;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { background: #1d4ed8; }
+  button.secondary { background: #475569; }
+  button.secondary:hover { background: #64748b; }
+  #output {
+    margin-top: 20px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 14px;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    line-height: 1.5;
+    display: none;
+  }
+  #output.visible { display: block; }
+</style>
+</head>
+<body>
+
+<h1>Phase 0 Bake-Off — Vocal Isolation Listening Test</h1>
+<p class="lede">
+  For each song, <strong>A</strong> and <strong>B</strong> are randomized assignments
+  of the Demucs vocals stem and the MelBand-Roformer "other" stem (vocals
+  computed via residual subtraction). Listen blind, pick the verdict, then
+  hit <strong>Reveal &amp; Copy</strong> at the bottom to see which was which
+  and copy the results back to chat. The bake-off question:
+  <em>does MelBand-Roformer-Karaoke produce cleaner vocals than Demucs alone?</em>
+</p>
+
+<div id="songs"></div>
+
+<div class="actions">
+  <button id="reveal">Reveal &amp; Copy Results</button>
+  <button id="reset" class="secondary">Reset</button>
+</div>
+
+<pre id="output"></pre>
+
+<script>
+const R2_BASE = "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems";
+
+const SONGS = [
+  {
+    id: "bakeoff-because",
+    title: "Because",
+    artist: "Beatles · Abbey Road · 1969",
+    difficulty: "Easy / control floor",
+    demucs: `${R2_BASE}/bakeoff-because/vocals.flac`,
+    melband: `${R2_BASE}/bakeoff-because/melband_v1/other.flac`,
+  },
+  {
+    id: "bakeoff-brokedown",
+    title: "Brokedown Palace",
+    artist: "Grateful Dead · American Beauty · 1970",
+    difficulty: "Medium",
+    demucs: `${R2_BASE}/bakeoff-brokedown/vocals.flac`,
+    melband: `${R2_BASE}/bakeoff-brokedown/melband_v1/other.flac`,
+  },
+  {
+    id: "bakeoff-cumberland",
+    title: "Cumberland Blues",
+    artist: "Grateful Dead · Workingman's Dead · 1970",
+    difficulty: "Hard",
+    demucs: `${R2_BASE}/bakeoff-cumberland/vocals.flac`,
+    melband: `${R2_BASE}/bakeoff-cumberland/melband_v1/other.flac`,
+  },
+  {
+    id: "bakeoff-attics",
+    title: "Attics of My Life",
+    artist: "Grateful Dead · American Beauty · 1970",
+    difficulty: "Very Hard",
+    demucs: `${R2_BASE}/bakeoff-attics/vocals.flac`,
+    melband: `${R2_BASE}/bakeoff-attics/melband_v1/other.flac`,
+  },
+  {
+    id: "bakeoff-helplessly",
+    title: "Helplessly Hoping",
+    artist: "CSN · self-titled · 1969",
+    difficulty: "Physics ceiling",
+    demucs: `${R2_BASE}/bakeoff-helplessly/vocals.flac`,
+    melband: `${R2_BASE}/bakeoff-helplessly/melband_v1/other.flac`,
+  },
+];
+
+// Per-song random shuffle: which physical slot (A or B) holds Demucs vs MelBand.
+// Captured at page load so each session is consistent during listening.
+const ASSIGNMENTS = SONGS.map(() => Math.random() < 0.5 ? "DM" : "MD");
+
+const RATINGS = [
+  { v: "", label: "— Pick verdict —" },
+  { v: "tied", label: "Tied / can't tell" },
+  { v: "A_close", label: "A wins (close)" },
+  { v: "A_clear", label: "A wins (clear)" },
+  { v: "A_huge", label: "A wins (huge)" },
+  { v: "B_close", label: "B wins (close)" },
+  { v: "B_clear", label: "B wins (clear)" },
+  { v: "B_huge", label: "B wins (huge)" },
+  { v: "both_bad", label: "Both garbage" },
+];
+
+const songsEl = document.getElementById("songs");
+SONGS.forEach((song, i) => {
+  const order = ASSIGNMENTS[i]; // "DM" or "MD"
+  const slotA = order[0]; // "D" or "M"
+  const slotB = order[1];
+
+  const aUrl = slotA === "D" ? song.demucs : song.melband;
+  const bUrl = slotB === "D" ? song.demucs : song.melband;
+
+  const wrap = document.createElement("div");
+  wrap.className = "song";
+  wrap.innerHTML = `
+    <h2>
+      <span>${song.title} <span class="difficulty">— ${song.artist} · ${song.difficulty}</span></span>
+    </h2>
+    <div class="player-row">
+      <div class="player">
+        <div class="label">A <span class="reveal" data-reveal-a="${i}"></span></div>
+        <audio controls preload="none" src="${aUrl}"></audio>
+      </div>
+      <div class="player">
+        <div class="label">B <span class="reveal" data-reveal-b="${i}"></span></div>
+        <audio controls preload="none" src="${bUrl}"></audio>
+      </div>
+    </div>
+    <div class="rating">
+      <label for="rating-${i}">Verdict:</label>
+      <select id="rating-${i}" data-song="${i}">
+        ${RATINGS.map(r => `<option value="${r.v}">${r.label}</option>`).join("")}
+      </select>
+    </div>
+  `;
+  songsEl.appendChild(wrap);
+});
+
+// Pause-others helper: when one audio plays, pause all the others.
+const allAudio = () => Array.from(document.querySelectorAll("audio"));
+allAudio().forEach(a => {
+  a.addEventListener("play", () => {
+    allAudio().forEach(other => { if (other !== a) other.pause(); });
+  });
+});
+
+document.getElementById("reveal").addEventListener("click", () => {
+  // Surface the A/B reveal labels
+  ASSIGNMENTS.forEach((order, i) => {
+    const aSpan = document.querySelector(`[data-reveal-a="${i}"]`);
+    const bSpan = document.querySelector(`[data-reveal-b="${i}"]`);
+    aSpan.textContent = `(was ${order[0] === "D" ? "Demucs" : "MelBand"})`;
+    bSpan.textContent = `(was ${order[1] === "D" ? "Demucs" : "MelBand"})`;
+  });
+
+  // Translate verdicts: "A_clear" + order "DM" → "D wins clear" → "Demucs wins clear"
+  const lines = SONGS.map((song, i) => {
+    const verdict = document.getElementById(`rating-${i}`).value;
+    if (!verdict) return `${song.title}: (no verdict)`;
+    if (verdict === "tied") return `${song.title}: tied`;
+    if (verdict === "both_bad") return `${song.title}: both garbage`;
+    const [winner, magnitude] = verdict.split("_");
+    const order = ASSIGNMENTS[i];
+    const pick = winner === "A" ? order[0] : order[1];
+    const label = pick === "D" ? "Demucs" : "MelBand";
+    return `${song.title}: ${label} wins ${magnitude}`;
+  });
+
+  // Tally
+  let demucsWins = 0, melbandWins = 0, ties = 0, blanks = 0, bothBad = 0;
+  SONGS.forEach((_, i) => {
+    const v = document.getElementById(`rating-${i}`).value;
+    if (!v) blanks++;
+    else if (v === "tied") ties++;
+    else if (v === "both_bad") bothBad++;
+    else {
+      const winner = v.split("_")[0];
+      const order = ASSIGNMENTS[i];
+      const pick = winner === "A" ? order[0] : order[1];
+      if (pick === "D") demucsWins++; else melbandWins++;
+    }
+  });
+
+  const summary = `\n--- Tally ---\nDemucs wins: ${demucsWins}\nMelBand wins: ${melbandWins}\nTies: ${ties}\nBoth bad: ${bothBad}${blanks ? `\nUnscored: ${blanks}` : ""}`;
+  const text = lines.join("\n") + summary;
+
+  const out = document.getElementById("output");
+  out.textContent = text;
+  out.classList.add("visible");
+
+  // Copy to clipboard
+  navigator.clipboard?.writeText(text).then(() => {
+    const btn = document.getElementById("reveal");
+    btn.textContent = "Copied! Paste back in chat.";
+    setTimeout(() => { btn.textContent = "Reveal & Copy Results"; }, 3000);
+  }).catch(() => {/* clipboard may be blocked on file:// — output is visible to copy manually */});
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+  SONGS.forEach((_, i) => { document.getElementById(`rating-${i}`).value = ""; });
+  document.querySelectorAll(".reveal").forEach(s => s.textContent = "");
+  document.getElementById("output").classList.remove("visible");
+  allAudio().forEach(a => { a.pause(); a.currentTime = 0; });
+});
+</script>
+
+</body>
+</html>
