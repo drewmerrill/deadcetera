@@ -2,9 +2,59 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-29 — Self-hosted stem separation shipped end-to-end (Modal + HT-Demucs + Cloudflare R2 + Worker proxy). New "Stems" lens in Song Detail with synced 4-track mixer. Replaces dependence on Moises._
+_Last updated: 2026-04-29 (PM) — Moises integration ripped out (commit `2713bb3f`). Stems Intelligence Plan v4 authored — research-hardened, ChatGPT-reviewed, ready for Phase 0 quality bake-off. Build `20260429-205047`._
 
-## Session 2026-04-29 — Self-Hosted Stem Separation (Modal + Demucs + R2)
+## Session 2026-04-29 (PM) — Moises Rip-Out + Stems Intelligence Plan v4
+
+**Status:** Build `20260429-205047`. Plan committed at `02_GrooveLinx/specs/stems_intelligence_plan.md`. Awaiting Drew's Phase 0 test-corpus picks (5 representative Deadcetera songs).
+
+**📘 Full session detail:** `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`
+
+### Part 1 — Moises rip-out (commit `2713bb3f`)
+
+Confirmed `0/449` songs had `moises_stems` records in Firebase. Self-hosted Demucs Stems lens (shipped earlier same day, commit `7aaa7e70`) is the replacement. Removed all Moises UI/JS/CSS so dead surfaces don't confuse the band.
+
+**Files modified:** `app.js`, `app-dev.js`, `index.html`, `styles.css`, `help.js`, `rehearsal-mode.js`, `js/features/gigs.js`, `sync.py`. Ripped out: `renderMoisesStems`, `showMoisesUploadForm`, `uploadMoisesStems`, `addMoisesStems`, `editMoisesStems`, `saveMoisesStems`, `loadMoisesStems`, `moisesAddYouTube`, `saveMoisesYTLink`, `moisesShowSplitter`, `saveSplitterInfo`, `createDriveFolder`, `uploadFileToDrive`, `rmOpenMoises`. Removed step5 Smart Download workflow, `.moises-btn` styles, `moisesBtn` button, Moises help section, `'moises_stems'` from band-data fields, sync.py feature check.
+
+### Part 2 — Stems Intelligence Plan v4
+
+**Decision:** Drew approved the reprioritized roadmap: harmony first, Dead guitar second, intelligence third, polish fourth. Plan does NOT optimize for Moises feature parity — it targets the two things Moises will never do well (painkiller harmony separation + Jerry/Bob guitar split via stereo pan).
+
+**Three research passes hardened the plan:**
+1. **Vocal separation 2026:** MelBand-Roformer Karaoke (HuggingFace, self-hosted, $0 licensing) selected as Phase 1 default. MDX-Net Voc_FT cascade. MVSEP / LALAL / AudioShake as opt-in fallbacks via modular separator interface.
+2. **Multi-voice (3-4 lines) separation:** SepACap weights ARE public (HuggingFace `Tino3141/sepacap`, MIT, 161MB) but trained ONLY on JaCappella (Japanese children's a cappella) — cross-genre to English close-harmony rock is completely untested. Treated as experimental Phase 0 evaluation.
+3. **ChatGPT review:** 10 hardening adjustments applied — realistic 5–10 day Phase 1 estimate (was 2.5), "1–4 min" not "90s", "better fit for GrooveLinx" not "beats Fadr", source-quality pre-flight, Draft/Moderate/Strong notation confidence labels, 30-day storage GC retention strategy, shared `GLStore.mixerState`, "bandmates learn parts faster" as product metric (not SDR).
+
+**Core architecture decisions:**
+- **§4.4 Dual-view, single source of truth.** Vocal stems are first-class stems in the Stems lens mixer alongside drums/bass/guitar/keys. Harmony Lab is a specialized view of the SAME audio with notation, singer assignments, recording mode added. Do NOT build two parallel UIs.
+- **§4.6 Per-action source picker (Option A).** Solves "love live North Star but studio version separates cleaner" problem without a second North Star. Picker at the "Auto-Split Harmonies" button defaults to North Star, lets band override per-split with quality hints. Stored on each split as `stems.split_source_label`.
+- **§4.7 Source-quality pre-flight.** Mono / shared-mic / live / compression detection warns before wasting a Modal run.
+- **§4.8 Shared mixer state.** `GLStore.mixerState[songId]` syncs Stems lens and Harmony Lab. Local cache only.
+- **§4.9 Retention.** Each separator output keyed by `source` flag — re-run with new flag preserves old. Manual notation edits never overwritten. 30-day GC for stale outputs.
+
+**Drew's resolved decisions:**
+1. ✅ $50 LALAL.AI Master pack budget approved for Phase 0 bake-off
+2. ⏳ Phase 0 test corpus — Drew to pick 5 songs (easy → CSN-hard) before Phase 0 begins
+3. ✅ Coexist with Fadr via `source` flag (no destructive cutover)
+4. ✅ Phrase loops with manual markers in P1, auto-populated by P3
+5. ⏳ P2 pan-split default — confidence-gate-only recommendation, tune during implementation
+6. ✅ **Pan knob ships in Phase 1** (moved from P4)
+7. ✅ Per-action source picker (Option A) implemented in P1
+8. ⏳ Keep ROI ordering as-is (Dead Guitar before Intelligence) — revisit after P0+P1
+
+**Cost reality:** Self-hosted Modal stack ~$18 for full 449-song catalog re-separation. $50 LALAL Master held in reserve for opt-in per-song fallback. Total Phase 0–4 effort: 11–17 days realistic.
+
+### Restart prompt
+
+> Continue Stems Intelligence Plan v4 (`02_GrooveLinx/specs/stems_intelligence_plan.md`, see also `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`). Build `20260429-205047`. Moises ripped out (commit `2713bb3f`). Plan approved: harmony first, Dead guitar second, intelligence third, polish fourth. **Next step: Phase 0 quality bake-off (§6, 0.5–1 day) — Drew picks 5 representative Deadcetera songs spanning easy → CSN-hard. Run each through Fadr / MelBand-Roformer Karaoke / +MDX-Voc_FT cascade / LALAL.AI Master / SepACap. Score blind on 4-criterion scale (5 for SepACap). 5×5 matrix picks Phase 1 production default. DO NOT WRITE PHASE 1 CODE UNTIL PHASE 0 RESULTS ARE IN.** Read §4.4 (dual-view principle) before any UI work — vocal stems are first-class stems in the Stems lens mixer; Harmony Lab is a specialized view of the same audio. Mixer state shared via `GLStore.mixerState`. Per-action source picker (Option A, §4.6) lives at the Auto-Split button. Pan knob ships in P1. Phase 1 success metric: "bandmates learn parts faster than YouTube + manual transcription," not SDR.
+
+### Layer 3 SMS status (carried forward)
+
+Twilio 10DLC approval check scheduled for 2026-04-29 morning (one-time agent). If approved, Layer 3 SMS unblocks per `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` build plan: new `/sms/send` worker endpoint mirroring FCM pattern, storage at `bands/{slug}/sms_subscriptions/{memberKey}`.
+
+---
+
+## Session 2026-04-29 (AM) — Self-Hosted Stem Separation (Modal + Demucs + R2)
 
 **Status:** Build `20260429-024251`. Live & working end-to-end. First stems generated for "Black Peter" and playing back in the new Stems lens with vol/mute/solo. Cost ~$0.005/song on T4.
 

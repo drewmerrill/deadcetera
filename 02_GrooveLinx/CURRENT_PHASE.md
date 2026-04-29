@@ -1,8 +1,57 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-28 (PM) — Calendar sync layer hardening pass shipped (build 20260428-210842): timezone-safe extraction, generalized title self-heal, orphan re-link fallback, "Merge orphan dupes" admin button._
+_Updated: 2026-04-29 (PM) — Moises ripped out. Stems Intelligence Plan v4 authored & committed. Build `20260429-205047`. Active phase: **Phase 0 Quality Bake-Off** — awaiting Drew's 5-song test corpus picks._
 
-## Calendar sync hardening — shipped 2026-04-28 (build 20260428-210842)
+---
+
+## Active Phase: Stems Intelligence — Phase 0 Quality Bake-Off (2026-04-29 →)
+
+**Status:** Plan approved. Implementation NOT started. Bake-off blocks all Phase 1 work.
+
+**Master plan:** `02_GrooveLinx/specs/stems_intelligence_plan.md` (v4, research-hardened, ChatGPT-reviewed)
+**Session notes:** `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`
+
+**ROI-ordered roadmap:**
+| # | Phase | Effort | Status |
+|---|---|---|---|
+| 0 | Quality bake-off (5 songs × 5 separators) | 0.5–1 day | ⏳ Awaiting Drew's test corpus |
+| 1 | Harmony Painkiller (split + notate + Harmony Lab + source picker + pan knob) | 5–10 days | Blocked by P0 |
+| 2 | Dead Guitar Split (Jerry/Bob via stereo pan) | 1.5–2 days | Blocked by P1 |
+| 3 | Song Intelligence Pass (BPM/key/sections/chords/lyrics) | 3–4 days | Blocked by P2 |
+| 4 | Cheap Polish (waveform, A-B loop, presets) | 1 day | Blocked by P3 |
+| 5 | SepACap multi-voice (experimental, gated on P0 result) | 0.5–1 day | Blocked by P0 result |
+
+**Phase 0 next step:** Drew picks 5 representative Deadcetera songs spanning easy → CSN-hard. Run each through Fadr / MelBand-Roformer Karaoke / +MDX-Voc_FT cascade / LALAL.AI Master / SepACap. Score blind on the 4-criterion scale (5 criteria for SepACap — adds cross-genre transfer evaluation). 5×5 matrix picks Phase 1 production default. **No Phase 1 code until P0 results are in.**
+
+**Drew's resolved decisions (§14 of plan):**
+- ✅ $50 LALAL.AI Master pack budget approved for bake-off
+- ✅ Coexist with Fadr via `source` flag (no destructive cutover)
+- ✅ Phrase loops with manual markers in P1, auto-populated by P3
+- ✅ Pan knob ships in Phase 1 (moved from P4)
+- ✅ Per-action source picker (Option A from §4.6) — defaults to North Star, lets band override per-split for cleaner studio source
+- ⏳ Phase 0 test corpus song picks — pending
+- ⏳ Phase 2 pan-split confidence-gate threshold — tune during P2 implementation
+- ⏳ Keep ROI order (Dead Guitar before Intelligence) — revisit after P0+P1 ships
+
+**Architecture principle (§4.4 — read first):** Vocal stems are **first-class stems in the Stems lens mixer** alongside drums/bass/guitar/keys. Harmony Lab is a *specialized view* of the same audio data with notation, singer assignments, and recording mode added. **DO NOT BUILD TWO PARALLEL UIs.** Shared state via `GLStore.mixerState`.
+
+**Product success metric:** Bandmates learn parts faster than YouTube + manual transcription. Not SDR. Not technical benchmarks.
+
+---
+
+## Layer 3 SMS — pending Twilio 10DLC approval (carried forward from 2026-04-26)
+
+Phone number +14085398813 awaiting carrier approval. One-time scheduled agent checks status 2026-04-29 morning. When approved, build plan in `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` — new `/sms/send` worker endpoint, storage `bands/{slug}/sms_subscriptions/{memberKey}`, mirrors FCM Layer 2 pattern.
+
+---
+
+## Previous Phase: Self-Hosted Stem Separation (Modal + Demucs + R2) — shipped 2026-04-29 AM
+
+End-to-end stem separation pipeline (commit `7aaa7e70` and follow-ups). HT-Demucs on Modal T4 GPU (scale-to-zero, ~$0.005/song), R2 storage, Worker proxy at `POST /stems/separate`, `js/core/gl-stems.js` client, new "🎚 Stems" lens in Song Detail with synced 4-track mixer (vol/mute/solo/master scrub). Later same day: htdemucs_6s default (commit `124dc0ff`), Best Shot picker, per-stem download, tempo/pitch (Tone.js v15 `Tone.connect()` to bridge native↔Tone nodes), yt-dlp fallback with IPRoyal residential proxy, file upload as primary path with URL fallback. **Replaces dependence on Moises** — Moises rip-out followed in PM session.
+
+---
+
+## Previous Phase: Calendar sync hardening — shipped 2026-04-28 (build 20260428-210842)
 
 Diagnosis from a user report (5/30 cell rendered three rows: local "deadcetera Gig" at 20:00, a separate "From Google" twin at 19:00, and a third row with title "Southern Roots Tavern — Southern Roots Tavern — Southern Roots Tavern" at 20:00). Three connected bugs in the sync layer; bundled the fixes since they share helpers.
 
