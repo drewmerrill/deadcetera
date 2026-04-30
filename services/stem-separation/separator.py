@@ -849,7 +849,7 @@ def fetch_source_to_r2(source_url: str, song_id: str) -> dict:
     timeout=1800,
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
-def lalal_lead_back(source_url: str, song_id: str, lalal_key: str) -> dict:
+def lalal_lead_back(source_url: str, song_id: str, lalal_key: str, path_prefix: str = "lalal") -> dict:
     """Run LALAL.AI 'multivocal=lead_back' split on the source.
 
     Flow per https://www.lalal.ai/api/v1/openapi.json:
@@ -857,6 +857,10 @@ def lalal_lead_back(source_url: str, song_id: str, lalal_key: str) -> dict:
       POST /api/v1/split/stem_separator/  (presets: stem=vocals, multivocal=lead_back)
       POST /api/v1/check/         (poll until status == 'success')
       GET tracks[*].url            (download stems)
+
+    path_prefix: R2 path subfolder under stems/{song_id}/. Defaults to 'lalal'
+    for production. Phase 0.5 bake-off runs used 'p05/lalal' to avoid
+    colliding with experimental outputs.
 
     Returns lead/backing/instrumental URLs re-hosted on R2.
     """
@@ -980,7 +984,7 @@ def lalal_lead_back(source_url: str, song_id: str, lalal_key: str) -> dict:
             ext, ctype = "wav", "audio/wav"
         elif body_bytes[:4] == b"fLaC":
             ext, ctype = "flac", "audio/flac"
-        key = f"stems/{song_id}/p05/lalal/{stem_name}.{ext}"
+        key = f"stems/{song_id}/{path_prefix}/{stem_name}.{ext}"
         url = _r2_upload_bytes(body_bytes, key, ctype)
         out[stem_name] = url
         print(f"  ✓ {stem_name} → {url}")
@@ -994,6 +998,37 @@ def lalal_lead_back(source_url: str, song_id: str, lalal_key: str) -> dict:
         "duration_sec": final.get("result", {}).get("duration"),
         "elapsed_sec": time.time() - started,
     }
+
+
+@app.function(
+    image=image,
+    timeout=1800,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def lalal_split_http(item: dict):
+    """HTTP entry: validate token, dispatch to lalal_lead_back.
+
+    Body: { source_url, song_id, lalal_key, token, path_prefix? }
+    Worker proxy reads LALAL_API_KEY from its own env and passes through.
+    """
+    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected_token:
+        return {"success": False, "error": "server misconfigured: no shared secret"}
+    if item.get("token", "") != expected_token:
+        return {"success": False, "error": "unauthorized"}
+
+    source_url = item.get("source_url", "")
+    song_id = item.get("song_id", "")
+    lalal_key = item.get("lalal_key", "")
+    path_prefix = item.get("path_prefix") or "lalal"
+    if not source_url or not song_id or not lalal_key:
+        return {"success": False, "error": "missing source_url, song_id, or lalal_key"}
+
+    try:
+        return lalal_lead_back.remote(source_url, song_id, lalal_key, path_prefix)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 @app.function(

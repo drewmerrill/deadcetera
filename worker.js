@@ -83,6 +83,11 @@ export default {
     // fileId+token (which we re-route through our own /drive-stream).
     if (path === '/stems/separate' && request.method === 'POST')
       return handleStemsSeparate(request, env);
+    // LALAL.AI lead/backing split — Phase 0.5 winner. Same source-resolution
+    // logic as /stems/separate (URL / Drive fileId / base64 staged to R2),
+    // forwards to Modal lalal_split_http with shared-secret + LALAL_API_KEY.
+    if (path === '/lalal/split' && request.method === 'POST')
+      return handleLalalSplit(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -1630,6 +1635,91 @@ async function handleStemsSeparate(request, env) {
         source_url: sourceUrl,
         song_id: songId,
         model_name: modelName,
+        token: env.STEMS_SHARED_SECRET
+      }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// ── LALAL.AI Lead/Backing Split (Modal proxy) ────────────────────────────────
+// POST /lalal/split
+// Body: { songId, sourceUrl }
+//     | { songId, driveFileId, accessToken }
+//     | { songId, audioBase64DataUrl }   ← stages bytes to R2 first
+// Holds LALAL_API_KEY server-side so clients never see it. Output stems
+// land at stems/{songId}/lalal/{lead,backing,instrumental,mix_no_lead}.mp3.
+async function handleLalalSplit(request, env) {
+  if (!env.LALAL_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('lalal_not_configured: LALAL_MODAL_URL and STEMS_SHARED_SECRET secrets required on worker', 500));
+  }
+  if (!env.LALAL_API_KEY) {
+    return cors(jsonError('lalal_not_configured: LALAL_API_KEY secret required on worker', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const songId = String(body.songId || '').trim();
+  let sourceUrl = String(body.sourceUrl || '').trim();
+  const driveFileId = String(body.driveFileId || '').trim();
+  const accessToken = String(body.accessToken || '').trim();
+  const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
+  if (!songId) return cors(jsonError('missing songId', 400));
+  if (!sourceUrl && !audioDataUrl && !(driveFileId && accessToken)) {
+    return cors(jsonError('missing sourceUrl, { driveFileId, accessToken }, or audioBase64DataUrl', 400));
+  }
+  // Stage base64 audio to R2 (same pattern as /stems/separate — Best Shot
+  // takes are stored as data URLs in Firebase, no public URL otherwise).
+  if (audioDataUrl) {
+    if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
+      return cors(jsonError('staging_not_configured: STEMS_BUCKET binding and STEMS_R2_PUBLIC_BASE var required', 500));
+    }
+    const m = audioDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) return cors(jsonError('invalid audioBase64DataUrl: expected data:<mime>;base64,<payload>', 400));
+    const mime = m[1];
+    const b64 = m[2];
+    let bin;
+    try { bin = atob(b64); }
+    catch (e) { return cors(jsonError('invalid base64 payload', 400)); }
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ext = (mime.split('/')[1] || 'bin').replace(/[^a-z0-9]+/gi, '').slice(0, 8) || 'bin';
+    const key = '_staging/' + songId + '.' + ext;
+    try {
+      await env.STEMS_BUCKET.put(key, bytes, { httpMetadata: { contentType: mime } });
+    } catch (e) {
+      return cors(jsonError('r2_stage_failed: ' + (e && e.message), 502));
+    }
+    sourceUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
+  }
+  // Drive files — proxy through our /drive-stream so Modal can fetch publicly.
+  if (!sourceUrl) {
+    const origin = new URL(request.url).origin;
+    sourceUrl = origin + '/drive-stream?fileId=' + encodeURIComponent(driveFileId)
+              + '&token=' + encodeURIComponent(accessToken);
+  }
+
+  // LALAL processing on Modal: ~30-90s per typical song (mostly waiting on
+  // LALAL's queue). Modal cold start adds ~10-15s. Generous 8-min ceiling.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 480000); // 8 min
+  try {
+    const modalRes = await fetch(env.LALAL_MODAL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_url: sourceUrl,
+        song_id: songId,
+        lalal_key: env.LALAL_API_KEY,
         token: env.STEMS_SHARED_SECRET
       }),
       signal: ctrl.signal

@@ -92,10 +92,79 @@ window.GLStems = (function () {
     try { await saveBandDataToDrive(title, 'stems', null); } catch (e) {}
   }
 
+  // ── LALAL.AI lead/backing split (Phase 1 — Harmony Painkiller) ─────────
+  // Stored separately from `stems` (per-instrument Demucs) under the
+  // `lalal_split` band-data field. Same record shape as stems above so
+  // existing UI patterns can read either.
+  //
+  // Returns { stems:{lead,backing,instrumental,mix_no_lead}, lalal_task_id, separatedAt, sourceLabel, durationSec, elapsedSec } or null.
+  async function getLeadBackingSplit(title) {
+    if (!title || typeof loadBandDataFromDrive !== 'function') return null;
+    try {
+      var d = await loadBandDataFromDrive(title, 'lalal_split');
+      if (d && d.stems && d.stems.lead) return d;
+      return null;
+    } catch (e) { return null; }
+  }
+
+  async function hasLeadBackingSplit(title) { return !!(await getLeadBackingSplit(title)); }
+
+  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?, sourceLabel? }
+  // Mirrors `separate(...)` arg shape so callers can swap sources easily.
+  async function splitLeadBacking(title, opts) {
+    if (!title) throw new Error('title required');
+    opts = opts || {};
+    var body = { songId: _stemsKey(title) };
+    if (opts.sourceUrl) {
+      body.sourceUrl = opts.sourceUrl;
+    } else if (opts.driveFileId) {
+      body.driveFileId = opts.driveFileId;
+      if (opts.accessToken) body.accessToken = opts.accessToken;
+    } else if (opts.audioDataUrl) {
+      body.audioBase64DataUrl = opts.audioDataUrl;
+    } else {
+      throw new Error('sourceUrl, driveFileId, or audioDataUrl required');
+    }
+
+    var res = await fetch(_workerBase() + '/lalal/split', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!data) throw new Error('Bad worker response (' + res.status + ')');
+    if (!data.success) throw new Error(data.error || 'lalal_split_failed');
+
+    var record = {
+      stems: data.stems,         // { lead, backing, instrumental, mix_no_lead }
+      lalal_task_id: data.lalal_task_id,
+      separatedAt: new Date().toISOString(),
+      sourceLabel: opts.sourceLabel || (opts.sourceUrl ? 'URL' : 'Drive'),
+      durationSec: data.duration_sec,
+      elapsedSec: data.elapsed_sec,
+      tool: 'lalal_lead_back'
+    };
+    if (typeof saveBandDataToDrive === 'function') {
+      try { await saveBandDataToDrive(title, 'lalal_split', record); } catch (e) {}
+    }
+    return record;
+  }
+
+  async function clearLeadBackingSplit(title) {
+    if (typeof saveBandDataToDrive !== 'function') return;
+    try { await saveBandDataToDrive(title, 'lalal_split', null); } catch (e) {}
+  }
+
   return {
     getStems: getStems,
     hasStems: hasStems,
     separate: separate,
-    clearStems: clearStems
+    clearStems: clearStems,
+    // LALAL.AI lead/backing
+    getLeadBackingSplit: getLeadBackingSplit,
+    hasLeadBackingSplit: hasLeadBackingSplit,
+    splitLeadBacking: splitLeadBacking,
+    clearLeadBackingSplit: clearLeadBackingSplit
   };
 })();
