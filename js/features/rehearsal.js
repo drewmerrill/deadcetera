@@ -907,9 +907,12 @@ async function _rhRenderCommandFlow(el) {
                 + '<button onclick="_rhLaunchSavedPlan()" style="width:100%;padding:6px;border-radius:6px;border:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.06);color:#86efac;font-size:0.72em;cursor:pointer;font-family:inherit">\u25B6 Launch Plan</button>'
                 + '</div></div>';
         } else {
-            // Review Mode right rail: plan slot + history + recordings
+            // Review Mode right rail: guidance + history + recordings
+            // Plan stays in main column (was previously moved to rail — removed
+            // because narrow rail truncated song names to "Esti..." / "Ba..." /
+            // "S..." and made the plan unreadable. The plan is the page's
+            // primary content and belongs in main.)
             _railHtml += (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '');
-            _railHtml += '<div id="rhPlanRailSlot"></div>';
             // History — collapsed
             _railHtml += '<details class="gl-context-card" style="padding:0">'
                 + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
@@ -949,15 +952,11 @@ async function _rhRenderCommandFlow(el) {
         });
     }
 
-    // Move plan to right rail in Review Mode only
-    // In Plan Mode, plan stays in the main content area
-    if (!_rhPlanningMode) {
-        var _planContainer = document.getElementById('rhPlanContainer');
-        var _planSlot = document.getElementById('rhPlanRailSlot');
-        if (_planContainer && _planSlot) {
-            _planSlot.appendChild(_planContainer);
-        }
-    }
+    // Plan stays in main column in BOTH Plan Mode and Review Mode.
+    // Previously the plan was moved to the right rail in Review Mode, but
+    // the narrow rail truncated song names ("Esti...", "Ba...", "S...") and
+    // made the page's primary content unreadable. Per UAT feedback, the plan
+    // is what the page is FOR — keep it in main.
 
     // Wire up drag-and-drop on the unit list
     _rhInitDragDrop();
