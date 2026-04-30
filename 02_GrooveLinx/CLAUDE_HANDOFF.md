@@ -2,7 +2,45 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-30 — **Phase 0 + Phase 0.5 BOTH CLOSED.** Phase 0: Demucs sweeps 5/5 (vocal isolation). Phase 0.5: LALAL.AI sweeps 5/6 (lead/backing — 1 tie on physics-ceiling). Phase 1 unblocked. Production pipeline locked: Demucs (Stems lens) ‖ LALAL.AI (Harmony Lab) → Basic Pitch on LALAL lead. Build `20260429-205047`._
+_Last updated: 2026-04-30 — **Phase 1 in flight.** UI shipped (build `20260430-113903`): "🎤 LALAL Auto-Split" button on empty harmony state + ABC editor toolbar; `runLalalImport()` orchestrator runs LALAL → fetches `lead.mp3` → Basic Pitch → seeds `harmonies_data.parts[]` with `source: 'lalal'`. Foundation `splitLeadBacking()` + Worker `/lalal/split` + Modal `lalal_split_http` all live (commit `3dbdbcf4`). Blocker: Drew must add `LALAL_API_KEY` + `LALAL_MODAL_URL` to Cloudflare Worker secrets and paste-deploy `worker.js` before flow can run end-to-end._
+
+## Session 2026-04-30 (PM) — Phase 1.5 + 1.7 shipped (LALAL Auto-Split orchestrator)
+
+**Status:** Auto-Split UI live in dev. End-to-end flow wired but gated on Drew's worker secret + paste-deploy.
+
+### What shipped this turn
+
+1. **`importHarmoniesFromLalal(songTitle)`** (`app.js`, after `runFadrImport`) — modal with source picker (defaults to first reference version, falls back to typed URL); detects existing `lalal_split` data and offers "↻ Reuse existing split" path so Basic Pitch can re-run without burning LALAL minutes.
+2. **`runLalalImport(songTitle)`** — calls `GLStems.splitLeadBacking()` → on success calls `runBasicPitchOnLalalLead()`.
+3. **`runBasicPitchOnLalalLead(songTitle, split, setProgress)`** — fetches the LALAL `lead.mp3` from R2, POSTs to `https://basic-pitch.com/api/v1/predict`, converts via `convertBasicPitchToABC()`, merges into `harmonies_data.sections[0].parts[]`. Re-runs are idempotent: any pre-existing `source:'lalal'` parts are filtered out and replaced.
+4. **Two button mirror points wired:**
+   - `app.js:3782` — empty harmony state ("🎤 Auto-Split (LALAL)" + "🎵 Auto-Import (Fadr)")
+   - `app.js:4225` — ABC editor toolbar ("🎤 LALAL Auto-Split" + "🤖 Fadr Auto-Import")
+5. **Build bumped** atomically (3 sources — `index-dev.html` is empty in this repo): `20260430-112714` → `20260430-113903`.
+
+### Schema written by orchestrator
+
+```js
+sections[0].parts = [
+  ...existingNonLalalParts,
+  { singer: 'lead',    part: 'lead',    notes: leadAbc,  audio_url: lalal/lead.mp3,    source: 'lalal', notation_quality: 'auto-draft' },
+  { singer: 'backing', part: 'harmony', notes: null,     audio_url: lalal/backing.mp3, source: 'lalal', notation_quality: 'audio-only' }
+]
+```
+
+### Drew's manual deploy steps (still required to flip flow live)
+
+1. `cd /Users/drewmerrill/Documents/GitHub/deadcetera && wrangler secret put LALAL_API_KEY` → paste `b13f5198ca374116`
+2. `wrangler secret put LALAL_MODAL_URL` → paste `https://drewmerrill--groovelinx-stem-separator-lalal-split-http.modal.run`
+3. Open Cloudflare Worker dashboard → paste current `worker.js` contents → Save & Deploy
+
+(All three already documented in §6.4 of `stems_intelligence_plan.md` and `reference_cloudflare_worker.md` memory.)
+
+### Restart prompt (next session — Phase 1.6 Harmony Lab MVP)
+
+> Phase 1 Harmony Painkiller continues. Auto-Split orchestrator is shipped (build `20260430-113903`); blocker is Drew's worker paste-deploy. Next: **Phase 1.6 Harmony Lab MVP** — `js/features/harmony-lab.js` has stubs at `hl-abc-container` (line ~210), `hl-mixer` (line ~221), `hl-loop-row` (line ~239). Wire abcjs render against `harmonies_data.parts[].notes`, WebAudio mute/solo against `harmonies_data.parts[].audio_url` (LALAL lead/backing now populated). Read `02_GrooveLinx/specs/stems_intelligence_plan.md` §4.4 first — single-source dual-view rule (Stems lens and Harmony Lab share `GLStore.mixerState`). DO NOT build a parallel UI.
+
+
 
 ## Session 2026-04-30 — Phase 0.5 closeout + Phase 1 unblock
 

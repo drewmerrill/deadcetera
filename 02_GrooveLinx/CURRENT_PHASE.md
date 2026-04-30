@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-30 — **Phase 0 + Phase 0.5 BOTH CLOSED.** Phase 0 (vocal-vs-instrumental, 2026-04-29): Demucs sweeps 5/5 huge. Phase 0.5 (lead-vs-backing, 2026-04-30): **LALAL.AI sweeps 5/6** (3 leads huge, 2 backings huge/clear, 1 tie on Helplessly's physics-ceiling backing). **Phase 1 unblocked.** Production pipeline: Demucs (Stems lens) ‖ LALAL.AI (Harmony Lab) → Basic Pitch on LALAL lead. Fadr demoted to MIDI-per-harmony seed only. Build `20260429-205047`._
+_Updated: 2026-04-30 — **Phase 1 in flight.** Foundation shipped: Modal `lalal_split_http`, Worker `/lalal/split`, Client `GLStems.splitLeadBacking()`. UI wired (build `20260430-113903`): "🎤 LALAL Auto-Split" button on empty harmony state + ABC editor toolbar, source picker (defaults to first reference version), end-to-end orchestrator runs Basic Pitch on LALAL `lead.mp3` and writes `harmonies_data.parts[]` with `source: 'lalal'`. Backing stem persists as `audio_url` only (Phase 2 transcribes). **Blockers for live use:** Drew still needs to add `LALAL_API_KEY` + `LALAL_MODAL_URL` to Cloudflare Worker secrets and paste-deploy `worker.js`._
 
 ---
 
@@ -42,14 +42,14 @@ All studio sources. Live-SBD slot deferred to P1 UAT.
 4. **Harmony Lab** consumes ABC + LALAL backing audio + GLStore mixer state.
 
 **Phase 1 build order (4–8 days):**
-1. Move LALAL key from local file to Cloudflare Worker secret `LALAL_API_KEY` (~30 min)
-2. Worker `/lalal/split` endpoint (~1 hour)
-3. Client `splitLeadBacking(title)` in `js/core/gl-stems.js` (~1 hour)
-4. Wire Basic Pitch to LALAL `lead.mp3` (~2 hours)
-5. Harmony Lab abcjs render + WebAudio mixer + phrase loops (~1 day each = 3 days, the core lift)
-6. "Auto-Split Harmonies" button + source picker (~4 hours)
-7. Pan knob in Stems lens / Harmony Lab (~30 min)
-8. Band UAT — Drew + 1 bandmate learn a part (~1 day)
+1. Move LALAL key from local file to Cloudflare Worker secret `LALAL_API_KEY` (~30 min) — ⏳ awaiting Drew (paste-deploy required)
+2. Worker `/lalal/split` endpoint (~1 hour) — ✅ shipped (commit `3dbdbcf4`)
+3. Client `splitLeadBacking(title)` in `js/core/gl-stems.js` (~1 hour) — ✅ shipped (commit `3dbdbcf4`)
+4. Wire Basic Pitch to LALAL `lead.mp3` (~2 hours) — ✅ shipped (build `20260430-113903`, `runBasicPitchOnLalalLead`)
+5. Harmony Lab abcjs render + WebAudio mixer + phrase loops (~1 day each = 3 days, the core lift) — ⏳ next
+6. "Auto-Split Harmonies" button + source picker (~4 hours) — ✅ shipped (build `20260430-113903`, two mirror points wired)
+7. Pan knob in Stems lens / Harmony Lab (~30 min) — ⏳
+8. Band UAT — Drew + 1 bandmate learn a part (~1 day) — ⏳
 
 **Drew's resolved decisions (§14 of plan):**
 - ✅ $50 LALAL.AI Master pack budget approved for bake-off

@@ -3779,12 +3779,16 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                         class="chart-btn chart-btn-primary" style="background: #667eea;">
                         🎤 Add Harmony Section
                     </button>
+                    <button onclick="importHarmoniesFromLalal('${safeSongTitle}')"
+                        style="background:#4f46e5;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:600">
+                        🎤 Auto-Split (LALAL)
+                    </button>
                     <button onclick="importHarmoniesFromFadr('${safeSongTitle}')"
                         style="background:#059669;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:600">
-                        🎵 Auto-Import Harmonies
+                        🎵 Auto-Import (Fadr)
                     </button>
                 </div>
-                <p style="color: #9ca3af; font-size: 0.85em;">Auto-import uses Fadr AI to extract vocal parts from an Archive.org recording.</p>
+                <p style="color: #9ca3af; font-size: 0.85em;">LALAL splits lead vs. backing then transcribes the lead with Basic Pitch. Fadr extracts per-instrument MIDI directly.</p>
             </div>
         `;
         return;
@@ -4221,6 +4225,10 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                     <button onclick="importABCFromAudio(${sectionIndex})"
                         style="background:#065f46;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
                         🎵 Import from Audio
+                    </button>
+                    <button onclick="importHarmoniesFromLalal('${title.replace(/'/g, "\\\'")}' )"
+                        style="background:#4f46e5;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
+                        🎤 LALAL Auto-Split
                     </button>
                     <button onclick="importHarmoniesFromFadr('${title.replace(/'/g, "\\\'")}' )"
                         style="background:#059669;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
@@ -5131,6 +5139,195 @@ K:${songKey}
         console.error('Fadr import error:', err);
         if (progressText) { progressText.style.color = '#ef4444'; progressText.textContent = `❌ Import failed: ${err.message}`; }
         if (startBtn) { startBtn.disabled = false; startBtn.textContent = '🔄 Try Again'; }
+    }
+}
+
+// ============================================================================
+// LALAL.AI HARMONY AUTO-SPLIT (Phase 1 — Harmony Painkiller)
+// Lead/backing split via LALAL.AI multivocal mode → Basic Pitch on the lead
+// stem to seed `harmonies_data.sections[].parts[]`. Mirrors Fadr import shape
+// but stores under `lalal_split` band-data field via GLStems.
+// ============================================================================
+
+async function importHarmoniesFromLalal(songTitle) {
+    if (!window.GLStems || typeof GLStems.splitLeadBacking !== 'function') {
+        alert('LALAL split client not loaded — refresh and try again.');
+        return;
+    }
+    var versions = [];
+    try { versions = (typeof loadRefVersions === 'function') ? await loadRefVersions(songTitle) : []; } catch(_) {}
+    versions = (versions || []).filter(function(v){ return v && (v.url || v.spotifyUrl); });
+    var northStarUrl = (versions[0] && (versions[0].url || versions[0].spotifyUrl)) || '';
+    var existing = null;
+    try { existing = await GLStems.getLeadBackingSplit(songTitle); } catch(_) {}
+    var modal = document.createElement('div');
+    modal.id = 'lalalImportModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px';
+    var versionOptions = versions.map(function(v, i){
+        var label = v.label || v.platform || 'Version ' + (i+1);
+        var url = v.url || v.spotifyUrl || '';
+        return '<option value="' + url.replace(/"/g,'&quot;') + '">' + label + ' — ' + url.slice(0,60) + '</option>';
+    }).join('');
+    var existingBlock = existing ? (
+        '<div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:12px;margin-bottom:12px;font-size:0.82em;color:#a5b4fc">' +
+        '✅ Existing LALAL split from ' + new Date(existing.separatedAt).toLocaleDateString() +
+        ' (' + (existing.sourceLabel||'unknown source') + ')<br>' +
+        '<button onclick="reuseLalalSplit(\'' + songTitle.replace(/'/g,"\\'") + '\')" ' +
+        'style="margin-top:8px;background:#4f46e5;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">' +
+        '↻ Reuse existing split (skip LALAL, just run Basic Pitch)</button>' +
+        '</div>'
+    ) : '';
+    modal.innerHTML =
+        '<div style="background:#0f1a0f;border:1px solid rgba(99,102,241,0.4);border-radius:16px;padding:24px;max-width:580px;width:100%;max-height:90vh;overflow-y:auto">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+                '<h3 style="margin:0;color:white">🎤 Auto-Split Harmonies via LALAL.AI</h3>' +
+                '<button onclick="document.getElementById(\'lalalImportModal\').remove()" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:1.3em">✕</button>' +
+            '</div>' +
+            '<div style="background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:14px;margin-bottom:16px;font-size:0.85em;color:#a5b4fc;line-height:1.7">' +
+                '<strong style="color:white">How this works:</strong><br>' +
+                '1. LALAL.AI splits the audio into <strong>lead</strong> + <strong>backing</strong> + instrumental stems (~1–2 min)<br>' +
+                '2. Spotify Basic Pitch transcribes the isolated lead vocal into MIDI<br>' +
+                '3. Notes seed <code>harmonies_data</code> as a draft Lead part you can edit<br>' +
+                '<span style="color:#9ca3af;font-size:0.9em">⏱ Total: 1–3 minutes • Backing harmonies stay as audio (Phase 2 transcribes them)</span>' +
+            '</div>' +
+            existingBlock +
+            '<div style="margin-bottom:14px">' +
+                '<span style="display:block;font-size:0.85em;color:#9ca3af;margin-bottom:6px">Source recording:</span>' +
+                (versions.length > 0
+                    ? '<select id="lalalSourcePicker" onchange="document.getElementById(\'lalalSourceUrl\').value=this.value" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 12px;color:white;font-size:0.9em;margin-bottom:8px;outline:none">' +
+                          versionOptions +
+                          '<option value="">— Custom URL below —</option>' +
+                      '</select>'
+                    : '<p style="color:#6b7280;font-size:0.82em;margin:0 0 8px 0">No reference versions saved yet. Paste a direct URL below.</p>') +
+                '<input id="lalalSourceUrl" type="url" placeholder="https://archive.org/download/... or any audio URL" ' +
+                'value="' + northStarUrl.replace(/"/g,'&quot;') + '" ' +
+                'style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:10px 12px;color:white;font-size:0.9em;outline:none">' +
+            '</div>' +
+            '<button onclick="runLalalImport(\'' + songTitle.replace(/'/g,"\\'") + '\')" ' +
+                'style="width:100%;background:#4f46e5;color:white;border:none;padding:12px;border-radius:8px;cursor:pointer;font-size:0.95em;font-weight:700;margin-bottom:12px">' +
+                '🚀 Start Auto-Split</button>' +
+            '<div id="lalalProgress" style="display:none;background:rgba(0,0,0,0.3);border-radius:8px;padding:16px">' +
+                '<div id="lalalProgressText" style="color:#a5b4fc;font-size:0.9em;margin-bottom:10px">Initializing...</div>' +
+                '<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;overflow:hidden">' +
+                    '<div id="lalalProgressBar" style="background:#4f46e5;height:100%;width:0%;transition:width 0.5s ease"></div>' +
+                '</div>' +
+                '<div id="lalalProgressDetail" style="color:#6b7280;font-size:0.78em;margin-top:8px"></div>' +
+            '</div>' +
+        '</div>';
+    document.body.appendChild(modal);
+}
+
+async function runLalalImport(songTitle) {
+    var sourceUrl = (document.getElementById('lalalSourceUrl') || {}).value;
+    sourceUrl = (sourceUrl || '').trim();
+    if (!sourceUrl || !sourceUrl.startsWith('http')) { alert('Please pick or paste a valid audio URL.'); return; }
+    var progressEl = document.getElementById('lalalProgress');
+    var startBtn = document.querySelector('#lalalImportModal button[onclick*="runLalalImport"]');
+    if (startBtn) { startBtn.disabled = true; startBtn.textContent = '⏳ Splitting...'; }
+    if (progressEl) progressEl.style.display = 'block';
+    var pText = document.getElementById('lalalProgressText');
+    var pBar = document.getElementById('lalalProgressBar');
+    var pDet = document.getElementById('lalalProgressDetail');
+    var setProgress = function(msg, pct, detail){
+        if (pText) pText.textContent = msg;
+        if (pBar) pBar.style.width = pct + '%';
+        if (pDet) pDet.textContent = detail || '';
+    };
+    try {
+        setProgress('🤖 Sending to LALAL.AI…', 10, 'Worker will fetch audio + start the split');
+        var split = await GLStems.splitLeadBacking(songTitle, {
+            sourceUrl: sourceUrl,
+            sourceLabel: sourceUrl.includes('archive.org') ? 'Archive.org' : 'URL'
+        });
+        if (!split || !split.stems || !split.stems.lead) throw new Error('LALAL returned no lead stem');
+        setProgress('✅ Stems received', 55, 'Lead/backing/instrumental cached in R2');
+        await runBasicPitchOnLalalLead(songTitle, split, setProgress);
+        setProgress('🎉 Auto-Split complete!', 100, 'Harmony parts saved');
+        if (pText) { pText.style.color = '#34d399'; pText.innerHTML = '🎉 <strong>Auto-Split complete!</strong> Lead transcribed; backing saved as audio.'; }
+        if (startBtn) {
+            startBtn.textContent = '✅ Done — Close & View';
+            startBtn.disabled = false;
+            startBtn.style.background = '#047857';
+            startBtn.onclick = function(){
+                var m = document.getElementById('lalalImportModal'); if (m) m.remove();
+                if (typeof renderHarmoniesEnhanced === 'function') renderHarmoniesEnhanced(songTitle, {});
+            };
+        }
+    } catch(err) {
+        console.error('LALAL import error:', err);
+        if (pText) { pText.style.color = '#ef4444'; pText.textContent = '❌ Auto-Split failed: ' + err.message; }
+        if (startBtn) { startBtn.disabled = false; startBtn.textContent = '🔄 Try Again'; }
+    }
+}
+
+async function reuseLalalSplit(songTitle) {
+    var split = null;
+    try { split = await GLStems.getLeadBackingSplit(songTitle); } catch(_) {}
+    if (!split || !split.stems || !split.stems.lead) { alert('No saved LALAL split found.'); return; }
+    var progressEl = document.getElementById('lalalProgress');
+    if (progressEl) progressEl.style.display = 'block';
+    var pText = document.getElementById('lalalProgressText');
+    var pBar = document.getElementById('lalalProgressBar');
+    var pDet = document.getElementById('lalalProgressDetail');
+    var setProgress = function(msg, pct, detail){
+        if (pText) pText.textContent = msg;
+        if (pBar) pBar.style.width = pct + '%';
+        if (pDet) pDet.textContent = detail || '';
+    };
+    try {
+        await runBasicPitchOnLalalLead(songTitle, split, setProgress);
+        setProgress('🎉 Re-transcribed!', 100, 'harmonies_data updated');
+        if (pText) { pText.style.color = '#34d399'; pText.innerHTML = '🎉 <strong>Re-transcribed</strong> from saved LALAL split.'; }
+    } catch(err) {
+        console.error('LALAL reuse error:', err);
+        if (pText) { pText.style.color = '#ef4444'; pText.textContent = '❌ Failed: ' + err.message; }
+    }
+}
+
+// Shared: run Basic Pitch on a LALAL split's lead.mp3 + persist harmonies_data.
+async function runBasicPitchOnLalalLead(songTitle, split, setProgress) {
+    setProgress('📥 Fetching isolated lead vocal…', 60, split.stems.lead);
+    var leadResp = await fetch(split.stems.lead);
+    if (!leadResp.ok) throw new Error('Failed to fetch lead.mp3 (' + leadResp.status + ')');
+    var leadBlob = await leadResp.blob();
+
+    setProgress('🎼 Running Basic Pitch transcription…', 75, (leadBlob.size/1024/1024).toFixed(1) + ' MB → MIDI');
+    var formData = new FormData();
+    formData.append('audio', leadBlob, 'lead.mp3');
+    var bpResp = await fetch('https://basic-pitch.com/api/v1/predict', { method: 'POST', body: formData });
+    if (!bpResp.ok) throw new Error('Basic Pitch failed (' + bpResp.status + ')');
+    var noteData = await bpResp.json();
+
+    setProgress('💾 Saving harmony parts…', 90);
+    var leadAbc = (typeof convertBasicPitchToABC === 'function')
+        ? convertBasicPitchToABC(noteData, songTitle + ' (lead)')
+        : null;
+
+    if (typeof saveBandDataToDrive === 'function') {
+        try { await saveBandDataToDrive(songTitle, BAND_DATA_TYPES.HAS_HARMONIES, { value: true }); } catch(_) {}
+    }
+    var existingH = null;
+    try { existingH = await loadBandDataFromDrive(songTitle, 'harmonies_data'); } catch(_) {}
+    var sections = (existingH && toArray(existingH.sections)) || [];
+    var lalalParts = [
+        { singer: 'lead',    part: 'lead',    notes: leadAbc, audio_url: split.stems.lead,    source: 'lalal', notation_quality: 'auto-draft' },
+        { singer: 'backing', part: 'harmony', notes: null,    audio_url: split.stems.backing, source: 'lalal', notation_quality: 'audio-only' }
+    ];
+    if (sections.length === 0) {
+        sections = [{
+            name: 'Full Song',
+            lyric: 'Auto-split via LALAL.AI on ' + new Date().toLocaleDateString(),
+            parts: lalalParts,
+            practiceNotes: ['Lead transcribed by Basic Pitch — review and clean up', 'Backing audio stays raw until Phase 2 multi-voice transcription']
+        }];
+    } else {
+        // Merge into the first section: replace any existing source:'lalal' parts so re-runs stay clean.
+        var first = sections[0];
+        first.parts = toArray(first.parts || []).filter(function(p){ return !p || p.source !== 'lalal'; });
+        first.parts = first.parts.concat(lalalParts);
+    }
+    if (typeof saveBandDataToDrive === 'function') {
+        await saveBandDataToDrive(songTitle, 'harmonies_data', { sections: sections });
     }
 }
 
