@@ -203,13 +203,16 @@ function _hlShellHTML(title) {
     '    </div>',
     '  </div>',
 
-    // Notation (collapsed)
-    '  <details class="sd-details" style="margin-top:16px">',
-    '    <summary style="padding:8px 12px;font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim,#475569);cursor:pointer">🎼 Notation — Advanced (Coming Soon)</summary>',
+    // ── LALAL / Fadr split mixer (renders only if parts[] has audio_url) ──
+    '  <div id="hl-split-mixer" style="display:none;margin-top:16px"></div>',
+
+    // Notation (collapsed — renders lead's ABC notes via abcjs when available)
+    '  <details class="sd-details" id="hl-abc-details" style="margin-top:16px" open>',
+    '    <summary style="padding:8px 12px;font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim,#475569);cursor:pointer">🎼 Lead Notation</summary>',
     '    <div style="padding:8px 12px">',
     '      <div id="hl-abc-container" class="hl-abc-placeholder">',
     '        <div class="hl-abc-icon">𝄞</div>',
-    '        <div class="hl-abc-msg">ABC notation will appear here once abcjs is loaded</div>',
+    '        <div class="hl-abc-msg">No lead notation yet — run LALAL Auto-Split to generate</div>',
     '      </div>',
     '    </div>',
     '  </details>',
@@ -353,6 +356,8 @@ async function _hlLoadData(songTitle) {
   try {
     _hlRenderSections(results[0].value);
     _hlRenderParts(results[0].value);
+    _hlRenderSplitMixer(results[0].value);
+    _hlRenderLeadNotation(results[0].value);
   } catch(e) {
     var list = document.getElementById('hl-sections-list');
     if (list) list.innerHTML = '<div class="hl-rail-empty">No sections yet</div>';
@@ -361,6 +366,291 @@ async function _hlLoadData(songTitle) {
   _hlAssets = (results[1].status === 'fulfilled' && results[1].value) ? results[1].value : [];
   _hlRenderAssetPlayer(_hlAssets);
   _hlRefreshMyTakes(songTitle);
+}
+
+// ── Harmony Audio Mixer (Phase 1.6 + 1.8) ────────────────────────────────────
+// Renders a synced multi-track mixer when `harmonies_data.sections[].parts[]`
+// has `audio_url` entries (written by LALAL/Fadr orchestrators in app.js).
+// Mute/solo/volume/pan + phrase loop. Mirrors Stems lens audio chain pattern.
+// ─────────────────────────────────────────────────────────────────────────────
+
+var _hlMixState = null; // { ctx, nodes:{partId:{src,gain,pan}}, audios, master, soloed, loop:{on,startBar,endBar,bpm} }
+
+function _hlRenderSplitMixer(harmoniesData) {
+  var host = document.getElementById('hl-split-mixer');
+  if (!host) return;
+  var sections = (harmoniesData && harmoniesData.sections)
+    ? (Array.isArray(harmoniesData.sections) ? harmoniesData.sections : Object.values(harmoniesData.sections))
+    : [];
+  // Flatten audio-url-bearing parts across sections; tag with section name + index.
+  var audioParts = [];
+  sections.forEach(function(sec, sIdx) {
+    var parts = sec && sec.parts;
+    if (!parts) return;
+    var arr = Array.isArray(parts) ? parts : Object.values(parts);
+    arr.forEach(function(p, pIdx) {
+      if (p && p.audio_url) {
+        audioParts.push({
+          partId:  's' + sIdx + '_p' + pIdx,
+          singer:  p.singer || ('Part ' + (pIdx+1)),
+          part:    p.part || 'voice',
+          source:  p.source || 'manual',
+          quality: p.notation_quality || '',
+          url:     p.audio_url,
+          notes:   p.notes || null,
+          section: sec.name || 'Section ' + (sIdx+1)
+        });
+      }
+    });
+  });
+  if (!audioParts.length) {
+    host.style.display = 'none';
+    host.innerHTML = '';
+    return;
+  }
+  host.style.display = 'block';
+  var bpm = _hlGetSongBpm() || 120;
+  var rows = audioParts.map(function(p) {
+    var roleColors = { lead:'#667eea', high:'#10b981', harmony:'#10b981', mid:'#f59e0b', low:'#ec4899', backing:'#ec4899', voice:'#94a3b8' };
+    var color = roleColors[p.part] || '#94a3b8';
+    var srcBadge = p.source === 'lalal' ? '<span class="hl-mix-badge" style="background:rgba(99,102,241,0.18);color:#a5b4fc">LALAL</span>'
+                 : p.source === 'fadr'  ? '<span class="hl-mix-badge" style="background:rgba(5,150,105,0.18);color:#6ee7b7">Fadr</span>'
+                 : '';
+    return '<div class="hl-mix-row" data-part="' + p.partId + '">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:0.85em;font-weight:700;color:' + color + '">' + _hlEsc(p.singer) + ' <span style="font-size:0.7em;color:var(--text-dim,#64748b);font-weight:600">· ' + _hlEsc(p.part) + '</span> ' + srcBadge + '</div>' +
+          '<input type="range" min="0" max="100" value="80" class="hl-mix-vol" data-part="' + p.partId + '" style="width:100%;margin-top:4px;accent-color:' + color + '" title="Volume">' +
+        '</div>' +
+        '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0" title="Pan (L ↔ R) — double-click to center">' +
+          '<input type="range" min="-100" max="100" value="0" class="hl-mix-pan" data-part="' + p.partId + '" style="width:60px;accent-color:' + color + '">' +
+          '<span class="hl-mix-pan-val" data-part="' + p.partId + '" style="font-size:0.62em;color:var(--text-dim,#64748b);font-variant-numeric:tabular-nums;line-height:1">C</span>' +
+        '</div>' +
+        '<button class="hl-mix-mute" data-part="' + p.partId + '">Mute</button>' +
+        '<button class="hl-mix-solo" data-part="' + p.partId + '">Solo</button>' +
+        '<audio class="hl-mix-audio" data-part="' + p.partId + '" preload="auto" crossorigin="anonymous" src="' + _hlEsc(p.url) + '"></audio>' +
+      '</div>';
+  }).join('');
+  host.innerHTML =
+    '<div class="hl-mix-card">' +
+      '<div class="hl-mix-card-title">🎚 Split Mixer <span class="hl-mix-subtitle">' + audioParts.length + ' track' + (audioParts.length===1?'':'s') + '</span></div>' +
+      '<div class="hl-mix-transport">' +
+        '<button id="hl-mix-play" type="button">▶ Play</button>' +
+        '<input id="hl-mix-scrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:100px">' +
+        '<span id="hl-mix-time" class="hl-mix-time">0:00 / 0:00</span>' +
+      '</div>' +
+      '<div class="hl-mix-loop">' +
+        '<label><input type="checkbox" id="hl-mix-loop-toggle"> Loop bars</label>' +
+        '<span class="hl-mix-loop-fields">' +
+          '<input type="number" id="hl-mix-loop-start" min="1" value="1" class="hl-bar-input"> to ' +
+          '<input type="number" id="hl-mix-loop-end" min="1" value="8" class="hl-bar-input">' +
+        '</span>' +
+        '<span class="hl-mix-loop-hint">@ ' + bpm + ' BPM, 4/4 (' + (240 / bpm).toFixed(1) + 's/bar)</span>' +
+      '</div>' +
+      rows +
+    '</div>';
+  _hlInitSplitMixer(audioParts, bpm);
+}
+
+function _hlInitSplitMixer(audioParts, bpm) {
+  var root = document;
+  var audios = root.querySelectorAll('.hl-mix-audio');
+  if (!audios.length) return;
+  var master = audios[0];
+
+  var AC = window.AudioContext || window.webkitAudioContext;
+  var ctx = null;
+  var nodes = {};
+  if (AC) {
+    try {
+      ctx = new AC();
+      audios.forEach(function(audio) {
+        audio.volume = 1;
+        var src  = ctx.createMediaElementSource(audio);
+        var gain = ctx.createGain(); gain.gain.value = 0.8;
+        var pan  = (typeof ctx.createStereoPanner === 'function') ? ctx.createStereoPanner() : null;
+        if (pan) src.connect(gain).connect(pan).connect(ctx.destination);
+        else     src.connect(gain).connect(ctx.destination);
+        nodes[audio.dataset.part] = { src: src, gain: gain, pan: pan };
+      });
+    } catch(e) { console.warn('[HarmonyLab] WebAudio init failed:', e); ctx = null; nodes = {}; }
+  }
+
+  var fmt = function(s){ s = Math.floor(s||0); return Math.floor(s/60) + ':' + ('0'+(s%60)).slice(-2); };
+  _hlMixState = {
+    ctx: ctx, nodes: nodes, audios: audios, master: master, soloed: null,
+    loop: { on: false, startBar: 1, endBar: 8, bpm: bpm }
+  };
+
+  var applyVol = function(audio) {
+    var part = audio.dataset.part;
+    var slider = root.querySelector('.hl-mix-vol[data-part="' + part + '"]');
+    var v = slider ? Number(slider.value) / 100 : 0.8;
+    var muted = audio.dataset.muted === '1';
+    var soloOff = audio.dataset.soloOff === '1';
+    var out = (muted || soloOff) ? 0 : Math.max(0, Math.min(1, v));
+    var n = nodes[part];
+    if (n) { try { n.gain.gain.value = out; } catch(e) {} }
+    else { audio.volume = out; }
+  };
+  var applyPan = function(part, val) {
+    var v = Math.max(-1, Math.min(1, Number(val) / 100));
+    var n = nodes[part];
+    if (n && n.pan) { try { n.pan.pan.value = v; } catch(e) {} }
+    var lab = root.querySelector('.hl-mix-pan-val[data-part="' + part + '"]');
+    if (lab) lab.textContent = v === 0 ? 'C' : (v < 0 ? 'L' + Math.round(-v*100) : 'R' + Math.round(v*100));
+  };
+
+  audios.forEach(function(audio) {
+    var part = audio.dataset.part;
+    var vSlider = root.querySelector('.hl-mix-vol[data-part="' + part + '"]');
+    if (vSlider) vSlider.addEventListener('input', function(){ applyVol(audio); });
+    applyVol(audio);
+  });
+  root.querySelectorAll('.hl-mix-pan').forEach(function(s) {
+    s.addEventListener('input', function(){ applyPan(s.dataset.part, s.value); });
+    s.addEventListener('dblclick', function(){ s.value = 0; applyPan(s.dataset.part, 0); });
+  });
+  root.querySelectorAll('.hl-mix-mute').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var audio = root.querySelector('.hl-mix-audio[data-part="' + btn.dataset.part + '"]');
+      if (!audio) return;
+      var muted = audio.dataset.muted === '1';
+      audio.dataset.muted = muted ? '' : '1';
+      applyVol(audio);
+      btn.classList.toggle('hl-mix-btn-on', !muted);
+    });
+  });
+  root.querySelectorAll('.hl-mix-solo').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var part = btn.dataset.part;
+      _hlMixState.soloed = (_hlMixState.soloed === part) ? null : part;
+      audios.forEach(function(a) {
+        a.dataset.soloOff = (_hlMixState.soloed && a.dataset.part !== _hlMixState.soloed) ? '1' : '';
+        applyVol(a);
+      });
+      root.querySelectorAll('.hl-mix-solo').forEach(function(b) {
+        b.classList.toggle('hl-mix-btn-on', _hlMixState.soloed === b.dataset.part);
+      });
+    });
+  });
+
+  // Transport
+  var playBtn = root.querySelector('#hl-mix-play');
+  var scrub   = root.querySelector('#hl-mix-scrub');
+  var timeEl  = root.querySelector('#hl-mix-time');
+  if (playBtn) playBtn.addEventListener('click', function() {
+    if (ctx && ctx.state === 'suspended') { try { ctx.resume(); } catch(e) {} }
+    var anyPlaying = Array.prototype.some.call(audios, function(a){ return !a.paused; });
+    if (anyPlaying) {
+      audios.forEach(function(a){ a.pause(); });
+      playBtn.textContent = '▶ Play';
+    } else {
+      var t = audios[0].currentTime || 0;
+      audios.forEach(function(a){ try { a.currentTime = t; } catch(e){} a.play().catch(function(){}); });
+      playBtn.textContent = '⏸ Pause';
+    }
+  });
+
+  // Loop controls — bar→sec via BPM. Assumes 4/4; non-4/4 ignored for MVP.
+  var loopToggle = root.querySelector('#hl-mix-loop-toggle');
+  var loopStart  = root.querySelector('#hl-mix-loop-start');
+  var loopEnd    = root.querySelector('#hl-mix-loop-end');
+  var readLoop = function() {
+    _hlMixState.loop.on       = !!(loopToggle && loopToggle.checked);
+    _hlMixState.loop.startBar = Math.max(1, parseInt(loopStart && loopStart.value) || 1);
+    _hlMixState.loop.endBar   = Math.max(_hlMixState.loop.startBar + 1, parseInt(loopEnd && loopEnd.value) || _hlMixState.loop.startBar + 1);
+  };
+  if (loopToggle) loopToggle.addEventListener('change', readLoop);
+  if (loopStart)  loopStart.addEventListener('change', readLoop);
+  if (loopEnd)    loopEnd.addEventListener('change', readLoop);
+  readLoop();
+  var secsPerBar = function() { return 240 / (_hlMixState.loop.bpm || 120); };
+
+  master.addEventListener('timeupdate', function() {
+    if (master.duration && scrub) scrub.value = (master.currentTime / master.duration) * 1000;
+    if (timeEl && master.duration) timeEl.textContent = fmt(master.currentTime) + ' / ' + fmt(master.duration);
+    // Loop check
+    if (_hlMixState.loop.on) {
+      var spb = secsPerBar();
+      var startSec = (_hlMixState.loop.startBar - 1) * spb;
+      var endSec   = (_hlMixState.loop.endBar   - 1) * spb;
+      if (master.currentTime >= endSec || master.currentTime < startSec) {
+        var newT = startSec;
+        audios.forEach(function(a){ try { a.currentTime = newT; } catch(e){} });
+      }
+    }
+  });
+  master.addEventListener('loadedmetadata', function() {
+    if (timeEl && master.duration) timeEl.textContent = '0:00 / ' + fmt(master.duration);
+  });
+  master.addEventListener('ended', function() {
+    if (playBtn) playBtn.textContent = '▶ Play';
+    audios.forEach(function(a){ try { a.pause(); a.currentTime = 0; } catch(e){} });
+  });
+  if (scrub) scrub.addEventListener('input', function() {
+    if (!master.duration) return;
+    var t = (scrub.value / 1000) * master.duration;
+    audios.forEach(function(a){ try { a.currentTime = t; } catch(e){} });
+  });
+}
+
+// ── Lead notation rendering (abcjs, lazy-loaded) ────────────────────────────
+
+function _hlRenderLeadNotation(harmoniesData) {
+  var container = document.getElementById('hl-abc-container');
+  if (!container) return;
+  var sections = (harmoniesData && harmoniesData.sections)
+    ? (Array.isArray(harmoniesData.sections) ? harmoniesData.sections : Object.values(harmoniesData.sections))
+    : [];
+  // Find first part with non-empty notes (prefer source:'lalal' or part:'lead').
+  var leadPart = null;
+  for (var i = 0; i < sections.length && !leadPart; i++) {
+    var parts = sections[i] && sections[i].parts;
+    if (!parts) continue;
+    var arr = Array.isArray(parts) ? parts : Object.values(parts);
+    leadPart = arr.find(function(p){ return p && p.notes && (p.part === 'lead' || p.singer === 'lead'); })
+            || arr.find(function(p){ return p && p.notes && typeof p.notes === 'string' && p.notes.indexOf('X:') === 0; });
+  }
+  if (!leadPart || !leadPart.notes) {
+    container.innerHTML = '<div class="hl-abc-icon">𝄞</div><div class="hl-abc-msg">No lead notation yet — run LALAL Auto-Split to generate</div>';
+    return;
+  }
+  var qualityBadge = leadPart.notation_quality === 'auto-draft'
+    ? '<span class="hl-abc-quality" style="background:rgba(245,158,11,0.18);color:#fbbf24">DRAFT</span>'
+    : leadPart.notation_quality === 'hand-cleaned'
+    ? '<span class="hl-abc-quality" style="background:rgba(16,185,129,0.18);color:#34d399">CLEANED</span>'
+    : '';
+  container.classList.remove('hl-abc-placeholder');
+  container.innerHTML = '<div class="hl-abc-header">' + qualityBadge +
+    '<span style="font-size:0.78em;color:var(--text-dim,#64748b)">' + _hlEsc(leadPart.singer || 'Lead') + '</span></div>' +
+    '<div id="hl-abc-paper" style="background:white;border-radius:8px;padding:8px;overflow-x:auto"></div>';
+  _hlEnsureAbcJs().then(function() {
+    var paper = document.getElementById('hl-abc-paper');
+    if (paper && window.ABCJS) {
+      try {
+        window.ABCJS.renderAbc(paper, leadPart.notes, { responsive: 'resize', staffwidth: 700 });
+      } catch(e) {
+        paper.innerHTML = '<div style="color:#dc2626;padding:8px;font-size:0.82em">ABC render failed: ' + _hlEsc(e.message) + '</div>';
+      }
+    }
+  }).catch(function(e) {
+    var paper = document.getElementById('hl-abc-paper');
+    if (paper) paper.innerHTML = '<div style="color:#dc2626;padding:8px;font-size:0.82em">abcjs load failed: ' + _hlEsc(e.message) + '</div>';
+  });
+}
+
+var _hlAbcJsPromise = null;
+function _hlEnsureAbcJs() {
+  if (window.ABCJS) return Promise.resolve(window.ABCJS);
+  if (_hlAbcJsPromise) return _hlAbcJsPromise;
+  _hlAbcJsPromise = new Promise(function(resolve, reject) {
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js';
+    s.onload = function(){ resolve(window.ABCJS); };
+    s.onerror = function(){ reject(new Error('abcjs CDN failed')); };
+    document.head.appendChild(s);
+  });
+  return _hlAbcJsPromise;
 }
 
 // ── Asset loading / saving ────────────────────────────────────────────────────
@@ -1272,6 +1562,30 @@ function _hlInjectStyles() {
 .hl-import-file-label { font-size: 0.82em; color: var(--text-muted,#94a3b8); cursor: pointer; padding: 6px 10px; border: 1px dashed rgba(255,255,255,0.15); border-radius: 7px; display: inline-block; }
 .hl-import-file-label:hover { border-color: rgba(102,126,234,0.4); color: #818cf8; }
 .hl-section-title { font-size: 0.78em; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-dim,#64748b); margin-bottom: 6px; }
+/* Split mixer (Phase 1.6) */
+.hl-mix-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; }
+.hl-mix-card-title { font-size: 0.82em; font-weight: 800; color: var(--text, #f1f5f9); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.hl-mix-subtitle { font-size: 0.72em; font-weight: 600; color: var(--text-dim, #64748b); }
+.hl-mix-transport { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.hl-mix-transport button { background: rgba(102,126,234,0.18); color: #a5b4fc; border: 1px solid rgba(102,126,234,0.35); padding: 8px 14px; border-radius: 8px; font-weight: 700; cursor: pointer; min-width: 80px; }
+.hl-mix-transport button:hover { background: rgba(102,126,234,0.28); }
+.hl-mix-time { font-size: 0.78em; color: var(--text-dim, #64748b); font-variant-numeric: tabular-nums; min-width: 80px; text-align: right; }
+.hl-mix-loop { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; padding: 8px 10px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px; font-size: 0.78em; color: var(--text-muted, #94a3b8); }
+.hl-mix-loop label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; }
+.hl-mix-loop-fields { display: flex; align-items: center; gap: 4px; }
+.hl-mix-loop-hint { font-size: 0.72em; color: var(--text-dim, #64748b); margin-left: auto; }
+.hl-mix-row { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; background: rgba(255,255,255,0.02); margin-bottom: 8px; }
+.hl-mix-row button { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: var(--text-dim, #64748b); cursor: pointer; font-size: 0.72em; font-weight: 700; min-width: 46px; flex-shrink: 0; }
+.hl-mix-row button:hover { background: rgba(255,255,255,0.08); color: var(--text, #f1f5f9); }
+.hl-mix-row .hl-mix-mute.hl-mix-btn-on { background: rgba(239,68,68,0.18); color: #fca5a5; border-color: rgba(239,68,68,0.35); }
+.hl-mix-row .hl-mix-solo.hl-mix-btn-on { background: rgba(245,158,11,0.18); color: #fbbf24; border-color: rgba(245,158,11,0.35); }
+.hl-mix-row audio { display: none; }
+.hl-mix-badge { font-size: 0.62em; font-weight: 800; padding: 1px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle; }
+
+/* ABC notation render */
+.hl-abc-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hl-abc-quality { font-size: 0.62em; font-weight: 800; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.05em; }
+
 /* Utilities */
 .hl-hidden { display: none !important; }
   `;

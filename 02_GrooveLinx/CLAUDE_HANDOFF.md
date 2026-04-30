@@ -2,7 +2,47 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-30 — **Phase 1 in flight.** UI shipped (build `20260430-113903`): "🎤 LALAL Auto-Split" button on empty harmony state + ABC editor toolbar; `runLalalImport()` orchestrator runs LALAL → fetches `lead.mp3` → Basic Pitch → seeds `harmonies_data.parts[]` with `source: 'lalal'`. Foundation `splitLeadBacking()` + Worker `/lalal/split` + Modal `lalal_split_http` all live (commit `3dbdbcf4`). Blocker: Drew must add `LALAL_API_KEY` + `LALAL_MODAL_URL` to Cloudflare Worker secrets and paste-deploy `worker.js` before flow can run end-to-end._
+_Last updated: 2026-04-30 — **Phase 1 code-complete (build `20260430-120034`).** Auto-Split orchestrator + Harmony Lab Split Mixer + abcjs notation + pan knob in both surfaces all live. Phase 1 remaining gates: Drew's Worker paste-deploy (#16) and band UAT (#24)._
+
+## Session 2026-04-30 (PM, late) — Phase 1.6 + 1.8 shipped (Harmony Lab MVP + pan knob)
+
+**Status:** All Phase 1 buildable code shipped. Foundation + UI + mixer + notation + pan all wired.
+
+### What shipped this turn
+
+1. **Stems lens pan knob** (`js/features/song-detail.js`) — splice `StereoPannerNode` between gain and destination per stem (`src → gain → pan → destination`). PitchShift splice (src→gain) is unaffected. Each row now has a 60px pan slider with L/C/R label, double-click centers. `_sdInitStemsPlayer` audio-init block updated; new `applyPan()` helper added.
+2. **Harmony Lab Split Mixer** (`js/features/harmony-lab.js`) — new `_hlRenderSplitMixer(harmoniesData)` reads `harmonies_data.sections[].parts[]` array form (LALAL/Fadr orchestrators write this shape), flattens any part with `audio_url`, and renders a synced multi-track mixer:
+   - Per-row: vol slider · pan slider (with L/C/R label, dbl-click center) · Mute · Solo · hidden `<audio crossorigin="anonymous">` element
+   - Master transport: Play/Pause + scrub + time display
+   - **Bar loop**: checkbox + start/end bar number inputs. Bar→sec via `240/BPM` (4/4 only for MVP). On `master.timeupdate`, snap all audios back to start when current time exceeds end-bar boundary
+   - WebAudio chain mirrors Stems lens: `src → gain → pan → destination` per part
+   - LALAL/Fadr source badges on each row
+3. **Lead notation** (`js/features/harmony-lab.js`) — new `_hlRenderLeadNotation(harmoniesData)` finds first part with non-empty `notes` (prefers `part:'lead'` or `singer:'lead'`), lazy-loads abcjs from CDN (`abcjs@6.4.4/dist/abcjs-basic-min.js`), renders into `hl-abc-paper` div. `notation_quality` shown as DRAFT/CLEANED badge.
+4. **Hooked into `_hlLoadData`** so both new components render whenever harmonies_data loads.
+5. **Build bumped** atomically: `20260430-113903` → `20260430-120034`.
+
+### Bar-loop math for the curious
+
+`secsPerBar = 240 / bpm` (4 beats/bar @ X BPM; `60/X * 4 = 240/X`). Loop start = `(startBar-1) * secsPerBar`. Loop end = `(endBar-1) * secsPerBar`. Pre-flight: BPM read from `_hlGetSongBpm()` (`#sd-songBpmInput` or `#songBpmInput`), defaults to 120 if missing.
+
+### Known gaps / next iterations
+
+- Loop assumes 4/4 (fine for ≥95% of corpus). Non-4/4 songs need a time-signature input; deferred until a band UAT report flags it.
+- Abcjs render is single-voice (renders the lead's `notes` only). Multi-voice rendering with backing parts comes when Phase 2 transcribes backing audio.
+- Bar markers are derived from BPM not from the audio's actual beat grid. If LALAL output drifts (it shouldn't — it preserves timing), bars won't align. UAT will tell us.
+- `harmonies_data.parts[]` is now treated as an ARRAY by `_hlRenderSplitMixer` and `_hlRenderLeadNotation`. The legacy `_hlRenderParts` still treats it as an OBJECT keyed by singer. Both paths coexist; the mixer is purely additive (only renders if it finds array entries with `audio_url`).
+
+### Drew's manual deploy steps (still required)
+
+1. `wrangler secret put LALAL_API_KEY` → paste `b13f5198ca374116`
+2. `wrangler secret put LALAL_MODAL_URL` → paste `https://drewmerrill--groovelinx-stem-separator-lalal-split-http.modal.run`
+3. Cloudflare Worker dashboard → paste `worker.js` → Save & Deploy
+
+### Restart prompt (next session — band UAT)
+
+> Phase 1 Harmony Painkiller code-complete (build `20260430-120034`). All 8 build steps shipped except Drew's manual paste-deploy (#16) and band UAT (#24). Restart focus: **Phase 1.9 UAT.** Drew + 1 bandmate pick a song where they're learning a harmony part, click "🎤 LALAL Auto-Split" in Harmony Lab, time how long it takes from "I want to learn this" to "I'm singing along." Failure modes to watch for (already documented in §15 Future Levers): bleed-through (lever: M/S preprocessing, in Phase 2), bad transcription (lever: pitch-gated cleanup), shared-mic source (lever: switch source recording, not algorithm). Read `02_GrooveLinx/specs/stems_intelligence_plan.md` §15 BEFORE deciding any future levers.
+
+
 
 ## Session 2026-04-30 (PM) — Phase 1.5 + 1.7 shipped (LALAL Auto-Split orchestrator)
 

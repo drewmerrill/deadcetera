@@ -1922,7 +1922,11 @@ function _sdRenderStemsPlayer(title, stems) {
           '<span style="font-size:1.4em;width:1.6em;text-align:center;flex-shrink:0">' + st.icon + '</span>' +
           '<div style="flex:1;min-width:0">' +
             '<div style="font-size:0.88em;font-weight:700;color:' + st.color + '">' + st.label + '</div>' +
-            '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + st.id + '" style="width:100%;margin-top:4px">' +
+            '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + st.id + '" style="width:100%;margin-top:4px" title="Volume">' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0" title="Pan (L ↔ R)">' +
+            '<input type="range" min="-100" max="100" value="0" class="sd-stem-pan" data-stem="' + st.id + '" style="width:60px;accent-color:' + st.color + '">' +
+            '<span class="sd-stem-pan-val" data-stem="' + st.id + '" style="font-size:0.62em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1">C</span>' +
           '</div>' +
           '<button class="sd-stem-mute" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Mute</button>' +
           '<button class="sd-stem-solo" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Solo</button>' +
@@ -2030,8 +2034,14 @@ function _sdInitStemsPlayer() {
                 var src = ctx.createMediaElementSource(audio);
                 var gain = ctx.createGain();
                 gain.gain.value = 0.8;
-                src.connect(gain).connect(ctx.destination);
-                nodes[audio.dataset.stem] = { src: src, gain: gain };
+                // Pan node tails the chain so pitch-shift splice (src→gain) stays untouched.
+                var pan = (typeof ctx.createStereoPanner === 'function') ? ctx.createStereoPanner() : null;
+                if (pan) {
+                    src.connect(gain).connect(pan).connect(ctx.destination);
+                } else {
+                    src.connect(gain).connect(ctx.destination);
+                }
+                nodes[audio.dataset.stem] = { src: src, gain: gain, pan: pan };
             });
         } catch (e) {
             // Same-element MES double-create or AC not allowed — fall back to native volume.
@@ -2060,6 +2070,25 @@ function _sdInitStemsPlayer() {
     audios.forEach(function(audio) {
         var slider = root.querySelector('.sd-stem-vol[data-stem="' + audio.dataset.stem + '"]');
         if (slider) slider.addEventListener('input', function(){ applyVol(audio); });
+    });
+
+    // ── Pan ──────────────────────────────────────────────────────────────
+    var applyPan = function(stemId, val) {
+        var node = nodes[stemId];
+        var v = Math.max(-1, Math.min(1, Number(val) / 100));
+        if (node && node.pan) {
+            try { node.pan.pan.value = v; } catch (e) {}
+        }
+        var label = root.querySelector('.sd-stem-pan-val[data-stem="' + stemId + '"]');
+        if (label) {
+            if (v === 0) label.textContent = 'C';
+            else if (v < 0) label.textContent = 'L' + Math.round(Math.abs(v) * 100);
+            else label.textContent = 'R' + Math.round(v * 100);
+        }
+    };
+    root.querySelectorAll('.sd-stem-pan').forEach(function(slider) {
+        slider.addEventListener('input', function(){ applyPan(slider.dataset.stem, slider.value); });
+        slider.addEventListener('dblclick', function(){ slider.value = 0; applyPan(slider.dataset.stem, 0); });
     });
 
     root.querySelectorAll('.sd-stem-mute').forEach(function(btn) {

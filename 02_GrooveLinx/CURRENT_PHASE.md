@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-30 — **Phase 1 in flight.** Foundation shipped: Modal `lalal_split_http`, Worker `/lalal/split`, Client `GLStems.splitLeadBacking()`. UI wired (build `20260430-113903`): "🎤 LALAL Auto-Split" button on empty harmony state + ABC editor toolbar, source picker (defaults to first reference version), end-to-end orchestrator runs Basic Pitch on LALAL `lead.mp3` and writes `harmonies_data.parts[]` with `source: 'lalal'`. Backing stem persists as `audio_url` only (Phase 2 transcribes). **Blockers for live use:** Drew still needs to add `LALAL_API_KEY` + `LALAL_MODAL_URL` to Cloudflare Worker secrets and paste-deploy `worker.js`._
+_Updated: 2026-04-30 — **Phase 1.6 + 1.8 shipped (build `20260430-120034`).** Harmony Lab now renders a real Split Mixer: synced multi-track playback of LALAL lead.mp3 + backing.mp3 with mute/solo/volume/**pan** + bar-loop (BPM-derived). Same pan knob added to Stems lens (StereoPannerNode tail-spliced into existing chain, double-click to center). Lead notation panel renders auto-draft ABC via lazy-loaded abcjs CDN. Phase 1 build is now feature-complete in code; remaining gates: Drew's Worker paste-deploy (#16) + band UAT (#24)._
 
 ---
 
@@ -46,9 +46,9 @@ All studio sources. Live-SBD slot deferred to P1 UAT.
 2. Worker `/lalal/split` endpoint (~1 hour) — ✅ shipped (commit `3dbdbcf4`)
 3. Client `splitLeadBacking(title)` in `js/core/gl-stems.js` (~1 hour) — ✅ shipped (commit `3dbdbcf4`)
 4. Wire Basic Pitch to LALAL `lead.mp3` (~2 hours) — ✅ shipped (build `20260430-113903`, `runBasicPitchOnLalalLead`)
-5. Harmony Lab abcjs render + WebAudio mixer + phrase loops (~1 day each = 3 days, the core lift) — ⏳ next
+5. Harmony Lab abcjs render + WebAudio mixer + phrase loops (~1 day each = 3 days, the core lift) — ✅ shipped (build `20260430-120034`, `_hlRenderSplitMixer` + `_hlRenderLeadNotation` + lazy abcjs CDN)
 6. "Auto-Split Harmonies" button + source picker (~4 hours) — ✅ shipped (build `20260430-113903`, two mirror points wired)
-7. Pan knob in Stems lens / Harmony Lab (~30 min) — ⏳
+7. Pan knob in Stems lens / Harmony Lab (~30 min) — ✅ shipped (build `20260430-120034`, StereoPannerNode in both surfaces, double-click centers)
 8. Band UAT — Drew + 1 bandmate learn a part (~1 day) — ⏳
 
 **Drew's resolved decisions (§14 of plan):**
