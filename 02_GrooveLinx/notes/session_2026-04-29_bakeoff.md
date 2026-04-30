@@ -2,7 +2,50 @@
 
 **Status:** ☑ CLOSED 2026-04-29. **Demucs wins 5/5 ("huge" margin on every song).** MelBand-Roformer-Karaoke checkpoint dropped from production pipeline — its `karaoke.wav` output is ~99% silence on this content, so the residual `other = source − karaoke ≈ source` is just the full mix. Production vocal source = Demucs `vocals.flac`. Phase 1 (Harmony Painkiller) unblocked.
 
-**Decision:** Production pipeline keeps Demucs htdemucs_6s for vocal isolation, hands the vocals stem to Fadr for lead/backing, then to Basic Pitch for notation. No vocal-cleanup pre-stage. SepACap archived (OOMs on full-length rock).
+**Decision:** Production pipeline keeps Demucs htdemucs_6s for vocal isolation. Lead/backing tool TBD by **Phase 0.5** (in flight) — empirically tests Fadr vs LALAL.AI vs Demucs-combined on 3 corpus songs. SepACap archived (OOMs on full-length rock).
+
+---
+
+## Phase 0.5 — Lead/Backing Bake-Off (launched 2026-04-29 evening)
+
+**Why:** Phase 0 only tested vocal-vs-instrumental (Demucs sweep). The actual painkiller question — lead-vs-backing — was never empirically tested. Path-A pivot kept Fadr by default but never verified. Phase 0.5 fills that gap.
+
+**Empirical finding before listening:** **Fadr does NOT produce separate lead/backing AUDIO stems.** Probed Fadr's API directly (`fadr_probe` Modal function) — Fadr's stem separation outputs `vocals/bass/drums/other/instrumental` (5 stems, all combined-vocals). Per-harmony separation in Fadr is **MIDI-only** (one MIDI file per detected vocal layer). So the only tool in this bake-off producing isolated lead+backing AUDIO is **LALAL.AI**.
+
+**Bake-off shape (3 songs × 3 contenders × 2 rows):**
+
+| Row | LALAL.AI | Fadr | Demucs |
+|---|---|---|---|
+| **Lead vocal** | `lead.mp3` (isolated lead) | `vocals.mp3` (combined vocals) | `vocals.flac` (combined vocals) |
+| **Backing harmony** | `backing.mp3` (isolated backing) | `vocals.mp3` (same as lead row) | `vocals.flac` (same as lead row) |
+
+The real binary question Drew is answering: **"Is LALAL's split actually cleaner than just listening to Demucs's (or Fadr's) combined vocals?"** Fadr-vs-Demucs is informative side data — both produce combined vocals, comparison shows which separator gives cleaner combined-vocals output.
+
+### Tools investigated
+
+| Tool | Status | Why included / excluded |
+|---|---|---|
+| **LALAL.AI** Master pack | ✓ ran (3/3 success) | $50/750-min one-time, just-purchased. `multivocal=lead_back` mode produces lead@0 + backing@1. Spec at `https://www.lalal.ai/api/v1/openapi.json`. Auth header is `X-License-Key: <key>`. |
+| **Fadr** | ✓ ran (3/3 success, 4-stem combined output) | Existing worker proxy integration. **Does not produce lead/backing audio** — only combined vocals + MIDI per harmony. Asset download endpoint pattern: `/assets/download/{id}/hqPreview` (not `/assets/{id}/download`). |
+| **Demucs** | ✓ already in production | htdemucs_6s on Modal — combined vocals.flac, used as the no-split baseline. |
+| **MVSEP** | ✗ deferred | Free tier limits + API requires Premium subscription (~$15/mo). Drew's "no subscriptions without approval" rule kicks in. The relevant model (`sep_type=49` BS-Roformer karaoke) is the same MelBand-Roformer family that bombed Phase 0; revisiting unlikely to add value. |
+
+### Bake-off player
+
+`02_GrooveLinx/notes/bakeoff_player_v2.html` — vanilla HTML, blind 3-way A/B/C, separate lead-stem and backing-stem rankings per song, randomized slot assignments per row. Reveal & Copy generates pasteable verdict tally.
+
+### Run history
+
+| Date | Step | Outcome |
+|---|---|---|
+| 2026-04-29 PM late | Phase 0.5 launched after Phase 0 closeout | Drew flagged the lead-vs-backing gap |
+| 2026-04-29 PM late | LALAL Master pack purchased ($50/750 min) | Key safe-stored at `~/.config/groovelinx-bakeoff/lalal_key` (mode 600); never committed to repo |
+| 2026-04-29 PM late | First LALAL run (3 songs parallel) | Failed — `Authorization: license <key>` header wrong. LALAL wants `X-License-Key`. Fixed. |
+| 2026-04-29 PM late | Re-run all 3 LALAL | YouTube bot-blocked the parallel proxy fetches. Refactored to fetch sources sequentially → R2 first, then run hosted tools on R2 URLs. |
+| 2026-04-29 PM late | LALAL on R2 sources | All 3 succeeded — uploaded + split. Then check call failed 422 (wrong body shape `{id:...}` vs `{task_ids:[...]}`). Fixed. |
+| 2026-04-29 PM late | LALAL resume tasks (don't re-spend minutes) | All 3 succeeded — `lalal_finish_task` Modal function added to resume existing task_ids and download stems. Confirmed 12 stems on R2. |
+| 2026-04-29 PM late | Fadr probe revealed broken polling | Fadr's response shape is `{asset: {...}}` (wrapped); status lives on the **task** object (`task.status.complete`), not the asset. Existing app.js Fadr-import flow likely also broken — empirically polled `assetData.status` which never resolves. |
+| 2026-04-29 PM late | Fadr resume with new task-polling pattern | Fadr's actual download endpoint is `/assets/download/{id}/hqPreview` (NOT `/assets/{id}/download` which 404s). Stems named via `metaData.stemType`. All 3 songs × 5 stems re-hosted on R2. |
 
 **Path-A pivot locked 2026-04-29.** Original lead-vs-backing matrix abandoned after empirical proof that no public self-hosted lead/backing checkpoint exists; Fadr remains lead/backing tool of record (no bake-off needed for it). Bake-off purpose pivoted to **vocal-isolation comparison** + **SepACap multi-voice cross-domain eval**.
 

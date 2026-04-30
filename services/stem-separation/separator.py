@@ -759,3 +759,738 @@ def sepacap_http(item: dict):
         return sepacap_split.remote(backing_url, song_id)
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 0.5 — LEAD/BACKING BAKE-OFF HELPERS
+#
+# Phase 0 settled vocals-vs-instrumental (Demucs wins). Phase 0.5 settles
+# lead-vs-backing (Fadr vs LALAL.AI vs MVSEP-if-feasible). These helpers
+# orchestrate the hosted-API calls and re-host outputs on R2 so the
+# A/B/C player can play them blind.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _r2_upload_bytes(audio_bytes: bytes, key: str, content_type: str) -> str:
+    """Upload bytes to R2 at the given key, return public URL."""
+    import boto3
+    from botocore.config import Config
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=os.environ["R2_ENDPOINT"],
+        aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
+    )
+    s3.put_object(
+        Bucket=os.environ["R2_BUCKET"],
+        Key=key,
+        Body=audio_bytes,
+        ContentType=content_type,
+        CacheControl="public, max-age=31536000, immutable",
+    )
+    public_base = os.environ["R2_PUBLIC_BASE"].rstrip("/")
+    return f"{public_base}/{key}"
+
+
+def _transcode_to_mp3(raw_bytes: bytes) -> bytes:
+    """ffmpeg-pipe raw audio bytes to mp3 (192kbps stereo 44.1k)."""
+    import subprocess
+
+    proc = subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-i", "pipe:0",
+            "-vn",  # drop video
+            "-c:a", "libmp3lame", "-b:a", "192k",
+            "-ar", "44100", "-ac", "2",
+            "-f", "mp3",
+            "pipe:1",
+        ],
+        input=raw_bytes,
+        capture_output=True,
+        check=True,
+    )
+    return proc.stdout
+
+
+@app.function(
+    image=image,
+    timeout=900,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def fetch_source_to_r2(source_url: str, song_id: str) -> dict:
+    """Download source from any URL (YouTube/direct), transcode to mp3,
+    upload to R2 at stems/{song_id}/source.mp3, return public URL.
+
+    Used as the canonical source for Phase 0.5 hosted-API tools that
+    need a stable downloadable URL (LALAL upload, Fadr S3 upload).
+    """
+    started = time.time()
+    raw = _fetch_audio_bytes(source_url, log_prefix=f"[P05-src/{song_id}]")
+    print(f"[P05-src/{song_id}] Transcoding to mp3...")
+    mp3 = _transcode_to_mp3(raw)
+    print(f"[P05-src/{song_id}] mp3 size: {len(mp3) / 1024 / 1024:.1f} MB")
+    key = f"stems/{song_id}/p05/source.mp3"
+    url = _r2_upload_bytes(mp3, key, "audio/mpeg")
+    return {
+        "success": True,
+        "song_id": song_id,
+        "source_url": url,
+        "size_bytes": len(mp3),
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=1800,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def lalal_lead_back(source_url: str, song_id: str, lalal_key: str) -> dict:
+    """Run LALAL.AI 'multivocal=lead_back' split on the source.
+
+    Flow per https://www.lalal.ai/api/v1/openapi.json:
+      POST /api/v1/upload/        (multipart-ish; Content-Disposition header)
+      POST /api/v1/split/stem_separator/  (presets: stem=vocals, multivocal=lead_back)
+      POST /api/v1/check/         (poll until status == 'success')
+      GET tracks[*].url            (download stems)
+
+    Returns lead/backing/instrumental URLs re-hosted on R2.
+    """
+    import requests as _r
+
+    started = time.time()
+    base = "https://www.lalal.ai"
+    headers = {"X-License-Key": lalal_key}
+
+    print(f"[P05-LALAL/{song_id}] Fetching source bytes...")
+    raw = _fetch_audio_bytes(source_url, log_prefix=f"[P05-LALAL/{song_id}]")
+    audio_bytes = _transcode_to_mp3(raw)
+    print(f"[P05-LALAL/{song_id}] Source mp3: {len(audio_bytes) / 1024 / 1024:.1f} MB")
+
+    # 1. Upload
+    print(f"[P05-LALAL/{song_id}] Uploading to LALAL...")
+    up_resp = _r.post(
+        f"{base}/api/v1/upload/",
+        headers={
+            **headers,
+            "Content-Type": "audio/mpeg",
+            "Content-Disposition": f"attachment; filename={song_id}.mp3",
+        },
+        data=audio_bytes,
+        timeout=300,
+    )
+    if up_resp.status_code != 200:
+        return {"success": False, "error": f"LALAL upload {up_resp.status_code}: {up_resp.text[:300]}"}
+    upload = up_resp.json()
+    src_id = upload.get("id")
+    if not src_id:
+        return {"success": False, "error": f"LALAL upload no id: {upload}"}
+    print(f"[P05-LALAL/{song_id}] Upload OK: source_id={src_id}, duration={upload.get('duration')}s")
+
+    # 2. Kick off split
+    print(f"[P05-LALAL/{song_id}] Submitting lead_back split...")
+    split_body = {
+        "source_id": src_id,
+        "presets": {
+            "splitter": "auto",
+            "stem": "vocals",
+            "multivocal": "lead_back",
+            "dereverb_enabled": False,
+            "extraction_level": "deep_extraction",
+        },
+    }
+    sp_resp = _r.post(
+        f"{base}/api/v1/split/stem_separator/",
+        headers={**headers, "Content-Type": "application/json"},
+        json=split_body,
+        timeout=60,
+    )
+    if sp_resp.status_code != 200:
+        return {"success": False, "error": f"LALAL split {sp_resp.status_code}: {sp_resp.text[:300]}"}
+    task = sp_resp.json()
+    task_id = task.get("task_id")
+    print(f"[P05-LALAL/{song_id}] Split submitted: task_id={task_id}")
+
+    # 3. Poll
+    deadline = time.time() + 25 * 60  # 25 min cap
+    last_progress = -1
+    final = None
+    while time.time() < deadline:
+        time.sleep(8)
+        ck = _r.post(
+            f"{base}/api/v1/check/",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"task_ids": [task_id]},
+            timeout=30,
+        )
+        if ck.status_code != 200:
+            print(f"[P05-LALAL/{song_id}] check {ck.status_code}: {ck.text[:200]}")
+            continue
+        body = ck.json()
+        # Response shape: {"result": {"<task_id>": {...status block...}}}
+        block = body.get("result", {}).get(task_id, {})
+        status = block.get("status")
+        if status == "progress":
+            p = block.get("progress", 0)
+            if p != last_progress:
+                print(f"[P05-LALAL/{song_id}] progress: {p}%")
+                last_progress = p
+            continue
+        if status == "success":
+            final = block
+            break
+        if status in ("error", "server_error", "cancelled"):
+            return {"success": False, "error": f"LALAL {status}: {block.get('error', block)}"}
+    if not final:
+        return {"success": False, "error": "LALAL timed out (>25min)"}
+
+    # 4. Download tracks + re-upload to R2
+    tracks = final.get("result", {}).get("tracks", [])
+    print(f"[P05-LALAL/{song_id}] success — {len(tracks)} tracks: {[t.get('label') for t in tracks]}")
+    out = {}
+    for t in tracks:
+        label = t.get("label", "unknown")
+        track_url = t.get("url")
+        if not track_url:
+            continue
+        # Map LALAL labels to R2-friendly stem names
+        stem_name = {
+            "vocals@0": "lead",
+            "vocals@1": "backing",
+            "no_vocals": "instrumental",
+            "mix_no_lead": "mix_no_lead",
+            "vocals": "vocals",
+        }.get(label, label.replace("@", "_"))
+
+        print(f"[P05-LALAL/{song_id}] downloading {label} ({stem_name})...")
+        dl = _r.get(track_url, timeout=300)
+        if dl.status_code != 200:
+            print(f"  ✗ download {dl.status_code}")
+            continue
+        body_bytes = dl.content
+        # LALAL returns same encoder as input — we sent mp3 → expect mp3
+        ext = "mp3"
+        ctype = "audio/mpeg"
+        # Sniff for wav header just in case
+        if body_bytes[:4] == b"RIFF":
+            ext, ctype = "wav", "audio/wav"
+        elif body_bytes[:4] == b"fLaC":
+            ext, ctype = "flac", "audio/flac"
+        key = f"stems/{song_id}/p05/lalal/{stem_name}.{ext}"
+        url = _r2_upload_bytes(body_bytes, key, ctype)
+        out[stem_name] = url
+        print(f"  ✓ {stem_name} → {url}")
+
+    return {
+        "success": True,
+        "song_id": song_id,
+        "tool": "lalal_lead_back",
+        "stems": out,
+        "lalal_task_id": task_id,
+        "duration_sec": final.get("result", {}).get("duration"),
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=1800,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def lalal_finish_task(task_id: str, song_id: str, lalal_key: str) -> dict:
+    """Resume a previously-submitted LALAL task — poll until done, download
+    tracks, re-host on R2. Use when an upload+split already happened (so
+    we don't re-spend minutes) but the prior run died on a broken check call.
+    """
+    import requests as _r
+
+    started = time.time()
+    base = "https://www.lalal.ai"
+    headers = {"X-License-Key": lalal_key}
+
+    print(f"[P05-LALAL-resume/{song_id}] resuming task {task_id}")
+    deadline = time.time() + 25 * 60
+    last_progress = -1
+    final = None
+    while time.time() < deadline:
+        time.sleep(8)
+        ck = _r.post(
+            f"{base}/api/v1/check/",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"task_ids": [task_id]},
+            timeout=30,
+        )
+        if ck.status_code != 200:
+            print(f"[P05-LALAL-resume/{song_id}] check {ck.status_code}: {ck.text[:200]}")
+            continue
+        body = ck.json()
+        block = body.get("result", {}).get(task_id, {})
+        status = block.get("status")
+        if status == "progress":
+            p = block.get("progress", 0)
+            if p != last_progress:
+                print(f"[P05-LALAL-resume/{song_id}] progress: {p}%")
+                last_progress = p
+            continue
+        if status == "success":
+            final = block
+            break
+        if status in ("error", "server_error", "cancelled"):
+            return {"success": False, "error": f"LALAL {status}: {block.get('error', block)}"}
+    if not final:
+        return {"success": False, "error": "LALAL timed out (>25min)"}
+
+    tracks = final.get("result", {}).get("tracks", [])
+    print(f"[P05-LALAL-resume/{song_id}] success — {len(tracks)} tracks: {[t.get('label') for t in tracks]}")
+    out = {}
+    for t in tracks:
+        label = t.get("label", "unknown")
+        track_url = t.get("url")
+        if not track_url:
+            continue
+        stem_name = {
+            "vocals@0": "lead",
+            "vocals@1": "backing",
+            "no_vocals": "instrumental",
+            "mix_no_lead": "mix_no_lead",
+            "vocals": "vocals",
+        }.get(label, label.replace("@", "_"))
+        print(f"[P05-LALAL-resume/{song_id}] downloading {label} ({stem_name})...")
+        dl = _r.get(track_url, timeout=300)
+        if dl.status_code != 200:
+            continue
+        b = dl.content
+        ext, ctype = "mp3", "audio/mpeg"
+        if b[:4] == b"RIFF":  ext, ctype = "wav", "audio/wav"
+        elif b[:4] == b"fLaC": ext, ctype = "flac", "audio/flac"
+        key = f"stems/{song_id}/p05/lalal/{stem_name}.{ext}"
+        out[stem_name] = _r2_upload_bytes(b, key, ctype)
+        print(f"  ✓ {stem_name} → {out[stem_name]}")
+
+    return {
+        "success": True,
+        "song_id": song_id,
+        "tool": "lalal_finish_task",
+        "stems": out,
+        "lalal_task_id": task_id,
+        "duration_sec": final.get("result", {}).get("duration"),
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=1800,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def fadr_probe(source_url: str, song_id: str, worker_url: str) -> dict:
+    """Probe Fadr's stem-separation API to see what audio stems it returns.
+
+    Empirical check: existing app.js uses Fadr's MIDI output for harmony
+    auto-import but never inspects `assetData.stems`. This function uploads
+    one song, polls until done, and returns the FULL stems array so we can
+    decide if Fadr is a valid lead/backing AUDIO contender for Phase 0.5.
+
+    worker_url example: https://deadcetera-proxy.drewmerrill.workers.dev
+    """
+    import requests as _r
+
+    started = time.time()
+    raw = _fetch_audio_bytes(source_url, log_prefix=f"[P05-Fadr/{song_id}]")
+    audio_bytes = _transcode_to_mp3(raw)
+    print(f"[P05-Fadr/{song_id}] mp3: {len(audio_bytes) / 1024 / 1024:.1f} MB")
+
+    base = worker_url.rstrip("/")
+    filename = f"{song_id}.mp3"
+    ext = "mp3"
+
+    # 1. Get presigned upload URL
+    print(f"[P05-Fadr/{song_id}] Requesting upload URL...")
+    u1 = _r.post(
+        f"{base}/fadr/assets/upload2",
+        json={"name": filename, "extension": ext},
+        timeout=60,
+    )
+    if u1.status_code != 200:
+        return {"success": False, "error": f"upload2 {u1.status_code}: {u1.text[:300]}"}
+    up = u1.json()
+    presigned, s3_path = up.get("url"), up.get("s3Path")
+    if not presigned or not s3_path:
+        return {"success": False, "error": f"upload2 missing fields: {up}"}
+
+    # 2. PUT bytes to S3 (direct, not through worker)
+    print(f"[P05-Fadr/{song_id}] PUT to Fadr S3...")
+    p = _r.put(presigned, data=audio_bytes, headers={"Content-Type": "audio/mpeg"}, timeout=600)
+    if p.status_code not in (200, 204):
+        return {"success": False, "error": f"S3 PUT {p.status_code}: {p.text[:300]}"}
+
+    # 3. Create asset
+    group = f"{song_id}-{int(time.time())}"
+    a = _r.post(
+        f"{base}/fadr/assets",
+        json={"name": filename, "s3Path": s3_path, "extension": ext, "group": group},
+        timeout=60,
+    )
+    if a.status_code != 200:
+        return {"success": False, "error": f"assets create {a.status_code}: {a.text[:300]}"}
+    asset = a.json()
+    asset_id = (asset.get("asset") or {}).get("_id") or asset.get("_id")
+    if not asset_id:
+        return {"success": False, "error": f"no asset_id: {asset}"}
+    print(f"[P05-Fadr/{song_id}] asset_id={asset_id}")
+
+    # 4. Kick off stem analysis
+    s = _r.post(f"{base}/fadr/assets/analyze/stem", json={"_id": asset_id}, timeout=60)
+    if s.status_code != 200:
+        return {"success": False, "error": f"analyze/stem {s.status_code}: {s.text[:300]}"}
+    print(f"[P05-Fadr/{song_id}] analyze submitted, polling...")
+
+    # 5. Poll
+    deadline = time.time() + 15 * 60
+    asset_data = None
+    while time.time() < deadline:
+        time.sleep(8)
+        g = _r.get(f"{base}/fadr/assets/{asset_id}", timeout=30)
+        if g.status_code != 200:
+            continue
+        d = g.json()
+        status = d.get("status", "")
+        stems_count = len(d.get("stems") or [])
+        midi_count = len(d.get("midi") or [])
+        print(f"[P05-Fadr/{song_id}] status={status} stems={stems_count} midi={midi_count}")
+        if status == "done" or stems_count > 0:
+            asset_data = d
+            break
+        if status == "failed":
+            return {"success": False, "error": "Fadr separation failed"}
+    if not asset_data:
+        return {"success": False, "error": "Fadr poll timed out (>15min)"}
+
+    # 6. Inspect stems — return full structure for analysis
+    stems = asset_data.get("stems") or []
+    midi = asset_data.get("midi") or []
+
+    stem_meta = []
+    for s_item in stems:
+        if isinstance(s_item, str):
+            stem_meta.append({"_id": s_item})
+        elif isinstance(s_item, dict):
+            stem_meta.append({
+                "_id": s_item.get("_id"),
+                "name": s_item.get("name"),
+                "type": s_item.get("type"),
+                "label": s_item.get("label"),
+                "extension": s_item.get("extension"),
+            })
+
+    midi_meta = []
+    for m_item in midi:
+        if isinstance(m_item, str):
+            midi_meta.append({"_id": m_item})
+        elif isinstance(m_item, dict):
+            midi_meta.append({
+                "_id": m_item.get("_id"),
+                "name": m_item.get("name"),
+            })
+
+    return {
+        "success": True,
+        "song_id": song_id,
+        "tool": "fadr_probe",
+        "asset_id": asset_id,
+        "fadr_status": asset_data.get("status"),
+        "stems_meta": stem_meta,
+        "midi_meta": midi_meta,
+        "key": asset_data.get("key"),
+        "tempo": asset_data.get("tempo") or asset_data.get("bpm"),
+        "elapsed_sec": time.time() - started,
+        "raw_top_level_keys": sorted(list(asset_data.keys())),
+    }
+
+
+@app.function(
+    image=image,
+    timeout=1800,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def fadr_finish_task(task_id: str, asset_id: str, song_id: str, worker_url: str) -> dict:
+    """Resume a previously-submitted Fadr stemming task — poll task status,
+    pull stem refs from task.output.assets, download + re-host on R2.
+
+    Use when a prior fadr_lead_back call timed out due to the wrong polling
+    pattern; we don't want to re-upload + re-spend Fadr usage.
+    """
+    import requests as _r
+
+    started = time.time()
+    base = worker_url.rstrip("/")
+    print(f"[P05-Fadr-resume/{song_id}] task_id={task_id} asset_id={asset_id}")
+
+    deadline = time.time() + 30 * 60
+    task_doc = None
+    poll_count = 0
+    last_progress = -1
+    while time.time() < deadline:
+        time.sleep(8)
+        poll_count += 1
+        g = _r.get(f"{base}/fadr/tasks/{task_id}", timeout=30)
+        if g.status_code != 200:
+            print(f"[P05-Fadr-resume/{song_id}] poll {poll_count} HTTP {g.status_code}: {g.text[:200]}")
+            continue
+        d = g.json()
+        t = d.get("task") if isinstance(d, dict) and "task" in d else d
+        st = (t or {}).get("status") or {}
+        complete = st.get("complete")
+        progress = st.get("progress")
+        msg = st.get("msg")
+        if progress != last_progress:
+            print(f"[P05-Fadr-resume/{song_id}] poll {poll_count} progress={progress}% complete={complete} msg={msg!r}")
+            last_progress = progress
+        if complete is True:
+            task_doc = t
+            print(f"[P05-Fadr-resume/{song_id}] task complete after {poll_count} polls")
+            break
+        if isinstance(msg, str) and msg.lower() in ("failed", "error"):
+            return {"success": False, "error": f"Fadr task {msg}"}
+    if not task_doc:
+        return {"success": False, "error": f"Fadr task poll timed out (task_id={task_id})"}
+
+    stem_asset_refs = ((task_doc.get("output") or {}).get("assets") or [])
+    print(f"[P05-Fadr-resume/{song_id}] task.output.assets has {len(stem_asset_refs)} stems")
+
+    src_g = _r.get(f"{base}/fadr/assets/{asset_id}", timeout=30)
+    src_doc = (src_g.json().get("asset") if src_g.status_code == 200 else None) or {}
+
+    out = {}
+    stems_iter = src_doc.get("stems") or stem_asset_refs
+    for s_item in stems_iter:
+        if isinstance(s_item, str):
+            stem_id = s_item
+        else:
+            stem_id = s_item.get("_id")
+        if not stem_id:
+            continue
+        # Fetch the stem asset doc — metaData.stemType is the canonical clean name
+        # (e.g. "vocals", "drums", "bass", "melody", "instrumental"). The .name
+        # field is the messy "<source>.mp3-<stemType>".
+        ar = _r.get(f"{base}/fadr/assets/{stem_id}", timeout=30)
+        stem_label = stem_id  # fallback
+        if ar.status_code == 200:
+            stem_doc = ar.json().get("asset") or ar.json()
+            mt = stem_doc.get("metaData") or {}
+            stype = mt.get("stemType")
+            if stype:
+                stem_label = stype.lower().replace(" ", "_").replace("/", "_")
+            else:
+                # Last-ditch: pull the type out of the .name suffix
+                nm = stem_doc.get("name") or stem_id
+                stem_label = nm.split("-")[-1].lower() if "-" in nm else nm.lower()
+
+        print(f"[P05-Fadr-resume/{song_id}] downloading '{stem_label}' (id={stem_id})...")
+        # Fadr download endpoint pattern: /assets/download/{id}/{type}
+        # type ∈ {"preview" (low mp3), "hqPreview" (high mp3), "download" (lossless wav)}
+        # We grab hqPreview — high-quality mp3, faster than full wav, plays in <audio>.
+        dl_meta = _r.get(f"{base}/fadr/assets/download/{stem_id}/hqPreview", timeout=60)
+        if dl_meta.status_code != 200:
+            print(f"  ✗ download metadata {dl_meta.status_code}: {dl_meta.text[:200]}")
+            continue
+        dl_meta_body = dl_meta.json()
+        if "asset" in dl_meta_body and isinstance(dl_meta_body["asset"], dict):
+            dl_meta_body = dl_meta_body["asset"]
+        dl_url = dl_meta_body.get("url")
+        if not dl_url:
+            print(f"  ✗ no url in {list(dl_meta_body.keys())}")
+            continue
+        dl = _r.get(dl_url, timeout=300)
+        if dl.status_code != 200:
+            continue
+        b = dl.content
+        if b[:4] == b"RIFF":
+            ext_out, ctype = "wav", "audio/wav"
+        elif b[:4] == b"fLaC":
+            ext_out, ctype = "flac", "audio/flac"
+        elif b[:3] == b"ID3" or (len(b) > 1 and b[0] == 0xFF and (b[1] & 0xE0) == 0xE0):
+            ext_out, ctype = "mp3", "audio/mpeg"
+        else:
+            ext_out, ctype = "bin", "application/octet-stream"
+        key = f"stems/{song_id}/p05/fadr/{stem_label}.{ext_out}"
+        out[stem_label] = _r2_upload_bytes(b, key, ctype)
+        print(f"  ✓ {stem_label} → {out[stem_label]}")
+
+    return {
+        "success": True,
+        "song_id": song_id,
+        "tool": "fadr_finish_task",
+        "asset_id": asset_id,
+        "task_id": task_id,
+        "stems": out,
+        "key": src_doc.get("key"),
+        "tempo": src_doc.get("tempo") or src_doc.get("bpm"),
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=1800,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def fadr_lead_back(source_url: str, song_id: str, worker_url: str) -> dict:
+    """Run Fadr stem separation, download all returned audio stems,
+    re-host on R2 under p05/fadr/<stem_name>.<ext>.
+
+    Caller is responsible for inspecting which stem labels Fadr produced
+    and mapping them to lead/backing semantics for the bake-off player.
+    """
+    import requests as _r
+
+    started = time.time()
+    raw = _fetch_audio_bytes(source_url, log_prefix=f"[P05-Fadr/{song_id}]")
+    audio_bytes = _transcode_to_mp3(raw)
+
+    base = worker_url.rstrip("/")
+    filename = f"{song_id}.mp3"
+    ext = "mp3"
+
+    u1 = _r.post(f"{base}/fadr/assets/upload2", json={"name": filename, "extension": ext}, timeout=60)
+    if u1.status_code != 200:
+        return {"success": False, "error": f"upload2 {u1.status_code}: {u1.text[:300]}"}
+    up = u1.json()
+    p = _r.put(up["url"], data=audio_bytes, headers={"Content-Type": "audio/mpeg"}, timeout=600)
+    if p.status_code not in (200, 204):
+        return {"success": False, "error": f"S3 PUT {p.status_code}: {p.text[:300]}"}
+
+    group = f"{song_id}-{int(time.time())}"
+    a = _r.post(f"{base}/fadr/assets", json={
+        "name": filename, "s3Path": up["s3Path"], "extension": ext, "group": group,
+    }, timeout=60)
+    if a.status_code != 200:
+        return {"success": False, "error": f"assets create {a.status_code}: {a.text[:300]}"}
+    asset = a.json()
+    asset_id = (asset.get("asset") or {}).get("_id") or asset.get("_id")
+
+    s = _r.post(f"{base}/fadr/assets/analyze/stem", json={"_id": asset_id}, timeout=60)
+    if s.status_code != 200:
+        return {"success": False, "error": f"analyze/stem {s.status_code}: {s.text[:300]}"}
+    analyze_body = s.json()
+    task = analyze_body.get("task") or {}
+    task_id = task.get("_id") or task.get("id")
+    if not task_id:
+        return {"success": False, "error": f"analyze/stem returned no task_id: {analyze_body}"}
+    print(f"[P05-Fadr/{song_id}] task_id={task_id} (status.msg={(task.get('status') or {}).get('msg')})")
+
+    # Poll the TASK endpoint (per Fadr docs — task.status.complete is the truth source).
+    deadline = time.time() + 30 * 60  # 30 min cap
+    task_doc = None
+    poll_count = 0
+    last_progress = -1
+    while time.time() < deadline:
+        time.sleep(8)
+        poll_count += 1
+        g = _r.get(f"{base}/fadr/tasks/{task_id}", timeout=30)
+        if g.status_code != 200:
+            print(f"[P05-Fadr/{song_id}] poll {poll_count} HTTP {g.status_code}: {g.text[:200]}")
+            continue
+        d = g.json()
+        # Fadr wraps it: {"task": {...}}
+        t = d.get("task") if isinstance(d, dict) and "task" in d else d
+        st = (t or {}).get("status") or {}
+        complete = st.get("complete")
+        progress = st.get("progress")
+        msg = st.get("msg")
+        if progress != last_progress:
+            print(f"[P05-Fadr/{song_id}] poll {poll_count} progress={progress}% complete={complete} msg={msg!r}")
+            last_progress = progress
+        if complete is True:
+            task_doc = t
+            print(f"[P05-Fadr/{song_id}] task complete after {poll_count} polls")
+            break
+        if isinstance(msg, str) and msg.lower() in ("failed", "error"):
+            return {"success": False, "error": f"Fadr task {msg}"}
+    if not task_doc:
+        return {"success": False, "error": f"Fadr task poll timed out (task_id={task_id})"}
+
+    # task.output.assets has list of stem asset _ids (or full objects)
+    stem_asset_refs = ((task_doc.get("output") or {}).get("assets") or [])
+    print(f"[P05-Fadr/{song_id}] task.output.assets has {len(stem_asset_refs)} stem entries")
+
+    # Also fetch the source asset to capture stems[] / midi[] back-populated lists
+    src_g = _r.get(f"{base}/fadr/assets/{asset_id}", timeout=30)
+    src_doc = (src_g.json().get("asset") if src_g.status_code == 200 else None) or {}
+    asset_data = {
+        "status": "done",
+        "stems": src_doc.get("stems") or stem_asset_refs,
+        "midi": src_doc.get("midi") or [],
+        "key": src_doc.get("key"),
+        "tempo": src_doc.get("tempo") or src_doc.get("bpm"),
+    }
+
+    # Download each stem and upload to R2
+    out = {}
+    for s_item in (asset_data.get("stems") or []):
+        if isinstance(s_item, str):
+            stem_id = s_item
+            stem_label = None
+        else:
+            stem_id = s_item.get("_id")
+            raw_label = s_item.get("name") or s_item.get("label")
+            stem_label = raw_label.lower() if raw_label else None
+        if not stem_id:
+            continue
+
+        # If we don't have a name yet, fetch the stem asset to get one
+        if not stem_label:
+            ar = _r.get(f"{base}/fadr/assets/{stem_id}", timeout=30)
+            if ar.status_code == 200:
+                stem_doc = ar.json().get("asset") or ar.json()
+                stem_label = (stem_doc.get("name") or stem_doc.get("label") or stem_id).lower()
+            else:
+                stem_label = stem_id
+        # Sanitize for path use: drop extension, normalize separators
+        stem_label = stem_label.split(".")[0].replace(" ", "_").replace("/", "_")
+
+        print(f"[P05-Fadr/{song_id}] downloading stem '{stem_label}' (id={stem_id})...")
+        dl_meta = _r.get(f"{base}/fadr/assets/{stem_id}/download", timeout=60)
+        if dl_meta.status_code != 200:
+            print(f"  ✗ download metadata failed: {dl_meta.status_code}")
+            continue
+        dl_meta_body = dl_meta.json()
+        # Some Fadr endpoints return {asset:{...}} wrappers — unwrap if present
+        if "asset" in dl_meta_body and isinstance(dl_meta_body["asset"], dict):
+            dl_meta_body = dl_meta_body["asset"]
+        dl_url = dl_meta_body.get("url")
+        if not dl_url:
+            print(f"  ✗ no download URL in {list(dl_meta_body.keys())}")
+            continue
+        dl = _r.get(dl_url, timeout=300)
+        if dl.status_code != 200:
+            print(f"  ✗ download failed: {dl.status_code}")
+            continue
+        body_bytes = dl.content
+        if body_bytes[:4] == b"RIFF":
+            ext_out, ctype = "wav", "audio/wav"
+        elif body_bytes[:4] == b"fLaC":
+            ext_out, ctype = "flac", "audio/flac"
+        elif body_bytes[:3] == b"ID3" or (len(body_bytes) > 1 and body_bytes[0] == 0xFF and (body_bytes[1] & 0xE0) == 0xE0):
+            ext_out, ctype = "mp3", "audio/mpeg"
+        else:
+            ext_out, ctype = "bin", "application/octet-stream"
+        key = f"stems/{song_id}/p05/fadr/{stem_label}.{ext_out}"
+        url = _r2_upload_bytes(body_bytes, key, ctype)
+        out[stem_label] = url
+        print(f"  ✓ {stem_label} → {url}")
+
+    return {
+        "success": True,
+        "song_id": song_id,
+        "tool": "fadr_lead_back",
+        "asset_id": asset_id,
+        "stems": out,
+        "key": asset_data.get("key"),
+        "tempo": asset_data.get("tempo") or asset_data.get("bpm"),
+        "elapsed_sec": time.time() - started,
+    }

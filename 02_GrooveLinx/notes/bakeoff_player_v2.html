@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 0.5 Bake-Off — Lead vs Backing Vocal Listening Test</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 24px;
+    background: #0f172a;
+    color: #e2e8f0;
+  }
+  h1 { font-size: 1.5rem; margin: 0 0 6px; }
+  .lede { color: #94a3b8; margin-bottom: 24px; line-height: 1.5; font-size: 0.95rem; }
+  .lede code { background: #1e293b; padding: 1px 5px; border-radius: 3px; }
+  .lede strong { color: #e2e8f0; }
+  .song {
+    background: #1e293b;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 18px;
+    border: 1px solid #334155;
+  }
+  .song > h2 {
+    font-size: 1.1rem;
+    margin: 0 0 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .song .difficulty {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: normal;
+  }
+  .song-source {
+    font-size: 0.78rem;
+    color: #64748b;
+    margin: 4px 0 14px;
+  }
+  .stem-row {
+    background: #0f172a;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-top: 10px;
+    border: 1px solid #334155;
+  }
+  .stem-row .stem-label {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #6ee7b7;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .stem-row.backing-row .stem-label { color: #fbbf24; }
+  .stem-row .listen-prompt {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    margin-bottom: 10px;
+  }
+  .player-grid {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .player-grid.two   { grid-template-columns: 1fr 1fr; }
+  .player-grid.three { grid-template-columns: 1fr 1fr 1fr; }
+  .player {
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    padding: 8px 10px;
+    border: 1px solid #334155;
+  }
+  .player .label {
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: #cbd5e1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.92rem;
+  }
+  .player .reveal {
+    font-size: 0.7rem;
+    color: #64748b;
+    font-weight: normal;
+    font-family: monospace;
+  }
+  .player audio {
+    width: 100%;
+    height: 30px;
+  }
+  .verdict {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .verdict label { color: #94a3b8; font-size: 0.85rem; }
+  .verdict select {
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    font-family: inherit;
+    min-width: 200px;
+  }
+  .actions {
+    margin-top: 24px;
+    display: flex;
+    gap: 12px;
+  }
+  button {
+    background: #2563eb;
+    color: white;
+    border: 0;
+    border-radius: 6px;
+    padding: 10px 16px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { background: #1d4ed8; }
+  button.secondary { background: #475569; }
+  button.secondary:hover { background: #64748b; }
+  #output {
+    margin-top: 20px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 14px;
+    font-family: ui-monospace, "SF Mono", monospace;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    line-height: 1.5;
+    display: none;
+  }
+  #output.visible { display: block; }
+  .missing-banner {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.4);
+    color: #fca5a5;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 0.88rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Phase 0.5 Bake-Off — Lead vs Backing Vocal Listening Test</h1>
+<p class="lede">
+  Phase 0 settled vocal-vs-instrumental (Demucs swept 5/5). Phase 0.5 tests the actual harmony painkiller
+  question: <em>which tool produces the cleanest <strong>lead vocal</strong> isolation, and the cleanest
+  <strong>backing harmony</strong> isolation?</em> For each song you'll rank the contenders on the
+  <strong>lead</strong> stem (top row) and the <strong>backing</strong> stem (bottom row) independently —
+  randomized blind, reveal at the end. Decision unblocks Phase 1's lead/backing tool choice.
+</p>
+
+<div id="songs"></div>
+
+<div class="actions">
+  <button id="reveal">Reveal &amp; Copy Results</button>
+  <button id="reset" class="secondary">Reset</button>
+</div>
+
+<pre id="output"></pre>
+
+<script>
+// ─── DATA ──────────────────────────────────────────────────────────────────
+// Each song lists candidate URLs per tool, per stem (lead / backing).
+// Tools that don't produce a separate stem (e.g. Fadr's vocals.mp3 covers
+// both rows) can use the same URL on both. URLs filled in after the runner
+// completes. Missing entries are skipped from that row's randomization.
+
+const R2_BASE = "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems";
+
+const SONGS = [
+  {
+    id: "bakeoff-brokedown",
+    title: "Brokedown Palace",
+    artist: "Grateful Dead · American Beauty · 1970",
+    difficulty: "Medium",
+    sourceNote: "Studio · YouTube source",
+    lead: {
+      lalal: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-brokedown/p05/lalal/lead.mp3",
+      fadr: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-brokedown/p05/fadr/vocals.mp3",
+      demucs: `${R2_BASE}/bakeoff-brokedown/vocals.flac`,
+    },
+    backing: {
+      lalal: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-brokedown/p05/lalal/backing.mp3",
+      fadr: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-brokedown/p05/fadr/vocals.mp3",
+      demucs: `${R2_BASE}/bakeoff-brokedown/vocals.flac`,
+    },
+  },
+  {
+    id: "bakeoff-attics",
+    title: "Attics of My Life",
+    artist: "Grateful Dead · American Beauty · 1970",
+    difficulty: "Very Hard",
+    sourceNote: "Studio · YouTube source",
+    lead: {
+      lalal: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-attics/p05/lalal/lead.mp3",
+      fadr: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-attics/p05/fadr/vocals.mp3",
+      demucs: `${R2_BASE}/bakeoff-attics/vocals.flac`,
+    },
+    backing: {
+      lalal: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-attics/p05/lalal/backing.mp3",
+      fadr: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-attics/p05/fadr/vocals.mp3",
+      demucs: `${R2_BASE}/bakeoff-attics/vocals.flac`,
+    },
+  },
+  {
+    id: "bakeoff-helplessly",
+    title: "Helplessly Hoping",
+    artist: "CSN · self-titled · 1969",
+    difficulty: "Physics ceiling",
+    sourceNote: "Studio · YouTube source · shared-mic limit",
+    lead: {
+      lalal: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-helplessly/p05/lalal/lead.mp3",
+      fadr: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-helplessly/p05/fadr/vocals.mp3",
+      demucs: `${R2_BASE}/bakeoff-helplessly/vocals.flac`,
+    },
+    backing: {
+      lalal: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-helplessly/p05/lalal/backing.mp3",
+      fadr: "https://pub-468e762ddbdc4c0d8b90402ae303906a.r2.dev/stems/bakeoff-helplessly/p05/fadr/vocals.mp3",
+      demucs: `${R2_BASE}/bakeoff-helplessly/vocals.flac`,
+    },
+  },
+];
+
+const TOOL_LABELS = {
+  lalal: "LALAL.AI",
+  fadr: "Fadr",
+  demucs: "Demucs (combined)",
+};
+
+// Pretty alphabet for blind slots
+const SLOT_LETTERS = ["A", "B", "C"];
+
+// Verdicts share the same option list — single best winner per row.
+function buildVerdictOptions(slotCount) {
+  const opts = [{ v: "", label: "— Pick verdict —" }];
+  for (let i = 0; i < slotCount; i++) {
+    const letter = SLOT_LETTERS[i];
+    opts.push({ v: `${letter}_close`, label: `${letter} wins (close)` });
+    opts.push({ v: `${letter}_clear`, label: `${letter} wins (clear)` });
+    opts.push({ v: `${letter}_huge`,  label: `${letter} wins (huge)` });
+  }
+  opts.push({ v: "tied",      label: "Tied / can't tell" });
+  opts.push({ v: "all_bad",   label: "All garbage" });
+  return opts;
+}
+
+// ─── PAGE BUILD ────────────────────────────────────────────────────────────
+
+function shuffleSlots(toolKeys) {
+  // Returns array of toolKey in random order. Deterministic per page-load.
+  const a = [...toolKeys];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Track per-row slot assignments so reveal can decode verdicts.
+// Key: `${songIdx}-${stem}` → array of toolKeys in slot order [A, B, C, ...]
+const SLOT_MAP = {};
+
+function buildSongs() {
+  const root = document.getElementById("songs");
+  let missingCount = 0;
+
+  SONGS.forEach((song, songIdx) => {
+    const songEl = document.createElement("div");
+    songEl.className = "song";
+
+    songEl.innerHTML = `
+      <h2><span>${song.title}</span> <span class="difficulty">${song.difficulty}</span></h2>
+      <div class="song-source">${song.artist} · ${song.sourceNote || ""}</div>
+    `;
+
+    ["lead", "backing"].forEach(stem => {
+      const stemUrls = song[stem] || {};
+      // Only include tools whose URLs aren't pending placeholders
+      const validKeys = Object.keys(stemUrls).filter(k => stemUrls[k] && !stemUrls[k].startsWith("__PENDING_"));
+      const pendingKeys = Object.keys(stemUrls).filter(k => stemUrls[k] && stemUrls[k].startsWith("__PENDING_"));
+      missingCount += pendingKeys.length;
+
+      const slotOrder = shuffleSlots(validKeys);
+      SLOT_MAP[`${songIdx}-${stem}`] = slotOrder;
+
+      const stemRow = document.createElement("div");
+      stemRow.className = `stem-row ${stem}-row`;
+      const isLead = stem === "lead";
+      stemRow.innerHTML = `
+        <div class="stem-label">${stem === "lead" ? "🎤 Lead vocal" : "🎶 Backing harmony"}</div>
+        <div class="listen-prompt">${
+          isLead
+            ? "Pick the slot with the cleanest lead vocal — least bleed of harmony stack into the lead."
+            : "Pick the slot with the best backing harmony preservation — least bleed of lead voice into the backing."
+        }</div>
+      `;
+
+      const grid = document.createElement("div");
+      grid.className = `player-grid ${slotOrder.length === 3 ? "three" : "two"}`;
+
+      slotOrder.forEach((toolKey, slotIdx) => {
+        const letter = SLOT_LETTERS[slotIdx];
+        const url = stemUrls[toolKey];
+        const playerEl = document.createElement("div");
+        playerEl.className = "player";
+        playerEl.innerHTML = `
+          <div class="label">${letter} <span class="reveal" data-reveal="${songIdx}-${stem}-${slotIdx}"></span></div>
+          <audio controls preload="none" src="${url}"></audio>
+        `;
+        grid.appendChild(playerEl);
+      });
+
+      stemRow.appendChild(grid);
+
+      // Verdict dropdown
+      const verdictEl = document.createElement("div");
+      verdictEl.className = "verdict";
+      const opts = buildVerdictOptions(slotOrder.length);
+      verdictEl.innerHTML = `
+        <label for="v-${songIdx}-${stem}">Best ${stem === "lead" ? "lead" : "backing"}:</label>
+        <select id="v-${songIdx}-${stem}" data-song="${songIdx}" data-stem="${stem}">
+          ${opts.map(o => `<option value="${o.v}">${o.label}</option>`).join("")}
+        </select>
+      `;
+      stemRow.appendChild(verdictEl);
+
+      songEl.appendChild(stemRow);
+
+      if (pendingKeys.length > 0) {
+        const note = document.createElement("div");
+        note.style.cssText = "font-size:0.75rem;color:#fbbf24;margin-top:6px;font-style:italic;";
+        note.textContent = `Pending: ${pendingKeys.map(k => TOOL_LABELS[k] || k).join(", ")} (placeholder URL — runner not yet completed)`;
+        stemRow.appendChild(note);
+      }
+    });
+
+    root.appendChild(songEl);
+  });
+
+  if (missingCount > 0) {
+    const banner = document.createElement("div");
+    banner.className = "missing-banner";
+    banner.textContent = `⚠ ${missingCount} tool/stem URL(s) still pending — runner output hasn't been merged. Reload after the runner finishes to get the full bake-off.`;
+    root.parentNode.insertBefore(banner, root);
+  }
+}
+
+buildSongs();
+
+// Pause-others helper
+function allAudio() { return Array.from(document.querySelectorAll("audio")); }
+allAudio().forEach(a => {
+  a.addEventListener("play", () => {
+    allAudio().forEach(other => { if (other !== a) other.pause(); });
+  });
+});
+
+// ─── REVEAL + COPY ────────────────────────────────────────────────────────
+
+document.getElementById("reveal").addEventListener("click", () => {
+  // Surface labels
+  Object.entries(SLOT_MAP).forEach(([key, slotOrder]) => {
+    slotOrder.forEach((toolKey, slotIdx) => {
+      const span = document.querySelector(`[data-reveal="${key}-${slotIdx}"]`);
+      if (span) span.textContent = `(${TOOL_LABELS[toolKey] || toolKey})`;
+    });
+  });
+
+  // Translate verdicts into per-row results
+  const lines = [];
+  // Tally maps: tool wins per stem
+  const winCount = { lead: {}, backing: {} };
+  const margins = { close: 1, clear: 2, huge: 3 };
+  const margin_count = { close: 0, clear: 0, huge: 0 };
+  let ties = 0, allBad = 0, blanks = 0;
+
+  SONGS.forEach((song, songIdx) => {
+    lines.push(`\n${song.title}:`);
+    ["lead", "backing"].forEach(stem => {
+      const slotOrder = SLOT_MAP[`${songIdx}-${stem}`];
+      const v = document.getElementById(`v-${songIdx}-${stem}`).value;
+      const stemEmoji = stem === "lead" ? "🎤" : "🎶";
+      if (!v) { lines.push(`  ${stemEmoji} ${stem}: (no verdict)`); blanks++; return; }
+      if (v === "tied")    { lines.push(`  ${stemEmoji} ${stem}: tied`);          ties++; return; }
+      if (v === "all_bad") { lines.push(`  ${stemEmoji} ${stem}: all garbage`);   allBad++; return; }
+      const [letter, magnitude] = v.split("_");
+      const slotIdx = SLOT_LETTERS.indexOf(letter);
+      const winnerTool = slotOrder[slotIdx];
+      const label = TOOL_LABELS[winnerTool] || winnerTool;
+      lines.push(`  ${stemEmoji} ${stem}: ${label} wins ${magnitude}`);
+      winCount[stem][winnerTool] = (winCount[stem][winnerTool] || 0) + 1;
+      margin_count[magnitude]++;
+    });
+  });
+
+  // Tally summary
+  const fmtTally = scope => {
+    const counts = winCount[scope];
+    const tools = Object.keys(counts).sort((a,b) => counts[b]-counts[a]);
+    if (tools.length === 0) return `  (no winners)`;
+    return tools.map(t => `  ${TOOL_LABELS[t] || t}: ${counts[t]}`).join("\n");
+  };
+  const summary = `\n--- Tally ---\n` +
+    `🎤 LEAD wins:\n${fmtTally("lead")}\n` +
+    `🎶 BACKING wins:\n${fmtTally("backing")}\n` +
+    `Margins: ${margin_count.close} close · ${margin_count.clear} clear · ${margin_count.huge} huge\n` +
+    `Tied: ${ties} · All bad: ${allBad}` +
+    (blanks ? ` · Unscored: ${blanks}` : "");
+
+  const text = lines.join("\n") + "\n" + summary;
+  const out = document.getElementById("output");
+  out.textContent = text;
+  out.classList.add("visible");
+
+  navigator.clipboard?.writeText(text).then(() => {
+    const btn = document.getElementById("reveal");
+    btn.textContent = "Copied! Paste back in chat.";
+    setTimeout(() => { btn.textContent = "Reveal & Copy Results"; }, 3000);
+  }).catch(() => {});
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+  document.querySelectorAll("select").forEach(s => s.value = "");
+  document.querySelectorAll(".reveal").forEach(s => s.textContent = "");
+  document.getElementById("output").classList.remove("visible");
+  allAudio().forEach(a => { a.pause(); a.currentTime = 0; });
+});
+</script>
+
+</body>
+</html>
