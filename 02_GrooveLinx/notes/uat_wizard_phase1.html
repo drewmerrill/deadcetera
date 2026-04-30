@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phase 1 UAT Wizard — Harmony Painkiller Solo Dry-Run</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-2: #0f172a;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --accent: #818cf8;
+    --accent-bg: rgba(102,126,234,0.18);
+    --good: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  header { margin-bottom: 20px; }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .subhead { color: var(--muted); font-size: 0.92rem; margin-bottom: 14px; }
+
+  .progress-wrap {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    margin-bottom: 22px;
+    position: sticky;
+    top: 8px;
+    z-index: 10;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .progress-bar {
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    background: linear-gradient(90deg, #667eea, #ec4899);
+    height: 100%;
+    transition: width 0.4s ease;
+  }
+
+  .step-card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 22px 22px 18px;
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+    animation: fadeIn 0.25s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .step-num {
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .step-title { font-size: 1.18rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+  .step-instr {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 12px 0 14px;
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .step-instr strong { color: #c7d2fe; }
+  .step-instr code {
+    background: rgba(255,255,255,0.07);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.86em;
+    color: #fde68a;
+  }
+  .step-instr ol, .step-instr ul { margin: 6px 0 0 18px; padding: 0; }
+  .step-instr li { margin-bottom: 4px; }
+
+  .field { margin-bottom: 14px; }
+  .field-label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .field-help { display: block; font-size: 0.78rem; color: var(--dim); margin-top: 4px; font-style: italic; }
+  input[type=text], input[type=number], textarea {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-family: inherit;
+    outline: none;
+  }
+  textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
+  input:focus, textarea:focus { border-color: var(--accent); }
+
+  .radio-group { display: flex; flex-direction: column; gap: 6px; }
+  .radio-group.row { flex-direction: row; flex-wrap: wrap; }
+  .radio-opt {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.92rem;
+    transition: all 0.12s;
+    flex: 1 1 auto;
+    min-width: 100px;
+  }
+  .radio-opt:hover { background: rgba(255,255,255,0.06); border-color: rgba(102,126,234,0.4); }
+  .radio-opt input[type=radio] { accent-color: var(--accent); flex-shrink: 0; }
+  .radio-opt.selected { background: rgba(102,126,234,0.12); border-color: var(--accent); }
+  .radio-opt .radio-emoji { font-size: 1.1em; flex-shrink: 0; }
+
+  .score-row { display: flex; gap: 6px; }
+  .score-btn {
+    flex: 1;
+    padding: 12px 0;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 700;
+    transition: all 0.12s;
+  }
+  .score-btn:hover { background: rgba(255,255,255,0.07); }
+  .score-btn.selected {
+    background: linear-gradient(135deg, rgba(102,126,234,0.25), rgba(236,72,153,0.15));
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .score-legend {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--dim);
+    margin-top: 4px;
+  }
+
+  .nav-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  button.nav-btn {
+    flex: 1;
+    padding: 12px 18px;
+    border-radius: 10px;
+    border: none;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button.nav-btn.primary {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+  }
+  button.nav-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(102,126,234,0.35); }
+  button.nav-btn.primary:disabled {
+    background: rgba(255,255,255,0.05);
+    color: var(--dim);
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+  button.nav-btn.secondary {
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    flex: 0 1 auto;
+  }
+  button.nav-btn.secondary:hover { background: rgba(255,255,255,0.1); }
+
+  .blocker-zone {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: rgba(239,68,68,0.06);
+    border: 1px dashed rgba(239,68,68,0.25);
+    border-radius: 8px;
+  }
+  .blocker-zone summary {
+    cursor: pointer;
+    font-size: 0.82rem;
+    color: #fca5a5;
+    font-weight: 700;
+  }
+  .blocker-zone textarea {
+    margin-top: 8px;
+    background: rgba(0,0,0,0.2);
+    border-color: rgba(239,68,68,0.3);
+  }
+
+  /* Welcome / Final screens */
+  .hero {
+    background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(236,72,153,0.06));
+    border: 1px solid rgba(99,102,241,0.25);
+    border-radius: 14px;
+    padding: 32px 28px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .hero h2 { font-size: 1.5rem; margin: 0 0 8px; }
+  .hero p { color: var(--muted); margin: 6px 0; }
+  .hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 18px;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .hero-stats span { display: flex; align-items: center; gap: 6px; }
+
+  .report-block {
+    background: #0a0e1a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 50vh;
+    overflow-y: auto;
+    line-height: 1.5;
+  }
+  .verdict-banner {
+    padding: 18px;
+    border-radius: 10px;
+    margin: 16px 0;
+    text-align: center;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+  .verdict-banner.go { background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); color: var(--good); }
+  .verdict-banner.partial { background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.3); color: var(--warn); }
+  .verdict-banner.nogo { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.3); color: var(--bad); }
+
+  .copy-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+  .copy-btn.copied { background: linear-gradient(135deg, #34d399, #10b981); }
+
+  .danger-btn {
+    background: none;
+    color: var(--dim);
+    border: 1px dashed rgba(239,68,68,0.25);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    margin-top: 16px;
+  }
+  .danger-btn:hover { color: var(--bad); border-color: rgba(239,68,68,0.4); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎤 Phase 1 UAT Wizard — Solo Dry-Run</h1>
+  <div class="subhead">Harmony Painkiller end-to-end test before involving a bandmate. Build <code id="buildBadge">20260430-120034</code> · ~30 min · all answers required.</div>
+</header>
+
+<div class="progress-wrap" id="progressWrap" style="display:none">
+  <div class="progress-label">
+    <span id="progressText">Step 1 of 11</span>
+    <span id="progressPct">9%</span>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:9%"></div></div>
+</div>
+
+<div id="root"></div>
+
+<script>
+'use strict';
+
+const STORAGE_KEY = 'gl_uat_phase1_state_v1';
+const BUILD = '20260430-120034';
+
+// ── Step definitions ────────────────────────────────────────────────────────
+const STEPS = [
+  // 0 — Welcome
+  {
+    id: 'welcome',
+    type: 'welcome',
+  },
+  // 1 — Pick song
+  {
+    id: 'song_pick',
+    title: 'Pick a song to test against',
+    num: 'Step 1 of 11',
+    instr: `
+      <strong>Pick a song you already have a reference recording set for.</strong>
+      <ul>
+        <li>Has at least one entry in "Reference Versions" / North Star</li>
+        <li>Has clear lead + backing vocals (not a solo song)</li>
+        <li>Studio recording preferred (live SBDs work but harder)</li>
+      </ul>
+      Good defaults: <code>Brokedown Palace</code>, <code>Attics of My Life</code>, <code>Helplessly Hoping</code>.
+    `,
+    fields: [
+      { id: 'song_title', label: 'Song title', type: 'text', required: true, placeholder: 'e.g. Brokedown Palace' },
+      { id: 'reference_url', label: 'Reference URL or platform', type: 'text', required: true, placeholder: 'archive.org / studio master / YouTube' },
+    ],
+  },
+  // 2 — Auto-Split modal opens
+  {
+    id: 'split_modal',
+    title: 'Open the Auto-Split modal',
+    num: 'Step 2 of 11',
+    instr: `
+      <ol>
+        <li>Open the song you picked → <strong>Harmonies</strong> tab</li>
+        <li>Click <strong>🎤 Auto-Split (LALAL)</strong> (or <strong>🎤 LALAL Auto-Split</strong> if there's already harmony data)</li>
+        <li>Confirm the modal opens with a source picker</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'modal_opened', label: 'Did the modal open?', type: 'radio', required: true, options: [
+        { v: 'yes',   l: '✅ Yes — source picker visible' },
+        { v: 'no',    l: '❌ No — button missing or modal failed' },
+      ]},
+      { id: 'source_picker_populated', label: 'Did the source picker show your reference versions?', type: 'radio', required: true, options: [
+        { v: 'yes',     l: '✅ Yes — at least one version listed' },
+        { v: 'empty',   l: '⚠️ Picker visible but empty — used custom URL' },
+        { v: 'no',      l: '❌ No picker at all' },
+      ]},
+    ],
+  },
+  // 3 — Run the split
+  {
+    id: 'split_run',
+    title: 'Run the split',
+    num: 'Step 3 of 11',
+    instr: `
+      <ol>
+        <li>Pick a source (or paste a URL) → click <strong>🚀 Start Auto-Split</strong></li>
+        <li>Watch the progress UI — should run ~1–3 min: "Sending to LALAL.AI" → "Stems received" → "Running Basic Pitch" → "Saving" → "Auto-Split complete!"</li>
+        <li>If it errors, mark <em>Failed</em> below and paste the error message</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'split_status', label: 'Did it complete successfully?', type: 'radio', required: true, options: [
+        { v: 'success',   l: '✅ Completed — Split Mixer appeared' },
+        { v: 'completed_no_mixer', l: '⚠️ Modal said "complete" but no mixer rendered' },
+        { v: 'error',     l: '❌ Errored mid-way' },
+        { v: 'timeout',   l: '⏱ Timed out / hung > 5 min' },
+      ]},
+      { id: 'split_elapsed', label: 'Roughly how long? (minutes)', type: 'number', required: true, placeholder: '2', min: 0, max: 30 },
+      { id: 'split_error_text', label: 'If errored, paste the error message:', type: 'textarea', required: false, placeholder: '(optional unless errored)' },
+    ],
+  },
+  // 4 — Lead vocal solo quality
+  {
+    id: 'lead_quality',
+    title: 'Lead vocal — listen in solo',
+    num: 'Step 4 of 11',
+    instr: `
+      <ol>
+        <li>In the Split Mixer, click <strong>Solo</strong> on the <em>lead</em> row</li>
+        <li>Hit <strong>▶ Play</strong> — listen for at least 30 seconds</li>
+        <li>Score the isolation quality (no instruments, minimal backing bleed)</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'lead_quality_score', label: 'Lead isolation quality (1=garbage, 5=studio-clean)', type: 'score', required: true, max: 5,
+        legend: ['1 garbage','2 rough','3 usable','4 good','5 clean'] },
+      { id: 'lead_bleed', label: 'How much instrumental/backing bleed?', type: 'radio', required: true, options: [
+        { v: 'none',    l: '✅ None / negligible' },
+        { v: 'minor',   l: '🟡 Minor — barely audible, doesn\'t distract' },
+        { v: 'sig',     l: '🟠 Significant — distracting but usable' },
+        { v: 'severe',  l: '🔴 Severe — bleed dominates' },
+      ]},
+      { id: 'lead_notes', label: 'Notes (optional)', type: 'textarea', required: false, placeholder: 'Where it sounded best/worst, any artifacts…' },
+    ],
+  },
+  // 5 — Backing vocal solo quality
+  {
+    id: 'backing_quality',
+    title: 'Backing vocal — listen in solo',
+    num: 'Step 5 of 11',
+    instr: `
+      <ol>
+        <li>Click <strong>Solo</strong> on the <em>backing</em> row (un-solos lead automatically)</li>
+        <li>Listen 30+ seconds</li>
+        <li>Score: how cleanly is backing isolated from lead + instruments?</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'backing_quality_score', label: 'Backing isolation quality (1=garbage, 5=studio-clean)', type: 'score', required: true, max: 5,
+        legend: ['1 garbage','2 rough','3 usable','4 good','5 clean'] },
+      { id: 'backing_bleed', label: 'Lead-vocal bleed into backing track?', type: 'radio', required: true, options: [
+        { v: 'none',    l: '✅ None — pure backing' },
+        { v: 'minor',   l: '🟡 Minor lead-bleed' },
+        { v: 'sig',     l: '🟠 Significant lead-bleed' },
+        { v: 'severe',  l: '🔴 Severe — sounds like the lead' },
+      ]},
+      { id: 'backing_notes', label: 'Notes (optional)', type: 'textarea', required: false, placeholder: 'Did backing harmonies separate at all? Or all blob?' },
+    ],
+  },
+  // 6 — Pan test
+  {
+    id: 'pan_test',
+    title: 'Hard L/R pan separation',
+    num: 'Step 6 of 11',
+    instr: `
+      <strong>Headphones required.</strong>
+      <ol>
+        <li>Un-solo all rows → both rows audible</li>
+        <li>Drag <strong>lead's pan slider</strong> all the way LEFT (will say "L100")</li>
+        <li>Drag <strong>backing's pan slider</strong> all the way RIGHT ("R100")</li>
+        <li>Hit Play — lead should be in left ear only, backing in right ear only</li>
+        <li>Try double-clicking a pan slider → should snap back to "C"</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'pan_isolation', label: 'Did the pan actually isolate to left/right?', type: 'radio', required: true, options: [
+        { v: 'yes',       l: '✅ Yes — clean separation per ear' },
+        { v: 'partial',   l: '🟡 Partial — pan worked but bleed crossed channels' },
+        { v: 'no',        l: '❌ No — both audible in both ears' },
+        { v: 'broken',    l: '🛑 Pan slider didn\'t move audio at all' },
+      ]},
+      { id: 'pan_dblclick', label: 'Did double-click center the slider back to "C"?', type: 'radio', required: true, options: [
+        { v: 'yes',     l: '✅ Yes' },
+        { v: 'no',      l: '❌ No — had to drag manually' },
+      ]},
+    ],
+  },
+  // 7 — Loop test
+  {
+    id: 'loop_test',
+    title: 'Bar-loop test',
+    num: 'Step 7 of 11',
+    instr: `
+      <ol>
+        <li>Reset pans to center (double-click both)</li>
+        <li>In the loop bar: check <strong>Loop bars</strong> → enter <strong>1</strong> to <strong>4</strong></li>
+        <li>Hit Play from the start</li>
+        <li>Should loop the first 4 bars indefinitely (~8 sec at 120 BPM, ~12 sec at 80 BPM)</li>
+        <li>Listen for: does it loop at all? do tracks stay in sync?</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'loop_works', label: 'Did the loop actually loop?', type: 'radio', required: true, options: [
+        { v: 'yes',       l: '✅ Yes — loops cleanly' },
+        { v: 'late',      l: '🟡 Loops but jumps back late (overshoots end-bar)' },
+        { v: 'early',     l: '🟡 Loops but jumps back early' },
+        { v: 'no',        l: '❌ No — playback ignored the loop' },
+      ]},
+      { id: 'loop_sync', label: 'After looping, do lead + backing stay in sync?', type: 'radio', required: true, options: [
+        { v: 'sync',      l: '✅ In sync — sounds like one track' },
+        { v: 'drift',     l: '🟡 Slight drift after a few loops' },
+        { v: 'broken',    l: '❌ Tracks desync immediately' },
+      ]},
+    ],
+  },
+  // 8 — Lead notation
+  {
+    id: 'notation_test',
+    title: 'Lead notation render',
+    num: 'Step 8 of 11',
+    instr: `
+      <ol>
+        <li>Below the Split Mixer, find <strong>🎼 Lead Notation</strong> (open by default)</li>
+        <li>Wait for abcjs to load (lazy CDN — may take 1–2 sec)</li>
+        <li>Sheet music should render with a yellow <strong>DRAFT</strong> badge</li>
+        <li>Look at it — would it be a useful <em>starting point</em> for hand-cleanup, or noise?</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'notation_renders', label: 'Did the notation render at all?', type: 'radio', required: true, options: [
+        { v: 'yes',       l: '✅ Yes — sheet music visible' },
+        { v: 'partial',   l: '🟡 Partial — visible but corrupted/cut off' },
+        { v: 'error',     l: '❌ No — error message or stuck loading' },
+      ]},
+      { id: 'notation_usefulness', label: 'How useful as a hand-cleanup seed? (1=noise, 5=80% correct)', type: 'score', required: true, max: 5,
+        legend: ['1 noise','2 hint','3 seed','4 close','5 80%+'] },
+      { id: 'notation_notes', label: 'Notes (optional)', type: 'textarea', required: false, placeholder: 'Pitches roughly right? Rhythm broken? Way too many notes?' },
+    ],
+  },
+  // 9 — Stems lens pan test
+  {
+    id: 'stems_lens_pan',
+    title: 'Stems lens — pan knob check',
+    num: 'Step 9 of 11',
+    instr: `
+      Open the same song's <strong>🎚 Stems</strong> lens.
+      <ol>
+        <li>If no stems exist yet, run a separation first (or pick another song that has stems)</li>
+        <li>Drag <strong>drums</strong> pan slider hard LEFT, <strong>vocals</strong> hard RIGHT</li>
+        <li>Hit Play — drums in left ear, vocals in right ear</li>
+        <li>Double-click both → should snap to center</li>
+      </ol>
+    `,
+    fields: [
+      { id: 'stems_pan_works', label: 'Does the Stems lens pan slider move audio L/R?', type: 'radio', required: true, options: [
+        { v: 'yes',       l: '✅ Yes — works as expected' },
+        { v: 'no',        l: '❌ No — pan slider doesn\'t change audio' },
+        { v: 'no_stems',  l: '🟦 No stems on this song — skipped' },
+      ]},
+    ],
+  },
+  // 10 — Verdict
+  {
+    id: 'verdict',
+    title: 'The product question',
+    num: 'Step 10 of 11',
+    instr: `
+      The whole point of Phase 1 was: <strong>"Could a bandmate learn a harmony part faster with this than YouTube + manual transcription?"</strong>
+      <br><br>Be honest. If the answer is "no," that's a fix-it signal — not a failure on your part.
+    `,
+    fields: [
+      { id: 'verdict_save_time', label: 'Would this save a bandmate time vs. YouTube?', type: 'radio', required: true, options: [
+        { v: 'yes',         l: '✅ Yes — clearly faster' },
+        { v: 'sortof',      l: '🟡 Sort of — needs more cleanup' },
+        { v: 'no',          l: '❌ No — wouldn\'t hand this to a bandmate yet' },
+      ]},
+      { id: 'verdict_trust',     label: 'Would you trust a bandmate to use this on their own?', type: 'radio', required: true, options: [
+        { v: 'yes',     l: '✅ Yes — UX is self-explanatory' },
+        { v: 'guided',  l: '🟡 With a 30-sec demo first' },
+        { v: 'no',      l: '❌ Not yet — too rough' },
+      ]},
+      { id: 'verdict_best',  label: 'What worked best?', type: 'textarea', required: true, placeholder: 'Be specific.' },
+      { id: 'verdict_worst', label: 'What worked worst / would block band UAT?', type: 'textarea', required: true, placeholder: 'Be specific.' },
+    ],
+  },
+  // 11 — Final report
+  {
+    id: 'final',
+    type: 'final',
+    num: 'Step 11 of 11',
+  },
+];
+
+// ── State ───────────────────────────────────────────────────────────────────
+let state = { stepIdx: 0, answers: {}, startedAt: null, completedAt: null };
+
+function loadState() {
+  try {
+    const s = localStorage.getItem(STORAGE_KEY);
+    if (s) state = JSON.parse(s);
+  } catch(_) {}
+}
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch(_) {}
+}
+function resetState() {
+  if (!confirm('Wipe all UAT progress and start over?')) return;
+  localStorage.removeItem(STORAGE_KEY);
+  state = { stepIdx: 0, answers: {}, startedAt: null, completedAt: null };
+  render();
+}
+
+// ── Validation ──────────────────────────────────────────────────────────────
+function isStepValid(stepIdx) {
+  const step = STEPS[stepIdx];
+  if (!step.fields) return true;
+  for (const f of step.fields) {
+    if (!f.required) continue;
+    const v = state.answers[step.id + '.' + f.id];
+    if (v === undefined || v === null || v === '') return false;
+  }
+  return true;
+}
+
+// ── Rendering ───────────────────────────────────────────────────────────────
+function render() {
+  const root = document.getElementById('root');
+  const step = STEPS[state.stepIdx];
+
+  // Progress
+  const progressWrap = document.getElementById('progressWrap');
+  if (step.type === 'welcome') {
+    progressWrap.style.display = 'none';
+  } else {
+    progressWrap.style.display = 'block';
+    const totalSteps = STEPS.length - 1; // exclude welcome from count
+    const stepNum = state.stepIdx;       // welcome=0, step 1=1, ...
+    const pct = Math.round((stepNum / totalSteps) * 100);
+    document.getElementById('progressText').textContent = step.num || ('Step ' + stepNum + ' of ' + totalSteps);
+    document.getElementById('progressPct').textContent = pct + '%';
+    document.getElementById('progressFill').style.width = pct + '%';
+  }
+
+  if (step.type === 'welcome') return renderWelcome(root);
+  if (step.type === 'final')   return renderFinal(root);
+  return renderStep(root, step);
+}
+
+function renderWelcome(root) {
+  const inProgress = state.stepIdx > 0 && state.stepIdx < STEPS.length - 1;
+  root.innerHTML = `
+    <div class="hero">
+      <h2>🎤 Phase 1 UAT — Solo Dry-Run</h2>
+      <p>Force-walks you through 9 specific tests of the LALAL Auto-Split + Harmony Lab Split Mixer + Pan + Notation flow.</p>
+      <p>You'll click through one song end-to-end, score each test, and at the end get a copy-pasteable report for Claude.</p>
+      <div class="hero-stats">
+        <span>⏱ ~30 minutes</span>
+        <span>🎧 Headphones</span>
+        <span>💾 Auto-saves progress</span>
+      </div>
+    </div>
+    <div class="step-card">
+      <div class="step-instr" style="border-left-color:#fbbf24">
+        <strong>Before you start:</strong>
+        <ul>
+          <li>Open GrooveLinx in another tab — keep this wizard side-by-side</li>
+          <li>Have headphones plugged in (pan tests need them)</li>
+          <li>Pick a song that already has a reference recording set</li>
+        </ul>
+      </div>
+      <div class="nav-row">
+        <button class="nav-btn primary" onclick="next()">${ inProgress ? '↪ Resume from where you left off' : '🚀 Begin UAT' }</button>
+      </div>
+      ${ inProgress ? `<button class="danger-btn" onclick="resetState()">Reset progress and start over</button>` : '' }
+    </div>
+  `;
+}
+
+function renderStep(root, step) {
+  const fieldsHtml = step.fields.map(f => renderField(step, f)).join('');
+  const valid = isStepValid(state.stepIdx);
+  root.innerHTML = `
+    <div class="step-card">
+      <div class="step-num">${ step.num }</div>
+      <div class="step-title">${ step.title }</div>
+      <div class="step-instr">${ step.instr }</div>
+      <form onsubmit="event.preventDefault();" autocomplete="off">${ fieldsHtml }</form>
+      <details class="blocker-zone">
+        <summary>🚧 Hit a blocker? Document it here (optional)</summary>
+        <textarea id="blocker_${step.id}" placeholder="What broke or stopped you?" oninput="saveAnswer('${step.id}','_blocker',this.value)">${ esc(state.answers[step.id + '._blocker'] || '') }</textarea>
+      </details>
+      <div class="nav-row">
+        <button class="nav-btn secondary" onclick="prev()" ${ state.stepIdx === 0 ? 'disabled style="opacity:0.4"' : '' }>← Back</button>
+        <button class="nav-btn primary" onclick="next()" ${ valid ? '' : 'disabled' }>${ valid ? 'Next →' : 'Fill all required fields' }</button>
+      </div>
+    </div>
+  `;
+  // Attach radio click handlers (label-wide click via input change)
+  root.querySelectorAll('.radio-opt').forEach(el => {
+    const input = el.querySelector('input[type=radio]');
+    if (!input) return;
+    el.addEventListener('click', () => { input.checked = true; input.dispatchEvent(new Event('change', { bubbles: true })); });
+  });
+}
+
+function renderField(step, f) {
+  const aKey = step.id + '.' + f.id;
+  const v = state.answers[aKey];
+  if (f.type === 'text') {
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <input type="text" placeholder="${ esc(f.placeholder || '') }" value="${ esc(v || '') }"
+        oninput="saveAnswer('${step.id}','${f.id}',this.value)">
+      ${ f.help ? `<span class="field-help">${ esc(f.help) }</span>` : '' }
+    </div>`;
+  }
+  if (f.type === 'number') {
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <input type="number" placeholder="${ esc(f.placeholder || '') }" value="${ esc(v || '') }"
+        ${ f.min !== undefined ? 'min="'+f.min+'"' : '' } ${ f.max !== undefined ? 'max="'+f.max+'"' : '' }
+        oninput="saveAnswer('${step.id}','${f.id}',this.value)">
+    </div>`;
+  }
+  if (f.type === 'textarea') {
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <textarea placeholder="${ esc(f.placeholder || '') }"
+        oninput="saveAnswer('${step.id}','${f.id}',this.value)">${ esc(v || '') }</textarea>
+    </div>`;
+  }
+  if (f.type === 'radio') {
+    const opts = f.options.map(o => {
+      const sel = (v === o.v);
+      return `<label class="radio-opt ${ sel ? 'selected' : '' }">
+        <input type="radio" name="${ aKey }" value="${ esc(o.v) }" ${ sel ? 'checked' : '' }
+          onchange="saveAnswer('${step.id}','${f.id}',this.value); render();">
+        <span>${ esc(o.l) }</span>
+      </label>`;
+    }).join('');
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <div class="radio-group ${ f.options.length <= 4 ? '' : 'row' }">${ opts }</div>
+    </div>`;
+  }
+  if (f.type === 'score') {
+    const max = f.max || 5;
+    let btns = '';
+    for (let i = 1; i <= max; i++) {
+      btns += `<button type="button" class="score-btn ${ String(v) === String(i) ? 'selected' : '' }"
+        onclick="saveAnswer('${step.id}','${f.id}','${i}'); render();">${ i }</button>`;
+    }
+    const legend = (f.legend || []).map(l => `<span>${ esc(l) }</span>`).join('');
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <div class="score-row">${ btns }</div>
+      ${ legend ? `<div class="score-legend">${ legend }</div>` : '' }
+    </div>`;
+  }
+  return '';
+}
+
+function renderFinal(root) {
+  if (!state.completedAt) state.completedAt = new Date().toISOString();
+  saveState();
+  const verdict = computeVerdict();
+  const report  = buildReport(verdict);
+  root.innerHTML = `
+    <div class="hero">
+      <h2>${ verdict.emoji } UAT complete</h2>
+      <p>${ verdict.headline }</p>
+    </div>
+    <div class="verdict-banner ${ verdict.cls }">${ verdict.banner }</div>
+    <div class="step-card">
+      <div class="step-title">📋 Report — paste this into Claude</div>
+      <div class="step-instr">Click the green button to copy. Then paste the entire block back into your Claude chat. Claude will triage what to fix and decide whether to greenlight band UAT.</div>
+      <div class="report-block" id="reportBlock">${ esc(report) }</div>
+      <button class="copy-btn" id="copyBtn" onclick="copyReport()">📋 Copy report to clipboard</button>
+      <div class="nav-row">
+        <button class="nav-btn secondary" onclick="prev()">← Back</button>
+        <button class="nav-btn secondary" onclick="resetState()">Start over</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Verdict computation ─────────────────────────────────────────────────────
+function computeVerdict() {
+  const a = state.answers;
+  let blockers = [];
+  let warns    = [];
+
+  if (a['split_run.split_status'] !== 'success') blockers.push('Auto-Split did not complete cleanly');
+  if (a['split_modal.modal_opened'] === 'no') blockers.push('Auto-Split modal did not open');
+  if (Number(a['lead_quality.lead_quality_score']) < 3) blockers.push('Lead vocal quality too low');
+  if (a['lead_quality.lead_bleed'] === 'severe')    blockers.push('Severe instrumental bleed in lead');
+  if (a['backing_quality.backing_bleed'] === 'severe') blockers.push('Backing track is just the lead leaking through');
+  if (a['pan_test.pan_isolation'] === 'broken' || a['pan_test.pan_isolation'] === 'no') blockers.push('Pan does not isolate L/R');
+  if (a['loop_test.loop_works'] === 'no') blockers.push('Loop does not loop');
+  if (a['loop_test.loop_sync'] === 'broken') blockers.push('Tracks desync after loop');
+  if (a['notation_test.notation_renders'] === 'error') blockers.push('Lead notation failed to render');
+  if (a['stems_lens_pan.stems_pan_works'] === 'no') blockers.push('Stems lens pan slider broken');
+  if (a['verdict.verdict_save_time'] === 'no') blockers.push('Drew\'s verdict: would not save a bandmate time');
+
+  if (Number(a['lead_quality.lead_quality_score'])    === 3) warns.push('Lead quality borderline (3/5)');
+  if (Number(a['backing_quality.backing_quality_score']) <= 3) warns.push('Backing quality limited (≤3/5)');
+  if (a['lead_quality.lead_bleed']    === 'sig') warns.push('Significant bleed in lead');
+  if (a['backing_quality.backing_bleed'] === 'sig') warns.push('Significant lead-bleed in backing');
+  if (a['loop_test.loop_works'] === 'late' || a['loop_test.loop_works'] === 'early') warns.push('Loop boundary off — bar math may need calibration');
+  if (a['loop_test.loop_sync'] === 'drift') warns.push('Slight drift after multiple loops');
+  if (a['verdict.verdict_save_time'] === 'sortof') warns.push('Time-savings unclear');
+  if (a['verdict.verdict_trust'] === 'no') warns.push('Drew would not hand this to a bandmate yet');
+
+  if (blockers.length > 0) return {
+    cls: 'nogo', emoji: '🛑',
+    headline: blockers.length + ' blocker' + (blockers.length===1?'':'s') + ' before band UAT.',
+    banner: '🛑 GATE: do NOT proceed to band UAT until blockers are fixed.',
+    blockers, warns
+  };
+  if (warns.length > 0) return {
+    cls: 'partial', emoji: '⚠️',
+    headline: 'Cleared, but with caveats.',
+    banner: '⚠️ GATE: cleared for band UAT — but flag these caveats to the bandmate first.',
+    blockers, warns
+  };
+  return {
+    cls: 'go', emoji: '✅',
+    headline: 'All systems clean. Ready for band UAT.',
+    banner: '✅ GATE: cleared for band UAT.',
+    blockers, warns
+  };
+}
+
+// ── Report builder ──────────────────────────────────────────────────────────
+function buildReport(verdict) {
+  const a = state.answers;
+  const lines = [];
+  const fmtA = (k) => a[k] !== undefined && a[k] !== '' ? a[k] : '—';
+
+  lines.push('# Phase 1 UAT — Solo Dry-Run Report');
+  lines.push('');
+  lines.push('- **Build:** `' + BUILD + '`');
+  lines.push('- **Started:**   ' + (state.startedAt   ? new Date(state.startedAt).toLocaleString()   : '—'));
+  lines.push('- **Completed:** ' + (state.completedAt ? new Date(state.completedAt).toLocaleString() : '—'));
+  lines.push('- **Song:** ' + fmtA('song_pick.song_title'));
+  lines.push('- **Reference:** ' + fmtA('song_pick.reference_url'));
+  lines.push('');
+  lines.push('## Verdict: ' + verdict.banner);
+  lines.push('');
+
+  if (verdict.blockers.length) {
+    lines.push('### 🛑 Blockers');
+    verdict.blockers.forEach(b => lines.push('- ' + b));
+    lines.push('');
+  }
+  if (verdict.warns.length) {
+    lines.push('### ⚠️ Caveats');
+    verdict.warns.forEach(w => lines.push('- ' + w));
+    lines.push('');
+  }
+
+  lines.push('## Detailed answers');
+  lines.push('');
+  lines.push('### 2. Auto-Split modal');
+  lines.push('- Modal opened: ' + fmtA('split_modal.modal_opened'));
+  lines.push('- Source picker populated: ' + fmtA('split_modal.source_picker_populated'));
+  lines.push('');
+  lines.push('### 3. Split run');
+  lines.push('- Status: ' + fmtA('split_run.split_status'));
+  lines.push('- Elapsed (min): ' + fmtA('split_run.split_elapsed'));
+  if (a['split_run.split_error_text']) lines.push('- Error text: `' + a['split_run.split_error_text'] + '`');
+  lines.push('');
+  lines.push('### 4. Lead vocal');
+  lines.push('- Quality score: ' + fmtA('lead_quality.lead_quality_score') + '/5');
+  lines.push('- Bleed: ' + fmtA('lead_quality.lead_bleed'));
+  if (a['lead_quality.lead_notes']) lines.push('- Notes: ' + a['lead_quality.lead_notes']);
+  lines.push('');
+  lines.push('### 5. Backing vocal');
+  lines.push('- Quality score: ' + fmtA('backing_quality.backing_quality_score') + '/5');
+  lines.push('- Bleed: ' + fmtA('backing_quality.backing_bleed'));
+  if (a['backing_quality.backing_notes']) lines.push('- Notes: ' + a['backing_quality.backing_notes']);
+  lines.push('');
+  lines.push('### 6. Pan test');
+  lines.push('- L/R isolation: ' + fmtA('pan_test.pan_isolation'));
+  lines.push('- Double-click center: ' + fmtA('pan_test.pan_dblclick'));
+  lines.push('');
+  lines.push('### 7. Loop test');
+  lines.push('- Loop works: ' + fmtA('loop_test.loop_works'));
+  lines.push('- Sync after loop: ' + fmtA('loop_test.loop_sync'));
+  lines.push('');
+  lines.push('### 8. Notation');
+  lines.push('- Renders: ' + fmtA('notation_test.notation_renders'));
+  lines.push('- Usefulness as cleanup seed: ' + fmtA('notation_test.notation_usefulness') + '/5');
+  if (a['notation_test.notation_notes']) lines.push('- Notes: ' + a['notation_test.notation_notes']);
+  lines.push('');
+  lines.push('### 9. Stems lens pan');
+  lines.push('- Works: ' + fmtA('stems_lens_pan.stems_pan_works'));
+  lines.push('');
+  lines.push('### 10. Verdict');
+  lines.push('- Saves time vs YouTube: ' + fmtA('verdict.verdict_save_time'));
+  lines.push('- Would trust a bandmate: ' + fmtA('verdict.verdict_trust'));
+  lines.push('- Best: ' + fmtA('verdict.verdict_best'));
+  lines.push('- Worst: ' + fmtA('verdict.verdict_worst'));
+
+  // Blockers from open-text fields
+  const blockerKeys = Object.keys(a).filter(k => k.endsWith('._blocker') && a[k]);
+  if (blockerKeys.length) {
+    lines.push('');
+    lines.push('## 🚧 In-line blocker notes');
+    blockerKeys.forEach(k => {
+      const stepId = k.replace('._blocker','');
+      lines.push('- **' + stepId + ':** ' + a[k]);
+    });
+  }
+
+  return lines.join('\n');
+}
+
+function copyReport() {
+  const text = document.getElementById('reportBlock').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✅ Copied — paste into Claude chat';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 Copy report to clipboard';
+      btn.classList.remove('copied');
+    }, 3500);
+  }).catch(err => {
+    alert('Copy failed: ' + err.message + '\n\nManually select and copy the report.');
+  });
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+function next() {
+  if (state.stepIdx === 0 && !state.startedAt) state.startedAt = new Date().toISOString();
+  if (state.stepIdx > 0 && !isStepValid(state.stepIdx)) return;
+  if (state.stepIdx < STEPS.length - 1) state.stepIdx++;
+  saveState();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function prev() {
+  if (state.stepIdx > 0) state.stepIdx--;
+  saveState();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Answer save ─────────────────────────────────────────────────────────────
+function saveAnswer(stepId, fieldId, value) {
+  state.answers[stepId + '.' + fieldId] = value;
+  saveState();
+  // Re-enable "Next" without full re-render for text fields
+  const step = STEPS[state.stepIdx];
+  if (step && step.fields) {
+    const valid = isStepValid(state.stepIdx);
+    const nextBtn = document.querySelector('.nav-btn.primary');
+    if (nextBtn && nextBtn.textContent.includes('Next')) {
+      nextBtn.disabled = !valid;
+      nextBtn.textContent = valid ? 'Next →' : 'Fill all required fields';
+    }
+  }
+}
+
+function esc(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+loadState();
+document.getElementById('buildBadge').textContent = BUILD;
+window.next = next; window.prev = prev; window.saveAnswer = saveAnswer;
+window.copyReport = copyReport; window.resetState = resetState; window.render = render;
+render();
+</script>
+
+</body>
+</html>
