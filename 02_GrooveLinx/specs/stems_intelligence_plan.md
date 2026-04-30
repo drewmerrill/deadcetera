@@ -374,13 +374,14 @@ Output: 5-row × 3-pipeline matrix in `02_GrooveLinx/notes/session_2026-04-29_ba
 
 **Effort revised down 2026-04-29:** Phase 0 closed with a sweep — no vocal-cleanup pre-stage needed (MelBand checkpoint dropped). Modal `split_vocals` work is no longer required for Phase 1; lead/backing comes from a hosted tool (TBD by Phase 0.5 — see below). Phase 1 effort is now mostly Harmony Lab integration + Basic Pitch wiring + band UAT.
 
-> **Pipeline (post-Phase-0, lead/backing source TBD by Phase 0.5):**
-> 1. **Demucs** (`separate_stems` on Modal) → `vocals.flac` — already running in production.
-> 2. **Lead/backing split** → tool pending Phase 0.5 verdict. Candidates: **Fadr** (existing integration, may only output combined vocals + MIDI per part), **LALAL.AI** (`multivocal=lead_back` mode, $50 Master pack, 750 min), **MVSEP** (subject to API access). Output: `lead.wav` + `backing.wav`.
-> 3. **Basic Pitch** (existing `/api/basic-pitch` path at `app.js:4859`) → MIDI → ABC for the lead.
-> 4. **Harmony Lab** renders ABC + plays backing as audio-only.
+> **Pipeline (post-Phase-0.5, locked 2026-04-30):**
+> 1. **Demucs** (`separate_stems` on Modal) → `vocals.flac` + drums + bass + other + piano + guitar — used by **Stems lens** (per-instrument practice mixer).
+> 2. **LALAL.AI** (`multivocal=lead_back` mode, $50 Master pack) on FULL MIX → `lead.mp3` + `backing.mp3` + `instrumental.mp3` — used by **Harmony Lab** (lead/backing painkiller). Empirically beat Fadr 5/6 in P0.5 blind listen.
+> 3. **Basic Pitch** (existing `/api/basic-pitch` path at `app.js:4859`) on LALAL `lead.mp3` → MIDI → ABC for lead notation.
+> 4. **Harmony Lab** renders ABC for lead, plays LALAL `backing.mp3` as audio-only stack.
+> 5. **Fadr** demoted: still useful for MIDI-per-harmony seeding (auto-import button) but no longer the lead/backing audio source.
 
-> **Phase 0.5 scope (started 2026-04-29):** Drew flagged that Phase 0 only tested vocal-vs-instrumental isolation; the lead-vs-backing question (the actual painkiller) was never empirically tested. Path-A pivot kept Fadr by default but did NOT verify Fadr's lead/backing audio output is acceptable (or even confirm Fadr produces separate lead/backing AUDIO stems vs just MIDI-per-harmony). Phase 0.5 runs Fadr + LALAL.AI (+ MVSEP if accessible) on 3 corpus songs (Brokedown / Attics / Helplessly), Drew blind-listens via an A/B/C player, picks the production tool. Resolution unblocks Phase 1.
+> **Phase 0.5 closed 2026-04-30.** LALAL.AI swept 5/6 (3 leads "huge" margin, 2 backings "huge"/"clear"; 1 tie on Helplessly Hoping = physics ceiling). Confirmed LALAL is meaningfully better than combined-vocals baselines (Fadr `vocals.mp3` and Demucs `vocals.flac`) for both lead isolation and backing harmony preservation. Side-note: Fadr does NOT produce lead/backing audio at all — its stem output is the standard 4-stem combined-vocals pattern; harmony parts are MIDI-only.
 
 ### 7.1 ~~Modal `split_vocals`~~ — REMOVED (Phase 0 result)
 
@@ -388,26 +389,37 @@ Original plan called for a self-hosted MelBand-Roformer-Karaoke pre-stage to cle
 
 The `split_vocals` Modal function remains in `services/stem-separation/separator.py` as dead code (no caller). Leave it for any future MelBand experiments rather than rip it out.
 
-### 7.2 ~~Worker `/vocals/split`~~ — REMOVED
+### 7.2 LALAL.AI lead/backing split (~3 hours — Phase 0.5 winner, 2026-04-30)
 
-Not needed. Lead/backing split flows through existing Fadr integration; Worker exposes Fadr endpoints already (per current production wiring).
+Modal function `lalal_lead_back(source_url, song_id, lalal_key)` already exists in `services/stem-separation/separator.py` (built during P0.5). Production wiring needs:
 
-### 7.3 Client API surface (~1 hour, simplified)
+- **Move LALAL key to Cloudflare Worker secret** as `LALAL_API_KEY` (currently safe-stored locally at `~/.config/groovelinx-bakeoff/lalal_key`). Worker forwards `Authorization` removed; LALAL uses `X-License-Key` header.
+- **Worker endpoint `/lalal/split`** mirroring `/stems/separate` pattern — auth via existing shared-secret, forwards to `lalal_lead_back.remote()`, persists URLs to Firebase via existing helpers.
+- **Idempotency:** key by `song_id + 'lalal_v1'`; re-run with new label preserves prior splits per §4.5 storage scheme.
+- **Output schema:** save `lead`/`backing`/`instrumental` URLs into existing `harmonies_data.sections[].parts[]` audio fields with `source: 'lalal'` flag.
 
-`js/core/gl-stems.js` already exposes the Fadr split path. Phase 1 just needs:
-- A read helper for "do we have a lead/backing split for this song" (may already exist; verify before adding)
-- Wire Basic Pitch trigger to fire on the Fadr `lead.wav` URL (path exists at `app.js:4859`; just needs caller)
+Cost: $50 Master pack = 760 min ≈ 190 average-length songs. Eager pipeline runs LALAL on Active library priority; long-tail handled lazy on Harmony Lab open. Re-up the pack at $50 every ~150 production songs.
+
+### 7.3 Client API surface (~1 hour)
+
+`js/core/gl-stems.js` adds:
+- `splitLeadBacking(title, opts)` — kicks off LALAL split via Worker `/lalal/split`, persists result to `harmonies_data` with `source: 'lalal'`
+- `getLeadBackingSplit(title)` — read cached split if exists, fall back to legacy Fadr if `harmonies_data.source === 'fadr'`
+- `hasLeadBackingSplit(title)` — check existence
+
+Routes through existing `loadBandDataFromDrive` / `saveBandDataToDrive` patterns.
 
 ### 7.4 Auto-notate lead, mark backing as audio-only (~2 hours)
 
-After Fadr split completes:
-- Run **Basic Pitch on lead.wav only** → MIDI → ABC (reuse `/api/basic-pitch` path at `app.js:4859`)
+After LALAL split completes:
+- Run **Basic Pitch on `lead.mp3` only** → MIDI → ABC (reuse `/api/basic-pitch` path at `app.js:4859`)
 - Save into existing `harmonies_data.sections[].parts[]` schema with:
   ```js
-  { singer: 'lead', part: 'lead', notes: leadAbc, audio_url: '...', source: 'fadr', notation_quality: 'auto-draft' }
-  { singer: 'backing', part: 'harmony', notes: null, audio_url: '...', source: 'fadr', notation_quality: 'audio-only' }
+  { singer: 'lead',    part: 'lead',    notes: leadAbc, audio_url: '...lalal/lead.mp3',    source: 'lalal', notation_quality: 'auto-draft' }
+  { singer: 'backing', part: 'harmony', notes: null,    audio_url: '...lalal/backing.mp3', source: 'lalal', notation_quality: 'audio-only' }
   ```
-- The `source: 'fadr'` flag is now the canonical Phase 1 marker (not `melband_v1`, which is no longer produced)
+- The `source: 'lalal'` flag is the canonical Phase 1 marker (replaces the never-shipped `melband_v1` and the demoted `fadr` markers)
+- **Existing Fadr-imported harmonies preserved** — if `harmonies_data.sections[0].parts[].source === 'fadr'`, prompt user before replacing (Fadr's MIDI-driven notation still has value as a notation seed)
 
 ### 7.5 Wire the Harmony Lab stubs (~1 day — the core lift)
 
@@ -436,7 +448,7 @@ After Fadr split completes:
 - Visible when `harmonies_data` is empty or `source !== 'melband_v1'`
 - **Source picker (§4.6) shows first** — defaults to North Star, lists Best Shots, paste-URL option
 - Source-quality detection (§4.7) runs on chosen source, displays warnings inline
-- Calls existing Fadr split path → progress UI
+- Calls `GLStems.splitLeadBacking(title, sourceOpts)` → progress UI
 - Honest copy:
   > **Auto-Split Harmonies (1–4 min depending on track length)**
   > Isolates lead vocal + harmony stack and writes a starting draft for the lead melody with a confidence label.
@@ -454,7 +466,7 @@ After Fadr split completes:
 **Functional:**
 - [ ] Source picker (§4.6) appears at "Auto-Split Harmonies" button click
 - [ ] Source-quality detection (§4.7) runs and surfaces warnings on selected source before split
-- [ ] On a representative song, click "Auto-Split Harmonies" → 1–4 min later: Demucs vocals → Fadr lead/backing → Basic Pitch ABC, all chained, lead notation rendered in Harmony Lab with confidence label (Draft/Moderate/Strong)
+- [ ] On a representative song, click "Auto-Split Harmonies" → 1–4 min later: LALAL.AI lead/backing → Basic Pitch ABC, chained, lead notation rendered in Harmony Lab with confidence label (Draft/Moderate/Strong). Demucs runs in parallel for Stems lens (per-instrument mixer).
 - [ ] Practice mode mixer actually mutes/solos parts (real audio, not visual-only)
 - [ ] Pan knobs work in both Stems lens and Harmony Lab, state shared via GLStore (§4.8)
 - [ ] Tempo slowdown + transpose work in Practice mode
@@ -626,6 +638,7 @@ A Dead band's #1 hassle: "what notes does the lead sing on this verse" + "how do
 9. ✅ **Stage B (Modal MelBand-Roformer + SepACap deployment) approved** — Modal-side bake-off instruments build now; client UI / Harmony Lab integration / source picker stay frozen until P0 results pick the winner
 10. ✅ **Path A locked (2026-04-29)** — Phase 0 empirical finding killed plan v4's premise that MelBand-Roformer Karaoke does lead/backing splitting. No public self-hosted checkpoint does this on rock content. Drew chose path A: **Fadr remains the lead/backing tool of record**; MelBand-Roformer pivots to a vocal-cleanup pre-stage candidate; SepACap stays as experimental multi-voice eval. MVSEP API integration (path B) deferred unless P1 UAT shows Fadr's quality is insufficient.
 11. ✅ **Phase 0 closed — Demucs sweeps 5/5 (2026-04-29).** Blind A/B listening on all 5 corpus songs: Demucs `vocals.flac` wins "huge" margin every time. MelBand-Roformer-Karaoke checkpoint produces ~99% silent karaoke output → residual `other ≈ full mix` → unusable. **Production pipeline = Demucs → Fadr → Basic Pitch (no vocal-cleanup pre-stage).** SepACap archived (OOMs on full-length rock; quadratic positional-encoding architecture mismatch). MelBand `split_vocals` and `sepacap_split` Modal functions remain in `separator.py` as dead code for future experiments. Phase 1 effort revised down to 4–8 days (was 5–10) since the entire `split_vocals` build is no longer needed.
+12. ✅ **Phase 0.5 closed — LALAL.AI wins 5/6 (2026-04-30).** Blind A/B/C bake-off on 3 songs × 2 stems (lead, backing) × 3 contenders (LALAL.AI / Fadr / Demucs combined-vocals baseline). LALAL.AI swept all 3 lead rows ("huge" margin) and 2 of 3 backing rows ("huge" + "clear"); the lone tie was Helplessly Hoping's backing — physics ceiling of CSN shared-mic content, where no algorithm can recover voices that blended in air before tape. **Phase 1 lead/backing source = LALAL.AI** (`multivocal=lead_back` mode) on full mix. Empirically observed: Fadr does NOT produce separate lead/backing AUDIO stems (output is standard 4-stem combined vocals + MIDI per harmony). Fadr demoted to "MIDI-per-harmony seed only" role. Production pipeline now: **Demucs (Stems lens) ‖ LALAL.AI (Harmony Lab) → Basic Pitch on LALAL lead.** Cost: $0.27/song from $50 Master pack, ~190 songs covered before re-up. Latent bug found: existing `app.js:5074` Fadr-import polling targets `assetData.status` which doesn't exist on current Fadr API (status moved to `task.status.complete`); not user-visible because `assetData.stems.length > 0` eventually triggers, but worth a fix. Also: Fadr's download endpoint changed to `/assets/download/{id}/hqPreview`.
 
 ### Remaining open questions
 - Phase 2 confidence-gate threshold tuning (during Phase 2 implementation)

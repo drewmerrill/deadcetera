@@ -34,6 +34,52 @@ The real binary question Drew is answering: **"Is LALAL's split actually cleaner
 
 `02_GrooveLinx/notes/bakeoff_player_v2.html` — vanilla HTML, blind 3-way A/B/C, separate lead-stem and backing-stem rankings per song, randomized slot assignments per row. Reveal & Copy generates pasteable verdict tally.
 
+### Phase 0.5 result — CLOSED 2026-04-30 (Drew, blind A/B/C listen)
+
+```
+🎤 LEAD row:
+  Brokedown:   LALAL.AI wins (huge)
+  Attics:      LALAL.AI wins (huge)
+  Helplessly:  LALAL.AI wins (huge)
+  → LALAL.AI: 3/3
+
+🎶 BACKING row:
+  Brokedown:   LALAL.AI wins (huge)
+  Attics:      LALAL.AI wins (clear)
+  Helplessly:  tied
+  → LALAL.AI: 2/3, 1 tie
+
+Total margins: 4 huge · 1 clear · 1 tie · 0 lost
+```
+
+**Decision: Phase 1 lead/backing source = LALAL.AI** (`multivocal=lead_back` mode). Fadr no longer the "lead/backing tool of record"; drops to MIDI-per-harmony-only role for notation seeding.
+
+The single tie on Helplessly Hoping is the **acoustic physics ceiling** — CSN shared-mic stack, voices blended in the air before tape. No algorithm can recover what was never separately encoded. LALAL not losing on this song is a strong result; the tie was between LALAL's backing and the combined-vocals baseline (both contained ~the same blended texture).
+
+### Implications for plan v4
+
+| Area | Before P0.5 | After P0.5 |
+|---|---|---|
+| Phase 1 lead/backing tool | Fadr (path-A default) | **LALAL.AI** (empirical winner) |
+| Phase 1 production pipeline | Demucs vocals.flac → Fadr → Basic Pitch | Demucs (Stems lens) ‖ **LALAL.AI** (full mix → lead+backing) → Basic Pitch on LALAL lead |
+| Cost per song (lead/backing) | Fadr API token usage | LALAL minutes: ~$0.27/song from $50 Master pack (~190 songs) |
+| Fadr's role | Primary lead/backing source | MIDI-per-harmony seed only (notation aid) — runs on demand, not in eager pipeline |
+| Fadr API bug | Unknown | **Latent bug in `app.js:5074`** — polls `assetData.status` which never resolves on current Fadr API (status moved to `task.status.complete`). Not user-visible because the code's break condition `assetData.stems.length > 0` does eventually fire when stems back-populate, but with a longer poll deadline than necessary. Worth a separate fix post-Phase-1. Also: download endpoint should be `/assets/download/{id}/hqPreview`, not `/assets/{id}/download`. |
+
+### Run history
+
+| Date | Step | Outcome |
+|---|---|---|
+| 2026-04-29 PM late | Phase 0.5 launched after Phase 0 closeout | Drew flagged the lead-vs-backing gap |
+| 2026-04-29 PM late | LALAL Master pack purchased ($50/750 min) | Key safe-stored at `~/.config/groovelinx-bakeoff/lalal_key` (mode 600); never committed to repo |
+| 2026-04-29 PM late | First LALAL run (3 songs parallel) | Failed — `Authorization: license <key>` header wrong. LALAL wants `X-License-Key`. Fixed. |
+| 2026-04-29 PM late | Re-run all 3 LALAL | YouTube bot-blocked the parallel proxy fetches. Refactored to fetch sources sequentially → R2 first, then run hosted tools on R2 URLs. |
+| 2026-04-29 PM late | LALAL on R2 sources | All 3 succeeded — uploaded + split. Then check call failed 422 (wrong body shape `{id:...}` vs `{task_ids:[...]}`). Fixed. |
+| 2026-04-29 PM late | LALAL resume tasks (don't re-spend minutes) | All 3 succeeded — `lalal_finish_task` Modal function added to resume existing task_ids and download stems. Confirmed 12 stems on R2. |
+| 2026-04-29 PM late | Fadr probe revealed broken polling | Fadr's response shape is `{asset: {...}}` (wrapped); status lives on the **task** object (`task.status.complete`), not the asset. Existing app.js Fadr-import flow likely also broken — empirically polled `assetData.status` which never resolves. |
+| 2026-04-29 PM late | Fadr resume with new task-polling pattern | Fadr's actual download endpoint is `/assets/download/{id}/hqPreview` (NOT `/assets/{id}/download` which 404s). Stems named via `metaData.stemType`. All 3 songs × 5 stems re-hosted on R2. |
+| 2026-04-30 AM | **Phase 0.5 verdict — Drew blind listen** | **LALAL.AI wins 5/6 rows (3 leads, 2 backings); 1 tie on Helplessly Hoping (physics ceiling). Phase 0.5 closes; Phase 1 unblocked.** |
+
 ### Run history
 
 | Date | Step | Outcome |

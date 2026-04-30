@@ -1,22 +1,22 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-29 (evening) — **Phase 0 CLOSED.** Demucs swept 5/5 ("huge" margin every song) on blind A/B listening; MelBand-Roformer-Karaoke checkpoint dropped (output ~99% silent karaoke → residual ≈ full mix → unusable). SepACap archived (OOMs on full-length rock — quadratic positional encoding). **Phase 0.5 in progress** — Drew flagged that Phase 0 only tested vocal-vs-instrumental, NOT lead-vs-backing (the actual painkiller). Phase 0.5 runs Fadr + LALAL.AI (+ MVSEP if accessible) on 3 corpus songs to verify the lead/backing tool before committing Phase 1. LALAL.AI $50 Master pack purchased (760 min, key safe-stored). Build `20260429-205047`._
+_Updated: 2026-04-30 — **Phase 0 + Phase 0.5 BOTH CLOSED.** Phase 0 (vocal-vs-instrumental, 2026-04-29): Demucs sweeps 5/5 huge. Phase 0.5 (lead-vs-backing, 2026-04-30): **LALAL.AI sweeps 5/6** (3 leads huge, 2 backings huge/clear, 1 tie on Helplessly's physics-ceiling backing). **Phase 1 unblocked.** Production pipeline: Demucs (Stems lens) ‖ LALAL.AI (Harmony Lab) → Basic Pitch on LALAL lead. Fadr demoted to MIDI-per-harmony seed only. Build `20260429-205047`._
 
 ---
 
-## Active Phase: Stems Intelligence — Phase 0.5 Lead/Backing Bake-Off (2026-04-29 →)
+## Active Phase: Stems Intelligence — Phase 1 Harmony Painkiller (2026-04-30 →)
 
-**Status:** Phase 0 closed (Demucs wins vocal isolation 5/5); Phase 0.5 launched same evening to validate lead/backing tool choice. Client UI work blocked until P0.5 names a winner.
+**Status:** Phase 0 + Phase 0.5 both closed. Tool choices empirically locked. Phase 1 implementation can begin.
 
 **Master plan:** `02_GrooveLinx/specs/stems_intelligence_plan.md` (v4, research-hardened, ChatGPT-reviewed)
 **Session notes:** `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`
 
-**ROI-ordered roadmap (post-Phase-0):**
+**ROI-ordered roadmap (post-Phase-0.5):**
 | # | Phase | Effort | Status |
 |---|---|---|---|
 | 0 | Vocal-isolation bake-off (5 songs: Demucs vs MelBand) | 0.5 day | ✅ **CLOSED 2026-04-29** — Demucs sweeps 5/5 |
-| 0.5 | Lead/backing bake-off (3 songs: Fadr vs LALAL vs MVSEP-if-feasible) | 0.5 day | 🎧 In progress — runner being built, Drew listens after deploy |
-| 1 | Harmony Painkiller — lead/backing (TBD by P0.5) + Basic Pitch notation + Harmony Lab + source picker + pan knob | 4–8 days | Blocked by P0.5 |
+| 0.5 | Lead/backing bake-off (3 songs: LALAL.AI vs Fadr vs Demucs combined) | 0.5 day | ✅ **CLOSED 2026-04-30** — LALAL.AI sweeps 5/6 (1 tie on physics-ceiling) |
+| 1 | Harmony Painkiller — LALAL.AI lead/backing + Basic Pitch notation + Harmony Lab + source picker + pan knob | 4–8 days | 🟢 **UNBLOCKED** — ready to implement |
 | 2 | Dead Guitar Split (Jerry/Bob via stereo pan) | 1.5–2 days | Blocked by P1 |
 | 3 | Song Intelligence Pass (BPM/key/sections/chords/lyrics) | 3–4 days | Blocked by P2 |
 | 4 | Cheap Polish (waveform, A-B loop, presets) | 1 day | Blocked by P3 |
@@ -31,9 +31,25 @@ _Updated: 2026-04-29 (evening) — **Phase 0 CLOSED.** Demucs swept 5/5 ("huge" 
 
 All studio sources. Live-SBD slot deferred to P1 UAT.
 
-**Phase 0 result (closed 2026-04-29):** Demucs wins 5/5 ("huge" margin) on blind A/B listening via `02_GrooveLinx/notes/bakeoff_player.html`. MelBand-Roformer-Karaoke checkpoint produced ~99% silent karaoke output, making `other = source − karaoke ≈ full mix` (no isolation). MelBand `split_vocals` + SepACap `sepacap_split` Modal functions remain in `services/stem-separation/separator.py` as dead code — no production caller. **Production vocal source = Demucs `vocals.flac`.** Full results in `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md`.
+**Phase 0 result (closed 2026-04-29):** Demucs wins 5/5 ("huge" margin) on blind A/B listening via `02_GrooveLinx/notes/bakeoff_player.html`. **Production vocal isolation = Demucs `vocals.flac`** (used by Stems lens for per-instrument practice mixer).
 
-**Phase 0.5 plan (started 2026-04-29 evening):** 3 corpus songs (Brokedown / Attics / Helplessly) × 2–3 lead/backing tools (Fadr via existing worker proxy + LALAL.AI `multivocal=lead_back` + MVSEP if free-tier API accessible). Same blind A/B/C player UX as Phase 0 — randomized slot assignments per song, separate lead-stem and backing-stem rankings. **No Phase 1 client code until P0.5 picks the winner.** Open question: does Fadr produce isolated lead+backing **audio** stems, or only combined-vocals audio + MIDI-per-harmony? Empirical probe will resolve.
+**Phase 0.5 result (closed 2026-04-30):** LALAL.AI wins 5/6 rows. Lead 3/3 huge; backing 2/3 (1 huge, 1 clear, 1 tie). The tie was on Helplessly Hoping (CSN shared-mic — physics ceiling, not algorithmic). Empirically observed: **Fadr does NOT produce separate lead/backing audio stems** — only standard 4-stem combined vocals + per-harmony MIDI. Fadr therefore demoted to MIDI-per-harmony seed role (notation aid for Harmony Lab); LALAL.AI takes the audio lead/backing role. **Phase 1 lead/backing source = LALAL.AI** (`multivocal=lead_back` mode, $50 Master pack, 760 min ≈ 190 songs). Full bake-off detail in `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md` (Phase 0.5 section).
+
+**Phase 1 production pipeline (locked 2026-04-30):**
+1. **Demucs htdemucs_6s** (existing Modal `separate_stems`) → drums/bass/vocals/other/piano/guitar — Stems lens.
+2. **LALAL.AI** (new Modal `lalal_lead_back`) on full mix → `lead.mp3` + `backing.mp3` + `instrumental.mp3` — Harmony Lab.
+3. **Basic Pitch** (existing `app.js:4859`) on LALAL `lead.mp3` → MIDI → ABC for lead notation.
+4. **Harmony Lab** consumes ABC + LALAL backing audio + GLStore mixer state.
+
+**Phase 1 build order (4–8 days):**
+1. Move LALAL key from local file to Cloudflare Worker secret `LALAL_API_KEY` (~30 min)
+2. Worker `/lalal/split` endpoint (~1 hour)
+3. Client `splitLeadBacking(title)` in `js/core/gl-stems.js` (~1 hour)
+4. Wire Basic Pitch to LALAL `lead.mp3` (~2 hours)
+5. Harmony Lab abcjs render + WebAudio mixer + phrase loops (~1 day each = 3 days, the core lift)
+6. "Auto-Split Harmonies" button + source picker (~4 hours)
+7. Pan knob in Stems lens / Harmony Lab (~30 min)
+8. Band UAT — Drew + 1 bandmate learn a part (~1 day)
 
 **Drew's resolved decisions (§14 of plan):**
 - ✅ $50 LALAL.AI Master pack budget approved for bake-off

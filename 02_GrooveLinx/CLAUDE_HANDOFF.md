@@ -2,7 +2,56 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-29 (evening) — **Phase 0 CLOSED, Phase 0.5 launched.** Demucs swept the vocal-isolation bake-off 5/5; MelBand-Karaoke checkpoint dropped, SepACap archived. Drew flagged that lead-vs-backing was never tested; Phase 0.5 in flight comparing Fadr + LALAL.AI (+ MVSEP if accessible) on 3 corpus songs. LALAL.AI $50 Master pack purchased. Build `20260429-205047`._
+_Last updated: 2026-04-30 — **Phase 0 + Phase 0.5 BOTH CLOSED.** Phase 0: Demucs sweeps 5/5 (vocal isolation). Phase 0.5: LALAL.AI sweeps 5/6 (lead/backing — 1 tie on physics-ceiling). Phase 1 unblocked. Production pipeline locked: Demucs (Stems lens) ‖ LALAL.AI (Harmony Lab) → Basic Pitch on LALAL lead. Build `20260429-205047`._
+
+## Session 2026-04-30 — Phase 0.5 closeout + Phase 1 unblock
+
+**Status:** Drew completed blind A/B/C listen on `bakeoff_player_v2.html`. LALAL.AI verdict locked. Phase 1 ready to start.
+
+### Phase 0.5 result
+
+```
+🎤 LEAD row:        LALAL.AI 3/3 (3 huge)
+🎶 BACKING row:     LALAL.AI 2/3 (1 huge + 1 clear + 1 tied)
+Total margins:     4 huge · 1 clear · 1 tie · 0 lost
+```
+
+The single tie was on Helplessly Hoping's backing stem — that song was deliberately included as the corpus's "physics ceiling" (CSN shared-mic stack, voices blended in air before tape). LALAL not *losing* on this song is itself a strong result.
+
+### Production pipeline (locked)
+
+1. **Demucs htdemucs_6s** → drums/bass/vocals/other/piano/guitar (Modal `separate_stems`, existing). Powers Stems lens (per-instrument practice mixer).
+2. **LALAL.AI** → lead.mp3 + backing.mp3 + instrumental.mp3 (Modal `lalal_lead_back`, built P0.5). Powers Harmony Lab. Uses `multivocal=lead_back` mode on full mix.
+3. **Basic Pitch** on LALAL lead.mp3 → MIDI → ABC (existing `app.js:4859`). Powers Harmony Lab notation.
+4. **Fadr** demoted to MIDI-per-harmony seed for notation aid only — no longer the lead/backing audio source.
+
+### Build state for Phase 1
+
+Already done (during P0.5):
+- Modal `lalal_lead_back(source_url, song_id, lalal_key)` — full upload→split→poll→download→R2 upload pipeline (`services/stem-separation/separator.py`)
+- LALAL.AI Master pack purchased ($50 / 760 min ≈ 190 songs at $0.27/song)
+- Auth: `X-License-Key` header (NOT `Authorization: license <key>`)
+- Body for split: `{source_id, presets:{splitter:auto, stem:vocals, multivocal:lead_back}}`
+- Check body: `{task_ids: [task_id]}` (plural array)
+- Returns 4 stems via `result.tracks[]`: vocals@0 (lead), vocals@1 (backing), no_vocals (instrumental), mix_no_lead
+
+Remaining for Phase 1 (~4–8 days):
+1. Move LALAL key from `~/.config/groovelinx-bakeoff/lalal_key` → Cloudflare Worker secret `LALAL_API_KEY`
+2. Worker `/lalal/split` endpoint (mirror `/stems/separate` shared-secret pattern)
+3. Client `js/core/gl-stems.js` — `splitLeadBacking(title)` + read/has helpers
+4. Wire Basic Pitch on LALAL lead → save into `harmonies_data.parts[]` with `source: 'lalal'`
+5. Harmony Lab MVP: abcjs render + WebAudio mixer + phrase loops
+6. "Auto-Split Harmonies" button + source picker UI
+7. Pan knob in Stems lens / Harmony Lab
+8. Band UAT — Drew + bandmate learn a part faster than YouTube + manual transcription
+
+### Latent bug discovered (worth a separate fix post-P1)
+
+Existing Fadr import flow at `app.js:5074` polls `assetData.status`. Fadr's API has changed: status now lives at `task.status.complete`, not `assetData.status`. Existing code's break condition `assetData.stems.length > 0` does eventually fire when stems back-populate, so users see results — just with longer-than-necessary poll deadlines. Also: Fadr download endpoint changed to `/assets/download/{id}/hqPreview` (the old `/assets/{id}/download` 404s). Worth fixing the Fadr integration if/when band uses MIDI auto-import again.
+
+### Restart prompt (next session — start Phase 1)
+
+> Phase 1 Harmony Painkiller — implementation start. Phase 0 + Phase 0.5 both closed (see `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md` for full history). LALAL.AI is the lead/backing source (5/6 sweep over Fadr + Demucs combined-vocals baseline). Modal `lalal_lead_back` already built and verified — see `services/stem-separation/separator.py`. Read `02_GrooveLinx/specs/stems_intelligence_plan.md` §7 for the build sequence. **First step: move LALAL key (`~/.config/groovelinx-bakeoff/lalal_key`) into Cloudflare Worker secret `LALAL_API_KEY` and add `/lalal/split` worker endpoint mirroring `/stems/separate`.** Read §4.4 (single-source dual-view: Stems lens + Harmony Lab share GLStore.mixerState) before any UI work. **Don't build two parallel UIs.**
 
 ## Session 2026-04-29 (evening) — Phase 0 closeout + Phase 0.5 launch
 
