@@ -647,7 +647,56 @@ A Dead band's #1 hassle: "what notes does the lead sing on this verse" + "how do
 
 ---
 
-## 15. End-to-End Success Criteria
+## 15. Future Levers — If LALAL alone leaves bleed (post-UAT)
+
+LALAL.AI is a black-box hosted API: it accepts a stereo file and runs its own ML separation. There is **no way to feed it a pan prior, a notation prior, or any side-channel hint** — anything we want to exploit, we have to do ourselves before or after the LALAL call. The two highest-value levers documented here are pan-aware preprocessing and score-informed post-processing. Both are **deferred until band UAT (Phase 1.9) reveals which failure modes are real on our corpus.**
+
+### 15.1 Pan-aware preprocessing (Mid/Side)
+
+**The idea.** Studio mixes deliberately place voices in stereo space. CSN (apart from Helplessly), Beatles, Steely Dan, hard-panned 60s/70s rock — lead is usually center, harmonies are panned. Mid/Side decomposition exploits this with one matrix multiply, no ML:
+
+- `Mid = (L + R) / 2` → captures center-panned content (usually lead)
+- `Side = (L − R) / 2` → captures off-center content (usually harmonies, panned instruments)
+
+**Two ways to use it:**
+1. **Pre-process:** feed `Mid` to LALAL → cleaner lead transcription. `Side` already gives harmonies for free, no LALAL call needed.
+2. **Post-process:** subtract `Side` energy from LALAL's `lead.mp3` (or `Mid` energy from `backing.mp3`) to clean leak-through.
+
+**Cost.** ~1 day client-side in Web Audio (`ChannelSplitter` + `GainNode` + matrix). No Modal call needed if done in-browser. ~1.5 days if we want it server-side as a worker route for caching.
+
+**Caveat — physics ceiling.** Helplessly Hoping is the corpus member where M/S will help **least** because CSN recorded it around a single mic; the harmonies blend acoustically *in the room before tape*, so they're not stereo-separated in the mix. M/S works on songs where the mixer placed voices in stereo space — not where the room did the blending. Same caveat applies to bluegrass close harmony, shared-mic 1960s folk, and most live recordings (overhead mics blend everything).
+
+**This is already on the roadmap as Phase 2** ("Dead Guitar Split — Jerry/Bob via stereo pan"). We can pull a vocal-targeted slice forward into Phase 1 if UAT shows LALAL needs the help on songs with deliberate panning.
+
+### 15.2 Score-informed post-processing
+
+**The idea.** If we already have lead-vocal notation (manually entered, or imported from a Hal Leonard chart, or auto-drafted by Basic Pitch and hand-cleaned), we know what pitches the lead *should* be singing at each moment. We can use that as a prior to clean LALAL's outputs.
+
+This is a real, decades-old research direction — **score-informed source separation** (Ewert, Pardo, Plumbley et al). The classical formulations (NMF with template constraints, score-informed F0 tracking) require us to retrain or replace the separator, which is too much lift. But we can get most of the benefit with two simpler post-processing tricks:
+
+1. **Pitch-gated cleanup.** Given known lead notes at each beat, mask FFT bins in `lead.mp3` that are far from the expected pitch + harmonics. Same trick on `backing.mp3` against the harmony notes. Removes leak-through where LALAL routed a wrong frame to the wrong stream.
+2. **Iterative refinement.** Run Basic Pitch on `lead.mp3` → diff against the expected ABC → flag frames where `lead.mp3` contains a harmony note that "leaked in" → mask those frames.
+
+**Cost.** 3–5 days. Needs a Web Audio FFT pipeline + a beat-synced note timeline. Only works on songs where notation already exists or has been hand-cleaned — chicken-and-egg unless we run LALAL first to seed the draft, then iterate.
+
+**When it helps:** songs where LALAL gets the lead 90% right but bleed-through ruins the loop-and-learn experience. **When it doesn't:** when the lead and harmony are at the same pitch (octave doublings, unison passages) — pitch-gating can't separate what's at the same frequency.
+
+### 15.3 Decision rule (post-UAT)
+
+After Phase 1.9 band UAT, classify failure modes:
+
+| Failure pattern | Lever |
+|---|---|
+| Songs with deliberate stereo panning (Beatles, modern rock) | Pull §15.1 Mid/Side preprocessing forward from Phase 2 |
+| Bleed-through on songs with existing manual notation | Build §15.2 pitch-gated cleanup |
+| Shared-mic recordings (Helplessly, bluegrass close harmony) | **Physics ceiling — switch to a different reference recording, not a different algorithm.** Surface this guidance in the source picker (§4.6/§4.7). |
+| LALAL just bad on this song | Try Demucs combined-vocals as fallback; manual transcription as last resort |
+
+The **anti-pattern** to avoid: building §15.1 + §15.2 preemptively before band UAT proves the failure mode is common enough to justify the cost. LALAL's 5/6 sweep in Phase 0.5 was decisive — it might be good enough alone for ≥80% of the corpus, in which case these levers are wasted engineering.
+
+---
+
+## 16. End-to-End Success Criteria
 
 ### The product metric (the one that matters)
 - [ ] **Bandmates learn parts faster.** Measured by Drew + at least 2 Deadcetera band members reporting "I learned [song]'s harmony / lead vocal / rhythm guitar in less time than I would have via YouTube + manual transcription." Not SDR. Not technical benchmarks. Real human "this saved me time" feedback for at least 5 songs.
@@ -670,7 +719,7 @@ A Dead band's #1 hassle: "what notes does the lead sing on this verse" + "how do
 
 ---
 
-## 16. Restart Prompt (next session)
+## 17. Restart Prompt (next session)
 
 > Continue Stems Intelligence Plan v4 (`02_GrooveLinx/specs/stems_intelligence_plan.md`). Drew approved the reprioritized plan: harmony first, Dead guitar second, intelligence third, polish fourth. ChatGPT review hardened estimates (Phase 1 = 5–10 days), language ("better fit for GrooveLinx" not "beats Fadr"), durations ("1–4 min" not "90s"), confidence labels (Draft/Moderate/Strong), source-quality pre-flight, shared mixer state, storage retention. Research validated MelBand-Roformer Karaoke as Phase 1 default (self-hosted on Modal, $0 licensing). SepACap weights ARE public on HuggingFace (`Tino3141/sepacap`) but trained on Japanese a cappella only — added as 5th experimental pipeline in Phase 0 bake-off. Brutal honesty captured: 3-4 individual harmony lines NOT reliably achievable today, lead+backing-stack IS, lead notation works, backing notation doesn't.
 >
