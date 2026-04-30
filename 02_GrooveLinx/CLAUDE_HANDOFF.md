@@ -2,7 +2,39 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-29 (PM, late) — Phase 0 corpus locked + Stage B Modal deployment approved. Bake-off instruments (MelBand-Roformer Karaoke + SepACap on Modal) build now; client UI frozen until P0 picks winner. Build `20260429-205047`._
+_Last updated: 2026-04-29 (evening) — **Phase 0 CLOSED, Phase 0.5 launched.** Demucs swept the vocal-isolation bake-off 5/5; MelBand-Karaoke checkpoint dropped, SepACap archived. Drew flagged that lead-vs-backing was never tested; Phase 0.5 in flight comparing Fadr + LALAL.AI (+ MVSEP if accessible) on 3 corpus songs. LALAL.AI $50 Master pack purchased. Build `20260429-205047`._
+
+## Session 2026-04-29 (evening) — Phase 0 closeout + Phase 0.5 launch
+
+**Status:** Phase 0 done (decisive Demucs sweep), Phase 0.5 runner in build, A/B/C player to follow.
+
+### Phase 0 outcome (blind A/B listening, Drew via `bakeoff_player.html`)
+
+Tally: **Demucs 5 / MelBand 0 / Ties 0 / Both garbage 0.** Every song marked "huge" margin. MelBand-Roformer-Karaoke checkpoint produced ~99% silent `karaoke.wav`, so the residual `other = source − karaoke ≈ full mix` was just the original audio with no isolation — Drew kept hearing the full backing track in the MelBand slots.
+
+**Production decision:** Demucs `vocals.flac` is the vocal isolation source for Phase 1. No vocal-cleanup pre-stage. The `split_vocals` + `sepacap_split` Modal functions stay in `separator.py` as dead code (no production caller) — left for any future MelBand experiments rather than ripped out.
+
+**SepACap archived** — first known cross-domain attempt on English rock content. CUDA OOM at `pos_seq[:, None] - pos_seq[None, :]` (quadratic positional encoding). Allocation requested: 65.28 GiB on 14.56 GiB T4. Trained on 30-sec JaCappella clips; rock songs at 3–7 min exceed design envelope ~10×. Revisit when authors publish chunked-inference variant.
+
+### Phase 0.5 (launched same evening)
+
+**Drew's catch:** Phase 0 only tested vocals-vs-instruments. The actual painkiller (lead vs backing harmony separation) was never tested empirically — we kept Fadr by default after the path-A pivot but never verified it on Deadcetera content.
+
+**Phase 0.5 design:**
+- 3 songs from Phase 0 corpus (Brokedown / Attics / Helplessly) — difficulty spread, listening-time tractable
+- Tools: Fadr (existing worker proxy integration), LALAL.AI Master (`multivocal=lead_back`, just-purchased $50 pack), MVSEP (subject to API access — drop if web-upload-only)
+- Same blind A/B/C player UX as Phase 0, separate lead-stem and backing-stem rankings per song
+- Output: tally tells which tool to commit Phase 1 to
+
+**LALAL.AI Master pack purchased 2026-04-29:** Account `drewmerrill1029@gmail.com`, plan `Business750_b`, 760 minutes total, key safe-stored at `~/.config/groovelinx-bakeoff/lalal_key` (mode 600). API verified working via `/billing/get-limits/`. Spec at `https://www.lalal.ai/api/v1/openapi.json` — POST `/api/v1/upload/` (Content-Disposition header), POST `/api/v1/split/stem_separator/` with `presets={splitter:auto, stem:vocals, multivocal:lead_back}`, POST `/api/v1/check/` to poll. Returns `vocals@0` (lead) + `vocals@1` (backing) tracks.
+
+**Open question for the runner:** What audio stems does Fadr's `assetData.stems` actually contain? Existing app.js code only iterates `.midi` (the per-harmony MIDI files used for notation) — `.stems` is referenced but never inspected. If Fadr only produces combined vocals + MIDI-per-part, it's not a fair audio lead/backing contender. Empirical probe planned: submit one song to Fadr, log full `assetData` response, decide bake-off shape based on what's actually in `.stems`.
+
+### Restart prompt (next session)
+
+> Continue Phase 0.5 lead/backing bake-off. Phase 0 closed 2026-04-29 evening (Demucs sweeps 5/5). LALAL.AI key safe-stored at `~/.config/groovelinx-bakeoff/lalal_key`; `Business750_b` plan, 760 min available. Phase 0.5 plan: 3 songs (Brokedown / Attics / Helplessly) × Fadr + LALAL.AI (+ MVSEP if accessible). Read `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md` for Phase 0 results and `02_GrooveLinx/specs/stems_intelligence_plan.md` §6.4 + §7 for current pipeline architecture. **Open: does Fadr's `assetData.stems` include lead/backing audio, or only combined vocals + MIDI-per-harmony?** Probe before building the full 3-way runner. Player will live at `02_GrooveLinx/notes/bakeoff_player_v2.html` extending the Phase 0 A/B player with separate lead/backing rankings per song.
+
+---
 
 ## Session 2026-04-29 (PM) — Moises Rip-Out + Stems Intelligence Plan v4
 

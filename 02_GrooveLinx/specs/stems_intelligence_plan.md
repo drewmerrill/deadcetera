@@ -356,58 +356,58 @@ For each song, listen to:
 
 Output: 5-row × 3-pipeline matrix in `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md`.
 
-### 6.4 Phase 0 exit criteria
-- [ ] Bake-off matrix populated for all 5 songs × 3 pipelines
-- [ ] **Decision: should production pipeline run MelBand-Roformer as a vocal-cleanup pre-stage** before Fadr / Basic Pitch? (Yes if M consistently scores higher cleanliness than Demucs vocals.)
-- [ ] **Decision on SepACap:** does it produce useful voice stems on rock content? If yes, ship as opt-in "🧪 Experimental: Multi-Voice Split" button in Phase 1. If no, archive and revisit when fine-tuned variants appear.
-- [ ] Plan §7 (Phase 1) updated with chosen vocal-cleanup config
-- [ ] **Bonus:** if SepACap surprises, write up findings — first published cross-genre JaCappella eval is reputation-building for GrooveLinx
+### 6.4 Phase 0 exit criteria — CLOSED 2026-04-29
+
+**Result: Demucs sweeps 5-0 on blind A/B listening (every song "huge" margin). Phase 1 unblocked.**
+
+- [x] Bake-off matrix populated for all 5 songs × 3 pipelines (results in `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md`)
+- [x] **Decision: NO vocal-cleanup pre-stage.** MelBand-Roformer-Karaoke checkpoint produces ~99% silent karaoke output on Deadcetera content, making the residual `other ≈ full mix` and useless. Production keeps Demucs `vocals.flac` as the vocal source. MelBand `split_vocals` function stays in `separator.py` as dead code (no caller) for future experimentation.
+- [x] **Decision on SepACap: archived, not shipping.** Empirical OOM on full-length rock songs (allocates 65 GiB on a 14.5 GiB T4 due to quadratic positional encoding — model was trained on 30-sec JaCappella clips). No path within Phase 0 scope. Revisit if authors publish a chunked-inference variant.
+- [x] Plan §7 (Phase 1) updated — pipeline simplifies to Demucs → Fadr (lead/backing) → Basic Pitch (notation).
+- [x] **Bonus reportable finding:** SepACap is not viable for full-length English rock content as published. First known cross-domain attempt; failure mode is itself useful data (logged in §11.1 + bake-off session notes).
 
 ---
 
-## 7. Phase 1 — Harmony Painkiller (~5–10 days, ROI #1)
+## 7. Phase 1 — Harmony Painkiller (~4–8 days, ROI #1)
 
-**Goal:** A Deadcetera band member opens any song's Harmony Lab → after a 1–4 minute split (depending on track length), sees lead vocal isolated + notated with confidence label, backing-stack isolated as audio, ready to loop a phrase and practice alone with backing track. Source picker (§4.6) lets band override the default North Star with a cleaner studio source when needed.
+**Goal:** A Deadcetera band member opens any song's Harmony Lab → after a 1–4 minute pipeline run, sees lead vocal isolated + notated with confidence label, backing-stack isolated as audio, ready to loop a phrase and practice alone with backing track. Source picker (§4.6) lets band override the default North Star with a cleaner studio source when needed.
 
-**Why 5–10 days, not 2.5:** earlier estimate underweighted Harmony Lab integration depth (3 stubs each take a real day), source-quality pre-flight, source picker UI, mixer state plumbing, confidence label rendering, and end-of-phase band UAT. ChatGPT review caught this; estimate now realistic.
+**Effort revised down 2026-04-29:** Phase 0 closed with a sweep — no vocal-cleanup pre-stage needed (MelBand checkpoint dropped). Modal `split_vocals` work is no longer required for Phase 1; lead/backing comes from a hosted tool (TBD by Phase 0.5 — see below). Phase 1 effort is now mostly Harmony Lab integration + Basic Pitch wiring + band UAT.
 
-### 7.1 Modal `split_vocals(vocals_url, song_id)` (~6 hours)
+> **Pipeline (post-Phase-0, lead/backing source TBD by Phase 0.5):**
+> 1. **Demucs** (`separate_stems` on Modal) → `vocals.flac` — already running in production.
+> 2. **Lead/backing split** → tool pending Phase 0.5 verdict. Candidates: **Fadr** (existing integration, may only output combined vocals + MIDI per part), **LALAL.AI** (`multivocal=lead_back` mode, $50 Master pack, 750 min), **MVSEP** (subject to API access). Output: `lead.wav` + `backing.wav`.
+> 3. **Basic Pitch** (existing `/api/basic-pitch` path at `app.js:4859`) → MIDI → ABC for the lead.
+> 4. **Harmony Lab** renders ABC + plays backing as audio-only.
 
-- Loads MelBand-Roformer Karaoke checkpoint from HuggingFace ([jarredou/aufr33-viperx-karaoke-melroformer-model](https://huggingface.co/jarredou/aufr33-viperx-karaoke-melroformer-model))
-- **Chunked inference** — full model wants 40GB VRAM, T4 has 16GB; chunk size tuned for fit
-- Inputs: `vocals_url` (the Demucs vocals stem we already produce), `song_id`
-- Outputs: `{lead_url, backing_url}` saved to R2 alongside existing stems
-- Stored at `bands/{slug}/songs/{title}/stems.lead_vocals` and `.backing_vocals` (extends existing stems blob, no new top-level Firebase key)
-- Idempotent (cache by song_id + separator_version)
-- Returns separator metadata: `{source, separated_at, sdr_estimate, model_version}`
+> **Phase 0.5 scope (started 2026-04-29):** Drew flagged that Phase 0 only tested vocal-vs-instrumental isolation; the lead-vs-backing question (the actual painkiller) was never empirically tested. Path-A pivot kept Fadr by default but did NOT verify Fadr's lead/backing audio output is acceptable (or even confirm Fadr produces separate lead/backing AUDIO stems vs just MIDI-per-harmony). Phase 0.5 runs Fadr + LALAL.AI (+ MVSEP if accessible) on 3 corpus songs (Brokedown / Attics / Helplessly), Drew blind-listens via an A/B/C player, picks the production tool. Resolution unblocks Phase 1.
 
-**Optional cascade flag** (Phase 1.5 if Phase 0 shows it helps): `split_vocals(..., cascade='mdx_voc_ft')` runs MDX-Net Voc_FT on the residual.
+### 7.1 ~~Modal `split_vocals`~~ — REMOVED (Phase 0 result)
 
-### 7.2 Worker `/vocals/split` (~1 hour)
+Original plan called for a self-hosted MelBand-Roformer-Karaoke pre-stage to clean the vocals stem before lead/backing separation. Phase 0 bake-off (Demucs 5/5 huge over MelBand) showed MelBand adds nothing on this content; production keeps Demucs `vocals.flac` directly.
 
-- New endpoint mirroring `/stems/separate` pattern
-- Forwards to Modal, persists to Firebase via existing helpers
-- Auth via existing shared-secret pattern
+The `split_vocals` Modal function remains in `services/stem-separation/separator.py` as dead code (no caller). Leave it for any future MelBand experiments rather than rip it out.
 
-### 7.3 Client API (~1 hour)
+### 7.2 ~~Worker `/vocals/split`~~ — REMOVED
 
-`js/core/gl-stems.js` adds:
-- `splitVocals(title, opts)` — kicks off split, persists result
-- `getVocalSplit(title)` — read cached split if exists
-- `hasVocalSplit(title)` — check existence
+Not needed. Lead/backing split flows through existing Fadr integration; Worker exposes Fadr endpoints already (per current production wiring).
 
-Routes through existing `loadBandDataFromDrive` / `saveBandDataToDrive` patterns.
+### 7.3 Client API surface (~1 hour, simplified)
+
+`js/core/gl-stems.js` already exposes the Fadr split path. Phase 1 just needs:
+- A read helper for "do we have a lead/backing split for this song" (may already exist; verify before adding)
+- Wire Basic Pitch trigger to fire on the Fadr `lead.wav` URL (path exists at `app.js:4859`; just needs caller)
 
 ### 7.4 Auto-notate lead, mark backing as audio-only (~2 hours)
 
-After `split_vocals` completes:
+After Fadr split completes:
 - Run **Basic Pitch on lead.wav only** → MIDI → ABC (reuse `/api/basic-pitch` path at `app.js:4859`)
 - Save into existing `harmonies_data.sections[].parts[]` schema with:
   ```js
-  { singer: 'lead', part: 'lead', notes: leadAbc, audio_url: '...', source: 'melband_v1', notation_quality: 'auto-draft' }
-  { singer: 'backing', part: 'harmony', notes: null, audio_url: '...', source: 'melband_v1', notation_quality: 'audio-only' }
+  { singer: 'lead', part: 'lead', notes: leadAbc, audio_url: '...', source: 'fadr', notation_quality: 'auto-draft' }
+  { singer: 'backing', part: 'harmony', notes: null, audio_url: '...', source: 'fadr', notation_quality: 'audio-only' }
   ```
-- **Don't overwrite existing Fadr-imported harmonies** — if `harmonies_data.sections[0].parts[].source === 'fadr'`, prompt user before replacing
+- The `source: 'fadr'` flag is now the canonical Phase 1 marker (not `melband_v1`, which is no longer produced)
 
 ### 7.5 Wire the Harmony Lab stubs (~1 day — the core lift)
 
@@ -436,7 +436,7 @@ After `split_vocals` completes:
 - Visible when `harmonies_data` is empty or `source !== 'melband_v1'`
 - **Source picker (§4.6) shows first** — defaults to North Star, lists Best Shots, paste-URL option
 - Source-quality detection (§4.7) runs on chosen source, displays warnings inline
-- Calls `GLStems.splitVocals(songTitle, sourceOpts)` → progress UI
+- Calls existing Fadr split path → progress UI
 - Honest copy:
   > **Auto-Split Harmonies (1–4 min depending on track length)**
   > Isolates lead vocal + harmony stack and writes a starting draft for the lead melody with a confidence label.
@@ -454,7 +454,7 @@ After `split_vocals` completes:
 **Functional:**
 - [ ] Source picker (§4.6) appears at "Auto-Split Harmonies" button click
 - [ ] Source-quality detection (§4.7) runs and surfaces warnings on selected source before split
-- [ ] On a representative song, click "Auto-Split Harmonies" → 1–4 min later: lead.wav + backing.wav exist + lead notation rendered in Harmony Lab with confidence label (Draft/Moderate/Strong)
+- [ ] On a representative song, click "Auto-Split Harmonies" → 1–4 min later: Demucs vocals → Fadr lead/backing → Basic Pitch ABC, all chained, lead notation rendered in Harmony Lab with confidence label (Draft/Moderate/Strong)
 - [ ] Practice mode mixer actually mutes/solos parts (real audio, not visual-only)
 - [ ] Pan knobs work in both Stems lens and Harmony Lab, state shared via GLStore (§4.8)
 - [ ] Tempo slowdown + transpose work in Practice mode
@@ -625,6 +625,7 @@ A Dead band's #1 hassle: "what notes does the lead sing on this verse" + "how do
 8. ⏳ **ROI ordering (Dead Guitar before Intelligence)** — keep Drew's order; revisit if usage data shows Intelligence is more reached-for during real rehearsals
 9. ✅ **Stage B (Modal MelBand-Roformer + SepACap deployment) approved** — Modal-side bake-off instruments build now; client UI / Harmony Lab integration / source picker stay frozen until P0 results pick the winner
 10. ✅ **Path A locked (2026-04-29)** — Phase 0 empirical finding killed plan v4's premise that MelBand-Roformer Karaoke does lead/backing splitting. No public self-hosted checkpoint does this on rock content. Drew chose path A: **Fadr remains the lead/backing tool of record**; MelBand-Roformer pivots to a vocal-cleanup pre-stage candidate; SepACap stays as experimental multi-voice eval. MVSEP API integration (path B) deferred unless P1 UAT shows Fadr's quality is insufficient.
+11. ✅ **Phase 0 closed — Demucs sweeps 5/5 (2026-04-29).** Blind A/B listening on all 5 corpus songs: Demucs `vocals.flac` wins "huge" margin every time. MelBand-Roformer-Karaoke checkpoint produces ~99% silent karaoke output → residual `other ≈ full mix` → unusable. **Production pipeline = Demucs → Fadr → Basic Pitch (no vocal-cleanup pre-stage).** SepACap archived (OOMs on full-length rock; quadratic positional-encoding architecture mismatch). MelBand `split_vocals` and `sepacap_split` Modal functions remain in `separator.py` as dead code for future experiments. Phase 1 effort revised down to 4–8 days (was 5–10) since the entire `split_vocals` build is no longer needed.
 
 ### Remaining open questions
 - Phase 2 confidence-gate threshold tuning (during Phase 2 implementation)

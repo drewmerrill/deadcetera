@@ -1,25 +1,26 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-29 (PM, late) — Phase 0 path-A locked. Empirical bake-off proved no public self-hosted lead/backing checkpoint exists; Drew chose Fadr as lead/backing tool of record. MelBand-Roformer pivots to vocal-cleanup pre-stage candidate, SepACap stays as experimental multi-voice eval. Build `20260429-205047`. Active phase: **Phase 0 Quality Bake-Off — Stage C scoring (path A)**._
+_Updated: 2026-04-29 (evening) — **Phase 0 CLOSED.** Demucs swept 5/5 ("huge" margin every song) on blind A/B listening; MelBand-Roformer-Karaoke checkpoint dropped (output ~99% silent karaoke → residual ≈ full mix → unusable). SepACap archived (OOMs on full-length rock — quadratic positional encoding). **Phase 0.5 in progress** — Drew flagged that Phase 0 only tested vocal-vs-instrumental, NOT lead-vs-backing (the actual painkiller). Phase 0.5 runs Fadr + LALAL.AI (+ MVSEP if accessible) on 3 corpus songs to verify the lead/backing tool before committing Phase 1. LALAL.AI $50 Master pack purchased (760 min, key safe-stored). Build `20260429-205047`._
 
 ---
 
-## Active Phase: Stems Intelligence — Phase 0 Quality Bake-Off (2026-04-29 →)
+## Active Phase: Stems Intelligence — Phase 0.5 Lead/Backing Bake-Off (2026-04-29 →)
 
-**Status:** Corpus locked, Stage B (Modal instrument build) approved & in-flight. Client UI work blocked until P0 names a winner.
+**Status:** Phase 0 closed (Demucs wins vocal isolation 5/5); Phase 0.5 launched same evening to validate lead/backing tool choice. Client UI work blocked until P0.5 names a winner.
 
 **Master plan:** `02_GrooveLinx/specs/stems_intelligence_plan.md` (v4, research-hardened, ChatGPT-reviewed)
 **Session notes:** `02_GrooveLinx/notes/session_2026-04-29_stems_planning.md`
 
-**ROI-ordered roadmap (path-A revision):**
+**ROI-ordered roadmap (post-Phase-0):**
 | # | Phase | Effort | Status |
 |---|---|---|---|
-| 0 | Quality bake-off (5 songs × 3 pipelines: Demucs / MelBand / SepACap) | 0.5 day | 🎧 Stage C scoring underway — awaiting blind listen |
-| 1 | Harmony Painkiller — **lead/backing via Fadr (existing)** + Basic Pitch notation + Harmony Lab + source picker + pan knob | 5–10 days | Blocked by P0 vocal-cleanup decision |
+| 0 | Vocal-isolation bake-off (5 songs: Demucs vs MelBand) | 0.5 day | ✅ **CLOSED 2026-04-29** — Demucs sweeps 5/5 |
+| 0.5 | Lead/backing bake-off (3 songs: Fadr vs LALAL vs MVSEP-if-feasible) | 0.5 day | 🎧 In progress — runner being built, Drew listens after deploy |
+| 1 | Harmony Painkiller — lead/backing (TBD by P0.5) + Basic Pitch notation + Harmony Lab + source picker + pan knob | 4–8 days | Blocked by P0.5 |
 | 2 | Dead Guitar Split (Jerry/Bob via stereo pan) | 1.5–2 days | Blocked by P1 |
 | 3 | Song Intelligence Pass (BPM/key/sections/chords/lyrics) | 3–4 days | Blocked by P2 |
 | 4 | Cheap Polish (waveform, A-B loop, presets) | 1 day | Blocked by P3 |
-| 5 | SepACap multi-voice (experimental, gated on P0 result) | 0.5–1 day | Stage B built the eval; P1 promotion gated on Stage C result |
+| 5 | SepACap multi-voice (archived) | n/a | ❌ OOMs on full-length rock; archived from P1 promotion |
 
 **Phase 0 corpus (locked 2026-04-29):**
 1. **Because** — Beatles (Abbey Road) — clean studio multitrack, control floor
@@ -30,7 +31,9 @@ _Updated: 2026-04-29 (PM, late) — Phase 0 path-A locked. Empirical bake-off pr
 
 All studio sources. Live-SBD slot deferred to P1 UAT.
 
-**Bake-off plan:** Each song × 5 pipelines (Fadr / MelBand-Roformer Karaoke / +MDX-Voc_FT cascade / LALAL.AI Master / SepACap chained on backing-stack). Score blind on 4-criterion scale (5 criteria for SepACap — adds cross-genre transfer eval). 5×5 matrix picks Phase 1 production default. **No Phase 1 client code until P0 picks the winner.**
+**Phase 0 result (closed 2026-04-29):** Demucs wins 5/5 ("huge" margin) on blind A/B listening via `02_GrooveLinx/notes/bakeoff_player.html`. MelBand-Roformer-Karaoke checkpoint produced ~99% silent karaoke output, making `other = source − karaoke ≈ full mix` (no isolation). MelBand `split_vocals` + SepACap `sepacap_split` Modal functions remain in `services/stem-separation/separator.py` as dead code — no production caller. **Production vocal source = Demucs `vocals.flac`.** Full results in `02_GrooveLinx/notes/session_2026-04-29_bakeoff.md`.
+
+**Phase 0.5 plan (started 2026-04-29 evening):** 3 corpus songs (Brokedown / Attics / Helplessly) × 2–3 lead/backing tools (Fadr via existing worker proxy + LALAL.AI `multivocal=lead_back` + MVSEP if free-tier API accessible). Same blind A/B/C player UX as Phase 0 — randomized slot assignments per song, separate lead-stem and backing-stem rankings. **No Phase 1 client code until P0.5 picks the winner.** Open question: does Fadr produce isolated lead+backing **audio** stems, or only combined-vocals audio + MIDI-per-harmony? Empirical probe will resolve.
 
 **Drew's resolved decisions (§14 of plan):**
 - ✅ $50 LALAL.AI Master pack budget approved for bake-off
