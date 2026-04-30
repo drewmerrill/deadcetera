@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-30 — **Phase 1.6 + 1.8 shipped (build `20260430-120034`).** Harmony Lab now renders a real Split Mixer: synced multi-track playback of LALAL lead.mp3 + backing.mp3 with mute/solo/volume/**pan** + bar-loop (BPM-derived). Same pan knob added to Stems lens (StereoPannerNode tail-spliced into existing chain, double-click to center). Lead notation panel renders auto-draft ABC via lazy-loaded abcjs CDN. Phase 1 build is now feature-complete in code; remaining gates: Drew's Worker paste-deploy (#16) + band UAT (#24)._
+_Updated: 2026-04-30 — **Phase 1 code-complete + UAT system in place (build `20260430-120034`).** Harmony Lab Split Mixer + abcjs notation + pan knob shipped. Drew's Worker paste-deploy ✅ done. UAT wizards built: `uat_wizard_phase1.html` (Phase 1 dry-run, 11 steps) + `uat_wizards.html` (multi-surface, 9 surfaces × 4–6 steps each: Rehearsal, Live Gig, Setlist, Songs, Calendar, Notifications, Home, Auth, Stage Plot). Same forced-stepper + auto-saved progress + copy-to-Claude report pattern. Drew runs one surface at a time over coming weeks._
 
 ---
 

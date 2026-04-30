@@ -2,7 +2,52 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-30 — **Phase 1 code-complete (build `20260430-120034`).** Auto-Split orchestrator + Harmony Lab Split Mixer + abcjs notation + pan knob in both surfaces all live. Phase 1 remaining gates: Drew's Worker paste-deploy (#16) and band UAT (#24)._
+_Last updated: 2026-04-30 — **Phase 1 code-complete + UAT system shipped (build `20260430-120034`).** Worker paste-deploy ✅ confirmed (Drew). Multi-surface UAT wizard at `02_GrooveLinx/notes/uat_wizards.html` covers 9 surfaces (Rehearsal, Live Gig, Setlist, Songs, Calendar, Notifications, Home, Auth, Stage Plot). Phase 1 wizard (`uat_wizard_phase1.html`) + Phase 1 band UAT remain pending; Drew can also start sweeping any of the 9 multi-surface wizards in parallel._
+
+## Session 2026-04-30 (PM, very late) — Multi-Surface UAT Wizard system
+
+**Status:** Drew identified UAT-skimping as his weak link; we built a forcing-function wizard system that mechanically prevents skipping. Two files now exist:
+
+1. **`02_GrooveLinx/notes/uat_wizard_phase1.html`** (964 lines) — Phase 1 Harmony Painkiller dry-run, 11 steps focused on the LALAL Auto-Split + Harmony Lab + Stems pan flow Drew just shipped
+2. **`02_GrooveLinx/notes/uat_wizards.html`** (1491 lines) — Multi-surface picker with 9 surfaces × 4–6 steps each. Same engine pattern, but with a landing screen showing per-surface last-run + verdict status (Untouched / In Progress / Clear / Caveats / Blockers)
+
+### Shared design (both wizards)
+
+- Linear stepper, **Next button stays disabled until all required fields filled**
+- localStorage persistence keyed per surface (`gl_uat_v1_<surface>`) — closing the tab doesn't lose progress
+- Per-step "🚧 Hit a blocker?" textarea for in-flow failure capture (so Drew doesn't have to fake-pass an error to keep going)
+- Auto-computed verdict from declarative field metadata (`failBlocker:[]`, `failWarn:[]`, `scoreBlockerLte`, `scoreWarnLte`) → GO / partial / NO-GO classes drive a banner
+- Auto-generated markdown report → 📋 copy to clipboard → Drew pastes back to Claude → I triage and fix
+
+### Multi-surface coverage rationale
+
+Order top-to-bottom = highest band-pain first:
+1. Rehearsal Mode — music-surface SLA <1s
+2. Live Gig Mode — same SLA + stage-friendly UX
+3. Setlist — feeds Live Gig, fragile reorder
+4. Songs / Song Detail — most-trafficked, most lens drift
+5. Calendar — Google sync + classification
+6. Notifications — 5 known FCM quirks all need to coexist
+7. Home / Now Focus — getNowFocus is in SYSTEM LOCK
+8. Auth — sign-in / multi-band / persistence
+9. Stage Plot — drag/save/Live Gig integration
+
+Drew runs one wizard per session over coming weeks. Each wizard pulls in surface-specific gotchas from his memory rules (e.g. Active library scoping, One Job Per Screen, music surface SLA, FCM quirks). Crawl pace by design — DO NOT propose building a single mega-wizard for everything.
+
+### How Claude triages reports
+
+When Drew pastes a report back:
+1. Look at the verdict banner — GO / partial / NO-GO
+2. For each blocker, decide: (a) immediate fix, (b) bug_queue entry, (c) deferred to a phase
+3. For each warn, decide: (a) bug_queue, (b) document and move on
+4. Update `bug_queue.md` per the `feedback_bug_queue_workflow.md` rule
+5. Don't re-test until fixes ship — let Drew re-run after a build that addresses the items
+
+### Restart prompt (next session — start sweeping)
+
+> Phase 1 code-complete and Worker is deployed. Two UAT wizards live in `02_GrooveLinx/notes/`. Drew should run them one at a time and paste reports back. Triage each report into bug_queue / immediate fixes / deferred items per `feedback_bug_queue_workflow.md`. Don't ask Drew to retest a surface until fixes ship for that surface. Recommended sequence: start with Phase 1 wizard (smallest, freshest code), then sweep the 9 surfaces in the order presented (Rehearsal → Live Gig → Setlist → Songs → Calendar → Notifications → Home → Auth → Stage Plot). The picker UI shows running status across all 9 so Drew can see at a glance which surfaces are stale.
+
+
 
 ## Session 2026-04-30 (PM, late) — Phase 1.6 + 1.8 shipped (Harmony Lab MVP + pan knob)
 

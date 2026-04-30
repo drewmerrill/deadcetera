@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GrooveLinx UAT Wizards — Surface-by-Surface Coverage</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-2: #0f172a;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --accent: #818cf8;
+    --good: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px 20px 80px;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+  header { margin-bottom: 20px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .subhead { color: var(--muted); font-size: 0.92rem; margin-bottom: 14px; }
+
+  .progress-wrap {
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    margin-bottom: 22px;
+    position: sticky;
+    top: 8px;
+    z-index: 10;
+  }
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .progress-label .pl-surface { color: var(--accent); font-weight: 800; }
+  .progress-bar {
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    background: linear-gradient(90deg, #667eea, #ec4899);
+    height: 100%;
+    transition: width 0.4s ease;
+  }
+
+  .step-card {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 22px 22px 18px;
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+    animation: fadeIn 0.25s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .step-num {
+    font-size: 0.74rem;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .step-title { font-size: 1.18rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+  .step-instr {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 12px 0 14px;
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+  .step-instr strong { color: #c7d2fe; }
+  .step-instr code {
+    background: rgba(255,255,255,0.07);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.86em;
+    color: #fde68a;
+  }
+  .step-instr ol, .step-instr ul { margin: 6px 0 0 18px; padding: 0; }
+  .step-instr li { margin-bottom: 4px; }
+
+  .field { margin-bottom: 14px; }
+  .field-label {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .field-help { display: block; font-size: 0.78rem; color: var(--dim); margin-top: 4px; font-style: italic; }
+  input[type=text], input[type=number], textarea {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 0.92rem;
+    font-family: inherit;
+    outline: none;
+  }
+  textarea { min-height: 70px; resize: vertical; line-height: 1.5; }
+  input:focus, textarea:focus { border-color: var(--accent); }
+
+  .radio-group { display: flex; flex-direction: column; gap: 6px; }
+  .radio-group.row { flex-direction: row; flex-wrap: wrap; }
+  .radio-opt {
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.92rem;
+    transition: all 0.12s;
+    flex: 1 1 auto; min-width: 100px;
+  }
+  .radio-opt:hover { background: rgba(255,255,255,0.06); border-color: rgba(102,126,234,0.4); }
+  .radio-opt input[type=radio] { accent-color: var(--accent); flex-shrink: 0; }
+  .radio-opt.selected { background: rgba(102,126,234,0.12); border-color: var(--accent); }
+
+  .score-row { display: flex; gap: 6px; }
+  .score-btn {
+    flex: 1; padding: 12px 0;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.95rem; font-weight: 700;
+    transition: all 0.12s;
+  }
+  .score-btn:hover { background: rgba(255,255,255,0.07); }
+  .score-btn.selected {
+    background: linear-gradient(135deg, rgba(102,126,234,0.25), rgba(236,72,153,0.15));
+    border-color: var(--accent);
+    color: var(--text);
+  }
+  .score-legend {
+    display: flex; justify-content: space-between;
+    font-size: 0.72rem; color: var(--dim);
+    margin-top: 4px;
+  }
+
+  .nav-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  button.nav-btn {
+    flex: 1;
+    padding: 12px 18px;
+    border-radius: 10px;
+    border: none;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button.nav-btn.primary {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+  }
+  button.nav-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(102,126,234,0.35); }
+  button.nav-btn.primary:disabled {
+    background: rgba(255,255,255,0.05);
+    color: var(--dim);
+    cursor: not-allowed;
+    transform: none; box-shadow: none;
+  }
+  button.nav-btn.secondary {
+    background: rgba(255,255,255,0.05);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    flex: 0 1 auto;
+  }
+  button.nav-btn.secondary:hover { background: rgba(255,255,255,0.1); }
+
+  .blocker-zone {
+    margin-top: 14px;
+    padding: 10px 12px;
+    background: rgba(239,68,68,0.06);
+    border: 1px dashed rgba(239,68,68,0.25);
+    border-radius: 8px;
+  }
+  .blocker-zone summary { cursor: pointer; font-size: 0.82rem; color: #fca5a5; font-weight: 700; }
+  .blocker-zone textarea {
+    margin-top: 8px;
+    background: rgba(0,0,0,0.2);
+    border-color: rgba(239,68,68,0.3);
+  }
+
+  /* Surface picker (welcome) */
+  .picker-hero {
+    background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(236,72,153,0.06));
+    border: 1px solid rgba(99,102,241,0.25);
+    border-radius: 14px;
+    padding: 28px 26px;
+    margin-bottom: 18px;
+  }
+  .picker-hero h2 { font-size: 1.4rem; margin: 0 0 6px; }
+  .picker-hero p { color: var(--muted); margin: 4px 0; font-size: 0.95rem; }
+  .picker-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .picker-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .picker-card:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(102,126,234,0.18); }
+  .picker-card .pic-emoji { font-size: 1.8em; flex-shrink: 0; width: 42px; text-align: center; }
+  .picker-card .pic-meta { flex: 1; min-width: 0; }
+  .picker-card .pic-name { font-size: 1.02em; font-weight: 700; color: var(--text); }
+  .picker-card .pic-desc { font-size: 0.82em; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+  .picker-card .pic-status { font-size: 0.74em; font-weight: 700; padding: 3px 8px; border-radius: 6px; flex-shrink: 0; }
+  .pic-status-untouched { background: rgba(255,255,255,0.05); color: var(--dim); }
+  .pic-status-go        { background: rgba(52,211,153,0.15); color: var(--good); }
+  .pic-status-partial   { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .pic-status-nogo      { background: rgba(248,113,113,0.15); color: var(--bad); }
+  .pic-status-progress  { background: rgba(99,102,241,0.18); color: var(--accent); }
+  .pic-last { font-size: 0.7em; color: var(--dim); margin-top: 2px; }
+
+  .report-block {
+    background: #0a0e1a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 50vh;
+    overflow-y: auto;
+    line-height: 1.5;
+  }
+  .verdict-banner {
+    padding: 18px;
+    border-radius: 10px;
+    margin: 16px 0;
+    text-align: center;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+  .verdict-banner.go      { background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); color: var(--good); }
+  .verdict-banner.partial { background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.3); color: var(--warn); }
+  .verdict-banner.nogo    { background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.3); color: var(--bad); }
+
+  .copy-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    border: none; border-radius: 10px;
+    font-size: 1rem; font-weight: 700;
+    cursor: pointer; margin-top: 12px;
+  }
+  .copy-btn.copied { background: linear-gradient(135deg, #34d399, #10b981); }
+
+  .danger-btn {
+    background: none;
+    color: var(--dim);
+    border: 1px dashed rgba(239,68,68,0.25);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    margin-top: 12px;
+  }
+  .danger-btn:hover { color: var(--bad); border-color: rgba(239,68,68,0.4); }
+
+  .picker-summary {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px; padding: 0 4px;
+    font-size: 0.78rem; color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧪 GrooveLinx UAT Wizards</h1>
+  <div class="subhead">Surface-by-surface coverage. Pick a surface, run its 6–8 step wizard (~10 min), copy the report into Claude. Build <code id="buildBadge">20260430-120034</code>.</div>
+</header>
+
+<div class="progress-wrap" id="progressWrap" style="display:none">
+  <div class="progress-label">
+    <span><span class="pl-surface" id="plSurface">—</span> · <span id="progressText">Step 1 of N</span></span>
+    <span id="progressPct">0%</span>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+</div>
+
+<div id="root"></div>
+
+<script>
+'use strict';
+
+const STORAGE_PREFIX = 'gl_uat_v1_';
+const BUILD = '20260430-120034';
+
+// ── Utilities ───────────────────────────────────────────────────────────────
+function esc(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ── Field-level criticality flags ───────────────────────────────────────────
+// failBlocker:[v,...]  → answer in this list contributes a blocker
+// failWarn:[v,...]     → answer in this list contributes a warn
+// scoreBlockerLte: N   → score answer ≤N is a blocker
+// scoreWarnLte: N      → score answer ≤N is a warn
+// reasonBlocker:'...'  → label used in blocker line
+// reasonWarn:'...'     → label used in warn line
+
+// ── Surface configs ─────────────────────────────────────────────────────────
+const SURFACES = {
+  rehearsal: {
+    name: 'Rehearsal Mode',
+    emoji: '🥁',
+    desc: 'Plan loading, walkthrough, snapshot, scorecard. Music-surface SLA <1s.',
+    steps: [
+      {
+        id: 'open',
+        title: 'Open Rehearsal Mode',
+        instr: `<ol>
+          <li>Sign in to GrooveLinx</li>
+          <li>Click <strong>Rehearsal</strong> in the main nav</li>
+          <li>Time how long until the page is interactive (the SLA is &lt;1s — your <code>feedback_music_surface_sla.md</code> rule)</li>
+        </ol>`,
+        fields: [
+          { id: 'render_speed', label: 'Time to interactive', type: 'radio', required: true,
+            failBlocker: ['slow'], failWarn: ['slowish'], reasonBlocker: 'Rehearsal Mode violates <1s music-surface SLA',
+            options: [
+              { v: 'instant',   l: '✅ <1s — feels instant' },
+              { v: 'slowish',   l: '🟡 1–3s — noticeable lag' },
+              { v: 'slow',      l: '🔴 >3s — too slow for stage use' },
+              { v: 'broken',    l: '🛑 Page never rendered / errored' }
+            ] },
+          { id: 'plan_visible', label: 'Did the rehearsal plan / agenda render?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Rehearsal plan failed to render',
+            options: [
+              { v: 'yes',     l: '✅ Yes — plan visible with songs' },
+              { v: 'partial', l: '🟡 Some content but missing pieces' },
+              { v: 'no',      l: '❌ No plan visible at all' }
+            ] }
+        ]
+      },
+      {
+        id: 'active_filter',
+        title: 'Active-songs scoping',
+        instr: `Your <code>project_active_library_scope.md</code> rule says only Active songs (prospect/learning/needs-polish/wip/on-deck/setlist) appear here — Library songs should be excluded.`,
+        fields: [
+          { id: 'scoping_correct', label: 'Are only Active songs shown?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Active-library scoping leak — Library songs appearing in Rehearsal',
+            options: [
+              { v: 'yes',     l: '✅ Yes — only Active songs' },
+              { v: 'unsure',  l: '🤷 Hard to tell — list looks reasonable' },
+              { v: 'no',      l: '❌ Library songs leaked in' }
+            ] }
+        ]
+      },
+      {
+        id: 'walkthrough',
+        title: 'Run a walkthrough',
+        instr: `<ol>
+          <li>Start a walkthrough from any active song</li>
+          <li>Click through 2–3 sections of the song</li>
+          <li>End/save the walkthrough</li>
+        </ol>`,
+        fields: [
+          { id: 'walkthrough_runs', label: 'Did the walkthrough flow run start-to-end?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Walkthrough flow broken',
+            options: [
+              { v: 'yes',     l: '✅ Yes — completed' },
+              { v: 'rough',   l: '🟡 Ran but UX is rough' },
+              { v: 'no',      l: '❌ Errored or stuck mid-flow' }
+            ] }
+        ]
+      },
+      {
+        id: 'scorecard',
+        title: 'Scorecard / story renders',
+        instr: `After ending the walkthrough/rehearsal, the scorecard / story should appear summarizing what was rehearsed.`,
+        fields: [
+          { id: 'scorecard_renders', label: 'Did the scorecard render with content?', type: 'radio', required: true,
+            failBlocker: ['no'], failWarn: ['empty'], reasonBlocker: 'Scorecard failed to render',
+            options: [
+              { v: 'yes',     l: '✅ Yes — populated' },
+              { v: 'empty',   l: '🟡 Rendered but mostly empty' },
+              { v: 'no',      l: '❌ Did not render' }
+            ] }
+        ]
+      },
+      {
+        id: 'usability',
+        title: 'Stage usability score',
+        instr: `Imagine running rehearsal on a tablet at practice. How well does this surface support the actual job?`,
+        fields: [
+          { id: 'stage_usability', label: 'Stage usability (1=unusable, 5=fluent)', type: 'score', required: true, max: 5,
+            scoreBlockerLte: 2, scoreWarnLte: 3, reasonBlocker: 'Rehearsal Mode usability ≤2 — would fail at actual rehearsal',
+            legend: ['1 unusable','2 painful','3 ok','4 good','5 fluent'] },
+          { id: 'usability_notes', label: 'What hurt the most? (optional)', type: 'textarea', required: false }
+        ]
+      }
+    ]
+  },
+
+  live_gig: {
+    name: 'Live Gig Mode',
+    emoji: '🎸',
+    desc: 'Setlist navigation, big-text song display, swipe/keyboard controls, auto-scroll.',
+    steps: [
+      {
+        id: 'enter',
+        title: 'Enter Live Gig Mode',
+        instr: `From a setlist (or wherever your entry point is), click into <strong>Live Gig</strong>. Should switch to a stage-friendly full-screen view via <code>showPage('live-gig')</code>.`,
+        fields: [
+          { id: 'enters', label: 'Did Live Gig Mode open?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Live Gig Mode failed to open',
+            options: [
+              { v: 'yes',     l: '✅ Yes — full-screen view' },
+              { v: 'partial', l: '🟡 Opened but not stage-friendly (small text / nav still visible)' },
+              { v: 'no',      l: '❌ Did not open' }
+            ] },
+          { id: 'render_speed', label: 'Time to first song visible', type: 'radio', required: true,
+            failBlocker: ['slow'], failWarn: ['slowish'], reasonBlocker: 'Live Gig Mode violates <1s SLA',
+            options: [
+              { v: 'instant',   l: '✅ <1s' },
+              { v: 'slowish',   l: '🟡 1–3s' },
+              { v: 'slow',      l: '🔴 >3s' }
+            ] }
+        ]
+      },
+      {
+        id: 'setlist_loads',
+        title: 'Setlist auto-loads',
+        instr: `The current setlist (from gigs queue, or the one you came from) should be loaded with songs in correct order.`,
+        fields: [
+          { id: 'songs_loaded', label: 'Are setlist songs in correct order?', type: 'radio', required: true,
+            failBlocker: ['no','wrong'], reasonBlocker: 'Setlist songs missing or wrong order',
+            options: [
+              { v: 'yes',     l: '✅ Yes — full setlist, right order' },
+              { v: 'subset',  l: '🟡 Partial — some songs missing' },
+              { v: 'wrong',   l: '🔴 Songs present but order is wrong' },
+              { v: 'no',      l: '❌ No songs loaded' }
+            ] }
+        ]
+      },
+      {
+        id: 'navigation',
+        title: 'Next / previous song navigation',
+        instr: `<ol>
+          <li>Try <strong>swipe left</strong> (or right-arrow key) to go to the next song</li>
+          <li>Try <strong>swipe right</strong> (or left-arrow) to go back</li>
+          <li>Confirm song info updates: title, key, BPM, member assignments</li>
+        </ol>`,
+        fields: [
+          { id: 'nav_works', label: 'Does next/prev navigation work?', type: 'radio', required: true,
+            failBlocker: ['no'], failWarn: ['glitchy'],
+            reasonBlocker: 'Live Gig navigation broken',
+            options: [
+              { v: 'yes',     l: '✅ Smooth' },
+              { v: 'glitchy', l: '🟡 Works but glitchy' },
+              { v: 'no',      l: '❌ Doesn\'t advance' }
+            ] }
+        ]
+      },
+      {
+        id: 'autoscroll',
+        title: 'Auto-scroll',
+        instr: `If the song chart is long, enable <strong>auto-scroll</strong>. Test the speed control (px/sec). It should be smooth, not jittery.`,
+        fields: [
+          { id: 'autoscroll_smooth', label: 'Is auto-scroll smooth?', type: 'radio', required: true,
+            failWarn: ['jittery'], failBlocker: ['broken'],
+            reasonBlocker: 'Auto-scroll broken on stage = real problem',
+            options: [
+              { v: 'smooth',   l: '✅ Smooth' },
+              { v: 'jittery',  l: '🟡 Jittery' },
+              { v: 'broken',   l: '❌ Doesn\'t scroll' },
+              { v: 'na',       l: '🟦 Song too short to test' }
+            ] }
+        ]
+      },
+      {
+        id: 'exit',
+        title: 'Exit cleanly',
+        instr: `Exit Live Gig Mode (button, or back nav). Confirm the regular nav returns and you land somewhere sensible.`,
+        fields: [
+          { id: 'exits_clean', label: 'Did exit work cleanly?', type: 'radio', required: true,
+            failBlocker: ['stuck'], failWarn: ['lost'],
+            reasonBlocker: 'Cannot exit Live Gig Mode',
+            options: [
+              { v: 'yes',     l: '✅ Yes — normal nav back' },
+              { v: 'lost',    l: '🟡 Exited but landed on wrong page' },
+              { v: 'stuck',   l: '🛑 Stuck — couldn\'t exit' }
+            ] }
+        ]
+      },
+      {
+        id: 'usability',
+        title: 'Stage usability',
+        instr: `Imagine using this at a real gig. Big text? Tap targets? Glance-readable?`,
+        fields: [
+          { id: 'stage_usability', label: 'Stage usability (1=unusable, 5=fluent)', type: 'score', required: true, max: 5,
+            scoreBlockerLte: 2, scoreWarnLte: 3,
+            reasonBlocker: 'Live Gig Mode would fail at actual gig',
+            legend: ['1 unusable','2 painful','3 ok','4 good','5 fluent'] },
+          { id: 'usability_notes', label: 'Biggest pain point (optional)', type: 'textarea', required: false }
+        ]
+      }
+    ]
+  },
+
+  setlist: {
+    name: 'Setlist',
+    emoji: '📋',
+    desc: 'Add / reorder / remove songs, save persistence, feeds Live Gig.',
+    steps: [
+      {
+        id: 'open',
+        title: 'Open setlist surface',
+        instr: `Open a setlist (existing one for an upcoming gig, or create a fresh one).`,
+        fields: [
+          { id: 'opens', label: 'Did the setlist surface open?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Setlist surface failed to open',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'no',      l: '❌ No / errored' }
+            ] }
+        ]
+      },
+      {
+        id: 'add_song',
+        title: 'Add a song',
+        instr: `<ol><li>Click "Add song"</li><li>Pick a song from the picker</li><li>Confirm it appears at the end of the list</li></ol>`,
+        fields: [
+          { id: 'add_works', label: 'Did adding work?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Cannot add song to setlist',
+            options: [
+              { v: 'yes',   l: '✅ Yes' },
+              { v: 'no',    l: '❌ Failed / errored' }
+            ] }
+        ]
+      },
+      {
+        id: 'reorder',
+        title: 'Reorder songs',
+        instr: `Drag a song to a new position (or use up/down controls if drag isn't wired). Then refresh the page and confirm the new order persisted.`,
+        fields: [
+          { id: 'reorder_works', label: 'Drag/reorder UX', type: 'radio', required: true,
+            failBlocker: ['no'], failWarn: ['clunky'],
+            reasonBlocker: 'Cannot reorder setlist',
+            options: [
+              { v: 'yes',     l: '✅ Smooth drag-and-drop' },
+              { v: 'clunky',  l: '🟡 Works but clunky' },
+              { v: 'no',      l: '❌ Cannot reorder' }
+            ] },
+          { id: 'reorder_persists', label: 'Did the new order persist after refresh?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Setlist reorder does not persist — silent data loss',
+            options: [
+              { v: 'yes',     l: '✅ Yes — order saved' },
+              { v: 'no',      l: '🛑 No — reverted on refresh (data loss!)' }
+            ] }
+        ]
+      },
+      {
+        id: 'remove',
+        title: 'Remove a song',
+        instr: `Remove one song from the setlist. Confirm it's gone.`,
+        fields: [
+          { id: 'remove_works', label: 'Removal works?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Cannot remove from setlist',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'partial', l: '🟡 Removed in UI but came back on refresh' },
+              { v: 'no',      l: '❌ No' }
+            ] }
+        ]
+      },
+      {
+        id: 'feeds_live',
+        title: 'Setlist feeds Live Gig',
+        instr: `Open Live Gig Mode from this setlist. Confirm the same songs appear in the same order.`,
+        fields: [
+          { id: 'feeds_correctly', label: 'Songs match in Live Gig?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Setlist→Live Gig handoff broken',
+            options: [
+              { v: 'yes',     l: '✅ Yes — same songs, same order' },
+              { v: 'partial', l: '🟡 Same songs, different order' },
+              { v: 'no',      l: '❌ Different content' }
+            ] }
+        ]
+      }
+    ]
+  },
+
+  songs: {
+    name: 'Songs',
+    emoji: '🎵',
+    desc: 'Songs list, status filtering, song detail lenses (chart/listen/stems/harmony).',
+    steps: [
+      {
+        id: 'list',
+        title: 'Songs list renders',
+        instr: `Click <strong>Songs</strong> in nav. List should render with all your songs.`,
+        fields: [
+          { id: 'list_renders', label: 'Did it render?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Songs list failed to render',
+            options: [
+              { v: 'yes',     l: '✅ Yes — songs visible' },
+              { v: 'empty',   l: '🟡 Rendered but empty' },
+              { v: 'no',      l: '❌ Did not render' }
+            ] },
+          { id: 'render_speed', label: 'Render speed', type: 'radio', required: true,
+            failBlocker: ['slow'], failWarn: ['slowish'],
+            reasonBlocker: 'Songs list violates <1s SLA',
+            options: [
+              { v: 'instant',   l: '✅ <1s' },
+              { v: 'slowish',   l: '🟡 1–3s' },
+              { v: 'slow',      l: '🔴 >3s' }
+            ] }
+        ]
+      },
+      {
+        id: 'filter',
+        title: 'Status filter',
+        instr: `Try filtering by status (Active vs Library, or specific status like wip/learning). Counts should match what you'd expect.`,
+        fields: [
+          { id: 'filter_works', label: 'Does the filter work?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Songs filter broken',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'wrong',   l: '🟡 Filters but counts look wrong' },
+              { v: 'no',      l: '❌ Filter has no effect' }
+            ] }
+        ]
+      },
+      {
+        id: 'detail_open',
+        title: 'Open song detail',
+        instr: `Click any song to open its detail page. Should land on the default lens (Chart or whichever your default is).`,
+        fields: [
+          { id: 'detail_opens', label: 'Did detail open?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Cannot open song detail',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'no',      l: '❌ No' }
+            ] }
+        ]
+      },
+      {
+        id: 'lenses',
+        title: 'Each lens loads',
+        instr: `Click through each lens tab: <strong>Chart, Listen, Stems, Harmony</strong> (or whatever your set is). Each should populate with content.`,
+        fields: [
+          { id: 'lenses_load', label: 'Do all lenses load?', type: 'radio', required: true,
+            failBlocker: ['multiple','none'], failWarn: ['one'],
+            reasonBlocker: 'Multiple lenses broken on Song Detail',
+            options: [
+              { v: 'all',      l: '✅ All lenses load' },
+              { v: 'one',      l: '🟡 One lens broken' },
+              { v: 'multiple', l: '🔴 Multiple lenses broken' },
+              { v: 'none',     l: '🛑 No lenses load' }
+            ] },
+          { id: 'broken_lens_text', label: 'Which lens broke (if any)?', type: 'text', required: false }
+        ]
+      },
+      {
+        id: 'one_job',
+        title: 'One Job Per Screen rule',
+        instr: `Your <code>feedback_one_job_per_screen.md</code> rule: each surface should have one canonical job. Look at Song Detail — does it feel focused, or cluttered with competing controls?`,
+        fields: [
+          { id: 'one_job_score', label: 'How focused is the surface? (1=cluttered, 5=focused)', type: 'score', required: true, max: 5,
+            scoreBlockerLte: 1, scoreWarnLte: 2,
+            reasonWarn: 'Song Detail violates One-Job-Per-Screen rule',
+            legend: ['1 chaos','2 busy','3 ok','4 clean','5 focused'] }
+        ]
+      }
+    ]
+  },
+
+  calendar: {
+    name: 'Calendar',
+    emoji: '📅',
+    desc: 'Google Calendar sync, event classification, no overblocking.',
+    steps: [
+      {
+        id: 'open',
+        title: 'Open calendar',
+        instr: `Click <strong>Calendar</strong> in nav. Current month should render.`,
+        fields: [
+          { id: 'opens', label: 'Did it open?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Calendar failed to open',
+            options: [{ v: 'yes', l: '✅ Yes' }, { v: 'no', l: '❌ No' }] }
+        ]
+      },
+      {
+        id: 'google_events',
+        title: 'Google Calendar events visible',
+        instr: `Per your <code>project_calendar_filtering.md</code> memory, only <em>selected</em> Google calendars should sync, and time-aware classification prevents overblocking.`,
+        fields: [
+          { id: 'google_visible', label: 'Are Google events showing?', type: 'radio', required: true,
+            failBlocker: ['none'], failWarn: ['too_many'],
+            reasonBlocker: 'Google Calendar sync not working',
+            options: [
+              { v: 'right',     l: '✅ Right ones appear' },
+              { v: 'too_many',  l: '🟡 Too many (overblocking from unselected calendars)' },
+              { v: 'none',      l: '❌ No Google events at all' }
+            ] }
+        ]
+      },
+      {
+        id: 'add_local',
+        title: 'Add a local event',
+        instr: `Add a new local event (e.g. a fake gig next week). Confirm it shows up in calendar grid.`,
+        fields: [
+          { id: 'add_works', label: 'Add worked?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Cannot add calendar event',
+            options: [{ v: 'yes', l: '✅ Yes' }, { v: 'no', l: '❌ No' }] }
+        ]
+      },
+      {
+        id: 'sync',
+        title: 'Sync to Google',
+        instr: `Push the local event to Google Calendar (manual sync if needed). Confirm in Google Calendar web/app that the event appears with correct date/time/title.`,
+        fields: [
+          { id: 'sync_works', label: 'Did sync push correctly?', type: 'radio', required: true,
+            failBlocker: ['wrong_time','no'], reasonBlocker: 'Google sync push broken',
+            options: [
+              { v: 'yes',         l: '✅ Yes — appears correctly in Google' },
+              { v: 'wrong_time',  l: '🔴 Appears but wrong date/time (timezone bug)' },
+              { v: 'no',          l: '❌ Doesn\'t appear' }
+            ] }
+        ]
+      },
+      {
+        id: 'no_dupes',
+        title: 'No duplicate rows',
+        instr: `Look at any cell with a Google event you also have locally. Should be ONE row, not two or three (the compounded-title self-heal should kick in for legacy dupes).`,
+        fields: [
+          { id: 'dupes_present', label: 'Any duplicate event rows?', type: 'radio', required: true,
+            failBlocker: ['multi'], failWarn: ['one_pair'],
+            reasonBlocker: 'Calendar duplicate rows (compounding bug not healed)',
+            options: [
+              { v: 'none',     l: '✅ None — clean' },
+              { v: 'one_pair', l: '🟡 One pair somewhere' },
+              { v: 'multi',    l: '🔴 Multiple compound dupes (titles repeating)' }
+            ] }
+        ]
+      }
+    ]
+  },
+
+  notifications: {
+    name: 'Notifications',
+    emoji: '🔔',
+    desc: '3 layers: in-app banner, FCM browser push, Twilio SMS. Five known FCM quirks.',
+    steps: [
+      {
+        id: 'inapp',
+        title: 'Layer 1 — in-app banner',
+        instr: `Trigger any band-feed event (post a poll/idea/note from another tab or member) and watch for an in-app banner notification on this device.`,
+        fields: [
+          { id: 'banner_works', label: 'In-app banner appeared?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Layer 1 (in-app banner) broken',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'late',    l: '🟡 Yes but >5s delayed' },
+              { v: 'no',      l: '❌ No banner' }
+            ] }
+        ]
+      },
+      {
+        id: 'fcm',
+        title: 'Layer 2 — FCM browser push',
+        instr: `<ol>
+          <li>Go to <strong>Settings → Notifications</strong></li>
+          <li>Confirm push toggle is <strong>on</strong></li>
+          <li>From another tab/device, trigger a band-feed event</li>
+          <li>Watch for a system-level (Mac/iOS) notification</li>
+        </ol>
+        Per <code>feedback_fcm_push_quirks.md</code>: data-only payload, raw push event listener, SW activation wait, macOS same-tag dedup all need to work together.`,
+        fields: [
+          { id: 'fcm_works', label: 'System push fired?', type: 'radio', required: true,
+            failBlocker: ['no','silent'], failWarn: ['delayed'],
+            reasonBlocker: 'FCM Layer 2 push broken (one of 5 quirks regressed)',
+            options: [
+              { v: 'yes',     l: '✅ Yes — OS notification' },
+              { v: 'delayed', l: '🟡 Eventually but >30s delayed' },
+              { v: 'silent',  l: '🔴 Token saved but no notification' },
+              { v: 'no',      l: '❌ Toggle / token broken' }
+            ] }
+        ]
+      },
+      {
+        id: 'sms',
+        title: 'Layer 3 — Twilio SMS',
+        instr: `Per <code>project_notification_system.md</code>, SMS is pending 10DLC carrier approval. <strong>Skip if status is still "in carrier review."</strong>`,
+        fields: [
+          { id: 'sms_status', label: 'SMS status', type: 'radio', required: true,
+            failBlocker: ['broken_after_approval'],
+            options: [
+              { v: 'pending', l: '🟦 Still in carrier review — skipped' },
+              { v: 'approved_works', l: '✅ Approved + SMS arrived' },
+              { v: 'approved_silent', l: '🔴 Approved but no SMS' },
+              { v: 'broken_after_approval', l: '🛑 Approved + worker errors' }
+            ] }
+        ]
+      },
+      {
+        id: 'settings_toggle',
+        title: 'Settings toggle works',
+        instr: `Toggle push OFF in Settings, then ON again. Should re-subscribe cleanly without errors in console.`,
+        fields: [
+          { id: 'toggle_works', label: 'Toggle UX', type: 'radio', required: true,
+            failBlocker: ['no'], failWarn: ['errors'],
+            reasonBlocker: 'Settings toggle broken — band can\'t opt-out cleanly',
+            options: [
+              { v: 'clean',   l: '✅ Clean off+on cycle' },
+              { v: 'errors',  l: '🟡 Works but console errors' },
+              { v: 'no',      l: '❌ Stuck on/off' }
+            ] }
+        ]
+      },
+      {
+        id: 'diagnostics',
+        title: 'Diagnostic surface accessible',
+        instr: `Per <code>reference_diagnostic_surfaces.md</code>, there are diagnostic console one-liners and surfaces for push debugging. Confirm at least one is accessible (e.g., browser console <code>navigator.serviceWorker.getRegistrations()</code>).`,
+        fields: [
+          { id: 'diag_accessible', label: 'Could you reach a diagnostic surface?', type: 'radio', required: true,
+            failWarn: ['no'],
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'no',      l: '🟡 No / forgot how' }
+            ] }
+        ]
+      }
+    ]
+  },
+
+  home: {
+    name: 'Home / Now Focus',
+    emoji: '🏠',
+    desc: 'Home dashboard, getNowFocus() correctness, focusChanged event propagation.',
+    steps: [
+      {
+        id: 'open',
+        title: 'Open Home',
+        instr: `Click Home in nav. Dashboard should render. Note: getNowFocus is in your <code>SYSTEM LOCK</code>.`,
+        fields: [
+          { id: 'opens', label: 'Did it render?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Home dashboard failed to render',
+            options: [{ v: 'yes', l: '✅ Yes' }, { v: 'no', l: '❌ No' }] },
+          { id: 'render_speed', label: 'Time to render', type: 'radio', required: true,
+            failBlocker: ['slow'], failWarn: ['slowish'],
+            reasonBlocker: 'Home renders too slowly',
+            options: [
+              { v: 'instant',   l: '✅ <1s' },
+              { v: 'slowish',   l: '🟡 1–3s' },
+              { v: 'slow',      l: '🔴 >3s' }
+            ] }
+        ]
+      },
+      {
+        id: 'now_focus',
+        title: 'Now Focus card sensible?',
+        instr: `The Now Focus card highlights what to work on. It should reflect a song with weak metrics (per <code>getNowFocus()</code>).`,
+        fields: [
+          { id: 'focus_sensible', label: 'Does the Now Focus pick make sense?', type: 'radio', required: true,
+            failBlocker: ['nonsense'], failWarn: ['stale'],
+            reasonBlocker: 'getNowFocus() returns nonsense',
+            options: [
+              { v: 'sensible', l: '✅ Yes — reasonable pick' },
+              { v: 'stale',    l: '🟡 Stale — not updated since I changed song status' },
+              { v: 'nonsense', l: '🛑 Doesn\'t make sense' },
+              { v: 'empty',    l: '🟦 Card empty (no Active songs to focus on)' }
+            ] }
+        ]
+      },
+      {
+        id: 'focus_changed',
+        title: 'focusChanged event propagation',
+        instr: `<ol>
+          <li>Note the current Now Focus song</li>
+          <li>Open that song in another tab and change its status (e.g., move to "ready")</li>
+          <li>Switch back to Home — Now Focus should update WITHOUT a manual refresh</li>
+        </ol>`,
+        fields: [
+          { id: 'focus_event', label: 'Did Now Focus auto-update?', type: 'radio', required: true,
+            failBlocker: ['no'], failWarn: ['delayed'],
+            reasonBlocker: 'focusChanged event not propagating (SYSTEM LOCK regression)',
+            options: [
+              { v: 'yes',       l: '✅ Auto-updated' },
+              { v: 'delayed',   l: '🟡 Updated after a delay' },
+              { v: 'no',        l: '❌ Required manual refresh' }
+            ] }
+        ]
+      },
+      {
+        id: 'click_through',
+        title: 'Click-through to song detail',
+        instr: `Click the Now Focus card / a song link → should land on Song Detail for that song.`,
+        fields: [
+          { id: 'click_works', label: 'Does click navigate correctly?', type: 'radio', required: true,
+            failBlocker: ['wrong','no'],
+            reasonBlocker: 'Home click-through broken',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'wrong',   l: '🔴 Lands on wrong song' },
+              { v: 'no',      l: '❌ Doesn\'t navigate' }
+            ] }
+        ]
+      }
+    ]
+  },
+
+  auth: {
+    name: 'Auth / Sign-in',
+    emoji: '🔐',
+    desc: 'Sign-in flow, email check, multi-band support, sign-out cleanliness.',
+    steps: [
+      {
+        id: 'signout_test',
+        title: 'Sign out',
+        instr: `From a signed-in state, click sign-out. Should clear session and return to a sign-in/landing state.`,
+        fields: [
+          { id: 'signout_works', label: 'Sign-out worked?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Cannot sign out — security concern',
+            options: [
+              { v: 'yes',     l: '✅ Yes — clean' },
+              { v: 'no',      l: '❌ Stuck signed in' }
+            ] }
+        ]
+      },
+      {
+        id: 'signin_flow',
+        title: 'Sign in',
+        instr: `Click sign-in. Use your normal Google or email-based flow. Should land you back at Home with band context loaded.`,
+        fields: [
+          { id: 'signin_works', label: 'Sign-in flow works end-to-end?', type: 'radio', required: true,
+            failBlocker: ['no'], failWarn: ['rough'],
+            reasonBlocker: 'Sign-in broken — blocks everything',
+            options: [
+              { v: 'yes',     l: '✅ Smooth' },
+              { v: 'rough',   l: '🟡 Worked but rough (extra clicks, errors recovered)' },
+              { v: 'no',      l: '❌ Failed' }
+            ] }
+        ]
+      },
+      {
+        id: 'band_context',
+        title: 'Band context loads',
+        instr: `After sign-in, your band's data (songs, gigs, members) should load — not someone else's, not empty.`,
+        fields: [
+          { id: 'band_correct', label: 'Right band loaded?', type: 'radio', required: true,
+            failBlocker: ['wrong','empty'],
+            reasonBlocker: 'Wrong band loaded after sign-in (privacy issue)',
+            options: [
+              { v: 'right',   l: '✅ Right band' },
+              { v: 'empty',   l: '🔴 Empty / no band data' },
+              { v: 'wrong',   l: '🛑 Different band\'s data!' }
+            ] }
+        ]
+      },
+      {
+        id: 'multi_band',
+        title: 'Multi-band switching',
+        instr: `If you're in multiple bands, try switching to another. Skip if you're solo to one band.`,
+        fields: [
+          { id: 'switch_works', label: 'Band switching', type: 'radio', required: true,
+            failBlocker: ['broken'],
+            reasonBlocker: 'Multi-band switching broken',
+            options: [
+              { v: 'yes',     l: '✅ Switches cleanly' },
+              { v: 'broken',  l: '❌ Switch broken' },
+              { v: 'na',      l: '🟦 Solo band — skipped' }
+            ] }
+        ]
+      },
+      {
+        id: 'persistence',
+        title: 'Session persists on refresh',
+        instr: `Refresh the page. You should stay signed in (no need to re-auth).`,
+        fields: [
+          { id: 'persists', label: 'Stayed signed in?', type: 'radio', required: true,
+            failBlocker: ['no'],
+            reasonBlocker: 'Session not persisting — band has to re-auth every time',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'no',      l: '❌ Kicked back to sign-in' }
+            ] }
+        ]
+      }
+    ]
+  },
+
+  stage_plot: {
+    name: 'Stage Plot',
+    emoji: '🗺️',
+    desc: 'Member positions, mic / instrument layout, save persistence, Live Gig integration.',
+    steps: [
+      {
+        id: 'open',
+        title: 'Open Stage Plot',
+        instr: `Navigate to Stage Plot (<code>page-stageplot</code>). Should render an editable stage layout.`,
+        fields: [
+          { id: 'opens', label: 'Did it open?', type: 'radio', required: true,
+            failBlocker: ['no'], reasonBlocker: 'Stage Plot failed to open',
+            options: [
+              { v: 'yes',     l: '✅ Yes' },
+              { v: 'no',      l: '❌ No / errored' }
+            ] }
+        ]
+      },
+      {
+        id: 'members_visible',
+        title: 'Band members visible',
+        instr: `All current band members should appear (whether positioned or in a side palette to drag onto the stage).`,
+        fields: [
+          { id: 'members_show', label: 'Are members visible?', type: 'radio', required: true,
+            failBlocker: ['none'], failWarn: ['some'],
+            reasonBlocker: 'Stage Plot missing band members entirely',
+            options: [
+              { v: 'all',     l: '✅ All members listed' },
+              { v: 'some',    l: '🟡 Some missing' },
+              { v: 'none',    l: '❌ No members visible' }
+            ] }
+        ]
+      },
+      {
+        id: 'drag',
+        title: 'Drag / reposition',
+        instr: `Drag a member to a new spot on the stage. Add a mic or instrument if your UI supports it.`,
+        fields: [
+          { id: 'drag_works', label: 'Drag UX', type: 'radio', required: true,
+            failBlocker: ['no'], failWarn: ['clunky'],
+            reasonBlocker: 'Stage Plot drag broken',
+            options: [
+              { v: 'yes',     l: '✅ Smooth' },
+              { v: 'clunky',  l: '🟡 Works but clunky' },
+              { v: 'no',      l: '❌ Cannot drag' }
+            ] }
+        ]
+      },
+      {
+        id: 'save',
+        title: 'Save layout',
+        instr: `Save your changes (button or auto-save). Refresh the page. Layout should persist.`,
+        fields: [
+          { id: 'save_persists', label: 'Did the layout persist?', type: 'radio', required: true,
+            failBlocker: ['no'],
+            reasonBlocker: 'Stage Plot save broken — silent data loss',
+            options: [
+              { v: 'yes',     l: '✅ Persisted' },
+              { v: 'no',      l: '🛑 Reset to default after refresh' }
+            ] }
+        ]
+      },
+      {
+        id: 'live_gig',
+        title: 'Visible from Live Gig',
+        instr: `Open Live Gig Mode. Is there a way to glance at the stage plot mid-gig? (May not be a feature yet — answer "not present" if no UI exists.)`,
+        fields: [
+          { id: 'live_visible', label: 'Stage Plot accessible from Live Gig?', type: 'radio', required: true,
+            failWarn: ['not_present'],
+            reasonWarn: 'Stage Plot integration with Live Gig missing — feature gap',
+            options: [
+              { v: 'yes',         l: '✅ Yes — accessible' },
+              { v: 'awkward',     l: '🟡 Yes but awkward' },
+              { v: 'not_present', l: '🟦 Not present (feature gap)' }
+            ] }
+        ]
+      }
+    ]
+  }
+};
+
+// Surface order on the picker
+const SURFACE_ORDER = ['rehearsal','live_gig','setlist','songs','calendar','notifications','home','auth','stage_plot'];
+
+// ── State ───────────────────────────────────────────────────────────────────
+let currentSurface = null;  // null = picker view
+let state = { stepIdx: 0, answers: {}, startedAt: null, completedAt: null };
+
+function stateKey(surface) { return STORAGE_PREFIX + surface; }
+function loadSurfaceState(surface) {
+  try {
+    const s = localStorage.getItem(stateKey(surface));
+    if (s) return JSON.parse(s);
+  } catch(_) {}
+  return { stepIdx: 0, answers: {}, startedAt: null, completedAt: null };
+}
+function saveSurfaceState() {
+  if (!currentSurface) return;
+  try { localStorage.setItem(stateKey(currentSurface), JSON.stringify(state)); } catch(_) {}
+}
+function resetSurfaceState(surface) {
+  if (!confirm('Wipe ALL ' + SURFACES[surface].name + ' UAT progress?')) return;
+  localStorage.removeItem(stateKey(surface));
+  if (currentSurface === surface) {
+    state = { stepIdx: 0, answers: {}, startedAt: null, completedAt: null };
+  }
+  render();
+}
+
+function pickSurface(surface) {
+  currentSurface = surface;
+  state = loadSurfaceState(surface);
+  if (!state.startedAt) state.startedAt = new Date().toISOString();
+  saveSurfaceState();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function backToPicker() {
+  currentSurface = null;
+  saveSurfaceState();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Validation ──────────────────────────────────────────────────────────────
+function isStepValid() {
+  if (!currentSurface) return false;
+  const surf = SURFACES[currentSurface];
+  if (state.stepIdx >= surf.steps.length) return true; // final
+  const step = surf.steps[state.stepIdx];
+  if (!step.fields) return true;
+  for (const f of step.fields) {
+    if (!f.required) continue;
+    const v = state.answers[step.id + '.' + f.id];
+    if (v === undefined || v === null || v === '') return false;
+  }
+  return true;
+}
+
+// ── Verdict ─────────────────────────────────────────────────────────────────
+function computeVerdict() {
+  const surf = SURFACES[currentSurface];
+  const blockers = [];
+  const warns    = [];
+  surf.steps.forEach(step => {
+    (step.fields || []).forEach(f => {
+      const v = state.answers[step.id + '.' + f.id];
+      if (v === undefined || v === '') return;
+      // Radio fail-checks
+      if (Array.isArray(f.failBlocker) && f.failBlocker.indexOf(v) >= 0) {
+        blockers.push(f.reasonBlocker || (step.title + ' / ' + f.label + ' = ' + v));
+      } else if (Array.isArray(f.failWarn) && f.failWarn.indexOf(v) >= 0) {
+        warns.push(f.reasonWarn || (step.title + ' / ' + f.label + ' = ' + v));
+      }
+      // Score fail-checks
+      if (f.type === 'score') {
+        const n = Number(v);
+        if (Number.isFinite(n)) {
+          if (f.scoreBlockerLte != null && n <= f.scoreBlockerLte) {
+            blockers.push(f.reasonBlocker || (step.title + ' / score=' + n));
+          } else if (f.scoreWarnLte != null && n <= f.scoreWarnLte) {
+            warns.push(f.reasonWarn || (step.title + ' / score=' + n));
+          }
+        }
+      }
+    });
+  });
+  if (blockers.length > 0) return {
+    cls: 'nogo', emoji: '🛑',
+    headline: blockers.length + ' blocker' + (blockers.length===1?'':'s') + ' on ' + surf.name + '.',
+    banner: '🛑 GATE: ' + surf.name + ' is NOT band-ready until blockers are fixed.',
+    blockers, warns
+  };
+  if (warns.length > 0) return {
+    cls: 'partial', emoji: '⚠️',
+    headline: surf.name + ' usable but with caveats.',
+    banner: '⚠️ ' + surf.name + ' is usable — flag caveats to band before use.',
+    blockers, warns
+  };
+  return {
+    cls: 'go', emoji: '✅',
+    headline: surf.name + ' clean.',
+    banner: '✅ ' + surf.name + ' is band-ready.',
+    blockers, warns
+  };
+}
+
+// ── Report ──────────────────────────────────────────────────────────────────
+function buildReport(verdict) {
+  const surf = SURFACES[currentSurface];
+  const a = state.answers;
+  const lines = [];
+  lines.push('# UAT Report — ' + surf.name);
+  lines.push('');
+  lines.push('- **Build:** `' + BUILD + '`');
+  lines.push('- **Surface:** ' + surf.emoji + ' ' + surf.name);
+  lines.push('- **Started:**   ' + (state.startedAt   ? new Date(state.startedAt).toLocaleString()   : '—'));
+  lines.push('- **Completed:** ' + (state.completedAt ? new Date(state.completedAt).toLocaleString() : '—'));
+  lines.push('');
+  lines.push('## Verdict: ' + verdict.banner);
+  lines.push('');
+  if (verdict.blockers.length) {
+    lines.push('### 🛑 Blockers');
+    verdict.blockers.forEach(b => lines.push('- ' + b));
+    lines.push('');
+  }
+  if (verdict.warns.length) {
+    lines.push('### ⚠️ Caveats');
+    verdict.warns.forEach(w => lines.push('- ' + w));
+    lines.push('');
+  }
+  lines.push('## Detailed answers');
+  surf.steps.forEach((step, i) => {
+    lines.push('');
+    lines.push('### ' + (i+1) + '. ' + step.title);
+    (step.fields || []).forEach(f => {
+      const v = a[step.id + '.' + f.id];
+      if (v === undefined || v === '') return;
+      lines.push('- ' + f.label + ': ' + v);
+    });
+    const blockerNote = a[step.id + '._blocker'];
+    if (blockerNote) lines.push('- 🚧 In-flow blocker note: ' + blockerNote);
+  });
+  return lines.join('\n');
+}
+
+function copyReport() {
+  const text = document.getElementById('reportBlock').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copyBtn');
+    btn.textContent = '✅ Copied — paste into Claude chat';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 Copy report to clipboard';
+      btn.classList.remove('copied');
+    }, 3500);
+  }).catch(err => alert('Copy failed: ' + err.message));
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  const root = document.getElementById('root');
+  const progressWrap = document.getElementById('progressWrap');
+
+  if (!currentSurface) {
+    progressWrap.style.display = 'none';
+    return renderPicker(root);
+  }
+  const surf = SURFACES[currentSurface];
+  const totalSteps = surf.steps.length;
+
+  if (state.stepIdx >= totalSteps) {
+    return renderFinal(root);
+  }
+
+  // Update progress
+  progressWrap.style.display = 'block';
+  document.getElementById('plSurface').textContent = surf.emoji + ' ' + surf.name;
+  const pct = Math.round((state.stepIdx / totalSteps) * 100);
+  document.getElementById('progressText').textContent = 'Step ' + (state.stepIdx + 1) + ' of ' + totalSteps;
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressFill').style.width = pct + '%';
+
+  return renderStep(root, surf, surf.steps[state.stepIdx]);
+}
+
+function renderPicker(root) {
+  const cards = SURFACE_ORDER.map(key => {
+    const surf = SURFACES[key];
+    const stored = loadSurfaceState(key);
+    const stepCount = surf.steps.length;
+    let statusHtml = '<span class="pic-status pic-status-untouched">Untouched</span>';
+    let lastHtml = '';
+    if (stored.completedAt) {
+      const tempCurrent = currentSurface;
+      const tempState = state;
+      currentSurface = key; state = stored;
+      const v = computeVerdict();
+      currentSurface = tempCurrent; state = tempState;
+      const cls = v.cls === 'go' ? 'pic-status-go' : v.cls === 'partial' ? 'pic-status-partial' : 'pic-status-nogo';
+      const txt = v.cls === 'go' ? '✅ Clear' : v.cls === 'partial' ? '⚠️ Caveats' : '🛑 Blockers';
+      statusHtml = '<span class="pic-status ' + cls + '">' + txt + '</span>';
+      lastHtml = '<div class="pic-last">Last run: ' + new Date(stored.completedAt).toLocaleString() + '</div>';
+    } else if (stored.stepIdx > 0) {
+      statusHtml = '<span class="pic-status pic-status-progress">In progress · step ' + (stored.stepIdx + 1) + '/' + stepCount + '</span>';
+      lastHtml = '<div class="pic-last">Started: ' + new Date(stored.startedAt).toLocaleString() + '</div>';
+    }
+    return '<div class="picker-card" onclick="pickSurface(\'' + key + '\')">' +
+      '<div class="pic-emoji">' + surf.emoji + '</div>' +
+      '<div class="pic-meta">' +
+        '<div class="pic-name">' + esc(surf.name) + '</div>' +
+        '<div class="pic-desc">' + esc(surf.desc) + '</div>' +
+        lastHtml +
+      '</div>' +
+      statusHtml +
+    '</div>';
+  }).join('');
+
+  root.innerHTML = `
+    <div class="picker-hero">
+      <h2>🧪 Pick a surface to test</h2>
+      <p>Each wizard is ~10 minutes. Linear steps, can't skip, copy-to-Claude report at end.</p>
+      <p style="font-size:0.85em;margin-top:10px"><em>Recommended order: top to bottom (highest band-pain first).</em></p>
+    </div>
+    <div class="picker-summary"><span>${ SURFACE_ORDER.length } surfaces · ~${ SURFACE_ORDER.length * 10 } min total</span><span>Auto-saves between sessions</span></div>
+    <div class="picker-grid">${ cards }</div>
+  `;
+}
+
+function renderStep(root, surf, step) {
+  const fieldsHtml = (step.fields || []).map(f => renderField(step, f)).join('');
+  const valid = isStepValid();
+  root.innerHTML = `
+    <div class="step-card">
+      <div class="step-num">Step ${ state.stepIdx + 1 } of ${ surf.steps.length } · ${ surf.emoji } ${ esc(surf.name) }</div>
+      <div class="step-title">${ esc(step.title) }</div>
+      <div class="step-instr">${ step.instr }</div>
+      <form onsubmit="event.preventDefault();" autocomplete="off">${ fieldsHtml }</form>
+      <details class="blocker-zone">
+        <summary>🚧 Hit a blocker on this step? Document it</summary>
+        <textarea id="blocker_${ step.id }" placeholder="What broke or stopped you?" oninput="saveAnswer('${ step.id }','_blocker',this.value)">${ esc(state.answers[step.id + '._blocker'] || '') }</textarea>
+      </details>
+      <div class="nav-row">
+        <button class="nav-btn secondary" onclick="prev()" ${ state.stepIdx === 0 ? 'disabled style="opacity:0.4"' : '' }>← Back</button>
+        <button class="nav-btn primary" onclick="next()" ${ valid ? '' : 'disabled' }>${ valid ? (state.stepIdx === surf.steps.length - 1 ? 'Finish →' : 'Next →') : 'Fill required fields' }</button>
+      </div>
+      <button class="nav-btn secondary" style="margin-top:10px;width:100%" onclick="backToPicker()">↩ Back to surface picker (saves progress)</button>
+    </div>
+  `;
+  root.querySelectorAll('.radio-opt').forEach(el => {
+    const input = el.querySelector('input[type=radio]');
+    if (!input) return;
+    el.addEventListener('click', () => { input.checked = true; input.dispatchEvent(new Event('change', { bubbles: true })); });
+  });
+}
+
+function renderField(step, f) {
+  const aKey = step.id + '.' + f.id;
+  const v = state.answers[aKey];
+  if (f.type === 'text') {
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <input type="text" placeholder="${ esc(f.placeholder || '') }" value="${ esc(v || '') }"
+        oninput="saveAnswer('${step.id}','${f.id}',this.value)">
+    </div>`;
+  }
+  if (f.type === 'number') {
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <input type="number" placeholder="${ esc(f.placeholder || '') }" value="${ esc(v || '') }"
+        oninput="saveAnswer('${step.id}','${f.id}',this.value)">
+    </div>`;
+  }
+  if (f.type === 'textarea') {
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <textarea placeholder="${ esc(f.placeholder || '') }"
+        oninput="saveAnswer('${step.id}','${f.id}',this.value)">${ esc(v || '') }</textarea>
+    </div>`;
+  }
+  if (f.type === 'radio') {
+    const opts = f.options.map(o => {
+      const sel = (v === o.v);
+      return `<label class="radio-opt ${ sel ? 'selected' : '' }">
+        <input type="radio" name="${ aKey }" value="${ esc(o.v) }" ${ sel ? 'checked' : '' }
+          onchange="saveAnswer('${step.id}','${f.id}',this.value); render();">
+        <span>${ esc(o.l) }</span>
+      </label>`;
+    }).join('');
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <div class="radio-group">${ opts }</div>
+    </div>`;
+  }
+  if (f.type === 'score') {
+    const max = f.max || 5;
+    let btns = '';
+    for (let i = 1; i <= max; i++) {
+      btns += `<button type="button" class="score-btn ${ String(v) === String(i) ? 'selected' : '' }"
+        onclick="saveAnswer('${step.id}','${f.id}','${i}'); render();">${ i }</button>`;
+    }
+    const legend = (f.legend || []).map(l => `<span>${ esc(l) }</span>`).join('');
+    return `<div class="field"><label class="field-label">${ esc(f.label) }${ f.required ? ' *' : '' }</label>
+      <div class="score-row">${ btns }</div>
+      ${ legend ? `<div class="score-legend">${ legend }</div>` : '' }
+    </div>`;
+  }
+  return '';
+}
+
+function renderFinal(root) {
+  if (!state.completedAt) state.completedAt = new Date().toISOString();
+  saveSurfaceState();
+  const verdict = computeVerdict();
+  const report  = buildReport(verdict);
+  const surf    = SURFACES[currentSurface];
+  root.innerHTML = `
+    <div class="picker-hero">
+      <h2>${ verdict.emoji } ${ esc(surf.name) } UAT done</h2>
+      <p>${ esc(verdict.headline) }</p>
+    </div>
+    <div class="verdict-banner ${ verdict.cls }">${ esc(verdict.banner) }</div>
+    <div class="step-card">
+      <div class="step-title">📋 Report — paste this into Claude</div>
+      <div class="step-instr">Click the green button to copy. Then paste back into your Claude chat.</div>
+      <div class="report-block" id="reportBlock">${ esc(report) }</div>
+      <button class="copy-btn" id="copyBtn" onclick="copyReport()">📋 Copy report to clipboard</button>
+      <div class="nav-row">
+        <button class="nav-btn secondary" onclick="prev()">← Back</button>
+        <button class="nav-btn secondary" onclick="backToPicker()">↩ Surface picker</button>
+      </div>
+      <button class="danger-btn" onclick="resetSurfaceState('${ currentSurface }')">Reset this surface and start over</button>
+    </div>
+  `;
+}
+
+// ── Navigation ──────────────────────────────────────────────────────────────
+function next() {
+  if (!currentSurface) return;
+  const surf = SURFACES[currentSurface];
+  if (state.stepIdx < surf.steps.length && !isStepValid()) return;
+  state.stepIdx++;
+  saveSurfaceState();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function prev() {
+  if (state.stepIdx > 0) state.stepIdx--;
+  saveSurfaceState();
+  render();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Answer save ─────────────────────────────────────────────────────────────
+function saveAnswer(stepId, fieldId, value) {
+  state.answers[stepId + '.' + fieldId] = value;
+  saveSurfaceState();
+  // Re-enable Next without full re-render for text/textarea
+  const valid = isStepValid();
+  const nextBtn = document.querySelector('.nav-btn.primary');
+  if (nextBtn && (nextBtn.textContent.includes('Next') || nextBtn.textContent.includes('Finish') || nextBtn.textContent.includes('required'))) {
+    const surf = SURFACES[currentSurface];
+    const isLast = surf && state.stepIdx === surf.steps.length - 1;
+    nextBtn.disabled = !valid;
+    nextBtn.textContent = valid ? (isLast ? 'Finish →' : 'Next →') : 'Fill required fields';
+  }
+}
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+window.pickSurface = pickSurface;
+window.backToPicker = backToPicker;
+window.next = next;
+window.prev = prev;
+window.saveAnswer = saveAnswer;
+window.copyReport = copyReport;
+window.resetSurfaceState = resetSurfaceState;
+window.render = render;
+document.getElementById('buildBadge').textContent = BUILD;
+render();
+</script>
+
+</body>
+</html>
