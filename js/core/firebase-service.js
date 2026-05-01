@@ -34,16 +34,22 @@ var FIREBASE_CONFIG = {
 };
 
 // OAuth scopes — minimum-necessary set, chosen for friendlier consent wording
-// and easier verification:
-//   calendar.events    — create/update/delete events on the band calendar
-//   calendar.readonly  — list calendars + run freeBusy queries (calendar.events alone can't)
-//   drive.readonly     — TEMPORARY; pending Drive Picker migration to drive.file (which
-//                        is non-sensitive). Once Picker ships, this scope drops out and
-//                        Google Cloud Console only needs calendar.events verified.
+// and to keep Google verification simple:
+//   calendar.events    — create/update/delete events on the band calendar (Sensitive)
+//   calendar.readonly  — list calendars + run freeBusy queries (Sensitive; calendar.events alone can't)
+//   drive.file         — per-file access via Google Picker (NON-sensitive; no verification needed)
+//
+// We deliberately do NOT request drive.readonly. drive.file is enough because
+// every Drive interaction in the app starts with the user picking a file via
+// Google's Picker UI. The Picker grants the app per-file access; subsequent
+// fetches of that file ID via the Drive API succeed under drive.file scope.
+//
+// Recordings added before this migration (gdrive: file IDs without a Picker
+// grant) will fail to load and show a "Re-link" UI in rehearsal-mixdowns.js.
 var GOOGLE_DRIVE_CONFIG = {
     apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
-    scope: 'email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly'
+    scope: 'email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.file'
 };
 
 // ── Runtime state ────────────────────────────────────────────────────────────

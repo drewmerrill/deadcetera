@@ -2343,7 +2343,16 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
             if (typeof showToast === 'function') showToast('Recording loaded (' + Math.round(blob.size / 1024 / 1024) + ' MB) \u2014 playing');
         }).catch(function(err) {
             console.error('[Drive] Fetch failed:', err);
-            if (typeof showToast === 'function') showToast('\u26A0 ' + err.message, 8000);
+            // 403/404 here usually means the file ID has no Picker grant (common
+            // for recordings added before the drive.file migration). Point the
+            // user at the Recordings surface where the Re-link button lives.
+            var _msg = err && err.message ? err.message : 'Drive fetch failed';
+            var _isAccessErr = /\b(403|404)\b/.test(_msg);
+            if (typeof showToast === 'function') {
+                showToast(_isAccessErr
+                    ? '\u26A0 Recording needs re-linking under the new Drive Picker. Open Recordings \u2192 Re-link.'
+                    : '\u26A0 ' + _msg, 8000);
+            }
         });
     } else {
         // Local file or already-loaded blob — seek and play directly

@@ -472,9 +472,12 @@ function addBestShotTake(songTitle) {
     h += '<div style="font-size:0.82em;color:var(--text-muted)">Drag & drop MP3 here</div>';
     h += '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px">or paste a link below</div>';
     h += '</div>';
-    h += '<input class="app-input" id="bstUrl" placeholder="Google Drive / Dropbox / direct MP3 link" style="margin-bottom:6px">';
+    h += '<input class="app-input" id="bstUrl" placeholder="Dropbox / direct MP3 link" style="margin-bottom:6px">';
     h += '<input type="file" id="bstFileInput" accept=".mp3,.m4a,.wav,.aac,.ogg,.flac,audio/*" style="display:none">';
-    h += '<button class="btn btn-ghost btn-sm" style="font-size:0.78em;margin-bottom:8px" id="bstBrowseBtn">📁 Browse files</button>';
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+    h += '<button class="btn btn-ghost btn-sm" style="font-size:0.78em" id="bstBrowseBtn">📁 Browse local files</button>';
+    h += '<button class="btn btn-ghost btn-sm" style="font-size:0.78em" id="bstDrivePickBtn">📂 Pick from Google Drive</button>';
+    h += '</div>';
     h += '</div>';
     h += '<div class="form-row"><span class="form-label">External Link (opt)</span><input class="app-input" id="bstExtUrl" placeholder="YouTube, SoundCloud, etc."></div>';
     h += '<div class="form-row"><span class="form-label">Notes</span><textarea class="app-textarea" id="bstNotes" placeholder="How did it go?"></textarea></div>';
@@ -493,6 +496,22 @@ function addBestShotTake(songTitle) {
     var fileInput = document.getElementById('bstFileInput');
     if (fileInput) fileInput.addEventListener('change', function() { if (this.files[0]) handleBestShotFile(this.files[0], songTitle); });
     document.getElementById('bstBrowseBtn')?.addEventListener('click', function() { document.getElementById('bstFileInput')?.click(); });
+    document.getElementById('bstDrivePickBtn')?.addEventListener('click', function() {
+        if (!window.GLDrivePicker || !window.GLDrivePicker.pickAudio) {
+            if (typeof showToast === 'function') showToast('Picker not loaded yet — try again');
+            return;
+        }
+        window.GLDrivePicker.pickAudio({
+            onPick: function(file) {
+                var urlInput = document.getElementById('bstUrl');
+                if (urlInput) urlInput.value = file.url;
+                if (typeof showToast === 'function') showToast('Linked: ' + file.name);
+            },
+            onError: function(e) {
+                if (typeof showToast === 'function') showToast('Picker error: ' + (e && e.message ? e.message : 'unknown'), 5000);
+            }
+        });
+    });
     document.getElementById('bstSaveBtn')?.addEventListener('click', function() { saveBestShotTake(songTitle); });
     document.getElementById('bstCancelBtn')?.addEventListener('click', function() { renderBestShotVsNorthStar(songTitle); });
 }

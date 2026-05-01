@@ -162,7 +162,16 @@ window.RehearsalMixdowns = (function() {
 
         // Audio source
         html += '<div style="font-size:0.75em;font-weight:600;color:var(--text-dim);margin-bottom:4px">Audio Source</div>';
-        html += '<input id="rmDriveUrl" class="app-input" placeholder="Google Drive share link (optional)" value="' + _esc(m.drive_url || '') + '" style="width:100%;font-size:0.82em;margin-bottom:6px;box-sizing:border-box">';
+        // Hidden field so existing _saveForm logic still picks up the URL.
+        // The Picker writes here via a callback; manual paste is removed because
+        // pasted URLs no longer work under drive.file scope.
+        html += '<input type="hidden" id="rmDriveUrl" value="' + _esc(m.drive_url || '') + '">';
+        html += '<input type="hidden" id="rmDriveFileId" value="' + _esc(m.drive_file_id || '') + '">';
+        html += '<input type="hidden" id="rmDriveFileName" value="' + _esc(m.drive_file_name || '') + '">';
+        // Browse Drive button replaces the URL paste field.
+        var _pickedLabel = m.drive_file_name ? '📂 ' + _esc(m.drive_file_name) : (m.drive_url ? '📂 Drive file linked' : '');
+        html += '<button type="button" onclick="RehearsalMixdowns._browseDrive()" class="btn btn-ghost btn-sm" style="width:100%;font-size:0.82em;margin-bottom:6px">📂 Pick from Google Drive</button>';
+        html += '<div id="rmPickedLabel" style="font-size:0.72em;color:#86efac;margin-bottom:6px;' + (_pickedLabel ? '' : 'display:none') + '">' + _pickedLabel + '</div>';
         html += '<input id="rmAudioUrl" class="app-input" placeholder="Direct audio URL (optional)" value="' + _esc(m.audio_url || '') + '" style="width:100%;font-size:0.82em;margin-bottom:6px;box-sizing:border-box">';
 
         // File upload
@@ -189,6 +198,61 @@ window.RehearsalMixdowns = (function() {
 
     var _pendingFile = null;
 
+    // Open the Google Picker, write the chosen file into the hidden form fields.
+    // No-op if the Picker module didn't load (offline / blocked).
+    function _browseDrive() {
+        if (!window.GLDrivePicker || !window.GLDrivePicker.pickAudio) {
+            if (typeof showToast === 'function') showToast('Picker not loaded yet — try again');
+            return;
+        }
+        window.GLDrivePicker.pickAudio({
+            onPick: function(file) {
+                var url = document.getElementById('rmDriveUrl');
+                var id = document.getElementById('rmDriveFileId');
+                var nm = document.getElementById('rmDriveFileName');
+                var label = document.getElementById('rmPickedLabel');
+                if (url) url.value = file.url;
+                if (id) id.value = file.fileId;
+                if (nm) nm.value = file.name;
+                if (label) {
+                    label.textContent = '📂 ' + file.name;
+                    label.style.display = 'block';
+                }
+                if (typeof showToast === 'function') showToast('Linked: ' + file.name);
+            },
+            onError: function(e) {
+                if (typeof showToast === 'function') showToast('Picker error: ' + (e && e.message ? e.message : 'unknown'), 5000);
+                console.warn('[Mixdowns] Picker error', e);
+            }
+        });
+    }
+
+    // Re-link an existing mixdown whose drive_file_id no longer has a Picker
+    // grant (i.e. recordings created before the drive.file migration).
+    function relinkMixdown(id) {
+        if (!window.GLDrivePicker || !window.GLDrivePicker.pickAudio) {
+            if (typeof showToast === 'function') showToast('Picker not loaded yet — try again');
+            return;
+        }
+        window.GLDrivePicker.pickAudio({
+            onPick: async function(file) {
+                var all = await loadBandDataFromDrive('_band', _DATA_KEY) || {};
+                if (!all[id]) { if (typeof showToast === 'function') showToast('Mixdown not found'); return; }
+                all[id].drive_url = file.url;
+                all[id].drive_file_id = file.fileId;
+                all[id].drive_file_name = file.name;
+                all[id].updated_at = new Date().toISOString();
+                await saveBandDataToDrive('_band', _DATA_KEY, all);
+                _cache = null;
+                if (typeof showToast === 'function') showToast('✅ Re-linked: ' + file.name);
+                render('rhMixdownsContainer');
+            },
+            onError: function(e) {
+                if (typeof showToast === 'function') showToast('Picker error: ' + (e && e.message ? e.message : 'unknown'), 5000);
+            }
+        });
+    }
+
     function _onFileSelected(input) {
         if (!input.files || !input.files.length) return;
         _pendingFile = input.files[0];
@@ -201,6 +265,8 @@ window.RehearsalMixdowns = (function() {
         var date = (document.getElementById('rmDate') || {}).value || '';
         var notes = (document.getElementById('rmNotes') || {}).value || '';
         var driveUrl = (document.getElementById('rmDriveUrl') || {}).value || '';
+        var driveFileId = (document.getElementById('rmDriveFileId') || {}).value || '';
+        var driveFileName = (document.getElementById('rmDriveFileName') || {}).value || '';
         var audioUrl = (document.getElementById('rmAudioUrl') || {}).value || '';
         var duration = parseInt((document.getElementById('rmDuration') || {}).value) || 0;
         var setlistName = (document.getElementById('rmSetlistId') || {}).value || '';
@@ -222,6 +288,8 @@ window.RehearsalMixdowns = (function() {
             notes: notes,
             audio_url: audioUrl,
             drive_url: driveUrl,
+            drive_file_id: driveFileId,
+            drive_file_name: driveFileName,
             duration: duration,
             linked_setlist_name: setlistName,
             created_at: existingId ? undefined : new Date().toISOString(),
@@ -347,9 +415,7 @@ window.RehearsalMixdowns = (function() {
             if (!res.ok) {
                 var errData = {};
                 try { errData = await res.json(); } catch(e) {}
-                container.innerHTML = '<div style="font-size:0.72em;color:#f87171;padding:6px">\u26A0 Could not load audio'
-                    + (errData.error ? ': ' + _esc(errData.error) : '')
-                    + '<br><a href="' + _esc(m.drive_url) + '" target="_blank" style="color:#60a5fa;text-decoration:underline">Open in Drive instead</a></div>';
+                container.innerHTML = _relinkPromptHtml(m, errData.error || ('HTTP ' + res.status));
                 return;
             }
 
@@ -358,9 +424,26 @@ window.RehearsalMixdowns = (function() {
 
             container.innerHTML = '<audio controls preload="metadata" style="width:100%;height:36px" src="' + blobUrl + '"></audio>';
         } catch(e) {
-            container.innerHTML = '<div style="font-size:0.72em;color:#f87171;padding:6px">\u26A0 ' + _esc(e.message)
-                + '<br><a href="' + _esc(m.drive_url) + '" target="_blank" style="color:#60a5fa;text-decoration:underline">Open in Drive instead</a></div>';
+            container.innerHTML = _relinkPromptHtml(m, e.message);
         }
+    }
+
+    // Failure UI for recordings whose Picker grant is missing (typically:
+    // added before the drive.file migration). Shows the date + filename so
+    // the band member knows which file to re-pick from their Drive.
+    function _relinkPromptHtml(m, errMsg) {
+        var dateLabel = m.rehearsal_date ? _formatDate(m.rehearsal_date) : '(no date)';
+        var nameLabel = m.drive_file_name ? _esc(m.drive_file_name)
+            : '<span style="color:var(--text-dim)">(filename not stored \u2014 pre-migration recording)</span>';
+        var html = '<div style="font-size:0.72em;color:#f87171;padding:8px;border-radius:6px;background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.15)">';
+        html += '<div style="font-weight:700;margin-bottom:4px">\u26A0 Could not load this recording</div>';
+        html += '<div style="font-size:0.95em;color:var(--text-dim);margin-bottom:4px">Recorded ' + _esc(dateLabel) + ' \u00B7 ' + nameLabel + '</div>';
+        if (errMsg) html += '<div style="font-size:0.9em;color:var(--text-dim);margin-bottom:6px">Reason: ' + _esc(errMsg) + '</div>';
+        html += '<div style="font-size:0.95em;margin-bottom:6px;color:var(--text)">Pre-2026-05-01 recordings need to be re-linked under the new Drive Picker.</div>';
+        html += '<button onclick="RehearsalMixdowns.relinkMixdown(\'' + _esc(m.id) + '\')" style="font-size:0.85em;padding:5px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-family:inherit;margin-right:6px">\uD83D\uDCC2 Re-link from Drive</button>';
+        html += '<a href="' + _esc(m.drive_url) + '" target="_blank" style="font-size:0.85em;color:#60a5fa">Open in Drive \u2197</a>';
+        html += '</div>';
+        return html;
     }
 
     // ── Public API ──────────────────────────────────────────────────────────
@@ -391,6 +474,8 @@ window.RehearsalMixdowns = (function() {
         deleteMixdown: deleteMixdown,
         openInChopper: openInChopper,
         getDriveUrl: getDriveUrl,
+        relinkMixdown: relinkMixdown,
+        _browseDrive: _browseDrive,
         _saveForm: _saveForm,
         _onFileSelected: _onFileSelected,
         _copyLink: _copyLink,
