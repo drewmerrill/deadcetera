@@ -9,13 +9,13 @@ _Prepared 2026-05-01. Use these texts verbatim in the Google Cloud Console verif
 | Field | Value |
 |---|---|
 | App name | GrooveLinx |
-| User support email | drewmerrill@comcast.net |
+| User support email | drewmerrill1029@gmail.com |
 | App logo | `groovelinx-site/groovelinx_app_icon.png` (1024×1024) |
 | Application home page | https://groovelinx.com |
 | Application privacy policy | https://groovelinx.com/privacy.html |
 | Application terms of service | https://groovelinx.com/terms.html |
 | Authorized domains | groovelinx.com |
-| Developer contact email | drewmerrill@comcast.net |
+| Developer contact email | drewmerrill1029@gmail.com |
 
 ---
 

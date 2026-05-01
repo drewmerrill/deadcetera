@@ -88,7 +88,7 @@ All studio sources. Live-SBD slot deferred to P1 UAT.
 - Consent description calls out "personally invited by band leader, direct relationship" — strengthens Sole-Prop justification
 - Twilio managing opt-out keywords (OPTOUT/CANCEL/END/QUIT/UNSUBSCRIBE/REVOKE/STOP/STOPALL) and HELP/INFO
 
-**Optional polish (skip if you don't want to disturb the in-flight review):** Help auto-reply could be tightened to include brand name + frequency. Current: *"Reply STOP to unsubscribe. Msg&Data Rates May Apply."* Suggested: *"GrooveLinx: Band coordination notifications. ~5-15 msgs/mo. Msg&data rates may apply. Reply STOP to unsubscribe. Support: drewmerrill@comcast.net"*. Edit via Campaign → Messaging Service - Opt-Out Management.
+**Optional polish (skip if you don't want to disturb the in-flight review):** Help auto-reply could be tightened to include brand name + frequency. Current: *"Reply STOP to unsubscribe. Msg&Data Rates May Apply."* Suggested: *"GrooveLinx: Band coordination notifications. ~5-15 msgs/mo. Msg&data rates may apply. Reply STOP to unsubscribe. Support: drewmerrill1029@gmail.com"*. Edit via Campaign → Messaging Service - Opt-Out Management.
 
 **No further action required from Drew or Claude until Twilio emails approval.** When status flips to "Verified" / "Approved," Layer 3 SMS unblocks per build plan in `02_GrooveLinx/notes/session_2026-04-26_notification_system.md` — new `/sms/send` worker endpoint, storage `bands/{slug}/sms_subscriptions/{memberKey}`, mirrors FCM Layer 2 pattern.
 
