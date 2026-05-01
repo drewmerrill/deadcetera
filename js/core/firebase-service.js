@@ -47,7 +47,11 @@ var FIREBASE_CONFIG = {
 // Recordings added before this migration (gdrive: file IDs without a Picker
 // grant) will fail to load and show a "Re-link" UI in rehearsal-mixdowns.js.
 var GOOGLE_DRIVE_CONFIG = {
-    apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
+    // Picker + OAuth-related APIs live in the GrooveLinx Cloud project (number 177899334738),
+    // NOT the Firebase project (deadcetera-35424). They need a key from the same project as
+    // the OAuth client; using the Firebase project's key gets a "developer key invalid" 401
+    // from the Picker because Picker only honors keys from its own project.
+    apiKey: 'AIzaSyCYwoolEIa0fOV1UFv66KDZW7oN_VzQfTU',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
     scope: 'email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.file'
 };
