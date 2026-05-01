@@ -51,16 +51,18 @@ We initially used `calendar.events.owned`, but the band's calendar is typically 
 ### `https://www.googleapis.com/auth/calendar.readonly`
 
 **Why this scope is needed:**
-Two specific features rely on read-only calendar access:
+Three features rely on read-only calendar access:
 1. **Calendar list** — when a band admin first connects, the app shows a list of the user's calendars so they can pick which one is the "band calendar" for event sync.
-2. **Free/busy availability** — when scheduling rehearsals, the app runs `freeBusy.query` against each band member's primary calendar to suggest times when no one has a conflict. The result returned by Google is an opaque list of busy time ranges; no event titles, descriptions, locations, or attendees are ever read.
+2. **Personal availability mode** — band members can optionally connect personal calendars so the app can show their schedule context inside GrooveLinx (helping the rest of the band see when somebody is unavailable). The user explicitly chooses which calendars to connect; nothing outside that user-controlled list is read.
+3. **Free/busy availability** — when scheduling rehearsals, the app runs `freeBusy.query` against connected calendars to suggest times when no one has a conflict. `freeBusy.query` returns only opaque busy/free time ranges with no titles, descriptions, locations, or attendees.
 
 **How the scope is used:**
 - `calendarList.list` (one call per session) — populates the band-calendar picker.
+- `events.list` (only against calendars the user has explicitly connected for personal availability mode) — provides schedule context.
 - `freeBusy.query` (run on demand when the scheduling UI is open) — returns busy/free intervals only.
 
 **Why a narrower scope is not sufficient:**
-`calendar.events` alone cannot run `freeBusy.query`, which is the core scheduling feature. `calendar.events.freebusy` exists but does not include `calendarList.list`, so we'd be unable to show the user a list of their calendars to pick the band calendar. `calendar.readonly` is the narrowest scope that supports both required calls.
+`calendar.events` alone cannot run `freeBusy.query` or `calendarList.list`, both of which are core scheduling features. `calendar.events.freebusy` exists for freeBusy alone but does not include `calendarList.list` (preventing the band-calendar picker) or `events.list` (preventing the personal availability mode). `calendar.readonly` is the narrowest scope that supports all three calls.
 
 ---
 
