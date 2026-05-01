@@ -54,12 +54,16 @@ window.GLCalendarSync = (function() {
         return _val;
       }
     } catch(e) {}
-    // Source 3: config fallback — full calendar scope includes freeBusy
+    // Source 3: config fallback — freeBusy works under full `calendar` OR `calendar.readonly`.
+    // calendar.events alone is NOT enough (Google's docs are explicit on this).
     if (typeof GOOGLE_DRIVE_CONFIG !== 'undefined' && GOOGLE_DRIVE_CONFIG.scope) {
-      var _hasFullCalScope = GOOGLE_DRIVE_CONFIG.scope.indexOf('/auth/calendar') !== -1
-        && GOOGLE_DRIVE_CONFIG.scope.indexOf('calendar.events') === -1;
-      if (_hasFullCalScope) {
-        console.log('[CalSync] hasFreeBusyScope: true (config fallback — full calendar scope requested)');
+      var _scope = GOOGLE_DRIVE_CONFIG.scope;
+      var _hasReadonly = _scope.indexOf('calendar.readonly') !== -1;
+      // "full calendar" = /auth/calendar present AND not just calendar.events / calendar.readonly
+      var _hasFullCalScope = _scope.indexOf('/auth/calendar ') !== -1
+        || _scope.match(/\/auth\/calendar$/);
+      if (_hasReadonly || _hasFullCalScope) {
+        console.log('[CalSync] hasFreeBusyScope: true (config fallback — readonly/full scope requested)');
         return true;
       }
     }

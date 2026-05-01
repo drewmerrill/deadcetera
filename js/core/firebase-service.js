@@ -33,10 +33,17 @@ var FIREBASE_CONFIG = {
     appId: "1:218400123401:web:7f64ad84231dcaba6966d8"
 };
 
+// OAuth scopes — minimum-necessary set, chosen for friendlier consent wording
+// and easier verification:
+//   calendar.events    — create/update/delete events on the band calendar
+//   calendar.readonly  — list calendars + run freeBusy queries (calendar.events alone can't)
+//   drive.readonly     — TEMPORARY; pending Drive Picker migration to drive.file (which
+//                        is non-sensitive). Once Picker ships, this scope drops out and
+//                        Google Cloud Console only needs calendar.events verified.
 var GOOGLE_DRIVE_CONFIG = {
     apiKey: 'AIzaSyC3sMU2S8XT9AhA4w5vTwtPP1Nx5kOHOJo',
     clientId: '177899334738-6rcrst4nccsdol4g5t12923ne4duruub.apps.googleusercontent.com',
-    scope: 'email profile https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.readonly'
+    scope: 'email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly'
 };
 
 // ── Runtime state ────────────────────────────────────────────────────────────
@@ -339,13 +346,15 @@ window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
                         accessToken = response.access_token;
                         // Track which scopes Google actually granted (vs just requested)
                         window._grantedScopes = response.scope || '';
-                        // Check for FULL calendar scope (not just calendar.events substring match)
+                        // Detect each granular scope. freeBusy works under full `calendar`,
+                        // `calendar.readonly`, or the narrow `calendar.events.freebusy`.
                         var _scopeList = window._grantedScopes.split(' ');
                         var _hasFullCal = _scopeList.some(function(s) { return s === 'https://www.googleapis.com/auth/calendar' || s.endsWith('/auth/calendar'); });
                         var _hasCalEvents = _scopeList.some(function(s) { return s.indexOf('calendar.events') !== -1; });
-                        var _hasCalFreeBusy = _scopeList.some(function(s) { return s.indexOf('calendar.freebusy') !== -1; });
-                        window._calendarScopeGranted = _hasFullCal || _hasCalEvents;
-                        window._calendarFreeBusyGranted = _hasFullCal || _hasCalFreeBusy;
+                        var _hasCalReadonly = _scopeList.some(function(s) { return s.indexOf('calendar.readonly') !== -1; });
+                        var _hasCalFreeBusy = _scopeList.some(function(s) { return s.indexOf('calendar.freebusy') !== -1 || s.indexOf('calendar.events.freebusy') !== -1; });
+                        window._calendarScopeGranted = _hasFullCal || _hasCalEvents || _hasCalReadonly;
+                        window._calendarFreeBusyGranted = _hasFullCal || _hasCalReadonly || _hasCalFreeBusy;
                         // Persist granted scope state so cached-session restores can read it
                         try {
                             localStorage.setItem('gl_scope_calendar', window._calendarScopeGranted ? '1' : '0');
@@ -353,7 +362,7 @@ window.loadGoogleDriveAPI = function loadGoogleDriveAPI() {
                             localStorage.setItem('gl_scope_grantedAt', new Date().toISOString());
                         } catch(e) {}
                         console.log('[Auth] Calendar scopes — calendar:', window._calendarScopeGranted, 'freeBusy:', window._calendarFreeBusyGranted,
-                            '(raw: full=' + _hasFullCal + ' events=' + _hasCalEvents + ' freebusy=' + _hasCalFreeBusy + ') [persisted]');
+                            '(raw: full=' + _hasFullCal + ' events=' + _hasCalEvents + ' readonly=' + _hasCalReadonly + ' freebusy=' + _hasCalFreeBusy + ') [persisted]');
                         if (!window._calendarScopeGranted) {
                             console.warn('\u26A0\uFE0F No calendar scope granted — token scopes:', window._grantedScopes);
                         }
