@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-04-30 — **Phase 1 code-complete + UAT system in place (build `20260430-120034`).** Harmony Lab Split Mixer + abcjs notation + pan knob shipped. Drew's Worker paste-deploy ✅ done. UAT wizards built: `uat_wizard_phase1.html` (Phase 1 dry-run, 11 steps) + `uat_wizards.html` (multi-surface, 9 surfaces × 4–6 steps each: Rehearsal, Live Gig, Setlist, Songs, Calendar, Notifications, Home, Auth, Stage Plot). Same forced-stepper + auto-saved progress + copy-to-Claude report pattern. Drew runs one surface at a time over coming weeks._
+_Updated: 2026-05-01 — **Rehearsal page redesign PR#2 shipped (build `20260501-000744`).** PR#1 (plan→main column) and PR#2 (contextual primary CTA, directive headline, top-level Start Here panel with weak songs + 🎤 Practice solo + ✚ Add to plan, per-row 🎤 Practice solo on plan rows, removed redundant focus block) both live. Phase 1 Harmony Painkiller still code-complete (Harmony Lab Split Mixer + abcjs notation + pan knob). UAT wizards: `uat_wizard_phase1.html` + `uat_wizards.html` (9-surface picker). Next: Drew + bandmate UAT on Phase 1._
 
 ---
 

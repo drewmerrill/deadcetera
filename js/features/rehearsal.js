@@ -442,6 +442,20 @@ async function _rhRenderCommandFlow(el) {
     var _gigContext = nextGig ? (nextGig.venue || 'Gig') : null;
     var _gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
 
+    // Saved plan check (used by contextual CTA + Start Here + plan card below).
+    // Firebase first, then localStorage fallback.
+    var fbPlan = await _rhLoadPlanFromFirebase();
+    if (fbPlan && fbPlan.units && fbPlan.units.length) {
+        try { localStorage.setItem('glPlannerUnits', JSON.stringify(fbPlan.units)); } catch(e) {}
+    }
+    var hasSavedPlan = false;
+    try { hasSavedPlan = !!localStorage.getItem('glPlannerUnits') || !!localStorage.getItem('glPlannerQueue'); } catch(e) {}
+    var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
+    if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
+
+    // Contextual primary CTA: gig <=7d + plan -> "Start Rehearsal"; otherwise "Plan Next Rehearsal".
+    var _ctaStartPrimary = hasSavedPlan && _gigDays <= 7;
+
     // ── PRIMARY ACTIONS ──
     html += '<div style="display:flex;gap:10px;margin-bottom:var(--gl-space-md);align-items:center;flex-wrap:wrap">';
     if (_rhPlanningMode) {
@@ -453,11 +467,16 @@ async function _rhRenderCommandFlow(el) {
         html += '<button onclick="_rhClearSavedPlan()" style="padding:6px 12px;font-size:0.78em;border-radius:6px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#f87171;font-family:inherit">Clear Plan</button>';
         html += '<button onclick="_rhLaunchSavedPlan()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.85em;background:linear-gradient(135deg,#667eea,#764ba2)">\u25B6 Start This Plan</button>';
         html += '</div>';
-    } else {
-        // Review Mode: normal actions
+    } else if (_ctaStartPrimary) {
+        // Gig <=7d + plan exists -- get rehearsing.
         html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
-        html += '<button onclick="_rhOpenPlanMode()" style="padding:10px 24px;font-size:0.9em;font-weight:700;border-radius:8px;cursor:pointer;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.08);color:#86efac;font-family:inherit">\uD83D\uDCCB Plan Next Rehearsal</button>';
-        html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(' + (_rhFocusPrimary ? '\'' + escHtml(_rhFocusPrimary).replace(/'/g, "\\'") + '\'' : '') + ')" class="gl-btn-ghost" style="padding:6px 12px;font-size:0.82em">Solo Practice</button>';
+        html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-ghost" style="padding:8px 16px;font-size:0.82em">\uD83D\uDCCB Edit Plan</button>';
+    } else {
+        // Default: planning is the next move (no plan yet, or gig is far/none).
+        html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\uD83D\uDCCB Plan Next Rehearsal</button>';
+        if (hasSavedPlan) {
+            html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-ghost" style="padding:8px 16px;font-size:0.82em">\u25B6 Start Rehearsal</button>';
+        }
     }
     // Context metadata (both modes)
     if (!_rhPlanningMode) {
@@ -473,25 +492,74 @@ async function _rhRenderCommandFlow(el) {
     }
     html += '</div>';
 
-    // Confidence line — GLStatus-driven
-    if (confLabel) {
-        var _confHint = (typeof GLStatus !== 'undefined') ? GLStatus.getReadiness(ci && ci.catalogAvg ? parseFloat(ci.catalogAvg) : 0).hint : '';
-        html += '<div class="gl-confidence" style="margin-bottom:var(--gl-space-sm)">Readiness: ' + confLabel + (_confHint ? ' \u2014 ' + _confHint : '') + '</div>';
+    // Directive headline: tell the user what's actually next instead of an abstract Readiness label.
+    if (!_rhPlanningMode) {
+        var _activeCount = (function() {
+            try {
+                var s = (typeof allSongs !== 'undefined') ? allSongs : [];
+                if (typeof isSongActive !== 'function') return s.length;
+                return s.filter(function(x) { return isSongActive(x.title); }).length;
+            } catch(e) { return 0; }
+        })();
+        var _gigPhrase = '';
+        if (nextGig) {
+            var _gigName = nextGig.venue || 'Upcoming gig';
+            if (_gigDays <= 0) _gigPhrase = ' for ' + _gigName + ' (today)';
+            else if (_gigDays === 1) _gigPhrase = ' for ' + _gigName + ' (tomorrow)';
+            else _gigPhrase = ' for ' + _gigName + ' in ' + _gigDays + ' days';
+        }
+        var _directive = '';
+        if (_rhFocusCount > 0) {
+            _directive = _rhFocusCount + ' of ' + _activeCount + ' songs need work' + _gigPhrase + '.';
+        } else if (_activeCount > 0) {
+            _directive = 'All ' + _activeCount + ' active songs are tracking well' + _gigPhrase + '.';
+        } else {
+            _directive = 'No active songs yet \u2014 add a few to start rehearsing.';
+        }
+        html += '<div class="gl-confidence" style="margin-bottom:var(--gl-space-sm)">' + escHtml(_directive) + '</div>';
     }
 
-    // ── SECTION 2: Saved Plan indicator + Primary CTA ──
-    // Try Firebase first, then fall back to localStorage
-    var fbPlan = await _rhLoadPlanFromFirebase();
-    if (fbPlan && fbPlan.units && fbPlan.units.length) {
-        // Sync Firebase plan to localStorage
-        try { localStorage.setItem('glPlannerUnits', JSON.stringify(fbPlan.units)); } catch(e) {}
-    }
-    var hasSavedPlan = false;
-    try { hasSavedPlan = !!localStorage.getItem('glPlannerUnits') || !!localStorage.getItem('glPlannerQueue'); } catch(e) {}
-    var savedAgenda = (typeof GLStore !== 'undefined' && GLStore.getLatestRehearsalAgenda) ? GLStore.getLatestRehearsalAgenda() : null;
-    if (savedAgenda && savedAgenda.items && savedAgenda.items.length) hasSavedPlan = true;
+    // (hasSavedPlan + fbPlan computed earlier for contextual CTA)
 
-    // (Duplicate Start/Practice CTAs removed — consolidated into Next Up section above)
+    // Build a {title -> true} map of songs already in the saved plan so the
+    // Start Here panel and per-row affordances can both reference it.
+    var _rhPlanTitles = {};
+    if (hasSavedPlan) {
+        try {
+            (_rhGetUnits() || []).forEach(function(u) {
+                if (u && u.title) _rhPlanTitles[u.title] = true;
+                if (u && u.songs) u.songs.forEach(function(s) { if (s && s.title) _rhPlanTitles[s.title] = true; });
+            });
+        } catch(e) {}
+    }
+
+    // ── START HERE: data-driven directive surface ──
+    // Surfaces the songs that need work right now with one-tap actions.
+    // Replaces the abstract Readiness label as the primary "what should I do" cue.
+    if (!_rhPlanningMode && weakSongs.length > 0) {
+        html += '<div id="rhStartHere" style="margin-bottom:var(--gl-space-md);padding:12px 14px;border-radius:10px;background:rgba(245,158,11,0.05);border:1px solid rgba(245,158,11,0.2)">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
+        html += '<span style="font-size:0.75em;font-weight:800;color:#fbbf24;letter-spacing:0.04em;text-transform:uppercase">🎯 Start Here</span>';
+        html += '<span style="font-size:0.7em;color:var(--text-dim)">Top ' + weakSongs.length + ' song' + (weakSongs.length > 1 ? 's' : '') + ' to focus on</span>';
+        html += '</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:6px">';
+        weakSongs.forEach(function(f) {
+            var titleSafe = (f.title || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            var avgPct = Math.round((f.avg / 5) * 100);
+            var avgColor = f.avg >= 3 ? '#fbbf24' : f.avg >= 2 ? '#f59e0b' : '#ef4444';
+            var inPlan = !!_rhPlanTitles[f.title];
+            var planBtn = inPlan
+                ? '<span style="font-size:0.7em;color:#86efac;padding:4px 8px;border-radius:5px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2)">✓ In plan</span>'
+                : '<button onclick="_rhPickSong(\'' + titleSafe + '\')" style="font-size:0.7em;padding:4px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-family:inherit">+ Add to plan</button>';
+            html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02);flex-wrap:wrap">';
+            html += '<span style="flex:1;min-width:0;font-size:0.85em;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(f.title) + '</span>';
+            html += '<span style="font-size:0.62em;font-weight:700;color:' + avgColor + ';padding:2px 6px;border-radius:4px;background:' + avgColor + '15;border:1px solid ' + avgColor + '30;white-space:nowrap">' + avgPct + '%</span>';
+            html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + titleSafe + '\')" style="font-size:0.7em;padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.12);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit">🎤 Practice solo</button>';
+            html += planBtn;
+            html += '</div>';
+        });
+        html += '</div></div>';
+    }
 
     // ── PLAN SECTION ──
     html += '<div id="rhPlanContainer">';
@@ -697,6 +765,13 @@ async function _rhRenderCommandFlow(el) {
             if (!_isFocusSong && unit.songs && unit.songs.length) { for (var _fi = 0; _fi < unit.songs.length; _fi++) { if (_rhFocusTitles[unit.songs[_fi].title]) { _isFocusSong = true; break; } } }
             var _focusBorder = _isFocusSong ? 'border-left:3px solid #fbbf24;' : '';
 
+            // Per-row "Practice solo" — only for single-song rows where the title is unambiguous.
+            var practiceSoloChip = '';
+            if ((bt === 'single' || bt === 'song') && unit.title) {
+                var _soloSafe = unit.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                practiceSoloChip = '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _soloSafe + '\')" style="' + _editBtnStyle + ';color:#a5b4fc" title="Practice this song solo">🎤</button>';
+            }
+
             html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="border-bottom:1px solid rgba(255,255,255,0.03);border-radius:4px;' + rowBg + _focusBorder + '">'
                 + '<div>'
                 + dragHandle
@@ -704,7 +779,7 @@ async function _rhRenderCommandFlow(el) {
                 + '<span style="width:20px;flex-shrink:0;text-align:center;font-size:0.75em">' + cfg.icon + '</span>'
                 + '<span' + editClick + editTitle + ' style="flex:1;min-width:0;font-size:0.85em;color:' + cfg.color + ';font-weight:' + (isPlayable && bt !== 'multi_song' ? '500' : '600') + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' + (!isPlayable ? 'font-style:italic;' : '') + (isEditable ? 'cursor:pointer' : '') + '">' + unitLabel + '</span>'
                 + '<span class="rh-row-controls">'
-                + minChip + assignChip + noteChip
+                + minChip + assignChip + noteChip + practiceSoloChip
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
                 + '</span>'
                 + '</div>'
@@ -713,23 +788,7 @@ async function _rhRenderCommandFlow(el) {
         });
         html += '</div>';
 
-        // Focus songs not in plan — recommend adding
-        var _planTitles = {};
-        savedUnits.forEach(function(u) {
-            if (u.title) _planTitles[u.title] = true;
-            if (u.songs) u.songs.forEach(function(s) { if (s.title) _planTitles[s.title] = true; });
-        });
-        var _missingFocus = _rhFocus.list.filter(function(f) { return !_planTitles[f.title]; });
-        if (_missingFocus.length > 0) {
-            html += '<div style="margin:8px 0;padding:8px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px">';
-            html += '<div style="font-size:0.68em;font-weight:700;color:#fbbf24;margin-bottom:4px">Focus songs not in this plan:</div>';
-            html += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
-            _missingFocus.forEach(function(f) {
-                var _mfSafe = f.title.replace(/'/g, "\\'");
-                html += '<button onclick="_rhAddBlock(\'song\',\'' + _mfSafe + '\')" style="font-size:0.68em;padding:3px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer">+ ' + escHtml(f.title) + '</button>';
-            });
-            html += '</div></div>';
-        }
+        // (The "Focus songs not in plan" prompt now lives in the top-level Start Here panel.)
 
         // Add Block picker
         html += '<div style="margin-top:8px"><button onclick="_rhShowAddBlock()" id="rhAddBlockBtn" style="width:100%;padding:6px;border-radius:6px;border:1px dashed rgba(99,102,241,0.3);background:none;color:#a5b4fc;cursor:pointer;font-size:0.72em;font-weight:600">+ Add Block</button>'

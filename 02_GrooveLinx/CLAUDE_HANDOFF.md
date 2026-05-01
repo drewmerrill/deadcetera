@@ -2,7 +2,35 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-04-30 — **Phase 1 code-complete + UAT system shipped (build `20260430-120034`).** Worker paste-deploy ✅ confirmed (Drew). Multi-surface UAT wizard at `02_GrooveLinx/notes/uat_wizards.html` covers 9 surfaces (Rehearsal, Live Gig, Setlist, Songs, Calendar, Notifications, Home, Auth, Stage Plot). Phase 1 wizard (`uat_wizard_phase1.html`) + Phase 1 band UAT remain pending; Drew can also start sweeping any of the 9 multi-surface wizards in parallel._
+_Last updated: 2026-05-01 — **Rehearsal page redesign PR#2 shipped (build `20260501-000744`).** ChatGPT-driven critique → PR#1 (plan→main column, surgical, build `20260430-235047`) + PR#2 (contextual primary CTA, directive headline replaces abstract Readiness, top-level Start Here panel with weak songs + per-song 🎤 Practice solo + ✚ Add to plan, per-row 🎤 affordance on plan rows, removed redundant focus block inside plan card). Phase 1 Harmony Painkiller still code-complete; multi-surface UAT wizards still ready. Next: Drew + bandmate UAT on Phase 1, plus a fresh Rehearsal-mode UAT pass against the redesign._
+
+## Session 2026-05-01 (early AM) — Rehearsal page redesign PR#2
+
+**Build:** `20260501-000744` (commit pending after this push).
+
+**Why:** Drew's UAT screenshot showed the Rehearsal page felt unfocused — three coequal CTAs at top, abstract "Readiness: Strong" label, focus-songs prompt buried inside the plan card. ChatGPT proposed a 7-point fix; we triaged it down to two PRs.
+
+**PR#1 (build `20260430-235047`, commit `bf764854`):** Surgical layout swap. Plan now renders in the main column in both Plan Mode and Review Mode (was being moved into the narrow rail in Review Mode, truncating song names).
+
+**PR#2 (build `20260501-000744`, this session) — `js/features/rehearsal.js` only:**
+
+1. **Contextual primary CTA** at lines ~458–476. Logic: gig in <=7d **AND** plan exists → "▶ Start Rehearsal" primary, "📋 Edit Plan" ghost. Otherwise → "📋 Plan Next Rehearsal" primary; "▶ Start Rehearsal" only renders (as ghost) if a plan exists. The global "Solo Practice" button is gone — replaced by per-song affordances.
+2. **Directive headline** replaces "Readiness: Strong — hint" line. Reads e.g. `"5 of 9 songs need work for Southern Roots Tavern in 30 days."` or `"All 9 active songs are tracking well..."` Tells the user what's actually next.
+3. **Top-level Start Here panel** (new `#rhStartHere` div) renders when there are weak songs. Lists up to 5 weak songs from `GLStore.getNowFocus()` with: title, readiness % chip, 🎤 Practice solo button (calls `openRehearsalMode(title)`), and either ✚ Add to plan (calls `_rhPickSong(title)`) or "✓ In plan" indicator. Replaces the old "Focus songs not in this plan" prompt that was buried inside the plan card.
+4. **Per-row 🎤 Practice solo** on every single-song plan row, tied to `openRehearsalMode(title)`. Multi-song / linked rows skipped (ambiguous title).
+5. **Removed** the redundant `_missingFocus` block inside the plan card.
+
+**State refactor side-effect:** `hasSavedPlan`, `fbPlan`, `savedAgenda` checks moved up from inside the plan-card render to right after `_gigDays` so the contextual CTA can use them. The duplicate computation that lived on old line 482–492 was removed; a one-line breadcrumb comment marks where it used to be.
+
+**What didn't change:** Plan rendering logic (block types, drag, time chips, assign chips, note chips); snapshot/version rendering; Plan Mode planning controls; rehearsal session start logic; `GLStore.getNowFocus()` (SYSTEM LOCK).
+
+**Verification:** `node --check rehearsal.js` passes.
+
+**Next:**
+1. Drew runs the Rehearsal surface in `02_GrooveLinx/notes/uat_wizards.html` against the redesign (sanity-check no regression on plan editing / drag / snapshot flows).
+2. Phase 1.9 — Drew + bandmate UAT on Harmony Painkiller (still pending from prior session).
+
+---
 
 ## Session 2026-04-30 (PM, very late) — Multi-Surface UAT Wizard system
 
