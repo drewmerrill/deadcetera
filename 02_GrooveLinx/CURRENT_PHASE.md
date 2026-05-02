@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-05-02 — **GLAudioSession + Stems lens unification Phase A shipped (build `20260502-184243`).** New `js/core/gl-audio-session.js` is the single source of truth for stem track ordering + LALAL/Demucs merging. Stems lens now renders one canonical mixer where LALAL lead+backing **replace** the Demucs vocals row (no duplication). Compact row layout (~40% less vertical space) + ⛶ full-screen overlay toggle. Banner reworded to "Split Vocals" and only shows when Demucs vocals exist AND LALAL hasn't run. Foundation for Phase B: future record-mode + Harmony Lab consolidation read from the same `mergeTracks(demucs, lalalSplit)` output._
+_Updated: 2026-05-02 — **Stems async start/check pipeline shipped (build `20260502-213153`, commit `523124e0`).** Replaces the synchronous `/stems/separate` route (was hitting Modal's ~150s web-endpoint cap with 524s on `htdemucs_ft` + `mdx_extra`) with a spawn → poll architecture mirroring LALAL split. Worker `/stems/start` returns Modal `call_id` immediately; client polls `/stems/check` every 5s. Stems lens UI now renders a live progress bar with stage labels. **Manual deploys still pending: `modal deploy services/stem-separation/separator.py` + Cloudflare worker dashboard redeploy.** Earlier today: GLAudioSession Phase A unification (`20260502-184243`), worker streaming heartbeat (`20260502-210652`), service-worker network-first for `index.html` (`20260502-211020`)._
 
 ---
 

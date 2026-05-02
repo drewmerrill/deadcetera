@@ -2,7 +2,57 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-02 — **GLAudioSession + Stems lens unification Phase A shipped (build `20260502-184243`).** New shared model `js/core/gl-audio-session.js` consolidates stem ordering + LALAL/Demucs merge logic. Stems lens reads from `GLAudioSession.mergeTracks(demucs, lalalSplit)` so LALAL lead/backing replace the Demucs vocals row without duplication. Compact row density + ⛶ full-screen overlay (class-toggle, no DOM reparent — preserves WebAudio MediaElementSource bindings). Phase B (recording integration + Harmony Lab consolidation) deferred. Phase 1 Harmony Painkiller still code-complete; multi-surface UAT wizards still ready. Next: Drew + bandmate UAT on Phase 1, plus the new unified Stems lens._
+_Last updated: 2026-05-02 — **Stems async start/check pipeline shipped (build `20260502-213153`, commit `523124e0`).** Replaces the synchronous `/stems/separate` flow that hit Modal's ~150s web-endpoint cap with a spawn → poll architecture (same pattern LALAL split already uses). Worker `/stems/start` returns Modal `call_id` immediately; client polls `/stems/check` every 5s with a live progress bar in the stems lens. Unblocks `htdemucs_ft` and `mdx_extra` on long songs (Bird Song bake-off). **Manual deploys still required: `modal deploy services/stem-separation/separator.py` + Cloudflare worker dashboard redeploy.** Earlier today: Phase A unification (`20260502-184243`), worker streaming heartbeat (`20260502-210652`), service-worker network-first for index.html (`20260502-211020`)._
+
+## Session 2026-05-02 (PM late) — Stems async start/check (kills modal_error_524)
+
+**Build:** `20260502-213153` (commit `523124e0`).
+
+**Why:** Even with the worker streaming heartbeat (commit `69e52855`) keeping Cloudflare's eyeball connection alive, Bird Song with `htdemucs_ft` and `mdx_extra` was returning `modal_error_524`. Modal logs showed the GPU function "Succeeded" at 2m 24s and 2m 36s — the function ran fine inside Modal's `timeout=900`, but Modal's web layer caps synchronous responses at ~150s and 524'd everything past that cliff. Heartbeat fixed the worker→client hop; nothing the worker could do fixed the Modal→worker hop on a synchronous call.
+
+**Fix:** Async start/check, mirroring the existing LALAL pattern.
+
+1. **`services/stem-separation/separator.py`** (after the synchronous `separate()` endpoint at line ~339):
+   - `separate_start` (`@modal.fastapi_endpoint POST`): validates token, calls `separate_stems.spawn(...)` (non-blocking), returns `{ success, call_id, song_id, model }` in <2s.
+   - `separate_check` (`@modal.fastapi_endpoint POST`): `modal.FunctionCall.from_id(call_id).get(timeout=0)`. Catches `TimeoutError` → returns `{ status: 'processing' }`. On result → returns the GPU function's dict with `status='done'` tacked on. Catches `modal.exception.OutputExpiredError` for stale call_ids.
+   - The synchronous `separate()` endpoint is left in place but no longer reachable from the client (worker no longer routes to it). Safe to remove in a later cleanup pass.
+
+2. **`worker.js`:**
+   - New `/stems/start` and `/stems/check` routes (lines ~84-94). Old `/stems/separate` route removed.
+   - `handleStemsStart`: source resolution factored into `_stemsResolveSource` helper (R2 stages base64 / Drive fileId proxy through `/drive-stream` / pass-through public URL). Spawns Modal via `STEMS_MODAL_START_URL` (or falls back to deriving from `STEMS_MODAL_URL` by regex-swapping `-separate` → `-separate-start`).
+   - `handleStemsCheck`: thin proxy that forwards `{call_id, token}` to `STEMS_MODAL_CHECK_URL` (same fallback regex). Surfaces Modal's response verbatim.
+   - The 6-min `ReadableStream` heartbeat in the legacy `handleStemsSeparate` is gone — no longer needed since both endpoints return in well under Modal's 150s cap.
+
+3. **`js/core/gl-stems.js` — `separate(title, opts)`:**
+   - Rewritten as start → poll loop matching `splitLeadBacking()`. Posts to `/stems/start`, gets `call_id`, then polls `/stems/check` every 5s up to 8min.
+   - New `opts.onProgress(stage, percent)` callback. Stages: `'starting'` (0%), `'processing'` (synthesized percent based on elapsed/typical run length: 90s for `htdemucs_6s`, 180s for the slow models, capped at 95%), `'finalizing'` (100%).
+   - Source-pointer save behavior unchanged (`sourceUrl` / `driveFileId` / `firebaseAudioRef` persist into the stems record so re-separate can default-fill).
+
+4. **`js/features/song-detail.js` — `_sdRunStemSeparationFromTake`:**
+   - "Separating stems…" panel replaced with stage-aware UI: gradient progress bar (#22d3ee → #a78bfa), live stage messages ("Spinning up the GPU…" / "Separating stems…" / "Finalizing & uploading…"), model badge below source label.
+   - `onProgress` wired into the existing `panel.innerHTML` block, no other call-site changes.
+
+5. **Build bumped** atomically across `version.json`, `index.html` (97 hits), `service-worker.js` `CACHE_NAME`. `index-dev.html` is empty (0 lines) so sed correctly skipped it.
+
+**Verification:** `node --check` on `worker.js` and `gl-stems.js`, `python3 ast.parse` on `separator.py` — all clean.
+
+**Manual deploy steps (Drew):**
+1. `modal deploy services/stem-separation/separator.py` — publishes the two new endpoints.
+2. Redeploy worker via Cloudflare dashboard (`Workers & Pages` → `deadcetera-proxy` → Deploy). The git push only auto-deploys the SPA via Pages, never the worker.
+3. *Optional* but recommended: add `STEMS_MODAL_START_URL` and `STEMS_MODAL_CHECK_URL` secrets to the worker pointing at the new published Modal URLs. Without them the worker tries to derive the URLs by regex from `STEMS_MODAL_URL` (swap trailing `-separate` for `-separate-start` / `-separate-check`); fragile if Modal's URL format changes.
+
+**Smoke test plan:**
+- `htdemucs_6s` on a known-good warm song (~30-90s expected) — verifies the start/check round-trip.
+- `htdemucs_ft` on Bird Song (~150-180s expected) — verifies we cleared the 524 cliff.
+- `mdx_extra` on Bird Song (~120-180s expected) — same.
+
+**Next:**
+1. Drew runs the deploys above, then tests the bake-off models on Bird Song.
+2. Phase 1.9 — band UAT (still pending).
+3. OAuth verification submission package (still pending).
+4. Phase 2: Dead Guitar Split (Jerry/Bob via stereo pan) — for the "Bobby and Jerry combined on one track" problem from earlier in the session.
+
+---
 
 ## Session 2026-05-02 (PM) — Phase A: GLAudioSession + unified Stems lens
 
