@@ -309,34 +309,9 @@ def separate_stems(
     }
 
 
-@app.function(
-    image=image,
-    timeout=900,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def separate(item: dict):
-    """HTTP entry point. Validates shared-secret token, then dispatches to GPU."""
-    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected_token:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-
-    token = item.get("token", "")
-    if token != expected_token:
-        return {"success": False, "error": "unauthorized"}
-
-    source_url = item.get("source_url", "")
-    song_id = item.get("song_id", "")
-    model_name = item.get("model_name", "htdemucs_6s")
-    if not source_url or not song_id:
-        return {"success": False, "error": "missing source_url or song_id"}
-
-    # .remote() runs on the GPU function above. Synchronous wait — caller
-    # (Cloudflare Worker) handles the timeout and surfaces progress to client.
-    try:
-        return separate_stems.remote(source_url, song_id, model_name)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# Legacy synchronous /separate endpoint removed 2026-05-02. Modal's web layer
+# caps synchronous responses at ~150s; htdemucs_ft and mdx_extra routinely
+# exceed that. The async start/check pair below is the only path now.
 
 
 # ─── Async stems flow (start/check) ──────────────────────────────────────────
@@ -1114,32 +1089,11 @@ def split_vocals(source_url: str, song_id: str) -> dict:
     }
 
 
-@app.function(
-    image=vocals_image,
-    timeout=900,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def split_vocals_http(item: dict):
-    """HTTP entry: validate token, dispatch to GPU."""
-    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected_token:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-    if item.get("token", "") != expected_token:
-        return {"success": False, "error": "unauthorized"}
-
-    # Accept legacy `vocals_url` body field as alias for `source_url`
-    # so any in-flight callers don't break — but document `source_url`
-    # going forward.
-    source_url = item.get("source_url", item.get("vocals_url", ""))
-    song_id = item.get("song_id", "")
-    if not source_url or not song_id:
-        return {"success": False, "error": "missing source_url or song_id"}
-
-    try:
-        return split_vocals.remote(source_url, song_id)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# split_vocals_http endpoint removed 2026-05-02 to fit Modal's 8 web-endpoint
+# limit. Phase 0 vocal bake-off (MelBand-Roformer Karaoke vs Demucs) closed
+# 2026-04-29 with Demucs winning 5/5 — split_vocals_http had no remaining
+# UI. The split_vocals GPU function above is preserved as research code
+# but no longer reachable via HTTP.
 
 
 @app.function(
@@ -1286,29 +1240,11 @@ def sepacap_split(backing_url: str, song_id: str) -> dict:
     }
 
 
-@app.function(
-    image=vocals_image,
-    timeout=900,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def sepacap_http(item: dict):
-    """HTTP entry: validate token, dispatch to GPU."""
-    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected_token:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-    if item.get("token", "") != expected_token:
-        return {"success": False, "error": "unauthorized"}
-
-    backing_url = item.get("backing_url", "")
-    song_id = item.get("song_id", "")
-    if not backing_url or not song_id:
-        return {"success": False, "error": "missing backing_url or song_id"}
-
-    try:
-        return sepacap_split.remote(backing_url, song_id)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# sepacap_http endpoint removed 2026-05-02 to fit Modal's 8 web-endpoint
+# limit. SepACap was archived from Phase 1 promotion per
+# 02_GrooveLinx/specs/stems_intelligence_plan.md — OOMs on full-length rock
+# content, training corpus (JaCappella) too narrow for cross-genre. The
+# sepacap_split GPU function above is preserved as research code.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1550,35 +1486,12 @@ def lalal_lead_back(source_url: str, song_id: str, lalal_key: str, path_prefix: 
     }
 
 
-@app.function(
-    image=image,
-    timeout=1800,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def lalal_split_http(item: dict):
-    """HTTP entry: validate token, dispatch to lalal_lead_back.
-
-    Body: { source_url, song_id, lalal_key, token, path_prefix? }
-    Worker proxy reads LALAL_API_KEY from its own env and passes through.
-    """
-    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected_token:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-    if item.get("token", "") != expected_token:
-        return {"success": False, "error": "unauthorized"}
-
-    source_url = item.get("source_url", "")
-    song_id = item.get("song_id", "")
-    lalal_key = item.get("lalal_key", "")
-    path_prefix = item.get("path_prefix") or "lalal"
-    if not source_url or not song_id or not lalal_key:
-        return {"success": False, "error": "missing source_url, song_id, or lalal_key"}
-
-    try:
-        return lalal_lead_back.remote(source_url, song_id, lalal_key, path_prefix)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# lalal_split_http endpoint removed 2026-05-02 to fit Modal's 8 web-endpoint
+# limit. The synchronous LALAL flow exceeded Cloudflare's 100s subrequest
+# TTFB and Modal's 150s web cap on long uploads; the lalal_start_http +
+# lalal_check_http async pair below is the only remaining LALAL HTTP path.
+# lalal_lead_back GPU function preserved (used by lalal_finish_task during
+# the async flow's stage-2 download).
 
 
 @app.function(
