@@ -2894,7 +2894,17 @@ window.GLCalendarSync = (function() {
     try {
       // Check for existing event to prevent duplicates
       if (block.googleEventId) {
-        return await updateConflictInGoogle(block, opts);
+        var _upd = await updateConflictInGoogle(block, opts);
+        if (_upd && _upd.status === 'orphan') {
+          // Self-heal: stored event ID is stale (deleted from Google directly).
+          // Clear the local ID and fall through to the POST path to create a
+          // fresh event. Phase 1.5 will pick up the new googleEventId from
+          // the success response and persist it.
+          console.log('[CalSync] syncConflictToGoogle: orphan googleEventId for block', block.blockId, '— creating fresh event');
+          block.googleEventId = null;
+        } else {
+          return _upd;
+        }
       }
       // BUG FIX: callers (e.g., _calSyncConflictToGoogle, _calSyncExistingConflict)
       // sometimes invoke this without opts.calendarId. The previous code then
@@ -2967,6 +2977,13 @@ window.GLCalendarSync = (function() {
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
         body: JSON.stringify(body)
       });
+      if (res.status === 404 || res.status === 410) {
+        // The googleEventId points to an event that no longer exists on the
+        // band calendar (deleted in Google directly). Signal orphan so the
+        // caller can clear googleEventId and create a fresh event instead of
+        // retrying the same dead ID every sync cycle.
+        return { success: false, status: 'orphan', error: 'Event no longer exists on band calendar (' + res.status + ')' };
+      }
       if (!res.ok) return { success: false, error: 'Update failed: ' + res.status, status: res.status };
       return { success: true, googleEventId: block.googleEventId };
     } catch (err) {
