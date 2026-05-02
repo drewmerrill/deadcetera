@@ -1968,7 +1968,12 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
       '<div class="sd-card">' +
       '<div class="sd-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
         '<span>🎚 Stems ' + badge + '</span>' +
-        '<button id="sdStemsExpand" onclick="_sdStemsToggleFullscreen()" title="Expand to full screen" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;line-height:1">⛶</button>' +
+        // Inline SVG (4-corner brackets) — the ⛶ unicode glyph rendered as
+        // tofu in the user's system font. SVG + text label is bulletproof.
+        '<button id="sdStemsExpand" onclick="_sdStemsToggleFullscreen()" title="Expand to full screen" style="display:inline-flex;align-items:center;gap:5px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.3);color:#a5b4fc;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700;line-height:1">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5"/></svg>' +
+          '<span class="sd-stems-expand-label">Full screen</span>' +
+        '</button>' +
       '</div>' +
       '<div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap">' +
         '<button id="sdStemsPlay" onclick="_sdStemsToggle()" title="Play/Pause (Space)" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:9px 14px;border-radius:8px;font-weight:700;cursor:pointer;min-width:84px">▶ Play</button>' +
@@ -2027,7 +2032,8 @@ window._sdStemsToggleFullscreen = function() {
     document.body.classList.toggle('sd-stems-overlay-open', on);
     var btn = (_sdContainer || document).querySelector('#sdStemsExpand');
     if (btn) {
-        btn.textContent = on ? '⤓' : '⛶';
+        var label = btn.querySelector('.sd-stems-expand-label');
+        if (label) label.textContent = on ? 'Exit full screen' : 'Full screen';
         btn.title = on ? 'Exit full screen' : 'Expand to full screen';
     }
 };
