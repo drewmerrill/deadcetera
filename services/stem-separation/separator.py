@@ -1117,6 +1117,214 @@ def lalal_finish_task(task_id: str, song_id: str, lalal_key: str) -> dict:
     }
 
 
+# ─── Async LALAL flow (start/check) ──────────────────────────────────────────
+# Splits lalal_lead_back into two short-running stages so each call returns in
+# under Modal's 150s web-endpoint cap. Required because LALAL processing
+# routinely takes 30-125s, exceeding both Cloudflare's 100s subrequest TTFB
+# and Modal's 150s web cap when called synchronously.
+#
+# Stage 1 (lalal_start_*): fetch → transcode → upload → submit split. Returns
+# the LALAL task_id. Typically ~10-30s.
+# Stage 2 (lalal_check_*): one LALAL /check/ call. If processing, returns
+# status+progress. If done, downloads tracks + rehosts to R2 (~10-30s). Returns
+# stems dict matching the legacy lalal_lead_back response.
+
+@app.function(
+    image=image,
+    timeout=600,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def lalal_start(source_url: str, song_id: str, lalal_key: str) -> dict:
+    """Stage 1: fetch source, transcode, upload to LALAL, submit split.
+    Returns task_id for polling. Should complete in 10-30s for typical sources.
+    """
+    import requests as _r
+    started = time.time()
+    base = "https://www.lalal.ai"
+    headers = {"X-License-Key": lalal_key}
+
+    print(f"[LALAL-start/{song_id}] Fetching source bytes...")
+    raw = _fetch_audio_bytes(source_url, log_prefix=f"[LALAL-start/{song_id}]")
+    audio_bytes = _transcode_to_mp3(raw)
+    print(f"[LALAL-start/{song_id}] Source mp3: {len(audio_bytes) / 1024 / 1024:.1f} MB")
+
+    print(f"[LALAL-start/{song_id}] Uploading to LALAL...")
+    up_resp = _r.post(
+        f"{base}/api/v1/upload/",
+        headers={**headers, "Content-Type": "audio/mpeg",
+                 "Content-Disposition": f"attachment; filename={song_id}.mp3"},
+        data=audio_bytes, timeout=300,
+    )
+    if up_resp.status_code != 200:
+        return {"success": False, "error": f"LALAL upload {up_resp.status_code}: {up_resp.text[:300]}"}
+    upload = up_resp.json()
+    src_id = upload.get("id")
+    if not src_id:
+        return {"success": False, "error": f"LALAL upload no id: {upload}"}
+    duration = upload.get("duration")
+    print(f"[LALAL-start/{song_id}] Upload OK: source_id={src_id}, duration={duration}s")
+
+    print(f"[LALAL-start/{song_id}] Submitting lead_back split...")
+    sp_resp = _r.post(
+        f"{base}/api/v1/split/stem_separator/",
+        headers={**headers, "Content-Type": "application/json"},
+        json={
+            "source_id": src_id,
+            "presets": {
+                "splitter": "auto", "stem": "vocals",
+                "multivocal": "lead_back", "dereverb_enabled": False,
+                "extraction_level": "deep_extraction",
+            },
+        },
+        timeout=60,
+    )
+    if sp_resp.status_code != 200:
+        return {"success": False, "error": f"LALAL split {sp_resp.status_code}: {sp_resp.text[:300]}"}
+    task = sp_resp.json()
+    task_id = task.get("task_id")
+    print(f"[LALAL-start/{song_id}] Split submitted: task_id={task_id}")
+
+    return {
+        "success": True,
+        "song_id": song_id,
+        "lalal_task_id": task_id,
+        "source_id": src_id,
+        "duration_sec": duration,
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=600,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def lalal_check(task_id: str, song_id: str, lalal_key: str, path_prefix: str = "lalal") -> dict:
+    """Stage 2: poll LALAL once. If still processing, return status/progress
+    so the caller polls again. If done, download tracks + rehost to R2 and
+    return the same shape as legacy lalal_lead_back.
+    """
+    import requests as _r
+    started = time.time()
+    base = "https://www.lalal.ai"
+    headers = {"X-License-Key": lalal_key}
+
+    ck = _r.post(
+        f"{base}/api/v1/check/",
+        headers={**headers, "Content-Type": "application/json"},
+        json={"task_ids": [task_id]},
+        timeout=30,
+    )
+    if ck.status_code != 200:
+        return {"success": False, "error": f"LALAL check {ck.status_code}: {ck.text[:200]}"}
+    body = ck.json()
+    block = body.get("result", {}).get(task_id, {})
+    status = block.get("status")
+
+    if status == "progress":
+        return {
+            "success": True,
+            "status": "processing",
+            "progress": block.get("progress", 0),
+            "lalal_task_id": task_id,
+        }
+    if status in ("error", "server_error", "cancelled"):
+        return {"success": False, "error": f"LALAL {status}: {block.get('error', block)}"}
+    if status != "success":
+        return {
+            "success": True,
+            "status": "processing",
+            "progress": block.get("progress", 0),
+            "lalal_task_id": task_id,
+        }
+
+    # status == 'success' — download + rehost to R2
+    tracks = block.get("result", {}).get("tracks", [])
+    print(f"[LALAL-check/{song_id}] success — {len(tracks)} tracks: {[t.get('label') for t in tracks]}")
+    out = {}
+    for t in tracks:
+        label = t.get("label", "unknown")
+        track_url = t.get("url")
+        if not track_url:
+            continue
+        stem_name = {
+            "vocals@0": "lead", "vocals@1": "backing",
+            "no_vocals": "instrumental", "mix_no_lead": "mix_no_lead",
+            "vocals": "vocals",
+        }.get(label, label.replace("@", "_"))
+        print(f"[LALAL-check/{song_id}] downloading {label} ({stem_name})...")
+        dl = _r.get(track_url, timeout=300)
+        if dl.status_code != 200:
+            continue
+        b = dl.content
+        ext, ctype = "mp3", "audio/mpeg"
+        if b[:4] == b"RIFF":  ext, ctype = "wav", "audio/wav"
+        elif b[:4] == b"fLaC": ext, ctype = "flac", "audio/flac"
+        key = f"stems/{song_id}/{path_prefix}/{stem_name}.{ext}"
+        out[stem_name] = _r2_upload_bytes(b, key, ctype)
+        print(f"  ✓ {stem_name} → {out[stem_name]}")
+
+    return {
+        "success": True,
+        "status": "done",
+        "song_id": song_id,
+        "tool": "lalal_async",
+        "stems": out,
+        "lalal_task_id": task_id,
+        "duration_sec": block.get("result", {}).get("duration"),
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=600,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def lalal_start_http(item: dict):
+    """HTTP entry for lalal_start. Body: { source_url, song_id, lalal_key, token }."""
+    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected_token:
+        return {"success": False, "error": "server misconfigured: no shared secret"}
+    if item.get("token", "") != expected_token:
+        return {"success": False, "error": "unauthorized"}
+    source_url = item.get("source_url", "")
+    song_id = item.get("song_id", "")
+    lalal_key = item.get("lalal_key", "")
+    if not source_url or not song_id or not lalal_key:
+        return {"success": False, "error": "missing source_url, song_id, or lalal_key"}
+    try:
+        return lalal_start.remote(source_url, song_id, lalal_key)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.function(
+    image=image,
+    timeout=600,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def lalal_check_http(item: dict):
+    """HTTP entry for lalal_check. Body: { task_id, song_id, lalal_key, token, path_prefix? }."""
+    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected_token:
+        return {"success": False, "error": "server misconfigured: no shared secret"}
+    if item.get("token", "") != expected_token:
+        return {"success": False, "error": "unauthorized"}
+    task_id = item.get("task_id", "")
+    song_id = item.get("song_id", "")
+    lalal_key = item.get("lalal_key", "")
+    path_prefix = item.get("path_prefix") or "lalal"
+    if not task_id or not song_id or not lalal_key:
+        return {"success": False, "error": "missing task_id, song_id, or lalal_key"}
+    try:
+        return lalal_check.remote(task_id, song_id, lalal_key, path_prefix)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 @app.function(
     image=image,
     timeout=1800,

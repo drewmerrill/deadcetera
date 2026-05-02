@@ -109,42 +109,85 @@ window.GLStems = (function () {
 
   async function hasLeadBackingSplit(title) { return !!(await getLeadBackingSplit(title)); }
 
-  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?, sourceLabel? }
-  // Mirrors `separate(...)` arg shape so callers can swap sources easily.
+  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?, sourceLabel?,
+  //         onProgress? }
+  // onProgress(stage, percent) — stage is 'starting' | 'processing' | 'finalizing'.
+  //
+  // Async flow: POST /lalal/start (upload + submit, ~10-30s) → returns task_id.
+  // Then poll POST /lalal/check every 5s until status='done'. Avoids
+  // Cloudflare's 100s subrequest TTFB and Modal's 150s web cap that the
+  // legacy synchronous /lalal/split flow hit.
   async function splitLeadBacking(title, opts) {
     if (!title) throw new Error('title required');
     opts = opts || {};
-    var body = { songId: _stemsKey(title) };
-    if (opts.sourceUrl) {
-      body.sourceUrl = opts.sourceUrl;
-    } else if (opts.driveFileId) {
-      body.driveFileId = opts.driveFileId;
-      if (opts.accessToken) body.accessToken = opts.accessToken;
-    } else if (opts.audioDataUrl) {
-      body.audioBase64DataUrl = opts.audioDataUrl;
-    } else {
-      throw new Error('sourceUrl, driveFileId, or audioDataUrl required');
-    }
+    var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : function() {};
+    var startedAt = Date.now();
+    var songId = _stemsKey(title);
 
-    var res = await fetch(_workerBase() + '/lalal/split', {
+    // Stage 1: kick off LALAL job
+    onProgress('starting', 0);
+    var startBody = { songId: songId };
+    if (opts.sourceUrl) startBody.sourceUrl = opts.sourceUrl;
+    else if (opts.driveFileId) {
+      startBody.driveFileId = opts.driveFileId;
+      if (opts.accessToken) startBody.accessToken = opts.accessToken;
+    } else if (opts.audioDataUrl) startBody.audioBase64DataUrl = opts.audioDataUrl;
+    else throw new Error('sourceUrl, driveFileId, or audioDataUrl required');
+
+    var startRes = await fetch(_workerBase() + '/lalal/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(startBody)
     });
-    var data = null;
-    try { data = await res.json(); } catch (e) {}
-    if (!data) throw new Error('Bad worker response (' + res.status + ')');
-    if (!data.success) throw new Error(data.error || 'lalal_split_failed');
+    var startData = null;
+    try { startData = await startRes.json(); } catch (e) {}
+    if (!startData) throw new Error('Bad start response (' + startRes.status + ')');
+    if (!startData.success) throw new Error(startData.error || 'lalal_start_failed');
+    var taskId = startData.lalal_task_id;
+    if (!taskId) throw new Error('No lalal_task_id from start');
 
-    var record = {
-      stems: data.stems,         // { lead, backing, instrumental, mix_no_lead }
-      lalal_task_id: data.lalal_task_id,
-      separatedAt: new Date().toISOString(),
-      sourceLabel: opts.sourceLabel || (opts.sourceUrl ? 'URL' : 'Drive'),
-      durationSec: data.duration_sec,
-      elapsedSec: data.elapsed_sec,
-      tool: 'lalal_lead_back'
-    };
+    // Stage 2: poll /lalal/check until done. 5s interval, 25 min cap (matches
+    // Modal's internal LALAL deadline).
+    onProgress('processing', 0);
+    var pollStart = Date.now();
+    var maxPollMs = 25 * 60 * 1000;
+    var record = null;
+    while (true) {
+      if (Date.now() - pollStart > maxPollMs) {
+        throw new Error('LALAL timed out (>25min on client)');
+      }
+      await new Promise(function(r) { setTimeout(r, 5000); });
+      var checkRes = await fetch(_workerBase() + '/lalal/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId: songId, taskId: taskId })
+      });
+      var checkData = null;
+      try { checkData = await checkRes.json(); } catch (e) {}
+      if (!checkData) throw new Error('Bad check response (' + checkRes.status + ')');
+      if (!checkData.success) throw new Error(checkData.error || 'lalal_check_failed');
+
+      if (checkData.status === 'processing') {
+        onProgress('processing', Number(checkData.progress) || 0);
+        continue;
+      }
+      if (checkData.status === 'done') {
+        onProgress('finalizing', 100);
+        record = {
+          stems: checkData.stems,
+          lalal_task_id: checkData.lalal_task_id,
+          separatedAt: new Date().toISOString(),
+          sourceLabel: opts.sourceLabel || (opts.sourceUrl ? 'URL' : 'Drive'),
+          durationSec: checkData.duration_sec,
+          elapsedSec: (Date.now() - startedAt) / 1000,
+          tool: 'lalal_lead_back'
+        };
+        break;
+      }
+      // Unknown status — keep polling, but don't lose track of it
+      console.warn('[GLStems] Unknown LALAL check status:', checkData.status);
+    }
+
     if (typeof saveBandDataToDrive === 'function') {
       try { await saveBandDataToDrive(title, 'lalal_split', record); } catch (e) {}
     }

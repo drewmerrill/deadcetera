@@ -868,12 +868,26 @@ window.hlGenerateFromStems = async function hlGenerateFromStems() {
       return;
     }
 
-    setStatus('Splitting vocals into lead + backing via LALAL…', 35,
-      'Sending the vocals stem to LALAL.AI. This usually takes 30–60s.');
+    setStatus('Uploading vocals to LALAL…', 25,
+      'Stage 1: uploading + submitting the split job (~10-30s).');
 
     var split = await GLStems.splitLeadBacking(song, {
       sourceUrl: vocalsUrl,
-      sourceLabel: 'Demucs vocals stem'
+      sourceLabel: 'Demucs vocals stem',
+      onProgress: function(stage, percent) {
+        if (stage === 'starting') {
+          setStatus('Uploading vocals to LALAL…', 25,
+            'Stage 1: uploading + submitting the split job (~10-30s).');
+        } else if (stage === 'processing') {
+          // LALAL progress 0-100 maps to overall 30-75
+          var overall = 30 + Math.min(45, Math.max(0, Math.round(percent * 0.45)));
+          setStatus('Splitting vocals into lead + backing… ' + percent + '%', overall,
+            'Stage 2: LALAL.AI is processing. Polling every 5s.');
+        } else if (stage === 'finalizing') {
+          setStatus('Downloading + saving stems…', 78,
+            'Stage 3: re-hosting lead + backing audio.');
+        }
+      }
     });
 
     if (!split || !split.stems || !split.stems.lead) {

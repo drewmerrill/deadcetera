@@ -88,6 +88,14 @@ export default {
     // forwards to Modal lalal_split_http with shared-secret + LALAL_API_KEY.
     if (path === '/lalal/split' && request.method === 'POST')
       return handleLalalSplit(request, env);
+    // Async LALAL flow — start uploads + submits split (~10-30s),
+    // check polls one tick (instant or ~10-30s if downloading stems).
+    // Both stay well under Cloudflare's 100s subrequest TTFB and Modal's
+    // 150s web-endpoint cap.
+    if (path === '/lalal/start' && request.method === 'POST')
+      return handleLalalStart(request, env);
+    if (path === '/lalal/check' && request.method === 'POST')
+      return handleLalalCheck(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -1782,6 +1790,123 @@ async function handleLalalSplit(request, env) {
     status: 200,
     headers: { 'Content-Type': 'application/json' }
   }));
+}
+
+// POST /lalal/start
+// Body: { songId, sourceUrl } | { songId, driveFileId, accessToken } | { songId, audioBase64DataUrl }
+// Returns { success, lalal_task_id, source_id, duration_sec, ... }
+// Does the upload + split-submit (10-30s). Client then polls /lalal/check.
+async function handleLalalStart(request, env) {
+  if (!env.LALAL_START_MODAL_URL && !env.LALAL_MODAL_URL) {
+    return cors(jsonError('lalal_not_configured: LALAL_START_MODAL_URL secret required on worker', 500));
+  }
+  if (!env.LALAL_API_KEY || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('lalal_not_configured: LALAL_API_KEY + STEMS_SHARED_SECRET secrets required', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const songId = String(body.songId || '').trim();
+  let sourceUrl = String(body.sourceUrl || '').trim();
+  const driveFileId = String(body.driveFileId || '').trim();
+  const accessToken = String(body.accessToken || '').trim();
+  const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
+  if (!songId) return cors(jsonError('missing songId', 400));
+  if (!sourceUrl && !audioDataUrl && !(driveFileId && accessToken)) {
+    return cors(jsonError('missing sourceUrl, { driveFileId, accessToken }, or audioBase64DataUrl', 400));
+  }
+
+  // Stage base64 to R2 if needed (same as handleLalalSplit)
+  if (audioDataUrl) {
+    if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
+      return cors(jsonError('staging_not_configured: STEMS_BUCKET + STEMS_R2_PUBLIC_BASE required', 500));
+    }
+    const m = audioDataUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) return cors(jsonError('invalid audioBase64DataUrl', 400));
+    const mime = m[1]; const b64 = m[2];
+    let bin;
+    try { bin = atob(b64); } catch (e) { return cors(jsonError('invalid base64', 400)); }
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const ext = (mime.split('/')[1] || 'bin').replace(/[^a-z0-9]+/gi, '').slice(0, 8) || 'bin';
+    const key = '_staging/' + songId + '.' + ext;
+    try { await env.STEMS_BUCKET.put(key, bytes, { httpMetadata: { contentType: mime } }); }
+    catch (e) { return cors(jsonError('r2_stage_failed: ' + (e && e.message), 502)); }
+    sourceUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
+  }
+  if (!sourceUrl) {
+    const origin = new URL(request.url).origin;
+    sourceUrl = origin + '/drive-stream?fileId=' + encodeURIComponent(driveFileId)
+              + '&token=' + encodeURIComponent(accessToken);
+  }
+
+  // Modal lalal_start_http: ~10-30s (upload + submit), well within limits.
+  const startUrl = env.LALAL_START_MODAL_URL || env.LALAL_MODAL_URL.replace(/lalal[_-]split[_-]http/, 'lalal-start-http');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90000); // 90s safety
+  try {
+    const modalRes = await fetch(startUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_url: sourceUrl, song_id: songId,
+        lalal_key: env.LALAL_API_KEY, token: env.STEMS_SHARED_SECRET
+      }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    return cors(jsonError(e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message)), 504));
+  }
+}
+
+// POST /lalal/check
+// Body: { songId, taskId, pathPrefix? }
+// Returns { success, status: 'processing'|'done', stems?, progress?, ... }
+// One LALAL check tick. If done, downloads + R2 rehosts (~10-30s).
+async function handleLalalCheck(request, env) {
+  if (!env.LALAL_CHECK_MODAL_URL && !env.LALAL_MODAL_URL) {
+    return cors(jsonError('lalal_not_configured: LALAL_CHECK_MODAL_URL secret required', 500));
+  }
+  if (!env.LALAL_API_KEY || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('lalal_not_configured: LALAL_API_KEY + STEMS_SHARED_SECRET required', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const songId = String(body.songId || '').trim();
+  const taskId = String(body.taskId || '').trim();
+  const pathPrefix = String(body.pathPrefix || 'lalal').trim();
+  if (!songId || !taskId) return cors(jsonError('missing songId or taskId', 400));
+
+  const checkUrl = env.LALAL_CHECK_MODAL_URL || env.LALAL_MODAL_URL.replace(/lalal[_-]split[_-]http/, 'lalal-check-http');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90000); // 90s safety
+  try {
+    const modalRes = await fetch(checkUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_id: taskId, song_id: songId,
+        lalal_key: env.LALAL_API_KEY, token: env.STEMS_SHARED_SECRET,
+        path_prefix: pathPrefix
+      }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    return cors(jsonError(e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message)), 504));
+  }
 }
 
 // ── FCM OAuth2 helpers ──
