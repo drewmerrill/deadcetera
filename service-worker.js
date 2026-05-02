@@ -4,7 +4,7 @@
 // banners still work on good connections but never hang at the gig).
 // Firebase / external APIs: bypassed — handled by page code.
 
-const CACHE_NAME = 'groovelinx-20260502-095817';
+const CACHE_NAME = 'groovelinx-20260502-100111';
 const BASE = self.registration.scope;
 
 // Cross-origin hosts we cache because the app depends on them to boot.
@@ -81,7 +81,15 @@ self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
             Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-        ).then(() => self.clients.claim())
+        ).then(() => self.clients.claim()).then(() => {
+            // Explicitly disable navigation preload: we don't use the preloaded
+            // response in our fetch handler, so leaving it enabled wastes a
+            // network request per navigation and logs a warning every time.
+            // Idempotent — fine if it was already disabled.
+            if (self.registration && self.registration.navigationPreload) {
+                return self.registration.navigationPreload.disable().catch(() => {});
+            }
+        })
     );
 });
 
