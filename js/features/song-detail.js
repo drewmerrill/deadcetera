@@ -2071,7 +2071,9 @@ window._sdStemsToggleFullscreen = function() {
 
 window._sdStemsToggle = function() {
     var btn = document.getElementById('sdStemsPlay');
-    var audios = (_sdContainer||document).querySelectorAll('.sd-stem-audio');
+    // Scope to `document` (not _sdContainer) so we still find audios after
+    // the wrap has been reparented to <body> for fullscreen mode.
+    var audios = document.querySelectorAll('.sd-stem-audio');
     if (!audios.length) return;
     // First play resumes the suspended AudioContext (iOS Safari requires
     // a user gesture). Safe to call repeatedly.
@@ -2101,7 +2103,7 @@ window._sdStemsRedo = async function(title) {
 
 // DAW-style transport — relative seek shared by buttons + arrow keys.
 window._sdStemsSeekBy = function(seconds) {
-    var audios = (_sdContainer || document).querySelectorAll('.sd-stem-audio');
+    var audios = document.querySelectorAll('.sd-stem-audio');
     if (!audios.length) return;
     var master = audios[0];
     if (!master.duration) return;
@@ -2211,7 +2213,11 @@ function _sdEnsureStemsKeyBound() {
 }
 
 function _sdInitStemsPlayer() {
-    var root = _sdContainer || document;
+    // Scope all queries to `document` (not _sdContainer) so per-stem mute /
+    // solo / pan / scrub click handlers keep working after the wrap is
+    // reparented to <body> for fullscreen mode. `.sd-stem-*` classes are
+    // unique to this lens so a document-wide query is unambiguous.
+    var root = document;
     var audios = root.querySelectorAll('.sd-stem-audio');
     var scrub = root.querySelector('#sdStemsScrub');
     var timeEl = root.querySelector('#sdStemsTime');
