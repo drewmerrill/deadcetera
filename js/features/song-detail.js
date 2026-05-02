@@ -1696,6 +1696,10 @@ async function _sdPopulateStemsLens(title) {
         document.body.classList.remove('sd-stems-overlay-open');
         orphan.remove();
     }
+    // Loop markers + active practice preset are per-song state — reset on
+    // every (re-)mount so they don't leak between songs.
+    _sdLoop = { inSec: null, outSec: null, enabled: false };
+    _sdActivePreset = null;
     // New audio elements coming — abandon any prior WebAudio routing. The
     // old MediaElementSource nodes are dangling but the elements themselves
     // are about to be removed from the DOM.
@@ -1932,8 +1936,11 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
         return '<div class="sd-stem-row" data-stem="' + t.id + '" data-source="' + t.source + '" data-color="' + t.color + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);margin-bottom:4px">' +
           '<span style="font-size:1.05em;width:1.2em;text-align:center;flex-shrink:0">' + t.icon + '</span>' +
           '<span style="font-size:0.78em;font-weight:700;color:' + t.color + ';width:54px;flex-shrink:0">' + t.label + '</span>' +
-          '<div class="sd-stem-activity-wrap" data-stem="' + t.id + '" title="Click to seek" style="position:relative;flex:1;min-width:80px;height:22px;cursor:pointer;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">' +
+          '<div class="sd-stem-activity-wrap" data-stem="' + t.id + '" title="Click to seek · Shift-click to set loop in/out" style="position:relative;flex:1;min-width:80px;height:22px;cursor:pointer;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">' +
             '<canvas class="sd-stem-activity" style="width:100%;height:100%;display:block"></canvas>' +
+            '<div class="sd-stem-loop-band" style="position:absolute;top:0;bottom:0;background:rgba(255,235,150,0.22);left:0;width:0;display:none;pointer-events:none"></div>' +
+            '<div class="sd-stem-loop-marker" data-side="in" style="position:absolute;top:0;bottom:0;width:2px;background:#10b981;left:0;display:none;pointer-events:none;box-shadow:0 0 4px rgba(16,185,129,0.6)"></div>' +
+            '<div class="sd-stem-loop-marker" data-side="out" style="position:absolute;top:0;bottom:0;width:2px;background:#ef4444;left:0;display:none;pointer-events:none;box-shadow:0 0 4px rgba(239,68,68,0.6)"></div>' +
             '<div class="sd-stem-playhead" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.7);left:0;pointer-events:none;box-shadow:0 0 4px rgba(255,255,255,0.5)"></div>' +
             '<div class="sd-stem-activity-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.62em;color:var(--text-dim);pointer-events:none">…</div>' +
           '</div>' +
@@ -1969,6 +1976,38 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
         '<button class="sd-stems-pitch" data-delta="1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-weight:700">+1</button>' +
         '<button id="sdStemsPitchReset" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.85em">reset</button>' +
     '</div>';
+    // ── Practice presets — one button per stem (skip "other" — usually
+    // bleed/SFX, not a practice target). Click mutes that stem so you can
+    // play/sing along; clicking the same preset again toggles back to
+    // all-on. Only one preset active at a time — switching presets resets
+    // mutes first.
+    var presetIcons = { drums: '🥁', bass: '🎸', guitar: '🎸', piano: '🎹', lead: '🎤', backing: '🎶', vocals: '🎤' };
+    var presetButtons = tracks
+        .filter(function(t){ return t.id !== 'other'; })
+        .map(function(t){
+            return '<button class="sd-stems-preset" data-stem="' + t.id + '" data-color="' + t.color + '" onclick="_sdStemsApplyPreset(\'' + t.id + '\')" title="Mute ' + t.label + ' — play/sing along" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;border:1px solid ' + t.color + '40;background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">' + (presetIcons[t.id] || '🎵') + ' ' + t.label + '</button>';
+        }).join('');
+    var presetsRow = '<div id="sdStemsPresetsRow" style="display:flex;align-items:center;gap:6px;margin-top:10px;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;flex-wrap:wrap;font-size:0.78em;color:var(--text-dim)">' +
+        '<span style="font-weight:700;color:var(--text-muted);white-space:nowrap">🎯 Practice (mute):</span>' +
+        presetButtons +
+        '<button onclick="_sdStemsResetPresets()" title="Unmute everything" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em">↺ Reset</button>' +
+    '</div>';
+
+    // ── Loop bar — A/B markers, on/off, count-in toggle.
+    var loopBar = '<div id="sdStemsLoopBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:0.74em;color:var(--text-dim);flex-wrap:wrap">' +
+        '<button id="sdStemsLoopToggle" onclick="_sdStemsToggleLoop()" title="Toggle loop (L)" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-weight:700">🔁 Loop</button>' +
+        '<span style="color:var(--text-muted);font-weight:700">In:</span>' +
+        '<span id="sdStemsLoopIn" style="font-variant-numeric:tabular-nums;color:#10b981;min-width:34px;font-weight:700">—</span>' +
+        '<span style="color:var(--text-muted);font-weight:700">Out:</span>' +
+        '<span id="sdStemsLoopOut" style="font-variant-numeric:tabular-nums;color:#ef4444;min-width:34px;font-weight:700">—</span>' +
+        '<button id="sdStemsLoopClear" onclick="_sdStemsClearLoop()" title="Clear markers (Esc)" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.92em">Clear</button>' +
+        '<span style="flex:1;min-width:8px"></span>' +
+        '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" title="Play 4 metronome ticks before audio starts">' +
+          '<input id="sdStemsCountIn" type="checkbox" ' + (window._sdCountInEnabled === false ? '' : 'checked') + ' onchange="window._sdCountInEnabled=this.checked"> Count-in' +
+        '</label>' +
+        '<span style="font-size:0.85em;opacity:0.7;font-style:italic;white-space:nowrap">Shift-click a strip to set in/out</span>' +
+    '</div>';
+
     var badge = hasLalal
         ? '<span class="sd-title-badge">Demucs + LALAL</span>'
         : '<span class="sd-title-badge">Demucs</span>';
@@ -1992,8 +2031,10 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
         '<input id="sdStemsScrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:120px;margin-left:4px">' +
         '<span id="sdStemsTime" style="font-size:0.78em;color:var(--text-dim);font-variant-numeric:tabular-nums;min-width:80px;text-align:right">0:00 / 0:00</span>' +
       '</div>' +
+      loopBar +
       fxRow +
       rows +
+      presetsRow +
       // Shortcut: extract harmonies banner only when Demucs vocals exist AND
       // LALAL hasn't already split them — otherwise the user already has
       // lead/backing rows above and this banner would just be noise.
@@ -2069,7 +2110,7 @@ window._sdStemsToggleFullscreen = function() {
     }, 50);
 };
 
-window._sdStemsToggle = function() {
+window._sdStemsToggle = async function() {
     var btn = document.getElementById('sdStemsPlay');
     // Scope to `document` (not _sdContainer) so we still find audios after
     // the wrap has been reparented to <body> for fullscreen mode.
@@ -2085,6 +2126,12 @@ window._sdStemsToggle = function() {
         audios.forEach(function(a){a.pause();});
         if (btn) btn.textContent = '▶ Play';
     } else {
+        // Count-in (4 metronome ticks at song BPM) before audio starts.
+        // The async/await means we can't bail mid-count without a flag —
+        // pause during count-in just lets it finish, no audio plays.
+        if (window._sdCountInEnabled !== false) {
+            try { await _sdStemsCountIn(); } catch(e) {}
+        }
         var t = audios[0].currentTime || 0;
         audios.forEach(function(a){
             try { a.currentTime = t; } catch(e) {}
@@ -2153,6 +2200,216 @@ window._sdStemsSeekBy = function(seconds) {
 // engaged states. Tone.js is still lazy-loaded for PitchShift only, spliced
 // into the existing chain on first ±semitone click.
 var _sdStemsState = null;
+
+// ── A/B loop + practice presets + count-in ──────────────────────────────────
+// Loop state lives on _sdLoop. Markers persist across re-renders within
+// the same song (cleared in _sdPopulateStemsLens between songs). Count-in
+// preference lives on window so it survives re-renders too.
+var _sdLoop = { inSec: null, outSec: null, enabled: false };
+var _sdActivePreset = null; // stem id of the current "Practice X" mute, or null
+if (typeof window._sdCountInEnabled === 'undefined') window._sdCountInEnabled = true;
+
+window._sdStemsSetLoopMarker = function(t) {
+    if (_sdLoop.inSec == null || _sdLoop.outSec != null) {
+        // Fresh marker pair — set IN, clear OUT (loop disabled until OUT lands).
+        _sdLoop.inSec = t;
+        _sdLoop.outSec = null;
+        _sdLoop.enabled = false;
+    } else {
+        // IN already set → this becomes OUT. Swap if user clicked before IN.
+        if (t < _sdLoop.inSec) {
+            _sdLoop.outSec = _sdLoop.inSec;
+            _sdLoop.inSec = t;
+        } else {
+            _sdLoop.outSec = t;
+        }
+        // Reject zero-length (single-point click) — keep IN, wait for real OUT.
+        if (_sdLoop.outSec - _sdLoop.inSec < 0.05) {
+            _sdLoop.outSec = null;
+            _sdStemsRedrawLoopMarkers();
+            return;
+        }
+        _sdLoop.enabled = true; // auto-enable on second click
+    }
+    _sdStemsRedrawLoopUI();
+};
+
+window._sdStemsToggleLoop = function() {
+    if (_sdLoop.inSec == null || _sdLoop.outSec == null) {
+        if (typeof showToast === 'function') showToast('Shift-click a strip to set loop in/out');
+        return;
+    }
+    _sdLoop.enabled = !_sdLoop.enabled;
+    _sdStemsRedrawLoopUI();
+};
+
+window._sdStemsClearLoop = function() {
+    _sdLoop = { inSec: null, outSec: null, enabled: false };
+    _sdStemsRedrawLoopUI();
+};
+
+function _sdStemsRedrawLoopMarkers() {
+    var wraps = document.querySelectorAll('.sd-stem-activity-wrap');
+    var audios = document.querySelectorAll('.sd-stem-audio');
+    if (!audios.length) return;
+    var dur = audios[0].duration || 0;
+    if (!dur) return;
+    wraps.forEach(function(wrap) {
+        var w = wrap.clientWidth;
+        var inEl = wrap.querySelector('.sd-stem-loop-marker[data-side="in"]');
+        var outEl = wrap.querySelector('.sd-stem-loop-marker[data-side="out"]');
+        var band = wrap.querySelector('.sd-stem-loop-band');
+        if (inEl) {
+            if (_sdLoop.inSec != null) {
+                inEl.style.display = 'block';
+                inEl.style.transform = 'translateX(' + (_sdLoop.inSec / dur * w) + 'px)';
+            } else { inEl.style.display = 'none'; }
+        }
+        if (outEl) {
+            if (_sdLoop.outSec != null) {
+                outEl.style.display = 'block';
+                outEl.style.transform = 'translateX(' + (_sdLoop.outSec / dur * w) + 'px)';
+            } else { outEl.style.display = 'none'; }
+        }
+        if (band) {
+            if (_sdLoop.inSec != null && _sdLoop.outSec != null) {
+                band.style.display = 'block';
+                band.style.left = (_sdLoop.inSec / dur * w) + 'px';
+                band.style.width = ((_sdLoop.outSec - _sdLoop.inSec) / dur * w) + 'px';
+                band.style.background = _sdLoop.enabled ? 'rgba(255,235,150,0.22)' : 'rgba(255,255,255,0.08)';
+            } else {
+                band.style.display = 'none';
+            }
+        }
+    });
+}
+
+function _sdStemsRedrawLoopUI() {
+    var inEl = document.getElementById('sdStemsLoopIn');
+    var outEl = document.getElementById('sdStemsLoopOut');
+    var btn = document.getElementById('sdStemsLoopToggle');
+    if (inEl) inEl.textContent = _sdLoop.inSec != null ? _sdStemsFmtTime(_sdLoop.inSec) : '—';
+    if (outEl) outEl.textContent = _sdLoop.outSec != null ? _sdStemsFmtTime(_sdLoop.outSec) : '—';
+    if (btn) {
+        var hasMarkers = _sdLoop.inSec != null && _sdLoop.outSec != null;
+        if (hasMarkers && _sdLoop.enabled) {
+            btn.style.background = 'rgba(245,158,11,0.18)';
+            btn.style.color = '#fbbf24';
+            btn.style.borderColor = 'rgba(245,158,11,0.45)';
+            btn.textContent = '🔁 Loop ON';
+        } else {
+            btn.style.background = 'rgba(255,255,255,0.04)';
+            btn.style.color = 'var(--text-dim)';
+            btn.style.borderColor = 'var(--border)';
+            btn.textContent = hasMarkers ? '🔁 Loop OFF' : '🔁 Loop';
+        }
+    }
+    _sdStemsRedrawLoopMarkers();
+}
+
+// Practice preset = mute one stem so the user can play/sing that part with
+// everything else playing. Clicking the active preset again toggles back
+// to all-on. Switching presets clears the previous mute first (single-active).
+window._sdStemsApplyPreset = function(stemId) {
+    if (_sdActivePreset === stemId) {
+        window._sdStemsResetPresets();
+        return;
+    }
+    _sdActivePreset = stemId;
+    document.querySelectorAll('.sd-stem-audio').forEach(function(a) {
+        var isTarget = (a.dataset.stem === stemId);
+        a.dataset.muted = isTarget ? '1' : '';
+        _sdStemsApplyVolFor(a);
+        var muteBtn = document.querySelector('.sd-stem-mute[data-stem="' + a.dataset.stem + '"]');
+        if (muteBtn) {
+            muteBtn.style.background = isTarget ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)';
+            muteBtn.style.color = isTarget ? '#fca5a5' : 'var(--text-dim)';
+        }
+    });
+    _sdStemsRedrawPresetUI();
+};
+
+window._sdStemsResetPresets = function() {
+    _sdActivePreset = null;
+    document.querySelectorAll('.sd-stem-audio').forEach(function(a) {
+        a.dataset.muted = '';
+        _sdStemsApplyVolFor(a);
+        var muteBtn = document.querySelector('.sd-stem-mute[data-stem="' + a.dataset.stem + '"]');
+        if (muteBtn) {
+            muteBtn.style.background = 'rgba(255,255,255,0.04)';
+            muteBtn.style.color = 'var(--text-dim)';
+        }
+    });
+    _sdStemsRedrawPresetUI();
+};
+
+// Shared volume application — used by preset toggles AND the per-stem
+// vol slider handler (closure in _sdInitStemsPlayer). Reads slider value
+// + muted/soloOff dataset flags and routes through the GainNode (or
+// element volume in WebAudio-unavailable fallback).
+function _sdStemsApplyVolFor(audio) {
+    if (!audio) return;
+    var slider = document.querySelector('.sd-stem-vol[data-stem="' + audio.dataset.stem + '"]');
+    var sliderVal = slider ? Number(slider.value) : 80;
+    var muted = audio.dataset.muted === '1';
+    var soloOff = audio.dataset.soloOff === '1';
+    var v = (muted || soloOff) ? 0 : Math.max(0, Math.min(1, sliderVal / 100));
+    var node = _sdStemsState && _sdStemsState.nodes && _sdStemsState.nodes[audio.dataset.stem];
+    if (node) {
+        try { node.gain.gain.value = v; } catch (e) {}
+    } else {
+        audio.volume = v;
+    }
+}
+
+function _sdStemsRedrawPresetUI() {
+    document.querySelectorAll('.sd-stems-preset').forEach(function(btn) {
+        var on = (_sdActivePreset === btn.dataset.stem);
+        var color = btn.dataset.color || 'rgba(255,255,255,0.1)';
+        if (on) {
+            btn.style.background = 'rgba(245,158,11,0.18)';
+            btn.style.color = '#fbbf24';
+            btn.style.borderColor = 'rgba(245,158,11,0.55)';
+        } else {
+            btn.style.background = 'rgba(255,255,255,0.03)';
+            btn.style.color = 'var(--text-dim)';
+            btn.style.borderColor = color + '40';
+        }
+    });
+}
+
+// 4-beat metronome count-in before audio starts. Frequency at song BPM;
+// pulled from window._sdCurrentSongMeta (set by song-detail) with 100 BPM
+// fallback. First beat accented with a higher pitch. Visual countdown in
+// the play button text.
+async function _sdStemsCountIn() {
+    if (!_sdStemsState || !_sdStemsState.ctx) return;
+    var ctx = _sdStemsState.ctx;
+    if (ctx.state === 'suspended') {
+        try { await ctx.resume(); } catch(e) {}
+    }
+    var bpm = (window._sdCurrentSongMeta && Number(window._sdCurrentSongMeta.bpm)) || 100;
+    var beatDur = 60 / bpm;
+    var startAt = ctx.currentTime;
+    for (var i = 0; i < 4; i++) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = (i === 0) ? 1500 : 1000;
+        var t0 = startAt + i * beatDur;
+        gain.gain.setValueAtTime(0.001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.5, t0 + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, t0 + 0.07);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.08);
+    }
+    var btn = document.getElementById('sdStemsPlay');
+    for (var n = 0; n < 4; n++) {
+        if (btn) btn.textContent = String(n + 1) + '…';
+        await new Promise(function(r){ setTimeout(r, beatDur * 1000); });
+    }
+}
 
 // Activity-strip cache: URL → { bins: Float32Array(N) of normalized RMS }.
 // Decoded once per stem URL, shared across re-mounts of the lens. R2 sets
@@ -2235,10 +2492,16 @@ function _sdStemsKeyHandler(e) {
     var t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     if (e.code === 'Escape') {
+        // Prefer clearing loop markers if any; otherwise exit fullscreen.
+        if (_sdLoop.inSec != null || _sdLoop.outSec != null) {
+            e.preventDefault(); window._sdStemsClearLoop();
+            return;
+        }
         var fs = document.querySelector('.sd-stems-wrap.sd-stems-fullscreen');
         if (fs) { e.preventDefault(); window._sdStemsToggleFullscreen(); }
         return;
     }
+    if (e.code === 'KeyL') { e.preventDefault(); window._sdStemsToggleLoop(); return; }
     if (e.code === 'Space') { e.preventDefault(); window._sdStemsToggle(); return; }
     if (e.code === 'ArrowLeft')  { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ? -30 : -10); return; }
     if (e.code === 'ArrowRight') { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ?  30 :  10); return; }
@@ -2486,11 +2749,15 @@ function _sdInitStemsPlayer() {
             if (!master.duration) return;
             var rect = wrap.getBoundingClientRect();
             var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            window._sdStemsApplySeek(frac * master.duration);
+            var t = frac * master.duration;
+            // Shift-click sets loop in/out; plain click seeks.
+            if (e.shiftKey) window._sdStemsSetLoopMarker(t);
+            else window._sdStemsApplySeek(t);
         });
     });
     // Repaint activity canvases on resize (e.g. entering/exiting fullscreen)
     // so the bins re-stretch to the new pixel width without re-decoding.
+    // Loop markers need the same treatment (their positions are pixel-based).
     var repaintActivity = function() {
         audios.forEach(function(audio) {
             var stemId = audio.dataset.stem;
@@ -2502,12 +2769,20 @@ function _sdInitStemsPlayer() {
             var color = (row && row.dataset.color) || 'rgba(255,255,255,0.5)';
             if (canvas && entry) _sdPaintStemActivity(canvas, entry.bins, color);
         });
+        _sdStemsRedrawLoopMarkers();
     };
     window.addEventListener('resize', repaintActivity);
 
     // ── Time sync / scrub / play-end ────────────────────────────────────────
     master.addEventListener('timeupdate', function() {
         if (!master.duration) return;
+        // Loop wraparound — fires before the visual update so the playhead
+        // jump is the only thing the user sees (no flicker past the OUT mark).
+        if (_sdLoop.enabled && _sdLoop.inSec != null && _sdLoop.outSec != null
+                && master.currentTime >= _sdLoop.outSec) {
+            window._sdStemsApplySeek(_sdLoop.inSec);
+            return;
+        }
         if (scrub) scrub.value = (master.currentTime / master.duration) * 1000;
         if (timeEl) timeEl.textContent = fmt(master.currentTime) + ' / ' + fmt(master.duration);
         // Move per-stem playheads in sync. translateX is GPU-cheap; one
@@ -2520,6 +2795,8 @@ function _sdInitStemsPlayer() {
     });
     master.addEventListener('loadedmetadata', function() {
         if (timeEl && master.duration) timeEl.textContent = '0:00 / ' + fmt(master.duration);
+        // Loop markers need duration to compute their pixel positions.
+        _sdStemsRedrawLoopMarkers();
     });
     master.addEventListener('ended', function() {
         var btn = document.getElementById('sdStemsPlay');
