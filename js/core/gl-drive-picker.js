@@ -42,6 +42,48 @@ window.GLDrivePicker = (function() {
     return (typeof accessToken !== 'undefined') ? accessToken : null;
   }
 
+  // When Firebase auth was restored from localStorage but the Google access
+  // token wasn't (in-memory only), request a token silently before opening the
+  // Picker. Wraps the global tokenClient.callback for the duration of one
+  // request so we can resolve the promise without blocking the normal callback
+  // (which sets the global `accessToken` and updates UI).
+  function _ensureAccessToken() {
+    return new Promise(function(resolve, reject) {
+      var existing = _accessToken();
+      if (existing) { resolve(existing); return; }
+      if (typeof tokenClient === 'undefined' || !tokenClient) {
+        reject(new Error('Google sign-in not initialized'));
+        return;
+      }
+      var origCb = tokenClient.callback;
+      var settled = false;
+      tokenClient.callback = function(response) {
+        tokenClient.callback = origCb;
+        try { if (typeof origCb === 'function') origCb(response); } catch(e) {}
+        if (settled) return;
+        settled = true;
+        if (response && response.access_token) {
+          resolve(response.access_token);
+        } else {
+          reject(new Error((response && response.error) || 'Token request failed'));
+        }
+      };
+      try {
+        tokenClient.requestAccessToken({ prompt: '' });
+      } catch(e) {
+        tokenClient.callback = origCb;
+        if (!settled) { settled = true; reject(e); }
+      }
+      // Safety timeout — if Google never responds, don't hang the Picker forever
+      setTimeout(function() {
+        if (settled) return;
+        settled = true;
+        tokenClient.callback = origCb;
+        reject(new Error('Token request timed out'));
+      }, 15000);
+    });
+  }
+
   // Inject https://apis.google.com/js/api.js once. The PWA service worker is
   // configured to bypass cross-origin requests it doesn't pre-cache, so this
   // works offline-first the same way Firebase scripts do.
@@ -81,13 +123,11 @@ window.GLDrivePicker = (function() {
     var onCancel = typeof opts.onCancel === 'function' ? opts.onCancel : function() {};
     var onError = typeof opts.onError === 'function' ? opts.onError : function(e) { console.warn('[Picker]', e); };
 
-    var token = _accessToken();
-    if (!token) {
-      onError(new Error('Not signed in to Google'));
-      return;
-    }
-
-    _loadPicker().then(function() {
+    Promise.all([
+      _ensureAccessToken(),
+      _loadPicker()
+    ]).then(function(results) {
+      var token = results[0];
       try {
         var picker = window.google.picker;
 
