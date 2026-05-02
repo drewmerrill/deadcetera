@@ -1693,10 +1693,22 @@ async function _sdPopulateStemsLens(title) {
     // are about to be removed from the DOM.
     _sdStemsState = null;
     panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:24px;color:var(--text-dim)">Loading stems…</div></div>';
-    var stems = null;
-    try { if (window.GLStems) stems = await GLStems.getStems(title); } catch(e) {}
+    var stems = null, lalalSplit = null;
+    try {
+        if (window.GLStems) {
+            // Load both Demucs stems and LALAL lead/backing in parallel —
+            // GLAudioSession.mergeTracks fuses them so the lens renders one
+            // canonical mixer (LALAL lead/backing replace the Demucs vocals row).
+            var both = await Promise.all([
+                GLStems.getStems(title).catch(function(){return null;}),
+                GLStems.getLeadBackingSplit(title).catch(function(){return null;})
+            ]);
+            stems = both[0];
+            lalalSplit = both[1];
+        }
+    } catch(e) {}
     if (stems && stems.stems && stems.stems.drums) {
-        panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsPlayer(title, stems) + '</div>';
+        panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsPlayer(title, stems, lalalSplit) + '</div>';
         _sdInitStemsPlayer();
     } else {
         // Setup view — render shell first, then async-load Best Shot takes for picker
@@ -1894,52 +1906,37 @@ async function _sdRunStemSeparationFromTake(title, opts) {
     }
 }
 
-function _sdRenderStemsPlayer(title, stems) {
+function _sdRenderStemsPlayer(title, stems, lalalSplit) {
+    _sdEnsureStemsFsStyle();
     var safeSong = title.replace(/'/g, "\\'");
-    var s = stems.stems;
-    var stemDefs = [
-        { id:'drums',  label:'Drums',  color:'#f59e0b', icon:'🥁' },
-        { id:'bass',   label:'Bass',   color:'#10b981', icon:'🎸' },
-        { id:'guitar', label:'Guitar', color:'#ef4444', icon:'🎸' }, // 6-stem only
-        // Demucs's "piano" class is actually all keyboard-family content —
-        // piano, organ, electric piano, synth pads, clavinet — they all
-        // land here. "Keys" is more honest labeling. Storage id stays
-        // 'piano' to match Demucs's output and existing R2/Firebase paths.
-        { id:'piano',  label:'Keys',   color:'#06b6d4', icon:'🎹' }, // 6-stem only
-        { id:'vocals', label:'Vocals', color:'#818cf8', icon:'🎤' },
-        { id:'other',  label:'Other',  color:'#94a3b8', icon:'🎵' }
-    ];
-    // Stable cache-bust per separation. The R2 stems are sent with
-    // Cache-Control: immutable, so once a browser caches a response
-    // (e.g. an early non-CORS fetch from before the crossorigin
-    // attribute existed), the bad entry sticks for a year and breaks
-    // WebAudio routing. The ?v= keyed off separatedAt sidesteps any
-    // pre-existing cache entries while still de-duping fetches within
-    // the same separation.
-    var bust = stems.separatedAt
-        ? '?v=' + new Date(stems.separatedAt).getTime()
-        : '?v=' + Date.now();
-    var rows = stemDefs.filter(function(st){return !!s[st.id];}).map(function(st) {
-        var dlName = (title || 'song').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60) + '_' + st.id + '.flac';
-        return '<div class="sd-stem-row" data-stem="' + st.id + '" style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.02);margin-bottom:8px">' +
-          '<span style="font-size:1.4em;width:1.6em;text-align:center;flex-shrink:0">' + st.icon + '</span>' +
-          '<div style="flex:1;min-width:0">' +
-            '<div style="font-size:0.88em;font-weight:700;color:' + st.color + '">' + st.label + '</div>' +
-            '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + st.id + '" style="width:100%;margin-top:4px" title="Volume">' +
+    // Single-source-of-truth merged track list. LALAL lead/backing replace
+    // Demucs vocals when present — no duplicate vocal rows.
+    var tracks = (window.GLAudioSession && GLAudioSession.mergeTracks)
+        ? GLAudioSession.mergeTracks(stems, lalalSplit)
+        : [];
+    var hasLalal = !!(window.GLAudioSession && GLAudioSession.hasLalalSplit && GLAudioSession.hasLalalSplit(lalalSplit));
+    var hasDemucsVocals = !!(stems && stems.stems && stems.stems.vocals);
+    var rows = tracks.map(function(t) {
+        var dlName = (title || 'song').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60) + '_' + t.id + '.flac';
+        // Compact row: one line, smaller controls. Inline volume slider
+        // replaces the stacked label-then-slider layout — saves ~24px per row.
+        return '<div class="sd-stem-row" data-stem="' + t.id + '" data-source="' + t.source + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);margin-bottom:4px">' +
+          '<span style="font-size:1.05em;width:1.2em;text-align:center;flex-shrink:0">' + t.icon + '</span>' +
+          '<span style="font-size:0.78em;font-weight:700;color:' + t.color + ';min-width:54px;flex-shrink:0">' + t.label + '</span>' +
+          '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + t.id + '" style="flex:1;min-width:60px;accent-color:' + t.color + '" title="Volume">' +
+          '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0" title="Pan (L ↔ R)">' +
+            '<input type="range" min="-100" max="100" value="0" class="sd-stem-pan" data-stem="' + t.id + '" style="width:48px;accent-color:' + t.color + '">' +
+            '<span class="sd-stem-pan-val" data-stem="' + t.id + '" style="font-size:0.58em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1">C</span>' +
           '</div>' +
-          '<div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0" title="Pan (L ↔ R)">' +
-            '<input type="range" min="-100" max="100" value="0" class="sd-stem-pan" data-stem="' + st.id + '" style="width:60px;accent-color:' + st.color + '">' +
-            '<span class="sd-stem-pan-val" data-stem="' + st.id + '" style="font-size:0.62em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1">C</span>' +
-          '</div>' +
-          '<button class="sd-stem-mute" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Mute</button>' +
-          '<button class="sd-stem-solo" data-stem="' + st.id + '" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.72em;font-weight:700;min-width:46px">Solo</button>' +
-          '<a class="sd-stem-dl" href="' + _sdEsc(s[st.id]) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" title="Download FLAC" style="padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);text-decoration:none;font-size:0.85em;line-height:1">⬇</a>' +
+          '<button class="sd-stem-mute" data-stem="' + t.id + '" title="Mute" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">M</button>' +
+          '<button class="sd-stem-solo" data-stem="' + t.id + '" title="Solo" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">S</button>' +
+          '<a class="sd-stem-dl" href="' + _sdEsc(t.rawUrl) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" title="Download FLAC" style="padding:4px 6px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);text-decoration:none;font-size:0.76em;line-height:1">⬇</a>' +
           // crossorigin="anonymous" is REQUIRED for createMediaElementSource()
           // to produce non-silent output on cross-origin sources (R2). Without
           // it, the audio plays through the <audio> element itself but goes
           // silent the moment we route through Web Audio. R2 bucket needs
           // matching CORS policy (Allowed-Origin: *) for this to work.
-          '<audio class="sd-stem-audio" data-stem="' + st.id + '" preload="auto" crossorigin="anonymous" src="' + _sdEsc(s[st.id] + bust) + '"></audio>' +
+          '<audio class="sd-stem-audio" data-stem="' + t.id + '" preload="auto" crossorigin="anonymous" src="' + _sdEsc(t.url) + '"></audio>' +
         '</div>';
     }).join('');
     var when = stems.separatedAt ? new Date(stems.separatedAt).toLocaleString() : '';
@@ -1958,8 +1955,15 @@ function _sdRenderStemsPlayer(title, stems) {
         '<button class="sd-stems-pitch" data-delta="1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-weight:700">+1</button>' +
         '<button id="sdStemsPitchReset" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.85em">reset</button>' +
     '</div>';
-    return '<div class="sd-card">' +
-      '<div class="sd-card-title">🎚 Stems <span class="sd-title-badge">Demucs</span></div>' +
+    var badge = hasLalal
+        ? '<span class="sd-title-badge">Demucs + LALAL</span>'
+        : '<span class="sd-title-badge">Demucs</span>';
+    return '<div class="sd-stems-wrap">' +
+      '<div class="sd-card">' +
+      '<div class="sd-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+        '<span>🎚 Stems ' + badge + '</span>' +
+        '<button id="sdStemsExpand" onclick="_sdStemsToggleFullscreen()" title="Expand to full screen" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;line-height:1">⛶</button>' +
+      '</div>' +
       '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">' +
         '<button id="sdStemsPlay" onclick="_sdStemsToggle()" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer;min-width:90px">▶ Play</button>' +
         '<input id="sdStemsScrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:140px">' +
@@ -1967,22 +1971,52 @@ function _sdRenderStemsPlayer(title, stems) {
       '</div>' +
       fxRow +
       rows +
-      // Shortcut: jump directly to Harmony lens to extract harmonies from
-      // the vocals stem (LALAL lead/back split + transcription).
-      (s.vocals ? '<div style="margin-top:10px;padding:10px;background:rgba(99,102,241,0.06);border:1px dashed rgba(99,102,241,0.25);border-radius:10px;display:flex;align-items:center;gap:10px">' +
+      // Shortcut: extract harmonies banner only when Demucs vocals exist AND
+      // LALAL hasn't already split them — otherwise the user already has
+      // lead/backing rows above and this banner would just be noise.
+      ((hasDemucsVocals && !hasLalal) ? '<div style="margin-top:10px;padding:10px;background:rgba(99,102,241,0.06);border:1px dashed rgba(99,102,241,0.25);border-radius:10px;display:flex;align-items:center;gap:10px">' +
         '<span style="font-size:1.4em">🎤</span>' +
         '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:0.85em;font-weight:700">Got vocals — extract harmonies</div>' +
-          '<div style="font-size:0.7em;color:var(--text-dim)">Sends the vocals stem to Harmony Lab to split lead from backing</div>' +
+          '<div style="font-size:0.85em;font-weight:700">Got vocals — split into lead + backing</div>' +
+          '<div style="font-size:0.7em;color:var(--text-dim)">Replaces the vocals row with separate Lead and Backing tracks for harmony work</div>' +
         '</div>' +
-        '<button onclick="_sdLensPopulated.sing=false;if(typeof switchLens===\'function\')switchLens(\'sing\');setTimeout(function(){if(typeof hlGenerateFromStems===\'function\')hlGenerateFromStems();},400)" style="background:rgba(99,102,241,0.18);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82em;white-space:nowrap;flex-shrink:0">→ Generate Harmonies</button>' +
+        '<button onclick="_sdLensPopulated.sing=false;if(typeof switchLens===\'function\')switchLens(\'sing\');setTimeout(function(){if(typeof hlGenerateFromStems===\'function\')hlGenerateFromStems();},400)" style="background:rgba(99,102,241,0.18);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82em;white-space:nowrap;flex-shrink:0">→ Split Vocals</button>' +
       '</div>' : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.7em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
         '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + '</span>' +
         '<button onclick="_sdStemsRedo(\'' + safeSong + '\')" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">Re-separate</button>' +
       '</div>' +
-    '</div>';
+      '</div>' + // .sd-card
+    '</div>'; // .sd-stems-wrap
 }
+
+// One-shot CSS injection for the stems-fullscreen overlay. Class-only
+// approach so we don't reparent DOM (which would break the WebAudio
+// MediaElementSource bindings).
+function _sdEnsureStemsFsStyle() {
+    if (document.getElementById('sdStemsFsStyle')) return;
+    var s = document.createElement('style');
+    s.id = 'sdStemsFsStyle';
+    s.textContent =
+      '.sd-stems-fullscreen{position:fixed!important;inset:0!important;z-index:9999;background:var(--bg,#0a0e1a);overflow-y:auto;padding:24px;margin:0!important}' +
+      '.sd-stems-fullscreen .sd-card{max-width:1100px;margin:0 auto}' +
+      '.sd-stems-fullscreen .sd-stem-row{padding:8px 12px;margin-bottom:6px}' +
+      'body.sd-stems-overlay-open{overflow:hidden}';
+    document.head.appendChild(s);
+}
+
+window._sdStemsToggleFullscreen = function() {
+    var wrap = (_sdContainer || document).querySelector('.sd-stems-wrap');
+    if (!wrap) return;
+    var on = !wrap.classList.contains('sd-stems-fullscreen');
+    wrap.classList.toggle('sd-stems-fullscreen', on);
+    document.body.classList.toggle('sd-stems-overlay-open', on);
+    var btn = (_sdContainer || document).querySelector('#sdStemsExpand');
+    if (btn) {
+        btn.textContent = on ? '⤓' : '⛶';
+        btn.title = on ? 'Exit full screen' : 'Expand to full screen';
+    }
+};
 
 window._sdStemsToggle = function() {
     var btn = document.getElementById('sdStemsPlay');

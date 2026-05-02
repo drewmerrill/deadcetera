@@ -1,6 +1,6 @@
 # GrooveLinx — Current Phase
 
-_Updated: 2026-05-01 — **Rehearsal page redesign PR#2 shipped (build `20260501-000744`).** PR#1 (plan→main column) and PR#2 (contextual primary CTA, directive headline, top-level Start Here panel with weak songs + 🎤 Practice solo + ✚ Add to plan, per-row 🎤 Practice solo on plan rows, removed redundant focus block) both live. Phase 1 Harmony Painkiller still code-complete (Harmony Lab Split Mixer + abcjs notation + pan knob). UAT wizards: `uat_wizard_phase1.html` + `uat_wizards.html` (9-surface picker). Next: Drew + bandmate UAT on Phase 1._
+_Updated: 2026-05-02 — **GLAudioSession + Stems lens unification Phase A shipped (build `20260502-184243`).** New `js/core/gl-audio-session.js` is the single source of truth for stem track ordering + LALAL/Demucs merging. Stems lens now renders one canonical mixer where LALAL lead+backing **replace** the Demucs vocals row (no duplication). Compact row layout (~40% less vertical space) + ⛶ full-screen overlay toggle. Banner reworded to "Split Vocals" and only shows when Demucs vocals exist AND LALAL hasn't run. Foundation for Phase B: future record-mode + Harmony Lab consolidation read from the same `mergeTracks(demucs, lalalSplit)` output._
 
 ---
 

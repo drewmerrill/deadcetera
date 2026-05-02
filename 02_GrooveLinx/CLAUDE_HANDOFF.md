@@ -2,7 +2,48 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-01 — **Rehearsal page redesign PR#2 shipped (build `20260501-000744`).** ChatGPT-driven critique → PR#1 (plan→main column, surgical, build `20260430-235047`) + PR#2 (contextual primary CTA, directive headline replaces abstract Readiness, top-level Start Here panel with weak songs + per-song 🎤 Practice solo + ✚ Add to plan, per-row 🎤 affordance on plan rows, removed redundant focus block inside plan card). Phase 1 Harmony Painkiller still code-complete; multi-surface UAT wizards still ready. Next: Drew + bandmate UAT on Phase 1, plus a fresh Rehearsal-mode UAT pass against the redesign._
+_Last updated: 2026-05-02 — **GLAudioSession + Stems lens unification Phase A shipped (build `20260502-184243`).** New shared model `js/core/gl-audio-session.js` consolidates stem ordering + LALAL/Demucs merge logic. Stems lens reads from `GLAudioSession.mergeTracks(demucs, lalalSplit)` so LALAL lead/backing replace the Demucs vocals row without duplication. Compact row density + ⛶ full-screen overlay (class-toggle, no DOM reparent — preserves WebAudio MediaElementSource bindings). Phase B (recording integration + Harmony Lab consolidation) deferred. Phase 1 Harmony Painkiller still code-complete; multi-surface UAT wizards still ready. Next: Drew + bandmate UAT on Phase 1, plus the new unified Stems lens._
+
+## Session 2026-05-02 (PM) — Phase A: GLAudioSession + unified Stems lens
+
+**Build:** `20260502-184243` (commit pending after this push).
+
+**Why:** Drew's directive — *"We are not building separate systems (Demucs, LALAL, recording). We are building ONE unified audio workspace."* The Stems lens used to render Demucs's combined `vocals` row even after LALAL had split it into `lead`/`backing`, producing a confusing 3-row vocal stack. Three independent code paths (Stems lens, Harmony Lab, future record-mode) were on a path to ship duplicate WebAudio chains.
+
+**Phase A scope (this session):**
+1. **`js/core/gl-audio-session.js`** (new, 113 lines, exposes `window.GLAudioSession`):
+   - `STEM_ORDER = ['drums', 'bass', 'guitar', 'piano', 'lead', 'backing', 'vocals', 'other']` — canonical row order.
+   - `STEM_DEFS` — label/color/icon plus a `kind` field (`'instrument'` | `'vocal_lead'` | `'vocal_backing'` | `'vocal_full'`) so future record-mode can preset which stems to default-mute when recording over.
+   - `mergeTracks(demucs, lalalSplit) → Track[]` — single source of truth. When LALAL lead exists it slots into the lead/backing rows **and** suppresses the Demucs combined-vocals row. Cache-bust suffix per separation event keyed off `separatedAt` timestamp.
+   - `hasLalalSplit(lalalSplit)` helper for UI checks.
+   - Track shape: `{ id, label, color, icon, kind, url, rawUrl, source: 'demucs'|'lalal' }`.
+2. **`js/features/song-detail.js` — `_sdPopulateStemsLens` + `_sdRenderStemsPlayer`:**
+   - Loads `stems` and `lalal_split` band-data records in parallel via `Promise.all`.
+   - Renders rows from `GLAudioSession.mergeTracks(stems, lalalSplit)`. Track id `vocals` no longer appears once LALAL has run.
+   - Compact row layout: single-line, smaller controls, label + inline volume slider (was stacked label-then-slider). Padding `6px 8px` (was `10px`); `4px` margin (was `8px`); `M`/`S` single-letter buttons. Saves ~40% vertical space — important now that 7+ rows can appear.
+   - `⛶` expand button toggles `.sd-stems-fullscreen` class on a wrapping `.sd-stems-wrap` div via `_sdStemsToggleFullscreen()`. Class-only approach (no DOM reparent) so WebAudio `MediaElementSource` bindings on the `<audio>` elements stay valid. Body gets `.sd-stems-overlay-open` to lock background scroll.
+   - One-shot inline `<style id="sdStemsFsStyle">` injected by `_sdEnsureStemsFsStyle()` on first render.
+   - Title badge becomes "Demucs + LALAL" when both have run, "Demucs" otherwise.
+   - "Got vocals — extract harmonies" banner reworded to "Split Vocals" and hidden when LALAL has already split (was always shown when `s.vocals` existed, including after the split).
+3. **`index.html`** — added `<script src="js/core/gl-audio-session.js?v=...">` directly after `gl-stems.js`.
+4. **Build bumped** atomically across `version.json`, `index.html`, `service-worker.js` (`CACHE_NAME`).
+
+**What didn't change:** `_sdInitStemsPlayer` (WebAudio chain init still keys off `data-stem` attribute). `_sdStemsToggle` / `_sdStemsRedo`. `GLStems.getStems` / `getLeadBackingSplit` / `splitLeadBacking`. Harmony Lab's own LALAL flow (`hlGenerateFromStems`) — Phase B will fold it into GLAudioSession.
+
+**Verification:** `node --check` passes on `gl-audio-session.js` and `song-detail.js`.
+
+**Phase B (deferred — future sessions):**
+- Record-mode integration: per-stem record button in compact row; auto-mute lead when recording over for harmony practice (use `kind: 'vocal_lead'` preset). Drew already validated headphone-bleed-free recording infra in earlier work.
+- Harmony Lab consolidation: read from GLAudioSession instead of cloning audio chain; fold the Split Mixer into the Stems lens fullscreen view rather than a separate page. Drew's stated long-term goal: "no separate Harmony Lab system."
+- iPhone density pass: the compact row works on desktop; mobile may need stacked variant.
+- Two-backing-vocal split: LALAL `multivocal=lead_back` is only 2-way; Backing-1/Backing-2 needs a follow-up split or different model.
+
+**Next:**
+1. Drew tests the unified Stems lens on Bird Song (already has both Demucs + LALAL records).
+2. Phase 1.9 — Drew + bandmate UAT on Harmony Painkiller (still pending).
+3. OAuth verification submission package (still pending).
+
+---
 
 ## Session 2026-05-01 (early AM) — Rehearsal page redesign PR#2
 
