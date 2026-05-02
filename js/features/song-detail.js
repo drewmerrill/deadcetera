@@ -2123,11 +2123,12 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
       '</div>' : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.72em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
         '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + (stems.model ? ' · ' + _sdEsc(stems.model) : '') + '</span>' +
-        '<div style="display:flex;align-items:center;gap:6px">' +
+        '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">' +
           '<select id="sdStemsRedoModel" title="Pick a model and click Re-separate to bake-off variants" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.92em;cursor:pointer">' +
             _sdStemsModelOptions(stems.model || 'htdemucs_6s') +
           '</select>' +
-          '<button onclick="_sdStemsRedo(\'' + safeSong + '\')" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.92em;font-weight:700">Re-separate</button>' +
+          '<button onclick="_sdStemsRedo(\'' + safeSong + '\')" title="Re-run separation against the saved source (URL or take) with the model selected at left" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.92em;font-weight:700">Re-separate</button>' +
+          '<button onclick="_sdStemsChangeSource(\'' + safeSong + '\')" title="Discard saved source and pick a different URL or Best Shot take" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.92em;font-weight:700">Change source…</button>' +
         '</div>' +
       '</div>' +
       '</div>' + // .sd-card
@@ -2301,6 +2302,20 @@ window._sdStemsRedo = async function(title) {
     }
 
     _sdRunStemSeparationFromTake(title, opts);
+};
+
+// Re-renders the setup view (URL paste + Best Shot picker) so the user can
+// run a new separation against a different source. Doesn't delete the R2
+// files — just clears the stems band-data record so _sdPopulateStemsLens
+// falls back to setup. Use this for source swaps; use _sdStemsRedo when
+// you want to keep the same source and only change models.
+window._sdStemsChangeSource = async function(title) {
+    if (!confirm('Pick a different source for ' + title + '?\n\nThis clears the current stem record so you can paste a new URL or pick a different Best Shot. The existing stem files stay in R2 (only this song\'s pointer to them is cleared).')) return;
+    if (window.GLStems) {
+        try { await GLStems.clearStems(title); } catch (e) {}
+    }
+    _sdLensPopulated.stems = false;
+    _sdPopulateStemsLens(title);
 };
 
 // Format MM:SS for the transport time display.
