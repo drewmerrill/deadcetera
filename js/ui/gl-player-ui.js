@@ -353,6 +353,43 @@ window.GLPlayerUI = (function() {
         if (d.source === 'youtube' && d.videoId) {
             var E = window.GLPlayerEngine;
             if (E) E.createYouTubePlayer(containerId, d.videoId);
+            // Native YouTube share UI clips because the iframe is too short.
+            // Overlay our own "Copy link" button so band members can share the
+            // video without fighting Google's modal.
+            try {
+                if (container && !container.querySelector('.glp-yt-copy')) {
+                    var cb = document.createElement('button');
+                    cb.className = 'glp-yt-copy';
+                    cb.title = 'Copy YouTube link';
+                    cb.textContent = '🔗 Copy';
+                    cb.style.cssText = 'position:absolute;top:6px;right:6px;z-index:5;background:rgba(0,0,0,0.65);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:4px 8px;font-size:0.72em;cursor:pointer;backdrop-filter:blur(6px)';
+                    cb.dataset.videoId = d.videoId;
+                    cb.onclick = function(e) {
+                        e.stopPropagation();
+                        var url = 'https://youtu.be/' + cb.dataset.videoId;
+                        var done = function() {
+                            cb.textContent = '✓ Copied';
+                            setTimeout(function() { cb.textContent = '🔗 Copy'; }, 1500);
+                            if (typeof showToast === 'function') showToast('Copied: ' + url);
+                        };
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(url).then(done, function() {
+                                window.prompt('Copy this YouTube link:', url);
+                            });
+                        } else {
+                            window.prompt('Copy this YouTube link:', url);
+                            done();
+                        }
+                    };
+                    // Container needs position:relative for absolute child to anchor.
+                    var cs = window.getComputedStyle(container);
+                    if (cs && cs.position === 'static') container.style.position = 'relative';
+                    container.appendChild(cb);
+                } else if (container) {
+                    var ex = container.querySelector('.glp-yt-copy');
+                    if (ex) ex.dataset.videoId = d.videoId;
+                }
+            } catch(e) { console.warn('[GLPlayerUI] copy-link button setup failed:', e && e.message); }
         }
 
         // Spotify SDK — full-track playback (no iframe needed, SDK controls audio)

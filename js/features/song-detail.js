@@ -2280,8 +2280,12 @@ async function _sdPopulateListenLens(title) {
           (northStar.url?'<button class="btn btn-sm" onclick="openMusicLink(\''+northStar.url.replace(/'/g,"\\'")+'\');" style="background:rgba(102,126,234,0.2);color:#818cf8;border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0">\u25B6 '+_nsLinkLabel+'</button>':'')+
           '</div>'+
           (northStar.url?'<div style="font-size:0.68em;color:var(--text-dim);margin-top:6px;word-break:break-all;opacity:0.7">'+_sdEsc(northStar.url)+'</div>':'')+
+          '<div style="display:flex;gap:6px;margin-top:8px">'+
+          '<button class="btn btn-sm" onclick="launchVersionHub()" style="flex:1;background:rgba(255,255,255,0.05);color:var(--text-dim);border:1px solid rgba(255,255,255,0.1);font-size:0.72em;padding:5px 8px;border-radius:6px;cursor:pointer">✏️ Change</button>'+
+          '<button class="btn btn-sm" onclick="_sdClearNorthStar(\''+title.replace(/'/g,"\\'")+'\')" style="flex:1;background:rgba(239,68,68,0.08);color:#fca5a5;border:1px solid rgba(239,68,68,0.2);font-size:0.72em;padding:5px 8px;border-radius:6px;cursor:pointer">✕ Clear</button>'+
+          '</div>'+
           '</div>')
-        :'<div style="color:var(--text-dim);font-size:0.85em">No North Star set yet — open Version Hub to browse and vote.</div>';
+        :'<div style="color:var(--text-dim);font-size:0.85em;display:flex;align-items:center;justify-content:space-between;gap:10px">No North Star set yet<button onclick="launchVersionHub()" class="btn btn-sm" style="background:rgba(102,126,234,0.15);color:#818cf8;border:1px solid rgba(102,126,234,0.3);font-size:0.82em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0">🔍 Find One</button></div>';
 
     var bsHTML=bestShot
         ?('<div style="display:flex;align-items:center;gap:10px;padding:10px;background:rgba(245,158,11,0.07);border:1px solid rgba(245,158,11,0.2);border-radius:10px">'+
@@ -2290,6 +2294,7 @@ async function _sdPopulateListenLens(title) {
           '<div style="font-size:0.72em;color:var(--text-dim)">'+_sdEsc(bestShot.uploadedByName||'')+'</div></div>'+
           (bestShot.audioUrl?'<audio controls src="'+_sdEsc(bestShot.audioUrl)+'" style="height:32px;max-width:140px"></audio>':
            bestShot.externalUrl?'<button class="btn btn-sm" onclick="window.open(\''+bestShot.externalUrl.replace(/'/g,"\\'")+'\',\'_blank\')" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);font-size:0.78em;padding:6px 12px;border-radius:8px;cursor:pointer">▶ Listen</button>':'')+
+          '<button class="btn btn-sm" onclick="addBestShotTake(\''+title.replace(/'/g,"\\'")+'\')" title="Upload a new take" style="background:rgba(255,255,255,0.05);color:var(--text-dim);border:1px solid rgba(255,255,255,0.1);font-size:0.72em;padding:5px 10px;border-radius:6px;cursor:pointer;flex-shrink:0;margin-left:6px">✏️ Replace</button>'+
           '</div>')
         :'<div style="color:var(--text-dim);font-size:0.85em;display:flex;align-items:center;justify-content:space-between;gap:10px">No recording yet<button onclick="addBestShotTake(\''+title.replace(/'/g,"\\'")+'\');" class="btn btn-sm" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);font-size:0.82em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0">\uD83D\uDCE4 Upload Take</button></div>';
 
@@ -2485,6 +2490,30 @@ window._sdImportTabAsChart = function(songTitle) {
 };
 
 // Remove a per-user lesson (bridge to Practice Mode lessons)
+// Clear the current North Star: zero out all votes on every version so
+// _sdPopulateListenLens recomputes "no winner" → "No North Star set yet".
+// Doesn't delete the version entries themselves (those are still useful in
+// Version Hub); just resets the vote tally that makes one of them the star.
+window._sdClearNorthStar = async function(songTitle) {
+    if (!confirm('Clear the current North Star? Votes on all versions will be reset, but the versions themselves stay in the Version Hub.')) return;
+    try {
+        var refs = _sdArr(await loadBandDataFromDrive(songTitle, 'spotify_versions').catch(function(){ return null; }));
+        if (!refs || !refs.length) {
+            if (typeof showToast === 'function') showToast('No versions to clear');
+            return;
+        }
+        refs.forEach(function(v) { if (v) v.votes = {}; });
+        if (typeof GLStore !== 'undefined' && GLStore.saveSongData) { await GLStore.saveSongData(songTitle, 'spotify_versions', refs); }
+        else { await saveBandDataToDrive(songTitle, 'spotify_versions', refs); }
+        if (typeof northStarCache !== 'undefined') { try { delete northStarCache[songTitle]; } catch(e) {} }
+        if (typeof showToast === 'function') showToast('North Star cleared — pick a new one in Version Hub');
+        _sdPopulateListenLens(songTitle);
+    } catch(e) {
+        console.warn('[SongDetail] clearNorthStar failed:', e && e.message);
+        if (typeof showToast === 'function') showToast('Could not clear North Star');
+    }
+};
+
 window._sdRemoveMyLesson = async function(songTitle, idx) {
     try {
         var key = _sdMyLessonKey();
