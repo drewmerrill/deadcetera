@@ -81,8 +81,14 @@ export default {
     // Stem separation — proxies to Modal HT-Demucs endpoint, holds the
     // shared secret server-side, accepts either a public URL or a Drive
     // fileId+token (which we re-route through our own /drive-stream).
-    if (path === '/stems/separate' && request.method === 'POST')
-      return handleStemsSeparate(request, env);
+    // Async flow: /stems/start spawns the GPU job (returns Modal call_id),
+    // /stems/check polls the call until done. Required because Modal's web
+    // layer 524s synchronous responses past ~150s and the heavier models
+    // (htdemucs_ft, mdx_extra) routinely run 150-240s.
+    if (path === '/stems/start' && request.method === 'POST')
+      return handleStemsStart(request, env);
+    if (path === '/stems/check' && request.method === 'POST')
+      return handleStemsCheck(request, env);
     // LALAL.AI lead/backing split — Phase 0.5 winner. Same source-resolution
     // logic as /stems/separate (URL / Drive fileId / base64 staged to R2),
     // forwards to Modal lalal_split_http with shared-secret + LALAL_API_KEY.
@@ -1571,47 +1577,40 @@ async function handleFcmPushSend(request, env) {
   return cors(jsonResp({ sent: sent, failed: failed, invalidTokens: invalidTokens, total: tokens.length }));
 }
 
-// ── Stem Separation (Modal proxy) ────────────────────────────────────────────
-// POST /stems/separate
-// Body: { songId, sourceUrl }
-//     | { songId, driveFileId, accessToken }
-//     | { songId, audioBase64DataUrl }   ← stages bytes to R2 first
-// Holds the Modal shared secret server-side so clients never see it.
-async function handleStemsSeparate(request, env) {
-  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
-    return cors(jsonError('stems_not_configured: STEMS_MODAL_URL and STEMS_SHARED_SECRET secrets required on worker', 500));
-  }
-  let body;
-  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
-  const songId = String(body.songId || '').trim();
+// ── Stem Separation (Modal proxy, async) ─────────────────────────────────────
+// Two-stage flow:
+//   POST /stems/start  → resolves source URL (R2-stages base64 if needed,
+//                        re-routes Drive fileIds), spawns Modal GPU function,
+//                        returns { success, call_id, song_id, model } in <2s.
+//   POST /stems/check  → polls Modal call status. Returns { success, status:
+//                        'processing' } until the GPU job finishes, then
+//                        returns the full stems payload with status='done'.
+//
+// This replaces the legacy synchronous /stems/separate. Modal's web endpoint
+// caps responses at ~150s (524 above that), so the heavier models
+// (htdemucs_ft 2-4×, mdx_extra 1.5×) couldn't return synchronously even
+// though the GPU function itself succeeded. Mirrors the LALAL async flow.
+
+const STEMS_ALLOWED_MODELS = new Set(['htdemucs', 'htdemucs_6s', 'htdemucs_ft', 'mdx_extra']);
+
+async function _stemsResolveSource(body, env, request) {
+  // Returns { sourceUrl } or { error, status }.
   let sourceUrl = String(body.sourceUrl || '').trim();
   const driveFileId = String(body.driveFileId || '').trim();
   const accessToken = String(body.accessToken || '').trim();
   const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
-  // Whitelist on the server side too so a malicious client can't make
-  // Modal load random model weights. htdemucs_ft and mdx_extra added for
-  // the model-variant bake-off (Bird Song "other has lead guitar" problem).
-  const allowedModels = new Set(['htdemucs', 'htdemucs_6s', 'htdemucs_ft', 'mdx_extra']);
-  const modelName = allowedModels.has(body.model) ? body.model : 'htdemucs_6s';
-  if (!songId) return cors(jsonError('missing songId', 400));
-  if (!sourceUrl && !audioDataUrl && !(driveFileId && accessToken)) {
-    return cors(jsonError('missing sourceUrl, { driveFileId, accessToken }, or audioBase64DataUrl', 400));
-  }
-  // Stage base64 audio to R2 so Modal can fetch a public URL. Used for
-  // firebase-audio:// Best Shot takes (base64 stored in Firebase) where
-  // there's no other public URL available. Bucket binding `STEMS_BUCKET`
-  // must be set on the worker (Cloudflare → Settings → R2 bindings).
+  const songId = String(body.songId || '').trim();
+
   if (audioDataUrl) {
     if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
-      return cors(jsonError('staging_not_configured: STEMS_BUCKET binding and STEMS_R2_PUBLIC_BASE var required', 500));
+      return { error: 'staging_not_configured: STEMS_BUCKET binding and STEMS_R2_PUBLIC_BASE var required', status: 500 };
     }
     const m = audioDataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!m) return cors(jsonError('invalid audioBase64DataUrl: expected data:<mime>;base64,<payload>', 400));
+    if (!m) return { error: 'invalid audioBase64DataUrl: expected data:<mime>;base64,<payload>', status: 400 };
     const mime = m[1];
     const b64 = m[2];
     let bin;
-    try { bin = atob(b64); }
-    catch (e) { return cors(jsonError('invalid base64 payload', 400)); }
+    try { bin = atob(b64); } catch (e) { return { error: 'invalid base64 payload', status: 400 }; }
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const ext = (mime.split('/')[1] || 'bin').replace(/[^a-z0-9]+/gi, '').slice(0, 8) || 'bin';
@@ -1619,91 +1618,135 @@ async function handleStemsSeparate(request, env) {
     try {
       await env.STEMS_BUCKET.put(key, bytes, { httpMetadata: { contentType: mime } });
     } catch (e) {
-      return cors(jsonError('r2_stage_failed: ' + (e && e.message), 502));
+      return { error: 'r2_stage_failed: ' + (e && e.message), status: 502 };
     }
     sourceUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
   }
-  // Drive files aren't directly fetchable by Modal (auth required). Route
-  // them through our own /drive-stream proxy — Modal hits that URL with
-  // the user's short-lived token in the query string.
-  if (!sourceUrl) {
+  if (!sourceUrl && driveFileId && accessToken) {
     const origin = new URL(request.url).origin;
     sourceUrl = origin + '/drive-stream?fileId=' + encodeURIComponent(driveFileId)
               + '&token=' + encodeURIComponent(accessToken);
   }
+  return { sourceUrl: sourceUrl };
+}
 
-  // Modal stems-separation: ~30-180s per song depending on model.
-  // htdemucs_6s ~30-90s, htdemucs ~30-60s, mdx_extra ~60-120s, htdemucs_ft
-  // ~120-240s. Modal cold start adds ~10-15s. Generous 6-min ceiling.
-  //
-  // Cloudflare's eyeball connection idle-times out at ~100s if no body bytes
-  // have been written. Modal often takes longer than that on the heavier
-  // models. We work around it by returning a streamed response immediately
-  // and writing a JSON-safe whitespace heartbeat every 20s while we wait.
-  // Browsers ignore leading whitespace before JSON, so existing clients
-  // (response.json()) work unchanged. The actual JSON payload is appended
-  // once Modal returns. Matches the LALAL/split heartbeat pattern.
-  const stream = new ReadableStream({
-    async start(controller) {
-      const enc = new TextEncoder();
-      let modalDone = false;
-      const heartbeat = setInterval(() => {
-        if (modalDone) return;
-        try { controller.enqueue(enc.encode(' ')); } catch (_) {}
-      }, 20000);
+// Tries STEMS_MODAL_START_URL first, then falls back to deriving it from
+// STEMS_MODAL_URL by swapping the function-name slug. The legacy URL points
+// at -separate; the async start endpoint is published at -separate-start.
+function _stemsStartUrl(env) {
+  if (env.STEMS_MODAL_START_URL) return env.STEMS_MODAL_START_URL;
+  if (!env.STEMS_MODAL_URL) return '';
+  // Modal URL pattern: https://<workspace>--<app>-<func>.modal.run
+  // Swap the trailing -separate (with optional -http suffix) to -separate-start.
+  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-separate-start$2');
+}
 
-      const ctrl = new AbortController();
-      const abortTimer = setTimeout(() => ctrl.abort(), 360000); // 6 min
+function _stemsCheckUrl(env) {
+  if (env.STEMS_MODAL_CHECK_URL) return env.STEMS_MODAL_CHECK_URL;
+  if (!env.STEMS_MODAL_URL) return '';
+  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-separate-check$2');
+}
 
-      try {
-        controller.enqueue(enc.encode(' '));
+// POST /stems/start
+// Body: { songId, sourceUrl } | { songId, driveFileId, accessToken } | { songId, audioBase64DataUrl }
+//       Optional: model (one of htdemucs, htdemucs_6s, htdemucs_ft, mdx_extra; default htdemucs_6s)
+// Returns: { success, call_id, song_id, model }
+async function handleStemsStart(request, env) {
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('stems_not_configured: STEMS_MODAL_URL and STEMS_SHARED_SECRET secrets required on worker', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const songId = String(body.songId || '').trim();
+  if (!songId) return cors(jsonError('missing songId', 400));
 
-        const modalRes = await fetch(env.STEMS_MODAL_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source_url: sourceUrl,
-            song_id: songId,
-            model_name: modelName,
-            token: env.STEMS_SHARED_SECRET
-          }),
-          signal: ctrl.signal
-        });
-        clearTimeout(abortTimer);
-        modalDone = true;
-        clearInterval(heartbeat);
+  const driveFileId = String(body.driveFileId || '').trim();
+  const accessToken = String(body.accessToken || '').trim();
+  const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
+  const sourceUrlRaw = String(body.sourceUrl || '').trim();
+  if (!sourceUrlRaw && !audioDataUrl && !(driveFileId && accessToken)) {
+    return cors(jsonError('missing sourceUrl, { driveFileId, accessToken }, or audioBase64DataUrl', 400));
+  }
 
-        const text = await modalRes.text();
-        if (!modalRes.ok) {
-          let payload;
-          try { payload = JSON.parse(text); } catch (_) {
-            payload = { success: false, error: 'modal_error_' + modalRes.status, details: text.slice(0, 500) };
-          }
-          if (payload && typeof payload === 'object') payload.success = payload.success || false;
-          controller.enqueue(enc.encode(JSON.stringify(payload)));
-        } else {
-          controller.enqueue(enc.encode(text));
-        }
-        controller.close();
-      } catch (e) {
-        clearTimeout(abortTimer);
-        modalDone = true;
-        clearInterval(heartbeat);
-        const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
-        try {
-          controller.enqueue(enc.encode(JSON.stringify({ success: false, error: msg })));
-          controller.close();
-        } catch (_) {
-          try { controller.error(e); } catch (_) {}
-        }
-      }
-    }
-  });
+  const modelName = STEMS_ALLOWED_MODELS.has(body.model) ? body.model : 'htdemucs_6s';
 
-  return cors(new Response(stream, {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' }
-  }));
+  const resolved = await _stemsResolveSource(body, env, request);
+  if (resolved.error) return cors(jsonError(resolved.error, resolved.status || 400));
+  const sourceUrl = resolved.sourceUrl;
+
+  const startUrl = _stemsStartUrl(env);
+  if (!startUrl) {
+    return cors(jsonError('stems_not_configured: STEMS_MODAL_START_URL secret (or STEMS_MODAL_URL fallback) required', 500));
+  }
+
+  // Spawn-only call; should return in <2s.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const modalRes = await fetch(startUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_url: sourceUrl,
+        song_id: songId,
+        model_name: modelName,
+        token: env.STEMS_SHARED_SECRET
+      }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// POST /stems/check
+// Body: { callId } (or call_id — accept both)
+// Returns: { success, status: 'processing' } | { success, status: 'done', stems, sample_rate, model, ... }
+async function handleStemsCheck(request, env) {
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('stems_not_configured: STEMS_MODAL_URL and STEMS_SHARED_SECRET secrets required on worker', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const callId = String(body.callId || body.call_id || '').trim();
+  if (!callId) return cors(jsonError('missing callId', 400));
+
+  const checkUrl = _stemsCheckUrl(env);
+  if (!checkUrl) {
+    return cors(jsonError('stems_not_configured: STEMS_MODAL_CHECK_URL secret (or STEMS_MODAL_URL fallback) required', 500));
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const modalRes = await fetch(checkUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        call_id: callId,
+        token: env.STEMS_SHARED_SECRET
+      }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' }
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
 }
 
 // ── LALAL.AI Lead/Backing Split (Modal proxy) ────────────────────────────────

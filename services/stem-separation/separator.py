@@ -339,6 +339,101 @@ def separate(item: dict):
         return {"success": False, "error": str(e)}
 
 
+# ─── Async stems flow (start/check) ──────────────────────────────────────────
+# The synchronous /separate above blocks the Modal web endpoint until the GPU
+# function returns. Modal's web layer caps responses at ~150s, so the heavier
+# models (htdemucs_ft ~2-4×, mdx_extra ~1.5× slower) hit a 524 cliff on long
+# inputs even though the GPU function itself succeeds (timeout=900).
+#
+# This pair fires the GPU work asynchronously: /separate_start spawns the
+# function and returns the Modal call_id immediately; /separate_check polls
+# that call. Same pattern as the LALAL async flow above, except the long-
+# running work lives on Modal's GPU rather than an external API.
+
+@app.function(
+    image=image,
+    timeout=120,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def separate_start(item: dict):
+    """HTTP entry: spawn separate_stems on the GPU, return Modal call_id."""
+    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected_token:
+        return {"success": False, "error": "server misconfigured: no shared secret"}
+    if item.get("token", "") != expected_token:
+        return {"success": False, "error": "unauthorized"}
+
+    source_url = item.get("source_url", "")
+    song_id = item.get("song_id", "")
+    model_name = item.get("model_name", "htdemucs_6s")
+    if not source_url or not song_id:
+        return {"success": False, "error": "missing source_url or song_id"}
+
+    try:
+        call = separate_stems.spawn(source_url, song_id, model_name)
+        return {
+            "success": True,
+            "call_id": call.object_id,
+            "song_id": song_id,
+            "model": model_name,
+        }
+    except Exception as e:
+        return {"success": False, "error": f"spawn_failed: {e}"}
+
+
+@app.function(
+    image=image,
+    timeout=60,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def separate_check(item: dict):
+    """HTTP entry: poll a separate_stems call. Returns processing or done.
+
+    Body: { call_id, token }
+    Returns one of:
+      { success: true, status: 'processing' }
+      { success: true, status: 'done', stems: {...}, sample_rate, model, elapsed_sec, ... }
+      { success: false, error: '...' }
+    """
+    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected_token:
+        return {"success": False, "error": "server misconfigured: no shared secret"}
+    if item.get("token", "") != expected_token:
+        return {"success": False, "error": "unauthorized"}
+
+    call_id = item.get("call_id", "")
+    if not call_id:
+        return {"success": False, "error": "missing call_id"}
+
+    try:
+        call = modal.FunctionCall.from_id(call_id)
+    except Exception as e:
+        return {"success": False, "error": f"bad_call_id: {e}"}
+
+    # timeout=0 → poll. Raises TimeoutError if the call hasn't finished yet.
+    try:
+        result = call.get(timeout=0)
+    except modal.exception.OutputExpiredError:
+        return {"success": False, "error": "output_expired"}
+    except TimeoutError:
+        return {"success": True, "status": "processing"}
+    except Exception as e:
+        # Function raised on the GPU side
+        return {"success": False, "error": f"call_failed: {e}"}
+
+    # Got a result. separate_stems returns a dict with success/stems/etc — just
+    # surface it with status='done' tacked on so the worker can route uniformly.
+    if isinstance(result, dict):
+        out = dict(result)
+        out["status"] = "done"
+        # Preserve the dict's own success flag if present, otherwise default true
+        out["success"] = out.get("success", True)
+        return out
+    return {"success": True, "status": "done", "result": result}
+
+
 # ============================================================================
 # Phase 0 bake-off instruments
 # ============================================================================

@@ -1905,14 +1905,39 @@ async function _sdRunStemSeparationFromTake(title, opts) {
     var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
     if (!panel) return;
     var safeSong = title.replace(/'/g,"\\'");
+    var modelLabel = (opts.model === 'htdemucs_ft') ? '4 stems HQ (~3× slower)'
+                   : (opts.model === 'mdx_extra')   ? 'MDX'
+                   : (opts.model === 'htdemucs')    ? '4 stems'
+                   :                                  '6 stems';
     panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:36px;color:var(--text-dim)">' +
       '<div style="font-size:2em;margin-bottom:10px">🎚</div>' +
-      '<div style="font-weight:700;color:var(--text);margin-bottom:6px">Separating stems…</div>' +
-      '<div style="font-size:0.82em">Cold start can take 60-120s. Warm runs are ~30s.</div>' +
-      '<div style="font-size:0.7em;margin-top:14px;opacity:0.7">Source: ' + _sdEsc(opts.sourceLabel || '—') + ' · don’t close the tab</div>' +
+      '<div id="sdStemsStageMsg" style="font-weight:700;color:var(--text);margin-bottom:6px">Separating stems…</div>' +
+      '<div id="sdStemsStageHint" style="font-size:0.82em">Cold start can take 60-120s. Warm runs are ~30s.</div>' +
+      '<div style="margin:18px auto 6px;max-width:280px;height:6px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden">' +
+        '<div id="sdStemsProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#22d3ee,#a78bfa);transition:width 0.6s ease"></div>' +
+      '</div>' +
+      '<div id="sdStemsProgressPct" style="font-size:0.75em;opacity:0.7">0%</div>' +
+      '<div style="font-size:0.7em;margin-top:14px;opacity:0.7">Source: ' + _sdEsc(opts.sourceLabel || '—') + ' · ' + _sdEsc(modelLabel) + ' · don’t close the tab</div>' +
     '</div></div>';
+    var msgEl = document.getElementById('sdStemsStageMsg');
+    var hintEl = document.getElementById('sdStemsStageHint');
+    var barEl = document.getElementById('sdStemsProgressBar');
+    var pctEl = document.getElementById('sdStemsProgressPct');
+    var stageLabels = {
+      starting: { msg: 'Spinning up the GPU…', hint: 'Picking up your audio. This usually takes a few seconds.' },
+      processing: { msg: 'Separating stems…', hint: 'Cold start can take 60-120s. Warm runs are ~30s.' },
+      finalizing: { msg: 'Finalizing & uploading…', hint: 'Saving stem files. Almost there.' }
+    };
+    var onProgress = function(stage, percent) {
+        var lbl = stageLabels[stage] || stageLabels.processing;
+        if (msgEl) msgEl.textContent = lbl.msg;
+        if (hintEl) hintEl.textContent = lbl.hint;
+        var p = Math.max(0, Math.min(100, Number(percent) || 0));
+        if (barEl) barEl.style.width = p + '%';
+        if (pctEl) pctEl.textContent = p + '%';
+    };
     try {
-        await GLStems.separate(title, opts);
+        await GLStems.separate(title, Object.assign({}, opts, { onProgress: onProgress }));
         _sdLensPopulated.stems = false;
         _sdPopulateStemsLens(title);
         if (typeof showToast === 'function') showToast('Stems ready for ' + title);

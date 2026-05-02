@@ -42,17 +42,28 @@ window.GLStems = (function () {
   async function hasStems(title) { return !!(await getStems(title)); }
 
   // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?,
-  //         firebaseAudioRef?, sourceLabel?, model? }
+  //         firebaseAudioRef?, sourceLabel?, model?, onProgress? }
   // model: 'htdemucs' (4 stems), 'htdemucs_6s' (6 stems, default),
   //        'htdemucs_ft' (4 stems HQ, ~3-4× slower),
   //        'mdx_extra' (4 stems MDX architecture, ~1.5× slower)
   // firebaseAudioRef: optional `firebase-audio://...` pointer saved alongside
   //   the audioDataUrl so a future re-separate can re-fetch the base64
   //   without forcing the user to re-pick the take.
+  // onProgress(stage, percent) — stage is 'starting' | 'processing' | 'finalizing'.
+  //
+  // Async flow: POST /stems/start spawns the Modal GPU job and returns
+  // call_id (~1-3s). Then poll POST /stems/check every 5s until status='done'.
+  // Avoids Modal's ~150s web-endpoint cap that the legacy synchronous
+  // /stems/separate flow hit on the heavier models (htdemucs_ft, mdx_extra).
   var ALLOWED_MODELS = ['htdemucs', 'htdemucs_6s', 'htdemucs_ft', 'mdx_extra'];
   async function separate(title, opts) {
     if (!title) throw new Error('title required');
     opts = opts || {};
+    var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : function(){};
+    var startedAt = Date.now();
+
+    // Stage 1: kick off the Modal GPU job
+    onProgress('starting', 0);
     var body = { songId: _stemsKey(title) };
     if (ALLOWED_MODELS.indexOf(opts.model) !== -1) {
       body.model = opts.model;
@@ -70,15 +81,54 @@ window.GLStems = (function () {
       throw new Error('sourceUrl, driveFileId, or audioDataUrl required');
     }
 
-    var res = await fetch(_workerBase() + '/stems/separate', {
+    var startRes = await fetch(_workerBase() + '/stems/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
+    var startData = null;
+    try { startData = await startRes.json(); } catch (e) {}
+    if (!startData) throw new Error('Bad start response (' + startRes.status + ')');
+    if (!startData.success) throw new Error(startData.error || 'stems_start_failed');
+    var callId = startData.call_id;
+    if (!callId) throw new Error('No call_id from /stems/start');
+
+    // Stage 2: poll /stems/check until done. 5s interval, 8 min cap (matches
+    // the model timeout=900 ceiling on Modal with margin).
+    onProgress('processing', 0);
+    var pollStart = Date.now();
+    var maxPollMs = 8 * 60 * 1000;
     var data = null;
-    try { data = await res.json(); } catch (e) {}
-    if (!data) throw new Error('Bad worker response (' + res.status + ')');
-    if (!data.success) throw new Error(data.error || 'separation_failed');
+    while (true) {
+      if (Date.now() - pollStart > maxPollMs) {
+        throw new Error('Stems separation timed out (>8min on client)');
+      }
+      await new Promise(function(r) { setTimeout(r, 5000); });
+      var checkRes = await fetch(_workerBase() + '/stems/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId: callId })
+      });
+      var checkData = null;
+      try { checkData = await checkRes.json(); } catch (e) {}
+      if (!checkData) throw new Error('Bad check response (' + checkRes.status + ')');
+      if (!checkData.success) throw new Error(checkData.error || 'stems_check_failed');
+      if (checkData.status === 'processing') {
+        // Modal doesn't give us a percent — synthesize one based on elapsed
+        // time vs typical run length (90s for htdemucs_6s, ~150s for slow
+        // models). Caps at 95% so the UI doesn't jump backward when done.
+        var typicalSec = (startData.model === 'htdemucs_ft' || startData.model === 'mdx_extra') ? 180 : 90;
+        var pct = Math.min(95, Math.round(((Date.now() - pollStart) / 1000) / typicalSec * 100));
+        onProgress('processing', pct);
+        continue;
+      }
+      if (checkData.status === 'done') {
+        onProgress('finalizing', 100);
+        data = checkData;
+        break;
+      }
+      console.warn('[GLStems] Unknown stems check status:', checkData.status);
+    }
 
     var record = {
       stems: data.stems,
@@ -86,7 +136,7 @@ window.GLStems = (function () {
       model: data.model,
       separatedAt: new Date().toISOString(),
       sourceLabel: opts.sourceLabel || (opts.sourceUrl ? 'URL' : 'Drive'),
-      elapsedSec: data.elapsed_sec
+      elapsedSec: (Date.now() - startedAt) / 1000
     };
     // Save source ref so re-separate can default-fill the source. We save
     // pointers (driveFileId, firebaseAudioRef), not credentials (accessToken
