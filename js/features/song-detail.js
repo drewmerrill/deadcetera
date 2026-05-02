@@ -2101,14 +2101,51 @@ window._sdStemsRedo = async function(title) {
     _sdPopulateStemsLens(title);
 };
 
+// Format MM:SS for the transport time display.
+function _sdStemsFmtTime(s) {
+    s = Math.floor(s || 0);
+    return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+}
+
+// Single seek path — optimistic UI first (snap playhead + scrub + time
+// display synchronously), then fire audio seeks. Without this you wait
+// for the browser to issue Range requests on 7-8 FLAC stems and a
+// `timeupdate` to fire before the playhead moves, which feels laggy.
+// fastSeek (when available) seeks to the nearest keyframe and is
+// noticeably faster than `currentTime =` on long FLAC files.
+window._sdStemsApplySeek = function(t) {
+    var audios = document.querySelectorAll('.sd-stem-audio');
+    if (!audios.length) return;
+    var master = audios[0];
+    if (!master.duration) return;
+    var clamped = Math.max(0, Math.min(master.duration, t));
+    var frac = clamped / master.duration;
+    // Visuals first — these are synchronous and feel instant.
+    var scrub = document.getElementById('sdStemsScrub');
+    var timeEl = document.getElementById('sdStemsTime');
+    if (scrub) scrub.value = frac * 1000;
+    if (timeEl) timeEl.textContent = _sdStemsFmtTime(clamped) + ' / ' + _sdStemsFmtTime(master.duration);
+    document.querySelectorAll('.sd-stem-playhead').forEach(function(ph) {
+        var w = ph.parentElement ? ph.parentElement.clientWidth : 0;
+        ph.style.transform = 'translateX(' + (frac * w) + 'px)';
+    });
+    // Then kick the audio. fastSeek goes to nearest keyframe and returns
+    // immediately; currentTime fallback waits for exact-position seek.
+    audios.forEach(function(a) {
+        try {
+            if (typeof a.fastSeek === 'function') a.fastSeek(clamped);
+            else a.currentTime = clamped;
+        } catch(e) {}
+    });
+};
+
 // DAW-style transport — relative seek shared by buttons + arrow keys.
 window._sdStemsSeekBy = function(seconds) {
     var audios = document.querySelectorAll('.sd-stem-audio');
     if (!audios.length) return;
     var master = audios[0];
     if (!master.duration) return;
-    var t = Math.max(0, Math.min(master.duration, (master.currentTime || 0) + seconds));
-    audios.forEach(function(a) { try { a.currentTime = t; } catch(e) {} });
+    window._sdStemsApplySeek((master.currentTime || 0) + seconds);
 };
 
 // Per-mount state. WebAudio routing is set up at mount time so volume/mute/
@@ -2449,8 +2486,7 @@ function _sdInitStemsPlayer() {
             if (!master.duration) return;
             var rect = wrap.getBoundingClientRect();
             var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            var t = frac * master.duration;
-            audios.forEach(function(a){ try { a.currentTime = t; } catch(err) {} });
+            window._sdStemsApplySeek(frac * master.duration);
         });
     });
     // Repaint activity canvases on resize (e.g. entering/exiting fullscreen)
@@ -2490,11 +2526,24 @@ function _sdInitStemsPlayer() {
         if (btn) btn.textContent = '▶ Play';
         audios.forEach(function(a){ try { a.pause(); a.currentTime = 0; } catch(e){} });
     });
-    if (scrub) scrub.addEventListener('input', function() {
-        if (!master.duration) return;
-        var t = (scrub.value / 1000) * master.duration;
-        audios.forEach(function(a){ try { a.currentTime = t; } catch(e) {} });
-    });
+    // While dragging the master scrub bar, only update visuals — actual
+    // audio seek fires once on `change` (mouseup). Avoids queuing dozens
+    // of seeks across 7-8 stems while the user drags through the bar.
+    if (scrub) {
+        scrub.addEventListener('input', function() {
+            if (!master.duration) return;
+            var frac = scrub.value / 1000;
+            if (timeEl) timeEl.textContent = fmt(frac * master.duration) + ' / ' + fmt(master.duration);
+            playheads.forEach(function(ph) {
+                var w = ph.parentElement ? ph.parentElement.clientWidth : 0;
+                ph.style.transform = 'translateX(' + (frac * w) + 'px)';
+            });
+        });
+        scrub.addEventListener('change', function() {
+            if (!master.duration) return;
+            window._sdStemsApplySeek((scrub.value / 1000) * master.duration);
+        });
+    }
 }
 
 window._sdPopulateListenLensPublic = function(title) { _sdPopulateListenLens(title); };
