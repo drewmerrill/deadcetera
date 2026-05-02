@@ -214,11 +214,12 @@ window.RehearsalMixdowns = (function() {
                 if (url) url.value = file.url;
                 if (id) id.value = file.fileId;
                 if (nm) nm.value = file.name;
+                var sizeStr = file.sizeLabel ? ' · ' + file.sizeLabel : '';
                 if (label) {
-                    label.textContent = '📂 ' + file.name;
+                    label.textContent = '📂 ' + file.name + sizeStr;
                     label.style.display = 'block';
                 }
-                if (typeof showToast === 'function') showToast('Linked: ' + file.name);
+                if (typeof showToast === 'function') showToast('Linked: ' + file.name + sizeStr);
             },
             onError: function(e) {
                 if (typeof showToast === 'function') showToast('Picker error: ' + (e && e.message ? e.message : 'unknown'), 5000);
@@ -244,7 +245,8 @@ window.RehearsalMixdowns = (function() {
                 all[id].updated_at = new Date().toISOString();
                 await saveBandDataToDrive('_band', _DATA_KEY, all);
                 _cache = null;
-                if (typeof showToast === 'function') showToast('✅ Re-linked: ' + file.name);
+                var sizeStr = file.sizeLabel ? ' · ' + file.sizeLabel : '';
+                if (typeof showToast === 'function') showToast('✅ Re-linked: ' + file.name + sizeStr);
                 render('rhMixdownsContainer');
             },
             onError: function(e) {

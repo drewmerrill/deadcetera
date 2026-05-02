@@ -34,6 +34,17 @@ window.GLDrivePicker = (function() {
     } catch(e) { return ''; }
   }
 
+  // Picker doesn't show a Size column (drive.file scope can't list metadata
+  // pre-pick). We surface it post-pick via doc.sizeBytes from the callback.
+  function _formatSize(bytes) {
+    var n = Number(bytes) || 0;
+    if (!n) return '';
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+  }
+
   function _apiKey() {
     return (typeof GOOGLE_DRIVE_CONFIG !== 'undefined') ? GOOGLE_DRIVE_CONFIG.apiKey : '';
   }
@@ -184,6 +195,7 @@ window.GLDrivePicker = (function() {
                 name: doc.name || '',
                 mimeType: doc.mimeType || '',
                 sizeBytes: doc.sizeBytes || 0,
+                sizeLabel: _formatSize(doc.sizeBytes),
                 url: 'https://drive.google.com/file/d/' + doc.id + '/view'
               });
             } else if (data.action === picker.Action.CANCEL) {

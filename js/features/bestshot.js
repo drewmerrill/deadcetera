@@ -505,7 +505,8 @@ function addBestShotTake(songTitle) {
             onPick: function(file) {
                 var urlInput = document.getElementById('bstUrl');
                 if (urlInput) urlInput.value = file.url;
-                if (typeof showToast === 'function') showToast('Linked: ' + file.name);
+                var sizeStr = file.sizeLabel ? ' · ' + file.sizeLabel : '';
+                if (typeof showToast === 'function') showToast('Linked: ' + file.name + sizeStr);
             },
             onError: function(e) {
                 if (typeof showToast === 'function') showToast('Picker error: ' + (e && e.message ? e.message : 'unknown'), 5000);
