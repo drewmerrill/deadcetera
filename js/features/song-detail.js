@@ -1705,22 +1705,24 @@ async function _sdPopulateStemsLens(title) {
     // are about to be removed from the DOM.
     _sdStemsState = null;
     panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:24px;color:var(--text-dim)">Loading stems…</div></div>';
-    var stems = null, lalalSplit = null;
+    var stems = null, lalalSplit = null, spatialSplits = [];
     try {
         if (window.GLStems) {
-            // Load both Demucs stems and LALAL lead/backing in parallel —
-            // GLAudioSession.mergeTracks fuses them so the lens renders one
-            // canonical mixer (LALAL lead/backing replace the Demucs vocals row).
-            var both = await Promise.all([
+            // Load Demucs stems, LALAL lead/backing, and any Phase 2 spatial
+            // splits in parallel. GLAudioSession.mergeTracks fuses all three
+            // into one canonical mixer.
+            var all = await Promise.all([
                 GLStems.getStems(title).catch(function(){return null;}),
-                GLStems.getLeadBackingSplit(title).catch(function(){return null;})
+                GLStems.getLeadBackingSplit(title).catch(function(){return null;}),
+                GLStems.getSpatialSplits ? GLStems.getSpatialSplits(title).catch(function(){return [];}) : Promise.resolve([])
             ]);
-            stems = both[0];
-            lalalSplit = both[1];
+            stems = all[0];
+            lalalSplit = all[1];
+            spatialSplits = all[2] || [];
         }
     } catch(e) {}
     if (stems && stems.stems && stems.stems.drums) {
-        panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsPlayer(title, stems, lalalSplit) + '</div>';
+        panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) + '</div>';
         _sdInitStemsPlayer();
     } else {
         // Setup view — render shell first, then async-load Best Shot takes for picker
@@ -1966,16 +1968,17 @@ function _sdStemsModelOptions(currentModel) {
     }).join('');
 }
 
-function _sdRenderStemsPlayer(title, stems, lalalSplit) {
+function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
     _sdEnsureStemsFsStyle();
     var safeSong = title.replace(/'/g, "\\'");
     // Stash so _sdStemsRedo can read source refs + previous model without
     // having to re-load from band-data on every Re-separate click.
     window._sdLastStemsRec = stems;
+    window._sdLastSpatialSplits = Array.isArray(spatialSplits) ? spatialSplits : [];
     // Single-source-of-truth merged track list. LALAL lead/backing replace
-    // Demucs vocals when present — no duplicate vocal rows.
+    // Demucs vocals; spatial-split children appear after their parent.
     var tracks = (window.GLAudioSession && GLAudioSession.mergeTracks)
-        ? GLAudioSession.mergeTracks(stems, lalalSplit)
+        ? GLAudioSession.mergeTracks(stems, lalalSplit, window._sdLastSpatialSplits)
         : [];
     var hasLalal = !!(window.GLAudioSession && GLAudioSession.hasLalalSplit && GLAudioSession.hasLalalSplit(lalalSplit));
     var hasDemucsVocals = !!(stems && stems.stems && stems.stems.vocals);
@@ -2004,8 +2007,16 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
           '<button class="sd-stem-solo" data-stem="' + t.id + '" title="Solo" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">S</button>' +
           '<div class="sd-stem-overflow-wrap" style="position:relative;flex-shrink:0">' +
             '<button class="sd-stem-overflow" onclick="_sdStemsToggleOverflow(this);event.stopPropagation()" title="More" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.95em;line-height:1;font-weight:700">⋮</button>' +
-            '<div class="sd-stem-overflow-menu" style="position:absolute;top:calc(100% + 4px);right:0;display:none;background:#1e293b;border:1px solid var(--border);border-radius:6px;padding:4px 0;z-index:30;min-width:160px;box-shadow:0 6px 18px rgba(0,0,0,0.55)">' +
+            '<div class="sd-stem-overflow-menu" style="position:absolute;top:calc(100% + 4px);right:0;display:none;background:#1e293b;border:1px solid var(--border);border-radius:6px;padding:4px 0;z-index:30;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.55)">' +
               '<a href="' + _sdEsc(t.rawUrl) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" onclick="_sdStemsCloseAllOverflows()" style="display:block;padding:7px 12px;color:var(--text);text-decoration:none;font-size:0.78em;white-space:nowrap">⬇ Download FLAC</a>' +
+              // Spatial split: only for parent (non-child) stems with a stable rawUrl.
+              (t.kind !== 'spatial_child'
+                ? '<button onclick="_sdStemsCloseAllOverflows();_sdStemsOpenSpatialPanel(\'' + safeSong + '\', \'' + _sdEsc(t.id) + '\', \'' + _sdEsc(t.rawUrl) + '\', \'' + _sdEsc(t.label) + '\')" style="display:block;width:100%;text-align:left;padding:7px 12px;color:var(--text);background:none;border:0;font-size:0.78em;cursor:pointer;white-space:nowrap" title="Split this stem by stereo pan position, optionally biased toward a tone fingerprint">↳ Spatial split…</button>'
+                : '') +
+              // Remove split: only for spatial-children — clears all children of this parent.
+              (t.kind === 'spatial_child'
+                ? '<button onclick="_sdStemsCloseAllOverflows();_sdStemsRemoveSpatialSplit(\'' + safeSong + '\', \'' + _sdEsc(t.parentId) + '\')" style="display:block;width:100%;text-align:left;padding:7px 12px;color:#f87171;background:none;border:0;font-size:0.78em;cursor:pointer;white-space:nowrap" title="Discard the spatial split for this parent stem">✕ Remove split</button>'
+                : '') +
             '</div>' +
           '</div>' +
           // crossorigin="anonymous" is REQUIRED for createMediaElementSource()
@@ -2317,6 +2328,351 @@ window._sdStemsChangeSource = async function(title) {
     _sdLensPopulated.stems = false;
     _sdPopulateStemsLens(title);
 };
+
+// ── Phase 2: Spatial split panel ──────────────────────────────────────────
+// Opens an inline overlay anchored on the stems panel. Lets the user pick
+// pan windows + reference fingerprints, then runs the split.
+
+window._sdStemsRemoveSpatialSplit = async function(title, parentId) {
+    if (!confirm('Remove the spatial split for the ' + parentId + ' stem?\n\nThis clears the split record so the original stem is no longer divided. R2 files stay until garbage-collected.')) return;
+    if (window.GLStems && GLStems.clearSpatialSplitFor) {
+        try { await GLStems.clearSpatialSplitFor(title, parentId); } catch (e) {}
+    }
+    _sdLensPopulated.stems = false;
+    _sdPopulateStemsLens(title);
+};
+
+window._sdStemsOpenSpatialPanel = async function(title, stemId, sourceUrl, sourceLabel) {
+    var host = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
+    if (!host) return;
+    var existing = document.getElementById('sdSpatialOverlay');
+    if (existing) existing.remove();
+
+    var safeSong = (title || '').replace(/'/g, "\\'");
+    var overlay = document.createElement('div');
+    overlay.id = 'sdSpatialOverlay';
+    overlay.style.cssText = 'position:absolute;inset:0;z-index:50;background:rgba(15,23,42,0.92);backdrop-filter:blur(6px);overflow-y:auto;padding:18px;border-radius:10px;color:var(--text)';
+    overlay.innerHTML = ''
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">'
+      +   '<div>'
+      +     '<div style="font-size:1.1em;font-weight:700">↳ Spatial split — ' + _sdEsc(sourceLabel || stemId) + '</div>'
+      +     '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px;max-width:580px">Split by where each frequency lives in stereo space, optionally biased toward a tone fingerprint. Best for separating two players of the same instrument (e.g. Bobby vs Jerry).</div>'
+      +   '</div>'
+      +   '<button onclick="document.getElementById(\'sdSpatialOverlay\').remove()" style="padding:5px 11px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);border-radius:6px;cursor:pointer;font-size:0.85em">✕</button>'
+      + '</div>'
+      + '<div id="sdSpHist" style="margin-bottom:12px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02)">'
+      +   '<div style="font-size:0.72em;color:var(--text-dim);margin-bottom:6px">Energy by pan position <span id="sdSpHistStatus">— analyzing…</span></div>'
+      +   '<canvas id="sdSpHistCanvas" width="800" height="60" style="width:100%;height:60px;display:block"></canvas>'
+      +   '<div style="display:flex;justify-content:space-between;font-size:0.65em;color:var(--text-dim);margin-top:4px"><span>← Hard left</span><span>Center</span><span>Hard right →</span></div>'
+      + '</div>'
+      + '<div id="sdSpZones"></div>'
+      + '<div style="margin-top:14px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02)">'
+      +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+      +     '<div style="font-size:0.85em;font-weight:700">Reference clips (tone fingerprints)</div>'
+      +     '<button id="sdSpAddFp" style="padding:4px 10px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);border-radius:6px;cursor:pointer;font-size:0.78em">+ Add reference</button>'
+      +   '</div>'
+      +   '<div style="font-size:0.7em;color:var(--text-dim);margin-bottom:8px">Upload a clean isolated clip of e.g. Jerry\'s tone. Used to bias each pan zone toward whoever\'s tone matches better. Optional but powerful when one player is hard to isolate by pan alone.</div>'
+      +   '<div id="sdSpFpList" style="display:flex;flex-direction:column;gap:6px"></div>'
+      + '</div>'
+      + '<div style="margin-top:14px;padding:10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+      +   '<label style="font-size:0.85em;font-weight:700">Fingerprint strength</label>'
+      +   '<input type="range" id="sdSpFpStrength" min="0" max="100" value="50" style="flex:1;min-width:140px">'
+      +   '<span id="sdSpFpStrengthVal" style="font-size:0.78em;color:var(--text-dim);min-width:60px;text-align:right;font-variant-numeric:tabular-nums">50%</span>'
+      +   '<div style="flex-basis:100%;font-size:0.65em;color:var(--text-dim)">0% = pan only · 50% = balanced (recommended) · 100% = aggressive timbral bias</div>'
+      + '</div>'
+      + '<div id="sdSpRunRow" style="margin-top:14px;display:flex;justify-content:flex-end;gap:8px">'
+      +   '<button onclick="document.getElementById(\'sdSpatialOverlay\').remove()" style="padding:9px 15px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);border-radius:8px;cursor:pointer;font-size:0.88em">Cancel</button>'
+      +   '<button id="sdSpRun" onclick="_sdStemsRunSpatial(\'' + safeSong + '\', \'' + _sdEsc(stemId) + '\', \'' + _sdEsc(sourceUrl) + '\', \'' + _sdEsc(sourceLabel || stemId) + '\')" style="padding:9px 18px;border:0;background:linear-gradient(90deg,#22d3ee,#a78bfa);color:#0f172a;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:700">↳ Run spatial split</button>'
+      + '</div>';
+    host.style.position = 'relative';
+    host.appendChild(overlay);
+
+    // Render initial pan zones with safe defaults; pan_analyze will refine.
+    var defaultZones = [
+        { name: 'left_lead',  pan_min: -1.0, pan_max: -0.3, color: '#f59e0b', hint: 'Jerry / left side' },
+        { name: 'center',     pan_min: -0.3, pan_max:  0.3, color: '#a78bfa', hint: 'Center / shared content' },
+        { name: 'right_lead', pan_min:  0.3, pan_max:  1.0, color: '#22d3ee', hint: 'Bob / right side' }
+    ];
+    window._sdSpZones = defaultZones;
+    _sdRenderSpatialZones();
+    _sdRenderSpatialFpList();
+
+    document.getElementById('sdSpFpStrength').addEventListener('input', function(e) {
+        document.getElementById('sdSpFpStrengthVal').textContent = e.target.value + '%';
+    });
+    document.getElementById('sdSpAddFp').onclick = _sdStemsAddFingerprintPrompt;
+
+    // Async pan-analyze to refine the histogram + suggested windows.
+    if (window.GLStems && GLStems.analyzePan) {
+        try {
+            var analysis = await GLStems.analyzePan(sourceUrl);
+            _sdRenderSpatialHistogram(analysis.histogram || []);
+            var status = document.getElementById('sdSpHistStatus');
+            if (status) status.textContent = '';
+        } catch (e) {
+            var status2 = document.getElementById('sdSpHistStatus');
+            if (status2) status2.textContent = '— couldn\'t analyze (' + (e.message || e) + ')';
+        }
+    }
+};
+
+function _sdRenderSpatialZones() {
+    var zones = window._sdSpZones || [];
+    var fps = window._sdSpFps || {};
+    var fpNames = Object.keys(fps);
+    var fpOptions = '<option value="">— none —</option>' + fpNames.map(function(n) {
+        return '<option value="' + _sdEsc(n) + '">' + _sdEsc(n) + '</option>';
+    }).join('');
+    var html = zones.map(function(z, i) {
+        var minPct = (z.pan_min + 1) * 50;  // -1..+1 → 0..100
+        var maxPct = (z.pan_max + 1) * 50;
+        return '<div class="sd-sp-zone" data-zone-idx="' + i + '" style="margin-bottom:10px;padding:10px;border:1px solid ' + z.color + ';border-radius:8px;background:rgba(255,255,255,0.02)">'
+          + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
+          +   '<input type="text" class="sd-sp-zone-name" value="' + _sdEsc(z.name) + '" data-idx="' + i + '" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);color:' + z.color + ';font-weight:700;padding:4px 8px;border-radius:5px;font-size:0.88em;width:140px">'
+          +   '<span style="font-size:0.7em;color:var(--text-dim);flex:1">' + _sdEsc(z.hint || '') + '</span>'
+          +   '<select class="sd-sp-zone-fp" data-idx="' + i + '" title="Bias this zone toward a tone fingerprint" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.78em">' + fpOptions + '</select>'
+          + '</div>'
+          + '<div style="position:relative;height:18px;background:rgba(255,255,255,0.04);border-radius:9px;margin:6px 0">'
+          +   '<div class="sd-sp-zone-band" style="position:absolute;top:0;bottom:0;background:' + z.color + ';opacity:0.55;border-radius:9px;left:' + minPct + '%;width:' + (maxPct - minPct) + '%"></div>'
+          + '</div>'
+          + '<div style="display:flex;align-items:center;gap:10px;font-size:0.72em;color:var(--text-dim)">'
+          +   '<span style="width:30px">Min</span>'
+          +   '<input type="range" class="sd-sp-zone-min" data-idx="' + i + '" min="-100" max="100" value="' + Math.round(z.pan_min * 100) + '" style="flex:1;accent-color:' + z.color + '">'
+          +   '<span class="sd-sp-zone-min-val" data-idx="' + i + '" style="width:42px;text-align:right;font-variant-numeric:tabular-nums">' + z.pan_min.toFixed(2) + '</span>'
+          + '</div>'
+          + '<div style="display:flex;align-items:center;gap:10px;font-size:0.72em;color:var(--text-dim);margin-top:4px">'
+          +   '<span style="width:30px">Max</span>'
+          +   '<input type="range" class="sd-sp-zone-max" data-idx="' + i + '" min="-100" max="100" value="' + Math.round(z.pan_max * 100) + '" style="flex:1;accent-color:' + z.color + '">'
+          +   '<span class="sd-sp-zone-max-val" data-idx="' + i + '" style="width:42px;text-align:right;font-variant-numeric:tabular-nums">' + z.pan_max.toFixed(2) + '</span>'
+          + '</div>'
+          + '</div>';
+    }).join('');
+    var container = document.getElementById('sdSpZones');
+    if (!container) return;
+    container.innerHTML = html;
+
+    container.querySelectorAll('.sd-sp-zone-min').forEach(function(el) {
+        el.addEventListener('input', function(e) {
+            var i = +e.target.dataset.idx;
+            var v = +e.target.value / 100;
+            window._sdSpZones[i].pan_min = v;
+            container.querySelector('.sd-sp-zone-min-val[data-idx="' + i + '"]').textContent = v.toFixed(2);
+            _sdUpdateZoneBand(i);
+        });
+    });
+    container.querySelectorAll('.sd-sp-zone-max').forEach(function(el) {
+        el.addEventListener('input', function(e) {
+            var i = +e.target.dataset.idx;
+            var v = +e.target.value / 100;
+            window._sdSpZones[i].pan_max = v;
+            container.querySelector('.sd-sp-zone-max-val[data-idx="' + i + '"]').textContent = v.toFixed(2);
+            _sdUpdateZoneBand(i);
+        });
+    });
+    container.querySelectorAll('.sd-sp-zone-name').forEach(function(el) {
+        el.addEventListener('input', function(e) {
+            var i = +e.target.dataset.idx;
+            window._sdSpZones[i].name = e.target.value.trim().replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 32) || ('zone_' + i);
+        });
+    });
+    container.querySelectorAll('.sd-sp-zone-fp').forEach(function(el) {
+        el.addEventListener('change', function(e) {
+            var i = +e.target.dataset.idx;
+            window._sdSpZones[i].fingerprint_ref = e.target.value || null;
+        });
+    });
+}
+
+function _sdUpdateZoneBand(i) {
+    var zone = window._sdSpZones[i];
+    var band = document.querySelector('.sd-sp-zone[data-zone-idx="' + i + '"] .sd-sp-zone-band');
+    if (!band) return;
+    var minPct = (zone.pan_min + 1) * 50;
+    var maxPct = (zone.pan_max + 1) * 50;
+    var lo = Math.min(minPct, maxPct);
+    var hi = Math.max(minPct, maxPct);
+    band.style.left = lo + '%';
+    band.style.width = (hi - lo) + '%';
+}
+
+function _sdRenderSpatialHistogram(hist) {
+    var canvas = document.getElementById('sdSpHistCanvas');
+    if (!canvas || !hist || !hist.length) return;
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width;
+    var H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    // Background gradient L→R for orientation
+    var grad = ctx.createLinearGradient(0, 0, W, 0);
+    grad.addColorStop(0, 'rgba(245,158,11,0.08)');
+    grad.addColorStop(0.5, 'rgba(167,139,250,0.06)');
+    grad.addColorStop(1, 'rgba(34,211,238,0.08)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    var maxV = Math.max.apply(Math, hist);
+    if (maxV <= 0) return;
+    var bw = W / hist.length;
+    for (var i = 0; i < hist.length; i++) {
+        var h = (hist[i] / maxV) * (H - 6);
+        var center = (i + 0.5) / hist.length;  // 0..1
+        var hue = center < 0.5 ? 38 + center * 30 : 197 - (center - 0.5) * 30;
+        ctx.fillStyle = 'hsl(' + hue + ',75%,62%)';
+        ctx.fillRect(i * bw + 1, H - h - 2, bw - 2, h);
+    }
+    // Center line
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath();
+    ctx.moveTo(W / 2, 0);
+    ctx.lineTo(W / 2, H);
+    ctx.stroke();
+}
+
+function _sdRenderSpatialFpList() {
+    var list = document.getElementById('sdSpFpList');
+    if (!list) return;
+    var fps = window._sdSpFps || {};
+    var names = Object.keys(fps);
+    if (!names.length) {
+        list.innerHTML = '<div style="font-size:0.72em;color:var(--text-dim);font-style:italic">No reference clips yet. Add one above to enable tone biasing.</div>';
+        return;
+    }
+    list.innerHTML = names.map(function(n) {
+        var fp = fps[n];
+        var src = fp.sourceLabel || fp.sourceUrl || '';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px">'
+          + '<span style="font-weight:700;font-size:0.82em">' + _sdEsc(n) + '</span>'
+          + '<span style="flex:1;font-size:0.7em;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(src) + '</span>'
+          + '<button onclick="_sdStemsDeleteFingerprint(\'' + _sdEsc(n) + '\')" title="Delete" style="padding:3px 8px;border:1px solid var(--border);background:rgba(239,68,68,0.1);color:#fca5a5;border-radius:5px;cursor:pointer;font-size:0.72em">✕</button>'
+          + '</div>';
+    }).join('');
+}
+
+window._sdStemsAddFingerprintPrompt = async function() {
+    var name = prompt('Reference name (e.g. "Jerry — Wolf 1977", "Bob Mesa"):');
+    if (!name || !name.trim()) return;
+    name = name.trim();
+    var url = prompt('Public URL of a clean reference clip (10-60s of just this player works best):');
+    if (!url || !url.trim()) return;
+    url = url.trim();
+    var label = prompt('Optional source label (e.g. "Workingman\'s Dead - isolated Jerry"):', '') || '';
+
+    var btn = document.getElementById('sdSpAddFp');
+    var origText = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Computing fingerprint…'; }
+    try {
+        var result = await GLStems.fingerprintTone(url, { sourceLabel: label });
+        var lib = await GLStems.saveFingerprint(name, result);
+        window._sdSpFps = lib;
+        _sdRenderSpatialFpList();
+        _sdRenderSpatialZones();  // re-render to refresh per-zone fingerprint dropdowns
+        if (typeof showToast === 'function') showToast('Fingerprint saved: ' + name);
+    } catch (e) {
+        alert('Fingerprint failed: ' + (e.message || e));
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origText; }
+    }
+};
+
+window._sdStemsDeleteFingerprint = async function(name) {
+    if (!confirm('Delete reference "' + name + '"? Any zones using it will lose the bias.')) return;
+    var lib = await GLStems.deleteFingerprint(name);
+    window._sdSpFps = lib;
+    // Drop ref from any zones currently using it
+    (window._sdSpZones || []).forEach(function(z) { if (z.fingerprint_ref === name) z.fingerprint_ref = null; });
+    _sdRenderSpatialFpList();
+    _sdRenderSpatialZones();
+};
+
+window._sdStemsRunSpatial = async function(title, stemId, sourceUrl, sourceLabel) {
+    var zones = window._sdSpZones || [];
+    if (!zones.length) { alert('Add at least one pan zone.'); return; }
+    var fpStrength = (+document.getElementById('sdSpFpStrength').value) / 100;
+    var fps = window._sdSpFps || {};
+    // Only include fingerprints that some zone actually references — saves a
+    // few hundred floats round-tripping when no zone is biased.
+    var referenced = {};
+    zones.forEach(function(z) {
+        if (z.fingerprint_ref && fps[z.fingerprint_ref]) referenced[z.fingerprint_ref] = fps[z.fingerprint_ref].fingerprint;
+    });
+
+    var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
+    var overlay = document.getElementById('sdSpatialOverlay');
+    if (overlay) {
+        overlay.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-dim)">'
+          + '<div style="font-size:2em;margin-bottom:10px">↳</div>'
+          + '<div id="sdSpStageMsg" style="font-weight:700;color:var(--text);margin-bottom:6px">Spawning DSP…</div>'
+          + '<div id="sdSpStageHint" style="font-size:0.82em">Pan-window masking + fingerprint biasing.</div>'
+          + '<div style="margin:18px auto 6px;max-width:280px;height:6px;background:rgba(255,255,255,0.08);border-radius:999px;overflow:hidden">'
+          +   '<div id="sdSpProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#22d3ee,#a78bfa);transition:width 0.5s ease"></div>'
+          + '</div>'
+          + '<div id="sdSpProgressPct" style="font-size:0.75em;opacity:0.7">0%</div>'
+          + '</div>';
+    }
+    var stageLabels = {
+        starting: { msg: 'Spawning DSP…', hint: 'Sending mask params to Modal.' },
+        processing: { msg: 'Splitting by pan…', hint: 'STFT → mask → iSTFT for each zone (and fingerprint-bias if enabled).' },
+        finalizing: { msg: 'Uploading stems…', hint: 'Saving to R2.' }
+    };
+    var onProgress = function(stage, percent) {
+        var lbl = stageLabels[stage] || stageLabels.processing;
+        var msg = document.getElementById('sdSpStageMsg');
+        var hint = document.getElementById('sdSpStageHint');
+        var bar = document.getElementById('sdSpProgressBar');
+        var pct = document.getElementById('sdSpProgressPct');
+        var p = Math.max(0, Math.min(100, +percent || 0));
+        if (msg) msg.textContent = lbl.msg;
+        if (hint) hint.textContent = lbl.hint;
+        if (bar) bar.style.width = p + '%';
+        if (pct) pct.textContent = p + '%';
+    };
+    try {
+        await GLStems.spatialSplit(title, {
+            sourceUrl: sourceUrl,
+            sourceStemId: stemId,
+            sourceLabel: sourceLabel,
+            panWindows: zones.map(function(z) {
+                return {
+                    name: z.name,
+                    pan_min: z.pan_min,
+                    pan_max: z.pan_max,
+                    soft_width: 0.15,
+                    fingerprint_ref: z.fingerprint_ref || null
+                };
+            }),
+            references: Object.keys(referenced).length ? Object.keys(referenced).reduce(function(acc, k) {
+                acc[k] = referenced[k];
+                return acc;
+            }, {}) : null,
+            fpStrength: fpStrength,
+            onProgress: onProgress
+        });
+        if (overlay) overlay.remove();
+        _sdLensPopulated.stems = false;
+        _sdPopulateStemsLens(title);
+        if (typeof showToast === 'function') showToast('Spatial split complete: ' + stemId);
+    } catch (e) {
+        if (overlay) {
+            overlay.innerHTML = '<div style="padding:24px;text-align:center">'
+              + '<div style="color:#ef4444;font-weight:700;margin-bottom:8px">Spatial split failed</div>'
+              + '<div style="color:var(--text-dim);font-size:0.85em;margin-bottom:14px;word-break:break-word">' + _sdEsc(e.message || e) + '</div>'
+              + '<button onclick="document.getElementById(\'sdSpatialOverlay\').remove()" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer">Close</button>'
+              + '</div>';
+        }
+    }
+};
+
+// Pre-load the band fingerprint library when the song-detail module first
+// touches the spatial features. Called by _sdStemsOpenSpatialPanel via a
+// best-effort early load — failure is silent (the panel still renders).
+(function _sdPreloadFingerprints() {
+    if (window._sdSpFpsLoadStarted) return;
+    window._sdSpFpsLoadStarted = true;
+    if (window.GLStems && GLStems.loadFingerprints) {
+        GLStems.loadFingerprints().then(function(lib) {
+            window._sdSpFps = lib || {};
+        }).catch(function() { window._sdSpFps = {}; });
+    }
+})();
 
 // Format MM:SS for the transport time display.
 function _sdStemsFmtTime(s) {

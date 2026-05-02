@@ -89,6 +89,18 @@ export default {
       return handleStemsStart(request, env);
     if (path === '/stems/check' && request.method === 'POST')
       return handleStemsCheck(request, env);
+    // Phase 2 — Spatial (pan-aware + tone-fingerprint) separation. Stage 2
+    // refinement on top of Demucs: split any stem (typically Demucs "other"
+    // or "guitar") by stereo pan position, with optional reference-clip
+    // fingerprint biasing (e.g. clean Jerry vs clean Bob). Pure DSP, no GPU.
+    if (path === '/stems/pan-analyze' && request.method === 'POST')
+      return handlePanAnalyze(request, env);
+    if (path === '/stems/fingerprint' && request.method === 'POST')
+      return handleToneFingerprint(request, env);
+    if (path === '/stems/spatial/start' && request.method === 'POST')
+      return handleSpatialStart(request, env);
+    if (path === '/stems/spatial/check' && request.method === 'POST')
+      return handleSpatialCheck(request, env);
     // LALAL.AI lead/backing split — Phase 0.5 winner. Same source-resolution
     // logic as /stems/separate (URL / Drive fileId / base64 staged to R2),
     // forwards to Modal lalal_split_http with shared-secret + LALAL_API_KEY.
@@ -1746,6 +1758,154 @@ async function handleStemsCheck(request, env) {
     clearTimeout(timer);
     const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
     return cors(jsonError(msg, 504));
+  }
+}
+
+// ── Phase 2: Spatial separation (pan + fingerprint) ──────────────────────────
+// All four endpoints proxy to Modal. URL fallbacks derive from STEMS_MODAL_URL
+// by swapping the trailing function-name slug, identical pattern to the
+// stems start/check fallbacks. Setting the explicit secrets is recommended.
+
+function _spatialUrl(env, slug, secretName) {
+  if (env[secretName]) return env[secretName];
+  if (!env.STEMS_MODAL_URL) return '';
+  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-' + slug + '$2');
+}
+
+// POST /stems/pan-analyze  Body: { sourceUrl }
+async function handlePanAnalyze(request, env) {
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('stems_not_configured', 500));
+  }
+  let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const sourceUrl = String(body.sourceUrl || '').trim();
+  if (!sourceUrl) return cors(jsonError('missing sourceUrl', 400));
+  const url = _spatialUrl(env, 'pan-analyze-http', 'STEMS_MODAL_PAN_ANALYZE_URL');
+  if (!url) return cors(jsonError('STEMS_MODAL_PAN_ANALYZE_URL not set', 500));
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90000);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_url: sourceUrl, token: env.STEMS_SHARED_SECRET }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const text = await r.text();
+    return cors(new Response(text, {
+      status: r.ok ? 200 : (r.status >= 500 ? 502 : r.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    return cors(jsonError(e && e.name === 'AbortError' ? 'modal_timeout' : 'modal_fetch_failed: ' + (e && e.message), 504));
+  }
+}
+
+// POST /stems/fingerprint  Body: { sourceUrl }
+async function handleToneFingerprint(request, env) {
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('stems_not_configured', 500));
+  }
+  let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const sourceUrl = String(body.sourceUrl || '').trim();
+  if (!sourceUrl) return cors(jsonError('missing sourceUrl', 400));
+  const url = _spatialUrl(env, 'tone-fingerprint-http', 'STEMS_MODAL_FINGERPRINT_URL');
+  if (!url) return cors(jsonError('STEMS_MODAL_FINGERPRINT_URL not set', 500));
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90000);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_url: sourceUrl, token: env.STEMS_SHARED_SECRET }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const text = await r.text();
+    return cors(new Response(text, {
+      status: r.ok ? 200 : (r.status >= 500 ? 502 : r.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    return cors(jsonError(e && e.name === 'AbortError' ? 'modal_timeout' : 'modal_fetch_failed: ' + (e && e.message), 504));
+  }
+}
+
+// POST /stems/spatial/start
+// Body: { songId, sourceUrl, panWindows, references?, fpStrength?, pathPrefix? }
+async function handleSpatialStart(request, env) {
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('stems_not_configured', 500));
+  }
+  let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const songId = String(body.songId || '').trim();
+  const sourceUrl = String(body.sourceUrl || '').trim();
+  const panWindows = Array.isArray(body.panWindows) ? body.panWindows : [];
+  const references = body.references && typeof body.references === 'object' ? body.references : null;
+  const fpStrength = typeof body.fpStrength === 'number' ? body.fpStrength : 0.5;
+  const pathPrefix = String(body.pathPrefix || 'spatial').trim();
+  if (!songId || !sourceUrl || panWindows.length === 0) {
+    return cors(jsonError('missing songId, sourceUrl, or panWindows', 400));
+  }
+  const url = _spatialUrl(env, 'spatial-separate-start', 'STEMS_MODAL_SPATIAL_START_URL');
+  if (!url) return cors(jsonError('STEMS_MODAL_SPATIAL_START_URL not set', 500));
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source_url: sourceUrl, song_id: songId,
+        pan_windows: panWindows, references: references,
+        fp_strength: fpStrength, path_prefix: pathPrefix,
+        token: env.STEMS_SHARED_SECRET,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const text = await r.text();
+    return cors(new Response(text, {
+      status: r.ok ? 200 : (r.status >= 500 ? 502 : r.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    return cors(jsonError(e && e.name === 'AbortError' ? 'modal_timeout' : 'modal_fetch_failed: ' + (e && e.message), 504));
+  }
+}
+
+// POST /stems/spatial/check  Body: { callId }
+async function handleSpatialCheck(request, env) {
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('stems_not_configured', 500));
+  }
+  let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const callId = String(body.callId || body.call_id || '').trim();
+  if (!callId) return cors(jsonError('missing callId', 400));
+  const url = _spatialUrl(env, 'spatial-separate-check', 'STEMS_MODAL_SPATIAL_CHECK_URL');
+  if (!url) return cors(jsonError('STEMS_MODAL_SPATIAL_CHECK_URL not set', 500));
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60000);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const text = await r.text();
+    return cors(new Response(text, {
+      status: r.ok ? 200 : (r.status >= 500 ? 502 : r.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    return cors(jsonError(e && e.name === 'AbortError' ? 'modal_timeout' : 'modal_fetch_failed: ' + (e && e.message), 504));
   }
 }
 

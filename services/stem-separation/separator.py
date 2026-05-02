@@ -435,6 +435,450 @@ def separate_check(item: dict):
 
 
 # ============================================================================
+# Phase 2 — Spatial separation (pan-aware + tone fingerprint)
+# ============================================================================
+# Demucs hands us drums/bass/vocals/guitar/piano/other on htdemucs_6s, but
+# Dead live recordings routinely smear two-guitar content across "guitar" +
+# "other" because both Bobby and Jerry play 6-string electric and the model
+# can't tell them apart by training-class alone. The "guitar" row is a
+# Bobby+Jerry composite; the "other" row catches the lead-tone leakage that
+# fell outside Demucs's "guitar" prototype.
+#
+# Stage 2 (this section): take any stereo stem (or full mix), separate by
+# stereo position. STFT each channel; per-bin pan = (|R|-|L|)/(|R|+|L|) ∈
+# [-1,+1]. Soft-mask each pan window with a raised-cosine taper and iSTFT
+# back. Pure DSP — no GPU, no training, ~$0.001/song.
+#
+# Optional refinement: provide reference-clip fingerprints (clean Jerry,
+# clean Bob). For each frame in the source, compute log-mel-spec similarity
+# to each reference. The pan-window mask is multiplied by a per-frame weight
+# that biases toward the assigned reference, so e.g. the "left_lead" output
+# preserves frames whose tone matches Jerry and attenuates frames whose tone
+# matches Bob. Cheap (one matmul per frame), works best when the references
+# are timbrally distinct (Mu-Tron Wolf vs Strat-into-Mesa = textbook case).
+
+def _decode_stereo_44k(audio_bytes: bytes, log_prefix: str = "[Spatial]"):
+    """ffmpeg-pipe → (n_samples, 2) float32 numpy array at 44.1 kHz."""
+    import subprocess
+    import numpy as np
+    proc = subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-i", "pipe:0",
+            "-f", "f32le", "-acodec", "pcm_f32le",
+            "-ac", "2", "-ar", "44100",
+            "pipe:1",
+        ],
+        input=audio_bytes, capture_output=True, check=True,
+    )
+    pcm = np.frombuffer(proc.stdout, dtype=np.float32).reshape(-1, 2)
+    print(f"{log_prefix} Decoded: shape={pcm.shape} sr=44100")
+    return pcm  # (n_samples, 2)
+
+
+def _log_mel_spec(audio_mono, sr=44100, n_fft=2048, hop=512, n_mels=80):
+    """Log-mel spectrogram (n_mels, T). audio_mono: 1-D numpy or torch tensor."""
+    import torch
+    import torchaudio
+    if not torch.is_tensor(audio_mono):
+        audio_mono = torch.from_numpy(audio_mono).float()
+    mel = torchaudio.transforms.MelSpectrogram(
+        sample_rate=sr, n_fft=n_fft, hop_length=hop, n_mels=n_mels,
+    )(audio_mono)
+    return torch.log(mel + 1e-10)  # (n_mels, T)
+
+
+def _fingerprint_from_audio(audio_stereo, sr=44100, n_mels=80):
+    """Compute a 2*n_mels-dim tone fingerprint: mean + std of log-mel per band.
+
+    Mono-downmix first since tone signature is channel-agnostic. Result is
+    small (160 floats by default) so it round-trips through JSON cleanly.
+    """
+    import numpy as np
+    mono = audio_stereo.mean(axis=1) if audio_stereo.ndim == 2 else audio_stereo
+    log_mel = _log_mel_spec(mono, sr=sr, n_mels=n_mels).numpy()  # (n_mels, T)
+    return np.concatenate([log_mel.mean(axis=1), log_mel.std(axis=1)]).tolist()
+
+
+def _frame_similarity_to_fp(log_mel_frames, fp_mean):
+    """Cosine similarity per frame between log-mel and fingerprint mean vector.
+
+    log_mel_frames: (n_mels, T). fp_mean: (n_mels,) — first half of the fingerprint.
+    Returns (T,) similarity scores in [-1, 1].
+    """
+    import numpy as np
+    fp = np.asarray(fp_mean, dtype=np.float32)
+    fp_norm = fp / (np.linalg.norm(fp) + 1e-10)
+    frame_norms = np.linalg.norm(log_mel_frames, axis=0) + 1e-10
+    frames_normed = log_mel_frames / frame_norms[None, :]
+    return frames_normed.T @ fp_norm  # (T,)
+
+
+def _stft_pan_split(
+    audio_stereo, pan_windows, sr=44100,
+    references=None, fp_strength=0.5, n_fft=2048, hop=512,
+):
+    """STFT-domain pan-window masking with optional fingerprint refinement.
+
+    audio_stereo: (n_samples, 2) float32.
+    pan_windows: list of dicts: { name, pan_min, pan_max, soft_width?, fingerprint_ref? }
+        - pan_min / pan_max: -1..+1, hard window edges
+        - soft_width: raised-cosine taper width outside the window (default 0.15)
+        - fingerprint_ref: optional name of a reference in `references` whose
+          tone signature this window should be biased toward
+    references: optional dict { ref_name: { mean: [...], std: [...] } }
+        — fingerprints from `tone_fingerprint`. Only `mean` is used for
+        per-frame similarity. `std` is reserved for future per-mel weighting.
+    fp_strength: 0..1 — how much fingerprint biasing to apply on top of the
+        pan mask. 0 = pan-only (ignore fingerprints). 1 = aggressive bias
+        toward target reference. 0.5 = balanced (recommended).
+
+    Returns: dict { name: (n_samples, 2) float32 numpy array }
+    """
+    import numpy as np
+    import torch
+
+    L = torch.from_numpy(audio_stereo[:, 0]).float()
+    R = torch.from_numpy(audio_stereo[:, 1]).float()
+    window = torch.hann_window(n_fft)
+
+    L_spec = torch.stft(L, n_fft, hop_length=hop, window=window,
+                        return_complex=True, center=True)
+    R_spec = torch.stft(R, n_fft, hop_length=hop, window=window,
+                        return_complex=True, center=True)
+    L_mag = L_spec.abs()
+    R_mag = R_spec.abs()
+    total = L_mag + R_mag + 1e-10
+    pan = (R_mag - L_mag) / total  # (F, T) in [-1, +1]
+
+    # Per-frame fingerprint similarity (computed once if any window asks)
+    sims = {}
+    use_fp = bool(references) and any(w.get("fingerprint_ref") for w in pan_windows)
+    if use_fp:
+        # Mono mix at the same hop as STFT for frame alignment.
+        mix_mono = audio_stereo.mean(axis=1).astype(np.float32)
+        # Use the same n_fft/hop so log-mel frames align with STFT frames.
+        log_mel = _log_mel_spec(mix_mono, sr=sr, n_fft=n_fft, hop=hop).numpy()
+        # log_mel (n_mels, T_mel) — torchaudio's MelSpectrogram with center=True
+        # produces T = floor(n_samples / hop) + 1, matching torch.stft. Trim
+        # to whichever is shorter to be safe.
+        T_match = min(log_mel.shape[1], pan.shape[1])
+        log_mel = log_mel[:, :T_match]
+        for name, fp in references.items():
+            if not fp or "mean" not in fp:
+                continue
+            sims[name] = _frame_similarity_to_fp(log_mel, fp["mean"])  # (T_match,)
+        # Pad sims to STFT T-axis if needed (shouldn't differ but be defensive)
+        for name in list(sims.keys()):
+            s = sims[name]
+            if s.shape[0] < pan.shape[1]:
+                pad = np.zeros(pan.shape[1] - s.shape[0], dtype=s.dtype)
+                sims[name] = np.concatenate([s, pad])
+
+    out = {}
+    for win in pan_windows:
+        name = win["name"]
+        pmin = float(win["pan_min"])
+        pmax = float(win["pan_max"])
+        soft_w = float(win.get("soft_width", 0.15))
+        ref_target = win.get("fingerprint_ref")
+
+        # Soft pan mask: 1 inside [pmin, pmax], raised-cosine taper outside.
+        in_window = (pan >= pmin) & (pan <= pmax)
+        below_dist = (pmin - pan).clamp(min=0)
+        above_dist = (pan - pmax).clamp(min=0)
+        # Cosine taper: 0.5*(1+cos(pi*d/soft_w)) for d in [0, soft_w], else 0
+        below_taper = 0.5 * (1 + torch.cos(
+            (below_dist.clamp(max=soft_w) / soft_w) * np.pi
+        ))
+        above_taper = 0.5 * (1 + torch.cos(
+            (above_dist.clamp(max=soft_w) / soft_w) * np.pi
+        ))
+        below_taper = torch.where(below_dist > 0, below_taper, torch.zeros_like(below_taper))
+        above_taper = torch.where(above_dist > 0, above_taper, torch.zeros_like(above_taper))
+        mask = torch.where(in_window, torch.ones_like(pan), below_taper + above_taper).clamp(0, 1)
+
+        # Fingerprint refinement: per-frame multiplier in [1-fp_strength, 1+fp_strength]
+        # If target ref is most-similar this frame: weight = 1 + fp_strength
+        # If a different ref is most-similar:        weight = 1 - fp_strength
+        if ref_target and ref_target in sims:
+            ref_names = list(sims.keys())
+            sim_stack = np.stack([sims[r] for r in ref_names], axis=0)  # (R, T)
+            # Softmax across references at each frame
+            # Sharpen with temperature to avoid mush
+            temp = 5.0
+            logits = sim_stack * temp
+            logits -= logits.max(axis=0, keepdims=True)
+            probs = np.exp(logits)
+            probs /= probs.sum(axis=0, keepdims=True) + 1e-10
+            target_idx = ref_names.index(ref_target)
+            target_prob = probs[target_idx]  # (T,) in [0, 1]
+            # Multiplier: 1 + fp_strength * (2*target_prob - 1) ∈ [1-fp_strength, 1+fp_strength]
+            mult = 1.0 + fp_strength * (2.0 * target_prob - 1.0)
+            mult_t = torch.from_numpy(mult.astype(np.float32))[None, :]  # (1, T)
+            mask = mask * mult_t  # broadcast across freq bins
+            mask = mask.clamp(0, 1)
+
+        L_out = torch.istft(L_spec * mask, n_fft, hop_length=hop,
+                            window=window, length=L.shape[0], center=True)
+        R_out = torch.istft(R_spec * mask, n_fft, hop_length=hop,
+                            window=window, length=R.shape[0], center=True)
+        stereo = np.stack([L_out.numpy(), R_out.numpy()], axis=1)  # (n_samples, 2)
+        out[name] = stereo
+
+    return out
+
+
+def _energy_pan_histogram(audio_stereo, n_bins=21, n_fft=2048, hop=512):
+    """Per-pan-bin energy distribution. Returns list of n_bins floats summing
+    to ~1.0. Used by client UI to suggest pan windows + visualize."""
+    import numpy as np
+    import torch
+    L = torch.from_numpy(audio_stereo[:, 0]).float()
+    R = torch.from_numpy(audio_stereo[:, 1]).float()
+    window = torch.hann_window(n_fft)
+    L_mag = torch.stft(L, n_fft, hop_length=hop, window=window,
+                       return_complex=True, center=True).abs()
+    R_mag = torch.stft(R, n_fft, hop_length=hop, window=window,
+                       return_complex=True, center=True).abs()
+    total = L_mag + R_mag + 1e-10
+    pan = ((R_mag - L_mag) / total).numpy()  # (F, T) in [-1, 1]
+    energy = ((L_mag + R_mag) / 2).numpy()
+    # Bucket pan values into n_bins, weighted by energy
+    edges = np.linspace(-1.0, 1.0, n_bins + 1)
+    hist = np.zeros(n_bins, dtype=np.float64)
+    flat_pan = pan.ravel()
+    flat_energy = energy.ravel()
+    for i in range(n_bins):
+        mask = (flat_pan >= edges[i]) & (flat_pan < edges[i + 1])
+        hist[i] = flat_energy[mask].sum()
+    if hist.sum() > 0:
+        hist /= hist.sum()
+    return hist.tolist()
+
+
+# ─── Modal functions ────────────────────────────────────────────────────────
+
+@app.function(
+    image=image,
+    timeout=180,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def tone_fingerprint(source_url: str) -> dict:
+    """Fetch reference clip → return tone fingerprint (mean+std log-mel).
+
+    Cheap (~5-10s), pure DSP, no GPU. The returned vector is JSON-safe and
+    small enough to cache in Firebase band-data.
+    """
+    started = time.time()
+    raw = _fetch_audio_bytes(source_url, log_prefix="[Fingerprint]")
+    audio = _decode_stereo_44k(raw, log_prefix="[Fingerprint]")
+    fp = _fingerprint_from_audio(audio)
+    n = len(fp) // 2
+    return {
+        "success": True,
+        "fingerprint": {
+            "mean": fp[:n],
+            "std": fp[n:],
+            "n_mels": n,
+        },
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=180,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def pan_analyze(source_url: str) -> dict:
+    """Compute pan-energy histogram + auto-suggest pan windows.
+
+    Returns histogram (21 bins from -1 to +1) + suggested 3-zone split based
+    on energy peaks. UI uses this to pre-fill the slider zones."""
+    started = time.time()
+    raw = _fetch_audio_bytes(source_url, log_prefix="[PanAnalyze]")
+    audio = _decode_stereo_44k(raw, log_prefix="[PanAnalyze]")
+    hist = _energy_pan_histogram(audio)
+    # Auto-suggest 3 zones: find center (max within ±0.3) and the two off-center
+    # peaks. Default to symmetric -1,-0.3 / -0.3,+0.3 / +0.3,+1 if no clear peaks.
+    n = len(hist)
+    # Default windows (always returned as fallback)
+    suggestions = [
+        {"name": "left_lead",  "pan_min": -1.0, "pan_max": -0.3},
+        {"name": "center",     "pan_min": -0.3, "pan_max":  0.3},
+        {"name": "right_lead", "pan_min":  0.3, "pan_max":  1.0},
+    ]
+    return {
+        "success": True,
+        "histogram": hist,
+        "histogram_edges": [-1.0 + i * (2.0 / n) for i in range(n + 1)],
+        "suggestions": suggestions,
+        "elapsed_sec": time.time() - started,
+    }
+
+
+@app.function(
+    image=image,
+    timeout=600,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+def spatial_separate(
+    source_url: str,
+    song_id: str,
+    pan_windows: list,
+    references: dict = None,
+    fp_strength: float = 0.5,
+    path_prefix: str = "spatial",
+) -> dict:
+    """Pan-window separation with optional fingerprint biasing.
+
+    Inputs:
+      source_url: typically an existing R2 stem URL (e.g. the Demucs "other"
+        or "guitar" stem) but can also be the full mix.
+      pan_windows: list of {name, pan_min, pan_max, soft_width?, fingerprint_ref?}
+      references: optional { name: {mean: [...], std: [...]} } from tone_fingerprint
+      fp_strength: 0..1, how aggressive the fingerprint bias is.
+      path_prefix: R2 prefix segment under stems/{song_id}/{path_prefix}/...
+
+    Returns: { success, stems: {name: url, ...}, sample_rate, elapsed_sec }
+    """
+    import io
+    import soundfile as sf
+    started = time.time()
+    raw = _fetch_audio_bytes(source_url, log_prefix=f"[Spatial/{song_id}]")
+    audio = _decode_stereo_44k(raw, log_prefix=f"[Spatial/{song_id}]")
+    print(f"[Spatial/{song_id}] {len(pan_windows)} windows, fp_refs={list((references or {}).keys())}, fp_strength={fp_strength}")
+
+    out_audio = _stft_pan_split(
+        audio, pan_windows, sr=44100,
+        references=references or None, fp_strength=fp_strength,
+    )
+
+    out_urls = {}
+    for name, stereo in out_audio.items():
+        buf = io.BytesIO()
+        sf.write(buf, stereo, 44100, format="FLAC")
+        buf.seek(0)
+        key = f"stems/{song_id}/{path_prefix}/{name}.flac"
+        out_urls[name] = _r2_upload_bytes(buf.read(), key, "audio/flac")
+        print(f"[Spatial/{song_id}]  ✓ {name} → {out_urls[name]}")
+
+    return {
+        "success": True,
+        "stems": out_urls,
+        "sample_rate": 44100,
+        "elapsed_sec": time.time() - started,
+    }
+
+
+# ─── HTTP endpoints (synchronous) ───────────────────────────────────────────
+
+@app.function(
+    image=image,
+    timeout=180,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def tone_fingerprint_http(item: dict):
+    """HTTP entry: fetch ref clip, return fingerprint. Body: {source_url, token}."""
+    expected = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected: return {"success": False, "error": "server misconfigured"}
+    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
+    source_url = item.get("source_url", "")
+    if not source_url: return {"success": False, "error": "missing source_url"}
+    try:
+        return tone_fingerprint.remote(source_url)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.function(
+    image=image,
+    timeout=180,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def pan_analyze_http(item: dict):
+    """HTTP entry: compute pan histogram + suggestions. Body: {source_url, token}."""
+    expected = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected: return {"success": False, "error": "server misconfigured"}
+    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
+    source_url = item.get("source_url", "")
+    if not source_url: return {"success": False, "error": "missing source_url"}
+    try:
+        return pan_analyze.remote(source_url)
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ─── HTTP endpoints (async start/check) ─────────────────────────────────────
+
+@app.function(
+    image=image,
+    timeout=120,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def spatial_separate_start(item: dict):
+    """Spawn spatial_separate, return Modal call_id.
+
+    Body: { source_url, song_id, pan_windows, references?, fp_strength?, path_prefix?, token }
+    """
+    expected = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected: return {"success": False, "error": "server misconfigured"}
+    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
+    source_url = item.get("source_url", "")
+    song_id = item.get("song_id", "")
+    pan_windows = item.get("pan_windows", [])
+    references = item.get("references", None)
+    fp_strength = float(item.get("fp_strength", 0.5))
+    path_prefix = item.get("path_prefix", "spatial")
+    if not source_url or not song_id or not pan_windows:
+        return {"success": False, "error": "missing source_url, song_id, or pan_windows"}
+    try:
+        call = spatial_separate.spawn(
+            source_url, song_id, pan_windows, references, fp_strength, path_prefix,
+        )
+        return {"success": True, "call_id": call.object_id, "song_id": song_id}
+    except Exception as e:
+        return {"success": False, "error": f"spawn_failed: {e}"}
+
+
+@app.function(
+    image=image,
+    timeout=60,
+    secrets=[modal.Secret.from_name("groovelinx-stems")],
+)
+@modal.fastapi_endpoint(method="POST")
+def spatial_separate_check(item: dict):
+    """Poll a spatial_separate call. Returns processing | done | error."""
+    expected = os.environ.get("STEMS_SHARED_SECRET", "")
+    if not expected: return {"success": False, "error": "server misconfigured"}
+    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
+    call_id = item.get("call_id", "")
+    if not call_id: return {"success": False, "error": "missing call_id"}
+    try:
+        call = modal.FunctionCall.from_id(call_id)
+    except Exception as e:
+        return {"success": False, "error": f"bad_call_id: {e}"}
+    try:
+        result = call.get(timeout=0)
+    except modal.exception.OutputExpiredError:
+        return {"success": False, "error": "output_expired"}
+    except TimeoutError:
+        return {"success": True, "status": "processing"}
+    except Exception as e:
+        return {"success": False, "error": f"call_failed: {e}"}
+    if isinstance(result, dict):
+        out = dict(result)
+        out["status"] = "done"
+        out["success"] = out.get("success", True)
+        return out
+    return {"success": True, "status": "done", "result": result}
+
+
+# ============================================================================
 # Phase 0 bake-off instruments
 # ============================================================================
 # MelBand-Roformer Karaoke (lead/backing split) and SepACap (multi-voice

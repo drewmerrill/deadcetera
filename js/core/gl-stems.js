@@ -262,11 +262,222 @@ window.GLStems = (function () {
     try { await saveBandDataToDrive(title, 'lalal_split', null); } catch (e) {}
   }
 
+  // ── Phase 2: Spatial separation (pan + tone fingerprint) ──────────────
+  // Stage 2 refinement: split any existing stem (typically Demucs "other"
+  // or "guitar") by stereo pan position, with optional reference-clip
+  // fingerprint biasing.
+  //
+  // Storage:
+  //   - Fingerprint library: band-level, under bands/{slug}/fingerprints —
+  //     loaded/saved with songTitle='_band'. Map of { name → fingerprint }.
+  //     Fingerprints are small (~160 floats) so the whole library is one
+  //     read/write. Drew uploads "Jerry — Wolf '77" once and it's available
+  //     to every song's spatial-split.
+  //   - Spatial-split results: per-song under `spatial_split` — array of
+  //     records (one per separated source stem), each with stems URLs,
+  //     pan windows used, references used, sourceStemId, separatedAt.
+
+  async function loadFingerprints() {
+    if (typeof loadBandDataFromDrive !== 'function') return {};
+    try {
+      var d = await loadBandDataFromDrive('_band', 'fingerprints');
+      return (d && typeof d === 'object') ? d : {};
+    } catch (e) { return {}; }
+  }
+
+  async function saveFingerprint(name, fingerprintRec) {
+    if (!name) throw new Error('fingerprint name required');
+    var lib = await loadFingerprints();
+    lib[name] = Object.assign({}, fingerprintRec, {
+      name: name,
+      createdAt: lib[name] && lib[name].createdAt ? lib[name].createdAt : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    if (typeof saveBandDataToDrive === 'function') {
+      await saveBandDataToDrive('_band', 'fingerprints', lib);
+    }
+    return lib;
+  }
+
+  async function deleteFingerprint(name) {
+    var lib = await loadFingerprints();
+    if (!lib[name]) return lib;
+    delete lib[name];
+    if (typeof saveBandDataToDrive === 'function') {
+      await saveBandDataToDrive('_band', 'fingerprints', lib);
+    }
+    return lib;
+  }
+
+  // Compute a tone fingerprint from a clean reference clip URL. Returns
+  // { fingerprint:{ mean:[], std:[], n_mels:80 }, sourceUrl, sourceLabel }.
+  // Caller persists via saveFingerprint(name, result).
+  async function fingerprintTone(sourceUrl, opts) {
+    if (!sourceUrl) throw new Error('sourceUrl required');
+    opts = opts || {};
+    var res = await fetch(_workerBase() + '/stems/fingerprint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceUrl: sourceUrl }),
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!data || !data.success) throw new Error((data && data.error) || ('fingerprint_failed (' + res.status + ')'));
+    return {
+      fingerprint: data.fingerprint,
+      sourceUrl: sourceUrl,
+      sourceLabel: opts.sourceLabel || 'Reference',
+      elapsedSec: data.elapsed_sec,
+    };
+  }
+
+  // Compute pan-energy histogram for a stem URL → returns suggested windows.
+  async function analyzePan(sourceUrl) {
+    if (!sourceUrl) throw new Error('sourceUrl required');
+    var res = await fetch(_workerBase() + '/stems/pan-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourceUrl: sourceUrl }),
+    });
+    var data = null;
+    try { data = await res.json(); } catch (e) {}
+    if (!data || !data.success) throw new Error((data && data.error) || ('pan_analyze_failed (' + res.status + ')'));
+    return data;
+  }
+
+  // Spatial-split a stem. Async start/check pattern, same as separate().
+  // opts: {
+  //   sourceUrl,                  // R2 URL of the stem (or full mix) to split
+  //   sourceStemId, sourceLabel,  // for record-keeping (e.g. 'other', 'guitar')
+  //   panWindows: [{ name, pan_min, pan_max, soft_width?, fingerprint_ref? }],
+  //   references: { name: { mean:[], std:[] } } | null,
+  //   fpStrength: 0..1,
+  //   onProgress
+  // }
+  async function spatialSplit(title, opts) {
+    if (!title) throw new Error('title required');
+    opts = opts || {};
+    if (!opts.sourceUrl) throw new Error('opts.sourceUrl required');
+    if (!Array.isArray(opts.panWindows) || opts.panWindows.length === 0)
+      throw new Error('opts.panWindows required');
+    var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : function(){};
+    var startedAt = Date.now();
+
+    onProgress('starting', 0);
+    var startRes = await fetch(_workerBase() + '/stems/spatial/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        songId: _stemsKey(title),
+        sourceUrl: opts.sourceUrl,
+        panWindows: opts.panWindows,
+        references: opts.references || null,
+        fpStrength: typeof opts.fpStrength === 'number' ? opts.fpStrength : 0.5,
+        pathPrefix: opts.pathPrefix || ('spatial-' + (opts.sourceStemId || 'mix')),
+      }),
+    });
+    var startData = null;
+    try { startData = await startRes.json(); } catch (e) {}
+    if (!startData || !startData.success)
+      throw new Error((startData && startData.error) || ('spatial_start_failed (' + startRes.status + ')'));
+    var callId = startData.call_id;
+    if (!callId) throw new Error('No call_id from /stems/spatial/start');
+
+    onProgress('processing', 0);
+    var pollStart = Date.now();
+    var maxPollMs = 10 * 60 * 1000;
+    var data = null;
+    while (true) {
+      if (Date.now() - pollStart > maxPollMs) throw new Error('Spatial split timed out (>10min)');
+      await new Promise(function(r) { setTimeout(r, 4000); });
+      var checkRes = await fetch(_workerBase() + '/stems/spatial/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId: callId }),
+      });
+      var checkData = null;
+      try { checkData = await checkRes.json(); } catch (e) {}
+      if (!checkData || !checkData.success)
+        throw new Error((checkData && checkData.error) || ('spatial_check_failed (' + checkRes.status + ')'));
+      if (checkData.status === 'processing') {
+        // Spatial split is fast (~30-90s); use raw seconds against an 80s
+        // typical to drive the bar. Caps at 95%.
+        var pct = Math.min(95, Math.round(((Date.now() - pollStart) / 1000) / 80 * 100));
+        onProgress('processing', pct);
+        continue;
+      }
+      if (checkData.status === 'done') {
+        onProgress('finalizing', 100);
+        data = checkData;
+        break;
+      }
+    }
+
+    var record = {
+      stems: data.stems,
+      sample_rate: data.sample_rate,
+      panWindows: opts.panWindows,
+      references: opts.references || null,
+      fpStrength: typeof opts.fpStrength === 'number' ? opts.fpStrength : 0.5,
+      sourceUrl: opts.sourceUrl,
+      sourceStemId: opts.sourceStemId || null,
+      sourceLabel: opts.sourceLabel || (opts.sourceStemId || 'mix'),
+      separatedAt: new Date().toISOString(),
+      elapsedSec: (Date.now() - startedAt) / 1000,
+    };
+    // Spatial-split is per-song. Multiple splits per song are possible (Drew
+    // might split "other" AND "guitar"), so we keep an array indexed by
+    // sourceStemId. Newest wins per stem id.
+    var existing = await getSpatialSplits(title);
+    var idx = existing.findIndex(function(r) { return r.sourceStemId === record.sourceStemId; });
+    if (idx >= 0) existing[idx] = record;
+    else existing.push(record);
+    if (typeof saveBandDataToDrive === 'function') {
+      try { await saveBandDataToDrive(title, 'spatial_split', existing); } catch (e) {}
+    }
+    return record;
+  }
+
+  async function getSpatialSplits(title) {
+    if (!title || typeof loadBandDataFromDrive !== 'function') return [];
+    try {
+      var d = await loadBandDataFromDrive(title, 'spatial_split');
+      if (Array.isArray(d)) return d;
+      // Backwards-compat: single record stored as object
+      if (d && typeof d === 'object' && d.stems) return [d];
+      return [];
+    } catch (e) { return []; }
+  }
+
+  async function clearSpatialSplits(title) {
+    if (typeof saveBandDataToDrive !== 'function') return;
+    try { await saveBandDataToDrive(title, 'spatial_split', null); } catch (e) {}
+  }
+
+  async function clearSpatialSplitFor(title, sourceStemId) {
+    var existing = await getSpatialSplits(title);
+    var filtered = existing.filter(function(r) { return r.sourceStemId !== sourceStemId; });
+    if (filtered.length === existing.length) return;
+    if (typeof saveBandDataToDrive === 'function') {
+      await saveBandDataToDrive(title, 'spatial_split', filtered.length ? filtered : null);
+    }
+  }
+
   return {
     getStems: getStems,
     hasStems: hasStems,
     separate: separate,
     clearStems: clearStems,
+    // Phase 2: Spatial split (pan + fingerprint)
+    fingerprintTone: fingerprintTone,
+    loadFingerprints: loadFingerprints,
+    saveFingerprint: saveFingerprint,
+    deleteFingerprint: deleteFingerprint,
+    analyzePan: analyzePan,
+    spatialSplit: spatialSplit,
+    getSpatialSplits: getSpatialSplits,
+    clearSpatialSplits: clearSpatialSplits,
+    clearSpatialSplitFor: clearSpatialSplitFor,
     // LALAL.AI lead/backing
     getLeadBackingSplit: getLeadBackingSplit,
     hasLeadBackingSplit: hasLeadBackingSplit,
