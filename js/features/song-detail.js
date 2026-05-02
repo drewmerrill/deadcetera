@@ -2093,6 +2093,14 @@ function _sdEnsureStemsFsStyle() {
       '.sd-stems-fullscreen{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100vh!important;z-index:2147483646!important;background:#0a0e1a!important;overflow-y:auto;padding:24px;margin:0!important;isolation:isolate}' +
       '.sd-stems-fullscreen .sd-card{max-width:1100px;margin:0 auto;background:#0a0e1a}' +
       '.sd-stems-fullscreen .sd-stem-row{padding:8px 12px;margin-bottom:6px}' +
+      // Promote Mute/Solo to full words and bump size in fullscreen — there's
+      // room for the extra ~30px per row, and the explicit labels read way
+      // better than the cramped M/S abbreviations.
+      '.sd-stems-fullscreen .sd-stem-mute,.sd-stems-fullscreen .sd-stem-solo{padding:6px 12px!important;font-size:0.78em!important;min-width:54px}' +
+      // Active-state reinforcement — bigger borders / brighter text when
+      // mute or solo is engaged so it pops at any density.
+      '.sd-stem-mute[data-active="1"]{background:rgba(239,68,68,0.22)!important;color:#fca5a5!important;border-color:rgba(239,68,68,0.5)!important}' +
+      '.sd-stem-solo[data-active="1"]{background:rgba(245,158,11,0.22)!important;color:#fbbf24!important;border-color:rgba(245,158,11,0.5)!important}' +
       'body.sd-stems-overlay-open{overflow:hidden}';
     document.head.appendChild(s);
 }
@@ -2128,11 +2136,31 @@ window._sdStemsToggleFullscreen = function() {
         if (label) label.textContent = on ? 'Exit full screen' : 'Full screen';
         btn.title = on ? 'Exit full screen' : 'Expand to full screen';
     }
+    // Swap M/S → Mute/Solo full-word labels in fullscreen (CSS bumps the size
+    // to match). Compact M/S stays in the right rail where vertical density
+    // matters more than label clarity.
+    document.querySelectorAll('.sd-stem-mute').forEach(function(b) { b.textContent = on ? 'Mute' : 'M'; });
+    document.querySelectorAll('.sd-stem-solo').forEach(function(b) { b.textContent = on ? 'Solo' : 'S'; });
     // Repaint activity strips at the new width (cached bins, no re-decode).
     setTimeout(function() {
         try { window.dispatchEvent(new Event('resize')); } catch(e) {}
     }, 50);
 };
+
+// Visual state mirroring — dim a stem row whenever its audio is muted (by
+// the mute button, the solo "everyone-else-off" mechanic, or a Practice
+// preset). Without this, the active-mode banner is the ONLY signal that
+// the mix sounds different than the raw stems. Now the row itself fades.
+function _sdStemsRefreshAllRowDims() {
+    document.querySelectorAll('.sd-stem-row').forEach(function(row) {
+        var stemId = row.dataset.stem;
+        var audio = document.querySelector('.sd-stem-audio[data-stem="' + stemId + '"]');
+        if (!audio) return;
+        var dimmed = (audio.dataset.muted === '1' || audio.dataset.soloOff === '1');
+        row.style.transition = 'opacity 0.15s';
+        row.style.opacity = dimmed ? '0.42' : '1';
+    });
+}
 
 window._sdStemsToggle = async function() {
     var btn = document.getElementById('sdStemsPlay');
@@ -2305,6 +2333,27 @@ window._sdStemsClearLoop = function() {
     _sdStemsRedrawLoopUI();
 };
 
+// Live preview while drag-defining a loop. Paints the same band element
+// _sdStemsRedrawLoopMarkers uses, on every wrap simultaneously, so the
+// loop region reads consistently across all stems during the drag. After
+// commit/cancel, _sdStemsRedrawLoopMarkers takes over (commits the new
+// state or restores the previous one).
+function _sdStemsPaintLoopPreview(t1, t2) {
+    var audios = document.querySelectorAll('.sd-stem-audio');
+    if (!audios.length) return;
+    var dur = audios[0].duration || 0;
+    if (!dur) return;
+    document.querySelectorAll('.sd-stem-activity-wrap').forEach(function(w) {
+        var band = w.querySelector('.sd-stem-loop-band');
+        if (!band) return;
+        var width = w.clientWidth;
+        band.style.display = 'block';
+        band.style.left = (t1 / dur * width) + 'px';
+        band.style.width = ((t2 - t1) / dur * width) + 'px';
+        band.style.background = 'rgba(255,235,150,0.18)';
+    });
+}
+
 function _sdStemsRedrawLoopMarkers() {
     var wraps = document.querySelectorAll('.sd-stem-activity-wrap');
     var audios = document.querySelectorAll('.sd-stem-audio');
@@ -2378,11 +2427,9 @@ window._sdStemsApplyPreset = function(stemId) {
         a.dataset.muted = isTarget ? '1' : '';
         _sdStemsApplyVolFor(a);
         var muteBtn = document.querySelector('.sd-stem-mute[data-stem="' + a.dataset.stem + '"]');
-        if (muteBtn) {
-            muteBtn.style.background = isTarget ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)';
-            muteBtn.style.color = isTarget ? '#fca5a5' : 'var(--text-dim)';
-        }
+        if (muteBtn) muteBtn.dataset.active = isTarget ? '1' : '';
     });
+    _sdStemsRefreshAllRowDims();
     _sdStemsRedrawPresetUI();
 };
 
@@ -2392,11 +2439,9 @@ window._sdStemsResetPresets = function() {
         a.dataset.muted = '';
         _sdStemsApplyVolFor(a);
         var muteBtn = document.querySelector('.sd-stem-mute[data-stem="' + a.dataset.stem + '"]');
-        if (muteBtn) {
-            muteBtn.style.background = 'rgba(255,255,255,0.04)';
-            muteBtn.style.color = 'var(--text-dim)';
-        }
+        if (muteBtn) muteBtn.dataset.active = '';
     });
+    _sdStemsRefreshAllRowDims();
     _sdStemsRedrawPresetUI();
 };
 
@@ -2705,8 +2750,8 @@ function _sdInitStemsPlayer() {
             var muted = audio.dataset.muted === '1';
             audio.dataset.muted = muted ? '' : '1';
             applyVol(audio);
-            btn.style.background = muted ? 'rgba(255,255,255,0.04)' : 'rgba(239,68,68,0.18)';
-            btn.style.color = muted ? 'var(--text-dim)' : '#fca5a5';
+            btn.dataset.active = muted ? '' : '1';
+            _sdStemsRefreshAllRowDims();
         });
     });
 
@@ -2720,10 +2765,9 @@ function _sdInitStemsPlayer() {
                 applyVol(a);
             });
             root.querySelectorAll('.sd-stem-solo').forEach(function(b) {
-                var on = (soloed === b.dataset.stem);
-                b.style.background = on ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.04)';
-                b.style.color = on ? '#fbbf24' : 'var(--text-dim)';
+                b.dataset.active = (soloed === b.dataset.stem) ? '1' : '';
             });
+            _sdStemsRefreshAllRowDims();
         });
     });
 
@@ -2842,14 +2886,55 @@ function _sdInitStemsPlayer() {
         var row = root.querySelector('.sd-stem-row[data-stem="' + stemId + '"]');
         var color = (row && row.dataset.color) || 'rgba(255,255,255,0.5)';
         if (canvas) _sdRenderStemActivity(audio.src, canvas, color, ctx);
-        wrap.addEventListener('click', function(e) {
-            if (!master.duration) return;
+        // Pointer events handle both click (tap → seek) AND drag (drag-out
+        // a loop region in one gesture). setPointerCapture means the drag
+        // keeps tracking even if the cursor leaves the wrap. ~5px movement
+        // threshold separates click from drag.
+        var ds = null;
+        var DRAG_PX = 5;
+        var timeFromX = function(clientX) {
             var rect = wrap.getBoundingClientRect();
-            var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            var t = frac * master.duration;
-            // Shift-click sets loop in/out; plain click seeks.
-            if (e.shiftKey) window._sdStemsSetLoopMarker(t);
-            else window._sdStemsApplySeek(t);
+            var frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            return frac * (master.duration || 0);
+        };
+        wrap.addEventListener('pointerdown', function(e) {
+            if (e.button !== 0 || !master.duration) return;
+            ds = { startX: e.clientX, startT: timeFromX(e.clientX), shift: e.shiftKey, dragging: false };
+            try { wrap.setPointerCapture(e.pointerId); } catch(err) {}
+            e.preventDefault();
+        });
+        wrap.addEventListener('pointermove', function(e) {
+            if (!ds) return;
+            if (!ds.dragging && Math.abs(e.clientX - ds.startX) > DRAG_PX) ds.dragging = true;
+            if (ds.dragging) {
+                ds.endT = timeFromX(e.clientX);
+                _sdStemsPaintLoopPreview(Math.min(ds.startT, ds.endT), Math.max(ds.startT, ds.endT));
+            }
+        });
+        wrap.addEventListener('pointerup', function(e) {
+            if (!ds) return;
+            try { wrap.releasePointerCapture(e.pointerId); } catch(err) {}
+            if (ds.dragging) {
+                var t1 = Math.min(ds.startT, ds.endT);
+                var t2 = Math.max(ds.startT, ds.endT);
+                if (t2 - t1 >= 0.05) {
+                    _sdLoop.inSec = t1;
+                    _sdLoop.outSec = t2;
+                    _sdLoop.enabled = true;
+                    _sdStemsRedrawLoopUI();
+                } else {
+                    // Movement was below commit threshold — restore prior state.
+                    _sdStemsRedrawLoopMarkers();
+                }
+            } else {
+                if (ds.shift) window._sdStemsSetLoopMarker(ds.startT);
+                else window._sdStemsApplySeek(ds.startT);
+            }
+            ds = null;
+        });
+        wrap.addEventListener('pointercancel', function() {
+            if (ds && ds.dragging) _sdStemsRedrawLoopMarkers();
+            ds = null;
         });
     });
     // Repaint activity canvases on resize (e.g. entering/exiting fullscreen)
