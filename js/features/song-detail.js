@@ -1918,12 +1918,18 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
     var hasDemucsVocals = !!(stems && stems.stems && stems.stems.vocals);
     var rows = tracks.map(function(t) {
         var dlName = (title || 'song').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60) + '_' + t.id + '.flac';
-        // Compact row: one line, smaller controls. Inline volume slider
-        // replaces the stacked label-then-slider layout — saves ~24px per row.
-        return '<div class="sd-stem-row" data-stem="' + t.id + '" data-source="' + t.source + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);margin-bottom:4px">' +
+        // Compact row: activity strip dominates the wide space (where music
+        // shows up vs silence), volume becomes a small fader on the right.
+        // Click anywhere on the activity strip seeks all stems together.
+        return '<div class="sd-stem-row" data-stem="' + t.id + '" data-source="' + t.source + '" data-color="' + t.color + '" style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);margin-bottom:4px">' +
           '<span style="font-size:1.05em;width:1.2em;text-align:center;flex-shrink:0">' + t.icon + '</span>' +
-          '<span style="font-size:0.78em;font-weight:700;color:' + t.color + ';min-width:54px;flex-shrink:0">' + t.label + '</span>' +
-          '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + t.id + '" style="flex:1;min-width:60px;accent-color:' + t.color + '" title="Volume">' +
+          '<span style="font-size:0.78em;font-weight:700;color:' + t.color + ';width:54px;flex-shrink:0">' + t.label + '</span>' +
+          '<div class="sd-stem-activity-wrap" data-stem="' + t.id + '" title="Click to seek" style="position:relative;flex:1;min-width:80px;height:22px;cursor:pointer;background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">' +
+            '<canvas class="sd-stem-activity" style="width:100%;height:100%;display:block"></canvas>' +
+            '<div class="sd-stem-playhead" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.7);left:0;pointer-events:none;box-shadow:0 0 4px rgba(255,255,255,0.5)"></div>' +
+            '<div class="sd-stem-activity-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.62em;color:var(--text-dim);pointer-events:none">…</div>' +
+          '</div>' +
+          '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + t.id + '" style="width:64px;flex-shrink:0;accent-color:' + t.color + '" title="Volume">' +
           '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0" title="Pan (L ↔ R)">' +
             '<input type="range" min="-100" max="100" value="0" class="sd-stem-pan" data-stem="' + t.id + '" style="width:48px;accent-color:' + t.color + '">' +
             '<span class="sd-stem-pan-val" data-stem="' + t.id + '" style="font-size:0.58em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1">C</span>' +
@@ -1964,9 +1970,13 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
         '<span>🎚 Stems ' + badge + '</span>' +
         '<button id="sdStemsExpand" onclick="_sdStemsToggleFullscreen()" title="Expand to full screen" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 8px;border-radius:6px;cursor:pointer;font-size:0.85em;line-height:1">⛶</button>' +
       '</div>' +
-      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">' +
-        '<button id="sdStemsPlay" onclick="_sdStemsToggle()" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:10px 16px;border-radius:8px;font-weight:700;cursor:pointer;min-width:90px">▶ Play</button>' +
-        '<input id="sdStemsScrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:140px">' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap">' +
+        '<button id="sdStemsPlay" onclick="_sdStemsToggle()" title="Play/Pause (Space)" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:9px 14px;border-radius:8px;font-weight:700;cursor:pointer;min-width:84px">▶ Play</button>' +
+        '<button onclick="_sdStemsSeekBy(-30)" title="Back 30s (Shift+←)" style="padding:8px 9px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-size:0.74em;font-weight:700;font-variant-numeric:tabular-nums">⏪ 30</button>' +
+        '<button onclick="_sdStemsSeekBy(-10)" title="Back 10s (←)" style="padding:8px 9px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-size:0.74em;font-weight:700;font-variant-numeric:tabular-nums">⏪ 10</button>' +
+        '<button onclick="_sdStemsSeekBy(10)" title="Forward 10s (→)" style="padding:8px 9px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-size:0.74em;font-weight:700;font-variant-numeric:tabular-nums">10 ⏩</button>' +
+        '<button onclick="_sdStemsSeekBy(30)" title="Forward 30s (Shift+→)" style="padding:8px 9px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-size:0.74em;font-weight:700;font-variant-numeric:tabular-nums">30 ⏩</button>' +
+        '<input id="sdStemsScrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:120px;margin-left:4px">' +
         '<span id="sdStemsTime" style="font-size:0.78em;color:var(--text-dim);font-variant-numeric:tabular-nums;min-width:80px;text-align:right">0:00 / 0:00</span>' +
       '</div>' +
       fxRow +
@@ -1997,9 +2007,13 @@ function _sdEnsureStemsFsStyle() {
     if (document.getElementById('sdStemsFsStyle')) return;
     var s = document.createElement('style');
     s.id = 'sdStemsFsStyle';
+    // z-index has to beat any sticky page chrome (songs-list table header was
+    // bleeding through at z-index ~99999). 2147483646 is safely under max int.
+    // Explicit width/height in vw/vh defeats any ancestor with a `transform`
+    // that would otherwise re-anchor `position: fixed` to the ancestor.
     s.textContent =
-      '.sd-stems-fullscreen{position:fixed!important;inset:0!important;z-index:9999;background:var(--bg,#0a0e1a);overflow-y:auto;padding:24px;margin:0!important}' +
-      '.sd-stems-fullscreen .sd-card{max-width:1100px;margin:0 auto}' +
+      '.sd-stems-fullscreen{position:fixed!important;left:0!important;top:0!important;right:0!important;bottom:0!important;width:100vw!important;height:100vh!important;z-index:2147483646!important;background:#0a0e1a!important;overflow-y:auto;padding:24px;margin:0!important;isolation:isolate}' +
+      '.sd-stems-fullscreen .sd-card{max-width:1100px;margin:0 auto;background:#0a0e1a}' +
       '.sd-stems-fullscreen .sd-stem-row{padding:8px 12px;margin-bottom:6px}' +
       'body.sd-stems-overlay-open{overflow:hidden}';
     document.head.appendChild(s);
@@ -2048,11 +2062,111 @@ window._sdStemsRedo = async function(title) {
     _sdPopulateStemsLens(title);
 };
 
+// DAW-style transport — relative seek shared by buttons + arrow keys.
+window._sdStemsSeekBy = function(seconds) {
+    var audios = (_sdContainer || document).querySelectorAll('.sd-stem-audio');
+    if (!audios.length) return;
+    var master = audios[0];
+    if (!master.duration) return;
+    var t = Math.max(0, Math.min(master.duration, (master.currentTime || 0) + seconds));
+    audios.forEach(function(a) { try { a.currentTime = t; } catch(e) {} });
+};
+
 // Per-mount state. WebAudio routing is set up at mount time so volume/mute/
 // solo always flow through GainNodes — no transition between native and
 // engaged states. Tone.js is still lazy-loaded for PitchShift only, spliced
 // into the existing chain on first ±semitone click.
 var _sdStemsState = null;
+
+// Activity-strip cache: URL → { bins: Float32Array(N) of normalized RMS }.
+// Decoded once per stem URL, shared across re-mounts of the lens. R2 sets
+// Cache-Control: immutable so repeat fetches hit browser cache cheaply
+// even on cold cache-cleared sessions.
+var _sdStemActivityCache = {};
+var _sdStemActivityBins = 280;
+
+async function _sdRenderStemActivity(url, canvas, color, ctx) {
+    if (!url || !canvas) return;
+    var entry = _sdStemActivityCache[url];
+    if (!entry) {
+        try {
+            var res = await fetch(url);
+            var arrBuf = await res.arrayBuffer();
+            // Reuse the playback AudioContext when available — saves spinning
+            // up a second context just to decode. decodeAudioData detaches the
+            // ArrayBuffer but doesn't tie up the audio thread.
+            var decodeCtx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+            var audioBuf = await decodeCtx.decodeAudioData(arrBuf);
+            var data = audioBuf.getChannelData(0);
+            var n = _sdStemActivityBins;
+            var samplesPerBin = Math.max(1, Math.floor(data.length / n));
+            var arr = new Float32Array(n);
+            var maxRms = 0;
+            for (var i = 0; i < n; i++) {
+                var sum = 0;
+                var s = i * samplesPerBin;
+                var e = Math.min(data.length, s + samplesPerBin);
+                for (var j = s; j < e; j++) sum += data[j] * data[j];
+                var rms = Math.sqrt(sum / Math.max(1, e - s));
+                arr[i] = rms;
+                if (rms > maxRms) maxRms = rms;
+            }
+            if (maxRms > 0) {
+                for (var k = 0; k < n; k++) arr[k] = arr[k] / maxRms;
+            }
+            entry = { bins: arr };
+            _sdStemActivityCache[url] = entry;
+        } catch (err) {
+            console.warn('[Stems] activity decode failed for', url, err);
+            // Hide the loading "…" placeholder so the user isn't left staring at it.
+            var loading = canvas.parentElement && canvas.parentElement.querySelector('.sd-stem-activity-loading');
+            if (loading) loading.textContent = '';
+            return;
+        }
+    }
+    _sdPaintStemActivity(canvas, entry.bins, color);
+    var loading = canvas.parentElement && canvas.parentElement.querySelector('.sd-stem-activity-loading');
+    if (loading) loading.remove();
+}
+
+function _sdPaintStemActivity(canvas, bins, color) {
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.clientWidth || 200;
+    var h = canvas.clientHeight || 22;
+    canvas.width = Math.max(1, Math.floor(w * dpr));
+    canvas.height = Math.max(1, Math.floor(h * dpr));
+    var ctx2d = canvas.getContext('2d');
+    ctx2d.scale(dpr, dpr);
+    ctx2d.clearRect(0, 0, w, h);
+    var n = bins.length;
+    var binW = w / n;
+    for (var i = 0; i < n; i++) {
+        var v = bins[i]; // 0..1
+        var barH = Math.max(1, v * h);
+        ctx2d.fillStyle = color;
+        ctx2d.globalAlpha = 0.18 + Math.min(0.82, v * 1.3);
+        ctx2d.fillRect(i * binW, (h - barH) / 2, Math.max(0.5, binW - 0.3), barH);
+    }
+    ctx2d.globalAlpha = 1;
+}
+
+// Single global keydown handler — bound once, gated on whether the stems
+// player is currently mounted. Avoids stealing keys when the player isn't
+// visible. Inputs/contenteditable always pass through.
+var _sdStemsKeyBound = false;
+function _sdStemsKeyHandler(e) {
+    if (!_sdStemsState || !_sdStemsState.ctx) return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.code === 'Space') { e.preventDefault(); window._sdStemsToggle(); return; }
+    if (e.code === 'ArrowLeft')  { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ? -30 : -10); return; }
+    if (e.code === 'ArrowRight') { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ?  30 :  10); return; }
+}
+function _sdEnsureStemsKeyBound() {
+    if (_sdStemsKeyBound) return;
+    document.addEventListener('keydown', _sdStemsKeyHandler);
+    _sdStemsKeyBound = true;
+}
 
 function _sdInitStemsPlayer() {
     var root = _sdContainer || document;
@@ -2061,6 +2175,7 @@ function _sdInitStemsPlayer() {
     var timeEl = root.querySelector('#sdStemsTime');
     if (!audios.length) return;
     var master = audios[0];
+    _sdEnsureStemsKeyBound();
 
     var fmt = function(s){ s = Math.floor(s||0); return Math.floor(s/60) + ':' + ('0' + (s%60)).slice(-2); };
 
@@ -2270,10 +2385,54 @@ function _sdInitStemsPlayer() {
     var pitchReset = root.querySelector('#sdStemsPitchReset');
     if (pitchReset) pitchReset.addEventListener('click', function(){ setPitch(0); });
 
+    // ── Activity strips: decode + render + click-to-seek ────────────────────
+    // Decode is parallel and non-blocking. Each strip shows a "…" placeholder
+    // until its decode lands. Cache survives lens re-mounts.
+    var playheads = root.querySelectorAll('.sd-stem-playhead');
+    audios.forEach(function(audio) {
+        var stemId = audio.dataset.stem;
+        var wrap = root.querySelector('.sd-stem-activity-wrap[data-stem="' + stemId + '"]');
+        if (!wrap) return;
+        var canvas = wrap.querySelector('.sd-stem-activity');
+        var row = root.querySelector('.sd-stem-row[data-stem="' + stemId + '"]');
+        var color = (row && row.dataset.color) || 'rgba(255,255,255,0.5)';
+        if (canvas) _sdRenderStemActivity(audio.src, canvas, color, ctx);
+        wrap.addEventListener('click', function(e) {
+            if (!master.duration) return;
+            var rect = wrap.getBoundingClientRect();
+            var frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            var t = frac * master.duration;
+            audios.forEach(function(a){ try { a.currentTime = t; } catch(err) {} });
+        });
+    });
+    // Repaint activity canvases on resize (e.g. entering/exiting fullscreen)
+    // so the bins re-stretch to the new pixel width without re-decoding.
+    var repaintActivity = function() {
+        audios.forEach(function(audio) {
+            var stemId = audio.dataset.stem;
+            var wrap = root.querySelector('.sd-stem-activity-wrap[data-stem="' + stemId + '"]');
+            if (!wrap) return;
+            var canvas = wrap.querySelector('.sd-stem-activity');
+            var entry = _sdStemActivityCache[audio.src];
+            var row = root.querySelector('.sd-stem-row[data-stem="' + stemId + '"]');
+            var color = (row && row.dataset.color) || 'rgba(255,255,255,0.5)';
+            if (canvas && entry) _sdPaintStemActivity(canvas, entry.bins, color);
+        });
+    };
+    window.addEventListener('resize', repaintActivity);
+
     // ── Time sync / scrub / play-end ────────────────────────────────────────
     master.addEventListener('timeupdate', function() {
-        if (master.duration && scrub) scrub.value = (master.currentTime / master.duration) * 1000;
-        if (timeEl && master.duration) timeEl.textContent = fmt(master.currentTime) + ' / ' + fmt(master.duration);
+        if (!master.duration) return;
+        if (scrub) scrub.value = (master.currentTime / master.duration) * 1000;
+        if (timeEl) timeEl.textContent = fmt(master.currentTime) + ' / ' + fmt(master.duration);
+        // Move per-stem playheads in sync. translateX is GPU-cheap; one
+        // composite frame per timeupdate (~4Hz from <audio>).
+        var frac = master.currentTime / master.duration;
+        playheads.forEach(function(ph) {
+            var w = ph.parentElement ? ph.parentElement.clientWidth : 0;
+            ph.style.transform = 'translateX(' + (frac * w) + 'px)';
+        });
     });
     master.addEventListener('loadedmetadata', function() {
         if (timeEl && master.duration) timeEl.textContent = '0:00 / ' + fmt(master.duration);
