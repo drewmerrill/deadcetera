@@ -1975,7 +1975,7 @@ function _sdRenderStemsPlayer(title, stems) {
           '<div style="font-size:0.85em;font-weight:700">Got vocals — extract harmonies</div>' +
           '<div style="font-size:0.7em;color:var(--text-dim)">Sends the vocals stem to Harmony Lab to split lead from backing</div>' +
         '</div>' +
-        '<button onclick="(typeof switchLens===\'function\')&&switchLens(\'sing\')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82em;white-space:nowrap;flex-shrink:0">→ Generate Harmonies</button>' +
+        '<button onclick="_sdLensPopulated.sing=false;if(typeof switchLens===\'function\')switchLens(\'sing\');setTimeout(function(){if(typeof hlGenerateFromStems===\'function\')hlGenerateFromStems();},400)" style="background:rgba(99,102,241,0.18);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82em;white-space:nowrap;flex-shrink:0">→ Generate Harmonies</button>' +
       '</div>' : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.7em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
         '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + '</span>' +

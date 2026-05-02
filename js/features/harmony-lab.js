@@ -212,7 +212,7 @@ function _hlShellHTML(title) {
     '    <div style="padding:8px 12px">',
     '      <div id="hl-abc-container" class="hl-abc-placeholder">',
     '        <div class="hl-abc-icon">𝄞</div>',
-    '        <div class="hl-abc-msg">No lead notation yet — run LALAL Auto-Split to generate</div>',
+    '        <div class="hl-abc-msg">No lead notation yet — Generate from Demucs vocals to populate</div>',
     '      </div>',
     '    </div>',
     '  </details>',
@@ -612,7 +612,7 @@ function _hlRenderLeadNotation(harmoniesData) {
             || arr.find(function(p){ return p && p.notes && typeof p.notes === 'string' && p.notes.indexOf('X:') === 0; });
   }
   if (!leadPart || !leadPart.notes) {
-    container.innerHTML = '<div class="hl-abc-icon">𝄞</div><div class="hl-abc-msg">No lead notation yet — run LALAL Auto-Split to generate</div>';
+    container.innerHTML = '<div class="hl-abc-icon">𝄞</div><div class="hl-abc-msg">No lead notation yet — Generate from Demucs vocals to populate</div>';
     return;
   }
   var qualityBadge = leadPart.notation_quality === 'auto-draft'
@@ -817,7 +817,155 @@ var _hlNoteToHz = {
   'C6':1046.50,'REST':0
 };
 
-window.hlShowGenerateGuide = function hlShowGenerateGuide(singer, role) {
+// Stem-based extraction (Demucs vocals → LALAL.AI lead/backing → harmonies_data).
+// Skips the AI synth modal entirely. Result: a Lead audio track + Backing audio
+// track playable in the Harmony Lab mixer with mute/solo/pan/loop. No notation
+// transcription yet — that's a future Basic Pitch pass on each split stem.
+window.hlGenerateFromStems = async function hlGenerateFromStems() {
+  var song = _hlSong;
+  if (!song) { if (typeof showToast === 'function') showToast('No song selected'); return; }
+  if (!window.GLStems || !GLStems.splitLeadBacking) {
+    if (typeof showToast === 'function') showToast('Stems engine not loaded');
+    return;
+  }
+
+  // Closes the synth modal if it's open
+  var existing = document.getElementById('hl-gen-modal');
+  if (existing) existing.remove();
+
+  // Status overlay so user knows what's happening (LALAL takes ~30-60s)
+  var overlay = document.createElement('div');
+  overlay.id = 'hl-stems-extract-modal';
+  overlay.className = 'hl-gen-modal-overlay';
+  overlay.innerHTML = '<div class="hl-gen-modal" style="max-width:420px">'
+    + '<div class="hl-gen-modal-title">🎤 Extracting Harmonies</div>'
+    + '<div id="hl-extract-status" style="margin:14px 0;font-size:0.88em;color:var(--text);line-height:1.5">Looking up Demucs stems…</div>'
+    + '<div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;margin-bottom:10px">'
+    + '  <div id="hl-extract-bar" style="height:100%;width:10%;background:linear-gradient(90deg,#667eea,#764ba2);transition:width 0.4s ease"></div>'
+    + '</div>'
+    + '<div id="hl-extract-detail" style="font-size:0.72em;color:var(--text-dim);line-height:1.5">First-time runs may take 30–60 seconds.</div>'
+    + '<div class="hl-gen-actions" style="margin-top:14px">'
+    + '<button id="hl-extract-cancel" class="btn btn-sm" onclick="document.getElementById(\'hl-stems-extract-modal\').remove()">Hide</button>'
+    + '</div></div>';
+  document.body.appendChild(overlay);
+  var statusEl = document.getElementById('hl-extract-status');
+  var barEl = document.getElementById('hl-extract-bar');
+  var detailEl = document.getElementById('hl-extract-detail');
+  function setStatus(msg, pct, detail) {
+    if (statusEl) statusEl.textContent = msg;
+    if (barEl && typeof pct === 'number') barEl.style.width = pct + '%';
+    if (detailEl && detail) detailEl.textContent = detail;
+  }
+
+  try {
+    setStatus('Looking up Demucs stems…', 15);
+    var demucs = await GLStems.getStems(song);
+    var vocalsUrl = demucs && demucs.stems && demucs.stems.vocals;
+    if (!vocalsUrl) {
+      setStatus('No Demucs vocals stem found.', 0, 'Run Stems separation first, then come back here.');
+      var c = document.getElementById('hl-extract-cancel');
+      if (c) c.textContent = 'Close';
+      return;
+    }
+
+    setStatus('Splitting vocals into lead + backing via LALAL…', 35,
+      'Sending the vocals stem to LALAL.AI. This usually takes 30–60s.');
+
+    var split = await GLStems.splitLeadBacking(song, {
+      sourceUrl: vocalsUrl,
+      sourceLabel: 'Demucs vocals stem'
+    });
+
+    if (!split || !split.stems || !split.stems.lead) {
+      throw new Error('LALAL returned no lead stem');
+    }
+
+    setStatus('Saving harmony parts…', 80);
+
+    // Build harmonies_data the Harmony Lab mixer reads. Each part with an
+    // audio_url renders as a row with mute/solo/pan/volume controls.
+    var harmoniesData = {
+      sections: [{
+        name: 'Full Song',
+        parts: [
+          { singer: 'Lead', part: 'lead', source: 'lalal', audio_url: split.stems.lead, notes: null, notation_quality: '' },
+          { singer: 'Backing', part: 'backing', source: 'lalal', audio_url: split.stems.backing, notes: null, notation_quality: '' }
+        ]
+      }],
+      generatedAt: new Date().toISOString(),
+      source: 'demucs+lalal',
+      lalal_task_id: split.lalal_task_id || null
+    };
+
+    if (typeof saveBandDataToDrive === 'function') {
+      await saveBandDataToDrive(song, 'harmonies_data', harmoniesData);
+    }
+
+    setStatus('Done — refreshing Harmony Lab…', 100);
+
+    // Reload harmony lab UI so the split mixer renders with the new parts
+    if (typeof _hlLoadData === 'function') {
+      try { await _hlLoadData(song); } catch(e) {}
+    }
+
+    if (typeof showToast === 'function') showToast('✅ Harmonies extracted from Demucs vocals stem');
+    setTimeout(function() {
+      var m = document.getElementById('hl-stems-extract-modal');
+      if (m) m.remove();
+    }, 800);
+  } catch (e) {
+    console.error('[HarmonyLab] hlGenerateFromStems failed:', e);
+    setStatus('Failed: ' + (e && e.message ? e.message : 'unknown error'), 0,
+      'Check the Cloudflare Worker logs for /lalal/split if this keeps happening.');
+    var c2 = document.getElementById('hl-extract-cancel');
+    if (c2) c2.textContent = 'Close';
+  }
+};
+
+window.hlShowGenerateGuide = async function hlShowGenerateGuide(singer, role) {
+  var existing = document.getElementById('hl-gen-modal');
+  if (existing) existing.remove();
+
+  // If we have a Demucs vocals stem for this song, prefer the real
+  // stem-based extraction over the AI synth. Show a chooser so the user
+  // can still fall back to synth if they want a designed harmony rather
+  // than what the actual recording sang.
+  try {
+    if (_hlSong && window.GLStems && GLStems.getStems) {
+      var demucs = await GLStems.getStems(_hlSong);
+      var hasVocals = !!(demucs && demucs.stems && demucs.stems.vocals);
+      if (hasVocals) {
+        var chooser = document.createElement('div');
+        chooser.id = 'hl-gen-modal';
+        chooser.className = 'hl-gen-modal-overlay';
+        chooser.innerHTML = '<div class="hl-gen-modal" style="max-width:460px">'
+          + '<div class="hl-gen-modal-title">✨ Generate Harmony</div>'
+          + '<div class="hl-gen-modal-sub" style="margin-bottom:14px">You have a Demucs vocals stem — pick how to generate harmonies:</div>'
+          + '<div style="display:flex;flex-direction:column;gap:10px">'
+          + '<button onclick="document.getElementById(\'hl-gen-modal\').remove();hlGenerateFromStems()" style="text-align:left;padding:14px;border-radius:10px;border:1px solid rgba(99,102,241,0.35);background:rgba(99,102,241,0.08);color:var(--text);cursor:pointer">'
+          + '<div style="font-weight:700;font-size:0.92em;margin-bottom:4px">🎤 Use Demucs vocals (recommended)</div>'
+          + '<div style="font-size:0.78em;color:var(--text-dim);line-height:1.4">Sends your existing vocals stem to LALAL.AI to split lead from backing. ~30–60s. Result: real audio of each harmony part.</div>'
+          + '</button>'
+          + '<button onclick="document.getElementById(\'hl-gen-modal\').remove();hlShowGenerateGuideSynth(\'' + _hlEsc(singer) + '\',\'' + _hlEsc(role) + '\')" style="text-align:left;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.02);color:var(--text);cursor:pointer">'
+          + '<div style="font-weight:700;font-size:0.92em;margin-bottom:4px">🤖 Synthesize with AI</div>'
+          + '<div style="font-size:0.78em;color:var(--text-dim);line-height:1.4">Composes a designed harmony line from key + chord progression (Claude). Doesn\'t use your stems — useful for arranging new parts.</div>'
+          + '</button>'
+          + '</div>'
+          + '<div class="hl-gen-actions" style="margin-top:14px">'
+          + '<button class="btn btn-sm" onclick="document.getElementById(\'hl-gen-modal\').remove()">Cancel</button>'
+          + '</div></div>';
+        document.body.appendChild(chooser);
+        return;
+      }
+    }
+  } catch(e) { /* fall through to synth modal */ }
+
+  // No Demucs stems available — show synth modal directly
+  hlShowGenerateGuideSynth(singer, role);
+};
+
+// Original synth modal — split out so the chooser above can route to it.
+window.hlShowGenerateGuideSynth = function hlShowGenerateGuideSynth(singer, role) {
   var existing = document.getElementById('hl-gen-modal');
   if (existing) existing.remove();
 
