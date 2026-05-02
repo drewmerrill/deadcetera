@@ -1951,7 +1951,12 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
           '</div>' +
           '<button class="sd-stem-mute" data-stem="' + t.id + '" title="Mute" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">M</button>' +
           '<button class="sd-stem-solo" data-stem="' + t.id + '" title="Solo" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">S</button>' +
-          '<a class="sd-stem-dl" href="' + _sdEsc(t.rawUrl) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" title="Download FLAC" style="padding:4px 6px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);text-decoration:none;font-size:0.76em;line-height:1">⬇</a>' +
+          '<div class="sd-stem-overflow-wrap" style="position:relative;flex-shrink:0">' +
+            '<button class="sd-stem-overflow" onclick="_sdStemsToggleOverflow(this);event.stopPropagation()" title="More" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.95em;line-height:1;font-weight:700">⋮</button>' +
+            '<div class="sd-stem-overflow-menu" style="position:absolute;top:calc(100% + 4px);right:0;display:none;background:#1e293b;border:1px solid var(--border);border-radius:6px;padding:4px 0;z-index:30;min-width:160px;box-shadow:0 6px 18px rgba(0,0,0,0.55)">' +
+              '<a href="' + _sdEsc(t.rawUrl) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" onclick="_sdStemsCloseAllOverflows()" style="display:block;padding:7px 12px;color:var(--text);text-decoration:none;font-size:0.78em;white-space:nowrap">⬇ Download FLAC</a>' +
+            '</div>' +
+          '</div>' +
           // crossorigin="anonymous" is REQUIRED for createMediaElementSource()
           // to produce non-silent output on cross-origin sources (R2). Without
           // it, the audio plays through the <audio> element itself but goes
@@ -1964,17 +1969,20 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
     // Tempo/pitch controls — tempo is native (preservesPitch=true by default).
     // Pitch nudge (-2..+2 semitones) lazy-engages Tone.js for true independent
     // shift so tempo and key are not coupled.
-    var fxRow = '<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;flex-wrap:wrap;font-size:0.78em;color:var(--text-dim)">' +
-        '<span style="font-weight:700;color:var(--text-muted)">Speed</span>' +
-        '<input id="sdStemsTempo" type="range" min="50" max="150" step="1" value="100" style="flex:1;min-width:120px">' +
-        '<span id="sdStemsTempoVal" style="font-variant-numeric:tabular-nums;min-width:42px;text-align:right">1.00×</span>' +
-        '<label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input id="sdStemsPreservePitch" type="checkbox" checked> Preserve pitch</label>' +
-        '<span style="width:1px;height:18px;background:var(--border);margin:0 4px"></span>' +
-        '<span style="font-weight:700;color:var(--text-muted)">Key</span>' +
-        '<button class="sd-stems-pitch" data-delta="-1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-weight:700">−1</button>' +
+    // Promoted Speed/Key row — these are core practice tools (slow it down,
+    // shift to a singable key), so styled like a primary control instead
+    // of buried under a dashed-border "effects" treatment.
+    var fxRow = '<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:9px 12px;border:1px solid rgba(102,126,234,0.25);border-radius:8px;background:rgba(102,126,234,0.05);flex-wrap:wrap;font-size:0.8em;color:var(--text)">' +
+        '<span style="font-weight:700;color:#a5b4fc">⏱ Speed</span>' +
+        '<input id="sdStemsTempo" type="range" min="50" max="150" step="1" value="100" style="flex:1;min-width:120px;accent-color:#818cf8">' +
+        '<span id="sdStemsTempoVal" style="font-variant-numeric:tabular-nums;min-width:46px;text-align:right;font-weight:700">1.00×</span>' +
+        '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:0.92em;color:var(--text-dim)"><input id="sdStemsPreservePitch" type="checkbox" checked> Preserve pitch</label>' +
+        '<span style="width:1px;height:20px;background:rgba(255,255,255,0.12);margin:0 4px"></span>' +
+        '<span style="font-weight:700;color:#a5b4fc">🎼 Key</span>' +
+        '<button class="sd-stems-pitch" data-delta="-1" title="Down 1 semitone" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);cursor:pointer;font-weight:700;font-size:0.95em">−1</button>' +
         '<span id="sdStemsPitchVal" style="font-variant-numeric:tabular-nums;min-width:36px;text-align:center;font-weight:700;color:var(--text)">0</span>' +
-        '<button class="sd-stems-pitch" data-delta="1" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-weight:700">+1</button>' +
-        '<button id="sdStemsPitchReset" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.85em">reset</button>' +
+        '<button class="sd-stems-pitch" data-delta="1" title="Up 1 semitone" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.06);color:var(--text);cursor:pointer;font-weight:700;font-size:0.95em">+1</button>' +
+        '<button id="sdStemsPitchReset" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.85em">reset</button>' +
     '</div>';
     // ── Practice presets — one button per stem (skip "other" — usually
     // bleed/SFX, not a practice target). Click mutes that stem so you can
@@ -2022,7 +2030,17 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
           '<span class="sd-stems-expand-label">Full screen</span>' +
         '</button>' +
       '</div>' +
-      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap">' +
+      // Active mode banner — only visible when a Practice preset is on. Tells
+      // the user "you're hearing X muted" so they don't get confused why the
+      // mix sounds different than the raw stems. Hidden by default; shown
+      // by _sdStemsRedrawPresetUI.
+      '<div id="sdStemsActiveModeBanner" style="display:none;margin-bottom:10px;padding:9px 12px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;font-size:0.85em;color:#fbbf24;align-items:center;gap:10px">' +
+        '<span style="font-size:1.15em;flex-shrink:0">🎯</span>' +
+        '<span><b>Practice mode:</b> <span id="sdStemsActiveModeLabel">—</span></span>' +
+        '<span style="flex:1"></span>' +
+        '<button onclick="_sdStemsResetPresets()" title="Unmute everything" style="background:none;border:1px solid rgba(245,158,11,0.5);color:#fbbf24;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.92em;font-weight:700;flex-shrink:0">↺ Clear</button>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap">' +
         '<button id="sdStemsPlay" onclick="_sdStemsToggle()" title="Play/Pause (Space)" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:9px 14px;border-radius:8px;font-weight:700;cursor:pointer;min-width:84px">▶ Play</button>' +
         '<button onclick="_sdStemsSeekBy(-30)" title="Back 30s (Shift+←)" style="padding:8px 9px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-size:0.74em;font-weight:700;font-variant-numeric:tabular-nums">⏪ 30</button>' +
         '<button onclick="_sdStemsSeekBy(-10)" title="Back 10s (←)" style="padding:8px 9px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text);cursor:pointer;font-size:0.74em;font-weight:700;font-variant-numeric:tabular-nums">⏪ 10</button>' +
@@ -2031,8 +2049,10 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
         '<input id="sdStemsScrub" type="range" min="0" max="1000" value="0" style="flex:1;min-width:120px;margin-left:4px">' +
         '<span id="sdStemsTime" style="font-size:0.78em;color:var(--text-dim);font-variant-numeric:tabular-nums;min-width:80px;text-align:right">0:00 / 0:00</span>' +
       '</div>' +
-      loopBar +
+      // Promoted: Speed/Key sit right under transport — they're practice
+      // controls, not effects. Loop bar follows since it's session-scoped.
       fxRow +
+      loopBar +
       rows +
       presetsRow +
       // Shortcut: extract harmonies banner only when Demucs vocals exist AND
@@ -2363,6 +2383,7 @@ function _sdStemsApplyVolFor(audio) {
 }
 
 function _sdStemsRedrawPresetUI() {
+    var activeLabel = '';
     document.querySelectorAll('.sd-stems-preset').forEach(function(btn) {
         var on = (_sdActivePreset === btn.dataset.stem);
         var color = btn.dataset.color || 'rgba(255,255,255,0.1)';
@@ -2370,12 +2391,48 @@ function _sdStemsRedrawPresetUI() {
             btn.style.background = 'rgba(245,158,11,0.18)';
             btn.style.color = '#fbbf24';
             btn.style.borderColor = 'rgba(245,158,11,0.55)';
+            // Pull label from the button text (icon + label) — strip leading
+            // emoji + space so the banner reads "Lead muted" not "🎤 Lead muted".
+            var raw = (btn.textContent || '').trim();
+            activeLabel = raw.replace(/^\S+\s+/, '');
         } else {
             btn.style.background = 'rgba(255,255,255,0.03)';
             btn.style.color = 'var(--text-dim)';
             btn.style.borderColor = color + '40';
         }
     });
+    // Top-of-card banner mirrors the preset state so users always know
+    // why the mix sounds different than the raw stems.
+    var banner = document.getElementById('sdStemsActiveModeBanner');
+    var labelEl = document.getElementById('sdStemsActiveModeLabel');
+    if (banner) banner.style.display = _sdActivePreset ? 'flex' : 'none';
+    if (labelEl && _sdActivePreset) labelEl.textContent = activeLabel + ' muted — play/sing this part along';
+}
+
+// ── Overflow menus (per-row ⋮) ─────────────────────────────────────────────
+window._sdStemsCloseAllOverflows = function() {
+    document.querySelectorAll('.sd-stem-overflow-menu').forEach(function(m) {
+        m.style.display = 'none';
+    });
+};
+window._sdStemsToggleOverflow = function(btn) {
+    var menu = btn && btn.nextElementSibling;
+    if (!menu) return;
+    var willOpen = menu.style.display !== 'block';
+    window._sdStemsCloseAllOverflows();
+    if (willOpen) menu.style.display = 'block';
+};
+var _sdStemsOverflowBound = false;
+function _sdEnsureOverflowBound() {
+    if (_sdStemsOverflowBound) return;
+    document.addEventListener('click', function(e) {
+        // Click inside an overflow wrapper → its onclick handles the toggle;
+        // anything else just closes any open menu.
+        if (!e.target.closest || !e.target.closest('.sd-stem-overflow-wrap')) {
+            window._sdStemsCloseAllOverflows();
+        }
+    });
+    _sdStemsOverflowBound = true;
 }
 
 // 4-beat metronome count-in before audio starts. Frequency at song BPM;
@@ -2524,6 +2581,7 @@ function _sdInitStemsPlayer() {
     if (!audios.length) return;
     var master = audios[0];
     _sdEnsureStemsKeyBound();
+    _sdEnsureOverflowBound();
 
     var fmt = function(s){ s = Math.floor(s||0); return Math.floor(s/60) + ':' + ('0' + (s%60)).slice(-2); };
 
