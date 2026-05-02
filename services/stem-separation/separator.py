@@ -166,8 +166,16 @@ def separate_stems(
 ) -> dict:
     """Download → Demucs → upload N stems to R2 → return URLs.
 
-    model_name: 'htdemucs' (4 stems: drums/bass/vocals/other) or
-                'htdemucs_6s' (6 stems: + piano + guitar).
+    model_name: one of
+        'htdemucs'     — 4 stems (drums/bass/vocals/other), default-quality, ~30s.
+        'htdemucs_6s'  — 6 stems (+ piano + guitar), ~30s.
+        'htdemucs_ft'  — 4 stems, fine-tuned bagging of 4 specialists, best
+                         per-stem quality but ~3-4× slower (~120s on 12-min songs).
+                         May exceed Modal web-endpoint limits on long inputs.
+        'mdx_extra'    — 4 stems, older MDX architecture (frequency-domain UNet),
+                         different mistakes than htdemucs — sometimes catches
+                         oddly-toned guitars or bass content the htdemucs family
+                         misses. ~1.5× slower than htdemucs_6s.
     """
     import subprocess
 
@@ -218,7 +226,10 @@ def separate_stems(
 
     # Whitelist allowed models — loading arbitrary names from a request
     # body would let a caller waste GPU time on huge unrelated weights.
-    allowed_models = {"htdemucs", "htdemucs_6s"}
+    # htdemucs_ft and mdx_extra added 2026-05-02 for the Bird Song bake-off
+    # (lead guitar leaked into "other" with htdemucs_6s; testing whether the
+    # higher-quality / different-architecture variants catch it cleanly).
+    allowed_models = {"htdemucs", "htdemucs_6s", "htdemucs_ft", "mdx_extra"}
     if model_name not in allowed_models:
         raise ValueError(
             f"Unsupported model_name '{model_name}'. Allowed: {sorted(allowed_models)}"

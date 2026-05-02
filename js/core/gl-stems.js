@@ -41,13 +41,20 @@ window.GLStems = (function () {
 
   async function hasStems(title) { return !!(await getStems(title)); }
 
-  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?, sourceLabel?, model? }
-  // model: 'htdemucs' (4 stems) or 'htdemucs_6s' (6 stems, default)
+  // opts: { sourceUrl?, driveFileId?, accessToken?, audioDataUrl?,
+  //         firebaseAudioRef?, sourceLabel?, model? }
+  // model: 'htdemucs' (4 stems), 'htdemucs_6s' (6 stems, default),
+  //        'htdemucs_ft' (4 stems HQ, ~3-4× slower),
+  //        'mdx_extra' (4 stems MDX architecture, ~1.5× slower)
+  // firebaseAudioRef: optional `firebase-audio://...` pointer saved alongside
+  //   the audioDataUrl so a future re-separate can re-fetch the base64
+  //   without forcing the user to re-pick the take.
+  var ALLOWED_MODELS = ['htdemucs', 'htdemucs_6s', 'htdemucs_ft', 'mdx_extra'];
   async function separate(title, opts) {
     if (!title) throw new Error('title required');
     opts = opts || {};
     var body = { songId: _stemsKey(title) };
-    if (opts.model === 'htdemucs' || opts.model === 'htdemucs_6s') {
+    if (ALLOWED_MODELS.indexOf(opts.model) !== -1) {
       body.model = opts.model;
     }
     if (opts.sourceUrl) {
@@ -81,6 +88,12 @@ window.GLStems = (function () {
       sourceLabel: opts.sourceLabel || (opts.sourceUrl ? 'URL' : 'Drive'),
       elapsedSec: data.elapsed_sec
     };
+    // Save source ref so re-separate can default-fill the source. We save
+    // pointers (driveFileId, firebaseAudioRef), not credentials (accessToken
+    // is per-session) and not bytes (audioDataUrl can be 30+ MB).
+    if (opts.sourceUrl) record.sourceUrl = opts.sourceUrl;
+    if (opts.driveFileId) record.driveFileId = opts.driveFileId;
+    if (opts.firebaseAudioRef) record.firebaseAudioRef = opts.firebaseAudioRef;
     if (typeof saveBandDataToDrive === 'function') {
       try { await saveBandDataToDrive(title, 'stems', record); } catch (e) {}
     }

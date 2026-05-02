@@ -1866,7 +1866,15 @@ async function _sdLoadStemsSourcePicker(title) {
                 try {
                     var data = await loadBandDataFromDrive(sTitle, aKey);
                     if (!data || !data.data) throw new Error('Firebase audio not found');
-                    _sdRunStemSeparationFromTake(title, { audioDataUrl: data.data, sourceLabel: label, model: model });
+                    _sdRunStemSeparationFromTake(title, {
+                        audioDataUrl: data.data,
+                        // firebaseAudioRef preserves the pointer so a future
+                        // re-separate can re-fetch the base64 without forcing
+                        // the user to re-pick the take.
+                        firebaseAudioRef: btn.dataset.url,
+                        sourceLabel: label,
+                        model: model
+                    });
                 } catch (e) {
                     btn.disabled = false; btn.textContent = 'Use this';
                     alert('Could not load Firebase audio: ' + (e.message || e));
@@ -1918,9 +1926,27 @@ async function _sdRunStemSeparationFromTake(title, opts) {
     }
 }
 
+// Build the model dropdown options. Marks the model that produced the
+// current stems as "selected" so the user sees what was used.
+function _sdStemsModelOptions(currentModel) {
+    var opts = [
+        { v: 'htdemucs_6s', l: '6 stems (default)' },
+        { v: 'htdemucs',    l: '4 stems' },
+        { v: 'htdemucs_ft', l: '4 stems HQ (~3× slower)' },
+        { v: 'mdx_extra',   l: '4 stems · MDX architecture' }
+    ];
+    return opts.map(function(o) {
+        var sel = (o.v === currentModel) ? ' selected' : '';
+        return '<option value="' + o.v + '"' + sel + '>' + o.l + '</option>';
+    }).join('');
+}
+
 function _sdRenderStemsPlayer(title, stems, lalalSplit) {
     _sdEnsureStemsFsStyle();
     var safeSong = title.replace(/'/g, "\\'");
+    // Stash so _sdStemsRedo can read source refs + previous model without
+    // having to re-load from band-data on every Re-separate click.
+    window._sdLastStemsRec = stems;
     // Single-source-of-truth merged track list. LALAL lead/backing replace
     // Demucs vocals when present — no duplicate vocal rows.
     var tracks = (window.GLAudioSession && GLAudioSession.mergeTracks)
@@ -2070,9 +2096,14 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
         '</div>' +
         '<button onclick="_sdLensPopulated.sing=false;if(typeof switchLens===\'function\')switchLens(\'sing\');setTimeout(function(){if(typeof hlGenerateFromStems===\'function\')hlGenerateFromStems();},400)" style="background:rgba(99,102,241,0.18);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82em;white-space:nowrap;flex-shrink:0">→ Split Vocals</button>' +
       '</div>' : '') +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.7em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
-        '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + '</span>' +
-        '<button onclick="_sdStemsRedo(\'' + safeSong + '\')" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">Re-separate</button>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.72em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
+        '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + (stems.model ? ' · ' + _sdEsc(stems.model) : '') + '</span>' +
+        '<div style="display:flex;align-items:center;gap:6px">' +
+          '<select id="sdStemsRedoModel" title="Pick a model and click Re-separate to bake-off variants" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.92em;cursor:pointer">' +
+            _sdStemsModelOptions(stems.model || 'htdemucs_6s') +
+          '</select>' +
+          '<button onclick="_sdStemsRedo(\'' + safeSong + '\')" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.92em;font-weight:700">Re-separate</button>' +
+        '</div>' +
       '</div>' +
       '</div>' + // .sd-card
     '</div>'; // .sd-stems-wrap
@@ -2194,10 +2225,57 @@ window._sdStemsToggle = async function() {
 };
 
 window._sdStemsRedo = async function(title) {
-    if (!confirm('Replace these stems with a new separation?')) return;
-    if (window.GLStems) await GLStems.clearStems(title);
-    _sdLensPopulated.stems = false;
-    _sdPopulateStemsLens(title);
+    var rec = window._sdLastStemsRec || {};
+    var dropdown = document.getElementById('sdStemsRedoModel');
+    var newModel = dropdown ? dropdown.value : (rec.model || 'htdemucs_6s');
+    var hasSavedSource = !!(rec.sourceUrl || rec.driveFileId || rec.firebaseAudioRef);
+
+    // No saved source (legacy stems record from before this change) — fall
+    // back to the old behavior: clear stems and re-render setup view.
+    if (!hasSavedSource) {
+        if (!confirm('No saved source for this run. Open setup view to re-enter?')) return;
+        if (window.GLStems) await GLStems.clearStems(title);
+        _sdLensPopulated.stems = false;
+        _sdPopulateStemsLens(title);
+        return;
+    }
+
+    var modelChanged = newModel !== (rec.model || 'htdemucs_6s');
+    var msg = modelChanged
+        ? 'Re-separate with ' + newModel + '? (current: ' + (rec.model || '?') + ')'
+        : 'Re-run separation with ' + newModel + '?';
+    if (!confirm(msg)) return;
+
+    var opts = { sourceLabel: rec.sourceLabel || 'Saved source', model: newModel };
+
+    if (rec.sourceUrl) {
+        opts.sourceUrl = rec.sourceUrl;
+    } else if (rec.driveFileId) {
+        opts.driveFileId = rec.driveFileId;
+        if (typeof accessToken !== 'undefined' && accessToken) {
+            opts.accessToken = accessToken;
+        } else {
+            alert('Sign in to Google first — Drive source needs an auth token.');
+            return;
+        }
+    } else if (rec.firebaseAudioRef) {
+        // Re-fetch base64 from Firebase using the saved pointer.
+        var ref = rec.firebaseAudioRef;
+        var parts = ref.replace('firebase-audio://', '').split('/');
+        var fbTitle = decodeURIComponent(parts[0] || '');
+        var fbKey = parts.slice(1).join('/');
+        try {
+            var data = await loadBandDataFromDrive(fbTitle, fbKey);
+            if (!data || !data.data) throw new Error('Firebase audio not found');
+            opts.audioDataUrl = data.data;
+            opts.firebaseAudioRef = ref;
+        } catch (e) {
+            alert('Could not load saved Firebase audio: ' + (e.message || e));
+            return;
+        }
+    }
+
+    _sdRunStemSeparationFromTake(title, opts);
 };
 
 // Format MM:SS for the transport time display.

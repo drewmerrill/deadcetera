@@ -1589,8 +1589,9 @@ async function handleStemsSeparate(request, env) {
   const accessToken = String(body.accessToken || '').trim();
   const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
   // Whitelist on the server side too so a malicious client can't make
-  // Modal load random model weights.
-  const allowedModels = new Set(['htdemucs', 'htdemucs_6s']);
+  // Modal load random model weights. htdemucs_ft and mdx_extra added for
+  // the model-variant bake-off (Bird Song "other has lead guitar" problem).
+  const allowedModels = new Set(['htdemucs', 'htdemucs_6s', 'htdemucs_ft', 'mdx_extra']);
   const modelName = allowedModels.has(body.model) ? body.model : 'htdemucs_6s';
   if (!songId) return cors(jsonError('missing songId', 400));
   if (!sourceUrl && !audioDataUrl && !(driveFileId && accessToken)) {
