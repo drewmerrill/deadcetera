@@ -155,12 +155,19 @@ window.GLDrivePicker = (function() {
           if (startFolderId) view.setParent(startFolderId);
         } catch(e) {}
 
+        // Size to ~92% of viewport so all columns (Name, Owner, Last
+        // modified, Size, action icons) have room. Picker default is narrow
+        // and clips Size off-screen.
+        var pw = Math.max(720, Math.min(1400, Math.floor((window.innerWidth || 1024) * 0.92)));
+        var ph = Math.max(480, Math.min(900, Math.floor((window.innerHeight || 768) * 0.85)));
+
         var p = new picker.PickerBuilder()
           .enableFeature(picker.Feature.SUPPORT_DRIVES)
           .enableFeature(picker.Feature.MULTISELECT_ENABLED).disableFeature(picker.Feature.MULTISELECT_ENABLED)
           .setAppId(_appId())
           .setOAuthToken(token)
           .setDeveloperKey(_apiKey())
+          .setSize(pw, ph)
           .addView(view)
           .setCallback(function(data) {
             if (!data || !data.action) return;
