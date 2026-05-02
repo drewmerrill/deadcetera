@@ -1632,33 +1632,78 @@ async function handleStemsSeparate(request, env) {
               + '&token=' + encodeURIComponent(accessToken);
   }
 
-  // Modal cold-start can take 60-120s. Worker request budget is generous
-  // but bounded — keep an explicit timeout in case Modal hangs.
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 240000); // 4 min ceiling
-  try {
-    const modalRes = await fetch(env.STEMS_MODAL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_url: sourceUrl,
-        song_id: songId,
-        model_name: modelName,
-        token: env.STEMS_SHARED_SECRET
-      }),
-      signal: ctrl.signal
-    });
-    clearTimeout(timer);
-    const text = await modalRes.text();
-    return cors(new Response(text, {
-      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
-      headers: { 'Content-Type': 'application/json' }
-    }));
-  } catch (e) {
-    clearTimeout(timer);
-    const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
-    return cors(jsonError(msg, 504));
-  }
+  // Modal stems-separation: ~30-180s per song depending on model.
+  // htdemucs_6s ~30-90s, htdemucs ~30-60s, mdx_extra ~60-120s, htdemucs_ft
+  // ~120-240s. Modal cold start adds ~10-15s. Generous 6-min ceiling.
+  //
+  // Cloudflare's eyeball connection idle-times out at ~100s if no body bytes
+  // have been written. Modal often takes longer than that on the heavier
+  // models. We work around it by returning a streamed response immediately
+  // and writing a JSON-safe whitespace heartbeat every 20s while we wait.
+  // Browsers ignore leading whitespace before JSON, so existing clients
+  // (response.json()) work unchanged. The actual JSON payload is appended
+  // once Modal returns. Matches the LALAL/split heartbeat pattern.
+  const stream = new ReadableStream({
+    async start(controller) {
+      const enc = new TextEncoder();
+      let modalDone = false;
+      const heartbeat = setInterval(() => {
+        if (modalDone) return;
+        try { controller.enqueue(enc.encode(' ')); } catch (_) {}
+      }, 20000);
+
+      const ctrl = new AbortController();
+      const abortTimer = setTimeout(() => ctrl.abort(), 360000); // 6 min
+
+      try {
+        controller.enqueue(enc.encode(' '));
+
+        const modalRes = await fetch(env.STEMS_MODAL_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_url: sourceUrl,
+            song_id: songId,
+            model_name: modelName,
+            token: env.STEMS_SHARED_SECRET
+          }),
+          signal: ctrl.signal
+        });
+        clearTimeout(abortTimer);
+        modalDone = true;
+        clearInterval(heartbeat);
+
+        const text = await modalRes.text();
+        if (!modalRes.ok) {
+          let payload;
+          try { payload = JSON.parse(text); } catch (_) {
+            payload = { success: false, error: 'modal_error_' + modalRes.status, details: text.slice(0, 500) };
+          }
+          if (payload && typeof payload === 'object') payload.success = payload.success || false;
+          controller.enqueue(enc.encode(JSON.stringify(payload)));
+        } else {
+          controller.enqueue(enc.encode(text));
+        }
+        controller.close();
+      } catch (e) {
+        clearTimeout(abortTimer);
+        modalDone = true;
+        clearInterval(heartbeat);
+        const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+        try {
+          controller.enqueue(enc.encode(JSON.stringify({ success: false, error: msg })));
+          controller.close();
+        } catch (_) {
+          try { controller.error(e); } catch (_) {}
+        }
+      }
+    }
+  });
+
+  return cors(new Response(stream, {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  }));
 }
 
 // ── LALAL.AI Lead/Backing Split (Modal proxy) ────────────────────────────────
