@@ -1688,6 +1688,14 @@ window.sdVoteProspect = async function(songId, vote) {
 async function _sdPopulateStemsLens(title) {
     var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
     if (!panel) return;
+    // If a fullscreen wrap from a prior song/render is still pinned to
+    // <body>, drop it before rebuilding — otherwise it'd orphan when the
+    // new wrap renders into the panel.
+    var orphan = document.body.querySelector(':scope > .sd-stems-wrap.sd-stems-fullscreen');
+    if (orphan) {
+        document.body.classList.remove('sd-stems-overlay-open');
+        orphan.remove();
+    }
     // New audio elements coming — abandon any prior WebAudio routing. The
     // old MediaElementSource nodes are dangling but the elements themselves
     // are about to be removed from the DOM.
@@ -2025,17 +2033,40 @@ function _sdEnsureStemsFsStyle() {
 }
 
 window._sdStemsToggleFullscreen = function() {
-    var wrap = (_sdContainer || document).querySelector('.sd-stems-wrap');
+    var wrap = document.querySelector('.sd-stems-wrap');
     if (!wrap) return;
     var on = !wrap.classList.contains('sd-stems-fullscreen');
-    wrap.classList.toggle('sd-stems-fullscreen', on);
-    document.body.classList.toggle('sd-stems-overlay-open', on);
-    var btn = (_sdContainer || document).querySelector('#sdStemsExpand');
+    if (on) {
+        // Reparent to <body> so position:fixed actually covers the viewport.
+        // An ancestor in the right-rail had a transform/will-change that
+        // re-anchored fixed positioning to its containing block — symptoms
+        // were a stems card that didn't fill the screen and underlying page
+        // chrome bleeding through. MediaElementSource bindings survive DOM
+        // moves; the AudioNode is bound to the element, not its position.
+        wrap._sdFsOriginParent = wrap.parentElement;
+        wrap._sdFsOriginNext = wrap.nextSibling;
+        document.body.appendChild(wrap);
+        wrap.classList.add('sd-stems-fullscreen');
+        document.body.classList.add('sd-stems-overlay-open');
+    } else {
+        wrap.classList.remove('sd-stems-fullscreen');
+        document.body.classList.remove('sd-stems-overlay-open');
+        if (wrap._sdFsOriginParent && wrap._sdFsOriginParent.isConnected) {
+            wrap._sdFsOriginParent.insertBefore(wrap, wrap._sdFsOriginNext || null);
+        }
+        wrap._sdFsOriginParent = null;
+        wrap._sdFsOriginNext = null;
+    }
+    var btn = wrap.querySelector('#sdStemsExpand');
     if (btn) {
         var label = btn.querySelector('.sd-stems-expand-label');
         if (label) label.textContent = on ? 'Exit full screen' : 'Full screen';
         btn.title = on ? 'Exit full screen' : 'Expand to full screen';
     }
+    // Repaint activity strips at the new width (cached bins, no re-decode).
+    setTimeout(function() {
+        try { window.dispatchEvent(new Event('resize')); } catch(e) {}
+    }, 50);
 };
 
 window._sdStemsToggle = function() {
@@ -2164,6 +2195,11 @@ function _sdStemsKeyHandler(e) {
     if (!_sdStemsState || !_sdStemsState.ctx) return;
     var t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.code === 'Escape') {
+        var fs = document.querySelector('.sd-stems-wrap.sd-stems-fullscreen');
+        if (fs) { e.preventDefault(); window._sdStemsToggleFullscreen(); }
+        return;
+    }
     if (e.code === 'Space') { e.preventDefault(); window._sdStemsToggle(); return; }
     if (e.code === 'ArrowLeft')  { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ? -30 : -10); return; }
     if (e.code === 'ArrowRight') { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ?  30 :  10); return; }
