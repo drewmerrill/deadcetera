@@ -138,7 +138,15 @@ window.GLDrivePicker = (function() {
         // since they have no thumbnails.
         var view = new picker.DocsView(picker.ViewId.DOCS)
           .setMode(picker.DocsViewMode.LIST)
+          .setIncludeFolders(true)         // show folders so user can navigate
+          .setSelectFolderEnabled(false)   // but don't let them "Select" a folder — only audio/video files
           .setMimeTypes('audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac,audio/webm,audio/*,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/*');
+        // Optional starting folder — user can configure their default
+        // recordings folder once and have the Picker open straight to it.
+        try {
+          var startFolderId = localStorage.getItem('gl_drive_default_folder_id') || '';
+          if (startFolderId) view.setParent(startFolderId);
+        } catch(e) {}
 
         var p = new picker.PickerBuilder()
           .enableFeature(picker.Feature.SUPPORT_DRIVES)
@@ -152,6 +160,11 @@ window.GLDrivePicker = (function() {
             if (data.action === picker.Action.PICKED) {
               var doc = (data.docs || [])[0];
               if (!doc) return;
+              // Remember the folder the user picked from so future Pickers
+              // open there directly. Picker exposes parentId on the doc.
+              try {
+                if (doc.parentId) localStorage.setItem('gl_drive_default_folder_id', doc.parentId);
+              } catch(e) {}
               onPick({
                 fileId: doc.id,
                 name: doc.name || '',
