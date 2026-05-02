@@ -2,7 +2,76 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-02 — **Stems async start/check pipeline shipped (build `20260502-213153`, commit `523124e0`).** Replaces the synchronous `/stems/separate` flow that hit Modal's ~150s web-endpoint cap with a spawn → poll architecture (same pattern LALAL split already uses). Worker `/stems/start` returns Modal `call_id` immediately; client polls `/stems/check` every 5s with a live progress bar in the stems lens. Unblocks `htdemucs_ft` and `mdx_extra` on long songs (Bird Song bake-off). **Manual deploys still required: `modal deploy services/stem-separation/separator.py` + Cloudflare worker dashboard redeploy.** Earlier today: Phase A unification (`20260502-184243`), worker streaming heartbeat (`20260502-210652`), service-worker network-first for index.html (`20260502-211020`)._
+_Last updated: 2026-05-02 — **Phase 2 shipped: pan-aware spatial split + tone fingerprinting (build `20260502-222416`, commit `7e6b3e89`).** Stage 2 refinement on top of Demucs that uses signals Demucs ignores: stereo position and timbral signature. Per-stem ⋮ menu adds "↳ Spatial split…"; the panel shows a pan-energy histogram, three adjustable pan-zone sliders, a reference-clip library picker, fp-strength slider (0/50/100%), and a Run button. Splits any Demucs stem (typically "other" or "guitar") by stereo pan window with optional fingerprint biasing. **Manual deploys required: `modal deploy services/stem-separation/separator.py` + Cloudflare worker dashboard redeploy.** Earlier today: stems async start/check (`20260502-213153`), Change source button (`20260502-215628`)._
+
+## Session 2026-05-02 (PM late) — Phase 2: Pan-aware spatial split + tone fingerprint
+
+**Build:** `20260502-222416` (commit `7e6b3e89`).
+
+**Why:** htdemucs_6s leaks lead guitar into "other" on Bird Song. Bake-off testing confirmed the architectural ceiling: 4-stem models (htdemucs, htdemucs_ft, mdx_extra) all dump guitars+keys into "other" together because the model only has 4 prototype buckets; 6-stem htdemucs has guitar/piano rows but lead leakage persists. The Dead's stage layout means Bobby and Jerry are physically panned, and their tones (Mu-Tron Wolf vs Strat-into-Mesa) are timbrally distinct — both signals Demucs ignores. Phase 2 adds a stage-2 separator that uses both.
+
+**Architecture (~1370 lines net):**
+
+1. **`services/stem-separation/separator.py`** (+444 lines, before bake-off section):
+   - `_stft_pan_split(audio, pan_windows, references, fp_strength)` — STFT-domain pan-window masking. `pan = (|R|-|L|)/(|R|+|L|)` per T-F bin ∈ [-1,+1]. Soft mask with raised-cosine taper at window edges. Optional per-frame fingerprint multiplier biases the mask toward whoever's tone matches that frame.
+   - `_fingerprint_from_audio` — log-mel spectrogram mean+std → 160-dim vector. JSON-safe, ~1KB stored.
+   - `_frame_similarity_to_fp` — cosine sim per frame between log-mel frame and reference fingerprint mean.
+   - `_energy_pan_histogram` — 21-bin energy distribution per pan position. Powers the UI histogram.
+   - `tone_fingerprint`, `pan_analyze` (sync, ~5-10s each), `spatial_separate` (DSP-only, no GPU, ~30-90s).
+   - `spatial_separate_start` + `spatial_separate_check` (async start/check), plus `tone_fingerprint_http` and `pan_analyze_http` (sync HTTP shims).
+
+2. **`worker.js`** (+160 lines): `/stems/pan-analyze`, `/stems/fingerprint`, `/stems/spatial/start`, `/stems/spatial/check`. URL fallback regex derives from `STEMS_MODAL_URL` by swapping `-separate` for `-pan-analyze-http` / `-tone-fingerprint-http` / `-spatial-separate-start` / `-spatial-separate-check`. Setting explicit secrets is recommended (`STEMS_MODAL_PAN_ANALYZE_URL`, `STEMS_MODAL_FINGERPRINT_URL`, `STEMS_MODAL_SPATIAL_START_URL`, `STEMS_MODAL_SPATIAL_CHECK_URL`).
+
+3. **`js/core/gl-stems.js`** (+211 lines):
+   - `loadFingerprints / saveFingerprint / deleteFingerprint` — band-level library at `bands/{slug}/fingerprints` (`saveBandDataToDrive('_band', 'fingerprints', lib)`). Drew uploads "Jerry — Wolf '77" once and it's reusable across every song.
+   - `fingerprintTone(sourceUrl)` — POST `/stems/fingerprint`, returns `{ fingerprint: { mean, std, n_mels }, sourceUrl, sourceLabel }`.
+   - `analyzePan(sourceUrl)` — POST `/stems/pan-analyze`, returns `{ histogram, histogram_edges, suggestions }`.
+   - `spatialSplit(title, opts)` — start→poll pattern. Persists per-song under `spatial_split` band-data field as an **array** keyed by `sourceStemId` (so Drew can split "other" AND "guitar" independently). `getSpatialSplits(title)`, `clearSpatialSplitFor(title, stemId)`, `clearSpatialSplits(title)`.
+
+4. **`js/core/gl-audio-session.js`** — `mergeTracks(demucs, lalalSplit, spatialSplits)`. Spatial-split children appear right after their parent stem with `↳`-prefixed labels (e.g. "Other → Jerry" if a fingerprint name is mapped, otherwise "Other → Left Lead"). Pan-position-aware colors: amber for left, violet for center, cyan for right. Children get synthetic ids like `other__left_lead` so audio routing doesn't collide. New helper `hasSpatialSplitFor(spatialSplits, stemId)`.
+
+5. **`js/features/song-detail.js`** (+~380 lines):
+   - `_sdPopulateStemsLens` now loads `spatial_split` in parallel with `stems` and `lalal_split` and passes all three to `mergeTracks`.
+   - Per-stem ⋮ menu adds **↳ Spatial split…** for parent stems and **✕ Remove split** for children.
+   - `_sdStemsOpenSpatialPanel(title, stemId, sourceUrl, sourceLabel)` renders an inline overlay (absolutely positioned over the stems panel):
+     - Pan-energy histogram canvas (loaded async from `analyzePan`).
+     - Three default zones (`left_lead` -1.0..-0.3, `center` -0.3..+0.3, `right_lead` +0.3..+1.0). Each zone has min/max pan sliders, a name input, and a fingerprint-reference dropdown.
+     - Reference-clip library section with "+ Add reference" button → prompts for name + URL + optional source label → fingerprintTone + saveFingerprint.
+     - Fingerprint strength slider (0/50/100%). 50% recommended; 0% is pan-only; 100% aggressive timbral bias.
+     - Run button → progress UI (Spawning DSP / Splitting / Uploading) → close panel and re-render lens with new child rows.
+
+**Defaults & UX choices:**
+- Pan zones default to a symmetric 3-way (-1,-0.3 / -0.3,0.3 / 0.3,1) which works well for Dead live recordings out-of-the-box.
+- Hint copy under each zone: "Jerry / left side", "Center / shared", "Bob / right side" — Dead-specific guidance baked in.
+- `fp_strength=0.5` default — pan-only when refs aren't set, balanced when they are.
+- Splits are **additive**, not destructive — the original parent stem stays in the mixer for A/B unless `replaceParent: true` is set on the record (not yet exposed in UI).
+
+**Manual deploy steps (Drew):**
+1. `modal deploy services/stem-separation/separator.py` — adds 5 new web endpoints (tone_fingerprint_http, pan_analyze_http, spatial_separate_start, spatial_separate_check). The image already has numpy + torch + torchaudio so no rebuild needed beyond Modal's standard slug-change rebuild.
+2. Cloudflare worker dashboard → deadcetera-proxy → Deploy.
+3. *Optional:* add 4 new worker secrets pointing at the new Modal URLs (worker derives from `STEMS_MODAL_URL` if not set, but explicit is more robust).
+
+**Smoke test plan:**
+- Bird Song's "other" stem → ↳ Spatial split → run with default zones, no fingerprints. Should produce 3 child rows (left/center/right). Check that lead guitar sits more in "left lead".
+- Add a Jerry reference clip → re-split with Jerry assigned to left_lead and Bob assigned to right_lead. Compare A/B with fp_strength=0 vs 50 vs 100.
+- "Guitar" stem → spatial split with Jerry/Bob references. Should better separate the Bobby+Jerry composite that htdemucs_6s puts in one row.
+
+**Phase 2.5 candidates (deferred):**
+- Auto-pre-population of pan zones from `pan_analyze.suggestions` (peak detection on the histogram). Currently we just show the histogram; user picks zones manually.
+- "Replace parent" toggle in the panel UI (data path already supports it).
+- Pre-built Dead reference library (Jerry isolated tracks from common albums) shipped as defaults so users don't have to find their own clean clips.
+- Spatial-split-of-spatial-split (cascade): currently the panel only opens on parent stems, but the data model would support recursive splitting.
+
+**Next:**
+1. Deploy + smoke test on Bird Song.
+2. Phase 1.9 — band UAT (still pending).
+3. OAuth verification submission package (still pending).
+
+---
+
+## Session 2026-05-02 (PM late) — Stems async start/check (kills modal_error_524)
+
+**Build:** `20260502-213153` (commit `523124e0`). Replaces the synchronous `/stems/separate` flow that hit Modal's ~150s web-endpoint cap with a spawn → poll architecture (same pattern LALAL split already uses). Worker `/stems/start` returns Modal `call_id` immediately; client polls `/stems/check` every 5s with a live progress bar in the stems lens. Unblocks `htdemucs_ft` and `mdx_extra` on long songs (Bird Song bake-off). **Manual deploys still required: `modal deploy services/stem-separation/separator.py` + Cloudflare worker dashboard redeploy.** Earlier today: Phase A unification (`20260502-184243`), worker streaming heartbeat (`20260502-210652`), service-worker network-first for index.html (`20260502-211020`)._
 
 ## Session 2026-05-02 (PM late) — Stems async start/check (kills modal_error_524)
 
