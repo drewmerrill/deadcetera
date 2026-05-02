@@ -2009,13 +2009,16 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
             '<button class="sd-stem-overflow" onclick="_sdStemsToggleOverflow(this);event.stopPropagation()" title="More" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.95em;line-height:1;font-weight:700">⋮</button>' +
             '<div class="sd-stem-overflow-menu" style="position:absolute;top:calc(100% + 4px);right:0;display:none;background:#1e293b;border:1px solid var(--border);border-radius:6px;padding:4px 0;z-index:30;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.55)">' +
               '<a href="' + _sdEsc(t.rawUrl) + '" download="' + _sdEsc(dlName) + '" target="_blank" rel="noopener" onclick="_sdStemsCloseAllOverflows()" style="display:block;padding:7px 12px;color:var(--text);text-decoration:none;font-size:0.78em;white-space:nowrap">⬇ Download FLAC</a>' +
-              // Spatial split: only for parent (non-child) stems with a stable rawUrl.
+              // Spatial split: only for parent (non-child) stems. Data attributes
+              // beat inline onclick — no string-escaping pitfalls (URLs / labels
+              // could contain quotes / ampersands). Delegated handler at the
+              // panel level reads data-action and dispatches.
               (t.kind !== 'spatial_child'
-                ? '<button onclick="_sdStemsCloseAllOverflows();_sdStemsOpenSpatialPanel(\'' + safeSong + '\', \'' + _sdEsc(t.id) + '\', \'' + _sdEsc(t.rawUrl) + '\', \'' + _sdEsc(t.label) + '\')" style="display:block;width:100%;text-align:left;padding:7px 12px;color:var(--text);background:none;border:0;font-size:0.78em;cursor:pointer;white-space:nowrap" title="Split this stem by stereo pan position, optionally biased toward a tone fingerprint">↳ Spatial split…</button>'
+                ? '<button type="button" class="sd-stems-menu-action" data-action="spatial-split" data-song="' + _sdEsc(title) + '" data-stem-id="' + _sdEsc(t.id) + '" data-source-url="' + _sdEsc(t.rawUrl) + '" data-stem-label="' + _sdEsc(t.label) + '" style="display:block;width:100%;text-align:left;padding:7px 12px;color:var(--text);background:none;border:0;font-size:0.78em;cursor:pointer;white-space:nowrap" title="Split this stem by stereo pan position, optionally biased toward a tone fingerprint">↳ Spatial split…</button>'
                 : '') +
               // Remove split: only for spatial-children — clears all children of this parent.
               (t.kind === 'spatial_child'
-                ? '<button onclick="_sdStemsCloseAllOverflows();_sdStemsRemoveSpatialSplit(\'' + safeSong + '\', \'' + _sdEsc(t.parentId) + '\')" style="display:block;width:100%;text-align:left;padding:7px 12px;color:#f87171;background:none;border:0;font-size:0.78em;cursor:pointer;white-space:nowrap" title="Discard the spatial split for this parent stem">✕ Remove split</button>'
+                ? '<button type="button" class="sd-stems-menu-action" data-action="remove-spatial-split" data-song="' + _sdEsc(title) + '" data-parent-id="' + _sdEsc(t.parentId) + '" style="display:block;width:100%;text-align:left;padding:7px 12px;color:#f87171;background:none;border:0;font-size:0.78em;cursor:pointer;white-space:nowrap" title="Discard the spatial split for this parent stem">✕ Remove split</button>'
                 : '') +
             '</div>' +
           '</div>' +
@@ -2333,6 +2336,47 @@ window._sdStemsChangeSource = async function(title) {
 // Opens an inline overlay anchored on the stems panel. Lets the user pick
 // pan windows + reference fingerprints, then runs the split.
 
+// Delegated click handler for the per-stem ⋮ menu actions. Reads data
+// attributes off the clicked button and dispatches to the right function.
+// Bound once on first lens render so subsequent re-renders don't stack
+// listeners. Wraps the dispatch in try/catch with visible error so silent
+// failures (which is what Drew was hitting) become obvious immediately.
+var _sdStemsMenuActionBound = false;
+function _sdEnsureStemsMenuActionBound() {
+    if (_sdStemsMenuActionBound) return;
+    document.addEventListener('click', function(e) {
+        var btn = e.target && e.target.closest && e.target.closest('.sd-stems-menu-action');
+        if (!btn) return;
+        var action = btn.dataset.action;
+        try {
+            window._sdStemsCloseAllOverflows && window._sdStemsCloseAllOverflows();
+            if (action === 'spatial-split') {
+                console.log('[stems] spatial-split menu action', {
+                    song: btn.dataset.song,
+                    stemId: btn.dataset.stemId,
+                    sourceUrl: btn.dataset.sourceUrl,
+                    label: btn.dataset.stemLabel
+                });
+                window._sdStemsOpenSpatialPanel(
+                    btn.dataset.song,
+                    btn.dataset.stemId,
+                    btn.dataset.sourceUrl,
+                    btn.dataset.stemLabel
+                );
+            } else if (action === 'remove-spatial-split') {
+                window._sdStemsRemoveSpatialSplit(
+                    btn.dataset.song,
+                    btn.dataset.parentId
+                );
+            }
+        } catch (err) {
+            console.error('[stems menu action] ' + action + ' failed:', err);
+            alert('Couldn\'t run "' + action + '": ' + (err && err.message ? err.message : err));
+        }
+    });
+    _sdStemsMenuActionBound = true;
+}
+
 window._sdStemsRemoveSpatialSplit = async function(title, parentId) {
     if (!confirm('Remove the spatial split for the ' + parentId + ' stem?\n\nThis clears the split record so the original stem is no longer divided. R2 files stay until garbage-collected.')) return;
     if (window.GLStems && GLStems.clearSpatialSplitFor) {
@@ -2343,8 +2387,18 @@ window._sdStemsRemoveSpatialSplit = async function(title, parentId) {
 };
 
 window._sdStemsOpenSpatialPanel = async function(title, stemId, sourceUrl, sourceLabel) {
+    console.log('[stems] _sdStemsOpenSpatialPanel called', { title: title, stemId: stemId, sourceUrl: sourceUrl, sourceLabel: sourceLabel });
+    if (!title || !stemId || !sourceUrl) {
+        console.error('[stems] Missing required args:', { title: title, stemId: stemId, sourceUrl: sourceUrl });
+        alert('Spatial split: missing required data (title=' + title + ', stemId=' + stemId + ', sourceUrl=' + (sourceUrl ? 'set' : 'MISSING') + ')');
+        return;
+    }
     var host = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
-    if (!host) return;
+    if (!host) {
+        console.error('[stems] No stems lens panel host found');
+        alert('Spatial split: stems lens panel not visible');
+        return;
+    }
     var existing = document.getElementById('sdSpatialOverlay');
     if (existing) existing.remove();
 
@@ -3128,6 +3182,10 @@ function _sdEnsureStemsKeyBound() {
 }
 
 function _sdInitStemsPlayer() {
+    // Idempotent global click delegate for per-stem ⋮ menu actions
+    // (Spatial split / Remove split). Bound here so it fires once on
+    // first lens render and survives subsequent re-renders.
+    _sdEnsureStemsMenuActionBound();
     // Scope all queries to `document` (not _sdContainer) so per-stem mute /
     // solo / pan / scrub click handlers keep working after the wrap is
     // reparented to <body> for fullscreen mode. `.sd-stem-*` classes are
