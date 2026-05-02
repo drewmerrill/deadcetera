@@ -4,7 +4,7 @@
 // banners still work on good connections but never hang at the gig).
 // Firebase / external APIs: bypassed — handled by page code.
 
-const CACHE_NAME = 'groovelinx-20260502-210652';
+const CACHE_NAME = 'groovelinx-20260502-211020';
 const BASE = self.registration.scope;
 
 // Cross-origin hosts we cache because the app depends on them to boot.
@@ -176,6 +176,31 @@ self.addEventListener('fetch', event => {
                 }),
                 new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
             ]).catch(() => caches.match(event.request).then(r => r || new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })))
+        );
+        return;
+    }
+
+    // index.html / `/`: network-first with 2s timeout, cache fallback. Without
+    // this, post-deploy reloads needed two presses — first reload served the
+    // OLD cached index.html (with stale <meta build-version>), the version
+    // poller saw a mismatch and re-banner'd. Fixed: reload while online
+    // always picks up the new HTML on the first try. Offline + weak-wifi
+    // paths still fall back to cache so the app boots.
+    const isAppShellHtml = (path === BASE || path === BASE + 'index.html'
+        || path === '/' || path === '/index.html'
+        || path === './' || path === './index.html');
+    if (isAppShellHtml) {
+        event.respondWith(
+            Promise.race([
+                fetch(event.request).then(r => {
+                    if (r && r.ok) {
+                        const clone = r.clone();
+                        caches.open(CACHE_NAME).then(c => c.put(event.request, clone).catch(() => {}));
+                    }
+                    return r;
+                }),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+            ]).catch(() => caches.match(event.request).then(r => r || _navOfflineFallback()))
         );
         return;
     }
