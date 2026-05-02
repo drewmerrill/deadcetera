@@ -830,6 +830,7 @@ window.hlShowGenerateGuide = function hlShowGenerateGuide(singer, role) {
   modal.innerHTML = '<div class="hl-gen-modal">'
     + '<div class="hl-gen-modal-title">✨ Generate Guide Harmony</div>'
     + '<div class="hl-gen-modal-sub">For: ' + _hlEsc(singer) + ' (' + _hlEsc(role) + ')</div>'
+    + '<div style="margin:8px 0 12px;padding:8px 10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;font-size:0.72em;color:#fbbf24;line-height:1.4">⚠ This composes a synthesized guide from chords + key (AI-generated). It does <b>not</b> use your Demucs stems — extracting harmonies from the actual vocals stem is a separate (in-progress) feature.</div>'
     + '<div class="hl-gen-field"><label>Key</label>'
     + '<input id="hl-gen-key" class="hl-import-input" type="text" value="' + _hlEsc(key) + '" style="width:60px"></div>'
     + '<div class="hl-gen-field"><label>BPM</label>'
@@ -1345,13 +1346,23 @@ function _hlTransposeKey(key, semitones) {
 // ── Song meta helpers ─────────────────────────────────────────────────────────
 
 function _hlGetSongKey() {
+  // Prefer DOM input (user may have edited but not saved); fall back to the
+  // song-detail stash so we still get real values when the inputs aren't
+  // mounted in the current view.
   var sel = document.getElementById('sd-songKeySelect') || document.getElementById('songKeySelect');
-  return sel ? sel.value : '';
+  if (sel && sel.value) return sel.value;
+  try { if (window._sdCurrentSongMeta && window._sdCurrentSongMeta.key) return window._sdCurrentSongMeta.key; } catch(e) {}
+  return '';
 }
 function _hlGetSongBpm() {
   var inp = document.getElementById('sd-songBpmInput') || document.getElementById('songBpmInput');
   var v = inp ? parseInt(inp.value) : 0;
-  return (v && !isNaN(v)) ? v : null;
+  if (v && !isNaN(v)) return v;
+  try {
+    var b = window._sdCurrentSongMeta && parseInt(window._sdCurrentSongMeta.bpm);
+    if (b && !isNaN(b)) return b;
+  } catch(e) {}
+  return null;
 }
 function _hlEsc(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

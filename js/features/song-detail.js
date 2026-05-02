@@ -363,6 +363,9 @@ async function _sdPopulateBandLens(title) {
     var songObj=(typeof allSongs!=='undefined')?allSongs.find(function(s){return s.title===title;}):null;
     var metaKey=firebaseKey||(songObj&&songObj.key?songObj.key:'')||(songMeta.key?songMeta.key:'')||'';
     var metaBpm=firebaseBpm||(songObj&&songObj.bpm?String(songObj.bpm):'')||(songMeta.bpm?String(songMeta.bpm):'')||'';
+    // Stash for cross-feature consumers (harmony-lab, etc.) that don't have
+    // direct access to the song-detail DOM inputs but still need real meta.
+    try { window._sdCurrentSongMeta = { title: title, key: metaKey, bpm: metaBpm }; } catch(e) {}
 
     var leadOpts=['','drew','chris','brian','pierce','drew,chris','shared','rotating','n/a'].map(function(v){
         var lbl=v===''?'Select…':v==='drew,chris'?'Drew & Chris':v==='shared'?'Shared':v==='rotating'?'Rotating':v==='n/a'?'N/A (Instrumental)':v.charAt(0).toUpperCase()+v.slice(1);
@@ -1964,6 +1967,16 @@ function _sdRenderStemsPlayer(title, stems) {
       '</div>' +
       fxRow +
       rows +
+      // Shortcut: jump directly to Harmony lens to extract harmonies from
+      // the vocals stem (LALAL lead/back split + transcription).
+      (s.vocals ? '<div style="margin-top:10px;padding:10px;background:rgba(99,102,241,0.06);border:1px dashed rgba(99,102,241,0.25);border-radius:10px;display:flex;align-items:center;gap:10px">' +
+        '<span style="font-size:1.4em">🎤</span>' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:0.85em;font-weight:700">Got vocals — extract harmonies</div>' +
+          '<div style="font-size:0.7em;color:var(--text-dim)">Sends the vocals stem to Harmony Lab to split lead from backing</div>' +
+        '</div>' +
+        '<button onclick="(typeof switchLens===\'function\')&&switchLens(\'sing\')" style="background:rgba(99,102,241,0.18);color:#a5b4fc;border:1px solid rgba(99,102,241,0.35);padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.82em;white-space:nowrap;flex-shrink:0">→ Generate Harmonies</button>' +
+      '</div>' : '') +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.7em;color:var(--text-dim);gap:10px;flex-wrap:wrap">' +
         '<span>Separated ' + (when || '—') + (stems.elapsedSec ? ' · ' + Math.round(stems.elapsedSec) + 's' : '') + (stems.sourceLabel ? ' · from ' + _sdEsc(stems.sourceLabel) : '') + '</span>' +
         '<button onclick="_sdStemsRedo(\'' + safeSong + '\')" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.78em">Re-separate</button>' +
