@@ -2001,20 +2001,24 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit) {
         '<button onclick="_sdStemsResetPresets()" title="Unmute everything" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em">↺ Reset</button>' +
     '</div>';
 
-    // ── Loop bar — A/B markers, on/off, count-in toggle.
-    var loopBar = '<div id="sdStemsLoopBar" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:0.74em;color:var(--text-dim);flex-wrap:wrap">' +
-        '<button id="sdStemsLoopToggle" onclick="_sdStemsToggleLoop()" title="Toggle loop (L)" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-weight:700">🔁 Loop</button>' +
-        '<span style="color:var(--text-muted);font-weight:700">In:</span>' +
-        '<span id="sdStemsLoopIn" style="font-variant-numeric:tabular-nums;color:#10b981;min-width:34px;font-weight:700">—</span>' +
-        '<span style="color:var(--text-muted);font-weight:700">Out:</span>' +
-        '<span id="sdStemsLoopOut" style="font-variant-numeric:tabular-nums;color:#ef4444;min-width:34px;font-weight:700">—</span>' +
+    // ── Loop bar — explicit "Set In/Out here" buttons make the entry path
+    // obvious without forcing the user to discover Shift-click. The Loop
+    // button on the left is the on/off toggle once markers exist.
+    var loopBar = '<div id="sdStemsLoopBar" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,0.02);font-size:0.78em;color:var(--text-dim);flex-wrap:wrap">' +
+        '<button id="sdStemsLoopToggle" onclick="_sdStemsToggleLoop()" title="Toggle loop on/off (L)" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-weight:700">🔁 Loop</button>' +
+        '<button onclick="_sdStemsSetLoopInHere()" title="Set IN at current playhead — key: [" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.1);color:#6ee7b7;cursor:pointer;font-weight:700;font-size:0.92em">[ Set In</button>' +
+        '<span id="sdStemsLoopIn" style="font-variant-numeric:tabular-nums;color:#10b981;min-width:38px;font-weight:700">—</span>' +
+        '<span style="opacity:0.5;font-weight:700">→</span>' +
+        '<span id="sdStemsLoopOut" style="font-variant-numeric:tabular-nums;color:#ef4444;min-width:38px;font-weight:700">—</span>' +
+        '<button onclick="_sdStemsSetLoopOutHere()" title="Set OUT at current playhead — key: ]" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(239,68,68,0.4);background:rgba(239,68,68,0.1);color:#fca5a5;cursor:pointer;font-weight:700;font-size:0.92em">Set Out ]</button>' +
         '<button id="sdStemsLoopClear" onclick="_sdStemsClearLoop()" title="Clear markers (Esc)" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.92em">Clear</button>' +
         '<span style="flex:1;min-width:8px"></span>' +
         '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer" title="Play 4 metronome ticks before audio starts">' +
           '<input id="sdStemsCountIn" type="checkbox" ' + (window._sdCountInEnabled === false ? '' : 'checked') + ' onchange="window._sdCountInEnabled=this.checked"> Count-in' +
         '</label>' +
-        '<span style="font-size:0.85em;opacity:0.7;font-style:italic;white-space:nowrap">Shift-click a strip to set in/out</span>' +
-    '</div>';
+    '</div>' +
+    // Tiny subtitle so first-timers find the keys without cluttering the bar
+    '<div style="margin:0 4px 10px;font-size:0.68em;color:var(--text-dim);opacity:0.75;font-style:italic">Hit <b>[</b> / <b>]</b> while playing to mark in/out at the playhead, <b>L</b> to toggle, <b>Esc</b> to clear · or Shift-click any strip</div>';
 
     var badge = hasLalal
         ? '<span class="sd-title-badge">Demucs + LALAL</span>'
@@ -2256,11 +2260,44 @@ window._sdStemsSetLoopMarker = function(t) {
 
 window._sdStemsToggleLoop = function() {
     if (_sdLoop.inSec == null || _sdLoop.outSec == null) {
-        if (typeof showToast === 'function') showToast('Shift-click a strip to set loop in/out');
+        if (typeof showToast === 'function') showToast('Hit [ to mark IN, ] to mark OUT — or shift-click a strip');
         return;
     }
     _sdLoop.enabled = !_sdLoop.enabled;
     _sdStemsRedrawLoopUI();
+};
+
+// Explicit IN/OUT setters used by the loop-bar buttons + keyboard. Unlike
+// the shift-click "alternating" pattern, these always set the named side
+// at the playhead and revalidate ordering — if the new value would make
+// the loop range zero/negative, the other side is cleared.
+window._sdStemsSetLoopIn = function(t) {
+    _sdLoop.inSec = t;
+    if (_sdLoop.outSec != null && _sdLoop.outSec - _sdLoop.inSec < 0.05) {
+        _sdLoop.outSec = null;
+        _sdLoop.enabled = false;
+    }
+    if (_sdLoop.inSec != null && _sdLoop.outSec != null) _sdLoop.enabled = true;
+    _sdStemsRedrawLoopUI();
+};
+window._sdStemsSetLoopOut = function(t) {
+    _sdLoop.outSec = t;
+    if (_sdLoop.inSec != null && _sdLoop.outSec - _sdLoop.inSec < 0.05) {
+        _sdLoop.inSec = null;
+        _sdLoop.enabled = false;
+    }
+    if (_sdLoop.inSec != null && _sdLoop.outSec != null) _sdLoop.enabled = true;
+    _sdStemsRedrawLoopUI();
+};
+window._sdStemsSetLoopInHere = function() {
+    var audios = document.querySelectorAll('.sd-stem-audio');
+    if (!audios.length) return;
+    window._sdStemsSetLoopIn(audios[0].currentTime || 0);
+};
+window._sdStemsSetLoopOutHere = function() {
+    var audios = document.querySelectorAll('.sd-stem-audio');
+    if (!audios.length) return;
+    window._sdStemsSetLoopOut(audios[0].currentTime || 0);
 };
 
 window._sdStemsClearLoop = function() {
@@ -2559,6 +2596,8 @@ function _sdStemsKeyHandler(e) {
         return;
     }
     if (e.code === 'KeyL') { e.preventDefault(); window._sdStemsToggleLoop(); return; }
+    if (e.code === 'BracketLeft')  { e.preventDefault(); window._sdStemsSetLoopInHere(); return; }
+    if (e.code === 'BracketRight') { e.preventDefault(); window._sdStemsSetLoopOutHere(); return; }
     if (e.code === 'Space') { e.preventDefault(); window._sdStemsToggle(); return; }
     if (e.code === 'ArrowLeft')  { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ? -30 : -10); return; }
     if (e.code === 'ArrowRight') { e.preventDefault(); window._sdStemsSeekBy(e.shiftKey ?  30 :  10); return; }
