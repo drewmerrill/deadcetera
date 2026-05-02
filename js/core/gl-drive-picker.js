@@ -136,11 +136,18 @@ window.GLDrivePicker = (function() {
         // generic View) is needed so we can force LIST mode — the default
         // grid view shows transparency-checker placeholders for audio files
         // since they have no thumbnails.
+        // Note on folder navigation: setMimeTypes() filters at the Drive query
+        // level, so anything not in this list is hidden — including folders,
+        // whose mime type is `application/vnd.google-apps.folder`. We add it
+        // explicitly so folders appear and can be clicked into.
+        // setSelectFolderEnabled(false) still prevents the user from "Select"-ing
+        // a folder as the result — they can only navigate into folders, then
+        // pick a real audio/video file inside.
         var view = new picker.DocsView(picker.ViewId.DOCS)
           .setMode(picker.DocsViewMode.LIST)
-          .setIncludeFolders(true)         // show folders so user can navigate
-          .setSelectFolderEnabled(false)   // but don't let them "Select" a folder — only audio/video files
-          .setMimeTypes('audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac,audio/webm,audio/*,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/*');
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(false)
+          .setMimeTypes('application/vnd.google-apps.folder,audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac,audio/webm,audio/*,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/*');
         // Optional starting folder — user can configure their default
         // recordings folder once and have the Picker open straight to it.
         try {
