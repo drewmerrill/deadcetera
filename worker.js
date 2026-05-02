@@ -1708,33 +1708,80 @@ async function handleLalalSplit(request, env) {
               + '&token=' + encodeURIComponent(accessToken);
   }
 
-  // LALAL processing on Modal: ~30-90s per typical song (mostly waiting on
+  // LALAL processing on Modal: ~30-120s per typical song (mostly waiting on
   // LALAL's queue). Modal cold start adds ~10-15s. Generous 8-min ceiling.
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 480000); // 8 min
-  try {
-    const modalRes = await fetch(env.LALAL_MODAL_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        source_url: sourceUrl,
-        song_id: songId,
-        lalal_key: env.LALAL_API_KEY,
-        token: env.STEMS_SHARED_SECRET
-      }),
-      signal: ctrl.signal
-    });
-    clearTimeout(timer);
-    const text = await modalRes.text();
-    return cors(new Response(text, {
-      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
-      headers: { 'Content-Type': 'application/json' }
-    }));
-  } catch (e) {
-    clearTimeout(timer);
-    const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
-    return cors(jsonError(msg, 504));
-  }
+  //
+  // Cloudflare's eyeball connection idle-times out at ~100s if no body bytes
+  // have been written. Modal often takes longer than that. We work around it
+  // by returning a streamed response immediately and writing a JSON-safe
+  // whitespace heartbeat every 20s while we wait. Browsers ignore leading
+  // whitespace before JSON, so existing clients (response.json()) work
+  // unchanged. The actual JSON payload is appended once Modal returns.
+  const stream = new ReadableStream({
+    async start(controller) {
+      const enc = new TextEncoder();
+      let modalDone = false;
+      const heartbeat = setInterval(() => {
+        if (modalDone) return;
+        try { controller.enqueue(enc.encode(' ')); } catch (_) {}
+      }, 20000);
+
+      const ctrl = new AbortController();
+      const abortTimer = setTimeout(() => ctrl.abort(), 480000); // 8 min
+
+      try {
+        // Write an initial heartbeat byte right away so the eyeball
+        // connection is established before the long wait begins.
+        controller.enqueue(enc.encode(' '));
+
+        const modalRes = await fetch(env.LALAL_MODAL_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_url: sourceUrl,
+            song_id: songId,
+            lalal_key: env.LALAL_API_KEY,
+            token: env.STEMS_SHARED_SECRET
+          }),
+          signal: ctrl.signal
+        });
+        clearTimeout(abortTimer);
+        modalDone = true;
+        clearInterval(heartbeat);
+
+        const text = await modalRes.text();
+        // If Modal returned a non-2xx, surface it as JSON so the client
+        // sees a structured error instead of a parse failure on whitespace.
+        if (!modalRes.ok) {
+          let payload;
+          try { payload = JSON.parse(text); } catch (_) {
+            payload = { success: false, error: 'modal_error_' + modalRes.status, details: text.slice(0, 500) };
+          }
+          if (payload && typeof payload === 'object') payload.success = payload.success || false;
+          controller.enqueue(enc.encode(JSON.stringify(payload)));
+        } else {
+          controller.enqueue(enc.encode(text));
+        }
+        controller.close();
+      } catch (e) {
+        clearTimeout(abortTimer);
+        modalDone = true;
+        clearInterval(heartbeat);
+        const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+        try {
+          controller.enqueue(enc.encode(JSON.stringify({ success: false, error: msg })));
+          controller.close();
+        } catch (_) {
+          try { controller.error(e); } catch (_) {}
+        }
+      }
+    }
+  });
+
+  return cors(new Response(stream, {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  }));
 }
 
 // ── FCM OAuth2 helpers ──
