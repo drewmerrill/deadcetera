@@ -132,8 +132,12 @@ window.GLDrivePicker = (function() {
         var picker = window.google.picker;
 
         // Audio + video MIME view — covers MP3/M4A/WAV plus any video
-        // containers a band member might have for bestshot.
-        var view = new picker.View(picker.ViewId.DOCS)
+        // containers a band member might have for bestshot. DocsView (not the
+        // generic View) is needed so we can force LIST mode — the default
+        // grid view shows transparency-checker placeholders for audio files
+        // since they have no thumbnails.
+        var view = new picker.DocsView(picker.ViewId.DOCS)
+          .setMode(picker.DocsViewMode.LIST)
           .setMimeTypes('audio/mpeg,audio/mp4,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac,audio/webm,audio/*,video/mp4,video/quicktime,video/x-msvideo,video/webm,video/*');
 
         var p = new picker.PickerBuilder()
