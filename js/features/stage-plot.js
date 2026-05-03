@@ -622,7 +622,7 @@ function _spRender() {
     html += '<div><div style="font-size:1.1em;font-weight:800;color:var(--text)">' + _spEsc(bandName) + '</div>'
       + '<div style="font-size:0.72em;color:var(--text-dim)">' + _spEsc(plot.name) + ' — ' + _spFmtDim(plot.stageWidth, plot.units) + ' x ' + _spFmtDim(plot.stageDepth, plot.units) + '</div></div>';
     html += '<div style="display:flex;gap:6px">';
-    html += '<button onclick="_spExportView()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Print / PDF</button>';
+    html += '<button onclick="_spOpenExportModal()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700" title="Pick which pages to include and their order">📄 Build PDF</button>';
     html += '<button onclick="_spCopyShareLink()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700" title="Copy a link the FOH engineer can bookmark — always shows the current version">📋 Copy link</button>';
     html += '<button onclick="_spToggleShareMode()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);color:var(--text-dim);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">← Edit</button>';
     html += '</div></div>';
@@ -2302,7 +2302,112 @@ window._spCopyShareLink = _spCopyShareLink;
 // Wire the hash-route check at load + on hash changes
 window.addEventListener('hashchange', function() { _spCheckSharedHash(); });
 
-function _spExportView() {
+// Export-page descriptor: ordering + per-page UI metadata.
+// Page IDs: 'plot' | 'inputs' | 'monitors' | 'logistics' | 'rider'.
+var SP_EXPORT_PAGES = [
+  { id: 'plot',      label: 'Stage Plot' },
+  { id: 'inputs',    label: 'Input List' },
+  { id: 'monitors',  label: 'Monitor Mixes' },
+  { id: 'logistics', label: 'Logistics (setup / load-in / backline / wireless)' },
+  { id: 'rider',     label: 'Tech & Hospitality Rider' },
+];
+
+function _spExportAvailability(plot) {
+  return {
+    plot: true,
+    inputs: !!(plot.channels && plot.channels.length),
+    monitors: !!(plot.monitors && plot.monitors.length),
+    logistics: !!(plot.setupTime || plot.loadIn || (plot.backline && plot.backline.length) || (plot.wireless && plot.wireless.length)),
+    rider: !!(plot.riderNotes || plot.hospitalityNotes || plot.contact),
+  };
+}
+
+function _spOpenExportModal() {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var availability = _spExportAvailability(plot);
+  // Restore last picked order if saved on the plot, else default order with
+  // included = whatever is available.
+  var saved = Array.isArray(plot.exportPages) && plot.exportPages.length === SP_EXPORT_PAGES.length
+    ? plot.exportPages : null;
+  var pages = saved
+    ? saved.map(function(p) { return { id: p.id, included: !!p.included }; })
+    : SP_EXPORT_PAGES.map(function(m) { return { id: m.id, included: availability[m.id] !== false }; });
+  window._spExportState = { pages: pages, availability: availability };
+
+  var modal = document.createElement('div');
+  modal.id = 'spExportModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:14px';
+  modal.innerHTML = _spRenderExportModalShell();
+  document.body.appendChild(modal);
+}
+
+function _spRenderExportModalShell() {
+  return '<div id="spExportModalCard" style="background:var(--bg-card,#0f172a);border:1px solid rgba(245,158,11,0.25);border-radius:12px;max-width:520px;width:100%;max-height:88vh;overflow:auto;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,0.6)">'
+    + _spRenderExportModalInner()
+    + '</div>';
+}
+
+function _spRenderExportModalInner() {
+  var state = window._spExportState || { pages: [], availability: {} };
+  var html = '';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  html += '<h3 style="margin:0;font-size:1.1em;color:#fbbf24">📄 Build PDF</h3>';
+  html += '<button onclick="document.getElementById(\'spExportModal\').remove()" style="background:none;border:none;color:var(--text-dim);font-size:1.4em;cursor:pointer">×</button>';
+  html += '</div>';
+  html += '<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:12px;line-height:1.5">Pick which pages to include and their order. Empty pages are flagged but can still be included.</div>';
+  state.pages.forEach(function(p, idx) {
+    var meta = SP_EXPORT_PAGES.find(function(m) { return m.id === p.id; });
+    if (!meta) return;
+    var has = state.availability[p.id];
+    var rowBg = !has ? 'rgba(255,255,255,0.02)' : 'rgba(99,102,241,0.05)';
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid rgba(255,255,255,0.08);border-radius:6px;margin-bottom:6px;background:' + rowBg + '">';
+    html += '<div style="display:flex;flex-direction:column;gap:1px">';
+    html += '<button onclick="_spExportReorder(' + idx + ',-1)" ' + (idx === 0 ? 'disabled' : '') + ' style="background:none;border:none;color:' + (idx === 0 ? '#475569' : '#a5b4fc') + ';font-size:0.7em;cursor:' + (idx === 0 ? 'not-allowed' : 'pointer') + ';padding:0;line-height:1" title="Move up">▲</button>';
+    html += '<button onclick="_spExportReorder(' + idx + ',1)" ' + (idx === state.pages.length - 1 ? 'disabled' : '') + ' style="background:none;border:none;color:' + (idx === state.pages.length - 1 ? '#475569' : '#a5b4fc') + ';font-size:0.7em;cursor:' + (idx === state.pages.length - 1 ? 'not-allowed' : 'pointer') + ';padding:0;line-height:1" title="Move down">▼</button>';
+    html += '</div>';
+    html += '<label style="flex:1;display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88em">';
+    html += '<input type="checkbox" ' + (p.included ? 'checked' : '') + ' onchange="_spExportToggle(' + idx + ',this.checked)" style="accent-color:#fbbf24">';
+    html += '<span style="color:' + (has ? 'var(--text)' : 'var(--text-dim)') + '">' + _spEsc(meta.label);
+    if (!has) html += ' <span style="font-size:0.85em;color:var(--text-dim);font-style:italic">(no content)</span>';
+    html += '</span>';
+    html += '</label>';
+    html += '</div>';
+  });
+  html += '<div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">';
+  html += '<button onclick="document.getElementById(\'spExportModal\').remove()" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.85em">Cancel</button>';
+  html += '<button onclick="_spExportConfirm()" style="background:rgba(245,158,11,0.18);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:700">Build PDF →</button>';
+  html += '</div>';
+  return html;
+}
+
+function _spExportToggle(idx, checked) {
+  if (!window._spExportState || !window._spExportState.pages[idx]) return;
+  window._spExportState.pages[idx].included = checked;
+}
+
+function _spExportReorder(idx, delta) {
+  var s = window._spExportState; if (!s) return;
+  var newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= s.pages.length) return;
+  var tmp = s.pages[idx];
+  s.pages[idx] = s.pages[newIdx];
+  s.pages[newIdx] = tmp;
+  var card = document.getElementById('spExportModalCard');
+  if (card) card.innerHTML = _spRenderExportModalInner();
+}
+
+function _spExportConfirm() {
+  var s = window._spExportState;
+  if (!s) return;
+  var plot = _spPlots[_spCurrentIdx];
+  if (plot) { plot.exportPages = s.pages.map(function(p) { return { id: p.id, included: p.included }; }); _spDirty = true; }
+  var modal = document.getElementById('spExportModal');
+  if (modal) modal.remove();
+  _spExportView({ pages: s.pages });
+}
+
+function _spExportView(opts) {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
   var bandName = localStorage.getItem('deadcetera_band_name') || 'GrooveLinx';
@@ -2471,6 +2576,17 @@ function _spExportView() {
     page4 += '</section>';
   }
 
+  // Assemble pages per opts.pages order/inclusion. Default = legacy order
+  // (plot, inputs, monitors, logistics, rider) with everything included.
+  var pageMap = { plot: page1, inputs: page2, monitors: page3, logistics: pageLogistics, rider: page4 };
+  var orderedPages = (opts && Array.isArray(opts.pages) && opts.pages.length)
+    ? opts.pages
+    : [{id:'plot',included:true},{id:'inputs',included:true},{id:'monitors',included:true},{id:'logistics',included:true},{id:'rider',included:true}];
+  var pageHTML = '';
+  orderedPages.forEach(function(p) {
+    if (p.included && pageMap[p.id]) pageHTML += pageMap[p.id];
+  });
+
   var printHTML = '<!DOCTYPE html><html><head><title>' + _spEsc(bandName) + ' — ' + _spEsc(plot.name) + '</title>'
     + '<style>'
     + 'body{font-family:-apple-system,system-ui,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#1a1a1a;background:#fff}'
@@ -2478,11 +2594,7 @@ function _spExportView() {
     + 'section{margin-bottom:24px}'
     + '@media print{body{padding:0;max-width:none}button{display:none!important}section{page-break-after:always}section:last-of-type{page-break-after:auto}}'
     + '</style></head><body>'
-    + page1
-    + page2
-    + page3
-    + pageLogistics
-    + page4
+    + pageHTML
     + '<button onclick="window.print()" style="position:fixed;top:14px;right:14px;padding:8px 18px;background:' + brandColor + ';color:white;border:none;border-radius:6px;cursor:pointer;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,0.2)">🖨 Print / Save as PDF</button>'
     + '</body></html>';
 
@@ -2527,6 +2639,10 @@ window._spUpdateRiderNotes = _spUpdateRiderNotes;
 window._spUpdateHospitalityNotes = _spUpdateHospitalityNotes;
 window._spUpdateContact = _spUpdateContact;
 window._spExportView = _spExportView;
+window._spOpenExportModal = _spOpenExportModal;
+window._spExportToggle = _spExportToggle;
+window._spExportReorder = _spExportReorder;
+window._spExportConfirm = _spExportConfirm;
 window._spClickElement = _spClickElement;
 window._spApplyPreset = _spApplyPreset;
 window._spToggleLabels = function(v) { _spShowLabels = v; _spRender(); };
