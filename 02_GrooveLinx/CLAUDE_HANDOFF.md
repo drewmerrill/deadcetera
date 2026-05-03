@@ -2,7 +2,122 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-02 — **Phase 2 shipped: pan-aware spatial split + tone fingerprinting (build `20260502-222416`, commit `7e6b3e89`).** Stage 2 refinement on top of Demucs that uses signals Demucs ignores: stereo position and timbral signature. Per-stem ⋮ menu adds "↳ Spatial split…"; the panel shows a pan-energy histogram, three adjustable pan-zone sliders, a reference-clip library picker, fp-strength slider (0/50/100%), and a Run button. Splits any Demucs stem (typically "other" or "guitar") by stereo pan window with optional fingerprint biasing. **Manual deploys required: `modal deploy services/stem-separation/separator.py` + Cloudflare worker dashboard redeploy.** Earlier today: stems async start/check (`20260502-213153`), Change source button (`20260502-215628`)._
+_Last updated: 2026-05-02 PM (session close) — **Full Phase 2 pan-aware spatial split + tone fingerprinting shipped end-to-end.** Final build: `20260503-000647` (commit `ad729a13`). Six commits this session covering: (1) stems async start/check pipeline, (2) Change-source button, (3) Phase 2 spatial-split + fingerprint, (4) Modal endpoint cap fix (12→8), (5) menu-action data-attr fix (Drew couldn't open the panel), (6) overlay window-positioning fix (panel was rendering invisible due to ancestor overflow:hidden). All deploys completed manually by Drew (Modal + Cloudflare worker dashboard). **Next session = Phase 2 empirical testing pass on real Dead recordings.** Test plan + curated test-material list at `02_GrooveLinx/notes/session_2026-05-03_phase2_test_plan.md`._
+
+## RESTART PROMPT (paste into next session)
+
+```
+Session start. Read 02_GrooveLinx/CLAUDE_HANDOFF.md (you'll see this entry at the top).
+Today's task: empirical testing pass on Phase 2 spatial split. Test plan and curated
+Dead recording list with Tier 1 / Tier 2 / Tier 3 candidates is at
+02_GrooveLinx/notes/session_2026-05-03_phase2_test_plan.md.
+
+Plan today:
+  1. Pick a Tier 1 song (recommended: "Brown-Eyed Women" from Europe '72 or
+     "Scarlet → Fire" Cornell 5/8/77).
+  2. Run Phase 2A pan-only baseline on the "other" stem, then "guitar" stem.
+  3. Add Jerry + Bob reference fingerprints from clean isolated clips (sources
+     listed in the test plan).
+  4. Run Phase 2B with fingerprints, fp_strength=50%.
+  5. Phase 2C: sweep fp_strength 0/50/100.
+  6. Capture results per the log template in the test plan, file under
+     02_GrooveLinx/notes/.
+  7. Use the decision gates at the bottom of the test plan to decide whether
+     Phase 2 is shippable as-is, needs negative-biasing refinement, or needs
+     a different stage-3 approach.
+
+Pending non-Phase-2 items: Phase 1.9 band UAT (#24), OAuth verification
+submission package (#32). Don't get distracted by these — Phase 2 testing is
+the priority.
+```
+
+## Session 2026-05-02 (PM late) — Phase 2 spatial split end-to-end + bug-bash
+
+**Final build:** `20260503-000647` (commit `ad729a13`).
+
+### Six commits this session
+
+| # | Commit | Build | Description |
+|---|---|---|---|
+| 1 | `523124e0` | `20260502-213153` | Stems async start/check pipeline (kills `modal_error_524` 150s cliff for htdemucs_ft / mdx_extra) |
+| 2 | `dfcb90dc` | `20260502-215628` | Change-source button next to Re-separate (clears stems pointer, falls back to setup view) |
+| 3 | `7e6b3e89` | `20260502-222416` | Phase 2 spatial split + tone fingerprinting (pan-aware DSP + reference-clip biasing) |
+| 4 | `b29798bc` | `20260502-223719` | Drop 4 legacy web endpoints to fit Modal's 8-endpoint cap |
+| 5 | `aa22358c` | `20260502-225105` | Spatial-split menu action — switch to data-attr + delegated handler (was silent-failing) |
+| 6 | `ad729a13` | `20260503-000647` | Spatial-split overlay — fixed-position over body (was rendering invisible due to ancestor overflow:hidden) |
+
+Plus doc-only commits: `5435facc`, `5efc28cd`, and (this commit).
+
+### What Phase 2 does
+
+Stage 2 refinement on top of Demucs that uses signals Demucs ignores: stereo position and timbral signature. Per-stem ⋮ menu adds **"↳ Spatial split…"** — opens a window-level overlay with:
+- Pan-energy histogram (loaded async from `pan_analyze`)
+- Three adjustable pan-zone sliders (defaults: Jerry-left, Center, Bob-right)
+- Reference-clip library (band-level, persistent at `bands/{slug}/fingerprints`)
+- Per-zone fingerprint dropdown
+- Fingerprint strength slider (0% pan-only / 50% balanced / 100% aggressive)
+- Run button → progress UI → new child rows appear under the parent stem
+
+### Architecture (5 files, ~1500 lines net)
+
+1. **`services/stem-separation/separator.py`** (+~440 lines):
+   - `_stft_pan_split` — STFT-domain pan-window masking. Per T-F bin: `pan = (|R|-|L|)/(|R|+|L|+ε)`. Soft mask with raised-cosine taper. Optional fingerprint multiplier biases mask toward whoever's tone matches each frame.
+   - `_fingerprint_from_audio` — log-mel spectrogram mean+std (160 floats default).
+   - `_frame_similarity_to_fp` — cosine sim per frame.
+   - `_energy_pan_histogram` — 21-bin energy distribution for UI viz.
+   - Modal functions: `tone_fingerprint`, `pan_analyze` (sync, ~5-10s); `spatial_separate` (DSP-only, no GPU, ~30-90s); `spatial_separate_start` + `spatial_separate_check` (async pattern).
+   - **Cleanup:** removed legacy `separate`, `lalal_split_http`, `split_vocals_http`, `sepacap_http` HTTP shims (12 → 8 endpoints, fits Modal cap). Underlying GPU functions preserved as research code.
+
+2. **`worker.js`** (+~160 lines): `/stems/pan-analyze`, `/stems/fingerprint`, `/stems/spatial/start`, `/stems/spatial/check`. URL-fallback regex from `STEMS_MODAL_URL`; explicit secrets recommended (`STEMS_MODAL_PAN_ANALYZE_URL`, `STEMS_MODAL_FINGERPRINT_URL`, `STEMS_MODAL_SPATIAL_START_URL`, `STEMS_MODAL_SPATIAL_CHECK_URL` — all 4 set by Drew at deploy time).
+
+3. **`js/core/gl-stems.js`** (+~210 lines):
+   - **Fingerprint library** (band-level): `loadFingerprints / saveFingerprint / deleteFingerprint`. Stored at `bands/{slug}/fingerprints` via `saveBandDataToDrive('_band', 'fingerprints', lib)`. Reusable across all songs.
+   - **Spatial split**: `analyzePan`, `fingerprintTone`, `spatialSplit`, `getSpatialSplits`, `clearSpatialSplits`, `clearSpatialSplitFor`. Persists per-song under `spatial_split` band-data field as **array** keyed by `sourceStemId` (so user can split "other" AND "guitar" independently).
+   - **Stems async migration**: `separate()` now does start→poll loop instead of single blocking request, with `onProgress` callback emitting `'starting' | 'processing' | 'finalizing'` stages.
+
+4. **`js/core/gl-audio-session.js`** — `mergeTracks(demucs, lalalSplit, spatialSplits)`. Spatial-split children appear right after their parent stem with `↳`-prefixed labels (e.g. "Other → Jerry" if a fingerprint name is mapped). Pan-position-aware colors: amber for left, violet for center, cyan for right. Synthetic ids like `other__left_lead` so audio routing doesn't collide. Helper: `hasSpatialSplitFor(spatialSplits, stemId)`.
+
+5. **`js/features/song-detail.js`** (+~400 lines):
+   - `_sdPopulateStemsLens` loads `spatial_split` in parallel with `stems` and `lalal_split`, passes all three to `mergeTracks`.
+   - Per-stem ⋮ menu items use **data attributes + delegated handler** (data-action / data-stem-id / data-source-url / data-stem-label) — no inline-onclick string interpolation.
+   - `_sdEnsureStemsMenuActionBound()` armed once on first lens render; try/catch with visible alert + console.error so future failures surface immediately.
+   - `_sdStemsOpenSpatialPanel` renders the overlay as `position:fixed` at z-index `2147483647`, appended to `document.body` (was previously `position:absolute` in the lens panel — getting clipped by ancestor `overflow:hidden` somewhere up the tree, rendering invisible).
+   - Stems async UI now shows live progress bar + stage messages instead of static spinner.
+   - `_sdStemsChangeSource` (clears stem pointer to bounce back to setup view, lets user pick a different source URL).
+
+### Bugs hit + fixed during the session
+
+1. **"Still 502 error"** after worker heartbeat fix → diagnosed via Modal logs as `modal_error_524` (Modal's web-endpoint 150s response cap). Fix: async start/check pattern (commit `523124e0`).
+2. **"Re-separate just keeps the saved URL"** — added "Change source…" button to clear pointer (commit `dfcb90dc`).
+3. **Modal deploy hit "limit of 8 web endpoints"** at 12 → cleaned up 4 legacy unused endpoints (commit `b29798bc`).
+4. **"I click spatial split and nothing happens"** — first cause: inline-onclick string-interp could fail silently on certain URL/label values. Switched to data-attr + delegated handler (commit `aa22358c`). After Drew confirmed function was actually being called via console logs, root cause turned out to be the overlay rendering invisibly due to ancestor overflow:hidden — fixed via window-level fixed positioning (commit `ad729a13`).
+
+### Manual deploys completed by Drew
+
+1. **Modal deploy:** Drew ran `modal deploy services/stem-separation/separator.py`. Now exposes 8 web endpoints: `separate-start`, `separate-check`, `tone-fingerprint-http`, `pan-analyze-http`, `spatial-separate-start`, `spatial-separate-check`, `lalal-start-http`, `lalal-check-http`.
+2. **Cloudflare worker:** Redeployed via dashboard (deadcetera-proxy → Deploy).
+3. **Worker secrets added by Drew:** `STEMS_MODAL_START_URL`, `STEMS_MODAL_CHECK_URL`, `STEMS_MODAL_PAN_ANALYZE_URL`, `STEMS_MODAL_FINGERPRINT_URL`, `STEMS_MODAL_SPATIAL_START_URL`, `STEMS_MODAL_SPATIAL_CHECK_URL`.
+
+### Session-end deferred discussion (Phase 2.5+ candidates)
+
+Documented in `notes/session_2026-05-03_phase2_test_plan.md`. Roughly:
+- **Negative biasing** (iZotope RX-inspired): boost target similarity *minus* other refs' similarity, instead of just multiplying by target probability. ~30-line `_stft_pan_split` change. Only worth doing if Phase 2A baseline shows fingerprints helping but not enough.
+- **Iterative spatial split** (split-of-a-split): data model supports it; UI panel currently only opens on parent stems. Defer.
+- **Auto-pre-population** of pan zones from `pan_analyze.suggestions`: histogram is shown, but user picks zones manually. Easy add if testing reveals defaults are off.
+- **Cascade with a different separator** as stage 3: only consider if pan + fingerprint both fall short.
+
+### Next session priority (only one thing!)
+
+**Phase 2 empirical testing.** Test plan with full curated Dead-recording list at `02_GrooveLinx/notes/session_2026-05-03_phase2_test_plan.md`. Don't get pulled into Phase 1.9 UAT or OAuth — those are still pending but Phase 2 validation is the immediate path-forward dependency.
+
+### Pending (non-Phase-2)
+
+- **#24 Phase 1.9 — Band UAT** (Harmony Painkiller) — long-pending, blocked on band availability.
+- **#32 OAuth verification submission package** — pending; needs final assembly.
+
+---
+
+_Last updated: 2026-05-02 (mid-session) — **Phase 2 shipped: pan-aware spatial split + tone fingerprinting (build `20260502-222416`, commit `7e6b3e89`).** Stage 2 refinement on top of Demucs that uses signals Demucs ignores: stereo position and timbral signature. Per-stem ⋮ menu adds "↳ Spatial split…"; the panel shows a pan-energy histogram, three adjustable pan-zone sliders, a reference-clip library picker, fp-strength slider (0/50/100%), and a Run button. Splits any Demucs stem (typically "other" or "guitar") by stereo pan window with optional fingerprint biasing. **Manual deploys required: `modal deploy services/stem-separation/separator.py` + Cloudflare worker dashboard redeploy.** Earlier today: stems async start/check (`20260502-213153`), Change source button (`20260502-215628`)._
 
 ## Session 2026-05-02 (PM late) — Phase 2: Pan-aware spatial split + tone fingerprint
 

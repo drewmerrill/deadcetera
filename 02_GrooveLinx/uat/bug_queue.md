@@ -1,11 +1,24 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260422-223450 (local stamp via stamp-version.py)
-**Last Updated:** 2026-04-22
+**Build Under Test:** 20260503-000647 (commit `ad729a13`)
+**Last Updated:** 2026-05-02 PM (session close)
 
 ---
 
 ## Session Focus
+
+**2026-05-02 PM — Stems pipeline overhaul + Phase 2 spatial split (build `20260503-000647`, commits `523124e0` → `ad729a13`).** Six commits across 5 files (separator.py, worker.js, gl-stems.js, gl-audio-session.js, song-detail.js) — ~1500 lines net.
+
+Bugs hit + closed in-session (none of these became permanent queue items):
+
+- [x] **`modal_error_524` on Bird Song with htdemucs_ft / mdx_extra** — Modal's web endpoint caps synchronous responses at ~150s and returns 524 above that, even when function `timeout=900`. The worker streaming heartbeat fix earlier in the day kept Cloudflare's eyeball alive but couldn't fix Modal's own response cap. Fix: async start/check pattern (commit `523124e0`).
+- [x] **Re-separate kept the saved source URL with no way to change it** — added "Change source…" button (commit `dfcb90dc`).
+- [x] **Modal deploy hit "limit of 8 web endpoints"** at 12 active endpoints. Removed 4 legacy unused HTTP shims: `separate` (replaced by separate_start/check), `lalal_split_http` (replaced by lalal_start/check async), `split_vocals_http` (Phase 0 closed), `sepacap_http` (archived). Underlying GPU functions preserved (commit `b29798bc`).
+- [x] **Spatial-split menu action did nothing on click** — root cause #1: inline-onclick string interpolation could fail silently on certain URL/label content. Switched to data-attr + delegated handler with try/catch + visible alert (commit `aa22358c`). Root cause #2 (after Drew confirmed the function was being called via console logs): overlay rendered with `position:absolute;inset:0` but was being clipped by an ancestor's `overflow:hidden` somewhere in the song-detail layout, so it appeared invisible. Fixed by switching to window-level `position:fixed` + appending to `document.body` + max z-index (commit `ad729a13`).
+
+**Phase 2 spatial split + tone fingerprinting now shipped end-to-end.** Empirical testing pass scheduled for 2026-05-03; full test plan + curated Dead recording list at `02_GrooveLinx/notes/session_2026-05-03_phase2_test_plan.md`.
+
+---
 
 **2026-04-22 Mode A Sprint (#10 + #13):** Final two Week 1 deferred items closed.
 - **#13 Sync activity log (`gl-calendar-sync.js` + `calendar.js`):** Every sync (success or error) appends an entry to `bands/{slug}/sync_activity` via push() — ts, memberKey, memberName, pushed/pulled/updated/deleted/blocksPushed/blocksDeleted, hiddenCount, error, needsReauth, skipped, durationMs. Trim-to-100 on each write. New public `GLCalendarSync.getSyncActivity(limit)`. "Sync activity" admin button opens a modal with per-member rows: "Drew · 4 pushed · 2 imported · 3 hidden" + relative time + duration pill.
