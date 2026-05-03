@@ -1688,11 +1688,15 @@ window.sdVoteProspect = async function(songId, vote) {
 async function _sdPopulateStemsLens(title) {
     var panel = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
     if (!panel) return;
-    // If a fullscreen wrap from a prior song/render is still pinned to
-    // <body>, drop it before rebuilding — otherwise it'd orphan when the
-    // new wrap renders into the panel.
+    // If a fullscreen wrap from a prior render is still pinned to <body>,
+    // drop it before rebuilding. If the orphan was for the SAME song, this
+    // is a re-render (e.g. after a spatial split completes) and we want to
+    // re-enter fullscreen post-rebuild so the user doesn't have to re-toggle
+    // every time. If the song changed, do not auto-fullscreen.
     var orphan = document.body.querySelector(':scope > .sd-stems-wrap.sd-stems-fullscreen');
+    var wasFullscreenSameSong = false;
     if (orphan) {
+        if (orphan.dataset.song === title) wasFullscreenSameSong = true;
         document.body.classList.remove('sd-stems-overlay-open');
         orphan.remove();
     }
@@ -1724,6 +1728,9 @@ async function _sdPopulateStemsLens(title) {
     if (stems && stems.stems && stems.stems.drums) {
         panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) + '</div>';
         _sdInitStemsPlayer();
+        if (wasFullscreenSameSong && typeof window._sdStemsToggleFullscreen === 'function') {
+            window._sdStemsToggleFullscreen();
+        }
     } else {
         // Setup view — render shell first, then async-load Best Shot takes for picker
         panel.innerHTML = '<div class="sd-panel-inner">' + _sdRenderStemsSetup(title) + '</div>';
@@ -2088,7 +2095,7 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
     var badge = hasLalal
         ? '<span class="sd-title-badge">Demucs + LALAL</span>'
         : '<span class="sd-title-badge">Demucs</span>';
-    return '<div class="sd-stems-wrap">' +
+    return '<div class="sd-stems-wrap" data-song="' + _sdEsc(title) + '">' +
       '<div class="sd-card">' +
       '<div class="sd-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
         '<span>🎚 Stems ' + badge + '</span>' +

@@ -1,7 +1,7 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260503-000647 (commit `ad729a13`)
-**Last Updated:** 2026-05-02 PM (session close)
+**Build Under Test:** 20260503-150718
+**Last Updated:** 2026-05-03 (mid-session — UX polish during Phase 2 testing pass)
 
 ---
 
@@ -135,6 +135,22 @@ _Bugs currently being investigated or fixed._
 ## Ready to Verify
 
 _Bugs believed fixed but needing confirmation from Drew or band._
+
+- [ ] **Version Hub Archive tab — clicking a show appears as "list pages down" instead of showing tracks**
+  **Area:** Version Hub / Archive panel
+  **Reported in build:** 20260503-000647 (during Phase 2 source-picking)
+  **Fix build:** 20260503-150718
+  **Root cause:** `version-hub.js:210` called `scrollIntoView({behavior:'smooth', block:'nearest'})` *before* the `/archive-files` fetch resolved. Panel was just `<div class="vh-loading">Loading tracks…</div>` at scroll time — `block:'nearest'` landed a 1-line slice into view. Once the actual file rows filled in, scroll position was stale; most rows were below the viewport. User experienced this as "list paged down" with no track list appearing.
+  **Fix:** (1) initial scroll now uses `block:'start'` to anchor panel top to viewport top regardless of current panel height. (2) After `c.innerHTML` populates with the loaded file rows, a second `scrollIntoView({behavior:'smooth', block:'start'})` re-positions the now-tall panel so the file list is properly visible.
+  **Verification:** Songs → any song → Find a Version → Archive tab → click any show row. The track list panel should anchor to the top of the viewport with the SBD/AUD badge + show title + clickable file rows fully visible. Multiple file rows should be in view, not just one or two.
+
+- [ ] **Stems player exits fullscreen on every spatial-split re-render**
+  **Area:** Stems player / Phase 2 spatial split
+  **Reported in build:** 20260503-000647 (during Phase 2 testing pass — every spatial split run dropped fullscreen)
+  **Fix build:** 20260503-150718
+  **Root cause:** When a spatial split completes, `_sdPopulateStemsLens` re-renders the lens. The orphan-cleanup logic (`song-detail.js:1694-1698`) removed the fullscreen wrap before rebuilding, but didn't capture or restore the fullscreen state. Every spatial-split run forced the user to manually re-toggle fullscreen.
+  **Fix:** Tagged the wrap with `data-song="<title>"` (`song-detail.js:2091`). On re-render, capture `wasFullscreenSameSong` from the orphan's data-song match before removing it. After the new wrap mounts and `_sdInitStemsPlayer()` finishes, call `window._sdStemsToggleFullscreen()` to re-enter fullscreen. Same-song check prevents auto-fullscreen when navigating between songs (only preserves on actual re-renders of the current song).
+  **Verification:** Open Stems lens → click ⛶ to enter fullscreen → click ⋮ on any stem → ↳ Spatial split → run with default zones. After completion the lens should remain in fullscreen. Navigate to a different song → its stems lens should NOT auto-fullscreen.
 
 - [ ] **Live gig — Full Screen Mode replaced with auto-scroll (iPad freeze + UX redesign)**
   **Area:** live-gig mode

@@ -207,7 +207,10 @@ async function vhSelectArchiveShow(id) {
     var c = document.getElementById('vhArchiveFiles');
     c.style.display = 'block';
     c.innerHTML = '<div class="vh-loading">Loading tracks...</div>';
-    c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // block:'start' anchors the panel top to the viewport top regardless of
+    // current panel height. Initial scroll fires while panel is still just
+    // "Loading…"; we re-scroll once content fills in below.
+    c.scrollIntoView({ behavior: 'smooth', block: 'start' });
     try {
         var r = await fetch(PROXY + '/archive-files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier: id }) });
         var d = await r.json();
@@ -230,6 +233,10 @@ async function vhSelectArchiveShow(id) {
                     '</div>' +
                 '</div>';
             }).join('');
+        // Re-scroll now that the panel has its real height. Without this
+        // the user sees a tiny sliver of "Loading…" replaced in place by
+        // the file rows, with most rows below the fold.
+        c.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch(e) { c.innerHTML = '<div class="vh-error">Error: ' + e.message + '</div>'; }
 }
 
