@@ -102,6 +102,70 @@ var SP_ELEMENTS = {
   ]
 };
 
+// SVG instrument library — pictographic line-art at 24×24 viewBox.
+// Hand-crafted to scale cleanly from 28px (grid mode) to 80px (free / share mode).
+// Conventions: stroke="currentColor", stroke-width="1.5", fill="none" by default.
+// Filled accents use fill="currentColor" + fill-opacity for subtle depth without
+// fighting the parent text color. Inheriting currentColor lets each render site
+// theme the icon (purple in app UI, dark grey in PDF).
+//
+// Phase 4a — first 10 high-impact instruments. Phase 4b extends with the long
+// tail (banjo, dobro, hammond+leslie, accordion, etc.).
+var SP_SVG_LIBRARY = {
+  'drum-kit': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="16" r="4.5" fill="currentColor" fill-opacity="0.14"/><ellipse cx="4.5" cy="14" rx="2.2" ry="1.1" fill="currentColor" fill-opacity="0.2"/><line x1="4.5" y1="15.1" x2="4.5" y2="21"/><ellipse cx="19.5" cy="14" rx="2.2" ry="1.1" fill="currentColor" fill-opacity="0.2"/><line x1="19.5" y1="15.1" x2="19.5" y2="21"/><ellipse cx="10" cy="10" rx="1.6" ry="0.8" fill="currentColor" fill-opacity="0.2"/><ellipse cx="14" cy="10" rx="1.6" ry="0.8" fill="currentColor" fill-opacity="0.2"/><line x1="19" y1="5.5" x2="23" y2="4.5"/><line x1="21" y1="5" x2="21" y2="13"/><line x1="1" y1="5.5" x2="5" y2="5.5"/><line x1="3" y1="5.5" x2="3" y2="13"/></g></svg>',
+
+  'electric-guitar': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 14 C2 11 4 8.5 6 9 C6 7.5 8 7 10 8.5 C12 7 13.5 9 13.5 11.5 C14 12.5 13.5 14 13 14.5 C12 17.5 9 18.5 6 18 C3.5 17.5 2.5 16 2.5 14 Z" fill="currentColor" fill-opacity="0.15"/><line x1="13" y1="13" x2="20.5" y2="5.5"/><path d="M20 5 L22.5 3 L23 3.5 L20.5 6 Z" fill="currentColor" fill-opacity="0.45"/><line x1="6" y1="13.5" x2="10.5" y2="13.5"/><line x1="9" y1="15" x2="12" y2="15"/></g></svg>',
+
+  'bass-guitar': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13.5 C2.5 11.5 4 9.5 6 9 C6.5 7 9 7.5 11 9 C13 9 13.5 11 13 13 C13.5 14 13 15.5 12 16 C10.5 18 7 18.5 4.5 17 C3 16 2.5 14.5 3 13.5 Z" fill="currentColor" fill-opacity="0.15"/><line x1="12.5" y1="12" x2="22" y2="3"/><path d="M21.5 3 L23 1.5 L23.5 2 L22 3.5 Z" fill="currentColor" fill-opacity="0.45"/><line x1="5.5" y1="13" x2="10.5" y2="13"/></g></svg>',
+
+  'acoustic-guitar': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21.5 C5 21.5 3 18.5 3.5 15.5 C3.8 14 5 13 6 12.8 C5 12.5 4.5 11 5 9 C5.5 6 7.5 4.5 9 4.5 C10.5 4.5 12.5 6 13 9 C13.5 11 13 12.5 12 12.8 C13 13 14.2 14 14.5 15.5 C15 18.5 13 21.5 9 21.5 Z" fill="currentColor" fill-opacity="0.15"/><circle cx="9" cy="14.5" r="1.7"/><line x1="11.5" y1="6.5" x2="20.5" y2="2.5"/><path d="M20 2 L22 1 L22.5 1.5 L20.5 3 Z" fill="currentColor" fill-opacity="0.45"/></g></svg>',
+
+  'keyboard-88': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="20" height="6" rx="0.8" fill="currentColor" fill-opacity="0.12"/><line x1="6" y1="9" x2="6" y2="15"/><line x1="10" y1="9" x2="10" y2="15"/><line x1="14" y1="9" x2="14" y2="15"/><line x1="18" y1="9" x2="18" y2="15"/><rect x="4.5" y="9" width="1.5" height="3" fill="currentColor" fill-opacity="0.7" stroke="none"/><rect x="8.5" y="9" width="1.5" height="3" fill="currentColor" fill-opacity="0.7" stroke="none"/><rect x="12.5" y="9" width="1.5" height="3" fill="currentColor" fill-opacity="0.7" stroke="none"/><rect x="16.5" y="9" width="1.5" height="3" fill="currentColor" fill-opacity="0.7" stroke="none"/><line x1="6" y1="15" x2="5" y2="20"/><line x1="18" y1="15" x2="19" y2="20"/><line x1="3" y1="20" x2="21" y2="20"/></g></svg>',
+
+  'mandolin': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17 C2.5 15.5 2.5 11.5 5 10 C7 9 9 9.5 10 11 C11 11.8 11 12.8 10.5 13.5 C11.5 14.2 11.5 15.5 11 16.5 C9.5 18 7 18.5 5 17 Z" fill="currentColor" fill-opacity="0.18"/><circle cx="6.5" cy="13.5" r="1"/><line x1="10" y1="11.5" x2="20" y2="3.5"/><path d="M19.5 3 L21.5 1.5 L22 2 L20 3.5 Z" fill="currentColor" fill-opacity="0.45"/></g></svg>',
+
+  'pedal-steel': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="9" width="19" height="5" rx="0.6" fill="currentColor" fill-opacity="0.18"/><line x1="3.5" y1="10.5" x2="20.5" y2="10.5" stroke-width="0.6"/><line x1="3.5" y1="11.5" x2="20.5" y2="11.5" stroke-width="0.6"/><line x1="3.5" y1="12.5" x2="20.5" y2="12.5" stroke-width="0.6"/><line x1="4" y1="14" x2="3" y2="20"/><line x1="20" y1="14" x2="21" y2="20"/><line x1="11" y1="14" x2="11" y2="20"/><line x1="13" y1="14" x2="13" y2="20"/></g></svg>',
+
+  'vocal-mic': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="9" rx="3" fill="currentColor" fill-opacity="0.22"/><line x1="10.5" y1="4.5" x2="13.5" y2="4.5" stroke-width="0.6"/><line x1="10.5" y1="6" x2="13.5" y2="6" stroke-width="0.6"/><line x1="10.5" y1="7.5" x2="13.5" y2="7.5" stroke-width="0.6"/><line x1="12" y1="11" x2="12" y2="14"/><line x1="6" y1="14" x2="18" y2="14"/><line x1="12" y1="14" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></g></svg>',
+
+  'monitor-wedge': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19 L21 19 L18 8 L7 8 Z" fill="currentColor" fill-opacity="0.18"/><circle cx="10" cy="13.5" r="2.2"/><circle cx="16" cy="14.2" r="1.6"/><circle cx="10" cy="13.5" r="0.8" fill="currentColor" stroke="none"/></g></svg>',
+
+  'amp-cabinet': '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1.2" fill="currentColor" fill-opacity="0.12"/><circle cx="8.5" cy="8" r="2.2"/><circle cx="15.5" cy="8" r="2.2"/><circle cx="8.5" cy="16" r="2.2"/><circle cx="15.5" cy="16" r="2.2"/><circle cx="8.5" cy="8" r="0.8" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8" r="0.8" fill="currentColor" stroke="none"/><circle cx="8.5" cy="16" r="0.8" fill="currentColor" stroke="none"/><circle cx="15.5" cy="16" r="0.8" fill="currentColor" stroke="none"/></g></svg>'
+};
+
+// Map an element's label to a likely SVG id. Lets existing user plots
+// (saved with emoji icon, no svg field) auto-upgrade to SVG art on render
+// without requiring the user to re-place every prop.
+function _spSvgIdFor(el) {
+  if (el && el.svg && SP_SVG_LIBRARY[el.svg]) return el.svg;
+  var label = (el && el.label || '').toLowerCase();
+  if (/drum kit|drums\b/.test(label)) return 'drum-kit';
+  if (/bass amp/.test(label)) return 'amp-cabinet';
+  if (/bass\b/.test(label)) return 'bass-guitar';
+  if (/acoustic/.test(label)) return 'acoustic-guitar';
+  if (/pedal steel/.test(label)) return 'pedal-steel';
+  if (/mandolin/.test(label)) return 'mandolin';
+  if (/keyboard rig|keys|piano|synth|nord|hammond|moog|rhodes/.test(label)) return 'keyboard-88';
+  if (/floor monitor|side fill|wedge|monitor/.test(label) && !/iem/.test(label)) return 'monitor-wedge';
+  if (/guitar amp|cabinet|cab\b/.test(label)) return 'amp-cabinet';
+  if (/vocal mic|inst mic|mic\b|sm58|sm57|beta/.test(label)) return 'vocal-mic';
+  if (/electric guitar|guitar\b/.test(label)) return 'electric-guitar';
+  return null;
+}
+
+// Render an element's icon as either inline SVG (when available) or fall back
+// to the emoji char. sizeBase is the rendered px width — SVG inherits text
+// color via currentColor so the icon themes against whatever color is
+// applied to the surrounding span.
+function _spIconHTML(el, sizeBase, color) {
+  var svgId = _spSvgIdFor(el);
+  var c = color || '#a5b4fc';
+  if (svgId && SP_SVG_LIBRARY[svgId]) {
+    return '<span class="sp-svg-icon" style="display:inline-block;width:' + sizeBase + 'px;height:' + sizeBase + 'px;color:' + c + ';line-height:0;vertical-align:middle">' + SP_SVG_LIBRARY[svgId] + '</span>';
+  }
+  return '<span style="font-size:' + Math.round(sizeBase * 0.85) + 'px;line-height:1">' + (el && el.icon ? el.icon : '🎵') + '</span>';
+}
+
 // Format stage dimension. Stored in feet; render in ft or m per plot.units.
 function _spFmtDim(ft, units) {
   if (units === 'm') {
@@ -655,7 +719,7 @@ function _spRender() {
           var micArg = el.mic ? ',\'' + _spEsc(el.mic) + '\'' : '';
           var hint = el.mic ? ' style="font-size:0.55em;color:var(--text-dim);margin-left:2px"' : '';
           var micBadge = el.mic ? '<span style="font-size:0.55em;color:#94a3b8;margin-left:3px">' + _spEsc(el.mic.split(' ').pop()) + '</span>' : '';
-          html += '<button onclick="_spAddElement(\'' + el.type + '\',\'' + _spEsc(el.icon) + '\',\'' + _spEsc(el.label) + '\'' + micArg + ')" title="' + _spEsc(el.mic || el.label) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 6px;border-radius:5px;cursor:pointer;font-size:0.68em;display:flex;align-items:center;gap:3px"><span style="font-size:0.9em">' + el.icon + '</span><span>' + el.label + '</span>' + micBadge + '</button>';
+          html += '<button onclick="_spAddElement(\'' + el.type + '\',\'' + _spEsc(el.icon) + '\',\'' + _spEsc(el.label) + '\'' + micArg + ')" title="' + _spEsc(el.mic || el.label) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text-muted);padding:3px 6px;border-radius:5px;cursor:pointer;font-size:0.68em;display:flex;align-items:center;gap:4px">' + _spIconHTML(el, 16, '#a5b4fc') + '<span>' + el.label + '</span>' + micBadge + '</button>';
         });
       });
       html += '</div></div>';
@@ -849,19 +913,26 @@ function _spRenderStage(plot) {
         }
 
         html += '<div class="sp-cell" data-el-idx="' + elIdx + '"'
-          + (share ? '' : ' draggable="true"'
-              + ' ondragstart="_spDragStart(event,' + elIdx + ')"'
-              + ' ondragend="_spDragEnd(event)"'
-              + ' onclick="_spClickElement(' + elIdx + ')"'
-              + ' ontouchstart="_spTouchStart(event,' + elIdx + ')"'
-              + ' ontouchend="_spTouchEnd(event)"'
-              + ' ontouchcancel="_spTouchEnd(event)"')
+          + (share ? '' : (el.locked
+              ? ' onclick="_spClickElement(' + elIdx + ')"'
+              : ' draggable="true"'
+                + ' ondragstart="_spDragStart(event,' + elIdx + ')"'
+                + ' ondragend="_spDragEnd(event)"'
+                + ' onclick="_spClickElement(' + elIdx + ')"'
+                + ' ontouchstart="_spTouchStart(event,' + elIdx + ')"'
+                + ' ontouchend="_spTouchEnd(event)"'
+                + ' ontouchcancel="_spTouchEnd(event)"'))
           + ' style="background:' + cellBg + ';border:1px solid ' + cellBorder + ';border-radius:5px;padding:' + pad + ';text-align:center;min-height:' + cellMin + ';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;cursor:' + (share ? 'default' : 'grab') + ';position:relative;overflow:hidden;touch-action:none">';
-        html += '<span style="font-size:' + iconSize + ';line-height:1;' + rotStyle + '">' + el.icon + '</span>';
+        var gridIconPx = share ? 22 : 28;
+        html += '<span style="display:inline-block;line-height:0;' + rotStyle + '">' + _spIconHTML(el, gridIconPx, '#a5b4fc') + '</span>';
         if (_spShowLabels || share) {
           html += '<span style="font-size:' + (share ? '0.48em' : '0.52em') + ';font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:' + (share ? '60px' : '68px') + ';line-height:1.1">' + _spEsc(displayLabel) + mixLabel + '</span>';
         }
         if (chNum) html += '<span style="position:absolute;top:1px;left:1px;background:#667eea;color:white;font-size:0.42em;font-weight:800;width:12px;height:12px;border-radius:50%;display:flex;align-items:center;justify-content:center;line-height:1">' + chNum + '</span>';
+        if (el.locked) html += '<span style="position:absolute;bottom:1px;left:1px;font-size:0.55em;line-height:1;color:#fbbf24" title="Locked">🔒</span>';
+        if (el.techInfo && (_spShowLabels || share)) {
+          html += '<span style="font-size:0.4em;color:var(--text-dim);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:' + (share ? '60px' : '68px') + ';line-height:1" title="' + _spEsc(el.techInfo) + '">' + _spEsc(el.techInfo) + '</span>';
+        }
         if (!share) {
           html += '<button class="sp-del" onclick="event.stopPropagation();_spRemoveElement(' + elIdx + ')" style="position:absolute;top:0;right:1px;background:none;border:none;color:#64748b;cursor:pointer;font-size:0.5em;padding:1px">✕</button>';
         }
@@ -1506,8 +1577,10 @@ function _spClickElement(idx) {
   // If already in move mode for this element, cancel
   if (_spMoveIdx === idx) { _spMoveIdx = -1; _spRender(); return; }
 
+  var lockState = el.locked ? ' [LOCKED]' : '';
+  var techPreview = el.techInfo ? ' — ' + (el.techInfo.length > 30 ? el.techInfo.slice(0, 30) + '…' : el.techInfo) : '';
   var action = prompt(
-    el.label + '\n\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Bring to front\n7 = Send to back\n0 = Cancel',
+    el.label + lockState + '\n' + (el.techInfo ? techPreview + '\n' : '') + '\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Bring to front\n7 = Send to back\n8 = Tech info / notes\n9 = ' + (el.locked ? 'Unlock' : 'Lock') + '\n0 = Cancel',
     '1'
   );
   if (action === '1') {
@@ -1534,6 +1607,14 @@ function _spClickElement(idx) {
     var minZ = (plot.elements || []).reduce(function(m, e) { return Math.min(m, e.z || 0); }, 0);
     el.z = minZ - 1;
     _spDirty = true; _spRender();
+  } else if (action === '8') {
+    var info = prompt('Tech info / notes for ' + el.label + '\n(e.g. "Mesa Triple Rectifier 2x12", "DW Collectors maple, 4 toms"):', el.techInfo || '');
+    if (info !== null) { el.techInfo = info.trim(); _spDirty = true; _spRender(); }
+  } else if (action === '9') {
+    el.locked = !el.locked;
+    _spDirty = true;
+    if (typeof showToast === 'function') showToast(el.locked ? '🔒 ' + el.label + ' locked' : '🔓 ' + el.label + ' unlocked');
+    _spRender();
   }
 }
 
@@ -1582,10 +1663,12 @@ function _spRenderStageFree(plot) {
     // Annotation: text-only, no border/icon. Free-mode contextual labels.
     if (el.type === 'annotation') {
       html += '<div data-el-idx="' + idx + '"'
-        + (share ? '' : ' draggable="true"'
-          + ' ondragstart="_spDragStart(event,' + idx + ')"'
-          + ' ondragend="_spDragEnd(event)"'
-          + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"')
+        + (share ? '' : (el.locked
+          ? ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"'
+          : ' draggable="true"'
+            + ' ondragstart="_spDragStart(event,' + idx + ')"'
+            + ' ondragend="_spDragEnd(event)"'
+            + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"'))
         + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%);max-width:140px;padding:2px 6px;text-align:center;cursor:' + (share ? 'default' : 'grab') + ';font-size:' + (share ? '0.62em' : '0.7em') + ';font-weight:600;color:rgba(255,255,255,0.7);font-style:italic;user-select:none;z-index:' + zIdx + ';line-height:1.25">';
       html += _spEsc(el.label || '');
       if (!share) {
@@ -1604,14 +1687,23 @@ function _spRenderStageFree(plot) {
     var displayLabel = share && el.label.indexOf(' – ') >= 0 ? el.label.split(' – ')[0].split(' ')[0] : (SP_COMPACT[baseLabel] || baseLabel);
     var rot = el.rotation || 0;
     html += '<div data-el-idx="' + idx + '"'
-      + (share ? '' : ' draggable="true"'
-        + ' ondragstart="_spDragStart(event,' + idx + ')"'
-        + ' ondragend="_spDragEnd(event)"'
-        + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"')
-      + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);width:' + w + 'px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:4px;text-align:center;cursor:' + (share ? 'default' : 'grab') + ';font-size:' + iconSize + ';line-height:1.2;user-select:none;z-index:' + zIdx + '">';
-    html += '<div style="font-size:1em">' + el.icon + '</div>';
+      + (share ? '' : (el.locked
+        ? ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"'
+        : ' draggable="true"'
+          + ' ondragstart="_spDragStart(event,' + idx + ')"'
+          + ' ondragend="_spDragEnd(event)"'
+          + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"'))
+      + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);width:' + w + 'px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:4px;text-align:center;cursor:' + (share ? 'default' : (el.locked ? 'pointer' : 'grab')) + ';font-size:' + iconSize + ';line-height:1.2;user-select:none;z-index:' + zIdx + '">';
+    var freeIconPx = sc === 'lg' ? 40 : sc === 'md' ? 32 : 26;
+    html += '<div style="line-height:0">' + _spIconHTML(el, freeIconPx, '#a5b4fc') + '</div>';
     if (_spShowLabels || share) {
-      html += '<div style="font-size:0.5em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _spEsc(displayLabel) + '</div>';
+      html += '<div style="font-size:0.5em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">' + _spEsc(displayLabel) + '</div>';
+    }
+    if (el.techInfo && (_spShowLabels || share)) {
+      html += '<div style="font-size:0.42em;color:var(--text-dim);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px" title="' + _spEsc(el.techInfo) + '">' + _spEsc(el.techInfo) + '</div>';
+    }
+    if (el.locked) {
+      html += '<span style="position:absolute;top:-3px;left:-3px;background:rgba(15,23,42,0.92);border:1px solid rgba(245,158,11,0.45);border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:0.5em;line-height:1;color:#fbbf24" title="Locked">🔒</span>';
     }
     if (!share) {
       html += '<button class="sp-del" onclick="event.stopPropagation();_spRemoveElement(' + idx + ')" style="position:absolute;top:-2px;right:-2px;background:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.15);border-radius:50%;color:#94a3b8;cursor:pointer;font-size:0.6em;padding:0;width:14px;height:14px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.15s">✕</button>';
@@ -2427,7 +2519,7 @@ function _spExportView(opts) {
       var baseLabel = el ? el.label.split(' – ')[0].trim() : '';
       var compactLabel = el ? (el.label.indexOf(' – ') >= 0 ? el.label.split(' – ')[0].split(' ')[0] + ' ' + (SP_COMPACT[el.label.split(' – ')[1].trim()] || el.label.split(' – ')[1].trim()) : (SP_COMPACT[baseLabel] || el.label)) : '';
       stageHTML += '<td style="border:1px solid #ddd;padding:4px 3px;text-align:center;min-width:55px;height:32px;vertical-align:middle;font-size:11px">';
-      if (el) stageHTML += '<div style="font-size:1em">' + el.icon + '</div><div style="font-size:0.7em;font-weight:600;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _spEsc(compactLabel) + '</div>';
+      if (el) stageHTML += '<div style="line-height:0">' + _spIconHTML(el, 22, '#475569') + '</div><div style="font-size:0.7em;font-weight:600;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + _spEsc(compactLabel) + '</div>';
       stageHTML += '</td>';
     }
     stageHTML += '</tr>';
