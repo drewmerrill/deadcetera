@@ -96,6 +96,15 @@ var SP_ELEMENTS = {
   ]
 };
 
+// Format stage dimension. Stored in feet; render in ft or m per plot.units.
+function _spFmtDim(ft, units) {
+  if (units === 'm') {
+    var m = (ft || 0) * 0.3048;
+    return (Math.round(m * 10) / 10) + 'm';
+  }
+  return (ft || 0) + "'";
+}
+
 // Lookup a mic spec from the library by model name.
 function _spLookupMic(modelName) {
   if (!modelName) return null;
@@ -268,7 +277,7 @@ function _spRenderStationLayout(plot) {
   var cellMin = share ? '22px' : '28px';
 
   var html = '<div class="' + (share ? 'sp-share' : '') + '" style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:' + (share ? '10px 8px 6px' : '14px 10px 8px') + '">';
-  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'') + '</div>';
+  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + _spFmtDim(plot.stageWidth, plot.units) + ' x ' + _spFmtDim(plot.stageDepth, plot.units)) + '</div>';
 
   // Build station placement map
   var cellMap = {}; // 'x,y' → station index
@@ -587,6 +596,11 @@ function _spRender() {
     html += '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;flex-wrap:wrap">';
     html += '<label for="spToggleLabels" style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="spToggleLabels" name="spLabels" ' + (_spShowLabels ? 'checked' : '') + ' onchange="_spToggleLabels(this.checked)" style="accent-color:#667eea"> Labels</label>';
     html += '<label for="spToggleDirections" style="display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="spToggleDirections" name="spDirections" ' + (_spShowDirections ? 'checked' : '') + ' onchange="_spToggleDirections(this.checked)" style="accent-color:#667eea"> Stage directions</label>';
+    var curUnits = plot.units || 'ft';
+    html += '<span style="display:inline-flex;border:1px solid rgba(255,255,255,0.1);border-radius:6px;overflow:hidden" title="Display dimensions in feet or meters">'
+      + '<button onclick="_spSetUnits(\'ft\')" style="font-size:0.62em;padding:3px 8px;border:none;cursor:pointer;background:' + (curUnits === 'ft' ? 'rgba(99,102,241,0.18)' : 'transparent') + ';color:' + (curUnits === 'ft' ? '#a5b4fc' : 'var(--text-dim)') + ';font-weight:700">ft</button>'
+      + '<button onclick="_spSetUnits(\'m\')" style="font-size:0.62em;padding:3px 8px;border:none;border-left:1px solid rgba(255,255,255,0.1);cursor:pointer;background:' + (curUnits === 'm' ? 'rgba(99,102,241,0.18)' : 'transparent') + ';color:' + (curUnits === 'm' ? '#a5b4fc' : 'var(--text-dim)') + ';font-weight:700">m</button>'
+      + '</span>';
     if (!isStationMode) {
       var placementMode = plot.placementMode || 'grid';
       html += '<span style="margin-left:auto;display:inline-flex;border:1px solid rgba(255,255,255,0.1);border-radius:6px;overflow:hidden">'
@@ -600,7 +614,7 @@ function _spRender() {
     var bandName = localStorage.getItem('deadcetera_band_name') || 'GrooveLinx';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     html += '<div><div style="font-size:1.1em;font-weight:800;color:var(--text)">' + _spEsc(bandName) + '</div>'
-      + '<div style="font-size:0.72em;color:var(--text-dim)">' + _spEsc(plot.name) + ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'</div></div>';
+      + '<div style="font-size:0.72em;color:var(--text-dim)">' + _spEsc(plot.name) + ' — ' + _spFmtDim(plot.stageWidth, plot.units) + ' x ' + _spFmtDim(plot.stageDepth, plot.units) + '</div></div>';
     html += '<div style="display:flex;gap:6px">';
     html += '<button onclick="_spExportView()" style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700">Print / PDF</button>';
     html += '<button onclick="_spCopyShareLink()" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#a5b4fc;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:700" title="Copy a link the FOH engineer can bookmark — always shows the current version">📋 Copy link</button>';
@@ -673,6 +687,14 @@ function _spRender() {
     html += '<div style="margin-top:20px">';
     html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Tech Rider Notes</div>';
     html += '<textarea id="spRiderNotes" onchange="_spUpdateRiderNotes(this.value)" placeholder="Power requirements, IEM notes, backline needs, FOH instructions..." style="width:100%;min-height:80px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.82em;font-family:inherit;resize:vertical;box-sizing:border-box">' + _spEsc(plot.riderNotes || '') + '</textarea>';
+    html += '</div>';
+
+    // Hospitality rider — green room, parking, food/drink, towel count, etc.
+    // Separate from tech rider so the venue's hospitality coordinator
+    // doesn't have to wade through audio specs to find what they need.
+    html += '<div style="margin-top:16px">';
+    html += '<div style="font-size:0.68em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px">Hospitality Rider</div>';
+    html += '<textarea id="spHospitalityNotes" onchange="_spUpdateHospitalityNotes(this.value)" placeholder="Green room, parking, hot meal for 5, 24 cold waters, 6 towels, no nuts (allergy)..." style="width:100%;min-height:60px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:8px 10px;border-radius:6px;font-size:0.82em;font-family:inherit;resize:vertical;box-sizing:border-box">' + _spEsc(plot.hospitalityNotes || '') + '</textarea>';
     html += '</div>';
 
     // Contact block
@@ -757,7 +779,7 @@ function _spRenderStage(plot) {
   var html = '<div class="' + (share ? 'sp-share' : '') + '" style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:' + (share ? '10px 8px 6px' : '14px 10px 8px') + '">';
 
   // Stage label
-  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'') + '</div>';
+  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + _spFmtDim(plot.stageWidth, plot.units) + ' x ' + _spFmtDim(plot.stageDepth, plot.units)) + '</div>';
   if (_spShowDirections && !share) {
     html += '<div style="position:absolute;top:50%;left:-2px;transform:translateY(-50%) rotate(-90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SL</div>';
     html += '<div style="position:absolute;top:50%;right:-2px;transform:translateY(-50%) rotate(90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SR</div>';
@@ -1523,7 +1545,7 @@ function _spRenderStageFree(plot) {
     + ' ondrop="_spFreeDrop(event)"'
     + ' onclick="_spFreeCanvasClick(event)"'
     + ' style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 10px 8px;height:' + canvasH + ';overflow:hidden">';
-  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + plot.stageWidth + '\' x ' + plot.stageDepth + '\'') + '</div>';
+  html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + _spFmtDim(plot.stageWidth, plot.units) + ' x ' + _spFmtDim(plot.stageDepth, plot.units)) + '</div>';
   if (_spShowDirections && !share) {
     html += '<div style="position:absolute;top:50%;left:-2px;transform:translateY(-50%) rotate(-90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SL</div>';
     html += '<div style="position:absolute;top:50%;right:-2px;transform:translateY(-50%) rotate(90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SR</div>';
@@ -1870,6 +1892,10 @@ function _spResetToDefault() {
   _spRender();
 }
 
+function _spUpdateHospitalityNotes(val) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (plot) { plot.hospitalityNotes = val; _spDirty = true; }
+}
 function _spUpdateRiderNotes(val) {
   var plot = _spPlots[_spCurrentIdx];
   if (plot) { plot.riderNotes = val; _spDirty = true; }
@@ -2086,9 +2112,15 @@ function _spRenderShareDetails(plot) {
   // Channel list (compact table)
   if (plot.channels && plot.channels.length) {
     html += '<div style="margin-top:12px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Input List</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:2px">';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 14px">';
     plot.channels.forEach(function(ch, i) {
-      html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0"><span style="font-weight:700;color:var(--text-dim);margin-right:4px">' + (i + 1) + '.</span>' + _spEsc(ch.label || '—') + '</div>';
+      var spec = _spLookupMic(ch.mic);
+      var phantom = ch.phantom !== undefined ? ch.phantom : (spec ? spec.phantom : false);
+      var stand = ch.stand !== undefined ? ch.stand : (spec ? spec.stand : '');
+      var micPart = ch.mic ? '<span style="color:var(--text-dim);margin-left:6px">· ' + _spEsc(ch.mic) + '</span>' : '';
+      var phPart = phantom ? '<span style="color:#fbbf24;margin-left:4px;font-weight:700;font-size:0.85em" title="Needs +48V phantom power">+48V</span>' : '';
+      var standPart = stand ? '<span style="color:var(--text-dim);margin-left:4px;font-size:0.9em">· ' + _spEsc(stand) + '</span>' : '';
+      html += '<div style="font-size:0.72em;color:var(--text-muted);padding:2px 0;line-height:1.35"><span style="font-weight:700;color:var(--text-dim);margin-right:4px">' + (i + 1) + '.</span>' + _spEsc(ch.label || '—') + micPart + phPart + standPart + '</div>';
     });
     html += '</div></div>';
   }
@@ -2130,6 +2162,11 @@ function _spRenderShareDetails(plot) {
   if (plot.riderNotes) {
     html += '<div style="margin-top:10px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Tech Notes</div>';
     html += '<div style="font-size:0.72em;color:var(--text-muted);white-space:pre-wrap;line-height:1.4">' + _spEsc(plot.riderNotes) + '</div></div>';
+  }
+  // Hospitality
+  if (plot.hospitalityNotes) {
+    html += '<div style="margin-top:10px"><div style="font-size:0.62em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px">Hospitality</div>';
+    html += '<div style="font-size:0.72em;color:var(--text-muted);white-space:pre-wrap;line-height:1.4">' + _spEsc(plot.hospitalityNotes) + '</div></div>';
   }
   // Contact
   if (plot.contact) {
@@ -2262,7 +2299,7 @@ function _spExportView() {
       + '<div style="font-size:13px;color:' + brandColor + ';font-weight:700;margin-top:2px">' + _spEsc(plot.name) + ' — ' + subtitle + '</div>'
       + '</div>'
       + '<div style="font-size:11px;color:#666;text-align:right">'
-      + 'Stage ' + plot.stageWidth + '\' × ' + plot.stageDepth + '\'<br>'
+      + 'Stage ' + _spFmtDim(plot.stageWidth, plot.units) + ' × ' + _spFmtDim(plot.stageDepth, plot.units) + '<br>'
       + 'Exported ' + date
       + '</div>'
       + '</div>';
@@ -2374,12 +2411,17 @@ function _spExportView() {
     pageLogistics += '</section>';
   }
 
-  // Page 4: Rider + contact
+  // Page 4: Rider + hospitality + contact
   var page4 = '';
-  if (plot.riderNotes || plot.contact) {
-    page4 = '<section>' + headerBar('Tech Rider');
+  if (plot.riderNotes || plot.hospitalityNotes || plot.contact) {
+    page4 = '<section>' + headerBar('Tech & Hospitality Rider');
     if (plot.riderNotes) {
+      page4 += '<div style="font-size:13px;font-weight:700;color:' + brandColor + ';margin-bottom:6px">Tech Rider</div>';
       page4 += '<div style="white-space:pre-wrap;font-size:12px;line-height:1.6;border-left:3px solid ' + brandColor + ';padding:6px 14px;background:#f9f9fb;border-radius:0 4px 4px 0;margin-bottom:14px">' + _spEsc(plot.riderNotes) + '</div>';
+    }
+    if (plot.hospitalityNotes) {
+      page4 += '<div style="font-size:13px;font-weight:700;color:' + brandColor + ';margin-bottom:6px">Hospitality</div>';
+      page4 += '<div style="white-space:pre-wrap;font-size:12px;line-height:1.6;border-left:3px solid ' + brandColor + ';padding:6px 14px;background:#f9f9fb;border-radius:0 4px 4px 0;margin-bottom:14px">' + _spEsc(plot.hospitalityNotes) + '</div>';
     }
     if (plot.contact) {
       page4 += '<div style="font-size:13px;color:#222;padding:10px;border:1px solid #ddd;border-radius:4px;background:#fff"><strong style="color:' + brandColor + '">Band Contact:</strong><br>' + _spEsc(plot.contact) + '</div>';
@@ -2440,12 +2482,21 @@ window._spRenamePlot = _spRenamePlot;
 window._spSaveAs = _spSaveAs;
 window._spResetToDefault = _spResetToDefault;
 window._spUpdateRiderNotes = _spUpdateRiderNotes;
+window._spUpdateHospitalityNotes = _spUpdateHospitalityNotes;
 window._spUpdateContact = _spUpdateContact;
 window._spExportView = _spExportView;
 window._spClickElement = _spClickElement;
 window._spApplyPreset = _spApplyPreset;
 window._spToggleLabels = function(v) { _spShowLabels = v; _spRender(); };
 window._spToggleDirections = function(v) { _spShowDirections = v; _spRender(); };
+window._spSetUnits = function(u) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  if (u !== 'ft' && u !== 'm') return;
+  plot.units = u;
+  _spDirty = true;
+  _spRender();
+};
 window._spToggleShareMode = function() { _spShareMode = !_spShareMode; _spRender(); };
 window._spAddStation = _spAddStation;
 window._spRemoveStation = _spRemoveStation;
