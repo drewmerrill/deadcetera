@@ -2499,18 +2499,58 @@ window._sdStemsOpenSpatialPanel = async function(title, stemId, sourceUrl, sourc
     document.body.appendChild(overlay);
     console.log('[stems] Overlay appended to body. position=fixed, z-index=2147483647');
 
-    // Render initial pan zones with safe defaults; pan_analyze will refine.
-    var defaultZones = [
-        { name: 'left_lead',  pan_min: -1.0, pan_max: -0.3, color: '#f59e0b', hint: 'Jerry / left side' },
-        { name: 'center',     pan_min: -0.3, pan_max:  0.3, color: '#a78bfa', hint: 'Center / shared content' },
-        { name: 'right_lead', pan_min:  0.3, pan_max:  1.0, color: '#22d3ee', hint: 'Bob / right side' }
-    ];
-    window._sdSpZones = defaultZones;
+    // Try to load existing spatial-split state for this stem so renames,
+    // pan-window adjustments, and fingerprint assignments persist across
+    // panel re-opens. Without this, every re-open silently resets to the
+    // generic defaults (left_lead/center/right_lead, fp_strength=50%, no
+    // fingerprints) — and on Run, the persisted record gets overwritten
+    // with those defaults, destroying the user's prior tuning.
+    var existingZones = null;
+    var existingFpStrength = null;
+    if (window.GLStems && GLStems.getSpatialSplits) {
+        try {
+            var splits = await GLStems.getSpatialSplits(title);
+            var rec = (splits || []).find(function(r) { return r && r.sourceStemId === stemId; });
+            if (rec && Array.isArray(rec.panWindows) && rec.panWindows.length) {
+                existingZones = rec.panWindows;
+                if (typeof rec.fpStrength === 'number') existingFpStrength = rec.fpStrength;
+            }
+        } catch(e) { console.warn('[stems] could not load existing split state:', e); }
+    }
+    var defaultColors = ['#f59e0b', '#a78bfa', '#22d3ee'];
+    var defaultHints  = ['Jerry / left side', 'Center / shared content', 'Bob / right side'];
+    var zones;
+    if (existingZones) {
+        zones = existingZones.map(function(w, i) {
+            return {
+                name: w.name || ('zone_' + i),
+                pan_min: typeof w.pan_min === 'number' ? w.pan_min : -1.0,
+                pan_max: typeof w.pan_max === 'number' ? w.pan_max :  1.0,
+                color: defaultColors[i % defaultColors.length],
+                hint: defaultHints[i] || '',
+                fingerprint_ref: w.fingerprint_ref || null
+            };
+        });
+    } else {
+        zones = [
+            { name: 'left_lead',  pan_min: -1.0, pan_max: -0.3, color: '#f59e0b', hint: 'Jerry / left side' },
+            { name: 'center',     pan_min: -0.3, pan_max:  0.3, color: '#a78bfa', hint: 'Center / shared content' },
+            { name: 'right_lead', pan_min:  0.3, pan_max:  1.0, color: '#22d3ee', hint: 'Bob / right side' }
+        ];
+    }
+    window._sdSpZones = zones;
     _sdRenderSpatialZones();
     _sdRenderSpatialFpList();
 
     var fpStrengthEl = document.getElementById('sdSpFpStrength');
     if (fpStrengthEl) {
+        // Restore prior fp_strength if there's a persisted split for this stem.
+        if (existingFpStrength !== null) {
+            var pct = Math.round(existingFpStrength * 100);
+            fpStrengthEl.value = pct;
+            var fpLbl = document.getElementById('sdSpFpStrengthVal');
+            if (fpLbl) fpLbl.textContent = pct + '%';
+        }
         fpStrengthEl.addEventListener('input', function(e) {
             var lbl = document.getElementById('sdSpFpStrengthVal');
             if (lbl) lbl.textContent = e.target.value + '%';
@@ -2541,9 +2581,18 @@ function _sdRenderSpatialZones() {
     var zones = window._sdSpZones || [];
     var fps = window._sdSpFps || {};
     var fpNames = Object.keys(fps);
-    var fpOptions = '<option value="">— none —</option>' + fpNames.map(function(n) {
-        return '<option value="' + _sdEsc(n) + '">' + _sdEsc(n) + '</option>';
-    }).join('');
+    // Per-zone dropdown so we can pre-select the saved fingerprint_ref when
+    // the user re-opens a panel that already had refs assigned. Without this,
+    // every re-open silently resets every zone to "— none —".
+    var fpOptionsFor = function(currentRef) {
+        var none = (!currentRef) ? ' selected' : '';
+        var opts = '<option value=""' + none + '>— none —</option>';
+        fpNames.forEach(function(n) {
+            var sel = (n === currentRef) ? ' selected' : '';
+            opts += '<option value="' + _sdEsc(n) + '"' + sel + '>' + _sdEsc(n) + '</option>';
+        });
+        return opts;
+    };
     var html = zones.map(function(z, i) {
         var minPct = (z.pan_min + 1) * 50;  // -1..+1 → 0..100
         var maxPct = (z.pan_max + 1) * 50;
@@ -2551,7 +2600,7 @@ function _sdRenderSpatialZones() {
           + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'
           +   '<input type="text" class="sd-sp-zone-name" value="' + _sdEsc(z.name) + '" data-idx="' + i + '" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);color:' + z.color + ';font-weight:700;padding:4px 8px;border-radius:5px;font-size:0.88em;width:140px">'
           +   '<span style="font-size:0.7em;color:var(--text-dim);flex:1">' + _sdEsc(z.hint || '') + '</span>'
-          +   '<select class="sd-sp-zone-fp" data-idx="' + i + '" title="Bias this zone toward a tone fingerprint" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.78em">' + fpOptions + '</select>'
+          +   '<select class="sd-sp-zone-fp" data-idx="' + i + '" title="Bias this zone toward a tone fingerprint" style="background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:5px;font-size:0.78em">' + fpOptionsFor(z.fingerprint_ref) + '</select>'
           + '</div>'
           + '<div style="position:relative;height:18px;background:rgba(255,255,255,0.04);border-radius:9px;margin:6px 0">'
           +   '<div class="sd-sp-zone-band" style="position:absolute;top:0;bottom:0;background:' + z.color + ';opacity:0.55;border-radius:9px;left:' + minPct + '%;width:' + (maxPct - minPct) + '%"></div>'

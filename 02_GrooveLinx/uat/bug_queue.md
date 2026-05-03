@@ -1,7 +1,7 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260503-153132
-**Last Updated:** 2026-05-03 (mid-session — second UX batch during Phase 2 testing pass)
+**Build Under Test:** 20260503-160531
+**Last Updated:** 2026-05-03 (mid-session — spatial panel state persistence fix)
 
 ---
 
@@ -135,6 +135,15 @@ _Bugs currently being investigated or fixed._
 ## Ready to Verify
 
 _Bugs believed fixed but needing confirmation from Drew or band._
+
+- [ ] **Spatial split panel resets zone names + fingerprint assignments + fp_strength on every re-open**
+  **Area:** Stems / Phase 2 spatial split panel
+  **Reported in build:** 20260503-153132 (Drew during Phase 2B fingerprint setup — renamed zones to Bob/Jerry/Keys_Residual on first open, re-opened to add Jerry fingerprint, names had reset to defaults; ran with defaults; child rows showed up labeled "Left Lead" / "Right Lead" instead of his renames)
+  **Fix build:** 20260503-160531
+  **Root cause:** `_sdStemsOpenSpatialPanel` always seeded `window._sdSpZones` with hardcoded defaults (left_lead/center/right_lead, no fp refs, fp_strength=50%). Persisted state at `bands/{slug}/spatial_split/{record}.panWindows[]` was never read on open. Re-running the split then overwrote the persisted record with the default names, destroying the user's prior tuning.
+  **Fix:** On panel open, call `GLStems.getSpatialSplits(title)` and find the record matching `sourceStemId === stemId`. If found, hydrate `window._sdSpZones` from `rec.panWindows[]` (preserves name, pan_min, pan_max, fingerprint_ref) and restore `fp_strength` slider from `rec.fpStrength`. Default colors and hints are reapplied positionally (not persisted). `_sdRenderSpatialZones` now also pre-selects each zone's `fingerprint_ref` in its dropdown — without that, even with hydrated state the dropdown would silently reset to "— none —" on every open.
+  **Note:** This fix prevents future loss of state. Does NOT recover Drew's prior "Bob/Jerry/Keys_Residual" renames on Brown-Eyed Women — those were already overwritten by defaults during yesterday's runs. He'll need to rename once more on next open; from this build forward, renames persist.
+  **Verification:** Open spatial split panel on a stem with an existing split → zone names should match what was last persisted (not always "left_lead/center/right_lead"). Adjust pan windows, rename a zone, set fp_strength to a non-default value → close panel without running → re-open → all changes should still be there. (Note: changes only persist after a Run, not on close — closing without running discards in-memory edits, by design.)
 
 - [ ] **iPhone playback desync across stems (lightweight resync shipped — heavy fix queued)**
   **Area:** Stems player / iOS Safari
