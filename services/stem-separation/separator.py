@@ -578,16 +578,32 @@ def _stft_pan_split(
         # If a different ref is most-similar:        weight = 1 - fp_strength
         if ref_target and ref_target in sims:
             ref_names = list(sims.keys())
-            sim_stack = np.stack([sims[r] for r in ref_names], axis=0)  # (R, T)
-            # Softmax across references at each frame
-            # Sharpen with temperature to avoid mush
-            temp = 5.0
-            logits = sim_stack * temp
-            logits -= logits.max(axis=0, keepdims=True)
-            probs = np.exp(logits)
-            probs /= probs.sum(axis=0, keepdims=True) + 1e-10
-            target_idx = ref_names.index(ref_target)
-            target_prob = probs[target_idx]  # (T,) in [0, 1]
+            if len(ref_names) >= 2:
+                # Multi-FP: softmax across references gives natural per-frame
+                # contrast — each frame gets attributed to whichever fingerprint
+                # it most resembles.
+                sim_stack = np.stack([sims[r] for r in ref_names], axis=0)  # (R, T)
+                temp = 5.0
+                logits = sim_stack * temp
+                logits -= logits.max(axis=0, keepdims=True)
+                probs = np.exp(logits)
+                probs /= probs.sum(axis=0, keepdims=True) + 1e-10
+                target_idx = ref_names.index(ref_target)
+                target_prob = probs[target_idx]  # (T,) in [0, 1]
+            else:
+                # Single-FP path: softmax with one input is degenerate
+                # (probs always = 1), so the multiplier collapses to a uniform
+                # boost that gets clipped by mask.clamp(0, 1) → no effect.
+                # Use a sigmoid on the per-song-centered z-score instead, so
+                # frames whose similarity is above this song's median get
+                # boosted and below get suppressed.
+                s = sims[ref_target]
+                center = float(np.median(s))
+                spread = float(np.std(s) + 1e-6)
+                z = (s - center) / spread
+                # Sigmoid steepness ~2 — gentle, avoids hard gates that would
+                # gate-flutter dropouts. Output in (0, 1) centered at 0.5.
+                target_prob = 1.0 / (1.0 + np.exp(-z * 2.0))
             # Multiplier: 1 + fp_strength * (2*target_prob - 1) ∈ [1-fp_strength, 1+fp_strength]
             mult = 1.0 + fp_strength * (2.0 * target_prob - 1.0)
             mult_t = torch.from_numpy(mult.astype(np.float32))[None, :]  # (1, T)
