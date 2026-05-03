@@ -2393,19 +2393,19 @@ window._sdStemsOpenSpatialPanel = async function(title, stemId, sourceUrl, sourc
         alert('Spatial split: missing required data (title=' + title + ', stemId=' + stemId + ', sourceUrl=' + (sourceUrl ? 'set' : 'MISSING') + ')');
         return;
     }
-    var host = (_sdContainer || document).querySelector('.sd-lens-panel[data-lens="stems"]');
-    if (!host) {
-        console.error('[stems] No stems lens panel host found');
-        alert('Spatial split: stems lens panel not visible');
-        return;
-    }
+    // Wrap the whole body so any internal exception surfaces visibly. Async
+    // functions silently swallow exceptions into rejected promises otherwise.
+    try {
     var existing = document.getElementById('sdSpatialOverlay');
     if (existing) existing.remove();
 
     var safeSong = (title || '').replace(/'/g, "\\'");
     var overlay = document.createElement('div');
     overlay.id = 'sdSpatialOverlay';
-    overlay.style.cssText = 'position:absolute;inset:0;z-index:50;background:rgba(15,23,42,0.92);backdrop-filter:blur(6px);overflow-y:auto;padding:18px;border-radius:10px;color:var(--text)';
+    // Window-level fixed overlay (was absolute inside the lens panel — that
+    // was getting clipped by ancestor overflow:hidden somewhere up the tree
+    // so the panel rendered but never showed up). Top z-index, fixed inset.
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,0.92);backdrop-filter:blur(6px);overflow-y:auto;padding:24px;color:var(--text)';
     overlay.innerHTML = ''
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">'
       +   '<div>'
@@ -2438,8 +2438,10 @@ window._sdStemsOpenSpatialPanel = async function(title, stemId, sourceUrl, sourc
       +   '<button onclick="document.getElementById(\'sdSpatialOverlay\').remove()" style="padding:9px 15px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);border-radius:8px;cursor:pointer;font-size:0.88em">Cancel</button>'
       +   '<button id="sdSpRun" onclick="_sdStemsRunSpatial(\'' + safeSong + '\', \'' + _sdEsc(stemId) + '\', \'' + _sdEsc(sourceUrl) + '\', \'' + _sdEsc(sourceLabel || stemId) + '\')" style="padding:9px 18px;border:0;background:linear-gradient(90deg,#22d3ee,#a78bfa);color:#0f172a;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:700">↳ Run spatial split</button>'
       + '</div>';
-    host.style.position = 'relative';
-    host.appendChild(overlay);
+    // Append to <body> directly so the fixed-position overlay always shows
+    // above all app chrome regardless of ancestor stacking contexts.
+    document.body.appendChild(overlay);
+    console.log('[stems] Overlay appended to body. position=fixed, z-index=2147483647');
 
     // Render initial pan zones with safe defaults; pan_analyze will refine.
     var defaultZones = [
@@ -2451,10 +2453,15 @@ window._sdStemsOpenSpatialPanel = async function(title, stemId, sourceUrl, sourc
     _sdRenderSpatialZones();
     _sdRenderSpatialFpList();
 
-    document.getElementById('sdSpFpStrength').addEventListener('input', function(e) {
-        document.getElementById('sdSpFpStrengthVal').textContent = e.target.value + '%';
-    });
-    document.getElementById('sdSpAddFp').onclick = _sdStemsAddFingerprintPrompt;
+    var fpStrengthEl = document.getElementById('sdSpFpStrength');
+    if (fpStrengthEl) {
+        fpStrengthEl.addEventListener('input', function(e) {
+            var lbl = document.getElementById('sdSpFpStrengthVal');
+            if (lbl) lbl.textContent = e.target.value + '%';
+        });
+    }
+    var fpAddBtn = document.getElementById('sdSpAddFp');
+    if (fpAddBtn) fpAddBtn.onclick = _sdStemsAddFingerprintPrompt;
 
     // Async pan-analyze to refine the histogram + suggested windows.
     if (window.GLStems && GLStems.analyzePan) {
@@ -2467,6 +2474,10 @@ window._sdStemsOpenSpatialPanel = async function(title, stemId, sourceUrl, sourc
             var status2 = document.getElementById('sdSpHistStatus');
             if (status2) status2.textContent = '— couldn\'t analyze (' + (e.message || e) + ')';
         }
+    }
+    } catch (err) {
+        console.error('[stems] _sdStemsOpenSpatialPanel threw:', err);
+        alert('Spatial split panel error: ' + (err && err.message ? err.message : err));
     }
 };
 
