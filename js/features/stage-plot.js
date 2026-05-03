@@ -93,6 +93,12 @@ var SP_ELEMENTS = {
     { type: 'stage', icon: '⬜', label: 'Riser' },
     { type: 'stage', icon: '⬜', label: 'Drum Riser' },
     { type: 'stage', icon: '⚡', label: 'Power Drop' },
+  ],
+  notes: [
+    // Annotation = free text on the canvas. _spAddElement prompts for the
+    // text when type === 'annotation'. Free mode renders text-only (no
+    // border or icon); grid mode falls back to the standard cell render.
+    { type: 'annotation', icon: '✎', label: 'Annotation' },
   ]
 };
 
@@ -1430,8 +1436,15 @@ window._spRemoveCable = _spRemoveCable;
 
 function _spAddElement(type, icon, label, mic) {
   _spMoveIdx = -1; // cancel any move in progress
-  _spPendingElement = { type: type, icon: icon, label: label, mic: mic || '' };
-  if (typeof showToast === 'function') showToast('Tap an empty cell to place ' + label);
+  if (type === 'annotation') {
+    var text = prompt('Annotation text (e.g. "Drum riser 8x8", "FOH this side", "Power here"):', '');
+    if (!text || !text.trim()) return;
+    _spPendingElement = { type: 'annotation', icon: '', label: text.trim() };
+    if (typeof showToast === 'function') showToast('Tap on the stage to place annotation');
+  } else {
+    _spPendingElement = { type: type, icon: icon, label: label, mic: mic || '' };
+    if (typeof showToast === 'function') showToast('Tap an empty cell to place ' + label);
+  }
   _spRender();
 }
 
@@ -1449,12 +1462,13 @@ function _spPlaceAtCell(x, y) {
   }
   // Place mode: new element
   if (_spPendingElement) {
+    var maxZGrid = (plot.elements || []).reduce(function(m, e) { return Math.max(m, e.z || 0); }, 0);
     var newEl = {
       id: 'el_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
       type: _spPendingElement.type,
       icon: _spPendingElement.icon,
       label: _spPendingElement.label,
-      x: x, y: y, rotation: 0
+      x: x, y: y, rotation: 0, z: maxZGrid + 1
     };
     if (_spPendingElement.mic) newEl.mic = _spPendingElement.mic;
     plot.elements.push(newEl);
@@ -1493,7 +1507,7 @@ function _spClickElement(idx) {
   if (_spMoveIdx === idx) { _spMoveIdx = -1; _spRender(); return; }
 
   var action = prompt(
-    el.label + '\n\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Cancel',
+    el.label + '\n\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Bring to front\n7 = Send to back\n0 = Cancel',
     '1'
   );
   if (action === '1') {
@@ -1512,6 +1526,14 @@ function _spClickElement(idx) {
     if (num !== null) { el.inputNum = num.trim(); _spDirty = true; _spRender(); }
   } else if (action === '5') {
     _spStartCableFrom(idx);
+  } else if (action === '6') {
+    var maxZ = (plot.elements || []).reduce(function(m, e) { return Math.max(m, e.z || 0); }, 0);
+    el.z = maxZ + 1;
+    _spDirty = true; _spRender();
+  } else if (action === '7') {
+    var minZ = (plot.elements || []).reduce(function(m, e) { return Math.min(m, e.z || 0); }, 0);
+    el.z = minZ - 1;
+    _spDirty = true; _spRender();
   }
 }
 
@@ -1555,6 +1577,24 @@ function _spRenderStageFree(plot) {
   (plot.elements || []).forEach(function(el, idx) {
     var xPct = el.xPct !== undefined ? el.xPct : (el.x + 0.5) / 10 * 100;
     var yPct = el.yPct !== undefined ? el.yPct : (el.y + 0.5) / 5 * 100;
+    var zIdx = (el.z !== undefined ? el.z : 0) + 100; // +100 keeps elements above cable SVG (z=0)
+
+    // Annotation: text-only, no border/icon. Free-mode contextual labels.
+    if (el.type === 'annotation') {
+      html += '<div data-el-idx="' + idx + '"'
+        + (share ? '' : ' draggable="true"'
+          + ' ondragstart="_spDragStart(event,' + idx + ')"'
+          + ' ondragend="_spDragEnd(event)"'
+          + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"')
+        + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%);max-width:140px;padding:2px 6px;text-align:center;cursor:' + (share ? 'default' : 'grab') + ';font-size:' + (share ? '0.62em' : '0.7em') + ';font-weight:600;color:rgba(255,255,255,0.7);font-style:italic;user-select:none;z-index:' + zIdx + ';line-height:1.25">';
+      html += _spEsc(el.label || '');
+      if (!share) {
+        html += '<button class="sp-del" onclick="event.stopPropagation();_spRemoveElement(' + idx + ')" style="position:absolute;top:-8px;right:-8px;background:rgba(15,23,42,0.85);border:1px solid rgba(255,255,255,0.15);border-radius:50%;color:#94a3b8;cursor:pointer;font-size:0.6em;padding:0;width:14px;height:14px;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.15s">✕</button>';
+      }
+      html += '</div>';
+      return;
+    }
+
     var baseLabel = (el.label || '').split(' – ')[0].trim();
     var sc = SP_SIZE_CLASS[baseLabel] || 'sm';
     var w = sc === 'lg' ? 84 : sc === 'md' ? 64 : 50;
@@ -1568,7 +1608,7 @@ function _spRenderStageFree(plot) {
         + ' ondragstart="_spDragStart(event,' + idx + ')"'
         + ' ondragend="_spDragEnd(event)"'
         + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"')
-      + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);width:' + w + 'px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:4px;text-align:center;cursor:' + (share ? 'default' : 'grab') + ';font-size:' + iconSize + ';line-height:1.2;user-select:none">';
+      + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);width:' + w + 'px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:4px;text-align:center;cursor:' + (share ? 'default' : 'grab') + ';font-size:' + iconSize + ';line-height:1.2;user-select:none;z-index:' + zIdx + '">';
     html += '<div style="font-size:1em">' + el.icon + '</div>';
     if (_spShowLabels || share) {
       html += '<div style="font-size:0.5em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _spEsc(displayLabel) + '</div>';
@@ -1641,6 +1681,7 @@ function _spFreeCanvasClick(ev) {
   yPct = Math.max(4, Math.min(96, yPct));
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
+  var maxZFree = (plot.elements || []).reduce(function(m, e) { return Math.max(m, e.z || 0); }, 0);
   var newEl = {
     id: 'el_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
     type: _spPendingElement.type,
@@ -1648,7 +1689,8 @@ function _spFreeCanvasClick(ev) {
     label: _spPendingElement.label,
     x: 0, y: 0,
     xPct: xPct, yPct: yPct,
-    rotation: 0
+    rotation: 0,
+    z: maxZFree + 1
   };
   if (_spPendingElement.mic) newEl.mic = _spPendingElement.mic;
   plot.elements.push(newEl);
