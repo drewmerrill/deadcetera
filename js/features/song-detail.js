@@ -1706,7 +1706,12 @@ async function _sdPopulateStemsLens(title) {
     _sdActivePreset = null;
     // New audio elements coming — abandon any prior WebAudio routing. The
     // old MediaElementSource nodes are dangling but the elements themselves
-    // are about to be removed from the DOM.
+    // are about to be removed from the DOM. Also stop the drift monitor —
+    // its setInterval references audio elements that won't exist after the
+    // re-render.
+    if (_sdStemsState && _sdStemsState.driftTimer) {
+        try { clearInterval(_sdStemsState.driftTimer); } catch(e) {}
+    }
     _sdStemsState = null;
     panel.innerHTML = '<div class="sd-panel-inner"><div style="text-align:center;padding:24px;color:var(--text-dim)">Loading stems…</div></div>';
     var stems = null, lalalSplit = null, spatialSplits = [];
@@ -2008,7 +2013,7 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
           '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + t.id + '" style="width:64px;flex-shrink:0;accent-color:' + t.color + '" title="Volume">' +
           '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0" title="Pan (L ↔ R)">' +
             '<input type="range" min="-100" max="100" value="0" class="sd-stem-pan" data-stem="' + t.id + '" style="width:48px;accent-color:' + t.color + '">' +
-            '<span class="sd-stem-pan-val" data-stem="' + t.id + '" style="font-size:0.58em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1">C</span>' +
+            '<span class="sd-stem-pan-val" data-stem="' + t.id + '" onclick="_sdStemsResetPan(\'' + t.id + '\')" title="Tap to center" style="font-size:0.58em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1;cursor:pointer;padding:2px 4px;border-radius:3px;-webkit-tap-highlight-color:rgba(102,126,234,0.2)">C</span>' +
           '</div>' +
           '<button class="sd-stem-mute" data-stem="' + t.id + '" title="Mute" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">M</button>' +
           '<button class="sd-stem-solo" data-stem="' + t.id + '" title="Solo" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">S</button>' +
@@ -2071,6 +2076,8 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
         '<span style="font-weight:700;color:var(--text-muted);white-space:nowrap">🎯 Practice (mute):</span>' +
         presetButtons +
         '<button onclick="_sdStemsResetPresets()" title="Unmute everything" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em">↺ Reset</button>' +
+        '<span style="flex:1;min-width:8px"></span>' +
+        '<button onclick="_sdStemsResetVolumes()" title="Reset all stem volumes back to 80%" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em;white-space:nowrap">🔊 Reset volumes</button>' +
     '</div>';
 
     // ── Loop bar — explicit "Set In/Out here" buttons make the entry path
@@ -2089,13 +2096,20 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
           '<input id="sdStemsCountIn" type="checkbox" ' + (window._sdCountInEnabled === false ? '' : 'checked') + ' onchange="window._sdCountInEnabled=this.checked"> Count-in' +
         '</label>' +
     '</div>' +
-    // Tiny subtitle so first-timers find the keys without cluttering the bar
-    '<div style="margin:0 4px 10px;font-size:0.68em;color:var(--text-dim);opacity:0.75;font-style:italic">Hit <b>[</b> / <b>]</b> while playing to mark in/out at the playhead, <b>L</b> to toggle, <b>Esc</b> to clear · or Shift-click any strip</div>';
+    // Tiny subtitle so first-timers find the keys. Two flavors:
+    // - kbd-hint: shown on hover-capable / pointer-fine devices (desktop)
+    // - touch-hint: shown on coarse-pointer devices (phone/tablet) — points
+    //   at the visible buttons since [/]/L/Esc keys aren't accessible.
+    // Visibility is toggled by CSS in _sdEnsureStemsFsStyle.
+    '<div class="sd-stems-kbd-hint" style="margin:0 4px 10px;font-size:0.68em;color:var(--text-dim);opacity:0.75;font-style:italic">Hit <b>[</b> / <b>]</b> while playing to mark in/out at the playhead, <b>L</b> to toggle, <b>Esc</b> to clear · or Shift-click any strip</div>' +
+    '<div class="sd-stems-touch-hint" style="display:none;margin:0 4px 10px;font-size:0.7em;color:var(--text-dim);opacity:0.85;font-style:italic">Tap <b>[ Set In</b> / <b>Set Out ]</b> at the playhead, <b>🔁 Loop</b> to toggle, <b>Clear</b> to reset</div>';
 
     var badge = hasLalal
         ? '<span class="sd-title-badge">Demucs + LALAL</span>'
         : '<span class="sd-title-badge">Demucs</span>';
     return '<div class="sd-stems-wrap" data-song="' + _sdEsc(title) + '">' +
+      // Phone-portrait nudge — visible only via media query in _sdEnsureStemsFsStyle.
+      '<div class="sd-stems-rotate-banner" style="display:none;margin-bottom:10px;padding:10px 14px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;font-size:0.82em;color:#fbbf24;text-align:center;line-height:1.4">📱 ↻ <b>Rotate horizontal</b> for the full mixer view — pan / volume sliders need the width to be usable.</div>' +
       '<div class="sd-card">' +
       '<div class="sd-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
         '<span>🎚 Stems ' + badge + '</span>' +
@@ -2179,7 +2193,19 @@ function _sdEnsureStemsFsStyle() {
       // mute or solo is engaged so it pops at any density.
       '.sd-stem-mute[data-active="1"]{background:rgba(239,68,68,0.22)!important;color:#fca5a5!important;border-color:rgba(239,68,68,0.5)!important}' +
       '.sd-stem-solo[data-active="1"]{background:rgba(245,158,11,0.22)!important;color:#fbbf24!important;border-color:rgba(245,158,11,0.5)!important}' +
-      'body.sd-stems-overlay-open{overflow:hidden}';
+      'body.sd-stems-overlay-open{overflow:hidden}' +
+      // Hover-capable / fine-pointer devices = desktop. Coarse pointer = touch.
+      // Default is desktop visibility (kbd hint shown, touch hint hidden);
+      // touch override flips them.
+      '@media (hover: none) and (pointer: coarse){' +
+        '.sd-stems-kbd-hint{display:none!important}' +
+        '.sd-stems-touch-hint{display:block!important}' +
+      '}' +
+      // Portrait phones: nudge to rotate. The mixer rows compress badly
+      // below ~600px wide and pan/volume sliders become unusable.
+      '@media (orientation: portrait) and (max-width: 640px){' +
+        '.sd-stems-rotate-banner{display:block!important}' +
+      '}';
     document.head.appendChild(s);
 }
 
@@ -2223,6 +2249,29 @@ window._sdStemsToggleFullscreen = function() {
     setTimeout(function() {
         try { window.dispatchEvent(new Event('resize')); } catch(e) {}
     }, 50);
+};
+
+// Tap the pan-position label (C / L25 / R30) to recenter that stem's pan.
+// Touch-friendly equivalent of the desktop dblclick on the slider — on iOS
+// dblclick on a range input fires inconsistently and the pan slider is
+// 48px wide so the precision required to drag back to dead center is
+// punishing.
+window._sdStemsResetPan = function(stemId) {
+    var slider = document.querySelector('.sd-stem-pan[data-stem="' + stemId + '"]');
+    if (!slider) return;
+    slider.value = 0;
+    try { slider.dispatchEvent(new Event('input', { bubbles: true })); } catch(e) {}
+};
+
+// One-tap restore: every stem volume slider back to 80 (the render default).
+// After the user has dragged a few sliders during practice, "what was the
+// balanced starting state?" is a real question that previously required
+// per-stem manual reset.
+window._sdStemsResetVolumes = function() {
+    document.querySelectorAll('.sd-stem-vol').forEach(function(slider) {
+        slider.value = 80;
+        try { slider.dispatchEvent(new Event('input', { bubbles: true })); } catch(e) {}
+    });
 };
 
 // Visual state mirroring — dim a stem row whenever its audio is muted (by
@@ -3253,6 +3302,32 @@ function _sdInitStemsPlayer() {
         }
     }
     _sdStemsState = { ctx: ctx, nodes: nodes };
+
+    // ── Drift resync ────────────────────────────────────────────────────
+    // iOS Safari (and to a lesser extent desktop Safari) runs each <audio>
+    // on its own decode clock — even though MediaElementSource routes the
+    // audio through a shared AudioContext, the *timing* is still per-element.
+    // Stems desync within a few seconds of playback and pause/play does
+    // NOT recover sync because each element resumes from its own drifted
+    // currentTime. Symptom: tracks audibly slap out of phase mid-song.
+    //
+    // Fix: every 500ms while master is playing, snap any stem whose
+    // currentTime drifts more than 100ms from master back to master's time.
+    // Heavy-handed but works without the AudioBuffer rewrite. Safari may
+    // stutter briefly on a snap; threshold is tuned high enough that small
+    // jitter doesn't trigger gratuitous seeks.
+    var driftTimer = setInterval(function() {
+        if (!master || master.paused) return;
+        var ref = master.currentTime;
+        if (!isFinite(ref)) return;
+        audios.forEach(function(a) {
+            if (a === master || a.paused || !isFinite(a.currentTime)) return;
+            if (Math.abs(a.currentTime - ref) > 0.1) {
+                try { a.currentTime = ref; } catch (e) {}
+            }
+        });
+    }, 500);
+    _sdStemsState.driftTimer = driftTimer;
 
     var applyVol = function(audio) {
         if (!audio) return;

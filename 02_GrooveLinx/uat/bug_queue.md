@@ -1,7 +1,7 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260503-150718
-**Last Updated:** 2026-05-03 (mid-session — UX polish during Phase 2 testing pass)
+**Build Under Test:** 20260503-153132
+**Last Updated:** 2026-05-03 (mid-session — second UX batch during Phase 2 testing pass)
 
 ---
 
@@ -135,6 +135,27 @@ _Bugs currently being investigated or fixed._
 ## Ready to Verify
 
 _Bugs believed fixed but needing confirmation from Drew or band._
+
+- [ ] **iPhone playback desync across stems (lightweight resync shipped — heavy fix queued)**
+  **Area:** Stems player / iOS Safari
+  **Reported in build:** 20260503-150718 (Drew on iPhone during Phase 2 testing — major delays + misalignment, pause/play didn't recover)
+  **Fix build:** 20260503-153132 (lightweight only)
+  **Root cause:** Each stem renders as its own `<audio>` element. MediaElementSource routes audio through a shared AudioContext for the mixer, but timing is per-element — Safari runs each `<audio>`'s decode pipeline on its own clock. Drift accumulates within seconds of playback. Pause/play does NOT recover sync because each element resumes from its own drifted `currentTime`.
+  **Fix shipped (lightweight):** Every 500ms while master is playing, check each stem's `currentTime` vs master's. If drift > 100ms, snap that stem to master's `currentTime`. Threshold tuned high enough to ignore small jitter. May produce brief audible stutter on big snaps (rare). `_sdInitStemsPlayer` now stores `driftTimer` in `_sdStemsState`; `_sdPopulateStemsLens` clears it before re-render.
+  **Heavy fix queued (NOT shipped):** True sample-accurate sync requires decoding all stems into `AudioBuffer`s and playing via `AudioBufferSourceNode`s started at a single `AudioContext.currentTime`. Memory cost = sum of all stem WAV/FLAC sizes. ~1-2 hours implementation. Right answer for the long term but lightweight should be enough to validate Phase 2 results on iPhone without the rewrite.
+  **Verification:** iPhone Safari → Stems lens on a song with multiple stems → press Play → let it run for 60+ seconds → solo each stem in turn. Should remain in sync (no audible phase shift, no drumming-against-itself, no echo-y comb-filter effect).
+
+- [ ] **Stems player on iPhone portrait — pan slider unusable, no rotation hint, kbd shortcut text irrelevant, no volume reset**
+  **Area:** Stems player / mobile UX
+  **Reported in build:** 20260503-150718 (Drew during Phase 2 iPhone testing)
+  **Fix build:** 20260503-153132
+  **Root cause:** Stems player was designed desktop-first. On iPhone: (a) the 48px pan slider is impossible to drag back to center, (b) no hint to rotate the screen for the wider mixer view, (c) the keyboard shortcut subtitle text (`Hit [ ] while playing…`) advertised desktop-only paths to touch users with no equivalent, (d) once a user dragged a volume slider away from default, no way to restore the balanced starting state without per-stem manual reset.
+  **Fix shipped (4 changes in one batch):**
+    1. **Pan tap-to-center.** `.sd-stem-pan-val` label (the C / L25 / R30 readout) is now clickable / tappable; new `_sdStemsResetPan(stemId)` global resets that stem's pan to center via slider input event. Cursor:pointer + `-webkit-tap-highlight-color`. Desktop double-click on the slider still works.
+    2. **Reset volumes button.** New `🔊 Reset volumes` button in the Practice presets row. Sets every `.sd-stem-vol` slider to 80 and fires input events so applyVol propagates.
+    3. **Portrait rotation banner.** `.sd-stems-rotate-banner` div at top of `.sd-stems-wrap`, hidden by default. CSS media query `@media (orientation: portrait) and (max-width: 640px)` reveals it with amber-on-dark "Rotate horizontal for the full mixer view" copy.
+    4. **Hint flip on touch devices.** Subtitle is now two divs: `.sd-stems-kbd-hint` (desktop, mentions [ ] / L / Esc / Shift-click) and `.sd-stems-touch-hint` (touch, mentions tapping the visible Set In / Set Out / Loop / Clear buttons). Toggle via `@media (hover: none) and (pointer: coarse)`.
+  **Verification:** iPhone Safari portrait → Stems lens → amber rotation banner visible at top. Tap pan readout → snaps to "C" instantly. Drag a few volumes, tap "🔊 Reset volumes" → all back to 80. Subtitle reads "Tap [ Set In … ]" not "Hit [ ] while playing…". Rotate to landscape → banner hides, slider precision improves. Desktop browser → kbd subtitle visible, touch subtitle hidden, dblclick still centers pan.
 
 - [ ] **Version Hub Archive tab — clicking a show appears as "list pages down" instead of showing tracks**
   **Area:** Version Hub / Archive panel
