@@ -5,6 +5,9 @@
     { "source": "/service-worker.js", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }] }
   ],
   "rewrites": [
+    { "source": "/privacy.html", "destination": "/privacy.html" },
+    { "source": "/terms.html", "destination": "/terms.html" },
+    { "source": "/sms-opt-in.html", "destination": "/sms-opt-in.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
