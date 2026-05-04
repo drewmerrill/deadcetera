@@ -4351,6 +4351,105 @@ window.GLCalendarSync = (function() {
     return { proposed: proposed.length, applied: proposed.length, skippedAllBand: skippedAllBand.length };
   }
 
+  // ── 2026-05-04: stub-recreate hidden events that got deleted from Google ─
+  // The 8 dates below had 10pm-12am Brian Busy events that disappeared from
+  // the band cal at some prior point (deletion vector unknown — predates
+  // today's session). The local synthetic rows will be cleaned up on next
+  // sync since they have no backing busy time. This helper recreates them
+  // as "Brian busy (please verify)" placeholders with PUBLIC visibility,
+  // anchored to America/New_York so they're TZ-correct regardless of where
+  // the user runs this. Idempotent — checks for existing stubs first via
+  // the glStub=true extended property.
+  async function createMissingHiddenStubs(opts) {
+    opts = opts || {};
+    var dates = opts.dates || [
+      '2026-05-15', '2026-05-22', '2026-06-11', '2026-07-15',
+      '2026-07-18', '2026-08-12', '2026-10-09', '2026-10-20'
+    ];
+    var summary = opts.summary || 'Brian busy (please verify)';
+    var startTime = opts.startTime || '22:00:00';
+    var endTime = opts.endTime || '00:00:00';
+    var endNextDay = (opts.endNextDay !== false); // default true (cross-midnight)
+    var TZ = opts.timeZone || 'America/New_York';
+    var description = opts.description ||
+      'Stub recreated 2026-05-04 by GrooveLinx — the original 10pm-midnight event at this slot was deleted from Google Calendar at some prior point. Please confirm this is still a real conflict or delete it if you\'re free.';
+
+    if (!accessToken) { console.warn('[stubs] No accessToken — sign in first.'); return { error: 'no_token' }; }
+    var bandCalId = await _getBandCalendarId();
+    if (!bandCalId) { console.warn('[stubs] No band calendar configured.'); return { error: 'no_band_cal' }; }
+    console.log('[stubs] bandCalId:', bandCalId);
+    console.log('[stubs] Local TZ (display only — events anchored to ' + TZ + '):',
+      Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+    // Idempotency: query existing stubs by extended property
+    var existing = {};
+    try {
+      var checkUrl = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(bandCalId)
+        + '&privateExtendedProperty=' + encodeURIComponent('glStub=true')
+        + '&timeMin=' + encodeURIComponent(dates[0] + 'T00:00:00Z')
+        + '&timeMax=' + encodeURIComponent('2027-01-01T00:00:00Z');
+      var checkRes = await fetch(checkUrl, { headers: { 'Authorization': 'Bearer ' + accessToken } });
+      if (checkRes.ok) {
+        var checkData = await checkRes.json();
+        (checkData.items || []).forEach(function(e) {
+          var d = ((e.start && (e.start.dateTime || e.start.date)) || '').slice(0, 10);
+          if (d) existing[d] = e.id;
+        });
+      }
+    } catch(e) {}
+    var existingDates = Object.keys(existing);
+    if (existingDates.length) console.log('[stubs] Already-stubbed dates (will skip):', existingDates);
+
+    var results = [];
+    for (var i = 0; i < dates.length; i++) {
+      var date = dates[i];
+      if (existing[date]) { results.push({ date: date, status: 'skipped (already stubbed)', id: existing[date] }); continue; }
+
+      // Compute end date — cross-midnight default
+      var endDate = date;
+      if (endNextDay) {
+        var nx = new Date(date + 'T00:00:00');
+        nx.setDate(nx.getDate() + 1);
+        endDate = nx.toISOString().slice(0, 10);
+      }
+
+      var body = {
+        summary: summary,
+        description: description,
+        start: { dateTime: date + 'T' + startTime, timeZone: TZ },
+        end:   { dateTime: endDate + 'T' + endTime, timeZone: TZ },
+        visibility: 'public',
+        transparency: 'opaque',
+        extendedProperties: { private: { groovelinx: 'true', glStub: 'true' } }
+      };
+
+      try {
+        var res = await fetch(WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(bandCalId), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+          body: JSON.stringify(body)
+        });
+        if (res.ok) {
+          var data = await res.json();
+          results.push({ date: date, status: 'created', id: data.id, link: data.htmlLink });
+        } else {
+          var txt = await res.text();
+          results.push({ date: date, status: 'error ' + res.status, detail: (txt || '').slice(0, 200) });
+        }
+      } catch(e) {
+        results.push({ date: date, status: 'exception', detail: e && e.message });
+      }
+      await new Promise(function(r) { setTimeout(r, 250); }); // gentle pace
+    }
+
+    console.table(results);
+    var created = results.filter(function(r) { return r.status === 'created'; }).length;
+    var skipped = results.filter(function(r) { return String(r.status).indexOf('skipped') === 0; }).length;
+    var errors  = results.filter(function(r) { return r.status !== 'created' && String(r.status).indexOf('skipped') !== 0; }).length;
+    console.log('[stubs] Created:', created, '· Skipped:', skipped, '· Errors:', errors);
+    return { created: created, skipped: skipped, errors: errors, results: results };
+  }
+
   // ── Backfill: re-classify already-imported events ────────────────────────
   // Walks local calendar_events and re-runs the unavailability title check on
   // every event that isn't a rehearsal/gig. Needed because events imported
@@ -4628,6 +4727,7 @@ window.GLCalendarSync = (function() {
     reclassifyUnavailability: reclassifyUnavailability,
     purgeNonBandEvents: purgeNonBandEvents,
     repairCorruptedTitles: repairCorruptedTitles,
+    createMissingHiddenStubs: createMissingHiddenStubs,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,
