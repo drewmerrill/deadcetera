@@ -657,6 +657,8 @@ function _spCreateDefault() {
     id: 'default',
     name: 'Default Setup',
     layoutMode: 'stations',
+    placementMode: 'free',
+    snapToGrid: true,
     stageWidth: 24,
     stageDepth: 16,
     stations: stations,
@@ -673,6 +675,21 @@ function _spRender() {
   if (!container) return;
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) { container.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px">No stage plots</div>'; return; }
+
+  // Grid mode is deprecated. Migrate any legacy plot to free on first
+  // render: convert (x,y) cells → (xPct,yPct) %, then mark placementMode.
+  // Stations use their own layout — leave those alone.
+  if (plot.placementMode !== 'free') {
+    var migCols = Math.min(10, Math.max(6, (plot.elements || []).length + 2));
+    var migRows = 5;
+    (plot.elements || []).forEach(function(el) {
+      if (el.xPct === undefined) el.xPct = ((el.x || 0) + 0.5) / migCols * 100;
+      if (el.yPct === undefined) el.yPct = ((el.y || 0) + 0.5) / migRows * 100;
+    });
+    plot.placementMode = 'free';
+    if (plot.snapToGrid === undefined) plot.snapToGrid = true;
+    _spDirty = true;
+  }
 
   // Inject hover CSS for delete buttons + dropdown fixes (only once)
   if (!document.getElementById('spHoverCSS')) {
@@ -725,11 +742,8 @@ function _spRender() {
       + '<button onclick="_spSetUnits(\'m\')" style="font-size:0.62em;padding:3px 8px;border:none;border-left:1px solid rgba(255,255,255,0.1);cursor:pointer;background:' + (curUnits === 'm' ? 'rgba(99,102,241,0.18)' : 'transparent') + ';color:' + (curUnits === 'm' ? '#a5b4fc' : 'var(--text-dim)') + ';font-weight:700">m</button>'
       + '</span>';
     if (!isStationMode) {
-      var placementMode = plot.placementMode || 'grid';
-      html += '<span style="margin-left:auto;display:inline-flex;border:1px solid rgba(255,255,255,0.1);border-radius:6px;overflow:hidden">'
-        + '<button onclick="_spSetPlacementMode(\'grid\')" style="font-size:0.68em;padding:3px 10px;border:none;cursor:pointer;background:' + (placementMode === 'grid' ? 'rgba(99,102,241,0.18)' : 'transparent') + ';color:' + (placementMode === 'grid' ? '#a5b4fc' : 'var(--text-dim)') + ';font-weight:700">⊞ Grid</button>'
-        + '<button onclick="_spSetPlacementMode(\'free\')" style="font-size:0.68em;padding:3px 10px;border:none;border-left:1px solid rgba(255,255,255,0.1);cursor:pointer;background:' + (placementMode === 'free' ? 'rgba(99,102,241,0.18)' : 'transparent') + ';color:' + (placementMode === 'free' ? '#a5b4fc' : 'var(--text-dim)') + ';font-weight:700">✦ Free</button>'
-        + '</span>';
+      var snapOn = plot.snapToGrid !== false;
+      html += '<label for="spToggleSnap" style="margin-left:auto;display:flex;align-items:center;gap:4px;font-size:0.68em;color:var(--text-dim);cursor:pointer" title="Snap to a 5% grid on drop. Hold ⌥/Alt to drop free."><input type="checkbox" id="spToggleSnap" name="spSnap" ' + (snapOn ? 'checked' : '') + ' onchange="_spToggleSnap(this.checked)" style="accent-color:#667eea"> Snap to grid <span style="opacity:0.55;margin-left:2px">(⌥ to override)</span></label>';
     }
     html += '</div>';
   } else {
@@ -1709,11 +1723,17 @@ window._spSetPlacementMode = _spSetPlacementMode;
 function _spRenderStageFree(plot) {
   var share = _spShareMode;
   var canvasH = share ? '260px' : '320px';
+  // Snap-on adds a faint 5% grid overlay so users can see the snap targets.
+  // Skipped in share mode — engineers don't need to see the snap grid.
+  var snapOn = plot.snapToGrid !== false && !share;
+  var snapBg = snapOn
+    ? 'background-image:linear-gradient(rgba(255,255,255,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.05) 1px,transparent 1px);background-size:5% 5%;background-position:0 0;'
+    : '';
   var html = '<div id="spFreeCanvas" class="' + (share ? 'sp-share' : '') + '"'
     + ' ondragover="_spFreeDragOver(event)"'
     + ' ondrop="_spFreeDrop(event)"'
     + ' onclick="_spFreeCanvasClick(event)"'
-    + ' style="position:relative;background:rgba(255,255,255,0.03);border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 10px 8px;height:' + canvasH + ';overflow:hidden">';
+    + ' style="position:relative;background:rgba(255,255,255,0.03);' + snapBg + 'border:2px solid rgba(255,255,255,0.1);border-radius:10px;padding:14px 10px 8px;height:' + canvasH + ';overflow:hidden">';
   html += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:var(--bg,#1e293b);padding:0 8px;font-size:0.58em;font-weight:700;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase">STAGE' + (share ? '' : ' — ' + _spFmtDim(plot.stageWidth, plot.units) + ' x ' + _spFmtDim(plot.stageDepth, plot.units)) + '</div>';
   if (_spShowDirections && !share) {
     html += '<div style="position:absolute;top:50%;left:-2px;transform:translateY(-50%) rotate(-90deg);font-size:0.45em;font-weight:700;color:rgba(255,255,255,0.06);letter-spacing:0.12em;text-transform:uppercase;white-space:nowrap">SL</div>';
@@ -1804,6 +1824,12 @@ function _spRenderStageFree(plot) {
 
 // Free-mode drag handlers
 function _spFreeDragOver(ev) { ev.preventDefault(); }
+// Round to nearest 5% if snap is on for this plot, unless Alt held to override.
+function _spMaybeSnap(plot, val, ev) {
+  if (!plot || plot.snapToGrid === false) return val;
+  if (ev && (ev.altKey || ev.metaKey)) return val;
+  return Math.round(val / 5) * 5;
+}
 function _spFreeDrop(ev) {
   ev.preventDefault();
   var plot = _spPlots[_spCurrentIdx];
@@ -1813,6 +1839,8 @@ function _spFreeDrop(ev) {
   var rect = canvas.getBoundingClientRect();
   var xPct = ((ev.clientX - rect.left) / rect.width) * 100;
   var yPct = ((ev.clientY - rect.top) / rect.height) * 100;
+  xPct = _spMaybeSnap(plot, xPct, ev);
+  yPct = _spMaybeSnap(plot, yPct, ev);
   // Clamp
   xPct = Math.max(2, Math.min(98, xPct));
   yPct = Math.max(4, Math.min(96, yPct));
@@ -1836,10 +1864,12 @@ function _spFreeCanvasClick(ev) {
   var rect = canvas.getBoundingClientRect();
   var xPct = ((ev.clientX - rect.left) / rect.width) * 100;
   var yPct = ((ev.clientY - rect.top) / rect.height) * 100;
-  xPct = Math.max(2, Math.min(98, xPct));
-  yPct = Math.max(4, Math.min(96, yPct));
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
+  xPct = _spMaybeSnap(plot, xPct, ev);
+  yPct = _spMaybeSnap(plot, yPct, ev);
+  xPct = Math.max(2, Math.min(98, xPct));
+  yPct = Math.max(4, Math.min(96, yPct));
   var maxZFree = (plot.elements || []).reduce(function(m, e) { return Math.max(m, e.z || 0); }, 0);
   var newEl = {
     id: 'el_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
@@ -1991,6 +2021,8 @@ function _spAddPlot() {
   _spPlots.push({
     id: 'plot_' + Date.now(),
     name: name,
+    placementMode: 'free',
+    snapToGrid: true,
     stageWidth: 24,
     stageDepth: 16,
     elements: [],
@@ -2574,24 +2606,37 @@ function _spExportView(opts) {
   var brandColor = plot.brandColor || '#667eea';
   var logoTag = plot.brandLogo ? '<img src="' + plot.brandLogo + '" style="max-height:48px;max-width:140px;background:#fff;padding:4px;border-radius:4px;margin-bottom:8px">' : '';
 
-  // Build printable HTML — compact grid matching share mode density
-  var cols = Math.min(10, Math.max(6, plot.elements.length + 2));
-  var rows = 5;
-
-  var stageHTML = '<table style="width:100%;border-collapse:collapse;margin:12px 0">';
-  for (var r = 0; r < rows; r++) {
-    stageHTML += '<tr>';
-    for (var c = 0; c < cols; c++) {
-      var el = plot.elements.find(function(e) { return e.x === c && e.y === r; });
-      var baseLabel = el ? el.label.split(' – ')[0].trim() : '';
-      var compactLabel = el ? (el.label.indexOf(' – ') >= 0 ? el.label.split(' – ')[0].split(' ')[0] + ' ' + (SP_COMPACT[el.label.split(' – ')[1].trim()] || el.label.split(' – ')[1].trim()) : (SP_COMPACT[baseLabel] || el.label)) : '';
-      stageHTML += '<td style="border:1px solid #ddd;padding:4px 3px;text-align:center;min-width:55px;height:32px;vertical-align:middle;font-size:11px">';
-      if (el) stageHTML += '<div style="line-height:0">' + _spIconHTML(el, 22, '#475569') + '</div><div style="font-size:0.7em;font-weight:600;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + _spEsc(compactLabel) + '</div>';
-      stageHTML += '</td>';
+  // Build printable HTML — free-coord canvas matching the on-screen renderer.
+  // Each element is absolute-positioned at xPct/yPct (% of canvas), with size
+  // class scaled the same way as _spRenderStageFree. Print stylesheets keep
+  // background colors (-webkit-print-color-adjust:exact) so the canvas frame
+  // and tile fills survive PDF generation.
+  var stageHTML = '<div style="position:relative;width:100%;height:340px;background:#fafbfc;border:2px solid #cbd5e1;border-radius:10px;margin:12px 0;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact">';
+  stageHTML += '<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#fff;padding:0 8px;font-size:9px;font-weight:700;color:#64748b;letter-spacing:0.1em;text-transform:uppercase">STAGE — ' + _spFmtDim(plot.stageWidth, plot.units) + ' × ' + _spFmtDim(plot.stageDepth, plot.units) + '</div>';
+  (plot.elements || []).forEach(function(el) {
+    var xPct = el.xPct !== undefined ? el.xPct : ((el.x || 0) + 0.5) / 10 * 100;
+    var yPct = el.yPct !== undefined ? el.yPct : ((el.y || 0) + 0.5) / 5 * 100;
+    var baseLabel = (el.label || '').split(' – ')[0].trim();
+    var compactLabel = el.label && el.label.indexOf(' – ') >= 0
+      ? el.label.split(' – ')[0].split(' ')[0] + ' ' + (SP_COMPACT[el.label.split(' – ')[1].trim()] || el.label.split(' – ')[1].trim())
+      : (SP_COMPACT[baseLabel] || el.label || '');
+    var rot = el.rotation || 0;
+    if (el.type === 'annotation') {
+      stageHTML += '<div style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);max-width:140px;padding:2px 6px;text-align:center;font-size:10px;font-style:italic;color:#475569;line-height:1.25">' + _spEsc(el.label || '') + '</div>';
+      return;
     }
-    stageHTML += '</tr>';
-  }
-  stageHTML += '</table>';
+    var sc = SP_SIZE_CLASS[baseLabel] || 'sm';
+    var scaleMul = (typeof el.scale === 'number' && el.scale > 0) ? el.scale : 1;
+    var w = (sc === 'lg' ? 84 : sc === 'md' ? 64 : 50) * scaleMul;
+    var iconPx = Math.round((sc === 'lg' ? 36 : sc === 'md' ? 28 : 22) * scaleMul);
+    stageHTML += '<div style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);width:' + w + 'px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:6px;padding:4px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact">'
+      + '<div style="line-height:0">' + _spIconHTML(el, iconPx, '#475569') + '</div>'
+      + '<div style="font-size:9px;font-weight:600;color:#334155;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">' + _spEsc(compactLabel) + '</div>'
+      + (el.techInfo ? '<div style="font-size:8px;color:#64748b;font-style:italic;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">' + _spEsc(el.techInfo) + '</div>' : '')
+      + '</div>';
+  });
+  stageHTML += '<div style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.15em;text-transform:uppercase">▼ AUDIENCE ▼</div>';
+  stageHTML += '</div>';
 
   // Multi-page PDF: page-break-after on each section so the user gets a
   // 2-4 page document depending on what's filled in. Each page is letter-
@@ -2611,11 +2656,10 @@ function _spExportView(opts) {
       + '</div>';
   };
 
-  // Page 1: Stage plot
+  // Page 1: Stage plot (audience marker is rendered inside the canvas)
   var page1 = '<section style="page-break-after:always">'
     + headerBar('Stage Plot')
-    + stageHTML
-    + '<div style="text-align:center;font-size:11px;color:#999;margin-top:-4px">▼ AUDIENCE ▼</div>';
+    + stageHTML;
   if (plot.contact) page1 += '<div style="margin-top:24px;font-size:13px;color:#444"><strong style="color:' + brandColor + '">Contact:</strong> ' + _spEsc(plot.contact) + '</div>';
   page1 += '</section>';
 
@@ -2806,6 +2850,13 @@ window._spClickElement = _spClickElement;
 window._spApplyPreset = _spApplyPreset;
 window._spToggleLabels = function(v) { _spShowLabels = v; _spRender(); };
 window._spToggleDirections = function(v) { _spShowDirections = v; _spRender(); };
+window._spToggleSnap = function(v) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  plot.snapToGrid = !!v;
+  _spDirty = true;
+  _spRender();
+};
 window._spSetUnits = function(u) {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot) return;
