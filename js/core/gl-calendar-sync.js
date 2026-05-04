@@ -4243,6 +4243,18 @@ window.GLCalendarSync = (function() {
       if (!ev || !ev._importedFromGoogle) { kept.push(ev); return; }
       var evCal = ev.calendarId || (ev.sync && ev.sync.calendarId) || '';
       if (evCal === bandCalId) { kept.push(ev); return; }
+      // 2026-05-04 (D10): protect availability data from the purge. Members'
+      // personal-cal busy markers (type:'unavailable' or assignedMembers set)
+      // are the band's only signal of who's busy when, and they legitimately
+      // carry a non-band calendarId. Old purge logic ate them silently on
+      // every sync — that's how Brian's busy items disappeared. Keep them.
+      var isAvailability = (ev.type === 'unavailable' || ev.type === 'busy' || ev.type === 'block')
+        || (Array.isArray(ev.assignedMembers) && ev.assignedMembers.length > 0);
+      if (isAvailability) {
+        console.log('[CalSync] purge keeping availability row:', ev.date, '|', JSON.stringify(ev.title), '| calId:', evCal || '(none)');
+        kept.push(ev);
+        return;
+      }
       // Imported but not from the band calendar — remove.
       removed++;
       console.log('[CalSync] purge removing:', ev.date, '|', JSON.stringify(ev.title), '| calendarId:', evCal || '(none)');
@@ -4252,6 +4264,91 @@ window.GLCalendarSync = (function() {
       catch (e) { console.warn('[CalSync] purge save failed:', e && e.message); }
     }
     return { scanned: events.length, removed: removed, kept: kept.length };
+  }
+
+  // ── D9 (2026-05-04): one-shot title repair ───────────────────────────────
+  // Pre-D5, _buildEventBody synthesized "deadcetera Event" for any non-
+  // rehearsal/gig/meeting type and Phase 1 push PATCH'd that title back to
+  // Google. Result: ~17 of Brian's "Brian busy" rows (and a couple of Drew's)
+  // got renamed to "deadcetera Event" both in Firebase and on the band cal.
+  // D5 stopped the bug going forward. This function repairs the local rows
+  // by reconstructing a sensible title from assignedMembers. Dry-run by
+  // default — call with {apply:true} to write changes. Does NOT push to
+  // Google (Drew already renamed those manually via Google Calendar UI;
+  // pushing again would clobber his fixes).
+  async function repairCorruptedTitles(opts) {
+    opts = opts || {};
+    var apply = !!opts.apply;
+    if (typeof loadBandDataFromDrive !== 'function') {
+      return { error: 'firebase helpers unavailable' };
+    }
+    var raw = await loadBandDataFromDrive('_band', 'calendar_events') || [];
+    var keyed = !Array.isArray(raw); // Firebase returns an object with push-ids as keys
+    var events = (typeof toArray === 'function') ? toArray(raw) : (Array.isArray(raw) ? raw : Object.values(raw));
+
+    function nameFor(memberKey) {
+      try {
+        if (typeof bandMembers !== 'undefined' && bandMembers && bandMembers[memberKey] && bandMembers[memberKey].name) {
+          var first = String(bandMembers[memberKey].name).split(' ')[0];
+          if (first) return first;
+        }
+      } catch(e) {}
+      return memberKey.charAt(0).toUpperCase() + memberKey.slice(1);
+    }
+
+    function titleFor(ev) {
+      var members = Array.isArray(ev.assignedMembers) ? ev.assignedMembers : [];
+      // 5+ members = whole-band event, probably a real rehearsal/gig that got
+      // mangled — leave alone; user should hand-fix those.
+      if (members.length === 0 || members.length >= 5) return null;
+      if (members.length === 1) return nameFor(members[0]) + ' busy';
+      return members.map(nameFor).join(', ') + ' busy';
+    }
+
+    var proposed = [];
+    var skippedAllBand = [];
+    events.forEach(function(ev) {
+      if (!ev || ev.title !== 'deadcetera Event') return;
+      var newTitle = titleFor(ev);
+      if (!newTitle) {
+        skippedAllBand.push({ date: ev.date, time: ev.time, members: ev.assignedMembers || null, type: ev.type });
+        return;
+      }
+      proposed.push({ id: ev.id, ref: ev, oldTitle: ev.title, newTitle: newTitle, date: ev.date, time: ev.time, members: ev.assignedMembers });
+    });
+
+    console.log('[D9] Proposed renames:', proposed.length);
+    console.table(proposed.map(function(p) { return { date: p.date, time: p.time, members: JSON.stringify(p.members), oldTitle: p.oldTitle, newTitle: p.newTitle }; }));
+    if (skippedAllBand.length) {
+      console.warn('[D9] Skipped (5+ members or no members assigned — hand-fix these):', skippedAllBand.length);
+      console.table(skippedAllBand);
+    }
+
+    if (!apply) {
+      console.log('[D9] Dry run only. Run again with {apply:true} to write changes to Firebase.');
+      return { proposed: proposed.length, applied: 0, skippedAllBand: skippedAllBand.length, dryRun: true };
+    }
+
+    // Apply: mutate the in-memory rows and write back the whole array.
+    var nowIso = new Date().toISOString();
+    proposed.forEach(function(p) {
+      p.ref.title = p.newTitle;
+      p.ref.updated_at = nowIso;
+      // Mark dirty so a future inbound pull doesn't blow away the repair if
+      // Google still has the corrupt title (i.e. Drew hasn't manually renamed
+      // that one yet). The sync engine respects updated_at > lastSyncedAt to
+      // detect local-newer state.
+      if (p.ref.sync) p.ref.sync.status = 'dirty';
+      p.ref.syncStatus = 'dirty';
+    });
+    try {
+      await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
+      console.log('[D9] ✓ Wrote', proposed.length, 'title repairs to Firebase');
+    } catch(e) {
+      console.error('[D9] save failed:', e && e.message);
+      return { error: 'save_failed', proposed: proposed.length, applied: 0 };
+    }
+    return { proposed: proposed.length, applied: proposed.length, skippedAllBand: skippedAllBand.length };
   }
 
   // ── Backfill: re-classify already-imported events ────────────────────────
@@ -4530,6 +4627,7 @@ window.GLCalendarSync = (function() {
     refreshGigTimesOnGoogle: refreshGigTimesOnGoogle,
     reclassifyUnavailability: reclassifyUnavailability,
     purgeNonBandEvents: purgeNonBandEvents,
+    repairCorruptedTitles: repairCorruptedTitles,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,
