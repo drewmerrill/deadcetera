@@ -1,7 +1,7 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260504-020659
-**Last Updated:** 2026-05-04 (Drew bug-dump on Calendar / Gigs / Setlist / YouTube)
+**Build Under Test:** 20260504-115634
+**Last Updated:** 2026-05-04 (D1 + D2 + D3 cascade-fixes shipped)
 
 ---
 
@@ -9,9 +9,9 @@
 
 | # | Bug | Severity | Diagnosis | Owner |
 |---|---|---|---|---|
-| **D1** | Calendar gig tap → "see gig details" → goes to Setlists page (not gig detail) | HIGH | `calendar.js:4225` action button calls `showPage('setlists')`. Rehearsal events correctly call `showPage('rehearsal')`. Wrong target. Fix: navigate to gig detail (or unified editor). | open |
-| **D2** | Delete gig from Calendar → still on Gigs page (and vice versa) | HIGH | Two Firebase nodes: `calendar_events` (Calendar) + `gigs` (Gigs). Dual-write on create via `_syncGigToCalendar` (`gigs.js:632`) but **no cascade on delete**. `_calDeleteFromPanel()` at `calendar.js:1590` deletes from `calendar_events` only. `deleteGig()` at `gigs.js:45` deletes from `gigs` only. Fix: cascade both ways. | open |
-| **D3** | Create gig auto-creates setlist; delete gig leaves orphan setlist | MED | `saveGig()` (`gigs.js:748–762`) creates blank setlist if none linked. `deleteGig()` (`gigs.js:39`) doesn't cascade to setlist. Fix: cascade delete linked setlist (only if setlist is empty / unmodified — don't nuke user-edited setlists). | open |
+| **D1** | Calendar gig tap → "see gig details" → goes to Setlists page (not gig detail) | HIGH | `calendar.js:4225` action button calls `showPage('setlists')`. Rehearsal events correctly call `showPage('rehearsal')`. Wrong target. | **FIXED 2026-05-04** build `20260504-115634`. Added `window.openGigById(gigIdOrDate)` in gigs.js; both Calendar surfaces (Next Up button + mobile date sheet) now call it. |
+| **D2** | Delete gig from Calendar → still on Gigs page (and vice versa) | HIGH | Two Firebase nodes: `calendar_events` (Calendar) + `gigs` (Gigs). Dual-write on create via `_syncGigToCalendar` (`gigs.js:632`) but **no cascade on delete**. `_calDeleteFromPanel()` at `calendar.js:1590` deletes from `calendar_events` only. `deleteGig()` at `gigs.js:45` deletes from `gigs` only. | **FIXED 2026-05-04** build `20260504-115634`. New shared `_cascadeDeleteGig(gig)` helper in gigs.js handles all 3 nodes idempotently; both `deleteGig()` and `_calDeleteFromPanel()` now route through it. |
+| **D3** | Create gig auto-creates setlist; delete gig leaves orphan setlist | MED | `saveGig()` (`gigs.js:748–762`) creates blank setlist if none linked. `deleteGig()` (`gigs.js:39`) doesn't cascade to setlist. | **FIXED 2026-05-04** build `20260504-115634`. `_cascadeDeleteGig` deletes the linked setlist iff it's still in auto-created blank state (1 set named "Set 1", 0 songs, no notes). User-edited setlists survive with `gigId` back-ref nulled out. |
 | **D4** | 11 hidden events + 30 zombies regressed | MED | Was thought fixed via Path B (`bc5fede3` 2026-04-22 Mode A Sprint) and 04-21 legacy-Busy cleanup. Regression source unknown — need to spelunk what's reintroducing them. Hypothesis: a non-cascading sync path is leaving stale `calendar_events` rows that the freebusy diff classifies as hidden. | open |
 | **D5** | "Refresh Titles" renamed Drew/Brian "Busy" events to "deadcetera event" on **Google** | HIGH | `_calRefreshTitlesFromGoogle()` (`calendar.js:2513`) reads Google `summary` → writes to local `calendar_events[].title`. Google itself shouldn't change. So either (a) the function ALSO writes back to Google somewhere, or (b) a follow-on sync push uses the freshly-updated local titles to overwrite Google. Find the back-write. Audit for any code path that PATCHes Google with `g.title || 'deadcetera event'`. | open — corrupts user calendars |
 | **D6** | YouTube playlist no longer autoplays from Setlist page (controls say playing, audio silent until tap) | MED | `setlist-player.js:352` still has `playerVars: { autoplay: 1, ... }`. Iframe API unchanged. Classic browser autoplay-policy block — iOS Safari + recent Chrome require user gesture for *audio* even if `autoplay=1`. The player thinks it's playing because video state advanced; audio output silently muted by browser. Fix: detect blocked-autoplay state via `onStateChange` + low currentTime advancement → render a "Tap to start" overlay; OR start the YT player from inside the click handler that opened the playlist (gesture-bound) rather than after the modal renders. | open |

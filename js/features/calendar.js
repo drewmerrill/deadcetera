@@ -1616,6 +1616,25 @@ window._calDeleteFromPanel = async function(eventId, dateStr) {
         // Remove from GrooveLinx
         events = events.filter(function(e) { return (e.eventId || e.id) !== eventId; });
         await saveBandDataToDrive('_band', 'calendar_events', events);
+
+        // D2/D3 cascade: a gig event also lives in _band/gigs and (when
+        // auto-created) _band/setlists. Without this cascade, deleting a
+        // gig from the calendar left orphans on the Gigs page and an
+        // unreferenced blank setlist. _cascadeDeleteGig is idempotent \u2014
+        // the calendar_events filter above already ran, so it's a no-op
+        // for that node and removes only the gig + (optional) setlist.
+        var _cascadeSummary = null;
+        if (ev && ev.type === 'gig' && typeof window._cascadeDeleteGig === 'function') {
+            try {
+                var _gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+                var _matched = _gigs.find(function(g) {
+                    return (ev.gigId && g.gigId === ev.gigId)
+                        || (g.date === ev.date && g.venue === ev.venue);
+                });
+                if (_matched) _cascadeSummary = await window._cascadeDeleteGig(_matched);
+            } catch(e) { console.warn('[Calendar] gig cascade failed:', e && e.message); }
+        }
+
         // Refresh UI
         if (typeof loadCalendarEvents === 'function') await loadCalendarEvents();
         _calRenderGooglePanel();
@@ -1626,6 +1645,9 @@ window._calDeleteFromPanel = async function(eventId, dateStr) {
         var _toast = '\u2713 Event deleted';
         if (_isSynced && !_hasToken) _toast += ' from GrooveLinx (still on Google \u2014 sign in to sync)';
         else if (_isSynced) _toast += ' from GrooveLinx and Google Calendar';
+        if (_cascadeSummary && _cascadeSummary.gig) {
+            _toast += ' (gig + ' + (_cascadeSummary.setlist ? 'blank setlist' : (_cascadeSummary.setlistKept ? 'setlist kept' : 'no setlist')) + ' cleaned up)';
+        }
         if (typeof showToast === 'function') showToast(_toast, 4000);
     } catch(e) {
         if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || 'unknown error'));
@@ -4222,7 +4244,9 @@ async function _calRenderNextUp() {
         if (ev.type === 'rehearsal') {
             actionBtn = '<button onclick="practicePlanActiveDate=\'' + ev.date + '\';showPage(\'rehearsal\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(34,197,94,0.12);color:#86efac;font-weight:700;font-size:0.78em;cursor:pointer">Open Rehearsal Plan</button>';
         } else {
-            actionBtn = '<button onclick="showPage(\'setlists\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">View Setlist</button>';
+            // D1 fix: open the specific gig's editor, not the generic Setlists list.
+            var _gigKey = (ev.gigId || ev.date || '').replace(/'/g, "\\'");
+            actionBtn = '<button onclick="openGigById(\'' + _gigKey + '\')" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(245,158,11,0.12);color:#fbbf24;font-weight:700;font-size:0.78em;cursor:pointer">Open gig</button>';
         }
 
         html += '<div class="cal-next-card" style="' + (isRisk ? 'border-color:rgba(245,158,11,0.2)' : '') + '">';
@@ -6342,7 +6366,8 @@ function _calShowMobileDateCard(ds, y, m, d) {
         statusMsg = 'Gig scheduled';
         statusColor = 'var(--gl-amber)';
         ctaLabel = 'View gig details';
-        ctaAction = "_calCloseMobileCard();showPage('setlists')";
+        // D1 fix: navigate to that date's gig, not the generic Setlists page.
+        ctaAction = "_calCloseMobileCard();openGigById('" + safDs + "')";
     } else if (_cellState === 'rehearsal') {
         statusMsg = 'Rehearsal scheduled';
         statusColor = 'var(--gl-indigo)';

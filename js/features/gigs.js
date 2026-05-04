@@ -36,14 +36,100 @@ function venueShortLabel(v) {
     return name;
 }
 
+// Cascade-delete a gig everywhere it lives. A gig fans out into 3 Firebase
+// nodes — _band/gigs (the Gigs page), _band/calendar_events (the Calendar
+// page), _band/setlists (auto-created on save). Pre-cascade, deleting from
+// any one node left orphans on the others; D2/D3 in bug_queue.md.
+//
+// Setlist preservation rule: only delete the linked setlist if it's still
+// in its auto-created blank state (one set named "Set 1", zero songs, no
+// notes). User-edited setlists get their gigId back-ref nulled and survive.
+//
+// Idempotent: safe to call after one of the rows has already been removed
+// (the per-node filter is a no-op in that case). Returns a summary so
+// callers can build a useful toast.
+async function _cascadeDeleteGig(gig) {
+    var summary = { gig: false, calendarEvent: false, setlist: false, setlistKept: null };
+    if (!gig) return summary;
+
+    // 1. _band/gigs — match by gigId, fallback venue+date for legacy rows.
+    try {
+        var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+        var gBefore = gigs.length;
+        gigs = gigs.filter(function(g) {
+            if (gig.gigId && g.gigId === gig.gigId) return false;
+            if (!gig.gigId && g.date === gig.date && g.venue === gig.venue) return false;
+            return true;
+        });
+        if (gigs.length !== gBefore) {
+            await saveBandDataToDrive('_band', 'gigs', gigs);
+            summary.gig = true;
+        }
+    } catch(e) { console.warn('[Cascade] gigs delete failed:', e && e.message); }
+
+    // 2. _band/calendar_events — only the gig-typed row, matched by gigId.
+    //    Falls back to venue+date so legacy rows pre-gigId still cascade.
+    try {
+        var cal = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        var cBefore = cal.length;
+        cal = cal.filter(function(e) {
+            if (e.type !== 'gig') return true;
+            if (gig.gigId && e.gigId === gig.gigId) return false;
+            if (!gig.gigId && e.date === gig.date && e.venue === gig.venue) return false;
+            return true;
+        });
+        if (cal.length !== cBefore) {
+            await saveBandDataToDrive('_band', 'calendar_events', cal);
+            summary.calendarEvent = true;
+        }
+    } catch(e) { console.warn('[Cascade] calendar_events delete failed:', e && e.message); }
+
+    // 3. _band/setlists — only the auto-created blank one. If the band added
+    //    songs we keep the setlist and just unlink the back-ref.
+    if (gig.setlistId) {
+        try {
+            var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+            var sIdx = setlists.findIndex(function(s) { return s.setlistId === gig.setlistId; });
+            if (sIdx >= 0) {
+                var sl = setlists[sIdx];
+                var untouched = Array.isArray(sl.sets)
+                    && sl.sets.length === 1
+                    && (sl.sets[0].name === 'Set 1' || !sl.sets[0].name)
+                    && (sl.sets[0].songs || []).length === 0
+                    && !sl.notes
+                    && sl.gigId === gig.gigId;
+                if (untouched) {
+                    setlists.splice(sIdx, 1);
+                    summary.setlist = true;
+                } else {
+                    if (sl.gigId === gig.gigId) sl.gigId = null;
+                    summary.setlistKept = sl.name || sl.setlistId;
+                }
+                await saveBandDataToDrive('_band', 'setlists', setlists);
+                if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
+                else { window._cachedSetlists = null; window._glCachedSetlists = null; }
+            }
+        } catch(e) { console.warn('[Cascade] setlists delete failed:', e && e.message); }
+    }
+    return summary;
+}
+
 async function deleteGig(idx) {
     if (!requireSignIn()) return;
     if (!confirm('Delete this gig? This cannot be undone.')) return;
     const raw = (typeof GLStore !== 'undefined' && GLStore.getGigs().length) ? GLStore.getGigs() : toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
-    const data = [...raw];
-    data.splice(idx, 1);
-    await saveBandDataToDrive('_band', 'gigs', data);
-    showToast('🗑️ Gig deleted');
+    const gig = raw[idx];
+    if (!gig) { if (typeof showToast === 'function') showToast('Gig not found'); return; }
+    var sum = await _cascadeDeleteGig(gig);
+    // Build a specific receipt so the user sees exactly what was cleaned up.
+    var parts = [];
+    if (sum.gig) parts.push('gig');
+    if (sum.calendarEvent) parts.push('calendar entry');
+    if (sum.setlist) parts.push('blank setlist');
+    if (sum.setlistKept) parts.push('setlist "' + sum.setlistKept + '" kept (had content)');
+    if (typeof showToast === 'function') {
+        showToast('🗑️ ' + (parts.length ? 'Removed: ' + parts.join(', ') : 'Gig deleted'));
+    }
     loadGigs();
 }
 
@@ -1581,6 +1667,29 @@ window.gigSetAvailability = async function(gigIdx, status) {
 // in all browsers (Safari). Explicit assignment ensures onclick handlers work.
 window.deleteGig = deleteGig;
 window.editGig = editGig;
+window._cascadeDeleteGig = _cascadeDeleteGig;
+
+// Open the gig editor for a specific gig — by gigId OR by date — used by
+// Calendar surfaces (Next Up cards, mobile date sheet) so taps land on the
+// right gig instead of the generic Setlists page (D1 in bug_queue.md).
+// Accepts either form because the desktop Next Up cards have ev.gigId at
+// hand, but the mobile date sheet only has the clicked date.
+window.openGigById = async function(gigIdOrDate) {
+    if (typeof showPage !== 'function') return;
+    showPage('gigs');
+    if (!gigIdOrDate) return;
+    // Pull fresh from Drive so we don't race with showPage's async render
+    // (loadGigs() runs in parallel; its cache may not be populated yet).
+    var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var idx = gigs.findIndex(function(g) {
+        return (g.gigId && g.gigId === gigIdOrDate) || g.date === gigIdOrDate;
+    });
+    if (idx < 0) {
+        if (typeof showToast === 'function') showToast('Gig not found in Gigs list');
+        return;
+    }
+    if (typeof editGig === 'function') editGig(idx);
+};
 window.saveGigEdit = saveGigEdit;
 window.gigLaunchLinkedSetlist = gigLaunchLinkedSetlist;
 window.loadGigs = loadGigs;
