@@ -2096,6 +2096,15 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
           '<input id="sdStemsCountIn" type="checkbox" ' + (window._sdCountInEnabled === false ? '' : 'checked') + ' onchange="window._sdCountInEnabled=this.checked"> Count-in' +
         '</label>' +
     '</div>' +
+    // GrooveMate hint pill — populated dynamically by _sdGmRefreshHint.
+    // Hidden by default; appears with Apply / Dismiss when ambient
+    // GrooveMate evaluates a high-priority stems-* intent.
+    '<div id="sdStemsGmHint" data-intent="" style="display:none;margin:0 4px 10px;padding:8px 10px;border-radius:8px;background:rgba(167,139,250,0.10);border:1px solid rgba(167,139,250,0.35);font-size:0.78em;color:#c4b5fd;align-items:center;gap:8px;flex-wrap:wrap">'
+      + '<span style="font-size:0.85em">🎯</span>'
+      + '<span id="sdStemsGmHintMsg" style="flex:1;min-width:140px;line-height:1.35"></span>'
+      + '<button onclick="_sdGmApplyHint()" type="button" style="background:rgba(167,139,250,0.18);border:1px solid rgba(167,139,250,0.5);color:#ddd6fe;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.95em;font-weight:700">Apply</button>'
+      + '<button onclick="_sdGmDismissHint()" type="button" style="background:none;border:1px solid rgba(255,255,255,0.12);color:var(--text-dim);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.95em">Dismiss</button>'
+    + '</div>' +
     // Tiny subtitle so first-timers find the keys. Two flavors:
     // - kbd-hint: shown on hover-capable / pointer-fine devices (desktop)
     // - touch-hint: shown on coarse-pointer devices (phone/tablet) — points
@@ -3055,7 +3064,81 @@ function _sdStemsRedrawLoopUI() {
         }
     }
     _sdStemsRedrawLoopMarkers();
+    // Record loop activations into the GLContext memory feed and re-evaluate
+    // GrooveMate. Only count fully-armed loops (both markers + enabled);
+    // intermediate states would noise the deepen-rule.
+    if (_sdLoop.inSec != null && _sdLoop.outSec != null && _sdLoop.enabled) {
+        _sdRecordRecentLoop();
+    }
+    _sdGmRefreshHint();
 }
+
+// Append the current song + loop start to a localStorage rolling window so
+// the GrooveMate stems-loop-deepen rule can detect "looped this section
+// N times". Capped at 30 so the JSON stays cheap to read.
+function _sdRecordRecentLoop() {
+    if (!_sdCurrentSong || _sdLoop.inSec == null) return;
+    try {
+        var raw = localStorage.getItem('gl_recent_loops');
+        var list = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(list)) list = [];
+        // Coalesce: if the most-recent entry is the same song+section within
+        // the last 5s, replace its ts rather than appending. Prevents UI
+        // toggles from inflating the count.
+        var now = Date.now();
+        var head = list[0];
+        if (head && head.song === _sdCurrentSong
+            && Math.abs((head.inSec || 0) - _sdLoop.inSec) < 0.5
+            && (now - (head.ts || 0)) < 5000) {
+            head.ts = now;
+        } else {
+            list.unshift({ song: _sdCurrentSong, inSec: _sdLoop.inSec, outSec: _sdLoop.outSec, ts: now });
+        }
+        list = list.slice(0, 30);
+        localStorage.setItem('gl_recent_loops', JSON.stringify(list));
+    } catch (e) {}
+}
+
+// ── GrooveMate hint pill (per-song, per-loop) ──────────────────────────────
+// Reads ambient context via GLContext + GLGrooveMate, paints the
+// #sdStemsGmHint banner if the top decision is a stems-* intent. Apply
+// runs the action through GLActions; Dismiss records a 24h suppression.
+var _sdGmCurrentDecision = null;
+function _sdGmRefreshHint() {
+    var pill = document.getElementById('sdStemsGmHint');
+    if (!pill) return;
+    if (!window.GLGrooveMate || !window.GLContext) {
+        pill.style.display = 'none';
+        return;
+    }
+    var decision = GLGrooveMate.evaluate(GLContext.snapshot());
+    if (!decision || !decision.intent || decision.intent.indexOf('stems-') !== 0) {
+        pill.style.display = 'none';
+        _sdGmCurrentDecision = null;
+        return;
+    }
+    _sdGmCurrentDecision = decision;
+    pill.dataset.intent = decision.intent;
+    var msgEl = document.getElementById('sdStemsGmHintMsg');
+    if (msgEl) msgEl.textContent = decision.message || '';
+    pill.style.display = 'flex';
+    if (typeof GLGrooveMate.recordDecision === 'function') GLGrooveMate.recordDecision(decision);
+}
+window._sdGmApplyHint = function () {
+    if (!_sdGmCurrentDecision || !window.GLGrooveMate) return;
+    GLGrooveMate.accept(_sdGmCurrentDecision);
+    var pill = document.getElementById('sdStemsGmHint');
+    if (pill) pill.style.display = 'none';
+    _sdGmCurrentDecision = null;
+};
+window._sdGmDismissHint = function () {
+    if (_sdGmCurrentDecision && window.GLGrooveMate) {
+        GLGrooveMate.dismiss(_sdGmCurrentDecision.intent);
+    }
+    var pill = document.getElementById('sdStemsGmHint');
+    if (pill) pill.style.display = 'none';
+    _sdGmCurrentDecision = null;
+};
 
 // Practice preset = mute one stem so the user can play/sing that part with
 // everything else playing. Clicking the active preset again toggles back
@@ -4425,3 +4508,86 @@ function _sdRefreshLoveCard(_unused, title) {
 }
 
 console.log('✅ song-detail.js loaded (Phase 2 — direct Firebase, no DOM mirroring)');
+
+// ── GLActions: stems-domain actions ─────────────────────────────────────────
+// Real handlers overwrite the gl-actions.js stubs. Wraps the existing
+// _sdStems* functions so GrooveMate (and eventually GLActionRouter) can
+// drive them without referencing module-internal globals.
+if (typeof window !== 'undefined' && window.GLActions) {
+
+  // Set / arm a loop. Accepts { inSec, outSec, enabled }; missing fields
+  // leave the existing values in place.
+  window.GLActions.register('stems.setLoop', function (args) {
+    args = args || {};
+    if (typeof args.inSec === 'number' && typeof window._sdStemsSetLoopIn === 'function') {
+      window._sdStemsSetLoopIn(args.inSec);
+    }
+    if (typeof args.outSec === 'number' && typeof window._sdStemsSetLoopOut === 'function') {
+      window._sdStemsSetLoopOut(args.outSec);
+    }
+    if (args.enabled === false && typeof _sdLoop !== 'undefined' && _sdLoop.enabled) {
+      if (typeof window._sdStemsToggleLoop === 'function') window._sdStemsToggleLoop();
+    }
+    if (args.enabled === true && typeof _sdLoop !== 'undefined' && !_sdLoop.enabled) {
+      if (typeof window._sdStemsToggleLoop === 'function') window._sdStemsToggleLoop();
+    }
+    return {
+      inSec: (typeof _sdLoop !== 'undefined') ? _sdLoop.inSec : null,
+      outSec: (typeof _sdLoop !== 'undefined') ? _sdLoop.outSec : null,
+      enabled: (typeof _sdLoop !== 'undefined') ? !!_sdLoop.enabled : false
+    };
+  }, { source: 'song-detail.js' });
+
+  // Apply a practice preset. Currently the only mode is "mute one stem so
+  // you can play that part live." stemId comes from the Demucs vocabulary
+  // (drums/bass/vocals/other/keys/guitar). Future modes (e.g. "drums+bass
+  // backbone") would wire here without changing GrooveMate.
+  window.GLActions.register('stems.applyPracticeMode', function (args) {
+    args = args || {};
+    if (args.mode === 'mute-stem' && args.stemId) {
+      if (typeof window._sdStemsApplyPreset === 'function') {
+        window._sdStemsApplyPreset(args.stemId);
+        return { ok: true, mode: 'mute-stem', stemId: args.stemId };
+      }
+    }
+    if (args.mode === 'reset' || args.mode === 'all-on') {
+      if (typeof window._sdStemsResetPresets === 'function') {
+        window._sdStemsResetPresets();
+        return { ok: true, mode: 'reset' };
+      }
+    }
+    return { ok: false, reason: 'unsupported mode', mode: args.mode };
+  }, { source: 'song-detail.js' });
+
+  // Reset all stem volumes back to 80% (the existing 🔊 Reset volumes
+  // behavior). Distinct from applyPracticeMode reset which is about the
+  // mute preset.
+  window.GLActions.register('stems.resetMix', function () {
+    if (typeof window._sdStemsResetVolumes === 'function') {
+      window._sdStemsResetVolumes();
+      return { ok: true };
+    }
+    return { ok: false, reason: '_sdStemsResetVolumes missing' };
+  }, { source: 'song-detail.js' });
+
+  // Stub remains for stems.recordTake — record-take UI doesn't exist yet.
+}
+
+// Refresh the GrooveMate hint pill whenever stems fullscreen toggles
+// (entering fullscreen is a strong signal the user is in deep-practice
+// mode and is the moment a hint is most useful).
+if (typeof window !== 'undefined') {
+  var _sdGmOrigToggleFullscreen = window._sdStemsToggleFullscreen;
+  if (typeof _sdGmOrigToggleFullscreen === 'function') {
+    window._sdStemsToggleFullscreen = function () {
+      var r = _sdGmOrigToggleFullscreen.apply(this, arguments);
+      try {
+        if (typeof _sdGmRefreshHint === 'function') {
+          // After the toggle settles into the DOM, re-evaluate.
+          setTimeout(_sdGmRefreshHint, 50);
+        }
+      } catch (e) {}
+      return r;
+    };
+  }
+}

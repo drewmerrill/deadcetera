@@ -1409,6 +1409,12 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // No separate cards — flows as a single story
     var _leftHtml = '';
 
+    // ── GrooveMate ambient suggestion (additive — does NOT replace any
+    // existing hero). Renders as a small card above the rest of the home
+    // narrative when the unified decision engine returns a high-priority
+    // intent. Apply runs the registered action; Dismiss suppresses for 24h.
+    _leftHtml += _renderHdGroovemateSuggestion();
+
     // Band Feed pending — TOP of dashboard so unread/unvoted items are
     // impossible to miss when the user lands on the home page. Pulls from
     // FeedActionState which tracks "needs my input" across polls, ideas,
@@ -6267,3 +6273,66 @@ if (typeof GLStore !== 'undefined' && GLStore.on) {
     }
   });
 }
+
+// ── GrooveMate ambient suggestion card (additive) ───────────────────────────
+// Renders ONLY when the unified decision engine returns a non-null intent.
+// Existing hero blocks are untouched — this card sits above them.
+// Apply → GLGrooveMate.accept (runs the action through GLActions).
+// Dismiss → 24h suppression via GLStore.recordGroovemateDismissal.
+var _hdGmCurrentDecision = null;
+function _renderHdGroovemateSuggestion() {
+    if (!window.GLGrooveMate || !window.GLContext) return '';
+    var decision;
+    try { decision = GLGrooveMate.evaluate(GLContext.snapshot()); }
+    catch (e) { return ''; }
+    if (!decision || !decision.intent) {
+        _hdGmCurrentDecision = null;
+        return '';
+    }
+    _hdGmCurrentDecision = decision;
+    if (typeof GLGrooveMate.recordDecision === 'function') {
+        try { GLGrooveMate.recordDecision(decision); } catch (e) {}
+    }
+    var msg = decision.message || 'Suggestion ready';
+    var pri = decision.priority || 0;
+    // Visual weight scales with priority — URGENT gets a more saturated
+    // border so a 2-day-out gig pops vs. a soft suggestion.
+    var border = pri >= 4 ? 'rgba(239,68,68,0.55)'
+              : pri >= 3 ? 'rgba(245,158,11,0.5)'
+              : 'rgba(167,139,250,0.4)';
+    var bg = pri >= 4 ? 'rgba(239,68,68,0.10)'
+          : pri >= 3 ? 'rgba(245,158,11,0.08)'
+          : 'rgba(167,139,250,0.08)';
+    var color = pri >= 4 ? '#fca5a5'
+             : pri >= 3 ? '#fbbf24'
+             : '#c4b5fd';
+    return '<div id="hdGmCard" data-intent="' + _escHtml(decision.intent) + '" '
+        + 'style="padding:12px 14px;margin-bottom:12px;border-radius:12px;'
+        + 'background:' + bg + ';border:1px solid ' + border + ';'
+        + 'display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+        + '<span style="font-size:1.1em;flex-shrink:0">🎯</span>'
+        + '<div style="flex:1;min-width:160px">'
+            + '<div style="font-size:0.78em;font-weight:800;letter-spacing:0.04em;color:' + color + ';text-transform:uppercase;margin-bottom:2px">GrooveMate</div>'
+            + '<div style="font-size:0.85em;color:var(--text);line-height:1.35">' + _escHtml(msg) + '</div>'
+        + '</div>'
+        + '<button onclick="_hdGmApplySuggestion()" type="button" style="background:' + bg + ';border:1px solid ' + border + ';color:' + color + ';padding:6px 14px;border-radius:7px;cursor:pointer;font-size:0.78em;font-weight:700">Apply</button>'
+        + '<button onclick="_hdGmDismissSuggestion()" type="button" style="background:none;border:1px solid rgba(255,255,255,0.12);color:var(--text-dim);padding:6px 12px;border-radius:7px;cursor:pointer;font-size:0.78em">Dismiss</button>'
+        + '</div>';
+}
+
+window._hdGmApplySuggestion = function () {
+    if (!_hdGmCurrentDecision || !window.GLGrooveMate) return;
+    GLGrooveMate.accept(_hdGmCurrentDecision);
+    _hdGmCurrentDecision = null;
+    var card = document.getElementById('hdGmCard');
+    if (card) card.style.display = 'none';
+};
+
+window._hdGmDismissSuggestion = function () {
+    if (_hdGmCurrentDecision && window.GLGrooveMate) {
+        GLGrooveMate.dismiss(_hdGmCurrentDecision.intent);
+    }
+    _hdGmCurrentDecision = null;
+    var card = document.getElementById('hdGmCard');
+    if (card) card.style.display = 'none';
+};

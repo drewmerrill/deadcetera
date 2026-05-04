@@ -7102,3 +7102,33 @@ if (typeof GLStore !== 'undefined' && GLStore.on) {
     }
   });
 }
+
+// ── GLActions: rehearsal-domain actions ─────────────────────────────────────
+// Real handlers overwrite the gl-actions.js stubs. Invoked by GrooveMate
+// (ambient suggestions) and eventually by GLActionRouter (avatar input).
+if (typeof window !== 'undefined' && window.GLActions) {
+  // Open the suggested song's detail view. This is the path GrooveMate
+  // takes when a gig is imminent and a setlist song needs work.
+  window.GLActions.register('rehearsal.suggestNextSong', function (args) {
+    if (!args || !args.songId) return { ok: false, reason: 'missing songId' };
+    if (typeof window.selectSong === 'function') {
+      window.selectSong(args.songId);
+      return { ok: true, navigatedTo: args.songId };
+    }
+    if (typeof window.showPage === 'function') {
+      window.showPage('songs');
+      return { ok: true, navigatedTo: 'songs', fallback: true };
+    }
+    return { ok: false, reason: 'no navigator' };
+  }, { source: 'rehearsal.js' });
+
+  // Wraps the existing rehearsal page entry. Deeper agenda surfaces can
+  // register over this later.
+  window.GLActions.register('rehearsal.startRehearsal', function () {
+    if (typeof window.showPage === 'function') {
+      window.showPage('rehearsal');
+      return { ok: true };
+    }
+    return { ok: false, reason: 'no navigator' };
+  }, { source: 'rehearsal.js' });
+}
