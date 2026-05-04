@@ -3679,10 +3679,21 @@ async function _calSyncAttendeeStatuses() {
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
         if (!db || typeof bandPath !== 'function') return;
         var syncCount = 0;
+        var orphansMarked = 0;
         for (var i = 0; i < events.length; i++) {
             var ev = events[i];
             if (!ev.sync || !ev.sync.externalEventId || ev.sync.status !== 'synced') continue;
             var statuses = await GLCalendarSync.syncAttendeeStatus(ev.sync.externalEventId);
+            // 2026-05-04: 'orphan' sentinel = event was deleted on Google. Mark
+            // the local row so the next attendee sync skips it (the status
+            // filter above checks for 'synced'), instead of re-poking the
+            // dead id every time and spamming 404s in the console.
+            if (statuses === 'orphan') {
+                ev.sync.status = 'orphaned';
+                ev.syncStatus = 'orphaned';
+                orphansMarked++;
+                continue;
+            }
             if (!statuses) continue;
             var dateKey = (ev.date || '').replace(/-/g, '');
             if (!dateKey) continue;
@@ -3700,8 +3711,12 @@ async function _calSyncAttendeeStatuses() {
                 syncCount++;
             }
         }
+        if (orphansMarked > 0) {
+            try { await saveBandDataToDrive('_band', 'calendar_events', events); }
+            catch(e) { console.warn('[Calendar] orphan-flag save failed:', e && e.message); }
+        }
         _attendeeSyncedAt = Date.now();
-        console.log('[Calendar] Attendee statuses synced:', syncCount, 'events updated');
+        console.log('[Calendar] Attendee statuses synced:', syncCount, 'events updated · orphans skipped+flagged:', orphansMarked);
     } catch(e) { console.warn('[Calendar] Attendee sync failed:', e); }
 }
 

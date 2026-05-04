@@ -1068,6 +1068,11 @@ window.GLCalendarSync = (function() {
       var res = await fetch(_url, {
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
+      // 2026-05-04: 404/410 = the Google event was deleted out from under us.
+      // Don't keep poking it on every sync — return a sentinel so the caller
+      // can mark the local row's sync.status as 'orphaned'. We do NOT delete
+      // the local row (D4 lesson: auto-deletes were the original loss vector).
+      if (res.status === 404 || res.status === 410) return 'orphan';
       if (!res.ok) return null;
       var data = await res.json();
       if (!data.attendees) return null;
