@@ -63,6 +63,20 @@ Claude memory should never store roadmap content — update this file instead.
 - Rehearsal block duration budgeting for non-song blocks
 - Per-song setlist duration override field
 
+## Calendar / Gigs / Setlist consolidation — queued
+
+### Finish the Calendar/Gigs merge (Step 2+)
+**Status:** Backlog. Logged 2026-05-04 — Step 1 shipped per `CURRENT_PHASE.md:262`; Step 2+ never landed and is now generating user-visible bugs (orphan rows on delete, broken cascade UX, gig vs setlist navigation confusion).
+**Why:** Today gigs live in **two** Firebase nodes — `calendar_events` (Calendar page) and `gigs` (Gigs page) — plus an auto-created setlist. Every create/update/delete needs hand-coded cascades that keep regressing. The dual-write architecture is the underlying cause of bug_queue items D1/D2/D3 (2026-05-04 Drew dump).
+**Plan (~3–5 days):**
+1. **One canonical node:** `calendar_events` becomes the single source of truth. Add `kind: 'gig' | 'rehearsal' | 'block' | 'busy'` and a `gigDetails` sub-object (venue, payout, contact, …) when `kind === 'gig'`.
+2. **Setlist as a child:** `calendar_events/{eventId}/setlistId` references a setlist row. Setlist rows live in their own collection but are owned by the event.
+3. **Gigs page becomes a filtered view** of `calendar_events` where `kind === 'gig'`, sorted by date. No separate writes.
+4. **Migration:** one-shot Firebase script merges existing `gigs` rows into matching `calendar_events` rows by date+venue match; for `gigs` rows with no calendar event, create one. Then deprecate the `gigs` collection (read-only fallback for ~30 days, then drop).
+5. **Cascade is automatic** because there's only one row per gig.
+**Tactical interim (next session):** ship cascade fixes that keep both nodes in sync on delete + setlist orphan cleanup. Closes D1/D2/D3 in hours. Cascade logic survives into the merge — not throwaway work.
+**Acceptance:** Deleting a gig from anywhere (Calendar, Gigs page, Google sync) removes it from every surface. Tapping a gig in Calendar opens that gig's editor (not a generic list). No "gigs created from Google calendar" / "gigs created in Gigs page" divergence.
+
 ## Stems Intelligence — queued
 
 ### MusicXML migration (canonical notation format)
