@@ -78,6 +78,10 @@ export default {
     // Body: { tokens: [...], title, body, click_action?, data? }
     if (path === '/push/send' && request.method === 'POST')
       return handleFcmPushSend(request, env);
+    // Twilio SMS send — single message, A2P 10DLC channel.
+    // Body: { to: '+14085551234', body: 'message text' }
+    if (path === '/sms/send' && request.method === 'POST')
+      return handleTwilioSmsSend(request, env);
     // Stem separation — proxies to Modal HT-Demucs endpoint, holds the
     // shared secret server-side, accepts either a public URL or a Drive
     // fileId+token (which we re-route through our own /drive-stream).
@@ -1587,6 +1591,63 @@ async function handleFcmPushSend(request, env) {
   const failed = results.length - sent;
   const invalidTokens = results.filter(r => r.invalid).map(r => r.token);
   return cors(jsonResp({ sent: sent, failed: failed, invalidTokens: invalidTokens, total: tokens.length }));
+}
+
+// ── Twilio SMS Send ──────────────────────────────────────────────────────────
+// Single-recipient SMS via Twilio Messages API. Used for opt-in confirmation
+// and (eventually) per-event band notifications. A2P 10DLC channel.
+//
+// Required worker secrets (set via `wrangler secret put`):
+//   - TWILIO_ACCOUNT_SID
+//   - TWILIO_AUTH_TOKEN
+//   - TWILIO_FROM_NUMBER (E.164, e.g. +14085398813)
+//
+// Body: { to: '+14085551234', body: 'message text' }
+// Returns: { success: bool, sid?: string, status?: string, error?: string, code?: int }
+async function handleTwilioSmsSend(request, env) {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_FROM_NUMBER) {
+    return cors(jsonError('Twilio secrets not configured on worker', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const to = String(body.to || '').trim();
+  const text = String(body.body || '').trim();
+  if (!/^\+\d{10,15}$/.test(to)) return cors(jsonError('invalid_to_phone (must be E.164, e.g. +14085551234)', 400));
+  if (!text) return cors(jsonError('empty_body', 400));
+  if (text.length > 1600) return cors(jsonError('body_too_long (max 1600 chars)', 400));
+
+  const auth = btoa(env.TWILIO_ACCOUNT_SID + ':' + env.TWILIO_AUTH_TOKEN);
+  const params = new URLSearchParams();
+  params.set('From', env.TWILIO_FROM_NUMBER);
+  params.set('To', to);
+  params.set('Body', text);
+
+  try {
+    const res = await fetch(
+      'https://api.twilio.com/2010-04-01/Accounts/' + encodeURIComponent(env.TWILIO_ACCOUNT_SID) + '/Messages.json',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + auth,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: params.toString()
+      }
+    );
+    let data;
+    try { data = await res.json(); } catch(e) { data = {}; }
+    if (res.ok) {
+      return cors(jsonResp({ success: true, sid: data.sid, status: data.status }));
+    }
+    return cors(jsonResp({
+      success: false,
+      error: data.message || ('twilio_http_' + res.status),
+      code: data.code,
+      moreInfo: data.more_info
+    }, res.status));
+  } catch (e) {
+    return cors(jsonError('twilio_request_failed: ' + (e && e.message), 502));
+  }
 }
 
 // ── Stem Separation (Modal proxy, async) ─────────────────────────────────────

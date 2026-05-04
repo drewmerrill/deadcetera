@@ -10236,8 +10236,125 @@ async function _renderNotifSettings() {
         });
     }
 
+    // ── SMS Notifications (independent channel — works regardless of push) ──
+    var smsOptedIn = false;
+    var smsPhone = '';
+    try {
+        var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+        if (memberKey && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+            var snap = await firebaseDB.ref(bandPath('sms_subscriptions/' + memberKey)).once('value');
+            var data = snap.val();
+            if (data) {
+                smsPhone = data.phone || '';
+                smsOptedIn = (data.status === 'active');
+            }
+        }
+    } catch(e) { console.warn('[Notif] sms-subscription read failed:', e && e.message); }
+    var safePhone = String(smsPhone).replace(/[<>"'&]/g, '');
+    html += '<div style="margin-top:24px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06)">'
+        + '<div style="font-weight:700;color:var(--text);font-size:0.95em;margin-bottom:6px">📱 SMS Notifications</div>'
+        + '<div style="font-size:0.8em;color:var(--text-dim);line-height:1.45;margin-bottom:12px">Get text messages for the same activity push covers — useful when push isn\'t available (e.g. iOS without PWA install, or in spotty cell areas). Optional, off by default.</div>'
+        + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'
+        + '<input type="tel" id="smsPhoneInput" placeholder="(555) 123-4567" value="' + safePhone + '" autocomplete="tel" inputmode="tel" style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.88em;font-family:inherit"' + (smsOptedIn ? ' disabled' : '') + '>'
+        + '<button onclick="_smsToggleOptIn()" id="smsToggleBtn" style="padding:8px 18px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;border:1px solid ' + (smsOptedIn ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)') + ';background:' + (smsOptedIn ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (smsOptedIn ? '#86efac' : 'var(--text-dim)') + ';white-space:nowrap">' + (smsOptedIn ? '✓ On' : 'Enable') + '</button>'
+        + '</div>'
+        + '<div style="font-size:0.7em;color:var(--text-dim);line-height:1.5">By enabling, you authorize GrooveLinx to send SMS to this number about your band. Reply <strong>STOP</strong> to opt out. Reply <strong>HELP</strong> for help. Msg & data rates may apply. Msg frequency varies (typically a few/week). <a href="/sms-opt-in.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Details</a> · <a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Privacy</a> · <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Terms</a></div>'
+        + '</div>';
+
     el.innerHTML = html;
 }
+
+// Normalize a user-typed phone into E.164. Returns null if not parseable.
+// Defaults to +1 (US) for 10-digit input.
+window._smsNormalizePhone = function(input) {
+    if (!input) return null;
+    var trimmed = String(input).trim();
+    var hasPlus = trimmed.charAt(0) === '+';
+    var digits = trimmed.replace(/\D/g, '');
+    if (hasPlus && digits.length >= 10 && digits.length <= 15) return '+' + digits;
+    if (digits.length === 10) return '+1' + digits;
+    if (digits.length === 11 && digits.charAt(0) === '1') return '+' + digits;
+    return null;
+};
+
+window._smsToggleOptIn = async function() {
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    if (!memberKey) {
+        if (typeof showToast === 'function') showToast('⚠ Sign in first', 4000);
+        return;
+    }
+    if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') {
+        if (typeof showToast === 'function') showToast('⚠ Firebase not ready — refresh the page', 4000);
+        return;
+    }
+    var ref = firebaseDB.ref(bandPath('sms_subscriptions/' + memberKey));
+    var snap = await ref.once('value');
+    var current = snap.val() || {};
+    var currentlyOptedIn = (current.status === 'active');
+
+    if (currentlyOptedIn) {
+        // Opt out
+        if (!confirm('Disable SMS notifications? You will not receive band texts going forward. (You can also reply STOP to any GrooveLinx SMS to opt out at the carrier level.)')) return;
+        await ref.update({
+            status: 'opted_out',
+            optedOutAt: new Date().toISOString()
+        });
+        if (typeof showToast === 'function') showToast('✓ SMS notifications disabled', 4000);
+        if (typeof _renderNotifSettings === 'function') _renderNotifSettings();
+        return;
+    }
+
+    // Opt in
+    var input = document.getElementById('smsPhoneInput');
+    var raw = input ? input.value.trim() : '';
+    var normalized = window._smsNormalizePhone(raw);
+    if (!normalized) {
+        if (typeof showToast === 'function') showToast('⚠ Enter a valid US phone number (e.g. 555-123-4567)', 5000);
+        if (input) { input.focus(); input.select(); }
+        return;
+    }
+
+    var btn = document.getElementById('smsToggleBtn');
+    if (btn) { btn.textContent = 'Sending…'; btn.disabled = true; }
+
+    // Persist opt-in BEFORE sending so we don't lose state if the SMS request fails.
+    try {
+        await ref.set({
+            phone: normalized,
+            status: 'active',
+            optedInAt: new Date().toISOString(),
+            consentSource: 'app_settings_toggle',
+            consentVersion: '1.0'
+        });
+    } catch(e) {
+        if (btn) { btn.textContent = 'Enable'; btn.disabled = false; }
+        if (typeof showToast === 'function') showToast('⚠ Failed to save: ' + e.message, 6000);
+        return;
+    }
+
+    // Send confirmation SMS via worker → Twilio.
+    var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+    var confirmMsg = "GrooveLinx: You've opted in to band notifications. Msg frequency varies, typically a few per week. Reply HELP for help, STOP to cancel. Msg & data rates may apply.";
+    try {
+        var res = await fetch(WORKER_BASE + '/sms/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: normalized, body: confirmMsg })
+        });
+        var json = await res.json();
+        if (json && json.success) {
+            if (typeof showToast === 'function') showToast('✓ Confirmation SMS sent — check your phone', 5000);
+            console.log('[SMS] sent sid=', json.sid, 'status=', json.status);
+        } else {
+            console.warn('[SMS] send failed:', json);
+            if (typeof showToast === 'function') showToast('⚠ Subscribed but confirmation SMS failed: ' + (json && json.error || 'unknown') + ' (check Twilio secrets)', 8000);
+        }
+    } catch(e) {
+        console.warn('[SMS] worker call failed:', e);
+        if (typeof showToast === 'function') showToast('⚠ Subscribed but SMS send errored: ' + e.message, 7000);
+    }
+    if (typeof _renderNotifSettings === 'function') _renderNotifSettings();
+};
 
 window._toggleNotifMaster = async function() {
     // Redirect to GLPush (FCM v1) — the legacy fas.enablePush() used the
