@@ -1,6 +1,6 @@
 # GrooveLinx Roadmap
 
-_Last updated: 2026-03-22_
+_Last updated: 2026-05-04_
 
 All product ideas, feature requests, and API integrations live here.
 Claude memory should never store roadmap content — update this file instead.
@@ -62,3 +62,30 @@ Claude memory should never store roadmap content — update this file instead.
 - Best groove segment detection
 - Rehearsal block duration budgeting for non-song blocks
 - Per-song setlist duration override field
+
+## Stems Intelligence — queued
+
+### MusicXML migration (canonical notation format)
+**Status:** Backlog. Logged 2026-05-04 — Drew confirmed the May 2 recommendation should ship.
+**Why:** Canonical storage is currently ABC. MusicXML is the universal interchange format (MuseScore, Finale, Sibelius, Dorico, Logic Pro, alphaTab) and is what the band actually exports to / imports from. ABC was a reasonable lightweight pick when abcjs was the only renderer, but it loses fidelity on multi-staff, lyrics, and chord symbols — exactly what Harmony Lab needs as it grows. See `memory/project_notation_format.md` for the full rationale and competitive table.
+**Plan (~1–2 days):**
+1. Server: change Basic Pitch worker output from MIDI→ABC to **MIDI→MusicXML** (Python `music21` lib).
+2. Client: thin **MusicXML→ABC adapter** so the existing `harmony-lab.js:629` abcjs render path keeps working unchanged.
+3. One-shot Firebase migration: convert existing `harmonies_data` ABC entries to MusicXML.
+4. Update spec drift: `stems_intelligence_plan.md` lines 29, 134, 161, 293, 380, 415, 428, 469, 474, 484, 678 and `competitive_matrix.md` lines 189, 248. Replace ABC references with MusicXML.
+5. Defer: OSMD swap (replaces abcjs) until multi-voice harmony display is needed.
+**Acceptance:** Basic Pitch on a vocals stem produces MusicXML; Harmony Lab still renders via abcjs (now via the adapter); MuseScore download/upload uses the same MusicXML directly.
+
+### Score-aligned soft mask for vocal isolation (Stems Phase 3)
+**Status:** Backlog. Logged 2026-05-04 — Phase 3 add-on to the existing Modal DSP service.
+**Why:** For shared-mic close-harmony recordings ("Helplessly Hoping" tier from the bake-off corpus), blind source separation hits the physics ceiling. Score-informed source separation (Ewert / Müller / Cano lineage) uses a known pitch trajectory per voice to build a frequency-domain attenuator that suppresses energy outside the predicted F0 + harmonics window. Real research, real boost — bounded by physics on homophonic stacks, useful on counterpoint / divergent-line passages.
+**Plan (~1–2 days, no GPU):**
+1. Input: MusicXML score (per-voice pitch trajectory) + an audio stem.
+2. Align score time to audio (use existing tempo/beat detection or onset alignment).
+3. Per voice: build a soft spectral mask that passes energy near predicted F0 + harmonics, attenuates elsewhere.
+4. Apply mask in STFT domain; iSTFT back to audio.
+5. Output one isolated audio per voice + per-frame confidence label (high when voice is monophonic at a unique pitch; low when stacked in unison/octaves with another voice).
+6. Wire into stems lens as a new action surface (parallel to spatial split).
+**Honest limits to surface in UI:** Won't unlock close-stacked refrains where partials share frequency bins; will help on lead-line passages and any time the voices diverge in pitch. Confidence label per frame is the trust signal.
+**Depends on:** MusicXML migration above (need the score format locked).
+**Acceptance:** On Helplessly Hoping verses, Mike's lead-line passages are noticeably more isolated than blind LALAL output; on the homophonic refrains, output is honestly labeled "low confidence."
