@@ -901,6 +901,12 @@ function _spRender() {
   }
 
   container.innerHTML = html;
+
+  // Re-anchor the floating element popover after the canvas DOM is rebuilt.
+  // _spOpenMenuIdx survives across renders; this re-positions the toolbar
+  // over the element's new bounding rect (e.g., after rotate / resize /
+  // bring-to-front changes its size or layout).
+  if (_spOpenMenuIdx >= 0) _spRenderElementMenu();
 }
 
 function _spRenderStage(plot) {
@@ -1634,67 +1640,264 @@ function _spRemoveElement(idx) {
 }
 
 /** Click on placed element: shows action menu (edit/move/rotate/input#) */
+// Floating context popover replaces the legacy prompt() menu. Toggles per
+// element; outside-click + Esc close. Rotate / Resize sliders give live
+// preview via direct DOM transform mutation, and commit on release with
+// _spRender. _spOpenMenuIdx is the persistent state — _spRender re-anchors
+// the menu after canvas content changes.
+var _spOpenMenuIdx = -1;
+var _spMenuClickAway = null;
+
 function _spClickElement(idx) {
   var plot = _spPlots[_spCurrentIdx];
   if (!plot || !plot.elements[idx]) return;
-  var el = plot.elements[idx];
-
-  // If a cable is being drawn, this click is the destination
+  // Cable draw in progress → this click is the destination.
   if (_spCableFromIdx >= 0) { _spCableConnect(idx); return; }
-  // If already in move mode for this element, cancel
-  if (_spMoveIdx === idx) { _spMoveIdx = -1; _spRender(); return; }
+  // Toggle: clicking the same element again closes the menu.
+  if (_spOpenMenuIdx === idx) { _spCloseElementMenu(); return; }
+  _spOpenMenuIdx = idx;
+  _spRenderElementMenu();
+}
 
-  var lockState = el.locked ? ' [LOCKED]' : '';
-  var sizeState = el.scale && el.scale !== 1 ? ' [' + Math.round(el.scale * 100) + '%]' : '';
-  var techPreview = el.techInfo ? ' — ' + (el.techInfo.length > 30 ? el.techInfo.slice(0, 30) + '…' : el.techInfo) : '';
-  var action = prompt(
-    el.label + lockState + sizeState + '\n' + (el.techInfo ? techPreview + '\n' : '') + '\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Bring to front\n7 = Send to back\n8 = Tech info / notes\n9 = ' + (el.locked ? 'Unlock' : 'Lock') + '\nR = Resize (free mode only)\n0 = Cancel',
-    '1'
-  );
-  if (action) action = String(action).trim().toLowerCase();
-  if (action === '1') {
-    var newLabel = prompt('Edit label:', el.label);
-    if (newLabel !== null) { el.label = newLabel; _spDirty = true; _spRender(); }
-  } else if (action === '2') {
-    _spMoveIdx = idx;
-    if (typeof showToast === 'function') showToast('Tap an empty cell to move ' + el.label);
-    _spRender();
-  } else if (action === '3') {
-    el.rotation = ((el.rotation || 0) + 90) % 360;
-    _spDirty = true;
-    _spRender();
-  } else if (action === '4') {
-    var num = prompt('Input/channel number (e.g. 3):', el.inputNum || '');
-    if (num !== null) { el.inputNum = num.trim(); _spDirty = true; _spRender(); }
-  } else if (action === '5') {
-    _spStartCableFrom(idx);
-  } else if (action === '6') {
-    var maxZ = (plot.elements || []).reduce(function(m, e) { return Math.max(m, e.z || 0); }, 0);
-    el.z = maxZ + 1;
-    _spDirty = true; _spRender();
-  } else if (action === '7') {
-    var minZ = (plot.elements || []).reduce(function(m, e) { return Math.min(m, e.z || 0); }, 0);
-    el.z = minZ - 1;
-    _spDirty = true; _spRender();
-  } else if (action === '8') {
-    var info = prompt('Tech info / notes for ' + el.label + '\n(e.g. "Mesa Triple Rectifier 2x12", "DW Collectors maple, 4 toms"):', el.techInfo || '');
-    if (info !== null) { el.techInfo = info.trim(); _spDirty = true; _spRender(); }
-  } else if (action === '9') {
-    el.locked = !el.locked;
-    _spDirty = true;
-    if (typeof showToast === 'function') showToast(el.locked ? '🔒 ' + el.label + ' locked' : '🔓 ' + el.label + ' unlocked');
-    _spRender();
-  } else if (action === 'r') {
-    var current = el.scale || 1;
-    var next = prompt('Scale ' + el.label + ' (0.5 = half size, 1 = default, 1.5 = 1.5×, 2 = double, 2.5 = max):', String(current));
-    if (next === null) return;
-    var n = parseFloat(next);
-    if (isNaN(n) || n < 0.5 || n > 2.5) {
-      if (typeof showToast === 'function') showToast('Scale must be between 0.5 and 2.5');
-      return;
+function _spCloseElementMenu() {
+  _spOpenMenuIdx = -1;
+  var menu = document.getElementById('spElMenu');
+  if (menu) menu.remove();
+  if (_spMenuClickAway) {
+    document.removeEventListener('mousedown', _spMenuClickAway, true);
+    document.removeEventListener('keydown', _spMenuClickAway, true);
+    _spMenuClickAway = null;
+  }
+}
+
+function _spRenderElementMenu() {
+  if (_spOpenMenuIdx < 0) return;
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) { _spCloseElementMenu(); return; }
+  var el = plot.elements[_spOpenMenuIdx];
+  if (!el) { _spCloseElementMenu(); return; }
+  var anchor = document.querySelector('[data-el-idx="' + _spOpenMenuIdx + '"]');
+  if (!anchor) { _spCloseElementMenu(); return; }
+
+  var existing = document.getElementById('spElMenu');
+  if (existing) existing.remove();
+
+  var rect = anchor.getBoundingClientRect();
+  var rot = el.rotation || 0;
+  var sc = (typeof el.scale === 'number' && el.scale > 0) ? el.scale : 1;
+  var scPct = Math.round(sc * 100);
+  var btn = 'background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.25);color:#c7d2fe;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:0.78em;text-align:left;display:flex;align-items:center;gap:6px';
+  var sm = 'background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);color:#e2e8f0;padding:4px 6px;border-radius:4px;cursor:pointer;font-size:0.72em;flex:1';
+  var danger = 'background:rgba(220,38,38,0.1);border:1px solid rgba(220,38,38,0.3);color:#fca5a5;padding:6px 10px;border-radius:5px;cursor:pointer;font-size:0.78em;text-align:left;display:flex;align-items:center;gap:6px';
+
+  var html = '<div id="spElMenu" onmousedown="event.stopPropagation()" style="position:fixed;left:0;top:0;background:#0f172a;border:1px solid rgba(99,102,241,0.4);border-radius:8px;box-shadow:0 12px 32px rgba(0,0,0,0.55);padding:8px;z-index:10000;display:flex;flex-direction:column;gap:5px;min-width:220px;max-width:260px;font-family:inherit">';
+  html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 4px 6px;border-bottom:1px solid rgba(255,255,255,0.08)">'
+    + '<div style="flex:1;font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + _spEsc(el.label) + '">' + _spEsc(el.label.split(' – ')[0]) + (el.locked ? ' 🔒' : '') + '</div>'
+    + '<button onclick="_spCloseElementMenu()" title="Close" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1em;padding:0 4px">✕</button>'
+    + '</div>';
+
+  if (el.locked) {
+    html += '<button onclick="_spMenuAction(\'unlock\')" style="' + btn + '">🔓 Unlock</button>';
+    html += '<div style="font-size:0.68em;color:var(--text-dim);padding:2px 4px;font-style:italic">Unlock to edit, rotate, or resize.</div>';
+  } else {
+    // Rotation
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;font-size:0.72em;color:#cbd5e1;font-weight:600">'
+      + '<span>↻ Rotation</span>'
+      + '<span id="spMenuRotVal" style="color:#a5b4fc;font-variant-numeric:tabular-nums">' + rot + '°</span>'
+      + '</div>';
+    html += '<input type="range" min="0" max="359" step="1" value="' + rot + '" oninput="_spMenuRotate(this.value)" onchange="_spMenuRotateCommit(this.value)" style="width:100%;accent-color:#667eea;margin:0">';
+    html += '<div style="display:flex;gap:3px">'
+      + '<button onclick="_spMenuRotateStep(-15)" style="' + sm + '">−15°</button>'
+      + '<button onclick="_spMenuRotateStep(15)" style="' + sm + '">+15°</button>'
+      + '<button onclick="_spMenuRotateStep(-90)" style="' + sm + '">−90°</button>'
+      + '<button onclick="_spMenuRotateStep(90)" style="' + sm + '">+90°</button>'
+      + '<button onclick="_spMenuRotateReset()" style="' + sm + '">0°</button>'
+      + '</div>';
+    // Resize
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 4px 2px;font-size:0.72em;color:#cbd5e1;font-weight:600">'
+      + '<span>⤢ Size</span>'
+      + '<span id="spMenuSizeVal" style="color:#a5b4fc;font-variant-numeric:tabular-nums">' + scPct + '%</span>'
+      + '</div>';
+    html += '<input type="range" min="50" max="250" step="5" value="' + scPct + '" oninput="_spMenuResize(this.value)" onchange="_spMenuResizeCommit(this.value)" style="width:100%;accent-color:#667eea;margin:0">';
+
+    html += '<div style="height:1px;background:rgba(255,255,255,0.08);margin:4px 0"></div>';
+    html += '<button onclick="_spMenuAction(\'edit\')" style="' + btn + '">✎ Edit label</button>';
+    html += '<button onclick="_spMenuAction(\'tech\')" style="' + btn + '">ⓘ Tech info / notes' + (el.techInfo ? ' <span style="opacity:0.6;font-size:0.85em">●</span>' : '') + '</button>';
+    html += '<button onclick="_spMenuAction(\'channel\')" style="' + btn + '">🔢 Set input #' + (el.inputNum ? ' <span style="opacity:0.7">' + _spEsc(el.inputNum) + '</span>' : '') + '</button>';
+    html += '<button onclick="_spMenuAction(\'cable\')" style="' + btn + '">🔌 Cable from here…</button>';
+    html += '<div style="display:flex;gap:3px">'
+      + '<button onclick="_spMenuAction(\'front\')" style="' + sm + '">⬆ Front</button>'
+      + '<button onclick="_spMenuAction(\'back\')" style="' + sm + '">⬇ Back</button>'
+      + '<button onclick="_spMenuAction(\'lock\')" style="' + sm + '">🔒 Lock</button>'
+      + '</div>';
+    html += '<button onclick="_spMenuAction(\'delete\')" style="' + danger + '">🗑 Delete</button>';
+  }
+  html += '</div>';
+
+  document.body.insertAdjacentHTML('beforeend', html);
+
+  // Position: prefer below+right of the anchor, but flip if it would overflow.
+  var menu = document.getElementById('spElMenu');
+  if (menu) {
+    var menuRect = menu.getBoundingClientRect();
+    var pad = 8;
+    var left = rect.right + pad;
+    if (left + menuRect.width > window.innerWidth - pad) {
+      left = rect.left - menuRect.width - pad;
     }
-    el.scale = Math.round(n * 100) / 100;
-    _spDirty = true; _spRender();
+    if (left < pad) left = pad;
+    var top = rect.top;
+    if (top + menuRect.height > window.innerHeight - pad) {
+      top = window.innerHeight - menuRect.height - pad;
+    }
+    if (top < pad) top = pad;
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+  }
+
+  // Outside-click + Esc close. Click on another tile re-routes to its menu
+  // via _spClickElement, so we ignore tile-area mousedowns here.
+  if (!_spMenuClickAway) {
+    _spMenuClickAway = function(ev) {
+      if (ev.type === 'keydown') {
+        if (ev.key === 'Escape') _spCloseElementMenu();
+        return;
+      }
+      var m = document.getElementById('spElMenu');
+      if (m && m.contains(ev.target)) return;
+      if (ev.target.closest && ev.target.closest('[data-el-idx]')) return;
+      _spCloseElementMenu();
+    };
+    document.addEventListener('mousedown', _spMenuClickAway, true);
+    document.addEventListener('keydown', _spMenuClickAway, true);
+  }
+}
+
+// Live preview helpers — mutate DOM transform without rebuilding the canvas.
+// Preserves the current persisted scale during rotate-drag, and the current
+// persisted rotation during resize-drag, so neither slider visually wipes
+// the other while the user is interacting.
+function _spTilePreviewTransform(rotOverride, scaleOverride) {
+  var plot = _spPlots[_spCurrentIdx];
+  var el = plot && plot.elements[_spOpenMenuIdx];
+  if (!el) return 'translate(-50%,-50%)';
+  var r = (rotOverride !== undefined && rotOverride !== null) ? rotOverride : (el.rotation || 0);
+  var tx = 'translate(-50%,-50%) rotate(' + r + 'deg)';
+  if (scaleOverride !== undefined && scaleOverride !== null) tx += ' scale(' + scaleOverride + ')';
+  return tx;
+}
+
+function _spMenuRotate(val) {
+  var rot = parseInt(val, 10) || 0;
+  var span = document.getElementById('spMenuRotVal');
+  if (span) span.textContent = rot + '°';
+  var tile = document.querySelector('[data-el-idx="' + _spOpenMenuIdx + '"]');
+  if (tile) tile.style.transform = _spTilePreviewTransform(rot, null);
+}
+function _spMenuRotateCommit(val) {
+  var plot = _spPlots[_spCurrentIdx];
+  var el = plot && plot.elements[_spOpenMenuIdx];
+  if (!el) return;
+  el.rotation = parseInt(val, 10) || 0;
+  _spDirty = true;
+  _spRender();
+}
+function _spMenuRotateStep(delta) {
+  var plot = _spPlots[_spCurrentIdx];
+  var el = plot && plot.elements[_spOpenMenuIdx];
+  if (!el) return;
+  el.rotation = (((el.rotation || 0) + delta) % 360 + 360) % 360;
+  _spDirty = true;
+  _spRender();
+}
+function _spMenuRotateReset() {
+  var plot = _spPlots[_spCurrentIdx];
+  var el = plot && plot.elements[_spOpenMenuIdx];
+  if (!el) return;
+  el.rotation = 0;
+  _spDirty = true;
+  _spRender();
+}
+function _spMenuResize(val) {
+  var plot = _spPlots[_spCurrentIdx];
+  var el = plot && plot.elements[_spOpenMenuIdx];
+  if (!el) return;
+  var pct = parseInt(val, 10) || 100;
+  var span = document.getElementById('spMenuSizeVal');
+  if (span) span.textContent = pct + '%';
+  // Tile is rendered with width = base * el.scale. Live CSS scale on top is
+  // (target / persisted). Only applies during drag — committed on release.
+  var savedScale = (typeof el.scale === 'number' && el.scale > 0) ? el.scale : 1;
+  var liveScale = (pct / 100) / savedScale;
+  var tile = document.querySelector('[data-el-idx="' + _spOpenMenuIdx + '"]');
+  if (tile) tile.style.transform = _spTilePreviewTransform(null, liveScale);
+}
+function _spMenuResizeCommit(val) {
+  var plot = _spPlots[_spCurrentIdx];
+  var el = plot && plot.elements[_spOpenMenuIdx];
+  if (!el) return;
+  el.scale = (parseInt(val, 10) || 100) / 100;
+  _spDirty = true;
+  _spRender();
+}
+
+function _spMenuAction(action) {
+  var plot = _spPlots[_spCurrentIdx];
+  if (!plot) return;
+  var idx = _spOpenMenuIdx;
+  if (idx < 0) return;
+  var el = plot.elements[idx];
+  if (!el) return;
+  switch (action) {
+    case 'edit': {
+      var newLabel = prompt('Label:', el.label);
+      if (newLabel !== null) { el.label = newLabel; _spDirty = true; _spRender(); }
+      break;
+    }
+    case 'tech': {
+      var info = prompt('Tech info / notes for ' + el.label + '\n(e.g. "Mesa Triple Rectifier 2x12", "DW Collectors maple, 4 toms"):', el.techInfo || '');
+      if (info !== null) { el.techInfo = info.trim(); _spDirty = true; _spRender(); }
+      break;
+    }
+    case 'channel': {
+      var num = prompt('Input/channel number (e.g. 3):', el.inputNum || '');
+      if (num !== null) { el.inputNum = num.trim(); _spDirty = true; _spRender(); }
+      break;
+    }
+    case 'cable': {
+      _spStartCableFrom(idx);
+      _spCloseElementMenu();
+      break;
+    }
+    case 'front': {
+      var maxZ = (plot.elements || []).reduce(function(m, e) { return Math.max(m, e.z || 0); }, 0);
+      el.z = maxZ + 1;
+      _spDirty = true; _spRender();
+      break;
+    }
+    case 'back': {
+      var minZ = (plot.elements || []).reduce(function(m, e) { return Math.min(m, e.z || 0); }, 0);
+      el.z = minZ - 1;
+      _spDirty = true; _spRender();
+      break;
+    }
+    case 'lock':
+    case 'unlock': {
+      el.locked = action === 'lock';
+      _spDirty = true;
+      if (typeof showToast === 'function') showToast(el.locked ? '🔒 ' + el.label + ' locked' : '🔓 ' + el.label + ' unlocked');
+      _spRender();
+      break;
+    }
+    case 'delete': {
+      if (confirm('Remove "' + el.label + '"?')) {
+        plot.elements.splice(idx, 1);
+        _spDirty = true;
+        _spCloseElementMenu();
+        _spRender();
+      }
+      break;
+    }
   }
 }
 
@@ -2847,6 +3050,14 @@ window._spExportToggle = _spExportToggle;
 window._spExportReorder = _spExportReorder;
 window._spExportConfirm = _spExportConfirm;
 window._spClickElement = _spClickElement;
+window._spCloseElementMenu = _spCloseElementMenu;
+window._spMenuAction = _spMenuAction;
+window._spMenuRotate = _spMenuRotate;
+window._spMenuRotateCommit = _spMenuRotateCommit;
+window._spMenuRotateStep = _spMenuRotateStep;
+window._spMenuRotateReset = _spMenuRotateReset;
+window._spMenuResize = _spMenuResize;
+window._spMenuResizeCommit = _spMenuResizeCommit;
 window._spApplyPreset = _spApplyPreset;
 window._spToggleLabels = function(v) { _spShowLabels = v; _spRender(); };
 window._spToggleDirections = function(v) { _spShowDirections = v; _spRender(); };
@@ -2865,7 +3076,7 @@ window._spSetUnits = function(u) {
   _spDirty = true;
   _spRender();
 };
-window._spToggleShareMode = function() { _spShareMode = !_spShareMode; _spRender(); };
+window._spToggleShareMode = function() { if (typeof _spCloseElementMenu === 'function') _spCloseElementMenu(); _spShareMode = !_spShareMode; _spRender(); };
 window._spAddStation = _spAddStation;
 window._spRemoveStation = _spRemoveStation;
 window._spClickStation = _spClickStation;
