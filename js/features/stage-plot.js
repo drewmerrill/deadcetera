@@ -137,18 +137,37 @@ var SP_SVG_LIBRARY = {
 // (saved with emoji icon, no svg field) auto-upgrade to SVG art on render
 // without requiring the user to re-place every prop.
 function _spSvgIdFor(el) {
-  if (el && el.svg && SP_SVG_LIBRARY[el.svg]) return el.svg;
+  if (el && el.svg) {
+    // Honor explicit override if it resolves to *any* known asset.
+    if (SP_ICON_PNGS[el.svg] || SP_SVG_LIBRARY[el.svg]) return el.svg;
+  }
   var label = (el && el.label || '').toLowerCase();
+  // Order matters: more specific patterns first.
   if (/drum kit|drums\b/.test(label)) return 'drum-kit';
+  if (/drum throne|throne|drum stool/.test(label)) return 'drum-throne';
+  if (/pedalboard|pedal board/.test(label)) return 'pedalboard';
+  if (/pedal steel/.test(label)) return 'pedal-steel';
+  if (/upright bass|standup bass|double bass/.test(label)) return 'standup-bass';
   if (/bass amp/.test(label)) return 'amp-cabinet';
   if (/bass\b/.test(label)) return 'bass-guitar';
   if (/acoustic/.test(label)) return 'acoustic-guitar';
-  if (/pedal steel/.test(label)) return 'pedal-steel';
   if (/mandolin/.test(label)) return 'mandolin';
-  if (/keyboard rig|keys|piano|synth|nord|hammond|moog|rhodes/.test(label)) return 'keyboard-88';
-  if (/floor monitor|side fill|wedge|monitor/.test(label) && !/iem/.test(label)) return 'monitor-wedge';
-  if (/guitar amp|cabinet|cab\b/.test(label)) return 'amp-cabinet';
-  if (/vocal mic|inst mic|mic\b|sm58|sm57|beta/.test(label)) return 'vocal-mic';
+  if (/banjo/.test(label)) return 'banjo';
+  if (/dobro|resonator/.test(label)) return 'dobro';
+  if (/fiddle|violin/.test(label)) return 'fiddle';
+  if (/accordion/.test(label)) return 'accordion';
+  if (/hammond|leslie|b3\b/.test(label)) return 'hammond-leslie';
+  if (/keyboard rig|keys|piano|synth|nord|moog|rhodes/.test(label)) return 'keyboard-88';
+  if (/iem rack|wireless rack/.test(label)) return 'iem-rack';
+  if (/iem pack|in-ear|inear/.test(label)) return 'iem-pack';
+  if (/side fill|sidefill/.test(label)) return 'side-fill';
+  if (/floor monitor|wedge\b|monitor/.test(label) && !/iem/.test(label)) return 'monitor-wedge';
+  if (/subwoofer|sub\b/.test(label)) return 'subwoofer';
+  if (/combo|twin reverb|deluxe/.test(label)) return 'amp-combo';
+  if (/guitar amp|cabinet|cab\b|stack/.test(label)) return 'amp-cabinet';
+  if (/di box|di\b/.test(label)) return 'di-box';
+  if (/overhead mic|boom mic|condenser/.test(label)) return 'boom-mic';
+  if (/vocal mic|inst mic|mic\b|sm58|sm57|beta|kick mic|snare mic|cab mic/.test(label)) return 'vocal-mic';
   if (/electric guitar|guitar\b/.test(label)) return 'electric-guitar';
   return null;
 }
@@ -157,9 +176,29 @@ function _spSvgIdFor(el) {
 // to the emoji char. sizeBase is the rendered px width — SVG inherits text
 // color via currentColor so the icon themes against whatever color is
 // applied to the surrounding span.
+// Slugs for which a generated photorealistic PNG icon exists on disk under
+// js/assets/stageplot/icons/<slug>.png. Maintained by hand alongside the
+// services/iconforge generation pipeline. Add a slug here after generating
+// the PNG so the renderer picks it up. Renderer prefers PNG → SVG → emoji.
+var SP_ICON_PNGS = {
+  'drum-kit': 1, 'electric-guitar': 1, 'bass-guitar': 1, 'acoustic-guitar': 1,
+  'mandolin': 1, 'banjo': 1, 'dobro': 1, 'fiddle': 1, 'pedal-steel': 1,
+  'accordion': 1, 'standup-bass': 1, 'keyboard-88': 1, 'hammond-leslie': 1,
+  'vocal-mic': 1, 'boom-mic': 1, 'di-box': 1, 'monitor-wedge': 1,
+  'side-fill': 1, 'iem-rack': 1, 'iem-pack': 1, 'amp-cabinet': 1,
+  'amp-combo': 1, 'pedalboard': 1, 'subwoofer': 1, 'drum-throne': 1
+};
+var SP_PNG_PATH = 'js/assets/stageplot/icons/';
+
 function _spIconHTML(el, sizeBase, color) {
   var svgId = _spSvgIdFor(el);
   var c = color || '#a5b4fc';
+  // Prefer photorealistic PNG when available — they're full-color so don't
+  // theme via currentColor (which is intentional; matches StagePlot Guru).
+  if (svgId && SP_ICON_PNGS[svgId]) {
+    var ver = (typeof BUILD_VERSION !== 'undefined' && BUILD_VERSION) ? BUILD_VERSION : '1';
+    return '<span class="sp-png-icon" style="display:inline-block;width:' + sizeBase + 'px;height:' + sizeBase + 'px;line-height:0;vertical-align:middle"><img src="' + SP_PNG_PATH + svgId + '.png?v=' + ver + '" style="width:100%;height:100%;object-fit:contain;display:block" alt="" loading="lazy"></span>';
+  }
   if (svgId && SP_SVG_LIBRARY[svgId]) {
     return '<span class="sp-svg-icon" style="display:inline-block;width:' + sizeBase + 'px;height:' + sizeBase + 'px;color:' + c + ';line-height:0;vertical-align:middle">' + SP_SVG_LIBRARY[svgId] + '</span>';
   }
