@@ -331,9 +331,11 @@ window.SetlistPlayer = (function() {
         if (lockBtn) lockBtn.style.display = '';
 
         if (_player && _player.loadVideoById) {
+            _hideAutoplayBlockedOverlay();
             _player.loadVideoById(videoId);
             _isPlaying = true;
             _updatePlayPauseBtn();
+            _armAutoplayWatchdog();
             return;
         }
 
@@ -347,20 +349,42 @@ window.SetlistPlayer = (function() {
         }
 
         container.innerHTML = '<div id="slpYTPlayer"></div>';
+        // 2026-05-04 (D6): browser autoplay policies block auto-play of audio
+        // unless the player init runs inside a fresh user gesture. The launch
+        // path here is async (cache lookup, optional API load, network resolve)
+        // so by the time YT.Player is constructed the gesture has expired and
+        // the iframe loads silent (state advances but no audio). Detect this
+        // via onStateChange + a 1.6s watchdog: if no PLAYING state has been
+        // entered, render a tap-to-play overlay that calls playVideo() inside
+        // a fresh click handler. After the user taps once in the session the
+        // gesture chain is unlocked and subsequent songs autoplay normally.
+        _hideAutoplayBlockedOverlay();
         _player = new YT.Player('slpYTPlayer', {
             width: '100%', height: '100%', videoId: videoId,
             playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0, playsinline: 1 },
             events: {
-                onReady: function() { _isPlaying = true; _updatePlayPauseBtn(); },
+                onReady: function() {
+                    _isPlaying = true;
+                    _updatePlayPauseBtn();
+                    try { _player.playVideo(); } catch(_e) {}
+                    _armAutoplayWatchdog();
+                },
                 onStateChange: function(e) {
+                    if (e.data === YT.PlayerState.PLAYING) {
+                        _clearAutoplayWatchdog();
+                        _hideAutoplayBlockedOverlay();
+                        _isPlaying = true;
+                        _updatePlayPauseBtn();
+                    }
                     if (e.data === YT.PlayerState.ENDED) {
+                        _clearAutoplayWatchdog();
                         if (_currentIdx < _queue.length - 1) { _currentIdx++; _playCurrent(); }
                         else { _isPlaying = false; _updatePlayPauseBtn(); if (typeof showToast === 'function') showToast('\uD83C\uDFB6 Set complete \u2014 nice run'); clearResumeState(); }
                     }
-                    if (e.data === YT.PlayerState.PLAYING) { _isPlaying = true; _updatePlayPauseBtn(); }
                     if (e.data === YT.PlayerState.PAUSED) { _isPlaying = false; _updatePlayPauseBtn(); }
                 },
                 onError: function() {
+                    _clearAutoplayWatchdog();
                     var song = _queue[_currentIdx];
                     if (song && song.youtubeId) {
                         try { var c = JSON.parse(localStorage.getItem(_YT_CACHE_KEY) || '{}'); delete c[song.title]; localStorage.setItem(_YT_CACHE_KEY, JSON.stringify(c)); } catch(e) {}
@@ -370,6 +394,44 @@ window.SetlistPlayer = (function() {
                 }
             }
         });
+    }
+
+    // \u2500\u2500 Autoplay-block detection \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // YT.Player onStateChange should reach PLAYING within ~1s on a healthy
+    // start. If it doesn't, autoplay is being suppressed by the browser.
+    var _autoplayWatchdog = null;
+    function _armAutoplayWatchdog() {
+        _clearAutoplayWatchdog();
+        _autoplayWatchdog = setTimeout(function() {
+            try {
+                var st = _player && _player.getPlayerState ? _player.getPlayerState() : -1;
+                if (st !== 1) _showAutoplayBlockedOverlay();
+            } catch(_e) { _showAutoplayBlockedOverlay(); }
+        }, 1600);
+    }
+    function _clearAutoplayWatchdog() {
+        if (_autoplayWatchdog) { clearTimeout(_autoplayWatchdog); _autoplayWatchdog = null; }
+    }
+    function _showAutoplayBlockedOverlay() {
+        var container = document.getElementById('slpVideoContainer');
+        if (!container) return;
+        if (document.getElementById('slpTapToPlay')) return;
+        var btn = document.createElement('button');
+        btn.id = 'slpTapToPlay';
+        btn.type = 'button';
+        btn.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:rgba(15,23,42,0.85);color:#f1f5f9;font-size:1.1em;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;z-index:5;-webkit-tap-highlight-color:transparent';
+        btn.innerHTML = '<div style="font-size:2.2em">\u25B6</div><div>Tap to start</div><div style="font-size:0.6em;font-weight:500;color:#94a3b8;max-width:260px;text-align:center">Browser blocked autoplay. After this tap, the rest of the set plays automatically.</div>';
+        btn.onclick = function() {
+            _hideAutoplayBlockedOverlay();
+            try { if (_player && _player.playVideo) _player.playVideo(); } catch(_e) {}
+        };
+        // Container needs a positioning context so absolute children can pin.
+        if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+        container.appendChild(btn);
+    }
+    function _hideAutoplayBlockedOverlay() {
+        var btn = document.getElementById('slpTapToPlay');
+        if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
     }
 
     function _embedSpotify(trackId) {
@@ -540,6 +602,8 @@ window.SetlistPlayer = (function() {
         _currentSource = null;
 
         // Destroy previous player to avoid conflicts
+        _clearAutoplayWatchdog();
+        _hideAutoplayBlockedOverlay();
         if (_player && _player.destroy) { try { _player.destroy(); } catch(e) {} }
         _player = null;
 
@@ -773,6 +837,7 @@ window.SetlistPlayer = (function() {
     }
 
     function close() {
+        _clearAutoplayWatchdog();
         if (_player && _player.destroy) { try { _player.destroy(); } catch(e) {} }
         _player = null;
         _isPlaying = false;
@@ -781,6 +846,7 @@ window.SetlistPlayer = (function() {
     }
 
     function fullClose() {
+        _clearAutoplayWatchdog();
         if (_player && _player.destroy) { try { _player.destroy(); } catch(e) {} }
         _player = null;
         _isPlaying = false;

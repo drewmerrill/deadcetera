@@ -3483,6 +3483,15 @@ window.GLCalendarSync = (function() {
       if (!ev || ev._syntheticFromFreeBusy) continue;
       var gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
       if (!gid) continue;
+      // 2026-05-04 (D4 fix): only zombie-check events whose stored calendarId
+      // is the band cal. Events whose googleEventId lives on a member's
+      // personal calendar (e.g. type:'unavailable' rows imported via Phase 2
+      // inbound or Path B.2 freebusy reflections) cannot be verified through
+      // this token — querying them on bandCalId always 404s, which falsely
+      // classifies them as zombies. The user "kills" them, sync re-imports
+      // them, and we have a perpetual zombie regeneration cycle.
+      var evCal = ev.calendarId || (ev.sync && ev.sync.calendarId) || '';
+      if (evCal && evCal !== bandCalId) continue;
       try {
         var url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(gid)
           + '?calendarId=' + encodeURIComponent(bandCalId);
