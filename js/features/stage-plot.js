@@ -67,12 +67,23 @@ var SP_ELEMENTS = {
     { type: 'musician', icon: '🎹', label: 'Keys' },
     { type: 'musician', icon: '🥁', label: 'Drums' },
     { type: 'musician', icon: '🪘', label: 'Percussion' },
+    { type: 'musician', icon: '🪕', label: 'Mandolin' },
+    { type: 'musician', icon: '🪕', label: 'Banjo' },
+    { type: 'musician', icon: '🎸', label: 'Dobro' },
+    { type: 'musician', icon: '🎻', label: 'Fiddle' },
+    { type: 'musician', icon: '🎸', label: 'Pedal Steel' },
+    { type: 'musician', icon: '🪗', label: 'Accordion' },
+    { type: 'musician', icon: '🎻', label: 'Standup Bass' },
   ],
   gear: [
     { type: 'gear', icon: '📻', label: 'Guitar Amp' },
     { type: 'gear', icon: '📻', label: 'Bass Amp' },
+    { type: 'gear', icon: '📻', label: 'Amp Combo' },
     { type: 'gear', icon: '🎹', label: 'Keyboard Rig' },
+    { type: 'gear', icon: '🎹', label: 'Hammond / Leslie' },
     { type: 'gear', icon: '🥁', label: 'Drum Kit' },
+    { type: 'gear', icon: '🥁', label: 'Drum Kit (Electric)' },
+    { type: 'gear', icon: '🪑', label: 'Drum Throne' },
     { type: 'gear', icon: '🎛️', label: 'Pedalboard' },
     { type: 'gear', icon: '💻', label: 'Laptop' },
     { type: 'gear', icon: '📡', label: 'IEM Rack' },
@@ -87,6 +98,7 @@ var SP_ELEMENTS = {
     { type: 'audio', icon: '📦', label: 'DI Box',         mic: 'DI (passive)' },
     { type: 'audio', icon: '🔊', label: 'Floor Monitor' },
     { type: 'audio', icon: '🔈', label: 'Side Fill' },
+    { type: 'audio', icon: '🔊', label: 'Subwoofer' },
     { type: 'audio', icon: '🎧', label: 'IEM Pack' },
   ],
   stage: [
@@ -143,6 +155,7 @@ function _spSvgIdFor(el) {
   }
   var label = (el && el.label || '').toLowerCase();
   // Order matters: more specific patterns first.
+  if (/electric.*drum|e-?drum|drum.*electric|e-?kit/.test(label)) return 'drum-kit-electric';
   if (/drum kit|drums\b/.test(label)) return 'drum-kit';
   if (/drum throne|throne|drum stool/.test(label)) return 'drum-throne';
   if (/pedalboard|pedal board/.test(label)) return 'pedalboard';
@@ -181,12 +194,13 @@ function _spSvgIdFor(el) {
 // services/iconforge generation pipeline. Add a slug here after generating
 // the PNG so the renderer picks it up. Renderer prefers PNG → SVG → emoji.
 var SP_ICON_PNGS = {
-  'drum-kit': 1, 'electric-guitar': 1, 'bass-guitar': 1, 'acoustic-guitar': 1,
-  'mandolin': 1, 'banjo': 1, 'dobro': 1, 'fiddle': 1, 'pedal-steel': 1,
-  'accordion': 1, 'standup-bass': 1, 'keyboard-88': 1, 'hammond-leslie': 1,
-  'vocal-mic': 1, 'boom-mic': 1, 'di-box': 1, 'monitor-wedge': 1,
-  'side-fill': 1, 'iem-rack': 1, 'iem-pack': 1, 'amp-cabinet': 1,
-  'amp-combo': 1, 'pedalboard': 1, 'subwoofer': 1, 'drum-throne': 1
+  'drum-kit': 1, 'drum-kit-electric': 1, 'electric-guitar': 1, 'bass-guitar': 1,
+  'acoustic-guitar': 1, 'mandolin': 1, 'banjo': 1, 'dobro': 1, 'fiddle': 1,
+  'pedal-steel': 1, 'accordion': 1, 'standup-bass': 1, 'keyboard-88': 1,
+  'hammond-leslie': 1, 'vocal-mic': 1, 'boom-mic': 1, 'di-box': 1,
+  'monitor-wedge': 1, 'side-fill': 1, 'iem-rack': 1, 'iem-pack': 1,
+  'amp-cabinet': 1, 'amp-combo': 1, 'pedalboard': 1, 'subwoofer': 1,
+  'drum-throne': 1
 };
 var SP_PNG_PATH = 'js/assets/stageplot/icons/';
 
@@ -1617,11 +1631,13 @@ function _spClickElement(idx) {
   if (_spMoveIdx === idx) { _spMoveIdx = -1; _spRender(); return; }
 
   var lockState = el.locked ? ' [LOCKED]' : '';
+  var sizeState = el.scale && el.scale !== 1 ? ' [' + Math.round(el.scale * 100) + '%]' : '';
   var techPreview = el.techInfo ? ' — ' + (el.techInfo.length > 30 ? el.techInfo.slice(0, 30) + '…' : el.techInfo) : '';
   var action = prompt(
-    el.label + lockState + '\n' + (el.techInfo ? techPreview + '\n' : '') + '\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Bring to front\n7 = Send to back\n8 = Tech info / notes\n9 = ' + (el.locked ? 'Unlock' : 'Lock') + '\n0 = Cancel',
+    el.label + lockState + sizeState + '\n' + (el.techInfo ? techPreview + '\n' : '') + '\nChoose action:\n1 = Edit label\n2 = Move\n3 = Rotate\n4 = Set input #\n5 = Connect cable from here\n6 = Bring to front\n7 = Send to back\n8 = Tech info / notes\n9 = ' + (el.locked ? 'Unlock' : 'Lock') + '\nR = Resize (free mode only)\n0 = Cancel',
     '1'
   );
+  if (action) action = String(action).trim().toLowerCase();
   if (action === '1') {
     var newLabel = prompt('Edit label:', el.label);
     if (newLabel !== null) { el.label = newLabel; _spDirty = true; _spRender(); }
@@ -1654,6 +1670,17 @@ function _spClickElement(idx) {
     _spDirty = true;
     if (typeof showToast === 'function') showToast(el.locked ? '🔒 ' + el.label + ' locked' : '🔓 ' + el.label + ' unlocked');
     _spRender();
+  } else if (action === 'r') {
+    var current = el.scale || 1;
+    var next = prompt('Scale ' + el.label + ' (0.5 = half size, 1 = default, 1.5 = 1.5×, 2 = double, 2.5 = max):', String(current));
+    if (next === null) return;
+    var n = parseFloat(next);
+    if (isNaN(n) || n < 0.5 || n > 2.5) {
+      if (typeof showToast === 'function') showToast('Scale must be between 0.5 and 2.5');
+      return;
+    }
+    el.scale = Math.round(n * 100) / 100;
+    _spDirty = true; _spRender();
   }
 }
 
@@ -1719,7 +1746,8 @@ function _spRenderStageFree(plot) {
 
     var baseLabel = (el.label || '').split(' – ')[0].trim();
     var sc = SP_SIZE_CLASS[baseLabel] || 'sm';
-    var w = sc === 'lg' ? 84 : sc === 'md' ? 64 : 50;
+    var scaleMul = (typeof el.scale === 'number' && el.scale > 0) ? el.scale : 1;
+    var w = (sc === 'lg' ? 84 : sc === 'md' ? 64 : 50) * scaleMul;
     var iconSize = share ? '0.85em' : '1em';
     var bg = sc === 'lg' ? 'rgba(99,102,241,0.12)' : 'rgba(99,102,241,0.07)';
     var border = sc === 'lg' ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.18)';
@@ -1733,7 +1761,7 @@ function _spRenderStageFree(plot) {
           + ' ondragend="_spDragEnd(event)"'
           + ' onclick="event.stopPropagation();_spClickElement(' + idx + ')"'))
       + ' style="position:absolute;left:' + xPct + '%;top:' + yPct + '%;transform:translate(-50%,-50%) rotate(' + rot + 'deg);width:' + w + 'px;background:' + bg + ';border:1px solid ' + border + ';border-radius:6px;padding:4px;text-align:center;cursor:' + (share ? 'default' : (el.locked ? 'pointer' : 'grab')) + ';font-size:' + iconSize + ';line-height:1.2;user-select:none;z-index:' + zIdx + '">';
-    var freeIconPx = sc === 'lg' ? 40 : sc === 'md' ? 32 : 26;
+    var freeIconPx = Math.round((sc === 'lg' ? 40 : sc === 'md' ? 32 : 26) * scaleMul);
     html += '<div style="line-height:0">' + _spIconHTML(el, freeIconPx, '#a5b4fc') + '</div>';
     if (_spShowLabels || share) {
       html += '<div style="font-size:0.5em;font-weight:600;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">' + _spEsc(displayLabel) + '</div>';
