@@ -3406,7 +3406,11 @@ window._calReconnectGoogle = function() {
 
 // Connect flow triggered from inline sign-in prompt — clears dialog after success,
 // then opens Rules so user can configure band calendar before creating events
-window._calConnectAndResume = function(date) {
+window._calConnectAndResume = function(date, eventId) {
+    // 2026-05-04 (D7): eventId may be passed inline OR stashed on window
+    // (the inline path is normal; the stash is a belt-and-braces fallback
+    // if the button was wired before this build's call signature shipped).
+    var _editIdToResume = eventId || window._calPendingResumeEditId || '';
     // Clear the sign-in prompt immediately
     var area = document.getElementById('calEventFormArea');
     if (area) {
@@ -3433,14 +3437,22 @@ window._calConnectAndResume = function(date) {
                             + '<button onclick="_calShowAvailabilitySettings()" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">Set Up Band Calendar</button>'
                             + '</div>';
                     } else {
-                        // Band calendar already set — clear and retry event creation
+                        // Band calendar already set — clear and retry the original action.
+                        // If we have an editId, re-run calEditEventById so the user
+                        // lands back in the gig editor — not a fresh "Add Event" form.
                         area.innerHTML = '';
-                        if (date) calAddEvent(date);
+                        window._calPendingResumeEditId = null;
+                        if (_editIdToResume && typeof calEditEventById === 'function') {
+                            calEditEventById(_editIdToResume);
+                        } else if (date) {
+                            calAddEvent(date);
+                        }
                     }
                 });
             } else if (area) {
                 // Connection failed or was cancelled — clear the waiting message
                 area.innerHTML = '';
+                window._calPendingResumeEditId = null;
             }
         }
     }, 500);
@@ -6115,6 +6127,25 @@ function calDayClick(y, m, d) {
     calViewYear = y; calViewMonth = m;
     var ds = y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
 
+    // 2026-05-04 (D8): clear any open Add/Edit Event form when switching dates.
+    // The form lives in #calEventFormArea and shows a fixed DATE input set to
+    // the previously-clicked date. If the user clicks a different date the
+    // right-side context card updates but the form stays anchored to the old
+    // date — confusing and a likely cause of save-to-wrong-date mistakes.
+    // Don't blow away an event-being-saved (we have no way to detect dirty
+    // state without rewriting the form) but always clear if the form's date
+    // input doesn't match the new selection.
+    var _formArea = document.getElementById('calEventFormArea');
+    if (_formArea && _formArea.children.length) {
+        var _formDateEl = _formArea.querySelector('#calDate');
+        if (!_formDateEl || _formDateEl.value !== ds) {
+            _formArea.innerHTML = '';
+            window._calEditEventId = null;
+            window._calEditOpenedAt = null;
+            window._calPendingResumeEditId = null;
+        }
+    }
+
     // Mobile: show bottom card instead of right rail
     if (window.innerWidth <= 640) {
         _calShowMobileDateCard(ds, y, m, d);
@@ -6480,14 +6511,22 @@ async function calAddEvent(date, editIdx, existing) {
     if (!_calIsModeC() && !_hasToken) {
         console.warn('[Calendar] calAddEvent gate: no accessToken — rendering sign-in prompt');
         // Show inline sign-in prompt (no confirm() — Safari blocks OAuth popups after confirm dialogs)
+        // 2026-05-04 (D7): if this call originated from an Edit (existing event
+        // with a stable id), stash the id so the resume flow can re-open the
+        // edit form. Without this, the resume just calls calAddEvent(date) and
+        // the user gets a generic Rehearsal Add form instead of their gig.
+        var _resumeEditId = (existing && existing.id) ? String(existing.id) : '';
+        window._calPendingResumeEditId = _resumeEditId || null;
         var _area = document.getElementById('calEventFormArea');
         if (_area) {
+            var _safDate = (date || '').replace(/'/g, "\\'");
+            var _safEditId = _resumeEditId.replace(/'/g, "\\'");
             _area.innerHTML = '<div style="padding:16px;border-radius:10px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15)">'
                 + '<div style="font-size:0.88em;font-weight:600;color:var(--gl-amber);margin-bottom:6px">Sign in to Google Calendar</div>'
                 + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">You need to be connected to Google Calendar to create or edit events.</div>'
                 + '<div style="display:flex;gap:8px">'
-                + '<button onclick="_calConnectAndResume(\'' + (date || '').replace(/'/g, "\\'") + '\')" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">Connect Now</button>'
-                + '<button onclick="document.getElementById(\'calEventFormArea\').innerHTML=\'\'" style="padding:8px 16px;font-size:0.82em;background:none;border:1px solid rgba(255,255,255,0.1);color:var(--gl-text-tertiary);border-radius:6px;cursor:pointer">Cancel</button>'
+                + '<button onclick="_calConnectAndResume(\'' + _safDate + '\',\'' + _safEditId + '\')" class="gl-btn-primary" style="padding:8px 16px;font-size:0.82em">Connect Now</button>'
+                + '<button onclick="document.getElementById(\'calEventFormArea\').innerHTML=\'\';window._calPendingResumeEditId=null" style="padding:8px 16px;font-size:0.82em;background:none;border:1px solid rgba(255,255,255,0.1);color:var(--gl-text-tertiary);border-radius:6px;cursor:pointer">Cancel</button>'
                 + '</div></div>';
         } else {
             if (typeof showToast === 'function') showToast('\u26A0 Sign in to Google Calendar first to create events.', 5000);
