@@ -113,11 +113,21 @@ window.GLCalendarSync = (function() {
         summary = (bandName ? bandName + ' ' : '') + 'Gig';
       }
     } else {
-      summary = (bandName ? bandName + ' ' : '') + (typeLabel[glEvent.type] || 'Event');
-      if (explicitTitle && _norm(explicitTitle) !== _norm(summary) && _norm(explicitTitle).indexOf(_norm(summary)) !== 0) {
-        summary += ' \u2014 ' + explicitTitle;
-      } else if (explicitTitle) {
+      // D5 fix (2026-05-04): never synthesize "<bandName> Event" for unknown
+      // types. The fallback "Event" string was bleeding into Google when
+      // imported personal-cal rows (type:'unavailable') got pushed via the
+      // Phase 1 dirty-event loop, renaming Drew/Brian "Busy" events to
+      // "deadcetera Event" on their personal calendars. Now: preserve the
+      // user's title verbatim; only synthesize a "<bandName> <Type>" label
+      // when both the title is missing AND the type is one we recognize.
+      // Unknown type + no title \u2192 return null summary so callers can refuse
+      // to push (defense in depth at update()/create()).
+      if (explicitTitle) {
         summary = explicitTitle;
+      } else if (typeLabel[glEvent.type]) {
+        summary = (bandName ? bandName + ' ' : '') + typeLabel[glEvent.type];
+      } else {
+        summary = null;
       }
     }
 
@@ -436,6 +446,14 @@ window.GLCalendarSync = (function() {
     var glEventId = glEvent.id || glEvent.eventId || '';
     var _opts = Object.assign({}, opts, { glEventId: glEventId });
     var body = _buildEventBody(glEvent, _opts);
+    // D5 guard: refuse to create a Google event with no real title. This
+    // protects against the imported-personal-cal-row corruption pattern
+    // where a typeless event would otherwise be created with whatever
+    // _buildEventBody fell back to.
+    if (!body || !body.summary) {
+      console.warn('[CalSync] create() refused — no usable title for', glEvent && glEvent.type, 'event id=', glEventId);
+      return { success: false, error: 'no_title' };
+    }
     var calId = await _getBandCalendarId();
     if (!calId) return { success: false, error: 'No band calendar configured. Open Rules to set one up.' };
 
@@ -559,6 +577,14 @@ window.GLCalendarSync = (function() {
 
     var _opts = Object.assign({}, opts, { glEventId: glEvent.id || glEvent.eventId || '' });
     var body = _buildEventBody(glEvent, _opts);
+    // D5 guard: never PATCH Google with a missing/synthesized fallback
+    // title — that's the path that was renaming "Drew Busy" to "deadcetera
+    // Event" on personal calendars. If _buildEventBody couldn't resolve a
+    // real title, abort and leave the event dirty for the next sync.
+    if (!body || !body.summary) {
+      console.warn('[CalSync] update() refused — no usable title for', glEvent && glEvent.type, 'gid=', externalEventId);
+      return { success: false, error: 'no_title' };
+    }
     var calId = await _getBandCalendarId();
     if (!calId) return { success: false, error: 'No band calendar configured.' };
 
@@ -1794,6 +1820,13 @@ window.GLCalendarSync = (function() {
       // Path B.2: synthetic hidden-event rows are derived from freebusy, not
       // real events. Never push them back to Google.
       if (ev && (ev._syntheticFromFreeBusy || ev.syncStatus === 'synthetic')) continue;
+      // D5 fix (2026-05-04): never push imported "Busy"/"unavailable" rows
+      // back to Google. They originated on a member's PERSONAL calendar
+      // (Drew Busy, Brian Busy) and were imported into calendar_events
+      // for conflict-detection purposes. Pushing them back via Phase 1
+      // was renaming them to "deadcetera Event" on the source calendar.
+      var _UNTOUCHABLE = { unavailable: 1, busy: 1, block: 1 };
+      if (ev && ev.type && _UNTOUCHABLE[ev.type]) continue;
       if (!ev || !ev.date || !ev.title) continue;
       var _gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
       var _status = ev.syncStatus || (ev.sync && ev.sync.status) || '';
