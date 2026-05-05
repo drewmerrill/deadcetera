@@ -1,7 +1,17 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260504-124500
-**Last Updated:** 2026-05-04 (D9 title-repair tool + D10 narrow purge — protects availability rows from silent deletion)
+**Build Under Test:** 20260505-015827
+**Last Updated:** 2026-05-04 (very late PM) — Stage-1 Calendar/Gigs migration applied; D11 + D12 + D13 surfaced and fixed inline during recovery; final verification sync clean.
+
+---
+
+## Resolved 2026-05-04 (very late PM) — Stage-1 migration regression arc
+
+| # | Bug | Severity | Diagnosis | Resolution |
+|---|---|---|---|---|
+| **D11** | Mid-migration sync pushed 21 historical gigs to Google as fresh events + pulled 7 prefix-duplicate orphans back as Inbound NEW | HIGH | `repairGigMirror` created cal_event rows with no Google sync state. Phase-1 push treated them as outbound new; Phase-2 pulled the orphans we were about to delete. Drew's routine sync between migration steps triggered both directions. | Recovered via `cleanupOrphanGigEvents` + `deleteGoogleEventsDirect`. Stage-1 lesson logged: future migrations must seed `syncStatus:'synced'` on created rows AND runbook must forbid sync between steps. |
+| **D12** | After Stage-1 apply, 14 gigs lost their setlist linkage in the calendar editor — dropdown couldn't match | HIGH | `_syncGigToCalendar` mirror used `Object.assign({}, gig, preserved, ...)` which spread `gig.linkedSetlist` (the setlist NAME) into `cal_event.linkedSetlist` (which expects the ID). Schema-asymmetry collision via blanket spread. | **FIXED** commit `3da30f6d`. Mirror now explicitly overrides `linkedSetlist: gig.setlistId \|\| null`. New `GLCalendarSync.fixGigSetlistLinkage({apply})` repair tool walks cal_events with `type:'gig'` + `gigId` and sets `linkedSetlist = gig.setlistId`. Drew ran it — 14 rows repaired. |
+| **D13** | `cleanupOrphanGigEvents` returned `googleFailures: 7` with `error: 'unknown'` — Google duplicates not deleted | HIGH | `deleteConflictFromGoogle` gates on `hasCalendarScope()` which checks `window._calendarScopeGranted`, false on partial-scope OAuth (full=false). Even though only-events scope can DELETE, the gate refused. | **FIXED** commit `98affd8d`. New `GLCalendarSync.deleteGoogleEventsDirect(googleEventIds, opts)` bypasses the scope gate — calls fetch DELETE on the worker proxy directly using the live `accessToken`. Drew signed in then ran it: 7/7 succeeded HTTP 204. Verification sync confirms `pushed 0 \| pulled 0`, no Inbound NEW for the 7 cleaned dates. |
 
 ---
 
