@@ -33,6 +33,29 @@ window.GLCalendarSync = (function() {
       GOOGLE_DRIVE_CONFIG.scope && GOOGLE_DRIVE_CONFIG.scope.indexOf('calendar') !== -1;
   }
 
+  // Granular gate: are we authorized to MUTATE events on Google? Either
+  // calendar.events scope OR full /auth/calendar suffices. The audit (D13)
+  // showed that hasCalendarScope() over-restricted partial-scope OAuth
+  // sessions (events-only) by lumping all scopes into one boolean. This
+  // helper reads window._grantedScopes directly so callers can mutate when
+  // events scope is held even if the legacy boolean didn't fire.
+  function hasCalendarEventsScope() {
+    if (typeof accessToken === 'undefined' || !accessToken) return false;
+    var raw = (typeof window !== 'undefined') ? (window._grantedScopes || '') : '';
+    if (typeof raw !== 'string') raw = '';
+    if (!raw) {
+      // No raw bag available (likely a cached session before OAuth callback
+      // fired this load). Fall back to the legacy boolean — if it's true,
+      // some calendar scope was granted; events scope is the most common
+      // grant so let the helper say yes.
+      return hasCalendarScope();
+    }
+    if (raw.indexOf('calendar.events') !== -1) return true;
+    // /auth/calendar (full) suffices for everything events-scope can do.
+    if (raw.split(' ').some(function(s) { return s === 'https://www.googleapis.com/auth/calendar' || s === 'auth/calendar'; })) return true;
+    return false;
+  }
+
   // FreeBusy requires full calendar or calendar.freebusy scope (calendar.events is NOT enough)
   // Priority: 1) OAuth callback flag  2) persisted localStorage  3) config fallback
   function hasFreeBusyScope() {
@@ -439,8 +462,16 @@ window.GLCalendarSync = (function() {
   }
 
   async function create(glEvent, opts) {
-    if (!hasCalendarScope()) {
-      return _fallbackUrl(glEvent, opts);
+    // D13 audit fix: use granular gate. calendar.events scope is sufficient
+    // for POST events.insert; the conflated hasCalendarScope() over-restricts
+    // partial-scope sessions.
+    if (!hasCalendarEventsScope()) {
+      // Preserve fallback URL behavior — same as before, but tag with a
+      // classified error so callers can distinguish "no scope" from other
+      // failures instead of seeing the bare {success:false,fallback:true}.
+      var _fb = _fallbackUrl(glEvent, opts);
+      _fb.error = _fb.error || 'no_scope';
+      return _fb;
     }
 
     var glEventId = glEvent.id || glEvent.eventId || '';
@@ -571,8 +602,13 @@ window.GLCalendarSync = (function() {
 
   // ── UPDATE event in Google Calendar ───────────────────────────────────────
   async function update(externalEventId, glEvent, opts) {
-    if (!hasCalendarScope() || !externalEventId) {
-      return { success: false, error: 'No calendar scope or event ID', fallback: true };
+    // D13 audit fix: granular gate + classified error code instead of bare
+    // {success:false}. cleanupOrphanGigEvents was bubbling 'unknown' here.
+    if (!hasCalendarEventsScope()) {
+      return { success: false, error: 'no_scope', fallback: true };
+    }
+    if (!externalEventId) {
+      return { success: false, error: 'no_event_id', fallback: true };
     }
 
     var _opts = Object.assign({}, opts, { glEventId: glEvent.id || glEvent.eventId || '' });
@@ -651,8 +687,12 @@ window.GLCalendarSync = (function() {
 
   // ── DELETE event from Google Calendar ─────────────────────────────────────
   async function remove(externalEventId) {
-    if (!hasCalendarScope() || !externalEventId) {
-      return { success: false, error: 'No calendar scope or event ID' };
+    // D13 audit fix: granular gate + classified error code.
+    if (!hasCalendarEventsScope()) {
+      return { success: false, error: 'no_scope' };
+    }
+    if (!externalEventId) {
+      return { success: false, error: 'no_event_id' };
     }
 
     var calId = await _getBandCalendarId();
@@ -1174,11 +1214,25 @@ window.GLCalendarSync = (function() {
   }
 
   // ── EVENT IMPORT — list Google Calendar events for a date range ──────────
-  async function listGoogleEvents(timeMin, timeMax) {
+  // Audit fix (H5 2026-05-04): accept an explicit calendarId so callers can
+  // unambiguously target the band cal vs. their personal/primary cal. Prior
+  // signature dropped the calendarId param and the worker silently defaulted
+  // to 'primary' — meaning this function returned each user's PERSONAL
+  // calendar events labeled as generic Google events. Mode-A overlay caller
+  // intentionally wants 'primary' (Mode B feature), so 'primary' remains the
+  // default — but every caller must now make the choice consciously.
+  async function listGoogleEvents(timeMin, timeMax, opts) {
     if (!hasCalendarScope()) return [];
     if (_calendarScopeFailed) return [];
+    opts = opts || {};
+    var calId = opts.calendarId || 'primary';
+    if (calId === 'primary') {
+      console.log('[CalSync] listGoogleEvents() reading from PRIMARY calendar (pass opts.calendarId for band cal).');
+    }
     try {
-      var url = WORKER_BASE + '/calendar/events?timeMin=' + encodeURIComponent(timeMin) + '&timeMax=' + encodeURIComponent(timeMax);
+      var url = WORKER_BASE + '/calendar/events?calendarId=' + encodeURIComponent(calId)
+        + '&timeMin=' + encodeURIComponent(timeMin)
+        + '&timeMax=' + encodeURIComponent(timeMax);
       var res = await fetch(url, {
         headers: { 'Authorization': 'Bearer ' + accessToken }
       });
@@ -1238,6 +1292,83 @@ window.GLCalendarSync = (function() {
         await db.ref(bandPath('calendar_sync_state')).set(state);
       }
     } catch(e) { console.warn('[CalSync] Failed to save sync state:', e); }
+  }
+
+  // ── Maintenance mode (audit T1.1, 2026-05-04) ──────────────────────────────
+  // Stage-1 of the calendar audit: migrations and repair tools must be able to
+  // freeze sync mid-operation so a routine sync doesn't run between migration
+  // steps and re-push/pull a half-migrated state. D11 was caused by this gap.
+  //
+  // Schema: bands/{slug}/calendar_sync_state.maintenanceUntil (ISO ts) +
+  //         bands/{slug}/calendar_sync_state.maintenanceReason (string).
+  // When maintenanceUntil > now, syncBandCalendar early-returns
+  // {skipped:true, reason:'maintenance', until:<ts>} and logs to sync_activity.
+  async function _readMaintenanceState() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return { active: false };
+    try {
+      var snap = await db.ref(bandPath('calendar_sync_state')).once('value');
+      var st = snap.val() || {};
+      var until = st.maintenanceUntil || null;
+      if (!until) return { active: false };
+      var untilMs = Date.parse(until);
+      if (isNaN(untilMs) || untilMs <= Date.now()) return { active: false, until: until, reason: st.maintenanceReason || null, expired: true };
+      return { active: true, until: until, reason: st.maintenanceReason || null };
+    } catch(e) {
+      // On read error, fail OPEN — never block sync because Firebase is glitchy.
+      console.warn('[CalSync] maintenance read error (failing open):', e && e.message);
+      return { active: false, error: e && e.message };
+    }
+  }
+
+  async function setMaintenance(minutes, reason) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return { ok: false, error: 'firebase_unavailable' };
+    var mins = (typeof minutes === 'number' && minutes > 0) ? minutes : 30;
+    var untilMs = Date.now() + mins * 60 * 1000;
+    var untilIso = new Date(untilMs).toISOString();
+    try {
+      await db.ref(bandPath('calendar_sync_state')).update({
+        maintenanceUntil: untilIso,
+        maintenanceReason: reason || 'migration',
+        maintenanceSetAt: new Date().toISOString()
+      });
+      console.log('[CalSync] Maintenance ON until', untilIso, '— reason:', reason || 'migration');
+      return { ok: true, until: untilIso };
+    } catch(e) {
+      return { ok: false, error: e && e.message };
+    }
+  }
+
+  async function clearMaintenance() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return { ok: false };
+    try {
+      await db.ref(bandPath('calendar_sync_state')).update({
+        maintenanceUntil: null,
+        maintenanceReason: null
+      });
+      console.log('[CalSync] Maintenance cleared');
+      return { ok: true };
+    } catch(e) { return { ok: false, error: e && e.message }; }
+  }
+
+  async function getMaintenanceState() {
+    return await _readMaintenanceState();
+  }
+
+  // Wraps a repair-tool body so maintenance is automatically set on entry and
+  // cleared on exit (success OR error). Only enables the gate when apply=true
+  // — dry-runs don't write anything, so they don't need the freeze.
+  async function _withMaintenance(opts, reason, fn) {
+    var apply = !!(opts && opts.apply);
+    if (!apply) return await fn();
+    var setRes = await setMaintenance(30, reason || 'repair_tool');
+    try {
+      return await fn();
+    } finally {
+      try { await clearMaintenance(); } catch(_e) {}
+    }
   }
 
   // ── RECONCILIATION RULES (Shared Calendar Mode) ──────────────────────────
@@ -1597,6 +1728,9 @@ window.GLCalendarSync = (function() {
         error: r.error || null,
         needsReauth: !!r.needsReauth,
         skipped: !!r.skipped,
+        skipReason: r.reason || null,
+        maintenanceReason: r.maintenanceReason || null,
+        maintenanceUntil: r.until || null,
         durationMs: r._durationMs || 0
       };
       await db.ref(bandPath('sync_activity')).push(entry);
@@ -1805,6 +1939,14 @@ window.GLCalendarSync = (function() {
 
   async function _syncBandCalendarImpl(bandCalId) {
     console.log('[CalSync] === TWO-WAY SYNC START === | bandCalId=', bandCalId);
+    // Maintenance gate (audit T1.1): if a migration/repair tool is in progress
+    // skip this sync entirely. Prevents D11 (mid-migration sync pushing
+    // half-migrated state to Google).
+    var _maint = await _readMaintenanceState();
+    if (_maint && _maint.active) {
+      console.log('[CalSync] === SYNC SKIPPED — maintenance until', _maint.until, '| reason:', _maint.reason || '?');
+      return { skipped: true, reason: 'maintenance', until: _maint.until, maintenanceReason: _maint.reason || null, pushed: 0, pulled: 0, updated: 0, deleted: 0 };
+    }
     var syncState = await _loadSyncState();
     var events = (typeof toArray === 'function')
       ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
@@ -1832,6 +1974,10 @@ window.GLCalendarSync = (function() {
       // was renaming them to "deadcetera Event" on the source calendar.
       var _UNTOUCHABLE = { unavailable: 1, busy: 1, block: 1 };
       if (ev && ev.type && _UNTOUCHABLE[ev.type]) continue;
+      // T1.2 audit fix: migration-created rows without a real Google event
+      // are tagged 'migration_only' so Phase 1 doesn't ghost-push them as
+      // fresh outbound. The user can opt in via gig edit (sets dirty=true).
+      if (ev && ev.syncStatus === 'migration_only') continue;
       if (!ev || !ev.date || !ev.title) continue;
       var _gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
       var _status = ev.syncStatus || (ev.sync && ev.sync.status) || '';
@@ -2908,7 +3054,8 @@ window.GLCalendarSync = (function() {
   // Never auto-syncs — only triggered by explicit user action.
 
   async function syncConflictToGoogle(block, opts) {
-    if (!hasCalendarScope() || !block) return { success: false, error: 'no scope' };
+    if (!hasCalendarEventsScope()) return { success: false, error: 'no_scope' };
+    if (!block) return { success: false, error: 'no_block' };
     var startDate = block.startDate;
     var endDate = block.endDate;
     if (!startDate || !endDate) return { success: false, error: 'no dates' };
@@ -2978,7 +3125,11 @@ window.GLCalendarSync = (function() {
   }
 
   async function updateConflictInGoogle(block, opts) {
-    if (!hasCalendarScope() || !block || !block.googleEventId) return { success: false };
+    // D13 audit fix: never return bare {success:false}. cleanupOrphanGigEvents
+    // and similar callers bubble the empty error up as 'unknown'.
+    if (!hasCalendarEventsScope()) return { success: false, error: 'no_scope' };
+    if (!block) return { success: false, error: 'no_block' };
+    if (!block.googleEventId) return { success: false, error: 'no_event_id' };
     opts = opts || {};
     var endExclusive = new Date(block.endDate + 'T00:00:00');
     endExclusive.setDate(endExclusive.getDate() + 1);
@@ -3030,7 +3181,12 @@ window.GLCalendarSync = (function() {
   }
 
   async function deleteConflictFromGoogle(googleEventId, opts) {
-    if (!hasCalendarScope() || !googleEventId) return { success: false };
+    // D13 fix: granular gate. calendar.events scope is enough for DELETE.
+    // Was over-restricting to hasCalendarScope() which fired false on
+    // partial-scope OAuth, leaving cleanupOrphanGigEvents to bubble
+    // 'unknown' for every delete. Always return a classified error code.
+    if (!hasCalendarEventsScope()) return { success: false, error: 'no_scope' };
+    if (!googleEventId) return { success: false, error: 'no_event_id' };
     opts = opts || {};
     try {
       // Same routing-bug guard as syncConflictToGoogle/updateConflictInGoogle:
@@ -4283,10 +4439,15 @@ window.GLCalendarSync = (function() {
   // pushing again would clobber his fixes).
   async function repairCorruptedTitles(opts) {
     opts = opts || {};
-    var apply = !!opts.apply;
     if (typeof loadBandDataFromDrive !== 'function') {
       return { error: 'firebase helpers unavailable' };
     }
+    return await _withMaintenance(opts, 'repairCorruptedTitles', async function() {
+      return await _repairCorruptedTitlesImpl(!!opts.apply);
+    });
+  }
+
+  async function _repairCorruptedTitlesImpl(apply) {
     var raw = await loadBandDataFromDrive('_band', 'calendar_events') || [];
     var keyed = !Array.isArray(raw); // Firebase returns an object with push-ids as keys
     var events = (typeof toArray === 'function') ? toArray(raw) : (Array.isArray(raw) ? raw : Object.values(raw));
@@ -4685,6 +4846,84 @@ window.GLCalendarSync = (function() {
     return ofInterest;
   }
 
+  // ── Central gig→cal_event mirror builder (audit T1.3, 2026-05-04) ──────
+  // The single legal way to construct a calendar_events row from a gig
+  // record. Used by gigs.js _syncGigToCalendar and gl-calendar-sync.js
+  // repairGigMirror so they share one truth — eliminates the parallel-mirror
+  // class of bugs (D12 was caused by Object.assign({}, gig) spreading
+  // gig.linkedSetlist (NAME) into cal_event.linkedSetlist (ID slot)).
+  //
+  // Inputs: gig record (canonical), existing cal_event row (or null), opts.
+  // Output: a fully-formed cal_event row, ready to push/replace in the
+  // calendar_events array. Caller still does the array push/replace + save.
+  //
+  // Preserved-from-existing keys: cal-event-managed metadata that the gig
+  // record doesn't track (sync engine state, Google metadata, freebusy
+  // synthetics). When existing is null and opts.seedSyncFromGig is true,
+  // the gig.sync object is seeded onto the cal_event row so a migration
+  // tool's CREATEs don't trigger Phase-1 ghost pushes (D11 prevention).
+  //
+  // Title resolution: prefer venue (human-readable) over bot-speak. Preserve
+  // existing custom titles. Override only when existing is empty, the
+  // legacy "deadcetera Gig" string, or already matches the venue.
+  function _buildGigCalEventBody(gig, existing, opts) {
+    if (!gig) return null;
+    opts = opts || {};
+    var preservedKeys = ['id', 'googleEventId', 'calendarId', 'sync', 'syncStatus',
+      'lastSyncedAt', 'updated_at', '_syntheticFromFreeBusy', '_importedFromGoogle',
+      'assignedMembers', 'hiddenInfo', 'organizerEmail', 'recurrence', 'etag'];
+
+    var existingTitle = (existing && existing.title) || '';
+    var venueLabel = gig.venue || '';
+    var legacyDefaults = /^(deadcetera\s+gig|band\s+gig|gig)$/i;
+    var resolvedTitle = (!existingTitle || existingTitle === venueLabel || legacyDefaults.test(existingTitle))
+      ? venueLabel
+      : existingTitle;
+
+    var preserved = {};
+    if (existing) {
+      preservedKeys.forEach(function(k) {
+        if (existing[k] !== undefined) preserved[k] = existing[k];
+      });
+    } else if (opts.seedSyncFromGig && gig.sync && gig.sync.externalEventId) {
+      // D11 fix: when migrating, seed sync state from the gig record so
+      // the next sync sees the row as already-synced and skips Phase-1
+      // outbound. Only when there's a real Google event linked.
+      preserved.googleEventId = gig.sync.externalEventId;
+      preserved.calendarId = gig.sync.calendarId || preserved.calendarId || null;
+      preserved.syncStatus = 'synced';
+      preserved.lastSyncedAt = gig.sync.lastSyncedAt || new Date().toISOString();
+      preserved.sync = {
+        provider: gig.sync.provider || 'google',
+        externalEventId: gig.sync.externalEventId,
+        calendarId: gig.sync.calendarId || null,
+        status: 'synced',
+        lastSyncedAt: gig.sync.lastSyncedAt || new Date().toISOString(),
+        lastSyncDirection: gig.sync.lastSyncDirection || 'migration-link',
+        etag: gig.sync.etag || null
+      };
+    } else if (opts.seedSyncFromGig) {
+      // No Google event linked, but it's a migration row — mark migration_only
+      // so Phase 1 explicitly skips it instead of treating it as fresh
+      // outbound. The user can opt in by editing the gig (sets dirty=true).
+      preserved.syncStatus = 'migration_only';
+    }
+
+    // CRITICAL (D12 fix): linkedSetlist semantic mismatch — gigs.linkedSetlist
+    // holds the setlist NAME, cal_event.linkedSetlist holds the setlist ID.
+    // Object.assign({}, gig, ...) would spread the NAME into the ID slot.
+    // Override explicitly with gig.setlistId.
+    var calRecord = Object.assign({}, gig, preserved, {
+      type: 'gig',
+      title: resolvedTitle,
+      time: gig.startTime || '',
+      endTime: gig.endTime || '',
+      linkedSetlist: gig.setlistId || null,
+      updated: new Date().toISOString()
+    });
+    return calRecord;
+  }
+
   // ── 2026-05-04: backfill comprehensive gig→calendar_events mirror ────────
   // Stage-1 of the Calendar/Gigs structural merge. Today, calendar_events.gig
   // rows are a partial projection of the gigs node — only ~10 of the gig's
@@ -4710,14 +4949,18 @@ window.GLCalendarSync = (function() {
       return { error: 'firebase helpers unavailable' };
     }
 
+    // Wrap apply path in maintenance gate so a routine sync can't run
+    // mid-migration (D11 prevention).
+    return await _withMaintenance(opts, 'repairGigMirror', async function() {
+      return await _repairGigMirrorImpl(apply);
+    });
+  }
+
+  async function _repairGigMirrorImpl(apply) {
     var gigs = await loadBandDataFromDrive('_band', 'gigs') || [];
     gigs = (typeof toArray === 'function') ? toArray(gigs) : (Array.isArray(gigs) ? gigs : Object.values(gigs));
     var rawCal = await loadBandDataFromDrive('_band', 'calendar_events') || [];
     var calEvents = (typeof toArray === 'function') ? toArray(rawCal) : (Array.isArray(rawCal) ? rawCal : Object.values(rawCal));
-
-    var preservedKeys = ['id','googleEventId','calendarId','sync','syncStatus',
-      'updated_at','_syntheticFromFreeBusy','_importedFromGoogle',
-      'assignedMembers','hiddenInfo','organizerEmail','recurrence','etag'];
 
     function findCalIdx(gig) {
       var i = -1;
@@ -4761,31 +5004,12 @@ window.GLCalendarSync = (function() {
       }
       var idx = findCalIdx(gig);
       var existing = (idx >= 0) ? calEvents[idx] : null;
-      var existingTitle = (existing && existing.title) || '';
-      var venueLabel = gig.venue || '';
-      var legacyDefaults = /^(deadcetera\s+gig|band\s+gig|gig)$/i;
-      var resolvedTitle = (!existingTitle || existingTitle === venueLabel || legacyDefaults.test(existingTitle))
-        ? venueLabel
-        : existingTitle;
 
-      var preserved = {};
-      if (existing) {
-        preservedKeys.forEach(function(k) {
-          if (existing[k] !== undefined) preserved[k] = existing[k];
-        });
-      }
-
-      // CRITICAL: linkedSetlist field has DIFFERENT SEMANTICS on the two
-      // sides — gigs.linkedSetlist holds the setlist NAME, cal_event
-      // .linkedSetlist holds the setlist ID. Override with gig.setlistId.
-      var calRecord = Object.assign({}, gig, preserved, {
-        type: 'gig',
-        title: resolvedTitle,
-        time: gig.startTime || '',
-        endTime: gig.endTime || '',
-        linkedSetlist: gig.setlistId || null,
-        updated: new Date().toISOString()
-      });
+      // Centralized builder (T1.3) — single source of truth for the linked
+      // setlist override + preserved keys. Pass seedSyncFromGig:true so
+      // newly-created mirror rows inherit gig.sync state (T1.2 / D11 fix:
+      // prevents Phase-1 ghost pushes after migration).
+      var calRecord = _buildGigCalEventBody(gig, existing, { seedSyncFromGig: !existing });
       if (!calRecord.id) calRecord.id = _genId();
 
       if (idx >= 0) {
@@ -4794,7 +5018,11 @@ window.GLCalendarSync = (function() {
       } else {
         calRecord.created = gig.created || new Date().toISOString();
         calEvents.push(calRecord);
-        created.push({ gigId: gig.gigId, date: gig.date, venue: gig.venue, calId: calRecord.id });
+        created.push({
+          gigId: gig.gigId, date: gig.date, venue: gig.venue, calId: calRecord.id,
+          syncStatus: calRecord.syncStatus || '',
+          googleEventId: calRecord.googleEventId || null
+        });
       }
     });
 
@@ -4870,10 +5098,15 @@ window.GLCalendarSync = (function() {
   // Dry-run by default. Returns counts per classification.
   async function cleanupOrphanGigEvents(opts) {
     opts = opts || {};
-    var apply = !!opts.apply;
     if (typeof loadBandDataFromDrive !== 'function') {
       return { error: 'firebase helpers unavailable' };
     }
+    return await _withMaintenance(opts, 'cleanupOrphanGigEvents', async function() {
+      return await _cleanupOrphanGigEventsImpl(!!opts.apply);
+    });
+  }
+
+  async function _cleanupOrphanGigEventsImpl(apply) {
 
     var rawCal = await loadBandDataFromDrive('_band', 'calendar_events') || [];
     var calEvents = (typeof toArray === 'function') ? toArray(rawCal) : (Array.isArray(rawCal) ? rawCal : Object.values(rawCal));
@@ -5033,10 +5266,15 @@ window.GLCalendarSync = (function() {
   // recreate this bug.
   async function fixGigSetlistLinkage(opts) {
     opts = opts || {};
-    var apply = !!opts.apply;
     if (typeof loadBandDataFromDrive !== 'function') {
       return { error: 'firebase helpers unavailable' };
     }
+    return await _withMaintenance(opts, 'fixGigSetlistLinkage', async function() {
+      return await _fixGigSetlistLinkageImpl(!!opts.apply);
+    });
+  }
+
+  async function _fixGigSetlistLinkageImpl(apply) {
 
     var rawCal = await loadBandDataFromDrive('_band', 'calendar_events') || [];
     var calEvents = (typeof toArray === 'function') ? toArray(rawCal) : (Array.isArray(rawCal) ? rawCal : Object.values(rawCal));
@@ -5136,6 +5374,24 @@ window.GLCalendarSync = (function() {
     if (!calId) {
       return { error: 'Could not resolve band calendar id' };
     }
+
+    // M19 audit fix: dry-run by default. Caller must explicitly opt in with
+    // {apply:true}. Prior behavior applied immediately on any call — a
+    // googleEventId mistakenly fed in could destroy an upcoming gig.
+    var apply = !!opts.apply;
+    if (!apply) {
+      console.log('[directDelete] DRY RUN — would delete', googleEventIds.length, 'events from', calId);
+      console.table(googleEventIds.map(function(id) { return { googleEventId: id, action: 'would_delete' }; }));
+      console.log('[directDelete] Re-run with {apply:true} to execute.');
+      return { dryRun: true, would: googleEventIds.length, calendarId: calId };
+    }
+
+    return await _withMaintenance({ apply: true }, 'deleteGoogleEventsDirect', async function() {
+      return await _deleteGoogleEventsDirectImpl(googleEventIds, calId);
+    });
+  }
+
+  async function _deleteGoogleEventsDirectImpl(googleEventIds, calId) {
     console.log('[directDelete] Using calendar:', calId);
 
     var results = [];
@@ -5168,6 +5424,11 @@ window.GLCalendarSync = (function() {
     update: update,
     remove: remove,
     hasCalendarScope: hasCalendarScope,
+    hasCalendarEventsScope: hasCalendarEventsScope,
+    setMaintenance: setMaintenance,
+    clearMaintenance: clearMaintenance,
+    getMaintenanceState: getMaintenanceState,
+    _buildGigCalEventBody: _buildGigCalEventBody,
     saveSyncState: saveSyncState,
     getSyncStatus: getSyncStatus,
     renderSyncBadge: renderSyncBadge,

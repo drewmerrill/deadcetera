@@ -19,6 +19,44 @@
 //   GET  /fadr-diag       → Fadr API key diagnostics
 //   GET  /ical/:bandSlug  → Live ICS calendar feed for Google/Apple Calendar
 
+// Audit M1 (2026-05-04): origin allowlist for the calendar-mutation surface.
+// Worker has been a fully open Google proxy — anyone with a valid OAuth
+// token could use it from any browser/CLI. Allowlist below covers the real
+// app origins (prod, dev, GitHub Pages staging, localhost). Default mode is
+// WARN: violations are logged but the request proceeds, so a misconfigured
+// allowlist can't break the live UAT band session. Set env.ENFORCE_ORIGIN
+// to '1' (Cloudflare dashboard → Variables) once Drew confirms only the
+// expected origins appear in the warn-mode logs.
+const ALLOWED_ORIGINS = [
+  'https://app.groovelinx.com',
+  'https://dev.groovelinx.com',
+  'https://groovelinx.com',
+  'https://drewmerrill.github.io',
+  'https://deadcetera.github.io',
+  'http://localhost:5173',
+  'http://localhost:8000',
+  'http://localhost:8080',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:8000',
+  'http://127.0.0.1:8080'
+];
+function _checkOrigin(request, env) {
+  // Only the Google calendar-mutation surface needs gating today; ICS feeds,
+  // Claude/Fadr proxies etc. each have their own auth pattern. Caller decides
+  // whether to invoke this.
+  const origin = request.headers.get('Origin') || '';
+  // Allow same-origin/non-browser callers (no Origin header) — server-to-server
+  // tests, native apps. CSRF impossibility class.
+  if (!origin) return { ok: true, reason: 'no_origin' };
+  const allowed = ALLOWED_ORIGINS.indexOf(origin) !== -1;
+  if (allowed) return { ok: true, origin: origin };
+  console.warn('[Worker] ORIGIN CHECK FAIL — origin:', origin, '| path:', new URL(request.url).pathname, '| method:', request.method);
+  const enforce = env && env.ENFORCE_ORIGIN === '1';
+  if (enforce) return { ok: false, origin: origin };
+  // Warn-only mode: allow through, but tag so callers know the policy fired.
+  return { ok: true, origin: origin, warned: true };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -125,8 +163,28 @@ export default {
     // (an event is about to land on the user's personal cal). We still
     // honor the request to avoid breaking unknown legacy paths, but the
     // warning makes the bug visible in worker logs.
+    // Audit M1 (2026-05-04): origin gate for the entire calendar surface +
+    // free/busy + cal list. Warn-only by default; enforced when env
+    // .ENFORCE_ORIGIN === '1'. _calId logic preserved below.
+    var _isCalendarSurface = path.startsWith('/calendar/');
+    if (_isCalendarSurface) {
+      var _origCheck = _checkOrigin(request, env);
+      if (!_origCheck.ok) {
+        return cors(new Response(JSON.stringify({
+          error: 'origin_not_allowed',
+          message: 'Origin ' + (_origCheck.origin || '?') + ' is not in the allowlist.'
+        }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+      }
+    }
     var _calId = url.searchParams.get('calendarId');
     var _isMutating = path.startsWith('/calendar/events') && (request.method === 'POST' || request.method === 'PATCH' || request.method === 'DELETE');
+    // Audit T1.4 (2026-05-04): GET /calendar/events without calendarId
+    // silently defaults to 'primary' — that's by design for Mode-B overlay
+    // but it has caused confusion. Log a clear warning so future routing
+    // bugs are debuggable from worker logs.
+    if (path === '/calendar/events' && request.method === 'GET' && !_calId) {
+      console.warn('[Worker] /calendar/events GET with no calendarId — defaulting to "primary" (personal cal). Pass ?calendarId= for band cal.');
+    }
     if (_isMutating && !_calId) {
       // 2026-04-26: HARDENED — refuse to silently fall back to 'primary'.
       // Past behavior pushed updates to the user's personal calendar when a

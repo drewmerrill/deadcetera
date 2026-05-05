@@ -1102,6 +1102,22 @@ function _calTranslateSyncError(result, shortForm) {
 // Manual sync: push unsynced events + pull latest availability
 window._calSyncNow = async function() {
     var btn = document.getElementById('calSyncBtn');
+    // Audit T1.1 (2026-05-04): maintenance gate. If a migration/repair is in
+    // progress, refuse to start a sync and show why. Prevents D11.
+    if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.getMaintenanceState) {
+        try {
+            var _maint = await GLCalendarSync.getMaintenanceState();
+            if (_maint && _maint.active) {
+                if (typeof showToast === 'function') {
+                    var _untilMs = Date.parse(_maint.until || '');
+                    var _mins = isNaN(_untilMs) ? 0 : Math.max(1, Math.round((_untilMs - Date.now())/60000));
+                    showToast('\u23F8 Sync paused \u2014 ' + (_maint.reason || 'maintenance')
+                        + ' in progress (~' + _mins + ' min remaining)', 6000);
+                }
+                return;
+            }
+        } catch(_e) { /* fail open */ }
+    }
     if (btn) { btn.textContent = '\u21BB Syncing...'; btn.disabled = true; }
     try {
         // Reclassify first — pure local op, doesn't need a Google token, so it

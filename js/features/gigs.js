@@ -730,52 +730,18 @@ async function _syncGigToCalendar(gig, createdKey) {
         const matchKey = (gig.venue||'') + '|' + (gig.date||'');
         existIdx = calEvents.findIndex(function(e) { return e.type === 'gig' && ((e.venue||'')+'|'+(e.date||'')) === matchKey; });
     }
-    // Title resolution: prefer venue (human-readable) over bot-speak. But
-    // preserve any existing title that ISN'T the venue — that means a band
-    // member typed a custom name (e.g., "Birthday show") or Google sync
-    // pulled a rename from another member ("FTE show"). Only overwrite when
-    // the existing title is empty, the legacy "deadcetera Gig" / "Gig" string,
-    // or already matches the venue.
     var existing = (existIdx >= 0) ? calEvents[existIdx] : null;
-    var existingTitle = (existing && existing.title) || '';
-    var venueLabel = gig.venue || '';
-    var legacyDefaults = /^(deadcetera\s+gig|band\s+gig|gig)$/i;
-    var resolvedTitle = (!existingTitle || existingTitle === venueLabel || legacyDefaults.test(existingTitle))
-        ? venueLabel
-        : existingTitle;
 
-    // Calendar-event-managed fields preserved from existing row (sync engine,
-    // Google metadata, freebusy synthetics — none of these belong to the gig).
-    var preservedKeys = ['id','googleEventId','calendarId','sync','syncStatus',
-        'updated_at','_syntheticFromFreeBusy','_importedFromGoogle',
-        'assignedMembers','hiddenInfo','organizerEmail','recurrence','etag'];
-    var preserved = {};
-    if (existing) {
-        preservedKeys.forEach(function(k) {
-            if (existing[k] !== undefined) preserved[k] = existing[k];
-        });
+    // Audit T1.3 (2026-05-04): use the centralized builder. Single source
+    // of truth for the linkedSetlist override (D12 fix), preserved-keys
+    // list, time/startTime alias, and title resolution. _syncGigToCalendar
+    // is the live edit path (Save/Edit gig), so seedSyncFromGig is OFF —
+    // sync state on the existing cal_event row is preserved naturally.
+    if (typeof GLCalendarSync === 'undefined' || !GLCalendarSync._buildGigCalEventBody) {
+        console.error('[Gigs] _syncGigToCalendar: GLCalendarSync._buildGigCalEventBody unavailable — aborting mirror');
+        return;
     }
-
-    // Full-record mirror: spread the entire gig record, then re-apply
-    // cal-event-only fields and the resolved title. The `time` alias is set
-    // from gig.startTime to keep legacy readers working (cal_events uses
-    // `time` but gig uses `startTime`).
-    //
-    // CRITICAL: linkedSetlist field has DIFFERENT SEMANTICS on the two
-    // sides — gigs.linkedSetlist holds the setlist NAME (display string),
-    // cal_event.linkedSetlist holds the setlist ID (the dropdown's
-    // selected value). The full-record spread above would put the gig's
-    // NAME into the cal_event's ID slot, breaking the calendar editor's
-    // setlist dropdown. Override with gig.setlistId so the cal_event side
-    // always holds the id.
-    var calRecord = Object.assign({}, gig, preserved, {
-        type: 'gig',
-        title: resolvedTitle,
-        time: gig.startTime || '',
-        endTime: gig.endTime || '',
-        linkedSetlist: gig.setlistId || null,
-        updated: new Date().toISOString()
-    });
+    var calRecord = GLCalendarSync._buildGigCalEventBody(gig, existing);
 
     // Backfill id and created on first mirror.
     if (!calRecord.id) calRecord.id = generateShortId(12);
