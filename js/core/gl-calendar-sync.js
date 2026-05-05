@@ -1981,6 +1981,29 @@ window.GLCalendarSync = (function() {
       if (!ev || !ev.date || !ev.title) continue;
       var _gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
       var _status = ev.syncStatus || (ev.sync && ev.sync.status) || '';
+      // Audit H4 (2026-05-04): rows in 'needs_update', 'error', or 'orphaned'
+      // were previously written-but-never-re-evaluated stuck states. Treat
+      // them as retry candidates here so they can self-heal.
+      // - 'needs_update' / 'error' → upgrade to 'dirty' so the UPDATE branch
+      //   below runs.
+      // - 'orphaned' → clear the stale googleEventId so the CREATE fall-
+      //   through path takes a fresh shot (Phase 1 already handles this
+      //   transition mid-loop, but persisting it here makes the row
+      //   recoverable on its own next sync).
+      if (_gid && (_status === 'needs_update' || _status === 'error')) {
+        events[i].syncStatus = 'dirty';
+        events[i].sync = events[i].sync || {};
+        events[i].sync.status = 'dirty';
+        _status = 'dirty';
+        dirty = true;
+      } else if (_status === 'orphaned') {
+        delete events[i].googleEventId;
+        if (events[i].sync) delete events[i].sync.externalEventId;
+        events[i].syncStatus = '';
+        _gid = null;
+        _status = '';
+        dirty = true;
+      }
       // Dirty + already-synced → UPDATE (app-side edit needs to land on Google).
       if (_gid && _status === 'dirty') {
         try {
@@ -2258,6 +2281,24 @@ window.GLCalendarSync = (function() {
     } catch(e) {
       console.warn('[CalSync] Pull error:', e);
       result.error = e.message;
+    }
+
+    // Audit H15 (2026-05-04): bail before reconcile when partialFetch is set.
+    // Running reconcile (and the dedupe pass at Phase 2.4) against an
+    // incomplete view risks mis-matching orphans — the page-fetch failure
+    // already told us we don't have the full Google state. Phase 1 work
+    // already persisted; just skip reconcile and let the next sync retry.
+    if (result.partialFetch) {
+      console.warn('[CalSync] Phase 2: bailing before reconcile — partialFetch=true, fetched',
+        googleEvents.length, 'events but Google returned an error mid-pagination.');
+      // Persist Phase-1 dirty→synced flips (which mutated `events` in-memory)
+      // but skip the inbound reconcile loop entirely.
+      try {
+        if (dirty || result.pushedUpdates > 0) {
+          await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
+        }
+      } catch(_e) { console.warn('[CalSync] Phase 2 partial-fetch save failed:', _e && _e.message); }
+      return result;
     }
 
     console.log('[CalSync] Phase 2: Fetched', googleEvents.length, 'changes', useSyncToken ? '(incremental)' : '(full)');
@@ -4924,6 +4965,48 @@ window.GLCalendarSync = (function() {
     return calRecord;
   }
 
+  // ── Reverse direction: build a gig record from a cal_event (audit T2.9) ───
+  // The cal-page editor (calSaveEvent in calendar.js) historically wrote its
+  // own gig record inline — a parallel reverse-mirror that bypassed
+  // _syncGigToCalendar and dropped fields the gig editor preserves
+  // (expenses, availability, _lastCriticalChange, etc.). This helper is the
+  // single legal way to translate a cal_event row into a gig-shaped record.
+  // Used by calSaveEvent's Phase B1 ("Gig record sync") path.
+  //
+  // CRITICAL (D12 fix mirror): cal_event.linkedSetlist holds the setlist ID,
+  // gigs.linkedSetlist holds the setlist NAME. linkedSl resolution lives in
+  // the caller (it has the live setlists array); this helper expects the
+  // caller to pass the resolved linkedSl object so the NAME can be set
+  // explicitly.
+  //
+  // Inputs: cal_event row (canonical), existing gig record (or null when
+  // creating new), linkedSl (setlist record or null), opts.
+  // Output: a gig-shaped object ready to merge with prev / push to gigs.
+  function _buildGigFromCalEvent(ev, existingGig, linkedSl, opts) {
+    if (!ev) return null;
+    opts = opts || {};
+    return {
+      venueId: ev.venueId || (existingGig && existingGig.venueId) || null,
+      venue: ev.venue || ev.title || (existingGig && existingGig.venue) || '',
+      date: ev.date || (existingGig && existingGig.date) || '',
+      startTime: ev.time || ev.startTime || (existingGig && existingGig.startTime) || '',
+      endTime: ev.endTime || (existingGig && existingGig.endTime) || '',
+      arrivalTime: ev.arrivalTime || (existingGig && existingGig.arrivalTime) || '',
+      soundcheckTime: ev.soundcheckTime || (existingGig && existingGig.soundcheckTime) || '',
+      pay: ev.pay || (existingGig && existingGig.pay) || '',
+      soundPerson: ev.soundPerson || (existingGig && existingGig.soundPerson) || '',
+      contact: ev.contact || (existingGig && existingGig.contact) || '',
+      notes: ev.notes || (existingGig && existingGig.notes) || '',
+      // linkedSetlist on the GIG side stores the NAME (display string).
+      // ev.linkedSetlist on the CAL side stores the ID (D12 invariant).
+      // Resolve via the passed-in linkedSl record; fall back to the cal
+      // value only if no resolution (matches legacy fall-through but logs).
+      linkedSetlist: linkedSl ? (linkedSl.name || '') : (ev.linkedSetlist || ''),
+      setlistId: linkedSl ? (linkedSl.setlistId || null) : null,
+      updated: new Date().toISOString()
+    };
+  }
+
   // ── 2026-05-04: backfill comprehensive gig→calendar_events mirror ────────
   // Stage-1 of the Calendar/Gigs structural merge. Today, calendar_events.gig
   // rows are a partial projection of the gigs node — only ~10 of the gig's
@@ -5429,6 +5512,7 @@ window.GLCalendarSync = (function() {
     clearMaintenance: clearMaintenance,
     getMaintenanceState: getMaintenanceState,
     _buildGigCalEventBody: _buildGigCalEventBody,
+    _buildGigFromCalEvent: _buildGigFromCalEvent,
     saveSyncState: saveSyncState,
     getSyncStatus: getSyncStatus,
     renderSyncBadge: renderSyncBadge,

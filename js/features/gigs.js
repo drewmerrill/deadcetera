@@ -273,6 +273,29 @@ async function saveGigEdit(idx) {
     // Sync updated gig to calendar
     await _syncGigToCalendar(gigData[idx], gigData[idx].created || null);
 
+    // Audit H9 (2026-05-04): UPDATE cascade symmetry. Calendar-authored gigs
+    // store the googleEventId on the cal_event row, NOT on gigs.sync. The
+    // legacy "Google Calendar sync" branch below only fires when prev.sync
+    // .externalEventId is set on the gig record — meaning calendar-authored
+    // gigs whose date/venue moved would never PATCH Google. Now we mark the
+    // cal_event row 'dirty' on every critical change so Phase 1 of the next
+    // sync picks it up. Idempotent — already-dirty rows stay dirty.
+    if (criticalChange) {
+        try {
+            var _calEvts = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+            var _calIdx = _calEvts.findIndex(function(e) {
+                return e && e.type === 'gig' && e.gigId === gigData[idx].gigId;
+            });
+            if (_calIdx >= 0 && _calEvts[_calIdx].googleEventId) {
+                _calEvts[_calIdx].syncStatus = 'dirty';
+                _calEvts[_calIdx].sync = _calEvts[_calIdx].sync || {};
+                _calEvts[_calIdx].sync.status = 'dirty';
+                _calEvts[_calIdx].updated_at = new Date().toISOString();
+                await saveBandDataToDrive('_band', 'calendar_events', _calEvts);
+            }
+        } catch(e) { console.warn('[Gigs] H9 dirty-mark failed:', e && e.message); }
+    }
+
     // Google Calendar sync — auto-update if previously synced
     if (criticalChange && prev.sync && prev.sync.externalEventId && typeof GLCalendarSync !== 'undefined') {
         try {
@@ -1411,6 +1434,10 @@ async function gpSave(gigIdx) {
     data[gigIdx].memberSplit = {};
     Object.keys(bandMembers||{}).forEach(function(k){ data[gigIdx].memberSplit[k] = perMember; });
     await saveBandDataToDrive('_band', 'gigs', data);
+    // Audit H11 (2026-05-04): payout fields wrote to gigs only \u2014 cal_event
+    // mirror went stale until the next gig edit. Now propagates immediately.
+    try { await _syncGigToCalendar(data[gigIdx]); }
+    catch(e) { console.warn('[Gigs] gpSave: cal_event mirror failed:', e && e.message); }
     showToast('\uD83D\uDCB0 Payout saved!');
     loadGigs();
 }

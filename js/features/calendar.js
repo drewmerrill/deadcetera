@@ -817,7 +817,12 @@ window._calLockAndPlan = async function(dateStr) {
                 date: dateStr,
                 time: '19:00',
                 notes: '',
-                created: new Date().toISOString()
+                created: new Date().toISOString(),
+                // Audit H3 (2026-05-04): explicit sync-state marker. The
+                // immediate Google CREATE happens below; until it lands the
+                // row reads as a fresh outbound to Phase 1 — still correct,
+                // just no longer ambiguous.
+                syncStatus: ''
             };
             events.push(glEvent);
             eventIndex = events.length - 1;
@@ -875,7 +880,13 @@ async function _calRenderEventStrip() {
         var daysLabel = daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : (daysAway !== null ? daysAway + 'd' : '');
         var dateFmt = (typeof glFormatDate === 'function') ? glFormatDate(ev.date, true) : ev.date;
         var urgColor = daysAway !== null && daysAway <= 2 ? '#fbbf24' : 'var(--text-muted)';
-        var onclick = ev.type === 'rehearsal' ? "practicePlanActiveDate='" + ev.date + "';showPage('rehearsal')" : "showPage('setlists')";
+        // Audit H12 (2026-05-04, D1 sibling): for gigs, route through openGigById
+        // — the same fix already applied to the Calendar Next-Up button + mobile
+        // date sheet. Hardcoded showPage('setlists') sent users to a setlist
+        // search instead of the gig detail.
+        var onclick = ev.type === 'rehearsal'
+            ? "practicePlanActiveDate='" + ev.date + "';showPage('rehearsal')"
+            : ("openGigById('" + (ev.gigId || ev.id || ev.date) + "')");
         html += '<div onclick="' + onclick + '" style="flex:1;min-width:140px;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,0.02);cursor:pointer;transition:background 0.12s" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'rgba(255,255,255,0.02)\'">';
         html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px"><span>' + icon + '</span><span style="font-size:0.82em;font-weight:700;color:var(--text)">' + (ev.title || (ev.type === 'rehearsal' ? 'Rehearsal' : 'Gig')) + '</span></div>';
         html += '<div style="font-size:0.72em;color:' + urgColor + '">' + dateFmt + (daysLabel ? ' \u00B7 ' + daysLabel : '') + '</div>';
@@ -1568,11 +1579,66 @@ window._calDismissDateSelection = function() {
 };
 
 // Toggle RSVP status for a member on an event (inline, no modal)
+//
+// Audit H10 (2026-05-04): unify RSVPs to a single source of truth. Previously
+// this writer (cal-page) and the gig-page RSVP toggle in gigs.js wrote to
+// their own nodes independently, producing two diverging availability
+// dictionaries for the same gig. Fix: when the cal_event row is type:'gig'
+// AND has a matching gigId, write the RSVP through to gigs/{gigId}.availability
+// FIRST (canonical), then mirror to cal_event via _syncGigToCalendar so the
+// calendar surface reads the same data. Non-gig events keep the legacy
+// cal_event-only path.
 window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
     try {
         var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
         var ev = events.find(function(e) { return (e.eventId || e.id) === eventId; });
         if (!ev) return;
+
+        // Gig route: write through to gigs/{gigId} as canonical, then mirror.
+        if (ev.type === 'gig' && ev.gigId) {
+            try {
+                var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+                var gIdx = gigs.findIndex(function(g) { return g && g.gigId === ev.gigId; });
+                if (gIdx >= 0) {
+                    if (!gigs[gIdx].availability) gigs[gIdx].availability = {};
+                    if (newStatus === null) {
+                        delete gigs[gIdx].availability[memberKey];
+                    } else {
+                        gigs[gIdx].availability[memberKey] = { status: newStatus, updatedAt: new Date().toISOString() };
+                    }
+                    await saveBandDataToDrive('_band', 'gigs', gigs);
+                    // Mirror back to cal_event via the central helper so the
+                    // calendar surface stays in sync (avoids stale cache).
+                    if (typeof _syncGigToCalendar === 'function') {
+                        try { await _syncGigToCalendar(gigs[gIdx]); } catch(_e) {}
+                    } else {
+                        // Fallback: direct cal_event update if helper unavailable.
+                        ev.availability = gigs[gIdx].availability;
+                        await saveBandDataToDrive('_band', 'calendar_events', events);
+                    }
+                    if (newStatus && !localStorage.getItem('gl_cal_first_rsvp')) {
+                        localStorage.setItem('gl_cal_first_rsvp', '1');
+                        _calTrack('first_rsvp_completed', { status: newStatus });
+                    }
+                    if (_calEventsByDate[dateStr]) {
+                        var cachedG = _calEventsByDate[dateStr].find(function(e) { return (e.eventId || e.id) === eventId; });
+                        if (cachedG) cachedG.availability = gigs[gIdx].availability;
+                    }
+                    if (dateStr) {
+                        var partsG = dateStr.split('-');
+                        calDayClick(parseInt(partsG[0]), parseInt(partsG[1]) - 1, parseInt(partsG[2]));
+                    }
+                    return;
+                }
+                // gigId set but no matching gigs row — fall through to legacy
+                // cal-only write so the user's RSVP isn't dropped on the floor.
+                console.warn('[Calendar] _calToggleRsvp: gigId', ev.gigId, 'has no matching gigs record — using legacy cal-only path');
+            } catch(_e) {
+                console.warn('[Calendar] _calToggleRsvp: gig write-through failed, using cal-only fallback:', _e && _e.message);
+            }
+        }
+
+        // Legacy / non-gig path
         if (!ev.availability) ev.availability = {};
         if (newStatus === null) {
             delete ev.availability[memberKey];
@@ -1580,17 +1646,14 @@ window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
             ev.availability[memberKey] = { status: newStatus, updatedAt: new Date().toISOString() };
         }
         await saveBandDataToDrive('_band', 'calendar_events', events);
-        // First-RSVP milestone
         if (newStatus && !localStorage.getItem('gl_cal_first_rsvp')) {
             localStorage.setItem('gl_cal_first_rsvp', '1');
             _calTrack('first_rsvp_completed', { status: newStatus });
         }
-        // Update local cache
         if (_calEventsByDate[dateStr]) {
             var cached = _calEventsByDate[dateStr].find(function(e) { return (e.eventId || e.id) === eventId; });
             if (cached) cached.availability = ev.availability;
         }
-        // Re-render the date panel
         if (dateStr) {
             var parts = dateStr.split('-');
             calDayClick(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
@@ -6950,6 +7013,28 @@ async function calDeleteEvent(idx) {
     const upcoming = events.filter(e => (e.date||'') >= today).sort((a,b) => (a.date||'').localeCompare(b.date||''));
     const evToDelete = upcoming[idx];
     if (!evToDelete) return;
+    // Audit H8 (2026-05-04): cascade for gigs. Without this, deleting via the
+    // calendar surface orphans gigs/{gigId} + setlists/{setlistId}. Only
+    // _calDeleteFromPanel was cascading correctly. _cascadeDeleteGig is
+    // idempotent across all three nodes.
+    if (evToDelete.type === 'gig' && typeof window._cascadeDeleteGig === 'function') {
+        try {
+            // Build a gig-shaped record from the cal_event so the cascade can
+            // resolve gigId / venue+date for all three deletions.
+            await window._cascadeDeleteGig({
+                gigId: evToDelete.gigId || null,
+                venue: evToDelete.venue || '',
+                date: evToDelete.date || '',
+                setlistId: evToDelete.linkedSetlist || null,
+                calendarEventId: evToDelete.id || null,
+                googleEventId: evToDelete.googleEventId || (evToDelete.sync && evToDelete.sync.externalEventId) || null
+            });
+            loadCalendarEvents();
+            return;
+        } catch (e) {
+            console.warn('[Calendar] cascade delete failed, falling back to cal-only:', e && e.message);
+        }
+    }
     events = events.filter(e => e !== evToDelete && !(e.date===evToDelete.date && e.title===evToDelete.title && e.created===evToDelete.created));
     await saveBandDataToDrive('_band', 'calendar_events', events);
     loadCalendarEvents();
@@ -7015,6 +7100,29 @@ async function calDeleteEventById(eventId) {
         ? 'Delete this recurring event? All future occurrences will be removed.'
         : 'Delete this event?';
     if (!confirm(msg)) return;
+    // Audit H8 (2026-05-04): cascade for gigs. _cascadeDeleteGig handles
+    // calendar_events + gigs + (auto-blank) setlists + Google delete in one
+    // idempotent shot \u2014 short-circuit here when this row is a gig so we
+    // don't end up with orphaned gigs/setlists.
+    if (ev.type === 'gig' && typeof window._cascadeDeleteGig === 'function') {
+        try {
+            await window._cascadeDeleteGig({
+                gigId: ev.gigId || null,
+                venue: ev.venue || '',
+                date: ev.date || '',
+                setlistId: ev.linkedSetlist || null,
+                calendarEventId: ev.id || null,
+                googleEventId: ev.googleEventId || (ev.sync && ev.sync.externalEventId) || null
+            });
+            var _formArea1 = document.getElementById('calEventFormArea');
+            if (_formArea1) _formArea1.innerHTML = '';
+            if (typeof showToast === 'function') showToast('\u2713 Gig deleted');
+            _calRenderGridOnly();
+            return;
+        } catch (e) {
+            console.warn('[Calendar] cascade delete failed, falling back to cal-only:', e && e.message);
+        }
+    }
     // Sync deletion to Google Calendar if event was synced
     var _gId = ev.googleEventId || (ev.sync && ev.sync.externalEventId) || null;
     if (_gId && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasCalendarScope()) {
@@ -7165,6 +7273,10 @@ async function calSaveEvent(editIdx) {
         ev.created = new Date().toISOString();
         ev.updated_at = ev.created;
         ev.id = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36);
+        // Audit H3 (2026-05-04): explicit syncStatus on push so Phase 1 has an
+        // unambiguous signal this is intent-to-push (vs. an already-synced row
+        // that lost its googleEventId — which would be 'orphaned' state).
+        ev.syncStatus = '';
         events.push(ev);
         _savedIdx = events.length - 1;
     }
@@ -7303,22 +7415,34 @@ async function calSaveEvent(editIdx) {
             var allSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
             var linkedSl = calSetlistVal ? allSetlists.find(function(s) { return s.setlistId === calSetlistVal; }) : null;
 
-            var gigRecord = {
-                venueId: ev.venueId || null, venue: ev.venue || ev.title || '',
-                date: ev.date || '', startTime: ev.time || '',
-                // Full gig fields now captured in the Calendar editor — write
-                // them through so Gigs-page list view shows the same data.
-                endTime: ev.endTime || '',
-                arrivalTime: ev.arrivalTime || '',
-                soundcheckTime: ev.soundcheckTime || '',
-                pay: ev.pay || '',
-                soundPerson: ev.soundPerson || '',
-                contact: ev.contact || '',
-                notes: ev.notes || '',
-                linkedSetlist: linkedSl ? (linkedSl.name || '') : (ev.linkedSetlist || ''),
-                setlistId: linkedSl ? (linkedSl.setlistId || null) : null,
-                updated: new Date().toISOString()
-            };
+            // Audit H7 (2026-05-04, T2.9): use the centralized reverse-mirror
+            // builder. Single source of truth for cal→gig translation —
+            // eliminates the parallel-mirror class for this direction.
+            // _buildGigFromCalEvent encodes the linkedSetlist NAME-vs-ID
+            // semantic flip + carries forward existingGig.<field> for any
+            // gig-only fields the cal editor doesn't capture (expenses,
+            // availability, _lastCriticalChange, etc.).
+            var _existingForBuild = (existingIdx >= 0) ? existingGigs[existingIdx] : null;
+            var gigRecord;
+            if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync._buildGigFromCalEvent) {
+                gigRecord = GLCalendarSync._buildGigFromCalEvent(ev, _existingForBuild, linkedSl);
+            } else {
+                // Fallback if helper unavailable — preserve legacy behavior.
+                gigRecord = {
+                    venueId: ev.venueId || null, venue: ev.venue || ev.title || '',
+                    date: ev.date || '', startTime: ev.time || '',
+                    endTime: ev.endTime || '',
+                    arrivalTime: ev.arrivalTime || '',
+                    soundcheckTime: ev.soundcheckTime || '',
+                    pay: ev.pay || '',
+                    soundPerson: ev.soundPerson || '',
+                    contact: ev.contact || '',
+                    notes: ev.notes || '',
+                    linkedSetlist: linkedSl ? (linkedSl.name || '') : (ev.linkedSetlist || ''),
+                    setlistId: linkedSl ? (linkedSl.setlistId || null) : null,
+                    updated: new Date().toISOString()
+                };
+            }
             if (existingIdx >= 0) {
                 var prev = existingGigs[existingIdx];
                 existingGigs[existingIdx] = Object.assign({}, prev, gigRecord);

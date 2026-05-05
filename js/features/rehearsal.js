@@ -4812,14 +4812,23 @@ async function rhSaveEvent(eventId) {
                     var calEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
                     var alreadyExists = calEvents.some(function(ce) { return ce.type === 'rehearsal' && ce.date === ev.date; });
                     if (!alreadyExists) {
+                        // Audit H3 + M13 (2026-05-04): use canonical id +
+                        // timestamp field names matching the rest of the
+                        // schema (id, created, updated_at) and explicit
+                        // syncStatus so Phase 1 doesn't see a ghost row.
+                        var _nowIso = new Date().toISOString();
+                        var _newId = (typeof generateShortId === 'function') ? generateShortId(12) : ('cal_' + Date.now());
                         calEvents.push({
-                            id: 'cal_' + Date.now(),
+                            id: _newId,
                             type: 'rehearsal',
+                            title: 'Rehearsal',
                             date: ev.date,
                             time: ev.time || '',
                             location: ev.location || '',
                             notes: ev.notes || '',
-                            createdAt: new Date().toISOString()
+                            syncStatus: '',
+                            created: _nowIso,
+                            updated_at: _nowIso
                         });
                         await saveBandDataToDrive('_band', 'calendar_events', calEvents);
                     }
