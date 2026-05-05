@@ -4775,11 +4775,15 @@ window.GLCalendarSync = (function() {
         });
       }
 
+      // CRITICAL: linkedSetlist field has DIFFERENT SEMANTICS on the two
+      // sides — gigs.linkedSetlist holds the setlist NAME, cal_event
+      // .linkedSetlist holds the setlist ID. Override with gig.setlistId.
       var calRecord = Object.assign({}, gig, preserved, {
         type: 'gig',
         title: resolvedTitle,
         time: gig.startTime || '',
         endTime: gig.endTime || '',
+        linkedSetlist: gig.setlistId || null,
         updated: new Date().toISOString()
       });
       if (!calRecord.id) calRecord.id = _genId();
@@ -5013,6 +5017,106 @@ window.GLCalendarSync = (function() {
     };
   }
 
+  // ── 2026-05-04: post-mortem repair for broken gig setlist linkage ───────
+  // The first repairGigMirror run on prod corrupted cal_event.linkedSetlist
+  // by spreading gig.linkedSetlist (a setlist NAME) into cal_event
+  // .linkedSetlist (which expects a setlist ID — the dropdown's value).
+  // The calendar editor's setlist dropdown couldn't match the name to any
+  // setlistId and rendered "-- None --" for every gig. Drew had to
+  // manually re-link each gig through the editor.
+  //
+  // This tool scans every cal_event with type:'gig' + gigId, looks up the
+  // matching gig record, and sets cal_event.linkedSetlist = gig.setlistId.
+  // Dry-run by default — reports which rows would be repaired without
+  // writing. The mirror logic in gigs.js + repairGigMirror has already
+  // been patched to set linkedSetlist=gig.setlistId so future runs won't
+  // recreate this bug.
+  async function fixGigSetlistLinkage(opts) {
+    opts = opts || {};
+    var apply = !!opts.apply;
+    if (typeof loadBandDataFromDrive !== 'function') {
+      return { error: 'firebase helpers unavailable' };
+    }
+
+    var rawCal = await loadBandDataFromDrive('_band', 'calendar_events') || [];
+    var calEvents = (typeof toArray === 'function') ? toArray(rawCal) : (Array.isArray(rawCal) ? rawCal : Object.values(rawCal));
+    var rawGigs = await loadBandDataFromDrive('_band', 'gigs') || [];
+    var gigs = (typeof toArray === 'function') ? toArray(rawGigs) : (Array.isArray(rawGigs) ? rawGigs : Object.values(rawGigs));
+
+    var gigById = {};
+    gigs.forEach(function(g) { if (g && g.gigId) gigById[g.gigId] = g; });
+
+    var willRepair = [];
+    var alreadyCorrect = [];
+    var noGigMatch = [];
+
+    calEvents.forEach(function(ev) {
+      if (!ev || ev.type !== 'gig' || !ev.gigId) return;
+      var gig = gigById[ev.gigId];
+      if (!gig) {
+        noGigMatch.push({ calId: ev.id, gigId: ev.gigId, date: ev.date, venue: ev.venue });
+        return;
+      }
+      var current = ev.linkedSetlist || null;
+      var correct = gig.setlistId || null;
+      if (current === correct) {
+        alreadyCorrect.push({ calId: ev.id, gigId: ev.gigId, date: ev.date, venue: ev.venue, setlistId: correct });
+      } else {
+        willRepair.push({
+          calId: ev.id,
+          gigId: ev.gigId,
+          date: ev.date,
+          venue: ev.venue,
+          currentLinkedSetlist: current,
+          correctSetlistId: correct,
+          setlistName: gig.linkedSetlist || null
+        });
+      }
+    });
+
+    console.log('[fixSetlist] cal_events with type:gig + gigId scanned:', willRepair.length + alreadyCorrect.length + noGigMatch.length);
+    console.log('[fixSetlist] already correct:', alreadyCorrect.length);
+    console.log('[fixSetlist] needs repair:', willRepair.length);
+    if (willRepair.length) {
+      console.table(willRepair);
+    }
+    if (noGigMatch.length) {
+      console.warn('[fixSetlist] cal_events with gigId but no matching gigs row (skipped, will not repair):', noGigMatch.length);
+      console.table(noGigMatch);
+    }
+
+    if (!apply) {
+      console.log('[fixSetlist] Dry run only. Run with {apply:true} to write changes.');
+      return { needsRepair: willRepair.length, alreadyCorrect: alreadyCorrect.length, orphanGigIds: noGigMatch.length, dryRun: true };
+    }
+
+    if (!willRepair.length) {
+      console.log('[fixSetlist] Nothing to repair.');
+      return { needsRepair: 0, alreadyCorrect: alreadyCorrect.length, orphanGigIds: noGigMatch.length, applied: 0 };
+    }
+
+    // Apply: in-place mutate the cal_event rows, then save.
+    var repairById = {};
+    willRepair.forEach(function(r) { repairById[r.calId] = r.correctSetlistId; });
+
+    var nowIso = new Date().toISOString();
+    calEvents.forEach(function(ev) {
+      if (ev && ev.id && repairById.hasOwnProperty(ev.id)) {
+        ev.linkedSetlist = repairById[ev.id];
+        ev.updated = nowIso;
+      }
+    });
+
+    try {
+      await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(calEvents));
+      console.log('[fixSetlist] ✓ Repaired', willRepair.length, 'cal_events');
+    } catch (e) {
+      console.error('[fixSetlist] save failed:', e && e.message);
+      return { error: 'save_failed', applied: 0 };
+    }
+    return { needsRepair: willRepair.length, alreadyCorrect: alreadyCorrect.length, orphanGigIds: noGigMatch.length, applied: willRepair.length };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -5063,6 +5167,7 @@ window.GLCalendarSync = (function() {
     createMissingHiddenStubs: createMissingHiddenStubs,
     repairGigMirror: repairGigMirror,
     cleanupOrphanGigEvents: cleanupOrphanGigEvents,
+    fixGigSetlistLinkage: fixGigSetlistLinkage,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,

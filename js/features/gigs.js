@@ -760,11 +760,20 @@ async function _syncGigToCalendar(gig, createdKey) {
     // cal-event-only fields and the resolved title. The `time` alias is set
     // from gig.startTime to keep legacy readers working (cal_events uses
     // `time` but gig uses `startTime`).
+    //
+    // CRITICAL: linkedSetlist field has DIFFERENT SEMANTICS on the two
+    // sides — gigs.linkedSetlist holds the setlist NAME (display string),
+    // cal_event.linkedSetlist holds the setlist ID (the dropdown's
+    // selected value). The full-record spread above would put the gig's
+    // NAME into the cal_event's ID slot, breaking the calendar editor's
+    // setlist dropdown. Override with gig.setlistId so the cal_event side
+    // always holds the id.
     var calRecord = Object.assign({}, gig, preserved, {
         type: 'gig',
         title: resolvedTitle,
         time: gig.startTime || '',
         endTime: gig.endTime || '',
+        linkedSetlist: gig.setlistId || null,
         updated: new Date().toISOString()
     });
 
