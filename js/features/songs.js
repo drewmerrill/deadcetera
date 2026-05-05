@@ -277,6 +277,11 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // Show active filter chip so the user knows a filter is hiding songs
     _renderActiveFilterChip();
 
+    // Focus songs — single source of truth (must precede sort: needs_work comparator reads _topGaps)
+    var _focusData = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var _topGaps = {};
+    _focusData.list.forEach(function(f) { _topGaps[f.title] = true; });
+
     // Sort: user-selected or triage auto-sort
     var _sortMode = window._sqSongSort || 'default';
     // User-selected sort — applies in all views including triage/cleanup
@@ -389,10 +394,6 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
             }
         }
     } catch(e) {}
-    // Focus songs — single source of truth
-    var _focusData = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
-    var _topGaps = {};
-    _focusData.list.forEach(function(f) { _topGaps[f.title] = true; });
 
     // ── MODE TOGGLE + SORT INDICATOR ──
     var _isCleanup = !!window._sqTriageFilter;
