@@ -1130,7 +1130,21 @@ window._calSyncNow = async function() {
         } catch(_e) { /* fail open */ }
     }
     if (btn) { btn.textContent = '\u21BB Syncing...'; btn.disabled = true; }
+    // Audit M22 (2026-05-04): hold the sync lock across reclassify -> sync ->
+    // reclassify so another device cant interleave Phase 2 mid-reclassify.
+    // syncBandCalendar() detects the outer lock and skips its inner acquire.
+    var _outerLock = false;
     try {
+        if (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.acquireSyncLock) {
+            _outerLock = await GLCalendarSync.acquireSyncLock();
+            if (!_outerLock) {
+                if (typeof showToast === 'function') {
+                    showToast('Sync skipped - another band member is syncing right now.', 4000);
+                }
+                if (btn) { btn.textContent = '\u21BB Sync Calendars'; btn.disabled = false; }
+                return;
+            }
+        }
         // Reclassify first — pure local op, doesn't need a Google token, so it
         // runs even when Google sign-in has lapsed (which is the common state
         // after page reload because accessToken is session-scoped).
@@ -1243,6 +1257,14 @@ window._calSyncNow = async function() {
         window._calLastSyncChangeSummary = _syncResult;
     } catch(e) {
         if (typeof showToast === 'function') showToast('\u26A0 Sync failed: ' + _calTranslateSyncError({ error: e.message || 'unknown error' }), 7000);
+    } finally {
+        // Audit M22: always release the outer lock, even if reclassify or
+        // syncBandCalendar threw. Otherwise the lock would sit at its TTL
+        // (180s) and other devices would see "another device syncing"
+        // until then.
+        if (_outerLock && typeof GLCalendarSync !== 'undefined' && GLCalendarSync.releaseSyncLock) {
+            try { await GLCalendarSync.releaseSyncLock(); } catch(_e) { /* non-fatal */ }
+        }
     }
     var _hasAvailRestore = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
     var _syncBtnLabel = _calIsModeA() ? '\u21BB Sync Calendars' : (_hasAvailRestore ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events');
@@ -1607,6 +1629,8 @@ window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
                         gigs[gIdx].availability[memberKey] = { status: newStatus, updatedAt: new Date().toISOString() };
                     }
                     await saveBandDataToDrive('_band', 'gigs', gigs);
+                    // Audit M14 (2026-05-04): keep GLStore.gigsCache in lockstep.
+                    try { if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(gigs); } catch(_e) {}
                     // Mirror back to cal_event via the central helper so the
                     // calendar surface stays in sync (avoids stale cache).
                     if (typeof _syncGigToCalendar === 'function') {
@@ -6822,6 +6846,8 @@ window._calSetAvailAndRefresh = async function(date, status, eventId) {
                 if (!gig.availability) gig.availability = {};
                 gig.availability[memberKey] = { status: status, respondedAt: new Date().toISOString() };
                 await saveBandDataToDrive('_band', 'gigs', gigs);
+                // Audit M14 (2026-05-04): keep GLStore.gigsCache in lockstep.
+                try { if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(gigs); } catch(_e) {}
             }
         } catch(e) {
             console.warn('[Calendar] Gig availability sync failed:', e);
@@ -7474,6 +7500,8 @@ async function calSaveEvent(editIdx) {
                 await saveBandDataToDrive('_band', 'setlists', allSetlists);
             }
             await saveBandDataToDrive('_band', 'gigs', existingGigs);
+            // Audit M14 (2026-05-04): keep GLStore.gigsCache in lockstep.
+            try { if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(existingGigs); } catch(_e) {}
             // TARGETED UPDATE: stamp gigId on the specific event — no full array re-read/re-save
             if (ev.gigId && _savedIdx >= 0) {
                 var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;

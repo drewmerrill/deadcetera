@@ -2531,7 +2531,11 @@ window.slUnlinkGigFromSetlist = async function(idx) {
                 changed = true;
             }
         });
-        if (changed) await saveBandDataToDrive('_band', 'gigs', gigs);
+        if (changed) {
+            await saveBandDataToDrive('_band', 'gigs', gigs);
+            // Audit M14 (2026-05-04): keep GLStore.gigsCache in lockstep.
+            try { if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(gigs); } catch(_e) {}
+        }
     } catch(_e) { /* non-fatal */ }
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }

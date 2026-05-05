@@ -461,6 +461,43 @@ window.GLCalendarSync = (function() {
     }
   }
 
+  // Audit M4 (2026-05-04): bounded retry wrapper for transient Google API
+  // failures (429 rate-limit, 500/502/503/504 server hiccups). Honors the
+  // `Retry-After` response header when present; otherwise exponential backoff.
+  // Wrap mutation fetches (create/update/remove) so a brief upstream blip
+  // doesn't leave a row stuck dirty for the next sync interval. Network
+  // exceptions (no response object) are also retried within the same budget.
+  async function _withRetry(fetchFn, opts) {
+    var maxAttempts = (opts && opts.maxAttempts) || 3;
+    var baseDelayMs = (opts && opts.baseDelayMs) || 400;
+    var maxDelayMs  = (opts && opts.maxDelayMs)  || 8000;
+    var label = (opts && opts.label) || 'fetch';
+    var lastErr = null;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        var res = await fetchFn();
+        var transient = (res && (res.status === 429 || (res.status >= 500 && res.status <= 599)));
+        if (!transient) return res;
+        if (attempt === maxAttempts) return res;
+        var ra = parseInt(res.headers && res.headers.get && res.headers.get('Retry-After'), 10);
+        var delay = (!isNaN(ra) && ra > 0) ? ra * 1000 : baseDelayMs * Math.pow(2, attempt - 1);
+        delay = Math.min(delay, maxDelayMs);
+        console.warn('[CalSync] _withRetry(' + label + '): attempt', attempt, '/', maxAttempts,
+          '— status', res.status, '— sleeping', delay, 'ms');
+        await new Promise(function(r){ setTimeout(r, delay); });
+      } catch (e) {
+        lastErr = e;
+        if (attempt === maxAttempts) throw e;
+        var nDelay = Math.min(baseDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
+        console.warn('[CalSync] _withRetry(' + label + '): attempt', attempt, '/', maxAttempts,
+          '— network error', (e && e.message) || e, '— sleeping', nDelay, 'ms');
+        await new Promise(function(r){ setTimeout(r, nDelay); });
+      }
+    }
+    if (lastErr) throw lastErr;
+    throw new Error('retry_exhausted');
+  }
+
   async function create(glEvent, opts) {
     // D13 audit fix: use granular gate. calendar.events scope is sufficient
     // for POST events.insert; the conflated hasCalendarScope() over-restricts
@@ -564,19 +601,23 @@ window.GLCalendarSync = (function() {
       // Google Calendar.
       console.log('[CalSync] create() POST URL =', _postUrl);
       console.log('[CalSync] create() event:', { title: body.summary, type: glEvent.type, date: glEvent.date });
-      var res = await fetch(_postUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + accessToken
-        },
-        body: JSON.stringify(body)
-      });
+      var res = await _withRetry(function() {
+        return fetch(_postUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + accessToken
+          },
+          body: JSON.stringify(body)
+        });
+      }, { label: 'create' });
 
       if (!res.ok) {
         var errText = await res.text();
         console.warn('[CalSync] Create failed:', res.status, errText);
-        return { success: false, error: 'Google Calendar returned ' + res.status, fallback: true };
+        // Audit M5 (2026-05-04): propagate status so Phase 1 can flip
+        // result.needsReauth on 401/403 and the toast can prompt re-auth.
+        return { success: false, status: res.status, error: 'Google Calendar returned ' + res.status, fallback: true };
       }
 
       var data = await res.json();
@@ -658,18 +699,23 @@ window.GLCalendarSync = (function() {
       console.warn('[CalSync] update(): event has recurrence — PATCH may update the ENTIRE SERIES. If you only meant to edit one date, this affects every occurrence.');
     }
     try {
-      var res = await fetch(patchUrl, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + accessToken
-        },
-        body: JSON.stringify(body)
-      });
+      var res = await _withRetry(function() {
+        return fetch(patchUrl, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + accessToken
+          },
+          body: JSON.stringify(body)
+        });
+      }, { label: 'update' });
 
       if (!res.ok) {
         console.warn('[CalSync] Update failed:', res.status);
-        return { success: false, error: 'Update failed: ' + res.status, status: 'error' };
+        // Audit M5: include httpStatus so callers can detect 401/403 and
+        // flip needsReauth. Existing `status: 'error'` is the row-level
+        // sync state and must be preserved for legacy consumers.
+        return { success: false, error: 'Update failed: ' + res.status, status: 'error', httpStatus: res.status };
       }
 
       var data = await res.json();
@@ -699,17 +745,21 @@ window.GLCalendarSync = (function() {
     if (!calId) return { success: false, error: 'No band calendar configured.' };
 
     try {
-      var res = await fetch(WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId), {
-        method: 'DELETE',
-        headers: { 'Authorization': 'Bearer ' + accessToken }
-      });
+      var _delUrl = WORKER_BASE + '/calendar/events/' + encodeURIComponent(externalEventId) + '?calendarId=' + encodeURIComponent(calId);
+      var res = await _withRetry(function() {
+        return fetch(_delUrl, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+      }, { label: 'remove' });
 
       // 204 = success, 410 = already deleted
       if (res.status === 204 || res.status === 410) {
         return { success: true, status: 'detached' };
       }
 
-      return { success: false, error: 'Delete failed: ' + res.status };
+      // Audit M5: surface httpStatus for 401/403 → needsReauth bubble.
+      return { success: false, error: 'Delete failed: ' + res.status, httpStatus: res.status };
     } catch (err) {
       return { success: false, error: err.message };
     }
@@ -1651,24 +1701,41 @@ window.GLCalendarSync = (function() {
 
   // ── Sync lock ─────────────────────────────────────────────────────────────
   // Firebase-based soft lock to prevent concurrent syncBandCalendar() runs
-  // across devices. Each run acquires the lock with a 60s TTL; other runs
+  // across devices. Each run acquires the lock with a 180s TTL; other runs
   // see the lock and back off. Prevents the Brian/Drew race where both
   // devices pushed the same event because neither had yet written the
   // googleEventId back to Firebase.
-  var LOCK_TTL_MS = 60 * 1000;
+  //
+  // Audit M2 (2026-05-04): fail closed with bounded retry. Prior behavior
+  // returned true on any Firebase transaction error — meaning a flaky
+  // network would let TWO devices think they hold the lock simultaneously.
+  // Now: one retry with backoff, then refuse the sync run.
+  // Audit M3 (2026-05-04): TTL bumped 60→180s. Full sync + hidden-check +
+  // Path B.2 has been observed at 90s+ on slow networks. Old TTL allowed
+  // a second device to acquire while first was still writing.
+  var LOCK_TTL_MS = 180 * 1000;
   async function _acquireSyncLock() {
     if (typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') return true;
-    try {
-      var ref = firebaseDB.ref(bandPath('sync_locks/calendar'));
+    var ref = firebaseDB.ref(bandPath('sync_locks/calendar'));
+    var attempt = async function() {
       var result = await ref.transaction(function (curr) {
         var now = Date.now();
         if (curr && curr.expires && curr.expires > now) return; // abort — someone else holds
         return { owner: (typeof currentUserEmail !== 'undefined' ? currentUserEmail : 'unknown'), expires: now + LOCK_TTL_MS };
       });
       return !!result.committed;
+    };
+    try {
+      return await attempt();
     } catch (e) {
-      console.warn('[CalSync] lock acquire failed, proceeding:', e && e.message);
-      return true; // fail open — don't block sync on Firebase lock issues
+      console.warn('[CalSync] lock acquire failed, retrying once in 250ms:', e && e.message);
+      await new Promise(function(r){ setTimeout(r, 250); });
+      try {
+        return await attempt();
+      } catch (e2) {
+        console.warn('[CalSync] lock acquire retry also failed — refusing sync (fail-closed):', e2 && e2.message);
+        return false;
+      }
     }
   }
   async function _releaseSyncLock() {
@@ -1677,15 +1744,39 @@ window.GLCalendarSync = (function() {
     catch (e) { /* non-fatal — lock will expire via TTL */ }
   }
 
+  // Audit M22 (2026-05-04): callers that orchestrate multiple sync-adjacent
+  // ops (e.g. _calSyncNow runs reclassify → syncBandCalendar → reclassify)
+  // should hold the lock across the WHOLE sequence so another device can't
+  // interleave Phase 2 mid-reclassify. These public helpers expose lock
+  // ownership; syncBandCalendar will detect the outer lock and skip its
+  // own inner acquisition.
+  var _externalLockHeld = false;
+  async function acquireSyncLock() {
+    var got = await _acquireSyncLock();
+    if (got) _externalLockHeld = true;
+    return got;
+  }
+  async function releaseSyncLock() {
+    _externalLockHeld = false;
+    await _releaseSyncLock();
+  }
+
   async function syncBandCalendar() {
     if (!hasCalendarScope()) return { error: 'no scope', pushed: 0, pulled: 0, deleted: 0 };
     var bandCalId = await _getBandCalendarId();
     if (!bandCalId) return { error: 'no band calendar configured', pushed: 0, pulled: 0, deleted: 0 };
 
-    var gotLock = await _acquireSyncLock();
-    if (!gotLock) {
-      console.log('[CalSync] Another device is syncing — skipping this run');
-      return { error: 'another_device_syncing', pushed: 0, pulled: 0, deleted: 0, skipped: true };
+    // Audit M22 (2026-05-04): if a caller already acquired the lock via
+    // acquireSyncLock(), don't try to acquire it again — that would
+    // self-deadlock by failing the freshness check.
+    var _ownsLock = false;
+    if (!_externalLockHeld) {
+      var gotLock = await _acquireSyncLock();
+      if (!gotLock) {
+        console.log('[CalSync] Another device is syncing — skipping this run');
+        return { error: 'another_device_syncing', pushed: 0, pulled: 0, deleted: 0, skipped: true };
+      }
+      _ownsLock = true;
     }
     var _started = Date.now();
     try {
@@ -1695,7 +1786,7 @@ window.GLCalendarSync = (function() {
       _logSyncActivity(_r).catch(function(){});
       return _r;
     } finally {
-      await _releaseSyncLock();
+      if (_ownsLock) await _releaseSyncLock();
     }
   }
 
@@ -1714,6 +1805,21 @@ window.GLCalendarSync = (function() {
       } else if (typeof currentUserName !== 'undefined' && currentUserName) {
         _myName = currentUserName;
       }
+      // Audit M9 (2026-05-04): include row-level detail (first-N event
+      // titles+dates+ids) so the Sync Activity modal can show *what* the
+      // sync touched, not just *how many*. Cap arrays to keep entries tiny.
+      var _trimList = function(list, n) {
+        if (!Array.isArray(list)) return [];
+        return list.slice(0, n).map(function(it) {
+          if (!it) return null;
+          return {
+            t: (it.title || '').slice(0, 60),
+            d: it.date || '',
+            id: it.id || it.glEventId || '',
+            g: it.googleEventId || ''
+          };
+        }).filter(Boolean);
+      };
       var entry = {
         ts: new Date().toISOString(),
         memberKey: _myKey || 'unknown',
@@ -1725,13 +1831,23 @@ window.GLCalendarSync = (function() {
         blocksPushed: r.blocksPushed || 0,
         blocksDeleted: r.blocksDeleted || 0,
         hiddenCount: (r.hiddenRanges || []).length,
+        partialFetch: !!r.partialFetch,
+        skippedNoTitle: r.skippedNoTitle || 0,
+        updateErrors: r.updateErrors || 0,
+        syntheticsCleared: r.syntheticsCleared || 0,
         error: r.error || null,
         needsReauth: !!r.needsReauth,
         skipped: !!r.skipped,
         skipReason: r.reason || null,
         maintenanceReason: r.maintenanceReason || null,
         maintenanceUntil: r.until || null,
-        durationMs: r._durationMs || 0
+        durationMs: r._durationMs || 0,
+        // Row-level detail (first 5 of each list). Lists themselves are
+        // populated opportunistically by Phase 1/2; absent → empty.
+        pushedSample: _trimList(r._pushedSample, 5),
+        pulledSample: _trimList(r._pulledSample, 5),
+        updatedSample: _trimList(r._updatedSample, 5),
+        deletedSample: _trimList(r._deletedSample, 5)
       };
       await db.ref(bandPath('sync_activity')).push(entry);
       // Trim to last 100 — one extra read+writes per sync, acceptable.
@@ -1967,18 +2083,46 @@ window.GLCalendarSync = (function() {
       // Path B.2: synthetic hidden-event rows are derived from freebusy, not
       // real events. Never push them back to Google.
       if (ev && (ev._syntheticFromFreeBusy || ev.syncStatus === 'synthetic')) continue;
-      // D5 fix (2026-05-04): never push imported "Busy"/"unavailable" rows
-      // back to Google. They originated on a member's PERSONAL calendar
-      // (Drew Busy, Brian Busy) and were imported into calendar_events
-      // for conflict-detection purposes. Pushing them back via Phase 1
-      // was renaming them to "deadcetera Event" on the source calendar.
-      var _UNTOUCHABLE = { unavailable: 1, busy: 1, block: 1 };
-      if (ev && ev.type && _UNTOUCHABLE[ev.type]) continue;
+      // D5 fix (2026-05-04) + Audit M7 (2026-05-04): never push imported
+      // "Busy"/"unavailable" rows back to Google when their origin was a
+      // PERSONAL calendar (Drew Busy / Brian Busy from members' own cals,
+      // imported into calendar_events for conflict-detection). The legacy
+      // gate was type-only — too broad: it also blocked legitimately
+      // band-cal-authored block/unavailable rows from being pushed.
+      // Narrower gate: only short-circuit when the row was imported AND
+      // its calendarId is NOT the band cal. A band-cal-authored block
+      // (calendarId === bandCalId, or no _importedFromGoogle flag) is
+      // free to take the normal CREATE/UPDATE path.
+      var _UNTOUCHABLE_TYPE = { unavailable: 1, busy: 1, block: 1 };
+      if (ev && ev.type && _UNTOUCHABLE_TYPE[ev.type]) {
+        var _isImported = !!ev._importedFromGoogle;
+        var _fromOtherCal = !!(ev.calendarId && ev.calendarId !== bandCalId);
+        if (_isImported && _fromOtherCal) continue;
+        // Also skip if calendarId is missing AND _importedFromGoogle is set —
+        // legacy rows without calendarId are still personal-cal imports.
+        if (_isImported && !ev.calendarId) continue;
+      }
       // T1.2 audit fix: migration-created rows without a real Google event
       // are tagged 'migration_only' so Phase 1 doesn't ghost-push them as
       // fresh outbound. The user can opt in via gig edit (sets dirty=true).
       if (ev && ev.syncStatus === 'migration_only') continue;
-      if (!ev || !ev.date || !ev.title) continue;
+      // Audit M8 (2026-05-04): missing-title rows used to be silently dropped.
+      // Now we count + log first 5 — visible in sync_activity row detail —
+      // so corruption (e.g. cal_event imported from a personal cal with
+      // type-only and no title) is observable instead of invisible.
+      if (!ev || !ev.date || !ev.title) {
+        if (ev && (!ev.date || !ev.title)) {
+          result.skippedNoTitle = (result.skippedNoTitle || 0) + 1;
+          if (result.skippedNoTitle <= 5) {
+            console.warn('[CalSync] Phase 1: skipped row missing required fields —',
+              'id=', ev.id || '(none)',
+              '| type=', ev.type || '(none)',
+              '| title=', JSON.stringify(ev.title),
+              '| date=', JSON.stringify(ev.date));
+          }
+        }
+        continue;
+      }
       var _gid = ev.googleEventId || (ev.sync && ev.sync.externalEventId);
       var _status = ev.syncStatus || (ev.sync && ev.sync.status) || '';
       // Audit H4 (2026-05-04): rows in 'needs_update', 'error', or 'orphaned'
@@ -2021,13 +2165,15 @@ window.GLCalendarSync = (function() {
             isAllDay: !!ev.isAllDay
           };
           var _upd = await update(_gid, _gle);
-          // Single retry for transient errors (Google API has occasional
-          // 500/502/503/429 spikes). Backoff small to avoid blocking sync.
-          var _isTransient = !_upd.success && /^Update failed: (500|502|503|429)/.test(_upd.error || '');
-          if (_isTransient) {
-            console.log('[CalSync] Phase 1 UPDATE transient error for', ev.title, '(' + _upd.error + ') — retrying in 400ms');
-            await new Promise(function(r) { setTimeout(r, 400); });
-            _upd = await update(_gid, _gle);
+          // Audit M4 (2026-05-04): transient retries now happen inside
+          // update() via _withRetry. The legacy outer 400ms single-retry
+          // was removed to avoid double-retry budgets stacking.
+          // Audit M5 (2026-05-04): surface 401/403 to the sync result so
+          // the toast can prompt re-auth instead of leaving the row dirty.
+          if (!_upd.success && (_upd.httpStatus === 401 || _upd.httpStatus === 403)) {
+            result.needsReauth = true;
+            console.warn('[CalSync] Phase 1 UPDATE auth failure (' + _upd.httpStatus + ') — flagging needsReauth and stopping Phase 1');
+            break;
           }
           if (_upd.success) {
             events[i].syncStatus = 'synced';
@@ -2037,6 +2183,10 @@ window.GLCalendarSync = (function() {
             events[i].sync.lastSyncedAt = events[i].lastSyncedAt;
             result.pushedUpdates++;
             dirty = true;
+            // Audit M9: row-level detail for sync_activity.
+            (result._updatedSample = result._updatedSample || []).push({
+              title: ev.title, date: ev.date, id: ev.id, googleEventId: _gid
+            });
             console.log('[CalSync] Phase 1 UPDATE pushed:', ev.title, ev.date);
           } else if (_upd.status === 'orphan') {
             // Stored googleEventId no longer resolves on the band cal —
@@ -2078,12 +2228,35 @@ window.GLCalendarSync = (function() {
           events[i].lastSyncedAt = new Date().toISOString();
           events[i].sync = sync.sync;
           result.pushed++;
+          dirty = true;
+          // Audit M9: row-level detail.
+          (result._pushedSample = result._pushedSample || []).push({
+            title: ev.title, date: ev.date, id: ev.id, googleEventId: sync.sync.externalEventId
+          });
+        } else if (!sync.success && (sync.status === 401 || sync.status === 403)) {
+          // Audit M5 (2026-05-04): bubble auth failure so the toast can
+          // prompt re-auth. Stop Phase 1 — every subsequent CREATE in this
+          // run would 401 too and burn the retry budget for nothing.
+          result.needsReauth = true;
+          console.warn('[CalSync] Phase 1 CREATE auth failure (' + sync.status + ') — flagging needsReauth and stopping Phase 1');
+          break;
         }
       } catch(e) { console.warn('[CalSync] Push failed for', ev.title, e.message); }
     }
-    if (result.pushed > 0) {
+    // Audit M6 (2026-05-04): persist BOTH new pushes AND dirty→synced flips
+    // before Phase 2 runs. The legacy condition (result.pushed > 0) skipped
+    // the save when only UPDATEs happened, leaving the in-memory
+    // syncStatus/lastSyncedAt mutations stranded until Phase 2's later save —
+    // and if Phase 2 errored mid-flight, those flips were lost.
+    // Also persist when self-healing flipped 'needs_update'/'error'/'orphaned'
+    // values; we tracked that via the `dirty` flag in the Phase 1 loop.
+    if (result.pushed > 0 || result.pushedUpdates > 0 || dirty) {
       await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
-      console.log('[CalSync] Phase 1: Pushed', result.pushed, 'events');
+      console.log('[CalSync] Phase 1 persisted —',
+        'pushed:', result.pushed, '| updates:', result.pushedUpdates || 0, '| selfHealed:', dirty);
+      // Reset `dirty` so Phase 2's later save still runs only if it has
+      // its own changes to write.
+      dirty = false;
     }
 
     // ── PHASE 1.5: Push MY schedule blocks (Mode A only) ──
@@ -2336,6 +2509,11 @@ window.GLCalendarSync = (function() {
         // ── Deletion from Google → remove from Firebase ──
         if (existIdx !== undefined && existIdx >= 0) {
           console.log('[CalSync] Inbound DELETE:', events[existIdx].title, events[existIdx].date);
+          // Audit M9: capture sample BEFORE splice.
+          (result._deletedSample = result._deletedSample || []).push({
+            title: events[existIdx].title, date: events[existIdx].date,
+            id: events[existIdx].id, googleEventId: gEv.id
+          });
           events.splice(existIdx, 1);
           // Rebuild index after splice
           eventsByGoogleId = {};
@@ -2354,6 +2532,11 @@ window.GLCalendarSync = (function() {
         _reconcileEvent(events[existIdx], gEv);
         result.updated++;
         dirty = true;
+        // Audit M9: row-level detail.
+        (result._updatedSample = result._updatedSample || []).push({
+          title: events[existIdx].title, date: events[existIdx].date,
+          id: events[existIdx].id, googleEventId: gEv.id
+        });
       } else {
         // ── New: import from Google ──
         // Safety: check extendedProperties to see if this is a GrooveLinx-created event
@@ -2474,6 +2657,10 @@ window.GLCalendarSync = (function() {
         eventsByGoogleId[gEv.id] = events.length - 1;
         result.pulled++;
         dirty = true;
+        // Audit M9: row-level detail.
+        (result._pulledSample = result._pulledSample || []).push({
+          title: newEv.title, date: newEv.date, id: newEv.id, googleEventId: gEv.id
+        });
         console.log('[CalSync] Inbound NEW:', newEv.title, newEv.date);
       }
     }
@@ -2742,13 +2929,21 @@ window.GLCalendarSync = (function() {
           }
         }
       });
-      // Remove stale synthetic rows that are no longer in the freebusy output
+      // Remove stale synthetic rows that are no longer in the freebusy output.
+      // Audit M10 (2026-05-04): track count for sync_activity log so a clear
+      // burst becomes observable in the UI (previously only console).
+      var _synthCleared = 0;
       for (var _si = events.length - 1; _si >= 0; _si--) {
         var _sev = events[_si];
         if (_sev && _sev._syntheticFromFreeBusy && !_synthKeys[_sev._hiddenRangeKey]) {
           events.splice(_si, 1);
           _synthDirty = true;
+          _synthCleared++;
         }
+      }
+      if (_synthCleared > 0) {
+        result.syntheticsCleared = (result.syntheticsCleared || 0) + _synthCleared;
+        console.log('[CalSync] Path B.2: cleared', _synthCleared, 'stale synthetic hidden-event rows');
       }
       if (_synthDirty) {
         await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(events));
@@ -5540,6 +5735,8 @@ window.GLCalendarSync = (function() {
     canWriteBandCalendar: canWriteBandCalendar,
     getBandEventTimeSlots: _getBandEventTimeSlots,
     syncBandCalendar: syncBandCalendar,
+    acquireSyncLock: acquireSyncLock,
+    releaseSyncLock: releaseSyncLock,
     getSyncState: getSyncState,
     runHiddenEventCheck: _runHiddenEventCheck,
     getSyncActivity: getSyncActivity,

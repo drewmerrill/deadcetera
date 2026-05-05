@@ -25,6 +25,22 @@
 
 // ── Gig CRUD helpers (app.js 9514–9599) ───────────────────────────────────────
 
+// Audit M14 (2026-05-04): every persistent write to bands/{slug}/gigs must
+// also refresh GLStore's gigsCache. Otherwise getGigs() returns the stale
+// pre-write array until the next page navigation reloads the cache from
+// Firebase, and downstream consumers (rails, intelligence) act on outdated
+// state. Route every gig save through this helper to keep cache + Drive in
+// lockstep. Non-fatal if GLStore is unavailable (e.g. early bootstrap).
+async function _saveGigsAndInvalidate(arr) {
+    var safe = Array.isArray(arr) ? arr : [];
+    await saveBandDataToDrive('_band', 'gigs', safe);
+    try {
+        if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) {
+            GLStore.setGigsCache(safe);
+        }
+    } catch (_e) { /* non-fatal */ }
+}
+
 function venueShortLabel(v) {
     const name = v.name || '';
     const addr = v.address || '';
@@ -62,7 +78,7 @@ async function _cascadeDeleteGig(gig) {
             return true;
         });
         if (gigs.length !== gBefore) {
-            await saveBandDataToDrive('_band', 'gigs', gigs);
+            await _saveGigsAndInvalidate(gigs);
             summary.gig = true;
         }
     } catch(e) { console.warn('[Cascade] gigs delete failed:', e && e.message); }
@@ -269,7 +285,7 @@ async function saveGigEdit(idx) {
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
 
-    await saveBandDataToDrive('_band', 'gigs', gigData);
+    await _saveGigsAndInvalidate(gigData);
     // Sync updated gig to calendar
     await _syncGigToCalendar(gigData[idx], gigData[idx].created || null);
 
@@ -305,15 +321,15 @@ async function saveGigEdit(idx) {
             } else {
                 gigData[idx].sync = Object.assign({}, prev.sync, { status: 'error' });
             }
-            await saveBandDataToDrive('_band', 'gigs', gigData);
+            await _saveGigsAndInvalidate(gigData);
         } catch(e) {
             gigData[idx].sync = Object.assign({}, prev.sync, { status: 'error' });
-            await saveBandDataToDrive('_band', 'gigs', gigData);
+            await _saveGigsAndInvalidate(gigData);
         }
     } else if (criticalChange && prev.sync && prev.sync.externalEventId) {
         // Sync exists but GLCalendarSync not loaded — mark needs_update
         gigData[idx].sync = Object.assign({}, prev.sync, { status: 'needs_update' });
-        await saveBandDataToDrive('_band', 'gigs', gigData);
+        await _saveGigsAndInvalidate(gigData);
     }
 
     if (criticalChange) {
@@ -779,6 +795,19 @@ async function _syncGigToCalendar(gig, createdKey) {
     if (!gig.calendarEventId) gig.calendarEventId = calRecord.id;
 
     await saveBandDataToDrive('_band', 'calendar_events', calEvents);
+
+    // Audit M15 (2026-05-04): emit calendarEventsChanged so visible grids
+    // (calendar page, dashboard rails) can re-render against the freshly
+    // mirrored row instead of waiting for the next sync poll. GLStore
+    // doesn't yet cache calendar_events, but downstream renderers can
+    // subscribe to this event regardless.
+    try {
+        if (typeof GLStore !== 'undefined' && typeof GLStore.emit === 'function') {
+            GLStore.emit('calendarEventsChanged', { source: '_syncGigToCalendar', gigId: gig && gig.gigId, eventId: calRecord.id });
+        } else if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('calendarEventsChanged', { detail: { source: '_syncGigToCalendar', gigId: gig && gig.gigId, eventId: calRecord.id } }));
+        }
+    } catch (_e) { /* non-fatal */ }
 }
 
 async function saveGig() {
@@ -866,7 +895,7 @@ async function saveGig() {
 
     const existing = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     existing.push(gig);
-    await saveBandDataToDrive('_band', 'gigs', existing);
+    await _saveGigsAndInvalidate(existing);
     // Sync to calendar as a gig event
     await _syncGigToCalendar(gig, null);
     // UX sprint #9: specific receipt — confirms what was saved.
@@ -1407,7 +1436,7 @@ async function gpAddExpense(gigIdx) {
     data[gigIdx].guarantee = parseFloat(document.getElementById('gpGuarantee')?.value) || 0;
     data[gigIdx].expenses = gpReadExpensesFromDOM(data[gigIdx].expenses || []);
     data[gigIdx].expenses.push({ desc: '', amount: 0 });
-    await saveBandDataToDrive('_band', 'gigs', data);
+    await _saveGigsAndInvalidate(data);
     loadGigPayouts(gigIdx);
 }
 
@@ -1417,7 +1446,7 @@ async function gpRemoveExpense(gigIdx, idx) {
     data[gigIdx].guarantee = parseFloat(document.getElementById('gpGuarantee')?.value) || 0;
     data[gigIdx].expenses = gpReadExpensesFromDOM(data[gigIdx].expenses || []);
     data[gigIdx].expenses.splice(idx, 1);
-    await saveBandDataToDrive('_band', 'gigs', data);
+    await _saveGigsAndInvalidate(data);
     loadGigPayouts(gigIdx);
 }
 
@@ -1433,7 +1462,7 @@ async function gpSave(gigIdx) {
     data[gigIdx].netPayout = net;
     data[gigIdx].memberSplit = {};
     Object.keys(bandMembers||{}).forEach(function(k){ data[gigIdx].memberSplit[k] = perMember; });
-    await saveBandDataToDrive('_band', 'gigs', data);
+    await _saveGigsAndInvalidate(data);
     // Audit H11 (2026-05-04): payout fields wrote to gigs only \u2014 cal_event
     // mirror went stale until the next gig edit. Now propagates immediately.
     try { await _syncGigToCalendar(data[gigIdx]); }
@@ -1674,7 +1703,7 @@ window.gigSetAvailability = async function(gigIdx, status) {
         if (!gig) return;
         if (!gig.availability) gig.availability = {};
         gig.availability[memberKey] = { status: status, updatedAt: new Date().toISOString() }; // stale flag cleared by full replace
-        await saveBandDataToDrive('_band', 'gigs', gigs);
+        await _saveGigsAndInvalidate(gigs);
         if (typeof showToast === 'function') showToast(status === 'yes' ? "You're in!" : status === 'maybe' ? 'Marked as maybe' : 'Marked as out');
         loadGigs(); // refresh
     } catch(e) {
