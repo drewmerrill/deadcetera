@@ -217,6 +217,28 @@ export default {
     // Get single event (attendee sync)
     if (path.startsWith('/calendar/events/') && request.method === 'GET')
       return handleCalendarGetEvent(request, path.replace('/calendar/events/', ''));
+    // Audit L6 (2026-05-05): Google OAuth userinfo proxy. Previously the
+    // browser called googleapis.com directly with the user's access token,
+    // a minor surface-area widening (any third-party script with access to
+    // window could read the token by intercepting fetch). Routing through
+    // the worker keeps the token off the public URL bar and lets the worker
+    // log+rate-limit the call.
+    if (path === '/oauth/userinfo' && request.method === 'GET') {
+      var _orig = _checkOrigin(request, env);
+      if (!_orig.ok) {
+        return cors(new Response(JSON.stringify({
+          error: 'origin_not_allowed',
+          message: 'Origin ' + (_orig.origin || '?') + ' is not in the allowlist.'
+        }), { status: 403, headers: { 'Content-Type': 'application/json' } }));
+      }
+      var _auth = request.headers.get('Authorization') || '';
+      if (!_auth.startsWith('Bearer ')) {
+        return cors(new Response(JSON.stringify({ error: 'missing_auth' }), { status: 401, headers: { 'Content-Type': 'application/json' } }));
+      }
+      var _ures = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { 'Authorization': _auth } });
+      var _ubody = await _ures.text();
+      return cors(new Response(_ubody, { status: _ures.status, headers: { 'Content-Type': 'application/json' } }));
+    }
     return cors(new Response('Not found', { status: 404 }));
   }
 };

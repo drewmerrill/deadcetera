@@ -17,6 +17,33 @@ window.GLCalendarSync = (function() {
   var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
   var CAL_DEFAULT_DURATION_MIN = 120;
 
+  // ── Scope taxonomy (Audit M17, 2026-05-05) ───────────────────────────────
+  //
+  // Three Google Calendar scopes exist; a session can hold any subset:
+  //   • https://www.googleapis.com/auth/calendar             (full)
+  //   • https://www.googleapis.com/auth/calendar.events      (events read+write)
+  //   • https://www.googleapis.com/auth/calendar.readonly    (read-only)
+  //   • https://www.googleapis.com/auth/calendar.freebusy    (busy time only)
+  //
+  // Per-operation policy (use the NARROWEST gate that's correct):
+  //
+  //   READ events.list  (events read)         → hasCalendarScope()
+  //                                             (full / events / readonly all work;
+  //                                              events scope grants list+get)
+  //   WRITE events.insert/patch/delete        → hasCalendarEventsScope()
+  //                                             (full or events; readonly is NOT enough)
+  //   READ freeBusy.query                     → hasFreeBusyScope()
+  //                                             (full / readonly / freebusy work;
+  //                                              events scope is NOT enough)
+  //   READ calendarList.list                  → hasCalendarScope()
+  //   WRITE calendars/* mutations             → full /auth/calendar only
+  //
+  // Why a single `hasCalendarScope()` is not enough: it lumps all three
+  // grants into one boolean, which over-restricts events-only sessions
+  // (D13 audit finding) and under-protects freebusy-only sessions. New code
+  // must pick the gate from the table above; lint with a code search for
+  // any `hasCalendarScope` call that's followed by a POST/PATCH/DELETE.
+  // ──────────────────────────────────────────────────────────────────────────
   // ── Check if calendar scope is available ──────────────────────────────────
   // Priority: 1) OAuth callback flag  2) persisted localStorage  3) config fallback
   function hasCalendarScope() {
@@ -1585,6 +1612,27 @@ window.GLCalendarSync = (function() {
     return existing;
   }
 
+  // Audit M20 (2026-05-05): D5-class import watchdog. The repair tool
+  // `repairCorruptedTitles` is run-once; this returns true for any title
+  // that matches the legacy "deadcetera Event" / "Band Event" / generic
+  // "Gig" pattern so callers can flag the row before it lands silently.
+  // Doesn't block import — just makes the corruption observable on every
+  // sync (idempotent watchdog beats one-shot repair).
+  function _isSuspiciousImportTitle(title) {
+    if (!title) return true;
+    var t = String(title).trim();
+    if (!t) return true;
+    if (/^(deadcetera\s+(event|gig)|band\s+(event|gig)|gig|event)$/i.test(t)) return true;
+    // Repeated compound: "X — X — X" patterns that survived the cleaner.
+    var parts = t.split(/\s+[—–-]\s+/);
+    if (parts.length >= 3) {
+      var unique = {};
+      parts.forEach(function(p){ unique[p.toLowerCase()] = 1; });
+      if (Object.keys(unique).length === 1) return true;
+    }
+    return false;
+  }
+
   // Build a new GrooveLinx event from a Google event (for first-time imports)
   function _importGoogleEvent(googleEvent, bandCalId) {
     var isAllDay = !!(googleEvent.start && googleEvent.start.date && !googleEvent.start.dateTime);
@@ -1835,6 +1883,9 @@ window.GLCalendarSync = (function() {
         skippedNoTitle: r.skippedNoTitle || 0,
         updateErrors: r.updateErrors || 0,
         syntheticsCleared: r.syntheticsCleared || 0,
+        // Audit M20 (2026-05-05): D5-class corruption watchdog count + sample.
+        suspiciousImports: r.suspiciousImports || 0,
+        suspiciousSample: _trimList(r._suspiciousSample, 5),
         error: r.error || null,
         needsReauth: !!r.needsReauth,
         skipped: !!r.skipped,
@@ -1905,7 +1956,18 @@ window.GLCalendarSync = (function() {
         console.warn('[CalSync] Hidden-check freebusy calendar errors:', cal.errors);
         return null;
       }
-      return cal.busy || [];
+      var busy = cal.busy || [];
+      // Audit L4 (2026-05-05): empty busy + partial-scope token is the
+      // ambiguous case. Google returns 200 with empty busy when (a) there
+      // are genuinely no events, or (b) the token doesn't have freebusy
+      // scope on the target calendar. Surface the latter clearly so a
+      // band that's quietly missing conflict signal can investigate.
+      if (busy.length === 0 && !hasFreeBusyScope()) {
+        console.warn('[CalSync] freebusy returned empty AND token lacks freebusy scope —',
+          'hidden-event detection is effectively disabled for this session.',
+          'Reconnect Google Calendar with full or readonly scope to re-enable Path B.');
+      }
+      return busy;
     } catch(e) {
       console.warn('[CalSync] Hidden-check freebusy error:', e && e.message);
       return null;
@@ -2291,7 +2353,25 @@ window.GLCalendarSync = (function() {
         // current user's first/full name.
         var _myNameLower = (_myName || '').toLowerCase();
         var _myFirst = _myNameLower.split(' ')[0];
-        console.log('[CalSync] Phase 1.5: match criteria — myKey=', _myKey, '| myNameLower=', _myNameLower, '| myFirst=', _myFirst);
+        // Audit L2 (2026-05-05): first-name match was unconditional, so two
+        // members both named "Drew" each pushed the other's blocks. Only
+        // allow the first-name fallback when the current user's first name
+        // is UNIQUE among active band members. If two share a first name,
+        // require ownerKey match OR full-name match.
+        var _firstNameUnique = true;
+        try {
+          if (typeof bandMembers !== 'undefined' && bandMembers && _myFirst) {
+            var _shareCount = 0;
+            Object.keys(bandMembers).forEach(function(k) {
+              var mn = (bandMembers[k] && bandMembers[k].name) || '';
+              if (String(mn).toLowerCase().split(' ')[0] === _myFirst) _shareCount++;
+            });
+            _firstNameUnique = _shareCount <= 1;
+          }
+        } catch(_e) { /* fail open: keep prior behavior */ }
+        console.log('[CalSync] Phase 1.5: match criteria — myKey=', _myKey,
+          '| myNameLower=', _myNameLower, '| myFirst=', _myFirst,
+          '| firstNameUnique=', _firstNameUnique);
         var _skipReasons = { bad: 0, notMine: 0, alreadySynced: 0 };
         var _notMineLogged = 0;
         for (var bi = 0; bi < blocks.length; bi++) {
@@ -2301,13 +2381,18 @@ window.GLCalendarSync = (function() {
           // ownerName). Match against:
           // - the keyed identifier ("drew")
           // - the full bandMember name ("Drew")
-          // - the first word
+          // - the first word — only when first name is unique in the band
+          //   AND the block has no ownerKey (legacy rows); otherwise the
+          //   ownerKey wins, end of story.
           var _blkOwnerLower = String(blk.ownerName || '').toLowerCase().trim();
+          var _firstNameMatch = _firstNameUnique
+            && !blk.ownerKey
+            && _blkOwnerLower.split(' ')[0] === _myFirst;
           var _ownedByMe = (blk.ownerKey && blk.ownerKey === _myKey)
             || (blk.ownerName && (
                 _blkOwnerLower === _myNameLower
                 || _blkOwnerLower === (_myKey || '').toLowerCase()
-                || _blkOwnerLower.split(' ')[0] === _myFirst
+                || _firstNameMatch
             ));
           if (!_ownedByMe) {
             if (_notMineLogged < 5) {
@@ -2653,6 +2738,18 @@ window.GLCalendarSync = (function() {
           }
         }
         var newEv = _importGoogleEvent(gEv, bandCalId);
+        // Audit M20 (2026-05-05): D5 watchdog. If the title still looks
+        // generic/corrupt after the in-import cleaner ran, surface so the
+        // band can repair it via the maintenance panel. Non-blocking.
+        if (_isSuspiciousImportTitle(newEv.title)) {
+          result.suspiciousImports = (result.suspiciousImports || 0) + 1;
+          (result._suspiciousSample = result._suspiciousSample || []).push({
+            title: newEv.title, date: newEv.date, id: newEv.id, googleEventId: gEv.id
+          });
+          console.warn('[CalSync] D5 watchdog: imported event with suspicious title —',
+            JSON.stringify(newEv.title), '@', newEv.date,
+            '(google id:', gEv.id, '). Run repairCorruptedTitles to investigate.');
+        }
         events.push(newEv);
         eventsByGoogleId[gEv.id] = events.length - 1;
         result.pulled++;
@@ -4264,8 +4361,25 @@ window.GLCalendarSync = (function() {
   // Scans the band calendar, groups events by glEventId tag, keeps the
   // earliest in each group, deletes the rest. Run after the pre-push dedupe
   // ships to clean up duplicates created by prior buggy behavior.
+  //
+  // Audit L5 (2026-05-05) — when to use which orphan-cleanup tool:
+  //   • deduplicateBandCalendar()  → Google-side: same glEventId tag, multiple
+  //                                  Google events. Caused by Phase-1 race
+  //                                  between two devices. Keeps earliest;
+  //                                  deletes the rest from Google.
+  //   • mergeOrphanDuplicates()    → Firebase-side: two calendar_events rows
+  //                                  for the same actual event (different
+  //                                  glEventIds, e.g. Brian/Drew separately
+  //                                  pushed). Picks richer one; deletes other.
+  //   • cleanupOrphanGigEvents()   → Cross-side: cal_event rows of type:'gig'
+  //                                  with no matching gigs/{gigId} record.
+  //                                  Drops the orphan cal_event AND its
+  //                                  Google twin (used in Stage-1 recovery).
   async function deduplicateBandCalendar() {
-    if (!hasCalendarScope()) return { error: 'no scope', removed: 0, groups: 0 };
+    // Audit M17 (2026-05-05): repair tool DELETEs duplicate Google events;
+    // needs write scope. hasCalendarScope() (the conflated boolean) was
+    // false on partial-scope sessions even when events scope was granted.
+    if (!hasCalendarEventsScope()) return { error: 'no scope', removed: 0, groups: 0 };
     var calId = await _getBandCalendarId();
     if (!calId) return { error: 'no band calendar configured', removed: 0, groups: 0 };
 
@@ -4345,7 +4459,8 @@ window.GLCalendarSync = (function() {
   // One-shot fix for existing Google events still showing the 7-9 PM default
   // because endTime was never plumbed through the old pipeline.
   async function refreshGigTimesOnGoogle() {
-    if (!hasCalendarScope()) return { error: 'no scope', updated: 0, scanned: 0 };
+    // Audit M17 (2026-05-05): tool PATCHes Google events; needs write scope.
+    if (!hasCalendarEventsScope()) return { error: 'no scope', updated: 0, scanned: 0 };
     var calId = await _getBandCalendarId();
     if (!calId) return { error: 'no band calendar configured', updated: 0, scanned: 0 };
 
@@ -4446,7 +4561,8 @@ window.GLCalendarSync = (function() {
   // server-side and removes the sibling rows from Firebase. Marks the keeper
   // dirty so the next push reconciles the correct time back to Google.
   async function mergeOrphanDuplicates() {
-    if (!hasCalendarScope()) return { error: 'no scope', merged: 0, deleted: 0, scanned: 0 };
+    // Audit M17 (2026-05-05): tool DELETEs duplicate Google events; needs write scope.
+    if (!hasCalendarEventsScope()) return { error: 'no scope', merged: 0, deleted: 0, scanned: 0 };
     if (typeof loadBandDataFromDrive !== 'function' || typeof saveBandDataToDrive !== 'function') {
       return { error: 'firebase helpers unavailable', merged: 0, deleted: 0, scanned: 0 };
     }
@@ -4700,9 +4816,13 @@ window.GLCalendarSync = (function() {
 
     function titleFor(ev) {
       var members = Array.isArray(ev.assignedMembers) ? ev.assignedMembers : [];
-      // 5+ members = whole-band event, probably a real rehearsal/gig that got
-      // mangled — leave alone; user should hand-fix those.
-      if (members.length === 0 || members.length >= 5) return null;
+      // Audit L3 (2026-05-05): bumped cap 5 → 10. The original 5-member
+      // ceiling was a heuristic against accidentally rewriting "all-band"
+      // events; in practice every active band has ≤ 10 members and a
+      // real rehearsal/gig title rarely classifies as a Busy row anyway.
+      // 0-member rows still skip — without an attribution we don't know
+      // whose name to use, so leave for hand-fix.
+      if (members.length === 0 || members.length > 10) return null;
       if (members.length === 1) return nameFor(members[0]) + ' busy';
       return members.map(nameFor).join(', ') + ' busy';
     }
@@ -5149,15 +5269,55 @@ window.GLCalendarSync = (function() {
     // holds the setlist NAME, cal_event.linkedSetlist holds the setlist ID.
     // Object.assign({}, gig, ...) would spread the NAME into the ID slot.
     // Override explicitly with gig.setlistId.
+    var _now = new Date().toISOString();
     var calRecord = Object.assign({}, gig, preserved, {
       type: 'gig',
       title: resolvedTitle,
+      // Audit M11 (2026-05-05): time + startTime are kept paired. Readers
+      // can use either; writers MUST set both to the same value.
       time: gig.startTime || '',
+      startTime: gig.startTime || '',
       endTime: gig.endTime || '',
       linkedSetlist: gig.setlistId || null,
-      updated: new Date().toISOString()
+      // Audit M12 (2026-05-05): updated + updated_at canonicalized — set
+      // both atomically. updated_at is the more descriptive name.
+      updated: _now,
+      updated_at: _now
     });
+    _assertCalEventInvariants(calRecord, '_buildGigCalEventBody');
     return calRecord;
+  }
+
+  // Audit M11 + M12 + M16 (2026-05-05): runtime invariant check on every
+  // cal_event row produced by a known-good builder. A future writer that
+  // forgets the linkedSetlist override (D12 sibling) or sets only one of
+  // the time/startTime or updated/updated_at pairs will trip a console.warn
+  // immediately instead of corrupting Firebase silently. Non-fatal — the
+  // write proceeds — but the warning makes the bug visible in dev tools.
+  function _assertCalEventInvariants(ev, source) {
+    if (!ev) return;
+    var src = source || '_assertCalEventInvariants';
+    var problems = [];
+    if (ev.time !== ev.startTime) {
+      problems.push('time/startTime drift: time=' + JSON.stringify(ev.time) + ' startTime=' + JSON.stringify(ev.startTime));
+    }
+    if (ev.updated !== ev.updated_at) {
+      problems.push('updated/updated_at drift: updated=' + JSON.stringify(ev.updated) + ' updated_at=' + JSON.stringify(ev.updated_at));
+    }
+    if (ev.type === 'gig' && ev.linkedSetlist) {
+      // cal_event.linkedSetlist must be a SHORT ID (≤ 24 chars, no spaces).
+      // Setlist IDs from generateShortId(12) match /^[A-Za-z0-9_-]{8,24}$/.
+      // A space in the value almost certainly means a NAME landed in the
+      // ID slot — the D12 corruption pattern.
+      var ls = String(ev.linkedSetlist);
+      if (ls.indexOf(' ') !== -1 || ls.length > 32) {
+        problems.push('linkedSetlist looks like a NAME, not an ID: ' + JSON.stringify(ls).slice(0, 80));
+      }
+    }
+    if (problems.length) {
+      console.warn('[CalSync] cal_event invariant violation (' + src + '):',
+        ev.id || '(no-id)', ev.title || '(no-title)', '\n  ', problems.join('\n   '));
+    }
   }
 
   // ── Reverse direction: build a gig record from a cal_event (audit T2.9) ───

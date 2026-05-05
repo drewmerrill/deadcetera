@@ -404,9 +404,21 @@ window.updateSignInStatus = function updateSignInStatus(signedIn) {
 
 window.getCurrentUserEmail = async function getCurrentUserEmail() {
     try {
-        const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        // Audit L6 (2026-05-05): route userinfo through the worker proxy
+        // instead of calling googleapis.com directly. Keeps the access
+        // token off public surfaces and lets the worker enforce origin
+        // checks alongside the rest of the calendar surface. Falls back
+        // to direct call if worker proxy fails (transient resilience).
+        var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+        let response = await fetch(WORKER_BASE + '/oauth/userinfo', {
             headers: { Authorization: 'Bearer ' + accessToken }
         });
+        if (!response.ok) {
+            console.warn('[Auth] worker userinfo failed (' + response.status + ') — falling back to direct call');
+            response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: 'Bearer ' + accessToken }
+            });
+        }
         const userInfo = await response.json();
         currentUserEmail   = userInfo.email;
         currentUserName    = userInfo.name || userInfo.given_name || '';

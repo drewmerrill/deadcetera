@@ -11,6 +11,32 @@
 
 'use strict';
 
+// Audit M23 (2026-05-05): targeted updates by array INDEX (`calendar_events/IDX`)
+// race against concurrent writes that reorder the array (delete, insert).
+// Look up the Firebase array key by event.id instead, so writes always land
+// on the right row even after a sibling row was removed mid-flight. Returns
+// the canonical key (often the numeric array index, but may differ if the
+// underlying object was sparsified) or null when the row vanished.
+async function _calFindEventRefKey(eventId) {
+    if (!eventId) return null;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return null;
+    try {
+        var snap = await db.ref(bandPath('calendar_events'))
+            .orderByChild('id')
+            .equalTo(eventId)
+            .limitToFirst(1)
+            .once('value');
+        var val = snap.val();
+        if (!val) return null;
+        var keys = Object.keys(val);
+        return keys.length ? keys[0] : null;
+    } catch (e) {
+        console.warn('[Calendar] _calFindEventRefKey lookup failed:', e && e.message);
+        return null;
+    }
+}
+
 // Also update the calendar event DETAIL view for rehearsals to show a "📋 Practice Plan" link
 async function calShowEvent(idx, occDate) {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
@@ -1112,6 +1138,19 @@ function _calTranslateSyncError(result, shortForm) {
 
 // Manual sync: push unsynced events + pull latest availability
 window._calSyncNow = async function() {
+    // Audit L1 (2026-05-05): reject re-entrant calls. Rapid double-click
+    // on the button used to enqueue a second `_calSyncNow` while the first
+    // was still in flight; the inner sync lock would reject the second
+    // run, but the UI showed "Syncing..." with no indication of why the
+    // toast never appeared. Flag-gate at the entry point so a second click
+    // is a fast-fail with a clear toast.
+    if (window._calSyncInFlight) {
+        if (typeof showToast === 'function') {
+            showToast('↻ Sync already running — give it a few seconds.', 2500);
+        }
+        return;
+    }
+    window._calSyncInFlight = true;
     var btn = document.getElementById('calSyncBtn');
     // Audit T1.1 (2026-05-04): maintenance gate. If a migration/repair is in
     // progress, refuse to start a sync and show why. Prevents D11.
@@ -1125,6 +1164,7 @@ window._calSyncNow = async function() {
                     showToast('\u23F8 Sync paused \u2014 ' + (_maint.reason || 'maintenance')
                         + ' in progress (~' + _mins + ' min remaining)', 6000);
                 }
+                window._calSyncInFlight = false; // L1: clear flag on early return
                 return;
             }
         } catch(_e) { /* fail open */ }
@@ -1142,6 +1182,7 @@ window._calSyncNow = async function() {
                     showToast('Sync skipped - another band member is syncing right now.', 4000);
                 }
                 if (btn) { btn.textContent = '\u21BB Sync Calendars'; btn.disabled = false; }
+                window._calSyncInFlight = false; // L1: clear flag on early return
                 return;
             }
         }
@@ -1269,6 +1310,10 @@ window._calSyncNow = async function() {
     var _hasAvailRestore = (typeof GLCalendarSync !== 'undefined' && GLCalendarSync.hasFreeBusyScope && GLCalendarSync.hasFreeBusyScope());
     var _syncBtnLabel = _calIsModeA() ? '\u21BB Sync Calendars' : (_hasAvailRestore ? '\u21BB Sync Calendars' : '\u21BB Sync Band Events');
     if (btn) { btn.textContent = _syncBtnLabel; btn.disabled = false; }
+    // Audit L1 (2026-05-05): always clear the re-entrancy flag on exit,
+    // even if the sync threw. Otherwise the next click would silently
+    // refuse forever.
+    window._calSyncInFlight = false;
 };
 
 // One-time cleanup: walk the band Google calendar and remove duplicate
@@ -1976,9 +2021,15 @@ function _calRenderGooglePanel() {
             var _who = _staleNames.length === 1
                 ? _staleNames[0] + '\u2019s'
                 : _staleNames.slice(0, -1).join(', ') + ' and ' + _staleNames[_staleNames.length - 1] + '\u2019s';
+            // Audit M21 (2026-05-05): old copy implied a device sync FAILURE,
+            // but the actual cause is usually that the user simply hasn't
+            // opened GrooveLinx in a week (expected behavior, not a bug).
+            // The other possibility is an expired Google token. We can't
+            // distinguish from Firebase state alone, so the copy now names
+            // both possibilities so the band knows the right next step.
             html += '<div style="padding:8px 10px;margin-bottom:8px;border-radius:8px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.20);font-size:0.72em;line-height:1.4">'
                 + '<div style="font-weight:700;color:#fbbf24;margin-bottom:3px">\u23F1 ' + _staleNames.length + ' member' + (_staleNames.length === 1 ? '' : 's') + ' out of date</div>'
-                + '<div style="color:var(--gl-text-secondary);margin-bottom:6px">' + _who + ' device hasn\u2019t synced in over a week. Their schedule changes won\u2019t reach the band calendar until they open GrooveLinx \u2192 Schedule. Ping them so you\u2019re not planning around stale data.</div>'
+                + '<div style="color:var(--gl-text-secondary);margin-bottom:6px">' + _who + ' last sync was over a week ago. Most likely they just haven\u2019t opened GrooveLinx \u2192 Schedule recently \u2014 less likely, their Google sign-in expired and they need to reconnect. Ping them so you\u2019re not planning around stale availability data.</div>'
                 + '<button onclick="_calShowManageConnections()" style="font-size:0.72em;padding:4px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.08);color:#fcd34d;cursor:pointer">See who</button>'
                 + '</div>';
         }
@@ -2019,6 +2070,7 @@ function _calRenderGooglePanel() {
             + '<button onclick="_calMigrateMisplacedEvents()" id="calMigrateMisplacedBtn" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-time fix: move events that landed on your personal calendar (instead of DeadCetera) back to the band calendar">Move misplaced events</button>'
             + '<button onclick="_calShowVisibilityHelp()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="How to fix hidden events — set default visibility to Public">Visibility help</button>'
             + '<button onclick="_calShowSyncActivity()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Recent sync runs across all connected band members">Sync activity</button>'
+            + '<button onclick="_calOpenMaintenance()" style="font-size:0.62em;background:none;border:none;color:var(--gl-amber);cursor:pointer;opacity:0.7;padding:0" title="Calendar repair tools — dry-run first, then apply">🛠 Maintenance</button>'
             + '<button onclick="_calShowDiagnostics()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Run all calendar checks and show a detailed report">Run diagnostics</button>'
             + '<button onclick="_calRefreshTitlesFromGoogle()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="One-shot: pull current titles from Google for every synced event (fixes stale &quot;deadcetera Gig&quot; titles after a band member renamed)">Refresh titles</button>'
             + '<button onclick="_calShowCalendarAudit()" style="font-size:0.62em;background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;opacity:0.5;padding:0" title="Audit the band calendar for stale references and personal events that don\'t belong">Audit calendar</button>';
@@ -2235,6 +2287,107 @@ window._calShowVisibilityHelp = function() {
     var wrap = document.createElement('div');
     wrap.innerHTML = html;
     document.body.appendChild(wrap.firstChild);
+};
+
+// Audit M18 (2026-05-05): Maintenance panel — surfaces the previously
+// console-only repair tools so a non-Drew band admin can run them without
+// opening DevTools. Each tool offers Dry-run first, then Apply, with the
+// result printed inline. The maintenance flag is set/cleared automatically
+// inside each tool via _withMaintenance, so an in-flight tool blocks sync
+// for the duration of its run (T1.1).
+window._calOpenMaintenance = function() {
+    if (typeof GLCalendarSync === 'undefined') {
+        if (typeof showToast === 'function') showToast('Calendar sync module not loaded', 3000);
+        return;
+    }
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    wrap.onclick = function(e) { if (e.target === wrap) wrap.remove(); };
+
+    var tools = [
+        { id: 'repairGigMirror',         label: 'Repair gig mirror',
+          desc: 'Backfills the gig→cal_event mirror onto every cal_event row. Fixes field-drift bugs (e.g. endTime missing). Safe to re-run.',
+          fn: 'repairGigMirror', supportsDry: true },
+        { id: 'fixGigSetlistLinkage',    label: 'Repair setlist linkage',
+          desc: 'Restores broken linkedSetlist references (D12 fix). Run if Edit Gig dropdown shows the wrong setlist or no setlist.',
+          fn: 'fixGigSetlistLinkage', supportsDry: true },
+        { id: 'repairCorruptedTitles',   label: 'Repair corrupted titles',
+          desc: 'Rewrites legacy "deadcetera Event" / generic titles to their member-attributed busy form ("Drew busy"). Skips events with > 10 members.',
+          fn: 'repairCorruptedTitles', supportsDry: true },
+        { id: 'cleanupOrphanGigEvents',  label: 'Cleanup orphan gig events',
+          desc: 'Drops cal_event type:\'gig\' rows whose gigs/{gigId} record was deleted. Also removes the matching Google twin.',
+          fn: 'cleanupOrphanGigEvents', supportsDry: true },
+        { id: 'deduplicateBandCalendar', label: 'Dedupe Google duplicates',
+          desc: 'Google-side: groups events by glEventId tag, keeps the earliest, deletes the rest. Run after a sync race.',
+          fn: 'deduplicateBandCalendar', supportsDry: false },
+        { id: 'mergeOrphanDuplicates',   label: 'Merge orphan duplicates',
+          desc: 'Firebase-side: same actual event with two glEventIds (Brian + Drew both pushed). Picks richer one, drops the other.',
+          fn: 'mergeOrphanDuplicates', supportsDry: false },
+        { id: 'refreshGigTimesOnGoogle', label: 'Refresh gig times',
+          desc: 'Pushes correct start/end times from Gigs to Google for events showing the legacy 7-9 PM default.',
+          fn: 'refreshGigTimesOnGoogle', supportsDry: false }
+    ];
+
+    var rowHtml = tools.map(function(t) {
+        var dryBtn = t.supportsDry
+            ? '<button data-tool="' + t.id + '" data-mode="dry" class="cal-maint-btn" style="font-size:0.78em;padding:8px 14px;border-radius:6px;border:1px solid var(--gl-border);background:transparent;color:var(--gl-text);cursor:pointer">Dry-run</button>'
+            : '';
+        return '<div style="border:1px solid var(--gl-border);border-radius:8px;padding:12px;margin-bottom:10px">'
+            + '<div style="font-size:0.92em;font-weight:700;color:var(--gl-text);margin-bottom:4px">' + t.label + '</div>'
+            + '<div style="font-size:0.75em;color:var(--gl-text-secondary);margin-bottom:8px;line-height:1.4">' + t.desc + '</div>'
+            + '<div style="display:flex;gap:8px;align-items:center">'
+            + dryBtn
+            + '<button data-tool="' + t.id + '" data-mode="apply" class="cal-maint-btn" style="font-size:0.78em;padding:8px 14px;border-radius:6px;border:none;background:var(--gl-amber);color:#000;cursor:pointer;font-weight:600">Apply</button>'
+            + '<span class="cal-maint-status" data-tool="' + t.id + '" style="font-size:0.72em;color:var(--gl-text-tertiary);flex:1"></span>'
+            + '</div></div>';
+    }).join('');
+
+    wrap.innerHTML = '<div style="background:var(--gl-surface);border:1px solid var(--gl-border);border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:1.05em;font-weight:700;color:var(--gl-text);margin-bottom:4px">🛠 Calendar Maintenance</div>'
+        + '<div style="font-size:0.76em;color:var(--gl-text-secondary);margin-bottom:14px;line-height:1.4">Repair tools for the band calendar. <b>Always run Dry-run first</b> when available, review the console output, then Apply. Each tool sets a maintenance flag that blocks band-wide sync until it finishes — other devices will see "Sync paused" while a repair is in flight.</div>'
+        + rowHtml
+        + '<div style="display:flex;justify-content:flex-end;margin-top:14px">'
+        + '<button onclick="this.closest(\'[style*=fixed]\').remove()" style="font-size:0.88em;padding:10px 18px;border-radius:6px;border:none;background:var(--gl-indigo);color:#fff;cursor:pointer;font-weight:600;min-height:44px">Close</button>'
+        + '</div></div>';
+    document.body.appendChild(wrap);
+
+    wrap.querySelectorAll('.cal-maint-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            var toolId = btn.getAttribute('data-tool');
+            var mode = btn.getAttribute('data-mode');
+            var tool = tools.find(function(t) { return t.id === toolId; });
+            if (!tool) return;
+            var status = wrap.querySelector('.cal-maint-status[data-tool="' + toolId + '"]');
+            if (status) status.textContent = 'Running ' + (mode === 'dry' ? 'dry-run' : 'apply') + '…';
+            try {
+                if (typeof GLCalendarSync[tool.fn] !== 'function') throw new Error('Tool not registered');
+                var args = tool.supportsDry ? [{ apply: mode === 'apply' }] : [];
+                var result = await GLCalendarSync[tool.fn].apply(null, args);
+                console.log('[Maintenance] ' + tool.id + ' (' + mode + '):', result);
+                if (status) {
+                    var summary = '';
+                    if (result && typeof result === 'object') {
+                        var pieces = [];
+                        ['removed','merged','deleted','updated','scanned','repaired','blanksRemoved','reviewed','fixed','relinked'].forEach(function(k) {
+                            if (typeof result[k] === 'number' && result[k] > 0) pieces.push(result[k] + ' ' + k);
+                        });
+                        if (result.error) pieces.push('error: ' + result.error);
+                        summary = pieces.length ? pieces.join(' · ') : 'done (no changes)';
+                    } else {
+                        summary = 'done';
+                    }
+                    status.textContent = (mode === 'dry' ? '✓ Dry-run: ' : '✓ Applied: ') + summary;
+                    status.style.color = 'var(--gl-green)';
+                }
+            } catch (e) {
+                console.warn('[Maintenance] ' + tool.id + ' failed:', e);
+                if (status) {
+                    status.textContent = '⚠ Failed: ' + (e && e.message ? e.message : 'unknown');
+                    status.style.color = 'var(--gl-amber)';
+                }
+            }
+        });
+    });
 };
 
 // Task #13: Sync activity log viewer — lists recent sync runs across the band.
@@ -7502,12 +7655,18 @@ async function calSaveEvent(editIdx) {
             await saveBandDataToDrive('_band', 'gigs', existingGigs);
             // Audit M14 (2026-05-04): keep GLStore.gigsCache in lockstep.
             try { if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(existingGigs); } catch(_e) {}
-            // TARGETED UPDATE: stamp gigId on the specific event — no full array re-read/re-save
-            if (ev.gigId && _savedIdx >= 0) {
+            // TARGETED UPDATE: stamp gigId on the specific event — no full array re-read/re-save.
+            // Audit M23 (2026-05-05): look up by event.id, not array index.
+            if (ev.gigId && ev.id) {
                 var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
                 if (db && typeof bandPath === 'function') {
-                    await db.ref(bandPath('calendar_events/' + _savedIdx + '/gigId')).set(ev.gigId);
-                    console.log('[Calendar] Phase B1: gigId stamped via targeted update:', ev.gigId);
+                    var _key = await _calFindEventRefKey(ev.id);
+                    if (_key !== null) {
+                        await db.ref(bandPath('calendar_events/' + _key + '/gigId')).set(ev.gigId);
+                        console.log('[Calendar] Phase B1: gigId stamped via ID-keyed update:', ev.gigId, '@ key', _key);
+                    } else {
+                        console.warn('[Calendar] Phase B1: could not locate event by id', ev.id, '— skipping gigId stamp; full Phase-2 sync will reconcile.');
+                    }
                 }
             }
             console.log('[Calendar] Phase B1: Gig record sync SUCCEEDED | gigId:', ev.gigId);
@@ -7548,13 +7707,17 @@ async function calSaveEvent(editIdx) {
                 if (upd.success) {
                     // Flip dirty → synced now that Google has the new data.
                     // Phase 1 retry on next sync would otherwise re-push.
+                    // Audit M23 (2026-05-05): ID-keyed lookup, not array index.
                     var dbS = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-                    if (dbS && typeof bandPath === 'function' && _savedIdx >= 0) {
-                        var _evSPath = bandPath('calendar_events/' + _savedIdx);
-                        await dbS.ref(_evSPath + '/syncStatus').set('synced');
-                        await dbS.ref(_evSPath + '/lastSyncedAt').set(new Date().toISOString());
-                        await dbS.ref(_evSPath + '/sync/status').set('synced');
-                        await dbS.ref(_evSPath + '/sync/lastSyncedAt').set(new Date().toISOString());
+                    if (dbS && typeof bandPath === 'function' && ev.id) {
+                        var _keyS = await _calFindEventRefKey(ev.id);
+                        if (_keyS !== null) {
+                            var _evSPath = bandPath('calendar_events/' + _keyS);
+                            await dbS.ref(_evSPath + '/syncStatus').set('synced');
+                            await dbS.ref(_evSPath + '/lastSyncedAt').set(new Date().toISOString());
+                            await dbS.ref(_evSPath + '/sync/status').set('synced');
+                            await dbS.ref(_evSPath + '/sync/lastSyncedAt').set(new Date().toISOString());
+                        }
                     }
                 }
                 // Orphan recovery: stored googleEventId points to an event
@@ -7565,14 +7728,18 @@ async function calSaveEvent(editIdx) {
                     console.log('[Calendar] Phase B2: orphan googleEventId — clearing and creating fresh on band cal');
                     var sync2 = await GLCalendarSync.create(glEvent);
                     if (sync2.success && sync2.sync) {
+                        // Audit M23 (2026-05-05): ID-keyed lookup, not array index.
                         var db3 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-                        if (db3 && typeof bandPath === 'function' && _savedIdx >= 0) {
-                            var _ev3Path = bandPath('calendar_events/' + _savedIdx);
-                            await db3.ref(_ev3Path + '/googleEventId').set(sync2.sync.externalEventId);
-                            await db3.ref(_ev3Path + '/calendarId').set(sync2.sync.calendarId);
-                            await db3.ref(_ev3Path + '/syncStatus').set('synced');
-                            await db3.ref(_ev3Path + '/lastSyncedAt').set(new Date().toISOString());
-                            await db3.ref(_ev3Path + '/sync').set(sync2.sync);
+                        if (db3 && typeof bandPath === 'function' && ev.id) {
+                            var _key3 = await _calFindEventRefKey(ev.id);
+                            if (_key3 !== null) {
+                                var _ev3Path = bandPath('calendar_events/' + _key3);
+                                await db3.ref(_ev3Path + '/googleEventId').set(sync2.sync.externalEventId);
+                                await db3.ref(_ev3Path + '/calendarId').set(sync2.sync.calendarId);
+                                await db3.ref(_ev3Path + '/syncStatus').set('synced');
+                                await db3.ref(_ev3Path + '/lastSyncedAt').set(new Date().toISOString());
+                                await db3.ref(_ev3Path + '/sync').set(sync2.sync);
+                            }
                         }
                         if (typeof showToast === 'function') showToast('\u2713 Re-linked to band calendar (old Google copy was orphaned)', 5000);
                     }
@@ -7582,30 +7749,34 @@ async function calSaveEvent(editIdx) {
             } else {
                 var sync = await GLCalendarSync.create(glEvent);
                 if (sync.success && sync.sync) {
-                    // TARGETED UPDATE: stamp Google sync metadata — no full array re-read/re-save
-                    if (_savedIdx >= 0) {
+                    // TARGETED UPDATE: stamp Google sync metadata — no full array re-read/re-save.
+                    // Audit M23 (2026-05-05): ID-keyed lookup, not array index.
+                    if (ev.id) {
                         var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
                         if (db2 && typeof bandPath === 'function') {
-                            var _syncData = {
-                                googleEventId: sync.sync.externalEventId,
-                                calendarId: sync.sync.calendarId,
-                                syncStatus: 'synced',
-                                lastSyncedAt: new Date().toISOString()
-                            };
-                            var _evPath = bandPath('calendar_events/' + _savedIdx);
-                            await db2.ref(_evPath + '/googleEventId').set(_syncData.googleEventId);
-                            await db2.ref(_evPath + '/calendarId').set(_syncData.calendarId);
-                            await db2.ref(_evPath + '/syncStatus').set(_syncData.syncStatus);
-                            await db2.ref(_evPath + '/lastSyncedAt').set(_syncData.lastSyncedAt);
-                            // Also store in nested sync object for consistency
-                            await db2.ref(_evPath + '/sync').set({
-                                provider: 'google',
-                                externalEventId: sync.sync.externalEventId,
-                                calendarId: sync.sync.calendarId,
-                                status: 'synced',
-                                lastSyncedAt: _syncData.lastSyncedAt
-                            });
-                            console.log('[Calendar] Phase B2: Google sync metadata stamped via targeted update');
+                            var _keyP = await _calFindEventRefKey(ev.id);
+                            if (_keyP !== null) {
+                                var _syncData = {
+                                    googleEventId: sync.sync.externalEventId,
+                                    calendarId: sync.sync.calendarId,
+                                    syncStatus: 'synced',
+                                    lastSyncedAt: new Date().toISOString()
+                                };
+                                var _evPath = bandPath('calendar_events/' + _keyP);
+                                await db2.ref(_evPath + '/googleEventId').set(_syncData.googleEventId);
+                                await db2.ref(_evPath + '/calendarId').set(_syncData.calendarId);
+                                await db2.ref(_evPath + '/syncStatus').set(_syncData.syncStatus);
+                                await db2.ref(_evPath + '/lastSyncedAt').set(_syncData.lastSyncedAt);
+                                // Also store in nested sync object for consistency
+                                await db2.ref(_evPath + '/sync').set({
+                                    provider: 'google',
+                                    externalEventId: sync.sync.externalEventId,
+                                    calendarId: sync.sync.calendarId,
+                                    status: 'synced',
+                                    lastSyncedAt: _syncData.lastSyncedAt
+                                });
+                                console.log('[Calendar] Phase B2: Google sync metadata stamped via ID-keyed update @ key', _keyP);
+                            }
                         }
                     }
                 }
