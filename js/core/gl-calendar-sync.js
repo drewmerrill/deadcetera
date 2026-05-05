@@ -4847,6 +4847,172 @@ window.GLCalendarSync = (function() {
     };
   }
 
+  // ── 2026-05-04: cleanup orphan gig cal_events post-repairGigMirror ───────
+  // After repairGigMirror runs, any cal_event row with type:'gig' but no
+  // gigId is a stale orphan — either a legacy "deadcetera Gig" pure stub
+  // with no real venue, or a prefix-duplicate of a real gig (e.g.
+  // "Avon Theater — Grizz Fest" alongside the canonical "Avon Theater").
+  //
+  // Classification (per orphan):
+  //   pure_stub        — venue + title both === "deadcetera Gig". Safe to
+  //                      delete blindly. Usually has no googleEventId.
+  //   prefix_duplicate — same date as a real gig, orphan venue starts with
+  //                      gig.venue. Delete locally; if it has its own
+  //                      googleEventId, also delete from Google to clean
+  //                      up the duplicate Google Calendar entry.
+  //   unmatched_orphan — same date as no gig. NEVER deleted — flagged for
+  //                      manual investigation.
+  //
+  // Dry-run by default. Returns counts per classification.
+  async function cleanupOrphanGigEvents(opts) {
+    opts = opts || {};
+    var apply = !!opts.apply;
+    if (typeof loadBandDataFromDrive !== 'function') {
+      return { error: 'firebase helpers unavailable' };
+    }
+
+    var rawCal = await loadBandDataFromDrive('_band', 'calendar_events') || [];
+    var calEvents = (typeof toArray === 'function') ? toArray(rawCal) : (Array.isArray(rawCal) ? rawCal : Object.values(rawCal));
+    var rawGigs = await loadBandDataFromDrive('_band', 'gigs') || [];
+    var gigs = (typeof toArray === 'function') ? toArray(rawGigs) : (Array.isArray(rawGigs) ? rawGigs : Object.values(rawGigs));
+
+    var orphans = calEvents.filter(function(e) {
+      return e && e.type === 'gig' && !e.gigId;
+    });
+
+    if (!orphans.length) {
+      console.log('[orphanCleanup] No orphan cal_events found.');
+      return { found: 0, deletedLocal: 0, deletedGoogle: 0 };
+    }
+
+    var classified = orphans.map(function(o) {
+      var venue = o.venue || '';
+      var title = o.title || '';
+      var date = o.date || '';
+      var isPureStub = /^deadcetera\s+gig$/i.test(venue) && /^deadcetera\s+gig$/i.test(title);
+      var canonicalGig = null;
+      var canonicalCalEvent = null;
+      if (!isPureStub && date) {
+        canonicalGig = gigs.find(function(g) {
+          if (!g || !g.date || !g.venue) return false;
+          if (g.date !== date) return false;
+          return typeof venue === 'string' && venue.indexOf(g.venue) === 0;
+        });
+        if (canonicalGig) {
+          canonicalCalEvent = calEvents.find(function(e) {
+            return e && e.type === 'gig' && e.gigId === canonicalGig.gigId;
+          });
+        }
+      }
+      return {
+        orphan: o,
+        isPureStub: isPureStub,
+        canonicalGig: canonicalGig,
+        canonicalCalEvent: canonicalCalEvent,
+        hasGoogleId: !!o.googleEventId,
+        reason: isPureStub ? 'pure_stub' :
+                canonicalGig ? 'prefix_duplicate' : 'unmatched_orphan'
+      };
+    });
+
+    console.log('[orphanCleanup] Classified', orphans.length, 'orphans:');
+    console.table(classified.map(function(c) {
+      return {
+        id: c.orphan.id,
+        date: c.orphan.date,
+        venue: c.orphan.venue,
+        title: c.orphan.title,
+        reason: c.reason,
+        hasGoogleId: c.hasGoogleId,
+        googleEventId: c.orphan.googleEventId || null,
+        canonicalGigId: c.canonicalGig ? c.canonicalGig.gigId : null,
+        canonicalCalId: c.canonicalCalEvent ? c.canonicalCalEvent.id : null
+      };
+    }));
+
+    var unmatched = classified.filter(function(c) { return c.reason === 'unmatched_orphan'; });
+    if (unmatched.length) {
+      console.warn('[orphanCleanup] Unmatched orphans (no canonical gig found by date+venue prefix) — NOT deleted, inspect manually:');
+      console.table(unmatched.map(function(c) { return { id: c.orphan.id, date: c.orphan.date, venue: c.orphan.venue, title: c.orphan.title }; }));
+    }
+
+    var pureStubs = classified.filter(function(c) { return c.reason === 'pure_stub'; });
+    var prefixDupes = classified.filter(function(c) { return c.reason === 'prefix_duplicate'; });
+
+    if (!apply) {
+      console.log('[orphanCleanup] Dry run only. Would delete', pureStubs.length, 'pure stubs +', prefixDupes.length, 'prefix duplicates locally.');
+      var googleEligible = classified.filter(function(c) {
+        return (c.reason === 'pure_stub' || c.reason === 'prefix_duplicate') && c.hasGoogleId;
+      });
+      console.log('[orphanCleanup] Of those,', googleEligible.length, 'have googleEventId — would also attempt Google delete.');
+      console.log('[orphanCleanup] Run with {apply:true} to execute.');
+      return {
+        found: orphans.length,
+        pureStubs: pureStubs.length,
+        prefixDuplicates: prefixDupes.length,
+        unmatched: unmatched.length,
+        googleEligible: googleEligible.length,
+        dryRun: true
+      };
+    }
+
+    // Apply path: delete locally + Google. Local delete is a single batch
+    // write at the end; Google deletes are per-orphan with per-failure logs.
+    var idsToDelete = new Set();
+    var deletedGoogle = 0;
+    var googleFailures = [];
+
+    for (var i = 0; i < classified.length; i++) {
+      var c = classified[i];
+      if (c.reason === 'unmatched_orphan') continue;
+      idsToDelete.add(c.orphan.id);
+      if (c.hasGoogleId) {
+        try {
+          var delOpts = c.orphan.calendarId ? { calendarId: c.orphan.calendarId } : {};
+          var res = await deleteConflictFromGoogle(c.orphan.googleEventId, delOpts);
+          if (res && res.success) {
+            deletedGoogle++;
+            console.log('[orphanCleanup] ✓ Deleted Google event', c.orphan.googleEventId, 'for', c.orphan.date, c.orphan.venue);
+          } else {
+            googleFailures.push({ id: c.orphan.id, googleEventId: c.orphan.googleEventId, date: c.orphan.date, venue: c.orphan.venue, error: (res && res.error) || 'unknown' });
+            console.warn('[orphanCleanup] ✗ Google delete failed:', c.orphan.googleEventId, res && res.error);
+          }
+        } catch (e) {
+          googleFailures.push({ id: c.orphan.id, googleEventId: c.orphan.googleEventId, date: c.orphan.date, venue: c.orphan.venue, error: (e && e.message) || 'exception' });
+          console.warn('[orphanCleanup] ✗ Google delete threw:', c.orphan.googleEventId, e && e.message);
+        }
+      }
+    }
+
+    var beforeCount = calEvents.length;
+    var newCalEvents = calEvents.filter(function(e) { return !e || !idsToDelete.has(e.id); });
+    var deletedLocal = beforeCount - newCalEvents.length;
+
+    try {
+      await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(newCalEvents));
+      console.log('[orphanCleanup] ✓ Deleted', deletedLocal, 'orphan cal_events from local store');
+    } catch (e) {
+      console.error('[orphanCleanup] save failed:', e && e.message);
+      return { error: 'save_failed', deletedLocal: 0, deletedGoogle: deletedGoogle, googleFailures: googleFailures };
+    }
+
+    if (googleFailures.length) {
+      console.warn('[orphanCleanup] Google deletes that failed (local rows still removed; clean up these Google events manually):');
+      console.table(googleFailures);
+    }
+
+    return {
+      found: orphans.length,
+      pureStubs: pureStubs.length,
+      prefixDuplicates: prefixDupes.length,
+      unmatched: unmatched.length,
+      deletedLocal: deletedLocal,
+      deletedGoogle: deletedGoogle,
+      googleFailures: googleFailures.length,
+      googleFailureDetails: googleFailures
+    };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -4896,6 +5062,7 @@ window.GLCalendarSync = (function() {
     repairCorruptedTitles: repairCorruptedTitles,
     createMissingHiddenStubs: createMissingHiddenStubs,
     repairGigMirror: repairGigMirror,
+    cleanupOrphanGigEvents: cleanupOrphanGigEvents,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,
