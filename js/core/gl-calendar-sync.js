@@ -5117,6 +5117,51 @@ window.GLCalendarSync = (function() {
     return { needsRepair: willRepair.length, alreadyCorrect: alreadyCorrect.length, orphanGigIds: noGigMatch.length, applied: willRepair.length };
   }
 
+  // ── 2026-05-04: bypass-scope direct delete for Google Calendar events ────
+  // hasCalendarScope() gates on window._calendarScopeGranted which can be
+  // false even when calendar.events scope IS granted (e.g. partial-scope
+  // OAuth where 'full' calendar wasn't requested). For one-off cleanup
+  // where we already know the user has at least events scope (sync just
+  // worked), this helper skips the scope gate and calls the worker proxy
+  // directly. Returns per-id status codes so failures are diagnosable.
+  async function deleteGoogleEventsDirect(googleEventIds, opts) {
+    opts = opts || {};
+    if (!Array.isArray(googleEventIds) || !googleEventIds.length) {
+      return { error: 'No googleEventIds provided' };
+    }
+    if (typeof accessToken === 'undefined' || !accessToken) {
+      return { error: 'No accessToken — sign in first' };
+    }
+    var calId = opts.calendarId || (await _getBandCalendarId());
+    if (!calId) {
+      return { error: 'Could not resolve band calendar id' };
+    }
+    console.log('[directDelete] Using calendar:', calId);
+
+    var results = [];
+    for (var i = 0; i < googleEventIds.length; i++) {
+      var id = googleEventIds[i];
+      try {
+        var url = WORKER_BASE + '/calendar/events/' + encodeURIComponent(id)
+          + '?calendarId=' + encodeURIComponent(calId);
+        var res = await fetch(url, {
+          method: 'DELETE',
+          headers: { 'Authorization': 'Bearer ' + accessToken }
+        });
+        var ok = res.status === 204 || res.status === 410 || res.status === 404;
+        results.push({ id: id, status: res.status, success: ok });
+        console.log('[directDelete]', id, '→ HTTP', res.status, ok ? '✓' : '✗ (will need manual cleanup)');
+      } catch (e) {
+        results.push({ id: id, status: 'error', success: false, error: e && e.message });
+        console.warn('[directDelete]', id, 'threw:', e && e.message);
+      }
+    }
+
+    var succeeded = results.filter(function(r) { return r.success; }).length;
+    console.log('[directDelete] Done:', succeeded, '/', results.length, 'succeeded');
+    return { results: results, succeeded: succeeded, total: results.length };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -5168,6 +5213,7 @@ window.GLCalendarSync = (function() {
     repairGigMirror: repairGigMirror,
     cleanupOrphanGigEvents: cleanupOrphanGigEvents,
     fixGigSetlistLinkage: fixGigSetlistLinkage,
+    deleteGoogleEventsDirect: deleteGoogleEventsDirect,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,
