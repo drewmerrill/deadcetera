@@ -2145,25 +2145,22 @@ window.GLCalendarSync = (function() {
       // Path B.2: synthetic hidden-event rows are derived from freebusy, not
       // real events. Never push them back to Google.
       if (ev && (ev._syntheticFromFreeBusy || ev.syncStatus === 'synthetic')) continue;
-      // D5 fix (2026-05-04) + Audit M7 (2026-05-04): never push imported
-      // "Busy"/"unavailable" rows back to Google when their origin was a
-      // PERSONAL calendar (Drew Busy / Brian Busy from members' own cals,
-      // imported into calendar_events for conflict-detection). The legacy
-      // gate was type-only — too broad: it also blocked legitimately
-      // band-cal-authored block/unavailable rows from being pushed.
-      // Narrower gate: only short-circuit when the row was imported AND
-      // its calendarId is NOT the band cal. A band-cal-authored block
-      // (calendarId === bandCalId, or no _importedFromGoogle flag) is
-      // free to take the normal CREATE/UPDATE path.
+      // D5 fix (2026-05-04) + Audit M7 (2026-05-04, refined 2026-05-05):
+      // never push back a busy/unavailable row that was IMPORTED from
+      // Google. Doesn't matter whether the source was a personal cal or
+      // the band cal — if we imported it, the source-of-truth is Google,
+      // and our local copy is read-only from the sync engine's
+      // perspective. The legacy gate was type-only (too broad: blocked
+      // band-cal-authored blocks); the previous narrow gate special-cased
+      // calendarId, but UAT (2026-05-05) showed Brian's "Brian busy"
+      // recurring instances on the band cal were silently re-PATCHing
+      // back to themselves on every Drew-side sync (no content shift,
+      // but Brian saw "Drew modified" in Google's audit log). The right
+      // semantic is: imported = don't push, period. A band-cal-authored
+      // block that I CREATED in the app has _importedFromGoogle:false
+      // and goes through the normal CREATE/UPDATE path.
       var _UNTOUCHABLE_TYPE = { unavailable: 1, busy: 1, block: 1 };
-      if (ev && ev.type && _UNTOUCHABLE_TYPE[ev.type]) {
-        var _isImported = !!ev._importedFromGoogle;
-        var _fromOtherCal = !!(ev.calendarId && ev.calendarId !== bandCalId);
-        if (_isImported && _fromOtherCal) continue;
-        // Also skip if calendarId is missing AND _importedFromGoogle is set —
-        // legacy rows without calendarId are still personal-cal imports.
-        if (_isImported && !ev.calendarId) continue;
-      }
+      if (ev && ev.type && _UNTOUCHABLE_TYPE[ev.type] && ev._importedFromGoogle) continue;
       // T1.2 audit fix: migration-created rows without a real Google event
       // are tagged 'migration_only' so Phase 1 doesn't ghost-push them as
       // fresh outbound. The user can opt in via gig edit (sets dirty=true).
@@ -2243,6 +2240,15 @@ window.GLCalendarSync = (function() {
             events[i].sync = events[i].sync || {};
             events[i].sync.status = 'synced';
             events[i].sync.lastSyncedAt = events[i].lastSyncedAt;
+            // Audit fix (2026-05-05): the loop's `alreadySynced` check below
+            // reads the LOCAL `_status` captured at the top of the iteration,
+            // not events[i].syncStatus. Without bumping `_status` in lockstep,
+            // every successful UPDATE fell through into the CREATE branch on
+            // the same iteration — visible in logs as "Phase 1 UPDATE pushed"
+            // immediately followed by "create() refused — no usable title".
+            // The no-title guard prevented actual duplicates, but this was
+            // wasted work and a latent risk.
+            _status = 'synced';
             result.pushedUpdates++;
             dirty = true;
             // Audit M9: row-level detail for sync_activity.
