@@ -4725,8 +4725,21 @@ window.GLCalendarSync = (function() {
         i = calEvents.findIndex(function(e) { return e && e.type === 'gig' && e.gigId === gig.gigId; });
       }
       if (i < 0 && gig.venue && gig.date) {
+        // Exact venue+date match (most common legacy case).
         var key = gig.venue + '|' + gig.date;
         i = calEvents.findIndex(function(e) { return e && e.type === 'gig' && ((e.venue||'') + '|' + (e.date||'')) === key; });
+      }
+      if (i < 0 && gig.venue && gig.date) {
+        // Fuzzy fallback: same date, cal_event.venue starts with gig.venue.
+        // Handles legacy rows with mangled venue fields where someone typed
+        // a custom title into the venue field, producing strings like
+        // "Avon Theater — Grizz Fest" instead of "Avon Theater". The clean
+        // gig venue is always a prefix of the mangled cal_event venue.
+        i = calEvents.findIndex(function(e) {
+          return e && e.type === 'gig' && e.date === gig.date
+            && typeof e.venue === 'string' && e.venue.indexOf(gig.venue) === 0
+            && !e.gigId; // only consume orphans (no gigId), never steal a row that already belongs to a different gig
+        });
       }
       return i;
     }
