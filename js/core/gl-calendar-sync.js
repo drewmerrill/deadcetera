@@ -213,23 +213,54 @@ window.GLCalendarSync = (function() {
       // value so a PATCH from all-day → timed takes effect — the common
       // workflow where someone creates a placeholder all-day "420 fest"
       // on DC and the band fills in real start/end times in GrooveLinx.
-      var time = glEvent.time || glEvent.startTime || '19:00';
-      var startDt = new Date(glEvent.date + 'T' + time + ':00');
-      if (isNaN(startDt.getTime())) startDt = new Date(glEvent.date + 'T19:00:00');
-      // Use provided end time if we have one, else fall back to the default
-      // duration. Previously this always added 2 hours, so every gig looked
-      // identical (7–9 PM for defaulted starts).
-      var endDt;
-      if (glEvent.endTime) {
-        endDt = new Date(glEvent.date + 'T' + glEvent.endTime + ':00');
-        if (isNaN(endDt.getTime()) || endDt.getTime() <= startDt.getTime()) {
-          endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
+      //
+      // TIMEZONE FIX (2026-05-05, Drew UAT from Colorado/MT): the legacy
+      // path built `new Date(date + 'T' + time + ':00')` then called
+      // `.toISOString()`. JS parsed the bare string as the BROWSER'S
+      // local timezone (MT in Drew's case), then `.toISOString()` produced
+      // a UTC string with 'Z'. Google ignores the `timeZone` field when
+      // the dateTime ends in Z. Result: a sync from MT shifted every gig
+      // +2 hours on Google. The intent has always been "19:00 in the
+      // BAND'S timezone (ET)". Fix: emit a floating-local dateTime
+      // (`YYYY-MM-DDTHH:MM:SS`, no Z, no offset) and let `timeZone:
+      // 'America/New_York'` interpret it. This is timezone-stable
+      // regardless of where the syncing device sits.
+      var _hmRe = /^\d{2}:\d{2}$/;
+      var time = (glEvent.time || glEvent.startTime || '19:00');
+      if (!_hmRe.test(time)) time = '19:00';
+      var startStr = glEvent.date + 'T' + time + ':00';
+
+      // Compute end as a wall-clock string. If endTime missing or invalid,
+      // add CAL_DEFAULT_DURATION_MIN to the start (handling next-day rollover).
+      function _addMinsToWallClock(date, hm, addMins) {
+        var parts = hm.split(':');
+        var mins = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10) + addMins;
+        var dateStr = date;
+        // Roll over each day boundary as needed.
+        while (mins >= 24 * 60) {
+          var d = new Date(dateStr + 'T12:00:00');
+          d.setDate(d.getDate() + 1);
+          dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+          mins -= 24 * 60;
+        }
+        var hh = String(Math.floor(mins / 60)).padStart(2, '0');
+        var mm = String(mins % 60).padStart(2, '0');
+        return dateStr + 'T' + hh + ':' + mm + ':00';
+      }
+      var endStr;
+      if (glEvent.endTime && _hmRe.test(glEvent.endTime)) {
+        endStr = glEvent.date + 'T' + glEvent.endTime + ':00';
+        // String compare works because both are ISO-format same-date prefix.
+        // If the user input puts end <= start, treat as same-day and fall
+        // back to default duration (matches legacy behavior).
+        if (endStr <= startStr) {
+          endStr = _addMinsToWallClock(glEvent.date, time, CAL_DEFAULT_DURATION_MIN);
         }
       } else {
-        endDt = new Date(startDt.getTime() + CAL_DEFAULT_DURATION_MIN * 60000);
+        endStr = _addMinsToWallClock(glEvent.date, time, CAL_DEFAULT_DURATION_MIN);
       }
-      body.start = { dateTime: startDt.toISOString(), timeZone: 'America/New_York', date: null };
-      body.end = { dateTime: endDt.toISOString(), timeZone: 'America/New_York', date: null };
+      body.start = { dateTime: startStr, timeZone: 'America/New_York', date: null };
+      body.end   = { dateTime: endStr,   timeZone: 'America/New_York', date: null };
     }
 
     if (glEvent.venue || glEvent.location) {
