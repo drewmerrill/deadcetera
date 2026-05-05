@@ -2065,6 +2065,28 @@
     emit('gigsChanged', { count: 0 });
   }
 
+  // ── Canonical reader (Stage-1 of Calendar/Gigs merge) ────────────────────
+  // Returns the gig list derived from calendar_events.type==='gig'. After
+  // today's mirror hardening, every gig field lives on the cal_event row, so
+  // this view is fully equivalent to loading the gigs node — but sourced
+  // from the polymorphic timeline. New code paths should adopt this; the
+  // legacy gigs-node readers will be migrated in a follow-up session.
+  async function getGigsAsync() {
+    if (typeof loadBandDataFromDrive !== 'function') return [];
+    var raw = await loadBandDataFromDrive('_band', 'calendar_events') || [];
+    var arr = Array.isArray(raw) ? raw : (typeof toArray === 'function' ? toArray(raw) : Object.values(raw));
+    var gigs = arr.filter(function(e) { return e && e.type === 'gig'; });
+    // Project cal_event shape back to gig shape: cal_event uses `time`,
+    // gig uses `startTime`. Mirror sets both, but synth them here for any
+    // cal_event row that predates the mirror hardening.
+    gigs = gigs.map(function(e) {
+      if (!e.startTime && e.time) return Object.assign({}, e, { startTime: e.time });
+      return e;
+    });
+    gigs.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    return gigs;
+  }
+
   // ── Status Cache (centralized setter) ─────────────────────────────────────
   function setStatus(songId, status) {
     try {
@@ -5026,6 +5048,7 @@
     getGigs:           getGigs,
     setGigsCache:      setGigsCache,
     clearGigsCache:    clearGigsCache,
+    getGigsAsync:      getGigsAsync,
 
     // UI State
     setActiveLens:     setActiveLens,

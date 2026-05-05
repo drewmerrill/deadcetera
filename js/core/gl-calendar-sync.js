@@ -4685,6 +4685,155 @@ window.GLCalendarSync = (function() {
     return ofInterest;
   }
 
+  // ── 2026-05-04: backfill comprehensive gig→calendar_events mirror ────────
+  // Stage-1 of the Calendar/Gigs structural merge. Today, calendar_events.gig
+  // rows are a partial projection of the gigs node — only ~10 of the gig's
+  // ~20 fields get mirrored on save (via _syncGigToCalendar). That's the
+  // root of the field-drift bug class: every new gig field added to the
+  // schema (e.g. endTime in 4/20, arrival/soundcheck/pay) needs to be
+  // explicitly plumbed into _syncGigToCalendar or it silently drops on the
+  // mirror side.
+  //
+  // gigs.js _syncGigToCalendar has been rewritten today to do a FULL-record
+  // mirror going forward. This migration walks all existing gigs and
+  // backfills the comprehensive mirror onto their matching cal_event rows.
+  // After running, every gig field lives on the corresponding cal_event row
+  // alongside the calendar-event-managed fields (id, googleEventId, etc).
+  //
+  // Dry-run by default — call with {apply:true} to write changes.
+  // Reports orphans both directions: gigs with no cal_event mirror, and
+  // type:'gig' cal_events with no matching gigs record.
+  async function repairGigMirror(opts) {
+    opts = opts || {};
+    var apply = !!opts.apply;
+    if (typeof loadBandDataFromDrive !== 'function') {
+      return { error: 'firebase helpers unavailable' };
+    }
+
+    var gigs = await loadBandDataFromDrive('_band', 'gigs') || [];
+    gigs = (typeof toArray === 'function') ? toArray(gigs) : (Array.isArray(gigs) ? gigs : Object.values(gigs));
+    var rawCal = await loadBandDataFromDrive('_band', 'calendar_events') || [];
+    var calEvents = (typeof toArray === 'function') ? toArray(rawCal) : (Array.isArray(rawCal) ? rawCal : Object.values(rawCal));
+
+    var preservedKeys = ['id','googleEventId','calendarId','sync','syncStatus',
+      'updated_at','_syntheticFromFreeBusy','_importedFromGoogle',
+      'assignedMembers','hiddenInfo','organizerEmail','recurrence','etag'];
+
+    function findCalIdx(gig) {
+      var i = -1;
+      if (gig.gigId) {
+        i = calEvents.findIndex(function(e) { return e && e.type === 'gig' && e.gigId === gig.gigId; });
+      }
+      if (i < 0 && gig.venue && gig.date) {
+        var key = gig.venue + '|' + gig.date;
+        i = calEvents.findIndex(function(e) { return e && e.type === 'gig' && ((e.venue||'') + '|' + (e.date||'')) === key; });
+      }
+      return i;
+    }
+
+    function _genId() {
+      try { if (typeof generateShortId === 'function') return generateShortId(12); } catch(e) {}
+      return 'gl_' + Math.random().toString(36).slice(2, 14);
+    }
+
+    var backfilled = []; // existing cal_event row updated with full mirror
+    var created = [];    // new cal_event row created (gig had no mirror)
+    var orphanCalEvents = []; // type:'gig' cal_event with no matching gig
+    var skippedNoVenueOrDate = []; // gigs missing required fields
+
+    gigs.forEach(function(gig) {
+      if (!gig || !gig.date || !gig.venue) {
+        skippedNoVenueOrDate.push({ gigId: gig && gig.gigId, date: gig && gig.date, venue: gig && gig.venue });
+        return;
+      }
+      var idx = findCalIdx(gig);
+      var existing = (idx >= 0) ? calEvents[idx] : null;
+      var existingTitle = (existing && existing.title) || '';
+      var venueLabel = gig.venue || '';
+      var legacyDefaults = /^(deadcetera\s+gig|band\s+gig|gig)$/i;
+      var resolvedTitle = (!existingTitle || existingTitle === venueLabel || legacyDefaults.test(existingTitle))
+        ? venueLabel
+        : existingTitle;
+
+      var preserved = {};
+      if (existing) {
+        preservedKeys.forEach(function(k) {
+          if (existing[k] !== undefined) preserved[k] = existing[k];
+        });
+      }
+
+      var calRecord = Object.assign({}, gig, preserved, {
+        type: 'gig',
+        title: resolvedTitle,
+        time: gig.startTime || '',
+        endTime: gig.endTime || '',
+        updated: new Date().toISOString()
+      });
+      if (!calRecord.id) calRecord.id = _genId();
+
+      if (idx >= 0) {
+        calEvents[idx] = calRecord;
+        backfilled.push({ gigId: gig.gigId, date: gig.date, venue: gig.venue, calId: calRecord.id });
+      } else {
+        calRecord.created = gig.created || new Date().toISOString();
+        calEvents.push(calRecord);
+        created.push({ gigId: gig.gigId, date: gig.date, venue: gig.venue, calId: calRecord.id });
+      }
+    });
+
+    // Orphan check: type:'gig' cal_events with no matching gigs record.
+    // (Likely from old test data or partially-deleted gigs.)
+    calEvents.forEach(function(ev) {
+      if (!ev || ev.type !== 'gig') return;
+      var match = gigs.find(function(g) {
+        if (!g) return false;
+        if (ev.gigId && g.gigId === ev.gigId) return true;
+        if (g.venue === ev.venue && g.date === ev.date) return true;
+        return false;
+      });
+      if (!match) orphanCalEvents.push({ id: ev.id, gigId: ev.gigId, date: ev.date, venue: ev.venue, title: ev.title });
+    });
+
+    console.log('[gigMirror] backfilled (existing cal_event row updated):', backfilled.length);
+    if (backfilled.length) console.table(backfilled);
+    console.log('[gigMirror] created (new cal_event row from gig):', created.length);
+    if (created.length) console.table(created);
+    if (orphanCalEvents.length) {
+      console.warn('[gigMirror] orphan cal_events (type:gig with no matching gigs row):', orphanCalEvents.length);
+      console.table(orphanCalEvents);
+    }
+    if (skippedNoVenueOrDate.length) {
+      console.warn('[gigMirror] skipped gigs missing venue or date:', skippedNoVenueOrDate.length);
+      console.table(skippedNoVenueOrDate);
+    }
+
+    if (!apply) {
+      console.log('[gigMirror] Dry run only. Run again with {apply:true} to write changes.');
+      return {
+        backfilled: backfilled.length,
+        created: created.length,
+        orphanCalEvents: orphanCalEvents.length,
+        skipped: skippedNoVenueOrDate.length,
+        dryRun: true
+      };
+    }
+
+    try {
+      await saveBandDataToDrive('_band', 'calendar_events', _sanitizeForFirebase(calEvents));
+      console.log('[gigMirror] ✓ Wrote', backfilled.length + created.length, 'gig mirrors to calendar_events');
+    } catch(e) {
+      console.error('[gigMirror] save failed:', e && e.message);
+      return { error: 'save_failed', backfilled: backfilled.length, created: created.length, applied: 0 };
+    }
+    return {
+      backfilled: backfilled.length,
+      created: created.length,
+      applied: backfilled.length + created.length,
+      orphanCalEvents: orphanCalEvents.length,
+      skipped: skippedNoVenueOrDate.length
+    };
+  }
+
   // ── Public API ────────────────────────────────────────────────────────────
   return {
     create: create,
@@ -4733,6 +4882,7 @@ window.GLCalendarSync = (function() {
     purgeNonBandEvents: purgeNonBandEvents,
     repairCorruptedTitles: repairCorruptedTitles,
     createMissingHiddenStubs: createMissingHiddenStubs,
+    repairGigMirror: repairGigMirror,
     debugUnavailableScan: debugUnavailableScan,
     debugBandCalendarRaw: debugBandCalendarRaw,
     debugListCalendarsRaw: debugListCalendarsRaw,

@@ -709,11 +709,19 @@ function _gigInitVenuePicker(venues, preselected) {
         selectedItem: preselected || null
     });
 }
-// Sync a gig record to calendar_events — match by gigId first, fallback venue+date
+// Mirror a gig record onto its calendar_events row. Matches by gigId first
+// (stable), falls back to venue+date for legacy rows pre-gigId.
+//
+// Mirror policy: copy the FULL gig record onto the cal_event row. This kills
+// the "field drift" bug class (e.g. 4/20 endTime drop, future fields added to
+// gigs but not propagated through the pipeline). The only fields preserved
+// from the existing cal_event are calendar-event-managed metadata that the
+// gig record doesn't track: id, googleEventId, calendarId, sync, syncStatus,
+// updated_at, _syntheticFromFreeBusy, _importedFromGoogle, assignedMembers,
+// hiddenInfo, organizerEmail, recurrence, etag.
 async function _syncGigToCalendar(gig, createdKey) {
     if (!gig || !gig.date || !gig.venue) return;
     const calEvents = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
-    // Match by gigId first (stable), fallback to venue+date (legacy compat)
     var existIdx = -1;
     if (gig.gigId) {
         existIdx = calEvents.findIndex(function(e) { return e.type === 'gig' && e.gigId === gig.gigId; });
@@ -728,40 +736,50 @@ async function _syncGigToCalendar(gig, createdKey) {
     // pulled a rename from another member ("FTE show"). Only overwrite when
     // the existing title is empty, the legacy "deadcetera Gig" / "Gig" string,
     // or already matches the venue.
-    var existingTitle = (existIdx >= 0 && calEvents[existIdx] && calEvents[existIdx].title) || '';
+    var existing = (existIdx >= 0) ? calEvents[existIdx] : null;
+    var existingTitle = (existing && existing.title) || '';
     var venueLabel = gig.venue || '';
     var legacyDefaults = /^(deadcetera\s+gig|band\s+gig|gig)$/i;
     var resolvedTitle = (!existingTitle || existingTitle === venueLabel || legacyDefaults.test(existingTitle))
         ? venueLabel
         : existingTitle;
-    const calRecord = {
+
+    // Calendar-event-managed fields preserved from existing row (sync engine,
+    // Google metadata, freebusy synthetics — none of these belong to the gig).
+    var preservedKeys = ['id','googleEventId','calendarId','sync','syncStatus',
+        'updated_at','_syntheticFromFreeBusy','_importedFromGoogle',
+        'assignedMembers','hiddenInfo','organizerEmail','recurrence','etag'];
+    var preserved = {};
+    if (existing) {
+        preservedKeys.forEach(function(k) {
+            if (existing[k] !== undefined) preserved[k] = existing[k];
+        });
+    }
+
+    // Full-record mirror: spread the entire gig record, then re-apply
+    // cal-event-only fields and the resolved title. The `time` alias is set
+    // from gig.startTime to keep legacy readers working (cal_events uses
+    // `time` but gig uses `startTime`).
+    var calRecord = Object.assign({}, gig, preserved, {
         type: 'gig',
-        gigId: gig.gigId || null,
-        venueId: gig.venueId || null,
-        date: gig.date || '',
         title: resolvedTitle,
         time: gig.startTime || '',
         endTime: gig.endTime || '',
-        venue: gig.venue || '',
-        notes: gig.notes || '',
-        linkedSetlist: gig.linkedSetlist || null,
         updated: new Date().toISOString()
-    };
-    if (existIdx >= 0) {
-        calEvents[existIdx] = { ...calEvents[existIdx], ...calRecord };
-        // Ensure id exists on existing event
-        if (!calEvents[existIdx].id) calEvents[existIdx].id = generateShortId(12);
-    } else {
-        calRecord.id = generateShortId(12);
+    });
+
+    // Backfill id and created on first mirror.
+    if (!calRecord.id) calRecord.id = generateShortId(12);
+    if (existIdx < 0) {
         calRecord.created = createdKey || gig.created || new Date().toISOString();
         calEvents.push(calRecord);
+    } else {
+        calEvents[existIdx] = calRecord;
     }
-    // Store back-ref on gig
-    if (!gig.calendarEventId && existIdx >= 0 && calEvents[existIdx].id) {
-        gig.calendarEventId = calEvents[existIdx].id;
-    } else if (!gig.calendarEventId && existIdx < 0) {
-        gig.calendarEventId = calRecord.id;
-    }
+
+    // Forward-ref on gig so future cascade ops can find the cal_event row.
+    if (!gig.calendarEventId) gig.calendarEventId = calRecord.id;
+
     await saveBandDataToDrive('_band', 'calendar_events', calEvents);
 }
 
