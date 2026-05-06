@@ -4215,8 +4215,10 @@ async function _sdPopulateRightPanel(title) {
         + '</div>';
 
     // ── ALWAYS VISIBLE: Readiness (full card) ──
+    // Current member gets an interactive slider; other members render read-only bars.
     var songScores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
     var rpMembers = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var rpMyKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
     var readinessHtml = '<div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)">'
         + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Readiness</div>'
         + '<div style="display:flex;flex-direction:column;gap:4px">';
@@ -4225,10 +4227,22 @@ async function _sdPopulateRightPanel(title) {
         var score = songScores[key];
         var color = score ? (score >= 4 ? '#10b981' : score >= 3 ? '#f59e0b' : '#ef4444') : '#475569';
         var barPct = score ? (score / 5 * 100) : 0;
+        var isMe = rpMyKey && key === rpMyKey;
+        var rpLblId = 'sd-rp-score-' + key;
+        var nameCell = '<span style="color:' + (isMe ? 'var(--text)' : 'var(--text-dim)') + ';font-weight:' + (isMe ? '700' : '500') + ';min-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(name) + '</span>';
+        var midCell;
+        if (isMe) {
+            midCell = '<input type="range" min="0" max="5" step="1" value="' + (score || 0) + '" '
+                + 'style="flex:1;min-width:0;accent-color:var(--accent);cursor:pointer" '
+                + 'title="Drag to rate 0-5: Never played \u2192 Gig ready" '
+                + 'oninput="(function(el){var v=parseInt(el.value,10);var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'#475569\';var lbl=document.getElementById(\'' + rpLblId + '\');if(lbl){lbl.textContent=v||(\'\\u2014\');lbl.style.color=c;}})(this)" '
+                + 'onchange="sdSaveReadiness(\'' + safeSong + '\',\'' + key + '\',this.value)">';
+        } else {
+            midCell = '<div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden"><div style="width:' + barPct + '%;height:100%;background:' + color + ';border-radius:3px"></div></div>';
+        }
         readinessHtml += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em">'
-            + '<span style="color:var(--text-dim);min-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(name) + '</span>'
-            + '<div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden"><div style="width:' + barPct + '%;height:100%;background:' + color + ';border-radius:3px"></div></div>'
-            + '<span style="color:' + color + ';font-weight:700;min-width:16px;text-align:right">' + (score || '\u2014') + '</span>'
+            + nameCell + midCell
+            + '<span id="' + rpLblId + '" style="color:' + color + ';font-weight:700;min-width:16px;text-align:right">' + (score || '\u2014') + '</span>'
             + '</div>';
     });
     readinessHtml += '</div></div>';
