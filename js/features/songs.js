@@ -65,6 +65,7 @@ window.isSongActive = function(title) { return getSongScope(title) === 'active';
 window._sqDataReady = window._sqDataReady || { songs: false, dna: false, readiness: false, love: false };
 
 window.renderSongs = function renderSongs(filter, searchTerm) {
+  try {
     filter     = filter     || 'all';
     searchTerm = searchTerm || '';
     // Persist sort preference
@@ -648,6 +649,10 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
         }
         if (typeof preloadAllStatuses === 'function') preloadAllStatuses();
     });
+  } catch (_glRenderE) {
+    var _glRenderTgt = document.getElementById('songDropdown');
+    if (typeof _glRenderError === 'function') _glRenderError(_glRenderTgt, 'renderSongs', _glRenderE);
+  }
 };
 
 // ── Bulk select helpers (Library → Active) ───────────────────────────────────
@@ -906,22 +911,14 @@ window.selectSong = function selectSong(songTitle) {
     // background task during the transition period. Harmless in panel mode.
     if (typeof showBandResources === 'function') showBandResources(songTitle);
 
-    // ── Routing: right-panel shell (index-dev.html) vs full-page (index.html) ─
-    //
-    // Guard is window.glRightPanel.open — set only when gl-right-panel.js has
-    // loaded AND initialised. gl-right-panel.js is NOT loaded by index.html,
-    // so this check is a precise proxy for "dev shell is active".
-    //
-    // GLStore also loads in index.html, so GLStore existence alone is NOT a
-    // safe guard — it would break production song navigation.
-
-    // Mobile: always use full-page detail (right panel too small)
+    // Routing: desktop opens the song in the right context panel; mobile and
+    // any environment where gl-right-panel hasn't initialised fall back to a
+    // full-page navigation. Guard on glRightPanel.open being a function so
+    // a partially-loaded shell can't silently swallow the click.
     var isMobile = window.innerWidth <= 768;
     if (!isMobile && window.glRightPanel && typeof window.glRightPanel.open === 'function') {
-        // Desktop BCC shell path (index-dev.html only).
         GLStore.selectSong(songTitle);
     } else {
-        // Production path or mobile — full-page navigation.
         if (typeof showPage === 'function') {
             showPage('songdetail');
         }

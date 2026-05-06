@@ -201,6 +201,13 @@ function _calShowModeChooser() {
         + '<div style="font-size:0.65em;color:var(--gl-text-tertiary);margin-top:2px">\u2714 Works with the Google Calendar you already use.</div>'
         + '<div style="font-size:0.62em;color:var(--gl-amber);margin-top:4px;line-height:1.4">\u26A0 Events must be on the <strong>shared band calendar</strong> (not personal) with <strong>Public</strong> visibility. Private or Default-visibility events can be hidden by Google\u2019s API depending on the creator\u2019s account settings. See Rules for details.</div>'
         + '</button>'
+
+        // Preview Rules \u2014 opens the same Rules modal used post-OAuth so users
+        // can read every setting before granting calendar access. Important
+        // for skeptical bandmates who want to know what they're signing in to.
+        + '<div style="margin-top:10px;text-align:center">'
+        + '<button onclick="_calShowAvailabilitySettings()" style="background:none;border:none;color:var(--gl-text-tertiary);cursor:pointer;font-size:0.78em;text-decoration:underline;font-family:inherit;padding:6px 8px">Preview Rules \u2014 see what each mode controls</button>'
+        + '</div>'
         + '</div>';
 }
 
@@ -3194,13 +3201,13 @@ window._calShowAvailabilitySettings = async function() {
     var existing = document.getElementById('calAvailSettingsModal');
     if (existing) existing.remove();
 
-    // Check connection via Firebase record, not just token (token may not be refreshed yet)
+    // Pre-OAuth: open the modal anyway. Users (especially new bandmates) get
+    // to read what each setting controls and pick a scheduling mode before
+    // granting calendar OAuth. Calendar-list and band-cal sections are
+    // replaced with an inline "Sign in to Google" CTA in pre-OAuth state.
     var _cov = _calGetSyncCoverage();
     var _myConn = _cov.myKey && _cov.connectedKeys.indexOf(_cov.myKey) !== -1;
-    if (typeof GLCalendarSync === 'undefined' || (!GLCalendarSync.hasCalendarScope() && !_myConn)) {
-        if (typeof showToast === 'function') showToast('Enable availability first \u2014 click "enable" in the Google Calendar panel above');
-        return;
-    }
+    var _isPreOAuth = (typeof GLCalendarSync === 'undefined') || (!GLCalendarSync.hasCalendarScope() && !_myConn);
 
     var modal = document.createElement('div');
     modal.id = 'calAvailSettingsModal';
@@ -3220,8 +3227,9 @@ window._calShowAvailabilitySettings = async function() {
     document.body.appendChild(modal);
 
     // Load calendars + current settings + band-level band calendar
-    var calendars = await GLCalendarSync.listCalendars();
-    var settings = await GLCalendarSync.getAvailabilitySettings() || {};
+    // Pre-OAuth: skip Google API calls; defaults render the inline CTA.
+    var calendars = _isPreOAuth ? [] : await GLCalendarSync.listCalendars();
+    var settings = _isPreOAuth ? {} : (await GLCalendarSync.getAvailabilitySettings() || {});
     var selectedCals = settings.selectedCalendars || [];
     var ignoreAllDay = settings.ignoreAllDay === true;
     var timeAware = settings.timeAware !== false;
@@ -3251,7 +3259,7 @@ window._calShowAvailabilitySettings = async function() {
     var body = document.getElementById('calAvailSettingsBody');
     if (!body) return;
 
-    if (!calendars.length) {
+    if (!calendars.length && !_isPreOAuth) {
         var _hasToken = (typeof accessToken !== 'undefined' && accessToken);
         body.innerHTML = '<div style="padding:16px 0">'
             + '<div style="color:var(--gl-amber);font-size:0.88em;font-weight:600;margin-bottom:8px">\u26A0 Could not load your calendars</div>'
@@ -3396,11 +3404,23 @@ window._calShowAvailabilitySettings = async function() {
     }
     bandCalHtml += '</div>';
 
-    // Save button
+    // Save button — pre-OAuth users have nothing to save (mode change auto-saves
+    // on dropdown change), so the primary action is just to close the modal.
     var saveHtml = '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--gl-border-subtle)">'
-        + '<button id="calAvailSaveBtn" onclick="_calSaveAvailabilitySettings()" class="gl-btn-primary" style="flex:1;padding:10px;font-size:0.85em;font-weight:700">Save & Refresh</button>'
+        + '<button id="calAvailSaveBtn" onclick="' + (_isPreOAuth ? 'document.getElementById(\'calAvailSettingsModal\').remove()' : '_calSaveAvailabilitySettings()') + '" class="gl-btn-primary" style="flex:1;padding:10px;font-size:0.85em;font-weight:700">' + (_isPreOAuth ? 'Done' : 'Save & Refresh') + '</button>'
         + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove()" class="gl-btn-ghost" style="padding:10px;font-size:0.85em">Cancel</button>'
         + '</div>';
+
+    // Inline "Sign in to Google" CTA — replaces the calendar-list / band-cal
+    // dropdown sections when the user hasn't granted calendar OAuth yet.
+    // Sits exactly where the calendar list would render so the missing piece
+    // is contextual, not a generic banner at the top.
+    var signInCtaHtml = !_isPreOAuth ? '' :
+        '<div style="margin-bottom:16px;padding:14px 16px;border-radius:10px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.25)">'
+      + '<div style="font-weight:700;color:var(--gl-text);margin-bottom:6px;font-size:0.92em">Connect your Google Calendar</div>'
+      + '<div style="font-size:0.78em;color:var(--gl-text-secondary);line-height:1.5;margin-bottom:10px">Sign in to populate your calendar list. You can pick your scheduling mode and review the rules above before granting access — sign in only when you’re ready.</div>'
+      + '<button onclick="document.getElementById(\'calAvailSettingsModal\').remove();_calConnectGoogle()" class="gl-btn-primary" style="width:100%;padding:10px;font-size:0.85em;font-weight:700">Sign in to Google Calendar</button>'
+      + '</div>';
 
     // Mode A contract callout — surfaces the rules that catch bands off guard
     // (events on personal calendar, or Private visibility, or Default visibility
@@ -3435,13 +3455,15 @@ window._calShowAvailabilitySettings = async function() {
 
     // Mode A: band calendar only — personal calendars and conflict rules are not relevant
     // Mode B: availability calendars + conflict rules (primary), band calendar (secondary)
-    // Mode C: minimal — just the mode selector + save
+    // Mode C: minimal — just the mode selector + save (no OAuth needed at all)
+    // Pre-OAuth: replace calendar-listing sections with the inline sign-in CTA
+    // so the user can still pick mode + read the conflict rules before connecting.
     if (_calIsModeA()) {
-        body.innerHTML = modeHtml + modeAContractHtml + bandCalHtml + saveHtml;
+        body.innerHTML = modeHtml + modeAContractHtml + (_isPreOAuth ? signInCtaHtml : bandCalHtml) + saveHtml;
     } else if (_calIsModeC()) {
         body.innerHTML = modeHtml + saveHtml;
     } else {
-        body.innerHTML = modeHtml + calHtml + rulesHtml + bandCalHtml + saveHtml;
+        body.innerHTML = modeHtml + (_isPreOAuth ? signInCtaHtml : calHtml) + rulesHtml + (_isPreOAuth ? '' : bandCalHtml) + saveHtml;
     }
 };
 
@@ -4621,6 +4643,7 @@ window._calNextUpGigGcal = function(date) {
 };
 
 async function renderCalendarInner() {
+  try {
     var _calT0 = performance.now();
     console.log('[PERF] renderCalendarInner start ' + Math.round(_calT0) + 'ms');
     // Reset SWR flag so cache is always checked on page entry
@@ -4734,6 +4757,10 @@ async function renderCalendarInner() {
     // ── GRID: single render path via _calRenderGridOnly ──
     console.log('[SHELL RENDER] renderCalendarInner complete — calling _calRenderGridOnly');
     _calRenderGridOnly();
+  } catch (_glRenderE) {
+    var _glRenderTgt = document.getElementById('calendarInner');
+    if (typeof _glRenderError === 'function') _glRenderError(_glRenderTgt, 'renderCalendarInner', _glRenderE);
+  }
 }
 
 // Race-condition safe: each nav increments a sequence counter.

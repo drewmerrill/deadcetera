@@ -26,6 +26,8 @@ var SD_LENSES = SD_LENSES_FULL;
 
 // ── Entry ────────────────────────────────────────────────────────────────────
 window.renderSongDetail = function renderSongDetail(songTitle, containerOverride, options) {
+    var container = containerOverride || document.getElementById('page-songdetail');
+  try {
     var title = songTitle || (selectedSong && (selectedSong.title || selectedSong));
     if (!title) { if (typeof showPage==='function') showPage('songs'); return; }
     _sdCurrentSong   = title;
@@ -36,7 +38,6 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
         if (!_sdOpts.panelMode) { localStorage.setItem('glLastPage', 'songdetail'); }
         localStorage.setItem('glLastSong', title);
     } catch(e) {}
-    var container = containerOverride || document.getElementById('page-songdetail');
     if (!container) return;
     _sdContainer = container;
     window._sdPanelMode = !!_sdOpts.panelMode;
@@ -48,6 +49,9 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
     if (_defaultTab === 'learn') { _sdLensPopulated.learn = true; _sdPopulateLearnLens(title); }
     _sdPopulateRightPanel(title);
     requestAnimationFrame(function() { container.classList.add('sd-entered'); });
+  } catch (_glRenderE) {
+    if (typeof _glRenderError === 'function') _glRenderError(container, 'renderSongDetail', _glRenderE);
+  }
 };
 
 window.switchLens = function switchLens(lens) {

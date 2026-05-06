@@ -375,4 +375,24 @@ window.formatRuntimeSec = function(totalSec) {
     return mins + ' min';
 };
 
+// ── Render-error fallback ──────────────────────────────────────────────────
+// Top-level page renderers wrap their bodies in try/catch and call this
+// helper on throw, so a single bad sort comparator can no longer leave a
+// user staring at "Loading..." forever. Reset clears UI preferences likely
+// to be the cause (sort/filter/scope) without touching auth or band data.
+window._glRenderError = function _glRenderError(targetEl, where, err) {
+    try { console.error('[GL render fail]', where, err); } catch(_e) {}
+    if (!targetEl) return;
+    var msg = '';
+    try { msg = (err && err.message) ? String(err.message) : 'Unexpected error'; } catch(_e) { msg = 'Unexpected error'; }
+    msg = msg.replace(/[<>&]/g, '');
+    targetEl.innerHTML = '<div style="padding:32px 24px;text-align:center;max-width:480px;margin:32px auto">'
+        + '<div style="font-size:1.15em;font-weight:700;color:#fbbf24;margin-bottom:8px">Something went wrong loading this page</div>'
+        + '<div style="font-size:0.82em;color:var(--text-dim,#94a3b8);margin-bottom:6px">' + (where ? '(' + where + ')' : '') + '</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim,#94a3b8);margin-bottom:18px;font-family:monospace">' + msg + '</div>'
+        + '<button onclick="location.reload()" style="font-size:0.85em;font-weight:700;padding:8px 18px;border-radius:6px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;margin-right:8px">Reload</button>'
+        + '<button onclick="(function(){try{var rm=[];Object.keys(localStorage).forEach(function(k){if(/^gl_/i.test(k)||/^_sq/i.test(k))rm.push(k);});rm.forEach(function(k){localStorage.removeItem(k);});}catch(_e){}location.reload();})()" style="font-size:0.85em;padding:8px 18px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim,#94a3b8);cursor:pointer">Reset preferences</button>'
+        + '</div>';
+};
+
 console.log('✅ utils.js loaded');

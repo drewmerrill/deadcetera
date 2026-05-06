@@ -346,6 +346,7 @@ function _renderTransitionConfBadge(confidence) {
 }
 
 async function renderRehearsalPage(el) {
+  try {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     window.GL_REHEARSAL_READY = false;
     var _pageTitle = _rhPlanningMode
@@ -358,6 +359,9 @@ async function renderRehearsalPage(el) {
         + '<div class="gl-page-context" id="rhContextRail"></div>'
         + '</div></div>';
     _rhRenderCommandFlow(el);
+  } catch (_glRenderE) {
+    if (typeof _glRenderError === 'function') _glRenderError(el, 'renderRehearsalPage', _glRenderE);
+  }
 }
 
 var _rhRenderInProgress = false; // guard against concurrent renders
@@ -367,6 +371,7 @@ async function _rhRenderCommandFlow(el) {
     var main = document.getElementById('rhMain');
     if (!main) { _rhRenderInProgress = false; return; }
 
+  try {
     // Load context
     var ctx = null;
     try { ctx = await buildRiContext(); } catch(e) {
@@ -1037,8 +1042,11 @@ async function _rhRenderCommandFlow(el) {
     _rhRenderLastRehearsalTimeline();
     // Render full history list (inside collapsed History section)
     _rhRenderSessionHistory();
-
+  } catch (_glRenderE) {
+    if (typeof _glRenderError === 'function') _glRenderError(main, '_rhRenderCommandFlow', _glRenderE);
+  } finally {
     _rhRenderInProgress = false;
+  }
 }
 
 // Clear saved rehearsal plan (explicit user action — auto-snapshots first)

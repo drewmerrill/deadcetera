@@ -114,6 +114,7 @@ function _slDaysAway(dateStr) { return (typeof glDaysAway === 'function') ? glDa
 function _slCountdownLabel(dateStr) { return (typeof glCountdownLabel === 'function') ? glCountdownLabel(dateStr) : ''; }
 
 function renderSetlistsPage(el) {
+  try {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
     // Reset SWR flag so cache is always checked on page entry
     _slLoadedFromNetwork = false;
@@ -126,6 +127,9 @@ function renderSetlistsPage(el) {
     // Load setlists immediately — don't block on gig history (loads in parallel)
     loadSetlists();
     if (typeof loadGigHistory === 'function') loadGigHistory().catch(function() {});
+  } catch (_glRenderE) {
+    if (typeof _glRenderError === 'function') _glRenderError(el, 'renderSetlistsPage', _glRenderE);
+  }
 }
 
 var _slLoadedFromNetwork = false;
