@@ -5482,6 +5482,26 @@ async function getCurrentUserEmail() {
         console.log('👤 Signed in as:', currentUserEmail);
         // Persist email to localStorage so Profile page can show it immediately on reload
         localStorage.setItem('deadcetera_google_email', currentUserEmail);
+
+        // ── MEMBERSHIP GATE (hard-block, mode A) ────────────────────────────
+        // Block any user not on a band roster from loading band data.
+        // Future: switch to soft-onboard (mode B) when ready to invite
+        // founding members to self-create bands. See memory.
+        var _gateSlug = await _glCheckBandMembership(currentUserEmail);
+        if (!_gateSlug) {
+            console.warn('[Auth gate] User not on any band roster — kicking:', currentUserEmail);
+            _glKickUnauthorized(currentUserEmail);
+            return;
+        }
+        // Route the user to the band they actually belong to (overrides any
+        // stale 'deadcetera_current_band' localStorage from prior visits).
+        if (window.currentBandSlug !== _gateSlug) {
+            window.currentBandSlug = _gateSlug;
+            try { localStorage.setItem('deadcetera_current_band', _gateSlug); } catch(e) {}
+            console.log('[Auth gate] Routed to band:', _gateSlug);
+        }
+        // ────────────────────────────────────────────────────────────────────
+
         // Sign-in is critical — save immediately, don't wait for debounce
         logActivity('sign_in').then(() => {
             if (activityLogCache) {
@@ -5502,6 +5522,72 @@ async function getCurrentUserEmail() {
         // Still transition past hero — user IS signed in, just couldn't fetch profile
         if (typeof window.glHeroCheck === 'function') window.glHeroCheck(true);
     }
+}
+
+// ── Membership gate helpers ─────────────────────────────────────────────────
+// Used by getCurrentUserEmail to enforce the hard-block (mode A) policy.
+async function _glCheckBandMembership(email) {
+    if (!email || email === 'unknown') return null;
+    if (typeof firebaseDB === 'undefined' || !firebaseDB) return null;
+    try {
+        var snap = await firebaseDB.ref('bands').once('value');
+        var all = snap.val();
+        if (!all) return null;
+        var emailLc = String(email).toLowerCase();
+        var found = null;
+        Object.keys(all).forEach(function(slug) {
+            if (found) return;
+            var members = (all[slug] && all[slug].meta && all[slug].meta.members) || {};
+            var hit = Object.values(members).some(function(m) {
+                return m && m.email && String(m.email).toLowerCase() === emailLc;
+            });
+            if (hit) found = slug;
+        });
+        return found;
+    } catch (e) {
+        // Fail closed: any error → treat as not-a-member. Better than leaking access.
+        console.warn('[Auth gate] Membership check failed, blocking:', e);
+        return null;
+    }
+}
+
+function _glKickUnauthorized(email) {
+    // Revoke OAuth, clear local identity state, show "Not authorized" overlay.
+    try { if (typeof accessToken !== 'undefined' && accessToken && typeof google !== 'undefined' && google.accounts) google.accounts.oauth2.revoke(accessToken, function() {}); } catch(e) {}
+    try {
+        accessToken = null;
+        currentUserEmail = null;
+        currentUserName = null;
+        currentUserPicture = null;
+    } catch(e) {}
+    try {
+        localStorage.removeItem('deadcetera_google_email');
+        localStorage.removeItem('deadcetera_google_name');
+        localStorage.removeItem('deadcetera_google_picture');
+        localStorage.removeItem('deadcetera_current_band');
+        localStorage.removeItem('glLastPage');
+    } catch(e) {}
+    _glShowNotAuthorizedOverlay(email);
+}
+
+function _glShowNotAuthorizedOverlay(email) {
+    var existing = document.getElementById('glAuthDeniedOverlay');
+    if (existing) existing.remove();
+    var safeEmail = String(email || '').replace(/[<>&"]/g, '');
+    var ov = document.createElement('div');
+    ov.id = 'glAuthDeniedOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.96);display:flex;align-items:center;justify-content:center;padding:32px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+    ov.innerHTML = '<div style="max-width:440px;text-align:center;color:#e2e8f0">'
+        + '<div style="font-size:2.6em;margin-bottom:14px">🔒</div>'
+        + '<div style="font-size:1.4em;font-weight:800;margin-bottom:10px">Not on a band roster</div>'
+        + '<div style="font-size:0.92em;color:#94a3b8;line-height:1.55;margin-bottom:8px">'
+        + 'You signed in as <strong style="color:#e2e8f0">' + safeEmail + '</strong>, but this account isn’t on any GrooveLinx band’s member list yet.</div>'
+        + '<div style="font-size:0.86em;color:#94a3b8;line-height:1.55;margin-bottom:22px">'
+        + 'Reach out to your band leader to get added. Once your email is on the roster, sign in here again.</div>'
+        + '<button onclick="window.location.reload()" style="font-size:0.92em;font-weight:700;padding:10px 24px;border-radius:8px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;margin-right:8px">Reload</button>'
+        + '<button onclick="(function(){try{localStorage.clear();}catch(e){}window.location.reload();})()" style="font-size:0.92em;padding:10px 24px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim,#94a3b8);cursor:pointer">Sign in differently</button>'
+        + '</div>';
+    document.body.appendChild(ov);
 }
 
 // Scan localStorage for any DeadCetera data saved before Firebase was initialized.
