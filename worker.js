@@ -1677,16 +1677,24 @@ async function handleFcmPushSend(request, env) {
 // Single-recipient SMS via Twilio Messages API. Used for opt-in confirmation
 // and (eventually) per-event band notifications. A2P 10DLC channel.
 //
-// Required worker secrets (set via `wrangler secret put`):
+// Required worker secrets (set via `wrangler secret put` or Cloudflare dashboard):
 //   - TWILIO_ACCOUNT_SID
 //   - TWILIO_AUTH_TOKEN
-//   - TWILIO_FROM_NUMBER (E.164, e.g. +14085398813)
+//   - TWILIO_MESSAGING_SERVICE_SID  (preferred — e.g. MG70657b62c45c0a77bf4b0721d552553c)
+//       Routes through the registered A2P 10DLC campaign attached to this messaging
+//       service. Required for US destinations once campaigns are enforced; sends
+//       without it return error 30034 ("Message from an Unregistered Number").
+//   - TWILIO_FROM_NUMBER  (fallback only — e.g. +14085398813)
+//       Used only if MESSAGING_SERVICE_SID is unset. Bypasses A2P routing.
 //
 // Body: { to: '+14085551234', body: 'message text' }
 // Returns: { success: bool, sid?: string, status?: string, error?: string, code?: int }
 async function handleTwilioSmsSend(request, env) {
-  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_FROM_NUMBER) {
-    return cors(jsonError('Twilio secrets not configured on worker', 500));
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN) {
+    return cors(jsonError('Twilio secrets not configured on worker (need ACCOUNT_SID + AUTH_TOKEN)', 500));
+  }
+  if (!env.TWILIO_MESSAGING_SERVICE_SID && !env.TWILIO_FROM_NUMBER) {
+    return cors(jsonError('Twilio sender not configured (need TWILIO_MESSAGING_SERVICE_SID or TWILIO_FROM_NUMBER)', 500));
   }
   let body;
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
@@ -1698,7 +1706,12 @@ async function handleTwilioSmsSend(request, env) {
 
   const auth = btoa(env.TWILIO_ACCOUNT_SID + ':' + env.TWILIO_AUTH_TOKEN);
   const params = new URLSearchParams();
-  params.set('From', env.TWILIO_FROM_NUMBER);
+  // Prefer messaging service (A2P-routed). Fall back to direct From number.
+  if (env.TWILIO_MESSAGING_SERVICE_SID) {
+    params.set('MessagingServiceSid', env.TWILIO_MESSAGING_SERVICE_SID);
+  } else {
+    params.set('From', env.TWILIO_FROM_NUMBER);
+  }
   params.set('To', to);
   params.set('Body', text);
 
