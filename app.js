@@ -5530,20 +5530,14 @@ async function _glCheckBandMembership(email) {
     if (!email || email === 'unknown') return null;
     if (typeof firebaseDB === 'undefined' || !firebaseDB) return null;
     try {
-        var snap = await firebaseDB.ref('bands').once('value');
-        var all = snap.val();
-        if (!all) return null;
+        // O(1) lookup against /members_index, maintained by the
+        // mirrorMemberToIndex Cloud Function (functions/index.js).
         var emailLc = String(email).toLowerCase();
-        var found = null;
-        Object.keys(all).forEach(function(slug) {
-            if (found) return;
-            var members = (all[slug] && all[slug].meta && all[slug].meta.members) || {};
-            var hit = Object.values(members).some(function(m) {
-                return m && m.email && String(m.email).toLowerCase() === emailLc;
-            });
-            if (hit) found = slug;
-        });
-        return found;
+        var key = (typeof sanitizeFirebasePath === 'function')
+            ? sanitizeFirebasePath(emailLc)
+            : emailLc.replace(/[.#$[\]\/]/g, '_');
+        var snap = await firebaseDB.ref('members_index/' + key).once('value');
+        return snap.val() || null;
     } catch (e) {
         // Fail closed: any error → treat as not-a-member. Better than leaking access.
         console.warn('[Auth gate] Membership check failed, blocking:', e);
