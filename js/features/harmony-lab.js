@@ -645,7 +645,7 @@ function _hlEnsureAbcJs() {
   if (_hlAbcJsPromise) return _hlAbcJsPromise;
   _hlAbcJsPromise = new Promise(function(resolve, reject) {
     var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js';
+    s.src = 'https://cdn.jsdelivr.net/npm/abcjs@6.6.3/dist/abcjs-basic-min.js';
     s.onload = function(){ resolve(window.ABCJS); };
     s.onerror = function(){ reject(new Error('abcjs CDN failed')); };
     document.head.appendChild(s);

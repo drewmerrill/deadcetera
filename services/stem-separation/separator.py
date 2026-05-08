@@ -134,10 +134,10 @@ image = (
         "torch==2.1.2",
         "torchaudio==2.1.2",
         "demucs==4.0.1",
-        "soundfile==0.12.1",
-        "boto3==1.34.0",
+        "soundfile==0.13.1",
+        "boto3==1.43.6",
         # yt-dlp 2024.10.x needs requests>=2.32.2; bump from 2.31 to satisfy.
-        "requests==2.32.3",
+        "requests==2.33.1",
         # yt-dlp handles YouTube/SoundCloud/Bandcamp/etc — used as fallback
         # when direct HTTP fetch returns HTML instead of audio bytes (e.g.
         # user pastes a youtube.com/watch?v=… URL into the stems picker).
@@ -147,7 +147,7 @@ image = (
         "yt-dlp",
         # Modal 1.x requires fastapi to be explicit in the image for
         # @modal.fastapi_endpoint functions. Used to be auto-installed.
-        "fastapi[standard]==0.115.0",
+        "fastapi[standard]==0.136.1",
     )
 )
 
