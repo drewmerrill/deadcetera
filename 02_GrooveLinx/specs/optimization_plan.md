@@ -434,21 +434,56 @@ if (_sdStemsState && !_sdStemsState._armed) {
 
 ---
 
-### P1.5 — Index `bands/{slug}/calendar_events` by date
+### ✅ P1.5 phase 1 — Date-range helper for `calendar_events` _(SHIPPED 2026-05-08, build `20260508-140648`)_
 
-**Problem:** Many calendar reads pull the entire calendar_events array and filter client-side. With 300+ events per active band, this scales linearly.
+**Original brief was wrong on scope.** The plan estimated "1 day, 4-6 sites mostly mechanical." Audit found:
 
-**Solution:** Firebase RTDB indexed reads:
-1. Add `.indexOn: ["date"]` to `calendar_events` in rules (already there for `gigs`).
-2. Refactor calendar.js / gigs.js to use `orderByChild('date')` + `startAt` / `endAt` for date-range queries.
+- **Storage shape is array-of-events** — RTDB stores as `{0: {...}, 1: {...}}`, not child-keyed by event id.
+- **30+ call sites** read full `calendar_events`. Most genuinely need the full array (sync logic, dedupe, fold-up of multi-day duplicates, googleEventId reconciliation, type self-heal at `calendar.js:5165-5183`).
+- **Every WRITE is a full-array `.set()`** — no per-event update path exists.
+- **`calShowEvent(idx)` uses array index as identifier** — switching to indexed partial reads breaks lookups.
+- **`loadCalendarEvents` already SWR-caches** with localStorage on every page entry, so the per-page-load egress hit is mostly first-load only.
 
-**Acceptance:**
-- Calendar grid load reads < 100 events per visible month
-- Total calendar data transfer drops by ~80% for typical month-view
+A "real" 80% data-transfer reduction would require restructuring storage from array node → child-keyed map. That's P2 territory (3-5 days, medium-high risk). Phase 1 is the cheap win that doesn't pretend otherwise.
 
-**Effort:** 1 day. Mostly mechanical; 4-6 sites to update.
+**What shipped (phase 1):**
 
-**Risk:** Low.
+1. **New helper `window.loadCalendarEventsByDateRange(startDate, endDate)`** in `js/core/firebase-service.js:660-712`. Uses `orderByChild('date').startAt(start).endAt(end).once('value')`. Returns an array of events with the original key preserved as `_idx` so legacy callers can still do `events[idx]` lookups.
+
+2. **Phase 1 explicitly does NOT refactor any call sites.** Every existing reader continues to use `loadBandDataFromDrive('_band', 'calendar_events')` and pull the full array. The helper is for new code that only needs a date-bounded slice (e.g. "next 30 days" widgets, single-day lookups).
+
+3. **Drew action item — apply this rule via Firebase Console → Realtime Database → Rules.** Without it, the helper still works but Firebase will log an "Using an unspecified index" warning and stream the full node:
+    ```json
+    {
+      "rules": {
+        "bands": {
+          "$bandSlug": {
+            "calendar_events": {
+              ".indexOn": ["date"]
+            }
+          }
+        }
+      }
+    }
+    ```
+
+**Acceptance (phase 1):**
+- ✅ Helper exists, compiles, returns the right shape
+- ✅ No regression to existing call sites (none touched)
+- 🟡 Drew applies the rule (low priority — helper still works without it, just slower with a warning)
+
+**Phase 2 (deferred to P2 work):**
+- Migrate storage from array-shaped node to `calendar_events/{eventId}: {...}` child-keyed map
+- Migrate all 30+ call sites from `events[idx]` to `events[id]`
+- Rework sync/dedupe/fold-up routines to use child-keyed updates instead of full-array `.set()`
+- THEN the helper actually delivers the originally-claimed 80% data-transfer reduction
+- Estimated 3-5 days, medium-high risk
+
+**Effort:** Phase 1 actual ~30 min. Phase 2 estimate above.
+
+**Risk:** Phase 1 = nil (purely additive). Phase 2 = high, would touch every calendar surface.
+
+**Lesson:** The brief assumed a child-keyed storage shape that doesn't exist. Future indexing-related estimates should verify storage shape before claiming "mostly mechanical."
 
 ---
 

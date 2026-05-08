@@ -657,6 +657,61 @@ window.prewarmBandData = async function prewarmBandData(songTitle, dataType) {
     } catch (e) { return null; }
 };
 
+// ── P1.5 phase 1 (2026-05-08): date-range helper for calendar_events ────────
+//
+// Indexed query over the `date` field. Requires the Firebase RTDB rule
+//     "bands": { "$bandSlug": { "calendar_events": { ".indexOn": ["date"] } } }
+// so the server filters server-side instead of streaming the entire node and
+// emitting "Using an unspecified index" warnings.
+//
+// Returns an array of events whose `date` field falls in [startDate, endDate]
+// (inclusive). Use ISO date strings ("YYYY-MM-DD"). For a single day, pass
+// the same value for both bounds.
+//
+// Phase 1 NOTE: This helper is intentionally NOT yet wired into the existing
+// 30+ `loadBandDataFromDrive('_band', 'calendar_events')` call sites. Most of
+// those genuinely need the full array (sync logic, dedupe, fold-up of
+// multi-day duplicates, googleEventId reconciliation). A real call-site
+// migration depends on first reshaping storage from the current array node
+// (`{0: {...}, 1: {...}}`) to a child-keyed map (`{eventId: {...}}`) so that
+// indexed reads return stable identifiers — see optimization_plan.md P1.5
+// phase 2 (deferred to P2 territory).
+//
+// Use this helper for NEW code that only needs a date-bounded slice (e.g. a
+// "next 30 days" widget, a single-day lookup).
+//
+// @param {string} startDate  ISO date string, inclusive lower bound
+// @param {string} endDate    ISO date string, inclusive upper bound
+// @returns {Promise<Array>}  events with `date` in [startDate, endDate]
+window.loadCalendarEventsByDateRange = async function loadCalendarEventsByDateRange(startDate, endDate) {
+    if (!firebaseDB) return [];
+    if (!startDate || !endDate) return [];
+    try {
+        var path = window.bandPath(window.sanitizeFirebasePath('calendar_events'));
+        var snap = await firebaseDB.ref(path)
+            .orderByChild('date')
+            .startAt(String(startDate))
+            .endAt(String(endDate))
+            .once('value');
+        var val = snap.val();
+        if (!val) return [];
+        // RTDB returns the matching subset as an object even when storage is
+        // array-shaped. Preserve the original key as `_idx` so callers that
+        // need it for legacy `events[idx]` lookups can still find their event.
+        return Object.keys(val).map(function(k) {
+            var ev = val[k];
+            if (ev && typeof ev === 'object' && ev._idx === undefined) {
+                var n = parseInt(k, 10);
+                ev._idx = isNaN(n) ? k : n;
+            }
+            return ev;
+        }).filter(Boolean);
+    } catch(e) {
+        console.warn('[loadCalendarEventsByDateRange] error:', e && e.message);
+        return [];
+    }
+};
+
 window.loadFromLocalStorageFallback = function loadFromLocalStorageFallback(songTitle, dataType) {
     // Only use localStorage fallback for the original Deadcetera band —
     // other bands should never have localStorage data (Firebase is canonical)
