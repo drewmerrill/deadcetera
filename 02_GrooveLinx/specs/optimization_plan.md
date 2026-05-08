@@ -277,7 +277,7 @@ Real gaps fixed in this pass:
 - ✅ **Phase 1** — `gl-decision-language.js` (GLStatus / GLUrgency / GLPriority / GLScheduleQuality)
 - ✅ **Phase 2** — Closure-coupling audit (`02_GrooveLinx/specs/store_split_audit.md`)
 - ✅ **Phase 3** — `gl-groovemate-memory.js` (GM_KEY/GM_CAP + 4 public memory methods, ~50 lines, zero `_state` coupling). First in-IIFE extraction; validates the move-function-and-state-together pattern for closure-private state.
-- ⏳ **Phase 4** — `gl-status-badge.js` (3 closure vars, DOM helper + online/offline listeners, ~70 lines)
+- ✅ **Phase 4** — `gl-status-badge.js` (3 closure vars + `setGlobalStatus` + online/offline window listeners + own beforeunload self-cleanup, ~73 lines). Extracted timer cleanup out of the store's `_glCleanup` hook — the new module owns its own lifecycle. Validates moving DOM-touching helpers with co-located window listeners.
 - ⏳ **Phase 5** — `gl-onboarding.js` (1 closure var, ~250 lines, depends on `GLStore.getSongs()`)
 - ⏳ **Phase 6** — `gl-intelligence.js` + `gl-attention.js` (small caches, similar profile)
 - ⏳ **Phase 7** — `gl-leader.js` — leader-heartbeat sync (needs `_state.sync*` lift-out into private cluster, or shared namespace)
@@ -896,6 +896,46 @@ If we ship P0 + P1 + most of P2:
 | Race conditions identified | 7 | 0-1 | **Most closed** |
 | File size > 5k lines | 5 files | 0-1 files | **Mostly split** |
 | Memory leak risks | 3+ | 0-1 | **Audited** |
+
+---
+
+## Trace-driven follow-ups (logged 2026-05-08, build `20260508-155606`)
+
+Surfaced from a clean iPhone trace after P1.1 phase 3 + the DNA-gate / home-visibility fixes shipped earlier in the session. Neither blocks Phase 4+; logged here so we don't lose them.
+
+### F1 — Silence misleading `[GLStore] Ready timeout` warning (cosmetic)
+
+**Symptom:** Deep-link path in `app.js:680-697` calls `GLStore.ready(['firebase','members'], 5000)` (Path A — best case) AND races against `setTimeout(renderOnce, 800)` (Path B — ceiling). When Path B wins (the 800ms ceiling fires first), Path A's 5000ms timeout still fires and logs `[GLStore] Ready timeout — missing: members` (`groovelinx_store.js:194`). The warning is misleading because the user has already seen their page — it's just the unused Path-A promise resolving with a timeout.
+
+**Fix shape:** Either (a) cancel the .ready() promise once `_rendered` is true (would need a cancellation API on `GLStore.ready`), or (b) inside the .ready() timeout handler, skip the console.warn when an external "already-rendered" sentinel is set. (b) is simpler.
+
+**Effort:** ~15 min. **Risk:** nil (cosmetic only).
+
+### F2 — Investigate slow `[Members]` load (5.7s after firebase-ready)
+
+**Symptom:** Trace shows `firebase-ready` at 1820ms, `[Members] Loaded 5 members from Firebase for deadcetera` at 7497ms — a 5.7s gap. This is what causes F1's timeout to fire (the 5s `GLStore.ready` deadline elapses ~880ms before members actually land).
+
+**Hypothesis:** Either a slow Firebase RTDB round trip (the band roster lives at `bands/{slug}/meta/members`), or a chain dependency where the members read is gated on something that itself takes a while (auth handshake, band-context resolution). The roster is tiny (5 members), so 5.7s is suspicious.
+
+**What to check first in a future session:**
+1. Is the members read happening in parallel with other Firebase reads, or serialized behind one of them? Check `app.js` around `[Members] Loaded` log call site.
+2. Is there a network tab waterfall showing the actual round-trip duration vs queued time?
+3. Compare desktop vs iPhone — if iPhone-only, may be 4G / radio cold-start latency rather than code.
+4. Is there a way to pre-resolve the band context earlier (it's already resolved via members_index for the auth gate)?
+
+**Effort:** ~30-60 min audit, then variable depending on root cause.
+
+**Risk:** Investigation only; any fix is its own item.
+
+### F3 — `rapid_nav` showPage('songs') ×2 within 1500ms on deep-link cold boot
+
+**Symptom:** `[UX] rapid_nav: {"pages":["songs","songs"],"window_ms":1500}` fires on every `?page=songs` cold boot. Indicates `showPage('songs')` runs twice in close succession.
+
+**Hypothesis:** Both the deep-link path (`app.js:680-697`) and the URL-hash handler (`navigation.js:411-427`) or the localStorage `glLastPage` restore (`navigation.js:438-467`) target songs. They each call `showPage('songs')` independently. The second is idempotent at the navigation layer (target page already visible) but emits a UX-tracker event.
+
+**Fix shape:** Coordinate via the existing `_glHashRestorePending` / `_glPageRestorePending` flags so the second handler skips when the first already navigated to the same target. The current coordination handles `URL hash ↔ localStorage restore` but not `?page= query param ↔ either`.
+
+**Effort:** ~30 min. **Risk:** Low (changes navigation routing — verify direct visits to `/`, `/?page=X`, and PWA shortcuts all still work).
 
 ---
 
