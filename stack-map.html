@@ -476,7 +476,12 @@
     <h2>Architecture at a glance</h2>
     <p>One picture showing how the major pieces connect. Detailed zones follow below.</p>
   </div>
-  <div id="archDiagram" style="background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border); border-radius: 12px; padding: 24px; overflow-x: auto;">
+  <div id="archDiagram" style="background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border); border-radius: 12px; padding: 24px; overflow-x: auto; position: relative; min-height: 200px;">
+    <div id="archDiagramLoading" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; color:var(--text-faint); font-size:13px; gap:8px;">
+      <div style="width:24px; height:24px; border:2px solid rgba(167,139,250,0.2); border-top-color:#a78bfa; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      Rendering architecture diagram…
+    </div>
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 <pre class="mermaid" style="background: transparent;">
 %%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','secondaryColor':'#0f172a','tertiaryColor':'#0f172a','fontFamily':'-apple-system, BlinkMacSystemFont, sans-serif','fontSize':'14px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
 flowchart TB
@@ -897,14 +902,37 @@ flowchart TB
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script>
   // Initialize Mermaid for the architecture-at-a-glance diagram.
-  if (window.mermaid) {
-    window.mermaid.initialize({
-      startOnLoad: true,
-      theme: 'dark',
-      securityLevel: 'loose',
-      flowchart: { curve: 'basis', useMaxWidth: true, htmlLabels: true }
-    });
-  }
+  // Render manually so we can hide the loading spinner on success or
+  // show a fallback message on failure.
+  (async function initDiagram() {
+    const loading = document.getElementById('archDiagramLoading');
+    const hideLoading = () => { if (loading) loading.style.display = 'none'; };
+    const showFallback = (msg) => {
+      if (!loading) return;
+      loading.innerHTML = '<div style="text-align:center; max-width:400px;">' +
+        '<div style="font-size:24px; margin-bottom:6px;">📋</div>' +
+        '<div style="color:var(--text-dim); margin-bottom:6px;">Diagram failed to render</div>' +
+        '<div style="font-size:11px;">' + msg + ' Use the detailed zones below or the <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/stack_inventory.md" target="_blank" style="color:var(--accent);">markdown inventory</a>.</div>' +
+        '</div>';
+    };
+    if (!window.mermaid) {
+      showFallback('Mermaid library could not load.');
+      return;
+    }
+    try {
+      window.mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        securityLevel: 'loose',
+        flowchart: { curve: 'basis', useMaxWidth: true, htmlLabels: true }
+      });
+      await window.mermaid.run({ querySelector: 'pre.mermaid' });
+      hideLoading();
+    } catch (err) {
+      console.error('[stack-map] mermaid render failed:', err);
+      showFallback(String(err && err.message || err));
+    }
+  })();
 
   // Pull the live build version from the meta on the deployed app.
   fetch('/version.json', { cache: 'no-store' })
