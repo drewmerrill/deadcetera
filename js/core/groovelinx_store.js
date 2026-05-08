@@ -704,313 +704,6 @@
     return {};
   }
 
-  // ── Band Love (how much the band enjoys playing a song) ──────────────────
-  // Band-level rating (not per-member). Scale 1-5.
-
-  var _bandLoveCache = {};
-
-  // NOTE: "songId" param is actually the song TITLE (legacy naming).
-  // The cache and Firebase path use sanitized title as key.
-  // This is consistent across all love functions.
-  async function saveBandLove(songId, value) {
-    var v = parseInt(value, 10);
-    if (isNaN(v) || v < 0 || v > 5) return;
-    var db = _db();
-    if (!db) return;
-    var k = _sanitize(songId); // songId is actually title here
-    // Optimistic cache update — UI reads cache immediately after save call
-    if (v === 0) { delete _bandLoveCache[songId]; } else { _bandLoveCache[songId] = v; }
-    emit('bandLoveChanged', { songId: songId, value: v });
-    try {
-      if (v === 0) {
-        await db.ref(_bp('songs/' + k + '/bandLove')).remove();
-      } else {
-        await db.ref(_bp('songs/' + k + '/bandLove')).set({ score: v, updatedAt: new Date().toISOString() });
-      }
-      if (typeof showToast === 'function') showToast(v > 0 ? 'Love: ' + v + '/5' : 'Love cleared');
-    } catch(e) {
-      if (typeof showToast === 'function') showToast('Could not save');
-    }
-  }
-
-  function getBandLove(songId) {
-    return _bandLoveCache[songId] || 0;
-  }
-
-  function getAllBandLove() {
-    return _bandLoveCache;
-  }
-
-  /**
-   * Derive song status from love + readiness.
-   * Core Song = high love (4+) + high readiness (4+)
-   * Worth the Work = high love (4+) + low readiness (<3)
-   * Utility Song = low love (<3) + high readiness (4+)
-   * Shelve Candidate = low love (<3) + low readiness (<3)
-   */
-  function deriveSongStatus(songId) {
-    var love = _bandLoveCache[songId] || 0;
-    var readiness = 0;
-    try {
-      var scores = getReadiness(songId);
-      var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-      readiness = vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
-    } catch(e) {}
-
-    if (love === 0 && readiness === 0) return { status: 'unrated', label: 'Unrated', color: '#64748b' };
-    if (love >= 4 && readiness >= 4) return { status: 'core', label: 'Core Song', color: '#22c55e' };
-    if (love >= 4 && readiness < 3) return { status: 'worth_work', label: 'Worth the Work', color: '#f59e0b' };
-    if (love < 3 && readiness >= 4) return { status: 'utility', label: 'Utility', color: '#6366f1' };
-    if (love < 3 && readiness < 3) return { status: 'shelve', label: 'Shelve Candidate', color: '#ef4444' };
-    // Middle ground
-    if (love >= 3 && readiness >= 3) return { status: 'solid', label: 'Solid', color: '#86efac' };
-    if (love >= 3) return { status: 'growing', label: 'Growing', color: '#818cf8' };
-    return { status: 'developing', label: 'Developing', color: '#94a3b8' };
-  }
-
-  // Preload band love cache on boot
-  async function _preloadBandLove() {
-    var db = _db();
-    if (!db) return;
-    try {
-      var snap = await db.ref(_bp('songs')).once('value');
-      var data = snap.val();
-      if (!data) return;
-      Object.keys(data).forEach(function(key) {
-        if (data[key] && data[key].bandLove && data[key].bandLove.score) {
-          // Map sanitized key back to song title
-          var title = key.replace(/_/g, ' ');
-          _bandLoveCache[title] = data[key].bandLove.score;
-          _bandLoveCache[key] = data[key].bandLove.score; // keep both forms
-        }
-      });
-    } catch(e) {}
-  }
-
-  // ── Audience Love (how much the crowd responds to a song) ───────────────
-  // Same scale and pattern as Band Love.
-
-  var _audienceLoveCache = {};
-
-  async function saveAudienceLove(songId, value) {
-    var v = parseInt(value, 10);
-    if (isNaN(v) || v < 0 || v > 5) return;
-    var db = _db();
-    if (!db) return;
-    var k = _sanitize(songId);
-    // Optimistic cache update — UI reads cache immediately after save call
-    if (v === 0) { delete _audienceLoveCache[songId]; } else { _audienceLoveCache[songId] = v; }
-    emit('audienceLoveChanged', { songId: songId, value: v });
-    try {
-      if (v === 0) {
-        await db.ref(_bp('songs/' + k + '/audienceLove')).remove();
-      } else {
-        await db.ref(_bp('songs/' + k + '/audienceLove')).set({ score: v, updatedAt: new Date().toISOString() });
-      }
-      if (typeof showToast === 'function') showToast(v > 0 ? 'Audience: ' + v + '/5' : 'Audience love cleared');
-    } catch(e) {
-      if (typeof showToast === 'function') showToast('Could not save');
-    }
-  }
-
-  function getAudienceLove(songId) {
-    return _audienceLoveCache[songId] || 0;
-  }
-
-  function getAllAudienceLove() {
-    return _audienceLoveCache;
-  }
-
-  // Preload audience love alongside band love
-  async function _preloadAudienceLove() {
-    var db = _db();
-    if (!db) return;
-    try {
-      var snap = await db.ref(_bp('songs')).once('value');
-      var data = snap.val();
-      if (!data) return;
-      Object.keys(data).forEach(function(key) {
-        if (data[key] && data[key].audienceLove && data[key].audienceLove.score) {
-          var title = key.replace(/_/g, ' ');
-          _audienceLoveCache[title] = data[key].audienceLove.score;
-          _audienceLoveCache[key] = data[key].audienceLove.score;
-        }
-      });
-    } catch(e) {}
-  }
-
-  // ── Personal Love Overrides + Disagreement ──────────────────────────────
-  // Personal scores are per-member overlays on the shared band/audience love.
-  // They do NOT replace the shared score in scoring/recommendations.
-  // Firebase: songs/{key}/bandLove/personal/{memberKey} = { score, updatedAt }
-  //           songs/{key}/audienceLove/personal/{memberKey} = { score, updatedAt }
-
-  var _personalBandLoveCache = {};   // { songId: { memberKey: score } }
-  var _personalAudienceLoveCache = {};
-
-  function _myKey() {
-    return (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey)
-      ? FeedActionState.getMyMemberKey() : null;
-  }
-
-  async function savePersonalBandLove(songId, value) {
-    var v = parseInt(value, 10);
-    if (isNaN(v) || v < 0 || v > 5) return;
-    var mk = _myKey(); if (!mk) return;
-    var db = _db(); if (!db) return;
-    var k = _sanitize(songId);
-    // Optimistic cache update
-    if (v === 0) {
-      if (_personalBandLoveCache[songId]) delete _personalBandLoveCache[songId][mk];
-    } else {
-      if (!_personalBandLoveCache[songId]) _personalBandLoveCache[songId] = {};
-      _personalBandLoveCache[songId][mk] = v;
-    }
-    emit('personalBandLoveChanged', { songId: songId, value: v });
-    try {
-      if (v === 0) {
-        await db.ref(_bp('songs/' + k + '/bandLove/personal/' + mk)).remove();
-      } else {
-        await db.ref(_bp('songs/' + k + '/bandLove/personal/' + mk)).set({ score: v, updatedAt: new Date().toISOString() });
-      }
-    } catch(e) {}
-  }
-
-  function getPersonalBandLove(songId, memberKey) {
-    var mk = memberKey || _myKey();
-    return (_personalBandLoveCache[songId] && _personalBandLoveCache[songId][mk]) || 0;
-  }
-
-  async function savePersonalAudienceLove(songId, value) {
-    var v = parseInt(value, 10);
-    if (isNaN(v) || v < 0 || v > 5) return;
-    var mk = _myKey(); if (!mk) return;
-    var db = _db(); if (!db) return;
-    var k = _sanitize(songId);
-    // Optimistic cache update
-    if (v === 0) {
-      if (_personalAudienceLoveCache[songId]) delete _personalAudienceLoveCache[songId][mk];
-    } else {
-      if (!_personalAudienceLoveCache[songId]) _personalAudienceLoveCache[songId] = {};
-      _personalAudienceLoveCache[songId][mk] = v;
-    }
-    emit('personalAudienceLoveChanged', { songId: songId, value: v });
-    try {
-      if (v === 0) {
-        await db.ref(_bp('songs/' + k + '/audienceLove/personal/' + mk)).remove();
-      } else {
-        await db.ref(_bp('songs/' + k + '/audienceLove/personal/' + mk)).set({ score: v, updatedAt: new Date().toISOString() });
-      }
-    } catch(e) {}
-  }
-
-  function getPersonalAudienceLove(songId, memberKey) {
-    var mk = memberKey || _myKey();
-    return (_personalAudienceLoveCache[songId] && _personalAudienceLoveCache[songId][mk]) || 0;
-  }
-
-  // Disagreement helper — returns aggregate insight without exposing individual names
-  function _computeDisagreement(sharedScore, personalCache, songId) {
-    var personals = personalCache[songId];
-    var myKey = _myKey();
-    var myScore = (personals && myKey && personals[myKey]) || 0;
-    if (!personals || Object.keys(personals).length === 0) {
-      return { sharedScore: sharedScore, personalScore: myScore, delta: 0, groupSpread: 0, raterCount: 0, disagreementLevel: 'none' };
-    }
-    var scores = Object.values(personals).filter(function(v) { return typeof v === 'number' && v > 0; });
-    var raterCount = scores.length;
-    var avg = raterCount > 0 ? scores.reduce(function(a, b) { return a + b; }, 0) / raterCount : 0;
-    var spread = raterCount > 1 ? Math.max.apply(null, scores) - Math.min.apply(null, scores) : 0;
-    var delta = myScore > 0 ? myScore - sharedScore : 0;
-    var level = 'none';
-    if (Math.abs(delta) >= 3 || spread >= 3) level = 'strong';
-    else if (Math.abs(delta) >= 2 || spread >= 2) level = 'notable';
-    else if (Math.abs(delta) >= 1) level = 'mild';
-    return {
-      sharedScore: sharedScore, personalScore: myScore, delta: delta,
-      avg: Math.round(avg * 10) / 10, groupSpread: spread, raterCount: raterCount,
-      disagreementLevel: level
-    };
-  }
-
-  function getBandLoveDisagreement(songId) {
-    return _computeDisagreement(_bandLoveCache[songId] || 0, _personalBandLoveCache, songId);
-  }
-
-  function getAudienceLoveDisagreement(songId) {
-    return _computeDisagreement(_audienceLoveCache[songId] || 0, _personalAudienceLoveCache, songId);
-  }
-
-  // Preload personal values from the same Firebase snapshot as shared values
-  async function _preloadPersonalLove() {
-    var db = _db(); if (!db) return;
-    try {
-      var snap = await db.ref(_bp('songs')).once('value');
-      var data = snap.val();
-      if (!data) return;
-      Object.keys(data).forEach(function(key) {
-        var title = key.replace(/_/g, ' ');
-        var song = data[key];
-        if (song.bandLove && song.bandLove.personal) {
-          _personalBandLoveCache[title] = {};
-          _personalBandLoveCache[key] = {};
-          Object.keys(song.bandLove.personal).forEach(function(mk) {
-            var ps = song.bandLove.personal[mk];
-            if (ps && ps.score) {
-              _personalBandLoveCache[title][mk] = ps.score;
-              _personalBandLoveCache[key][mk] = ps.score;
-            }
-          });
-        }
-        if (song.audienceLove && song.audienceLove.personal) {
-          _personalAudienceLoveCache[title] = {};
-          _personalAudienceLoveCache[key] = {};
-          Object.keys(song.audienceLove.personal).forEach(function(mk) {
-            var ps = song.audienceLove.personal[mk];
-            if (ps && ps.score) {
-              _personalAudienceLoveCache[title][mk] = ps.score;
-              _personalAudienceLoveCache[key][mk] = ps.score;
-            }
-          });
-        }
-      });
-    } catch(e) {}
-  }
-
-  // Love preload: start as soon as possible, retry until songs data is available.
-  // Previously delayed 8s — now polls every 2s starting at 2s.
-  // P0.3 (2026-05-08): timer captured + cancel path so this stops on cleanup
-  // instead of looping forever on failure.
-  var _lovePreloadDone = false;
-  var _lovePreloadStopped = false;
-  var _lovePreloadTimer = null;
-  function _tryLovePreload() {
-    _lovePreloadTimer = null;
-    if (_lovePreloadDone || _lovePreloadStopped) return;
-    var _hasDB = (typeof firebaseDB !== 'undefined' && firebaseDB);
-    var _hasSongs = (typeof allSongs !== 'undefined' && allSongs && allSongs.length > 0);
-    if (!_hasDB || !_hasSongs) {
-      _lovePreloadTimer = setTimeout(_tryLovePreload, 2000);
-      return;
-    }
-    _lovePreloadDone = true;
-    _preloadBandLove().then(function() {
-      return _preloadAudienceLove();
-    }).then(function() {
-      if (typeof renderSongs === 'function') {
-        try { renderSongs(); } catch(e2) {}
-      }
-      return _preloadPersonalLove();
-    }).catch(function(e) {
-      _lovePreloadDone = false;
-      if (!_lovePreloadStopped) _lovePreloadTimer = setTimeout(_tryLovePreload, 3000);
-    });
-  }
-  function _stopLovePreload() {
-    _lovePreloadStopped = true;
-    if (_lovePreloadTimer) { clearTimeout(_lovePreloadTimer); _lovePreloadTimer = null; }
-  }
-  _lovePreloadTimer = setTimeout(_tryLovePreload, 2000);
 
   // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
 
@@ -1027,9 +720,12 @@
    * Band love is primary emotional driver, audience love influences, readiness matters.
    * priorityScore = (bandLove * 0.5) + (audienceLove * 0.2) + ((5 - readiness) * 0.3)
    */
+  // Note: love-cache reads here go through window.GLStore.* runtime lookups
+  // since the love system was extracted into js/core/gl-love.js (P1.1 phase 10).
   function getSongPriority(songId) {
-    var love = _bandLoveCache[songId] || 0;
-    var crowd = _audienceLoveCache[songId] || 0;
+    var GL = window.GLStore || {};
+    var love = (GL.getBandLove ? GL.getBandLove(songId) : 0) || 0;
+    var crowd = (GL.getAudienceLove ? GL.getAudienceLove(songId) : 0) || 0;
     var readiness = _avgReadiness(songId);
     if (love === 0 && crowd === 0) return 0; // unrated songs have no priority
     return Math.round((love * 0.5 + crowd * 0.2 + (5 - readiness) * 0.3) * 100) / 100;
@@ -1040,7 +736,8 @@
    * Positive = loved but needs work. Negative = technically fine but low energy.
    */
   function getSongGap(songId) {
-    var love = _bandLoveCache[songId] || 0;
+    var GL = window.GLStore || {};
+    var love = (GL.getBandLove ? GL.getBandLove(songId) : 0) || 0;
     var readiness = _avgReadiness(songId);
     if (love === 0 && readiness === 0) return 0;
     return Math.round((love - readiness) * 100) / 100;
@@ -1050,15 +747,16 @@
    * Full song signals for NBA engine + avatar insights.
    */
   function getSongSignals(songId) {
-    var love = _bandLoveCache[songId] || 0;
-    var crowd = _audienceLoveCache[songId] || 0;
+    var GL = window.GLStore || {};
+    var love = (GL.getBandLove ? GL.getBandLove(songId) : 0) || 0;
+    var crowd = (GL.getAudienceLove ? GL.getAudienceLove(songId) : 0) || 0;
     var readiness = _avgReadiness(songId);
     return {
       bandLove: love,
       audienceLove: crowd,
       readiness: Math.round(readiness * 10) / 10,
       priorityScore: getSongPriority(songId),
-      derivedStatus: deriveSongStatus(songId),
+      derivedStatus: GL.deriveSongStatus ? GL.deriveSongStatus(songId) : { status: 'unrated', label: 'Unrated', color: '#64748b' },
       gap: getSongGap(songId),
       isFocus: getSongPriority(songId) >= 3.5
     };
@@ -1081,9 +779,11 @@
    * Get band preferences for DNA integration.
    */
   function getBandPreferences() {
+    var GL = window.GLStore || {};
+    var getLove = GL.getBandLove || function() { return 0; };
     var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
     var all = songs.map(function(s) {
-      return { title: s.title, love: _bandLoveCache[s.title] || 0, readiness: _avgReadiness(s.title), gap: getSongGap(s.title), priority: getSongPriority(s.title) };
+      return { title: s.title, love: getLove(s.title) || 0, readiness: _avgReadiness(s.title), gap: getSongGap(s.title), priority: getSongPriority(s.title) };
     }).filter(function(s) { return s.love > 0; });
 
     all.sort(function(a, b) { return b.love - a.love; });
@@ -4431,19 +4131,9 @@
     updateSongField:   updateSongField,
     saveReadiness:     saveReadiness,
     getReadiness:      getReadiness,
-    saveBandLove:      saveBandLove,
-    getBandLove:       getBandLove,
-    getAllBandLove:     getAllBandLove,
-    saveAudienceLove:  saveAudienceLove,
-    getAudienceLove:   getAudienceLove,
-    getAllAudienceLove: getAllAudienceLove,
-    savePersonalBandLove: savePersonalBandLove,
-    getPersonalBandLove: getPersonalBandLove,
-    savePersonalAudienceLove: savePersonalAudienceLove,
-    getPersonalAudienceLove: getPersonalAudienceLove,
-    getBandLoveDisagreement: getBandLoveDisagreement,
-    getAudienceLoveDisagreement: getAudienceLoveDisagreement,
-    deriveSongStatus:  deriveSongStatus,
+    // Band/Audience/Personal Love + Disagreement + deriveSongStatus —
+    // extracted 2026-05-08 (P1.1 phase 10) into js/core/gl-love.js. Methods
+    // attach to window.GLStore at that file's load time.
     getSongPriority:   getSongPriority,
     getSongGap:        getSongGap,
     getSongSignals:    getSongSignals,
@@ -4701,7 +4391,8 @@
   function _glCleanup() {
     // Band sync cleanup moved to js/core/gl-leader.js (P1.1 phase 7)
     // — that module owns its own beforeunload listener.
-    try { _stopLovePreload(); } catch(e) {}         // love preload retry loop
+    // Love preload cleanup moved to js/core/gl-love.js (P1.1 phase 10)
+    // — that module owns its own beforeunload listener.
     // Status badge timer cleanup moved to js/core/gl-status-badge.js (P1.1 phase 4)
     // — that module owns its own beforeunload listener.
   }
