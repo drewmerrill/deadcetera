@@ -2318,6 +2318,29 @@ window._sdStemsToggle = async function() {
         audios.forEach(function(a){a.pause();});
         if (btn) btn.textContent = '▶ Play';
     } else {
+        // P1.4 (2026-05-08): gesture-arm each <audio> synchronously inside this
+        // user-gesture handler BEFORE any `await`. iOS Safari requires a user
+        // gesture to start playback per-element, and the gesture is consumed
+        // when execution leaves the event handler — so any `play()` after the
+        // count-in `await` below silently rejects on first attempt. Priming
+        // each element with muted play()+pause() inside the gesture unlocks it
+        // for later scripted play() calls. Idempotent — safe to call every time.
+        if (_sdStemsState && !_sdStemsState._armed) {
+            _sdStemsState._armed = true;
+            audios.forEach(function(a) {
+                try {
+                    a.muted = true;
+                    var pr = a.play();
+                    a.pause();
+                    a.muted = false;
+                    if (pr && typeof pr.catch === 'function') {
+                        pr.catch(function(err) {
+                            console.warn('[Stems] gesture-arm play() rejected for ' + a.dataset.stem + ':', err && err.name);
+                        });
+                    }
+                } catch(e) {}
+            });
+        }
         // Count-in (4 metronome ticks at song BPM) before audio starts.
         // The async/await means we can't bail mid-count without a flag —
         // pause during count-in just lets it finish, no audio plays.
@@ -2325,9 +2348,26 @@ window._sdStemsToggle = async function() {
             try { await _sdStemsCountIn(); } catch(e) {}
         }
         var t = audios[0].currentTime || 0;
+        var _failures = 0;
+        var _attempts = 0;
         audios.forEach(function(a){
             try { a.currentTime = t; } catch(e) {}
-            a.play().catch(function(){});
+            _attempts++;
+            a.play().catch(function(err) {
+                _failures++;
+                console.warn('[Stems] play() rejected for ' + a.dataset.stem + ':', err && err.name);
+                // If ALL stems failed (and no fallback hint visible), surface a
+                // tiny inline cue near the play button so the user knows to tap
+                // again. Avoids a silent failure mode on iOS Safari edge cases.
+                if (_failures === _attempts && !document.getElementById('sd-stems-tap-hint')) {
+                    var hint = document.createElement('div');
+                    hint.id = 'sd-stems-tap-hint';
+                    hint.style.cssText = 'position:absolute;margin-top:6px;font-size:0.72em;color:#fbbf24;font-weight:600;';
+                    hint.textContent = '↻ Tap Play once more to start audio';
+                    if (btn && btn.parentNode) btn.parentNode.appendChild(hint);
+                    setTimeout(function() { try { hint.remove(); } catch(e2) {} }, 8000);
+                }
+            });
         });
         if (btn) btn.textContent = '⏸ Pause';
     }

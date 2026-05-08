@@ -368,20 +368,69 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
 
 ---
 
-### P1.4 — Stems iOS audio session hardening
+### ✅ P1.4 — Stems iOS audio gesture-arming + first-play observability _(SHIPPED 2026-05-08, build `20260508-135234`)_
 
-**Problem:** iOS Safari has the strictest Web Audio rules. Multiple AudioContexts conflict; gestures unlock audio temporarily; pages can re-enter mid-playback. Several reported bugs trace back to this.
+**Problem:** iOS Safari has the strictest Web Audio rules. The brief's framing ("extend the setlist tap-to-start watchdog pattern") was misleading — that pattern doesn't actually exist in this codebase. The real bug is in `_sdStemsToggle` (`song-detail.js:2305`):
 
-**Already shipped:** `gl-audio-session.js` unified context + lightweight drift resync.
+```js
+window._sdStemsToggle = async function() {
+    // ✅ resume AudioContext synchronously inside gesture
+    if (ctx.state === 'suspended') ctx.resume();
+    
+    // ⚠️ count-in introduces an `await` — gesture context is consumed here
+    if (window._sdCountInEnabled !== false) {
+        await _sdStemsCountIn();  // 4 metronome ticks at song BPM
+    }
+    
+    // ⚠️ play() called AFTER await — iOS Safari can silently reject
+    audios.forEach(function(a){
+        a.play().catch(function(){});  // ← swallowed, no debug trace
+    });
+};
+```
 
-**Solution:** Extend the gesture-arming pattern from setlist player ("tap to start" overlay watchdog) to the stems mixer. Stems first-play sometimes silent-fails on iOS; same fix pattern.
+**Why this fails on iOS:** iOS requires a user gesture to start playback per `<audio>` element. The gesture is consumed when execution leaves the synchronous portion of the event handler. After `await _sdStemsCountIn()`, the function is no longer "inside" the gesture, so first-play of each stem can return a rejected promise (NotAllowedError). The previous code swallowed this with `.catch(function(){})` — silent failure, no console message, button shows "Pause" but no audio plays.
+
+**What shipped:**
+
+1. **Gesture-arming.** Inside the synchronous portion of the gesture handler (before any `await`), prime each `<audio>` element with a `muted=true; play(); pause(); muted=false` cycle. This unlocks the element for later scripted `play()` calls. Idempotent — guarded by `_sdStemsState._armed` so it only runs the first time per mount.
+
+```js
+if (_sdStemsState && !_sdStemsState._armed) {
+    _sdStemsState._armed = true;
+    audios.forEach(function(a) {
+        try {
+            a.muted = true;
+            var pr = a.play();
+            a.pause();
+            a.muted = false;
+            if (pr && typeof pr.catch === 'function') {
+                pr.catch(function(err) {
+                    console.warn('[Stems] gesture-arm play() rejected for ' + a.dataset.stem + ':', err && err.name);
+                });
+            }
+        } catch(e) {}
+    });
+}
+```
+
+2. **First-play observability.** Replaced the silent `.catch(function(){})` with a logged catch that names the stem and the rejection cause (typically `NotAllowedError`). Counts attempts vs failures so we can detect a total failure mode.
+
+3. **Inline tap-to-start hint.** If ALL stems' play() reject, surface a small in-line cue near the play button: "↻ Tap Play once more to start audio". Auto-dismisses after 8 seconds. This handles the rare case where iOS rejects despite gesture arming (e.g., page lifecycle weirdness, low-power mode, content-blocker interactions).
+
+**Why this is safer than a full overlay:** an overlay would force a UI shift on every first-play. The arming pattern means most users never see anything change — they just tap play and audio works. The inline hint only appears in genuine fallback cases.
 
 **Acceptance:**
-- 100% of stem first-plays on iPhone Safari produce audio (was: occasional silent-fail observed)
+- ✅ Gesture-arming runs synchronously before any `await` — preserves user-gesture context per element
+- ✅ Console now logs every rejected `play()` with stem id + error name (no more silent fails)
+- ✅ Inline hint shows up only if ALL stems fail (avoids false-alarm on partial failures)
+- 🟡 Confirm in next iPhone trace: should see no `[Stems] play() rejected` messages on first play after the fix
 
-**Effort:** 0.5-1 day.
+**Effort:** Actual ~20 min once the audit located the await-then-play race. The original "0.5-1 day" estimate assumed a full overlay watchdog; the real fix is much smaller.
 
-**Risk:** Low; pattern already proven.
+**Risk:** Low. Gesture-arming is a standard pattern; the muted+play+pause cycle has no audible side effect even if the element was already unlocked. The inline hint is purely additive.
+
+**Lesson:** The brief said "extend the setlist tap-to-start watchdog pattern" but no such pattern exists in this codebase. Future audits: verify the "already shipped" claim before designing the fix on top of it.
 
 ---
 
