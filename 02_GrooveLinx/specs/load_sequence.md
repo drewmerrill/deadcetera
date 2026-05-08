@@ -277,6 +277,7 @@ These are measured numbers from actual boot traces (Drew's iPhone, 4G/wifi mix).
 | 2026-05-08 | `20260508-121912` | `home-dashboard` first render | 1874ms | Stale-but-renderable data; first paint. |
 | 2026-05-08 | `20260508-121912` | `home-dashboard` second render | 4758ms | Re-render after data fully hydrated. ~2.9s of duplicated O(n) work — strengthens P1.2. |
 | 2026-05-08 | `20260508-122950` (P0.2 hybrid) | `[PERF] deep-link render` | _expected ≤800ms via ceiling_ | Confirm in next trace. |
+| 2026-05-08 | `20260508-131319` (P0.1 pilot) | Finances first-paint via lazy-load | _expected ~200-400ms_ | First navigation to Finances after boot. Console should show `[Lazy] Loading js/features/finances.js` → `[Lazy] Loaded ...`. Subsequent visits hit single-flight cache (~0ms). |
 
 ---
 

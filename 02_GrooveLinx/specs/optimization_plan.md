@@ -46,49 +46,59 @@ A concrete, prioritized plan for improving performance, scalability, reliability
 > - **No concurrent file-splitting.** P1.1 (split groovelinx_store) and P1.6 (split calendar.js + rehearsal.js) stay frozen until lazy-load fully ships across all routes.
 > - **Every step measurable.** Capture before/after Performance traces so we can see actual impact.
 
-### P0.1 — Lazy-load feature pages by route _(now executes LAST as a pilot)_
+### ✅ P0.1 (pilot) — Lazy-load `finances.js` _(SHIPPED 2026-05-08, build `20260508-131319`)_
 
 **Problem:** All 94 scripts load synchronously on every page open. Phase 9 of `load_sequence.md` parses ~50k lines of feature code that the user may never visit. On Pierce's 4G iPhone, this is 600-900ms of pure parse+evaluate before anything renders.
 
-**Solution:** Load feature scripts on-demand via dynamic `import()`. The router already knows which route maps to which file (`navigation.js` has the table). Refactor:
+**Pilot scope:** **Finances** route only — small (126 lines), self-contained, only one external caller (`renderFinancesPage` from `navigation.js:372`, already gated with `typeof === 'function'`). Backup candidates if pilot regresses: Social (~200), Notifications.
 
-```js
-// Before — every feature loaded upfront
-<script src="js/features/calendar.js"></script>
+**What shipped:** The lazy-load infrastructure was already in place — `glLazy()` (single-flight script loader) + `_glPageScripts` map + `_glLazyLoadPage()` in `navigation.js:240-342`, and `showPage()` already calls it (line 162). The `finances` entry was even already in `_glPageScripts` (line 279) but the script tag was *also* in `index.html`, so the eager load won. The pilot is just removing the eager script tag in two HTMLs.
 
-// After — feature loaded only when user navigates there
-async function showPage(pageKey) {
-  if (!_loaded[pageKey]) {
-    await import('/js/features/' + pageKey + '.js');
-    _loaded[pageKey] = true;
-  }
-  renderPage(pageKey);
-}
+```html
+<!-- Before -->
+<script src="js/features/stage-plot.js?v=…"></script>
+<script src="js/features/finances.js?v=…"></script>
+<script src="js/features/social.js?v=…"></script>
+
+<!-- After -->
+<script src="js/features/stage-plot.js?v=…"></script>
+<!-- finances.js: P0.1 lazy-load pilot. Loaded on demand by _glLazyLoadPage('finances'). -->
+<script src="js/features/social.js?v=…"></script>
 ```
 
-**Pilot scope (NOT full migration):**
-- Pick **one low-risk route**. Recommended: **Finances** (~600 lines, self-contained, no cross-references). Backups: Social (~200), Stoner Mode (~300).
-- **Do NOT pilot on Calendar, Rehearsal, Songs, or Stems.** Too many cross-references; failures would be painful.
-- Document every side effect discovered during the pilot in a new section here.
-- Only expand to additional routes once the pilot has been live ≥ 1 week with no regressions.
+**Why this was so cheap:** The whole lazy-load infrastructure (warn-at-3s, fail-at-6s with retry, error UI via `GLRenderState`, single-flight Promise cache) was built by past-you for `rehearsal.js`/`gigs.js`/`calendar.js` and several other already-lazy routes. Finances was already in the map. Pulling it out of `index.html` was the entire change.
 
-**Pilot acceptance:**
-- Selected route loads on demand (script tag removed from index.html; dynamic import in router)
-- Page works identically to before — visually, behaviorally, on mobile
-- Boot trace shows the route's lines no longer parsed at cold start
+**Pilot acceptance (must hold for ≥1 week before expanding):**
+- Selected route loads on demand (✅ shipped — Finances script tag removed from `index.html` + `index-dev.html`)
+- Page works identically: navigate to Finances → script loads → `renderFinancesPage` defined → page renders. Console shows `[Lazy] Loading js/features/finances.js` then `[Lazy] Loaded ...`
 - No console errors / warnings introduced
 - 1 week production soak with no user-reported issues
 
-**Full-migration acceptance (only after pilot proves clean):**
-- Cold start parses < 30k lines (was ~80k including features)
-- First Contentful Paint on iPhone 4G < 1.5s (was 3-5s observed)
-- No regression: every page still works
+**Manual test plan (Drew):**
+1. Hard reload (cmd-shift-R on web, kill-and-relaunch on PWA)
+2. Open DevTools → Console; should see normal boot logs WITHOUT any `finances.js` load entry
+3. Navigate to Finances from menu
+4. Console should show `[Lazy] Loading js/features/finances.js` then `[Lazy] Loaded ...` then page renders
+5. Add a transaction; reload; verify it persists (regression check)
+6. Re-enter Finances; should NOT re-fetch (single-flight cache)
 
-**Effort:** Pilot ~1 day. Full migration 3-5 days afterwards. Each feature file needs to expose `renderXPage` as a default export rather than a global. Some feature files reach into globals defined in others (`renderSongs` calls `renderSongDetail`); those cross-references need to be promoted to a shared module or use the action registry.
+**What to watch for during the soak:**
+- iOS PWA cold-start specifically — service worker pre-caches the shell, but `_glLazyLoadPage` triggers a fresh script load that the SW must also cache. The SW already pre-caches every script referenced in `index.html` during install (`_precacheShellAndAssets`), but since `finances.js` is no longer in `index.html`, the first navigation to Finances on a freshly-installed PWA hits network. **Acceptable**, just worth noting. Script will be cached on first visit and SW background-refresh keeps it current.
+- "Prep for Gig" pre-cache button now misses `finances.js` for the same reason. Low priority — finances during a gig is unlikely.
 
-**Risk:** Pilot = low (one isolated file). Full migration = medium (auto-running IIFEs, registering event listeners need audit per file).
+**Expansion candidates after pilot soak (lowest risk first):**
+1. `social.js` (~200 lines, similar profile to finances)
+2. `notifications.js` (~600 lines, has external timer; verify cleanup on unload)
+3. `playlists.js` (~1000 lines, integrates with stems player)
+4. `band-feed.js` + `band-comms.js` (medium; already lazy-mapped but eager-tagged)
 
-**Dependencies:** P0.2, P0.3, P0.4 must ship first so we have stable boot, memory hygiene, and rollback path before touching the riskiest piece.
+**Do NOT expand to:** `calendar.js` (7864 lines), `rehearsal.js` (7151 lines), `home-dashboard.js` (6338 lines), `groovelinx_store.js` (6792 lines — not a route anyway). Each has cross-references that need careful audit before pulling. **P1.1 + P1.6 file splits should land first** so each unit is smaller and easier to verify.
+
+**Effort:** Actual ~20 min for the pilot. Most of the time was on the 3-question safety scan (no inline `onclick` handlers reference finances; only one external caller; renderer is already gated).
+
+**Risk:** Low. The infrastructure has been battle-tested by the existing lazy routes since well before this pilot.
+
+**Dependencies satisfied:** P0.2 (deep-link readiness), P0.3 (timer cleanup), P0.4 (versioning + reload prompt) all shipped 2026-05-08 ahead of this.
 
 ---
 
