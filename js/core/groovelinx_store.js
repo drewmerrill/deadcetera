@@ -2009,6 +2009,11 @@
     var softRoles = {};       // { roleId: memberName }
     var allRoleIds = {};
 
+    // BAND_ROLES + _mapMemberToRoleIds live in gl-roles-coverage.js (P1.1 phase 17)
+    var _GL_RC = (typeof window !== 'undefined' && window.GLStore) ? window.GLStore : null;
+    var _BAND_ROLES = (_GL_RC && _GL_RC.BAND_ROLES) ? _GL_RC.BAND_ROLES : [];
+    var _mapRoles = (_GL_RC && _GL_RC.mapMemberToRoleIds) ? _GL_RC.mapMemberToRoleIds : function() { return []; };
+
     members.forEach(function(member) {
       var eval_ = evaluateMemberDateStatus(blocks, member, dateStr);
       memberStatuses[member] = eval_;
@@ -2017,7 +2022,7 @@
       var memberKey = null;
       Object.keys(bm).forEach(function(k) { if (bm[k].name === member) memberKey = k; });
       var memberData = memberKey ? bm[memberKey] : null;
-      var roleIds = memberData ? _mapMemberToRoleIds(memberData.role) : [];
+      var roleIds = memberData ? _mapRoles(memberData.role) : [];
       if (memberData && memberData.leadVocals) roleIds.push('lead_vocal');
       if (memberData && memberData.harmonies) roleIds.push('harmony');
       roleIds.forEach(function(r) { allRoleIds[r] = true; });
@@ -2050,14 +2055,14 @@
     var missingCritical = [];
     var missingNonCritical = [];
     Object.keys(missingRoles).forEach(function(rid) {
-      var role = BAND_ROLES.find(function(r) { return r.id === rid; });
+      var role = _BAND_ROLES.find(function(r) { return r.id === rid; });
       if (role && role.critical) missingCritical.push(role.label);
       else if (role) missingNonCritical.push(role.label);
     });
 
     var softCritical = [];
     Object.keys(softRoles).forEach(function(rid) {
-      var role = BAND_ROLES.find(function(r) { return r.id === rid; });
+      var role = _BAND_ROLES.find(function(r) { return r.id === rid; });
       if (role && role.critical) softCritical.push(role.label);
     });
 
@@ -2563,174 +2568,6 @@
     return { passed: passed, failed: failed, results: results };
   }
 
-  // BAND ROLES + BACKUP PLAYERS — role coverage intelligence
-  // ══════════════════════════════════════════════════════════════════════════
-
-  var BAND_ROLES = [
-    { id: 'lead_vocal',    label: 'Lead Vocal',     critical: true },
-    { id: 'rhythm_guitar', label: 'Rhythm Guitar',  critical: true },
-    { id: 'lead_guitar',   label: 'Lead Guitar',    critical: false },
-    { id: 'bass',          label: 'Bass',            critical: true },
-    { id: 'drums',         label: 'Drums',           critical: true },
-    { id: 'keys',          label: 'Keys',             critical: false },
-    { id: 'harmony',       label: 'Harmony Vocals', critical: false }
-  ];
-
-  // Coverage strength labels (used in backup player UI)
-  var COVERAGE_STRENGTHS = {
-    confident: { label: 'Confident', color: '#22c55e', description: 'Can perform reliably in a gig' },
-    can_sub:   { label: 'Can Sub',   color: '#f59e0b', description: 'Can step in if needed but not primary strength' }
-  };
-
-  // Migrate legacy 'full'/'partial' values to new terminology
-  function _normalizeStrength(val) {
-    if (val === 'full' || val === 'confident') return 'confident';
-    if (val === 'partial' || val === 'can_sub') return 'can_sub';
-    return 'confident'; // default
-  }
-
-  // Map bandMembers role strings to canonical role IDs
-  function _mapMemberToRoleIds(memberRole) {
-    if (!memberRole) return [];
-    var r = memberRole.toLowerCase();
-    var roles = [];
-    if (r.indexOf('rhythm') > -1 && r.indexOf('guitar') > -1) roles.push('rhythm_guitar');
-    else if (r.indexOf('lead') > -1 && r.indexOf('guitar') > -1) roles.push('lead_guitar');
-    else if (r.indexOf('guitar') > -1) roles.push('rhythm_guitar');
-    if (r.indexOf('bass') > -1) roles.push('bass');
-    if (r.indexOf('drum') > -1 || r.indexOf('percussion') > -1) roles.push('drums');
-    if (r.indexOf('key') > -1 || r.indexOf('piano') > -1 || r.indexOf('organ') > -1) roles.push('keys');
-    if (r.indexOf('vocal') > -1 || r.indexOf('singer') > -1) roles.push('lead_vocal');
-    return roles;
-  }
-
-  // ── Backup Player CRUD ──────────────────────────────────────────────────
-
-  var _backupPlayersCache = null;
-
-  async function getBackupPlayers() {
-    if (_backupPlayersCache) return _backupPlayersCache;
-    var db = _db(); if (!db) return [];
-    try {
-      var snap = await db.ref(bandPath('backup_players')).once('value');
-      var val = snap.val();
-      _backupPlayersCache = val ? Object.values(val) : [];
-      return _backupPlayersCache;
-    } catch(e) { return []; }
-  }
-
-  function getActiveBackupPlayers() {
-    return getBackupPlayers().then(function(all) {
-      return all.filter(function(p) { return p.active !== false; });
-    });
-  }
-
-  async function saveBackupPlayer(player) {
-    var db = _db(); if (!db) return;
-    if (!player.id) player.id = 'bp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
-    player.updatedAt = new Date().toISOString();
-    if (!player.createdAt) player.createdAt = player.updatedAt;
-    await db.ref(bandPath('backup_players/' + player.id)).set(player);
-    _backupPlayersCache = null; // bust cache
-    return player;
-  }
-
-  async function deleteBackupPlayer(playerId) {
-    var db = _db(); if (!db) return;
-    await db.ref(bandPath('backup_players/' + playerId)).remove();
-    _backupPlayersCache = null;
-  }
-
-  // ── Gig Coverage Evaluator ──────────────────────────────────────────────
-
-  async function evaluateGigCoverage(gig) {
-    if (!gig) return null;
-    var bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
-    var avail = gig.availability || {};
-    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
-    var backups = await getActiveBackupPlayers();
-
-    // Step 1: Determine which roles are covered by available core members
-    var coveredRoles = {};  // { roleId: true }
-    var missingRoles = {};  // { roleId: true }
-    var allRoleIds = {};
-
-    // Map each core member to their role(s) and check availability
-    members.forEach(function(ref) {
-      var mKey = (typeof ref === 'object') ? ref.key : ref;
-      var member = bm[mKey];
-      if (!member) return;
-      var roleIds = _mapMemberToRoleIds(member.role);
-      // Also check vocal roles
-      if (member.leadVocals) roleIds.push('lead_vocal');
-      if (member.harmonies) roleIds.push('harmony');
-      roleIds.forEach(function(rid) { allRoleIds[rid] = true; });
-
-      var a = avail[mKey];
-      var status = a ? a.status : null;
-      if (status === 'yes') {
-        roleIds.forEach(function(rid) { coveredRoles[rid] = true; });
-      }
-    });
-
-    // Step 2: Identify missing roles
-    Object.keys(allRoleIds).forEach(function(rid) {
-      if (!coveredRoles[rid]) missingRoles[rid] = true;
-    });
-
-    // Step 3: Check backup coverage for missing roles
-    var backupCoverage = {}; // { roleId: { playerId, playerName, strength } }
-    var missingRoleIds = Object.keys(missingRoles);
-    missingRoleIds.forEach(function(rid) {
-      // Find first active backup that covers this role
-      for (var i = 0; i < backups.length; i++) {
-        var bp = backups[i];
-        if (!bp.coverageRoles) continue;
-        var match = bp.coverageRoles.find(function(cr) { return cr.roleId === rid; });
-        if (match) {
-          // Don't let one backup cover multiple roles in v1
-          var alreadyUsed = Object.values(backupCoverage).some(function(bc) { return bc.playerId === bp.id; });
-          if (!alreadyUsed) {
-            backupCoverage[rid] = { playerId: bp.id, playerName: bp.name, strength: match.strength || 'full', notes: match.notes || '' };
-            break;
-          }
-        }
-      }
-    });
-
-    // Step 4: Compute overall status
-    var criticalMissing = missingRoleIds.filter(function(rid) {
-      var role = BAND_ROLES.find(function(r) { return r.id === rid; });
-      return role && role.critical;
-    });
-    var criticalUncovered = criticalMissing.filter(function(rid) { return !backupCoverage[rid]; });
-    var partialBackups = Object.values(backupCoverage).filter(function(bc) { var s = _normalizeStrength(bc.strength); return s === 'can_sub'; });
-
-    var status = 'full_core';
-    if (missingRoleIds.length === 0) status = 'full_core';
-    else if (criticalUncovered.length > 0) status = 'not_covered';
-    else if (partialBackups.length > 0) status = 'partial_risk';
-    else if (missingRoleIds.length > 0 && Object.keys(backupCoverage).length >= missingRoleIds.length) status = 'covered_with_backup';
-    else status = 'partial_risk';
-
-    return {
-      status: status,
-      coveredRoles: coveredRoles,
-      missingRoles: missingRoleIds,
-      backupCoverage: backupCoverage,
-      criticalMissing: criticalMissing,
-      criticalUncovered: criticalUncovered,
-      allRoleIds: Object.keys(allRoleIds)
-    };
-  }
-
-  function getBackupOptionsForRole(roleId) {
-    return getActiveBackupPlayers().then(function(backups) {
-      return backups.filter(function(bp) {
-        return bp.coverageRoles && bp.coverageRoles.some(function(cr) { return cr.roleId === roleId; });
-      });
-    });
-  }
 
   // Band Sync (V1) — extracted 2026-05-08 (P1.1 phase 7) into js/core/gl-leader.js.
   // Methods (startBandSync, joinBandSync, getSyncSession, isSyncLeader, etc.) attach
@@ -2926,16 +2763,9 @@
     scoreRehearsalDate:               scoreRehearsalDate,
     getRehearsalDateRecommendations:  getRehearsalDateRecommendations,
 
-    // Band Roles + Backup Players
-    BAND_ROLES:                BAND_ROLES,
-    COVERAGE_STRENGTHS:        COVERAGE_STRENGTHS,
-    normalizeStrength:         _normalizeStrength,
-    getBackupPlayers:          getBackupPlayers,
-    getActiveBackupPlayers:    getActiveBackupPlayers,
-    saveBackupPlayer:          saveBackupPlayer,
-    deleteBackupPlayer:        deleteBackupPlayer,
-    evaluateGigCoverage:       evaluateGigCoverage,
-    getBackupOptionsForRole:   getBackupOptionsForRole,
+    // Band Roles + Backup Players + Gig Coverage Evaluator — extracted
+    // 2026-05-08 (P1.1 phase 17) into js/core/gl-roles-coverage.js. Methods
+    // attach to window.GLStore at that file's load time.
 
     // Setlist Cache (centralized)
     getSetlists:                 getSetlists,
