@@ -92,7 +92,7 @@ async function showPage(pageKey) {
 
 ---
 
-### P0.2 — Race-condition fix on `setTimeout(showPage, 800)`
+### ✅ P0.2 — Race-condition fix on `setTimeout(showPage, 800)` _(SHIPPED 2026-05-08, build `20260508-121912`)_
 
 **Problem:** `app.js` has `setTimeout(() => showPage(startPage), 800)` to delay initial render until Firebase is ready. 800ms is a magic number — it's too long on fast networks (visible blank flash) and too short on slow ones (race with auth).
 
@@ -121,6 +121,30 @@ Promise.all([
 **Risk:** Low. Boot watchdog at 5s catches any failure mode.
 
 **Dependencies:** None.
+
+**What actually shipped (2026-05-08):**
+Discovered that `GLStore.ready(deps, timeoutMs)` already exists at `groovelinx_store.js:183` with a built-in 8s timeout — exactly the primitive needed. No new `identityReady` deferred was required because `members` is marked ready *after* the auth gate runs + band roster loads, so it encompasses both data + identity readiness.
+
+```js
+// Before (app.js:667)
+if (startPage) setTimeout(() => showPage(startPage), 800);
+
+// After
+if (!startPage) return;
+if (typeof GLStore !== 'undefined' && GLStore.ready) {
+    var _t0 = performance.now();
+    GLStore.ready(['firebase', 'members'], 5000).then(function() {
+        console.log('[PERF] deep-link ready ' + Math.round(performance.now() - _t0) + 'ms (was fixed 800ms)');
+        showPage(startPage);
+    });
+} else {
+    setTimeout(function() { showPage(startPage); }, 800);  // defensive fallback
+}
+```
+
+5000ms timeout matches the boot watchdog. PERF log added so we can compare before/after on real traces. Defensive fallback to old behavior if GLStore isn't loaded (extreme edge case). **Effort: actual ~30 min** (faster than estimated because the readiness primitive already existed).
+
+Scope footnote: this code path only fires for **PWA shortcut deep-links** (`?page=xxx` URL param), not the main initial render. The original optimization plan over-stated the impact — main initial render is governed by separate `_glHeroCheck()` flow which is already event-driven on auth state. So P0.2 is a smaller win than billed but still a real fix.
 
 ---
 

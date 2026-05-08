@@ -661,10 +661,28 @@ function showPWAInstallBanner() { _pwaShowInstallBanner(); }
 function hidePWAInstallBanner() { _pwaRemoveBanner('gl-pwa-install'); }
 
 // ── Handle deep-link shortcuts (?page=xxx from manifest shortcuts) ──────────
+// P0.2 (2026-05-08): replaced fixed 800ms timer with event-driven readiness.
+// Old behavior: setTimeout(showPage, 800) — magic number that was too long on
+// fast networks (visible blank flash) and too short on slow ones (deep-linked
+// page rendered before data was loaded → empty cards).
+// New behavior: wait for firebase + members marked ready in GLStore. members
+// is marked ready after the auth gate runs and band roster loads, so it
+// encompasses both data + identity readiness. 5s timeout matches the boot
+// watchdog so worst-case behavior is the same as today.
 window.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const startPage = params.get('page');
-    if (startPage) setTimeout(() => showPage(startPage), 800);
+    if (!startPage) return;
+    if (typeof GLStore !== 'undefined' && GLStore.ready) {
+        var _t0 = performance.now();
+        GLStore.ready(['firebase', 'members'], 5000).then(function() {
+            console.log('[PERF] deep-link ready ' + Math.round(performance.now() - _t0) + 'ms (was fixed 800ms)');
+            showPage(startPage);
+        });
+    } else {
+        // Fallback for very early loads where GLStore isn't initialized yet.
+        setTimeout(function() { showPage(startPage); }, 800);
+    }
 });
 
 document.addEventListener('DOMContentLoaded', function() {
