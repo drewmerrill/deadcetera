@@ -344,27 +344,85 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
 - ✅ New PERF log `[PERF] renderHomeDashboard coalesced` makes the dedup visible in traces
 - 🟡 Confirm in next trace: second `[PERF] renderHomeDashboard start` should not appear within ~3s of the first
 
-**Phase 2 (deferred to a future P1.2.x or P1.3 follow-up):** The 106 iteration constructs over `allSongs` haven't been memoized yet. Coalescing is the bigger win (single boot saved 2.9s); per-render memoization of band aggregates can land later when home-dashboard.js is split per P1.6.
+**Phase 1 effort:** Actual ~30 min once the audit located the redundant call site. The coalescer pattern was straightforward; testing CC's wrapper for double-injection risk took the most time.
 
-**Effort:** Actual ~30 min once the audit located the redundant call site. The coalescer pattern was straightforward; testing CC's wrapper for double-injection risk took the most time.
-
-**Risk:** Low. The coalescer is at the outermost render level; CC's wrapper already idempotent for the live layout. Worst case: a render is scheduled-but-not-yet-fired when another arrives — both await the same in-flight promise, and one follow-up is queued, exactly as designed.
+**Phase 1 risk:** Low. The coalescer is at the outermost render level; CC's wrapper already idempotent for the live layout.
 
 ---
 
-### P1.3 — Convert intelligence to incremental computation
+### ✅ P1.2 phase 2 — Memoize per-render aggregates over `allSongs` _(SHIPPED 2026-05-08, build `20260508-143102`)_
 
-**Problem:** Readiness scores recompute the whole table whenever any input changes. For 400 songs × 5 members, that's 2000 cells per recompute. Currently triggered too often.
+**Problem:** Six sub-render functions in `home-dashboard.js` each iterated `allSongs` → filter `isActiveSong` → call `GLStore.avgReadiness` per song:
 
-**Solution:** Cache per-song readiness with version stamps. On change to a single song, only recompute that row. On change to global config (e.g. weight), invalidate all.
+| Site | Function | Buckets |
+|---|---|---|
+| A | `_renderProgressionSignal` (line ~990) | total, ≥4 |
+| B | `_renderBandStatusCompact` (line ~1954) | totalScore, ratedCount, <3, ≥4 |
+| C | `_computeScorecard` (line ~2125) | total, ≥4, ≤2, in (2,4) |
+| D | `_renderBandReadinessSnapshot` (line ~2358) | identical to Site B |
+| E | `_renderEventRiskCard` (line ~2388) | <3 |
+| F | `_renderSmartNudge` (line ~2495) | <2.5, dropped titles |
+
+In a single home render, this was ~6 × 400 outer iterations × 1 `GLStore.avgReadiness` call each = ~2,400 readiness function calls. Each `avgReadiness` allocates on `Object.values` + `filter` + `reduce` — so ~24K small object allocations per render, which matters more on memory-constrained iPhones than the raw CPU time suggests.
+
+Sites B and D were essentially identical — same loop, same buckets — and both ran on the same render path.
+
+**What shipped:**
+
+`_homeAggregates(bundle)` — single-pass helper at `home-dashboard.js:359-417` that builds:
+- `activeSongs: [{title, avg}, ...]` — materialized list of active songs with their avg readiness
+- `totalActive`, `ratedCount`, `totalScore`, `overallAvg`
+- `highReady` (avg ≥ 4) and `belowReadyCount` (avg in (0, 3)) — the two pre-bucketed counts shared across multiple sites
+
+Cached by bundle reference. `_homeDataLoad` creates a fresh bundle when `_homeBundle` is invalidated (which `invalidateHomeCache` already does on `readinessChanged`), so the cache rotates correctly without explicit invalidation hooks.
+
+Sites A, B, D, E read pre-bucketed counts directly. Sites C and F iterate the (~150-200 entry) `activeSongs` list for their site-specific bucket boundaries — still vastly cheaper than the full `allSongs` scan + per-song `avgReadiness` call.
+
+**Tricky bug surfaced + fixed:** `_renderBandStatusCompact` had a NESTED member-readiness loop deeper in the function (`songs.forEach` reading per-member scores) that wasn't in the original audit. Removing the outer `var songs = allSongs` orphaned that inner reference. Switched the inner loop to also iterate `_agg.activeSongs` (already filtered, smaller).
 
 **Acceptance:**
-- Edit one song's readiness → only that row recomputes
-- Cross-band aggregates use cached per-song values
+- ✅ One pass over `allSongs` per render instead of 4-6
+- ✅ One `avgReadiness` call per active song per render instead of up to 6
+- ✅ All six sites continue to compute the same buckets (verified by reading each site's bucket logic)
+- 🟡 Need a fresh trace to measure the saving — should drop a measurable chunk off `[PERF] renderHomeDashboard painted Xms (took Yms)`
 
-**Effort:** 1-2 days.
+**Lesson:** Site-by-site bucket boundaries varied just enough that a "one-size-fits-all" pre-bucketed result wouldn't work. The chosen middle ground — pre-bucket the most common (highReady, belowReadyCount), expose the small `activeSongs` list for everything else — kept the helper general without forcing every site through awkward transformations.
 
-**Risk:** Cache-invalidation correctness.
+**Effort:** Actual ~45 min including the orphan-reference cleanup. Faster than guessed because the iteration patterns were so repetitive.
+
+**Risk:** Low. Each refactor preserved the original bucket logic exactly; verified by reading both versions side-by-side. The cache key (bundle reference) rotates automatically with the existing `_homeDataLoad` lifecycle.
+
+---
+
+### 🚫 P1.3 — Convert intelligence to incremental computation _(DEFERRED-AS-NON-ISSUE 2026-05-08)_
+
+**Brief's premise was speculative and didn't survive an audit.** Skipping rather than building a solution to a problem that isn't there.
+
+**Audit findings (2026-05-08):**
+
+1. **`getCatalogIntelligence` is already cached** with a 5-second TTL (`groovelinx_store.js:1733-1744`). Repeated calls within 5 s return the cached blob.
+2. **Invalidation is correctly scoped** — fires only on actual data changes (`readinessChanged` after a real save, `songFieldUpdated` for status). Not "too often."
+3. **`getSongIntelligence(title)` is uncached but trivial** — ~5 ops per call (one loop over ~5 members + 4 aggregations). Microseconds of work.
+4. **Only 5 consumer call sites total**, none in tight loops:
+   - `js/ui/gl-right-panel.js`, `js/features/rehearsal.js`, `js/features/song-detail.js` (×2), `js/ui/gl-now-playing.js`
+   - All call once per render — no per-song-in-a-loop pattern.
+5. **No feature file calls `computeSongIntelligence` directly** — everything routes through the cached layer in `groovelinx_store.js`.
+6. **Total catalog compute** = ~150 active songs × ~15 ops = ~2,250 ops, microseconds in JS. Doesn't appear in any captured trace as a hot spot.
+
+**Brief's "2000 cells per recompute"** — approximately correct in *count* but each "cell" is microseconds. The brief framed it as expensive; the data shows it isn't.
+
+**Brief's "edit one song's readiness → only that row recomputes" goal** — already substantively true via the 5 s TTL. Edit → 1 recompute. The "incremental" framing would only matter if the recompute itself were slow, which it isn't.
+
+**What WOULD trigger a future revisit of this item:**
+- A feature surfaces that calls `getSongIntelligence` for every song in a render loop (currently no such site exists)
+- Active catalog grows past ~2000 songs (current band: ~400, only ~150 active filtered)
+- A trace captures `computeCatalogIntelligence` as a real hot spot (none has)
+
+**The closest "incremental computation" win that IS real** is per-render memoization of the iteration-heavy aggregations in `home-dashboard.js`. That's P1.2 phase 2 — different layer, different cost.
+
+**Effort saved by skipping:** 1-2 days of speculative caching infrastructure that wouldn't move the needle.
+
+**Lesson:** Brief was written before any trace existed. Future P-items: gate effort on actual measured cost, not "it sounds expensive."
 
 ---
 
@@ -784,7 +842,7 @@ Week 2-4 (P1):
             P1.5 calendar_events date index
   Wk3       P1.2 home-dashboard memoization
             P1.4 stems iOS audio gesture-arming
-  Wk4       P1.3 incremental intelligence
+  Wk4       P1.3 ~~incremental intelligence~~ — DEFERRED-AS-NON-ISSUE 2026-05-08
             P1.6 split calendar.js + rehearsal.js
             P1.7 defer DNA preload off boot path
 

@@ -356,6 +356,67 @@ async function _loadRecentGigHistory() {
     } catch(e) { return []; }
 }
 
+// ── Per-render aggregates (P1.2 phase 2, 2026-05-08) ────────────────────────
+//
+// Six sub-render functions iterated allSongs → isActiveSong filter → call
+// GLStore.avgReadiness per song, with overlapping bucket logic. Without
+// memoization a single render fired ~2400 avgReadiness calls (each allocating
+// on Object.values/filter/reduce). This helper does ONE pass per bundle and
+// hands back a small materialized list of {title, avg} for active songs plus
+// the common pre-bucketed counts. Sites needing unusual buckets iterate the
+// (~150-200 entry) activeSongs list directly — still vastly cheaper than the
+// full allSongs scan.
+//
+// Invalidates by bundle reference. _homeDataLoad creates a fresh bundle when
+// readinessChanged or the cache TTL expires, which automatically rotates this
+// cache too. Falls back to module-level _homeBundle if caller didn't pass one
+// (a few sites are deeper in the render tree without bundle in scope).
+var _homeAggregatesCache = null;
+var _homeAggregatesBundle = null;
+
+function _homeAggregates(bundle) {
+    bundle = bundle || _homeBundle;
+    if (_homeAggregatesCache && _homeAggregatesBundle === bundle && bundle) {
+        return _homeAggregatesCache;
+    }
+    var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
+    var activeSongs = [];
+    var totalActive = 0;
+    var ratedCount = 0;
+    var totalScore = 0;
+    var highReady = 0;        // avg >= 4
+    var belowReadyCount = 0;  // avg > 0 && avg < 3 (sites B/D/E)
+
+    var hasGLStore = (typeof GLStore !== 'undefined');
+    if (hasGLStore && GLStore.isActiveSong && GLStore.avgReadiness) {
+        for (var i = 0; i < allSongsList.length; i++) {
+            var s = allSongsList[i];
+            if (!s || !s.title) continue;
+            if (!GLStore.isActiveSong(s.title)) continue;
+            totalActive++;
+            var avg = GLStore.avgReadiness(s.title) || 0;
+            activeSongs.push({ title: s.title, avg: avg });
+            if (avg <= 0) continue; // unrated
+            ratedCount++;
+            totalScore += avg;
+            if (avg >= 4) highReady++;
+            if (avg > 0 && avg < 3) belowReadyCount++;
+        }
+    }
+
+    _homeAggregatesBundle = bundle;
+    _homeAggregatesCache = {
+        activeSongs: activeSongs,
+        totalActive: totalActive,
+        ratedCount: ratedCount,
+        totalScore: totalScore,
+        highReady: highReady,
+        belowReadyCount: belowReadyCount,
+        overallAvg: ratedCount > 0 ? totalScore / ratedCount : 0
+    };
+    return _homeAggregatesCache;
+}
+
 // ── Context computation ──────────────────────────────────────────────────────
 
 function _computeHomeContext(bundle) {
@@ -926,18 +987,11 @@ function _renderProgressionSignal(bundle) {
     var _focusMilestone = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { count: 0 };
     if (_focusMilestone.count === 0) milestones.push({ icon: '\uD83D\uDD12', text: 'All songs locked in \u2014 band is ready', color: '#22c55e' });
 
-    // All members rated above threshold
+    // All members rated above threshold (P1.2 phase 2: from cached aggregate)
     try {
-        var rc2 = bundle.readinessCache || {};
-        var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
-        var aboveThreshold = 0;
-        var totalActive = 0;
-        allSongsList.forEach(function(s) {
-            if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
-            totalActive++;
-            var avg = GLStore.avgReadiness(s.title);
-            if (avg >= 4) aboveThreshold++;
-        });
+        var _aggMs = _homeAggregates(bundle);
+        var totalActive = _aggMs.totalActive;
+        var aboveThreshold = _aggMs.highReady;
         if (totalActive > 0 && aboveThreshold >= totalActive * 0.8 && aboveThreshold > 5) {
             milestones.push({ icon: '\uD83C\uDFC6', text: '80%+ of songs at gig-ready level', color: '#a5b4fc' });
         }
@@ -1899,17 +1953,12 @@ window._hdAlignFocus = function() {
 
 function _renderBandStatusCompact(bundle) {
     var sc = _computeScorecard(bundle) || { healthSummary: '', healthColor: '#475569' };
-    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-    var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
-    songs.forEach(function(s) {
-        if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
-        var avg = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(s.title) : 0;
-        if (avg === 0) return; // unrated
-        totalScore += avg; ratedCount++;
-        if (avg < 3) lowCount++;
-        if (avg >= 4) lockedCount++;
-    });
-    var overallAvg = ratedCount > 0 ? (totalScore / ratedCount) : 0;
+    // P1.2 phase 2: use cached aggregate instead of re-iterating allSongs.
+    var _agg = _homeAggregates(bundle);
+    var ratedCount = _agg.ratedCount;
+    var lowCount = _agg.belowReadyCount;   // avg > 0 && avg < 3
+    var lockedCount = _agg.highReady;      // avg >= 4
+    var overallAvg = _agg.overallAvg;
     var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
     var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getBarColor(pct) : '#475569';
 
@@ -1930,8 +1979,8 @@ function _renderBandStatusCompact(bundle) {
                 var name = bm[key] ? (bm[key].name || key) : key;
                 // Check how many songs this member rated ≥ 4
                 var memberReady = 0, memberTotal = 0;
-                songs.forEach(function(s) {
-                    if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
+                // P1.2 phase 2: iterate the cached active list (already filtered).
+                _agg.activeSongs.forEach(function(s) {
                     var scores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(s.title) || {}) : {};
                     var score = scores[key] || 0;
                     if (score > 0) { memberTotal++; if (score >= 4) memberReady++; }
@@ -2138,14 +2187,18 @@ function _computeScorecard(bundle) {
     }
 
     // ── Readiness analysis ──
-    var totalActive = 0, highReady = 0, lowReady = 0, midReady = 0;
-    allSongsList.forEach(function(s) {
-        if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
-        totalActive++;
-        var avg = GLStore.avgReadiness(s.title);
-        if (avg >= 4) highReady++;
-        else if (avg <= 2 && avg > 0) lowReady++;
-        else if (avg > 0) midReady++;
+    // P1.2 phase 2: iterate the small cached activeSongs list (~150-200) instead
+    // of full allSongs. Site-specific buckets (lowReady = avg<=2 differs from
+    // aggregate's belowReadyCount = avg<3) require local bucketing.
+    var _aggSc = _homeAggregates(bundle);
+    var totalActive = _aggSc.totalActive;
+    var highReady = _aggSc.highReady;
+    var lowReady = 0, midReady = 0;
+    _aggSc.activeSongs.forEach(function(a) {
+        if (a.avg <= 0) return;
+        if (a.avg >= 4) return; // already in highReady
+        if (a.avg <= 2) lowReady++;
+        else midReady++;
     });
 
     if (totalActive > 0) {
@@ -2303,22 +2356,15 @@ function _renderSessionPlan(bundle) {
 
 // ── Compact band readiness snapshot ──────────────────────────────────────────
 function _renderBandReadinessSnapshot(bundle) {
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
-    var totalScore = 0, ratedCount = 0, lowCount = 0, lockedCount = 0;
-    songs.forEach(function(s) {
-        if (typeof GLStore === 'undefined' || !GLStore.isActiveSong(s.title)) return;
-        var scores = rc[s.title] || {};
-        var vals = members.map(function(m) { return scores[m.key] || 0; }).filter(function(v) { return v > 0; });
-        if (vals.length === 0) return;
-        var avg = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
-        totalScore += avg;
-        ratedCount++;
-        if (avg < 3) lowCount++;
-        if (avg >= 4) lockedCount++;
-    });
-    var overallAvg = ratedCount > 0 ? (totalScore / ratedCount) : 0;
+    // P1.2 phase 2: identical aggregation as _renderBandStatusCompact — pull
+    // from cached aggregate. The original loop computed avg via members.map +
+    // filter + reduce per song; aggregate uses GLStore.avgReadiness which
+    // does the same work, and only once across all sites.
+    var _aggBR = _homeAggregates(bundle);
+    var ratedCount = _aggBR.ratedCount;
+    var lowCount = _aggBR.belowReadyCount;   // avg > 0 && avg < 3
+    var lockedCount = _aggBR.highReady;      // avg >= 4
+    var overallAvg = _aggBR.overallAvg;
     var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
     var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getBarColor(pct) : 'var(--gl-amber)';
 
@@ -2378,15 +2424,8 @@ function _renderEventRiskCard(bundle) {
     }
 
     // Check song readiness (if setlist linked)
-    var lowReadiness = 0;
-    if (typeof GLStore !== 'undefined' && GLStore.avgReadiness) {
-        var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-        songs.forEach(function(s) {
-            if (!GLStore.isActiveSong(s.title)) return;
-            var avg = GLStore.avgReadiness(s.title);
-            if (avg > 0 && avg < 3) lowReadiness++;
-        });
-    }
+    // P1.2 phase 2: belowReadyCount is exactly avg > 0 && avg < 3 — direct match.
+    var lowReadiness = _homeAggregates(bundle).belowReadyCount;
     if (lowReadiness > 0) risks.push(lowReadiness + ' song' + (lowReadiness > 1 ? 's' : '') + ' below ready');
 
     // Check practice recency
@@ -2474,19 +2513,17 @@ function _renderSmartNudge(bundle) {
     }
 
     // Readiness drop nudge — check if any active song dropped below 3
-    if (typeof GLStore !== 'undefined' && GLStore.avgReadiness) {
-        var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-        var dropped = [];
-        songs.forEach(function(s) {
-            if (!GLStore.isActiveSong(s.title)) return;
-            var avg = GLStore.avgReadiness(s.title);
-            if (avg > 0 && avg < 2.5) dropped.push(s.title);
-        });
-        if (dropped.length === 1) {
-            nudges.push({ icon: '\uD83D\uDCC9', text: dropped[0] + ' has dropped in readiness', cta: 'Work on it', onclick: "selectSong('" + _escHtml(dropped[0]).replace(/'/g, "\\'") + "')" });
-        } else if (dropped.length > 1) {
-            nudges.push({ icon: '\uD83D\uDCC9', text: dropped.length + ' songs have dropped in readiness', cta: 'Focus on weak songs', onclick: "showPage('songs')" });
-        }
+    // P1.2 phase 2: iterate the cached activeSongs list (~150-200) instead of
+    // the full allSongs scan + per-song avgReadiness call.
+    var _aggDr = _homeAggregates(bundle);
+    var dropped = [];
+    _aggDr.activeSongs.forEach(function(a) {
+        if (a.avg > 0 && a.avg < 2.5) dropped.push(a.title);
+    });
+    if (dropped.length === 1) {
+        nudges.push({ icon: '\uD83D\uDCC9', text: dropped[0] + ' has dropped in readiness', cta: 'Work on it', onclick: "selectSong('" + _escHtml(dropped[0]).replace(/'/g, "\\'") + "')" });
+    } else if (dropped.length > 1) {
+        nudges.push({ icon: '\uD83D\uDCC9', text: dropped.length + ' songs have dropped in readiness', cta: 'Focus on weak songs', onclick: "showPage('songs')" });
     }
 
     if (!nudges.length) return '';
