@@ -1640,87 +1640,6 @@
   _loadTransitionIntelligence();
 
 
-  // ── Rehearsal Segmentation (Milestone 8 Phase 1) ────────────────────────
-
-  var _latestTimeline = null;
-  var _TIMELINE_KEY = 'glRehearsalTimeline';
-
-  // Hydrate
-  try {
-    var _savedTL = localStorage.getItem(_TIMELINE_KEY);
-    if (_savedTL) {
-      var _parsedTL = JSON.parse(_savedTL);
-      if (_parsedTL && _parsedTL.segments) _latestTimeline = _parsedTL;
-    }
-  } catch(e) {}
-
-  /**
-   * Segment a rehearsal audio buffer using the engine.
-   * @param {AudioBuffer} audioBuffer  From Web Audio API decodeAudioData
-   * @param {object} [opts]  Override thresholds
-   * @returns {object} canonical timeline
-   */
-  function segmentRehearsalAudio(audioBuffer, opts) {
-    if (typeof RehearsalSegmentationEngine === 'undefined') return null;
-    if (!audioBuffer) return null;
-
-    var features = {
-      channelData: audioBuffer.getChannelData(0),
-      sampleRate: audioBuffer.sampleRate,
-      duration: audioBuffer.duration,
-    };
-
-    _latestTimeline = RehearsalSegmentationEngine.segmentAudio(features, opts);
-    try { localStorage.setItem(_TIMELINE_KEY, JSON.stringify(_latestTimeline)); } catch(e) {}
-    _snapshotPocketTime();
-    emit('timelineGenerated', { timeline: _latestTimeline });
-    return _latestTimeline;
-  }
-
-  /** Run event-based segmentation (v2) on audio buffer. */
-  function segmentRehearsalAudioV2(audioBuffer, opts) {
-    if (typeof RehearsalSegmentationEngine === 'undefined' || !RehearsalSegmentationEngine.segmentAudioV2) return null;
-    if (!audioBuffer) return null;
-    var features = {
-      channelData: audioBuffer.getChannelData(0),
-      sampleRate: audioBuffer.sampleRate,
-      duration: audioBuffer.duration,
-    };
-    var result = RehearsalSegmentationEngine.segmentAudioV2(features, opts);
-    try { localStorage.setItem(_TIMELINE_KEY + '_v2', JSON.stringify(result)); } catch(e) {}
-    emit('eventTimelineGenerated', { timeline: result });
-    return result;
-  }
-
-  /** Build a rehearsal story from v2 events + optional planned setlist. */
-  function buildRehearsalStory(v2Result, plannedSetlist) {
-    if (typeof RehearsalStoryEngine === 'undefined') return null;
-    return RehearsalStoryEngine.buildStory(v2Result, plannedSetlist);
-  }
-
-  /** Generate a one-line headline from a story. */
-  function getRehearsalHeadline(story) {
-    if (typeof RehearsalStoryEngine === 'undefined') return 'Rehearsal complete.';
-    return RehearsalStoryEngine.generateHeadline(story ? story.story : null);
-  }
-
-  /** Get the latest segmented timeline. */
-  function getLatestTimeline() {
-    return _latestTimeline;
-  }
-
-  /**
-   * Save user corrections to the timeline.
-   * @param {object} correctedTimeline  Full timeline with user edits
-   */
-  function saveTimelineCorrections(correctedTimeline) {
-    if (!correctedTimeline) return;
-    _latestTimeline = correctedTimeline;
-    try { localStorage.setItem(_TIMELINE_KEY, JSON.stringify(_latestTimeline)); } catch(e) {}
-    _snapshotPocketTime();
-    emit('timelineCorrected', { timeline: _latestTimeline });
-  }
-
   // ── Rehearsal Intelligence Model ─────────────────────────────────────────
 
   /**
@@ -1729,7 +1648,8 @@
    * @returns {object|null}
    */
   function getRehearsalIntelligence() {
-    var tl = _latestTimeline;
+    var _GL_TL = (typeof window !== 'undefined' && window.GLStore) ? window.GLStore : null;
+    var tl = (_GL_TL && _GL_TL.getLatestTimeline) ? _GL_TL.getLatestTimeline() : null;
     if (!tl || !tl.segments || !tl.segments.length) {
       return { hasData: false, reason: 'No rehearsal recording analyzed yet.' };
     }
@@ -1889,7 +1809,8 @@
    * @returns {object|null} { songs: [], hasData: bool }
    */
   function getAttemptIntelligence() {
-    var tl = _latestTimeline;
+    var _GL_TL = (typeof window !== 'undefined' && window.GLStore) ? window.GLStore : null;
+    var tl = (_GL_TL && _GL_TL.getLatestTimeline) ? _GL_TL.getLatestTimeline() : null;
     if (!tl || !tl.segments || !tl.segments.length) {
       return { hasData: false, songs: [] };
     }
@@ -2034,9 +1955,10 @@
     var latestSummary = (GL && GL.getLatestCompletedSummary) ? GL.getLatestCompletedSummary() : null;
     var completionHistory = (GL && GL.getCompletionHistory) ? GL.getCompletionHistory() : [];
 
+    var latestTimeline = (GL && GL.getLatestTimeline) ? GL.getLatestTimeline() : null;
     var hasAgenda = !!(latestAgenda && !latestAgenda.empty);
-    var hasRecording = !!_latestTimeline;
-    var hasAnalysis = !!(hasRecording && _latestTimeline.segments && _latestTimeline.segments.length > 0);
+    var hasRecording = !!latestTimeline;
+    var hasAnalysis = !!(hasRecording && latestTimeline.segments && latestTimeline.segments.length > 0);
     var hasAttempts = false;
     try {
       var ai = getAttemptIntelligence();
@@ -2106,166 +2028,6 @@
       nextActionLabel: action.label,
       nextActionDescription: action.description,
       nextActionTarget: action.target,
-    };
-  }
-
-  // ── Pocket Time Metric ──────────────────────────────────────────────────
-
-  /**
-   * Compute Pocket Time and related rehearsal flow metrics from the latest timeline.
-   * Pocket Time Ratio = continuous music time / total rehearsal time.
-   * @param {object} [opts]
-   * @param {number} [opts.minRunSec]  Minimum music segment duration to count as "continuous" (default 30)
-   * @returns {object|null}
-   */
-  function getPocketTimeMetrics(opts) {
-    var tl = _latestTimeline;
-    if (!tl || !tl.segments || !tl.segments.length) return null;
-
-    opts = opts || {};
-    var minRunSec = opts.minRunSec || 30;
-    var totalSec = tl.durationSec || 0;
-    if (totalSec <= 0) return null;
-
-    var continuousMusicSec = 0;
-    var allMusicSec = 0;
-    var discussionSec = 0;
-    var silenceSec = 0;
-    var restartCount = 0;
-    var longestRunSec = 0;
-    var runLengths = [];
-
-    for (var i = 0; i < tl.segments.length; i++) {
-      var seg = tl.segments[i];
-      var dur = seg.durationSec || 0;
-
-      if (seg.kind === 'music') {
-        allMusicSec += dur;
-        if (seg.likelyIntent !== 'restart') {
-          runLengths.push(dur);
-          if (dur > longestRunSec) longestRunSec = dur;
-          if (dur >= minRunSec) continuousMusicSec += dur;
-        }
-        if (seg.likelyIntent === 'restart') restartCount++;
-      } else if (seg.kind === 'speech') {
-        discussionSec += dur;
-      } else if (seg.kind === 'silence') {
-        silenceSec += dur;
-      }
-    }
-
-    var pocketTimeRatio = totalSec > 0 ? continuousMusicSec / totalSec : 0;
-    var avgRunLength = runLengths.length ? runLengths.reduce(function(a, b) { return a + b; }, 0) / runLengths.length : 0;
-
-    // Pocket label
-    var pocketPct = Math.round(pocketTimeRatio * 100);
-    var label;
-    if (pocketPct >= 70) label = 'Locked In';
-    else if (pocketPct >= 50) label = 'Strong Flow';
-    else if (pocketPct >= 30) label = 'Working Session';
-    else label = 'Stop-Start Heavy';
-
-    return {
-      totalRehearsalSeconds: Math.round(totalSec),
-      totalRehearsalMinutes: Math.round(totalSec / 60),
-      continuousMusicSeconds: Math.round(continuousMusicSec),
-      allMusicSeconds: Math.round(allMusicSec),
-      discussionSeconds: Math.round(discussionSec),
-      silenceSeconds: Math.round(silenceSec),
-      pocketTimeRatio: Math.round(pocketTimeRatio * 1000) / 1000,
-      pocketTimePct: pocketPct,
-      label: label,
-      longestRunSeconds: Math.round(longestRunSec),
-      longestRunMinutes: Math.round(longestRunSec / 60 * 10) / 10,
-      restartCount: restartCount,
-      averageRunLengthSeconds: Math.round(avgRunLength),
-      runCount: runLengths.length,
-      minRunThreshold: minRunSec,
-    };
-  }
-
-  // ── Pocket Time History ─────────────────────────────────────────────────
-
-  var _pocketTimeHistory = [];
-  var _POCKET_HISTORY_KEY = 'glPocketTimeHistory';
-  var _POCKET_HISTORY_MAX = 10;
-
-  // Hydrate
-  try {
-    var _savedPH = localStorage.getItem(_POCKET_HISTORY_KEY);
-    if (_savedPH) {
-      var _parsedPH = JSON.parse(_savedPH);
-      if (Array.isArray(_parsedPH)) _pocketTimeHistory = _parsedPH.slice(0, _POCKET_HISTORY_MAX);
-    }
-  } catch(e) {}
-
-  function _persistPocketHistory() {
-    try { localStorage.setItem(_POCKET_HISTORY_KEY, JSON.stringify(_pocketTimeHistory)); } catch(e) {}
-  }
-
-  /**
-   * Snapshot current Pocket Time metrics into history.
-   * Called after new timeline generation or significant correction.
-   */
-  function _snapshotPocketTime() {
-    var pt = getPocketTimeMetrics();
-    if (!pt) return;
-    var tl = _latestTimeline;
-    var entry = {
-      rehearsalId: tl ? tl.id : 'unknown',
-      createdAt: tl ? (tl.createdAt || new Date().toISOString()) : new Date().toISOString(),
-      totalRehearsalMinutes: pt.totalRehearsalMinutes,
-      pocketTimePct: pt.pocketTimePct,
-      label: pt.label,
-      longestRunSeconds: pt.longestRunSeconds,
-      restartCount: pt.restartCount,
-      averageRunLengthSeconds: pt.averageRunLengthSeconds,
-    };
-
-    // Avoid duplicate entries for the same timeline
-    if (_pocketTimeHistory.length && _pocketTimeHistory[0].rehearsalId === entry.rehearsalId) {
-      _pocketTimeHistory[0] = entry; // update in place
-    } else {
-      _pocketTimeHistory.unshift(entry);
-      if (_pocketTimeHistory.length > _POCKET_HISTORY_MAX) {
-        _pocketTimeHistory = _pocketTimeHistory.slice(0, _POCKET_HISTORY_MAX);
-      }
-    }
-    _persistPocketHistory();
-  }
-
-  /**
-   * Get recent rehearsal Pocket Time history with comparison deltas.
-   * @param {number} [count]  How many entries (default 5)
-   * @returns {object}
-   */
-  function getRecentRehearsalPocketHistory(count) {
-    count = count || 5;
-    var recent = _pocketTimeHistory.slice(0, count);
-    if (!recent.length) return { hasData: false, entries: [], insight: null };
-
-    // Compute deltas vs previous entry
-    for (var i = 0; i < recent.length; i++) {
-      var prev = recent[i + 1] || null;
-      recent[i].deltaPocketPct = prev ? recent[i].pocketTimePct - prev.pocketTimePct : null;
-      recent[i].deltaRestarts = prev ? recent[i].restartCount - prev.restartCount : null;
-      recent[i].deltaLongestRun = prev ? recent[i].longestRunSeconds - prev.longestRunSeconds : null;
-    }
-
-    // Plain-English insight from most recent delta
-    var insight = null;
-    if (recent.length >= 2 && recent[0].deltaPocketPct !== null) {
-      var d = recent[0].deltaPocketPct;
-      if (d > 5) insight = 'Pocket Time improved by ' + d + ' points from the last rehearsal.';
-      else if (d < -5) insight = 'Pocket Time dropped ' + Math.abs(d) + ' points — more stop-start in the latest session.';
-      else insight = 'Pocket Time holding steady compared to last rehearsal.';
-    }
-
-    return {
-      hasData: true,
-      entries: recent,
-      insight: insight,
-      count: recent.length,
     };
   }
 
@@ -3468,18 +3230,13 @@
     setCurrentTimeline:                setCurrentTimeline,
     getCurrentTimeline:                getCurrentTimeline,
 
-    // Rehearsal Segmentation (Milestone 8)
+    // Rehearsal Intelligence + Attempt Intelligence + Dashboard Workflow remain
+    // here. Timeline + Pocket Time + History extracted 2026-05-08 (P1.1 phase 14)
+    // into js/core/gl-rehearsal-timeline.js — those methods attach to
+    // window.GLStore at that file's load time.
     getRehearsalIntelligence:          getRehearsalIntelligence,
     getAttemptIntelligence:            getAttemptIntelligence,
     getDashboardWorkflowState:         getDashboardWorkflowState,
-    getPocketTimeMetrics:              getPocketTimeMetrics,
-    getRecentRehearsalPocketHistory:   getRecentRehearsalPocketHistory,
-    segmentRehearsalAudio:             segmentRehearsalAudio,
-    segmentRehearsalAudioV2:           segmentRehearsalAudioV2,
-    buildRehearsalStory:               buildRehearsalStory,
-    getRehearsalHeadline:              getRehearsalHeadline,
-    getLatestTimeline:                 getLatestTimeline,
-    saveTimelineCorrections:           saveTimelineCorrections,
 
     // Shell State (Milestone 4)
     setActivePage:          setActivePage,
