@@ -88,11 +88,6 @@
     // js/core/gl-leader.js. Lifted into a private _sync cluster owned by
     // the new module.
 
-    // ── Transition Intelligence ──────────────────────────────────────────
-    // { [key]: { key, fromSongId, toSongId, linked, confidence, targetConfidence,
-    //            practiceCount, lastPracticedAt, issueFlags, notes, derivedPriority } }
-    transitionIntelligence: {},
-
     // ── Setlist Cache (centralized) ──────────────────────────────────────
     // Single source of truth for setlist data. Both window._glCachedSetlists
     // and window._cachedSetlists are kept in sync via setSetlistCache().
@@ -1460,100 +1455,6 @@
     emit('readinessChanged', { bulk: true });
   }
 
-  // ── Transition Intelligence ──────────────────────────────────────────────
-
-  function _makeTransitionKey(fromSongId, toSongId) {
-    return (fromSongId || '') + '→' + (toSongId || '');
-  }
-
-  function _getDefaultTransitionRecord(fromSongId, toSongId) {
-    return {
-      key: _makeTransitionKey(fromSongId, toSongId),
-      fromSongId: fromSongId,
-      toSongId: toSongId,
-      linked: true,
-      confidence: 2.5,        // 0-5 scale, starts mid-low
-      targetConfidence: 4.0,
-      practiceCount: 0,
-      lastPracticedAt: null,
-      issueFlags: [],          // e.g. ['timing', 'entry', 'groove_lock', 'count_in']
-      notes: '',
-      derivedPriority: 0
-    };
-  }
-
-  function getTransitionIntelligence() {
-    return _state.transitionIntelligence || {};
-  }
-
-  function getTransitionBySongs(fromSongId, toSongId) {
-    var key = _makeTransitionKey(fromSongId, toSongId);
-    return _state.transitionIntelligence[key] || _getDefaultTransitionRecord(fromSongId, toSongId);
-  }
-
-  function upsertTransitionIntelligence(record) {
-    if (!record || !record.key) return;
-    _state.transitionIntelligence[record.key] = record;
-    _persistTransitionIntelligence();
-    emit('transitionIntelligenceChanged', { key: record.key });
-  }
-
-  function saveTransitionPracticeResult(payload) {
-    if (!payload || !payload.fromSongId || !payload.toSongId) return;
-    var key = _makeTransitionKey(payload.fromSongId, payload.toSongId);
-    var rec = _state.transitionIntelligence[key] || _getDefaultTransitionRecord(payload.fromSongId, payload.toSongId);
-
-    rec.practiceCount = (rec.practiceCount || 0) + 1;
-    rec.lastPracticedAt = new Date().toISOString();
-
-    // Map outcome to confidence adjustment
-    var outcome = payload.outcome || 'still_rough';
-    if (outcome === 'nailed_it') rec.confidence = Math.min(5, (rec.confidence || 2.5) + 0.6);
-    else if (outcome === 'felt_tighter') rec.confidence = Math.min(5, (rec.confidence || 2.5) + 0.3);
-    else if (outcome === 'still_rough') rec.confidence = Math.max(0, (rec.confidence || 2.5) - 0.1);
-
-    if (payload.issueFlags) rec.issueFlags = payload.issueFlags;
-    if (payload.notes !== undefined) rec.notes = payload.notes;
-
-    _state.transitionIntelligence[key] = rec;
-    _persistTransitionIntelligence();
-    // gl-rehearsal-agenda subscribes to this event and clears its agenda cache
-    emit('transitionIntelligenceChanged', { key: key, outcome: outcome });
-  }
-
-  function _persistTransitionIntelligence() {
-    try {
-      localStorage.setItem('glTransitionIntelligence', JSON.stringify(_state.transitionIntelligence));
-    } catch (e) {}
-    // Also persist to Firebase if available
-    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
-      try { firebaseDB.ref(bandPath('transition_intelligence')).set(_state.transitionIntelligence); } catch (e) {}
-    }
-  }
-
-  function _loadTransitionIntelligence() {
-    try {
-      var stored = localStorage.getItem('glTransitionIntelligence');
-      if (stored) _state.transitionIntelligence = JSON.parse(stored);
-    } catch (e) {}
-    // Firebase load (async, overwrites localStorage if present)
-    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
-      try {
-        firebaseDB.ref(bandPath('transition_intelligence')).once('value').then(function(snap) {
-          var val = snap.val();
-          if (val && typeof val === 'object') {
-            _state.transitionIntelligence = val;
-            try { localStorage.setItem('glTransitionIntelligence', JSON.stringify(val)); } catch (e) {}
-          }
-        });
-      } catch (e) {}
-    }
-  }
-
-  // Load on init
-  _loadTransitionIntelligence();
-
-
   // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
 
   /**
@@ -2233,11 +2134,9 @@
     // 2026-05-08 (P1.1 phase 19) into js/core/gl-band-metrics.js. Methods
     // attach to window.GLStore at that file's load time.
 
-    // Transition Intelligence
-    getTransitionIntelligence:   getTransitionIntelligence,
-    getTransitionBySongs:        getTransitionBySongs,
-    upsertTransitionIntelligence: upsertTransitionIntelligence,
-    saveTransitionPracticeResult: saveTransitionPracticeResult,
+    // Transition Intelligence — extracted 2026-05-08 (P1.1 phase 20) into
+    // js/core/gl-transition-intelligence.js. Methods attach to window.GLStore
+    // at that file's load time.
 
     // Band Sync (V1) — extracted 2026-05-08 (P1.1 phase 7) into
     // js/core/gl-leader.js. Methods attach to window.GLStore at that
