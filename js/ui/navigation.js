@@ -350,6 +350,31 @@ if (typeof venueShortLabel === 'undefined') {
     };
 }
 
+// notifications.js cross-page entry points: Home page invite buttons (rendered
+// by home-dashboard.js) and Rehearsal "share practice plan" button (rehearsal.js)
+// can fire before the user has navigated to the Notifications page. These stubs
+// trigger the lazy load on first call, then re-invoke the real function.
+function _glStubLazy(name, src) {
+    if (typeof window[name] !== 'undefined') return;
+    var stub = function() {
+        var args = Array.prototype.slice.call(arguments);
+        glLazy(src).then(function() {
+            var real = window[name];
+            if (typeof real === 'function' && real !== stub) {
+                real.apply(null, args);
+            } else {
+                console.warn('[Lazy stub] ' + name + ' still undefined after loading ' + src);
+            }
+        }).catch(function(err) {
+            console.error('[Lazy stub] failed loading ' + src + ' for ' + name, err);
+        });
+    };
+    window[name] = stub;
+}
+_glStubLazy('glShowInviteModal', 'js/features/notifications.js');
+_glStubLazy('glCopyInviteLink',  'js/features/notifications.js');
+_glStubLazy('notifFromPracticePlan', 'js/features/notifications.js');
+
 /**
  * Map of page names to their render functions.
  * Functions are resolved at call time (not at definition time), so they
