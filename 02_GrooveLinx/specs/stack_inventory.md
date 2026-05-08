@@ -8,6 +8,12 @@ A plain-English reference for every tool, service, and library GrooveLinx depend
 
 **Marketing site:** None separate. `groovelinx.com`, `/privacy.html`, `/terms.html`, `/sms-opt-in.html`, and `app.groovelinx.com` all serve from the same Vercel deployment. If a real marketing/landing site is added later, that would be a separate Vercel project (or a different host like Webflow / Framer / a `www.groovelinx.com` subdomain).
 
+**🗺️ Visual architecture map:** [`https://app.groovelinx.com/stack-map.html`](https://app.groovelinx.com/stack-map.html) — a single-page interactive infographic showing every component on this list grouped into zones, with click-through to each vendor's dashboard. Same content as this file, optimized for browsing instead of reading. Set to `noindex,nofollow` so search engines skip it.
+
+**🤖 Automated version checking:**
+- **Dependabot** (`.github/dependabot.yml`) — auto-PRs for `npm`, `pip`, and GitHub Actions every Monday.
+- **Monthly audit** (`.github/workflows/version-check.yml`) — runs `scripts/check_versions.py` on the 1st of each month, opens or updates a GitHub Issue labeled `version-audit` with a full diff. Catches the messy stuff Dependabot can't see (CDN URLs, inline pip_install pins).
+
 ---
 
 ## How to read this

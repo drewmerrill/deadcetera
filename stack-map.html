@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>GrooveLinx · Architecture Map</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg-2: #0f172a;
+    --bg-3: #1e293b;
+    --border: rgba(148, 163, 184, 0.15);
+    --border-strong: rgba(148, 163, 184, 0.35);
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-faint: #64748b;
+    --accent: #a78bfa;
+    --accent-dim: rgba(167, 139, 250, 0.15);
+
+    /* Zone palette */
+    --user: #fbbf24;
+    --frontend: #60a5fa;
+    --hosting: #22d3ee;
+    --firebase: #fb923c;
+    --cloudflare: #f97316;
+    --ai-ml: #34d399;
+    --external: #a78bfa;
+    --workstation: #f472b6;
+    --tooling: #cbd5e1;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    min-height: 100vh;
+  }
+  body {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgba(167, 139, 250, 0.08), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 100% 30%, rgba(96, 165, 250, 0.05), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 0% 70%, rgba(52, 211, 153, 0.05), transparent 60%),
+      var(--bg);
+  }
+
+  /* HEADER */
+  header.hero {
+    text-align: center;
+    padding: 56px 24px 36px;
+    border-bottom: 1px solid var(--border);
+  }
+  header.hero h1 {
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e2e8f0 0%, #a78bfa 50%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 10px;
+  }
+  header.hero p {
+    color: var(--text-dim);
+    font-size: 16px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  header.hero .meta {
+    display: inline-flex;
+    gap: 16px;
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  header.hero .meta span { padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
+
+  /* LEGEND */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.6);
+  }
+  .legend .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .legend .pill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+
+  /* MAIN GRID */
+  main {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 32px 24px 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .zone {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+    padding: 22px 24px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .zone::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--zone-color, var(--text-dim));
+    opacity: 0.6;
+  }
+  .zone-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .zone-head .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--zone-color);
+    color: #0a0e1a;
+  }
+  .zone-head h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .zone-head p {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-left: auto;
+    max-width: 60%;
+    text-align: right;
+  }
+
+  /* TILE GRID */
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 14px;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+  }
+  .tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--zone-color, var(--accent));
+    background: rgba(15, 23, 42, 0.95);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--zone-color, var(--accent));
+  }
+  .tile .icon {
+    font-size: 18px;
+    line-height: 1;
+  }
+  .tile .name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .tile .tag {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.3;
+  }
+  .tile .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .tile.no-link {
+    cursor: default;
+  }
+  .tile.no-link:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .tile.size-lg {
+    grid-column: span 2;
+  }
+  .tile.size-lg .name { font-size: 16px; }
+
+  /* SUBSECTIONS within a zone */
+  .subsection {
+    margin-top: 18px;
+  }
+  .subsection-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  /* ZONE COLOR ASSIGNMENTS */
+  .zone-users      { --zone-color: var(--user); }
+  .zone-frontend   { --zone-color: var(--frontend); }
+  .zone-hosting    { --zone-color: var(--hosting); }
+  .zone-data       { --zone-color: var(--firebase); }
+  .zone-edge       { --zone-color: var(--cloudflare); }
+  .zone-aiml       { --zone-color: var(--ai-ml); }
+  .zone-external   { --zone-color: var(--external); }
+  .zone-workstation { --zone-color: var(--workstation); }
+  .zone-tooling    { --zone-color: var(--tooling); }
+
+  /* DATA-FLOW callouts (separate accent zones) */
+  .flows {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .flow {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    background: rgba(15, 23, 42, 0.5);
+  }
+  .flow h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .flow h3 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .flow .steps {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  .flow .steps code {
+    background: rgba(167, 139, 250, 0.1);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .flow .arrow { color: var(--text-faint); margin: 0 4px; }
+
+  /* FOOTER */
+  footer {
+    text-align: center;
+    padding: 32px 24px 48px;
+    color: var(--text-faint);
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 720px) {
+    header.hero h1 { font-size: 28px; }
+    .tile.size-lg { grid-column: span 1; }
+    .zone-head p { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>GrooveLinx · Architecture Map</h1>
+  <p>Every tool, service, and library that makes the band run. Click any tile to jump to its dashboard or docs.</p>
+  <div class="meta">
+    <span>50+ components</span>
+    <span>11 sections</span>
+    <span>Last audited 2026-05-08</span>
+    <span id="buildInfo">Loading build…</span>
+  </div>
+</header>
+
+<div class="legend">
+  <span class="pill"><span class="dot" style="background:#fbbf24"></span>Users</span>
+  <span class="pill"><span class="dot" style="background:#60a5fa"></span>Frontend</span>
+  <span class="pill"><span class="dot" style="background:#22d3ee"></span>Hosting</span>
+  <span class="pill"><span class="dot" style="background:#fb923c"></span>Data &amp; Functions</span>
+  <span class="pill"><span class="dot" style="background:#f97316"></span>Edge Network</span>
+  <span class="pill"><span class="dot" style="background:#34d399"></span>AI / ML Compute</span>
+  <span class="pill"><span class="dot" style="background:#a78bfa"></span>External APIs</span>
+  <span class="pill"><span class="dot" style="background:#f472b6"></span>Workstation</span>
+  <span class="pill"><span class="dot" style="background:#cbd5e1"></span>Dev Tooling</span>
+</div>
+
+<main>
+
+<!-- ===================================================================== -->
+<!-- USERS -->
+<!-- ===================================================================== -->
+<section class="zone zone-users">
+  <div class="zone-head">
+    <span class="badge">01</span>
+    <h2>Users</h2>
+    <p>How band members and Drew interact with the app.</p>
+  </div>
+  <div class="tiles">
+    <div class="tile no-link"><span class="icon">📱</span><span class="name">Bandmate iPhones</span><span class="tag">Pierce, Brian, Cmj, Jeff, Whitney — primary tester surface. iOS Safari is the strictest engine; lots of Stems lens / autoplay quirks live here.</span></div>
+    <div class="tile no-link"><span class="icon">💻</span><span class="name">Drew's Mac</span><span class="tag">macOS 26.4.1. Primary dev + ops machine. Chrome for testing, iTerm2 for CLIs.</span></div>
+    <div class="tile no-link"><span class="icon">🎤</span><span class="name">Live Gig (offline-first)</span><span class="tag">Service worker + SWR cache means the app works without wifi during a gig — chord charts and setlists pre-cached via Prep for Gig.</span></div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- FRONTEND -->
+<!-- ===================================================================== -->
+<section class="zone zone-frontend">
+  <div class="zone-head">
+    <span class="badge">02</span>
+    <h2>Frontend (in the browser)</h2>
+    <p>Code that loads onto every tester's device when they open the app.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Core app</div>
+    <div class="tiles">
+      <a class="tile" href="https://github.com/drewmerrill/deadcetera" target="_blank"><span class="icon">⚡</span><span class="name">Vanilla JavaScript</span><span class="tag">No framework. Every page, router, store, all hand-written.</span><span class="footer"><span>JS</span><span>open</span></span></a>
+      <a class="tile" href="https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API" target="_blank"><span class="icon">🛡️</span><span class="name">Service Worker</span><span class="tag">Offline cache, push notifications, version cache-busting.</span><span class="footer"><span>browser</span><span>open</span></span></a>
+      <a class="tile" href="https://developer.mozilla.org/en-US/docs/Web/HTML" target="_blank"><span class="icon">🎨</span><span class="name">HTML / CSS</span><span class="tag">Dark mode, mobile responsive, iPhone safe-area handling.</span><span class="footer"><span>browser</span><span>open</span></span></a>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">CDN-loaded libraries</div>
+    <div class="tiles">
+      <a class="tile" href="https://firebase.google.com/docs/web/setup" target="_blank"><span class="icon">🔥</span><span class="name">Firebase JS SDK 10.12</span><span class="tag">Talks to RTDB / FCM / Storage from the browser.</span><span class="footer"><span>compat</span><span>open</span></span></a>
+      <a class="tile" href="https://www.abcjs.net/" target="_blank"><span class="icon">🎼</span><span class="name">abcjs 6.6.3</span><span class="tag">Renders music notation in Harmony Lab + chord charts.</span><span class="footer"><span>jsdelivr</span><span>open</span></span></a>
+      <a class="tile" href="https://tonejs.github.io/" target="_blank"><span class="icon">🎚️</span><span class="name">Tone.js 15.1.22</span><span class="tag">Pitch / tempo control on stems mixer.</span><span class="footer"><span>unpkg</span><span>open</span></span></a>
+      <a class="tile" href="https://developers.google.com/maps/documentation/javascript" target="_blank"><span class="icon">📍</span><span class="name">Google Maps JS</span><span class="tag">Venue lookup + map rendering.</span><span class="footer"><span>weekly</span><span>open</span></span></a>
+      <a class="tile" href="https://developers.google.com/youtube/iframe_api_reference" target="_blank"><span class="icon">▶️</span><span class="name">YouTube IFrame</span><span class="tag">Embedded video player for setlist songs.</span><span class="footer"><span>youtube</span><span>open</span></span></a>
+      <a class="tile" href="https://basicpitch.spotify.com/" target="_blank"><span class="icon">🎵</span><span class="name">Basic Pitch</span><span class="tag">Audio → MIDI conversion, runs in browser via WASM.</span><span class="footer"><span>WASM</span><span>open</span></span></a>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Browser APIs in active use</div>
+    <div class="tiles">
+      <a class="tile" href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API" target="_blank"><span class="icon">🔊</span><span class="name">Web Audio API</span><span class="tag">Stems playback, mixer, looping, A-B markers.</span><span class="footer"><span>browser</span><span>open</span></span></a>
+      <a class="tile" href="https://developer.mozilla.org/en-US/docs/Web/API/Screen_Wake_Lock_API" target="_blank"><span class="icon">🔓</span><span class="name">Wake Lock API</span><span class="tag">Keeps screen awake during Live Gig + Rehearsal modes.</span><span class="footer"><span>browser</span><span>open</span></span></a>
+      <a class="tile" href="https://developer.mozilla.org/en-US/docs/Web/API/Cache" target="_blank"><span class="icon">📦</span><span class="name">Cache API</span><span class="tag">Pre-caches every chart for offline gig use.</span><span class="footer"><span>browser</span><span>open</span></span></a>
+      <a class="tile" href="https://developer.mozilla.org/en-US/docs/Web/API/Notifications_API" target="_blank"><span class="icon">🔔</span><span class="name">Notifications API</span><span class="tag">Layer-1 in-app banners + Layer-2 browser push surface.</span><span class="footer"><span>browser</span><span>open</span></span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- HOSTING -->
+<!-- ===================================================================== -->
+<section class="zone zone-hosting">
+  <div class="zone-head">
+    <span class="badge">03</span>
+    <h2>Hosting &amp; Domain</h2>
+    <p>Where the app lives, how it gets served, who owns the address.</p>
+  </div>
+  <div class="tiles">
+    <a class="tile size-lg" href="https://vercel.com/dashboard" target="_blank"><span class="icon">▲</span><span class="name">Vercel</span><span class="tag">Hosts <code>app.groovelinx.com</code> + dev shell. Auto-deploys every <code>git push</code>. Project: <code>groovelinx</code>.</span><span class="footer"><span>edge network</span><span>open dashboard</span></span></a>
+    <a class="tile" href="https://github.com/drewmerrill/deadcetera" target="_blank"><span class="icon">🐙</span><span class="name">GitHub</span><span class="tag">Code, issues, Project board, Actions runs.</span><span class="footer"><span>repo</span><span>open</span></span></a>
+    <a class="tile" href="https://github.com/drewmerrill/deadcetera/actions" target="_blank"><span class="icon">⚙️</span><span class="name">GitHub Actions</span><span class="tag">CI: validates JS syntax + script-tag count on every PR.</span><span class="footer"><span>v5 / Node 24</span><span>open</span></span></a>
+    <a class="tile" href="https://dash.cloudflare.com" target="_blank"><span class="icon">🌐</span><span class="name">Cloudflare DNS</span><span class="tag">Answers all <code>*.groovelinx.com</code> queries.</span><span class="footer"><span>auth NS</span><span>open</span></span></a>
+    <a class="tile" href="https://account.godaddy.com" target="_blank"><span class="icon">📛</span><span class="name">GoDaddy</span><span class="tag">Holds the registration of <code>groovelinx.com</code>. Nameservers point to Cloudflare.</span><span class="footer"><span>registrar</span><span>open</span></span></a>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- EDGE / WORKER -->
+<!-- ===================================================================== -->
+<section class="zone zone-edge">
+  <div class="zone-head">
+    <span class="badge">04</span>
+    <h2>Cloudflare Edge</h2>
+    <p>Server-side proxy + static asset CDN at the edge.</p>
+  </div>
+  <div class="tiles">
+    <a class="tile size-lg" href="https://dash.cloudflare.com" target="_blank"><span class="icon">⚡</span><span class="name">Cloudflare Worker · deadcetera-proxy</span><span class="tag">Proxies every external API: Twilio, Anthropic, Spotify, Genius, Archive.org, Phish.net/in, Relisten, Odesli, ElevenLabs, Deepgram, Fadr, IPRoyal. Keeps API keys server-side.</span><span class="footer"><span>compat 2026-04-10</span><span>open dashboard</span></span></a>
+    <a class="tile" href="https://dash.cloudflare.com" target="_blank"><span class="icon">📦</span><span class="name">Cloudflare R2</span><span class="tag">Stem-file object storage. Public via <code>stems.groovelinx.com</code>.</span><span class="footer"><span>S3-compat</span><span>open</span></span></a>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- DATA & FUNCTIONS (FIREBASE) -->
+<!-- ===================================================================== -->
+<section class="zone zone-data">
+  <div class="zone-head">
+    <span class="badge">05</span>
+    <h2>Data &amp; Functions (Firebase / Google Cloud)</h2>
+    <p>Where every band's state lives + the server logic that keeps it coherent.</p>
+  </div>
+  <div class="tiles">
+    <a class="tile size-lg" href="https://console.firebase.google.com/project/deadcetera-35424/database" target="_blank"><span class="icon">🌳</span><span class="name">Firebase Realtime Database</span><span class="tag">Source of truth for every band. Songs, members, gigs, calendar, setlists, rehearsal sessions, readiness scores, RSVPs — all here, syncing in &lt;1s across every signed-in device.</span><span class="footer"><span>us-central1</span><span>open dashboard</span></span></a>
+    <a class="tile" href="https://console.firebase.google.com/project/deadcetera-35424/functions" target="_blank"><span class="icon">⚙️</span><span class="name">Cloud Functions · mirrorMemberToIndex</span><span class="tag">Maintains <code>members_index</code> for O(1) auth gate (shipped 2026-05-07).</span><span class="footer"><span>Node 24 · v7</span><span>open</span></span></a>
+    <a class="tile" href="https://console.firebase.google.com/project/deadcetera-35424/notification" target="_blank"><span class="icon">📨</span><span class="name">Firebase Cloud Messaging</span><span class="tag">Layer 2 of notifications: browser push.</span><span class="footer"><span>FCM</span><span>open</span></span></a>
+    <a class="tile" href="https://console.firebase.google.com/project/deadcetera-35424/storage" target="_blank"><span class="icon">🗂️</span><span class="name">Firebase Storage</span><span class="tag">Practice mixes, recording snippets, exported PDFs.</span><span class="footer"><span>blob storage</span><span>open</span></span></a>
+    <a class="tile" href="https://console.cloud.google.com/?project=deadcetera-35424" target="_blank"><span class="icon">☁️</span><span class="name">Google Cloud (under-the-hood)</span><span class="tag">Cloud Build, Artifact Registry, Cloud Run, Eventarc, Pub/Sub — invisible plumbing for 2nd-gen Functions.</span><span class="footer"><span>infra</span><span>open</span></span></a>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- AI / ML COMPUTE -->
+<!-- ===================================================================== -->
+<section class="zone zone-aiml">
+  <div class="zone-head">
+    <span class="badge">06</span>
+    <h2>AI / ML Compute</h2>
+    <p>Heavy computation: stem separation, harmony splits, transcription, image generation, decision-making.</p>
+  </div>
+  <div class="tiles">
+    <a class="tile size-lg" href="https://modal.com/apps" target="_blank"><span class="icon">🚀</span><span class="name">Modal · groovelinx-stem-separator</span><span class="tag">Serverless Python on T4 GPU. Demucs HT-Demucs 6-stem separation. ~$0.005/song. Two more services (chord-analysis, audio-embeddings) ready to deploy.</span><span class="footer"><span>us-east</span><span>open dashboard</span></span></a>
+    <a class="tile" href="https://github.com/facebookresearch/demucs" target="_blank"><span class="icon">🥁</span><span class="name">HT-Demucs 4.0.1</span><span class="tag">The neural network that splits drums/bass/vocals/other/piano/guitar.</span><span class="footer"><span>open-source</span><span>open</span></span></a>
+    <a class="tile" href="https://www.lalal.ai" target="_blank"><span class="icon">🎤</span><span class="name">LALAL.AI</span><span class="tag">Lead/backing vocal split for Harmony Lab. ~190 songs / $50.</span><span class="footer"><span>API</span><span>open</span></span></a>
+    <a class="tile" href="https://console.anthropic.com" target="_blank"><span class="icon">🧠</span><span class="name">Anthropic Claude</span><span class="tag">GrooveMate brain — context-aware suggestions in app.</span><span class="footer"><span>API</span><span>open</span></span></a>
+    <a class="tile" href="https://fadr.com" target="_blank"><span class="icon">🎹</span><span class="name">Fadr</span><span class="tag">MIDI-per-harmony seed for notation (demoted from audio split role).</span><span class="footer"><span>API</span><span>open</span></span></a>
+    <a class="tile" href="https://console.deepgram.com" target="_blank"><span class="icon">🎙️</span><span class="name">Deepgram</span><span class="tag">Speech-to-text with diarization (nova-3 model).</span><span class="footer"><span>API</span><span>open</span></span></a>
+    <a class="tile" href="https://elevenlabs.io" target="_blank"><span class="icon">🗣️</span><span class="name">ElevenLabs</span><span class="tag">Text-to-speech for synthesized voice features.</span><span class="footer"><span>API</span><span>open</span></span></a>
+    <a class="tile" href="https://platform.openai.com" target="_blank"><span class="icon">🖼️</span><span class="name">OpenAI gpt-image-1</span><span class="tag">One-shot generator for stage-plot icons (~$1.75 total).</span><span class="footer"><span>one-shot</span><span>open</span></span></a>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- EXTERNAL APIs -->
+<!-- ===================================================================== -->
+<section class="zone zone-external">
+  <div class="zone-head">
+    <span class="badge">07</span>
+    <h2>External APIs (data sources)</h2>
+    <p>Music libraries, identity, communications. All proxied through the Cloudflare Worker.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Google ecosystem</div>
+    <div class="tiles">
+      <a class="tile" href="https://myaccount.google.com" target="_blank"><span class="icon">🔐</span><span class="name">Google OAuth</span><span class="tag">"Sign in with Google" — every band member auths here.</span><span class="footer"><span>auth</span><span>open</span></span></a>
+      <a class="tile" href="https://calendar.google.com" target="_blank"><span class="icon">📅</span><span class="name">Google Calendar API</span><span class="tag">Two-way sync between band cal + each member's personal cal.</span><span class="footer"><span>calendar</span><span>open</span></span></a>
+      <a class="tile" href="https://drive.google.com" target="_blank"><span class="icon">📁</span><span class="name">Google Drive API</span><span class="tag">Backup target + practice-mix file storage.</span><span class="footer"><span>drive</span><span>open</span></span></a>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Music libraries &amp; archives</div>
+    <div class="tiles">
+      <a class="tile" href="https://developer.spotify.com/dashboard" target="_blank"><span class="icon">🟢</span><span class="name">Spotify Web API</span><span class="tag">Search + canonical metadata (BPM, duration, art).</span><span class="footer"><span>API</span><span>open</span></span></a>
+      <a class="tile" href="https://www.youtube.com" target="_blank"><span class="icon">📺</span><span class="name">YouTube Data API + yt-dlp</span><span class="tag">Search + audio extraction for stem separation source.</span><span class="footer"><span>API + tool</span><span>open</span></span></a>
+      <a class="tile" href="https://genius.com/api-clients" target="_blank"><span class="icon">📜</span><span class="name">Genius</span><span class="tag">Lyrics + song meaning context.</span><span class="footer"><span>API</span><span>open</span></span></a>
+      <a class="tile" href="https://archive.org" target="_blank"><span class="icon">📚</span><span class="name">Archive.org</span><span class="tag">Live concert recording library.</span><span class="footer"><span>open</span><span>open</span></span></a>
+      <a class="tile" href="https://docs.phish.net" target="_blank"><span class="icon">🪝</span><span class="name">Phish.net</span><span class="tag">Phish setlists + jam charts.</span><span class="footer"><span>API</span><span>open</span></span></a>
+      <a class="tile" href="https://phish.in" target="_blank"><span class="icon">🎶</span><span class="name">Phish.in</span><span class="tag">Phish-specific live audio archive.</span><span class="footer"><span>API</span><span>open</span></span></a>
+      <a class="tile" href="https://relisten.net" target="_blank"><span class="icon">🌀</span><span class="name">Relisten</span><span class="tag">Jam-band live audio (Dead, Phish, Almanac, more).</span><span class="footer"><span>API</span><span>open</span></span></a>
+      <a class="tile" href="https://odesli.co" target="_blank"><span class="icon">🔗</span><span class="name">Odesli (Songlink)</span><span class="tag">Cross-platform music link converter.</span><span class="footer"><span>API</span><span>open</span></span></a>
+      <a class="tile" href="https://bandcamp.com" target="_blank"><span class="icon">🟪</span><span class="name">Bandcamp + SoundCloud</span><span class="tag">Source URL fallback via yt-dlp on Modal.</span><span class="footer"><span>via yt-dlp</span><span>open</span></span></a>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Communications &amp; utilities</div>
+    <div class="tiles">
+      <a class="tile" href="https://console.twilio.com" target="_blank"><span class="icon">💬</span><span class="name">Twilio SMS</span><span class="tag">Layer 3 notifications. A2P 10DLC campaign in carrier review.</span><span class="footer"><span>SMS</span><span>open</span></span></a>
+      <a class="tile" href="https://iproyal.com" target="_blank"><span class="icon">🛡️</span><span class="name">IPRoyal Residential Proxy</span><span class="tag">Bypasses YouTube bot detection from cloud IPs.</span><span class="footer"><span>proxy</span><span>open</span></span></a>
+      <a class="tile" href="https://goqr.me/api" target="_blank"><span class="icon">▦</span><span class="name">QR Server</span><span class="tag">QR code generation (sharing, onboarding).</span><span class="footer"><span>free</span><span>open</span></span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- DATA FLOWS -->
+<!-- ===================================================================== -->
+<section class="zone" style="--zone-color: var(--accent)">
+  <div class="zone-head">
+    <span class="badge" style="background: var(--accent)">08</span>
+    <h2>Key data flows</h2>
+    <p>How a typical action travels through the system.</p>
+  </div>
+  <div class="flows">
+    <div class="flow">
+      <h3><span class="num">1</span> Sign-in (auth gate)</h3>
+      <div class="steps">
+        Browser <span class="arrow">→</span> <code>Google OAuth</code> <span class="arrow">→</span> token <span class="arrow">→</span> <code>Cloudflare Worker /oauth/userinfo</code> <span class="arrow">→</span> email <span class="arrow">→</span> <code>app.js _glCheckBandMembership</code> <span class="arrow">→</span> single read of <code>members_index/{key}</code> in <code>RTDB</code> <span class="arrow">→</span> band slug. <strong>~50 bytes payload.</strong>
+      </div>
+    </div>
+    <div class="flow">
+      <h3><span class="num">2</span> Adding a band member</h3>
+      <div class="steps">
+        Drew edits <code>bands/$slug/meta/members</code> <span class="arrow">→</span> <code>RTDB</code> raises event <span class="arrow">→</span> <code>Eventarc</code> <span class="arrow">→</span> <code>Pub/Sub</code> <span class="arrow">→</span> <code>mirrorMemberToIndex</code> Cloud Function <span class="arrow">→</span> writes <code>members_index/{email}: slug</code>.
+      </div>
+    </div>
+    <div class="flow">
+      <h3><span class="num">3</span> Stem separation</h3>
+      <div class="steps">
+        Browser uploads source URL <span class="arrow">→</span> <code>Worker /stems/start</code> <span class="arrow">→</span> <code>Modal</code> spins T4 GPU <span class="arrow">→</span> Demucs 6-stem split <span class="arrow">→</span> uploads to <code>R2</code> <span class="arrow">→</span> stem URLs returned <span class="arrow">→</span> <code>Tone.js</code> wires up the mixer.
+      </div>
+    </div>
+    <div class="flow">
+      <h3><span class="num">4</span> Real-time data sync</h3>
+      <div class="steps">
+        Any device writes to <code>RTDB</code> over WebSocket <span class="arrow">→</span> Firebase fanout <span class="arrow">→</span> every other signed-in device receives the change <span class="arrow">→</span> active page re-renders. <strong>&lt;1s end-to-end.</strong>
+      </div>
+    </div>
+    <div class="flow">
+      <h3><span class="num">5</span> SMS notification</h3>
+      <div class="steps">
+        Trigger fires (gig change) <span class="arrow">→</span> <code>Worker /sms/send</code> with band SMS subscriptions <span class="arrow">→</span> <code>Twilio</code> Messaging Service <span class="arrow">→</span> A2P-routed carrier <span class="arrow">→</span> bandmate's phone.
+      </div>
+    </div>
+    <div class="flow">
+      <h3><span class="num">6</span> Calendar sync</h3>
+      <div class="steps">
+        Each member's <code>Google Calendar</code> <span class="arrow">→</span> <code>Worker /calendar/freebusy</code> <span class="arrow">→</span> RTDB <code>calendar_events</code> <span class="arrow">→</span> band view. Outbound: GrooveLinx gigs <span class="arrow">→</span> shared band cal via <code>events.insert</code>.
+      </div>
+    </div>
+    <div class="flow">
+      <h3><span class="num">7</span> Auto-deploy</h3>
+      <div class="steps">
+        <code>git push</code> <span class="arrow">→</span> <code>GitHub</code> webhook <span class="arrow">→</span> <code>Vercel</code> rebuild <span class="arrow">→</span> CDN propagation <span class="arrow">→</span> live in ~30s. Service worker version bump triggers cache refresh on next reload.
+      </div>
+    </div>
+    <div class="flow">
+      <h3><span class="num">8</span> GrooveMate suggestion</h3>
+      <div class="steps">
+        Stems lens detects 3+ loop reps <span class="arrow">→</span> <code>GLContext</code> snapshot <span class="arrow">→</span> heuristic engine <span class="arrow">→</span> optionally <code>Anthropic Claude</code> via worker <span class="arrow">→</span> suggestion card with Apply / Dismiss.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- DREW'S WORKSTATION -->
+<!-- ===================================================================== -->
+<section class="zone zone-workstation">
+  <div class="zone-head">
+    <span class="badge">09</span>
+    <h2>Drew's Workstation</h2>
+    <p>Apps used to build, debug, ship, and operate GrooveLinx — none of these touch users directly.</p>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Editors &amp; AI assistants</div>
+    <div class="tiles">
+      <a class="tile" href="https://claude.ai/code" target="_blank"><span class="icon">🤖</span><span class="name">Claude Code</span><span class="tag">Pair programming + multi-step refactors.</span><span class="footer"><span>CLI</span><span>open</span></span></a>
+      <a class="tile" href="https://chat.openai.com" target="_blank"><span class="icon">🟢</span><span class="name">ChatGPT</span><span class="tag">Second-opinion code reviews.</span><span class="footer"><span>web</span><span>open</span></span></a>
+      <a class="tile" href="https://gemini.google.com" target="_blank"><span class="icon">✨</span><span class="name">Google Gemini</span><span class="tag">Quick lookups, Chrome-embedded.</span><span class="footer"><span>web</span><span>open</span></span></a>
+      <a class="tile" href="https://code.visualstudio.com" target="_blank"><span class="icon">💼</span><span class="name">Code editor</span><span class="tag">VS Code / Cursor / Sublime — your pick.</span><span class="footer"><span>app</span><span>open</span></span></a>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Browsers &amp; testing</div>
+    <div class="tiles">
+      <a class="tile" href="https://www.google.com/chrome" target="_blank"><span class="icon">🌐</span><span class="name">Chrome + DevTools</span><span class="tag">Primary testing surface.</span><span class="footer"><span>app</span><span>open</span></span></a>
+      <a class="tile" href="https://www.apple.com/safari" target="_blank"><span class="icon">🧭</span><span class="name">Safari (iOS + macOS)</span><span class="tag">iOS quirk testing.</span><span class="footer"><span>app</span><span>open</span></span></a>
+      <a class="tile" href="https://developer.apple.com/xcode" target="_blank"><span class="icon">🔨</span><span class="name">Xcode + iOS Simulator</span><span class="tag">Virtual iPhone for PWA testing.</span><span class="footer"><span>app</span><span>open</span></span></a>
+      <a class="tile no-link"><span class="icon">📲</span><span class="name">iPhone Mirroring</span><span class="tag">Drive a real iPhone from your Mac (Sequoia+).</span><span class="footer"><span>macOS</span><span>built-in</span></span></a>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Terminal &amp; productivity</div>
+    <div class="tiles">
+      <a class="tile" href="https://iterm2.com" target="_blank"><span class="icon">⌨️</span><span class="name">iTerm2</span><span class="tag">Terminal app. The console-snippet wrap-bug origin.</span><span class="footer"><span>app</span><span>open</span></span></a>
+      <a class="tile" href="https://rectangleapp.com" target="_blank"><span class="icon">▭</span><span class="name">Rectangle</span><span class="tag">Window snapping for multi-pane debugging.</span><span class="footer"><span>app</span><span>open</span></span></a>
+      <a class="tile" href="https://cleanshot.com" target="_blank"><span class="icon">📸</span><span class="name">CleanShot X</span><span class="tag">Screenshots + screen recording.</span><span class="footer"><span>app</span><span>open</span></span></a>
+      <a class="tile" href="https://www.loom.com/login" target="_blank"><span class="icon">🎥</span><span class="name">Loom</span><span class="tag">Async walkthrough recordings for testers.</span><span class="footer"><span>web</span><span>open</span></span></a>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <div class="subsection-title">Design &amp; communication</div>
+    <div class="tiles">
+      <a class="tile" href="https://www.figma.com/login" target="_blank"><span class="icon">🎨</span><span class="name">Figma</span><span class="tag">UI mockups, design files.</span><span class="footer"><span>web</span><span>open</span></span></a>
+      <a class="tile" href="https://www.midjourney.com/login" target="_blank"><span class="icon">🖼️</span><span class="name">Midjourney</span><span class="tag">Marketing visuals + brand exploration.</span><span class="footer"><span>web</span><span>open</span></span></a>
+      <a class="tile" href="https://mail.google.com" target="_blank"><span class="icon">📧</span><span class="name">Gmail</span><span class="tag">Vendor support, OAuth verification, recovery.</span><span class="footer"><span>web</span><span>open</span></span></a>
+      <a class="tile" href="https://docs.google.com/spreadsheets" target="_blank"><span class="icon">📊</span><span class="name">Google Sheets / Numbers / Excel</span><span class="tag">Data review, this very inventory.</span><span class="footer"><span>web</span><span>open</span></span></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- TOOLING -->
+<!-- ===================================================================== -->
+<section class="zone zone-tooling">
+  <div class="zone-head">
+    <span class="badge">10</span>
+    <h2>Local Tooling (CLIs)</h2>
+    <p>Command-line tools used to deploy and manage everything.</p>
+  </div>
+  <div class="tiles">
+    <a class="tile" href="https://nodejs.org" target="_blank"><span class="icon">🟢</span><span class="name">Node.js 25.8.1</span><span class="tag">JS runtime for local tooling.</span><span class="footer"><span>local</span><span>open</span></span></a>
+    <a class="tile" href="https://docs.npmjs.com" target="_blank"><span class="icon">📦</span><span class="name">npm 11.11.0</span><span class="tag">Package manager.</span><span class="footer"><span>local</span><span>open</span></span></a>
+    <a class="tile" href="https://firebase.google.com/docs/cli" target="_blank"><span class="icon">🔥</span><span class="name">firebase-tools 15.17</span><span class="tag">Cloud Functions deploys, RTDB rules, project mgmt.</span><span class="footer"><span>CLI</span><span>open</span></span></a>
+    <a class="tile" href="https://modal.com/docs" target="_blank"><span class="icon">🚀</span><span class="name">Modal CLI 1.4.2</span><span class="tag">Stem separator + ML service deploys.</span><span class="footer"><span>CLI</span><span>open</span></span></a>
+    <a class="tile" href="https://vercel.com/docs/cli" target="_blank"><span class="icon">▲</span><span class="name">Vercel CLI 53.x</span><span class="tag">Env vars, preview deploys, log streaming.</span><span class="footer"><span>CLI</span><span>open</span></span></a>
+    <a class="tile" href="https://cli.github.com" target="_blank"><span class="icon">🐙</span><span class="name">GitHub CLI</span><span class="tag">Issues, PRs, project board mgmt.</span><span class="footer"><span>CLI</span><span>open</span></span></a>
+    <a class="tile" href="https://git-scm.com" target="_blank"><span class="icon">🌿</span><span class="name">Git</span><span class="tag">Version control. Powers <code>git push</code> → Vercel deploy.</span><span class="footer"><span>CLI</span><span>open</span></span></a>
+    <a class="tile" href="https://playwright.dev" target="_blank"><span class="icon">🎭</span><span class="name">Playwright 1.59.1</span><span class="tag">E2E browser automation tests.</span><span class="footer"><span>local</span><span>open</span></span></a>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>Source of truth: <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/stack_inventory.md" target="_blank"><code>02_GrooveLinx/specs/stack_inventory.md</code></a> · Last audited 2026-05-08 · <code>noindex,nofollow</code> set so search engines ignore this page.</p>
+</footer>
+
+<script>
+  // Pull the live build version from the meta on the deployed app.
+  fetch('/version.json', { cache: 'no-store' })
+    .then(r => r.json())
+    .then(j => {
+      const el = document.getElementById('buildInfo');
+      if (el && j && j.version) el.textContent = 'Build ' + j.version;
+    })
+    .catch(() => {});
+</script>
+
+</body>
+</html>

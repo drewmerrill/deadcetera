@@ -1,0 +1,67 @@
+name: Monthly version check
+
+on:
+  schedule:
+    # Run on the 1st of every month at 08:00 UTC.
+    - cron: "0 8 1 * *"
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Run version checker
+        id: scan
+        run: |
+          python3 scripts/check_versions.py --out report.md
+          echo "report_path=$(pwd)/report.md" >> $GITHUB_OUTPUT
+
+      - name: Open or update tracking issue
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('report.md', 'utf8');
+            const today = new Date().toISOString().slice(0, 10);
+            const title = `chore: monthly version audit · ${today}`;
+
+            // Find any existing open audit issue (label-driven).
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'version-audit',
+              per_page: 10
+            });
+
+            if (existing.length > 0) {
+              const issue = existing[0];
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                title,
+                body
+              });
+              core.notice(`Updated existing audit issue #${issue.number}`);
+            } else {
+              const { data: created } = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['version-audit', 'chore']
+              });
+              core.notice(`Opened audit issue #${created.number}`);
+            }

@@ -1,0 +1,77 @@
+# Dependabot keeps the cheap parts of the stack current automatically.
+# It opens PRs for ecosystems that have manifest files Dependabot can read.
+#
+# What Dependabot CAN'T see (handled by scripts/check_versions.py instead):
+#   - CDN URLs in HTML / JS files (abcjs, Tone.js, Firebase JS SDK)
+#   - inline pip_install pins in services/stem-separation/separator.py
+#
+# Combined with the monthly version-check Action, the whole stack stays current
+# with low manual effort.
+
+version: 2
+updates:
+  # Root package.json — Playwright + future devDependencies.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "automated"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Cloud Functions — firebase-functions, firebase-admin.
+  - package-ecosystem: "npm"
+    directory: "/functions"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "automated"
+      - "functions"
+    commit-message:
+      prefix: "chore(functions/deps)"
+
+  # GitHub Actions versions in workflow files.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "automated"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
+
+  # Modal services with requirements.txt files.
+  - package-ecosystem: "pip"
+    directory: "/services/chord-analysis"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "automated"
+      - "modal"
+    commit-message:
+      prefix: "chore(chord-analysis)"
+
+  - package-ecosystem: "pip"
+    directory: "/services/audio-embeddings"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "automated"
+      - "modal"
+    commit-message:
+      prefix: "chore(audio-embeddings)"

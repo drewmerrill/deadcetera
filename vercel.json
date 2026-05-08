@@ -8,6 +8,7 @@
     { "source": "/privacy.html", "destination": "/privacy.html" },
     { "source": "/terms.html", "destination": "/terms.html" },
     { "source": "/sms-opt-in.html", "destination": "/sms-opt-in.html" },
+    { "source": "/stack-map.html", "destination": "/stack-map.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
