@@ -46,6 +46,56 @@ A concrete, prioritized plan for improving performance, scalability, reliability
 > - **No concurrent file-splitting.** P1.1 (split groovelinx_store) and P1.6 (split calendar.js + rehearsal.js) stay frozen until lazy-load fully ships across all routes.
 > - **Every step measurable.** Capture before/after Performance traces so we can see actual impact.
 
+### ✅ P0.1 (expansion) — Lazy-load `social.js` + `notifications.js` + `playlists.js` _(SHIPPED 2026-05-08, build `20260508-233715`)_
+
+**Status:** Pilot expansion shipped 6 days into the planned 7-day soak window per Drew directive. Risk-managed by stub coverage (below) rather than soak duration.
+
+**What shipped:** Three eager `<script>` tags removed from `index.html` + `index-dev.html` (`js/features/social.js`, `js/features/notifications.js`, `js/features/playlists.js`). Replaced by one explanatory comment block. The `_glPageScripts` map already had entries for all three from earlier infra work — only the eager tags were short-circuiting `glLazy()`.
+
+**Cross-page entry-point fix (the real risk in this expansion):** `notifications.js` exports symbols called from inline `onclick` handlers and event hooks in OTHER files:
+- `home-dashboard.js:2867-2868` — Home page "Invite Bandmates" + "Copy Invite Link" buttons → `glShowInviteModal()` / `glCopyInviteLink()`
+- `rehearsal.js:5760` — share-practice-plan button → `notifFromPracticePlan(dateStr)`
+
+Without coverage, clicking these before navigating to Notifications would `ReferenceError`. **Mitigation:** new `_glStubLazy(name, src)` helper added to `js/ui/navigation.js` (sibling to existing `venueShortLabel` stub at line 346). On first call: fires `glLazy(src)`, then re-invokes the now-real function. After first call all three globals point at real implementations for the rest of the session.
+
+```js
+function _glStubLazy(name, src) {
+    if (typeof window[name] !== 'undefined') return;
+    var stub = function() {
+        var args = Array.prototype.slice.call(arguments);
+        glLazy(src).then(function() {
+            var real = window[name];
+            if (typeof real === 'function' && real !== stub) real.apply(null, args);
+            else console.warn('[Lazy stub] ' + name + ' still undefined after loading ' + src);
+        }).catch(function(err) { console.error('[Lazy stub] failed loading ' + src + ' for ' + name, err); });
+    };
+    window[name] = stub;
+}
+_glStubLazy('glShowInviteModal', 'js/features/notifications.js');
+_glStubLazy('glCopyInviteLink',  'js/features/notifications.js');
+_glStubLazy('notifFromPracticePlan', 'js/features/notifications.js');
+```
+
+**Other call paths verified safe by grep audit:**
+- `app.js:12723,12735` (`plPlayerRender`), `12973` (`onclick="plLoadIndex()"`), `13206` (`plLoadIndex()`) — all transitively gated. `_partyListener` only attaches inside `joinListeningParty()` which is reachable only via the Playlists page UI; `plEdSave` only fires from the editor save button reachable only via the same UI. By the time those code paths execute, `playlists.js` is loaded.
+- `home-dashboard.js:173-174` (`carePackageSend`) — already `typeof window.carePackageSend === 'function'` guarded; no-ops until loaded.
+- `social.js` — zero external callers. Only `js/ui/navigation.js:402` references `renderSocialPage`, which is already routed through `_glLazyLoadPage`.
+
+**Files changed (5):**
+- `index.html` — 3 script tags → 1 comment block; `?v=` bumped at 124 sites
+- `index-dev.html` — same
+- `js/ui/navigation.js` — `_glStubLazy` helper + 3 stub registrations (~22 lines, inserted at line 354)
+- `service-worker.js` — `CACHE_NAME` bumped atomically
+- `version.json` — bumped atomically
+
+**Build:** `20260508-233715`. **Commit:** `020151af`.
+
+**Soak watch:** social/notifications/playlists in production from now. Finances pilot rolls into day 2 of 7. Watch for (a) any tester reporting a button click that does nothing on first try (would indicate stub coverage missed an entry point — fix is to add another `_glStubLazy` line), (b) console `[Lazy stub] ... still undefined` warnings (would mean the lazy load completed but the real symbol still isn't on window — different failure class).
+
+**Cumulative P0.1 status:** 4 of 4 currently-eligible feature routes lazy-loaded — finances + social + notifications + playlists. Per the original plan, the heavy three (`calendar.js` 7,864 / `rehearsal.js` 7,151 / `home-dashboard.js` 5,727) remain blocked on **P1.6 feature decomposition** before they can be lazy-loaded safely.
+
+---
+
 ### ✅ P0.1 (pilot) — Lazy-load `finances.js` _(SHIPPED 2026-05-08, build `20260508-131319`)_
 
 **Problem:** All 94 scripts load synchronously on every page open. Phase 9 of `load_sequence.md` parses ~50k lines of feature code that the user may never visit. On Pierce's 4G iPhone, this is 600-900ms of pure parse+evaluate before anything renders.
