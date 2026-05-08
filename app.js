@@ -525,7 +525,8 @@ if ('serviceWorker' in navigator && !_rt.swInitialized) {
             navigator.serviceWorker.register(new URL('service-worker.js', location.href).href)
                 .then(function(reg) {
                     // Poll for SW updates every 5 min (was 60s — too aggressive for mobile)
-                    setInterval(function() { reg.update(); }, 300000);
+                    // P0.4 (2026-05-08): timer captured for beforeunload cleanup.
+                    window._glSwUpdateTimer = setInterval(function() { reg.update(); }, 300000);
                     // Detect waiting worker (new version ready) — use unified banner
                     if (reg.waiting) { showUpdateBanner(); return; }
                     reg.addEventListener('updatefound', function() {
@@ -7447,6 +7448,10 @@ window.addEventListener('beforeunload', () => {
     // P0.3 (2026-05-08): nuke long-lived timers so they can't fire after the
     // page is gone (firebase write attempts after unload throw uncatchable errors).
     try { if (typeof GLStore !== 'undefined' && GLStore.cleanup) GLStore.cleanup(); } catch(e) {}
+    // P0.4 (2026-05-08): clear the SW update-poll + version-poll intervals
+    // (both 5 min). Equivalent of GLStore.cleanup but for app.js-level timers.
+    try { if (window._glSwUpdateTimer) { clearInterval(window._glSwUpdateTimer); window._glSwUpdateTimer = null; } } catch(e) {}
+    try { if (window._glVersionPollTimer) { clearInterval(window._glVersionPollTimer); window._glVersionPollTimer = null; } } catch(e) {}
 });
 
 // ============================================================================
@@ -12732,20 +12737,28 @@ async function checkForAppUpdate() {
         var same = data.version === _loadedVersion;
         console.log('[Update] client=' + _loadedVersion + ' server=' + data.version + ' → ' + (same ? 'current' : 'NEW'));
         if (!same) {
-            showUpdateBanner();
+            showUpdateBanner(data.version);
         }
     } catch(e) {
         console.log('[Update] Error:', e.message || e);
     }
 }
 
-var _updateBannerShown = false;
+// P0.4 (2026-05-08): track WHICH server version we banner'd for. Previously
+// `_updateBannerShown = true` was sticky for the page session — if user
+// dismissed the banner and a *newer* build deployed, we silently never
+// re-banner'd. Now the gate is per-version, so each new deploy gets a new
+// banner even if the prior one was dismissed.
+var _bannerShownForVersion = null;
 
-function showUpdateBanner() {
-    // ONE guard: if banner already shown this page load, done.
-    if (_updateBannerShown) return;
-    if (document.getElementById('dc-update-banner')) return;
-    _updateBannerShown = true;
+function showUpdateBanner(serverVersion) {
+    serverVersion = serverVersion || 'unknown';
+    if (_bannerShownForVersion === serverVersion) return;
+    if (document.getElementById('dc-update-banner')) {
+        _bannerShownForVersion = serverVersion;
+        return;
+    }
+    _bannerShownForVersion = serverVersion;
     _rt.reloadPromptShown = true;
 
     var banner = document.createElement('div');
@@ -12767,14 +12780,26 @@ function showUpdateBanner() {
     reloadBtn.style.cssText = 'background:rgba(255,255,255,0.2);color:white;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:0.85em';
     reloadBtn.addEventListener('click', function() {
         banner.remove();
-        // Tell waiting SW to activate before reloading
-        if (typeof navigator !== 'undefined' && navigator.serviceWorker && navigator.serviceWorker.controller) {
-            navigator.serviceWorker.ready.then(function(reg) {
-                if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-            });
+        var _reloadFired = false;
+        function _doReload() {
+            if (_reloadFired) return;
+            _reloadFired = true;
+            location.reload();
         }
         window._pwaReloading = true;
-        setTimeout(function() { location.reload(); }, 400);
+        // Tell waiting SW to activate; reload as soon as it takes control.
+        if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+            navigator.serviceWorker.addEventListener('controllerchange', _doReload, { once: true });
+            if (navigator.serviceWorker.controller) {
+                navigator.serviceWorker.ready.then(function(reg) {
+                    if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                }).catch(function() {});
+            }
+        }
+        // P0.4 (2026-05-08): bumped 400ms → 1500ms fallback so slow SW activation
+        // on mobile networks doesn't reload before controllerchange fires. The
+        // controllerchange path above usually wins; this is the safety net.
+        setTimeout(_doReload, 1500);
     });
 
     var dismissBtn = document.createElement('button');
@@ -12790,7 +12815,13 @@ function showUpdateBanner() {
 }
 
 // Update check: every 5 minutes (was 60s — too aggressive for mobile)
-setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 300 * 1000); }, 15000);
+// P0.4 (2026-05-08): timer captured for beforeunload cleanup + manual hook for
+// devtools testing (`glCheckUpdate()` in console forces an immediate poll).
+setTimeout(function() {
+    checkForAppUpdate();
+    window._glVersionPollTimer = setInterval(checkForAppUpdate, 300 * 1000);
+}, 15000);
+window.glCheckUpdate = checkForAppUpdate;
 
 // ── Debug panel (visible only with ?debug=true) ──────────────────────────────
 if (DEBUG) {

@@ -218,33 +218,40 @@ The trace that exposed the 2.6s problem also surfaced two bigger issues that wer
 
 ---
 
-### P0.4 — Service worker cache versioning across deploys
+### ✅ P0.4 — Service worker versioning + reload prompt _(SHIPPED 2026-05-08, build `20260508-125759`)_
 
-**Problem:** Service worker caches the app shell with cache name `groovelinx-{build}`. When build bumps, old cache is invalidated. But if the SW updates while a fetch is mid-flight, the in-flight request can resolve against the old cache — observed as "stale data after deploy."
+**Problem:** Service worker caches the app shell with cache name `groovelinx-{build}`. When build bumps, old cache is invalidated. But the in-app reload prompt had subtle correctness bugs: a dismissed banner would never re-appear even if a *newer* build deployed, and the update-poll timers leaked across page lifecycle.
 
-**Solution:** Use a `skipWaiting` + `clientsClaim` pattern with an explicit "reload" prompt:
+**Audit findings (2026-05-08):**
 
-```js
-self.addEventListener('install', (e) => {
-  e.waitUntil(self.skipWaiting());
-});
-self.addEventListener('activate', (e) => {
-  e.waitUntil(Promise.all([
-    self.clients.claim(),
-    purgeOldCaches()
-  ]));
-});
-```
+What was already shipped piecewise (good — much of the original P0.4 brief was done):
+- `self.skipWaiting()` in install (`service-worker.js:75`)
+- `self.clients.claim()` + old-cache purge in activate (`service-worker.js:80-94`)
+- `SKIP_WAITING` message handler (`service-worker.js:267`)
+- 5-minute version.json poll → banner on mismatch (`app.js`, `checkForAppUpdate`)
+- 5-minute SW `reg.update()` poll (`app.js:528`)
+- `controllerchange` listener auto-reloads when another tab triggers update
+- Reload button → posts SKIP_WAITING → 400ms timeout reload
 
-Plus an in-app banner: "New version available — reload to apply."
+Real gaps fixed in this pass:
+
+1. **Dismiss-then-newer-deploy bug.** `_updateBannerShown = true` was sticky for the page session — if a user dismissed the banner with `×` and a *newer* build deployed afterward, the polling would detect the mismatch but `showUpdateBanner` would silently no-op. **Fix:** track the version the banner was last shown for (`_bannerShownForVersion`); each new deploy gets a fresh banner.
+
+2. **Update-poll setIntervals leaked.** Both the SW update poll (`app.js:528`) and the version.json poll (`app.js:12793`) were started without capturing the interval IDs, so they'd fire after page unload (uncatchable errors) and could not be cancelled. **Fix:** capture into `window._glSwUpdateTimer` and `window._glVersionPollTimer`; clear in the `beforeunload` listener (same place P0.3 calls `GLStore.cleanup()`).
+
+3. **400ms reload fallback was too short.** On slow mobile networks, SW activation can take >400ms, so the page would reload while still controlled by the old SW (next reload would sort it out, but UX was janky). **Fix:** listen for `controllerchange` and reload immediately when it fires; bump fallback to 1500ms as the safety net for cases where SW activation never completes.
+
+4. **No manual update check.** Useful for devtools testing. **Fix:** `window.glCheckUpdate()` — runs `checkForAppUpdate` on demand from console.
 
 **Acceptance:**
-- Deploys propagate to active sessions within 30s of next interaction
-- No "stale data after deploy" reports
+- ✅ Dismiss banner → newer deploy → banner reappears
+- ✅ `beforeunload` clears both 5-min update-poll timers
+- ✅ Reload button on slow networks waits for actual SW takeover (controllerchange) instead of fixed 400ms
+- ✅ `glCheckUpdate()` in console works
 
-**Effort:** 1 day.
+**Effort:** Actual ~30 min (most of the system was already built; this was tightening).
 
-**Risk:** Low.
+**Risk:** Low. All changes are additive guards.
 
 ---
 
