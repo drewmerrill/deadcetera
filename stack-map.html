@@ -30,6 +30,7 @@
     --tooling: #cbd5e1;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 70px; }
   html, body {
     background: var(--bg);
     color: var(--text);
@@ -311,6 +312,72 @@
     header.hero h1 { font-size: 28px; }
     .tile.size-lg { grid-column: span 1; }
     .zone-head p { display: none; }
+    .toc { display: none; }
+  }
+
+  /* ─── Sticky table of contents ─── */
+  .toc {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(10, 14, 26, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    font-size: 12px;
+  }
+  .toc a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+  }
+  .toc a:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+    background: rgba(15, 23, 42, 0.6);
+  }
+  .toc a .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+
+  /* ─── Status badge on tiles ─── */
+  .badge-status {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1.4;
+  }
+  .badge-status.live { background: rgba(52, 211, 153, 0.15); color: #34d399; }
+  .badge-status.pending { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+  .badge-status.deferred { background: rgba(148, 163, 184, 0.15); color: #94a3b8; }
+  .badge-status.deprecated { background: rgba(248, 113, 113, 0.15); color: #f87171; }
+
+  /* ─── Cost chip ─── */
+  .cost {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(148, 163, 184, 0.1);
+    color: var(--text-faint);
+    margin-left: auto;
   }
 </style>
 </head>
@@ -326,6 +393,19 @@
     <span id="buildInfo">Loading build…</span>
   </div>
 </header>
+
+<nav class="toc" aria-label="jump to section">
+  <a href="#users"><span class="dot" style="background:#fbbf24"></span>01 Users</a>
+  <a href="#frontend"><span class="dot" style="background:#60a5fa"></span>02 Frontend</a>
+  <a href="#hosting"><span class="dot" style="background:#22d3ee"></span>03 Hosting</a>
+  <a href="#edge"><span class="dot" style="background:#f97316"></span>04 Edge</a>
+  <a href="#data"><span class="dot" style="background:#fb923c"></span>05 Data &amp; Functions</a>
+  <a href="#aiml"><span class="dot" style="background:#34d399"></span>06 AI / ML</a>
+  <a href="#external"><span class="dot" style="background:#a78bfa"></span>07 External APIs</a>
+  <a href="#flows"><span class="dot" style="background:#a78bfa"></span>08 Flows</a>
+  <a href="#workstation"><span class="dot" style="background:#f472b6"></span>09 Workstation</a>
+  <a href="#tooling"><span class="dot" style="background:#cbd5e1"></span>10 CLIs</a>
+</nav>
 
 <div class="legend">
   <span class="pill"><span class="dot" style="background:#fbbf24"></span>Users</span>
@@ -344,7 +424,7 @@
 <!-- ===================================================================== -->
 <!-- USERS -->
 <!-- ===================================================================== -->
-<section class="zone zone-users">
+<section id="users" class="zone zone-users">
   <div class="zone-head">
     <span class="badge">01</span>
     <h2>Users</h2>
@@ -360,7 +440,7 @@
 <!-- ===================================================================== -->
 <!-- FRONTEND -->
 <!-- ===================================================================== -->
-<section class="zone zone-frontend">
+<section id="frontend" class="zone zone-frontend">
   <div class="zone-head">
     <span class="badge">02</span>
     <h2>Frontend (in the browser)</h2>
@@ -402,7 +482,7 @@
 <!-- ===================================================================== -->
 <!-- HOSTING -->
 <!-- ===================================================================== -->
-<section class="zone zone-hosting">
+<section id="hosting" class="zone zone-hosting">
   <div class="zone-head">
     <span class="badge">03</span>
     <h2>Hosting &amp; Domain</h2>
@@ -420,7 +500,7 @@
 <!-- ===================================================================== -->
 <!-- EDGE / WORKER -->
 <!-- ===================================================================== -->
-<section class="zone zone-edge">
+<section id="edge" class="zone zone-edge">
   <div class="zone-head">
     <span class="badge">04</span>
     <h2>Cloudflare Edge</h2>
@@ -435,7 +515,7 @@
 <!-- ===================================================================== -->
 <!-- DATA & FUNCTIONS (FIREBASE) -->
 <!-- ===================================================================== -->
-<section class="zone zone-data">
+<section id="data" class="zone zone-data">
   <div class="zone-head">
     <span class="badge">05</span>
     <h2>Data &amp; Functions (Firebase / Google Cloud)</h2>
@@ -443,7 +523,7 @@
   </div>
   <div class="tiles">
     <a class="tile size-lg" href="https://console.firebase.google.com/project/deadcetera-35424/database" target="_blank"><span class="icon">🌳</span><span class="name">Firebase Realtime Database</span><span class="tag">Source of truth for every band. Songs, members, gigs, calendar, setlists, rehearsal sessions, readiness scores, RSVPs — all here, syncing in &lt;1s across every signed-in device.</span><span class="footer"><span>us-central1</span><span>open dashboard</span></span></a>
-    <a class="tile" href="https://console.firebase.google.com/project/deadcetera-35424/functions" target="_blank"><span class="icon">⚙️</span><span class="name">Cloud Functions · mirrorMemberToIndex</span><span class="tag">Maintains <code>members_index</code> for O(1) auth gate (shipped 2026-05-07).</span><span class="footer"><span>Node 24 · v7</span><span>open</span></span></a>
+    <a class="tile" href="https://console.firebase.google.com/project/deadcetera-35424/functions" target="_blank"><span class="badge-status live">live</span><span class="icon">⚙️</span><span class="name">Cloud Functions · mirrorMemberToIndex</span><span class="tag">Maintains <code>members_index</code> for O(1) auth gate (shipped 2026-05-07).</span><span class="footer"><span>Node 24 · v7</span><span>open</span></span></a>
     <a class="tile" href="https://console.firebase.google.com/project/deadcetera-35424/notification" target="_blank"><span class="icon">📨</span><span class="name">Firebase Cloud Messaging</span><span class="tag">Layer 2 of notifications: browser push.</span><span class="footer"><span>FCM</span><span>open</span></span></a>
     <a class="tile" href="https://console.firebase.google.com/project/deadcetera-35424/storage" target="_blank"><span class="icon">🗂️</span><span class="name">Firebase Storage</span><span class="tag">Practice mixes, recording snippets, exported PDFs.</span><span class="footer"><span>blob storage</span><span>open</span></span></a>
     <a class="tile" href="https://console.cloud.google.com/?project=deadcetera-35424" target="_blank"><span class="icon">☁️</span><span class="name">Google Cloud (under-the-hood)</span><span class="tag">Cloud Build, Artifact Registry, Cloud Run, Eventarc, Pub/Sub — invisible plumbing for 2nd-gen Functions.</span><span class="footer"><span>infra</span><span>open</span></span></a>
@@ -453,14 +533,14 @@
 <!-- ===================================================================== -->
 <!-- AI / ML COMPUTE -->
 <!-- ===================================================================== -->
-<section class="zone zone-aiml">
+<section id="aiml" class="zone zone-aiml">
   <div class="zone-head">
     <span class="badge">06</span>
     <h2>AI / ML Compute</h2>
     <p>Heavy computation: stem separation, harmony splits, transcription, image generation, decision-making.</p>
   </div>
   <div class="tiles">
-    <a class="tile size-lg" href="https://modal.com/apps" target="_blank"><span class="icon">🚀</span><span class="name">Modal · groovelinx-stem-separator</span><span class="tag">Serverless Python on T4 GPU. Demucs HT-Demucs 6-stem separation. ~$0.005/song. Two more services (chord-analysis, audio-embeddings) ready to deploy.</span><span class="footer"><span>us-east</span><span>open dashboard</span></span></a>
+    <a class="tile size-lg" href="https://modal.com/apps" target="_blank"><span class="badge-status live">live</span><span class="icon">🚀</span><span class="name">Modal · groovelinx-stem-separator</span><span class="tag">Serverless Python on T4 GPU. Demucs HT-Demucs 6-stem separation. ~$0.005/song. Two more services (chord-analysis, audio-embeddings) ready to deploy but not yet pushed.</span><span class="footer"><span>us-east</span><span>open dashboard</span></span></a>
     <a class="tile" href="https://github.com/facebookresearch/demucs" target="_blank"><span class="icon">🥁</span><span class="name">HT-Demucs 4.0.1</span><span class="tag">The neural network that splits drums/bass/vocals/other/piano/guitar.</span><span class="footer"><span>open-source</span><span>open</span></span></a>
     <a class="tile" href="https://www.lalal.ai" target="_blank"><span class="icon">🎤</span><span class="name">LALAL.AI</span><span class="tag">Lead/backing vocal split for Harmony Lab. ~190 songs / $50.</span><span class="footer"><span>API</span><span>open</span></span></a>
     <a class="tile" href="https://console.anthropic.com" target="_blank"><span class="icon">🧠</span><span class="name">Anthropic Claude</span><span class="tag">GrooveMate brain — context-aware suggestions in app.</span><span class="footer"><span>API</span><span>open</span></span></a>
@@ -474,7 +554,7 @@
 <!-- ===================================================================== -->
 <!-- EXTERNAL APIs -->
 <!-- ===================================================================== -->
-<section class="zone zone-external">
+<section id="external" class="zone zone-external">
   <div class="zone-head">
     <span class="badge">07</span>
     <h2>External APIs (data sources)</h2>
@@ -508,7 +588,7 @@
   <div class="subsection">
     <div class="subsection-title">Communications &amp; utilities</div>
     <div class="tiles">
-      <a class="tile" href="https://console.twilio.com" target="_blank"><span class="icon">💬</span><span class="name">Twilio SMS</span><span class="tag">Layer 3 notifications. A2P 10DLC campaign in carrier review.</span><span class="footer"><span>SMS</span><span>open</span></span></a>
+      <a class="tile" href="https://console.twilio.com" target="_blank"><span class="badge-status pending">in review</span><span class="icon">💬</span><span class="name">Twilio SMS</span><span class="tag">Layer 3 notifications. A2P 10DLC campaign in carrier review (typically 1-5 business days).</span><span class="footer"><span>SMS</span><span>open</span></span></a>
       <a class="tile" href="https://iproyal.com" target="_blank"><span class="icon">🛡️</span><span class="name">IPRoyal Residential Proxy</span><span class="tag">Bypasses YouTube bot detection from cloud IPs.</span><span class="footer"><span>proxy</span><span>open</span></span></a>
       <a class="tile" href="https://goqr.me/api" target="_blank"><span class="icon">▦</span><span class="name">QR Server</span><span class="tag">QR code generation (sharing, onboarding).</span><span class="footer"><span>free</span><span>open</span></span></a>
     </div>
@@ -518,7 +598,7 @@
 <!-- ===================================================================== -->
 <!-- DATA FLOWS -->
 <!-- ===================================================================== -->
-<section class="zone" style="--zone-color: var(--accent)">
+<section id="flows" class="zone" style="--zone-color: var(--accent)">
   <div class="zone-head">
     <span class="badge" style="background: var(--accent)">08</span>
     <h2>Key data flows</h2>
@@ -579,7 +659,7 @@
 <!-- ===================================================================== -->
 <!-- DREW'S WORKSTATION -->
 <!-- ===================================================================== -->
-<section class="zone zone-workstation">
+<section id="workstation" class="zone zone-workstation">
   <div class="zone-head">
     <span class="badge">09</span>
     <h2>Drew's Workstation</h2>
@@ -630,7 +710,7 @@
 <!-- ===================================================================== -->
 <!-- TOOLING -->
 <!-- ===================================================================== -->
-<section class="zone zone-tooling">
+<section id="tooling" class="zone zone-tooling">
   <div class="zone-head">
     <span class="badge">10</span>
     <h2>Local Tooling (CLIs)</h2>
