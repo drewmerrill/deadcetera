@@ -1,8 +1,151 @@
-# `groovelinx_store.js` Split — Phase 2 Closure-Coupling Audit
+# `groovelinx_store.js` Split — Architectural Map
 
-_Generated 2026-05-08, against build `20260508-153813`._
+_Originally generated 2026-05-08 (early PM, build `20260508-153813`) as a phase-2 closure-coupling audit. **Final-state map appended 2026-05-08 (late PM, build `20260508-230928`) after P1.1 phases 1–29 shipped — store reduced from 6,814 → 1,036 lines (-85%) across 21 modules.**_
 
-Companion to [`optimization_plan.md`](./optimization_plan.md) §P1.1. Phase 1 (decision-language engines) shipped 2026-05-08 build `20260508-150622`. This audit drives Phase 3+ slice selection by mapping which functions can move out via **move-function-and-state-together** vs which need a **shared private namespace** (e.g. `window._GLStoreInternal`).
+Companion to [`optimization_plan.md`](./optimization_plan.md) §P1.1.
+
+---
+
+## Final State (2026-05-08, build `20260508-230928`)
+
+`groovelinx_store.js` is now **1,036 lines** of foundational scaffolding:
+
+- Canonical active statuses (SYSTEM LOCK §7d)
+- `_state` master object (now small — most keys lifted into modules)
+- Event bus (`subscribe` / `emit`)
+- Dependency readiness gate (`ready` / `markReady` / `isReady`)
+- Helpers (`_db` / `_bp` / `_now` / `_lbdf` / `_sbdf`)
+- songs_v2 dual-path helpers (`_v2Path` / `_loadV2` / `_saveV2` / `_loadDual` / `_saveDual`)
+- Songs core (`rebuildSongIndexes`, `getSongById`, `getSongsByTitle`, `getSongByTitle`, `getSongIdByTitle`, `getSongs`, `loadSongDetail`)
+- Song detail writes + canonical metadata validation (`updateSongField`, `saveSongData`)
+- Field history (`_appendFieldHistory`, `loadFieldMeta`)
+- Readiness writes (`saveReadiness`, `getReadiness`)
+- Current Timeline (`setCurrentTimeline`, `getCurrentTimeline`)
+- `loadRehearsal`
+- Full cache accessors (`getAllReadiness`, `getAllStatus`, `getStatus`)
+- UI State (`setActiveLens`, `getActiveLens`)
+- Debug introspection (`getState`)
+- Public API export object
+- Centralized timer cleanup (`_glCleanup` + product-mode glue)
+
+Everything else moved into the **21 sibling modules** below. All attach to `window.GLStore` at their own load time and read other modules' methods via `window.GLStore.X` cross-module lookups at call time.
+
+### Module map
+
+| # | Module | Lines | Phase | What it owns |
+|---|---|---|---|---|
+| 1 | `gl-decision-language.js` | ~166 | 1 | `GLStatus` / `GLUrgency` / `GLPriority` / `GLScheduleQuality` decision engines (window IIFEs) |
+| 2 | `gl-leader.js` | ~330 | 7 | Band Sync V1 (leader/follower heartbeat). State: `_syncSession*` (was 4 `_state.sync*` keys) |
+| 3 | `gl-groovemate-memory.js` | ~85 | 3 | Groovemate decision/dismissal/accepted log (localStorage 20-cap) |
+| 4 | `gl-status-badge.js` | ~120 | 4 | Global online/offline status badge + window listeners + own beforeunload cleanup |
+| 5 | `gl-onboarding.js` | ~258 | 5 | Band activation / onboarding flow |
+| 6 | `gl-intelligence.js` | ~310 | 6 | `getSongIntelligence` / `getSongGaps`. Subscribes to `readinessChanged` + `songFieldUpdated` |
+| 7 | `gl-focus.js` | ~128 | 8 | **SYSTEM LOCK §7b** — `getNowFocus` + `invalidateFocusCache` + `focusChanged` emit. Cross-reads `getBandLove`, `getAudienceLove`, `getSetlists`, `getGigs`, `getSongPriority`, `ACTIVE_STATUSES` |
+| 8 | `gl-product-mode.js` | ~59 | 9 | `setProductMode` / `getProductMode` / `isPageVisibleInMode` |
+| 9 | `gl-love.js` | ~371 | 10 | Band/Audience/Personal love + disagreement + `deriveSongStatus`. Owns 4 caches + preload retry timer |
+| 10 | `gl-rehearsal-agenda.js` | ~828 | 11 | Agenda + session + scorecard + practice stats. Subscribes to `transitionIntelligenceChanged` |
+| 11 | `gl-band-admin.js` | ~238 | 12 | Band invitations + song voting + library health |
+| 12 | `gl-locations.js` | ~223 | 13 | Venues + rehearsal locations |
+| 13 | `gl-rehearsal-timeline.js` | ~269 | 14 | Segmentation + pocket-time metric + history |
+| 14 | `gl-data-audit.js` | ~758 | 15 | Gig/setlist/calendar audit + migration (console-driven debug) |
+| 15 | `gl-rehearsal-intel.js` | ~404 | 16 | `getRehearsalIntelligence` + `getAttemptIntelligence` + dashboard workflow state |
+| 16 | `gl-roles-coverage.js` | ~212 | 17 | `BAND_ROLES` + backup players + gig coverage. Exports `mapMemberToRoleIds` for `gl-schedule-blocks` |
+| 17 | `gl-rehearsal-scheduling.js` | ~519 | 18 | Cadence + history detection + scoring + recommendations + self-test. Reads `computeDateStrength` + `getScheduleBlocks` cross-module |
+| 18 | `gl-band-metrics.js` | ~129 | 19 | Activity log + page view metrics + retention |
+| 19 | `gl-transition-intelligence.js` | ~141 | 20 | Per-pair confidence + practice tracking. Emits `transitionIntelligenceChanged` |
+| 20 | `gl-schedule-blocks.js` | ~312 | 21 | Schedule Blocks (replaces blocked_dates). 9 public methods + `computeDateStrength`. Reads `BAND_ROLES`+`mapMemberToRoleIds` from gl-roles-coverage |
+| 21 | `gl-collection-caches.js` | ~153 | 22 | Setlists + Gigs caches + SWR localStorage band-data cache |
+| 22 | `gl-status-migration.js` | ~162 | 23 | `auditLegacyStatuses` + `migrateLegacyStatuses` (console debug) |
+| 23 | `gl-rehearsal-recordings.js` | ~148 | 24 | Pocket/Groove Analysis + Practice Mixes |
+| 24 | `gl-song-coach-signal.js` | ~145 | 25 | `getSongCoachSignal` + `_activityIndex` + `_upcomingSongs`. Fixes pre-existing silent `_members()` bug |
+| 25 | `gl-shell-state.js` | ~281 | 26 | Page/panel/app-mode/now-playing/live-rehearsal/current-band/snapshot-range/restore-snapshot + 4 derived selectors |
+| 26 | `gl-song-value.js` | ~113 | 27 | `getSongPriority`/`getSongGap`/`getSongSignals`/`getRehearsalPriorities`/`getBandPreferences`/`avgReadiness` |
+| 27 | `gl-selection.js` | ~135 | 28 | Active Song + Selection cluster (`setActiveSong`/`selectSong`/`clearSong`/`getSelectedSong`/scroll cache) |
+| 28 | `gl-cache-setters.js` | ~79 | 29 | `setStatus`/`setAllStatus`/`setReadiness`/`setAllReadiness` write-side for legacy globals |
+
+> Module-count note: phase 2 was a **doc-only audit** (this file's original generation) with no code move, so 21 phases of code work produced 28 numbered modules. The `gl-decision-language.js` engines existed at the file tail before P1.1; phase 1 moved them to a sibling file (their first extraction).
+
+### `_state` keys lifted (Tier B extractions)
+
+These keys no longer exist on the store's `_state` object — they're module-private inside the named module:
+
+| Key (was `_state.X`) | Now lives in |
+|---|---|
+| `productMode` | `gl-product-mode.js` |
+| `syncSession` / `syncRole` / `syncFollowing` / `syncHeartbeat*` (4 keys) | `gl-leader.js` |
+| `transitionIntelligence` | `gl-transition-intelligence.js` |
+| `setlistCache` / `gigsCache` | `gl-collection-caches.js` |
+| `grooveCache` / `mixCache` / `mixCacheTs` | `gl-rehearsal-recordings.js` |
+| `activeSongId` | `gl-selection.js` |
+| `activePage` / `rightPanelMode` / `navCollapsed` / `mobilePanelState` (dead) / `appMode` / `nowPlayingSongId` / `liveRehearsalSongId` / `currentBandId` / `currentSnapshotRange` / `restoreState` (10 keys) | `gl-shell-state.js` |
+| `songPracticeStats` (hydrated/persisted there) | `gl-rehearsal-agenda.js` |
+| `bandLoveCache` / `audienceLoveCache` / `personalBandLoveCache` / `personalAudienceLoveCache` (had been `_*Cache` closure vars, not `_state.*`) | `gl-love.js` |
+
+### Cross-module read graph (load-order independent — all reads at runtime via `window.GLStore.X`)
+
+```
+gl-focus.js                  → gl-love (getBandLove/getAudienceLove)
+                               gl-collection-caches (getSetlists/getGigs)
+                               gl-song-value (getSongPriority)
+                               core (ACTIVE_STATUSES)
+
+gl-intelligence.js           → core (getAllReadiness/getAllStatus/getSongs)
+                               gl-collection-caches (getSetlists)
+
+gl-rehearsal-agenda.js       → core (loadRehearsal et al.)
+                               (subscribes to transitionIntelligenceChanged from gl-transition-intelligence)
+
+gl-rehearsal-scheduling.js   → gl-schedule-blocks (getScheduleBlocks/computeDateStrength)
+                               gl-roles-coverage (BAND_ROLES/mapMemberToRoleIds — indirect via gl-schedule-blocks)
+
+gl-schedule-blocks.js        → gl-roles-coverage (BAND_ROLES/mapMemberToRoleIds)
+
+gl-song-value.js             → gl-love (getBandLove/getAudienceLove)
+                               gl-intelligence (deriveSongStatus)
+                               core (getReadiness)
+
+gl-song-coach-signal.js      → gl-rehearsal-intel (getAttemptIntelligence)
+                               gl-intelligence (getSongIntelligence/getSongGaps)
+                               core (getAllReadiness/getAllStatus)
+                               gl-collection-caches (getSetlists)
+
+gl-shell-state.js            → gl-selection (getSelectedSong)
+
+gl-selection.js              → gl-shell-state (setNowPlaying)
+                               core (getSongs)
+```
+
+All reads are guarded with `if (GL && GL.X)` patterns — no hard load-order dependency. The script tags load in the order: store → all gl-* modules → feature files. As long as the store loads first, the graph resolves.
+
+### SYSTEM LOCK contracts (CLAUDE.md §7) — preserved
+
+- **§7a — GL_PAGE_READY lifecycle:** `_navSeq` counter remains in `js/ui/navigation.js`. `gl-shell-state.setActivePage` is informational mirror only; navigation.js still drives all 7 page-ready transitions.
+- **§7b — focusChanged event model:** `gl-focus.js` owns `invalidateFocusCache` + `focusChanged` emit. Home/Songs/Rehearsal subscribers unchanged. 30s TTL preserved.
+- **§7c — Firebase error filtering:** unchanged — still in `index.html`.
+- **§7d — Active status centralization:** `ACTIVE_STATUSES` + `isActiveSong` remain in `groovelinx_store.js`. No inline duplicates anywhere.
+
+### Patterns codified across the 28 extractions
+
+1. **IIFE attaches to `window.GLStore` at load.** Every module ends with `if (window.GLStore) { window.GLStore.X = X; ... }`.
+2. **Cross-module reads via `window.GLStore.X` at call time** — never at module load time. Load order doesn't matter for runtime correctness.
+3. **Local helper duplication** (`_db`, `_bp`, `_now`, `_emit`) is preferred over threading them through GLStore. Keeps each module self-contained.
+4. **Subscribe to events in the IIFE body** for modules that need cache invalidation (`gl-rehearsal-agenda` → `transitionIntelligenceChanged`; `gl-intelligence` → `readinessChanged` + `songFieldUpdated`).
+5. **Pre-push grep audit** for bare-identifier references caught real orphans on phases 11, 16, 17, 19. Required protocol going forward.
+6. **Atomic build bump** across `version.json` + `index.html` + `index-dev.html` + `service-worker.js` per push.
+7. **Tier-B state lift** (move-with-its-state) preferred over shared `_GLStoreInternal` namespace. Used on every closure-private state cluster — no shared namespace was ever needed.
+8. **One commit per phase** — easy to bisect.
+
+### Why we stopped at 1,036 lines
+
+Drew called the right judgment to halt at phase 29. The remaining content is foundational layers (event bus, dep-readiness gate, songs index, songs_v2 dual-path, song detail writes, readiness writes, full cache accessors) where every other module reads from. Splitting further would mean shaving ~80 lines across 3 trivially-small modules (`gl-field-history`, `gl-current-timeline`, `gl-active-lens`) at the cost of 3 more cross-module bridges. Net cost > benefit.
+
+The next P1 thread should target a **different concern** — handoff doc identifies candidates.
+
+---
+
+## Original Phase 2 Closure-Coupling Audit (preserved for reference)
+
+_Generated 2026-05-08, against build `20260508-153813`._ The audit below drove the slice-selection decisions for phases 3–29.
 
 ---
 

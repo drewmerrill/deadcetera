@@ -12,7 +12,7 @@ A minute-by-minute account of what happens between "user opens app.groovelinx.co
 - **8 distinct boot phases** between "browser parses index.html" and "Songs page renders."
 - **3 known async kickoff points** that race each other (Firebase init, Google OAuth init, render restore).
 - **1 boot watchdog** at 5s after `DOMContentLoaded` that force-shows Home if nothing has rendered.
-- **Largest hot spots** are in `groovelinx_store.js` (6.8k lines, multiple setIntervals), `home-dashboard.js` (106 iterations counted), and the calendar/rehearsal feature files (7.8k + 7.1k lines each).
+- **Largest hot spots** are now in `home-dashboard.js` (5.7k lines, 106 iterations counted) and the calendar/rehearsal feature files (7.8k + 7.1k lines each). _`groovelinx_store.js` is no longer a hot spot — split from 6.8k → 1,036 lines on 2026-05-08 across 28 sibling `gl-*.js` modules; see `specs/store_split_audit.md` §"Final State"._
 
 ---
 
@@ -72,7 +72,7 @@ This is the first **heavy parse** chunk. Many engines, all parsed before any ren
 | 7 | `rehearsal_scorecard_engine.js` | ~300 | Scores rehearsal completion. |
 | 8 | `rehearsal_segmentation_engine.js` | ~400 | Splits rehearsal recordings into per-song segments. |
 | 9 | `rehearsal_story_engine.js` | ~500 | Narrates rehearsal results into prose. |
-| 10 | `groovelinx_store.js` | **6,792** | The state cache + 80+ helper methods + multiple `setInterval` for sync heartbeat. |
+| 10 | `groovelinx_store.js` | **1,036** _(was 6,792 pre-split — 2026-05-08)_ | Foundational scaffolding: canonical statuses (SYSTEM LOCK §7d), `_state` master object, event bus, dep-readiness gate, helpers, songs_v2 dual-path, songs core, song detail writes, readiness writes, full cache accessors. Sibling `gl-*.js` modules (28 total, listed in `specs/store_split_audit.md` §"Final State") attach the rest of the GLStore facade at their own load time. |
 | 11 | `rehearsal-analysis-pipeline.js` | ~500 | Orchestrates segmentation → scorecard → story. |
 | 12 | `song_matching_engine.js` | 1,160 | Fuzzy song-title matching. |
 | 13 | `recording-analyzer.js` | 2,912 | **Pocket Meter / Metronome.** Web Audio AnalyserNode + custom PLL phase-lock. |
@@ -81,7 +81,7 @@ This is the first **heavy parse** chunk. Many engines, all parsed before any ren
 | 16 | `gl-voice-coach.js` | ~400 | Voice coaching state. |
 | 17 | `gl-plans.js` | ~300 | Plans framework + Stripe scaffold. |
 
-**Phase 4 hot spot:** `groovelinx_store.js` is **the single largest core file at 6.8k lines.** Loading it is fast (browsers parse JS quickly), but its top-level execution starts several `setInterval`s — leader-heartbeat sync, stale-check, status-badge timer. Each one is a small leak waiting to happen if cleanup isn't perfect.
+**Phase 4 hot spot (historical):** `groovelinx_store.js` was the single largest core file at 6.8k lines pre-2026-05-08. Top-level execution started several `setInterval`s — leader-heartbeat sync, stale-check, status-badge timer — each a small leak waiting to happen if cleanup wasn't perfect. **Resolved 2026-05-08 by P1.1 store split** (28 sibling modules, see `specs/store_split_audit.md` §"Final State"); the leader-heartbeat now lives in `gl-leader.js`, the status-badge timer in `gl-status-badge.js`, the love-preload retry in `gl-love.js` — each module owns its own `beforeunload` cleanup. The store at 1,036 lines is no longer the file-size bottleneck.
 
 ---
 
@@ -256,7 +256,7 @@ By cumulative parse + execute cost on cold start.
 1. **`app.js` (14,946 lines)** — primary entry. Contains a lot of code that could move to feature files. Refactoring is high-risk; documented in handoff Wave 3.
 2. **`calendar.js` (7,864 lines)** — single largest feature file. Heavy with OAuth + sync logic that could split into `gl-calendar-sync.js` further.
 3. **`rehearsal.js` (7,151 lines)** — multi-tab feature with embedded recording/analysis logic.
-4. **`groovelinx_store.js` (6,792 lines)** — central state. Hard to split because everything depends on it.
+4. **`groovelinx_store.js` (1,036 lines as of 2026-05-08, was 6,792)** — central state, now reduced to foundational scaffolding. **Split complete:** 28 sibling `gl-*.js` modules now own the formerly-monolithic clusters. See `specs/store_split_audit.md` §"Final State".
 5. **`home-dashboard.js` (6,338 lines)** — landing page. **106 iteration constructs** observed (`for`/`forEach`/`Object.keys.forEach`). Hot spot for first-paint performance.
 6. **`gl-calendar-sync.js` (5,967 lines)** — phase-1/phase-2 sync, freebusy, hidden-event detection.
 7. **`song-detail.js` (4,611 lines)** — hosts the Stems lens, Harmony Lab UI shell, readiness panel.

@@ -154,7 +154,16 @@ js/core/
   firebase-service.js     — Firebase helpers + GOOGLE_DRIVE_CONFIG
   worker-api.js           — Worker API helpers
   utils.js                — shared helpers, song runtime estimation
-  groovelinx_store.js     — shared state layer (gigs, status, readiness, setlists, schedule blocks)
+  groovelinx_store.js     — foundational state scaffolding: canonical statuses (SYSTEM LOCK §7d), _state, event bus, dep-readiness gate, helpers, songs_v2 dual-path, songs core, song detail writes, readiness writes, full cache accessors (1,036 lines as of 2026-05-08, down from 6,814)
+  gl-*.js (28 sibling modules) — feature-specific GLStore extensions, all attach to window.GLStore at load. Full architectural map in specs/store_split_audit.md §"Final State"
+    gl-decision-language.js, gl-leader.js, gl-groovemate-memory.js, gl-status-badge.js,
+    gl-onboarding.js, gl-intelligence.js, gl-focus.js, gl-product-mode.js, gl-love.js,
+    gl-rehearsal-agenda.js, gl-band-admin.js, gl-locations.js, gl-rehearsal-timeline.js,
+    gl-data-audit.js, gl-rehearsal-intel.js, gl-roles-coverage.js, gl-rehearsal-scheduling.js,
+    gl-band-metrics.js, gl-transition-intelligence.js, gl-schedule-blocks.js,
+    gl-collection-caches.js, gl-status-migration.js, gl-rehearsal-recordings.js,
+    gl-song-coach-signal.js, gl-shell-state.js, gl-song-value.js, gl-selection.js,
+    gl-cache-setters.js
 js/ui/
   navigation.js           — showPage() routing
   gl-spotlight.js         — spotlight walkthrough system (registry, prepare hooks)

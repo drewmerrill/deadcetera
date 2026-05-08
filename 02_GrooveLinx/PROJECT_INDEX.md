@@ -64,7 +64,8 @@ deadcetera/
 ├── js/
 │ ├── core/
 │ │ ├── firebase-service.js
-│ │ ├── groovelinx_store.js
+│ │ ├── groovelinx_store.js  (1,036 lines as of 2026-05-08; split into 28 sibling gl-*.js modules — see specs/store_split_audit.md §"Final State")
+│ │ ├── gl-*.js  (28 modules — gl-decision-language, gl-leader, gl-groovemate-memory, gl-status-badge, gl-onboarding, gl-intelligence, gl-focus, gl-product-mode, gl-love, gl-rehearsal-agenda, gl-band-admin, gl-locations, gl-rehearsal-timeline, gl-data-audit, gl-rehearsal-intel, gl-roles-coverage, gl-rehearsal-scheduling, gl-band-metrics, gl-transition-intelligence, gl-schedule-blocks, gl-collection-caches, gl-status-migration, gl-rehearsal-recordings, gl-song-coach-signal, gl-shell-state, gl-song-value, gl-selection, gl-cache-setters)
 │ │ ├── utils.js
 │ │ ├── worker-api.js
 │ │ └── calendar-export.js
