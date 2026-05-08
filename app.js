@@ -823,8 +823,12 @@ document.addEventListener('DOMContentLoaded', function() {
             // Re-render song list so readiness bars fill in (they render inline from cache)
             if (typeof renderSongs === 'function') { console.log('📊 Re-rendering songs with readiness'); requestAnimationFrame(function() { renderSongs(); }); }
             // Re-render dashboard now that readiness data is available (Practice Radar needs it)
+            // P1.2 (2026-05-08): invalidateHomeCache() ALREADY calls renderHomeDashboard
+            // when home is the visible page (see home-dashboard.js:101-108). The explicit
+            // second call here was firing a duplicate render and was a major contributor
+            // to the observed 1874ms→4758ms double-paint. Coalescer in home-dashboard.js
+            // would dedupe this anyway, but dropping the redundant call is cleaner.
             if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
-            if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
         });
         // DNA preload now runs after loadBandSongLibrary (see above)
         // This block is kept for the DNA bulk load timing log only

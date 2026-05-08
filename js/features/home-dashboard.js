@@ -44,8 +44,16 @@ var _BANNER_DISMISS_KEY = 'gl_home_banner_dismissed';
 /**
  * Main entry point. Called by navigation.js onShow for the 'home' page.
  * Renders skeleton immediately, then loads data and populates cards.
+ *
+ * P1.2 (2026-05-08): wrapped with a dirty-flag coalescer. Multiple renders
+ * fired in close succession used to each do a full data load + paint —
+ * trace caught one boot doing 1874ms then 4758ms, ~2.9s of duplicated work.
+ * Now: if a render is in-flight when another is requested, mark dirty and
+ * await the same promise; on completion, run exactly one follow-up render.
+ * CC wrapper at home-dashboard-cc.js:31 is fine with this because for the
+ * `hd-system` layout it short-circuits to idempotent _ccInjectStyles() only.
  */
-window.renderHomeDashboard = async function renderHomeDashboard() {
+async function _hdRenderInternal() {
     var _hdRenderT0 = performance.now();
     console.log('[PERF] renderHomeDashboard start ' + Math.round(_hdRenderT0) + 'ms');
     var container = document.getElementById('page-home');
@@ -71,6 +79,37 @@ window.renderHomeDashboard = async function renderHomeDashboard() {
     } catch (err) {
         console.warn('[Home] Load error:', err);
         container.innerHTML = _renderErrorState();
+    }
+}
+
+var _hdInFlight = null;
+var _hdDirty = false;
+
+window.renderHomeDashboard = async function renderHomeDashboard() {
+    if (_hdInFlight) {
+        // A render is already running. Mark dirty so we run exactly one
+        // follow-up render after the in-flight one finishes, then return
+        // the same in-flight promise so concurrent callers all resolve
+        // when SOME render has completed.
+        _hdDirty = true;
+        console.log('[PERF] renderHomeDashboard coalesced (in-flight, dirty=true)');
+        return _hdInFlight;
+    }
+    _hdDirty = false;
+    _hdInFlight = _hdRenderInternal();
+    try {
+        await _hdInFlight;
+    } finally {
+        _hdInFlight = null;
+        if (_hdDirty) {
+            _hdDirty = false;
+            // Schedule one follow-up render. requestAnimationFrame batches
+            // it onto the next paint tick so any further synchronous calls
+            // in the current task can collapse before the follow-up fires.
+            (window.requestAnimationFrame || function(cb) { setTimeout(cb, 16); })(function() {
+                if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();
+            });
+        }
     }
 };
 

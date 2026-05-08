@@ -291,26 +291,64 @@ Re-export everything from `groovelinx_store.js` for backwards compat during migr
 
 ---
 
-### P1.2 — Reduce `home-dashboard.js` iteration cost _(reinforced 2026-05-08)_
+### ✅ P1.2 (phase 1) — Coalesce home-dashboard double-render _(SHIPPED 2026-05-08, build `20260508-134443`)_
 
-**Problem:** 6,338 lines and **106 iteration constructs** counted (for/forEach/Object.keys.forEach). Many traverse all songs (~400 entries) on every render. Home page is the first impression — this matters.
+**Problem:** Trace caught the home dashboard rendering **twice** on a single boot — first at 1874ms, second at 4758ms — paying ~2.9s of duplicated O(n) iteration over `allSongs`. The dashboard has 6,338 lines and 106 iteration constructs; doing it twice is the expensive part.
 
-**New observation (2026-05-08, P0.2 trace):** `home-dashboard` rendered **twice** on a single deep-link boot — first at 1874ms, second at 4758ms (i.e., the second render took 2.9s longer because more data had landed). Net wasted work: at least one full pass of the 106 iteration constructs. Likely cause: `focusChanged` (or another invalidator) fires once Firebase data finishes hydrating, after the first render already completed against stale-but-renderable state.
+**Audit (2026-05-08):** Two distinct sources of double-render found.
 
-**Solution:**
-1. Memoize per-band aggregates (gap counts, focus picks) with `focusChanged` invalidation. Already partially done; expand.
-2. Extract the home page into focused render sub-functions and short-circuit when their inputs haven't changed.
-3. **Add a render-coalescer** at the entry point: drop the first render if a second is already pending in the same task tick (or within a debounce window). The whole point is to avoid paying for renders no human ever saw.
-4. Move heavy aggregation off the render thread via `requestIdleCallback`.
+**Source 1 — explicit redundant call.** `app.js:826-827`:
+```js
+if (typeof window.invalidateHomeCache === 'function') window.invalidateHomeCache();
+if (typeof window.renderHomeDashboard === 'function') window.renderHomeDashboard();  // ← redundant
+```
+But `invalidateHomeCache` ALREADY calls `renderHomeDashboard` when home is the visible page (`home-dashboard.js:101-108`). The explicit second call was a guaranteed double-render. Removed.
+
+**Source 2 — race between async invalidators.** Multiple post-load callbacks (readiness preload, focusChanged, members ready, song lib ready) can each fire `renderHomeDashboard` while a previous render is still awaiting `_homeDataLoad()`. No coalescing existed — each render did the full data load + paint independently.
+
+**What shipped:**
+
+```js
+// home-dashboard.js — wrap the inner render with a dirty-flag coalescer
+async function _hdRenderInternal() { /* original body */ }
+
+var _hdInFlight = null;
+var _hdDirty = false;
+
+window.renderHomeDashboard = async function renderHomeDashboard() {
+    if (_hdInFlight) {
+        _hdDirty = true;
+        console.log('[PERF] renderHomeDashboard coalesced (in-flight, dirty=true)');
+        return _hdInFlight;
+    }
+    _hdDirty = false;
+    _hdInFlight = _hdRenderInternal();
+    try { await _hdInFlight; }
+    finally {
+        _hdInFlight = null;
+        if (_hdDirty) {
+            _hdDirty = false;
+            requestAnimationFrame(function() { window.renderHomeDashboard(); });
+        }
+    }
+};
+```
+
+**Why a single follow-up render after dirty signals:** the first render finished against the latest-available data at the time it started. If new data landed during it (`_hdDirty = true`), we want exactly ONE more render to reflect that. Multiple invalidations during one in-flight render still collapse to a single follow-up.
+
+**Why this is safe with the CC wrapper at `home-dashboard-cc.js:31`:** for the current `hd-system` layout, CC's wrapper hits an early-return at line 44 and only runs idempotent `_ccInjectStyles()` (injects a single `<style>` tag, deduped by id). Concurrent CC wrapper calls don't cause DOM duplication.
 
 **Acceptance:**
-- Home page first paint on iPhone 4G < 800ms (was ~1.2s observed)
-- No repeated O(n) scans of `allSongs` within a single render
-- Single render per boot (no observed double-render in trace)
+- ✅ Single explicit double-call at app.js:826-827 removed
+- ✅ Coalescer collapses concurrent renders into one + at most one follow-up
+- ✅ New PERF log `[PERF] renderHomeDashboard coalesced` makes the dedup visible in traces
+- 🟡 Confirm in next trace: second `[PERF] renderHomeDashboard start` should not appear within ~3s of the first
 
-**Effort:** 1-2 days.
+**Phase 2 (deferred to a future P1.2.x or P1.3 follow-up):** The 106 iteration constructs over `allSongs` haven't been memoized yet. Coalescing is the bigger win (single boot saved 2.9s); per-render memoization of band aggregates can land later when home-dashboard.js is split per P1.6.
 
-**Risk:** Low if memoization invalidation is right.
+**Effort:** Actual ~30 min once the audit located the redundant call site. The coalescer pattern was straightforward; testing CC's wrapper for double-injection risk took the most time.
+
+**Risk:** Low. The coalescer is at the outermost render level; CC's wrapper already idempotent for the live layout. Worst case: a render is scheduled-but-not-yet-fired when another arrives — both await the same in-flight promise, and one follow-up is queued, exactly as designed.
 
 ---
 
