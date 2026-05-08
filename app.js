@@ -661,28 +661,39 @@ function showPWAInstallBanner() { _pwaShowInstallBanner(); }
 function hidePWAInstallBanner() { _pwaRemoveBanner('gl-pwa-install'); }
 
 // ── Handle deep-link shortcuts (?page=xxx from manifest shortcuts) ──────────
-// P0.2 (2026-05-08): replaced fixed 800ms timer with event-driven readiness.
-// Old behavior: setTimeout(showPage, 800) — magic number that was too long on
-// fast networks (visible blank flash) and too short on slow ones (deep-linked
-// page rendered before data was loaded → empty cards).
-// New behavior: wait for firebase + members marked ready in GLStore. members
-// is marked ready after the auth gate runs and band roster loads, so it
-// encompasses both data + identity readiness. 5s timeout matches the boot
-// watchdog so worst-case behavior is the same as today.
+// P0.2 (2026-05-08, revised after first trace): hybrid race pattern.
+//
+// Original code:    fixed setTimeout(showPage, 800).
+// First fix:        waited only on members-ready (correct data, but blank
+//                   shell visible 2.6s on a typical trace — worse perceived
+//                   latency than the 800ms baseline).
+// Hybrid fix (now): race 800ms ceiling vs members-ready, whichever fires
+//                   first triggers showPage. Pages already re-render when
+//                   data fills in via GLStore events, so the 800ms shell
+//                   render is harmless — it shows real chrome immediately,
+//                   and any empty-data areas hydrate when GLStore.markReady
+//                   fires.
 window.addEventListener('DOMContentLoaded', () => {
     const params = new URLSearchParams(window.location.search);
     const startPage = params.get('page');
     if (!startPage) return;
-    if (typeof GLStore !== 'undefined' && GLStore.ready) {
-        var _t0 = performance.now();
-        GLStore.ready(['firebase', 'members'], 5000).then(function() {
-            console.log('[PERF] deep-link ready ' + Math.round(performance.now() - _t0) + 'ms (was fixed 800ms)');
-            showPage(startPage);
-        });
-    } else {
-        // Fallback for very early loads where GLStore isn't initialized yet.
-        setTimeout(function() { showPage(startPage); }, 800);
+
+    var _rendered = false;
+    var _t0 = performance.now();
+    function renderOnce(reason) {
+        if (_rendered) return;
+        _rendered = true;
+        console.log('[PERF] deep-link render ' + Math.round(performance.now() - _t0) + 'ms (' + reason + ')');
+        showPage(startPage);
     }
+
+    // Path A: data ready before 800ms → render with full data (best case).
+    if (typeof GLStore !== 'undefined' && GLStore.ready) {
+        GLStore.ready(['firebase', 'members'], 5000).then(function() { renderOnce('ready'); });
+    }
+    // Path B: 800ms ceiling fired first → render shell, pages hydrate later
+    //         when GLStore events fire. Matches old behavior on slow loads.
+    setTimeout(function() { renderOnce('800ms ceiling'); }, 800);
 });
 
 document.addEventListener('DOMContentLoaded', function() {

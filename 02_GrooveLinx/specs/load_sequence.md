@@ -240,7 +240,7 @@ These are real races — observed or strongly suspected based on code patterns.
 | # | Race | Why it can fire | Symptom | Mitigation |
 |---|---|---|---|---|
 | 1 | Firebase init vs first read | Firebase SDK loads async; first `firebaseDB.ref()` call can fire before SDK ready | Empty data flash, then real data | The `loadScript()` wrapper queues until ready; mostly handled |
-| 2 | ~~`showPage(startPage)` 800ms timer vs OAuth flow~~ | _Fixed 2026-05-08 build `20260508-121912`_ — replaced with `GLStore.ready(['firebase','members'], 5000)`. `members` ready signal encompasses both data + identity readiness. Defensive 800ms fallback retained for the GLStore-not-loaded edge case. | (was: wrong-band data flash) | **CLOSED** — P0.2 |
+| 2 | ~~`showPage(startPage)` 800ms timer vs OAuth flow~~ | _Fixed 2026-05-08 (hybrid build `20260508-122950`)_ — first attempted pure event-driven via `GLStore.ready(['firebase','members'], 5000)`, but trace showed 2.6s blank shell (worse than old fixed 800ms). Pivoted to **hybrid race**: render shell at 800ms ceiling OR earlier if `firebase + members` ready first, whichever fires first wins. Existing `focusChanged` subscriptions hydrate the shell when data lands. Defensive `_rendered` guard ensures only one render per boot. | (was: wrong-band data flash) | **CLOSED** — P0.2 |
 | 3 | Render-state flags vs concurrent navigation | User taps Songs → Rehearsal quickly; both renders kick off; `_navSeq` guard usually catches | UI flickers, half-rendered states | `_navSeq` lifecycle is system-locked per CLAUDE.md |
 | 4 | Service worker update vs in-flight requests | SW updates every 5 min; if a fetch is mid-flight when SW replaces itself, the request can complete against the old cache | Stale data after a deploy | Version cache-busting via `?v={build}` query strings |
 | 5 | `gl-audio-session.js` vs first sound | If user taps Stems before audio context is initialized, first play can silent-fail | "Tap to start" overlay watchdog catches this for setlist player; not for stems | Same fix pattern (gesture-arming) could apply to stems |
@@ -263,6 +263,20 @@ By cumulative parse + execute cost on cold start.
 8. **`pocket-meter.js` (3,380 lines)** — Pocket Meter v2 Guided Mode.
 9. **`rehearsal-mode.js` (3,254 lines)** — 5-tab Practice Mode overlay (loaded but lazy-rendered).
 10. **`stage-plot.js` (3,093 lines)** — drag-drop canvas + PDF export.
+
+---
+
+## Observed timings from real traces
+
+These are measured numbers from actual boot traces (Drew's iPhone, 4G/wifi mix). Update this table whenever a new trace is captured.
+
+| Trace date | Build | What was measured | Time | Notes |
+|---|---|---|---|---|
+| 2026-05-08 | `20260508-121912` (P0.2 v1) | `[PERF] deep-link ready` | **2631ms** | Pure event-driven `GLStore.ready(['firebase','members'])`. Worse than old 800ms fixed timer because `members` ready waits for full band roster. |
+| 2026-05-08 | `20260508-121912` | `[PERF] songs-with-dna` | **10103ms** | Songs DNA preload. Largest single hot spot we've measured. Promoted to P1.7. |
+| 2026-05-08 | `20260508-121912` | `home-dashboard` first render | 1874ms | Stale-but-renderable data; first paint. |
+| 2026-05-08 | `20260508-121912` | `home-dashboard` second render | 4758ms | Re-render after data fully hydrated. ~2.9s of duplicated O(n) work — strengthens P1.2. |
+| 2026-05-08 | `20260508-122950` (P0.2 hybrid) | `[PERF] deep-link render` | _expected ≤800ms via ceiling_ | Confirm in next trace. |
 
 ---
 

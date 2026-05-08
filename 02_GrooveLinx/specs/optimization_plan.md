@@ -92,7 +92,7 @@ async function showPage(pageKey) {
 
 ---
 
-### ✅ P0.2 — Race-condition fix on `setTimeout(showPage, 800)` _(SHIPPED 2026-05-08, build `20260508-121912`)_
+### ✅ P0.2 — Race-condition fix on `setTimeout(showPage, 800)` _(SHIPPED 2026-05-08, hybrid build `20260508-122950`)_
 
 **Problem:** `app.js` has `setTimeout(() => showPage(startPage), 800)` to delay initial render until Firebase is ready. 800ms is a magic number — it's too long on fast networks (visible blank flash) and too short on slow ones (race with auth).
 
@@ -145,6 +145,43 @@ if (typeof GLStore !== 'undefined' && GLStore.ready) {
 5000ms timeout matches the boot watchdog. PERF log added so we can compare before/after on real traces. Defensive fallback to old behavior if GLStore isn't loaded (extreme edge case). **Effort: actual ~30 min** (faster than estimated because the readiness primitive already existed).
 
 Scope footnote: this code path only fires for **PWA shortcut deep-links** (`?page=xxx` URL param), not the main initial render. The original optimization plan over-stated the impact — main initial render is governed by separate `_glHeroCheck()` flow which is already event-driven on auth state. So P0.2 is a smaller win than billed but still a real fix.
+
+#### Revised hybrid (2026-05-08, build `20260508-122950`)
+
+First trace from the pure-readiness version showed `[PERF] deep-link ready 2631ms` — i.e., users coming in via PWA shortcut waited **2.6s on a blank shell** for `members` ready. That's slower than the old fixed 800ms. Pure event-driven was over-correction.
+
+Switched to **hybrid race**: render the shell at 800ms (ceiling), or earlier if `firebase + members` ready first. Whichever fires first wins, the other is a no-op via `_rendered` guard.
+
+```js
+window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const startPage = params.get('page');
+    if (!startPage) return;
+    var _rendered = false;
+    var _t0 = performance.now();
+    function renderOnce(reason) {
+        if (_rendered) return;
+        _rendered = true;
+        console.log('[PERF] deep-link render ' + Math.round(performance.now() - _t0) + 'ms (' + reason + ')');
+        showPage(startPage);
+    }
+    if (typeof GLStore !== 'undefined' && GLStore.ready) {
+        GLStore.ready(['firebase', 'members'], 5000).then(function() { renderOnce('ready'); });
+    }
+    setTimeout(function() { renderOnce('800ms ceiling'); }, 800);
+});
+```
+
+The render path itself is responsible for hydrating once data lands (existing `focusChanged` subscriptions handle this on Home / Songs / Rehearsal). So the worst case is "shell at 800ms, real content at 2.6s" — exactly the tradeoff we want versus a 2.6s blank screen.
+
+---
+
+#### Side-effects discovered during P0.2 trace _(new findings — promoted to P1 below)_
+
+The trace that exposed the 2.6s problem also surfaced two bigger issues that were always there but invisible:
+
+1. **Songs DNA preload: `[PERF] songs-with-dna 10103ms`** — DNA computation runs synchronously on boot for every active song. 10s on a typical iPhone profile. Promoted to **P1.7** below.
+2. **Home dashboard double-render: 1874ms then 4758ms** — first render finishes, then something invalidates and we re-run the entire 6,338-line render. Strengthens **P1.2** memoization case.
 
 ---
 
@@ -229,18 +266,22 @@ Re-export everything from `groovelinx_store.js` for backwards compat during migr
 
 ---
 
-### P1.2 — Reduce `home-dashboard.js` iteration cost
+### P1.2 — Reduce `home-dashboard.js` iteration cost _(reinforced 2026-05-08)_
 
 **Problem:** 6,338 lines and **106 iteration constructs** counted (for/forEach/Object.keys.forEach). Many traverse all songs (~400 entries) on every render. Home page is the first impression — this matters.
+
+**New observation (2026-05-08, P0.2 trace):** `home-dashboard` rendered **twice** on a single deep-link boot — first at 1874ms, second at 4758ms (i.e., the second render took 2.9s longer because more data had landed). Net wasted work: at least one full pass of the 106 iteration constructs. Likely cause: `focusChanged` (or another invalidator) fires once Firebase data finishes hydrating, after the first render already completed against stale-but-renderable state.
 
 **Solution:**
 1. Memoize per-band aggregates (gap counts, focus picks) with `focusChanged` invalidation. Already partially done; expand.
 2. Extract the home page into focused render sub-functions and short-circuit when their inputs haven't changed.
-3. Move heavy aggregation off the render thread via `requestIdleCallback`.
+3. **Add a render-coalescer** at the entry point: drop the first render if a second is already pending in the same task tick (or within a debounce window). The whole point is to avoid paying for renders no human ever saw.
+4. Move heavy aggregation off the render thread via `requestIdleCallback`.
 
 **Acceptance:**
 - Home page first paint on iPhone 4G < 800ms (was ~1.2s observed)
 - No repeated O(n) scans of `allSongs` within a single render
+- Single render per boot (no observed double-render in trace)
 
 **Effort:** 1-2 days.
 
@@ -296,6 +337,37 @@ Re-export everything from `groovelinx_store.js` for backwards compat during migr
 **Effort:** 1 day. Mostly mechanical; 4-6 sites to update.
 
 **Risk:** Low.
+
+---
+
+### P1.7 — Defer Songs DNA preload off the boot path _(new finding 2026-05-08)_
+
+**Problem:** During the P0.2 hybrid trace, Songs DNA preload measured **`[PERF] songs-with-dna 10103ms`** — over 10 seconds of boot-blocking work. DNA computation runs synchronously on every active song at startup. With ~400 active songs across the band, this is the single largest hot spot we've measured.
+
+The Phase 9 boot sequence currently treats DNA as a "ready-by" gate for some downstream features, but most surfaces don't actually need DNA on first paint — they need it on first interaction (open Songs, open Rehearsal, etc.).
+
+**Solution:** Move DNA computation off the boot critical path:
+
+1. **Lazy compute on first read** — DNA fields are read via `GLStore.getSongDNA(title)`. Make that function compute-on-demand, cache the result, and return synchronously thereafter.
+2. **Boot just preloads "shape," not DNA** — initial `songs-with-dna` snapshot can ship the song titles + status flags without the heavy DNA fields. DNA hydrates per-song as its surfaces request it.
+3. **Idle-time backfill** — after `'idle'` state, kick a `requestIdleCallback` loop that pre-computes DNA for the top 20 songs by recent rehearsal frequency. Predictive, off the critical path.
+
+**Why this is high-leverage:** 10s boot work moved off the critical path is *much* bigger than P1.2 home-dashboard double-render (which is "only" ~2-3s of duplicated work). This may be the single biggest win across the entire P1 list.
+
+**Risk callouts:**
+- DNA writes are network-bound (Firebase). Lazy-compute on first read could cause UI jank at the moment of first interaction. Mitigation: render placeholder, fill in async.
+- Some features (recommendations, focus picks) may transitively assume DNA is ready. Audit `getNowFocus` / `song-intelligence.js` first.
+
+**Acceptance:**
+- `[PERF] songs-with-dna` drops from 10s on the boot critical path to **0s** (DNA work happens later)
+- First Songs surface interaction renders in < 600ms even on cold boot
+- No "DNA undefined" rendering bugs after the lazy gate ships
+
+**Effort:** 2-3 days. Touches `groovelinx_store.js`, `song-intelligence.js`, and any direct DNA readers.
+
+**Risk:** Medium. DNA is read in many places; we need to make sure no surface implicitly assumes synchronous availability.
+
+**Dependencies:** Pairs naturally with **P1.1** (split groovelinx_store.js — the DNA cache lives in a focused `gl-song-dna.js`) and **P1.3** (incremental intelligence — also DNA-dependent).
 
 ---
 
@@ -551,6 +623,7 @@ Week 2-4 (P1):
             P1.4 stems iOS audio gesture-arming
   Wk4       P1.3 incremental intelligence
             P1.6 split calendar.js + rehearsal.js
+            P1.7 defer DNA preload off boot path
 
 Quarter (P2):
   Mo1       P2.7 Cloud Function observability
