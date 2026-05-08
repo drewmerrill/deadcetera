@@ -1410,8 +1410,9 @@
       }
     } catch(e) {}
 
-    // 3. Check readiness
-    var intel = getSongIntelligence(songId);
+    // 3. Check readiness \u2014 getSongIntelligence / getSongGaps moved to
+    // js/core/gl-intelligence.js (P1.1 phase 6). Reach via window.GLStore.
+    var intel = (window.GLStore && window.GLStore.getSongIntelligence) ? window.GLStore.getSongIntelligence(songId) : null;
     if (intel) {
       if (intel.avg > 0 && intel.avg < 2) return 'Below target \u2014 the band needs real work here.';
       if (intel.avg >= 2 && intel.avg < 3) return 'Getting there \u2014 a focused run would help.';
@@ -1420,7 +1421,7 @@
     }
 
     // 4. Check gaps
-    var gaps = getSongGaps(songId);
+    var gaps = (window.GLStore && window.GLStore.getSongGaps) ? window.GLStore.getSongGaps(songId) : null;
     if (gaps && gaps.length) {
       var highGap = gaps.find(function(g) { return g.severity === 'high'; });
       if (highGap) return highGap.detail;
@@ -1698,158 +1699,11 @@
     window.scrollTo(0, _navScrollCache[key] || 0);
   }
 
-  // ── Song Intelligence (Milestone 2 Phase A) ─────────────────────────────
-
-  var _intelligenceCache = null;
-  var _intelligenceCacheTs = 0;
-  var INTEL_CACHE_TTL = 5000; // 5 seconds — recompute is cheap but avoids thrash
-
-  function _members() {
-    return (typeof bandMembers !== 'undefined') ? bandMembers : {};
-  }
-
-  function _invalidateIntelligence() {
-    _intelligenceCache = null;
-  }
-
-  // Auto-invalidate when readiness changes or song status changes (pitch approval, shelving)
-  subscribe('readinessChanged', _invalidateIntelligence);
-  subscribe('songFieldUpdated', function (e) { if (e && e.field === 'status') _invalidateIntelligence(); });
-
-  /**
-   * Get intelligence for a single song.
-   * @param {string} songId
-   * @returns {object|null} songIntel or null if SongIntelligence not loaded
-   */
-  function getSongIntelligence(songId) {
-    if (typeof SongIntelligence === 'undefined') return null;
-    return SongIntelligence.computeSongIntelligence(songId, getAllReadiness(), _members());
-  }
-
-  /**
-   * Get catalog-wide intelligence. Cached for INTEL_CACHE_TTL ms.
-   * @returns {object|null} catalogIntel or null if SongIntelligence not loaded
-   */
-  function getCatalogIntelligence() {
-    if (typeof SongIntelligence === 'undefined') return null;
-    var now = Date.now();
-    if (_intelligenceCache && (now - _intelligenceCacheTs) < INTEL_CACHE_TTL) {
-      return _intelligenceCache;
-    }
-    _intelligenceCache = SongIntelligence.computeCatalogIntelligence(
-      getAllReadiness(), getAllStatus(), _members(), getSongs()
-    );
-    _intelligenceCacheTs = now;
-    return _intelligenceCache;
-  }
-
-  /**
-   * Get gaps for a single song (Phase B).
-   * @param {string} songId
-   * @returns {Array|null} gaps array or null if SongIntelligence not loaded
-   */
-  function getSongGaps(songId) {
-    if (typeof SongIntelligence === 'undefined') return null;
-    return SongIntelligence.detectSongGaps(songId, getAllReadiness(), getAllStatus(), _members());
-  }
-
-  /**
-   * Get practice recommendations (Phase C).
-   * @param {object} [opts]  { memberKey: string, limit: number }
-   * @returns {Array|null} sorted recommendations or null if SongIntelligence not loaded
-   */
-  function getPracticeRecommendations(opts) {
-    if (typeof SongIntelligence === 'undefined') return null;
-    return SongIntelligence.generatePracticeRecommendations(
-      getAllReadiness(), getAllStatus(), _members(), getSongs(), opts
-    );
-  }
-
-  // ── Practice Attention (Milestone 5 Phase 2) ─────────────────────────────
-
-  var _attentionCache = null;
-  var _attentionCacheTs = 0;
-  var ATTENTION_CACHE_TTL = 10000; // 10 seconds
-
-  // Auto-invalidate on readiness or status changes
-  subscribe('readinessChanged', function () { _attentionCache = null; });
-  subscribe('songFieldUpdated', function (e) { if (e && e.field === 'status') _attentionCache = null; });
-
-  /**
-   * Build activity index: { songTitle: lastActivityISO } from the activity log.
-   * Falls back to empty object if log not loaded.
-   */
-  function _buildActivityIndex() {
-    var log = (typeof activityLogCache !== 'undefined' && Array.isArray(activityLogCache))
-      ? activityLogCache : [];
-    var index = {};
-    for (var i = 0; i < log.length; i++) {
-      var entry = log[i];
-      if (!entry.song || !entry.time) continue;
-      // Keep the most recent activity per song
-      if (!index[entry.song] || entry.time > index[entry.song]) {
-        index[entry.song] = entry.time;
-      }
-    }
-    return index;
-  }
-
-  /**
-   * Build upcoming songs set: { songTitle: 'setlist'|'plan' }
-   * Scans cached setlists for future dates and rehearsal events.
-   */
-  function _buildUpcomingSongs() {
-    var upcoming = {};
-    var today = new Date().toISOString().slice(0, 10);
-
-    // Upcoming setlists (strongest signal)
-    var setlists = _state.setlistCache || [];
-    for (var s = 0; s < setlists.length; s++) {
-      var sl = setlists[s];
-      if (!sl.date || sl.date < today) continue;
-      var sets = sl.sets || [];
-      for (var si = 0; si < sets.length; si++) {
-        var songs = sets[si].songs || [];
-        for (var so = 0; so < songs.length; so++) {
-          var title = songs[so].title || songs[so];
-          if (title && !upcoming[title]) upcoming[title] = 'setlist';
-        }
-      }
-    }
-
-    // Rehearsal plan songs (weaker signal — don't overwrite setlist)
-    if (typeof window._riLastFocusSongs !== 'undefined' && Array.isArray(window._riLastFocusSongs)) {
-      for (var r = 0; r < window._riLastFocusSongs.length; r++) {
-        var rt = window._riLastFocusSongs[r].title || window._riLastFocusSongs[r];
-        if (rt && !upcoming[rt]) upcoming[rt] = 'plan';
-      }
-    }
-
-    return upcoming;
-  }
-
-  /**
-   * Get Practice Attention scores. Cached for ATTENTION_CACHE_TTL ms.
-   * @param {object} [opts]  { limit: number }
-   * @returns {Array|null}
-   */
-  function getPracticeAttention(opts) {
-    if (typeof SongIntelligence === 'undefined') return null;
-    var now = Date.now();
-    if (_attentionCache && (now - _attentionCacheTs) < ATTENTION_CACHE_TTL) {
-      var limit = (opts && opts.limit) || 20;
-      return _attentionCache.slice(0, limit);
-    }
-    // Build with a high limit for caching, slice on return
-    _attentionCache = SongIntelligence.computePracticeAttention(
-      getAllReadiness(), getAllStatus(), _members(), getSongs(),
-      _buildActivityIndex(), _buildUpcomingSongs(),
-      { limit: 50 }
-    );
-    _attentionCacheTs = now;
-    var returnLimit = (opts && opts.limit) || 20;
-    return _attentionCache.slice(0, returnLimit);
-  }
+  // Song Intelligence + Practice Attention — extracted 2026-05-08 (P1.1 phase 6)
+  // into js/core/gl-intelligence.js. The new module subscribes to
+  // 'readinessChanged' and 'songFieldUpdated' via GLStore.on at its load time
+  // and reads getAllReadiness / getAllStatus / getSongs / getSetlists via
+  // runtime window.GLStore.* lookups.
 
   // ── Setlist Cache (centralized) ────────────────────────────────────────────
   // Consolidates the dual-key problem: window._glCachedSetlists vs window._cachedSetlists
@@ -5044,12 +4898,9 @@
       return Promise.resolve(null);
     },
 
-    // Song Intelligence (Milestone 2)
-    getSongIntelligence:    getSongIntelligence,
-    getCatalogIntelligence: getCatalogIntelligence,
-    getSongGaps:            getSongGaps,
-    getPracticeRecommendations: getPracticeRecommendations,
-    getPracticeAttention:       getPracticeAttention,
+    // Song Intelligence + Practice Attention (Milestone 2 + 5) — extracted
+    // 2026-05-08 (P1.1 phase 6) into js/core/gl-intelligence.js. Methods
+    // attach to window.GLStore at that file's load time.
 
     // Rehearsal Agenda (Milestone 6)
     getRehearsalAgendaInput:    getRehearsalAgendaInput,
