@@ -275,11 +275,13 @@ Real gaps fixed in this pass:
 
 **Target splits (order may shift based on per-slice closure-coupling audit):**
 - ✅ **Phase 1** — `gl-decision-language.js` (GLStatus / GLUrgency / GLPriority / GLScheduleQuality)
-- 🟡 **Phase 2** — Closure-coupling audit (no code) — decide move-function-and-state-together vs shared `window._GLStoreInternal` namespace per slice
-- ⏳ `gl-leader.js` — leader-heartbeat sync (likely lowest closure coupling among in-IIFE slices)
-- ⏳ `gl-status-badge.js` — status badge timer (`_glStatusBadgeTimer`)
-- ⏳ `gl-song-dna.js` — DNA computation
-- ⏳ `gl-focus.js` — `getNowFocus`, `invalidateFocusCache`, `focusChanged` event (SYSTEM LOCK — preserve contract exactly)
+- ✅ **Phase 2** — Closure-coupling audit (`02_GrooveLinx/specs/store_split_audit.md`)
+- ✅ **Phase 3** — `gl-groovemate-memory.js` (GM_KEY/GM_CAP + 4 public memory methods, ~50 lines, zero `_state` coupling). First in-IIFE extraction; validates the move-function-and-state-together pattern for closure-private state.
+- ⏳ **Phase 4** — `gl-status-badge.js` (3 closure vars, DOM helper + online/offline listeners, ~70 lines)
+- ⏳ **Phase 5** — `gl-onboarding.js` (1 closure var, ~250 lines, depends on `GLStore.getSongs()`)
+- ⏳ **Phase 6** — `gl-intelligence.js` + `gl-attention.js` (small caches, similar profile)
+- ⏳ **Phase 7** — `gl-leader.js` — leader-heartbeat sync (needs `_state.sync*` lift-out into private cluster, or shared namespace)
+- ⏳ **Phase N** — `gl-focus.js` — `getNowFocus`, `invalidateFocusCache`, `focusChanged` event (SYSTEM LOCK — preserve contract exactly; depends on love system)
 - ⏳ `gl-store.js` — pure state cache + change events (residual)
 
 Re-export everything from `groovelinx_store.js` for backwards compat where needed.
