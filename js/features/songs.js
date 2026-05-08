@@ -80,8 +80,13 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     if (typeof readinessCache !== 'undefined' && Object.keys(readinessCache).length > 0) window._sqDataReady.readiness = true;
     if (typeof GLStore !== 'undefined' && GLStore.getAllBandLove && Object.keys(GLStore.getAllBandLove()).length > 0) window._sqDataReady.love = true;
 
-    // Show loading skeleton until songs + DNA are ready (minimum for meaningful render)
-    if (!window._sqDataReady.songs || !window._sqDataReady.dna) {
+    // Show loading skeleton until the songs library itself is loaded.
+    // DNA (key/bpm/lead) is no longer part of the gate \u2014 it's a separate Firebase
+    // round trip that adds 2-3s and the song list is meaningfully usable without it.
+    // Triage CTA at _renderTriageBar() is already gated on _glDnaPreloaded so it
+    // stays empty until DNA lands. After DNA preload completes, app.js re-renders
+    // to fill in the chips.
+    if (!window._sqDataReady.songs) {
         if (!dropdown.querySelector('.sq-loading')) {
             dropdown.innerHTML = '<div class="sq-loading" style="padding:40px 20px;text-align:center">'
                 + '<div style="font-size:1.5em;margin-bottom:12px;opacity:0.3">\uD83C\uDFB5</div>'

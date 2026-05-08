@@ -141,7 +141,15 @@ window.invalidateHomeCache = function invalidateHomeCache() {
     _homeBundle   = null;
     _homeCacheTime = 0;
     var hp = document.getElementById('page-home');
-    if (hp && hp.style.display !== 'none' && typeof window.renderHomeDashboard === 'function') {
+    // 2026-05-08: hp.style.display only reads INLINE style. Pages are hidden via the
+    // .hidden class (CSS display:none!important), so the inline check returned true
+    // for hidden home and triggered wasted full-render passes whenever readiness or
+    // any other invalidator fired while the user was on a different page. Use
+    // getComputedStyle so both inline and CSS-set display:none are honored.
+    var visible = hp && (function() {
+        try { return getComputedStyle(hp).display !== 'none'; } catch(e) { return hp.style.display !== 'none'; }
+    })();
+    if (visible && typeof window.renderHomeDashboard === 'function') {
         window.renderHomeDashboard();
     }
 };

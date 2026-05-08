@@ -782,9 +782,17 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('[Startup] Song library loaded at ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songLibReady = performance.now();
             if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('songs');
+            // P1.7-followup (2026-05-08): render songs IMMEDIATELY after library load.
+            // Don't wait for DNA — that's a separate ~2-3s Firebase round trip and the
+            // list is usable without bpm/key/lead chips. DNA arrival re-renders below to
+            // fill in chips and the triage CTA. Cuts the "Loading songs..." skeleton wait
+            // by the DNA round-trip duration (was ~2.2s in the captured trace).
+            if (typeof renderSongs === 'function') {
+                try { renderSongs(); console.log('[PERF] songs-rendered-bare ' + Math.round(performance.now()) + 'ms'); } catch(e) {}
+            }
             return _preloadSongDNA();
         }).then(function() {
-            // First render: songs + DNA are ready (key/bpm/lead VALUES populated)
+            // Re-render with DNA values populated (key/bpm/lead chips + triage CTA fill in)
             if (typeof renderSongs === 'function') renderSongs();
             console.log('[PERF] songs-with-dna ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songsRendered = performance.now();
