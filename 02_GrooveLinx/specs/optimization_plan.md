@@ -269,25 +269,47 @@ Real gaps fixed in this pass:
 
 ### P1.1 — Split `groovelinx_store.js` into focused modules
 
-**Problem:** 6,792 lines, and every other file imports from it. It contains: state cache, focus engine, intelligence, leader heartbeat, gigs cache, song-DNA, status badges, helper methods. Half-a-dozen unrelated concerns in one file.
+**Problem:** 6,792 lines (now 6,648 after Phase 1), and every other file imports from it. It contains: state cache, focus engine, intelligence, leader heartbeat, gigs cache, song-DNA, status badges, helper methods. Half-a-dozen unrelated concerns in one file.
 
-**Solution:** Split into:
-- `gl-store.js` — pure state cache + change events
-- `gl-focus.js` — `getNowFocus`, `invalidateFocusCache`, `focusChanged` event
-- `gl-leader.js` — leader-heartbeat sync
-- `gl-status.js` — status badge timer
-- `gl-song-dna.js` — DNA computation
+**Approach (revised 2026-05-08):** Phased extraction over multiple sessions instead of one big rewrite. CLAUDE.md says "prefer incremental changes." Each phase ships independently, validates the pattern, and lets us back out if anything regresses.
 
-Re-export everything from `groovelinx_store.js` for backwards compat during migration.
+**Target splits (order may shift based on per-slice closure-coupling audit):**
+- ✅ **Phase 1** — `gl-decision-language.js` (GLStatus / GLUrgency / GLPriority / GLScheduleQuality)
+- 🟡 **Phase 2** — Closure-coupling audit (no code) — decide move-function-and-state-together vs shared `window._GLStoreInternal` namespace per slice
+- ⏳ `gl-leader.js` — leader-heartbeat sync (likely lowest closure coupling among in-IIFE slices)
+- ⏳ `gl-status-badge.js` — status badge timer (`_glStatusBadgeTimer`)
+- ⏳ `gl-song-dna.js` — DNA computation
+- ⏳ `gl-focus.js` — `getNowFocus`, `invalidateFocusCache`, `focusChanged` event (SYSTEM LOCK — preserve contract exactly)
+- ⏳ `gl-store.js` — pure state cache + change events (residual)
+
+Re-export everything from `groovelinx_store.js` for backwards compat where needed.
+
+#### ✅ Phase 1 — Extract decision-language engines _(SHIPPED 2026-05-08, build `20260508-150622`)_
+
+**What shipped:** `js/core/gl-decision-language.js` containing the four window-scoped IIFEs that lived at the bottom of `groovelinx_store.js` (lines 6649-6814 of the pre-extract file). Pure code move — these engines were already explicitly flagged as MODULARIZATION-READY in the source comment at the head of the section. Zero closure coupling to the main store IIFE.
+
+**Verification:** Loaded the original section + new file in isolated `vm.createContext` contexts, ran 28 inputs across `getReadiness`, `getReadinessPct`, `getSongSeverity`, `getColor`, `getSongColor`, `getBarColor`, `forEvent`, `forRsvp`, `forAction`, `forRsvpEvent`, `forDate`. All outputs match by `JSON.stringify`.
+
+**Files:**
+- `js/core/groovelinx_store.js`: 6,814 → 6,648 lines (-166)
+- `js/core/gl-decision-language.js`: NEW (165 lines)
+- `index.html` + `index-dev.html`: new `<script>` tag inserted directly after `groovelinx_store.js` so feature-file consumers see identical evaluation order
+- `service-worker.js` + `version.json`: build bumped atomically
+
+**Effort:** ~25 min.
+
+**Risk realized:** None. Byte-for-byte equivalent runtime output.
+
+**Lesson:** The MODULARIZATION-READY comment at the source was accurate — when a previous author flagged something as ready to extract, it really was. Trust those signposts but verify (vm-context diff caught nothing this time, but the pattern is cheap and worth keeping).
 
 **Acceptance:**
-- Each new file < 1,500 lines
+- Each new file < 1,500 lines (Phase 1 file = 165 lines ✅)
 - All existing call sites still work (backwards-compat exports)
-- Test suite passes
+- No syntax errors (`node --check` passed both files)
 
-**Effort:** 2-3 days.
+**Effort (rest of P1.1):** Phases 2+3 estimated ~2 hours next session for first in-IIFE slice; remaining slices land across 1-2 more sessions.
 
-**Risk:** Medium. The focus engine has subtle dependencies on the state cache structure.
+**Risk:** Phase 1 = nil. In-IIFE phases = medium (the focus engine has subtle dependencies on the state cache structure, and CLAUDE.md SYSTEM LOCK applies to focusChanged + ACTIVE_STATUSES centralization).
 
 ---
 
