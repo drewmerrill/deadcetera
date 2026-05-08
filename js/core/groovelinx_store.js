@@ -53,9 +53,6 @@
     // Data caches (store-owned)
     songDetailCache:   {},     // { [songId]: { lead, status, key, bpm, ... } }
     rehearsalCache:    {},     // { [rehearsalId]: { ... } }
-    grooveCache:       {},     // { [rehearsalId]: grooveAnalysis }
-    mixCache:          null,   // array of practice_mix objects or null (unloaded)
-    mixCacheTs:        0,      // timestamp of last mix load
 
     // UI state
     songDetailLens:    'band', // 'band'|'listen'|'learn'|'sing'|'inspire'
@@ -91,8 +88,6 @@
     // ── Setlist Cache (centralized) ──────────────────────────────────────
     // Single source of truth for setlist data. Both window._glCachedSetlists
     // and window._cachedSetlists are kept in sync via setSetlistCache().
-    setlistCache: null,  // array or null (unloaded)
-    gigsCache: null,     // array or null (unloaded)
   };
 
   // ── Event bus ─────────────────────────────────────────────────────────────
@@ -836,107 +831,12 @@
     return data;
   }
 
-  // ── Pocket / Groove Analysis ──────────────────────────────────────────────
-
-  /**
-   * Save a groove analysis result.
-   * Called by pocket-meter.js after analysis completes.
-   * @param {string} rehearsalId  null if not launched from a rehearsal event
-   * @param {object} data         { stabilityScore, pocketPositionMs, pctInPocket, beatCount, ... }
-   */
-  async function savePocketSummary(rehearsalId, data) {
-    var payload = Object.assign({}, data, { savedAt: _now() });
-    // Update in-memory groove cache
-    if (rehearsalId) {
-      _state.grooveCache[rehearsalId] = payload;
-      var db = _db();
-      if (db) {
-        await db.ref(_bp('rehearsals/' + rehearsalId + '/grooveAnalysis')).set(payload);
-      }
-    }
-    // Update session globals for Command Center
-    var prev = window._lastPocketScore || null;
-    window._lastPocketScore = data.stabilityScore || null;
-    if (prev !== null && data.stabilityScore !== null) {
-      var delta = data.stabilityScore - prev;
-      window._lastPocketTrend = {
-        direction: delta > 1 ? 'up' : delta < -1 ? 'down' : 'flat',
-        delta: Math.abs(delta)
-      };
-    }
-    emit('pocketSummaryUpdated', { rehearsalId: rehearsalId, data: payload });
-  }
-
-  /**
-   * Get cached groove analysis for a rehearsal.
-   * Falls back to Firebase if not in cache.
-   */
-  async function getGrooveAnalysis(rehearsalId) {
-    if (_state.grooveCache[rehearsalId]) return _state.grooveCache[rehearsalId];
-    var data = await _dbGet('rehearsals/' + rehearsalId + '/grooveAnalysis');
-    if (data) _state.grooveCache[rehearsalId] = data;
-    return data;
-  }
-
-  // ── Practice Mixes ────────────────────────────────────────────────────────
-
-  /** Cache TTL in ms — 60 seconds */
-  var MIX_CACHE_TTL = 60000;
-
-  /**
-   * Load all practice mixes for the current band.
-   * @param {object} opts  { force: bool }
-   * @returns {Promise<Array>}
-   */
-  async function loadPracticeMixes(opts) {
-    opts = opts || {};
-    var age = Date.now() - _state.mixCacheTs;
-    if (!opts.force && _state.mixCache !== null && age < MIX_CACHE_TTL) {
-      return _state.mixCache;
-    }
-    var db = _db();
-    if (!db) return [];
-    var snap = await db.ref(_bp('practice_mixes')).orderByChild('updatedAt').once('value');
-    var mixes = [];
-    if (snap.val()) {
-      snap.forEach(function (child) {
-        mixes.push(Object.assign({ id: child.key }, child.val()));
-      });
-      mixes.reverse(); // newest first
-    }
-    _state.mixCache = mixes;
-    _state.mixCacheTs = Date.now();
-    emit('practiceMixesLoaded', { mixes: mixes });
-    return mixes;
-  }
-
-  /**
-   * Save (create or update) a practice mix.
-   * @param {object} mix  Must have id if updating.
-   */
-  async function savePracticeMix(mix) {
-    var db = _db();
-    if (!db) return null;
-    var id = mix.id || ('mix_' + Date.now());
-    var payload = Object.assign({}, mix, { id: id, updatedAt: _now() });
-    if (!payload.createdAt) payload.createdAt = payload.updatedAt;
-    await db.ref(_bp('practice_mixes/' + id)).set(payload);
-    // Bust mix cache
-    _state.mixCache = null;
-    emit('practiceMixSaved', { mix: payload });
-    return payload;
-  }
-
-  /**
-   * Delete a practice mix by id.
-   */
-  async function deletePracticeMix(mixId) {
-    var db = _db();
-    if (!db) return;
-    await db.ref(_bp('practice_mixes/' + mixId)).remove();
-    _state.mixCache = null;
-    emit('practiceMixDeleted', { mixId: mixId });
-  }
+  // Pocket/Groove Analysis + Practice Mixes — extracted 2026-05-08 (P1.1
+  // phase 24) into js/core/gl-rehearsal-recordings.js. Methods
+  // (savePocketSummary, getGrooveAnalysis, loadPracticeMixes,
+  // savePracticeMix, deletePracticeMix) attach to window.GLStore at that
+  // file's load time. The state cluster (was _state.grooveCache,
+  // _state.mixCache, _state.mixCacheTs) is now private to the new module.
 
   // ── Full cache accessors (migration helpers) ─────────────────────────────
 
@@ -970,92 +870,13 @@
 
   // ── getState (debug / introspection) ─────────────────────────────────────
 
-  // ── Song Coaching Signal ─────────────────────────────────────────────────
-  // Returns ONE short coaching message for a song, or null if none.
-  // Priority: restart patterns > attention > readiness > improvement > recency
+  // Song Coaching Signal — extracted 2026-05-08 (P1.1 phase 25) into
+  // js/core/gl-song-coach-signal.js. getSongCoachSignal attaches to
+  // window.GLStore at that file's load time. Reads getSetlists from
+  // gl-collection-caches.js (P1.1 phase 22) via cross-module GLStore lookup.
+  // Fixes a pre-existing silent bug where the helper called undefined
+  // `_members()` inside try/catch.
 
-  function getSongCoachSignal(songId) {
-    if (!songId) return null;
-
-    // 1. Check for restart/trainwreck patterns from attempt intelligence
-    try {
-      var _GL_AI = (typeof window !== 'undefined' && window.GLStore) ? window.GLStore : null;
-      var ai = (_GL_AI && _GL_AI.getAttemptIntelligence) ? _GL_AI.getAttemptIntelligence() : null;
-      if (ai && ai.hasData) {
-        var songAttempt = ai.songs.find(function(s) { return s.title === songId; });
-        if (songAttempt) {
-          if (songAttempt.restartCount >= 3) return 'Had ' + songAttempt.restartCount + ' restarts last rehearsal \u2014 focus on transitions.';
-          if (songAttempt.lowConfidence) return 'Most attempts ended in restarts \u2014 try a full run-through.';
-          if (songAttempt.improving) return 'Improving \u2014 one more clean run locks it in.';
-        }
-      }
-    } catch(e) {}
-
-    // 2. Check practice attention signals
-    try {
-      var pa = (typeof SongIntelligence !== 'undefined' && SongIntelligence.computePracticeAttention)
-        ? SongIntelligence.computePracticeAttention(getAllReadiness(), getAllStatus(), _members(), _activityIndex(), _upcomingSongs())
-        : null;
-      if (pa) {
-        var item = pa.find(function(p) { return p.songId === songId; });
-        if (item && item.breakdown) {
-          var bd = item.breakdown;
-          if (bd.exposureBoost >= 8) return 'On the setlist for your next gig \u2014 make it count.';
-          if (bd.statusModifier >= 4) return 'Marked gig-ready but band avg is ' + (item.avg || '?') + '/5.';
-          if (bd.decayRisk >= 8) return 'Not practiced recently \u2014 worth a refresher.';
-          if (bd.variancePenalty >= 3) return 'Big gap between members \u2014 align on this one.';
-        }
-      }
-    } catch(e) {}
-
-    // 3. Check readiness \u2014 getSongIntelligence / getSongGaps moved to
-    // js/core/gl-intelligence.js (P1.1 phase 6). Reach via window.GLStore.
-    var intel = (window.GLStore && window.GLStore.getSongIntelligence) ? window.GLStore.getSongIntelligence(songId) : null;
-    if (intel) {
-      if (intel.avg > 0 && intel.avg < 2) return 'Below target \u2014 the band needs real work here.';
-      if (intel.avg >= 2 && intel.avg < 3) return 'Getting there \u2014 a focused run would help.';
-      if (intel.missingMembers && intel.missingMembers.length >= 2) return intel.missingMembers.length + ' members haven\u2019t rated this song yet.';
-      if (intel.avg >= 4.5) return 'Locked in \u2014 keep it tight.';
-    }
-
-    // 4. Check gaps
-    var gaps = (window.GLStore && window.GLStore.getSongGaps) ? window.GLStore.getSongGaps(songId) : null;
-    if (gaps && gaps.length) {
-      var highGap = gaps.find(function(g) { return g.severity === 'high'; });
-      if (highGap) return highGap.detail;
-    }
-
-    return null;
-  }
-
-  // Helper: build activity index for practice attention (reuses existing pattern)
-  function _activityIndex() {
-    if (typeof window.activityLogCache !== 'undefined' && Array.isArray(window.activityLogCache)) {
-      var idx = {};
-      window.activityLogCache.forEach(function(e) {
-        if (e && e.song && e.time) {
-          var t = new Date(e.time).getTime();
-          if (!isNaN(t) && (!idx[e.song] || t > idx[e.song])) idx[e.song] = t;
-        }
-      });
-      return idx;
-    }
-    return {};
-  }
-
-  function _upcomingSongs() {
-    var up = {};
-    var _sls = _state.setlistCache || [];
-    if (_sls.length) {
-      var today = new Date().toISOString().slice(0,10);
-      _sls.forEach(function(sl) {
-        if (sl.date && sl.date >= today && sl.sets) {
-          sl.sets.forEach(function(set) { (set.songs||[]).forEach(function(s) { var t = typeof s === 'string' ? s : s.title; if (t) up[t] = true; }); });
-        }
-      });
-    }
-    return up;
-  }
 
   function getState() {
     return Object.assign({}, _state, {
@@ -1072,136 +893,10 @@
     });
   }
 
-  // ── Legacy Status Audit + Migration ───────────────────────────────────────
-  //
-  // Valid status values (lifecycle): '', 'prospect', 'active', 'parked', 'retired'
-  // Legacy values still accepted: 'wip' (→ active), 'gig_ready' (→ active)
-  // Legacy migration: 'needs_polish', 'on_deck', etc.
-  //
-  // Usage from browser console:
-  //   GLStore.auditLegacyStatuses()        // dry-run report
-  //   GLStore.migrateLegacyStatuses()      // normalize + save
-
-  var _VALID_STATUSES = { '': true, 'prospect': true, 'learning': true, 'rotation': true, 'shelved': true, 'wip': true, 'gig_ready': true, 'active': true, 'parked': true, 'retired': true };
-
-  var _STATUS_MIGRATION_MAP = {
-    'needs_polish':      'learning',
-    'needspolish':       'learning',
-    'needs polish':      'learning',
-    'work in progress':  'learning',
-    'work_in_progress':  'learning',
-    'wip':               'learning',
-    'active':            'learning',
-    'on_deck':           'prospect',
-    'ondeck':            'prospect',
-    'on deck':           'prospect',
-    'gig ready':         'learning',
-    'gig-ready':         'learning',
-    'gigready':          'learning',
-    'gig_ready':         'learning',
-    'ready':             'learning',
-    'parked':            'shelved',
-    'retired':           'shelved',
-    'not on radar':      '',
-    'not_on_radar':      '',
-    'none':              '',
-    'null':              '',
-    'undefined':         '',
-  };
-
-  function auditLegacyStatuses() {
-    var sc = getAllStatus();
-    var entries = Object.entries(sc);
-    var legacy = [];
-    var valid = [];
-    var empty = 0;
-
-    for (var i = 0; i < entries.length; i++) {
-      var title = entries[i][0];
-      var raw = entries[i][1];
-      if (!raw || raw === '') { empty++; continue; }
-      var val = (typeof raw === 'string') ? raw : (raw && raw.status) ? raw.status : '';
-      if (_VALID_STATUSES[val]) {
-        valid.push({ title: title, status: val });
-      } else {
-        var normalized = val.toLowerCase().replace(/\s+/g, ' ').trim();
-        var mapped = _STATUS_MIGRATION_MAP[normalized] || null;
-        legacy.push({ title: title, current: val, normalized: normalized, wouldMapTo: mapped || '(UNKNOWN — needs manual review)' });
-      }
-    }
-
-    console.log('%c=== Legacy Status Audit ===', 'font-weight:bold;font-size:14px;color:#667eea');
-    console.log('Total songs with status:', entries.length);
-    console.log('Valid statuses:', valid.length);
-    console.log('Empty/unset:', empty);
-    console.log('Legacy values found:', legacy.length);
-
-    if (legacy.length) {
-      console.log('%cLegacy songs:', 'font-weight:bold;color:#f59e0b');
-      console.table(legacy);
-    } else {
-      console.log('%cNo legacy statuses found — all clean!', 'color:#22c55e;font-weight:bold');
-    }
-
-    return { total: entries.length, valid: valid.length, empty: empty, legacy: legacy };
-  }
-
-  function migrateLegacyStatuses(opts) {
-    var dryRun = !opts || opts.dryRun !== false;
-    var audit = auditLegacyStatuses();
-
-    if (!audit.legacy.length) {
-      console.log('Nothing to migrate.');
-      return { migrated: 0, skipped: 0 };
-    }
-
-    var migrated = 0;
-    var skipped = 0;
-    var sc = getAllStatus();
-
-    for (var i = 0; i < audit.legacy.length; i++) {
-      var item = audit.legacy[i];
-      if (item.wouldMapTo.indexOf('UNKNOWN') >= 0) {
-        console.warn('SKIPPING (unknown mapping):', item.title, '→', item.current);
-        skipped++;
-        continue;
-      }
-      if (dryRun) {
-        console.log('[DRY RUN] Would migrate:', item.title, '"' + item.current + '" → "' + item.wouldMapTo + '"');
-      } else {
-        sc[item.title] = item.wouldMapTo;
-        migrated++;
-      }
-    }
-
-    if (!dryRun && migrated > 0) {
-      // Persist to master file
-      if (typeof saveMasterFile === 'function') {
-        saveMasterFile('_master_song_statuses.json', sc).then(function() {
-          console.log('%cMigration saved to master file!', 'color:#22c55e;font-weight:bold');
-        }).catch(function(e) {
-          console.error('Failed to save master file:', e);
-        });
-      }
-      // Also write migrated statuses to per-song Firebase records so
-      // song-detail.js (which reads per-song) stays in sync with master file
-      if (typeof saveBandDataToDrive === 'function') {
-        for (var w = 0; w < audit.legacy.length; w++) {
-          var _mItem = audit.legacy[w];
-          if (_mItem.wouldMapTo.indexOf('UNKNOWN') >= 0) continue;
-          try {
-            saveBandDataToDrive(_mItem.title, 'song_status', { status: _mItem.wouldMapTo, updatedAt: new Date().toISOString(), migratedFrom: _mItem.current });
-          } catch(e2) {}
-        }
-        console.log('%cPer-song Firebase records synced.', 'color:#22c55e');
-      }
-      console.log('%cMigrated ' + migrated + ' songs. Skipped ' + skipped + '.', 'font-weight:bold;color:#22c55e');
-    } else if (dryRun) {
-      console.log('%c[DRY RUN] Would migrate ' + (audit.legacy.length - skipped) + ' songs. Run GLStore.migrateLegacyStatuses({ dryRun: false }) to apply.', 'font-weight:bold;color:#f59e0b');
-    }
-
-    return { migrated: migrated, skipped: skipped };
-  }
+  // Legacy Status Audit + Migration — extracted 2026-05-08 (P1.1 phase 23)
+  // into js/core/gl-status-migration.js. auditLegacyStatuses and
+  // migrateLegacyStatuses attach to window.GLStore at that file's load time.
+  // Reads GLStore.getAllStatus() at call time.
 
   // ── Navigation / Selection state ─────────────────────────────────────────
   // Milestone 1 Phase A — additive only. Zero behavior change to existing paths.
@@ -1303,118 +998,15 @@
   // and reads getAllReadiness / getAllStatus / getSongs / getSetlists via
   // runtime window.GLStore.* lookups.
 
-  // ── Setlist Cache (centralized) ────────────────────────────────────────────
-  // Consolidates the dual-key problem: window._glCachedSetlists vs window._cachedSetlists
-  // Both window globals are kept in sync for backward compatibility with all consumers.
 
-  function getSetlists() {
-    return _state.setlistCache || [];
-  }
+  // Setlist + Gigs caches + SWR band-data cache — extracted 2026-05-08
+  // (P1.1 phase 22) into js/core/gl-collection-caches.js. Methods
+  // (getSetlists, setSetlistCache, clearSetlistCache, getGigs, setGigsCache,
+  // clearGigsCache, getGigsAsync, getCachedBandData, setCachedBandData,
+  // getCacheAgeLabel) attach to window.GLStore at that file's load time.
+  // The state cluster (was _state.setlistCache, _state.gigsCache) is now
+  // private to the new module.
 
-  function setSetlistCache(data) {
-    var arr = Array.isArray(data) ? data : [];
-    _state.setlistCache = arr;
-    // Sync both legacy window globals so all existing consumers see the same reference
-    window._glCachedSetlists = arr;
-    window._cachedSetlists = arr;
-    emit('setlistsChanged', { count: arr.length });
-  }
-
-  function clearSetlistCache() {
-    _state.setlistCache = null;
-    window._glCachedSetlists = null;
-    window._cachedSetlists = null;
-    emit('setlistsChanged', { count: 0 });
-  }
-
-  // ── Stale-While-Revalidate Band Data Cache ─────────────────────────────
-  // localStorage-backed cache for instant first paint on slow connections.
-  // Pattern: render from cache immediately → fetch fresh in background → update if changed.
-  var _GL_CACHE_PREFIX = 'gl_swr_';
-  var _GL_CACHE_MAX_AGE = 24 * 3600000; // 24 hours — always show stale data, just flag staleness
-
-  function getCachedBandData(dataType) {
-    try {
-      var raw = localStorage.getItem(_GL_CACHE_PREFIX + dataType);
-      if (!raw) return null;
-      var cached = JSON.parse(raw);
-      if (cached && cached.data !== undefined) {
-        cached.age = Date.now() - (cached.ts || 0);
-        cached.stale = cached.age > _GL_CACHE_MAX_AGE;
-        return cached;
-      }
-    } catch(e) {}
-    return null;
-  }
-
-  function setCachedBandData(dataType, data) {
-    try {
-      localStorage.setItem(_GL_CACHE_PREFIX + dataType, JSON.stringify({
-        data: data,
-        ts: Date.now()
-      }));
-    } catch(e) {
-      // localStorage full — silently fail (cache is a performance optimization, not required)
-    }
-  }
-
-  function getCacheAgeLabel(dataType) {
-    var cached = getCachedBandData(dataType);
-    if (!cached) return '';
-    var mins = Math.floor(cached.age / 60000);
-    if (mins < 1) return 'Updated just now';
-    if (mins < 60) return 'Updated ' + mins + 'm ago';
-    var hrs = Math.floor(mins / 60);
-    if (hrs < 24) return 'Updated ' + hrs + 'h ago';
-    return 'Updated ' + Math.floor(hrs / 24) + 'd ago';
-  }
-
-  // Global Status Badge — extracted 2026-05-08 (P1.1 phase 4) into
-  // js/core/gl-status-badge.js. Method attaches to window.GLStore at the
-  // extracted module's load time. The module owns its own beforeunload
-  // listener for timer cleanup so the store's _glCleanup no longer references
-  // _glStatusBadgeTimer.
-
-
-  // ── Gigs Cache (centralized) ──────────────────────────────────────────────
-  function getGigs() {
-    return _state.gigsCache || [];
-  }
-
-  function setGigsCache(data) {
-    var arr = Array.isArray(data) ? data : [];
-    _state.gigsCache = arr;
-    window._cachedGigs = arr;
-    emit('gigsChanged', { count: arr.length });
-  }
-
-  function clearGigsCache() {
-    _state.gigsCache = null;
-    window._cachedGigs = null;
-    emit('gigsChanged', { count: 0 });
-  }
-
-  // ── Canonical reader (Stage-1 of Calendar/Gigs merge) ────────────────────
-  // Returns the gig list derived from calendar_events.type==='gig'. After
-  // today's mirror hardening, every gig field lives on the cal_event row, so
-  // this view is fully equivalent to loading the gigs node — but sourced
-  // from the polymorphic timeline. New code paths should adopt this; the
-  // legacy gigs-node readers will be migrated in a follow-up session.
-  async function getGigsAsync() {
-    if (typeof loadBandDataFromDrive !== 'function') return [];
-    var raw = await loadBandDataFromDrive('_band', 'calendar_events') || [];
-    var arr = Array.isArray(raw) ? raw : (typeof toArray === 'function' ? toArray(raw) : Object.values(raw));
-    var gigs = arr.filter(function(e) { return e && e.type === 'gig'; });
-    // Project cal_event shape back to gig shape: cal_event uses `time`,
-    // gig uses `startTime`. Mirror sets both, but synth them here for any
-    // cal_event row that predates the mirror hardening.
-    gigs = gigs.map(function(e) {
-      if (!e.startTime && e.time) return Object.assign({}, e, { startTime: e.time });
-      return e;
-    });
-    gigs.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
-    return gigs;
-  }
 
   // ── Status Cache (centralized setter) ─────────────────────────────────────
   function setStatus(songId, status) {
@@ -1736,20 +1328,8 @@
     // Rehearsals
     loadRehearsal:     loadRehearsal,
 
-    // Pocket Meter
-    savePocketSummary: savePocketSummary,
-    getGrooveAnalysis: getGrooveAnalysis,
-
-    // Practice Mixes
-    loadPracticeMixes: loadPracticeMixes,
-    savePracticeMix:   savePracticeMix,
-    deletePracticeMix: deletePracticeMix,
-
-    // Gigs Cache (centralized)
-    getGigs:           getGigs,
-    setGigsCache:      setGigsCache,
-    clearGigsCache:    clearGigsCache,
-    getGigsAsync:      getGigsAsync,
+    // Pocket/Groove + Practice Mixes — see js/core/gl-rehearsal-recordings.js (P1.1 phase 24)
+    // Gigs Cache — see js/core/gl-collection-caches.js (P1.1 phase 22)
 
     // UI State
     setActiveLens:     setActiveLens,
@@ -1817,8 +1397,7 @@
     setSnapshotRange:       setSnapshotRange,
     getSnapshotRange:       getSnapshotRange,
 
-    // Coaching
-    getSongCoachSignal:     getSongCoachSignal,
+    // Song Coaching Signal — see js/core/gl-song-coach-signal.js (P1.1 phase 25)
 
     // Derived selectors
     isPerformanceMode:      isPerformanceMode,
@@ -1829,9 +1408,7 @@
     // Debug
     getState:          getState,
 
-    // Diagnostics — legacy status audit + migration
-    auditLegacyStatuses:   auditLegacyStatuses,
-    migrateLegacyStatuses: migrateLegacyStatuses,
+    // Legacy Status Audit + Migration — see js/core/gl-status-migration.js (P1.1 phase 23)
 
     // Gig / Setlist / Calendar data model audit + migration — extracted
     // 2026-05-08 (P1.1 phase 15) into js/core/gl-data-audit.js. Methods
@@ -1865,14 +1442,7 @@
     // 2026-05-08 (P1.1 phase 17) into js/core/gl-roles-coverage.js. Methods
     // attach to window.GLStore at that file's load time.
 
-    // Setlist Cache (centralized)
-    getSetlists:                 getSetlists,
-    setSetlistCache:             setSetlistCache,
-    // Stale-while-revalidate cache
-    getCachedBandData:           getCachedBandData,
-    setCachedBandData:           setCachedBandData,
-    getCacheAgeLabel:            getCacheAgeLabel,
-    clearSetlistCache:           clearSetlistCache,
+    // Setlist + Gigs caches + SWR band-data cache — see js/core/gl-collection-caches.js (P1.1 phase 22)
     // Activity Log + Page View Metrics + Retention Metrics — extracted
     // 2026-05-08 (P1.1 phase 19) into js/core/gl-band-metrics.js. Methods
     // attach to window.GLStore at that file's load time.
