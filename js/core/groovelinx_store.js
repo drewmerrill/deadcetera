@@ -983,14 +983,18 @@
 
   // Love preload: start as soon as possible, retry until songs data is available.
   // Previously delayed 8s — now polls every 2s starting at 2s.
+  // P0.3 (2026-05-08): timer captured + cancel path so this stops on cleanup
+  // instead of looping forever on failure.
   var _lovePreloadDone = false;
+  var _lovePreloadStopped = false;
+  var _lovePreloadTimer = null;
   function _tryLovePreload() {
-    if (_lovePreloadDone) return;
-    // Wait for BOTH allSongs AND Firebase to be ready
+    _lovePreloadTimer = null;
+    if (_lovePreloadDone || _lovePreloadStopped) return;
     var _hasDB = (typeof firebaseDB !== 'undefined' && firebaseDB);
     var _hasSongs = (typeof allSongs !== 'undefined' && allSongs && allSongs.length > 0);
     if (!_hasDB || !_hasSongs) {
-      setTimeout(_tryLovePreload, 2000); // retry until both are ready
+      _lovePreloadTimer = setTimeout(_tryLovePreload, 2000);
       return;
     }
     _lovePreloadDone = true;
@@ -1002,12 +1006,15 @@
       }
       return _preloadPersonalLove();
     }).catch(function(e) {
-      // Preload failed — reset flag so it can retry
       _lovePreloadDone = false;
-      setTimeout(_tryLovePreload, 3000);
+      if (!_lovePreloadStopped) _lovePreloadTimer = setTimeout(_tryLovePreload, 3000);
     });
   }
-  setTimeout(_tryLovePreload, 2000);
+  function _stopLovePreload() {
+    _lovePreloadStopped = true;
+    if (_lovePreloadTimer) { clearTimeout(_lovePreloadTimer); _lovePreloadTimer = null; }
+  }
+  _lovePreloadTimer = setTimeout(_tryLovePreload, 2000);
 
   // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
 
@@ -5278,7 +5285,22 @@
     isSyncFollowing:       isSyncFollowing,
     getSyncFollowerCount:  getSyncFollowerCount,
     getSyncJoinCode:       getSyncJoinCode,
+
+    // Lifecycle — call on signout / beforeunload to nuke timers
+    cleanup:               _glCleanup,
   };
+
+  // ── Centralized timer cleanup (P0.3, 2026-05-08) ──────────────────────────
+  // Single hook that nukes every long-lived timer in this module. Called from
+  // app.js beforeunload. Adding a new setInterval / recurring setTimeout?
+  // Capture the id and clear it here.
+  function _glCleanup() {
+    try { _syncCleanup(); } catch(e) {}             // sync heartbeat + stale check + listener
+    try { _stopLovePreload(); } catch(e) {}         // love preload retry loop
+    try {                                           // status badge fade
+      if (_glStatusBadgeTimer) { clearTimeout(_glStatusBadgeTimer); _glStatusBadgeTimer = null; }
+    } catch(e) {}
+  }
 
   // ── Onboarding / Band Activation ────────────────────────────────────────
   //

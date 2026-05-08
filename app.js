@@ -7444,6 +7444,9 @@ window.addEventListener('beforeunload', () => {
         // Use sync localStorage as backup since Drive save may not complete
         localStorage.setItem('deadcetera_activity_log_pending', JSON.stringify(activityLogCache));
     }
+    // P0.3 (2026-05-08): nuke long-lived timers so they can't fire after the
+    // page is gone (firebase write attempts after unload throw uncatchable errors).
+    try { if (typeof GLStore !== 'undefined' && GLStore.cleanup) GLStore.cleanup(); } catch(e) {}
 });
 
 // ============================================================================

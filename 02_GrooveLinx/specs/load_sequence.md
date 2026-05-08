@@ -245,7 +245,7 @@ These are real races — observed or strongly suspected based on code patterns.
 | 4 | Service worker update vs in-flight requests | SW updates every 5 min; if a fetch is mid-flight when SW replaces itself, the request can complete against the old cache | Stale data after a deploy | Version cache-busting via `?v={build}` query strings |
 | 5 | `gl-audio-session.js` vs first sound | If user taps Stems before audio context is initialized, first play can silent-fail | "Tap to start" overlay watchdog catches this for setlist player; not for stems | Same fix pattern (gesture-arming) could apply to stems |
 | 6 | Avatar feedback service vs reload | Auto-init starts polling; if user navigates rapidly, multiple subscribers can attach | Duplicate hesitation events | Add a singleton-init guard |
-| 7 | Multiple `setInterval`s in `groovelinx_store.js` | Sync heartbeat + stale check + status badge timer all created on first read | Memory leak if cleanup is missed on signout | Audit `clearInterval` calls match `setInterval` calls |
+| 7 | ~~Multiple `setInterval`s in `groovelinx_store.js`~~ | _Audited + closed 2026-05-08 build `20260508-123518`_ — sync heartbeat + stale check were already paired, status badge self-bounded; the real leak was the `_tryLovePreload` retry loop with no captured timer ID. Fixed by capturing the timer in `_lovePreloadTimer`, adding `_stopLovePreload()`, and exposing `GLStore.cleanup()` wired to `beforeunload` in app.js. | (was: love preload retry loop forever on failure) | **CLOSED** — P0.3 |
 
 ---
 

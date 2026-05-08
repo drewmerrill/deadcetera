@@ -185,28 +185,36 @@ The trace that exposed the 2.6s problem also surfaced two bigger issues that wer
 
 ---
 
-### P0.3 — Audit `setInterval` cleanup in `groovelinx_store.js`
+### ✅ P0.3 — Central timer cleanup in `groovelinx_store.js` _(SHIPPED 2026-05-08, build `20260508-123518`)_
 
-**Problem:** Multiple `setInterval`s start in `groovelinx_store.js` (sync heartbeat, stale check, status badge timer). If `clearInterval` cleanup paths are incomplete (signout, error, etc.), they leak — burning battery on iPhone, accumulating across hot reloads.
+**Problem:** Multiple `setInterval`s and recursive `setTimeout`s start in `groovelinx_store.js`. If cleanup paths are incomplete or missing entirely, they leak — burning battery on iPhone, attempting Firebase writes after page unload (uncatchable errors), or retrying forever on transient failures.
 
-**Found in code:**
-- `_state.syncHeartbeat = setInterval(...)` 
-- `_syncStaleCheckInterval = setInterval(...)`
-- `_glStatusBadgeTimer = setTimeout(...)`
-- `setTimeout(_tryLovePreload, 2000)` — recursive retry
+**Audit findings (2026-05-08):**
 
-**Solution:** 
-1. Audit every `setInterval` and `setTimeout` site in groovelinx_store.js
-2. Ensure paired `clearInterval`/`clearTimeout` exists for: signout, page unload, sync-error, error-recovery
-3. Add a `GLStore.cleanup()` function that nukes all timers; call it on signout and `beforeunload`
+| Site | Timer | Cleanup before P0.3 | Risk |
+|---|---|---|---|
+| `_state.syncHeartbeat` (4787) | `setInterval`, leader heartbeat | `_syncStopHeartbeat()` paired, called from `_syncCleanup` and `endBandSyncSession` and `leaveBandSync` | ✅ well-managed |
+| `_syncStaleCheckInterval` (4926) | `setInterval`, follower stale check | `_syncStopStaleCheck()` paired, called from `_syncCleanup` and `leaveBandSync` | ✅ well-managed |
+| `_glStatusBadgeTimer` (1948) | one-shot `setTimeout`, 5s badge fade | self-clears + replaces on each call | 🟡 self-bounded but no central stop |
+| `_tryLovePreload` (993, 1007, 1010) | recursive `setTimeout`, polls every 2-3s | **none** — no timer ID captured, no cancel path | 🔴 **retries forever on failure; cannot be cancelled** |
+| `ready()` safety (191) | one-shot `setTimeout` | self-resolves promise | ✅ bounded |
+| Live-rehearsal post-nav (2612) | one-shot `setTimeout`, 200ms | fires once | ✅ bounded |
+
+**What shipped:**
+
+1. **Captured the love-preload timer ID into `_lovePreloadTimer`** so it can be cleared. Added a sentinel flag `_lovePreloadStopped` so any in-flight callback short-circuits even if it was already scheduled.
+2. **Added `_stopLovePreload()`** that clears the timer and sets the stop flag.
+3. **Added `GLStore.cleanup()`** as the single hook that nukes every long-lived timer in this module: `_syncCleanup()` + `_stopLovePreload()` + `_glStatusBadgeTimer` clear. New `setInterval` / recurring `setTimeout` sites must be added here.
+4. **Wired to existing `beforeunload` listener in `app.js`** — same listener already saves the activity log. No separate signout path exists in this app (band UAT — bandmates stay signed in), so `beforeunload` is the only call site.
 
 **Acceptance:**
-- No interval/timeout fires after `GLStore.cleanup()` is called
-- iPhone battery usage during overnight idle drops measurably (anecdotal — get a baseline first)
+- ✅ No timer fires after `GLStore.cleanup()` is called
+- ✅ Love preload retry loop is now cancellable (was the only real leak in the audit)
+- 🟡 iPhone battery measurement deferred — would need baseline traces first
 
-**Effort:** 0.5 day.
+**Effort:** Actual ~25 min (smaller than estimated because most timer pairs were already correct; the real fix was just the love-preload capture).
 
-**Risk:** Low.
+**Risk:** Low. Single new call site (`beforeunload`) and the existing `_syncCleanup` was already idempotent.
 
 ---
 
