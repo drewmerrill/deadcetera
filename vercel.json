@@ -9,6 +9,7 @@
     { "source": "/terms.html", "destination": "/terms.html" },
     { "source": "/sms-opt-in.html", "destination": "/sms-opt-in.html" },
     { "source": "/stack-map.html", "destination": "/stack-map.html" },
+    { "source": "/architecture-deep-dive.html", "destination": "/architecture-deep-dive.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

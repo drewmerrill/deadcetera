@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>GrooveLinx · Architecture Deep-Dive</title>
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg-2: #0f172a;
+    --bg-3: #1e293b;
+    --border: rgba(148, 163, 184, 0.15);
+    --border-strong: rgba(148, 163, 184, 0.35);
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --text-faint: #64748b;
+    --accent: #a78bfa;
+    --accent-dim: rgba(167, 139, 250, 0.15);
+    --good: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --info: #60a5fa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  body {
+    background:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgba(167, 139, 250, 0.08), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 100% 30%, rgba(96, 165, 250, 0.05), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 0% 70%, rgba(52, 211, 153, 0.05), transparent 60%),
+      var(--bg);
+  }
+
+  header.hero {
+    text-align: center;
+    padding: 56px 24px 32px;
+    border-bottom: 1px solid var(--border);
+  }
+  header.hero h1 {
+    font-size: 38px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(135deg, #e2e8f0 0%, #a78bfa 50%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 10px;
+  }
+  header.hero p { color: var(--text-dim); font-size: 16px; max-width: 760px; margin: 0 auto; }
+  header.hero .meta { display: inline-flex; gap: 10px; margin-top: 18px; font-size: 12px; color: var(--text-faint); flex-wrap: wrap; justify-content: center; padding: 0 16px; }
+  header.hero .meta span { padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; }
+  header.hero .related {
+    margin-top: 18px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+  }
+  header.hero .related a {
+    color: var(--accent); text-decoration: none; padding: 6px 14px;
+    border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 8px; font-size: 13px;
+    transition: all 0.15s ease;
+  }
+  header.hero .related a:hover { background: var(--accent-dim); }
+
+  nav.toc {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10, 14, 26, 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
+    font-size: 12px;
+  }
+  nav.toc a {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; color: var(--text-dim); text-decoration: none;
+    border-radius: 6px; border: 1px solid transparent;
+    transition: all 0.15s ease;
+  }
+  nav.toc a:hover { color: var(--text); border-color: var(--border-strong); background: rgba(15, 23, 42, 0.6); }
+  nav.toc a.active { color: var(--text); border-color: var(--accent); background: var(--accent-dim); }
+  nav.toc a .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+  main {
+    max-width: 1480px; margin: 0 auto;
+    padding: 32px 24px 60px;
+    display: flex; flex-direction: column; gap: 28px;
+  }
+
+  section.zone {
+    border: 1px solid var(--border); border-radius: 16px;
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+    padding: 24px 28px; position: relative; overflow: hidden;
+  }
+  section.zone::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent); opacity: 0.6;
+  }
+  section.zone h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  section.zone .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 22px; }
+
+  .diagram-frame {
+    background: rgba(15, 23, 42, 0.5);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    overflow-x: auto;
+    position: relative;
+    min-height: 200px;
+  }
+  .diagram-loading {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--text-faint); font-size: 13px; gap: 8px;
+  }
+  .diagram-loading .spinner {
+    width: 22px; height: 22px;
+    border: 2px solid rgba(167, 139, 250, 0.2);
+    border-top-color: #a78bfa;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  pre.mermaid { background: transparent !important; }
+
+  table.engines {
+    width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;
+  }
+  table.engines th, table.engines td {
+    padding: 10px 12px; border-bottom: 1px solid var(--border);
+    text-align: left; vertical-align: top;
+  }
+  table.engines th {
+    color: var(--text-dim); font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border-strong);
+  }
+  table.engines tr:hover { background: rgba(15, 23, 42, 0.7); }
+  table.engines code {
+    background: rgba(167, 139, 250, 0.1);
+    color: var(--accent);
+    padding: 1px 6px; border-radius: 4px; font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  table.engines .reach {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .reach.r-all { background: rgba(248, 113, 113, 0.15); color: var(--bad); }
+  .reach.r-many { background: rgba(251, 191, 36, 0.15); color: var(--warn); }
+  .reach.r-few { background: rgba(96, 165, 250, 0.15); color: var(--info); }
+  .reach.r-one { background: rgba(148, 163, 184, 0.15); color: var(--text-dim); }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    padding: 14px 18px; margin-bottom: 18px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .legend > span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
+  .legend > span code { font-size: 11px; }
+
+  .insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 16px; }
+  .insight {
+    border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    background: rgba(15, 23, 42, 0.5);
+  }
+  .insight h4 { font-size: 13px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .insight h4 .marker {
+    width: 18px; height: 18px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800;
+  }
+  .insight h4 .marker.warn { background: rgba(251, 191, 36, 0.2); color: var(--warn); }
+  .insight h4 .marker.good { background: rgba(52, 211, 153, 0.2); color: var(--good); }
+  .insight h4 .marker.bad { background: rgba(248, 113, 113, 0.2); color: var(--bad); }
+  .insight p { font-size: 12px; color: var(--text-dim); line-height: 1.55; }
+  .insight code { background: rgba(167, 139, 250, 0.1); color: var(--accent); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+
+  footer {
+    text-align: center; padding: 32px 24px 48px;
+    color: var(--text-faint); font-size: 12px;
+    border-top: 1px solid var(--border);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  @media (max-width: 720px) {
+    header.hero h1 { font-size: 28px; }
+    nav.toc { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>GrooveLinx · Architecture Deep-Dive</h1>
+  <p>The internal structure: shared engines, data field cascades, and boot-sequence map. For when you need to know what breaks if you change something.</p>
+  <div class="meta">
+    <span>20 shared engines</span>
+    <span>8 load phases</span>
+    <span>94 sync scripts</span>
+    <span>~50k lines of feature code</span>
+    <span>Last audited 2026-05-08</span>
+  </div>
+  <div class="related">
+    <a href="/stack-map.html">🗺 Stack map (vendors &amp; tools)</a>
+    <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/load_sequence.md" target="_blank">📋 Load sequence (markdown)</a>
+    <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/optimization_plan.md" target="_blank">🎯 Optimization plan</a>
+  </div>
+</header>
+
+<nav class="toc" aria-label="jump">
+  <a href="#engines"><span class="dot"></span>Shared Engines</a>
+  <a href="#fields"><span class="dot"></span>Field Cascades</a>
+  <a href="#boot"><span class="dot"></span>Boot Sequence</a>
+  <a href="#hotspots"><span class="dot"></span>Hot Spots</a>
+  <a href="#races"><span class="dot"></span>Race Conditions</a>
+  <a href="#actions"><span class="dot"></span>What To Do</a>
+</nav>
+
+<main>
+
+<!-- ===================================================================== -->
+<!-- 1. SHARED ENGINES -->
+<!-- ===================================================================== -->
+<section id="engines" class="zone">
+  <h2>1. Shared engines</h2>
+  <p class="subtitle">Cross-cutting modules behind multiple screens. A bug in any of these cascades. Sorted by reach (engines feeding the most screens are the most load-bearing).</p>
+
+  <div class="legend">
+    <span><span class="reach r-all">19+ screens</span> Critical foundation — touches almost everything.</span>
+    <span><span class="reach r-many">3-6 screens</span> Significant cross-cutting impact.</span>
+    <span><span class="reach r-few">2 screens</span> Two-screen helper.</span>
+    <span><span class="reach r-one">1 screen</span> Niche / specialized.</span>
+  </div>
+
+  <div class="diagram-frame">
+    <div class="diagram-loading"><div class="spinner"></div>Rendering engine dependency graph…</div>
+<pre class="mermaid">
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
+flowchart LR
+
+  subgraph CORE["⚙️ Core engines"]
+    Store["GLStore<br/>(state cache)"]
+    Lifecycle["GL_PAGE_READY<br/>(_navSeq)"]
+    Focus["Focus engine<br/>(getNowFocus)"]
+    Insights["GLInsights<br/>(intelligence)"]
+    Audio["GLAudioSession<br/>(shared Web Audio)"]
+    Stems["GLStems<br/>(stem orchestrator)"]
+    Player["GLPlayerEngine<br/>(YouTube)"]
+    CalSync["GLCalendarSync<br/>(2-way Google sync)"]
+    Actions["GLActions<br/>(action registry)"]
+    Context["GLContext<br/>(context snapshot)"]
+    Mate["GLGrooveMate<br/>(decision engine)"]
+  end
+
+  subgraph SCREENS["📱 Screens"]
+    Home["🏠 Home Dashboard"]
+    Songs["🎵 Songs"]
+    SongDetail["🎶 Song Detail"]
+    Setlists["📋 Setlists"]
+    Calendar["📅 Calendar"]
+    Gigs["🎤 Gigs"]
+    Rehearsal["🥁 Rehearsal"]
+    LiveGig["🔥 Live Gig"]
+    HarmonyLab["🎼 Harmony Lab"]
+    StemsLens["🎚️ Stems Lens"]
+    Notifications["🔔 Notifications"]
+  end
+
+  Store --> Home & Songs & SongDetail & Setlists & Calendar & Gigs & Rehearsal & LiveGig & Notifications
+  Lifecycle --> Home & Songs & SongDetail & Setlists & Calendar & Gigs & Rehearsal
+  Focus --> Home & Songs & Calendar & Rehearsal
+  Insights --> Home & Songs
+  Player --> LiveGig & Setlists & Home & Gigs
+  CalSync --> Calendar & Gigs & Rehearsal
+  Audio --> SongDetail & StemsLens & HarmonyLab & LiveGig
+  Stems --> SongDetail & StemsLens & HarmonyLab
+  Actions --> Home & Rehearsal & SongDetail
+  Context --> Home & SongDetail
+  Mate --> Home & SongDetail
+
+  classDef core fill:#1e1b30,stroke:#a78bfa,color:#a78bfa
+  classDef screen fill:#0e2031,stroke:#60a5fa,color:#60a5fa
+
+  class Store,Lifecycle,Focus,Insights,Audio,Stems,Player,CalSync,Actions,Context,Mate core
+  class Home,Songs,SongDetail,Setlists,Calendar,Gigs,Rehearsal,LiveGig,HarmonyLab,StemsLens,Notifications screen
+</pre>
+  </div>
+
+  <table class="engines">
+    <thead><tr><th>Engine</th><th>File</th><th>Reach</th><th>Job</th><th>If it breaks</th></tr></thead>
+    <tbody>
+      <tr><td><strong>GLStore</strong></td><td><code>js/core/groovelinx_store.js</code></td><td><span class="reach r-all">19 features</span></td><td>Central state cache + change events.</td><td>Whole app fails to render or save.</td></tr>
+      <tr><td><strong>GL_PAGE_READY</strong></td><td><code>js/ui/navigation.js</code></td><td><span class="reach r-all">every render</span></td><td>Router contract; <code>_navSeq</code> guards stale renders. <em>System-locked.</em></td><td>Pages flicker or paint stale data.</td></tr>
+      <tr><td><strong>Focus engine</strong></td><td><code>groovelinx_store.js</code> (getNowFocus)</td><td><span class="reach r-many">4 screens</span></td><td>"What should the band work on next?" — weakest songs, top gaps.</td><td>Recommendation cards blank; "needs work" sort breaks.</td></tr>
+      <tr><td><strong>GLPlayerEngine</strong></td><td><code>js/core/gl-player-engine.js</code></td><td><span class="reach r-many">4 screens</span></td><td>YouTube IFrame Player wrapper with autoplay watchdog.</td><td>Audio playback fails for setlist player + live-gig + practice.</td></tr>
+      <tr><td><strong>Service Worker</strong></td><td><code>service-worker.js</code></td><td><span class="reach r-all">every page</span></td><td>Offline cache + push notifications.</td><td>No offline mode, no push, slow cold starts.</td></tr>
+      <tr><td><strong>GLActions</strong></td><td><code>js/core/gl-actions.js</code></td><td><span class="reach r-many">3 screens</span></td><td>Action registry — avatar router + GrooveMate trigger UI through it.</td><td>Avatar commands and GrooveMate "Apply" silently no-op.</td></tr>
+      <tr><td><strong>GLContext</strong></td><td><code>js/core/gl-context.js</code></td><td><span class="reach r-few">2 screens</span></td><td>Frozen snapshot of GLStore + globals + localStorage.</td><td>GrooveMate fires on stale state.</td></tr>
+      <tr><td><strong>GLGrooveMate</strong></td><td><code>js/core/gl-groovemate.js</code> + <code>groovemate_*.js</code></td><td><span class="reach r-few">2 screens</span></td><td>Decision engine — heuristic + Claude-augmented.</td><td>No suggestion cards; avatar still works.</td></tr>
+      <tr><td><strong>GLCalendarSync</strong></td><td><code>js/core/gl-calendar-sync.js</code></td><td><span class="reach r-many">3 screens</span></td><td>Two-way Google Calendar bridge.</td><td>Calendar drifts from Google; gig dates wrong.</td></tr>
+      <tr><td><strong>GLAudioSession</strong></td><td><code>js/core/gl-audio-session.js</code></td><td><span class="reach r-many">4 surfaces</span></td><td>Single shared Web Audio context across stems / harmony / rehearsal.</td><td>iOS audio randomly stops or distorts.</td></tr>
+      <tr><td><strong>GLStems</strong></td><td><code>js/core/gl-stems.js</code></td><td><span class="reach r-few">2 surfaces</span></td><td>Stem-separation orchestrator (Modal calls).</td><td>Stems lens can't load or play.</td></tr>
+      <tr><td><strong>GLInsights</strong></td><td><code>js/core/gl-insights.js</code></td><td><span class="reach r-few">2 screens</span></td><td>Cross-band intelligence aggregation.</td><td>Readiness scores wrong.</td></tr>
+      <tr><td><strong>GLOrchestrator</strong></td><td><code>js/core/gl-orchestrator.js</code></td><td><span class="reach r-one">1 screen</span></td><td>Multi-step workflow coordinator.</td><td>Workflow CTAs fail to chain steps.</td></tr>
+      <tr><td><strong>recording-analyzer</strong></td><td><code>js/core/recording-analyzer.js</code></td><td><span class="reach r-few">2 surfaces</span></td><td>Pocket Meter + Metronome — Web Audio AnalyserNode + PLL phase-lock.</td><td>Metronome silent; Pocket Meter stops detecting tempo.</td></tr>
+      <tr><td><strong>Wake Lock</strong></td><td><code>js/core/wake-lock.js</code></td><td><span class="reach r-few">2 surfaces</span></td><td>Browser Wake Lock API wrapper.</td><td>Screen sleeps mid-gig.</td></tr>
+      <tr><td><strong>Push system</strong></td><td><code>js/core/gl-push.js</code></td><td><span class="reach r-one">1 screen</span></td><td>FCM token registration + permissions.</td><td>Push notifications stop arriving.</td></tr>
+      <tr><td><strong>Avatar feedback</strong></td><td><code>avatar_feedback_*.js</code> (4 files)</td><td><span class="reach r-all">background</span></td><td>UX telemetry — captures hesitation events.</td><td>Feedback collection breaks; app keeps working.</td></tr>
+      <tr><td><strong>Spotify player</strong></td><td><code>js/core/gl-spotify-player.js</code></td><td><span class="reach r-one">1 screen</span></td><td>Spotify Web Playback SDK wrapper.</td><td>Spotify previews stop.</td></tr>
+      <tr><td><strong>Render state guard</strong></td><td><code>js/core/gl_render_state.js</code></td><td><span class="reach r-all">all pages</span></td><td>Render-in-progress flags; prevents concurrent races.</td><td>Concurrent renders trample each other.</td></tr>
+      <tr><td><strong>User identity</strong></td><td><code>js/core/gl-user-identity.js</code></td><td><span class="reach r-all">all features</span></td><td>Email → memberKey resolution.</td><td>Per-member state attaches to wrong member.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 2. FIELD CASCADES -->
+<!-- ===================================================================== -->
+<section id="fields" class="zone">
+  <h2>2. Field cascades</h2>
+  <p class="subtitle">Eight load-bearing data fields. Touch one → these engines react. Pinpoints what to test when a field changes shape.</p>
+
+  <div class="diagram-frame">
+    <div class="diagram-loading"><div class="spinner"></div>Rendering field cascade graph…</div>
+<pre class="mermaid">
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
+flowchart TB
+
+  subgraph FIELDS["🔑 Load-bearing fields"]
+    F1["song.title"]
+    F2["song.status<br/>(active vs library)"]
+    F3["song.bpm + key"]
+    F4["song.readiness[member]"]
+    F5["meta/members"]
+    F6["calendar_events"]
+    F7["gigs (parallel mirror)"]
+    F8["meta build-version"]
+  end
+
+  subgraph CONSUMERS["🎯 Consumers"]
+    Charts["Charts<br/>(9+ paths)"]
+    Active["GLStore.isActiveSong<br/>(scope filter)"]
+    Pacing["Rehearsal pacing<br/>+ Pocket Meter"]
+    FocusEng["Focus engine"]
+    Intel["Intelligence"]
+    HomeBoard["Home dashboard"]
+    GMate["GrooveMate"]
+    AuthGate["Auth gate<br/>(via members_index CF)"]
+    CalGrid["Calendar grid"]
+    GigsPg["Gigs page"]
+    iCal["ICS feed"]
+    SetlistL["Setlist linkage"]
+    Banners["Console banners"]
+    SWCache["Service Worker cache"]
+  end
+
+  F1 --> Charts
+  F2 --> Active
+  F3 --> Pacing
+  F3 --> Intel
+  F4 --> FocusEng
+  F4 --> Intel
+  F4 --> HomeBoard
+  F4 --> GMate
+  F5 --> AuthGate
+  F6 --> CalGrid
+  F6 --> GigsPg
+  F6 --> iCal
+  F7 --> GigsPg
+  F7 --> SetlistL
+  F8 --> Banners
+  F8 --> SWCache
+
+  classDef field fill:#2a1d10,stroke:#fbbf24,color:#fbbf24
+  classDef consumer fill:#0e2a1f,stroke:#34d399,color:#34d399
+
+  class F1,F2,F3,F4,F5,F6,F7,F8 field
+  class Charts,Active,Pacing,FocusEng,Intel,HomeBoard,GMate,AuthGate,CalGrid,GigsPg,iCal,SetlistL,Banners,SWCache consumer
+</pre>
+  </div>
+
+  <div class="insight-grid">
+    <div class="insight">
+      <h4><span class="marker warn">!</span> song.title is a Firebase key</h4>
+      <p>Renaming a song requires updating <code>charts</code>, <code>readiness</code>, <code>discussions</code>, <code>moments</code>, <code>section_ratings</code>, plus 4+ other paths. The <code>songs_v2</code> migration tool handles this; manual title changes can orphan child data.</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker warn">!</span> song.readiness is the most cascading field</h4>
+      <p>One readiness edit invalidates: focus engine, intelligence ranking, home dashboard cards, rehearsal recommendations, weak-songs sort, and GrooveMate's "next song" suggestion. Cache invalidation here is critical; if any consumer holds stale data, recommendations diverge.</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker good">✓</span> meta/members now triggers a Cloud Function</h4>
+      <p>Shipped 2026-05-07: any write to <code>bands/{slug}/meta/members/{key}</code> fires <code>mirrorMemberToIndex</code> which updates <code>members_index</code>. The auth gate reads from <code>members_index</code>. Edits propagate automatically.</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker bad">⚠</span> calendar_events and gigs dual-mirror</h4>
+      <p>Documented dual-source. Mostly stable after Tier 1-3 audit closures. Stage-2 source-of-truth flip planned (P2.2 in optimization_plan.md) to make calendar_events canonical and delete the gigs node.</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker good">✓</span> build-version is single-source-of-truth now</h4>
+      <p>Console banners, GLContext, knowledge resolver, and service worker cache all read from <code>&lt;meta name="build-version"&gt;</code> at runtime. Bumping the meta tag (one of 4 atomic sources) propagates everywhere — no more stale banners.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 3. BOOT SEQUENCE -->
+<!-- ===================================================================== -->
+<section id="boot" class="zone">
+  <h2>3. Boot sequence</h2>
+  <p class="subtitle">What happens between "user opens app.groovelinx.com" and "Songs page renders." 11 phases, 94 scripts, ~50,000 lines of feature code parsed before first paint.</p>
+
+  <div class="diagram-frame">
+    <div class="diagram-loading"><div class="spinner"></div>Rendering boot sequence…</div>
+<pre class="mermaid">
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
+flowchart TB
+
+  P0["📄 Phase 0 · 0-50ms<br/>Parse index.html<br/>Inline CSS<br/>Show hero gate"]
+  P1["🌐 Phase 1 · 50-200ms<br/>External CDNs<br/>(Contentsquare async)"]
+  P2["🔧 Phase 2 · 200-250ms<br/>utils.js<br/>firebase-service.js"]
+  P3["📁 Phase 3 · 250-270ms<br/>gl-drive-picker<br/>gl-push"]
+  P4["🧠 Phase 4 · 270-400ms<br/>13 intelligence engines<br/>+ groovelinx_store.js (6.8k lines)"]
+  P5["🔊 Phase 5 · 400-450ms<br/>Playback + GLAudioSession<br/>+ listening-bundles (1.5k)"]
+  P6["⏱️ Phase 6 · 450-500ms<br/>Wake Lock + render state<br/>+ avatar feedback ×4"]
+  P7["🤖 Phase 7 · 500-550ms<br/>GrooveMate stack<br/>(10 files)"]
+  P8["🎨 Phase 8 · 550-620ms<br/>UI shell: navigation, panels,<br/>avatar UI"]
+  P9["📦 Phase 9 · 620-900ms<br/>~50k lines of feature code<br/>HOTTEST PHASE"]
+  P10["🚀 Phase 10 · 900-1100ms<br/>app.js (15k) bootstrap<br/>+ async kickoffs"]
+  P11["🎬 Phase 11 · 1100-2000ms+<br/>DOMContentLoaded<br/>showPage(start) at +800ms<br/>Songs / Home renders"]
+
+  P0 --> P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10 --> P11
+
+  P10 -.async.-> SW["Service Worker register"]
+  P10 -.async.-> FB["Firebase SDK loadScript"]
+  P10 -.async.-> OAuth["Google OAuth init"]
+  SW & FB & OAuth -.race.-> P11
+
+  classDef fast fill:#0e2a1f,stroke:#34d399,color:#34d399
+  classDef warn fill:#2a1d10,stroke:#fbbf24,color:#fbbf24
+  classDef hot fill:#2a0e0e,stroke:#f87171,color:#f87171
+  classDef async fill:#1d1430,stroke:#a78bfa,color:#a78bfa
+
+  class P0,P1,P2,P3 fast
+  class P4,P5,P6,P7,P8 warn
+  class P9,P10 hot
+  class P11,SW,FB,OAuth async
+</pre>
+  </div>
+
+  <div class="insight-grid">
+    <div class="insight">
+      <h4><span class="marker bad">🔥</span> Phase 9 is the headline cost</h4>
+      <p>~50,000 lines of feature code parsed even if the user only visits one page. On Pierce's iPhone 4G, this phase alone is 600-900ms. <strong>P0.1 in the optimization plan: lazy-load feature pages by route.</strong></p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker warn">!</span> 800ms magic-number race</h4>
+      <p><code>setTimeout(showPage, 800)</code> in app.js delays initial render to give Firebase + OAuth time to settle. Too long on fast networks (visible blank flash); too short on slow ones. <strong>P0.2: replace with event-driven <code>Promise.all</code>.</strong></p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker good">✓</span> Boot watchdog at 5s</h4>
+      <p>If no page is visible 5s after DOMContentLoaded, force-show home. Last-resort fallback that catches every edge case (failed Firebase init, failed GIS, race conditions).</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker warn">!</span> setInterval cleanup audit</h4>
+      <p>Multiple <code>setInterval</code>s start in <code>groovelinx_store.js</code>: sync heartbeat, stale check, status badge timer. <strong>P0.3: audit cleanup paths to prevent leaks.</strong></p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 4. HOT SPOTS -->
+<!-- ===================================================================== -->
+<section id="hotspots" class="zone">
+  <h2>4. Hot spots ranked by impact</h2>
+  <p class="subtitle">Where the cold-start cost actually lives. Lines of code is a rough proxy for parse + execute cost.</p>
+
+  <table class="engines">
+    <thead><tr><th>#</th><th>File</th><th>Lines</th><th>Phase</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><code>app.js</code></td><td><strong>14,946</strong></td><td>10</td><td>Main entry; heaviest single file. Wave-3 refactor extracted some, more possible.</td></tr>
+      <tr><td>2</td><td><code>js/features/calendar.js</code></td><td><strong>7,864</strong></td><td>9</td><td>OAuth + sync + UI all in one. Split candidate (P1.6).</td></tr>
+      <tr><td>3</td><td><code>js/features/rehearsal.js</code></td><td><strong>7,151</strong></td><td>9</td><td>Multi-tab feature with embedded recording/analysis. Split candidate.</td></tr>
+      <tr><td>4</td><td><code>js/core/groovelinx_store.js</code></td><td><strong>6,792</strong></td><td>4</td><td>Hard to split (everything depends on it); P1.1 plans focused modules.</td></tr>
+      <tr><td>5</td><td><code>js/features/home-dashboard.js</code></td><td><strong>6,338</strong></td><td>9</td><td>106 iteration constructs counted. First-paint hot spot. Memoization opportunity (P1.2).</td></tr>
+      <tr><td>6</td><td><code>js/core/gl-calendar-sync.js</code></td><td>5,967</td><td>9</td><td>Phase-1/Phase-2 sync, freeBusy, hidden-event detection.</td></tr>
+      <tr><td>7</td><td><code>js/features/song-detail.js</code></td><td>4,611</td><td>9</td><td>Hosts Stems lens, Harmony Lab UI, readiness panel.</td></tr>
+      <tr><td>8</td><td><code>pocket-meter.js</code></td><td>3,380</td><td>9</td><td>Pocket Meter v2 Guided Mode.</td></tr>
+      <tr><td>9</td><td><code>rehearsal-mode.js</code></td><td>3,254</td><td>10</td><td>5-tab Practice Mode overlay (loaded but lazy-rendered).</td></tr>
+      <tr><td>10</td><td><code>js/features/stage-plot.js</code></td><td>3,093</td><td>9</td><td>Drag-drop canvas + PDF export.</td></tr>
+      <tr><td>11</td><td><code>js/core/recording-analyzer.js</code></td><td>2,912</td><td>4</td><td>Pocket Meter audio analysis engine.</td></tr>
+      <tr><td>12</td><td><code>js/features/setlists.js</code></td><td>2,959</td><td>9</td><td>Setlist editor + player coordinator.</td></tr>
+      <tr><td>13</td><td><code>js/features/bestshot.js</code></td><td>2,640</td><td>9</td><td>Best-shot tab in song detail.</td></tr>
+      <tr><td>14</td><td><code>js/features/band-feed.js</code></td><td>2,493</td><td>9</td><td>Band activity feed.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 5. RACE CONDITIONS -->
+<!-- ===================================================================== -->
+<section id="races" class="zone">
+  <h2>5. Race conditions identified</h2>
+  <p class="subtitle">Real races observed or strongly suspected. Each has a status: closed (fix shipped), open (mitigation only), or planned (fix queued).</p>
+
+  <table class="engines">
+    <thead><tr><th>#</th><th>Race</th><th>Symptom</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Firebase init vs first <code>firebaseDB.ref()</code></td><td>Empty data flash, then real data</td><td><span class="reach r-few">mitigated</span> via loadScript queue</td></tr>
+      <tr><td>2</td><td><code>showPage(startPage)</code> 800ms timer vs OAuth flow</td><td>Wrong-band data flash; "not signed in" on signed-in user</td><td><span class="reach r-many">P0.2 planned</span></td></tr>
+      <tr><td>3</td><td>Render state flags vs concurrent navigation</td><td>UI flickers, half-rendered states</td><td><span class="reach r-few">closed</span> via _navSeq guard</td></tr>
+      <tr><td>4</td><td>Service worker update vs in-flight requests</td><td>Stale data after deploy</td><td><span class="reach r-many">P0.4 planned</span></td></tr>
+      <tr><td>5</td><td>Audio session vs first sound on iOS</td><td>Stems silent first-play</td><td><span class="reach r-many">P1.4 planned</span> (gesture-arming pattern)</td></tr>
+      <tr><td>6</td><td>Avatar feedback service vs reload</td><td>Duplicate hesitation events</td><td><span class="reach r-one">open</span> — needs singleton-init guard</td></tr>
+      <tr><td>7</td><td>Multiple <code>setInterval</code>s in groovelinx_store.js</td><td>Memory leak on signout</td><td><span class="reach r-many">P0.3 planned</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ===================================================================== -->
+<!-- 6. WHAT TO DO -->
+<!-- ===================================================================== -->
+<section id="actions" class="zone">
+  <h2>6. What to do with this</h2>
+  <p class="subtitle">Three concrete uses for this document.</p>
+
+  <div class="insight-grid">
+    <div class="insight">
+      <h4><span class="marker good">📋</span> Refactor planning</h4>
+      <p>Before changing an engine: open §1, find the engine row, look at the "consumers" column. That list is your test surface. Don't ship a GLStore change without testing all 19 features.</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker good">🔍</span> Bug triage</h4>
+      <p>Multi-screen bug? Find the affected screens in §1, look up which engines feed them. The intersection is where the bug likely lives. Single-screen bug? Check §4 to see if it's in a hot-spot file (>5k lines).</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker good">🚀</span> Performance tuning</h4>
+      <p>Slow startup on a tester device? Use §3 boot sequence to map their performance trace to specific phases. Check §5 to confirm it's not a known race. Cross-reference §4 hot spots for refactor targets.</p>
+    </div>
+  </div>
+
+  <div style="margin-top: 24px; padding: 16px 18px; background: rgba(167, 139, 250, 0.08); border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 10px;">
+    <strong style="color: var(--accent);">Companion docs:</strong>
+    <ul style="margin-top: 8px; padding-left: 20px; color: var(--text-dim); line-height: 1.7;">
+      <li><a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/load_sequence.md" target="_blank" style="color: var(--accent);"><code>load_sequence.md</code></a> — phase-by-phase script load order with race-condition annotations</li>
+      <li><a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/optimization_plan.md" target="_blank" style="color: var(--accent);"><code>optimization_plan.md</code></a> — prioritized P0/P1/P2 roadmap with effort + risk per item</li>
+      <li><a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/stack_inventory.md" target="_blank" style="color: var(--accent);"><code>stack_inventory.md</code></a> — every external tool / service / library with login URLs</li>
+      <li><a href="/stack-map.html" style="color: var(--accent);"><code>stack-map.html</code></a> — visual vendor map (sibling page)</li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p style="margin-bottom: 10px;">
+    <a href="/stack-map.html">🗺 Stack map</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/drewmerrill/deadcetera/blob/main/architecture-deep-dive.html" target="_blank">🛠 Source of this page</a>
+    &nbsp;·&nbsp;
+    <a href="javascript:window.print()">🖨 Print / Save as PDF</a>
+  </p>
+  <p style="font-size: 11px;">
+    Last audited 2026-05-08 · <code>noindex,nofollow</code> set so search engines ignore this page · Internal architecture reference
+  </p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  // Initialize Mermaid for all diagrams.
+  (async function initDiagrams() {
+    const loadings = document.querySelectorAll('.diagram-loading');
+    const hideAll = () => loadings.forEach(el => el.style.display = 'none');
+    const showFallback = (msg) => {
+      loadings.forEach(loading => {
+        loading.innerHTML = '<div style="text-align:center; max-width:400px;">' +
+          '<div style="font-size:24px; margin-bottom:6px;">📋</div>' +
+          '<div style="color:var(--text-dim); margin-bottom:6px;">Diagram failed to render</div>' +
+          '<div style="font-size:11px;">' + msg + '</div>' +
+          '</div>';
+      });
+    };
+    if (!window.mermaid) { showFallback('Mermaid library could not load.'); return; }
+    try {
+      window.mermaid.initialize({
+        startOnLoad: false, theme: 'dark', securityLevel: 'loose',
+        flowchart: { curve: 'basis', useMaxWidth: true, htmlLabels: true }
+      });
+      await window.mermaid.run({ querySelector: 'pre.mermaid' });
+      hideAll();
+    } catch (err) {
+      console.error('[deep-dive] mermaid render failed:', err);
+      showFallback(String(err && err.message || err));
+    }
+  })();
+
+  // Active TOC highlighting on scroll.
+  (function() {
+    const sections = document.querySelectorAll('section.zone[id]');
+    const links = new Map();
+    document.querySelectorAll('nav.toc a[href^="#"]').forEach(a => links.set(a.getAttribute('href').slice(1), a));
+    if (!sections.length || !('IntersectionObserver' in window)) return;
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const link = links.get(entry.target.id);
+        if (link && entry.isIntersecting && entry.intersectionRatio > 0.15) {
+          links.forEach(a => a.classList.remove('active'));
+          link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-80px 0px -55% 0px', threshold: [0, 0.15, 0.5] });
+    sections.forEach(s => observer.observe(s));
+  })();
+</script>
+</body>
+</html>

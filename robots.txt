@@ -1,2 +1,3 @@
 User-agent: *
 Disallow: /stack-map.html
+Disallow: /architecture-deep-dive.html

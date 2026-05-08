@@ -10,6 +10,8 @@ A plain-English reference for every tool, service, and library GrooveLinx depend
 
 **🗺️ Visual architecture map:** [`https://app.groovelinx.com/stack-map.html`](https://app.groovelinx.com/stack-map.html) — a single-page interactive infographic showing every component on this list grouped into zones, with click-through to each vendor's dashboard. Same content as this file, optimized for browsing instead of reading. Set to `noindex,nofollow` so search engines skip it.
 
+**🧠 Architecture Deep-Dive:** [`https://app.groovelinx.com/architecture-deep-dive.html`](https://app.groovelinx.com/architecture-deep-dive.html) — internal structure: shared engines, field cascades, boot sequence with hot-spot annotations. Companion to [`load_sequence.md`](./load_sequence.md) and [`optimization_plan.md`](./optimization_plan.md).
+
 **🤖 Automated version checking:**
 - **Dependabot** (`.github/dependabot.yml`) — auto-PRs for `npm`, `pip`, and GitHub Actions every Monday.
 - **Monthly audit** (`.github/workflows/version-check.yml`) — runs `scripts/check_versions.py` on the 1st of each month, opens or updates a GitHub Issue labeled `version-audit` with a full diff. Catches the messy stuff Dependabot can't see (CDN URLs, inline pip_install pins).
