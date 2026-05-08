@@ -278,7 +278,7 @@ Real gaps fixed in this pass:
 - ✅ **Phase 2** — Closure-coupling audit (`02_GrooveLinx/specs/store_split_audit.md`)
 - ✅ **Phase 3** — `gl-groovemate-memory.js` (GM_KEY/GM_CAP + 4 public memory methods, ~50 lines, zero `_state` coupling). First in-IIFE extraction; validates the move-function-and-state-together pattern for closure-private state.
 - ✅ **Phase 4** — `gl-status-badge.js` (3 closure vars + `setGlobalStatus` + online/offline window listeners + own beforeunload self-cleanup, ~73 lines). Extracted timer cleanup out of the store's `_glCleanup` hook — the new module owns its own lifecycle. Validates moving DOM-touching helpers with co-located window listeners.
-- ⏳ **Phase 5** — `gl-onboarding.js` (1 closure var, ~250 lines, depends on `GLStore.getSongs()`)
+- ✅ **Phase 5** — `gl-onboarding.js` (1 closure var + 5 functions, ~90 lines). Validates cross-module access — the extracted functions reach `GLStore.getSongs` and `GLStore.emit` via runtime `window.GLStore.*` lookups. Section was smaller than the audit's 250-line estimate (audit included the adjacent Band Invitations block, which is its own concern).
 - ⏳ **Phase 6** — `gl-intelligence.js` + `gl-attention.js` (small caches, similar profile)
 - ⏳ **Phase 7** — `gl-leader.js` — leader-heartbeat sync (needs `_state.sync*` lift-out into private cluster, or shared namespace)
 - ⏳ **Phase N** — `gl-focus.js` — `getNowFocus`, `invalidateFocusCache`, `focusChanged` event (SYSTEM LOCK — preserve contract exactly; depends on love system)
