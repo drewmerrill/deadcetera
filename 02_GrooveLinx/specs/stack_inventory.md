@@ -274,7 +274,40 @@ Bookmark this. Every account login or admin URL in one place.
 
 ---
 
-## 11. Key integrations (how the tools talk to each other)
+## 11. GrooveLinx internal features (which external platforms they depend on)
+
+These are features inside the app — pages, tools, and surfaces. None of them introduce new third-party software; each is built on top of platforms already in this inventory. This table answers "if I disable X feature, what else stops working?"
+
+| Feature | Files | Depends on | Notes |
+|---|---|---|---|
+| **Songs page** | `songs.js`, `song-detail.js`, `song-drawer.js` | Firebase RTDB (data); Spotify, YouTube, Genius, Ultimate Guitar (deep links); abcjs (notation) | The hub — every other feature links back to a song. |
+| **Setlists** | `setlists.js`, `setlist-player.js` | Firebase RTDB; YouTube IFrame Player API | Includes the in-app YouTube playback engine. |
+| **Calendar / Gigs** | `calendar.js`, `gigs.js`, `gl-calendar-sync.js` | Firebase RTDB; Google Calendar API; Cloudflare Worker `/ical/{slug}` | Two-way sync with each member's Google Calendar. |
+| **Stems lens** | `song-detail.js` (stems block) | Modal stem-separator; Cloudflare R2; Tone.js; Web Audio API | All stem audio served from R2 after Demucs separation. |
+| **Harmony Lab** | `harmony-lab.js` | LALAL.AI (audio split); Fadr (MIDI); Basic Pitch (audio→MIDI); abcjs (render) | The notation MIDI seed comes from Fadr; lead/backing audio from LALAL. |
+| **Rehearsal Mode** | `rehearsal.js`, `practice.js`, `rehearsal-mixdowns.js` | Firebase RTDB; Web Audio API; Wake Lock API; Google Drive (audio loading) | Pocket Meter / Metronome live here — pure Web Audio + custom PLL phase-lock. |
+| **Live Gig Mode** | `live-gig.js` | Service Worker (offline cache); Wake Lock API; Cache API | Designed to work without wifi during a gig. |
+| **Stage Plot** | `stage-plot.js` | Firebase RTDB; HTML5 drag-drop; `window.print()` for PDF; OpenAI gpt-image-1 (icons via iconforge) | Public read-only share URL at `share.groovelinx.com/stageplot/...` served by the Cloudflare Worker. |
+| **Playlists** | `playlists.js`, `listening-bundles.js` | Firebase RTDB; Spotify Web API; YouTube Data API; OAuth | Persistent synced playlists across Spotify and YouTube. |
+| **Notifications** | `notifications.js`, `gl-push.js` | Firebase RTDB; Firebase FCM (Layer 2); Twilio SMS (Layer 3); browser Notifications API | Three layers: in-app banner / FCM push / SMS. |
+| **Care Packages** | `notifications.js` (pack helpers) | Firebase RTDB (`bands/{slug}/care_packages` + public mirror at `care_packages_public/{id}`); Cloudflare Worker `/pack/:id` route | Public-readable bundles of band info; no GrooveLinx login required to view. |
+| **Band Feed** | `band-feed.js` | Firebase RTDB | Internal activity feed within a band. |
+| **Band Comms / Discussions** | `band-comms.js` | Firebase RTDB | Per-song threaded discussion. |
+| **GrooveMate** | `gl-groovemate.js`, `gl-actions.js`, `gl-context.js`, `groovemate_*.js` | Anthropic Claude API (via worker); Firebase RTDB (memory persistence) | Decision engine — heuristic + Claude-augmented suggestions. |
+| **Finances** | `finances.js` | Firebase RTDB | Internal income/expense tracker; **no Stripe / QuickBooks / payments integration**. Just bookkeeping on top of RTDB. |
+| **Socials** | `social.js` | Browser (deep-link out only) | Profile chips for Instagram / Facebook / TikTok / X. |
+| **Help system** | `help.js`, `gl-help-v2.js` | None — pure HTML/CSS/JS | In-app guide; no external deps. |
+| **Bestshot (reference recordings)** | `bestshot.js` | Firebase RTDB; Google Drive API | Audio reference snippets attached to songs. |
+| **Practice Mixes** | `firebase-service.js` (`practice_mixes`) | Firebase RTDB; Firebase Storage | User-uploaded practice tracks. |
+| **Stage Plot share URL** | `worker.js` `handleStagePlotPublic` | Firebase RTDB REST; Cloudflare Worker; `share.groovelinx.com` subdomain | Public read-only HTML page for FOH engineers. |
+| **iCal calendar feed** | `worker.js` `handleICalFeed` | Firebase RTDB REST; Cloudflare Worker | Live calendar subscription URL for external apps (Google/Apple/Outlook). |
+| **Bulk Import** | `bulk-import.js` | Spotify Web API; YouTube Data API; Ultimate Guitar (deep link) | Paste a list of song titles, auto-resolve everything. |
+| **Bug / feedback collection** | `app.js` (avatar feedback service) | Firebase RTDB (`bands/{slug}/feedback_reports`); GitHub Issues (manual triage layer) | Two-tier: instant in-app capture into Firebase, then Drew triages into GitHub Issues for the Project board. |
+| **Admin tools** | scattered across pages (calendar maintenance modal, member provisioning console snippets, etc.) | Firebase RTDB; Cloudflare Worker | No dedicated admin page; admin actions embedded in the relevant feature pages. |
+
+---
+
+## 12. Key integrations (how the tools talk to each other)
 
 These are the wires connecting different vendors. Knowing they exist helps when something breaks — the symptom often shows up far from the cause.
 
