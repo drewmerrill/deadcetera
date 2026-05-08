@@ -1099,103 +1099,11 @@
     return { lovedSongs: lovedSongs, lowEnergySongs: lowEnergySongs, growthSongs: growthSongs };
   }
 
-  // ── Focus Engine — single source of truth for "what to work on" ──────────
-  //
-  // GLStore.getNowFocus() → { primary, list, reason }
-  //
-  // Unifies: low readiness, upcoming gig/rehearsal urgency, setlist membership,
-  // and recent rehearsal insights into ONE ordered list.
-  // ALL UI surfaces (Home, Songs, Rehearsal, Song Detail) must use ONLY this.
-
-  var _focusCache = null;
-  var _focusCacheTime = 0;
-
-  function invalidateFocusCache() {
-    _focusCache = null;
-    _focusCacheTime = 0;
-    emit('focusChanged');
-  }
-
-  function getNowFocus() {
-    // Cache for 30s to avoid re-computing on every render
-    if (_focusCache && (Date.now() - _focusCacheTime < 30000)) return _focusCache;
-
-    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-    var rc = (typeof readinessCache !== 'undefined') ? readinessCache : {};
-
-    // Setlist songs (current set)
-    var setlistSongs = {};
-    var setlists = _state.setlistCache || [];
-    if (setlists.length) {
-      (setlists[0].sets || []).forEach(function(set) {
-        (set.songs || []).forEach(function(item) {
-          var t = typeof item === 'string' ? item : (item.title || '');
-          if (t) setlistSongs[t] = true;
-        });
-      });
-    }
-
-    // Upcoming urgency
-    var gigs = _state.gigsCache || [];
-    var today = new Date().toISOString().split('T')[0];
-    var nextGig = gigs.filter(function(g) { return (g.date || '') >= today; }).sort(function(a,b) { return (a.date||'').localeCompare(b.date||''); })[0] || null;
-    var gigDays = nextGig ? Math.ceil((new Date(nextGig.date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000) : 999;
-
-    // Score each active song
-    var candidates = [];
-    songs.forEach(function(s) {
-      var st = (typeof statusCache !== 'undefined' && statusCache[s.title]) ? statusCache[s.title] : '';
-      if (!ACTIVE_STATUSES[st]) return;
-      var scores = rc[s.title] || {};
-      var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-      var avg = vals.length ? vals.reduce(function(a,b) { return a + b; }, 0) / vals.length : 0;
-      if (avg === 0) return; // unrated — skip
-
-      // Composite focus score: lower readiness = higher focus
-      var focusScore = (5 - avg) * 2; // 0-10 scale based on readiness gap
-      // Setlist membership boost
-      if (setlistSongs[s.title]) focusScore += 3;
-      // Gig urgency boost
-      if (gigDays <= 7 && setlistSongs[s.title]) focusScore += (8 - gigDays);
-      // Priority boost (love × gap)
-      var pri = getSongPriority(s.title);
-      if (pri > 0) focusScore += pri * 0.5;
-      // Rehearsal issue boost (from analysis pipeline)
-      if (typeof RehearsalAnalysis !== 'undefined' && RehearsalAnalysis.getIssueFocusBoost) {
-        focusScore += RehearsalAnalysis.getIssueFocusBoost(s.title);
-      }
-
-      if (avg < 4) { // only include songs that actually need work
-        candidates.push({ title: s.title, avg: avg, focusScore: focusScore, inSetlist: !!setlistSongs[s.title] });
-      }
-    });
-
-    candidates.sort(function(a, b) { return b.focusScore - a.focusScore; });
-    var list = candidates.slice(0, 5);
-    var primary = list[0] || null;
-
-    // Generate reason — love-aware when meaningful
-    var reason = '';
-    if (primary) {
-      var _bl = _bandLoveCache[primary.title] || 0;
-      var _al = _audienceLoveCache[primary.title] || 0;
-      if (gigDays <= 3 && primary.inSetlist) {
-        reason = _al >= 4 ? 'Gig soon \u2014 crowd loves this, get it tight.' : 'Gig soon \u2014 this needs work before you play.';
-      } else if (primary.avg < 2) {
-        reason = _bl >= 4 ? 'Band favorite but not ready \u2014 run it start to finish.' : 'Low readiness. Run it start to finish.';
-      } else if (primary.avg < 3) {
-        reason = _al >= 4 ? 'Crowd favorite \u2014 tighten the weak spots.' : 'Almost there. Tighten the weak spots.';
-      } else {
-        reason = (_bl >= 4 && _al >= 4) ? 'Anchor song \u2014 keep it sharp.' : 'Could be stronger. Worth a run-through.';
-      }
-    }
-
-    _focusCache = { primary: primary, list: list, reason: reason, count: candidates.length };
-    _focusCacheTime = Date.now();
-    console.log('[FocusEngine] Songs=' + songs.length + ' Readiness=' + Object.keys(rc).length + ' Candidates=' + candidates.length + ' Setlist=' + Object.keys(setlistSongs).length);
-    console.log('[FocusEngine] Top 5:', list.map(function(s) { return s.title + ' (' + s.focusScore.toFixed(1) + ', avg=' + s.avg.toFixed(1) + (s.inSetlist ? ', setlist' : '') + ')'; }).join(' | '));
-    return _focusCache;
-  }
+  // Focus Engine — extracted 2026-05-08 (P1.1 phase 8) into js/core/gl-focus.js.
+  // SYSTEM LOCK contract preserved per CLAUDE.md §7b: invalidateFocusCache()
+  // still emits 'focusChanged' (now via GLStore.emit from the new module);
+  // Home/Songs/Rehearsal subscribers unchanged. Methods attach to
+  // window.GLStore at the new file's load time.
 
   // ── Current Timeline (review state for Rehearsal page) ─────────────────────
 
@@ -4543,9 +4451,10 @@
     getRehearsalPriorities: getRehearsalPriorities,
     getBandPreferences: getBandPreferences,
 
-    // Focus Engine — single source of truth for "what to work on"
-    getNowFocus:       getNowFocus,
-    invalidateFocusCache: invalidateFocusCache,
+    // Focus Engine — extracted 2026-05-08 (P1.1 phase 8) into js/core/gl-focus.js.
+    // Methods attach to window.GLStore at that file's load time. SYSTEM LOCK
+    // contract per CLAUDE.md §7b preserved — invalidateFocusCache() still
+    // emits 'focusChanged' from the new module.
 
     // Active status (canonical)
     ACTIVE_STATUSES:   ACTIVE_STATUSES,
