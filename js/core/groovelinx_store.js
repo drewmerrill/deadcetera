@@ -677,7 +677,9 @@
           .push({ score: v, ts: _now() });
       } catch (eh) {}
       emit('readinessChanged', { songId: songId, memberKey: memberKey, value: v });
-      logBandActivity('rating', { song: songId, value: v });
+      // logBandActivity now in gl-band-metrics.js (P1.1 phase 19)
+      var _GL_BM = (typeof window !== 'undefined' && window.GLStore) ? window.GLStore : null;
+      if (_GL_BM && _GL_BM.logBandActivity) _GL_BM.logBandActivity('rating', { song: songId, value: v });
       if (typeof showToast === 'function') showToast('Readiness saved');
     } catch (e) {
       if (typeof showToast === 'function') showToast('Could not save readiness');
@@ -1378,95 +1380,6 @@
   // listener for timer cleanup so the store's _glCleanup no longer references
   // _glStatusBadgeTimer.
 
-  // ── Band Activity Log — lightweight feed for "What's New" on Home ────────
-  // Writes to Firebase: bandPath('activity_log/{id}')
-  // Each entry: { type, member, detail, ts }
-  function logBandActivity(type, detail) {
-    try {
-      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-      if (!db || typeof bandPath !== 'function') return;
-      var memberName = '';
-      if (typeof currentUserName !== 'undefined' && currentUserName) memberName = currentUserName;
-      else if (typeof currentUserEmail !== 'undefined' && currentUserEmail) memberName = currentUserEmail.split('@')[0];
-      var entry = {
-        type: type,
-        member: memberName,
-        detail: detail || {},
-        ts: new Date().toISOString()
-      };
-      db.ref(bandPath('activity_log')).push(entry);
-    } catch(e) {}
-  }
-
-  // Read last N activity entries (cached in memory for 2 minutes)
-  var _activityCache = null;
-  var _activityCacheTime = 0;
-  async function getBandActivity(limit) {
-    if (_activityCache && Date.now() - _activityCacheTime < 120000) return _activityCache;
-    try {
-      var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-      if (!db || typeof bandPath !== 'function') return [];
-      var snap = await db.ref(bandPath('activity_log')).orderByChild('ts').limitToLast(limit || 10).once('value');
-      var val = snap.val();
-      if (!val) return [];
-      var entries = Object.values(val).sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
-      _activityCache = entries;
-      _activityCacheTime = Date.now();
-      return entries;
-    } catch(e) { return []; }
-  }
-
-  // ── Page View Metrics — track navigation after simplification ─────────
-  // Stored in localStorage per session, flushed to Firebase daily
-  var _pageViewCounts = {};
-  try {
-    var _pvRaw = localStorage.getItem('gl_page_views');
-    if (_pvRaw) _pageViewCounts = JSON.parse(_pvRaw);
-    // Reset daily
-    if (_pageViewCounts._date && _pageViewCounts._date !== new Date().toISOString().slice(0, 10)) _pageViewCounts = {};
-  } catch(e) { _pageViewCounts = {}; }
-
-  function logPageView(page) {
-    _pageViewCounts[page] = (_pageViewCounts[page] || 0) + 1;
-    _pageViewCounts._date = new Date().toISOString().slice(0, 10);
-    try { localStorage.setItem('gl_page_views', JSON.stringify(_pageViewCounts)); } catch(e) {}
-  }
-
-  // Track meaningful actions (not just views) per page
-  function logPageAction(page, action) {
-    var key = page + ':' + action;
-    _pageViewCounts[key] = (_pageViewCounts[key] || 0) + 1;
-    _pageViewCounts._date = new Date().toISOString().slice(0, 10);
-    try { localStorage.setItem('gl_page_views', JSON.stringify(_pageViewCounts)); } catch(e) {}
-  }
-
-  function getPageViewCounts() { return _pageViewCounts; }
-
-  // ── Retention Metrics — track daily opens and return frequency ──────────
-  // Stores last 30 days of opens in localStorage
-  function logDailyOpen() {
-    try {
-      var today = new Date().toISOString().slice(0, 10);
-      var raw = localStorage.getItem('gl_daily_opens');
-      var opens = raw ? JSON.parse(raw) : [];
-      if (opens[opens.length - 1] !== today) {
-        opens.push(today);
-        if (opens.length > 30) opens = opens.slice(-30);
-        localStorage.setItem('gl_daily_opens', JSON.stringify(opens));
-      }
-    } catch(e) {}
-  }
-
-  function getRetentionStats() {
-    try {
-      var raw = localStorage.getItem('gl_daily_opens');
-      var opens = raw ? JSON.parse(raw) : [];
-      var now = Date.now();
-      var last7 = opens.filter(function(d) { return now - new Date(d + 'T12:00:00').getTime() < 7 * 86400000; }).length;
-      var last30 = opens.length;
-      return { daysActive7: last7, daysActive30: last30, totalDays: opens.length, history: opens };
-    } catch(e) { return { daysActive7: 0, daysActive30: 0, totalDays: 0, history: [] }; }
-  }
 
   // ── Gigs Cache (centralized) ──────────────────────────────────────────────
   function getGigs() {
@@ -2316,13 +2229,9 @@
     setCachedBandData:           setCachedBandData,
     getCacheAgeLabel:            getCacheAgeLabel,
     clearSetlistCache:           clearSetlistCache,
-    logBandActivity:             logBandActivity,
-    getBandActivity:             getBandActivity,
-    logPageView:                 logPageView,
-    logPageAction:               logPageAction,
-    getPageViewCounts:           getPageViewCounts,
-    logDailyOpen:                logDailyOpen,
-    getRetentionStats:           getRetentionStats,
+    // Activity Log + Page View Metrics + Retention Metrics — extracted
+    // 2026-05-08 (P1.1 phase 19) into js/core/gl-band-metrics.js. Methods
+    // attach to window.GLStore at that file's load time.
 
     // Transition Intelligence
     getTransitionIntelligence:   getTransitionIntelligence,
