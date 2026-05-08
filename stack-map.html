@@ -431,7 +431,9 @@
     <p>How band members and Drew interact with the app.</p>
   </div>
   <div class="tiles">
-    <div class="tile no-link"><span class="icon">📱</span><span class="name">Bandmate iPhones</span><span class="tag">Pierce, Brian, Cmj, Jeff, Whitney — primary tester surface. iOS Safari is the strictest engine; lots of Stems lens / autoplay quirks live here.</span></div>
+    <div class="tile no-link"><span class="icon">📱</span><span class="name">Bandmate iPhones</span><span class="tag">Jay, Pierce, Brian, Chris — the four other DeadCetera members on iOS Safari. Strictest browser engine; most Stems lens / autoplay quirks surface here first.</span></div>
+    <div class="tile no-link"><span class="icon">📲</span><span class="name">iPad</span><span class="tag">Tablet form factor for chart reading + Live Gig mode. Same iOS Safari engine as iPhone but with more screen real estate; lots of layout/breakpoint tests run here.</span></div>
+    <div class="tile no-link"><span class="icon">🤖</span><span class="name">Samsung S24 (Android)</span><span class="tag">Android Chrome cross-device coverage. Different push-notification stack and slightly different Web Audio behavior than iOS; valuable to keep parity with the iPhone-heavy band.</span></div>
     <div class="tile no-link"><span class="icon">💻</span><span class="name">Drew's Mac</span><span class="tag">macOS 26.4.1. Primary dev + ops machine. Chrome for testing, iTerm2 for CLIs.</span></div>
     <div class="tile no-link"><span class="icon">🎤</span><span class="name">Live Gig (offline-first)</span><span class="tag">Service worker + SWR cache means the app works without wifi during a gig — chord charts and setlists pre-cached via Prep for Gig.</span></div>
   </div>
@@ -566,7 +568,7 @@
     <div class="tiles">
       <a class="tile" href="https://myaccount.google.com" target="_blank"><span class="icon">🔐</span><span class="name">Google OAuth</span><span class="tag">"Sign in with Google" — every band member auths here.</span><span class="footer"><span>auth</span><span>open</span></span></a>
       <a class="tile" href="https://calendar.google.com" target="_blank"><span class="icon">📅</span><span class="name">Google Calendar API</span><span class="tag">Two-way sync between band cal + each member's personal cal.</span><span class="footer"><span>calendar</span><span>open</span></span></a>
-      <a class="tile" href="https://drive.google.com" target="_blank"><span class="icon">📁</span><span class="name">Google Drive API</span><span class="tag">Backup target + practice-mix file storage.</span><span class="footer"><span>drive</span><span>open</span></span></a>
+      <a class="tile" href="https://drive.google.com" target="_blank"><span class="icon">📁</span><span class="name">Google Drive API</span><span class="tag">Audio + media file storage — Drive Picker for file selection, Best Shot reference recordings, rehearsal audio loading. (Band JSON data lives in Firebase RTDB; the legacy <code>saveBandDataToDrive</code> name is misleading.)</span><span class="footer"><span>drive</span><span>open</span></span></a>
     </div>
   </div>
 
