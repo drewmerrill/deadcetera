@@ -47,7 +47,6 @@
   var _state = {
     // Active context
     activeBandSlug:    null,   // 'deadcetera'
-    activeSongId:      null,   // sanitized title string
     activeRehearsalId: null,
 
     // Data caches (store-owned)
@@ -61,25 +60,12 @@
     // js/core/gl-product-mode.js. State lives in that module's closure now.
 
     // ── Shell state (Milestone 4) ──────────────────────────────────────────
-    // activePage mirrors the currentPage global. showPage() writes both.
-    // selectedSongId is activeSongId above (already exists).
-    // nowPlayingSongId and liveRehearsalSongId are intentionally separate.
-    activePage:           null,        // 'songs'|'home'|'gigs'|... — mirrors currentPage
-    rightPanelMode:       'closed',    // 'closed'|'song'|'snapshot'
-    currentBandId:        null,        // 'deadcetera'
-    navCollapsed:         false,       // left rail collapsed state
-    mobilePanelState:     'closed',    // 'closed'|'panel'|'drawer'
-    appMode:              'workspace', // 'workspace'|'performance'
-    nowPlayingSongId:     null,        // persistent song context across pages
-    liveRehearsalSongId:  null,        // active song inside rehearsal/performance mode
-    currentSnapshotRange: '7d',        // readiness/activity time window
 
     // Current rehearsal timeline (set by _rhRenderInlineTimelineDirectly, read by compare/coaching)
     currentTimelineSessionId: null,   // sessionId of the timeline currently rendered
     currentTimelineData:      null,   // output of _rhPrepareSegmentData for the active timeline
 
     // Performance mode restore snapshot — captured on enter, applied on exit
-    restoreState:         null,        // { page, songId, panelMode, scrollY } or null
 
     // Band Sync state — extracted 2026-05-08 (P1.1 phase 7) into
     // js/core/gl-leader.js. Lifted into a private _sync cluster owned by
@@ -452,37 +438,9 @@
       .catch(function () { return null; });
   }
 
-  // ── Active song ───────────────────────────────────────────────────────────
-
-  /**
-   * Set the active song. Syncs to the legacy selectedSong global.
-   * Emits 'activeSongChanged'.
-   * @param {string} songId
-   */
-  function setActiveSong(songId) {
-    _state.activeSongId = songId;
-    // Sync to legacy global so app.js functions still work
-    if (typeof allSongs !== 'undefined') {
-      var songObj = allSongs.find(function (s) { return s.title === songId; });
-      if (typeof selectedSong !== 'undefined') {
-        // selectedSong is declared with let in app.js — assign directly
-        try {
-          selectedSong = { title: songId, band: songObj ? songObj.band : 'GD' };
-        } catch (e) {}
-      }
-    }
-    emit('activeSongChanged', { songId: songId });
-  }
-
-  /**
-   * Get the current active song id.
-   * Falls back to legacy selectedSong global if store state is null.
-   */
-  function getActiveSong() {
-    if (_state.activeSongId) return _state.activeSongId;
-    var sel = (typeof selectedSong !== 'undefined') ? selectedSong : null;
-    return sel ? (sel.title || sel) : null;
-  }
+  // Active Song API — extracted 2026-05-08 (P1.1 phase 28) into
+  // js/core/gl-selection.js. setActiveSong + getActiveSong attach to
+  // window.GLStore at that file's load time.
 
   // ── Song detail writes ────────────────────────────────────────────────────
 
@@ -693,98 +651,11 @@
   }
 
 
-  // ── Song Value Model V2 — Priority Score + Gap + Signals ────────────────
-
-  function _avgReadiness(songId) {
-    try {
-      var scores = getReadiness(songId);
-      var vals = Object.values(scores).filter(function(v) { return typeof v === 'number' && v > 0; });
-      return vals.length ? vals.reduce(function(a, b) { return a + b; }, 0) / vals.length : 0;
-    } catch(e) { return 0; }
-  }
-
-  /**
-   * Priority score: identifies highest-value rehearsal targets.
-   * Band love is primary emotional driver, audience love influences, readiness matters.
-   * priorityScore = (bandLove * 0.5) + (audienceLove * 0.2) + ((5 - readiness) * 0.3)
-   */
-  // Note: love-cache reads here go through window.GLStore.* runtime lookups
-  // since the love system was extracted into js/core/gl-love.js (P1.1 phase 10).
-  function getSongPriority(songId) {
-    var GL = window.GLStore || {};
-    var love = (GL.getBandLove ? GL.getBandLove(songId) : 0) || 0;
-    var crowd = (GL.getAudienceLove ? GL.getAudienceLove(songId) : 0) || 0;
-    var readiness = _avgReadiness(songId);
-    if (love === 0 && crowd === 0) return 0; // unrated songs have no priority
-    return Math.round((love * 0.5 + crowd * 0.2 + (5 - readiness) * 0.3) * 100) / 100;
-  }
-
-  /**
-   * Emotional gap: love minus readiness.
-   * Positive = loved but needs work. Negative = technically fine but low energy.
-   */
-  function getSongGap(songId) {
-    var GL = window.GLStore || {};
-    var love = (GL.getBandLove ? GL.getBandLove(songId) : 0) || 0;
-    var readiness = _avgReadiness(songId);
-    if (love === 0 && readiness === 0) return 0;
-    return Math.round((love - readiness) * 100) / 100;
-  }
-
-  /**
-   * Full song signals for NBA engine + avatar insights.
-   */
-  function getSongSignals(songId) {
-    var GL = window.GLStore || {};
-    var love = (GL.getBandLove ? GL.getBandLove(songId) : 0) || 0;
-    var crowd = (GL.getAudienceLove ? GL.getAudienceLove(songId) : 0) || 0;
-    var readiness = _avgReadiness(songId);
-    return {
-      bandLove: love,
-      audienceLove: crowd,
-      readiness: Math.round(readiness * 10) / 10,
-      priorityScore: getSongPriority(songId),
-      derivedStatus: GL.deriveSongStatus ? GL.deriveSongStatus(songId) : { status: 'unrated', label: 'Unrated', color: '#64748b' },
-      gap: getSongGap(songId),
-      isFocus: getSongPriority(songId) >= 3.5
-    };
-  }
-
-  /**
-   * Get top songs ranked by priority score (for rehearsal planning).
-   */
-  function getRehearsalPriorities(limit) {
-    limit = limit || 10;
-    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-    return songs.map(function(s) {
-      return { title: s.title, songId: s.songId, priority: getSongPriority(s.title), signals: getSongSignals(s.title) };
-    }).filter(function(s) { return s.priority > 0; })
-      .sort(function(a, b) { return b.priority - a.priority; })
-      .slice(0, limit);
-  }
-
-  /**
-   * Get band preferences for DNA integration.
-   */
-  function getBandPreferences() {
-    var GL = window.GLStore || {};
-    var getLove = GL.getBandLove || function() { return 0; };
-    var songs = (typeof allSongs !== 'undefined') ? allSongs : [];
-    var all = songs.map(function(s) {
-      return { title: s.title, love: getLove(s.title) || 0, readiness: _avgReadiness(s.title), gap: getSongGap(s.title), priority: getSongPriority(s.title) };
-    }).filter(function(s) { return s.love > 0; });
-
-    all.sort(function(a, b) { return b.love - a.love; });
-    var lovedSongs = all.slice(0, 5).map(function(s) { return s.title; });
-
-    all.sort(function(a, b) { return a.love - b.love; });
-    var lowEnergySongs = all.filter(function(s) { return s.love > 0 && s.love <= 2; }).slice(0, 5).map(function(s) { return s.title; });
-
-    all.sort(function(a, b) { return b.gap - a.gap; });
-    var growthSongs = all.filter(function(s) { return s.gap > 1; }).slice(0, 5).map(function(s) { return s.title; });
-
-    return { lovedSongs: lovedSongs, lowEnergySongs: lowEnergySongs, growthSongs: growthSongs };
-  }
+  // Song Value Model V2 — extracted 2026-05-08 (P1.1 phase 27) into
+  // js/core/gl-song-value.js. getSongPriority + getSongGap + getSongSignals
+  // + getRehearsalPriorities + getBandPreferences + avgReadiness attach to
+  // window.GLStore at that file's load time. Reads getReadiness via
+  // cross-module GLStore lookup.
 
   // Focus Engine — extracted 2026-05-08 (P1.1 phase 8) into js/core/gl-focus.js.
   // SYSTEM LOCK contract preserved per CLAUDE.md §7b: invalidateFocusCache()
@@ -898,101 +769,13 @@
   // migrateLegacyStatuses attach to window.GLStore at that file's load time.
   // Reads GLStore.getAllStatus() at call time.
 
-  // ── Navigation / Selection state ─────────────────────────────────────────
-  // Milestone 1 Phase A — additive only. Zero behavior change to existing paths.
+  // Active Song + Selection (was Navigation/Selection state) — extracted
+  // 2026-05-08 (P1.1 phase 28) into js/core/gl-selection.js. selectSong,
+  // clearSong, getSelectedSong, saveScroll, restoreScroll attach to
+  // window.GLStore at that file's load time. State (was _state.activeSongId
+  // and _navScrollCache) is now private to the new module.
 
-  var _navScrollCache = {};  // { pageKey: scrollY }
-
-  /**
-   * Select a song by title. Canonical single writer for song selection.
-   *
-   * Writes:
-   *   _state.activeSongId   — store's own selection record
-   *   window.selectedSong   — legacy compat sync for app.js callers
-   *   localStorage.glLastSong — entity restore key on reload (RIGHT PANEL only)
-   *   _navScrollCache[page] — workspace scroll saved for panel close restore
-   *
-   * Does NOT write glLastPage — page navigation state is owned by showPage()
-   * and navigation.js exclusively. Song selection and page navigation are
-   * independent axes of state.
-   *
-   * Does NOT call showPage() or navigate away from the current page.
-   *
-   * @param {string} title  Exact song title matching an entry in allSongs
-   */
-  function selectSong(title) {
-    if (!title) { clearSong(); return; }
-    // If user is selecting a song, they're past the hero — hide it
-    try { var _h = document.getElementById('page-hero'); if (_h) _h.classList.add('hidden'); } catch(e) {}
-    var prev = _state.activeSongId;
-    _state.activeSongId = title;
-    // Sync legacy global — app.js code that reads selectedSong keeps working
-    try {
-      var songData = getSongs().find(function(s) { return s.title === title; });
-      window.selectedSong = { title: title, band: songData ? (songData.band || 'GD') : 'GD' };
-    } catch(e) {}
-    // Persist entity selection for reload restore (right panel only — NOT page nav)
-    // glLastPage is intentionally NOT written here; it belongs to showPage()
-    try {
-      localStorage.setItem('glLastSong', title);
-    } catch(e) {}
-    // Save current workspace scroll so close can restore it
-    var page = typeof currentPage !== 'undefined' ? currentPage : 'songs';
-    _navScrollCache[page] = window.scrollY;
-    // Auto-set Now Playing when a song is selected (makes the bar visible naturally)
-    setNowPlaying(title);
-    // Only emit if the selection actually changed (avoid double-render)
-    if (prev !== title) {
-      emit('gl-song-selected', { title: title });
-    }
-  }
-
-  /**
-   * Clear the active song selection.
-   * Emits 'gl-song-cleared' — right panel reverts to band snapshot.
-   *
-   * Does NOT write glLastPage — clearing a selection doesn't change
-   * which workspace page the user is on.
-   */
-  function clearSong() {
-    _state.activeSongId = null;
-    try { window.selectedSong = null; } catch(e) {}
-    // Remove entity selection key only — glLastPage is not our concern
-    try {
-      localStorage.removeItem('glLastSong');
-    } catch(e) {}
-    emit('gl-song-cleared');
-  }
-
-  /**
-   * Return the currently selected song title, or null.
-   */
-  function getSelectedSong() {
-    return _state.activeSongId;
-  }
-
-  /**
-   * Save current scroll position for a page key.
-   * Called automatically by selectSong(); also callable manually before
-   * any navigation that should be undoable with restoreScroll().
-   * @param {string} [page]  Defaults to currentPage global
-   */
-  function saveScroll(page) {
-    var key = page || (typeof currentPage !== 'undefined' ? currentPage : 'songs');
-    _navScrollCache[key] = window.scrollY;
-  }
-
-  /**
-   * Restore saved scroll position for a page key.
-   * Called by glRightPanel.close() after panel closes.
-   * @param {string} [page]  Defaults to currentPage global
-   */
-  function restoreScroll(page) {
-    var key = page || (typeof currentPage !== 'undefined' ? currentPage : 'songs');
-    window.scrollTo(0, _navScrollCache[key] || 0);
-  }
-
-  // Song Intelligence + Practice Attention — extracted 2026-05-08 (P1.1 phase 6)
+    // Song Intelligence + Practice Attention — extracted 2026-05-08 (P1.1 phase 6)
   // into js/core/gl-intelligence.js. The new module subscribes to
   // 'readinessChanged' and 'songFieldUpdated' via GLStore.on at its load time
   // and reads getAllReadiness / getAllStatus / getSongs / getSetlists via
@@ -1008,266 +791,22 @@
   // private to the new module.
 
 
-  // ── Status Cache (centralized setter) ─────────────────────────────────────
-  function setStatus(songId, status) {
-    try {
-      if (typeof statusCache !== 'undefined') statusCache[songId] = status;
-    } catch(e) {}
-    emit('statusChanged', { songId: songId, status: status });
-  }
+  // Status + Readiness Cache setters — extracted 2026-05-08 (P1.1 phase 29)
+  // into js/core/gl-cache-setters.js. setStatus, setAllStatus, setReadiness,
+  // setAllReadiness attach to window.GLStore at that file's load time.
 
-  function setAllStatus(data) {
-    try {
-      if (typeof statusCache !== 'undefined') Object.assign(statusCache, data);
-    } catch(e) {}
-    emit('statusChanged', { bulk: true });
-  }
+    // Shell State + Derived Selectors — extracted 2026-05-08 (P1.1 phase 26)
+  // into js/core/gl-shell-state.js. setActivePage, setRightPanelMode,
+  // setNavCollapsed, setAppMode, setNowPlaying, setLiveRehearsalSong,
+  // setCurrentBand, setSnapshotRange, isPerformanceMode, hasNowPlaying,
+  // getShellState, getActiveContext (and their getters) attach to
+  // window.GLStore at that file's load time. The 9-key state cluster (was
+  // _state.activePage, _state.rightPanelMode, _state.navCollapsed,
+  // _state.appMode, _state.nowPlayingSongId, _state.liveRehearsalSongId,
+  // _state.currentBandId, _state.currentSnapshotRange, _state.restoreState)
+  // is now private to the new module.
 
-  // ── Readiness Cache (centralized setter) ──────────────────────────────────
-  function setReadiness(songId, scores) {
-    try {
-      if (typeof readinessCache !== 'undefined') readinessCache[songId] = scores;
-    } catch(e) {}
-    emit('readinessChanged', { songId: songId });
-  }
-
-  function setAllReadiness(data) {
-    try {
-      if (typeof readinessCache !== 'undefined') {
-        // Clone data first — if readinessCache === data (same ref), clearing
-        // would destroy the source before we can copy from it
-        var clone = {};
-        if (data && typeof data === 'object') {
-          Object.keys(data).forEach(function(k) { clone[k] = data[k]; });
-        }
-        Object.keys(readinessCache).forEach(function(k) { delete readinessCache[k]; });
-        Object.assign(readinessCache, clone);
-      }
-    } catch(e) {}
-    emit('readinessChanged', { bulk: true });
-  }
-
-  // ── Shell State (Milestone 4 Phase 1) ────────────────────────────────────
-
-  /**
-   * Set the active page. Called by showPage() to mirror currentPage.
-   * Does NOT call showPage() — avoids circular dependency.
-   * @param {string} page
-   */
-  function setActivePage(page) {
-    var prev = _state.activePage;
-    _state.activePage = page;
-    if (prev !== page) {
-      emit('pageChanged', { page: page, previousPage: prev });
-    }
-  }
-
-  function getActivePage() {
-    // Fall back to currentPage global during migration
-    return _state.activePage || (typeof currentPage !== 'undefined' ? currentPage : null);
-  }
-
-  /**
-   * Set right panel mode. Called by gl-right-panel.js on open/close/hide.
-   * @param {string} mode  'closed'|'song'|'snapshot'
-   */
-  function setRightPanelMode(mode) {
-    var prev = _state.rightPanelMode;
-    _state.rightPanelMode = mode;
-    if (prev !== mode) {
-      emit('panelModeChanged', { mode: mode, previousMode: prev });
-    }
-  }
-
-  function getRightPanelMode() {
-    return _state.rightPanelMode;
-  }
-
-  /**
-   * Set left rail collapsed state. Persisted to localStorage.
-   * @param {boolean} collapsed
-   */
-  /**
-   * Set left rail collapsed — explicit user preference. Persists to localStorage.
-   * Only called by the toggle button click. Responsive auto-collapse uses
-   * _setNavCollapsedInternal() which does NOT persist.
-   * @param {boolean} collapsed
-   */
-  function setNavCollapsed(collapsed) {
-    _state.navCollapsed = !!collapsed;
-    try { localStorage.setItem('glNavCollapsed', _state.navCollapsed ? '1' : '0'); } catch(e) {}
-    emit('navCollapsedChanged', { collapsed: _state.navCollapsed });
-  }
-
-  /**
-   * Internal: update in-memory collapsed state without persisting.
-   * Used by gl-left-rail.js responsive logic so auto-collapse at 901-1199px
-   * does not overwrite the user's desktop preference.
-   */
-  function _setNavCollapsedInternal(collapsed) {
-    _state.navCollapsed = !!collapsed;
-  }
-
-  function getNavCollapsed() {
-    return _state.navCollapsed;
-  }
-
-  /**
-   * Set app mode. Snapshots context on entering performance mode.
-   * @param {string} mode  'workspace'|'performance'
-   */
-  function setAppMode(mode) {
-    var prev = _state.appMode;
-    if (prev === mode) return;
-
-    // Snapshot current context when entering performance mode
-    if (mode === 'performance' && prev === 'workspace') {
-      _state.restoreState = {
-        page:      _state.activePage,
-        songId:    _state.activeSongId,
-        panelMode: _state.rightPanelMode,
-        scrollY:   window.scrollY,
-      };
-    }
-
-    _state.appMode = mode;
-    emit('appModeChanged', { mode: mode, previousMode: prev });
-  }
-
-  function getAppMode() {
-    return _state.appMode;
-  }
-
-  /**
-   * Get the snapshot captured when entering performance mode.
-   * Returns null if not in performance mode or no snapshot exists.
-   */
-  function getRestoreState() {
-    return _state.restoreState ? Object.assign({}, _state.restoreState) : null;
-  }
-
-  /**
-   * Clear the restore snapshot (called after successful restore on exit).
-   */
-  function clearRestoreState() {
-    _state.restoreState = null;
-  }
-
-  /**
-   * Set the persistent "now playing" song — survives page navigation.
-   * Separate from selectedSongId (panel selection) and liveRehearsalSongId.
-   * @param {string|null} songId
-   */
-  function setNowPlaying(songId) {
-    var prev = _state.nowPlayingSongId;
-    _state.nowPlayingSongId = songId || null;
-    // Now Playing is session-only — no localStorage persistence
-    // Only emit event if value actually changed (avoid duplicate renders)
-    if (prev !== _state.nowPlayingSongId) {
-      emit('nowPlayingChanged', { songId: _state.nowPlayingSongId, previousSongId: prev });
-    }
-  }
-
-  function getNowPlaying() {
-    return _state.nowPlayingSongId;
-  }
-
-  // Now Playing is SESSION-ONLY — do not restore from localStorage on load.
-  // The bar should only appear when a user actively selects a song this session.
-  // Clear any stale value so it doesn't haunt the band across refreshes.
-  try { localStorage.removeItem('glNowPlaying'); } catch(e) {}
-
-  // Song practice stats hydration + persistence moved to gl-rehearsal-agenda.js
-  // (P1.1 phase 11). The module owns _songPracticeStats and the localStorage round-trip.
-
-  /**
-   * Set the live rehearsal song — the song currently active in rehearsal/performance mode.
-   * Separate from selectedSongId and nowPlayingSongId.
-   * @param {string|null} songId
-   */
-  function setLiveRehearsalSong(songId) {
-    var prev = _state.liveRehearsalSongId;
-    _state.liveRehearsalSongId = songId || null;
-    if (prev !== _state.liveRehearsalSongId) {
-      emit('liveRehearsalSongChanged', { songId: _state.liveRehearsalSongId });
-    }
-  }
-
-  function getLiveRehearsalSong() {
-    return _state.liveRehearsalSongId;
-  }
-
-  /**
-   * Set the current band id.
-   * @param {string} bandId
-   */
-  function setCurrentBand(bandId) {
-    _state.currentBandId = bandId;
-    emit('bandChanged', { bandId: bandId });
-  }
-
-  function getCurrentBand() {
-    // Fall back to localStorage during migration
-    return _state.currentBandId
-      || (typeof localStorage !== 'undefined' ? localStorage.getItem('deadcetera_current_band') : null)
-      || 'deadcetera';
-  }
-
-  /**
-   * Set the snapshot time range for readiness/activity views.
-   * @param {string} range  '7d'|'14d'|'30d'|'all'
-   */
-  function setSnapshotRange(range) {
-    _state.currentSnapshotRange = range;
-    emit('snapshotRangeChanged', { range: range });
-  }
-
-  function getSnapshotRange() {
-    return _state.currentSnapshotRange;
-  }
-
-  // ── Derived selectors ──────────────────────────────────────────────────
-
-  function isPerformanceMode() {
-    return _state.appMode === 'performance';
-  }
-
-  function hasNowPlaying() {
-    return _state.nowPlayingSongId !== null;
-  }
-
-  /**
-   * Full shell state snapshot for debugging and restore.
-   */
-  function getShellState() {
-    return {
-      activePage:           _state.activePage,
-      selectedSongId:       _state.activeSongId,
-      rightPanelMode:       _state.rightPanelMode,
-      currentBandId:        getCurrentBand(),
-      navCollapsed:         _state.navCollapsed,
-      mobilePanelState:     _state.mobilePanelState,
-      appMode:              _state.appMode,
-      nowPlayingSongId:     _state.nowPlayingSongId,
-      liveRehearsalSongId:  _state.liveRehearsalSongId,
-      currentSnapshotRange: _state.currentSnapshotRange,
-      restoreState:         _state.restoreState,
-    };
-  }
-
-  /**
-   * Active context snapshot — used for restore and debugging.
-   */
-  function getActiveContext() {
-    return {
-      page:      _state.activePage,
-      songId:    _state.activeSongId,
-      panelMode: _state.rightPanelMode,
-      appMode:   _state.appMode,
-    };
-  }
-
-  // ── Public API ────────────────────────────────────────────────────────────
+    // ── Public API ────────────────────────────────────────────────────────────
 
   // Schedule Blocks — extracted 2026-05-08 (P1.1 phase 21) into
   // js/core/gl-schedule-blocks.js. Public methods (getScheduleBlocks,
@@ -1290,16 +829,7 @@
     rebuildSongIndexes: rebuildSongIndexes,
     loadSongDetail:    loadSongDetail,
 
-    // Active context
-    setActiveSong:     setActiveSong,
-    getActiveSong:     getActiveSong,
-
-    // Song selection (Milestone 1 Phase A)
-    selectSong:        selectSong,
-    clearSong:         clearSong,
-    getSelectedSong:   getSelectedSong,
-    saveScroll:        saveScroll,
-    restoreScroll:     restoreScroll,
+    // Active Song + Selection — see js/core/gl-selection.js (P1.1 phase 28)
 
     // Song writes
     updateSongField:   updateSongField,
@@ -1308,11 +838,7 @@
     // Band/Audience/Personal Love + Disagreement + deriveSongStatus —
     // extracted 2026-05-08 (P1.1 phase 10) into js/core/gl-love.js. Methods
     // attach to window.GLStore at that file's load time.
-    getSongPriority:   getSongPriority,
-    getSongGap:        getSongGap,
-    getSongSignals:    getSongSignals,
-    getRehearsalPriorities: getRehearsalPriorities,
-    getBandPreferences: getBandPreferences,
+    // Song Value Model V2 — see js/core/gl-song-value.js (P1.1 phase 27)
 
     // Focus Engine — extracted 2026-05-08 (P1.1 phase 8) into js/core/gl-focus.js.
     // Methods attach to window.GLStore at that file's load time. SYSTEM LOCK
@@ -1323,7 +849,6 @@
     ACTIVE_STATUSES:   ACTIVE_STATUSES,
     isActiveSong:      isActiveSong,
     getActiveStatuses: getActiveStatuses,
-    avgReadiness:      _avgReadiness,
 
     // Rehearsals
     loadRehearsal:     loadRehearsal,
@@ -1337,10 +862,7 @@
     getAllReadiness:    getAllReadiness,
     getAllStatus:       getAllStatus,
     getStatus:         getStatus,
-    setStatus:         setStatus,
-    setAllStatus:      setAllStatus,
-    setReadiness:      setReadiness,
-    setAllReadiness:   setAllReadiness,
+    // Status + Readiness Cache setters — see js/core/gl-cache-setters.js (P1.1 phase 29)
 
     // Event bus
     subscribe:         subscribe,
@@ -1376,34 +898,9 @@
     // Timeline + Pocket Time + History extracted into gl-rehearsal-timeline.js.
     // All methods attach to window.GLStore at module load time.
 
-    // Shell State (Milestone 4)
-    setActivePage:          setActivePage,
-    getActivePage:          getActivePage,
-    setRightPanelMode:      setRightPanelMode,
-    getRightPanelMode:      getRightPanelMode,
-    setNavCollapsed:        setNavCollapsed,
-    getNavCollapsed:        getNavCollapsed,
-    _setNavCollapsedInternal: _setNavCollapsedInternal,
-    setAppMode:             setAppMode,
-    getAppMode:             getAppMode,
-    getRestoreState:        getRestoreState,
-    clearRestoreState:      clearRestoreState,
-    setNowPlaying:          setNowPlaying,
-    getNowPlaying:          getNowPlaying,
-    setLiveRehearsalSong:   setLiveRehearsalSong,
-    getLiveRehearsalSong:   getLiveRehearsalSong,
-    setCurrentBand:         setCurrentBand,
-    getCurrentBand:         getCurrentBand,
-    setSnapshotRange:       setSnapshotRange,
-    getSnapshotRange:       getSnapshotRange,
+    // Shell State + Derived Selectors — see js/core/gl-shell-state.js (P1.1 phase 26)
 
     // Song Coaching Signal — see js/core/gl-song-coach-signal.js (P1.1 phase 25)
-
-    // Derived selectors
-    isPerformanceMode:      isPerformanceMode,
-    hasNowPlaying:          hasNowPlaying,
-    getShellState:          getShellState,
-    getActiveContext:        getActiveContext,
 
     // Debug
     getState:          getState,
