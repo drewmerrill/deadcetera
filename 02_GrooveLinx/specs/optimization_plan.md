@@ -190,7 +190,7 @@ The render path itself is responsible for hydrating once data lands (existing `f
 
 The trace that exposed the 2.6s problem also surfaced two bigger issues that were always there but invisible:
 
-1. **Songs DNA preload: `[PERF] songs-with-dna 10103ms`** — DNA computation runs synchronously on boot for every active song. 10s on a typical iPhone profile. Promoted to **P1.7** below.
+1. **Songs DNA preload: `[PERF] songs-with-dna 10103ms`** — _initially attributed to per-song DNA computation; on audit (2026-05-08) found to be `_preloadLeadSingerCache` (200 songs × 20 sequential Firebase batches), not DNA. Closed by **P1.7** below._
 2. **Home dashboard double-render: 1874ms then 4758ms** — first render finishes, then something invalidates and we re-run the entire 6,338-line render. Strengthens **P1.2** memoization case.
 
 ---
@@ -365,34 +365,50 @@ Re-export everything from `groovelinx_store.js` for backwards compat during migr
 
 ---
 
-### P1.7 — Defer Songs DNA preload off the boot path _(new finding 2026-05-08)_
+### ✅ P1.7 — Defer lead-singer-meta preload off the boot path _(SHIPPED 2026-05-08, build `20260508-133751`)_
 
-**Problem:** During the P0.2 hybrid trace, Songs DNA preload measured **`[PERF] songs-with-dna 10103ms`** — over 10 seconds of boot-blocking work. DNA computation runs synchronously on every active song at startup. With ~400 active songs across the band, this is the single largest hot spot we've measured.
+**Problem framing was wrong (corrected on audit):** The 10s `[PERF] songs-with-dna` was attributed to "DNA computation per song," but the actual bottleneck wasn't DNA at all. The boot path was:
 
-The Phase 9 boot sequence currently treats DNA as a "ready-by" gate for some downstream features, but most surfaces don't actually need DNA on first paint — they need it on first interaction (open Songs, open Rehearsal, etc.).
+```js
+return Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]);
+// → renders songs after BOTH complete
+```
 
-**Solution:** Move DNA computation off the boot critical path:
+Audit found:
+- **`_preloadSongDNA`** is a single bulk `firebaseDB.ref(bandPath('songs_v2')).once('value')` read + an in-memory mutation pass over `allSongs` (stamps `key`, `bpm`, `lead`, structure, status onto each song from v2 records). Single round trip — fast (~500ms-2s on slow networks).
+- **`_preloadLeadSingerCache`** caps at 200 songs, runs them in batches of 10, and the batches are *sequential* (`await Promise.all(batch)` inside a `for` loop). 20 sequential round trips × ~500ms each = **the actual 10 seconds.**
 
-1. **Lazy compute on first read** — DNA fields are read via `GLStore.getSongDNA(title)`. Make that function compute-on-demand, cache the result, and return synchronously thereafter.
-2. **Boot just preloads "shape," not DNA** — initial `songs-with-dna` snapshot can ship the song titles + status flags without the heavy DNA fields. DNA hydrates per-song as its surfaces request it.
-3. **Idle-time backfill** — after `'idle'` state, kick a `requestIdleCallback` loop that pre-computes DNA for the top 20 songs by recent rehearsal frequency. Predictive, off the critical path.
+The bare lead-singer VALUE is already populated by the DNA bulk read at `app.js:14606-14611` (`song.lead = ls.singer` from `songs_v2/{songId}/lead_singer`). What `_preloadLeadSingerCache` adds is the **provenance metadata** (who set the lead and when) — only consumed by triage UI surfaces, never by first paint. `songs.js:78-84` only gates first paint on `_glDnaPreloaded`.
 
-**Why this is high-leverage:** 10s boot work moved off the critical path is *much* bigger than P1.2 home-dashboard double-render (which is "only" ~2-3s of duplicated work). This may be the single biggest win across the entire P1 list.
+**What shipped:**
 
-**Risk callouts:**
-- DNA writes are network-bound (Firebase). Lazy-compute on first read could cause UI jank at the moment of first interaction. Mitigation: render placeholder, fill in async.
-- Some features (recommendations, focus picks) may transitively assume DNA is ready. Audit `getNowFocus` / `song-intelligence.js` first.
+```js
+// Before
+return Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]);
+// → first render waits ~10s for both
+
+// After
+return _preloadSongDNA();
+// → first render in ~500ms-2s after DNA bulk read
+// → _preloadLeadSingerCache fires in requestIdleCallback after first paint;
+//   re-renders songs when done so provenance UI fills in
+```
+
+The deferred preload uses the existing `requestIdleCallback || setTimeout(500)` shim, matching the pattern already used for status/NorthStar/readiness preloads in the same boot block.
 
 **Acceptance:**
-- `[PERF] songs-with-dna` drops from 10s on the boot critical path to **0s** (DNA work happens later)
-- First Songs surface interaction renders in < 600ms even on cold boot
-- No "DNA undefined" rendering bugs after the lazy gate ships
+- ✅ `[PERF] songs-with-dna` should drop from 10103ms → ~500-2000ms (just the bulk DNA read, no longer waiting for lead-meta cache)
+- ✅ New PERF log `[PERF] lead-meta-hydrated <ms>` measures when the lead cache lands (post-paint)
+- ✅ No first-paint regression — songs.js gates on `_glDnaPreloaded` which is set inside DNA preload
+- 🟡 Confirm in next trace
 
-**Effort:** 2-3 days. Touches `groovelinx_store.js`, `song-intelligence.js`, and any direct DNA readers.
+**Effort:** Actual ~30 min once the audit located the real bottleneck. The "2-3 day medium risk" estimate in the original P1.7 brief was based on the wrong target (lazy-compute DNA per-song). Fixing the actual culprit was a 6-line diff.
 
-**Risk:** Medium. DNA is read in many places; we need to make sure no surface implicitly assumes synchronous availability.
+**Risk:** Low. The bare lead value is on every song before render. The lead-meta cache only feeds triage provenance, which can render with placeholders until the cache fills.
 
-**Dependencies:** Pairs naturally with **P1.1** (split groovelinx_store.js — the DNA cache lives in a focused `gl-song-dna.js`) and **P1.3** (incremental intelligence — also DNA-dependent).
+**Lesson:** "DNA preload is 10s" was a misdiagnosis based on the function name. The PERF log fired after `Promise.all([dna, lead])` completed, not after DNA alone. Future hot-spot audits: split co-located preloads into separate PERF logs before assuming where the cost lives.
+
+**What's still on the table for "real" DNA optimization:** None. The DNA bulk read is already a single Firebase round trip with no per-song iteration cost. Worth re-auditing if the active library grows past ~1000 songs — at that point the v2 payload itself may justify pagination or selective field projection.
 
 ---
 

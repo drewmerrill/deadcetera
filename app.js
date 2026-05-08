@@ -773,16 +773,33 @@ document.addEventListener('DOMContentLoaded', function() {
             window._glBootTimings.songLibReady = performance.now();
             return loadCustomSongs();
         }).then(function() {
-            // Don't render yet — wait for DNA preload so first render has complete data
+            // P1.7 (2026-05-08): Don't await _preloadLeadSingerCache for first render.
+            // Audit found that's the actual 10s hot spot (200 songs × 20 sequential
+            // Firebase batches). _preloadSongDNA is a single bulk read and provides
+            // the bare lead-singer VALUE via songs_v2/{id}/lead_singer; the cache
+            // only adds provenance META (who/when set) which only triage UI needs.
+            // First paint now gates on DNA only; lead-cache hydrates idle.
             console.log('[Startup] Song library loaded at ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songLibReady = performance.now();
             if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('songs');
-            return Promise.all([_preloadSongDNA(), _preloadLeadSingerCache()]);
+            return _preloadSongDNA();
         }).then(function() {
-            // First render: songs + DNA are ready (key/bpm/lead populated)
+            // First render: songs + DNA are ready (key/bpm/lead VALUES populated)
             if (typeof renderSongs === 'function') renderSongs();
             console.log('[PERF] songs-with-dna ' + Math.round(performance.now()) + 'ms');
             window._glBootTimings.songsRendered = performance.now();
+            // Hydrate lead-singer META in idle time. Re-renders songs when done so
+            // any "set by X on Y" provenance UI fills in. Failure is silent — the
+            // bare lead value is already on each song from the DNA bulk read.
+            var _scheduleIdleLead = window.requestIdleCallback || function(cb) { setTimeout(cb, 500); };
+            _scheduleIdleLead(function() {
+                _preloadLeadSingerCache().then(function() {
+                    console.log('[PERF] lead-meta-hydrated ' + Math.round(performance.now()) + 'ms');
+                    if (typeof renderSongs === 'function') {
+                        try { requestAnimationFrame(function() { renderSongs(); }); } catch(e) {}
+                    }
+                });
+            });
         });
 
         // ── STAGE 3: Deferred preloads (idle/background) ──

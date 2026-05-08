@@ -273,11 +273,12 @@ These are measured numbers from actual boot traces (Drew's iPhone, 4G/wifi mix).
 | Trace date | Build | What was measured | Time | Notes |
 |---|---|---|---|---|
 | 2026-05-08 | `20260508-121912` (P0.2 v1) | `[PERF] deep-link ready` | **2631ms** | Pure event-driven `GLStore.ready(['firebase','members'])`. Worse than old 800ms fixed timer because `members` ready waits for full band roster. |
-| 2026-05-08 | `20260508-121912` | `[PERF] songs-with-dna` | **10103ms** | Songs DNA preload. Largest single hot spot we've measured. Promoted to P1.7. |
+| 2026-05-08 | `20260508-121912` | `[PERF] songs-with-dna` | **10103ms** | _Initially blamed on DNA computation; on audit (P1.7) found to be `_preloadLeadSingerCache`'s 20 sequential Firebase batches. P1.7 fix: only DNA bulk read on critical path; lead-meta deferred to idle. Expected to drop to ~500-2000ms in build `20260508-133751`._ |
 | 2026-05-08 | `20260508-121912` | `home-dashboard` first render | 1874ms | Stale-but-renderable data; first paint. |
 | 2026-05-08 | `20260508-121912` | `home-dashboard` second render | 4758ms | Re-render after data fully hydrated. ~2.9s of duplicated O(n) work — strengthens P1.2. |
 | 2026-05-08 | `20260508-122950` (P0.2 hybrid) | `[PERF] deep-link render` | _expected ≤800ms via ceiling_ | Confirm in next trace. |
 | 2026-05-08 | `20260508-131319` (P0.1 pilot) | Finances first-paint via lazy-load | _expected ~200-400ms_ | First navigation to Finances after boot. Console should show `[Lazy] Loading js/features/finances.js` → `[Lazy] Loaded ...`. Subsequent visits hit single-flight cache (~0ms). |
+| 2026-05-08 | `20260508-133751` (P1.7) | `[PERF] songs-with-dna` | _expected ~500-2000ms (was 10103ms)_ | Removed `_preloadLeadSingerCache` from boot critical path. Now gated on DNA bulk read only. New PERF log `[PERF] lead-meta-hydrated` fires from `requestIdleCallback` after first paint. |
 
 ---
 
