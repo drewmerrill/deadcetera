@@ -3480,7 +3480,6 @@
     getRehearsalHeadline:              getRehearsalHeadline,
     getLatestTimeline:                 getLatestTimeline,
     saveTimelineCorrections:           saveTimelineCorrections,
-    clearRehearsalAgenda:              clearRehearsalAgenda,
 
     // Shell State (Milestone 4)
     setActivePage:          setActivePage,
