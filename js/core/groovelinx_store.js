@@ -64,9 +64,8 @@
     // UI state
     songDetailLens:    'band', // 'band'|'listen'|'learn'|'sing'|'inspire'
 
-    // ── Product Mode (Sharpen / Lock In / Play) ──
-    // Controls what the app shows. Persisted in localStorage.
-    productMode: localStorage.getItem('gl_product_mode') || 'sharpen',
+    // Product Mode — extracted 2026-05-08 (P1.1 phase 9) into
+    // js/core/gl-product-mode.js. State lives in that module's closure now.
 
     // ── Shell state (Milestone 4) ──────────────────────────────────────────
     // activePage mirrors the currentPage global. showPage() writes both.
@@ -5837,55 +5836,11 @@
   // 'lockin'  = band rehearsal focus
   // 'play'    = gig / performance focus
 
-  // ── LEGACY MODE SYSTEM — NO LONGER USED FOR UI GATING ────────────────────
-  // Practice/Rehearse/Play are conceptual perspectives used in recommendations
-  // and copy only. All features are always visible in a single coherent page
-  // structure. These constants are retained for backward compatibility with
-  // code that reads getProductMode() for informational purposes.
-  var VALID_MODES = ['sharpen', 'lockin', 'play'];
-  var MODE_PAGES = null;    // DEPRECATED — was used for nav hiding, now removed
-  var MODE_LANDING = null;  // DEPRECATED — was used for forced redirects, now removed
-
-  // DEPRECATED: Product modes no longer gate UI visibility.
-  // Practice/Rehearse/Play are conceptual perspectives, not UI modes.
-  // This function is kept for backward compatibility but has no destructive side effects.
-  function setProductMode(mode) {
-    if (VALID_MODES.indexOf(mode) === -1) return;
-    var prev = _state.productMode;
-    _state.productMode = mode;
-    localStorage.setItem('gl_product_mode', mode);
-    // No longer set data-gl-mode (was used for CSS nav hiding)
-    // No longer clear song selection
-    // No longer force-redirect to landing page
-    emit('productModeChanged', { mode: mode, prev: prev });
-  }
-
-  function getProductMode() {
-    return _state.productMode;
-  }
-
-  // DEPRECATED: all pages are always visible. Kept for backward compat.
-  function getModePages() { return null; }
-  function isPageVisibleInMode() { return true; }
-
-  // DEPRECATED: data-gl-mode no longer set — modes don't gate UI visibility
-  // document.body.setAttribute('data-gl-mode', _state.productMode);
-
-  // Expose on GLStore (mode system is DEPRECATED — informational only, no UI gating)
-  window.GLStore.setProductMode = setProductMode;       // No-op: stores preference, no side effects
-  window.GLStore.getProductMode = getProductMode;       // Informational: returns stored preference
-  window.GLStore.getModePages   = getModePages;          // DEPRECATED: returns null
-  window.GLStore.isPageVisibleInMode = function() { return true; }; // All pages always visible
-  window.GLStore.PRODUCT_MODES  = VALID_MODES;
-  window.GLStore.MODE_PAGES     = null;                  // DEPRECATED
-  window.GLStore.MODE_LANDING   = null;                  // DEPRECATED
-
-  // GrooveMate ambient memory — extracted 2026-05-08 (P1.1 phase 3) into
-  // js/core/gl-groovemate-memory.js. Methods attach to window.GLStore at that
-  // file's load time. Listed in the GLStore export object via direct assignment
-  // post-construction by the extracted module.
-
-  console.log('✅ GLStore loaded (mode: ' + _state.productMode + ')');
+  // Product mode now lives in gl-product-mode.js (P1.1 phase 9). Read from the
+  // same localStorage key for the boot log so it still surfaces here.
+  var _glLoadMode = 'sharpen';
+  try { _glLoadMode = localStorage.getItem('gl_product_mode') || 'sharpen'; } catch(e) {}
+  console.log('✅ GLStore loaded (mode: ' + _glLoadMode + ')');
 
 })();
 
