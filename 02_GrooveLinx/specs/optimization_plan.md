@@ -34,7 +34,19 @@ A concrete, prioritized plan for improving performance, scalability, reliability
 
 ## P0 — Ship this week
 
-### P0.1 — Lazy-load feature pages by route
+> **Revised execution order (2026-05-08, Drew + ChatGPT review):**
+> Original draft put P0.1 (lazy-load) first as the biggest perf win. New order moves it last and treats it as a **pilot**, not a full migration. Reasons:
+> 1. P0.1 has the largest blast radius (touches every feature). Doing it last means stable boot timing, memory hygiene, and a reliable deploy/rollback path are already in place.
+> 2. Big-bang lazy-load across 30+ feature files = too many side effects to debug at once. Pilot on one low-risk route, learn, then expand.
+>
+> **Revised sequence:** P0.2 → P0.3 → P0.4 → P0.1 (pilot only).
+>
+> **Constraints during this phase:**
+> - **No bundler.** CLAUDE.md forbids it; P2.4 stays gated behind explicit Drew approval.
+> - **No concurrent file-splitting.** P1.1 (split groovelinx_store) and P1.6 (split calendar.js + rehearsal.js) stay frozen until lazy-load fully ships across all routes.
+> - **Every step measurable.** Capture before/after Performance traces so we can see actual impact.
+
+### P0.1 — Lazy-load feature pages by route _(now executes LAST as a pilot)_
 
 **Problem:** All 94 scripts load synchronously on every page open. Phase 9 of `load_sequence.md` parses ~50k lines of feature code that the user may never visit. On Pierce's 4G iPhone, this is 600-900ms of pure parse+evaluate before anything renders.
 
@@ -54,16 +66,29 @@ async function showPage(pageKey) {
 }
 ```
 
-**Acceptance:**
+**Pilot scope (NOT full migration):**
+- Pick **one low-risk route**. Recommended: **Finances** (~600 lines, self-contained, no cross-references). Backups: Social (~200), Stoner Mode (~300).
+- **Do NOT pilot on Calendar, Rehearsal, Songs, or Stems.** Too many cross-references; failures would be painful.
+- Document every side effect discovered during the pilot in a new section here.
+- Only expand to additional routes once the pilot has been live ≥ 1 week with no regressions.
+
+**Pilot acceptance:**
+- Selected route loads on demand (script tag removed from index.html; dynamic import in router)
+- Page works identically to before — visually, behaviorally, on mobile
+- Boot trace shows the route's lines no longer parsed at cold start
+- No console errors / warnings introduced
+- 1 week production soak with no user-reported issues
+
+**Full-migration acceptance (only after pilot proves clean):**
 - Cold start parses < 30k lines (was ~80k including features)
 - First Contentful Paint on iPhone 4G < 1.5s (was 3-5s observed)
 - No regression: every page still works
 
-**Effort:** 3-5 days. Each feature file needs to expose `renderXPage` as a default export rather than a global. Some feature files reach into globals defined in others (`renderSongs` calls `renderSongDetail`); those cross-references need to be promoted to a shared module or use the action registry.
+**Effort:** Pilot ~1 day. Full migration 3-5 days afterwards. Each feature file needs to expose `renderXPage` as a default export rather than a global. Some feature files reach into globals defined in others (`renderSongs` calls `renderSongDetail`); those cross-references need to be promoted to a shared module or use the action registry.
 
-**Risk:** Medium. Some scripts have side effects on load (auto-running IIFEs, registering event listeners). Need to audit each.
+**Risk:** Pilot = low (one isolated file). Full migration = medium (auto-running IIFEs, registering event listeners need audit per file).
 
-**Dependencies:** None.
+**Dependencies:** P0.2, P0.3, P0.4 must ship first so we have stable boot, memory hygiene, and rollback path before touching the riskiest piece.
 
 ---
 
@@ -488,11 +513,12 @@ Two path helpers in `firebase-service.js`; not always obvious which to use. A RE
 ## Roadmap visualization
 
 ```
-Week 1 (P0):
-  Mon-Tue   P0.1 lazy-load feature pages (3-5d)
-  Wed       P0.2 race-fix on showPage timer
-  Thu       P0.3 audit setInterval cleanup
-  Fri       P0.4 SW versioning + reload prompt
+Week 1 (P0) — REVISED ORDER:
+  Mon       P0.2 event-driven readiness (replace 800ms timer)
+  Tue       P0.3 audit setInterval cleanup in GLStore
+  Wed       P0.4 SW versioning + reload prompt
+  Thu-Fri   P0.1 lazy-load PILOT on Finances route only
+  +1 week   Soak; if clean, expand pilot incrementally
 
 Week 2-4 (P1):
   Wk2       P1.1 split groovelinx_store.js
