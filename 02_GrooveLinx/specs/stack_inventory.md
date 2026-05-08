@@ -246,7 +246,7 @@ Bookmark this. Every account login or admin URL in one place.
 | **Google Cloud Console** | https://console.cloud.google.com/?project=deadcetera-35424 | Under-the-hood for Cloud Functions: Cloud Build logs, Eventarc, Artifact Registry images, Cloud Run revisions |
 | **Google Account / OAuth** | https://myaccount.google.com | Manage which apps have which scopes; see the GrooveLinx OAuth client there |
 | **Google Cloud APIs** | https://console.cloud.google.com/apis/dashboard?project=deadcetera-35424 | YouTube Data API quotas, Maps API key, Calendar/Drive API enable/disable |
-| **Modal** | https://modal.com/apps | Deployed services (`groovelinx-stem-separator`), logs, secrets, runtime metrics |
+| **Modal** | https://modal.com/ | Deployed services (`groovelinx-stem-separator`), logs, secrets, runtime metrics. (Modal moved their dashboard URL structure — `/apps` returns 500; sign in from the home page and they'll route you to your workspace.) |
 | **Anthropic Console** | https://console.anthropic.com | Claude API key, usage, billing, model selection |
 | **Twilio Console** | https://console.twilio.com | A2P 10DLC campaigns, phone numbers, Messaging Services, send logs |
 | **LALAL.AI** | https://www.lalal.ai | Prepaid pack balance, recent splits, API key |
