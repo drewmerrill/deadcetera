@@ -307,7 +307,57 @@ These are features inside the app — pages, tools, and surfaces. None of them i
 
 ---
 
-## 12. Key integrations (how the tools talk to each other)
+## 12. Shared engines (cross-cutting modules behind multiple screens)
+
+These are internal modules that power multiple screens. A bug in any of them cascades — you change one engine, you affect every consumer. Knowing this map helps you (a) reason about blast radius before refactoring, (b) understand why a "song detail bug" might also break the home page.
+
+Sorted by reach (most-consumed at top).
+
+| Engine | File(s) | Job | Screens / features that consume it | If it breaks |
+|---|---|---|---|---|
+| **GLStore** | `js/core/groovelinx_store.js` | The central in-memory + localStorage cache. Every read/write of band state goes through it; emits change events. | **Everything.** 19 features call into it: songs, calendar, gigs, setlists, rehearsal, song-detail, home, practice, song-pitch, stoner-mode, bestshot, song-drawer, band-feed, band-comms, notifications, bulk-import, chart-import, live-gig, home-dashboard-cc. | Whole app fails to render or save. |
+| **GL_PAGE_READY lifecycle** | `js/ui/navigation.js` (`_navSeq` counter, 7 render entry points) | The router contract. Detects stale async renders so a slow re-render can't paint over a newer page. **System-locked** per CLAUDE.md. | Every page render. | Pages flicker, paint stale data, or get stuck on "Loading…". |
+| **Focus engine** | `js/core/groovelinx_store.js` (`getNowFocus`, `invalidateFocusCache`, emits `focusChanged`) | Computes "what should the band work on next?" — weakest songs, top gaps, gig-imminent priorities. | home-dashboard, songs, rehearsal, calendar. | Recommendation cards go blank or stale; the "Focus: 2 songs need work" tile breaks. |
+| **GLPlayerEngine** | `js/core/gl-player-engine.js` | The unified YouTube IFrame Player wrapper. Handles autoplay watchdog, song-to-song transitions, error recovery. | live-gig, setlists, home-dashboard, gigs. | Audio playback fails for setlist player + live-gig + practice playback. |
+| **Service Worker** | `service-worker.js` + `firebase-messaging-sw.js` | Caches the app shell, intercepts requests for offline support, receives FCM push notifications. | Every page (always installed when supported). | No offline mode, no push notifications, slow cold starts. |
+| **GLActions** | `js/core/gl-actions.js` | Registry of action handlers (`stems.setLoop`, `rehearsal.startRehearsal`, etc.) — lets the avatar router and GrooveMate trigger UI actions without coupling. | home-dashboard, rehearsal, song-detail. | Avatar commands and GrooveMate "Apply" buttons silently no-op. |
+| **GLContext** | `js/core/gl-context.js` | Frozen snapshot of GLStore + window globals + localStorage. Read by GrooveMate to decide what to suggest. | home-dashboard, song-detail (via GrooveMate). | GrooveMate suggestions vanish or fire on stale state. |
+| **GLGrooveMate** | `js/core/gl-groovemate.js` + `groovemate_*.js` | The decision engine — heuristic + Claude-augmented suggestions ("you've looped this section 3×, want to deepen it?"). | home-dashboard, song-detail. | No suggestion cards; avatar still works for direct commands. |
+| **GLCalendarSync** | `js/core/gl-calendar-sync.js` | The two-way Google Calendar bridge. Phase-1 push, Phase-2 pull, freeBusy overlay, hidden-event check, reconciliation. | calendar, gigs, rehearsal. | Calendar gets out of sync with members' Google calendars; gig dates drift. |
+| **GLAudioSession** | `js/core/gl-audio-session.js` | Single shared Web Audio context across stems mixer, harmony lab, rehearsal recordings, and setlist player — prevents conflicts and leaks. | song-detail (and inherits to Stems lens, Harmony Lab, Rehearsal Mode, Setlist Player). | Audio randomly stops, double-plays, or distorts on iOS Safari. |
+| **GLStems** | `js/core/gl-stems.js` | Stem separation orchestrator. Manages async start/check polling, R2 URL retrieval, mixer state. | harmony-lab, song-detail (Stems lens). | Stems lens can't load or play stems. |
+| **GLInsights** | `js/core/gl-insights.js` | Cross-band intelligence — readiness scoring, gap detection, top-priority surfacing. | home-dashboard, songs. | Readiness scores wrong; "needs work" sort breaks. |
+| **GLOrchestrator** | `js/core/gl-orchestrator.js` | Coordinates multi-step workflows (e.g. Stems → Harmony Lab → Rehearsal). | home-dashboard. | Workflow CTAs fail to chain steps. |
+| **recording-analyzer** | `js/core/recording-analyzer.js` + `js/core/rehearsal-analysis-pipeline.js` | Pocket Meter / Metronome — pure Web Audio AnalyserNode + custom PLL phase-lock + IOI tempo classifier. | rehearsal, rehearsal-analysis-pipeline. | Metronome silent or wildly off; Pocket Meter stops detecting tempo. |
+| **Wake Lock** | `js/core/wake-lock.js` | Browser Wake Lock API wrapper — keeps the screen on during long sessions. | rehearsal, live-gig. | Phone screen sleeps mid-song during a gig. |
+| **Push system** | `js/core/gl-push.js` | FCM token registration, subscription management, permission flow. | notifications. | Push notifications stop arriving. |
+| **Avatar feedback** | `js/core/avatar_feedback_service.js` + `_classifier.js` + `_context.js` + `_summarizer.js` | Background telemetry — captures hesitation events, classifies them, summarizes for review. | All pages (passive). | UX feedback collection silently breaks; app keeps working. |
+| **Spotify player** | `js/core/gl-spotify-player.js` | Spotify Web Playback SDK wrapper. | playlists, listening-bundles. | Spotify previews stop playing. |
+| **Render state guard** | `js/core/gl_render_state.js` | Tracks render-in-progress flags, prevents concurrent renders that would race. | All renderable pages. | Concurrent renders trample each other; UI glitches. |
+| **User identity** | `js/core/gl-user-identity.js` | Resolves the current member from email/OAuth → memberKey for readiness, RSVPs, etc. | All multi-member features. | Per-member state attaches to the wrong member. |
+
+### Field dependencies (high-leverage data fields and what consumes them)
+
+A change to any of these fields ripples through several engines. Treat them as load-bearing.
+
+| Field | Consumers |
+|---|---|
+| `bands/{slug}/songs_v2/{songId}.title` | Used as Firebase key in 9+ paths (charts, readiness, intelligence, discussions, moments). Renaming requires the songs_v2 migration tool. |
+| `bands/{slug}/songs_v2/{songId}.status` | Drives the Active vs Library scope split. `GLStore.isActiveSong()` and `GLStore.ACTIVE_STATUSES` are the canonical check. |
+| `songs_v2/{songId}.bpm` + `key` | Pocket Meter metronome default, rehearsal pacing, setlist timing rollup, intelligence sorting. |
+| `songs_v2/{songId}.readiness[memberKey]` | Focus engine, intelligence engine, home dashboard, rehearsal recommendations, weak-songs sort, GrooveMate "next song" suggestion. |
+| `bands/{slug}/meta/members` | **Now triggers the `mirrorMemberToIndex` Cloud Function** which writes `members_index/{email}: bandSlug`. The auth gate reads from `members_index`. Direct edits to `meta/members` propagate automatically. |
+| `bands/{slug}/calendar_events/{idx}` | Calendar grid, gigs page (for `type:gig`), rehearsal page (for `type:rehearsal`), home dashboard "Next Up", iCal feed via worker. |
+| `gigs/{gigId}` (parallel-mirror to calendar_events) | Gig editor, setlist linkage, RSVPs, payouts, Stage-2 source-of-truth flip pending. |
+| Build version (`<meta name="build-version">`) | Read by app.js console banner, GLContext, knowledge resolver, service worker cache name. **Bumping this is the 4-source-atomic operation** per `feedback_build_bump_atomic.md`. |
+
+### How to extend this map
+
+When adding a new engine: add a row to the table above with files / job / consumers. When refactoring an existing engine: read the consumers column first — the change blast radius is right there. When debugging a "this screen broke" issue: find the screen in the consumers column and look up the engines it relies on.
+
+---
+
+## 13. Key integrations (how the tools talk to each other)
 
 These are the wires connecting different vendors. Knowing they exist helps when something breaks — the symptom often shows up far from the cause.
 
