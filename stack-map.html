@@ -440,6 +440,7 @@
 </header>
 
 <nav class="toc" aria-label="jump to section">
+  <a href="#overview"><span class="dot" style="background:#a78bfa"></span>00 At a glance</a>
   <a href="#users"><span class="dot" style="background:#fbbf24"></span>01 Users</a>
   <a href="#frontend"><span class="dot" style="background:#60a5fa"></span>02 Frontend</a>
   <a href="#hosting"><span class="dot" style="background:#22d3ee"></span>03 Hosting</a>
@@ -465,6 +466,107 @@
 </div>
 
 <main>
+
+<!-- ===================================================================== -->
+<!-- ARCHITECTURE AT A GLANCE - high-level flow diagram -->
+<!-- ===================================================================== -->
+<section id="overview" class="zone" style="--zone-color: var(--accent)">
+  <div class="zone-head">
+    <span class="badge" style="background: var(--accent)">00</span>
+    <h2>Architecture at a glance</h2>
+    <p>One picture showing how the major pieces connect. Detailed zones follow below.</p>
+  </div>
+  <div id="archDiagram" style="background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border); border-radius: 12px; padding: 24px; overflow-x: auto;">
+<pre class="mermaid" style="background: transparent;">
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','secondaryColor':'#0f172a','tertiaryColor':'#0f172a','fontFamily':'-apple-system, BlinkMacSystemFont, sans-serif','fontSize':'14px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
+flowchart TB
+
+  subgraph USERS["👥 Users (5 testers + Drew, across iPhone / iPad / Android / Mac)"]
+    direction LR
+    U_iPhone["📱 iPhones<br/>Jay · Pierce · Brian · Chris"]
+    U_iPad["📲 iPad"]
+    U_Android["🤖 Samsung S24"]
+    U_Mac["💻 Drew's Mac"]
+  end
+
+  subgraph BROWSER["🌐 Browser app · vanilla JS"]
+    APP["index.html + 80+ JS modules<br/>Service Worker · localStorage · Cache API"]
+    LIBS["Tone.js · abcjs · Firebase JS SDK · YouTube IFrame · Web Audio · Wake Lock"]
+    APP --- LIBS
+  end
+
+  VERCEL["▲ Vercel<br/>(hosts app.groovelinx.com)"]
+  CFDNS["🌐 Cloudflare DNS<br/>(answers *.groovelinx.com)"]
+  GODADDY["📛 GoDaddy<br/>(registers groovelinx.com)"]
+
+  subgraph EDGE["⚡ Cloudflare Edge"]
+    WORKER["Worker · deadcetera-proxy<br/>(routes 30+ external API calls<br/>secrets stay server-side)"]
+    R2["📦 R2 Bucket<br/>(stems.groovelinx.com)"]
+  end
+
+  subgraph FIREBASE["🔥 Firebase / Google Cloud · project deadcetera-35424"]
+    RTDB["🌳 Realtime Database<br/>(every band's data, syncing in &lt;1s)"]
+    CF["⚙️ Cloud Functions<br/>mirrorMemberToIndex<br/>(O(1) auth gate)"]
+    FCM["📨 Cloud Messaging<br/>(browser push · Layer 2 of notifs)"]
+    STORAGE["🗂️ Storage<br/>(practice mixes, PDFs)"]
+    RTDB -. "trigger" .-> CF
+    CF -. "writes" .-> RTDB
+  end
+
+  subgraph AIML["🧠 AI / ML compute"]
+    MODAL["🚀 Modal · Stem Separator<br/>(Demucs HT-Demucs on T4 GPU)"]
+    LALAL["🎤 LALAL.AI<br/>(lead/backing split)"]
+    CLAUDE["🤖 Anthropic Claude<br/>(GrooveMate brain)"]
+    DEEPGRAM["🎙️ Deepgram<br/>(transcription)"]
+    ELEVENLABS["🗣️ ElevenLabs<br/>(text-to-speech)"]
+    FADR["🎹 Fadr<br/>(harmony MIDI)"]
+  end
+
+  subgraph EXT["🔌 External APIs (data sources)"]
+    GOOG["Google · OAuth · Calendar · Drive"]
+    MUSIC["Spotify · YouTube · Genius · Archive.org · Phish.net · Phish.in · Relisten · Odesli · Bandcamp · SoundCloud"]
+    COMMS["Twilio SMS · IPRoyal · QR Server"]
+  end
+
+  GODADDY -- "delegates DNS to" --> CFDNS
+  CFDNS -- "CNAME to" --> VERCEL
+
+  USERS == "HTTPS" ==> VERCEL
+  VERCEL -- "serves" --> BROWSER
+
+  BROWSER == "WebSocket sync" ==> RTDB
+  BROWSER -- "auth gate read" --> RTDB
+  BROWSER == "every 3rd-party call" ==> WORKER
+  BROWSER -- "stem audio" --> R2
+
+  WORKER -- "proxies" --> AIML
+  WORKER -- "proxies" --> EXT
+
+  MODAL -- "uploads stems to" --> R2
+  RTDB -- "push" --> FCM
+  FCM == "notification" ==> USERS
+  WORKER -- "SMS" --> COMMS
+
+  classDef user fill:#1e1b15,stroke:#fbbf24,color:#fbbf24
+  classDef hosting fill:#0c2a31,stroke:#22d3ee,color:#22d3ee
+  classDef edge fill:#2a1810,stroke:#f97316,color:#f97316
+  classDef data fill:#2a1c0e,stroke:#fb923c,color:#fb923c
+  classDef aiml fill:#0e2a1f,stroke:#34d399,color:#34d399
+  classDef external fill:#1d1430,stroke:#a78bfa,color:#a78bfa
+
+  class U_iPhone,U_iPad,U_Android,U_Mac user
+  class VERCEL,CFDNS,GODADDY hosting
+  class WORKER,R2 edge
+  class RTDB,CF,FCM,STORAGE data
+  class MODAL,LALAL,CLAUDE,DEEPGRAM,ELEVENLABS,FADR aiml
+  class GOOG,MUSIC,COMMS external
+</pre>
+  </div>
+  <p style="color: var(--text-faint); font-size: 12px; text-align: center; margin-top: 14px;">
+    The double-arrow lines (<code>==&gt;</code>) are the hot paths — every sign-in, every data write, every external call goes through them. Single arrows are control flows or one-shot triggers.
+  </p>
+</section>
+
 
 <!-- ===================================================================== -->
 <!-- USERS -->
@@ -781,7 +883,18 @@
   <p>Source of truth: <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/stack_inventory.md" target="_blank"><code>02_GrooveLinx/specs/stack_inventory.md</code></a> · Last audited 2026-05-08 · <code>noindex,nofollow</code> set so search engines ignore this page.</p>
 </footer>
 
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 <script>
+  // Initialize Mermaid for the architecture-at-a-glance diagram.
+  if (window.mermaid) {
+    window.mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      securityLevel: 'loose',
+      flowchart: { curve: 'basis', useMaxWidth: true, htmlLabels: true }
+    });
+  }
+
   // Pull the live build version from the meta on the deployed app.
   fetch('/version.json', { cache: 'no-store' })
     .then(r => r.json())
