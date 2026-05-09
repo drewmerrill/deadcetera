@@ -125,9 +125,12 @@ async function _pmRenderFocusTab() {
         ? GLStore.getNowFocus()
         : null;
 
+    var ps = (typeof GLStore !== 'undefined' && GLStore.PracticeSession) ? GLStore.PracticeSession : null;
+    var resumeInfo = (ps && ps.has()) ? ps.describe() : null;
+
     el.innerHTML =
         _pmRenderSectionA(focus) +
-        _pmRenderSectionB(/*hasResume*/ false);
+        _pmRenderSectionB(resumeInfo);
 
     if (typeof performance !== 'undefined') {
         console.log('[PERF] practice-entry-rendered', Math.round(performance.now() - t0), 'ms');
@@ -161,10 +164,21 @@ function _pmRenderSectionA(focus) {
     '</div>';
 }
 
-function _pmRenderSectionB(hasResume) {
-    var resumeChip = hasResume
-        ? '<button class="pm-chip pm-chip-resume" onclick="_pmStart(\'resume\')">🔁 Resume Last Session</button>'
-        : '<button class="pm-chip pm-chip-disabled" disabled title="Available in Wave 2">🔁 Resume Last Session</button>';
+function _pmRenderSectionB(resumeInfo) {
+    var resumeChip;
+    if (resumeInfo) {
+        // Resume chip shows what you were working on at a glance:
+        // "🔁 Resume: Wonderwall · Loop 0:12-0:29 · 4 min ago"
+        var bits = [resumeInfo.songTitle];
+        if (resumeInfo.sectionLabel) bits.push('Loop ' + resumeInfo.sectionLabel);
+        else if (resumeInfo.modeLabel && resumeInfo.modeLabel !== 'Focus') bits.push(resumeInfo.modeLabel);
+        var label = bits.join(' · ');
+        var ageStr = resumeInfo.ageStr ? (' · ' + resumeInfo.ageStr) : '';
+        var safe = (window.escHtml ? window.escHtml(label) : label) + (window.escHtml ? window.escHtml(ageStr) : ageStr);
+        resumeChip = '<button class="pm-chip pm-chip-resume" onclick="_pmStart(\'resume\')" title="Pick up where you left off">🔁 Resume: ' + safe + '</button>';
+    } else {
+        resumeChip = '<button class="pm-chip pm-chip-disabled" disabled title="No saved session yet">🔁 Resume Last Session</button>';
+    }
     return ''+
     '<div class="pm-section pm-section-b">'+
     '  <div class="pm-section-label">Or choose your focus</div>'+
@@ -182,9 +196,24 @@ function _pmRenderSectionB(hasResume) {
     '</div>';
 }
 
+// focusType → mode mapping (Wave 2). Mode is the user's intent for this
+// session, persisted in PracticeSession and read by chart-overlay code to
+// pre-configure stems / lyrics / chord visibility on open.
+function _pmModeForFocus(focusType) {
+    switch (focusType) {
+        case 'learn':   return 'learn';
+        case 'harmony': return 'harmony';
+        case 'chart':   return 'chart';
+        case 'recommended':
+        case 'gig-prep':
+        case 'improve':
+        default:        return 'focus';
+    }
+}
+
 window._pmStart = function _pmStart(focusType, songTitle) {
     if (focusType === 'recommended' && songTitle) {
-        _pmOpenSolo(songTitle);
+        _pmOpenSolo(songTitle, 'focus');
         return;
     }
     if (focusType === 'gig-prep') {
@@ -192,25 +221,94 @@ window._pmStart = function _pmStart(focusType, songTitle) {
         return;
     }
     if (focusType === 'resume') {
-        // Wave 2 — placeholder; chip is rendered disabled in Wave 1.
-        if (typeof showToast === 'function') showToast('Resume lands in Wave 2');
+        _pmResumeSession();
         return;
     }
-    if (songTitle) _pmOpenSolo(songTitle);
+    if (songTitle) _pmOpenSolo(songTitle, _pmModeForFocus(focusType));
 };
 
-// Open a single song into the chart overlay in solo Practice mode (no
-// Band Sync bar, no "Rehearsal saved" modal at exit). Wraps the existing
-// openRehearsalModePractice() entry, which already nulls _rmSessionStart.
-function _pmOpenSolo(songTitle) {
+// Open a single song into the chart overlay in solo Practice mode and start
+// (or refresh) the PracticeSession record. Wraps openRehearsalModePractice()
+// which nulls _rmSessionStart so the post-session "Rehearsal saved" modal
+// stays suppressed and Band Sync UI hides.
+//
+// PracticeSession.start() is called BEFORE the overlay opens so that any
+// in-overlay save hooks (loop, stems) update an already-existing session
+// rather than racing to create one.
+function _pmOpenSolo(songTitle, mode) {
+    if (!songTitle) return;
+    mode = mode || 'focus';
     var songList = typeof allSongs !== 'undefined' ? allSongs : [];
     var songData = songList.find(function(s) { return s.title === songTitle; });
+
+    // Record (or refresh) the practice session intent.
+    if (typeof GLStore !== 'undefined' && GLStore.PracticeSession) {
+        try {
+            GLStore.PracticeSession.start(songTitle, mode, { songTitle: songTitle });
+        } catch (e) {
+            console.warn('[Practice] PracticeSession.start failed:', e && e.message);
+        }
+    }
+
     var queue = [{ title: songTitle, band: songData ? (songData.band || '') : '' }];
     if (typeof openRehearsalModePractice === 'function') {
         openRehearsalModePractice(queue);
     } else if (typeof openRehearsalMode === 'function') {
         openRehearsalMode(songTitle);
     }
+}
+
+// Resume the saved PracticeSession. Re-opens chart overlay for the saved
+// song, then re-arms loop and stems via GLActions on a setTimeout (the
+// overlay needs a tick to mount its DOM before action handlers can run —
+// matches the rmStartEdit pattern at rehearsal-mode.js line 88).
+function _pmResumeSession() {
+    if (typeof GLStore === 'undefined' || !GLStore.PracticeSession) {
+        if (typeof showToast === 'function') showToast('Session storage not ready');
+        return;
+    }
+    var ps = GLStore.PracticeSession;
+    var session = ps.get();
+    if (!session) {
+        if (typeof showToast === 'function') showToast('No saved session to resume');
+        return;
+    }
+
+    var songTitle = session.songTitle || session.songId;
+    var mode = session.mode || 'focus';
+
+    // Open the chart overlay first. PracticeSession.start() inside _pmOpenSolo
+    // will see the same songId and preserve section/settings (sameSong path).
+    _pmOpenSolo(songTitle, mode);
+
+    // Re-arm saved configuration after the overlay's DOM has mounted.
+    setTimeout(function() {
+        try {
+            // Loop region
+            if (session.section && typeof session.section.in === 'number' && typeof session.section.out === 'number') {
+                if (typeof GLActions !== 'undefined' && GLActions.run) {
+                    GLActions.run('stems.setLoop', {
+                        inSec: session.section.in,
+                        outSec: session.section.out,
+                        enabled: true
+                    });
+                }
+            }
+            // Stems preset (mute-stem)
+            var s = session.settings || {};
+            if (s.stemPreset === 'mute-stem' && s.stemId) {
+                if (typeof GLActions !== 'undefined' && GLActions.run) {
+                    GLActions.run('stems.applyPracticeMode', {
+                        mode: 'mute-stem',
+                        stemId: s.stemId
+                    });
+                }
+            }
+            console.log('[PracticeSession] resumed', songTitle, 'mode=' + mode);
+        } catch (e) {
+            console.warn('[PracticeSession] resume re-arm failed:', e && e.message);
+        }
+    }, 600);
 }
 
 // Cached for click-to-switch between upcoming gigs without re-fetching.
@@ -553,10 +651,9 @@ window._pmShowSongPicker = function _pmShowSongPicker(focusType) {
 window._pmPickerSelect = function _pmPickerSelect(focusType, songTitle) {
     var overlay = document.getElementById('pmSongPickerOverlay');
     if (overlay) overlay.remove();
-    // Wave 1: all focus types open solo Practice mode (no session save modal,
-    // no Band Sync bar). Wave 2 will pre-configure loop / stems / lyrics per
-    // focusType before opening.
-    _pmOpenSolo(songTitle);
+    // Wave 2: focusType → mode is recorded in PracticeSession before opening.
+    // Chart overlay can read this to pre-configure stems / lyrics / chords.
+    _pmOpenSolo(songTitle, _pmModeForFocus(focusType));
 };
 
 window._pmPickerFilter = function _pmPickerFilter(query) {
@@ -1047,17 +1144,22 @@ function _pmInjectStyles(){
 window.renderPracticePage = renderPracticePage;
 window.loadSongStatusMap  = loadSongStatusMap;
 
-// ── Live re-render on focus changes ──────────────────────────────────────────
+// ── Live re-render on focus / session changes ────────────────────────────────
 // Section A reads getNowFocus() — if readiness changes elsewhere (rehearsal
 // scoring, status flip, etc.) the focus engine emits 'focusChanged' and we
-// re-render the entry screen so the recommendation stays current. Only
-// re-render when Practice is the visible page and Focus is the active tab.
+// re-render the entry screen so the recommendation stays current.
+// Section B's Resume chip reads PracticeSession — if a session starts/updates
+// elsewhere (chart overlay loop change, etc.) the session module emits
+// 'practiceSessionChanged' and we refresh the chip text.
+// Only re-render when Practice is the visible page and Focus is the active tab.
 if (typeof GLStore !== 'undefined' && GLStore.on) {
-    GLStore.on('focusChanged', function() {
+    var _pmRerenderIfVisible = function() {
         if (typeof currentPage !== 'undefined' && currentPage !== 'practice') return;
         if (_pmTab !== 'focus') return;
         var el = document.getElementById('pm-panel-focus');
         if (!el) return;
         _pmRenderFocusTab();
-    });
+    };
+    GLStore.on('focusChanged', _pmRerenderIfVisible);
+    GLStore.on('practiceSessionChanged', _pmRerenderIfVisible);
 }

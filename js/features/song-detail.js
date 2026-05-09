@@ -2990,7 +2990,30 @@ window._sdStemsToggleLoop = function() {
     }
     _sdLoop.enabled = !_sdLoop.enabled;
     _sdStemsRedrawLoopUI();
+    _sdNotifyPracticeSessionLoop();
 };
+
+// Notify PracticeSession (Wave 2 storage layer) that the loop region or
+// stems config changed. No-op when PracticeSession isn't loaded or when
+// no session is active. Update is debounced inside PracticeSession.update.
+function _sdNotifyPracticeSessionLoop() {
+    if (typeof GLStore === 'undefined' || !GLStore.PracticeSession) return;
+    if (!GLStore.PracticeSession.has()) return;
+    var section = (_sdLoop.inSec != null && _sdLoop.outSec != null)
+        ? { in: _sdLoop.inSec, out: _sdLoop.outSec }
+        : null;
+    GLStore.PracticeSession.update({ section: section });
+}
+function _sdNotifyPracticeSessionStems(stemId) {
+    if (typeof GLStore === 'undefined' || !GLStore.PracticeSession) return;
+    if (!GLStore.PracticeSession.has()) return;
+    GLStore.PracticeSession.update({
+        settings: {
+            stemPreset: stemId ? 'mute-stem' : null,
+            stemId: stemId || null
+        }
+    });
+}
 
 // Explicit IN/OUT setters used by the loop-bar buttons + keyboard. Unlike
 // the shift-click "alternating" pattern, these always set the named side
@@ -3004,6 +3027,7 @@ window._sdStemsSetLoopIn = function(t) {
     }
     if (_sdLoop.inSec != null && _sdLoop.outSec != null) _sdLoop.enabled = true;
     _sdStemsRedrawLoopUI();
+    _sdNotifyPracticeSessionLoop();
 };
 window._sdStemsSetLoopOut = function(t) {
     _sdLoop.outSec = t;
@@ -3013,6 +3037,7 @@ window._sdStemsSetLoopOut = function(t) {
     }
     if (_sdLoop.inSec != null && _sdLoop.outSec != null) _sdLoop.enabled = true;
     _sdStemsRedrawLoopUI();
+    _sdNotifyPracticeSessionLoop();
 };
 window._sdStemsSetLoopInHere = function() {
     var audios = document.querySelectorAll('.sd-stem-audio');
@@ -3202,6 +3227,7 @@ window._sdStemsApplyPreset = function(stemId) {
     });
     _sdStemsRefreshAllRowDims();
     _sdStemsRedrawPresetUI();
+    _sdNotifyPracticeSessionStems(stemId);
 };
 
 window._sdStemsResetPresets = function() {
@@ -3214,6 +3240,7 @@ window._sdStemsResetPresets = function() {
     });
     _sdStemsRefreshAllRowDims();
     _sdStemsRedrawPresetUI();
+    _sdNotifyPracticeSessionStems(null);
 };
 
 // Shared volume application — used by preset toggles AND the per-stem

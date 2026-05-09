@@ -37,6 +37,23 @@ var _rmTimingInterval = null;   // live timer update interval
 // True when entered via openRehearsalModePractice (solo Practice flow).
 // Suppresses Rehearsal-only UI: Band Sync bar, "Rehearsal saved" modal.
 var _rmIsPracticeMode = false;
+// 30s heartbeat that keeps PracticeSession.updatedAt fresh while the chart
+// overlay is open in solo Practice mode. Cleared on overlay close.
+var _rmPracticeSessionHeartbeat = null;
+function _rmStartPracticeHeartbeat() {
+    if (_rmPracticeSessionHeartbeat) clearInterval(_rmPracticeSessionHeartbeat);
+    _rmPracticeSessionHeartbeat = setInterval(function() {
+        if (typeof GLStore !== 'undefined' && GLStore.PracticeSession && GLStore.PracticeSession.has()) {
+            GLStore.PracticeSession.touch();
+        }
+    }, 30000);
+}
+function _rmStopPracticeHeartbeat() {
+    if (_rmPracticeSessionHeartbeat) {
+        clearInterval(_rmPracticeSessionHeartbeat);
+        _rmPracticeSessionHeartbeat = null;
+    }
+}
 // Resolve band abbreviation to full name for external searches
 function _rmFullBandName(abbr) {
     var map = { GD:'Grateful Dead', JGB:'Jerry Garcia Band', WSP:'Widespread Panic', Phish:'Phish', ABB:'Allman Brothers Band', Goose:'Goose', DMB:'Dave Matthews Band' };
@@ -104,6 +121,7 @@ window.openRehearsalModePractice = function(queue) {
     _rmBlockTimings = [];
     _rmIsPracticeMode = true;
     rmShow();
+    _rmStartPracticeHeartbeat();
 };
 
 // Entry: from rehearsal planner — full queue with block metadata
@@ -473,9 +491,12 @@ function closeRehearsalMode() {
     const overlay = document.getElementById('rmOverlay');
     if (!overlay) return;
     overlay.classList.remove('rm-visible');
+    // Stop solo Practice heartbeat (no-op if not in practice mode)
+    _rmStopPracticeHeartbeat();
     // Signal Practice tab to advance to Step 3 (rate readiness)
     window._sdPracticeJustEnded = true;
-    // Save session timing summary
+    // Save session timing summary (only fires when _rmSessionStart > 0,
+    // which is suppressed in solo Practice mode by openRehearsalModePractice)
     if (_rmSessionStart > 0) _rmSaveSessionSummary();
     if (_rmTimingInterval) { clearInterval(_rmTimingInterval); _rmTimingInterval = null; }
     // Milestone 4: restore workspace mode
