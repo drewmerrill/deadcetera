@@ -2208,15 +2208,16 @@ async function parachutePrintSetlistBig(slIdx) {
     }
 
     // \u2500\u2500 Resolve each page's effective song count \u2192 pick auto-scale tier \u2500\u2500
-    // Tiers tuned for letter @ 0.5" margin: ~9.5" usable height. Each tier
-    // pairs a title font + row padding so the densest case (~22 songs) still
-    // squeezes onto one page without an orphan row.
+    // Tiers tuned for letter @ 0.4" margin: ~9.6" usable height per column.
+    // Strategy: when a page has >12 songs, switch to 2 columns FIRST and
+    // keep the font big rather than shrinking to single-column 15pt. Falls
+    // back to 3 columns only when 2 columns would still need < 13pt.
     function _scaleFor(rowCount) {
-        if (rowCount <= 12) return { title: 22, row: 9, num: 18, meta: 16, segHdr: 14 };
-        if (rowCount <= 16) return { title: 19, row: 7, num: 16, meta: 14, segHdr: 13 };
-        if (rowCount <= 20) return { title: 17, row: 6, num: 15, meta: 13, segHdr: 12 };
-        if (rowCount <= 24) return { title: 15, row: 5, num: 13, meta: 12, segHdr: 11 };
-        return { title: 13, row: 4, num: 12, meta: 11, segHdr: 10 }; // very dense fallback
+        if (rowCount <= 12) return { cols: 1, title: 22, row: 9, num: 18, meta: 16 };
+        if (rowCount <= 22) return { cols: 2, title: 20, row: 6, num: 16, meta: 14 };
+        if (rowCount <= 32) return { cols: 2, title: 17, row: 5, num: 14, meta: 13 };
+        if (rowCount <= 44) return { cols: 2, title: 14, row: 4, num: 12, meta: 11 };
+        return { cols: 3, title: 13, row: 3, num: 11, meta: 10 }; // very dense fallback
     }
 
     function _renderSongRow(item, displayNum, scale, allSongsList) {
@@ -2253,10 +2254,16 @@ async function parachutePrintSetlistBig(slIdx) {
         + '.show-name { font-size: 28pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
         + '.show-meta { font-size: 11pt; color: #444; margin-top: 3px; font-weight: 600; }'
         + '.set-name { font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; '
-        +   'background: #000; color: #fff; padding: 6px 12px; margin: 0 0 10px; border-radius: 4px; }'
+        +   'background: #000; color: #fff; padding: 6px 12px; margin: 0 0 10px; border-radius: 4px; '
+        // break-after:avoid keeps the set name attached to its first row when
+        // the column flow wants to break right after it
+        +   'break-after: avoid-column; break-inside: avoid; page-break-after: avoid; }'
         + '.set-name.minor { background: #444; padding: 4px 10px; margin-top: 8px; font-size: 11pt; }'
+        + '.set-name:not(:first-child) { margin-top: 10px; }'
+        // Multi-column wrapper — column-count is set per-page via inline style
+        + '.song-cols { column-gap: 22px; column-rule: 1px solid #ddd; }'
         + '.song-row { display: flex; align-items: baseline; gap: 12px; '
-        +   'border-bottom: 1px solid #d0d0d0; page-break-inside: avoid; }'
+        +   'border-bottom: 1px solid #d0d0d0; page-break-inside: avoid; break-inside: avoid; }'
         + '.song-num { font-weight: 800; color: #666; min-width: 32px; text-align: right; }'
         + '.song-title { font-weight: 700; flex: 1; line-height: 1.2; word-break: break-word; }'
         + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; }'
@@ -2313,9 +2320,9 @@ async function parachutePrintSetlistBig(slIdx) {
                 + '--metaPt:' + scale.meta + 'pt;'
                 + '--segHdrPt:' + scale.segHdr + 'pt;';
 
-            html += '<div class="page" style="' + pageStyle
-                + '">'
-                // The CSS variables aren't actually used \u2014 apply inline below
+            html += '<div class="page">'
+                // Per-page CSS overrides via :nth-of-type so each page can
+                // have its own scale + column count without per-page classes
                 + '<style>'
                 + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-title { font-size: ' + scale.title + 'pt; }'
                 + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-num { font-size: ' + scale.num + 'pt; }'
@@ -2323,6 +2330,7 @@ async function parachutePrintSetlistBig(slIdx) {
                 + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-meta { font-size: ' + scale.meta + 'pt; }'
                 + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-row { padding: ' + scale.row + 'px 0; }'
                 + '.page:nth-of-type(' + (pageIdx + 1) + ') .set-name { font-size: ' + (scale.title - 2) + 'pt; }'
+                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-cols { column-count: ' + scale.cols + '; }'
                 + '</style>';
 
             // Show header only on the first page
@@ -2333,9 +2341,10 @@ async function parachutePrintSetlistBig(slIdx) {
                     + '</div>';
             }
 
-            // Running song number ACROSS the page (so soundcheck=1, Set 1
-            // starts at 2, etc. \u2014 matches what the band would actually count).
-            // Per-section number resets back to 1 within each section.
+            // Multi-column wrapper \u2014 keeps set names attached to their first
+            // row via break-after:avoid. CSS columns auto-balance contents.
+            html += '<div class="song-cols">';
+
             var sectionRowNum = 0;
 
             // Render intros (compact)
@@ -2370,6 +2379,8 @@ async function parachutePrintSetlistBig(slIdx) {
                     html += _renderSongRow(item, sectionRowNum, scale, allSongsList);
                 });
             });
+
+            html += '</div>'; // .song-cols
 
             // Branded GrooveLinx footer ad (replaces the old plain-text footer)
             html += '<div class="gl-ad">'
