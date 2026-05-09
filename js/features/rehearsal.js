@@ -348,6 +348,15 @@ function _renderTransitionConfBadge(confidence) {
 async function renderRehearsalPage(el) {
   try {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
+    // If a render is already in flight, do NOT wipe the DOM \u2014 wiping
+    // strands the in-flight render's cached `main` element, which becomes
+    // detached when innerHTML is replaced, and the eventual `main.innerHTML = html`
+    // writes into nothing (page stuck on "Loading..."). Queue a follow-up
+    // render so the new focus data still lands once the first one finishes.
+    if (_rhRenderInProgress) {
+        _rhRenderQueued = true;
+        return;
+    }
     window.GL_REHEARSAL_READY = false;
     var _pageTitle = _rhPlanningMode
         ? '\uD83D\uDCCB Planning Next Rehearsal'
@@ -365,8 +374,9 @@ async function renderRehearsalPage(el) {
 }
 
 var _rhRenderInProgress = false; // guard against concurrent renders
+var _rhRenderQueued = false;     // set when a render arrived during another; flushed in finally
 async function _rhRenderCommandFlow(el) {
-    if (_rhRenderInProgress) { console.warn('[Rehearsal] Skipping concurrent render'); return; }
+    if (_rhRenderInProgress) { _rhRenderQueued = true; return; }
     _rhRenderInProgress = true;
     var main = document.getElementById('rhMain');
     if (!main) { _rhRenderInProgress = false; return; }
@@ -938,6 +948,12 @@ async function _rhRenderCommandFlow(el) {
         html += '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>';
     }
 
+    // Defensive re-grab: if a re-render wiped the DOM during our awaits, the
+    // cached `main` is now an orphan node. Writing into it does nothing visible.
+    if (!document.body.contains(main)) {
+        var _live = document.getElementById('rhMain');
+        if (_live) main = _live;
+    }
     main.innerHTML = html;
     window.GL_REHEARSAL_READY = true;
 
@@ -1090,6 +1106,14 @@ async function _rhRenderCommandFlow(el) {
     if (typeof _glRenderError === 'function') _glRenderError(main, '_rhRenderCommandFlow', _glRenderE);
   } finally {
     _rhRenderInProgress = false;
+    // Flush a queued re-render if focusChanged (or another caller) tried to
+    // re-render while this one was in flight. Belt-and-suspenders: also
+    // covers the case where the caller wiped the DOM before the guard saved us.
+    if (_rhRenderQueued) {
+        _rhRenderQueued = false;
+        var _pageEl = document.getElementById('page-rehearsal');
+        if (_pageEl) setTimeout(function() { renderRehearsalPage(_pageEl); }, 0);
+    }
   }
 }
 
