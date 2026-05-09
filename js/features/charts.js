@@ -378,11 +378,15 @@ window.ChartSystem = (function() {
             extra += '<div style="margin-top:8px"><a href="' + _esc(chartUrl) + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:0.78em;font-weight:600;color:#818cf8;text-decoration:none;padding:6px 12px;border:1px solid rgba(99,102,241,0.2);border-radius:6px;background:rgba(99,102,241,0.05)">' + label + ' \u2192</a></div>';
         }
 
-        // Chart URL add/edit
+        // Chart URL add/edit. IDs are scoped per song so multiple chart panels
+        // (e.g. setlist accordion) don't generate duplicate form-field IDs.
+        var slug = (typeof sanitizeFirebasePath === 'function') ? sanitizeFirebasePath(songTitle) : (songTitle || '').replace(/[^a-zA-Z0-9]/g, '_');
+        var urlId = 'chartUrlInput-' + slug;
+        var noteId = 'chartNoteInput-' + slug;
         extra += '<div style="margin-top:6px">';
         extra += '<details style="font-size:0.72em;color:var(--text-dim)"><summary style="cursor:pointer;padding:2px 0">' + (chartUrl ? 'Change chart link' : '+ Add chart link') + '</summary>';
         extra += '<div style="display:flex;gap:4px;margin-top:4px">';
-        extra += '<input id="chartUrlInput" class="app-input" placeholder="Paste UG, PDF, or any chart URL" value="' + _esc(chartUrl) + '" style="flex:1;font-size:0.95em;padding:5px 8px">';
+        extra += '<input id="' + urlId + '" name="' + urlId + '" class="app-input" placeholder="Paste UG, PDF, or any chart URL" value="' + _esc(chartUrl) + '" style="flex:1;font-size:0.95em;padding:5px 8px">';
         extra += '<button onclick="ChartSystem._saveUrl(\'' + _esc(songTitle).replace(/'/g, "\\'") + '\')" style="font-size:0.82em;padding:5px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer">Save</button>';
         extra += '</div></details></div>';
 
@@ -391,7 +395,7 @@ window.ChartSystem = (function() {
 
         // Add note form
         extra += '<div style="margin-top:6px;display:flex;gap:4px">';
-        extra += '<input id="chartNoteInput" class="app-input" placeholder="Add a note to this chart\u2026" style="flex:1;font-size:0.78em;padding:5px 8px">';
+        extra += '<input id="' + noteId + '" name="' + noteId + '" class="app-input" placeholder="Add a note to this chart\u2026" style="flex:1;font-size:0.78em;padding:5px 8px">';
         extra += '<button onclick="ChartSystem._addNote(\'' + _esc(songTitle).replace(/'/g, "\\'") + '\')" style="font-size:0.75em;padding:5px 10px;border-radius:5px;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.05);color:#fbbf24;cursor:pointer">\uD83D\uDCCC Add</button>';
         extra += '</div>';
 
@@ -402,14 +406,24 @@ window.ChartSystem = (function() {
         }
     };
 
+    function _slugFor(songTitle) {
+        return (typeof sanitizeFirebasePath === 'function')
+            ? sanitizeFirebasePath(songTitle)
+            : (songTitle || '').replace(/[^a-zA-Z0-9]/g, '_');
+    }
+
     async function _saveUrl(songTitle) {
-        var input = document.getElementById('chartUrlInput');
+        var slug = _slugFor(songTitle);
+        var input = document.getElementById('chartUrlInput-' + slug)
+            || document.getElementById('chartUrlInput'); // legacy fallback
         if (!input) return;
         await saveChartUrl(songTitle, input.value);
     }
 
     async function _addNote(songTitle) {
-        var input = document.getElementById('chartNoteInput');
+        var slug = _slugFor(songTitle);
+        var input = document.getElementById('chartNoteInput-' + slug)
+            || document.getElementById('chartNoteInput'); // legacy fallback
         if (!input || !input.value.trim()) return;
         var saved = await addOverlayNote(songTitle, input.value);
         if (saved) {

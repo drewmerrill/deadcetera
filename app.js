@@ -1009,7 +1009,7 @@ function showAddCustomSongModal() {
         <div class="form-row" style="margin-top:10px">
             <span class="form-label">Artist / Band</span>
             <div style="display:flex;gap:8px">
-                <select class="app-select" id="csBand" style="flex:1">
+                <select class="app-select" id="csBand" name="csBand" style="flex:1" onchange="(function(v){var el=document.getElementById('csCustomArtistRow');if(el)el.style.display=(v==='Other')?'block':'none';})(this.value)">
                     <option value="Other">Other / Custom</option>
                     <option value="GD">Grateful Dead</option>
                     <option value="JGB">Jerry Garcia Band</option>
@@ -1021,9 +1021,13 @@ function showAddCustomSongModal() {
                 </select>
             </div>
         </div>
+        <div class="form-row" style="margin-top:10px;display:block" id="csCustomArtistRow">
+            <span class="form-label">Custom Artist Name</span>
+            <input class="app-input" id="csCustomArtist" name="csCustomArtist" placeholder="e.g. moe., Phil Lesh & Friends">
+        </div>
         <div class="form-row" style="margin-top:10px">
             <span class="form-label">Notes (optional)</span>
-            <input class="app-input" id="csNotes" placeholder="e.g. Van Morrison cover, key of G">
+            <input class="app-input" id="csNotes" name="csNotes" placeholder="e.g. cover, key of G">
         </div>
         <div style="display:flex;gap:8px;margin-top:16px">
             <button class="btn btn-primary" style="flex:1" onclick="saveCustomSong()">➕ Add to Library</button>
@@ -1039,13 +1043,17 @@ async function saveCustomSong() {
     if (!requireSignIn()) return;
     const title = document.getElementById('csTitle')?.value.trim();
     const band = document.getElementById('csBand')?.value || 'Other';
+    const customArtist = document.getElementById('csCustomArtist')?.value.trim() || '';
     const notes = document.getElementById('csNotes')?.value.trim() || '';
+    // For "Other" band, the user's typed artist becomes the canonical artist
+    // string. For known bands, the band code maps cleanly via getFullBandName.
+    const artist = (band === 'Other' && customArtist) ? customArtist : band;
     if (!title) { alert('Please enter a song title'); return; }
     if (allSongs.find(s => s.title.toLowerCase() === title.toLowerCase())) {
-        alert(`"${title}" is already in the library!\n\nIf this is a different song with the same name, add the band name in parentheses — e.g. "${title} (${band})"`);
+        alert(`"${title}" is already in the library!\n\nIf this is a different song with the same name, add the band name in parentheses — e.g. "${title} (${artist})"`);
         return;
     }
-    const newSong = { songId: 'c_' + generateShortId(8), title, artist: band, band, notes, originType: 'custom', addedBy: currentUserEmail || 'unknown', addedAt: new Date().toISOString() };
+    const newSong = { songId: 'c_' + generateShortId(8), title, artist, band, notes, originType: 'custom', addedBy: currentUserEmail || 'unknown', addedAt: new Date().toISOString() };
     const existing = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
     existing.push(newSong);
     await saveBandDataToDrive('_band', 'custom_songs', existing);
@@ -1069,6 +1077,133 @@ async function deleteCustomSong(title) {
     await loadCustomSongs();
     renderSongs();
 }
+
+// ── Edit Custom Song (title / band / artist / notes) ───────────────────────
+// Opens a modal pre-filled with current values. On save, updates the
+// custom_songs entry. If the title changed, also migrates any per-song
+// Firebase nodes (chart, notes, metadata) under the new key so attached
+// data isn't orphaned.
+window.showEditCustomSongModal = function(title) {
+    if (!requireSignIn()) return;
+    const song = (allSongs || []).find(s => s.title === title);
+    if (!song || !song.isCustom) {
+        alert('Only custom songs can be edited from here. Built-in library songs are managed in data.js.');
+        return;
+    }
+    const existing = document.getElementById('editCustomSongModal');
+    if (existing) existing.remove();
+    const safeTitle = (song.title || '').replace(/'/g, "\\'");
+    const knownBands = ['GD','JGB','WSP','Phish','ABB','Goose','DMB'];
+    const isOther = !knownBands.includes(song.band || '');
+    const modal = document.createElement('div');
+    modal.id = 'editCustomSongModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+    modal.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:480px;width:100%;color:var(--text)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+            <h3 style="margin:0;color:var(--accent-light)">✏️ Edit Song</h3>
+            <button onclick="document.getElementById('editCustomSongModal').remove()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2em">✕</button>
+        </div>
+        <input type="hidden" id="ecsOriginalTitle" name="ecsOriginalTitle" value="${(song.title || '').replace(/"/g,'&quot;')}">
+        <div class="form-row">
+            <span class="form-label">Song Title</span>
+            <input class="app-input" id="ecsTitle" name="ecsTitle" value="${(song.title || '').replace(/"/g,'&quot;')}" autofocus>
+        </div>
+        <div class="form-row" style="margin-top:10px">
+            <span class="form-label">Artist / Band</span>
+            <select class="app-select" id="ecsBand" name="ecsBand" style="width:100%" onchange="(function(v){var el=document.getElementById('ecsCustomArtistRow');if(el)el.style.display=(v==='Other')?'block':'none';})(this.value)">
+                <option value="Other"${isOther ? ' selected' : ''}>Other / Custom</option>
+                <option value="GD"${song.band==='GD'?' selected':''}>Grateful Dead</option>
+                <option value="JGB"${song.band==='JGB'?' selected':''}>Jerry Garcia Band</option>
+                <option value="WSP"${song.band==='WSP'?' selected':''}>Widespread Panic</option>
+                <option value="Phish"${song.band==='Phish'?' selected':''}>Phish</option>
+                <option value="ABB"${song.band==='ABB'?' selected':''}>Allman Brothers</option>
+                <option value="Goose"${song.band==='Goose'?' selected':''}>Goose</option>
+                <option value="DMB"${song.band==='DMB'?' selected':''}>Dave Matthews Band</option>
+            </select>
+        </div>
+        <div class="form-row" id="ecsCustomArtistRow" style="margin-top:10px;display:${isOther ? 'block' : 'none'}">
+            <span class="form-label">Custom Artist Name</span>
+            <input class="app-input" id="ecsCustomArtist" name="ecsCustomArtist" placeholder="e.g. moe., Phil Lesh & Friends" value="${((isOther && song.artist && song.artist !== 'Other') ? song.artist : '').replace(/"/g,'&quot;')}">
+        </div>
+        <div class="form-row" style="margin-top:10px">
+            <span class="form-label">Notes (optional)</span>
+            <input class="app-input" id="ecsNotes" name="ecsNotes" value="${(song.notes || '').replace(/"/g,'&quot;')}">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn btn-primary" style="flex:1" onclick="saveEditedCustomSong('${safeTitle}')">💾 Save</button>
+            <button class="btn btn-ghost" onclick="document.getElementById('editCustomSongModal').remove()">Cancel</button>
+            <button class="btn btn-ghost" style="color:#ef4444;border-color:rgba(239,68,68,0.3)" onclick="deleteCustomSongFromEditModal('${safeTitle}')">🗑 Delete</button>
+        </div>
+    </div>`;
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    document.body.appendChild(modal);
+    document.getElementById('ecsTitle')?.focus();
+};
+
+window.saveEditedCustomSong = async function(originalTitle) {
+    if (!requireSignIn()) return;
+    const newTitle = document.getElementById('ecsTitle')?.value.trim();
+    const band = document.getElementById('ecsBand')?.value || 'Other';
+    const customArtist = document.getElementById('ecsCustomArtist')?.value.trim() || '';
+    const notes = document.getElementById('ecsNotes')?.value.trim() || '';
+    const artist = (band === 'Other' && customArtist) ? customArtist : band;
+    if (!newTitle) { alert('Please enter a song title'); return; }
+    // Title change check: must not collide with any other song (case-insensitive)
+    const titleChanged = newTitle.toLowerCase() !== originalTitle.toLowerCase();
+    if (titleChanged && allSongs.find(s => s.title.toLowerCase() === newTitle.toLowerCase() && s.title !== originalTitle)) {
+        alert(`"${newTitle}" is already in the library. Pick a different title.`);
+        return;
+    }
+    let custom = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
+    const idx = custom.findIndex(s => s.title === originalTitle);
+    if (idx < 0) {
+        alert('Could not find this custom song record. Refresh and try again.');
+        return;
+    }
+    // If the title changed, migrate any per-song Firebase nodes under the new
+    // sanitized key so attached chart/notes/metadata aren't orphaned.
+    if (titleChanged && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function' && typeof sanitizeFirebasePath === 'function') {
+        try {
+            const oldKey = sanitizeFirebasePath(originalTitle);
+            const newKey = sanitizeFirebasePath(newTitle);
+            if (oldKey !== newKey) {
+                const oldRef = firebaseDB.ref(bandPath('songs/' + oldKey));
+                const snap = await oldRef.once('value');
+                const data = snap.val();
+                if (data) {
+                    await firebaseDB.ref(bandPath('songs/' + newKey)).set(data);
+                    await oldRef.remove();
+                }
+                // Drop chart cache so the new key fetches fresh
+                try { localStorage.removeItem('gl_chart_' + oldKey); } catch(e) {}
+            }
+        } catch (e) {
+            console.warn('Song-data migration failed; entry still saved with new title:', e);
+        }
+    }
+    custom[idx] = Object.assign({}, custom[idx], { title: newTitle, band, artist, notes });
+    await saveBandDataToDrive('_band', 'custom_songs', custom);
+    document.getElementById('editCustomSongModal')?.remove();
+    await loadCustomSongs();
+    // Update selectedSong if currently viewing the edited song
+    if (typeof selectedSong !== 'undefined' && selectedSong && selectedSong.title === originalTitle) {
+        try { selectedSong = allSongs.find(s => s.title === newTitle) || selectedSong; } catch(e) {}
+    }
+    if (typeof renderSongs === 'function') renderSongs();
+    if (titleChanged && typeof renderSongDetail === 'function') {
+        // Re-render with the new title so the song-detail page reflects the change
+        try { renderSongDetail(newTitle); } catch(e) {}
+    } else if (typeof renderSongDetail === 'function' && selectedSong && selectedSong.title === newTitle) {
+        try { renderSongDetail(newTitle); } catch(e) {}
+    }
+    if (typeof showToast === 'function') showToast('Saved “' + newTitle + '”');
+};
+
+window.deleteCustomSongFromEditModal = async function(title) {
+    document.getElementById('editCustomSongModal')?.remove();
+    await deleteCustomSong(title);
+};
 
 // ============================================================================
 // STARTER PACK IMPORT

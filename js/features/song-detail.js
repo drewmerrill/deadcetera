@@ -128,7 +128,7 @@ function _sdBuildDnaBar(title) {
     // BPM input
     h += '<div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:2px 6px">';
     h += '<span style="font-size:0.68em;color:var(--text-dim)">\uD83E\uDD41</span>';
-    h += '<input type="number" min="40" max="240" placeholder="BPM" value="' + _sdEsc(String(_dBpm)) + '" style="width:42px;font-size:0.75em;padding:1px 2px;background:transparent;border:none;color:' + (_dBpm ? 'var(--text)' : 'var(--text-dim)') + ';outline:none" onchange="sdUpdateSongBpm(this.value)">';
+    h += '<input type="number" name="dnaBpm" min="40" max="240" placeholder="BPM" value="' + _sdEsc(String(_dBpm)) + '" style="width:42px;font-size:0.75em;padding:1px 2px;background:transparent;border:none;color:' + (_dBpm ? 'var(--text)' : 'var(--text-dim)') + ';outline:none" onchange="sdUpdateSongBpm(this.value)">';
     h += '</div>';
     // Lead select
     if (typeof bandMembers !== 'undefined' && Object.keys(bandMembers).length > 0) {
@@ -172,13 +172,17 @@ function _sdShellHTML(title) {
     // Quick DNA bar: inline Key/BPM/Lead always visible in header
     var _dnaBar = _sdBuildDnaBar(title);
 
+    var _sdSongRecPanel = (typeof allSongs !== 'undefined') ? (allSongs.find(function(s){return s.title===title;}) || {}) : {};
+    var _sdEditBtnPanel = _sdSongRecPanel.isCustom
+        ? '<button class="sd-back-btn" title="Edit song info" style="margin-left:6px;padding:5px 10px" onclick="showEditCustomSongModal(\''+safeSong+'\')">\u270f\ufe0f Edit</button>'
+        : '';
     if (_isPanelMode) {
         // Single-column layout for right panel rendering
         // Include sd-right-info/extras/structure so _sdPopulateRightPanel renders love + readiness
         return '<div class="song-detail-page">'+
                '<div class="sd-header">'+
                '  <div class="sd-header-top">'+
-               '    <button class="sd-back-btn" onclick="glSongDetailBack()">\u2190 Songs</button>'+
+               '    <div style="display:flex;align-items:center"><button class="sd-back-btn" onclick="glSongDetailBack()">\u2190 Songs</button>'+_sdEditBtnPanel+'</div>'+
                '    <div class="sd-header-meta">'+pills+'</div>'+
                '  </div>'+
                '  <h1 class="sd-title">'+_sdEsc(title)+'</h1>'+
@@ -202,10 +206,14 @@ function _sdShellHTML(title) {
         + '<div id="sd-right-extras"></div>'
         + '</div>';
 
+    var _sdSongRec = (typeof allSongs !== 'undefined') ? (allSongs.find(function(s){return s.title===title;}) || {}) : {};
+    var _sdEditBtn = _sdSongRec.isCustom
+        ? '<button class="sd-back-btn" title="Edit song info" style="margin-left:6px;padding:5px 10px" onclick="showEditCustomSongModal(\''+safeSong+'\')">\u270f\ufe0f Edit</button>'
+        : '';
     return '<div class="song-detail-page sd-dual-layout">'+
            '<div class="sd-header">'+
            '  <div class="sd-header-top">'+
-           '    <button class="sd-back-btn" onclick="glSongDetailBack()">\u2190 Songs</button>'+
+           '    <div style="display:flex;align-items:center"><button class="sd-back-btn" onclick="glSongDetailBack()">\u2190 Songs</button>'+_sdEditBtn+'</div>'+
            '    <div class="sd-header-meta">'+pills+'</div>'+
            '  </div>'+
            '  <h1 class="sd-title">'+_sdEsc(title)+'</h1>'+
@@ -342,11 +350,13 @@ async function _sdPopulateBandLens(title) {
             chartText = window.glDecodeHtmlEntities(chartText);
         }
         if (!_freshChart && !chartText && _chartRes === null) {
-            // Nothing cached locally AND Firebase returned null/timeout.
-            // Could be either "chart doesn't exist" or "network hiccup" — we
-            // can't tell. Mark as unresolved so the Play tab shows a retry
-            // affordance instead of "No chart yet".
-            _chartLoadFailed = true;
+            // Nothing cached locally AND Firebase returned null. Could be
+            // either "chart doesn't exist yet" (brand-new song) or "fetch
+            // failed". loadBandDataFromDrive swallows errors, so the only
+            // signal we have is `navigator.onLine`. Online + null = song
+            // genuinely has no chart yet → show "Add Chart" CTA. Offline +
+            // null = treat as a load failure → show retry banner.
+            _chartLoadFailed = (typeof navigator !== 'undefined' && navigator.onLine === false);
         }
         // Expose for render branches
         window._sdChartLoadFailed = _chartLoadFailed;
@@ -505,7 +515,7 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-dna-item"><span class="sd-dna-label">\uD83C\uDFA4 Lead</span><select class="app-select sd-select" onchange="sdUpdateLeadSinger(this.value)">'+leadOpts+'</select></div>'+
         '<div class="sd-dna-item"><span class="sd-dna-label">\uD83C\uDFAF Status</span><select class="app-select sd-select" onchange="sdUpdateSongStatus(this.value)">'+statusOpts+'</select></div>'+
         '<div class="sd-dna-item"><span class="sd-dna-label">\uD83D\uDD11 Key</span><select class="app-select sd-select" style="width:80px" onchange="sdUpdateSongKey(this.value)">'+keyOpts+'</select></div>'+
-        '<div class="sd-dna-item"><span class="sd-dna-label">\uD83E\uDD41 BPM</span><input type="number" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"></div>'+
+        '<div class="sd-dna-item"><span class="sd-dna-label">\uD83E\uDD41 BPM</span><input type="number" name="sdBpm" class="app-input sd-bpm-input" min="40" max="240" placeholder="120" value="'+_sdEsc(metaBpm)+'" onchange="sdUpdateSongBpm(this.value)"></div>'+
         '</div></div>'+
         '</div></details>'+
         '<details class="sd-details"><summary class="sd-details-summary">📋 Notes & Discussion <span style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">tap to expand</span></summary>'+
@@ -991,7 +1001,7 @@ function _sdRenderReadinessInner(title, safeSong) {
         var barId='sd-bar-'+key, lblId='sd-lbl-'+key;
         var RDEFS=['🔴 Never played','🟠 Learning','🟡 Rough','🟢 Getting there','🔵 Tight','⭐ Gig ready'];
         var tipTitle=RDEFS[score]||'Not rated — slide to set';
-        var slider=isMe?'<input type="range" min="0" max="5" step="1" value="'+(score!=null&&score!==''?score:0)+'" '+
+        var slider=isMe?'<input type="range" name="readiness-learn-'+key+'" min="0" max="5" step="1" value="'+(score!=null&&score!==''?score:0)+'" '+
                         'style="width:80px;accent-color:var(--accent)" '+
                         'title="'+tipTitle+'" '+
                         'oninput="(function(el){var v=parseInt(el.value,10);var defs=[\'🔴 Never played\',\'🟠 Learning\',\'🟡 Rough\',\'🟢 Getting there\',\'🔵 Tight\',\'⭐ Gig ready\'];var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'rgba(255,255,255,0.1)\';var pct=v?Math.round((v/5)*100):0;var bar=document.getElementById(\''+barId+'\');var lbl=document.getElementById(\''+lblId+'\');if(bar){bar.style.width=pct+\'%\';bar.style.background=c;}if(lbl){lbl.textContent=v||(\'—\');lbl.style.color=c;}el.title=defs[v]||(\'Not rated\');})(this)" '+
@@ -1169,9 +1179,18 @@ window.sdShowGetChartModal = function(title) {
     var existing = document.getElementById('sdGetChartModal');
     if (existing) existing.remove();
     var safeSong = title.replace(/'/g, "\\'");
-    var _bandAbbr = (typeof allSongs !== 'undefined') ? ((allSongs.find(function(s) { return s.title === title; }) || {}).band || '') : '';
+    var _songRec = (typeof allSongs !== 'undefined') ? (allSongs.find(function(s) { return s.title === title; }) || {}) : {};
+    var _bandAbbr = _songRec.band || '';
     var _bandFull = (typeof getFullBandName === 'function') ? getFullBandName(_bandAbbr) : _bandAbbr;
-    var ugQuery = encodeURIComponent(title + ' ' + _bandFull);
+    // For custom songs filed under "Other", the dropdown can't represent the
+    // real artist (e.g. "moe."). Prefer the song's `artist` field, then notes,
+    // then fall back to the band code so the UG search isn't literally "Other".
+    if (_bandFull === 'Other') {
+        var _artistField = (_songRec.artist && _songRec.artist !== 'Other') ? _songRec.artist : '';
+        var _notesField = (_songRec.notes || '').trim();
+        _bandFull = _artistField || _notesField || '';
+    }
+    var ugQuery = encodeURIComponent((title + ' ' + _bandFull).trim());
     var modal = document.createElement('div');
     modal.id = 'sdGetChartModal';
     modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -4303,7 +4322,7 @@ async function _sdPopulateRightPanel(title) {
         var nameCell = '<span style="color:' + (isMe ? 'var(--text)' : 'var(--text-dim)') + ';font-weight:' + (isMe ? '700' : '500') + ';min-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(name) + '</span>';
         var midCell;
         if (isMe) {
-            midCell = '<input type="range" min="0" max="5" step="1" value="' + (score || 0) + '" '
+            midCell = '<input type="range" name="readiness-rp-' + key + '" min="0" max="5" step="1" value="' + (score || 0) + '" '
                 + 'style="flex:1;min-width:0;accent-color:var(--accent);cursor:pointer" '
                 + 'title="Drag to rate 0-5: Never played \u2192 Gig ready" '
                 + 'oninput="(function(el){var v=parseInt(el.value,10);var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'#475569\';var lbl=document.getElementById(\'' + rpLblId + '\');if(lbl){lbl.textContent=v||(\'\\u2014\');lbl.style.color=c;}})(this)" '

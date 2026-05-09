@@ -628,10 +628,13 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
                 + (r.audienceLove > 0 ? '<div>' + _aDots + '</div>' : '')
                 + '</div>';
         }
+        var _editBadge = (r.isCustom && !_isSelectMode)
+            ? ' <span title="Edit song info" onclick="event.stopPropagation();showEditCustomSongModal(\'' + r.titleOnclick + '\')" style="display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;background:rgba(99,102,241,0.1);color:#a5b4fc;font-size:0.78em;cursor:pointer;font-weight:600">✏️</span>'
+            : '';
         return '<tr class="song-item' + (r.isCustom ? ' custom-song' : '') + '" data-title="' + r.titleEsc + '"' + (r.isCustom ? ' data-custom="true"' : '') +
                ' onclick="' + _rowClick + '" style="cursor:pointer;border-left:' + _rowBorder + ';background:' + (r.isChecked ? 'rgba(251,191,36,0.06)' : _rowBg) + '">' +
                _checkCol +
-               '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + r.title + '</td>' +
+               '<td style="padding:8px 8px 8px ' + (_isSelectMode ? '4px' : '10px') + ';font-weight:600;font-size:0.88em;color:#f1f5f9;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:0">' + r.title + _editBadge + '</td>' +
                '<td style="padding:6px 4px"><div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:48px;height:5px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden;flex-shrink:0"><span style="display:block;height:100%;width:' + r.barPct + '%;background:' + r.barColor + ';border-radius:3px"></span></span><span style="font-size:0.72em;font-weight:700;color:' + r.barColor + '">' + r.readinessText + '</span></div></td>' +
                '<td style="padding:6px 4px;font-size:0.7em;text-align:center">' + statusChip + '</td>' +
                '<td style="padding:6px 2px;text-align:center;font-size:1.1em">' + needsWorkHtml + '</td>' +
