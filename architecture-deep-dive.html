@@ -130,14 +130,28 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   pre.mermaid { background: transparent !important; }
+  /* Stop Mermaid from clipping node labels. Default rendering can truncate
+     long names inside the SVG <foreignObject>; force overflow visible and
+     allow wrapping so the full text is always readable. */
+  .mermaid svg { overflow: visible !important; max-width: 100%; }
+  .mermaid foreignObject { overflow: visible !important; }
+  .mermaid .nodeLabel,
+  .mermaid .nodeLabel p,
+  .mermaid foreignObject > div { white-space: normal !important; overflow: visible !important; line-height: 1.35 !important; }
+  .mermaid .label foreignObject { display: block; }
 
   table.engines {
     width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;
+    table-layout: auto;
   }
   table.engines th, table.engines td {
     padding: 10px 12px; border-bottom: 1px solid var(--border);
     text-align: left; vertical-align: top;
+    white-space: normal; word-break: normal; overflow-wrap: break-word;
   }
+  /* The File column is long path strings — let them wrap on slashes
+     instead of pushing the row past the viewport edge. */
+  table.engines td code { word-break: break-all; display: inline-block; max-width: 100%; }
   table.engines th {
     color: var(--text-dim); font-weight: 600; font-size: 11px;
     text-transform: uppercase; letter-spacing: 0.05em;
@@ -196,9 +210,54 @@
   }
   footer a { color: var(--accent); text-decoration: none; }
 
+  /* Confidentiality banner — strong color, visible on every page render
+     including print/PDF export. Uses red border + faint red fill so it
+     reads as a notice without dominating the visual design. */
+  .confidential-banner {
+    margin: 0 auto 20px; max-width: 1480px; padding: 14px 22px;
+    border: 1.5px solid #f87171;
+    background: linear-gradient(90deg, rgba(248, 113, 113, 0.14), rgba(248, 113, 113, 0.06));
+    border-radius: 10px;
+    font-size: 12px; line-height: 1.5;
+    color: #fecaca;
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .confidential-banner .seal {
+    flex-shrink: 0; font-size: 18px; line-height: 1; color: #f87171;
+  }
+  .confidential-banner strong { color: #fca5a5; letter-spacing: 0.04em; }
+  .confidential-banner .lead {
+    font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #fca5a5; font-size: 11px; margin-bottom: 4px; display: block;
+  }
+
+  /* Print: keep banners + force confidentiality watermark on every page. */
+  @media print {
+    .confidential-banner {
+      background: rgba(248, 113, 113, 0.08) !important;
+      color: #b91c1c !important; border-color: #b91c1c !important;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .confidential-banner .lead, .confidential-banner strong, .confidential-banner .seal {
+      color: #b91c1c !important;
+    }
+    body::before {
+      content: "CONFIDENTIAL · GROOVELINX PROPRIETARY · DO NOT DISTRIBUTE";
+      position: fixed; top: 8mm; left: 0; right: 0;
+      text-align: center; font-size: 9pt; font-weight: 800; letter-spacing: 0.15em;
+      color: rgba(185, 28, 28, 0.55);
+    }
+    body::after {
+      content: "© 2026 GrooveLinx (Andrew Merrill, sole proprietor) · CONFIDENTIAL · Unauthorized use prohibited";
+      position: fixed; bottom: 6mm; left: 0; right: 0;
+      text-align: center; font-size: 8pt; color: rgba(185, 28, 28, 0.55);
+    }
+  }
+
   @media (max-width: 720px) {
     header.hero h1 { font-size: 28px; }
     nav.toc { display: none; }
+    .confidential-banner { margin: 0 12px 14px; }
   }
 </style>
 </head>
@@ -208,18 +267,27 @@
   <h1>GrooveLinx · Architecture Deep-Dive</h1>
   <p>The internal structure: shared engines, data field cascades, and boot-sequence map. For when you need to know what breaks if you change something.</p>
   <div class="meta">
-    <span>20 shared engines</span>
-    <span>8 load phases</span>
-    <span>94 sync scripts</span>
+    <span>22 shared engines</span>
+    <span>11 load phases</span>
+    <span>95+ sync scripts</span>
     <span>~50k lines of feature code</span>
-    <span>Last audited 2026-05-08</span>
+    <span>Last audited 2026-05-09</span>
   </div>
   <div class="related">
     <a href="/stack-map.html">🗺 Stack map (vendors &amp; tools)</a>
     <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/load_sequence.md" target="_blank">📋 Load sequence (markdown)</a>
     <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/optimization_plan.md" target="_blank">🎯 Optimization plan</a>
+    <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/song_workbench_architecture_audit.md" target="_blank">🎯 Song Workbench audit</a>
   </div>
 </header>
+
+<div class="confidential-banner" role="note" aria-label="Confidentiality notice">
+  <span class="seal" aria-hidden="true">🔒</span>
+  <div>
+    <span class="lead">Confidential · Proprietary · Trade Secret</span>
+    This document and the architecture, designs, decision logic, race-condition mappings, optimization roadmaps, and engine inventories it describes are the proprietary <strong>trade secrets of GrooveLinx (Andrew Merrill, sole proprietor)</strong>. © 2026. All rights reserved. Unauthorized reproduction, distribution, public disclosure, reverse-engineering, derivative works, or use to inform a competing product is strictly prohibited and will be pursued. Reading this page does not grant any license, express or implied. Internal use only.
+  </div>
+</div>
 
 <nav class="toc" aria-label="jump">
   <a href="#engines"><span class="dot"></span>Shared Engines</a>
@@ -264,6 +332,8 @@ flowchart LR
     Actions["GLActions<br/>(action registry)"]
     Context["GLContext<br/>(context snapshot)"]
     Mate["GLGrooveMate<br/>(decision engine)"]
+    Notes["GLNotes<br/>(5-scope notes API)"]
+    Practice["PracticeSession<br/>(local + Firebase)"]
   end
 
   subgraph SCREENS["📱 Screens"]
@@ -278,11 +348,12 @@ flowchart LR
     HarmonyLab["🎼 Harmony Lab"]
     StemsLens["🎚️ Stems Lens"]
     Notifications["🔔 Notifications"]
+    PracticePg["🎸 Practice"]
   end
 
   Store --> Home & Songs & SongDetail & Setlists & Calendar & Gigs & Rehearsal & LiveGig & Notifications
   Lifecycle --> Home & Songs & SongDetail & Setlists & Calendar & Gigs & Rehearsal
-  Focus --> Home & Songs & Calendar & Rehearsal
+  Focus --> Home & Songs & Calendar & Rehearsal & PracticePg
   Insights --> Home & Songs
   Player --> LiveGig & Setlists & Home & Gigs
   CalSync --> Calendar & Gigs & Rehearsal
@@ -291,12 +362,14 @@ flowchart LR
   Actions --> Home & Rehearsal & SongDetail
   Context --> Home & SongDetail
   Mate --> Home & SongDetail
+  Notes --> SongDetail & Rehearsal & PracticePg & LiveGig
+  Practice --> PracticePg & SongDetail & Rehearsal
 
   classDef core fill:#1e1b30,stroke:#a78bfa,color:#a78bfa
   classDef screen fill:#0e2031,stroke:#60a5fa,color:#60a5fa
 
-  class Store,Lifecycle,Focus,Insights,Audio,Stems,Player,CalSync,Actions,Context,Mate core
-  class Home,Songs,SongDetail,Setlists,Calendar,Gigs,Rehearsal,LiveGig,HarmonyLab,StemsLens,Notifications screen
+  class Store,Lifecycle,Focus,Insights,Audio,Stems,Player,CalSync,Actions,Context,Mate,Notes,Practice core
+  class Home,Songs,SongDetail,Setlists,Calendar,Gigs,Rehearsal,LiveGig,HarmonyLab,StemsLens,Notifications,PracticePg screen
 </pre>
   </div>
 
@@ -311,6 +384,8 @@ flowchart LR
       <tr><td><strong>GLActions</strong></td><td><code>js/core/gl-actions.js</code></td><td><span class="reach r-many">3 screens</span></td><td>Action registry — avatar router + GrooveMate trigger UI through it.</td><td>Avatar commands and GrooveMate "Apply" silently no-op.</td></tr>
       <tr><td><strong>GLContext</strong></td><td><code>js/core/gl-context.js</code></td><td><span class="reach r-few">2 screens</span></td><td>Frozen snapshot of GLStore + globals + localStorage.</td><td>GrooveMate fires on stale state.</td></tr>
       <tr><td><strong>GLGrooveMate</strong></td><td><code>js/core/gl-groovemate.js</code> + <code>groovemate_*.js</code></td><td><span class="reach r-few">2 screens</span></td><td>Decision engine — heuristic + Claude-augmented.</td><td>No suggestion cards; avatar still works.</td></tr>
+      <tr><td><strong>GLNotes</strong> <span style="font-size:10px;color:var(--good);font-weight:700;letter-spacing:0.04em">NEW · Phase A</span></td><td><code>js/core/gl-notes.js</code></td><td><span class="reach r-many">4 screens</span></td><td>Unified notes API across 5 scopes (chart, rehearsal, gig, personal_critique, stem). Each scope adapter writes to its existing Firebase path; legacy readers untouched.</td><td>Chart and rehearsal note writes fall back to documented legacy branches; Practice quick-note silently fails without app crash.</td></tr>
+      <tr><td><strong>PracticeSession</strong></td><td><code>js/core/gl-practice-session.js</code></td><td><span class="reach r-many">3 screens</span></td><td>localStorage-backed session model + per-user Firebase mirror for personal critique notes. API: get/has/start/update/touch/clear/describe/<strong>addNote/getNotes</strong>.</td><td>Resume button + Quick Note silently no-op; chart-overlay save hooks become idle.</td></tr>
       <tr><td><strong>GLCalendarSync</strong></td><td><code>js/core/gl-calendar-sync.js</code></td><td><span class="reach r-many">3 screens</span></td><td>Two-way Google Calendar bridge.</td><td>Calendar drifts from Google; gig dates wrong.</td></tr>
       <tr><td><strong>GLAudioSession</strong></td><td><code>js/core/gl-audio-session.js</code></td><td><span class="reach r-many">4 surfaces</span></td><td>Single shared Web Audio context across stems / harmony / rehearsal.</td><td>iOS audio randomly stops or distorts.</td></tr>
       <tr><td><strong>GLStems</strong></td><td><code>js/core/gl-stems.js</code></td><td><span class="reach r-few">2 surfaces</span></td><td>Stem-separation orchestrator (Modal calls).</td><td>Stems lens can't load or play.</td></tr>
@@ -414,6 +489,14 @@ flowchart TB
       <h4><span class="marker good">✓</span> build-version is single-source-of-truth now</h4>
       <p>Console banners, GLContext, knowledge resolver, and service worker cache all read from <code>&lt;meta name="build-version"&gt;</code> at runtime. Bumping the meta tag (one of 4 atomic sources) propagates everywhere — no more stale banners.</p>
     </div>
+    <div class="insight">
+      <h4><span class="marker good">✓</span> Notes now flow through one entry point</h4>
+      <p>Phase A (2026-05-09): chart, rehearsal, gig, personal_critique, and stem notes all write through <code>GLNotes.write(songTitle, scope, text)</code>. Each scope adapter preserves the existing Firebase path and field shape, so legacy readers are untouched. Adding a new notes UI now means picking a scope, not inventing a new save path.</p>
+    </div>
+    <div class="insight">
+      <h4><span class="marker warn">!</span> shared_setlists is a new public-read node</h4>
+      <p>Slug-based gig-pack share URLs (<code>?setlist=&lt;slug&gt;</code>) store the pack at <code>shared_setlists/&lt;slug&gt;</code> with public read. Slug = <code>slugify(name + '-' + date)</code>; re-saving the same setlist updates the same slug (idempotent). Anyone with the URL can view, even unauth — Firebase rule explicitly grants public read on this path only.</p>
+    </div>
   </div>
 </section>
 
@@ -503,7 +586,7 @@ flowchart TB
       <tr><td>9</td><td><code>rehearsal-mode.js</code></td><td>3,254</td><td>10</td><td>5-tab Practice Mode overlay (loaded but lazy-rendered).</td></tr>
       <tr><td>10</td><td><code>js/features/stage-plot.js</code></td><td>3,093</td><td>9</td><td>Drag-drop canvas + PDF export.</td></tr>
       <tr><td>11</td><td><code>js/core/recording-analyzer.js</code></td><td>2,912</td><td>4</td><td>Pocket Meter audio analysis engine.</td></tr>
-      <tr><td>12</td><td><code>js/features/setlists.js</code></td><td>2,959</td><td>9</td><td>Setlist editor + player coordinator.</td></tr>
+      <tr><td>12</td><td><code>js/features/setlists.js</code></td><td>3,150+</td><td>9</td><td>Setlist editor + player coordinator + share modal + parachute slug-URL system. Grew with 2026-05-09 fixes.</td></tr>
       <tr><td>13</td><td><code>js/features/bestshot.js</code></td><td>2,640</td><td>9</td><td>Best-shot tab in song detail.</td></tr>
       <tr><td>14</td><td><code>js/features/band-feed.js</code></td><td>2,493</td><td>9</td><td>Band activity feed.</td></tr>
     </tbody>
@@ -527,6 +610,11 @@ flowchart TB
       <tr><td>5</td><td>Audio session vs first sound on iOS</td><td>Stems silent first-play</td><td><span class="reach r-many">P1.4 planned</span> (gesture-arming pattern)</td></tr>
       <tr><td>6</td><td>Avatar feedback service vs reload</td><td>Duplicate hesitation events</td><td><span class="reach r-one">open</span> — needs singleton-init guard</td></tr>
       <tr><td>7</td><td>Multiple <code>setInterval</code>s in groovelinx_store.js</td><td>Memory leak on signout</td><td><span class="reach r-many">P0.3 planned</span></td></tr>
+      <tr><td>8</td><td>Chart-load null vs network failure ambiguity</td><td>"Couldn't load chart" banner falsely shown for brand-new songs that have no chart yet</td><td><span class="reach r-few">closed 2026-05-09</span> — heuristic now gates on <code>navigator.onLine === false</code> rather than raw null Firebase response</td></tr>
+      <tr><td>9</td><td>GLNotes personal_critique localStorage write vs Firebase write</td><td>Quick Note may be in localStorage but appear "failed" to user if Firebase write throws — or persisted to Firebase but cache stale on next load</td><td><span class="reach r-one">open</span> — cache always written first; Firebase failure logged via console.warn; on next read cache is repopulated from Firebase round-trip. Mitigation only.</td></tr>
+      <tr><td>10</td><td>Cached service-worker shell vs new <code>gl-notes.js</code> module</td><td>Old shell that doesn't load gl-notes.js → calls to <code>window.GLNotes.write</code> would crash mid-write</td><td><span class="reach r-few">closed 2026-05-09</span> — every migrated call site has a <code>typeof window.GLNotes === 'undefined'</code> guard with a documented legacy-fallback branch that writes to the original Firebase path directly</td></tr>
+      <tr><td>11</td><td>Setlist Save & Lock vs Save edit (lock flag never written)</td><td>"Set locked" toast shown but list view always rendered as 🔓 Unlocked</td><td><span class="reach r-few">closed 2026-05-09</span> — both <code>slSaveSetlist</code> and <code>slSaveSetlistEdit</code> now take a <code>shouldLock</code> boolean and write <code>locked / lockedAt / lockedBy</code> when true</td></tr>
+      <tr><td>12</td><td>Parachute share URL boot-time race</td><td>Old <code>?gigpack=1#&lt;base64&gt;</code> URL was sync-checked before Firebase init; new <code>?setlist=&lt;slug&gt;</code> needs Firebase</td><td><span class="reach r-few">closed 2026-05-09</span> — <code>parachuteCheckShareUrl()</code> runs INSIDE the <code>initFirebaseOnly().then()</code> block (after Firebase is ready) and replaces the document via <code>document.write()</code> when slug matches; loading splash + 404 handled inline</td></tr>
     </tbody>
   </table>
 </section>
@@ -560,6 +648,23 @@ flowchart TB
       <li><a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/optimization_plan.md" target="_blank" style="color: var(--accent);"><code>optimization_plan.md</code></a> — prioritized P0/P1/P2 roadmap with effort + risk per item</li>
       <li><a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/stack_inventory.md" target="_blank" style="color: var(--accent);"><code>stack_inventory.md</code></a> — every external tool / service / library with login URLs</li>
       <li><a href="/stack-map.html" style="color: var(--accent);"><code>stack-map.html</code></a> — visual vendor map (sibling page)</li>
+      <li><a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/specs/song_workbench_architecture_audit.md" target="_blank" style="color: var(--accent);"><code>song_workbench_architecture_audit.md</code></a> — full inventory of music surfaces, players, charts, notes systems + proposed Phase A→F migration order</li>
+      <li><a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/CLAUDE_HANDOFF.md" target="_blank" style="color: var(--accent);"><code>CLAUDE_HANDOFF.md</code></a> — running session-by-session log of what shipped, why, and what's next</li>
+    </ul>
+  </div>
+
+  <div style="margin-top: 18px; padding: 14px 18px; background: rgba(52, 211, 153, 0.06); border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 10px;">
+    <strong style="color: var(--good); font-size: 13px;">📦 Shipped 2026-05-08 → 2026-05-09:</strong>
+    <ul style="margin-top: 8px; padding-left: 20px; color: var(--text-dim); line-height: 1.7; font-size: 13px;">
+      <li><strong>GLNotes (Phase A)</strong> — unified 5-scope notes API; first new use case is Practice Quick Note via <code>PracticeSession.addNote()</code></li>
+      <li><strong>Practice Page Wave 2</strong> — PracticeSession persistence + Resume + save hooks for stems/loop/preset</li>
+      <li><strong>Setlist parachute share URLs</strong> — pretty slug format <code>?setlist=&lt;name-date&gt;</code> instead of base64-in-hash; gig pack stored in <code>shared_setlists/&lt;slug&gt;</code> for unauth read</li>
+      <li><strong>Setlist Save / Save & Lock split</strong> — two-button model so editing doesn't auto-lock</li>
+      <li><strong>Setlist UX polish</strong> — right-aligned love hearts, tooltips on Move/Merge, clearer "✂ Break here" affordance, cross-set drag-and-drop</li>
+      <li><strong>Custom song edit modal</strong> — title/band/notes editable; Firebase data migration on rename</li>
+      <li><strong>Chart-load false-positive fix</strong> — banner only shows on actual offline state, not on brand-new songs with no chart yet</li>
+      <li><strong>Twilio A2P 10DLC resubmission</strong> — Sole Prop brand, CTIA-compliant disclosures, in carrier review</li>
+      <li><strong>Architecture audit</strong> — full Song Workbench inventory at <code>song_workbench_architecture_audit.md</code></li>
     </ul>
   </div>
 </section>
@@ -575,7 +680,13 @@ flowchart TB
     <a href="javascript:window.print()">🖨 Print / Save as PDF</a>
   </p>
   <p style="font-size: 11px;">
-    Last audited 2026-05-08 · <code>noindex,nofollow</code> set so search engines ignore this page · Internal architecture reference
+    Last audited 2026-05-09 · <code>noindex,nofollow</code> set so search engines ignore this page · Internal architecture reference
+  </p>
+  <p style="font-size: 10px; color: rgba(248, 113, 113, 0.75); margin-top: 12px; max-width: 760px; margin-left: auto; margin-right: auto; line-height: 1.5;">
+    <strong style="letter-spacing: 0.06em;">CONFIDENTIAL · GROOVELINX PROPRIETARY</strong><br>
+    © 2026 GrooveLinx (Andrew Merrill, sole proprietor). This document is a trade secret.
+    Unauthorized reproduction, distribution, public disclosure, reverse-engineering, or use
+    to inform a competing product is prohibited. No license, express or implied, is granted by access.
   </p>
 </footer>
 
@@ -608,22 +719,54 @@ flowchart TB
     }
   })();
 
-  // Active TOC highlighting on scroll.
+  // Active TOC highlighting — deterministic scroll-spy.
+  //
+  // The previous IntersectionObserver had two failure modes:
+  //   1. Multiple sections intersect simultaneously → entry processing
+  //      order decided who "won" → Field Cascades got stuck active.
+  //   2. Tall sections (Boot Sequence with its long flow diagram) never
+  //      reached intersectionRatio > 0.15 inside the narrow band →
+  //      Boot Sequence never highlighted.
+  //
+  // This replacement walks ALL sections on every scroll tick and picks
+  // the one whose top has scrolled past a fixed reference line just
+  // below the sticky TOC. Exactly one section is ever active.
   (function() {
-    const sections = document.querySelectorAll('section.zone[id]');
+    const sections = Array.from(document.querySelectorAll('section.zone[id]'));
     const links = new Map();
     document.querySelectorAll('nav.toc a[href^="#"]').forEach(a => links.set(a.getAttribute('href').slice(1), a));
-    if (!sections.length || !('IntersectionObserver' in window)) return;
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        const link = links.get(entry.target.id);
-        if (link && entry.isIntersecting && entry.intersectionRatio > 0.15) {
-          links.forEach(a => a.classList.remove('active'));
-          link.classList.add('active');
+    if (!sections.length) return;
+
+    // Reference line: just below the sticky TOC bar (~80px) plus a small
+    // buffer so the highlight switches when a section's heading is
+    // comfortably in view, not the instant its top edge crosses.
+    const REF_LINE = 120;
+
+    function updateActive() {
+      let current = sections[0];
+      for (let i = 0; i < sections.length; i++) {
+        if (sections[i].getBoundingClientRect().top <= REF_LINE) {
+          current = sections[i];
         }
-      });
-    }, { rootMargin: '-80px 0px -55% 0px', threshold: [0, 0.15, 0.5] });
-    sections.forEach(s => observer.observe(s));
+      }
+      // Edge case: if scrolled to the very bottom (last section partly
+      // off-screen), still highlight the last section.
+      const atBottom = (window.innerHeight + window.scrollY) >= (document.body.scrollHeight - 4);
+      if (atBottom) current = sections[sections.length - 1];
+
+      links.forEach(a => a.classList.remove('active'));
+      const link = links.get(current.id);
+      if (link) link.classList.add('active');
+    }
+
+    let raf = null;
+    function onScroll() {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = null; updateActive(); });
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    updateActive(); // initial paint
   })();
 </script>
 </body>
