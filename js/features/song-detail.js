@@ -240,6 +240,29 @@ function _sdSkeleton() {
 
 // ── Band Chart (primary display) ──────────────────────────────────────────────
 function _sdRenderBandChart(title, safeSong, chartText) {
+    // Phase B.1 (audit §8.4): route through ChartRenderer when available.
+    // Cached-shell legacy fallback (same pattern Phase A uses for GLNotes)
+    // keeps us safe if a stale service-worker shell loads song-detail.js
+    // without gl-chart-renderer.js.
+    var hasCR = typeof window.ChartRenderer !== 'undefined';
+    if (hasCR) {
+        if (!chartText) {
+            return window.ChartRenderer.renderEmptyState({
+                loadFailed: !!window._sdChartLoadFailed,
+                safeSong: safeSong,
+                onAddChart: 'openRehearsalMode',
+                onRetry: 'renderSongDetail'
+            });
+        }
+        return '<div class="sd-card" style="padding:16px;border-color:rgba(34,197,94,0.2);background:rgba(34,197,94,0.02)">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+            + '<div class="sd-card-title" style="margin:0">🎼 Your Chart</div>'
+            + '<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">✏️ Edit</button>'
+            + '</div>'
+            + window.ChartRenderer.renderHtml(chartText)
+            + '</div>';
+    }
+    // ── Legacy fallback (cached service-worker shell without ChartRenderer) ──
     if (!chartText) {
         // Distinguish "never had a chart" (prompt to add) from "load failed"
         // (prompt to retry) — the latter is what Drew hit when the chart was
