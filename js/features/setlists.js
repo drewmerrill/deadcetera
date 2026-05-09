@@ -2226,11 +2226,8 @@ async function parachutePrintSetlistBig(slIdx) {
     // physically won't (>30 songs).
     function _scaleFor(rowCount) {
         // Calibrated against actual rendering after the CSS-variable fix.
-        // Chrome cost = show-header (fixed ~0.52in) + 3 set-headers (scales
-        // with --setPt = title−4 → ~1.0-1.2in) + footer (~0.52in) ≈ 2.0in.
-        // Per-row footprint = title × 1.05 + 2 × rowPad. Available content
-        // = 10.4in (letter − 0.6in v-margins). Tier picks largest font where
-        // 22 × rowFootprint + 2.0in ≤ 10.4in.
+        // _titleShrinkPt() handles individual long titles per-row, so the
+        // tier only needs to size for the AVERAGE row, not the worst case.
         if (rowCount <= 6)  return { cols: 1, title: 60, row: 16, num: 48, meta: 40 };
         if (rowCount <= 10) return { cols: 1, title: 40, row: 11, num: 32, meta: 28 };
         if (rowCount <= 16) return { cols: 1, title: 32, row: 7,  num: 26, meta: 22 };
@@ -2239,6 +2236,24 @@ async function parachutePrintSetlistBig(slIdx) {
         if (rowCount <= 44) return { cols: 2, title: 16, row: 3,  num: 14, meta: 12 };
         if (rowCount <= 60) return { cols: 2, title: 13, row: 3,  num: 12, meta: 11 };
         return { cols: 3, title: 11, row: 3, num: 10, meta: 10 };
+    }
+
+    // Per-row title-shrink: estimate whether the title would wrap at the
+    // current page font. If yes, override --titlePt on JUST this row so
+    // the long title fits on one line \u2014 the rest of the page keeps the
+    // bigger font. (Per Drew: "change font of lines about to wrap to
+    // stay on one line".) Math is approximate but close enough \u2014 Helvetica
+    // bold avg char width \u2248 font_pt \u00d7 1.333 \u00d7 0.55, available title space
+    // after num/meta/gaps/padding \u2248 470px on letter @ 0.4" margins.
+    function _titleShrinkPt(title, basePt) {
+        var availPx = 460;
+        var charWidth = function(pt) { return pt * 1.333 * 0.55; };
+        if (title.length * charWidth(basePt) <= availPx) return null;
+        // Find the largest pt where title fits on one line; clamp to 60% of
+        // base so it doesn't get unreadably small for very long titles.
+        var minPt = Math.max(8, Math.floor(basePt * 0.6));
+        var maxFitPt = Math.floor(availPx / (title.length * 1.333 * 0.55));
+        return Math.max(minPt, Math.min(basePt - 1, maxFitPt));
     }
 
     function _renderSongRow(item, displayNum, scale, allSongsList) {
@@ -2259,7 +2274,10 @@ async function parachutePrintSetlistBig(slIdx) {
         var meta = metaPieces.length
             ? '<span class="song-meta">' + metaPieces.join('<span class="sep">\u00b7</span>') + '</span>'
             : '';
-        return '<div class="song-row">'
+        var titleLen = (title || '').length + (segArrow ? 2 : 0);
+        var shrinkPt = _titleShrinkPt(title + segArrow, scale.title);
+        var rowStyle = shrinkPt ? ' style="--titlePt:' + shrinkPt + 'pt"' : '';
+        return '<div class="song-row"' + rowStyle + '>'
             + '<span class="song-num">' + displayNum + '.</span>'
             + '<span class="song-title">' + _esc(title)
             + (segArrow ? '<span class="song-segue">' + segArrow + '</span>' : '')
