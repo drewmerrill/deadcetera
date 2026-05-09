@@ -2671,6 +2671,10 @@ async function parachuteCheckShareUrl() {
             return true;
         }
         var html = parachuteBuildHtml({name: pack.name, date: pack.date}, pack.songs);
+        // Flag print-mode so the orchestrator's pre-scheduled "next action"
+        // banner doesn't inject into the chart-pack body after document.open
+        // replaces the page (the timers survive the swap).
+        try { window._GL_PRINT_MODE = true; } catch(e) {}
         document.open(); document.write(html); document.close();
         return true;
     } catch (e) {

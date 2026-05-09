@@ -366,6 +366,14 @@
   // ── Next Action Bar (injected into page) ──────────────────────────────
 
   function _showNextActionBar(next, ctx) {
+    // Bail when we're rendering a public share-URL setlist or any other
+    // standalone print-mode document. parachuteCheckShareUrl uses
+    // document.open()/write() to swap the body to chart-pack HTML, but
+    // pre-scheduled timers in this orchestrator survive the swap and
+    // would otherwise inject the next-action bar (e.g. "You have songs
+    // but no setlist") into the printable area.
+    if (window._GL_PRINT_MODE) return;
+
     // Remove any existing bar
     var old = document.getElementById('glNextActionBar');
     if (old) old.remove();
