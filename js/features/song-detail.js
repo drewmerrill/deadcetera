@@ -2195,13 +2195,13 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
     // alignment is restored.
     var staleLalalBanner = '';
     if (hasLalal && _sdLalalIsStale(stems, lalalSplit)) {
-        staleLalalBanner = '<div style="margin-bottom:10px;padding:10px 14px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.4);border-radius:8px;font-size:0.82em;color:#fbbf24;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-          '<span style="font-size:1.2em;flex-shrink:0">⚠️</span>' +
-          '<div style="flex:1;min-width:200px">' +
+        staleLalalBanner = '<div id="sd-lalal-stale-banner" style="margin-bottom:10px;padding:10px 14px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.4);border-radius:8px;font-size:0.82em;color:#fbbf24;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<span id="sd-lalal-stale-icon" style="font-size:1.2em;flex-shrink:0">⚠️</span>' +
+          '<div id="sd-lalal-stale-status" style="flex:1;min-width:200px">' +
             '<div style="font-weight:700;margin-bottom:2px">Lead/Backing may be out of sync</div>' +
             '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">LALAL was generated from an older Demucs run. Re-sync to align with the current stems.</div>' +
           '</div>' +
-          '<button onclick="_sdStemsResyncLalal(\'' + safeSong + '\')" title="Re-run LALAL using the current Demucs vocals stem (~30-60s, uses one LALAL credit)" style="background:rgba(245,158,11,0.18);color:#fbbf24;border:1px solid rgba(245,158,11,0.5);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:700;white-space:nowrap;flex-shrink:0">🔄 Re-sync LALAL</button>' +
+          '<button id="sd-lalal-stale-button" onclick="_sdStemsResyncLalal(\'' + safeSong + '\')" title="Re-run LALAL using the current Demucs vocals stem (~30-60s, uses one LALAL credit)" style="background:rgba(245,158,11,0.18);color:#fbbf24;border:1px solid rgba(245,158,11,0.5);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:700;white-space:nowrap;flex-shrink:0">🔄 Re-sync LALAL</button>' +
         '</div>';
     }
 
@@ -2462,43 +2462,130 @@ window._sdStemsToggle = async function() {
 // Re-run LALAL using the CURRENT Demucs vocals stem as input. Fixes bug S1
 // (stale LALAL → temporal misalignment) without requiring console snippets.
 // Same Path-A semantics as harmony-lab.js's hlGenerateFromStems.
+//
+// Progress is rendered IN-PLACE inside the warning banner (sd-lalal-stale-status)
+// rather than via toasts — toasts disappear and leave the user staring at a
+// silent screen for 30-60s while LALAL processes. Heavy console logging is
+// added so DevTools can show exactly where execution is at any point.
 window._sdStemsResyncLalal = async function(title) {
+    console.log('[Stems][resync] start, title=', title);
     if (!title) title = window._sdCurrentSong;
-    if (!title) { if (typeof showToast === 'function') showToast('No song'); return; }
+    if (!title) {
+        console.warn('[Stems][resync] no title — abort');
+        if (typeof showToast === 'function') showToast('No song');
+        return;
+    }
+
+    function setStatus(html, color) {
+        var el = document.getElementById('sd-lalal-stale-status');
+        if (!el) {
+            console.warn('[Stems][resync] sd-lalal-stale-status element not found in DOM');
+            return;
+        }
+        el.innerHTML = html;
+        if (color) el.style.color = color;
+    }
+    function setIcon(emoji) {
+        var el = document.getElementById('sd-lalal-stale-icon');
+        if (el) el.textContent = emoji;
+    }
+    function setButton(label, disabled) {
+        var btn = document.getElementById('sd-lalal-stale-button');
+        if (!btn) return;
+        btn.textContent = label;
+        btn.disabled = !!disabled;
+        btn.style.opacity = disabled ? '0.5' : '1';
+        btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    }
+
     if (!window.GLStems || typeof GLStems.splitLeadBacking !== 'function') {
-        if (typeof showToast === 'function') showToast('Stems engine not loaded');
+        console.error('[Stems][resync] GLStems.splitLeadBacking missing');
+        setStatus('<div style="font-weight:700">Stems engine not loaded</div>');
         return;
     }
-    if (!confirm('Re-run LALAL using the current Demucs vocals stem? Takes ~30-60s and uses one LALAL credit.')) return;
+    if (!confirm('Re-run LALAL using the current Demucs vocals stem? Takes ~30-60s and uses one LALAL credit.')) {
+        console.log('[Stems][resync] user cancelled at confirm');
+        return;
+    }
 
-    var stems = await GLStems.getStems(title);
+    setIcon('⏳');
+    setButton('Working…', true);
+    setStatus('<div style="font-weight:700;margin-bottom:2px">Loading Demucs vocals stem…</div>' +
+              '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">Step 1 of 3</div>');
+
+    var stems;
+    try {
+        stems = await GLStems.getStems(title);
+        console.log('[Stems][resync] got stems record:', stems);
+    } catch(e) {
+        console.error('[Stems][resync] GLStems.getStems threw:', e);
+        setIcon('⚠️');
+        setButton('🔄 Re-sync LALAL', false);
+        setStatus('<div style="font-weight:700">Could not load stems: ' + (e.message || 'unknown') + '</div>');
+        return;
+    }
     if (!stems || !stems.stems || !stems.stems.vocals) {
-        if (typeof showToast === 'function') showToast('No Demucs vocals stem found — run Demucs first');
+        console.warn('[Stems][resync] no Demucs vocals stem found');
+        setIcon('⚠️');
+        setButton('🔄 Re-sync LALAL', false);
+        setStatus('<div style="font-weight:700">No Demucs vocals stem found — run Demucs first</div>');
         return;
     }
+    console.log('[Stems][resync] vocals URL:', stems.stems.vocals);
 
-    if (typeof showToast === 'function') showToast('🔄 Re-syncing LALAL…');
+    setStatus('<div style="font-weight:700;margin-bottom:2px">🔄 Sending vocals to LALAL…</div>' +
+              '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">Step 2 of 3 · this can take 10-30s before progress starts</div>');
+
     try {
         var split = await GLStems.splitLeadBacking(title, {
             sourceUrl: stems.stems.vocals,
             sourceLabel: 'Demucs vocals stem',
             onProgress: function(stage, pct) {
-                if (stage === 'processing' && typeof showToast === 'function') {
-                    showToast('LALAL ' + pct + '%');
+                console.log('[Stems][resync] onProgress stage=' + stage + ' pct=' + pct);
+                var msg, sub;
+                if (stage === 'uploading') {
+                    msg = '🔄 Uploading vocals to LALAL…';
+                    sub = 'Step 2 of 3';
+                } else if (stage === 'processing') {
+                    msg = '🔄 LALAL is splitting Lead / Backing…';
+                    sub = 'Step 2 of 3 · ' + (pct != null ? pct + '%' : 'working');
+                } else if (stage === 'downloading') {
+                    msg = '🔄 Downloading split stems…';
+                    sub = 'Step 3 of 3';
+                } else {
+                    msg = '🔄 LALAL: ' + stage;
+                    sub = pct != null ? pct + '%' : '';
                 }
+                setStatus('<div style="font-weight:700;margin-bottom:2px">' + msg + '</div>' +
+                          '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">' + sub + '</div>');
             }
         });
+        console.log('[Stems][resync] splitLeadBacking returned:', split);
         if (split && split.stems && split.stems.lead) {
-            if (typeof showToast === 'function') showToast('✅ LALAL re-synced');
+            setIcon('✅');
+            setStatus('<div style="font-weight:700;margin-bottom:2px">LALAL re-synced — re-loading stems</div>' +
+                      '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">Lead/Backing now aligned with current Demucs run</div>');
             // Re-render stems lens so the new aligned Lead/Backing load
             try { if (window._sdLensPopulated) window._sdLensPopulated.stems = false; } catch(e) {}
-            if (typeof _sdPopulateStemsLens === 'function') _sdPopulateStemsLens(title);
+            if (typeof _sdPopulateStemsLens === 'function') {
+                console.log('[Stems][resync] calling _sdPopulateStemsLens to re-render');
+                _sdPopulateStemsLens(title);
+            } else {
+                console.warn('[Stems][resync] _sdPopulateStemsLens not defined — cannot re-render');
+            }
         } else {
-            if (typeof showToast === 'function') showToast('⚠️ LALAL returned no lead stem');
+            console.warn('[Stems][resync] split returned but no lead stem:', split);
+            setIcon('⚠️');
+            setButton('🔄 Re-sync LALAL', false);
+            setStatus('<div style="font-weight:700">LALAL returned no lead stem</div>' +
+                      '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">Try again, or check the LALAL credit balance</div>');
         }
     } catch(e) {
-        console.warn('[Stems] LALAL re-sync failed:', e);
-        if (typeof showToast === 'function') showToast('⚠️ LALAL re-sync failed: ' + (e.message || 'unknown'));
+        console.error('[Stems][resync] LALAL re-sync threw:', e);
+        setIcon('⚠️');
+        setButton('🔄 Re-sync LALAL', false);
+        setStatus('<div style="font-weight:700">Re-sync failed: ' + (e.message || 'unknown') + '</div>' +
+                  '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">See DevTools console for details</div>');
     }
 };
 
