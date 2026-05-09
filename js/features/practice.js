@@ -213,63 +213,70 @@ function _pmOpenSolo(songTitle) {
     }
 }
 
-// Gig Prep — show the next upcoming gig + its setlist songs that still need
-// work. User picks one to practice. Per Drew (2026-05-09): "When I go to prep
-// for Gig, it should show a list with the next one coming up." Pre-Wave-1
-// the chip immediately opened a queue of generic weak songs which had no
-// connection to the actual upcoming gig — the user reported being dropped on
-// "Red Hot Mama" when their next gig contained completely different songs.
-function _pmStartGigPrep() {
-    var gigs = (typeof GLStore !== 'undefined' && GLStore.getGigs) ? GLStore.getGigs() : [];
-    var todayStr = new Date().toISOString().split('T')[0];
-    var upcoming = gigs.filter(function(g) { return g && g.date && g.date >= todayStr; });
-    upcoming.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
-    var nextGig = upcoming[0] || null;
+// Cached for click-to-switch between upcoming gigs without re-fetching.
+var _pmGigPrepUpcoming = [];
 
-    if (!nextGig) {
+// Gig Prep — Drew (2026-05-09): "Why is it not finding next gig automatically
+// and then having a list of all gigs after that?" Two fixes here:
+//   (1) Use getGigsAsync() so a cold cache (user hasn't visited Schedule yet)
+//       still resolves the gig list from calendar_events.
+//   (2) Show ALL upcoming gigs in the modal: next one rendered as primary
+//       with songs to work on, plus a "Switch gig" list at the bottom so the
+//       user can prep for a later gig instead.
+async function _pmStartGigPrep() {
+    var gigs = [];
+    if (typeof GLStore !== 'undefined' && GLStore.getGigsAsync) {
+        try { gigs = await GLStore.getGigsAsync(); } catch(e) { gigs = []; }
+    }
+    if (!gigs || !gigs.length) {
+        // Fallback to sync cache in case async path isn't wired yet.
+        gigs = (typeof GLStore !== 'undefined' && GLStore.getGigs) ? GLStore.getGigs() : [];
+    }
+    var todayStr = new Date().toISOString().split('T')[0];
+    var upcoming = (gigs || []).filter(function(g) { return g && g.date && g.date >= todayStr; });
+    upcoming.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+
+    if (!upcoming.length) {
+        _pmGigPrepUpcoming = [];
         _pmShowGigPrepEmpty('no-gig');
         return;
     }
 
-    // Pull the linked setlist — preferred path is setlistId on the gig record;
-    // fall back to matching a setlist whose date equals the gig's date.
+    _pmGigPrepUpcoming = upcoming;
+    // Default: render the next gig (closest date). User can switch from the
+    // "Other upcoming gigs" list at the bottom of the modal.
+    _pmRenderGigPrepForGig(upcoming[0]);
+}
+
+function _pmRenderGigPrepForGig(gig) {
+    if (!gig) return;
     var setlists = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : [];
     var setlist = null;
-    if (nextGig.setlistId) {
-        setlist = setlists.find(function(s) { return s && s.setlistId === nextGig.setlistId; }) || null;
+    if (gig.setlistId) {
+        setlist = setlists.find(function(s) { return s && s.setlistId === gig.setlistId; }) || null;
     }
-    if (!setlist && nextGig.date) {
-        setlist = setlists.find(function(s) { return s && s.date === nextGig.date; }) || null;
-    }
-    if (!setlist) {
-        _pmShowGigPrepEmpty('no-setlist', nextGig);
-        return;
+    if (!setlist && gig.date) {
+        setlist = setlists.find(function(s) { return s && s.date === gig.date; }) || null;
     }
 
-    // Flatten all songs across all sets, dedupe by title, look up readiness.
     var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
     var seen = {};
     var allSongsInSetlist = [];
-    (setlist.sets || []).forEach(function(set) {
-        (set.songs || []).forEach(function(sg) {
-            var title = typeof sg === 'string' ? sg : (sg && sg.title) || '';
-            if (!title || seen[title]) return;
-            if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return;
-            seen[title] = true;
-            var ratings = rc[title] || {};
-            var vals = Object.values(ratings).filter(function(v){ return typeof v === 'number' && v > 0; });
-            var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0) / vals.length : 0;
-            allSongsInSetlist.push({ title: title, avg: avg, hasRating: vals.length > 0 });
+    if (setlist) {
+        (setlist.sets || []).forEach(function(set) {
+            (set.songs || []).forEach(function(sg) {
+                var title = typeof sg === 'string' ? sg : (sg && sg.title) || '';
+                if (!title || seen[title]) return;
+                if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return;
+                seen[title] = true;
+                var ratings = rc[title] || {};
+                var vals = Object.values(ratings).filter(function(v){ return typeof v === 'number' && v > 0; });
+                var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0) / vals.length : 0;
+                allSongsInSetlist.push({ title: title, avg: avg, hasRating: vals.length > 0 });
+            });
         });
-    });
-
-    if (!allSongsInSetlist.length) {
-        _pmShowGigPrepEmpty('empty-setlist', nextGig);
-        return;
     }
 
-    // Songs that need work: unrated OR avg < 4. Sort weakest first; unrated
-    // songs sort below the rated weak ones (we know less about them).
     var needsWork = allSongsInSetlist.filter(function(s) { return !s.hasRating || s.avg < 4; });
     needsWork.sort(function(a, b) {
         if (a.hasRating && b.hasRating) return a.avg - b.avg;
@@ -278,7 +285,7 @@ function _pmStartGigPrep() {
         return a.title.localeCompare(b.title);
     });
 
-    _pmShowGigPrepModal(nextGig, setlist, needsWork, allSongsInSetlist.length);
+    _pmShowGigPrepModal(gig, setlist, needsWork, allSongsInSetlist.length);
 }
 
 function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
@@ -287,18 +294,29 @@ function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
 
     var dateLabel = _pmFormatGigDate(gig.date);
     var venueLabel = gig.venue ? (window.escHtml ? window.escHtml(gig.venue) : gig.venue) : 'Venue TBD';
+
+    // Subtitle reflects state of the SELECTED gig
     var subtitle;
-    if (!needsWork.length) {
-        subtitle = 'All ' + totalCount + ' songs in this setlist are gig-ready 🎉';
+    if (!setlist) {
+        subtitle = 'No setlist linked to this gig yet';
+    } else if (!totalCount) {
+        subtitle = 'Setlist is empty';
+    } else if (!needsWork.length) {
+        subtitle = 'All ' + totalCount + ' songs are gig-ready 🎉';
     } else {
         subtitle = needsWork.length + ' of ' + totalCount + ' songs need work';
     }
 
-    var rows;
-    if (!needsWork.length) {
-        rows = '<div class="pm-picker-empty">All set for this gig. Want to brush up anyway? <a href="#" onclick="event.preventDefault();_pmShowGigPrepAll('+JSON.stringify(setlist.setlistId).replace(/"/g,'&quot;')+')" style="color:#a5b4fc">Browse the full setlist →</a></div>';
+    // Body: songs needing work, OR helpful empty branch
+    var bodyRows;
+    if (!setlist) {
+        bodyRows = '<div class="pm-picker-empty">No setlist linked yet for this gig. <a href="#" onclick="event.preventDefault();document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'setlists\')" style="color:#a5b4fc">Open Setlists →</a></div>';
+    } else if (!totalCount) {
+        bodyRows = '<div class="pm-picker-empty">Setlist exists but has no songs yet. <a href="#" onclick="event.preventDefault();document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'setlists\')" style="color:#a5b4fc">Open Setlists →</a></div>';
+    } else if (!needsWork.length) {
+        bodyRows = '<div class="pm-picker-empty">All set for this gig. Want to brush up anyway? <a href="#" onclick="event.preventDefault();_pmShowGigPrepAll('+JSON.stringify(setlist.setlistId).replace(/"/g,'&quot;')+')" style="color:#a5b4fc">Browse the full setlist →</a></div>';
     } else {
-        rows = needsWork.map(function(s) {
+        bodyRows = needsWork.map(function(s) {
             var safe = s.title.replace(/'/g, "\\'");
             var t = window.escHtml ? window.escHtml(s.title) : s.title;
             var avgPill = s.hasRating
@@ -311,6 +329,27 @@ function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
         }).join('');
     }
 
+    // "Other upcoming gigs" — clickable list to switch context.
+    var others = _pmGigPrepUpcoming.filter(function(g) {
+        return _pmGigKey(g) !== _pmGigKey(gig);
+    });
+    var otherGigsHtml = '';
+    if (others.length) {
+        otherGigsHtml = '<div class="pm-gig-other-list">' +
+            '<div class="pm-gig-other-label">Other upcoming gigs</div>' +
+            others.map(function(g) {
+                var d = _pmFormatGigDate(g.date);
+                var v = window.escHtml ? window.escHtml(g.venue || 'Venue TBD') : (g.venue || 'Venue TBD');
+                var safeKey = _pmGigKey(g).replace(/'/g, "\\'");
+                return '<div class="pm-gig-other-row" onclick="_pmSwitchGig(\'' + safeKey + '\')">' +
+                       '<span class="pm-gig-other-date">' + d + '</span>' +
+                       '<span class="pm-gig-other-venue">' + v + '</span>' +
+                       '<span class="pm-gig-other-arrow">→</span>' +
+                       '</div>';
+            }).join('') +
+            '</div>';
+    }
+
     var overlay = document.createElement('div');
     overlay.id = 'pmSongPickerOverlay';
     overlay.className = 'modal-overlay pm-picker-overlay';
@@ -319,39 +358,38 @@ function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
         '<div class="pm-picker-modal">'+
         '  <div class="pm-picker-header pm-gig-header">'+
         '    <div>'+
-        '      <div class="pm-gig-eyebrow">Next gig</div>'+
+        '      <div class="pm-gig-eyebrow">' + (others.length ? 'Selected gig' : 'Next gig') + '</div>'+
         '      <div class="pm-picker-title-h">🎤 '+dateLabel+' · '+venueLabel+'</div>'+
         '      <div class="pm-gig-subtitle">'+subtitle+'</div>'+
         '    </div>'+
         '    <button class="pm-picker-close" onclick="document.getElementById(\'pmSongPickerOverlay\').remove()">✕</button>'+
         '  </div>'+
-        '  <div class="pm-picker-list" id="pmPickerList">'+rows+'</div>'+
+        '  <div class="pm-picker-list" id="pmPickerList">'+bodyRows+'</div>'+
+        otherGigsHtml +
         '</div>';
     document.body.appendChild(overlay);
 }
 
-function _pmShowGigPrepEmpty(reason, gig) {
+window._pmSwitchGig = function _pmSwitchGig(gigKey) {
+    var target = _pmGigPrepUpcoming.find(function(g) { return _pmGigKey(g) === gigKey; });
+    if (target) _pmRenderGigPrepForGig(target);
+};
+
+// Stable identifier for an upcoming gig record. Prefer gigId when present;
+// fall back to date+venue (collision-resistant for one band's calendar).
+function _pmGigKey(g) {
+    if (!g) return '';
+    if (g.gigId) return g.gigId;
+    return (g.date || '') + '|' + (g.venue || '');
+}
+
+// Empty state: zero upcoming gigs in the calendar. Other empty cases
+// (no setlist linked, empty setlist) are handled inline in
+// _pmShowGigPrepModal so they appear next to the "Other upcoming gigs"
+// switcher — the user can pivot to a different gig instead of leaving.
+function _pmShowGigPrepEmpty(reason) {
     var existing = document.getElementById('pmSongPickerOverlay');
     if (existing) existing.remove();
-
-    var headline, body, cta;
-    if (reason === 'no-gig') {
-        headline = 'No upcoming gigs';
-        body = 'Add a gig in Schedule and we\'ll surface it here.';
-        cta = '<button class="pm-start-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'calendar\')">Open Schedule</button>';
-    } else if (reason === 'no-setlist') {
-        var dateLabel = _pmFormatGigDate(gig.date);
-        var venueLabel = gig.venue || 'Venue TBD';
-        headline = 'No setlist linked yet';
-        body = dateLabel + ' at ' + venueLabel + ' doesn\'t have a setlist. Build one in Setlists, then come back.';
-        cta = '<button class="pm-start-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'setlists\')">Open Setlists</button>';
-    } else {
-        var dateLabel2 = _pmFormatGigDate(gig.date);
-        var venueLabel2 = gig.venue || 'Venue TBD';
-        headline = 'Setlist is empty';
-        body = dateLabel2 + ' at ' + venueLabel2 + ' has a setlist but no songs yet.';
-        cta = '<button class="pm-start-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'setlists\')">Open Setlists</button>';
-    }
 
     var overlay = document.createElement('div');
     overlay.id = 'pmSongPickerOverlay';
@@ -365,9 +403,9 @@ function _pmShowGigPrepEmpty(reason, gig) {
         '  </div>'+
         '  <div style="padding:28px 22px;text-align:center">'+
         '    <div style="font-size:2em;margin-bottom:10px;opacity:0.55">📭</div>'+
-        '    <div style="font-weight:700;font-size:1.05em;color:var(--text);margin-bottom:6px">'+headline+'</div>'+
-        '    <div style="font-size:0.88em;color:var(--text-dim);line-height:1.45;margin-bottom:18px">'+body+'</div>'+
-        '    '+cta+
+        '    <div style="font-weight:700;font-size:1.05em;color:var(--text);margin-bottom:6px">No upcoming gigs</div>'+
+        '    <div style="font-size:0.88em;color:var(--text-dim);line-height:1.45;margin-bottom:18px">Add a gig in Schedule and we\'ll surface it here.</div>'+
+        '    <button class="pm-start-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'calendar\')">Open Schedule</button>'+
         '  </div>'+
         '</div>';
     document.body.appendChild(overlay);
@@ -953,7 +991,15 @@ function _pmInjectStyles(){
     '.pm-gig-header{align-items:flex-start;}'+
     '.pm-gig-eyebrow{font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#a5b4fc;margin-bottom:2px;}'+
     '.pm-gig-subtitle{font-size:0.8em;color:var(--text-dim,#94a3b8);margin-top:4px;}'+
-    '.pm-gig-avg{font-size:0.78em;font-weight:700;min-width:30px;text-align:right;flex-shrink:0;}';
+    '.pm-gig-avg{font-size:0.78em;font-weight:700;min-width:30px;text-align:right;flex-shrink:0;}'+
+    /* "Other upcoming gigs" switcher list at bottom of Gig Prep modal */
+    '.pm-gig-other-list{border-top:1px solid rgba(255,255,255,0.06);padding:10px 0 6px;background:rgba(255,255,255,0.015);}'+
+    '.pm-gig-other-label{font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim,#94a3b8);padding:6px 18px 8px;}'+
+    '.pm-gig-other-row{display:flex;align-items:center;gap:12px;padding:9px 18px;cursor:pointer;font-size:0.86em;}'+
+    '.pm-gig-other-row:hover{background:rgba(102,126,234,0.08);}'+
+    '.pm-gig-other-date{color:#a5b4fc;font-weight:700;min-width:88px;flex-shrink:0;}'+
+    '.pm-gig-other-venue{flex:1;color:var(--text,#f1f5f9);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
+    '.pm-gig-other-arrow{color:var(--text-dim,#94a3b8);font-size:0.9em;flex-shrink:0;}';
     document.head.appendChild(s);
 }
 
