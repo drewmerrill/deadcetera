@@ -2002,19 +2002,21 @@ function parachuteBuildHtml(sl, songs) {
     var totalSongs = songs.length;
 
     // \u2500\u2500 Pick column count + font size for the front-page summary \u2500\u2500
-    // Goal: FILL the page. Earlier tiers were too conservative \u2014 a 22-song
-    // setlist at 15pt left ~40% of the page blank. Bumped fonts so the
-    // summary acts like a real "stage list" rather than a tiny index.
-    // Letter @ 0.4" margin gives ~9.6" usable height; per-row footprint
-    // \u2248 fontPt \u00d7 1.667 + 6px padding. Tiers leave ~10% safety margin.
+    // Goal: FILL the page WITHOUT wrapping song titles. The previous
+    // 22-song / 2-col / 26pt tier failed because a 2-col 8.5"-wide layout
+    // gives each col ~3.85" minus number+meta-pill = ~2.7" for the title.
+    // At 26pt, "After Midnight" wraps to 3 lines and the layout collapses.
+    // Stay 1-column until song count makes it physically necessary; titles
+    // then sit on one line each. Tiers leave ~10% vertical safety margin.
     var summaryCols, summaryFont;
     if (totalSongs <= 6)       { summaryCols = 1; summaryFont = 36; }
-    else if (totalSongs <= 12) { summaryCols = 1; summaryFont = 26; }
-    else if (totalSongs <= 22) { summaryCols = 2; summaryFont = 26; }
-    else if (totalSongs <= 32) { summaryCols = 2; summaryFont = 18; }
-    else if (totalSongs <= 44) { summaryCols = 3; summaryFont = 16; }
-    else if (totalSongs <= 60) { summaryCols = 3; summaryFont = 13; }
-    else                       { summaryCols = 4; summaryFont = 12; }
+    else if (totalSongs <= 10) { summaryCols = 1; summaryFont = 32; }
+    else if (totalSongs <= 16) { summaryCols = 1; summaryFont = 24; }
+    else if (totalSongs <= 24) { summaryCols = 1; summaryFont = 18; }
+    else if (totalSongs <= 32) { summaryCols = 2; summaryFont = 17; }
+    else if (totalSongs <= 44) { summaryCols = 2; summaryFont = 14; }
+    else if (totalSongs <= 60) { summaryCols = 3; summaryFont = 12; }
+    else                       { summaryCols = 4; summaryFont = 11; }
 
     var h = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+_esc(name)+' \u2014 Gig Pack</title>';
     h += '<style>';
@@ -2023,7 +2025,9 @@ function parachuteBuildHtml(sl, songs) {
     h += 'body{font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}';
 
     // \u2500\u2500 Front-page big-font setlist summary (flex column so footer pins to bottom) \u2500\u2500
-    h += '.summary{page-break-after:always;padding:18px 22px;display:flex;flex-direction:column;min-height:10.2in}';
+    // min-height intentionally < printable 10.2in to avoid Chrome emitting
+    // an orphan blank page from a 1px overflow.
+    h += '.summary{page-break-after:always;padding:18px 22px;display:flex;flex-direction:column;min-height:9.6in}';
     h += '.summary-header{border-bottom:4px solid #000;padding-bottom:8px;margin-bottom:14px;flex:0 0 auto}';
     h += '.summary-name{font-size:26pt;font-weight:900;line-height:1.05;margin:0;letter-spacing:-0.01em}';
     h += '.summary-meta{font-size:11pt;color:#444;margin-top:3px;font-weight:600}';
@@ -2039,7 +2043,7 @@ function parachuteBuildHtml(sl, songs) {
     h += '.summary-meta-pill .sep{color:#999;margin:0 3px;font-weight:400}';
 
     // \u2500\u2500 Per-song chart pages (flex column so footer pins to bottom) \u2500\u2500
-    h += '.song-page{page-break-before:always;padding:16px 22px 14px;display:flex;flex-direction:column;min-height:10.2in}';
+    h += '.song-page{page-break-before:always;padding:16px 22px 14px;display:flex;flex-direction:column;min-height:9.6in}';
     h += '.song-header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:12px;flex:0 0 auto}';
     h += '.song-body{flex:1 1 auto}';
     h += '.song-title{font-size:1.5em;font-weight:700}';
@@ -2258,10 +2262,12 @@ async function parachutePrintSetlistBig(slIdx) {
         +   'font-family: Helvetica, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }'
         // Each page is a flex column → song content takes available space,
         // GrooveLinx footer pinned to the bottom regardless of how short
-        // the content is. min-height = letter (11in) − @page margins (0.8in).
-        + '.page { padding: 16px 20px 12px; page-break-after: always; '
-        +   'display: flex; flex-direction: column; min-height: 10.2in; }'
-        + '.page:last-child { page-break-after: auto; }'
+        // the content is. min-height intentionally < printable area
+        // (10.2in @ 0.4" margins) — matching exactly causes Chrome's print
+        // engine to overflow by ~1px and emit an orphan blank page.
+        + '.page { padding: 16px 20px 12px; '
+        +   'display: flex; flex-direction: column; min-height: 9.6in; }'
+        + '.page + .page { page-break-before: always; }'
         + '.song-cols-wrap { flex: 1 1 auto; }'
         + '.show-header { border-bottom: 4px solid #000; padding-bottom: 8px; margin-bottom: 12px; }'
         + '.show-name { font-size: 28pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
