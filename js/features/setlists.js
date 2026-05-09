@@ -1995,61 +1995,115 @@ async function parachuteLoadSetlistData(sl) {
 }
 
 function parachuteBuildHtml(sl, songs) {
+    function _esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
     var name = sl.name || 'Setlist';
     var date = sl.date || '';
-    var h = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+name+'</title>';
+    var totalSongs = songs.length;
+
+    // \u2500\u2500 Pick column count + font size for the front-page summary \u2500\u2500
+    // Goal: largest font that still fits all songs on one page in N columns.
+    // Letter @ 0.4" margin gives ~9.6" usable height. Per-row footprint:
+    // padding (top/bot) + line-height. Trial-and-error tiers.
+    var summaryCols, summaryFont;
+    if (totalSongs <= 14)      { summaryCols = 2; summaryFont = 18; }
+    else if (totalSongs <= 22) { summaryCols = 2; summaryFont = 15; }
+    else if (totalSongs <= 32) { summaryCols = 3; summaryFont = 14; }
+    else if (totalSongs <= 48) { summaryCols = 3; summaryFont = 12; }
+    else                       { summaryCols = 4; summaryFont = 11; }
+
+    var h = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+_esc(name)+' \u2014 Gig Pack</title>';
     h += '<style>';
+    h += '@page { size: letter; margin: 0.4in; }';
     h += '*{box-sizing:border-box;margin:0;padding:0}';
-    h += 'body{font-family:Georgia,serif;font-size:13px;color:#111;background:#fff;padding:24px 32px}';
-    h += '.cover{text-align:center;padding:40px 0 32px;border-bottom:2px solid #333;margin-bottom:28px}';
-    h += '.cover h1{font-size:2.2em;font-weight:700;margin-bottom:6px}';
-    h += '.cover .meta{font-size:0.85em;color:#666;margin-top:4px}';
-    h += '.toc{margin-bottom:28px;border:1px solid #ddd;border-radius:4px;padding:16px}';
-    h += '.toc h3{font-size:0.8em;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:10px}';
-    h += '.toc-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;font-size:0.88em}';
-    h += '.song-page{page-break-before:always;padding-top:8px}';
-    h += '.song-page:first-of-type{page-break-before:auto}';
+    h += 'body{font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}';
+
+    // \u2500\u2500 Front-page big-font setlist summary \u2500\u2500
+    h += '.summary{page-break-after:always;padding:18px 22px}';
+    h += '.summary-header{border-bottom:4px solid #000;padding-bottom:8px;margin-bottom:14px}';
+    h += '.summary-name{font-size:26pt;font-weight:900;line-height:1.05;margin:0;letter-spacing:-0.01em}';
+    h += '.summary-meta{font-size:11pt;color:#444;margin-top:3px;font-weight:600}';
+    h += '.summary-cols{column-count:'+summaryCols+';column-gap:22px;column-rule:1px solid #ddd}';
+    h += '.summary-set{font-weight:900;text-transform:uppercase;letter-spacing:0.04em;background:#000;color:#fff;padding:4px 9px;margin:0 0 6px;border-radius:3px;break-after:avoid;break-inside:avoid;font-size:'+(summaryFont-3)+'pt}';
+    h += '.summary-set:not(:first-child){margin-top:10px}';
+    h += '.summary-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid #e0e0e0;break-inside:avoid;font-size:'+summaryFont+'pt;line-height:1.25}';
+    h += '.summary-num{font-weight:800;color:#666;min-width:'+(summaryFont*1.6)+'px;text-align:right;flex-shrink:0}';
+    h += '.summary-title{font-weight:700;flex:1;min-width:0;word-break:break-word}';
+    h += '.summary-segue{color:#888;font-weight:500;margin-left:4px}';
+    h += '.summary-meta-pill{font-weight:700;color:#000;white-space:nowrap;background:#f0f0f0;padding:1px 6px;border-radius:4px;border:1px solid #999;font-size:'+(summaryFont-2)+'pt;flex-shrink:0}';
+    h += '.summary-meta-pill .sep{color:#999;margin:0 3px;font-weight:400}';
+
+    // \u2500\u2500 Per-song chart pages \u2500\u2500
+    h += '.song-page{page-break-before:always;padding:16px 22px 14px}';
     h += '.song-header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:12px}';
-    h += '.song-title{font-size:1.4em;font-weight:700}';
-    h += '.chip{background:#f0f0f0;padding:2px 8px;border-radius:4px;border:1px solid #ddd;font-size:0.78em;margin-left:6px}';
+    h += '.song-title{font-size:1.5em;font-weight:700}';
+    h += '.chip{background:#f0f0f0;padding:2px 8px;border-radius:4px;border:1px solid #ddd;font-size:0.82em;margin-left:6px}';
     h += '.chart{font-family:Menlo,Consolas,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;background:#fafafa;border:1px solid #e8e8e8;border-radius:4px;padding:12px 14px;margin-top:4px}';
     h += '.no-chart{color:#999;font-style:italic;font-size:0.88em;padding:10px 0}';
-    h += '.footer{margin-top:32px;padding-top:12px;border-top:1px solid #ddd;font-size:0.72em;color:#aaa;text-align:center}';
-    h += '@media print{.song-page{page-break-before:always}.song-page:first-of-type{page-break-before:auto}body{padding:16px 20px}}';
+
+    // \u2500\u2500 GrooveLinx branded footer (one per page) \u2500\u2500
+    h += '.gl-ad{margin-top:14px;padding:10px 14px;border:2px solid #6366f1;border-radius:8px;background:linear-gradient(90deg,#f5f3ff,#eef2ff);display:flex;align-items:center;gap:14px;page-break-inside:avoid}';
+    h += '.gl-ad .gl-mark{font-size:16pt;font-weight:900;color:#4f46e5;letter-spacing:-0.02em;line-height:1}';
+    h += '.gl-ad .gl-tag{font-size:10pt;color:#1e1b4b;font-weight:600;line-height:1.3;flex:1}';
+    h += '.gl-ad .gl-tag em{display:block;color:#4f46e5;font-style:normal;font-weight:700;margin-top:2px}';
+    h += '.gl-ad .gl-url{font-size:10pt;color:#4f46e5;font-weight:800;white-space:nowrap;border-left:1px solid #c7d2fe;padding-left:14px}';
     h += '</style></head><body>';
-    h += '<div class="cover"><h1>'+name+'</h1>';
-    if (date) h += '<div class="meta">'+date+'</div>';
-    h += '<div class="meta" style="margin-top:8px;font-size:0.75em;color:#aaa">GrooveLinx Emergency Gig Pack \u2014 Printed '+new Date().toLocaleDateString()+'</div></div>';
-    // TOC
-    h += '<div class="toc"><h3>Setlist</h3>';
+
+    // \u2500\u2500 Front page: big-font setlist summary, multi-column \u2500\u2500
+    h += '<div class="summary">';
+    h += '<div class="summary-header">';
+    h += '<h1 class="summary-name">'+_esc(name)+'</h1>';
+    if (date) h += '<div class="summary-meta">'+_esc(date)+' \u00b7 '+totalSongs+' song'+(totalSongs===1?'':'s')+'</div>';
+    h += '</div>';
+    h += '<div class="summary-cols">';
     var num = 0, lastSet = '';
     songs.forEach(function(s) {
         if (s.setName !== lastSet) {
-            if (lastSet) h += '<div style="height:4px"></div>';
-            h += '<div style="font-size:0.7em;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin:6px 0 3px">'+s.setName+'</div>';
+            h += '<div class="summary-set">'+_esc(s.setName)+'</div>';
             lastSet = s.setName;
         }
         num++;
-        var chips = (s.key?s.key:'')+(s.key&&s.bpm?' \u00b7 ':'')+( s.bpm?s.bpm+' bpm':'');
-        var seg = {flow:' \u2192',segue:' ~',cutoff:' |'}[s.segue]||'';
-        h += '<div class="toc-row"><span><b>'+num+'.</b> '+s.title+seg+'</span><span style="color:#888;font-size:0.85em">'+chips+'</span></div>';
+        var seg = {flow:' \u2192', segue:' ~', cutoff:' |'}[s.segue] || '';
+        var pieces = [];
+        if (s.key) pieces.push(_esc(s.key));
+        if (s.bpm) pieces.push(_esc(String(s.bpm)) + ' bpm');
+        var meta = pieces.length ? '<span class="summary-meta-pill">'+pieces.join('<span class="sep">\u00b7</span>')+'</span>' : '';
+        h += '<div class="summary-row">'
+            + '<span class="summary-num">'+num+'.</span>'
+            + '<span class="summary-title">'+_esc(s.title)+(seg?'<span class="summary-segue">'+seg+'</span>':'')+'</span>'
+            + meta
+            + '</div>';
     });
     h += '</div>';
-    // Per-song pages
+    // Branded footer on the summary page
+    h += '<div class="gl-ad">'
+        + '<div class="gl-mark">GrooveLinx</div>'
+        + '<div class="gl-tag">Where bands lock in.<em>Setlists \u00b7 charts \u00b7 stems \u00b7 gig prep \u00b7 all in one place.</em></div>'
+        + '<div class="gl-url">app.groovelinx.com</div>'
+        + '</div>';
+    h += '</div>';
+
+    // \u2500\u2500 Per-song chart pages \u2500\u2500
     songs.forEach(function(s) {
         h += '<div class="song-page">';
-        h += '<div class="song-header"><span class="song-title">'+s.title+'</span><span>';
-        if (s.key) h += '<span class="chip">\ud83c\udfb5 '+s.key+'</span>';
-        if (s.bpm) h += '<span class="chip">\u26a1'+s.bpm+' BPM</span>';
+        h += '<div class="song-header"><span class="song-title">'+_esc(s.title)+'</span><span>';
+        if (s.key) h += '<span class="chip">\ud83c\udfb5 '+_esc(s.key)+'</span>';
+        if (s.bpm) h += '<span class="chip">\u26a1'+_esc(String(s.bpm))+' BPM</span>';
         h += '</span></div>';
         if (s.chart) {
             h += '<div class="chart">'+s.chart.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>';
         } else {
             h += '<div class="no-chart">No chord chart saved yet.</div>';
         }
+        // Branded footer at the bottom of each chart page too
+        h += '<div class="gl-ad">'
+            + '<div class="gl-mark">GrooveLinx</div>'
+            + '<div class="gl-tag">Where bands lock in.<em>'+_esc(name)+(date?' \u00b7 '+_esc(date):'')+'</em></div>'
+            + '<div class="gl-url">app.groovelinx.com</div>'
+            + '</div>';
         h += '</div>';
     });
-    h += '<div class="footer">GrooveLinx Emergency Gig Pack \u2014 '+name+(date?' \u2014 '+date:'')+' \u2014 Printed '+new Date().toLocaleDateString()+'</div>';
+
     h += '</body></html>';
     return h;
 }
@@ -2071,10 +2125,19 @@ async function parachutePrint(slIdx) {
 }
 
 // Big-font setlist printout \u2014 gig-stage readable, NOT the full chart pack.
-// Each set gets its own page (page-break-after) so a 2-set show prints on
-// one duplex sheet (Set 1 front, Set 2 back). Built per a band-member
-// request: "make an additional gig formatted setlist page that had a much
-// bigger font, include the tempo, and be printed front and back."
+//
+// Page layout rules:
+//   - Soundcheck / Pre-show / Warmup \u2192 INLINE at top of the next main set's page
+//   - Encore / After-hours / Reprise \u2192 INLINE at bottom of the last main set's page
+//   - Each "main" set (Set 1, Set 2, etc.) is its own page
+//   - Font auto-scales DOWN if a page would overflow letter paper, so an
+//     individual set never gets an orphan row on a follow-up page
+//   - Every page ends with a GrooveLinx branded footer block (tagline + URL)
+//
+// Built per band-member request: "make an additional gig formatted setlist
+// page that had a much bigger font, include the tempo, and be printed
+// front and back" \u2014 refined after Jay said: keep Soundcheck and Encore
+// inline, no orphans, branded footer.
 async function parachutePrintSetlistBig(slIdx) {
     document.getElementById('slShareModal')?.remove();
     var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists')||[]);
@@ -2087,93 +2150,239 @@ async function parachutePrintSetlistBig(slIdx) {
     var date = sl.date || '';
     var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
 
+    // \u2500\u2500 Classify each set as 'intro' (soundcheck), 'outro' (encore), or 'main' \u2500\u2500
+    // Names matching the patterns are treated as bookends and inlined into
+    // an adjacent main set's page rather than getting their own pages.
+    var INTRO_RE = /soundcheck|sound\s*check|warm\s*up|warmup|pre[-\s]?show/i;
+    var OUTRO_RE = /encore|after\s*hours|after[-\s]?party|reprise/i;
+    function _classify(set) {
+        var n = (set.name || '').trim();
+        if (!n) return 'main';
+        if (INTRO_RE.test(n)) return 'intro';
+        if (OUTRO_RE.test(n)) return 'outro';
+        return 'main';
+    }
+
+    var rawSets = (sl.sets || []).map(function(set, si) {
+        return {
+            name: set.name || ('Set ' + (si + 1)),
+            songs: set.songs || [],
+            kind: _classify(set),
+            originalIdx: si
+        };
+    });
+
+    // \u2500\u2500 Build pages: each main set is a page, with intros + outros attached \u2500\u2500
+    // Algorithm: walk sets left\u2192right. Buffer pending intros until we hit a
+    // main, then create a page anchored on that main with the intros at top.
+    // After the loop, attach remaining outros to the LAST main page (or
+    // create a fallback page if there are zero mains).
+    var pages = [];
+    var pendingIntros = [];
+    var pendingOutros = [];
+    rawSets.forEach(function(set) {
+        if (set.kind === 'intro') {
+            pendingIntros.push(set);
+        } else if (set.kind === 'outro') {
+            pendingOutros.push(set);
+        } else {
+            pages.push({ intros: pendingIntros.slice(), main: set, outros: [] });
+            pendingIntros = [];
+        }
+    });
+    if (pendingOutros.length) {
+        if (pages.length) {
+            pages[pages.length - 1].outros = pages[pages.length - 1].outros.concat(pendingOutros);
+        } else {
+            // Edge case: only intro/outro sets and no main. Make one fallback page.
+            pages.push({ intros: pendingIntros.slice(), main: null, outros: pendingOutros });
+            pendingIntros = [];
+        }
+    }
+    if (pendingIntros.length && !pages.length) {
+        // Edge case: only intro sets. Render them on a single page.
+        pages.push({ intros: pendingIntros, main: null, outros: [] });
+    }
+    if (!pages.length) {
+        pages.push({ intros: [], main: null, outros: [] }); // empty placeholder
+    }
+
+    // \u2500\u2500 Resolve each page's effective song count \u2192 pick auto-scale tier \u2500\u2500
+    // Tiers tuned for letter @ 0.5" margin: ~9.5" usable height. Each tier
+    // pairs a title font + row padding so the densest case (~22 songs) still
+    // squeezes onto one page without an orphan row.
+    function _scaleFor(rowCount) {
+        if (rowCount <= 12) return { title: 22, row: 9, num: 18, meta: 16, segHdr: 14 };
+        if (rowCount <= 16) return { title: 19, row: 7, num: 16, meta: 14, segHdr: 13 };
+        if (rowCount <= 20) return { title: 17, row: 6, num: 15, meta: 13, segHdr: 12 };
+        if (rowCount <= 24) return { title: 15, row: 5, num: 13, meta: 12, segHdr: 11 };
+        return { title: 13, row: 4, num: 12, meta: 11, segHdr: 10 }; // very dense fallback
+    }
+
+    function _renderSongRow(item, displayNum, scale, allSongsList) {
+        var title = typeof item === 'string' ? item : (item.title || '');
+        var segue = (typeof item === 'object' && item.segue && item.segue !== 'stop') ? item.segue : '';
+        var segArrow = segue === 'flow' ? ' \u2192' : (segue === 'segue' ? ' ~' : (segue === 'cutoff' ? ' |' : ''));
+        var sd = allSongsList.find(function(a){ return a.title === title; }) || {};
+        var key = sd.key || (typeof item === 'object' ? item.key : '') || '';
+        var bpm = sd.bpm || (typeof item === 'object' ? item.bpm : '') || '';
+        var metaPieces = [];
+        if (key) metaPieces.push('<span class="key">' + _esc(key) + '</span>');
+        if (bpm) metaPieces.push('<span class="bpm">' + _esc(String(bpm)) + ' bpm</span>');
+        var meta = metaPieces.length
+            ? '<span class="song-meta">' + metaPieces.join('<span class="sep">\u00b7</span>') + '</span>'
+            : '';
+        return '<div class="song-row">'
+            + '<span class="song-num">' + displayNum + '.</span>'
+            + '<span class="song-title">' + _esc(title)
+            + (segArrow ? '<span class="song-segue">' + segArrow + '</span>' : '')
+            + '</span>'
+            + meta
+            + '</div>';
+    }
+
+    // \u2500\u2500 Build HTML \u2500\u2500
     var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'
         + _esc(name) + ' \u2014 Gig Setlist</title><style>'
-        + '@page { size: letter; margin: 0.5in; }'
+        + '@page { size: letter; margin: 0.4in; }'
         + 'html, body { margin: 0; padding: 0; color: #000; background: #fff; '
         +   'font-family: Helvetica, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }'
-        + '.page { padding: 24px 28px; page-break-after: always; min-height: calc(100vh - 1in); }'
+        + '.page { padding: 18px 22px 14px; page-break-after: always; }'
         + '.page:last-child { page-break-after: auto; }'
-        + '.show-header { border-bottom: 4px solid #000; padding-bottom: 10px; margin-bottom: 18px; }'
-        + '.show-name { font-size: 32pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
-        + '.show-meta { font-size: 13pt; color: #444; margin-top: 4px; font-weight: 600; }'
-        + '.set-name { font-size: 22pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; '
-        +   'background: #000; color: #fff; padding: 8px 14px; margin: 0 0 16px; border-radius: 4px; }'
-        + '.song-row { display: flex; align-items: baseline; gap: 14px; padding: 9px 0; '
+        + '.show-header { border-bottom: 4px solid #000; padding-bottom: 8px; margin-bottom: 12px; }'
+        + '.show-name { font-size: 28pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
+        + '.show-meta { font-size: 11pt; color: #444; margin-top: 3px; font-weight: 600; }'
+        + '.set-name { font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; '
+        +   'background: #000; color: #fff; padding: 6px 12px; margin: 0 0 10px; border-radius: 4px; }'
+        + '.set-name.minor { background: #444; padding: 4px 10px; margin-top: 8px; font-size: 11pt; }'
+        + '.song-row { display: flex; align-items: baseline; gap: 12px; '
         +   'border-bottom: 1px solid #d0d0d0; page-break-inside: avoid; }'
-        + '.song-num { font-size: 18pt; font-weight: 800; color: #666; min-width: 36px; text-align: right; }'
-        + '.song-title { font-size: 22pt; font-weight: 700; flex: 1; line-height: 1.2; word-break: break-word; }'
-        + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; font-size: 18pt; }'
-        + '.song-meta { font-size: 16pt; font-weight: 700; color: #000; white-space: nowrap; '
-        +   'background: #f0f0f0; padding: 3px 10px; border-radius: 6px; border: 1px solid #999; }'
+        + '.song-num { font-weight: 800; color: #666; min-width: 32px; text-align: right; }'
+        + '.song-title { font-weight: 700; flex: 1; line-height: 1.2; word-break: break-word; }'
+        + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; }'
+        + '.song-meta { font-weight: 700; color: #000; white-space: nowrap; '
+        +   'background: #f0f0f0; padding: 2px 8px; border-radius: 5px; border: 1px solid #999; }'
         + '.song-meta .key { color: #1a1a1a; }'
         + '.song-meta .bpm { color: #444; }'
-        + '.song-meta .sep { color: #999; margin: 0 4px; font-weight: 400; }'
-        + '.page-footer { margin-top: 18px; font-size: 10pt; color: #888; text-align: center; '
-        +   'border-top: 1px solid #ddd; padding-top: 8px; }'
-        + '.empty { font-size: 14pt; color: #888; padding: 12px 0; font-style: italic; }'
-        + '@media print { .no-print { display: none; } }'
-        + '.no-print { background: #fffbe6; border-bottom: 2px solid #fbbf24; padding: 10px 16px; '
-        +   'font-family: -apple-system, sans-serif; font-size: 13px; color: #78350f; text-align: center; }'
-        + '.no-print button { margin-left: 12px; padding: 6px 14px; background: #fbbf24; border: none; '
+        + '.song-meta .sep { color: #999; margin: 0 3px; font-weight: 400; }'
+        + '.empty { font-size: 12pt; color: #888; padding: 8px 0; font-style: italic; }'
+        // Branded footer block \u2014 replaces the old plain-text footer line.
+        + '.gl-ad { margin-top: 14px; padding: 12px 16px; border: 2px solid #6366f1; '
+        +   'border-radius: 8px; background: linear-gradient(90deg, #f5f3ff, #eef2ff); '
+        +   'display: flex; align-items: center; gap: 14px; page-break-inside: avoid; }'
+        + '.gl-ad .gl-mark { font-size: 18pt; font-weight: 900; color: #4f46e5; letter-spacing: -0.02em; line-height: 1; }'
+        + '.gl-ad .gl-tag { font-size: 10pt; color: #1e1b4b; font-weight: 600; line-height: 1.3; flex: 1; }'
+        + '.gl-ad .gl-tag em { display: block; color: #4f46e5; font-style: normal; font-weight: 700; margin-top: 2px; }'
+        + '.gl-ad .gl-url { font-size: 10pt; color: #4f46e5; font-weight: 800; white-space: nowrap; '
+        +   'border-left: 1px solid #c7d2fe; padding-left: 14px; }'
+        + '.gl-ad .gl-page { font-size: 9pt; color: #6366f1; margin-left: 6px; font-weight: 600; }'
+        // On-screen tip banner \u2014 hidden in print
+        + '@media print { .no-print { display: none !important; } }'
+        + '.no-print { background: #fffbe6; border-bottom: 2px solid #fbbf24; padding: 12px 18px; '
+        +   'font-family: -apple-system, sans-serif; font-size: 13px; color: #78350f; line-height: 1.5; }'
+        + '.no-print strong { color: #78350f; }'
+        + '.no-print button { margin-top: 8px; padding: 6px 14px; background: #fbbf24; border: none; '
         +   'border-radius: 6px; font-weight: 700; cursor: pointer; }'
         + '</style></head><body>';
 
-    // Banner shown only on screen (not print) explaining the duplex tip
+    // On-screen instructions (don't print)
     html += '<div class="no-print">'
-        + '\ud83d\udda8 In your printer dialog, choose <strong>"Print on both sides"</strong> '
-        + '(or "duplex") to fit a 2-set show on a single sheet. '
-        + '<button onclick="window.print()">Print now</button>'
+        + '<strong>\ud83d\udda8 Print tips:</strong> '
+        + '(1) Choose <strong>"Print on both sides"</strong> for a duplex sheet. '
+        + '(2) Open <em>More settings</em> in the print dialog and <strong>uncheck "Headers and footers"</strong> '
+        + 'to remove the browser-added "about:blank" / timestamp text at the page edges.'
+        + '<br><button onclick="window.print()">Print now</button>'
         + '</div>';
 
-    var sets = sl.sets || [];
-    if (!sets.length) {
+    if (rawSets.length === 0) {
         html += '<div class="page"><div class="empty">No sets in this setlist yet.</div></div>';
     } else {
-        sets.forEach(function(set, si) {
-            var setName = set.name || ('Set ' + (si + 1));
-            var setSongs = set.songs || [];
-            html += '<div class="page">';
-            // Show header only on first page; later pages get a smaller continuation header
-            if (si === 0) {
+        pages.forEach(function(page, pageIdx) {
+            // Compute total song rows on this page \u2192 pick auto-scale tier
+            var introRows = page.intros.reduce(function(n, s){ return n + (s.songs || []).length; }, 0);
+            var mainRows = page.main ? (page.main.songs || []).length : 0;
+            var outroRows = page.outros.reduce(function(n, s){ return n + (s.songs || []).length; }, 0);
+            var totalRows = introRows + mainRows + outroRows;
+            var scale = _scaleFor(totalRows);
+
+            // Per-page font size overrides via inline style (so each page can
+            // have its own scale without needing per-page CSS classes)
+            var pageStyle = '--titlePt:' + scale.title + 'pt;'
+                + '--rowPad:' + scale.row + 'px;'
+                + '--numPt:' + scale.num + 'pt;'
+                + '--metaPt:' + scale.meta + 'pt;'
+                + '--segHdrPt:' + scale.segHdr + 'pt;';
+
+            html += '<div class="page" style="' + pageStyle
+                + '">'
+                // The CSS variables aren't actually used \u2014 apply inline below
+                + '<style>'
+                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-title { font-size: ' + scale.title + 'pt; }'
+                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-num { font-size: ' + scale.num + 'pt; }'
+                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-segue { font-size: ' + scale.title + 'pt; }'
+                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-meta { font-size: ' + scale.meta + 'pt; }'
+                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-row { padding: ' + scale.row + 'px 0; }'
+                + '.page:nth-of-type(' + (pageIdx + 1) + ') .set-name { font-size: ' + (scale.title - 2) + 'pt; }'
+                + '</style>';
+
+            // Show header only on the first page
+            if (pageIdx === 0) {
                 html += '<div class="show-header">'
                     + '<h1 class="show-name">' + _esc(name) + '</h1>'
-                    + (date ? '<div class="show-meta">' + _esc(date) + ' \u00b7 ' + sets.length + (sets.length === 1 ? ' set' : ' sets') + '</div>' : '')
+                    + (date ? '<div class="show-meta">' + _esc(date) + ' \u00b7 ' + rawSets.length + (rawSets.length === 1 ? ' set' : ' sets') + '</div>' : '')
                     + '</div>';
             }
-            html += '<div class="set-name">' + _esc(setName) + '</div>';
 
-            if (!setSongs.length) {
-                html += '<div class="empty">(no songs in this set)</div>';
-            } else {
-                setSongs.forEach(function(item, i) {
-                    var title = typeof item === 'string' ? item : (item.title || '');
-                    var segue = (typeof item === 'object' && item.segue && item.segue !== 'stop') ? item.segue : '';
-                    var segArrow = segue === 'flow' ? ' \u2192' : (segue === 'segue' ? ' ~' : (segue === 'cutoff' ? ' |' : ''));
-                    var sd = allSongsList.find(function(a){ return a.title === title; }) || {};
-                    var key = sd.key || (typeof item === 'object' ? item.key : '') || '';
-                    var bpm = sd.bpm || (typeof item === 'object' ? item.bpm : '') || '';
-                    var metaPieces = [];
-                    if (key) metaPieces.push('<span class="key">' + _esc(key) + '</span>');
-                    if (bpm) metaPieces.push('<span class="bpm">' + _esc(String(bpm)) + ' bpm</span>');
-                    var meta = metaPieces.length
-                        ? '<span class="song-meta">' + metaPieces.join('<span class="sep">\u00b7</span>') + '</span>'
-                        : '';
-                    html += '<div class="song-row">'
-                        + '<span class="song-num">' + (i + 1) + '.</span>'
-                        + '<span class="song-title">' + _esc(title)
-                        + (segArrow ? '<span class="song-segue">' + segArrow + '</span>' : '')
-                        + '</span>'
-                        + meta
-                        + '</div>';
+            // Running song number ACROSS the page (so soundcheck=1, Set 1
+            // starts at 2, etc. \u2014 matches what the band would actually count).
+            // Per-section number resets back to 1 within each section.
+            var sectionRowNum = 0;
+
+            // Render intros (compact)
+            page.intros.forEach(function(set) {
+                html += '<div class="set-name minor">' + _esc(set.name) + '</div>';
+                sectionRowNum = 0;
+                (set.songs || []).forEach(function(item) {
+                    sectionRowNum++;
+                    html += _renderSongRow(item, sectionRowNum, scale, allSongsList);
                 });
+            });
+
+            // Render main set
+            if (page.main) {
+                html += '<div class="set-name">' + _esc(page.main.name) + '</div>';
+                sectionRowNum = 0;
+                (page.main.songs || []).forEach(function(item) {
+                    sectionRowNum++;
+                    html += _renderSongRow(item, sectionRowNum, scale, allSongsList);
+                });
+                if (!page.main.songs || !page.main.songs.length) {
+                    html += '<div class="empty">(no songs in this set)</div>';
+                }
             }
 
-            html += '<div class="page-footer">'
-                + _esc(name) + (date ? ' \u00b7 ' + _esc(date) : '')
-                + ' \u00b7 Set ' + (si + 1) + ' of ' + sets.length
-                + ' \u00b7 GrooveLinx'
+            // Render outros (compact)
+            page.outros.forEach(function(set) {
+                html += '<div class="set-name minor">' + _esc(set.name) + '</div>';
+                sectionRowNum = 0;
+                (set.songs || []).forEach(function(item) {
+                    sectionRowNum++;
+                    html += _renderSongRow(item, sectionRowNum, scale, allSongsList);
+                });
+            });
+
+            // Branded GrooveLinx footer ad (replaces the old plain-text footer)
+            html += '<div class="gl-ad">'
+                + '<div class="gl-mark">GrooveLinx</div>'
+                + '<div class="gl-tag">'
+                + 'Where bands lock in.'
+                + '<em>Setlists \u00b7 charts \u00b7 stems \u00b7 gig prep \u00b7 all in one place.</em>'
+                + '</div>'
+                + '<div class="gl-url">app.groovelinx.com'
+                + '<span class="gl-page">\u00b7 pg ' + (pageIdx + 1) + '/' + pages.length + '</span>'
+                + '</div>'
                 + '</div>';
+
             html += '</div>';
         });
     }
