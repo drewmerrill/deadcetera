@@ -147,22 +147,18 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   pre.mermaid { background: transparent !important; }
-  /* Stop Mermaid from clipping node labels. Default rendering can truncate
-     long names inside the SVG <foreignObject>; force overflow visible and
-     give every node a generous min-width so text breathes instead of
-     wrapping into 2-letter columns. */
+  /* Don't override the inner-div size — mermaid measures the label first,
+     then sizes the rect. Adding padding/min-width AFTER measurement makes
+     the div spill outside the rect (the previous bug). Just let labels
+     wrap normally and stay inside their pre-measured box. */
   .mermaid svg { overflow: visible !important; max-width: none !important; height: auto !important; }
   .mermaid foreignObject { overflow: visible !important; }
   .mermaid .nodeLabel,
   .mermaid .nodeLabel p,
   .mermaid foreignObject > div {
     white-space: normal !important;
-    overflow: visible !important;
-    line-height: 1.4 !important;
-    min-width: 140px;
-    padding: 4px 8px;
+    line-height: 1.35 !important;
     font-weight: 500;
-    text-align: center;
   }
   .mermaid .label foreignObject { display: block; }
   /* Visual polish on every node — rounded corners, soft glow, crisper border. */
@@ -174,17 +170,35 @@
     stroke-width: 1.5px !important;
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
   }
-  /* Subgraph containers — clearer separation, no clipping */
+  /* Subgraph containers — clearer separation, BIG obvious title pill */
   .mermaid .cluster rect {
-    rx: 12; ry: 12;
-    stroke-width: 1.5px !important;
-    fill: rgba(15, 23, 42, 0.45) !important;
-    stroke: rgba(148, 163, 184, 0.35) !important;
+    rx: 14; ry: 14;
+    stroke-width: 2px !important;
+    fill: rgba(15, 23, 42, 0.55) !important;
+    stroke: rgba(148, 163, 184, 0.45) !important;
   }
-  .mermaid .cluster .nodeLabel {
-    font-weight: 700 !important;
-    font-size: 14px !important;
-    letter-spacing: 0.02em;
+  /* Cluster (subgraph) titles — render as a bold colored pill so the
+     "Top section vs Bottom section" labelling is impossible to miss. */
+  .mermaid .cluster .nodeLabel,
+  .mermaid .cluster-label .nodeLabel,
+  .mermaid .cluster-label foreignObject > div,
+  .mermaid .cluster-label foreignObject > div > span,
+  .mermaid .cluster text,
+  .mermaid .cluster-label text {
+    font-weight: 800 !important;
+    font-size: 16px !important;
+    letter-spacing: 0.06em;
+    color: #f8fafc !important;
+    fill: #f8fafc !important;
+  }
+  /* Pill background only attaches to the HTML rendering of the title.
+     Wrap-target is the outer foreignObject div. */
+  .mermaid .cluster-label foreignObject > div {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.95), rgba(79, 70, 229, 0.95)) !important;
+    padding: 8px 20px !important;
+    border-radius: 10px !important;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+    display: inline-block !important;
   }
   /* Edge labels stay readable over the dark canvas */
   .mermaid .edgeLabel {
@@ -194,6 +208,11 @@
     border-radius: 4px !important;
     font-size: 11px !important;
   }
+  /* Make edges thicker + more transparent so crossings don't read as a
+     solid mat of gray. Color is set per-edge via linkStyle in the diagrams. */
+  .mermaid .flowchart-link,
+  .mermaid path.path { stroke-width: 1.6px !important; opacity: 0.65; }
+  .mermaid .flowchart-link:hover { opacity: 1; stroke-width: 2.5px !important; }
 
   table.engines {
     width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;
@@ -239,6 +258,29 @@
   }
   .legend > span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-dim); }
   .legend > span code { font-size: 11px; }
+
+  /* Color key — small swatch + engine name; matches the per-engine colors
+     used in the Section 1 diagram so readers can decode an arrow's color. */
+  .color-key {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 8px 14px;
+    padding: 14px 18px;
+    margin-top: 14px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .color-key .ck { display: inline-flex; align-items: center; gap: 8px; color: var(--text); }
+  .color-key .ck::before {
+    content: ""; width: 28px; height: 4px; border-radius: 3px;
+    background: var(--ck-color, #94a3b8);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+    flex-shrink: 0;
+  }
+  .color-key .ck strong { font-weight: 700; color: var(--text); }
+  .color-key .ck span { color: var(--text-dim); font-size: 11px; }
 
   .insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 16px; }
   .insight {
@@ -372,26 +414,26 @@
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering engine dependency graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':20} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':60,'rankSpacing':110,'padding':22} }}%%
 flowchart LR
 
-  subgraph CORE["⚙️ Core engines"]
-    Store["GLStore<br/>(state cache)"]
-    Lifecycle["GL_PAGE_READY<br/>(_navSeq)"]
-    Focus["Focus engine<br/>(getNowFocus)"]
-    Insights["GLInsights<br/>(intelligence)"]
-    Audio["GLAudioSession<br/>(shared Web Audio)"]
-    Stems["GLStems<br/>(stem orchestrator)"]
-    Player["GLPlayerEngine<br/>(YouTube)"]
-    CalSync["GLCalendarSync<br/>(2-way Google sync)"]
-    Actions["GLActions<br/>(action registry)"]
-    Context["GLContext<br/>(context snapshot)"]
-    Mate["GLGrooveMate<br/>(decision engine)"]
-    Notes["GLNotes<br/>(5-scope notes API)"]
-    Practice["PracticeSession<br/>(local + Firebase)"]
+  subgraph CORE["⚙️ CORE ENGINES (color = engine identity)"]
+    Store["GLStore<br/>state cache"]
+    Lifecycle["GL_PAGE_READY<br/>_navSeq"]
+    Focus["Focus engine<br/>getNowFocus"]
+    Insights["GLInsights<br/>intelligence"]
+    Audio["GLAudioSession<br/>shared Web Audio"]
+    Stems["GLStems<br/>stem orchestrator"]
+    Player["GLPlayerEngine<br/>YouTube"]
+    CalSync["GLCalendarSync<br/>2-way Google sync"]
+    Actions["GLActions<br/>action registry"]
+    Context["GLContext<br/>context snapshot"]
+    Mate["GLGrooveMate<br/>decision engine"]
+    Notes["GLNotes<br/>5-scope notes API"]
+    Practice["PracticeSession<br/>local + Firebase"]
   end
 
-  subgraph SCREENS["📱 Screens"]
+  subgraph SCREENS["📱 SCREENS (consumer surfaces)"]
     Home["🏠 Home Dashboard"]
     Songs["🎵 Songs"]
     SongDetail["🎶 Song Detail"]
@@ -406,26 +448,97 @@ flowchart LR
     PracticePg["🎸 Practice"]
   end
 
+  %% Edges grouped per engine — order matters because linkStyle uses
+  %% the absolute edge index. Same total (51 edges) as before.
+  %% 0-8: Store
   Store --> Home & Songs & SongDetail & Setlists & Calendar & Gigs & Rehearsal & LiveGig & Notifications
+  %% 9-15: Lifecycle
   Lifecycle --> Home & Songs & SongDetail & Setlists & Calendar & Gigs & Rehearsal
+  %% 16-20: Focus
   Focus --> Home & Songs & Calendar & Rehearsal & PracticePg
+  %% 21-22: Insights
   Insights --> Home & Songs
+  %% 23-26: Player
   Player --> LiveGig & Setlists & Home & Gigs
+  %% 27-29: CalSync
   CalSync --> Calendar & Gigs & Rehearsal
+  %% 30-33: Audio
   Audio --> SongDetail & StemsLens & HarmonyLab & LiveGig
+  %% 34-36: Stems
   Stems --> SongDetail & StemsLens & HarmonyLab
+  %% 37-39: Actions
   Actions --> Home & Rehearsal & SongDetail
+  %% 40-41: Context
   Context --> Home & SongDetail
+  %% 42-43: Mate
   Mate --> Home & SongDetail
+  %% 44-47: Notes
   Notes --> SongDetail & Rehearsal & PracticePg & LiveGig
+  %% 48-50: Practice
   Practice --> PracticePg & SongDetail & Rehearsal
 
-  classDef core fill:#1e1b30,stroke:#a78bfa,color:#a78bfa
-  classDef screen fill:#0e2031,stroke:#60a5fa,color:#60a5fa
+  %% ── Per-engine color identity (matched node fill + edge color) ──
+  classDef store fill:#1e3a5f,stroke:#60a5fa,color:#dbeafe,stroke-width:2px
+  classDef life  fill:#3b1d5c,stroke:#a78bfa,color:#ede9fe,stroke-width:2px
+  classDef focus fill:#5b1d3a,stroke:#fb7185,color:#ffe4e6,stroke-width:2px
+  classDef insig fill:#4a1d3e,stroke:#f472b6,color:#fce7f3,stroke-width:2px
+  classDef player fill:#0f3d2e,stroke:#34d399,color:#d1fae5,stroke-width:2px
+  classDef cal   fill:#3d2b0d,stroke:#fbbf24,color:#fef3c7,stroke-width:2px
+  classDef audio fill:#0d3a44,stroke:#22d3ee,color:#cffafe,stroke-width:2px
+  classDef stems fill:#0d3a3a,stroke:#2dd4bf,color:#ccfbf1,stroke-width:2px
+  classDef actions fill:#33215a,stroke:#c084fc,color:#f3e8ff,stroke-width:2px
+  classDef ctx   fill:#4a1d1d,stroke:#f87171,color:#fee2e2,stroke-width:2px
+  classDef mate  fill:#4a2a0d,stroke:#fb923c,color:#fed7aa,stroke-width:2px
+  classDef notes fill:#3d350a,stroke:#facc15,color:#fef9c3,stroke-width:2px
+  classDef prac  fill:#2d3a0a,stroke:#84cc16,color:#ecfccb,stroke-width:2px
+  classDef screen fill:#0f1f3a,stroke:#94a3b8,color:#e2e8f0,stroke-width:1.5px
 
-  class Store,Lifecycle,Focus,Insights,Audio,Stems,Player,CalSync,Actions,Context,Mate,Notes,Practice core
+  class Store store
+  class Lifecycle life
+  class Focus focus
+  class Insights insig
+  class Player player
+  class CalSync cal
+  class Audio audio
+  class Stems stems
+  class Actions actions
+  class Context ctx
+  class Mate mate
+  class Notes notes
+  class Practice prac
   class Home,Songs,SongDetail,Setlists,Calendar,Gigs,Rehearsal,LiveGig,HarmonyLab,StemsLens,Notifications,PracticePg screen
+
+  %% ── Edge color matches source engine ──
+  linkStyle 0,1,2,3,4,5,6,7,8 stroke:#60a5fa,stroke-width:1.6px
+  linkStyle 9,10,11,12,13,14,15 stroke:#a78bfa,stroke-width:1.6px
+  linkStyle 16,17,18,19,20 stroke:#fb7185,stroke-width:1.6px
+  linkStyle 21,22 stroke:#f472b6,stroke-width:1.6px
+  linkStyle 23,24,25,26 stroke:#34d399,stroke-width:1.6px
+  linkStyle 27,28,29 stroke:#fbbf24,stroke-width:1.6px
+  linkStyle 30,31,32,33 stroke:#22d3ee,stroke-width:1.6px
+  linkStyle 34,35,36 stroke:#2dd4bf,stroke-width:1.6px
+  linkStyle 37,38,39 stroke:#c084fc,stroke-width:1.6px
+  linkStyle 40,41 stroke:#f87171,stroke-width:1.6px
+  linkStyle 42,43 stroke:#fb923c,stroke-width:1.6px
+  linkStyle 44,45,46,47 stroke:#facc15,stroke-width:1.6px
+  linkStyle 48,49,50 stroke:#84cc16,stroke-width:1.6px
 </pre>
+  </div>
+
+  <div class="color-key" aria-label="Engine color key">
+    <span class="ck" style="--ck-color:#60a5fa"><strong>GLStore</strong> <span>state cache</span></span>
+    <span class="ck" style="--ck-color:#a78bfa"><strong>GL_PAGE_READY</strong> <span>router</span></span>
+    <span class="ck" style="--ck-color:#fb7185"><strong>Focus engine</strong> <span>now-focus</span></span>
+    <span class="ck" style="--ck-color:#f472b6"><strong>GLInsights</strong> <span>intelligence</span></span>
+    <span class="ck" style="--ck-color:#34d399"><strong>GLPlayerEngine</strong> <span>YouTube</span></span>
+    <span class="ck" style="--ck-color:#fbbf24"><strong>GLCalendarSync</strong> <span>Google sync</span></span>
+    <span class="ck" style="--ck-color:#22d3ee"><strong>GLAudioSession</strong> <span>Web Audio</span></span>
+    <span class="ck" style="--ck-color:#2dd4bf"><strong>GLStems</strong> <span>stem orchestrator</span></span>
+    <span class="ck" style="--ck-color:#c084fc"><strong>GLActions</strong> <span>action registry</span></span>
+    <span class="ck" style="--ck-color:#f87171"><strong>GLContext</strong> <span>context snapshot</span></span>
+    <span class="ck" style="--ck-color:#fb923c"><strong>GLGrooveMate</strong> <span>decision engine</span></span>
+    <span class="ck" style="--ck-color:#facc15"><strong>GLNotes</strong> <span>5-scope notes</span></span>
+    <span class="ck" style="--ck-color:#84cc16"><strong>PracticeSession</strong> <span>local + Firebase</span></span>
   </div>
 
   <table class="engines">
@@ -467,29 +580,29 @@ flowchart LR
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering field cascade graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':50,'rankSpacing':70,'padding':18} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':22} }}%%
 flowchart TB
 
-  subgraph FIELDS["🔑 Load-bearing fields"]
+  subgraph FIELDS["🔑 LOAD-BEARING FIELDS (top — color = field identity)"]
     F1["song.title"]
-    F2["song.status<br/>(active vs library)"]
+    F2["song.status"]
     F3["song.bpm + key"]
-    F4["song.readiness[member]"]
+    F4["song.readiness"]
     F5["meta/members"]
     F6["calendar_events"]
-    F7["gigs (parallel mirror)"]
+    F7["gigs"]
     F8["meta build-version"]
   end
 
-  subgraph CONSUMERS["🎯 Consumers"]
-    Charts["Charts<br/>(9+ paths)"]
-    Active["GLStore.isActiveSong<br/>(scope filter)"]
+  subgraph CONSUMERS["🎯 CONSUMERS (bottom — surfaces that read these fields)"]
+    Charts["Charts<br/>9+ paths"]
+    Active["GLStore.isActiveSong<br/>scope filter"]
     Pacing["Rehearsal pacing<br/>+ Pocket Meter"]
     FocusEng["Focus engine"]
     Intel["Intelligence"]
     HomeBoard["Home dashboard"]
     GMate["GrooveMate"]
-    AuthGate["Auth gate<br/>(via members_index CF)"]
+    AuthGate["Auth gate"]
     CalGrid["Calendar grid"]
     GigsPg["Gigs page"]
     iCal["ICS feed"]
@@ -498,28 +611,62 @@ flowchart TB
     SWCache["Service Worker cache"]
   end
 
+  %% Edges (16 total) grouped per field — order matters for linkStyle
+  %% 0: F1
   F1 --> Charts
+  %% 1: F2
   F2 --> Active
+  %% 2-3: F3
   F3 --> Pacing
   F3 --> Intel
+  %% 4-7: F4
   F4 --> FocusEng
   F4 --> Intel
   F4 --> HomeBoard
   F4 --> GMate
+  %% 8: F5
   F5 --> AuthGate
+  %% 9-11: F6
   F6 --> CalGrid
   F6 --> GigsPg
   F6 --> iCal
+  %% 12-13: F7
   F7 --> GigsPg
   F7 --> SetlistL
+  %% 14-15: F8
   F8 --> Banners
   F8 --> SWCache
 
-  classDef field fill:#2a1d10,stroke:#fbbf24,color:#fbbf24
-  classDef consumer fill:#0e2a1f,stroke:#34d399,color:#34d399
+  %% ── Per-field color identity (matched node fill + edge color) ──
+  classDef f1 fill:#1e3a5f,stroke:#60a5fa,color:#dbeafe,stroke-width:2px
+  classDef f2 fill:#3d2b0d,stroke:#fbbf24,color:#fef3c7,stroke-width:2px
+  classDef f3 fill:#0f3d2e,stroke:#34d399,color:#d1fae5,stroke-width:2px
+  classDef f4 fill:#5b1d3a,stroke:#fb7185,color:#ffe4e6,stroke-width:2px
+  classDef f5 fill:#3b1d5c,stroke:#a78bfa,color:#ede9fe,stroke-width:2px
+  classDef f6 fill:#0d3a44,stroke:#22d3ee,color:#cffafe,stroke-width:2px
+  classDef f7 fill:#4a2a0d,stroke:#fb923c,color:#fed7aa,stroke-width:2px
+  classDef f8 fill:#3d350a,stroke:#facc15,color:#fef9c3,stroke-width:2px
+  classDef consumer fill:#0e2a1f,stroke:#34d399,color:#a7f3d0,stroke-width:1.5px
 
-  class F1,F2,F3,F4,F5,F6,F7,F8 field
+  class F1 f1
+  class F2 f2
+  class F3 f3
+  class F4 f4
+  class F5 f5
+  class F6 f6
+  class F7 f7
+  class F8 f8
   class Charts,Active,Pacing,FocusEng,Intel,HomeBoard,GMate,AuthGate,CalGrid,GigsPg,iCal,SetlistL,Banners,SWCache consumer
+
+  %% Edge color = source field color
+  linkStyle 0 stroke:#60a5fa,stroke-width:1.8px
+  linkStyle 1 stroke:#fbbf24,stroke-width:1.8px
+  linkStyle 2,3 stroke:#34d399,stroke-width:1.8px
+  linkStyle 4,5,6,7 stroke:#fb7185,stroke-width:1.8px
+  linkStyle 8 stroke:#a78bfa,stroke-width:1.8px
+  linkStyle 9,10,11 stroke:#22d3ee,stroke-width:1.8px
+  linkStyle 12,13 stroke:#fb923c,stroke-width:1.8px
+  linkStyle 14,15 stroke:#facc15,stroke-width:1.8px
 </pre>
   </div>
 
