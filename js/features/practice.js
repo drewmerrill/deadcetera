@@ -227,21 +227,19 @@ window._pmStart = function _pmStart(focusType, songTitle) {
     if (songTitle) _pmOpenSolo(songTitle, _pmModeForFocus(focusType));
 };
 
-// Open a single song into the chart overlay in solo Practice mode and start
-// (or refresh) the PracticeSession record. Wraps openRehearsalModePractice()
-// which nulls _rmSessionStart so the post-session "Rehearsal saved" modal
-// stays suppressed and Band Sync UI hides.
+// Open a single song into the song-detail page's Stems lens — that's
+// where the loop bar, mute-stem presets, and the GrooveMate suggestion
+// pill all live. The chart overlay (openRehearsalMode*) is a chord-chart-
+// only surface with no audio controls; routing Practice users there leaves
+// them with nowhere to actually loop.
 //
-// PracticeSession.start() is called BEFORE the overlay opens so that any
-// in-overlay save hooks (loop, stems) update an already-existing session
-// rather than racing to create one.
+// PracticeSession.start() is called BEFORE navigation so the save hooks
+// (_sdNotifyPracticeSessionLoop / Stems in song-detail.js) write into the
+// existing session record rather than racing to create one.
 function _pmOpenSolo(songTitle, mode) {
     if (!songTitle) return;
     mode = mode || 'focus';
-    var songList = typeof allSongs !== 'undefined' ? allSongs : [];
-    var songData = songList.find(function(s) { return s.title === songTitle; });
 
-    // Record (or refresh) the practice session intent.
     if (typeof GLStore !== 'undefined' && GLStore.PracticeSession) {
         try {
             GLStore.PracticeSession.start(songTitle, mode, { songTitle: songTitle });
@@ -250,11 +248,26 @@ function _pmOpenSolo(songTitle, mode) {
         }
     }
 
-    var queue = [{ title: songTitle, band: songData ? (songData.band || '') : '' }];
-    if (typeof openRehearsalModePractice === 'function') {
-        openRehearsalModePractice(queue);
-    } else if (typeof openRehearsalMode === 'function') {
-        openRehearsalMode(songTitle);
+    if (typeof selectSong === 'function') {
+        // selectSong sets selectedSong + calls showPage('songdetail'), which
+        // mounts renderSongDetail. Switch to the Stems lens after a tick so
+        // the lens panels exist in the DOM.
+        selectSong(songTitle);
+        setTimeout(function() {
+            if (typeof switchLens === 'function') {
+                try { switchLens('stems'); } catch (e) { console.warn('[Practice] switchLens failed:', e && e.message); }
+            }
+        }, 200);
+    } else {
+        // Fallback to the chart overlay if selectSong somehow isn't available.
+        var songList = typeof allSongs !== 'undefined' ? allSongs : [];
+        var songData = songList.find(function(s) { return s.title === songTitle; });
+        var queue = [{ title: songTitle, band: songData ? (songData.band || '') : '' }];
+        if (typeof openRehearsalModePractice === 'function') {
+            openRehearsalModePractice(queue);
+        } else if (typeof openRehearsalMode === 'function') {
+            openRehearsalMode(songTitle);
+        }
     }
 }
 
@@ -277,14 +290,18 @@ function _pmResumeSession() {
     var songTitle = session.songTitle || session.songId;
     var mode = session.mode || 'focus';
 
-    // Open the chart overlay first. PracticeSession.start() inside _pmOpenSolo
-    // will see the same songId and preserve section/settings (sameSong path).
+    // Open song-detail page → Stems lens. PracticeSession.start() inside
+    // _pmOpenSolo sees the same songId and preserves section/settings via
+    // the sameSong path.
     _pmOpenSolo(songTitle, mode);
 
-    // Re-arm saved configuration after the overlay's DOM has mounted.
+    // Re-arm saved configuration after navigation + lens switch + stems load.
+    // Total budget: 1200ms — selectSong → showPage (~50ms) → switchLens
+    // (~200ms) → stems async load (~500-800ms typical). GLActions calls bail
+    // gracefully if stems aren't loaded yet so a too-short delay only means
+    // the loop/preset doesn't apply, not a crash.
     setTimeout(function() {
         try {
-            // Loop region
             if (session.section && typeof session.section.in === 'number' && typeof session.section.out === 'number') {
                 if (typeof GLActions !== 'undefined' && GLActions.run) {
                     GLActions.run('stems.setLoop', {
@@ -294,7 +311,6 @@ function _pmResumeSession() {
                     });
                 }
             }
-            // Stems preset (mute-stem)
             var s = session.settings || {};
             if (s.stemPreset === 'mute-stem' && s.stemId) {
                 if (typeof GLActions !== 'undefined' && GLActions.run) {
@@ -308,7 +324,7 @@ function _pmResumeSession() {
         } catch (e) {
             console.warn('[PracticeSession] resume re-arm failed:', e && e.message);
         }
-    }, 600);
+    }, 1200);
 }
 
 // Cached for click-to-switch between upcoming gigs without re-fetching.
@@ -544,14 +560,23 @@ function _pmFormatGigDate(dateStr) {
 }
 
 window._pmToggleMore = function _pmToggleMore(btn) {
+    // Either-or toggle (per Drew 2026-05-09): when "More options" is
+    // expanded, the above-fold chips (Resume / Gig Prep / Improve a Song)
+    // hide so the screen doesn't show all 6 at once. Click "Fewer options"
+    // to come back. This keeps the "1 primary + limited options" rule even
+    // when the user is browsing alternatives.
+    var section = btn.closest ? btn.closest('.pm-section-b') : null;
+    var primaryChips = section ? section.querySelector('.pm-chips:not(.pm-chips-more)') : null;
     var more = btn.nextElementSibling;
     if (!more) return;
     var hidden = more.hasAttribute('hidden');
     if (hidden) {
         more.removeAttribute('hidden');
-        btn.textContent = 'Fewer options ▲';
+        if (primaryChips) primaryChips.setAttribute('hidden', '');
+        btn.textContent = '↑ Back to quick start';
     } else {
         more.setAttribute('hidden', '');
+        if (primaryChips) primaryChips.removeAttribute('hidden');
         btn.textContent = 'More options ▼';
     }
 };
