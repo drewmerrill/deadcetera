@@ -107,14 +107,31 @@
   section.zone .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 22px; }
 
   .diagram-frame {
-    background: rgba(15, 23, 42, 0.5);
+    background:
+      radial-gradient(ellipse at top, rgba(30, 41, 59, 0.55), rgba(15, 23, 42, 0.65) 70%);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
+    border-radius: 14px;
+    padding: 28px 24px;
     overflow-x: auto;
+    overflow-y: hidden;
     position: relative;
     min-height: 200px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 4px 14px rgba(0, 0, 0, 0.25);
   }
+  /* Center the diagram inside the (often wider) overflow area so a small
+     diagram doesn't sit jammed against the left edge. */
+  .diagram-frame pre.mermaid { margin: 0 auto; display: table; }
+  /* Custom scrollbar so the horizontal scroll feels intentional, not broken */
+  .diagram-frame::-webkit-scrollbar { height: 10px; }
+  .diagram-frame::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.4); border-radius: 5px;
+  }
+  .diagram-frame::-webkit-scrollbar-thumb {
+    background: rgba(167, 139, 250, 0.35); border-radius: 5px;
+  }
+  .diagram-frame::-webkit-scrollbar-thumb:hover { background: rgba(167, 139, 250, 0.55); }
   .diagram-loading {
     position: absolute; inset: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -132,13 +149,51 @@
   pre.mermaid { background: transparent !important; }
   /* Stop Mermaid from clipping node labels. Default rendering can truncate
      long names inside the SVG <foreignObject>; force overflow visible and
-     allow wrapping so the full text is always readable. */
-  .mermaid svg { overflow: visible !important; max-width: 100%; }
+     give every node a generous min-width so text breathes instead of
+     wrapping into 2-letter columns. */
+  .mermaid svg { overflow: visible !important; max-width: none !important; height: auto !important; }
   .mermaid foreignObject { overflow: visible !important; }
   .mermaid .nodeLabel,
   .mermaid .nodeLabel p,
-  .mermaid foreignObject > div { white-space: normal !important; overflow: visible !important; line-height: 1.35 !important; }
+  .mermaid foreignObject > div {
+    white-space: normal !important;
+    overflow: visible !important;
+    line-height: 1.4 !important;
+    min-width: 140px;
+    padding: 4px 8px;
+    font-weight: 500;
+    text-align: center;
+  }
   .mermaid .label foreignObject { display: block; }
+  /* Visual polish on every node — rounded corners, soft glow, crisper border. */
+  .mermaid .node rect,
+  .mermaid .node polygon,
+  .mermaid .node circle,
+  .mermaid .node path {
+    rx: 8; ry: 8;
+    stroke-width: 1.5px !important;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+  }
+  /* Subgraph containers — clearer separation, no clipping */
+  .mermaid .cluster rect {
+    rx: 12; ry: 12;
+    stroke-width: 1.5px !important;
+    fill: rgba(15, 23, 42, 0.45) !important;
+    stroke: rgba(148, 163, 184, 0.35) !important;
+  }
+  .mermaid .cluster .nodeLabel {
+    font-weight: 700 !important;
+    font-size: 14px !important;
+    letter-spacing: 0.02em;
+  }
+  /* Edge labels stay readable over the dark canvas */
+  .mermaid .edgeLabel {
+    background: rgba(15, 23, 42, 0.85) !important;
+    color: #e2e8f0 !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+  }
 
   table.engines {
     width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;
@@ -317,7 +372,7 @@
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering engine dependency graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':20} }}%%
 flowchart LR
 
   subgraph CORE["⚙️ Core engines"]
@@ -412,7 +467,7 @@ flowchart LR
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering field cascade graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':50,'rankSpacing':70,'padding':18} }}%%
 flowchart TB
 
   subgraph FIELDS["🔑 Load-bearing fields"]
@@ -510,7 +565,7 @@ flowchart TB
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering boot sequence…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':true,'htmlLabels':true} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':45,'rankSpacing':55,'padding':18} }}%%
 flowchart TB
 
   P0["📄 Phase 0 · 0-50ms<br/>Parse index.html<br/>Inline CSS<br/>Show hero gate"]
@@ -709,7 +764,7 @@ flowchart TB
     try {
       window.mermaid.initialize({
         startOnLoad: false, theme: 'dark', securityLevel: 'loose',
-        flowchart: { curve: 'basis', useMaxWidth: true, htmlLabels: true }
+        flowchart: { curve: 'basis', useMaxWidth: false, htmlLabels: true, nodeSpacing: 50, rankSpacing: 70, padding: 18 }
       });
       await window.mermaid.run({ querySelector: 'pre.mermaid' });
       hideAll();
