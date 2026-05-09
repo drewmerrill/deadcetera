@@ -2225,23 +2225,14 @@ async function parachutePrintSetlistBig(slIdx) {
     // bigger fonts here actually fit. 1-column stays preferred until it
     // physically won't (>30 songs).
     function _scaleFor(rowCount) {
-        if (rowCount <= 6)  return { cols: 1, title: 38, row: 12, num: 30, meta: 26 };
-        if (rowCount <= 10) return { cols: 1, title: 30, row: 9,  num: 24, meta: 22 };
-        if (rowCount <= 16) return { cols: 1, title: 26, row: 7,  num: 22, meta: 19 };
-        if (rowCount <= 22) return { cols: 1, title: 22, row: 5,  num: 19, meta: 17 };
-        if (rowCount <= 30) return { cols: 1, title: 17, row: 4,  num: 15, meta: 14 };
-        if (rowCount <= 44) return { cols: 2, title: 15, row: 4,  num: 13, meta: 12 };
+        if (rowCount <= 6)  return { cols: 1, title: 44, row: 12, num: 36, meta: 30 };
+        if (rowCount <= 10) return { cols: 1, title: 36, row: 10, num: 30, meta: 26 };
+        if (rowCount <= 16) return { cols: 1, title: 30, row: 8,  num: 25, meta: 22 };
+        if (rowCount <= 22) return { cols: 1, title: 26, row: 6,  num: 22, meta: 19 };
+        if (rowCount <= 30) return { cols: 1, title: 19, row: 5,  num: 16, meta: 15 };
+        if (rowCount <= 44) return { cols: 2, title: 16, row: 4,  num: 14, meta: 12 };
         if (rowCount <= 60) return { cols: 2, title: 13, row: 3,  num: 12, meta: 11 };
         return { cols: 3, title: 12, row: 3, num: 11, meta: 10 };
-    }
-
-    // Pad numeric BPM to consistent 3-char width so columns line up
-    // visually (e.g. " 96" lines up with "144"). Uses figure-space
-    // (U+2007), the proportional space designed for digit alignment.
-    function _padBpm(bpm) {
-        var s = String(bpm).trim();
-        while (s.length < 3) s = '\u2007' + s;
-        return s;
     }
 
     function _renderSongRow(item, displayNum, scale, allSongsList) {
@@ -2251,21 +2242,22 @@ async function parachutePrintSetlistBig(slIdx) {
         var sd = allSongsList.find(function(a){ return a.title === title; }) || {};
         var key = sd.key || (typeof item === 'object' ? item.key : '') || '';
         var bpm = sd.bpm || (typeof item === 'object' ? item.bpm : '') || '';
+        // Two fixed-width slots inside the meta pill so columns align:
+        //   .key       \u2014 left-aligned in a ~2.5ch slot ("G" and "Em" share
+        //                the same left edge across rows).
+        //   .bpm-num   \u2014 right-aligned in a 3ch slot ("96" and "144" share
+        //                the same right edge before " bpm").
         var metaPieces = [];
         if (key) metaPieces.push('<span class="key">' + _esc(key) + '</span>');
-        if (bpm) metaPieces.push('<span class="bpm">' + _padBpm(bpm) + ' bpm</span>');
+        if (bpm) metaPieces.push('<span class="bpm-num">' + _esc(String(bpm).trim()) + '</span><span class="bpm-unit"> bpm</span>');
         var meta = metaPieces.length
             ? '<span class="song-meta">' + metaPieces.join('<span class="sep">\u00b7</span>') + '</span>'
             : '';
-        // .song-leader = dot-leader between title and meta \u2014 without it the
-        // huge gap between "Bertha" and "G \u00b7 164 bpm" makes it hard for the
-        // eye to track which key/bpm belongs to which song.
         return '<div class="song-row">'
             + '<span class="song-num">' + displayNum + '.</span>'
             + '<span class="song-title">' + _esc(title)
             + (segArrow ? '<span class="song-segue">' + segArrow + '</span>' : '')
             + '</span>'
-            + '<span class="song-leader" aria-hidden="true"></span>'
             + meta
             + '</div>';
     }
@@ -2297,29 +2289,30 @@ async function parachutePrintSetlistBig(slIdx) {
         + '.set-name:not(:first-child) { margin-top: 10px; }'
         // Multi-column wrapper — column-count is set per-page via inline style
         + '.song-cols { column-gap: 22px; column-rule: 1px solid #ddd; }'
-        // line-height:1.1 (vs default 1.2) packs more songs per page so the
-        // bigger fonts in _scaleFor actually fit. tabular-nums lines up
-        // 2-digit and 3-digit BPMs to the same width.
-        + '.song-row { display: flex; align-items: baseline; gap: 8px; '
+        // line-height:1.05 (vs default 1.2) packs more songs per page so the
+        // bigger fonts in _scaleFor fit. tabular-nums lines up 2- and
+        // 3-digit BPMs to the same digit width.
+        + '.song-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; '
         +   'border-bottom: 1px solid #d0d0d0; page-break-inside: avoid; break-inside: avoid; '
-        +   'font-variant-numeric: tabular-nums; line-height: 1.1; }'
+        +   'font-variant-numeric: tabular-nums; line-height: 1.05; }'
         + '.song-num { font-weight: 800; color: #666; min-width: 32px; text-align: right; flex: 0 0 auto; }'
-        + '.song-title { font-weight: 700; flex: 0 1 auto; line-height: 1.15; word-break: break-word; }'
+        + '.song-title { font-weight: 700; flex: 1 1 auto; line-height: 1.15; word-break: break-word; }'
         + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; }'
-        // Dot-leader between title and meta — visual guide so the eye
-        // tracks which Key·BPM belongs to which song.
-        + '.song-leader { flex: 1 1 auto; min-width: 12px; '
-        +   'border-bottom: 2px dotted #b8b8b8; '
-        +   'align-self: flex-end; margin-bottom: 0.32em; }'
-        // min-width on meta keeps the right edge of every Key·BPM pill at
-        // the same x-coordinate, so they form a clean column.
+        // Meta pill: text-align:left so .key starts at the same x for
+        // every row. Inner slots (.key + .bpm-num) are fixed width so
+        // "G" and "Em" share a left edge AND "96" and "144" share a
+        // right edge.
         + '.song-meta { font-weight: 700; color: #000; white-space: nowrap; '
         +   'background: #f0f0f0; padding: 2px 10px; border-radius: 5px; border: 1px solid #999; '
-        +   'min-width: 100px; text-align: right; flex: 0 0 auto; '
+        +   'flex: 0 0 auto; text-align: left; '
         +   'font-variant-numeric: tabular-nums; }'
-        + '.song-meta .key { color: #1a1a1a; }'
-        + '.song-meta .bpm { color: #444; }'
-        + '.song-meta .sep { color: #999; margin: 0 3px; font-weight: 400; }'
+        + '.song-meta .key { display: inline-block; min-width: 2.4ch; '
+        +   'color: #1a1a1a; text-align: left; font-weight: 700; }'
+        + '.song-meta .bpm-num { display: inline-block; min-width: 3ch; '
+        +   'color: #1a1a1a; text-align: right; font-weight: 700; '
+        +   'font-variant-numeric: tabular-nums; }'
+        + '.song-meta .bpm-unit { color: #555; font-weight: 600; }'
+        + '.song-meta .sep { color: #999; margin: 0 4px; font-weight: 400; }'
         + '.empty { font-size: 12pt; color: #888; padding: 8px 0; font-style: italic; }'
         // Branded footer \u2014 compact (single line) + pinned to bottom of the
         // page via margin-top:auto inside the flex column. Stays at the
