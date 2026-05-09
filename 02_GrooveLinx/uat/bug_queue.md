@@ -1,7 +1,7 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260509-173403
-**Last Updated:** 2026-05-09 (PM) — Phase A.1 (gig-notes migration) closed. No open queue items.
+**Build Under Test:** 20260509-192649
+**Last Updated:** 2026-05-09 (late PM) — Phase B.1 (ChartRenderer + song-detail Band lens) shipped commit `c2c9423e`. Awaiting Drew smoke-test before B.2-B.4. Bug queue clean.
 
 ---
 
