@@ -2225,13 +2225,13 @@ async function parachutePrintSetlistBig(slIdx) {
     // bigger fonts here actually fit. 1-column stays preferred until it
     // physically won't (>30 songs).
     function _scaleFor(rowCount) {
-        if (rowCount <= 6)  return { cols: 1, title: 44, row: 12, num: 36, meta: 30 };
-        if (rowCount <= 10) return { cols: 1, title: 36, row: 10, num: 30, meta: 26 };
-        if (rowCount <= 16) return { cols: 1, title: 30, row: 8,  num: 25, meta: 22 };
-        if (rowCount <= 22) return { cols: 1, title: 26, row: 6,  num: 22, meta: 19 };
-        if (rowCount <= 30) return { cols: 1, title: 19, row: 5,  num: 16, meta: 15 };
-        if (rowCount <= 44) return { cols: 2, title: 16, row: 4,  num: 14, meta: 12 };
-        if (rowCount <= 60) return { cols: 2, title: 13, row: 3,  num: 12, meta: 11 };
+        if (rowCount <= 6)  return { cols: 1, title: 50, row: 14, num: 42, meta: 34 };
+        if (rowCount <= 10) return { cols: 1, title: 40, row: 11, num: 32, meta: 28 };
+        if (rowCount <= 16) return { cols: 1, title: 34, row: 8,  num: 28, meta: 24 };
+        if (rowCount <= 22) return { cols: 1, title: 30, row: 6,  num: 24, meta: 20 };
+        if (rowCount <= 30) return { cols: 1, title: 22, row: 4,  num: 18, meta: 16 };
+        if (rowCount <= 44) return { cols: 2, title: 17, row: 3,  num: 14, meta: 13 };
+        if (rowCount <= 60) return { cols: 2, title: 14, row: 3,  num: 12, meta: 11 };
         return { cols: 3, title: 12, row: 3, num: 11, meta: 10 };
     }
 
@@ -2265,28 +2265,29 @@ async function parachutePrintSetlistBig(slIdx) {
     // \u2500\u2500 Build HTML \u2500\u2500
     var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'
         + _esc(name) + ' \u2014 Gig Setlist</title><style>'
-        + '@page { size: letter; margin: 0.4in; }'
+        // Tight margins + tight page padding give back ~0.5in of vertical
+        // room for songs vs the prior 0.4in margins + 16px padding.
+        + '@page { size: letter; margin: 0.3in 0.4in; }'
         + 'html, body { margin: 0; padding: 0; color: #000; background: #fff; '
         +   'font-family: Helvetica, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }'
         // Each page is a flex column → song content takes available space,
-        // GrooveLinx footer pinned to the bottom regardless of how short
-        // the content is. min-height intentionally < printable area
-        // (10.2in @ 0.4" margins) — matching exactly causes Chrome's print
-        // engine to overflow by ~1px and emit an orphan blank page.
-        + '.page { padding: 16px 20px 12px; '
-        +   'display: flex; flex-direction: column; min-height: 9.6in; }'
+        // GrooveLinx footer pinned to bottom. min-height intentionally <
+        // printable area (10.4in @ 0.3" v-margins) so Chrome doesn't
+        // overflow by 1px into a blank 2nd page.
+        + '.page { padding: 6px 14px 6px; '
+        +   'display: flex; flex-direction: column; min-height: 9.9in; }'
         + '.page + .page { page-break-before: always; }'
         + '.song-cols-wrap { flex: 1 1 auto; }'
-        + '.show-header { border-bottom: 4px solid #000; padding-bottom: 8px; margin-bottom: 12px; }'
-        + '.show-name { font-size: 28pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
-        + '.show-meta { font-size: 11pt; color: #444; margin-top: 3px; font-weight: 600; }'
+        + '.show-header { border-bottom: 3px solid #000; padding-bottom: 4px; margin-bottom: 6px; }'
+        + '.show-name { font-size: 24pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
+        + '.show-meta { font-size: 10pt; color: #444; margin-top: 2px; font-weight: 600; }'
         + '.set-name { font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; '
-        +   'background: #000; color: #fff; padding: 6px 12px; margin: 0 0 10px; border-radius: 4px; '
+        +   'background: #000; color: #fff; padding: 3px 10px; margin: 0 0 6px; border-radius: 4px; '
         // break-after:avoid keeps the set name attached to its first row when
         // the column flow wants to break right after it
         +   'break-after: avoid-column; break-inside: avoid; page-break-after: avoid; }'
-        + '.set-name.minor { background: #444; padding: 4px 10px; margin-top: 8px; font-size: 11pt; }'
-        + '.set-name:not(:first-child) { margin-top: 10px; }'
+        + '.set-name.minor { background: #444; padding: 2px 8px; margin-top: 4px; font-size: 10pt; }'
+        + '.set-name:not(:first-child) { margin-top: 6px; }'
         // Multi-column wrapper — column-count is set per-page via inline style
         + '.song-cols { column-gap: 22px; column-rule: 1px solid #ddd; }'
         // line-height:1.05 (vs default 1.2) packs more songs per page so the
@@ -2298,15 +2299,17 @@ async function parachutePrintSetlistBig(slIdx) {
         + '.song-num { font-weight: 800; color: #666; min-width: 32px; text-align: right; flex: 0 0 auto; }'
         + '.song-title { font-weight: 700; flex: 1 1 auto; line-height: 1.15; word-break: break-word; }'
         + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; }'
-        // Meta pill: text-align:left so .key starts at the same x for
-        // every row. Inner slots (.key + .bpm-num) are fixed width so
-        // "G" and "Em" share a left edge AND "96" and "144" share a
-        // right edge.
+        // Meta pill — fixed slots so columns truly align:
+        //   .song-meta itself has min-width so EVERY pill is the same width.
+        //   .key is 3ch wide, left-aligned (fits "G" and "Am" with the
+        //     same left edge — 2.4ch wasn't wide enough for "Am").
+        //   .bpm-num is 3ch wide, right-aligned ("96" and "144" share a
+        //     right edge before " bpm").
         + '.song-meta { font-weight: 700; color: #000; white-space: nowrap; '
         +   'background: #f0f0f0; padding: 2px 10px; border-radius: 5px; border: 1px solid #999; '
-        +   'flex: 0 0 auto; text-align: left; '
+        +   'flex: 0 0 auto; text-align: left; min-width: 110px; '
         +   'font-variant-numeric: tabular-nums; }'
-        + '.song-meta .key { display: inline-block; min-width: 2.4ch; '
+        + '.song-meta .key { display: inline-block; min-width: 3ch; '
         +   'color: #1a1a1a; text-align: left; font-weight: 700; }'
         + '.song-meta .bpm-num { display: inline-block; min-width: 3ch; '
         +   'color: #1a1a1a; text-align: right; font-weight: 700; '
@@ -2378,11 +2381,16 @@ async function parachutePrintSetlistBig(slIdx) {
                 + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-cols { column-count: ' + scale.cols + '; }'
                 + '</style>';
 
-            // Show header only on the first page
+            // Show header only on the first page. Count only MAIN sets in
+            // the meta \u2014 soundcheck/encore are decoration, not real sets.
             if (pageIdx === 0) {
+                var mainSetCount = rawSets.filter(function(s){ return s.kind === 'main'; }).length;
+                var setLabel = mainSetCount > 0
+                    ? mainSetCount + (mainSetCount === 1 ? ' set' : ' sets')
+                    : rawSets.length + (rawSets.length === 1 ? ' set' : ' sets');
                 html += '<div class="show-header">'
                     + '<h1 class="show-name">' + _esc(name) + '</h1>'
-                    + (date ? '<div class="show-meta">' + _esc(date) + ' \u00b7 ' + rawSets.length + (rawSets.length === 1 ? ' set' : ' sets') + '</div>' : '')
+                    + (date ? '<div class="show-meta">' + _esc(date) + ' \u00b7 ' + setLabel + '</div>' : '')
                     + '</div>';
             }
 
