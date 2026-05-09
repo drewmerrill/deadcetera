@@ -30,6 +30,40 @@ window.SetlistPlayer = (function() {
 
     var _BAND_MAP = { GD: 'Grateful Dead', JGB: 'Jerry Garcia Band', ABB: 'Allman Brothers Band', Phish: 'Phish', WSP: 'Widespread Panic', DMB: 'Dave Matthews Band', Goose: 'Goose' };
 
+    // ── Read-only API + subscriptions for the PlayerEngine contract adapter (Phase C.4) ──
+    // Lets js/core/gl-setlist-player-contract.js read internal state without
+    // scraping the DOM. Pure read-only — no behavior change. Plus a small
+    // pub/sub for the D6 autoplay-blocked event (the load-bearing iteration
+    // the contract surfaces as AUTOPLAY_BLOCKED for Phase D).
+    var _autoplayBlockedHandlers = [];
+    window._slpAPI = {
+        isLaunched:     function () { return _queue.length > 0; },
+        getQueue:       function () { return _queue.slice(); },
+        getCurrentIdx:  function () { return _currentIdx; },
+        getCurrentItem: function () { return _queue[_currentIdx] || null; },
+        getSetlistName: function () { return _setlistName; },
+        getSetlistId:   function () { return _setlistId; },
+        isPlaying:      function () { return !!_isPlaying; },
+        getCurrentSource: function () { return _currentSource; },
+        isOverlayOpen:  function () { return !!_overlay; },
+        isNowPlayingBarOpen: function () {
+            return !!document.getElementById('slpNowPlayingBar');
+        },
+        onAutoplayBlocked: function (fn) {
+            if (typeof fn === 'function') _autoplayBlockedHandlers.push(fn);
+        },
+        offAutoplayBlocked: function (fn) {
+            _autoplayBlockedHandlers = _autoplayBlockedHandlers.filter(function (h) {
+                return h !== fn;
+            });
+        },
+        _emitAutoplayBlocked: function () {
+            _autoplayBlockedHandlers.forEach(function (fn) {
+                try { fn(); } catch (e) {}
+            });
+        }
+    };
+
     // ── Source Preference ────────────────────────────────────────────────────
 
     function getSourcePref() {
@@ -413,6 +447,12 @@ window.SetlistPlayer = (function() {
         if (_autoplayWatchdog) { clearTimeout(_autoplayWatchdog); _autoplayWatchdog = null; }
     }
     function _showAutoplayBlockedOverlay() {
+        // Notify any contract-adapter subscribers (Phase C.4 surfaces this
+        // as the canonical AUTOPLAY_BLOCKED event). Fire-and-forget — does
+        // not change overlay rendering behavior.
+        if (window._slpAPI && window._slpAPI._emitAutoplayBlocked) {
+            window._slpAPI._emitAutoplayBlocked();
+        }
         var container = document.getElementById('slpVideoContainer');
         if (!container) return;
         if (document.getElementById('slpTapToPlay')) return;
