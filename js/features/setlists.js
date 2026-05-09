@@ -2587,17 +2587,34 @@ function _slugifySetlist(name, date) {
         .slice(0, 80) || 'setlist';
 }
 
-// Public-link share. Stores the gig pack in Firebase under a slug derived
-// from the setlist name + date, then copies the short URL to clipboard.
-// URL format: <origin><path>?setlist=<slug>
+// Public-link share \u2014 LIVE (always fetches latest setlist + charts on open).
 //
-// Re-saving the same setlist updates the existing slug (idempotent \u2014 same
-// setlist always = same URL).
+// What gets stored in Firebase under `shared_setlists/{slug}`:
+//   {
+//     live: true,
+//     bandSlug: "deadcetera",
+//     setlistIdx: 5,
+//     setlistKey: "southern-roots-tavern|2026-05-30",  // fallback lookup
+//     name, date,           // cached for splash + fallback display
+//     sharedAt, sharedBy
+//   }
 //
-// Note: the receiving end (parachuteCheckShareUrl) reads this Firebase node
-// without auth, which requires the RTDB rule:
-//   "shared_setlists": { ".read": true, ".write": "auth != null" }
-// If reads fail for unauthed visitors, that rule is the missing piece.
+// What the reader does (parachuteCheckShareUrl):
+//   - Reads shared_setlists/{slug} (public read, see Firebase rules)
+//   - If live:true \u2192 fetch bands/{bandSlug}/setlists, find the setlist by
+//     idx OR (name+date), then fetch each song's current chart in parallel,
+//     render with parachuteBuildHtml.
+//   - If no live flag \u2192 fall back to the old snapshot render path.
+//
+// REQUIRED Firebase rules update (give Drew this snippet):
+//   "bands": {
+//     "$bandSlug": {
+//       "setlists": { ".read": true, ".write": "auth != null" },
+//       "songs": { ".read": true, ".write": "auth != null" }
+//     }
+//   }
+// (or per-path under songs/{title}/chart \u2014 opening up `songs` whole is
+//  simpler and the data is already meant to be share-able.)
 async function parachutePublicUrl(slIdx) {
     showToast('\ud83d\udd17 Building public link...');
     var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists')||[]);
@@ -2607,26 +2624,37 @@ async function parachutePublicUrl(slIdx) {
         showToast('\u26a0\ufe0f Firebase not available \u2014 try again in a moment');
         return;
     }
-    var songs = await parachuteLoadSetlistData(sl);
-    var pack = {
+    // Get the current band slug \u2014 needed so the visitor's reader can
+    // resolve `bands/{slug}/setlists` etc.
+    var bandSlug = (typeof currentBandSlug !== 'undefined' && currentBandSlug)
+        ? currentBandSlug
+        : (localStorage.getItem('deadcetera_current_band') || '');
+    if (!bandSlug) {
+        showToast('\u26a0\ufe0f No band selected \u2014 cannot generate link');
+        return;
+    }
+    var pointer = {
+        live: true,
+        bandSlug: bandSlug,
+        setlistIdx: slIdx,
+        setlistKey: (sl.name || '') + '|' + (sl.date || ''),
         name: sl.name || 'Setlist',
         date: sl.date || '',
-        songs: songs.map(function(s){return {title:s.title,key:s.key,bpm:s.bpm,chart:s.chart,setName:s.setName,segue:s.segue};}),
         sharedAt: new Date().toISOString(),
         sharedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
     };
     var slug = _slugifySetlist(sl.name, sl.date);
     try {
-        await firebaseDB.ref('shared_setlists/' + slug).set(pack);
+        await firebaseDB.ref('shared_setlists/' + slug).set(pointer);
     } catch (e) {
         showToast('\u26a0\ufe0f Could not save share \u2014 ' + (e.message || 'try again'));
         return;
     }
     var url = window.location.origin + window.location.pathname + '?setlist=' + slug;
     navigator.clipboard.writeText(url).then(function() {
-        showToast('\ud83d\udd17 Link copied! ' + url);
+        showToast('\ud83d\udd17 Live link copied! Link auto-refreshes ' + url);
     }).catch(function() {
-        prompt('Copy this link:', url);
+        prompt('Copy this live link (auto-refreshes on each open):', url);
     });
 }
 
@@ -2658,31 +2686,157 @@ async function parachuteCheckShareUrl() {
     if (typeof firebaseDB === 'undefined' || !firebaseDB) return false;
     // Show a quick loading splash while we fetch \u2014 replaces the boot shell
     // so visitors don't see the GrooveLinx skeleton flash.
-    try {
-        document.body.innerHTML = '<div style="font-family:system-ui;max-width:480px;margin:80px auto;padding:20px;text-align:center;color:#94a3b8"><div style="font-size:2em;margin-bottom:8px">\ud83c\udfb6</div><div style="font-size:1.1em;font-weight:700;color:#f1f5f9">Loading shared setlist\u2026</div></div>';
-    } catch(e) {}
+    function _splash(msg) {
+        try {
+            document.body.innerHTML = '<div style="font-family:system-ui;max-width:480px;margin:80px auto;padding:20px;text-align:center;color:#94a3b8">'
+                + '<div style="font-size:2em;margin-bottom:8px">\ud83c\udfb6</div>'
+                + '<div style="font-size:1.1em;font-weight:700;color:#f1f5f9">' + msg + '</div></div>';
+        } catch(e) {}
+    }
+    function _renderError(title, body) {
+        document.open();
+        document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + title + '</title></head>'
+            + '<body style="font-family:system-ui;max-width:480px;margin:80px auto;padding:20px;text-align:center;color:#475569">'
+            + '<h2 style="color:#1e293b">' + title + '</h2><p>' + body + '</p>'
+            + '<p style="font-size:0.85em;color:#94a3b8;margin-top:24px">Slug: <code>' + slug.replace(/[<>&]/g, '') + '</code></p></body></html>');
+        document.close();
+    }
+    _splash('Loading shared setlist\u2026');
     try {
         var snap = await firebaseDB.ref('shared_setlists/' + slug).once('value');
         var pack = snap.val();
-        if (!pack || !pack.songs) {
-            document.open();
-            document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Setlist not found</title></head><body style="font-family:system-ui;max-width:480px;margin:80px auto;padding:20px;text-align:center;color:#475569"><h2 style="color:#1e293b">Setlist not found</h2><p>This link may have been removed, or the setlist hasn\'t been shared yet.</p><p style="font-size:0.85em;color:#94a3b8;margin-top:24px">Slug: <code>' + slug.replace(/[<>&]/g, '') + '</code></p></body></html>');
-            document.close();
+        if (!pack) {
+            _renderError('Setlist not found', 'This link may have been removed, or the setlist hasn\'t been shared yet.');
             return true;
         }
-        var html = parachuteBuildHtml({name: pack.name, date: pack.date}, pack.songs);
         // Flag print-mode so the orchestrator's pre-scheduled "next action"
         // banner doesn't inject into the chart-pack body after document.open
         // replaces the page (the timers survive the swap).
         try { window._GL_PRINT_MODE = true; } catch(e) {}
+
+        // \u2500\u2500 LIVE pointer path: fetch latest setlist + chart bodies \u2500\u2500
+        if (pack.live && pack.bandSlug) {
+            _splash('Loading latest setlist + charts\u2026');
+            try {
+                var resolved = await _resolveLiveShare(pack);
+                if (!resolved) {
+                    _renderError('Setlist no longer available',
+                        'The setlist "' + (pack.name || '').replace(/[<>&]/g,'') + '" was removed or renamed by the band. Ask them to re-share it.');
+                    return true;
+                }
+                var html = parachuteBuildHtml({name: resolved.name, date: resolved.date}, resolved.songs);
+                document.open(); document.write(html); document.close();
+                return true;
+            } catch (e) {
+                _renderError('Could not load latest setlist', (e.message || 'Network error').replace(/[<>&]/g, ''));
+                return true;
+            }
+        }
+
+        // \u2500\u2500 Legacy snapshot path (backwards compat for old links) \u2500\u2500
+        if (!pack.songs) {
+            _renderError('Setlist not found', 'This link may have been removed, or the setlist hasn\'t been shared yet.');
+            return true;
+        }
+        var html = parachuteBuildHtml({name: pack.name, date: pack.date}, pack.songs);
         document.open(); document.write(html); document.close();
         return true;
     } catch (e) {
-        document.open();
-        document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Could not load setlist</title></head><body style="font-family:system-ui;max-width:480px;margin:80px auto;padding:20px;text-align:center;color:#475569"><h2 style="color:#1e293b">Could not load setlist</h2><p>' + (e.message || 'Network error').replace(/[<>&]/g, '') + '</p></body></html>');
-        document.close();
+        _renderError('Could not load setlist', (e.message || 'Network error').replace(/[<>&]/g, ''));
         return true;
     }
+}
+
+// Resolve a live share pointer to {name, date, songs[]} where each song has
+// {title, key, bpm, chart, setName, segue}. Reads:
+//   bands/{bandSlug}/setlists  \u2192 find the right setlist
+//   bands/{bandSlug}/songs/{title}/chart  (parallel) \u2192 latest chart bodies
+//   bands/{bandSlug}/songs/{title}/key + song_bpm + lead_singer (best-effort)
+// Returns null if the setlist can't be found (deleted/renamed beyond
+// recognition). Throws on Firebase read errors.
+async function _resolveLiveShare(pointer) {
+    var bandSlug = pointer.bandSlug;
+    var setlistsSnap = await firebaseDB.ref('bands/' + bandSlug + '/setlists').once('value');
+    var setlistsVal = setlistsSnap.val();
+    if (!setlistsVal) return null;
+    // Firebase returns array OR object \u2014 normalize
+    var setlists = Array.isArray(setlistsVal) ? setlistsVal : Object.values(setlistsVal);
+    // Lookup priority: by stored idx (fast path), then by name+date match
+    var sl = null;
+    if (typeof pointer.setlistIdx === 'number' && setlists[pointer.setlistIdx]) {
+        var candidate = setlists[pointer.setlistIdx];
+        var candidateKey = (candidate.name || '') + '|' + (candidate.date || '');
+        if (candidateKey === pointer.setlistKey) sl = candidate;
+    }
+    if (!sl && pointer.setlistKey) {
+        sl = setlists.find(function(s){
+            return ((s.name || '') + '|' + (s.date || '')) === pointer.setlistKey;
+        });
+    }
+    if (!sl) return null;
+
+    // Flatten sets \u2192 songs[] with setName per song. Mirrors what
+    // parachuteLoadSetlistData does, minus the chart fetch (we batch it
+    // afterward in parallel for speed).
+    var sets = Array.isArray(sl.sets) ? sl.sets : (sl.sets ? Object.values(sl.sets) : []);
+    var flatSongs = [];
+    sets.forEach(function(set) {
+        var setName = set.name || '';
+        var setSongs = Array.isArray(set.songs) ? set.songs : (set.songs ? Object.values(set.songs) : []);
+        setSongs.forEach(function(item) {
+            var title = (typeof item === 'string') ? item : (item.title || '');
+            if (!title) return;
+            flatSongs.push({
+                title: title,
+                key: (typeof item === 'object' && item.key) ? item.key : '',
+                bpm: (typeof item === 'object' && item.bpm) ? item.bpm : '',
+                chart: '',
+                setName: setName,
+                segue: (typeof item === 'object' && item.segue) ? item.segue : ''
+            });
+        });
+    });
+
+    // Parallel-fetch each unique song's chart, key, and bpm. Cache by title
+    // so duplicate songs (e.g. "Scarlet Begonias" twice in a setlist) only
+    // fetch once.
+    var uniqueTitles = [];
+    var seen = {};
+    flatSongs.forEach(function(s){ if (!seen[s.title]) { seen[s.title] = 1; uniqueTitles.push(s.title); } });
+
+    var fetched = {};
+    await Promise.all(uniqueTitles.map(function(title) {
+        var safeTitle = title.replace(/[.#$\[\]/]/g, '_');  // Firebase key sanitization
+        return Promise.all([
+            firebaseDB.ref('bands/' + bandSlug + '/songs/' + safeTitle + '/chart').once('value').catch(function(){ return null; }),
+            firebaseDB.ref('bands/' + bandSlug + '/songs/' + safeTitle + '/key').once('value').catch(function(){ return null; }),
+            firebaseDB.ref('bands/' + bandSlug + '/songs/' + safeTitle + '/song_bpm').once('value').catch(function(){ return null; })
+        ]).then(function(results) {
+            var chartVal = results[0] ? results[0].val() : null;
+            var keyVal = results[1] ? results[1].val() : null;
+            var bpmVal = results[2] ? results[2].val() : null;
+            fetched[title] = {
+                chart: (chartVal && chartVal.text) ? chartVal.text : (typeof chartVal === 'string' ? chartVal : ''),
+                key:   (keyVal && keyVal.key) ? keyVal.key : (typeof keyVal === 'string' ? keyVal : ''),
+                bpm:   (bpmVal && bpmVal.bpm) ? bpmVal.bpm : (typeof bpmVal === 'string' ? bpmVal : '')
+            };
+        });
+    }));
+
+    // Merge fetched chart/key/bpm into the flat song list (per-song key/bpm
+    // on the setlist item wins if set; otherwise use the song's metadata).
+    flatSongs.forEach(function(s) {
+        var data = fetched[s.title] || {};
+        if (data.chart) s.chart = data.chart;
+        if (!s.key && data.key) s.key = data.key;
+        if (!s.bpm && data.bpm) s.bpm = data.bpm;
+    });
+
+    return {
+        name: sl.name || pointer.name || 'Setlist',
+        date: sl.date || pointer.date || '',
+        songs: flatSongs
+    };
 }
 
 async function parachuteCacheOffline(slIdx) {
