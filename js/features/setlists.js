@@ -2001,46 +2001,79 @@ function parachuteBuildHtml(sl, songs) {
     var date = sl.date || '';
     var totalSongs = songs.length;
 
-    // \u2500\u2500 Pick column count + font size for the front-page summary \u2500\u2500
-    // Goal: FILL the page WITHOUT wrapping song titles. The previous
-    // 22-song / 2-col / 26pt tier failed because a 2-col 8.5"-wide layout
-    // gives each col ~3.85" minus number+meta-pill = ~2.7" for the title.
-    // At 26pt, "After Midnight" wraps to 3 lines and the layout collapses.
-    // Stay 1-column until song count makes it physically necessary; titles
-    // then sit on one line each. Tiers leave ~10% vertical safety margin.
-    var summaryCols, summaryFont;
-    if (totalSongs <= 6)       { summaryCols = 1; summaryFont = 36; }
-    else if (totalSongs <= 10) { summaryCols = 1; summaryFont = 32; }
-    else if (totalSongs <= 16) { summaryCols = 1; summaryFont = 24; }
-    else if (totalSongs <= 24) { summaryCols = 1; summaryFont = 18; }
-    else if (totalSongs <= 32) { summaryCols = 2; summaryFont = 17; }
-    else if (totalSongs <= 44) { summaryCols = 2; summaryFont = 14; }
-    else if (totalSongs <= 60) { summaryCols = 3; summaryFont = 12; }
-    else                       { summaryCols = 4; summaryFont = 11; }
+    // \u2500\u2500 Tier table \u2014 same shape as parachutePrintSetlistBig, recalibrated
+    //    against actual rendering after the CSS-variable fix. Per-row title
+    //    shrink (below) handles individual long titles, so the tier sizes
+    //    for the AVERAGE row.
+    var titlePt, rowPad, numPt, metaPt, setPt, summaryCols;
+    if      (totalSongs <= 6)  { summaryCols = 1; titlePt = 50; rowPad = 14; numPt = 40; metaPt = 32; }
+    else if (totalSongs <= 10) { summaryCols = 1; titlePt = 36; rowPad = 10; numPt = 28; metaPt = 24; }
+    else if (totalSongs <= 16) { summaryCols = 1; titlePt = 28; rowPad = 6;  numPt = 23; metaPt = 19; }
+    else if (totalSongs <= 22) { summaryCols = 1; titlePt = 24; rowPad = 3;  numPt = 20; metaPt = 17; }
+    else if (totalSongs <= 30) { summaryCols = 1; titlePt = 18; rowPad = 3;  numPt = 15; metaPt = 14; }
+    else if (totalSongs <= 44) { summaryCols = 2; titlePt = 16; rowPad = 3;  numPt = 14; metaPt = 12; }
+    else if (totalSongs <= 60) { summaryCols = 2; titlePt = 13; rowPad = 3;  numPt = 12; metaPt = 11; }
+    else                       { summaryCols = 3; titlePt = 11; rowPad = 3;  numPt = 10; metaPt = 10; }
+    setPt = Math.max(8, titlePt - 4);
+
+    // Count only MAIN sets for the header meta \u2014 soundcheck/encore are
+    // decoration. Mirrors the regex used in parachutePrintSetlistBig.
+    var INTRO_RE = /(soundcheck|warm[\s\-]?up|warmup|pre[\s\-]?show)/i;
+    var OUTRO_RE = /(encore|after[\s\-]?show)/i;
+    var mainSetCount = (sl.sets || []).filter(function(s){
+        var n = (s.name || '').toLowerCase();
+        return !INTRO_RE.test(n) && !OUTRO_RE.test(n);
+    }).length;
+    var setLabel = mainSetCount > 0
+        ? mainSetCount + (mainSetCount === 1 ? ' set' : ' sets')
+        : (sl.sets || []).length + ' set' + ((sl.sets || []).length === 1 ? '' : 's');
+
+    // Per-row title-shrink \u2014 keep most rows at the page font, shrink only
+    // the long ones so they fit on one line. Same approximation used in
+    // parachutePrintSetlistBig (~460px available title space, Helvetica
+    // bold \u2248 pt \u00d7 1.333 \u00d7 0.55 px/char).
+    function _shrinkPt(title, basePt) {
+        var avail = 460;
+        var charW = function(pt){ return pt * 1.333 * 0.55; };
+        if (title.length * charW(basePt) <= avail) return null;
+        var minPt = Math.max(8, Math.floor(basePt * 0.6));
+        var maxFit = Math.floor(avail / (title.length * 1.333 * 0.55));
+        return Math.max(minPt, Math.min(basePt - 1, maxFit));
+    }
 
     var h = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+_esc(name)+' \u2014 Gig Pack</title>';
     h += '<style>';
-    h += '@page { size: letter; margin: 0.4in; }';
+    h += '@page { size: letter; margin: 0.3in 0.4in; }';
     h += '*{box-sizing:border-box;margin:0;padding:0}';
     h += 'body{font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}';
 
     // \u2500\u2500 Front-page big-font setlist summary (flex column so footer pins to bottom) \u2500\u2500
-    // min-height intentionally < printable 10.2in to avoid Chrome emitting
-    // an orphan blank page from a 1px overflow.
-    h += '.summary{page-break-after:always;padding:18px 22px;display:flex;flex-direction:column;min-height:9.6in}';
-    h += '.summary-header{border-bottom:4px solid #000;padding-bottom:8px;margin-bottom:14px;flex:0 0 auto}';
-    h += '.summary-name{font-size:26pt;font-weight:900;line-height:1.05;margin:0;letter-spacing:-0.01em}';
-    h += '.summary-meta{font-size:11pt;color:#444;margin-top:3px;font-weight:600}';
+    // CSS variables (set inline on .summary) drive all per-page font sizes.
+    h += '.summary{page-break-after:always;padding:6px 14px;display:flex;flex-direction:column;min-height:9.9in}';
+    h += '.summary-header{border-bottom:3px solid #000;padding-bottom:4px;margin-bottom:6px;flex:0 0 auto}';
+    h += '.summary-name{font-size:24pt;font-weight:900;line-height:1.05;margin:0;letter-spacing:-0.01em}';
+    h += '.summary-meta{font-size:10pt;color:#444;margin-top:2px;font-weight:600}';
     h += '.summary-body{flex:1 1 auto}';
-    h += '.summary-cols{column-count:'+summaryCols+';column-gap:22px;'+(summaryCols>1?'column-rule:1px solid #ddd':'')+'}';
-    h += '.summary-set{font-weight:900;text-transform:uppercase;letter-spacing:0.04em;background:#000;color:#fff;padding:4px 9px;margin:0 0 6px;border-radius:3px;break-after:avoid;break-inside:avoid;font-size:'+(summaryFont-3)+'pt}';
-    h += '.summary-set:not(:first-child){margin-top:10px}';
-    h += '.summary-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid #e0e0e0;break-inside:avoid;font-size:'+summaryFont+'pt;line-height:1.25}';
-    h += '.summary-num{font-weight:800;color:#666;min-width:'+(summaryFont*1.6)+'px;text-align:right;flex-shrink:0}';
-    h += '.summary-title{font-weight:700;flex:1;min-width:0;word-break:break-word}';
-    h += '.summary-segue{color:#888;font-weight:500;margin-left:4px}';
-    h += '.summary-meta-pill{font-weight:700;color:#000;white-space:nowrap;background:#f0f0f0;padding:1px 6px;border-radius:4px;border:1px solid #999;font-size:'+(summaryFont-2)+'pt;flex-shrink:0}';
-    h += '.summary-meta-pill .sep{color:#999;margin:0 3px;font-weight:400}';
+    h += '.summary-cols{column-count:var(--cols,1);column-gap:22px;'+(summaryCols>1?'column-rule:1px solid #ddd':'')+'}';
+    // Set bar uses --setPt (= titlePt \u2212 4)
+    h += '.summary-set{font-weight:900;text-transform:uppercase;letter-spacing:0.04em;background:#000;color:#fff;padding:3px 10px;margin:0 0 6px;border-radius:4px;break-after:avoid;break-inside:avoid;font-size:var(--setPt,12pt)}';
+    h += '.summary-set:not(:first-child){margin-top:6px}';
+    // Row uses --titlePt (cascades to .summary-title); padding from --rowPad
+    h += '.summary-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;border-bottom:1px solid #d0d0d0;break-inside:avoid;line-height:1.05;font-variant-numeric:tabular-nums;padding:var(--rowPad,4px) 0}';
+    // .summary-num is em-based so 1- and 2-digit numbers share a slot \u2192
+    // titles share a clean left edge regardless of row index width.
+    h += '.summary-num{font-weight:800;color:#666;min-width:2.2em;text-align:right;flex-shrink:0;font-size:var(--numPt,13pt)}';
+    h += '.summary-title{font-weight:700;flex:1 1 auto;line-height:1.15;word-break:break-word;font-size:var(--titlePt,14pt)}';
+    h += '.summary-segue{color:#888;font-weight:500;margin-left:4px;font-size:var(--titlePt,14pt)}';
+    // Meta pill: min-width keeps every pill the same width. Inside, .key
+    // sits in a 3ch left-aligned slot ("G" and "Am" share a left edge);
+    // .bpm-num sits in a 3ch right-aligned slot ("96" and "144" share a
+    // right edge before " bpm").
+    h += '.summary-meta-pill{font-weight:700;color:#000;white-space:nowrap;background:#f0f0f0;padding:2px 10px;border-radius:5px;border:1px solid #999;flex-shrink:0;text-align:left;min-width:110px;font-size:var(--metaPt,13pt);font-variant-numeric:tabular-nums}';
+    h += '.summary-meta-pill .key{display:inline-block;min-width:3ch;color:#1a1a1a;text-align:left;font-weight:700}';
+    h += '.summary-meta-pill .bpm-num{display:inline-block;min-width:3ch;color:#1a1a1a;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}';
+    h += '.summary-meta-pill .bpm-unit{color:#555;font-weight:600}';
+    h += '.summary-meta-pill .sep{color:#999;margin:0 4px;font-weight:400}';
 
     // \u2500\u2500 Per-song chart pages (flex column so footer pins to bottom) \u2500\u2500
     h += '.song-page{page-break-before:always;padding:16px 22px 14px;display:flex;flex-direction:column;min-height:9.6in}';
@@ -2060,10 +2093,18 @@ function parachuteBuildHtml(sl, songs) {
     h += '</style></head><body>';
 
     // \u2500\u2500 Front page: big-font setlist summary, multi-column \u2500\u2500
-    h += '<div class="summary">';
+    // CSS variables on the .summary div drive every per-page font size;
+    // descendants pick them up via inheritance.
+    var summaryStyle = '--titlePt:'+titlePt+'pt;'
+        + '--numPt:'+numPt+'pt;'
+        + '--metaPt:'+metaPt+'pt;'
+        + '--setPt:'+setPt+'pt;'
+        + '--rowPad:'+rowPad+'px;'
+        + '--cols:'+summaryCols+';';
+    h += '<div class="summary" style="'+summaryStyle+'">';
     h += '<div class="summary-header">';
     h += '<h1 class="summary-name">'+_esc(name)+'</h1>';
-    if (date) h += '<div class="summary-meta">'+_esc(date)+' \u00b7 '+totalSongs+' song'+(totalSongs===1?'':'s')+'</div>';
+    if (date) h += '<div class="summary-meta">'+_esc(date)+' \u00b7 '+setLabel+'</div>';
     h += '</div>';
     h += '<div class="summary-body"><div class="summary-cols">';
     var num = 0, lastSet = '';
@@ -2074,11 +2115,17 @@ function parachuteBuildHtml(sl, songs) {
         }
         num++;
         var seg = {flow:' \u2192', segue:' ~', cutoff:' |'}[s.segue] || '';
+        // Build meta-pill with structured key/bpm slots (matches the
+        // big-font setlist print so columns line up the same way).
         var pieces = [];
-        if (s.key) pieces.push(_esc(s.key));
-        if (s.bpm) pieces.push(_esc(String(s.bpm)) + ' bpm');
+        if (s.key) pieces.push('<span class="key">'+_esc(s.key)+'</span>');
+        if (s.bpm) pieces.push('<span class="bpm-num">'+_esc(String(s.bpm).trim())+'</span><span class="bpm-unit"> bpm</span>');
         var meta = pieces.length ? '<span class="summary-meta-pill">'+pieces.join('<span class="sep">\u00b7</span>')+'</span>' : '';
-        h += '<div class="summary-row">'
+        // Per-row title shrink for songs that would wrap, so most rows
+        // stay at the bigger tier font.
+        var shrunk = _shrinkPt((s.title || '') + seg, titlePt);
+        var rowStyle = shrunk ? ' style="--titlePt:'+shrunk+'pt"' : '';
+        h += '<div class="summary-row"'+rowStyle+'>'
             + '<span class="summary-num">'+num+'.</span>'
             + '<span class="summary-title">'+_esc(s.title)+(seg?'<span class="summary-segue">'+seg+'</span>':'')+'</span>'
             + meta
