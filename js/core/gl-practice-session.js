@@ -285,6 +285,50 @@
         };
     }
 
+    // ── Quick critique notes (Phase A — Workbench Notes integration) ────────
+    //
+    // Personal notes captured DURING a practice session ("the bridge drag",
+    // "guitar solo enters too hot", "lyric in v2 is wrong"). Stored under the
+    // signed-in user, not the band, so they survive across sessions for the
+    // same song without leaking into band-shared notes.
+    //
+    // Source of truth is GLNotes (scope = 'personal_critique'). PracticeSession
+    // tags each note with the current sessionStartedAt + mode so future
+    // session-history views can group them.
+    //
+    // No-op if GLNotes isn't loaded (defensive — module should always be loaded
+    // before PracticeSession in current load order, but this keeps the API
+    // safe to call from anywhere).
+
+    function addNote(text) {
+        if (!text || !String(text).trim()) return Promise.resolve(false);
+        var current = get();
+        if (!current || !current.songTitle) {
+            console.warn('[PracticeSession] addNote: no active session');
+            return Promise.resolve(false);
+        }
+        if (typeof window.GLNotes === 'undefined' || typeof window.GLNotes.write !== 'function') {
+            console.warn('[PracticeSession] addNote: GLNotes not available');
+            return Promise.resolve(false);
+        }
+        var opts = {
+            sessionStartedAt: current.startedAt || _now(),
+            mode: current.mode || 'focus'
+        };
+        // Bump session updatedAt so the Resume chip reflects activity.
+        touch();
+        return window.GLNotes.write(current.songTitle, 'personal_critique', text, opts);
+    }
+
+    function getNotes() {
+        var current = get();
+        if (!current || !current.songTitle) return Promise.resolve([]);
+        if (typeof window.GLNotes === 'undefined' || typeof window.GLNotes.read !== 'function') {
+            return Promise.resolve([]);
+        }
+        return window.GLNotes.read(current.songTitle, 'personal_critique');
+    }
+
     // Attach to GLStore. Wait for GLStore to exist (script load order should
     // already guarantee this since gl-practice-session.js loads after
     // groovelinx_store.js).
@@ -301,7 +345,9 @@
             update:   update,
             touch:    touch,
             clear:    clear,
-            describe: describe
+            describe: describe,
+            addNote:  addNote,
+            getNotes: getNotes
         };
         console.log('[PracticeSession] attached to GLStore');
     }

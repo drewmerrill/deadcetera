@@ -307,6 +307,24 @@ window.ChartSystem = (function() {
 
     async function addOverlayNote(songTitle, text) {
         if (!text || !text.trim()) return false;
+        // Phase A: route through GLNotes so chart writes go through one entry
+        // point. Backing path (chart_overlay_notes) and field shape are
+        // unchanged, so existing readers continue to work.
+        if (typeof window.GLNotes !== 'undefined' && typeof window.GLNotes.write === 'function') {
+            try {
+                var ok = await window.GLNotes.write(songTitle, 'chart', text.trim());
+                if (ok) {
+                    if (typeof showToast === 'function') showToast('\u2705 Note added to chart');
+                    return true;
+                }
+                if (typeof showToast === 'function') showToast('\u26A0\uFE0F Could not save note');
+                return false;
+            } catch(e) {
+                if (typeof showToast === 'function') showToast('\u26A0\uFE0F Could not save note');
+                return false;
+            }
+        }
+        // Legacy fallback (GLNotes not loaded \u2014 e.g. cached old shell).
         try {
             var notes = await loadOverlayNotes(songTitle);
             notes.push({
@@ -324,6 +342,16 @@ window.ChartSystem = (function() {
     }
 
     async function removeOverlayNote(songTitle, index) {
+        // Phase A: route through GLNotes so chart removals share the same
+        // entry point as writes. Backing path unchanged.
+        if (typeof window.GLNotes !== 'undefined' && typeof window.GLNotes.remove === 'function') {
+            try {
+                var ok = await window.GLNotes.remove(songTitle, 'chart', index);
+                if (ok && typeof showToast === 'function') showToast('Note removed');
+                return;
+            } catch(e) { /* fall through */ }
+        }
+        // Legacy fallback (GLNotes not loaded \u2014 cached old shell).
         try {
             var notes = await loadOverlayNotes(songTitle);
             if (index >= 0 && index < notes.length) {

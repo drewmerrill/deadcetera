@@ -166,6 +166,7 @@ function _pmRenderSectionA(focus) {
 
 function _pmRenderSectionB(resumeInfo) {
     var resumeChip;
+    var quickNoteAffordance = '';
     if (resumeInfo) {
         // Resume chip shows what you were working on at a glance:
         // "🔁 Resume: Wonderwall · Loop 0:12-0:29 · 4 min ago"
@@ -176,6 +177,20 @@ function _pmRenderSectionB(resumeInfo) {
         var ageStr = resumeInfo.ageStr ? (' · ' + resumeInfo.ageStr) : '';
         var safe = (window.escHtml ? window.escHtml(label) : label) + (window.escHtml ? window.escHtml(ageStr) : ageStr);
         resumeChip = '<button class="pm-chip pm-chip-resume" onclick="_pmStart(\'resume\')" title="Pick up where you left off">🔁 Resume: ' + safe + '</button>';
+        // Quick Note affordance — only renders when an active session exists.
+        // First Workbench Notes use case: capture a critique mid-practice
+        // ("the bridge drag", "lyric in v2 is wrong") without breaking flow.
+        quickNoteAffordance =
+            '<div class="pm-quick-note">'+
+            '  <button class="pm-chip pm-chip-quick-note" onclick="_pmOpenQuickNote()" title="Jot a personal note about this practice session">📝 Quick Note</button>'+
+            '  <div id="pm-quick-note-form" class="pm-quick-note-form" hidden>'+
+            '    <textarea id="pm-quick-note-text" placeholder="What do you want to remember about this session?" rows="2"></textarea>'+
+            '    <div class="pm-quick-note-actions">'+
+            '      <button class="pm-chip" onclick="_pmSaveQuickNote()">Save</button>'+
+            '      <button class="pm-chip pm-chip-ghost" onclick="_pmCloseQuickNote()">Cancel</button>'+
+            '    </div>'+
+            '  </div>'+
+            '</div>';
     } else {
         resumeChip = '<button class="pm-chip pm-chip-disabled" disabled title="No saved session yet">🔁 Resume Last Session</button>';
     }
@@ -187,6 +202,7 @@ function _pmRenderSectionB(resumeInfo) {
     '    <button class="pm-chip" onclick="_pmStart(\'gig-prep\')">🎤 Gig Prep</button>'+
     '    <button class="pm-chip" onclick="_pmShowSongPicker(\'improve\')">🎸 Improve a Song</button>'+
     '  </div>'+
+       quickNoteAffordance +
     '  <button class="pm-more-btn" onclick="_pmToggleMore(this)">More options ▼</button>'+
     '  <div class="pm-chips pm-chips-more" hidden>'+
     '    <button class="pm-chip" onclick="_pmShowSongPicker(\'learn\')">🎶 Learn New Song</button>'+
@@ -195,6 +211,47 @@ function _pmRenderSectionB(resumeInfo) {
     '  </div>'+
     '</div>';
 }
+
+// Quick Note: open inline textarea on the Practice entry screen for the
+// active practice session. Persists via PracticeSession.addNote → GLNotes
+// 'personal_critique' scope (per-user, per-song).
+window._pmOpenQuickNote = function _pmOpenQuickNote() {
+    var form = document.getElementById('pm-quick-note-form');
+    if (!form) return;
+    form.hidden = false;
+    var ta = document.getElementById('pm-quick-note-text');
+    if (ta) { ta.value = ''; ta.focus(); }
+};
+
+window._pmCloseQuickNote = function _pmCloseQuickNote() {
+    var form = document.getElementById('pm-quick-note-form');
+    if (form) form.hidden = true;
+    var ta = document.getElementById('pm-quick-note-text');
+    if (ta) ta.value = '';
+};
+
+window._pmSaveQuickNote = async function _pmSaveQuickNote() {
+    var ta = document.getElementById('pm-quick-note-text');
+    if (!ta) return;
+    var text = (ta.value || '').trim();
+    if (!text) { _pmCloseQuickNote(); return; }
+    var ps = (typeof GLStore !== 'undefined' && GLStore.PracticeSession) ? GLStore.PracticeSession : null;
+    if (!ps || typeof ps.addNote !== 'function') {
+        if (typeof showToast === 'function') showToast('⚠️ Notes not available');
+        return;
+    }
+    try {
+        var ok = await ps.addNote(text);
+        if (ok) {
+            _pmCloseQuickNote();
+            if (typeof showToast === 'function') showToast('📝 Note saved');
+        } else {
+            if (typeof showToast === 'function') showToast('⚠️ Could not save note');
+        }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('⚠️ Could not save note');
+    }
+};
 
 // focusType → mode mapping (Wave 2). Mode is the user's intent for this
 // session, persisted in PracticeSession and read by chart-overlay code to
@@ -1123,6 +1180,15 @@ function _pmInjectStyles(){
     '.pm-chip-disabled{opacity:0.42;cursor:not-allowed;}'+
     '.pm-chip-resume{background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.25);}'+
     '.pm-chip-resume:hover{background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.4);}'+
+    '.pm-chip-quick-note{background:rgba(99,102,241,0.06);border-color:rgba(99,102,241,0.2);color:#a5b4fc;flex:0 0 auto;min-width:auto;padding:7px 12px;font-size:0.8em;}'+
+    '.pm-chip-quick-note:hover{background:rgba(99,102,241,0.14);border-color:rgba(99,102,241,0.35);}'+
+    '.pm-chip-ghost{background:transparent;border-color:rgba(255,255,255,0.08);color:var(--text-dim,#94a3b8);}'+
+    '.pm-quick-note{margin-top:10px;}'+
+    '.pm-quick-note-form{margin-top:8px;display:flex;flex-direction:column;gap:8px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);border-radius:10px;padding:10px;}'+
+    '.pm-quick-note-form textarea{width:100%;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.08);border-radius:8px;color:var(--text,#f1f5f9);padding:8px 10px;font-family:inherit;font-size:0.88em;resize:vertical;box-sizing:border-box;}'+
+    '.pm-quick-note-form textarea:focus{outline:none;border-color:rgba(99,102,241,0.45);}'+
+    '.pm-quick-note-actions{display:flex;gap:8px;}'+
+    '.pm-quick-note-actions .pm-chip{flex:0 0 auto;min-width:auto;padding:6px 14px;font-size:0.82em;}'+
     '.pm-more-btn{display:block;margin:12px auto 0;padding:6px 14px;background:transparent;border:none;color:var(--text-dim,#94a3b8);cursor:pointer;font-size:0.78em;font-family:inherit;font-weight:600;letter-spacing:0.02em;}'+
     '.pm-more-btn:hover{color:var(--text,#f1f5f9);}'+
     /* Song picker modal */
