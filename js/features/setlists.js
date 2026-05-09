@@ -629,7 +629,8 @@ async function createNewSetlist() {
         <div style="height:60px"></div></div>
         <div id="slStickyFooter" style="position:sticky;bottom:0;z-index:100;padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:linear-gradient(to top,#0f172a 60%,transparent);display:flex;gap:8px;justify-content:flex-end">
             <button class="btn btn-ghost" onclick="slCancelNewSetlist()" style="padding:12px 18px;font-size:0.88em;min-height:44px">Cancel</button>
-            <button class="btn btn-success" onclick="slSaveSetlist()" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3);min-height:44px">\uD83D\uDD12 Lock This Set</button>
+            <button class="btn btn-ghost" onclick="slSaveSetlist(false)" title="Save your changes but keep the setlist editable" style="padding:12px 18px;font-weight:600;font-size:0.92em;min-height:44px">\uD83D\uDCBE Save</button>
+            <button class="btn btn-success" onclick="slSaveSetlist(true)" title="Save AND lock \u2014 freeze the setlist for performance use" style="padding:12px 24px;font-weight:700;font-size:0.92em;box-shadow:0 4px 16px rgba(34,197,94,0.3);min-height:44px">\uD83D\uDD12 Save &amp; Lock</button>
         </div>`;
     _slInitVenuePicker(await GLStore.getVenues(), null);
 }
@@ -1141,8 +1142,12 @@ function slAddSet(type) {
         </div>`);
 }
 
-async function slSaveSetlist() {
+async function slSaveSetlist(shouldLock) {
     if (!requireSignIn()) return;
+    // Default to locking (preserves prior behavior for any callers that don't
+    // pass the flag); explicit `false` from the new "💾 Save" button keeps
+    // the setlist editable without unlocking each time.
+    if (typeof shouldLock === 'undefined') shouldLock = true;
     // UX sprint #6: gating with explicit reason — don't silently allow an
     // empty-set save the user will then have to undo.
     var _totalSongs = 0;
@@ -1155,10 +1160,8 @@ async function slSaveSetlist() {
         if (_addInput && _addInput.focus) _addInput.focus();
         return;
     }
-    // The "🔒 Lock This Set" button is the only save path here, so a click
-    // should both save AND lock. Previously the flag was never set, so the
-    // setlist appeared as 🔓 Unlocked on the list immediately after saving
-    // — confusing and contradicted the toast.
+    // Two-button model: "💾 Save" persists changes without locking;
+    // "🔒 Save & Lock" persists AND freezes for performance use.
     var _lockerName = (typeof currentUserName !== 'undefined' && currentUserName)
         ? currentUserName
         : (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
@@ -1172,9 +1175,9 @@ async function slSaveSetlist() {
         notes: document.getElementById('slNotes')?.value || '',
         sets: window._slSets || [],
         created: new Date().toISOString(),
-        locked: true,
-        lockedAt: new Date().toISOString(),
-        lockedBy: _lockerName
+        locked: !!shouldLock,
+        lockedAt: shouldLock ? new Date().toISOString() : null,
+        lockedBy: shouldLock ? _lockerName : null
     };
     const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     existing.push(sl);
@@ -1196,7 +1199,7 @@ async function slSaveSetlist() {
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
     if (_wasOnboarding && typeof showPage === 'function') {
         setTimeout(function() { showPage('home'); }, 800);
-    } else {
+    } else if (shouldLock) {
         // Show post-save confirmation inline
         var container = document.getElementById('setlistsList');
         if (container) {
@@ -1209,6 +1212,9 @@ async function slSaveSetlist() {
         } else {
             loadSetlists();
         }
+    } else {
+        // Save-only path: keep editing context, just confirm with a toast.
+        showToast('\ud83d\udcbe Saved (still unlocked)');
     }
 }
 
@@ -1258,8 +1264,9 @@ async function editSetlist(idx) {
         + '<div id="slModeContent" style="padding-top:8px"></div>'
         + '<div style="height:80px"></div>'
         + '<div id="slMobileSaveBar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;background:rgba(15,23,42,0.97);border-top:1px solid rgba(99,102,241,0.3);padding:10px 16px;padding-bottom:calc(10px + env(safe-area-inset-bottom));gap:8px">'
-        + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.88em;min-height:44px">Cancel</button>'
-        + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ')" style="flex:2;font-size:0.92em;font-weight:700;min-height:44px">\uD83D\uDD12 Lock This Set</button>'
+        + '<button class="btn btn-ghost" onclick="loadSetlists()" style="flex:1;font-size:0.82em;min-height:44px">Cancel</button>'
+        + '<button class="btn btn-ghost" onclick="slSaveSetlistEdit(' + idx + ',false)" title="Save changes but keep the setlist editable" style="flex:1;font-size:0.82em;min-height:44px;border:1px solid rgba(255,255,255,0.12);color:var(--text)">\uD83D\uDCBE Save</button>'
+        + '<button class="btn btn-success" onclick="slSaveSetlistEdit(' + idx + ',true)" title="Save AND lock \u2014 freeze the setlist for performance use" style="flex:2;font-size:0.88em;font-weight:700;min-height:44px">\uD83D\uDD12 Save &amp; Lock</button>'
         + '</div></div>';
 
     // Render plan mode content
@@ -1684,7 +1691,7 @@ function _slRenderPlanMode(idx, sl) {
     // unlocked sets — on locked sets the lock badge already conveys safety.
     if (!sl.locked) {
         html += '<div style="padding:6px 10px;margin-bottom:8px;border-radius:6px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12);font-size:0.7em;color:var(--gl-text-tertiary);line-height:1.4">'
-            + '<span style="color:var(--gl-text-secondary)">Browsing this setlist?</span> Your changes only save when you click <span style="color:#86efac;font-weight:600">\uD83D\uDD12 Lock This Set</span> \u2014 hit <span style="color:var(--gl-text)">Cancel</span> to back out without changes.'
+            + '<span style="color:var(--gl-text-secondary)">Browsing this setlist?</span> Click <span style="color:#cbd5e1;font-weight:600">\uD83D\uDCBE Save</span> to keep editing, <span style="color:#86efac;font-weight:600">\uD83D\uDD12 Save &amp; Lock</span> to freeze for performance, or <span style="color:var(--gl-text)">Cancel</span> to back out without changes.'
             + '</div>';
     }
     // Edit fields (collapsed on mobile behind details)
@@ -1721,7 +1728,8 @@ function _slRenderPlanMode(idx, sl) {
     }
     html += '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">\uD83D\uDCE4</button>'
         + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700">\u25CF Unsaved</span>'
-        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ')" style="margin-left:auto;font-size:0.78em;padding:4px 14px">\uD83D\uDCBE Save &amp; Lock</button>'
+        + '<button class="btn btn-ghost btn-sm" onclick="slSaveSetlistEdit(' + idx + ',false)" title="Save changes but keep the setlist editable" style="margin-left:auto;font-size:0.74em;padding:4px 10px;border:1px solid rgba(255,255,255,0.12);color:var(--text)">\uD83D\uDCBE Save</button>'
+        + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ',true)" title="Save AND lock \u2014 freeze for performance" style="font-size:0.74em;padding:4px 12px">\uD83D\uDD12 Save &amp; Lock</button>'
         + '<button class="btn btn-ghost btn-sm" onclick="loadSetlists()" style="font-size:0.75em">Cancel</button>'
         + '</div>';
 
@@ -1844,7 +1852,9 @@ function _slShowShareModal(sl, idx) {
     if (existing) existing.remove();
     var modal = document.createElement('div');
     modal.id = 'slShareModal';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.7);display:flex;align-items:flex-end;justify-content:center';
+    // Center-anchored so the modal sits in the middle of the viewport with
+    // equal margin top/bottom — predictable on tall and short screens.
+    modal.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:12px';
     var name = sl.name || 'Untitled Setlist';
     var date = sl.date || '';
     // Build text version
@@ -1861,51 +1871,47 @@ function _slShowShareModal(sl, idx) {
     });
     lines.push('Generated by GrooveLinx');
     var textContent = lines.join('\n');
-    // Redesigned share modal — grouped, scannable, two-column action grid.
-    // Three sections: Quick share / Print & email / Offline.
-    var _btnGrid = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
-    var _btnBase = 'padding:12px 10px;border-radius:10px;font-size:0.86em;font-weight:600;cursor:pointer;text-align:center;border:1px solid;line-height:1.25';
+    // Compact share modal — single 2-column action grid. All 6 actions
+    // visible above the fold; descriptions live in tooltips. Preview moves
+    // to the BOTTOM as collapsible (default closed) so it can't push the
+    // primary actions out of view on short screens.
+    var _btnGrid = 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px';
+    var _btnBase = 'padding:11px 10px;border-radius:10px;font-size:0.85em;font-weight:600;cursor:pointer;text-align:center;border:1px solid;line-height:1.25;font-family:inherit';
     var _btnPri  = _btnBase + ';background:rgba(102,126,234,0.18);border-color:rgba(102,126,234,0.4);color:#a5b4fc';
     var _btnSec  = _btnBase + ';background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.1);color:#cbd5e1';
     var _btnPrint= _btnBase + ';background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.25);color:#fca5a5';
-    var _sectionLbl = 'font-size:0.68em;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:14px 0 6px';
+    var _btnOff  = _btnBase + ';background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.25);color:#86efac';
 
-    var html = '<div style="background:#1e293b;border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:20px;max-height:90vh;overflow-y:auto">';
-    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+    var html = '<div style="background:#1e293b;border-radius:14px;width:100%;max-width:520px;padding:18px;max-height:calc(100vh - 24px);overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.5)">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">';
     html += '<div style="font-weight:800;font-size:1.05em;color:#f1f5f9">📤 Share Setlist</div>';
     html += '<button onclick="document.getElementById(\'slShareModal\').remove()" style="background:rgba(255,255,255,0.08);border:none;color:#94a3b8;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1.05em">×</button></div>';
 
-    // Setlist preview (collapsible — keeps modal compact)
-    html += '<details style="margin-bottom:6px"><summary style="cursor:pointer;font-size:0.78em;color:#94a3b8;padding:6px 0;list-style:none;display:flex;align-items:center;gap:6px"><span style="font-size:0.9em">▸</span> Preview as text</summary>';
-    html += '<div style="background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;font-family:monospace;font-size:0.76em;color:#94a3b8;white-space:pre-wrap;max-height:180px;overflow-y:auto;margin-top:6px" id="slShareTextPreview">' + textContent.replace(/</g,'&lt;') + '</div>';
-    html += '</details>';
-
-    // Quick share — text + public link side by side
-    html += '<div style="' + _sectionLbl + '">Quick share</div>';
-    html += '<div style="' + _btnGrid + '">';
-    html += '<button onclick="slShareCopyText()" style="' + _btnPri + '">📋 Copy as text</button>';
-    html += '<button onclick="parachutePublicUrl(' + idx + ')" style="' + _btnPri + '">🔗 Copy public link</button>';
-    html += '</div>';
-
-    // Print & email
-    html += '<div style="' + _sectionLbl + '">Print &amp; email</div>';
-    html += '<div style="' + _btnGrid + '">';
-    html += '<button onclick="parachutePrint(' + idx + ')" style="' + _btnPrint + '">🖨️ Print / PDF<div style="font-size:0.75em;font-weight:500;color:#fda4af;margin-top:2px">All charts, Kinkos-ready</div></button>';
-    html += '<button onclick="parachuteEmail(' + idx + ')" style="' + _btnSec + '">📧 Email to myself<div style="font-size:0.75em;font-weight:500;color:#94a3b8;margin-top:2px">Gig pack as HTML</div></button>';
-    html += '</div>';
-
-    // Offline cache (single full-width row)
-    html += '<div style="' + _sectionLbl + '">Offline backup</div>';
-    html += '<button onclick="parachuteCacheOffline(' + idx + ')" style="' + _btnSec + ';width:100%">💾 Cache offline<div style="font-size:0.75em;font-weight:500;color:#94a3b8;margin-top:2px">Survives no WiFi at the venue</div></button>';
+    // Cached pack indicator (if any) — pinned at top so it's always reachable
     var _op = localStorage.getItem('deadcetera_offline_gigpack');
     if (_op) {
         try {
             var _opd = JSON.parse(_op);
             var _opName = (_opd.name || '?').replace(/[<>&]/g, '');
             var _opDate = new Date(_opd.cachedAt).toLocaleDateString();
-            html += '<button onclick="parachuteOpenOfflinePack()" style="' + _btnBase + ';background:rgba(34,197,94,0.1);border-color:rgba(34,197,94,0.3);color:#86efac;width:100%;margin-top:8px">📂 Open cached: "' + _opName + '" <span style="opacity:0.7;font-weight:500">(' + _opDate + ')</span></button>';
+            html += '<button onclick="parachuteOpenOfflinePack()" title="Open the gig pack you cached for offline use" style="' + _btnOff + ';width:100%;margin-bottom:10px">📂 Open cached: "' + _opName + '" <span style="opacity:0.7;font-weight:500">(' + _opDate + ')</span></button>';
         } catch(e) {}
     }
+
+    // 6 actions in a 2-column grid — single-line labels, full detail in tooltips
+    html += '<div style="' + _btnGrid + '">';
+    html += '<button onclick="slShareCopyText()" title="Copy a plain-text version of the setlist to your clipboard" style="' + _btnPri + '">📋 Copy as text</button>';
+    html += '<button onclick="parachutePublicUrl(' + idx + ')" title="Generate a short public URL anyone can open without signing in" style="' + _btnPri + '">🔗 Copy public link</button>';
+    html += '<button onclick="parachuteCacheOffline(' + idx + ')" title="Cache all charts locally so the gig pack survives no WiFi at the venue" style="' + _btnSec + '">💾 Cache offline</button>';
+    html += '<button onclick="parachuteEmail(' + idx + ')" title="Email the gig pack as HTML to yourself" style="' + _btnSec + '">📧 Email to myself</button>';
+    html += '<button onclick="parachutePrint(' + idx + ')" title="Open a print-ready PDF of all charts (good for Kinkos)" style="' + _btnPrint + ';grid-column:1/-1">🖨️ Print / PDF — all charts</button>';
+    html += '</div>';
+
+    // Setlist preview (collapsible, default closed, at the bottom so it
+    // can't push primary actions out of view when expanded)
+    html += '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:0.78em;color:#94a3b8;padding:6px 0;list-style:none;display:flex;align-items:center;gap:6px"><span style="font-size:0.9em">▸</span> Preview as text</summary>';
+    html += '<div style="background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px;font-family:monospace;font-size:0.76em;color:#94a3b8;white-space:pre-wrap;max-height:160px;overflow-y:auto;margin-top:6px" id="slShareTextPreview">' + textContent.replace(/</g,'&lt;') + '</div>';
+    html += '</details>';
 
     html += '</div>';
     modal.innerHTML = html;
@@ -2233,8 +2239,11 @@ function parachuteOpenOfflinePack() {
 }
 
 
-async function slSaveSetlistEdit(idx) {
+async function slSaveSetlistEdit(idx, shouldLock) {
     if (!requireSignIn()) return;
+    // Default to locking (preserves prior behavior); explicit `false` from
+    // the new "💾 Save" button keeps the setlist editable.
+    if (typeof shouldLock === 'undefined') shouldLock = true;
     const data = window._cachedSetlists ? [...window._cachedSetlists] : toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     var prev = data[idx] || {};
     // If linked to a gig, force date to match the gig (gig is source of truth).
@@ -2246,8 +2255,8 @@ async function slSaveSetlistEdit(idx) {
             if (_linked && _linked.date) _finalDate = _linked.date;
         } catch(e) {}
     }
-    // The "Save & Lock" / "🔒 Lock This Set" button is the only save here,
-    // so it must both save AND lock (previously the flag was never written).
+    // Two-button model: "💾 Save" persists changes without locking;
+    // "🔒 Save & Lock" persists AND freezes for performance use.
     var _lockerNameEdit = (typeof currentUserName !== 'undefined' && currentUserName)
         ? currentUserName
         : (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
@@ -2262,17 +2271,18 @@ async function slSaveSetlistEdit(idx) {
         notes: document.getElementById('slNotes')?.value || '',
         sets: window._slSets || [],
         updated: new Date().toISOString(),
-        locked: true,
-        lockedAt: new Date().toISOString(),
-        lockedBy: _lockerNameEdit
+        // Preserve existing lock state if shouldLock=false; otherwise apply lock.
+        locked: shouldLock ? true : !!prev.locked,
+        lockedAt: shouldLock ? new Date().toISOString() : (prev.lockedAt || null),
+        lockedBy: shouldLock ? _lockerNameEdit : (prev.lockedBy || null)
     };
     var saved = await saveBandDataToDrive('_band', 'setlists', data);
     if (saved === false) {
         showToast('❌ Save failed — check your connection or sign in');
         return;
     }
-    showToast('\u2705 Set locked');
-    if (typeof GLStore !== 'undefined' && GLStore.logBandActivity) {
+    showToast(shouldLock ? '\u2705 Set locked' : '\ud83d\udcbe Saved (still unlocked)');
+    if (shouldLock && typeof GLStore !== 'undefined' && GLStore.logBandActivity) {
         var _slName = document.getElementById('slName') ? document.getElementById('slName').value : '';
         GLStore.logBandActivity('setlist_locked', { name: _slName || 'Setlist' });
     }
@@ -2280,7 +2290,9 @@ async function slSaveSetlistEdit(idx) {
     if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('setlist');
     if (typeof GLStore !== 'undefined' && GLStore.clearSetlistCache) GLStore.clearSetlistCache();
     else { window._cachedSetlists = null; window._glCachedSetlists = null; }
-    loadSetlists();
+    // For unlocked saves, stay in the editor; only navigate back to the list
+    // when the user explicitly Locks (matching their intent of "I'm done").
+    if (shouldLock) loadSetlists();
 }
 
 async function deleteSetlist(idx) {
