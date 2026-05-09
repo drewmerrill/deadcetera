@@ -2439,17 +2439,41 @@ async function renderGigNotes(songTitle, bandData) {
     var notes = toArray(await loadGigNotes(songTitle) || []);
     if (notes.length === 0 && bandData.gigNotes) notes = toArray(bandData.gigNotes);
     if (notes.length === 0 && bandData.performanceTips) notes = toArray(bandData.performanceTips);
-    
+
     if (notes.length === 0) {
         container.innerHTML = '<button onclick="addGigNote()" style="background:none;border:none;color:var(--accent-light);cursor:pointer;font-size:0.78em;padding:4px 0">+ Add stage note</button>';
         return;
     }
-    
+
+    // Phase A.1 shape adapter: gig notes used to be raw strings; new writes
+    // through GLNotes are {text, author, date} objects. Render both shapes.
+    function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+    function _gigNoteText(n) {
+        if (n == null) return '';
+        if (typeof n === 'string') return n;
+        if (typeof n === 'object' && n.text) return n.text;
+        return String(n);
+    }
+    function _gigNoteByline(n) {
+        if (!n || typeof n !== 'object') return '';
+        var bits = [];
+        if (n.author) bits.push(n.author);
+        if (n.date) {
+            try { bits.push(new Date(n.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })); } catch(e) {}
+        }
+        return bits.length ? bits.join(' · ') : '';
+    }
+
     var html = '<div style="padding:2px 0">';
     for (var i = 0; i < notes.length; i++) {
+        var noteText = _gigNoteText(notes[i]);
+        var byline = _gigNoteByline(notes[i]);
         html += '<div style="display:flex;align-items:flex-start;gap:6px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.03)">';
         html += '<span style="color:var(--accent-light);font-size:0.7em;margin-top:2px">▸</span>';
-        html += '<span id="gigNoteText_' + i + '" style="flex:1;font-size:0.82em;color:var(--text);line-height:1.3">' + notes[i] + '</span>';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<span id="gigNoteText_' + i + '" style="display:block;font-size:0.82em;color:var(--text);line-height:1.3">' + _esc(noteText) + '</span>';
+        if (byline) html += '<span style="display:block;font-size:0.66em;color:var(--text-dim);margin-top:1px">' + _esc(byline) + '</span>';
+        html += '</div>';
         html += '<button onclick="editGigNote(' + i + ')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:0 2px;opacity:0.5" title="Edit">✏️</button>';
         html += '<button onclick="deleteGigNote(' + i + ',this)" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:0.65em;padding:0 2px;opacity:0.5" title="Delete">✕</button>';
         html += '</div>';
@@ -2488,9 +2512,18 @@ async function saveGigNoteInline() {
     if (!note) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
-    let notes = await loadGigNotes(songTitle) || [];
-    notes.push(note);
-    await saveGigNotes(songTitle, notes);
+    // Phase A.1: route through GLNotes 'gig' scope. Backing path
+    // (bands/{slug}/songs/{title}/gig_notes) unchanged. New writes use the
+    // {text, author, date} object shape; renderGigNotes handles both shapes.
+    if (typeof window.GLNotes !== 'undefined' && typeof window.GLNotes.write === 'function') {
+        const ok = await window.GLNotes.write(songTitle, 'gig', note);
+        if (!ok) { showToast('⚠️ Could not save tip'); return; }
+    } else {
+        // Legacy fallback (GLNotes not loaded — cached old shell).
+        let notes = await loadGigNotes(songTitle) || [];
+        notes.push(note);
+        await saveGigNotes(songTitle, notes);
+    }
     document.getElementById('gigNoteInlineForm')?.remove();
     const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderGigNotes(songTitle, bandData);
@@ -2501,9 +2534,14 @@ async function deleteGigNote(index, btn) {
     if (btn && btn.dataset.confirming) {
         const songTitle = selectedSong?.title || selectedSong;
         if (!songTitle) return;
-        let notes = await loadGigNotes(songTitle) || [];
-        notes.splice(index, 1);
-        await saveGigNotes(songTitle, notes);
+        // Phase A.1: route through GLNotes.remove with legacy fallback.
+        if (typeof window.GLNotes !== 'undefined' && typeof window.GLNotes.remove === 'function') {
+            await window.GLNotes.remove(songTitle, 'gig', index);
+        } else {
+            let notes = await loadGigNotes(songTitle) || [];
+            notes.splice(index, 1);
+            await saveGigNotes(songTitle, notes);
+        }
         const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
         await renderGigNotes(songTitle, bandData);
 
@@ -2521,7 +2559,9 @@ async function editGigNote(index) {
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle) return;
     let notes = await loadGigNotes(songTitle) || [];
-    const current = notes[index] || '';
+    // Phase A.1: notes may be raw strings (legacy) or {text, ...} objects.
+    var raw = notes[index];
+    const current = (raw && typeof raw === 'object') ? (raw.text || '') : (raw || '');
     // Inline edit: replace li text with input
     const textEl = document.getElementById(`gigNoteText_${index}`);
     if (!textEl) return;
@@ -2545,9 +2585,17 @@ async function saveGigNoteEdit(index, value) {
     if (!requireSignIn()) return;
     const songTitle = selectedSong?.title || selectedSong;
     if (!songTitle || !value?.trim()) return;
-    let notes = await loadGigNotes(songTitle) || [];
-    notes[index] = value.trim();
-    await saveGigNotes(songTitle, notes);
+    // Phase A.1: route through GLNotes.update. Preserves shape: existing
+    // string entries promote to {text, author, date}; existing objects
+    // keep their author/date and just update text.
+    if (typeof window.GLNotes !== 'undefined' && typeof window.GLNotes.update === 'function') {
+        await window.GLNotes.update(songTitle, 'gig', index, value.trim());
+    } else {
+        // Legacy fallback (GLNotes not loaded).
+        let notes = await loadGigNotes(songTitle) || [];
+        notes[index] = value.trim();
+        await saveGigNotes(songTitle, notes);
+    }
     const bandData = {} /* bandKnowledgeBase removed — Firebase is canonical */;
     await renderGigNotes(songTitle, bandData);
 }

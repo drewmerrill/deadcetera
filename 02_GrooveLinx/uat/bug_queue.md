@@ -1,32 +1,24 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260509-164828
-**Last Updated:** 2026-05-09 (mid-PM) — Phase A of Song Workbench unification shipped (`ecc7be6d`). Phase A.1 follow-on logged below.
+**Build Under Test:** 20260509-173403
+**Last Updated:** 2026-05-09 (PM) — Phase A.1 (gig-notes migration) closed. No open queue items.
 
 ---
 
-## Open — Phase A.1: Migrate `saveGigNotes` to GLNotes
+## Resolved 2026-05-09 — Phase A.1: `saveGigNotes` migration
 
-**Severity:** Low (technical debt, no user impact)
-**Logged:** 2026-05-09 by Claude during Phase A audit
-**Source:** Drew explicitly called this out at GLNotes commit time — "don't let the remaining `saveGigNotes` in app.js linger too long"
+Path 1 (renderer-side shape adapter) chosen, per the bug-queue plan. Shipped in commit following `badebe60`:
 
-**The gap:** `app.js saveGigNotes` (and its sibling `app-dev.js` copy) still writes directly to `bands/{slug}/songs/{title}/gig_notes` via `saveBandDataToDrive`, bypassing GLNotes. It's the only remaining direct Firebase note write outside the documented legacy-fallback branches.
+- New `GLNotes.update(songTitle, scope, index, text, opts)` — preserves shape: existing object entries get `text` updated in place; legacy raw-string entries get promoted to the object shape on edit
+- `saveGigNoteInline` → `GLNotes.write(songTitle, 'gig', text)` with documented legacy fallback
+- `saveGigNoteEdit` → `GLNotes.update(songTitle, 'gig', index, text)` with documented legacy fallback
+- `deleteGigNote` → `GLNotes.remove(songTitle, 'gig', index)` with documented legacy fallback
+- `editGigNote` reads existing entry as either string or `{text}` object
+- `renderGigNotes` rewritten with shape adapter + HTML escape (was unsafely interpolating raw note text into innerHTML — separate latent XSS risk also closed by this PR). Renders both shapes during the rollover window. New writes show `author · date` byline.
+- Mirrored to `app-dev.js`
+- Audit confirms: zero direct `saveBandDataToDrive(*, 'gig_notes')` calls outside the documented legacy-fallback branches
 
-**Why deferred from Phase A:** Gig notes store **raw strings**, not `{text, author, date}` objects. The other 4 scopes write objects. Migrating to `GLNotes 'gig'` cleanly requires either:
-1. A renderer-side shape adapter in `renderGigNotes` that handles both string and object shapes during the rollover window, OR
-2. A one-time data backfill script that converts every existing string note into `{text, author: 'unknown', date: <song-detail mtime>}` so the renderer only sees one shape.
-
-Path 1 is safer (no data write, gradual migration). Path 2 is cleaner (one shape forever).
-
-**Definition of done:**
-- `saveGigNotes` and `saveGigNoteEdit` route through `GLNotes.write(songTitle, 'gig', text)`
-- `renderGigNotes` reads via `GLNotes.read(songTitle, 'gig')` and renders both shapes during transition
-- `deleteGigNote` routes through `GLNotes.remove(songTitle, 'gig', index)`
-- Audit grep confirms zero `saveBandDataToDrive(*, 'gig_notes', *)` calls outside `gl-notes.js`
-- Smoke: existing string-format gig notes still render; new notes save as `{text, author, date}` objects
-
-**Estimated effort:** 1-2 hour PR, no SYSTEM LOCK exposure, single-file scope (app.js + app-dev.js mirror).
+**No open queue items.**
 
 ---
 

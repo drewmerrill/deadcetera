@@ -18,14 +18,18 @@
 //   GLNotes.SCOPES                       → array of valid scope names
 //   GLNotes.write(songTitle, scope, text, opts) → Promise<boolean>
 //   GLNotes.read(songTitle, scope?)      → Promise<items[] | { scope, items[] }[]>
+//   GLNotes.update(songTitle, scope, index, text, opts) → Promise<boolean>
 //   GLNotes.remove(songTitle, scope, index) → Promise<boolean>
 //   GLNotes.subscribe(songTitle, callback) → unsubscribe fn (best-effort)
 //
-// Known unmigrated path (deferred to a later phase):
-//   - app.js gig notes (saveGigNotes) write raw strings, not objects.
-//     Migrating to scope 'gig' requires a renderer-side shape adapter so
-//     existing string-format notes still display. Out of scope for Phase A
-//     — this PR's goal is "no behavior change for existing notes."
+// Migration history:
+//   - Phase A   (2026-05-09): chart, rehearsal, personal_critique migrated.
+//                              gig & stem scopes defined but unwritten.
+//   - Phase A.1 (2026-05-09): app.js gig notes migrated. The renderer in
+//                              renderGigNotes() now handles BOTH raw-string
+//                              (legacy) AND object {text, author, date}
+//                              (post-migration) shapes during the rollover
+//                              window; new writes always go object-shaped.
 //
 // Scope adapters (do NOT change existing readers — these write the SAME
 // field shape that legacy readers expect):
@@ -290,6 +294,38 @@
         });
     }
 
+    // Update a single note in place by its current array index. Preserves
+    // record shape: if the existing entry is an object, mutates `text` and
+    // keeps existing metadata (author/date/etc); if a raw string (legacy
+    // gig-notes pattern), rebuilds via the scope's shape() — promoting it
+    // to the new object shape on edit.
+    function update(songTitle, scope, index, text, opts) {
+        _validateScope(scope);
+        if (!songTitle) return Promise.reject(new Error('GLNotes.update: songTitle required'));
+        if (typeof index !== 'number' || index < 0) return Promise.resolve(false);
+        if (!text || !String(text).trim()) return Promise.resolve(false);
+        var trimmed = String(text).trim();
+        var adapter = ADAPTERS[scope];
+        return adapter.read(songTitle).then(function (items) {
+            var arr = _toArr(items).slice();
+            if (index >= arr.length) return false;
+            var existing = arr[index];
+            if (existing && typeof existing === 'object') {
+                arr[index] = Object.assign({}, existing, { text: trimmed });
+            } else {
+                // Legacy raw-string entry → promote to object shape
+                arr[index] = adapter.shape(trimmed, opts || {});
+            }
+            return adapter.write(songTitle, arr).then(function () {
+                _emit(songTitle, scope, arr);
+                return true;
+            });
+        }).catch(function (e) {
+            console.warn('[GLNotes] update failed', scope, songTitle, e && e.message);
+            return false;
+        });
+    }
+
     // Remove a single note from a scope by its current array index. Reads
     // the array, splices, and re-saves through the same scope adapter.
     // Returns true on success, false if the index was out of range or the
@@ -362,6 +398,7 @@
         SCOPES: SCOPES.slice(),
         write: write,
         read: read,
+        update: update,
         remove: remove,
         subscribe: subscribe
     };
