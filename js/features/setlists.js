@@ -2281,24 +2281,29 @@ async function parachutePrintSetlistBig(slIdx) {
         + '.show-header { border-bottom: 3px solid #000; padding-bottom: 4px; margin-bottom: 6px; }'
         + '.show-name { font-size: 24pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
         + '.show-meta { font-size: 10pt; color: #444; margin-top: 2px; font-weight: 600; }'
+        // .set-name uses --setPt (= title − 4pt by default, set per-page)
         + '.set-name { font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; '
         +   'background: #000; color: #fff; padding: 3px 10px; margin: 0 0 6px; border-radius: 4px; '
+        +   'font-size: var(--setPt, 12pt); '
         // break-after:avoid keeps the set name attached to its first row when
         // the column flow wants to break right after it
         +   'break-after: avoid-column; break-inside: avoid; page-break-after: avoid; }'
-        + '.set-name.minor { background: #444; padding: 2px 8px; margin-top: 4px; font-size: 10pt; }'
+        + '.set-name.minor { background: #444; padding: 2px 8px; margin-top: 4px; font-size: calc(var(--setPt, 12pt) - 2pt); }'
         + '.set-name:not(:first-child) { margin-top: 6px; }'
-        // Multi-column wrapper — column-count is set per-page via inline style
-        + '.song-cols { column-gap: 22px; column-rule: 1px solid #ddd; }'
-        // line-height:1.05 (vs default 1.2) packs more songs per page so the
-        // bigger fonts in _scaleFor fit. tabular-nums lines up 2- and
-        // 3-digit BPMs to the same digit width.
+        // Multi-column wrapper — column-count comes from the per-page --cols var
+        + '.song-cols { column-gap: 22px; column-rule: 1px solid #ddd; column-count: var(--cols, 1); }'
+        // Per-page font sizes via CSS vars set on the .page div. The padding
+        // (--rowPad) controls vertical density. tabular-nums lines up 2- and
+        // 3-digit BPMs.
         + '.song-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; '
         +   'border-bottom: 1px solid #d0d0d0; page-break-inside: avoid; break-inside: avoid; '
-        +   'font-variant-numeric: tabular-nums; line-height: 1.05; }'
-        + '.song-num { font-weight: 800; color: #666; min-width: 32px; text-align: right; flex: 0 0 auto; }'
-        + '.song-title { font-weight: 700; flex: 1 1 auto; line-height: 1.15; word-break: break-word; }'
-        + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; }'
+        +   'font-variant-numeric: tabular-nums; line-height: 1.05; '
+        +   'padding: var(--rowPad, 4px) 0; }'
+        + '.song-num { font-weight: 800; color: #666; min-width: 32px; text-align: right; flex: 0 0 auto; '
+        +   'font-size: var(--numPt, 13pt); }'
+        + '.song-title { font-weight: 700; flex: 1 1 auto; line-height: 1.15; word-break: break-word; '
+        +   'font-size: var(--titlePt, 14pt); }'
+        + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; font-size: var(--titlePt, 14pt); }'
         // Meta pill — fixed slots so columns truly align:
         //   .song-meta itself has min-width so EVERY pill is the same width.
         //   .key is 3ch wide, left-aligned (fits "G" and "Am" with the
@@ -2308,6 +2313,7 @@ async function parachutePrintSetlistBig(slIdx) {
         + '.song-meta { font-weight: 700; color: #000; white-space: nowrap; '
         +   'background: #f0f0f0; padding: 2px 10px; border-radius: 5px; border: 1px solid #999; '
         +   'flex: 0 0 auto; text-align: left; min-width: 110px; '
+        +   'font-size: var(--metaPt, 13pt); '
         +   'font-variant-numeric: tabular-nums; }'
         + '.song-meta .key { display: inline-block; min-width: 3ch; '
         +   'color: #1a1a1a; text-align: left; font-weight: 700; }'
@@ -2360,26 +2366,26 @@ async function parachutePrintSetlistBig(slIdx) {
             var totalRows = introRows + mainRows + outroRows;
             var scale = _scaleFor(totalRows);
 
-            // Per-page font size overrides via inline style (so each page can
-            // have its own scale without needing per-page CSS classes)
+            // BUG-FIX (build 195313→): the previous code used
+            // .page:nth-of-type(N) which counts ALL <div> siblings, not
+            // just .page divs. Body has a `.no-print` div first, so .page
+            // was nth-of-type(2) of div but the inline style targeted
+            // nth-of-type(1) → matched nothing → font sizes NEVER changed.
+            // Result: songs always rendered at the body default 13px
+            // regardless of which _scaleFor tier returned. That's why
+            // Drew kept seeing "tons of room at the bottom" no matter
+            // which font size we tried.
+            //
+            // Fix: pass scale via CSS custom properties on the .page div
+            // itself. The global CSS rules below consume them via var().
             var pageStyle = '--titlePt:' + scale.title + 'pt;'
-                + '--rowPad:' + scale.row + 'px;'
                 + '--numPt:' + scale.num + 'pt;'
                 + '--metaPt:' + scale.meta + 'pt;'
-                + '--segHdrPt:' + scale.segHdr + 'pt;';
+                + '--setPt:' + Math.max(8, scale.title - 4) + 'pt;'
+                + '--rowPad:' + scale.row + 'px;'
+                + '--cols:' + scale.cols + ';';
 
-            html += '<div class="page">'
-                // Per-page CSS overrides via :nth-of-type so each page can
-                // have its own scale + column count without per-page classes
-                + '<style>'
-                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-title { font-size: ' + scale.title + 'pt; }'
-                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-num { font-size: ' + scale.num + 'pt; }'
-                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-segue { font-size: ' + scale.title + 'pt; }'
-                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-meta { font-size: ' + scale.meta + 'pt; }'
-                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-row { padding: ' + scale.row + 'px 0; }'
-                + '.page:nth-of-type(' + (pageIdx + 1) + ') .set-name { font-size: ' + (scale.title - 2) + 'pt; }'
-                + '.page:nth-of-type(' + (pageIdx + 1) + ') .song-cols { column-count: ' + scale.cols + '; }'
-                + '</style>';
+            html += '<div class="page" style="' + pageStyle + '">';
 
             // Show header only on the first page. Count only MAIN sets in
             // the meta \u2014 soundcheck/encore are decoration, not real sets.
