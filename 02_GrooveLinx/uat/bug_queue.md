@@ -1,7 +1,7 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260509-192649
-**Last Updated:** 2026-05-09 (late PM) — Phase B.1 (ChartRenderer + song-detail Band lens) shipped commit `c2c9423e`. Awaiting Drew smoke-test before B.2-B.4. Bug queue clean.
+**Build Under Test:** 20260509-210311
+**Last Updated:** 2026-05-09 (late PM) — Phase B.2 (rehearsal-mode chart → ChartRenderer) shipped commit `6981c8e1`. B.1 smoke-tested OK by Drew. Awaiting B.2 smoke-test before B.3. Bug queue clean.
 
 ---
 
