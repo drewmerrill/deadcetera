@@ -751,10 +751,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ── STAGE 2: Firebase init + data preloads ──
-    initFirebaseOnly().then(() => {
+    initFirebaseOnly().then(async () => {
         console.log('[PERF] firebase-ready ' + Math.round(performance.now()) + 'ms');
         window._glBootTimings.firebaseReady = performance.now();
         if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('firebase');
+        // Parachute: render shared setlist if URL is ?setlist=<slug>. Firebase
+        // is now ready, so we can fetch the pack and replace the document.
+        // Returns true on hit — bail out of the rest of boot.
+        if (typeof parachuteCheckShareUrl === 'function') {
+            try {
+                if (await parachuteCheckShareUrl()) return;
+            } catch (e) { /* fall through to normal boot */ }
+        }
         // Load band members from Firebase FIRST (canonical source), then custom songs
         _seedDeadceteraMembersIfNeeded().then(function() {
             return loadBandMembersFromFirebase();

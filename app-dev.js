@@ -707,10 +707,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // ── STAGE 2: Firebase init + data preloads ──
-    initFirebaseOnly().then(() => {
+    initFirebaseOnly().then(async () => {
         console.log('[Startup] Firebase ready at ' + Math.round(performance.now()) + 'ms');
         window._glBootTimings.firebaseReady = performance.now();
         if (typeof GLStore !== 'undefined' && GLStore.markReady) GLStore.markReady('firebase');
+        // Parachute: render shared setlist if URL is ?setlist=<slug>.
+        if (typeof parachuteCheckShareUrl === 'function') {
+            try {
+                if (await parachuteCheckShareUrl()) return;
+            } catch (e) { /* fall through */ }
+        }
         // Load band members from Firebase FIRST (canonical source), then custom songs
         _seedDeadceteraMembersIfNeeded().then(function() {
             return loadBandMembersFromFirebase();
