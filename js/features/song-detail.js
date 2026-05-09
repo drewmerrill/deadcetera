@@ -2026,6 +2026,32 @@ function _sdStemsModelOptions(currentModel) {
     }).join('');
 }
 
+// LALAL Lead/Backing should be derived from the SAME Demucs run as the other
+// stems. If a user re-runs Demucs without re-running LALAL, the LALAL split
+// points at obsolete vocals → temporal misalignment (bug S1). Two checks:
+//   1. Timestamp: LALAL's separatedAt < Demucs's separatedAt → stale.
+//   2. R2 songId: stems URLs embed `stems/{songId}/...` — the songId is a
+//      timestamp generated per separation run. If Demucs vocals + LALAL lead
+//      have different songIds, LALAL was run against a previous Demucs.
+// The fix is _sdStemsResyncLalal: re-run LALAL with the current Demucs
+// vocals as input. Same Path-A semantics as harmony-lab's hlGenerateFromStems.
+function _sdLalalIsStale(stems, lalalSplit) {
+    if (!lalalSplit || !lalalSplit.stems || !lalalSplit.stems.lead) return false;
+    if (!stems || !stems.stems || !stems.stems.vocals) return false;
+    // Timestamp check
+    if (stems.separatedAt && lalalSplit.separatedAt) {
+        var sd = new Date(stems.separatedAt).getTime();
+        var ld = new Date(lalalSplit.separatedAt).getTime();
+        if (ld && sd && ld < sd) return true;
+    }
+    // SongId check — extract from R2 URL pattern stems/{songId}/...
+    var demRe = /\/stems\/([^\/]+)\//;
+    var dm = (stems.stems.vocals || '').match(demRe);
+    var lm = (lalalSplit.stems.lead || '').match(demRe);
+    if (dm && lm && dm[1] !== lm[1]) return true;
+    return false;
+}
+
 function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
     _sdEnsureStemsFsStyle();
     var safeSong = title.replace(/'/g, "\\'");
@@ -2162,9 +2188,27 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
     var badge = hasLalal
         ? '<span class="sd-title-badge">Demucs + LALAL</span>'
         : '<span class="sd-title-badge">Demucs</span>';
+    // Stale-LALAL warning (bug S1 long-term fix). Only renders when the
+    // LALAL Lead/Backing was generated from a different Demucs run than the
+    // currently-loaded stems. The Re-sync button re-runs LALAL against the
+    // current Demucs vocals stem (Path A — same as hlGenerateFromStems) so
+    // alignment is restored.
+    var staleLalalBanner = '';
+    if (hasLalal && _sdLalalIsStale(stems, lalalSplit)) {
+        staleLalalBanner = '<div style="margin-bottom:10px;padding:10px 14px;background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.4);border-radius:8px;font-size:0.82em;color:#fbbf24;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+          '<span style="font-size:1.2em;flex-shrink:0">⚠️</span>' +
+          '<div style="flex:1;min-width:200px">' +
+            '<div style="font-weight:700;margin-bottom:2px">Lead/Backing may be out of sync</div>' +
+            '<div style="font-size:0.88em;opacity:0.85;line-height:1.4">LALAL was generated from an older Demucs run. Re-sync to align with the current stems.</div>' +
+          '</div>' +
+          '<button onclick="_sdStemsResyncLalal(\'' + safeSong + '\')" title="Re-run LALAL using the current Demucs vocals stem (~30-60s, uses one LALAL credit)" style="background:rgba(245,158,11,0.18);color:#fbbf24;border:1px solid rgba(245,158,11,0.5);padding:7px 14px;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:700;white-space:nowrap;flex-shrink:0">🔄 Re-sync LALAL</button>' +
+        '</div>';
+    }
+
     return '<div class="sd-stems-wrap" data-song="' + _sdEsc(title) + '">' +
       // Phone-portrait nudge — visible only via media query in _sdEnsureStemsFsStyle.
       '<div class="sd-stems-rotate-banner" style="display:none;margin-bottom:10px;padding:10px 14px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;font-size:0.82em;color:#fbbf24;text-align:center;line-height:1.4">📱 ↻ <b>Rotate horizontal</b> for the full mixer view — pan / volume sliders need the width to be usable.</div>' +
+      staleLalalBanner +
       '<div class="sd-card">' +
       '<div class="sd-card-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
         '<span>🎚 Stems ' + badge + '</span>' +
@@ -2412,6 +2456,49 @@ window._sdStemsToggle = async function() {
             });
         });
         if (btn) btn.textContent = '⏸ Pause';
+    }
+};
+
+// Re-run LALAL using the CURRENT Demucs vocals stem as input. Fixes bug S1
+// (stale LALAL → temporal misalignment) without requiring console snippets.
+// Same Path-A semantics as harmony-lab.js's hlGenerateFromStems.
+window._sdStemsResyncLalal = async function(title) {
+    if (!title) title = window._sdCurrentSong;
+    if (!title) { if (typeof showToast === 'function') showToast('No song'); return; }
+    if (!window.GLStems || typeof GLStems.splitLeadBacking !== 'function') {
+        if (typeof showToast === 'function') showToast('Stems engine not loaded');
+        return;
+    }
+    if (!confirm('Re-run LALAL using the current Demucs vocals stem? Takes ~30-60s and uses one LALAL credit.')) return;
+
+    var stems = await GLStems.getStems(title);
+    if (!stems || !stems.stems || !stems.stems.vocals) {
+        if (typeof showToast === 'function') showToast('No Demucs vocals stem found — run Demucs first');
+        return;
+    }
+
+    if (typeof showToast === 'function') showToast('🔄 Re-syncing LALAL…');
+    try {
+        var split = await GLStems.splitLeadBacking(title, {
+            sourceUrl: stems.stems.vocals,
+            sourceLabel: 'Demucs vocals stem',
+            onProgress: function(stage, pct) {
+                if (stage === 'processing' && typeof showToast === 'function') {
+                    showToast('LALAL ' + pct + '%');
+                }
+            }
+        });
+        if (split && split.stems && split.stems.lead) {
+            if (typeof showToast === 'function') showToast('✅ LALAL re-synced');
+            // Re-render stems lens so the new aligned Lead/Backing load
+            try { if (window._sdLensPopulated) window._sdLensPopulated.stems = false; } catch(e) {}
+            if (typeof _sdPopulateStemsLens === 'function') _sdPopulateStemsLens(title);
+        } else {
+            if (typeof showToast === 'function') showToast('⚠️ LALAL returned no lead stem');
+        }
+    } catch(e) {
+        console.warn('[Stems] LALAL re-sync failed:', e);
+        if (typeof showToast === 'function') showToast('⚠️ LALAL re-sync failed: ' + (e.message || 'unknown'));
     }
 };
 
