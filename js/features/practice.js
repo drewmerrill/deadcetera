@@ -184,7 +184,7 @@ function _pmRenderSectionB(hasResume) {
 
 window._pmStart = function _pmStart(focusType, songTitle) {
     if (focusType === 'recommended' && songTitle) {
-        if (typeof openRehearsalMode === 'function') openRehearsalMode(songTitle);
+        _pmOpenSolo(songTitle);
         return;
     }
     if (focusType === 'gig-prep') {
@@ -196,37 +196,215 @@ window._pmStart = function _pmStart(focusType, songTitle) {
         if (typeof showToast === 'function') showToast('Resume lands in Wave 2');
         return;
     }
-    if (songTitle && typeof openRehearsalMode === 'function') {
-        openRehearsalMode(songTitle);
-    }
+    if (songTitle) _pmOpenSolo(songTitle);
 };
 
-function _pmStartGigPrep() {
-    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
+// Open a single song into the chart overlay in solo Practice mode (no
+// Band Sync bar, no "Rehearsal saved" modal at exit). Wraps the existing
+// openRehearsalModePractice() entry, which already nulls _rmSessionStart.
+function _pmOpenSolo(songTitle) {
     var songList = typeof allSongs !== 'undefined' ? allSongs : [];
-    var statusMap = {};
-    try {
-        var cached = (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
-        Object.keys(cached).forEach(function(k) { statusMap[k] = (cached[k] || '').toLowerCase().replace(/\s+/g,'_'); });
-    } catch(e) {}
-    var queue = _pmGetTodayPracticeSongs(songList, statusMap, rc);
-    if (!queue.length) {
-        if (typeof showToast === 'function') showToast('No songs flagged for gig prep right now');
-        return;
-    }
-    if (queue.length === 1) {
-        if (typeof openRehearsalMode === 'function') openRehearsalMode(queue[0].title);
-        return;
-    }
-    var queueObjs = queue.map(function(s) {
-        var songObj = songList.find(function(x){ return x.title === s.title; });
-        return { title: s.title, band: songObj ? (songObj.band || '') : '' };
-    });
-    if (typeof openRehearsalModeWithQueue === 'function') {
-        openRehearsalModeWithQueue(queueObjs);
+    var songData = songList.find(function(s) { return s.title === songTitle; });
+    var queue = [{ title: songTitle, band: songData ? (songData.band || '') : '' }];
+    if (typeof openRehearsalModePractice === 'function') {
+        openRehearsalModePractice(queue);
     } else if (typeof openRehearsalMode === 'function') {
-        openRehearsalMode(queue[0].title);
+        openRehearsalMode(songTitle);
     }
+}
+
+// Gig Prep — show the next upcoming gig + its setlist songs that still need
+// work. User picks one to practice. Per Drew (2026-05-09): "When I go to prep
+// for Gig, it should show a list with the next one coming up." Pre-Wave-1
+// the chip immediately opened a queue of generic weak songs which had no
+// connection to the actual upcoming gig — the user reported being dropped on
+// "Red Hot Mama" when their next gig contained completely different songs.
+function _pmStartGigPrep() {
+    var gigs = (typeof GLStore !== 'undefined' && GLStore.getGigs) ? GLStore.getGigs() : [];
+    var todayStr = new Date().toISOString().split('T')[0];
+    var upcoming = gigs.filter(function(g) { return g && g.date && g.date >= todayStr; });
+    upcoming.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    var nextGig = upcoming[0] || null;
+
+    if (!nextGig) {
+        _pmShowGigPrepEmpty('no-gig');
+        return;
+    }
+
+    // Pull the linked setlist — preferred path is setlistId on the gig record;
+    // fall back to matching a setlist whose date equals the gig's date.
+    var setlists = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : [];
+    var setlist = null;
+    if (nextGig.setlistId) {
+        setlist = setlists.find(function(s) { return s && s.setlistId === nextGig.setlistId; }) || null;
+    }
+    if (!setlist && nextGig.date) {
+        setlist = setlists.find(function(s) { return s && s.date === nextGig.date; }) || null;
+    }
+    if (!setlist) {
+        _pmShowGigPrepEmpty('no-setlist', nextGig);
+        return;
+    }
+
+    // Flatten all songs across all sets, dedupe by title, look up readiness.
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
+    var seen = {};
+    var allSongsInSetlist = [];
+    (setlist.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(sg) {
+            var title = typeof sg === 'string' ? sg : (sg && sg.title) || '';
+            if (!title || seen[title]) return;
+            if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return;
+            seen[title] = true;
+            var ratings = rc[title] || {};
+            var vals = Object.values(ratings).filter(function(v){ return typeof v === 'number' && v > 0; });
+            var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0) / vals.length : 0;
+            allSongsInSetlist.push({ title: title, avg: avg, hasRating: vals.length > 0 });
+        });
+    });
+
+    if (!allSongsInSetlist.length) {
+        _pmShowGigPrepEmpty('empty-setlist', nextGig);
+        return;
+    }
+
+    // Songs that need work: unrated OR avg < 4. Sort weakest first; unrated
+    // songs sort below the rated weak ones (we know less about them).
+    var needsWork = allSongsInSetlist.filter(function(s) { return !s.hasRating || s.avg < 4; });
+    needsWork.sort(function(a, b) {
+        if (a.hasRating && b.hasRating) return a.avg - b.avg;
+        if (a.hasRating) return -1;
+        if (b.hasRating) return 1;
+        return a.title.localeCompare(b.title);
+    });
+
+    _pmShowGigPrepModal(nextGig, setlist, needsWork, allSongsInSetlist.length);
+}
+
+function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
+    var existing = document.getElementById('pmSongPickerOverlay');
+    if (existing) existing.remove();
+
+    var dateLabel = _pmFormatGigDate(gig.date);
+    var venueLabel = gig.venue ? (window.escHtml ? window.escHtml(gig.venue) : gig.venue) : 'Venue TBD';
+    var subtitle;
+    if (!needsWork.length) {
+        subtitle = 'All ' + totalCount + ' songs in this setlist are gig-ready 🎉';
+    } else {
+        subtitle = needsWork.length + ' of ' + totalCount + ' songs need work';
+    }
+
+    var rows;
+    if (!needsWork.length) {
+        rows = '<div class="pm-picker-empty">All set for this gig. Want to brush up anyway? <a href="#" onclick="event.preventDefault();_pmShowGigPrepAll('+JSON.stringify(setlist.setlistId).replace(/"/g,'&quot;')+')" style="color:#a5b4fc">Browse the full setlist →</a></div>';
+    } else {
+        rows = needsWork.map(function(s) {
+            var safe = s.title.replace(/'/g, "\\'");
+            var t = window.escHtml ? window.escHtml(s.title) : s.title;
+            var avgPill = s.hasRating
+                ? '<span class="pm-gig-avg" style="color:'+(s.avg < 2 ? '#f87171' : '#fbbf24')+'">'+s.avg.toFixed(1)+'</span>'
+                : '<span class="pm-gig-avg" style="color:#64748b">— —</span>';
+            return '<div class="pm-picker-row" onclick="_pmPickerSelect(\'gig-prep\',\''+safe+'\')">'+
+                   '<span class="pm-picker-title">'+t+'</span>'+
+                   avgPill+
+                   '</div>';
+        }).join('');
+    }
+
+    var overlay = document.createElement('div');
+    overlay.id = 'pmSongPickerOverlay';
+    overlay.className = 'modal-overlay pm-picker-overlay';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML =
+        '<div class="pm-picker-modal">'+
+        '  <div class="pm-picker-header pm-gig-header">'+
+        '    <div>'+
+        '      <div class="pm-gig-eyebrow">Next gig</div>'+
+        '      <div class="pm-picker-title-h">🎤 '+dateLabel+' · '+venueLabel+'</div>'+
+        '      <div class="pm-gig-subtitle">'+subtitle+'</div>'+
+        '    </div>'+
+        '    <button class="pm-picker-close" onclick="document.getElementById(\'pmSongPickerOverlay\').remove()">✕</button>'+
+        '  </div>'+
+        '  <div class="pm-picker-list" id="pmPickerList">'+rows+'</div>'+
+        '</div>';
+    document.body.appendChild(overlay);
+}
+
+function _pmShowGigPrepEmpty(reason, gig) {
+    var existing = document.getElementById('pmSongPickerOverlay');
+    if (existing) existing.remove();
+
+    var headline, body, cta;
+    if (reason === 'no-gig') {
+        headline = 'No upcoming gigs';
+        body = 'Add a gig in Schedule and we\'ll surface it here.';
+        cta = '<button class="pm-start-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'calendar\')">Open Schedule</button>';
+    } else if (reason === 'no-setlist') {
+        var dateLabel = _pmFormatGigDate(gig.date);
+        var venueLabel = gig.venue || 'Venue TBD';
+        headline = 'No setlist linked yet';
+        body = dateLabel + ' at ' + venueLabel + ' doesn\'t have a setlist. Build one in Setlists, then come back.';
+        cta = '<button class="pm-start-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'setlists\')">Open Setlists</button>';
+    } else {
+        var dateLabel2 = _pmFormatGigDate(gig.date);
+        var venueLabel2 = gig.venue || 'Venue TBD';
+        headline = 'Setlist is empty';
+        body = dateLabel2 + ' at ' + venueLabel2 + ' has a setlist but no songs yet.';
+        cta = '<button class="pm-start-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'setlists\')">Open Setlists</button>';
+    }
+
+    var overlay = document.createElement('div');
+    overlay.id = 'pmSongPickerOverlay';
+    overlay.className = 'modal-overlay pm-picker-overlay';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+    overlay.innerHTML =
+        '<div class="pm-picker-modal">'+
+        '  <div class="pm-picker-header">'+
+        '    <div class="pm-picker-title-h">🎤 Gig Prep</div>'+
+        '    <button class="pm-picker-close" onclick="document.getElementById(\'pmSongPickerOverlay\').remove()">✕</button>'+
+        '  </div>'+
+        '  <div style="padding:28px 22px;text-align:center">'+
+        '    <div style="font-size:2em;margin-bottom:10px;opacity:0.55">📭</div>'+
+        '    <div style="font-weight:700;font-size:1.05em;color:var(--text);margin-bottom:6px">'+headline+'</div>'+
+        '    <div style="font-size:0.88em;color:var(--text-dim);line-height:1.45;margin-bottom:18px">'+body+'</div>'+
+        '    '+cta+
+        '  </div>'+
+        '</div>';
+    document.body.appendChild(overlay);
+}
+
+window._pmShowGigPrepAll = function _pmShowGigPrepAll(setlistId) {
+    // "Browse the full setlist" fallback when all gig songs are already ready.
+    var setlists = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : [];
+    var sl = setlists.find(function(s) { return s && s.setlistId === setlistId; });
+    if (!sl) return;
+    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
+    var seen = {};
+    var rows = [];
+    (sl.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(sg) {
+            var title = typeof sg === 'string' ? sg : (sg && sg.title) || '';
+            if (!title || seen[title]) return;
+            if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return;
+            seen[title] = true;
+            var ratings = rc[title] || {};
+            var vals = Object.values(ratings).filter(function(v){ return typeof v === 'number' && v > 0; });
+            var avg = vals.length ? vals.reduce(function(a,b){return a+b;},0) / vals.length : 0;
+            rows.push({ title: title, avg: avg, hasRating: vals.length > 0 });
+        });
+    });
+    rows.sort(function(a, b) { return a.title.localeCompare(b.title); });
+    _pmShowGigPrepModal({ date: sl.date || '', venue: sl.title || '' }, sl, rows, rows.length);
+};
+
+function _pmFormatGigDate(dateStr) {
+    if (!dateStr) return 'Date TBD';
+    try {
+        var parts = dateStr.split('-');
+        if (parts.length !== 3) return dateStr;
+        var d = new Date(parseInt(parts[0],10), parseInt(parts[1],10)-1, parseInt(parts[2],10));
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', weekday: 'short' });
+    } catch(e) { return dateStr; }
 }
 
 window._pmToggleMore = function _pmToggleMore(btn) {
@@ -306,9 +484,10 @@ window._pmShowSongPicker = function _pmShowSongPicker(focusType) {
 window._pmPickerSelect = function _pmPickerSelect(focusType, songTitle) {
     var overlay = document.getElementById('pmSongPickerOverlay');
     if (overlay) overlay.remove();
-    // Wave 1: all focus types just open rehearsal mode; Wave 2 will pre-configure
-    // loop region, stems mix, and notes/lyrics visibility per focusType.
-    if (typeof openRehearsalMode === 'function') openRehearsalMode(songTitle);
+    // Wave 1: all focus types open solo Practice mode (no session save modal,
+    // no Band Sync bar). Wave 2 will pre-configure loop / stems / lyrics per
+    // focusType before opening.
+    _pmOpenSolo(songTitle);
 };
 
 window._pmPickerFilter = function _pmPickerFilter(query) {
@@ -769,7 +948,12 @@ function _pmInjectStyles(){
     '.pm-picker-row:hover{background:rgba(102,126,234,0.08);}'+
     '.pm-picker-band{color:var(--text-dim,#94a3b8);font-size:0.78em;min-width:36px;flex-shrink:0;}'+
     '.pm-picker-title{flex:1;color:var(--text,#f1f5f9);}'+
-    '.pm-picker-empty{padding:24px;text-align:center;color:var(--text-dim,#94a3b8);font-size:0.88em;}';
+    '.pm-picker-empty{padding:24px;text-align:center;color:var(--text-dim,#94a3b8);font-size:0.88em;line-height:1.5;}'+
+    /* Gig Prep header variant */
+    '.pm-gig-header{align-items:flex-start;}'+
+    '.pm-gig-eyebrow{font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#a5b4fc;margin-bottom:2px;}'+
+    '.pm-gig-subtitle{font-size:0.8em;color:var(--text-dim,#94a3b8);margin-top:4px;}'+
+    '.pm-gig-avg{font-size:0.78em;font-weight:700;min-width:30px;text-align:right;flex-shrink:0;}';
     document.head.appendChild(s);
 }
 

@@ -33,6 +33,10 @@ var _rmSessionStart = 0;       // session start timestamp
 var _rmBlockStartTime = 0;     // current block start timestamp
 var _rmBlockTimings = [];       // [{ title, budgetMin, actualMs, index }]
 var _rmTimingInterval = null;   // live timer update interval
+// ── Mode flag ──
+// True when entered via openRehearsalModePractice (solo Practice flow).
+// Suppresses Rehearsal-only UI: Band Sync bar, "Rehearsal saved" modal.
+var _rmIsPracticeMode = false;
 // Resolve band abbreviation to full name for external searches
 function _rmFullBandName(abbr) {
     var map = { GD:'Grateful Dead', JGB:'Jerry Garcia Band', WSP:'Widespread Panic', Phish:'Phish', ABB:'Allman Brothers Band', Goose:'Goose', DMB:'Dave Matthews Band' };
@@ -84,6 +88,7 @@ function openRehearsalMode(songTitle, mode) {
         .find(s => s.title === songTitle);
     rmQueue = [{ title: songTitle, band: songData?.band || '' }];
     rmIndex = 0;
+    _rmIsPracticeMode = false;
     rmShow();
     if (mode === 'paste') { setTimeout(function(){ if (typeof rmStartEdit === 'function') rmStartEdit(); }, 400); }
 }
@@ -93,10 +98,11 @@ window.openRehearsalModePractice = function(queue) {
     if (!queue || !queue.length) return;
     rmQueue = queue;
     rmIndex = 0;
-    // Explicitly do NOT set _rmSessionStart — no session will be saved
+    // Solo Practice flow: skip session save modal, hide Band Sync bar
     _rmSessionStart = 0;
     _rmBlockStartTime = 0;
     _rmBlockTimings = [];
+    _rmIsPracticeMode = true;
     rmShow();
 };
 
@@ -105,6 +111,7 @@ window.openRehearsalModeWithQueue = function(queue) {
     if (!queue || !queue.length) return;
     rmQueue = queue;
     rmIndex = 0;
+    _rmIsPracticeMode = false;
     // Onboarding: mark rehearsal started
     if (typeof GLAvatarGuide !== 'undefined' && GLAvatarGuide.completeOnboardStep) GLAvatarGuide.completeOnboardStep('rehearsal');
     // Log band activity
@@ -851,6 +858,12 @@ function _rmSetupScrollSync() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 function _rmRenderSyncBar() {
+    // Solo Practice flow has no concept of Band Sync — hide unconditionally.
+    if (_rmIsPracticeMode) {
+        var bar0 = document.getElementById('rmSyncBar');
+        if (bar0) bar0.style.display = 'none';
+        return;
+    }
     var bar = document.getElementById('rmSyncBar');
     if (!bar) return;
     if (typeof GLStore === 'undefined') { bar.style.display = 'none'; return; }
