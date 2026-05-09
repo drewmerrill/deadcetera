@@ -786,10 +786,16 @@ function slRenderSetSongs(setIdx) {
         var _slBl = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? GLStore.getBandLove(s) : 0;
         var _slAl = (typeof GLStore !== 'undefined' && GLStore.getAudienceLove) ? GLStore.getAudienceLove(s) : 0;
         var _slRd = (typeof GLStore !== 'undefined' && GLStore.avgReadiness) ? GLStore.avgReadiness(s) : 0;
-        var _slBadges = '';
-        if (_slBl > 0) _slBadges += '<span style="font-size:0.7em;opacity:0.7" title="Band: ' + _slBl + '/5">' + '\u2764'.repeat(Math.min(_slBl, 5)) + '</span>';
-        if (_slAl > 0) _slBadges += '<span style="font-size:0.7em;opacity:0.7" title="Audience: ' + _slAl + '/5">' + '\uD83D\uDC9C'.repeat(Math.min(_slAl, 5)) + '</span>';
-        if (_slRd > 0 && _slRd < 3) _slBadges += '<span style="font-size:0.6em;color:#f59e0b;font-weight:700" title="Readiness: ' + _slRd.toFixed(1) + '/5">\u26A0</span>';
+        // Fixed-width love containers right-align the hearts so the key/BPM/
+        // segue chips after them line up vertically across rows regardless of
+        // whether a song has 1 heart or 5. Always render the containers (even
+        // when love is 0) so columns stay aligned.
+        var _bandHearts = _slBl > 0 ? '\u2764'.repeat(Math.min(_slBl, 5)) : '';
+        var _audHearts  = _slAl > 0 ? '\uD83D\uDC9C'.repeat(Math.min(_slAl, 5)) : '';
+        var _slBadges = ''
+            + '<span style="display:inline-block;width:54px;font-size:0.7em;opacity:0.85;text-align:right;flex-shrink:0;letter-spacing:-1px" title="Band: ' + _slBl + '/5">' + _bandHearts + '</span>'
+            + '<span style="display:inline-block;width:54px;font-size:0.7em;opacity:0.85;text-align:right;flex-shrink:0;letter-spacing:-1px" title="Audience: ' + _slAl + '/5">' + _audHearts + '</span>';
+        if (_slRd > 0 && _slRd < 3) _slBadges += '<span style="font-size:0.6em;color:#f59e0b;font-weight:700;flex-shrink:0" title="Readiness: ' + _slRd.toFixed(1) + '/5">\u26A0</span>';
         var row;
         if (_isMobile) {
             if (_slEditMode) {
@@ -843,29 +849,87 @@ function slRenderSetSongs(setIdx) {
                 <button class="btn btn-sm btn-ghost sl-delete" onclick="_slMarkDirty();slRemoveSong(${setIdx},${i})" style="padding:1px 4px;flex-shrink:0;font-size:0.82em">\u2715</button>
             </div>`;
         }
-        // Set Break button — desktop only, or edit mode on mobile
+        // Set Break button — desktop only, or edit mode on mobile.
+        // Bumped from font-size:0.5em / opacity:0.3 (band members couldn't
+        // find it) to a larger pill with clear "✂ Break" label + tooltip.
+        // Still subtle by default, but legible at rest, not just on hover.
         if (i < items.length - 1 && !_isMobile) {
-            row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button class="sl-break-btn" onclick="slInsertSetBreak(${setIdx},${i + 1})" style="font-size:0.5em;padding:0 6px;border:1px dashed rgba(245,158,11,0.2);background:rgba(15,23,42,0.95);color:#64748b;border-radius:3px;cursor:pointer;opacity:0.3;transition:opacity 0.15s;position:relative;top:-5px;z-index:1;line-height:1.4" onmouseover="this.style.opacity='1';this.style.color='#fbbf24'" onmouseout="this.style.opacity='0.3';this.style.color='#64748b'">add a break</button></div>`;
+            row += `<div style="text-align:center;height:0;overflow:visible;position:relative"><button class="sl-break-btn" onclick="slInsertSetBreak(${setIdx},${i + 1})" title="Insert a set break here — splits this set into two so you can name the second one (e.g. 'Set 2', 'Encore')" style="font-size:0.62em;padding:1px 8px;border:1px dashed rgba(245,158,11,0.35);background:rgba(15,23,42,0.95);color:#fbbf24;border-radius:4px;cursor:pointer;opacity:0.55;transition:opacity 0.12s,background 0.12s;position:relative;top:-7px;z-index:1;line-height:1.5;font-weight:600;letter-spacing:0.02em" onmouseover="this.style.opacity='1';this.style.background='rgba(245,158,11,0.12)'" onmouseout="this.style.opacity='0.55';this.style.background='rgba(15,23,42,0.95)'">✂ Break here</button></div>`;
         }
         return row;
     }).join('');
     el.innerHTML = rows;
+    // Drag-and-drop: songs can move within a set OR across sets.
+    // The dataTransfer payload carries BOTH the source set index and the
+    // song index ("setIdx:songIdx"). Cross-set drops splice from the source
+    // set and insert into the target set.
     el.querySelectorAll('.sl-song-row').forEach(row => {
-        row.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', row.dataset.idx); row.style.opacity='0.4'; });
+        row.addEventListener('dragstart', e => {
+            e.dataTransfer.setData('text/plain', row.dataset.set + ':' + row.dataset.idx);
+            row.style.opacity='0.4';
+        });
         row.addEventListener('dragend', e => { row.style.opacity='1'; });
         row.addEventListener('dragover', e => { e.preventDefault(); row.style.background='rgba(102,126,234,0.12)'; });
         row.addEventListener('dragleave', e => { row.style.background=''; });
         row.addEventListener('drop', e => {
             e.preventDefault(); row.style.background='';
-            const from=parseInt(e.dataTransfer.getData('text/plain')), to=parseInt(row.dataset.idx);
-            if(from===to)return;
-            const songs=window._slSets[setIdx].songs;
-            const [moved]=songs.splice(from,1); songs.splice(to,0,moved);
+            var raw = e.dataTransfer.getData('text/plain') || '';
+            var parts = raw.split(':');
+            // Backwards compat: legacy payload was just the index. Treat as
+            // same-set if no colon is present.
+            var fromSet = parts.length === 2 ? parseInt(parts[0]) : setIdx;
+            var fromIdx = parts.length === 2 ? parseInt(parts[1]) : parseInt(parts[0]);
+            var toSet = setIdx;
+            var toIdx = parseInt(row.dataset.idx);
+            if (fromSet === toSet && fromIdx === toIdx) return;
+            var srcSongs = window._slSets[fromSet] && window._slSets[fromSet].songs;
+            var dstSongs = window._slSets[toSet] && window._slSets[toSet].songs;
+            if (!srcSongs || !dstSongs) return;
+            var moved = srcSongs.splice(fromIdx, 1)[0];
+            if (!moved) return;
+            dstSongs.splice(toIdx, 0, moved);
             if (typeof _slMarkDirty === 'function') _slMarkDirty();
-            slRenderSetSongs(setIdx);
+            // Re-render BOTH sets if cross-set, else just the one
+            if (fromSet === toSet) {
+                slRenderSetSongs(toSet);
+            } else {
+                slRenderSetSongs(fromSet);
+                slRenderSetSongs(toSet);
+            }
             slRenderReadinessMeter(); // keep master list in sync
         });
     });
+    // Make the empty area below songs (the "Add song" zone) also a valid
+    // drop target — lets users drop a song at the end of a different set
+    // even when that set has no rows to land on. Falls back to "append".
+    if (el.parentElement) {
+        var emptyZone = el.parentElement.querySelector('input.app-input[id^="slAddSong"]');
+        if (emptyZone && !emptyZone.dataset.glDropAttached) {
+            emptyZone.dataset.glDropAttached = '1';
+            var addRow = emptyZone.parentElement;
+            addRow.addEventListener('dragover', function(e) { e.preventDefault(); addRow.style.background='rgba(102,126,234,0.08)'; });
+            addRow.addEventListener('dragleave', function() { addRow.style.background=''; });
+            addRow.addEventListener('drop', function(e) {
+                e.preventDefault(); addRow.style.background='';
+                var raw = e.dataTransfer.getData('text/plain') || '';
+                var parts = raw.split(':');
+                if (parts.length !== 2) return;
+                var fromSet = parseInt(parts[0]);
+                var fromIdx = parseInt(parts[1]);
+                var srcSongs = window._slSets[fromSet] && window._slSets[fromSet].songs;
+                var dstSongs = window._slSets[setIdx] && window._slSets[setIdx].songs;
+                if (!srcSongs || !dstSongs) return;
+                if (fromSet === setIdx) return; // same-set append handled by row drop
+                var moved = srcSongs.splice(fromIdx, 1)[0];
+                if (!moved) return;
+                dstSongs.push(moved);
+                if (typeof _slMarkDirty === 'function') _slMarkDirty();
+                slRenderSetSongs(fromSet);
+                slRenderSetSongs(setIdx);
+                slRenderReadinessMeter();
+            });
+        }
+    }
     _slUpdateShowTotal();
     _slRenderSetIntelligence();
 }
@@ -1091,6 +1155,13 @@ async function slSaveSetlist() {
         if (_addInput && _addInput.focus) _addInput.focus();
         return;
     }
+    // The "🔒 Lock This Set" button is the only save path here, so a click
+    // should both save AND lock. Previously the flag was never set, so the
+    // setlist appeared as 🔓 Unlocked on the list immediately after saving
+    // — confusing and contradicted the toast.
+    var _lockerName = (typeof currentUserName !== 'undefined' && currentUserName)
+        ? currentUserName
+        : (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
     const sl = {
         setlistId: generateShortId(12),
         gigId: null,
@@ -1100,7 +1171,10 @@ async function slSaveSetlist() {
         venue: window._slSelectedVenueName || '',
         notes: document.getElementById('slNotes')?.value || '',
         sets: window._slSets || [],
-        created: new Date().toISOString()
+        created: new Date().toISOString(),
+        locked: true,
+        lockedAt: new Date().toISOString(),
+        lockedBy: _lockerName
     };
     const existing = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     existing.push(sl);
@@ -1660,8 +1734,8 @@ function _slRenderPlanMode(idx, sl) {
         var setActions = '';
         if (si > 0) {
             setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
-                + '<button onclick="slMoveSetUp(' + si + ')" style="padding:2px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.68em;font-weight:600;min-height:28px">\u2191</button>'
-                + '<button onclick="slMergeSets(' + si + ')" style="padding:2px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.68em;font-weight:600;min-height:28px">Merge \u2191</button>'
+                + '<button onclick="slMoveSetUp(' + si + ')" title="Move this whole set up \u2014 swap with the set above" style="padding:2px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.68em;font-weight:600;min-height:28px">\u2191 Move up</button>'
+                + '<button onclick="slMergeSets(' + si + ')" title="Combine this set into the previous one \u2014 undoes a set break" style="padding:2px 8px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.68em;font-weight:600;min-height:28px">Merge \u2191</button>'
                 + '</div>';
         }
         var isExpanded = !_isMobile || si === _slExpandedSet;
@@ -2172,6 +2246,11 @@ async function slSaveSetlistEdit(idx) {
             if (_linked && _linked.date) _finalDate = _linked.date;
         } catch(e) {}
     }
+    // The "Save & Lock" / "🔒 Lock This Set" button is the only save here,
+    // so it must both save AND lock (previously the flag was never written).
+    var _lockerNameEdit = (typeof currentUserName !== 'undefined' && currentUserName)
+        ? currentUserName
+        : (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'unknown';
     data[idx] = {
         ...prev,
         setlistId: prev.setlistId || generateShortId(12),
@@ -2182,7 +2261,10 @@ async function slSaveSetlistEdit(idx) {
         venue: window._slVenueTouched ? (window._slSelectedVenueName || '') : (prev.venue || ''),
         notes: document.getElementById('slNotes')?.value || '',
         sets: window._slSets || [],
-        updated: new Date().toISOString()
+        updated: new Date().toISOString(),
+        locked: true,
+        lockedAt: new Date().toISOString(),
+        lockedBy: _lockerNameEdit
     };
     var saved = await saveBandDataToDrive('_band', 'setlists', data);
     if (saved === false) {
@@ -2441,8 +2523,8 @@ function _slReRenderSets() {
         var setActions = '';
         if (si > 0) {
             setActions = '<div style="margin-left:auto;display:flex;gap:3px">'
-                + '<button onclick="slMoveSetUp(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Move this set up">↑</button>'
-                + '<button onclick="slMergeSets(' + si + ')" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600" title="Merge into previous set">Merge ↑</button>'
+                + '<button onclick="slMoveSetUp(' + si + ')" title="Move this whole set up — swap with the set above" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600">↑ Move up</button>'
+                + '<button onclick="slMergeSets(' + si + ')" title="Combine this set into the previous one — undoes a set break" style="padding:1px 6px;background:none;border:1px solid rgba(255,255,255,0.1);color:#64748b;border-radius:4px;cursor:pointer;font-size:0.58em;font-weight:600">Merge ↑</button>'
                 + '</div>';
         }
         return '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
