@@ -1,7 +1,9 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260509-210311
-**Last Updated:** 2026-05-09 (late PM) — Phase B.2 (rehearsal-mode chart → ChartRenderer) shipped commit `6981c8e1`. B.1 smoke-tested OK by Drew. Awaiting B.2 smoke-test before B.3. Bug queue clean.
+**Build Under Test:** 20260509-212726
+**Last Updated:** 2026-05-09 (late PM) — Phase B.3/B.4 closed by **deletion** (not migration). Drew's product vision overrode the audit roadmap — chart_master/chart_band split + chart editor + chart_url + renderSetlistCharts deleted from `js/features/charts.js` (zero external callers; 0/450 songs in production carry the legacy schema fields). Two GitHub epics filed before deletion to capture the future direction: **#27** "Multi-layer chart canvas — per-member toggleable overlays" and **#28** "Setlist/Gig continuous chart mode — scroll + now-playing follow". `js/features/charts.js` now exposes only `loadOverlayNotes` / `addOverlayNote` / `removeOverlayNote` (GLNotes-routed) + `highlightActiveSong` (consumed by player UI + listening bundles). Bug queue clean.
+
+**Known orphan to track later (not a bug):** `js/features/bulk-import.js:182` still writes `chart_url` from Ultimate Guitar imports — those writes now have no reader. Either repurpose for issue #27 (external chart URL as one of the overlay layers) or remove the writer when the bulk-import flow next gets touched. Field is also still in firebase-service / store / band-admin allow-lists to protect reads of historical data; leave those alone.
 
 ---
 
