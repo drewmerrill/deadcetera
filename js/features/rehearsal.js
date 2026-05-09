@@ -1190,7 +1190,7 @@ function _rhRenderContinueChip(planCache, songCount, durationLabel) {
     html += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:2px">' + (songCount || 0) + ' song' + (songCount === 1 ? '' : 's') + ' in plan' + (durationLabel ? ' · ' + durationLabel : '') + '</div>';
     html += '</div>';
     html += '<div style="display:flex;gap:6px;flex-shrink:0">';
-    html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:9px 18px;font-size:0.85em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">▶ Start</button>';
+    html += '<button onclick="_rhConfirmStartRehearsal()" class="gl-btn-primary" style="padding:9px 18px;font-size:0.85em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">▶ Start</button>';
     html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-ghost" style="padding:7px 14px;font-size:0.78em">📋 Edit</button>';
     html += '</div>';
     html += '</div>';
@@ -1833,7 +1833,7 @@ async function _rhRenderLastRehearsalTimeline() {
             + '<div style="font-size:0.92em;font-weight:700;color:var(--text);margin-bottom:6px">Your rehearsal timeline starts here</div>'
             + '<div style="font-size:0.75em;color:var(--text-dim);line-height:1.5;margin-bottom:6px;max-width:340px;margin-left:auto;margin-right:auto">Run a rehearsal, then load the recording. GrooveLinx will break it down song by song so you can hear what\u2019s tight and what needs work.</div>'
             + '<div style="font-size:0.68em;color:var(--text-dim);margin-bottom:14px">Most bands see something useful after the first session.</div>'
-            + '<button onclick="typeof rhStartRehearsalSession===\'function\' ? rhStartRehearsalSession() : _rhConfirmStartRehearsal()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.88em;cursor:pointer;min-height:44px">Start Your First Rehearsal</button>'
+            + '<button onclick="_rhConfirmStartRehearsal()" style="padding:12px 24px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.88em;cursor:pointer;min-height:44px">Start Your First Rehearsal</button>'
             + '</div>';
         return;
     }
