@@ -3000,6 +3000,72 @@ var _sdLoop = { inSec: null, outSec: null, enabled: false };
 var _sdActivePreset = null; // stem id of the current "Practice X" mute, or null
 if (typeof window._sdCountInEnabled === 'undefined') window._sdCountInEnabled = true;
 
+// ── Read-only API surface for the PlayerEngine contract adapter (Phase C.3) ──
+// Lets js/core/gl-stems-engine-contract.js read internal state without
+// scraping the DOM. Pure read-only — no behavior changes here. The adapter
+// uses this surface to expose the Stems mixer through the unified contract
+// (CAPABILITIES.STEMS / LOOP / TEMPO / PITCH / etc) without forcing an
+// extraction. Drew's C.3 directive: adapter-only, zero regression risk.
+window._sdStemsAPI = {
+    isMounted: function () { return _sdStemsState !== null; },
+    getStemsRec: function () { return window._sdLastStemsRec || null; },
+    getStemList: function () {
+        var rec = window._sdLastStemsRec;
+        if (!rec) return [];
+        if (window.GLAudioSession && GLAudioSession.mergeTracks) {
+            return GLAudioSession.mergeTracks(rec, null, window._sdLastSpatialSplits || []);
+        }
+        return rec.stems
+            ? Object.keys(rec.stems).map(function (id) { return rec.stems[id]; })
+            : [];
+    },
+    getMasterAudio: function () {
+        return document.querySelector('.sd-stem-audio') || null;
+    },
+    getCurrentTime: function () {
+        var m = this.getMasterAudio(); return m ? (m.currentTime || 0) : 0;
+    },
+    getDuration: function () {
+        var m = this.getMasterAudio(); return m ? (m.duration || 0) : 0;
+    },
+    isPlaying: function () {
+        var m = this.getMasterAudio(); return !!(m && !m.paused);
+    },
+    getTempo: function () {
+        var m = this.getMasterAudio(); return m ? (m.playbackRate || 1) : 1;
+    },
+    getPitchSemitones: function () {
+        return (_sdStemsState && _sdStemsState.pitchSemitones) || 0;
+    },
+    getLoop: function () {
+        return { inSec: _sdLoop.inSec, outSec: _sdLoop.outSec, enabled: _sdLoop.enabled };
+    },
+    getActivePreset: function () { return _sdActivePreset; },
+    getCountInEnabled: function () { return window._sdCountInEnabled !== false; },
+    isFullscreen: function () {
+        var w = document.querySelector('.sd-stems-wrap');
+        return !!(w && w.classList && w.classList.contains('sd-stems-fullscreen'));
+    },
+    getStemRowState: function (stemId) {
+        var row = document.querySelector('.sd-stem-row[data-stem="' + stemId + '"]');
+        if (!row) return null;
+        var vol  = row.querySelector('.sd-stem-vol');
+        var pan  = row.querySelector('.sd-stem-pan');
+        var soloBtn = row.querySelector('.sd-stem-solo');
+        var audio = document.querySelector('.sd-stem-audio[data-stem="' + stemId + '"]');
+        return {
+            volume: vol ? Number(vol.value) / 100 : null,
+            pan:    pan ? Number(pan.value) / 100 : null,
+            muted:  !!(audio && audio.dataset.muted === '1'),
+            soloed: !!(soloBtn && soloBtn.dataset.active === '1')
+        };
+    },
+    getRecentLoops: function () {
+        try { return JSON.parse(localStorage.getItem('gl_recent_loops') || '[]'); }
+        catch (e) { return []; }
+    }
+};
+
 window._sdStemsSetLoopMarker = function(t) {
     if (_sdLoop.inSec == null || _sdLoop.outSec != null) {
         // Fresh marker pair — set IN, clear OUT (loop disabled until OUT lands).
