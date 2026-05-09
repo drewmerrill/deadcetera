@@ -1726,7 +1726,7 @@ function _slRenderPlanMode(idx, sl) {
     if (_isMobile) {
         html += '<button id="slEditToggle" onclick="_slToggleEditMode()" style="font-size:0.75em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid ' + (_slEditMode ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)') + ';background:' + (_slEditMode ? 'rgba(99,102,241,0.12)' : 'none') + ';color:' + (_slEditMode ? '#a5b4fc' : '#64748b') + ';font-family:inherit;min-height:30px">' + (_slEditMode ? '\u2713 Editing' : '\u270F Edit') + '</button>';
     }
-    html += '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" style="color:#94a3b8;font-size:0.75em">\uD83D\uDCE4</button>'
+    html += '<button class="btn btn-ghost btn-sm" onclick="slShareSetlist(' + idx + ')" title="Share this setlist \u2014 copy as text, generate a public link, print stage setlist (big font), print all charts (Kinkos pack), email gig pack, or cache offline" aria-label="Share setlist" style="color:#94a3b8;font-size:0.75em">\uD83D\uDCE4 Share</button>'
         + '<span id="slDirtyIndicator" style="display:none;font-size:0.68em;color:#f59e0b;font-weight:700">\u25CF Unsaved</span>'
         + '<button class="btn btn-ghost btn-sm" onclick="slSaveSetlistEdit(' + idx + ',false)" title="Save changes but keep the setlist editable" style="margin-left:auto;font-size:0.74em;padding:4px 10px;border:1px solid rgba(255,255,255,0.12);color:var(--text)">\uD83D\uDCBE Save</button>'
         + '<button class="btn btn-success btn-sm" onclick="slSaveSetlistEdit(' + idx + ',true)" title="Save AND lock \u2014 freeze for performance" style="font-size:0.74em;padding:4px 12px">\uD83D\uDD12 Save &amp; Lock</button>'
@@ -2018,11 +2018,12 @@ function parachuteBuildHtml(sl, songs) {
     h += '*{box-sizing:border-box;margin:0;padding:0}';
     h += 'body{font-family:Helvetica,Arial,sans-serif;font-size:13px;color:#111;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}';
 
-    // \u2500\u2500 Front-page big-font setlist summary \u2500\u2500
-    h += '.summary{page-break-after:always;padding:18px 22px}';
-    h += '.summary-header{border-bottom:4px solid #000;padding-bottom:8px;margin-bottom:14px}';
+    // \u2500\u2500 Front-page big-font setlist summary (flex column so footer pins to bottom) \u2500\u2500
+    h += '.summary{page-break-after:always;padding:18px 22px;display:flex;flex-direction:column;min-height:10.2in}';
+    h += '.summary-header{border-bottom:4px solid #000;padding-bottom:8px;margin-bottom:14px;flex:0 0 auto}';
     h += '.summary-name{font-size:26pt;font-weight:900;line-height:1.05;margin:0;letter-spacing:-0.01em}';
     h += '.summary-meta{font-size:11pt;color:#444;margin-top:3px;font-weight:600}';
+    h += '.summary-body{flex:1 1 auto}';
     h += '.summary-cols{column-count:'+summaryCols+';column-gap:22px;column-rule:1px solid #ddd}';
     h += '.summary-set{font-weight:900;text-transform:uppercase;letter-spacing:0.04em;background:#000;color:#fff;padding:4px 9px;margin:0 0 6px;border-radius:3px;break-after:avoid;break-inside:avoid;font-size:'+(summaryFont-3)+'pt}';
     h += '.summary-set:not(:first-child){margin-top:10px}';
@@ -2033,20 +2034,21 @@ function parachuteBuildHtml(sl, songs) {
     h += '.summary-meta-pill{font-weight:700;color:#000;white-space:nowrap;background:#f0f0f0;padding:1px 6px;border-radius:4px;border:1px solid #999;font-size:'+(summaryFont-2)+'pt;flex-shrink:0}';
     h += '.summary-meta-pill .sep{color:#999;margin:0 3px;font-weight:400}';
 
-    // \u2500\u2500 Per-song chart pages \u2500\u2500
-    h += '.song-page{page-break-before:always;padding:16px 22px 14px}';
-    h += '.song-header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:12px}';
+    // \u2500\u2500 Per-song chart pages (flex column so footer pins to bottom) \u2500\u2500
+    h += '.song-page{page-break-before:always;padding:16px 22px 14px;display:flex;flex-direction:column;min-height:10.2in}';
+    h += '.song-header{display:flex;align-items:baseline;justify-content:space-between;border-bottom:2px solid #333;padding-bottom:6px;margin-bottom:12px;flex:0 0 auto}';
+    h += '.song-body{flex:1 1 auto}';
     h += '.song-title{font-size:1.5em;font-weight:700}';
     h += '.chip{background:#f0f0f0;padding:2px 8px;border-radius:4px;border:1px solid #ddd;font-size:0.82em;margin-left:6px}';
     h += '.chart{font-family:Menlo,Consolas,monospace;font-size:11.5px;line-height:1.55;white-space:pre-wrap;background:#fafafa;border:1px solid #e8e8e8;border-radius:4px;padding:12px 14px;margin-top:4px}';
     h += '.no-chart{color:#999;font-style:italic;font-size:0.88em;padding:10px 0}';
 
-    // \u2500\u2500 GrooveLinx branded footer (one per page) \u2500\u2500
-    h += '.gl-ad{margin-top:14px;padding:10px 14px;border:2px solid #6366f1;border-radius:8px;background:linear-gradient(90deg,#f5f3ff,#eef2ff);display:flex;align-items:center;gap:14px;page-break-inside:avoid}';
-    h += '.gl-ad .gl-mark{font-size:16pt;font-weight:900;color:#4f46e5;letter-spacing:-0.02em;line-height:1}';
-    h += '.gl-ad .gl-tag{font-size:10pt;color:#1e1b4b;font-weight:600;line-height:1.3;flex:1}';
-    h += '.gl-ad .gl-tag em{display:block;color:#4f46e5;font-style:normal;font-weight:700;margin-top:2px}';
-    h += '.gl-ad .gl-url{font-size:10pt;color:#4f46e5;font-weight:800;white-space:nowrap;border-left:1px solid #c7d2fe;padding-left:14px}';
+    // \u2500\u2500 GrooveLinx branded footer (compact, pinned to page bottom) \u2500\u2500
+    h += '.gl-ad{margin-top:auto;flex:0 0 auto;padding:6px 12px;border:1px solid #c7d2fe;border-radius:6px;background:linear-gradient(90deg,#f5f3ff,#eef2ff);display:flex;align-items:center;gap:12px;page-break-inside:avoid}';
+    h += '.gl-ad .gl-mark{font-size:11pt;font-weight:900;color:#4f46e5;letter-spacing:-0.02em;line-height:1}';
+    h += '.gl-ad .gl-tag{font-size:8pt;color:#1e1b4b;font-weight:600;line-height:1.25;flex:1}';
+    h += '.gl-ad .gl-tag em{color:#4f46e5;font-style:normal;font-weight:600}';
+    h += '.gl-ad .gl-url{font-size:8.5pt;color:#4f46e5;font-weight:800;white-space:nowrap;border-left:1px solid #c7d2fe;padding-left:10px}';
     h += '</style></head><body>';
 
     // \u2500\u2500 Front page: big-font setlist summary, multi-column \u2500\u2500
@@ -2055,7 +2057,7 @@ function parachuteBuildHtml(sl, songs) {
     h += '<h1 class="summary-name">'+_esc(name)+'</h1>';
     if (date) h += '<div class="summary-meta">'+_esc(date)+' \u00b7 '+totalSongs+' song'+(totalSongs===1?'':'s')+'</div>';
     h += '</div>';
-    h += '<div class="summary-cols">';
+    h += '<div class="summary-body"><div class="summary-cols">';
     var num = 0, lastSet = '';
     songs.forEach(function(s) {
         if (s.setName !== lastSet) {
@@ -2074,11 +2076,11 @@ function parachuteBuildHtml(sl, songs) {
             + meta
             + '</div>';
     });
-    h += '</div>';
-    // Branded footer on the summary page
+    h += '</div></div>';
+    // Branded footer pinned to bottom of summary page
     h += '<div class="gl-ad">'
         + '<div class="gl-mark">GrooveLinx</div>'
-        + '<div class="gl-tag">Where bands lock in.<em>Setlists \u00b7 charts \u00b7 stems \u00b7 gig prep \u00b7 all in one place.</em></div>'
+        + '<div class="gl-tag">Where bands lock in. <em>Setlists \u00b7 charts \u00b7 stems \u00b7 gig prep.</em></div>'
         + '<div class="gl-url">app.groovelinx.com</div>'
         + '</div>';
     h += '</div>';
@@ -2090,15 +2092,17 @@ function parachuteBuildHtml(sl, songs) {
         if (s.key) h += '<span class="chip">\ud83c\udfb5 '+_esc(s.key)+'</span>';
         if (s.bpm) h += '<span class="chip">\u26a1'+_esc(String(s.bpm))+' BPM</span>';
         h += '</span></div>';
+        h += '<div class="song-body">';
         if (s.chart) {
             h += '<div class="chart">'+s.chart.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>';
         } else {
             h += '<div class="no-chart">No chord chart saved yet.</div>';
         }
-        // Branded footer at the bottom of each chart page too
+        h += '</div>';
+        // Branded footer pinned to bottom of each chart page
         h += '<div class="gl-ad">'
             + '<div class="gl-mark">GrooveLinx</div>'
-            + '<div class="gl-tag">Where bands lock in.<em>'+_esc(name)+(date?' \u00b7 '+_esc(date):'')+'</em></div>'
+            + '<div class="gl-tag">Where bands lock in. <em>'+_esc(name)+(date?' \u00b7 '+_esc(date):'')+'</em></div>'
             + '<div class="gl-url">app.groovelinx.com</div>'
             + '</div>';
         h += '</div>';
@@ -2248,8 +2252,13 @@ async function parachutePrintSetlistBig(slIdx) {
         + '@page { size: letter; margin: 0.4in; }'
         + 'html, body { margin: 0; padding: 0; color: #000; background: #fff; '
         +   'font-family: Helvetica, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }'
-        + '.page { padding: 18px 22px 14px; page-break-after: always; }'
+        // Each page is a flex column → song content takes available space,
+        // GrooveLinx footer pinned to the bottom regardless of how short
+        // the content is. min-height = letter (11in) − @page margins (0.8in).
+        + '.page { padding: 16px 20px 12px; page-break-after: always; '
+        +   'display: flex; flex-direction: column; min-height: 10.2in; }'
         + '.page:last-child { page-break-after: auto; }'
+        + '.song-cols-wrap { flex: 1 1 auto; }'
         + '.show-header { border-bottom: 4px solid #000; padding-bottom: 8px; margin-bottom: 12px; }'
         + '.show-name { font-size: 28pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
         + '.show-meta { font-size: 11pt; color: #444; margin-top: 3px; font-weight: 600; }'
@@ -2273,16 +2282,20 @@ async function parachutePrintSetlistBig(slIdx) {
         + '.song-meta .bpm { color: #444; }'
         + '.song-meta .sep { color: #999; margin: 0 3px; font-weight: 400; }'
         + '.empty { font-size: 12pt; color: #888; padding: 8px 0; font-style: italic; }'
-        // Branded footer block \u2014 replaces the old plain-text footer line.
-        + '.gl-ad { margin-top: 14px; padding: 12px 16px; border: 2px solid #6366f1; '
-        +   'border-radius: 8px; background: linear-gradient(90deg, #f5f3ff, #eef2ff); '
-        +   'display: flex; align-items: center; gap: 14px; page-break-inside: avoid; }'
-        + '.gl-ad .gl-mark { font-size: 18pt; font-weight: 900; color: #4f46e5; letter-spacing: -0.02em; line-height: 1; }'
-        + '.gl-ad .gl-tag { font-size: 10pt; color: #1e1b4b; font-weight: 600; line-height: 1.3; flex: 1; }'
-        + '.gl-ad .gl-tag em { display: block; color: #4f46e5; font-style: normal; font-weight: 700; margin-top: 2px; }'
-        + '.gl-ad .gl-url { font-size: 10pt; color: #4f46e5; font-weight: 800; white-space: nowrap; '
-        +   'border-left: 1px solid #c7d2fe; padding-left: 14px; }'
-        + '.gl-ad .gl-page { font-size: 9pt; color: #6366f1; margin-left: 6px; font-weight: 600; }'
+        // Branded footer \u2014 compact (single line) + pinned to bottom of the
+        // page via margin-top:auto inside the flex column. Stays at the
+        // page bottom even if the set is short.
+        + '.gl-ad { margin-top: auto; flex: 0 0 auto; padding: 6px 12px; '
+        +   'border: 1px solid #c7d2fe; border-radius: 6px; '
+        +   'background: linear-gradient(90deg, #f5f3ff, #eef2ff); '
+        +   'display: flex; align-items: center; gap: 10px; '
+        +   'page-break-inside: avoid; break-inside: avoid; }'
+        + '.gl-ad .gl-mark { font-size: 11pt; font-weight: 900; color: #4f46e5; letter-spacing: -0.02em; line-height: 1; }'
+        + '.gl-ad .gl-tag { font-size: 8pt; color: #1e1b4b; font-weight: 600; line-height: 1.25; flex: 1; }'
+        + '.gl-ad .gl-tag em { color: #4f46e5; font-style: normal; font-weight: 600; }'
+        + '.gl-ad .gl-url { font-size: 8.5pt; color: #4f46e5; font-weight: 800; white-space: nowrap; '
+        +   'border-left: 1px solid #c7d2fe; padding-left: 10px; }'
+        + '.gl-ad .gl-page { font-size: 7.5pt; color: #6366f1; margin-left: 5px; font-weight: 600; }'
         // On-screen tip banner \u2014 hidden in print
         + '@media print { .no-print { display: none !important; } }'
         + '.no-print { background: #fffbe6; border-bottom: 2px solid #fbbf24; padding: 12px 18px; '
@@ -2343,7 +2356,9 @@ async function parachutePrintSetlistBig(slIdx) {
 
             // Multi-column wrapper \u2014 keeps set names attached to their first
             // row via break-after:avoid. CSS columns auto-balance contents.
-            html += '<div class="song-cols">';
+            // Wrapper has flex:1 so the GrooveLinx footer is pushed to the
+            // bottom of the page even when content is short.
+            html += '<div class="song-cols-wrap"><div class="song-cols">';
 
             var sectionRowNum = 0;
 
@@ -2380,15 +2395,13 @@ async function parachutePrintSetlistBig(slIdx) {
                 });
             });
 
-            html += '</div>'; // .song-cols
+            html += '</div></div>'; // .song-cols / .song-cols-wrap
 
-            // Branded GrooveLinx footer ad (replaces the old plain-text footer)
+            // Branded GrooveLinx footer \u2014 compact, single-line, pinned to
+            // the bottom of the page via margin-top:auto in flex column.
             html += '<div class="gl-ad">'
                 + '<div class="gl-mark">GrooveLinx</div>'
-                + '<div class="gl-tag">'
-                + 'Where bands lock in.'
-                + '<em>Setlists \u00b7 charts \u00b7 stems \u00b7 gig prep \u00b7 all in one place.</em>'
-                + '</div>'
+                + '<div class="gl-tag">Where bands lock in. <em>Setlists \u00b7 charts \u00b7 stems \u00b7 gig prep.</em></div>'
                 + '<div class="gl-url">app.groovelinx.com'
                 + '<span class="gl-page">\u00b7 pg ' + (pageIdx + 1) + '/' + pages.length + '</span>'
                 + '</div>'
