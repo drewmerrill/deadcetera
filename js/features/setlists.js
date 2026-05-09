@@ -2225,11 +2225,16 @@ async function parachutePrintSetlistBig(slIdx) {
     // bigger fonts here actually fit. 1-column stays preferred until it
     // physically won't (>30 songs).
     function _scaleFor(rowCount) {
-        if (rowCount <= 6)  return { cols: 1, title: 50, row: 14, num: 42, meta: 34 };
+        // Calibrated against actual rendering after the CSS-variable fix.
+        // Available content area = 10.4in (letter - 0.6in v-margins). Per-row
+        // footprint ≈ titlePt × 1.05 + 2 × rowPad. Chrome (show-header + 3
+        // set-headers + footer) ≈ 1.5in. Tier picks the largest font where
+        // (rowCount × rowFootprint) + chrome fits in 10.4in.
+        if (rowCount <= 6)  return { cols: 1, title: 60, row: 16, num: 48, meta: 40 };
         if (rowCount <= 10) return { cols: 1, title: 40, row: 11, num: 32, meta: 28 };
-        if (rowCount <= 16) return { cols: 1, title: 34, row: 8,  num: 28, meta: 24 };
-        if (rowCount <= 22) return { cols: 1, title: 30, row: 6,  num: 24, meta: 20 };
-        if (rowCount <= 30) return { cols: 1, title: 22, row: 4,  num: 18, meta: 16 };
+        if (rowCount <= 16) return { cols: 1, title: 32, row: 7,  num: 26, meta: 22 };
+        if (rowCount <= 22) return { cols: 1, title: 28, row: 4,  num: 24, meta: 20 };
+        if (rowCount <= 30) return { cols: 1, title: 21, row: 3,  num: 18, meta: 16 };
         if (rowCount <= 44) return { cols: 2, title: 17, row: 3,  num: 14, meta: 13 };
         if (rowCount <= 60) return { cols: 2, title: 14, row: 3,  num: 12, meta: 11 };
         return { cols: 3, title: 12, row: 3, num: 11, meta: 10 };
