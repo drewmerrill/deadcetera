@@ -2226,18 +2226,19 @@ async function parachutePrintSetlistBig(slIdx) {
     // physically won't (>30 songs).
     function _scaleFor(rowCount) {
         // Calibrated against actual rendering after the CSS-variable fix.
-        // Available content area = 10.4in (letter - 0.6in v-margins). Per-row
-        // footprint ≈ titlePt × 1.05 + 2 × rowPad. Chrome (show-header + 3
-        // set-headers + footer) ≈ 1.5in. Tier picks the largest font where
-        // (rowCount × rowFootprint) + chrome fits in 10.4in.
+        // Chrome cost = show-header (fixed ~0.52in) + 3 set-headers (scales
+        // with --setPt = title−4 → ~1.0-1.2in) + footer (~0.52in) ≈ 2.0in.
+        // Per-row footprint = title × 1.05 + 2 × rowPad. Available content
+        // = 10.4in (letter − 0.6in v-margins). Tier picks largest font where
+        // 22 × rowFootprint + 2.0in ≤ 10.4in.
         if (rowCount <= 6)  return { cols: 1, title: 60, row: 16, num: 48, meta: 40 };
         if (rowCount <= 10) return { cols: 1, title: 40, row: 11, num: 32, meta: 28 };
         if (rowCount <= 16) return { cols: 1, title: 32, row: 7,  num: 26, meta: 22 };
-        if (rowCount <= 22) return { cols: 1, title: 28, row: 4,  num: 24, meta: 20 };
-        if (rowCount <= 30) return { cols: 1, title: 21, row: 3,  num: 18, meta: 16 };
-        if (rowCount <= 44) return { cols: 2, title: 17, row: 3,  num: 14, meta: 13 };
-        if (rowCount <= 60) return { cols: 2, title: 14, row: 3,  num: 12, meta: 11 };
-        return { cols: 3, title: 12, row: 3, num: 11, meta: 10 };
+        if (rowCount <= 22) return { cols: 1, title: 26, row: 3,  num: 22, meta: 18 };
+        if (rowCount <= 30) return { cols: 1, title: 19, row: 3,  num: 16, meta: 14 };
+        if (rowCount <= 44) return { cols: 2, title: 16, row: 3,  num: 14, meta: 12 };
+        if (rowCount <= 60) return { cols: 2, title: 13, row: 3,  num: 12, meta: 11 };
+        return { cols: 3, title: 11, row: 3, num: 10, meta: 10 };
     }
 
     function _renderSongRow(item, displayNum, scale, allSongsList) {
@@ -2304,7 +2305,12 @@ async function parachutePrintSetlistBig(slIdx) {
         +   'border-bottom: 1px solid #d0d0d0; page-break-inside: avoid; break-inside: avoid; '
         +   'font-variant-numeric: tabular-nums; line-height: 1.05; '
         +   'padding: var(--rowPad, 4px) 0; }'
-        + '.song-num { font-weight: 800; color: #666; min-width: 32px; text-align: right; flex: 0 0 auto; '
+        // min-width: 2.2em — sized in em so the slot scales WITH the font.
+        // Fixed 32px was too narrow at 28pt where "16." needs ~50px, which
+        // pushed titles like "Scarlet Begonias" right of "Bertha". With em
+        // sizing, "1." and "16." both consume the same right-aligned slot
+        // and titles share a clean left edge across all rows.
+        + '.song-num { font-weight: 800; color: #666; min-width: 2.2em; text-align: right; flex: 0 0 auto; '
         +   'font-size: var(--numPt, 13pt); }'
         + '.song-title { font-weight: 700; flex: 1 1 auto; line-height: 1.15; word-break: break-word; '
         +   'font-size: var(--titlePt, 14pt); }'
