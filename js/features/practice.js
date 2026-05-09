@@ -466,12 +466,14 @@ window._pmShowSongPicker = function _pmShowSongPicker(focusType) {
         Object.keys(cached).forEach(function(k) { statusMap[k] = (cached[k] || '').toLowerCase().replace(/\s+/g,'_'); });
     } catch(e) {}
 
+    // Per Drew (2026-05-09): "Learn a New Song" must include both active AND
+    // inactive library songs, plus a path to add a brand-new song that isn't
+    // in the library yet. Other focus types (improve / harmony / chart) stay
+    // scoped to active songs — those are about working on what you already
+    // have a chart for.
     var filtered = songList.filter(function(s) {
         if (typeof isStructuralTitle === 'function' && isStructuralTitle(s.title)) return false;
-        if (focusType === 'learn') {
-            var st = statusMap[s.title];
-            return st === 'learning' || st === 'prospect' || st === 'wip' || st === 'on_deck' || st === 'onDeck';
-        }
+        if (focusType === 'learn') return true;  // entire library, active + inactive
         return _pmIsActive(s.title);
     });
     filtered.sort(function(a, b) { return (a.title || '').localeCompare(b.title || ''); });
@@ -495,10 +497,38 @@ window._pmShowSongPicker = function _pmShowSongPicker(focusType) {
         var safe = s.title.replace(/'/g, "\\'");
         var t = window.escHtml ? window.escHtml(s.title) : s.title;
         var b = window.escHtml ? window.escHtml(s.band || '') : (s.band || '');
+        // Only "Learn" gets status badges since it's the one that shows
+        // inactive songs alongside active ones — the badge tells you which.
+        var statusBadge = '';
+        if (focusType === 'learn') {
+            var st = statusMap[s.title] || '';
+            var isActive = _pmIsActive(s.title);
+            if (st === 'learning' || st === 'prospect' || st === 'wip' || st === 'on_deck' || st === 'onDeck') {
+                statusBadge = '<span class="pm-picker-status pm-picker-status-active">Learning</span>';
+            } else if (isActive) {
+                statusBadge = '<span class="pm-picker-status pm-picker-status-active">Active</span>';
+            } else {
+                statusBadge = '<span class="pm-picker-status pm-picker-status-inactive">Inactive</span>';
+            }
+        }
         return '<div class="pm-picker-row" onclick="_pmPickerSelect(\''+focusType+'\',\''+safe+'\')">'+
                (b ? '<span class="pm-picker-band">'+b+'</span>' : '')+
-               '<span class="pm-picker-title">'+t+'</span></div>';
+               '<span class="pm-picker-title">'+t+'</span>'+
+               statusBadge+
+               '</div>';
     }).join('');
+
+    // Footer for "Learn" — paths to Songs library + chart-paste import for
+    // songs not yet in the library. Other focus types don't need this.
+    var footer = '';
+    if (focusType === 'learn') {
+        var hasChartImport = (typeof window.showChartImportModal === 'function');
+        footer = '<div class="pm-picker-footer">'+
+                 '  <div class="pm-picker-footer-label">Don\'t see it?</div>'+
+                 '  <button class="pm-picker-footer-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showPage(\'songs\')">🔍 Browse full song library</button>'+
+                 (hasChartImport ? '  <button class="pm-picker-footer-btn" onclick="document.getElementById(\'pmSongPickerOverlay\').remove();showChartImportModal()">📋 Paste a new chart</button>' : '')+
+                 '</div>';
+    }
 
     overlay.innerHTML =
         '<div class="pm-picker-modal">'+
@@ -510,6 +540,7 @@ window._pmShowSongPicker = function _pmShowSongPicker(focusType) {
         '  <div class="pm-picker-list" id="pmPickerList">'+
             (rows || '<div class="pm-picker-empty">No matching songs.</div>')+
         '  </div>'+
+        footer+
         '</div>';
 
     document.body.appendChild(overlay);
@@ -999,7 +1030,17 @@ function _pmInjectStyles(){
     '.pm-gig-other-row:hover{background:rgba(102,126,234,0.08);}'+
     '.pm-gig-other-date{color:#a5b4fc;font-weight:700;min-width:88px;flex-shrink:0;}'+
     '.pm-gig-other-venue{flex:1;color:var(--text,#f1f5f9);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
-    '.pm-gig-other-arrow{color:var(--text-dim,#94a3b8);font-size:0.9em;flex-shrink:0;}';
+    '.pm-gig-other-arrow{color:var(--text-dim,#94a3b8);font-size:0.9em;flex-shrink:0;}'+
+    /* Status badges in Learn picker (Active / Inactive / Learning) */
+    '.pm-picker-status{font-size:0.66em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;padding:2px 7px;border-radius:8px;flex-shrink:0;margin-left:8px;}'+
+    '.pm-picker-status-active{background:rgba(34,197,94,0.12);color:#86efac;}'+
+    '.pm-picker-status-inactive{background:rgba(255,255,255,0.05);color:var(--text-dim,#94a3b8);}'+
+    /* Picker footer: "Don\'t see it?" actions for Learn flow */
+    '.pm-picker-footer{padding:14px 18px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);}'+
+    '.pm-picker-footer-label{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim,#94a3b8);margin-bottom:8px;}'+
+    '.pm-picker-footer-btn{display:block;width:100%;text-align:left;padding:10px 12px;margin-bottom:6px;background:rgba(102,126,234,0.06);border:1px solid rgba(102,126,234,0.2);border-radius:8px;color:var(--text,#f1f5f9);cursor:pointer;font-weight:600;font-size:0.85em;font-family:inherit;transition:background 0.12s ease;}'+
+    '.pm-picker-footer-btn:hover{background:rgba(102,126,234,0.14);}'+
+    '.pm-picker-footer-btn:last-child{margin-bottom:0;}';
     document.head.appendChild(s);
 }
 

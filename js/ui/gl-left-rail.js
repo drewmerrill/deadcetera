@@ -27,8 +27,12 @@
 
   // Core nav: 5 pages always visible
   var NAV_CORE = [
+    // Practice promoted to NAV_CORE on 2026-05-09 \u2014 daily-use surface for
+    // the new guided-autonomy entry screen. Order: Songs (library/study) \u2192
+    // Practice (solo) \u2192 Rehearsal (group) \u2192 Schedule (when) \u2192 Setlists (sets).
     { page: 'songs',     icon: '\uD83C\uDFB5', label: 'Songs',     tip: 'Your song library and charts' },
-    { page: 'rehearsal', icon: '\uD83C\uDFB8', label: 'Rehearsal', tip: 'Plan and run your next rehearsal' },
+    { page: 'practice',  icon: '\uD83C\uDFAF', label: 'Practice',  tip: 'Solo practice \u2014 recommended song + your focus' },
+    { page: 'rehearsal', icon: '\uD83C\uDFB8', label: 'Rehearsal', tip: 'Plan and run your next rehearsal (with the band)' },
     { page: 'calendar',  icon: '\uD83D\uDCC5', label: 'Schedule',  tip: 'Gigs, rehearsals, and events' },
     { page: 'setlists',  icon: '\uD83D\uDCCB', label: 'Setlists',  tip: 'Build and organize setlists' },
   ];
@@ -37,8 +41,8 @@
   // Grouped: Rehearse & Practice → Gig Prep → Band → Manage
   var NAV_MORE = [
     // Rehearse & Practice — things you grab at rehearsal
-    { page: 'practice',      icon: '\uD83C\uDFAF',  label: 'Practice',     tip: 'Focus songs and mixes', section: 'Rehearse & Practice' },
-    { page: 'pocketmeter',   icon: '\u23F1',         label: 'Pocket Meter', tip: 'Live BPM detection' },
+    // (Practice itself moved to NAV_CORE on 2026-05-09 \u2014 see above)
+    { page: 'pocketmeter',   icon: '\u23F1',         label: 'Pocket Meter', tip: 'Live BPM detection', section: 'Rehearse & Practice' },
     { page: 'tuner',         icon: '\uD83C\uDFB8',  label: 'Tuner',        tip: 'Tune your instrument' },
     { page: 'metronome',     icon: '\uD83E\uDD41',  label: 'Metronome',    tip: 'Click track' },
     { page: 'bestshot',      icon: '\uD83C\uDFC6',  label: 'Best Shot',    tip: 'Compare recordings' },
