@@ -147,20 +147,23 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   pre.mermaid { background: transparent !important; }
-  /* IMPORTANT: do NOT override line-height — that's what caused 2-line
-     labels to overflow the rect. min-width / padding / text-align are
-     SAFE because mermaid measures the foreignObject content with these
-     styles already applied (the CSS loads before mermaid.run runs).
-     min-width gives every box a uniform comfortable width regardless of
-     how short its label is. */
+  /* What's safe here:
+     - min-width on the inner div gives every box a uniform comfortable
+       width (mermaid measures with min-width applied so the rect grows).
+     - text-align/font-weight are visual-only and don't change measurement.
+     What's NOT safe:
+     - line-height override (caused vertical overflow earlier)
+     - vertical padding on the inner div (mermaid undermeasures the
+       padded height, so 2-line labels poke past the rect edge — this is
+       the overflow Drew kept seeing on PracticeSession / Rehearsal /
+       GLAudioSession). Use mermaid's flowchart.padding config instead. */
   .mermaid svg { overflow: visible !important; max-width: none !important; height: auto !important; }
   .mermaid foreignObject { overflow: visible !important; }
   .mermaid .nodeLabel,
   .mermaid .nodeLabel p,
   .mermaid foreignObject > div {
     white-space: normal !important;
-    min-width: 130px;
-    padding: 6px 14px;
+    min-width: 120px;
     text-align: center;
     font-weight: 500;
   }
@@ -219,14 +222,25 @@
   .mermaid .flowchart-link:hover { opacity: 1; stroke-width: 2.5px !important; }
   /* Click-to-trace: nodes are clickable; once a node is "focused" the
      non-related nodes/edges fade out and related ones stay full-opacity.
-     pointer-events:all forces every shape inside the node group to bubble
-     clicks to g.node — without it, clicks on the inner foreignObject text
-     can be swallowed and the handler never fires. */
-  .mermaid .node { cursor: pointer; transition: opacity 0.18s ease; }
-  .mermaid .node *, .mermaid .node foreignObject, .mermaid .node foreignObject * {
-    pointer-events: none;
+     KEY FIX: only disable pointer-events on the foreignObject HTML
+     (otherwise text inside the box steals the click and it never
+     reaches g.node). The SVG <rect>/<polygon>/<path> stays interactive —
+     hit-tests land on it and bubble up to g.node.
+
+     The previous version disabled pointer-events on .node * (everything),
+     including the rect, so clicks passed through every layer to the
+     SVG background and the handler never fired. Console showed nodes/
+     edges parsed but no click logs — that was the smoking gun. */
+  .mermaid .node {
+    cursor: pointer; transition: opacity 0.18s ease;
+    pointer-events: bounding-box;  /* whole node area is clickable */
   }
-  .mermaid .node { pointer-events: all; }
+  .mermaid .node foreignObject,
+  .mermaid .node foreignObject * { pointer-events: none; }
+  .mermaid .node rect,
+  .mermaid .node polygon,
+  .mermaid .node circle,
+  .mermaid .node path { pointer-events: all; cursor: pointer; }
   .mermaid .gl-trace-active .node:not(.gl-keep) { opacity: 0.10; }
   .mermaid .gl-trace-active .edgePath:not(.gl-keep) { opacity: 0.05 !important; }
   .mermaid .gl-trace-active path.flowchart-link:not(.gl-keep) { opacity: 0.05 !important; }
@@ -445,7 +459,7 @@
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering engine dependency graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':60,'rankSpacing':110,'padding':22} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':60,'rankSpacing':110,'padding':28} }}%%
 flowchart LR
 
   subgraph CORE["⚙️ CORE ENGINES"]
@@ -611,7 +625,7 @@ flowchart LR
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering field cascade graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':22} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':28} }}%%
 flowchart TB
 
   subgraph FIELDS["🔑 LOAD-BEARING FIELDS"]
@@ -743,7 +757,7 @@ flowchart TB
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering boot sequence…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':45,'rankSpacing':55,'padding':18} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':45,'rankSpacing':55,'padding':25} }}%%
 flowchart TB
 
   P0["📄 Phase 0 · 0-50ms<br/>Parse index.html<br/>Inline CSS<br/>Show hero gate"]
@@ -942,7 +956,7 @@ flowchart TB
     try {
       window.mermaid.initialize({
         startOnLoad: false, theme: 'dark', securityLevel: 'loose',
-        flowchart: { curve: 'basis', useMaxWidth: false, htmlLabels: true, nodeSpacing: 50, rankSpacing: 70, padding: 18 }
+        flowchart: { curve: 'basis', useMaxWidth: false, htmlLabels: true, nodeSpacing: 50, rankSpacing: 70, padding: 25 }
       });
       await window.mermaid.run({ querySelector: 'pre.mermaid' });
       hideAll();
