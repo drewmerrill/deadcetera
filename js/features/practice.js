@@ -109,199 +109,216 @@ function _pmGetTodayPracticeSongs(songList, statusMap, rc) {
     return result;
 }
 
-// ── Focus Tab ─────────────────────────────────────────────────────────────────
+// ── Entry Screen (Wave 1) ────────────────────────────────────────────────────
+// Section A: one primary recommendation from getNowFocus() + Start button.
+// Section B: 3 chips above-fold (Resume disabled, Gig Prep, Improve a Song)
+// + "More options" expander revealing Learn / Harmony / Lyrics-Chords.
+// Acceptance: user opens Practice → sees one clear recommendation → can start
+// in one click OR pick a clear alternative without thinking.
+
 async function _pmRenderFocusTab() {
     var el = document.getElementById('pm-panel-focus');
     if (!el) return;
-    el.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-dim)">Loading…</div>';
+    var t0 = (typeof performance !== 'undefined') ? performance.now() : 0;
 
-    var statusMap = await loadSongStatusMap();
-    var songList  = typeof allSongs !== 'undefined' ? allSongs : [];
-    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus)
+        ? GLStore.getNowFocus()
+        : null;
 
-    // Filter ALL buckets to active songs only
-    var thisWeek    = songList.filter(function(s){ return statusMap[s.title]==='this_week' && _pmIsActive(s.title); });
-    var needsPolish = songList.filter(function(s){
-        var st = statusMap[s.title];
-        return (st === 'needs_polish' || st === 'wip' || st === 'needsPolish' || st === 'learning') && _pmIsActive(s.title);
-    });
-    var gigReady    = songList.filter(function(s){ return (statusMap[s.title]==='gig_ready' || statusMap[s.title]==='rotation') && _pmIsActive(s.title); });
-    var onDeck      = songList.filter(function(s){
-        var st = statusMap[s.title];
-        return (st === 'on_deck' || st === 'prospect' || st === 'onDeck') && _pmIsActive(s.title);
-    });
+    el.innerHTML =
+        _pmRenderSectionA(focus) +
+        _pmRenderSectionB(/*hasResume*/ false);
 
-    // Today's Practice
-    var todaysSongs = _pmGetTodayPracticeSongs(songList, statusMap, rc);
-
-    function songRow(s, badge) {
-        badge = badge || '';
-        return '<div class="list-item" style="cursor:pointer" onclick="selectSong(\''+s.title.replace(/'/g,"\\'")+'\')">'+
-               '<span style="color:var(--text-dim);font-size:0.78em;min-width:35px;flex-shrink:0">'+(s.band||'')+'</span>'+
-               '<span style="flex:1">'+s.title+'</span>'+badge+'</div>';
+    if (typeof performance !== 'undefined') {
+        console.log('[PERF] practice-entry-rendered', Math.round(performance.now() - t0), 'ms');
     }
-
-    var html = '';
-
-    // ── PRIMARY: Start Practice Session button ──
-    if (todaysSongs.length) {
-        html += '<button onclick="_pmStartSession()" style="width:100%;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;font-size:1em;cursor:pointer;margin-bottom:16px;box-shadow:0 4px 16px rgba(102,126,234,0.3)">▶ Start Practice Session · ' + todaysSongs.length + ' songs</button>';
-    }
-
-    // ── TODAY'S PRACTICE ──
-    if (todaysSongs.length) {
-        html += '<div class="app-card" style="margin-bottom:16px;border:1px solid rgba(102,126,234,0.2);background:rgba(102,126,234,0.04)">' +
-                '<div style="font-weight:700;font-size:0.95em;margin-bottom:10px">🔥 Today\'s Practice</div>';
-        todaysSongs.forEach(function(s, i) {
-            var avgColor = s.avg >= 3.5 ? '#4ade80' : s.avg >= 2 ? '#fbbf24' : s.avg > 0 ? '#f87171' : '#64748b';
-            var avgLabel = s.avg > 0 ? s.avg.toFixed(1) : '—';
-            html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer" onclick="selectSong(\'' + s.safeTitle + '\')">' +
-                    '<span style="color:var(--text-dim);font-size:0.75em;min-width:18px">' + (i+1) + '</span>' +
-                    '<span style="flex:1;font-size:0.88em;font-weight:500;color:var(--text)">' + s.title + '</span>' +
-                    '<span style="font-size:0.75em;font-weight:700;color:' + avgColor + '">' + avgLabel + '</span>' +
-                    '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + s.safeTitle + '\')" style="padding:3px 10px;background:rgba(102,126,234,0.15);color:#a5b4fc;border:1px solid rgba(102,126,234,0.25);border-radius:6px;cursor:pointer;font-size:0.68em;font-weight:600;white-space:nowrap">▶ Practice</button>' +
-                    '</div>';
-        });
-        html += '</div>';
-    }
-
-    // ── WEAK SONGS (async-filled) ──
-    html += '<div id="practice-weak-songs"></div>';
-
-    if (thisWeek.length || needsPolish.length) {
-        html += '<div class="app-card" style="margin-bottom:16px">'+
-                '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">🔥 This Week\'s Focus</div>'+
-                thisWeek.map(function(s){return songRow(s,'<span style="background:rgba(239,68,68,0.15);color:#f87171;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">THIS WEEK</span>');}).join('')+
-                needsPolish.map(function(s){return songRow(s,'<span style="background:rgba(245,158,11,0.15);color:#fbbf24;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">WIP</span>');}).join('')+
-                '</div>';
-    }
-    if (gigReady.length) {
-        html += '<div class="app-card" style="margin-bottom:16px">'+
-                '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">✅ Gig Ready</div>'+
-                gigReady.map(function(s){return songRow(s,'<span style="background:rgba(34,197,94,0.12);color:#4ade80;font-size:0.7em;padding:2px 8px;border-radius:10px;font-weight:700;flex-shrink:0">GIG READY</span>');}).join('')+
-                '</div>';
-    }
-    if (onDeck.length) {
-        html += '<div class="app-card" style="margin-bottom:16px">'+
-                '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">🃏 On Deck</div>'+
-                onDeck.map(function(s){return songRow(s);}).join('')+
-                '</div>';
-    }
-    if (!todaysSongs.length && !thisWeek.length && !needsPolish.length && !gigReady.length && !onDeck.length) {
-        html += '<div class="app-card" style="margin-bottom:16px;text-align:center;padding:32px 20px">'+
-                '<div style="font-size:2em;margin-bottom:10px">🎸</div>'+
-                '<div style="font-weight:700;margin-bottom:6px">No songs in the queue yet</div>'+
-                '<div style="font-size:0.85em;color:var(--text-dim);margin-bottom:16px">Open any song → set status to <b>Learning</b> or <b>In Rotation</b> to see it here.</div>'+
-                '<button class="btn btn-primary" onclick="showPage(\'songs\')">Browse Song Library →</button>'+
-                '</div>';
-    }
-
-    html += '<div class="app-card" style="margin-bottom:16px">'+
-            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'+
-            '<div style="font-weight:700;font-size:0.95em">📊 Your Readiness</div>'+
-            '<button class="btn btn-ghost btn-sm" onclick="showPage(\'songs\')">View All →</button>'+
-            '</div>'+
-            '<div id="practice-readiness-list"><div style="font-size:0.82em;color:var(--text-dim);text-align:center;padding:12px">Loading…</div></div>'+
-            '</div>';
-
-    el.innerHTML = html;
-    _fillPracticeWeakSongs();
-    _fillPracticeReadiness();
 }
 
-// ── Start Practice Session — launches practice mode with Today's songs ───────
-window._pmStartSession = function() {
+function _pmRenderSectionA(focus) {
+    var primary = focus && focus.primary;
+    if (!primary) {
+        return ''+
+        '<div class="pm-section pm-section-a pm-section-a-empty">'+
+        '  <div class="pm-section-label">Recommended for you right now</div>'+
+        '  <div class="pm-empty-card">'+
+        '    <div class="pm-empty-emoji">🎸</div>'+
+        '    <div class="pm-empty-msg">Nothing flagged for practice right now.</div>'+
+        '    <div class="pm-empty-sub">Pick a focus below to get started.</div>'+
+        '  </div>'+
+        '</div>';
+    }
+    var title = window.escHtml ? window.escHtml(primary.title) : primary.title;
+    var reason = window.escHtml ? window.escHtml(focus.reason || '') : (focus.reason || '');
+    var safeTitle = primary.title.replace(/'/g, "\\'");
+    return ''+
+    '<div class="pm-section pm-section-a">'+
+    '  <div class="pm-section-label">Recommended for you right now</div>'+
+    '  <div class="pm-primary-card">'+
+    '    <div class="pm-primary-title">'+title+'</div>'+
+    (reason ? '    <div class="pm-primary-reason">'+reason+'</div>' : '')+
+    '    <button class="pm-start-btn" onclick="_pmStart(\'recommended\', \''+safeTitle+'\')">▶ Start Practice</button>'+
+    '  </div>'+
+    '</div>';
+}
+
+function _pmRenderSectionB(hasResume) {
+    var resumeChip = hasResume
+        ? '<button class="pm-chip pm-chip-resume" onclick="_pmStart(\'resume\')">🔁 Resume Last Session</button>'
+        : '<button class="pm-chip pm-chip-disabled" disabled title="Available in Wave 2">🔁 Resume Last Session</button>';
+    return ''+
+    '<div class="pm-section pm-section-b">'+
+    '  <div class="pm-section-label">Or choose your focus</div>'+
+    '  <div class="pm-chips">'+
+         resumeChip +
+    '    <button class="pm-chip" onclick="_pmStart(\'gig-prep\')">🎤 Gig Prep</button>'+
+    '    <button class="pm-chip" onclick="_pmShowSongPicker(\'improve\')">🎸 Improve a Song</button>'+
+    '  </div>'+
+    '  <button class="pm-more-btn" onclick="_pmToggleMore(this)">More options ▼</button>'+
+    '  <div class="pm-chips pm-chips-more" hidden>'+
+    '    <button class="pm-chip" onclick="_pmShowSongPicker(\'learn\')">🎶 Learn New Song</button>'+
+    '    <button class="pm-chip" onclick="_pmShowSongPicker(\'harmony\')">🎧 Harmony Practice</button>'+
+    '    <button class="pm-chip" onclick="_pmShowSongPicker(\'chart\')">📄 Lyrics / Chords</button>'+
+    '  </div>'+
+    '</div>';
+}
+
+window._pmStart = function _pmStart(focusType, songTitle) {
+    if (focusType === 'recommended' && songTitle) {
+        if (typeof openRehearsalMode === 'function') openRehearsalMode(songTitle);
+        return;
+    }
+    if (focusType === 'gig-prep') {
+        _pmStartGigPrep();
+        return;
+    }
+    if (focusType === 'resume') {
+        // Wave 2 — placeholder; chip is rendered disabled in Wave 1.
+        if (typeof showToast === 'function') showToast('Resume lands in Wave 2');
+        return;
+    }
+    if (songTitle && typeof openRehearsalMode === 'function') {
+        openRehearsalMode(songTitle);
+    }
+};
+
+function _pmStartGigPrep() {
     var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
     var songList = typeof allSongs !== 'undefined' ? allSongs : [];
-    // Re-derive (fast, sync) using cached status
     var statusMap = {};
     try {
         var cached = (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
         Object.keys(cached).forEach(function(k) { statusMap[k] = (cached[k] || '').toLowerCase().replace(/\s+/g,'_'); });
     } catch(e) {}
-    var today = _pmGetTodayPracticeSongs(songList, statusMap, rc);
-    if (!today.length) { if (typeof showToast === 'function') showToast('No songs to practice'); return; }
-    if (today.length === 1) {
-        if (typeof openRehearsalMode === 'function') openRehearsalMode(today[0].title);
+    var queue = _pmGetTodayPracticeSongs(songList, statusMap, rc);
+    if (!queue.length) {
+        if (typeof showToast === 'function') showToast('No songs flagged for gig prep right now');
         return;
     }
-    var queue = today.map(function(s) {
+    if (queue.length === 1) {
+        if (typeof openRehearsalMode === 'function') openRehearsalMode(queue[0].title);
+        return;
+    }
+    var queueObjs = queue.map(function(s) {
         var songObj = songList.find(function(x){ return x.title === s.title; });
         return { title: s.title, band: songObj ? (songObj.band || '') : '' };
     });
-    if (typeof openRehearsalModeWithQueue === 'function') openRehearsalModeWithQueue(queue);
+    if (typeof openRehearsalModeWithQueue === 'function') {
+        openRehearsalModeWithQueue(queueObjs);
+    } else if (typeof openRehearsalMode === 'function') {
+        openRehearsalMode(queue[0].title);
+    }
+}
+
+window._pmToggleMore = function _pmToggleMore(btn) {
+    var more = btn.nextElementSibling;
+    if (!more) return;
+    var hidden = more.hasAttribute('hidden');
+    if (hidden) {
+        more.removeAttribute('hidden');
+        btn.textContent = 'Fewer options ▲';
+    } else {
+        more.setAttribute('hidden', '');
+        btn.textContent = 'More options ▼';
+    }
 };
 
-async function _fillPracticeWeakSongs() {
-    var el = document.getElementById('practice-weak-songs');
-    if (!el) return;
-    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
-    if (!Object.keys(rc).length) return;
-    var THRESH = 3, now = Date.now(), actLog = [], lastSeen = {};
-    try { actLog = await window.loadMasterFile('_master_activity_log.json') || []; } catch(e) {}
-    var ACTS = {practice_track:1,readiness_set:1,rehearsal_note:1,harmony_add:1,harmony_edit:1,part_notes:1};
-    (Array.isArray(actLog)?actLog:[]).forEach(function(e){
-        if(!e||!e.song||!e.time||!ACTS[e.action])return;
-        var t=new Date(e.time).getTime();
-        if(!isNaN(t)&&(!lastSeen[e.song]||t>lastSeen[e.song]))lastSeen[e.song]=t;
-    });
-    var scored=[];
-    Object.keys(rc).forEach(function(title){
-        if(typeof isStructuralTitle==='function'&&isStructuralTitle(title))return;
-        var ratings=rc[title];
-        var keys=Object.keys(ratings).filter(function(k){return typeof ratings[k]==='number'&&ratings[k]>0;});
-        if(!keys.length)return;
-        var avg=keys.reduce(function(s,k){return s+ratings[k];},0)/keys.length;
-        if(avg>=THRESH)return;
-        if(!_pmIsActive(title))return;
-        var ds=lastSeen[title]?Math.floor((now-lastSeen[title])/86400000):null;
-        scored.push({title:title,avg:avg,score:Math.max(0,THRESH-avg)*2+(ds===null?3:ds>21?Math.min(3,Math.floor(ds/7)):0)});
-    });
-    scored.sort(function(a,b){return b.score-a.score;});
-    var top=scored.slice(0,5);
-    if(!top.length) return;
-    el.innerHTML='<div class="app-card" style="margin-bottom:16px">'+
-        '<div style="font-weight:700;font-size:0.95em;margin-bottom:12px">⚠️ Weakest Songs — Work These First</div>'+
-        top.map(function(s){
-            return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.05);cursor:pointer"'+
-                   ' onclick="selectSong(\''+s.title.replace(/'/g,"\\'")+'\')">'+
-                   '<div style="flex:1;font-size:0.88em;color:var(--text)">'+s.title+'</div>'+
-                   '<div style="font-size:0.78em;color:'+(s.avg<2?'#f87171':'#fbbf24')+';font-weight:700">avg '+s.avg.toFixed(1)+'</div>'+
-                   '</div>';
-        }).join('')+
-        '</div>';
-}
+window._pmShowSongPicker = function _pmShowSongPicker(focusType) {
+    var songList = typeof allSongs !== 'undefined' ? allSongs : [];
+    var statusMap = {};
+    try {
+        var cached = (typeof GLStore !== 'undefined' && GLStore.getAllStatus) ? GLStore.getAllStatus() : {};
+        Object.keys(cached).forEach(function(k) { statusMap[k] = (cached[k] || '').toLowerCase().replace(/\s+/g,'_'); });
+    } catch(e) {}
 
-async function _fillPracticeReadiness() {
-    var el = document.getElementById('practice-readiness-list');
-    if (!el) return;
-    var rc = (typeof GLStore !== 'undefined') ? GLStore.getAllReadiness() : {};
-    var myKey = typeof getCurrentMemberReadinessKey === 'function' ? getCurrentMemberReadinessKey() : null;
-    if (!myKey) {
-        el.innerHTML='<div style="font-size:0.82em;color:var(--text-dim);text-align:center;padding:8px">Sign in to see your readiness scores.</div>';
-        return;
-    }
-    var songs = typeof allSongs !== 'undefined' ? allSongs : [];
-    var rows = songs.map(function(s){return{title:s.title,score:((rc[s.title]||{})[myKey]||0)};})
-        .filter(function(r){return r.score>0 && _pmIsActive(r.title);})
-        .sort(function(a,b){return a.score-b.score;})
-        .slice(0,8);
-    if (!rows.length) {
-        el.innerHTML='<div style="font-size:0.82em;color:var(--text-dim);text-align:center;padding:8px">No readiness data yet.</div>';
-        return;
-    }
-    el.innerHTML=rows.map(function(r){
-        var pct=(r.score/5)*100;
-        var color=r.score>=4?'#4ade80':r.score>=3?'#fbbf24':'#f87171';
-        return '<div style="margin-bottom:8px">'+
-               '<div style="display:flex;justify-content:space-between;font-size:0.82em;margin-bottom:3px">'+
-               '<span style="color:var(--text);cursor:pointer" onclick="selectSong(\''+r.title.replace(/'/g,"\\'")+'\')">'+r.title+'</span>'+
-               '<span style="color:'+color+';font-weight:700">'+r.score+'/5</span></div>'+
-               '<div style="height:4px;background:rgba(255,255,255,0.07);border-radius:2px">'+
-               '<div style="height:4px;width:'+pct+'%;background:'+color+';border-radius:2px;transition:width 0.4s ease"></div>'+
-               '</div></div>';
+    var filtered = songList.filter(function(s) {
+        if (typeof isStructuralTitle === 'function' && isStructuralTitle(s.title)) return false;
+        if (focusType === 'learn') {
+            var st = statusMap[s.title];
+            return st === 'learning' || st === 'prospect' || st === 'wip' || st === 'on_deck' || st === 'onDeck';
+        }
+        return _pmIsActive(s.title);
+    });
+    filtered.sort(function(a, b) { return (a.title || '').localeCompare(b.title || ''); });
+
+    var titleLabel = ({
+        improve: 'Improve a Song',
+        learn:   'Learn a New Song',
+        harmony: 'Harmony Practice',
+        chart:   'Lyrics / Chords'
+    })[focusType] || 'Choose a Song';
+
+    var existing = document.getElementById('pmSongPickerOverlay');
+    if (existing) existing.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'pmSongPickerOverlay';
+    overlay.className = 'modal-overlay pm-picker-overlay';
+    overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+    var rows = filtered.map(function(s) {
+        var safe = s.title.replace(/'/g, "\\'");
+        var t = window.escHtml ? window.escHtml(s.title) : s.title;
+        var b = window.escHtml ? window.escHtml(s.band || '') : (s.band || '');
+        return '<div class="pm-picker-row" onclick="_pmPickerSelect(\''+focusType+'\',\''+safe+'\')">'+
+               (b ? '<span class="pm-picker-band">'+b+'</span>' : '')+
+               '<span class="pm-picker-title">'+t+'</span></div>';
     }).join('');
-}
+
+    overlay.innerHTML =
+        '<div class="pm-picker-modal">'+
+        '  <div class="pm-picker-header">'+
+        '    <div class="pm-picker-title-h">'+titleLabel+'</div>'+
+        '    <button class="pm-picker-close" onclick="document.getElementById(\'pmSongPickerOverlay\').remove()">✕</button>'+
+        '  </div>'+
+        '  <input class="pm-picker-search" type="text" placeholder="Search…" oninput="_pmPickerFilter(this.value)">'+
+        '  <div class="pm-picker-list" id="pmPickerList">'+
+            (rows || '<div class="pm-picker-empty">No matching songs.</div>')+
+        '  </div>'+
+        '</div>';
+
+    document.body.appendChild(overlay);
+    setTimeout(function() {
+        var input = overlay.querySelector('.pm-picker-search');
+        if (input) input.focus();
+    }, 50);
+};
+
+window._pmPickerSelect = function _pmPickerSelect(focusType, songTitle) {
+    var overlay = document.getElementById('pmSongPickerOverlay');
+    if (overlay) overlay.remove();
+    // Wave 1: all focus types just open rehearsal mode; Wave 2 will pre-configure
+    // loop region, stems mix, and notes/lyrics visibility per focusType.
+    if (typeof openRehearsalMode === 'function') openRehearsalMode(songTitle);
+};
+
+window._pmPickerFilter = function _pmPickerFilter(query) {
+    var q = (query || '').toLowerCase();
+    var rows = document.querySelectorAll('#pmPickerList .pm-picker-row');
+    rows.forEach(function(row) {
+        var text = (row.textContent || '').toLowerCase();
+        row.style.display = !q || text.indexOf(q) !== -1 ? '' : 'none';
+    });
+};
 
 // ── Mixes Tab ─────────────────────────────────────────────────────────────────
 async function _pmRenderMixesTab() {
@@ -712,9 +729,64 @@ function _pmInjectStyles(){
     /* Individual tab */
     '.pm-tab{flex:1;padding:12px 8px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--text-muted,#94a3b8);cursor:pointer;font-weight:700;font-size:0.88em;transition:all 0.15s;font-family:inherit;-webkit-appearance:none;appearance:none;text-align:center;}'+
     '.pm-tab:hover{color:var(--text,#f1f5f9);background:rgba(255,255,255,0.04);}'+
-    '.pm-tab--active{color:var(--accent,#667eea)!important;border-bottom-color:var(--accent,#667eea)!important;background:transparent!important;-webkit-text-fill-color:var(--accent,#667eea)!important;}';
+    '.pm-tab--active{color:var(--accent,#667eea)!important;border-bottom-color:var(--accent,#667eea)!important;background:transparent!important;-webkit-text-fill-color:var(--accent,#667eea)!important;}'+
+    /* Entry screen — Section A (recommended) + Section B (alternatives) */
+    '.pm-section{margin-bottom:24px;}'+
+    '.pm-section-label{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim,#94a3b8);margin-bottom:10px;}'+
+    /* Section A — primary recommendation card */
+    '.pm-section-a .pm-primary-card{background:linear-gradient(135deg,rgba(102,126,234,0.12),rgba(118,75,162,0.08));border:1px solid rgba(102,126,234,0.25);border-radius:14px;padding:20px 20px 18px;}'+
+    '.pm-primary-title{font-size:1.4em;font-weight:800;color:var(--text,#f1f5f9);line-height:1.2;margin-bottom:6px;letter-spacing:-0.01em;}'+
+    '.pm-primary-reason{font-size:0.88em;color:var(--text-dim,#94a3b8);line-height:1.4;margin-bottom:16px;}'+
+    '.pm-start-btn{width:100%;padding:14px 18px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-weight:800;font-size:1em;cursor:pointer;font-family:inherit;letter-spacing:0.02em;box-shadow:0 4px 16px rgba(102,126,234,0.32);transition:transform 0.1s ease,box-shadow 0.15s ease;}'+
+    '.pm-start-btn:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(102,126,234,0.45);}'+
+    '.pm-start-btn:active{transform:translateY(0);}'+
+    /* Empty state */
+    '.pm-empty-card{background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:14px;padding:28px 20px;text-align:center;}'+
+    '.pm-empty-emoji{font-size:2em;margin-bottom:8px;opacity:0.6;}'+
+    '.pm-empty-msg{font-weight:700;color:var(--text,#f1f5f9);margin-bottom:4px;}'+
+    '.pm-empty-sub{font-size:0.85em;color:var(--text-dim,#94a3b8);}'+
+    /* Section B — focus chips */
+    '.pm-chips{display:flex;flex-wrap:wrap;gap:8px;}'+
+    '.pm-chips-more{margin-top:8px;}'+
+    '.pm-chip{flex:1 1 calc(50% - 4px);min-width:140px;padding:11px 14px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;color:var(--text,#f1f5f9);cursor:pointer;font-weight:600;font-size:0.86em;font-family:inherit;text-align:left;transition:background 0.12s ease,border-color 0.12s ease;-webkit-appearance:none;appearance:none;}'+
+    '.pm-chip:hover:not(:disabled){background:rgba(102,126,234,0.1);border-color:rgba(102,126,234,0.3);}'+
+    '.pm-chip-disabled{opacity:0.42;cursor:not-allowed;}'+
+    '.pm-chip-resume{background:rgba(34,197,94,0.08);border-color:rgba(34,197,94,0.25);}'+
+    '.pm-chip-resume:hover{background:rgba(34,197,94,0.15);border-color:rgba(34,197,94,0.4);}'+
+    '.pm-more-btn{display:block;margin:12px auto 0;padding:6px 14px;background:transparent;border:none;color:var(--text-dim,#94a3b8);cursor:pointer;font-size:0.78em;font-family:inherit;font-weight:600;letter-spacing:0.02em;}'+
+    '.pm-more-btn:hover{color:var(--text,#f1f5f9);}'+
+    /* Song picker modal */
+    '.pm-picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;}'+
+    '.pm-picker-modal{background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.1);border-radius:14px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;}'+
+    '.pm-picker-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06);}'+
+    '.pm-picker-title-h{font-weight:800;font-size:1.05em;color:var(--text,#f1f5f9);}'+
+    '.pm-picker-close{background:transparent;border:none;color:var(--text-dim,#94a3b8);font-size:1.2em;cursor:pointer;padding:4px 10px;font-family:inherit;}'+
+    '.pm-picker-close:hover{color:var(--text,#f1f5f9);}'+
+    '.pm-picker-search{margin:12px 16px 0;padding:10px 12px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text,#f1f5f9);font-family:inherit;font-size:0.9em;}'+
+    '.pm-picker-search:focus{outline:none;border-color:rgba(102,126,234,0.5);}'+
+    '.pm-picker-list{flex:1;overflow-y:auto;padding:8px 0;margin-top:8px;}'+
+    '.pm-picker-row{display:flex;align-items:center;gap:10px;padding:10px 18px;cursor:pointer;font-size:0.9em;}'+
+    '.pm-picker-row:hover{background:rgba(102,126,234,0.08);}'+
+    '.pm-picker-band{color:var(--text-dim,#94a3b8);font-size:0.78em;min-width:36px;flex-shrink:0;}'+
+    '.pm-picker-title{flex:1;color:var(--text,#f1f5f9);}'+
+    '.pm-picker-empty{padding:24px;text-align:center;color:var(--text-dim,#94a3b8);font-size:0.88em;}';
     document.head.appendChild(s);
 }
 
 window.renderPracticePage = renderPracticePage;
 window.loadSongStatusMap  = loadSongStatusMap;
+
+// ── Live re-render on focus changes ──────────────────────────────────────────
+// Section A reads getNowFocus() — if readiness changes elsewhere (rehearsal
+// scoring, status flip, etc.) the focus engine emits 'focusChanged' and we
+// re-render the entry screen so the recommendation stays current. Only
+// re-render when Practice is the visible page and Focus is the active tab.
+if (typeof GLStore !== 'undefined' && GLStore.on) {
+    GLStore.on('focusChanged', function() {
+        if (typeof currentPage !== 'undefined' && currentPage !== 'practice') return;
+        if (_pmTab !== 'focus') return;
+        var el = document.getElementById('pm-panel-focus');
+        if (!el) return;
+        _pmRenderFocusTab();
+    });
+}
