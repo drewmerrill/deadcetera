@@ -147,19 +147,16 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   pre.mermaid { background: transparent !important; }
-  /* Don't override the inner-div size — mermaid measures the label first,
-     then sizes the rect. Adding padding/min-width AFTER measurement makes
-     the div spill outside the rect (the previous bug). Just let labels
-     wrap normally and stay inside their pre-measured box. */
+  /* CRITICAL: do NOT override font-size, line-height, padding, or min-width
+     on .nodeLabel / foreignObject children. Mermaid measures the label
+     during layout to size the rect; any post-measurement override pushes
+     content outside the box. The only safe override is white-space:normal
+     (so multi-word labels can wrap if mermaid measured them as wrapped). */
   .mermaid svg { overflow: visible !important; max-width: none !important; height: auto !important; }
   .mermaid foreignObject { overflow: visible !important; }
   .mermaid .nodeLabel,
   .mermaid .nodeLabel p,
-  .mermaid foreignObject > div {
-    white-space: normal !important;
-    line-height: 1.35 !important;
-    font-weight: 500;
-  }
+  .mermaid foreignObject > div { white-space: normal !important; }
   .mermaid .label foreignObject { display: block; }
   /* Visual polish on every node — rounded corners, soft glow, crisper border. */
   .mermaid .node rect,
@@ -213,6 +210,20 @@
   .mermaid .flowchart-link,
   .mermaid path.path { stroke-width: 1.6px !important; opacity: 0.65; }
   .mermaid .flowchart-link:hover { opacity: 1; stroke-width: 2.5px !important; }
+  /* Click-to-trace: nodes are clickable; once a node is "focused" the
+     non-related nodes/edges fade out and related ones stay full-opacity. */
+  .mermaid .node { cursor: pointer; transition: opacity 0.18s ease; }
+  .mermaid .gl-trace-active .node:not(.gl-keep) { opacity: 0.12; }
+  .mermaid .gl-trace-active .edgePath:not(.gl-keep) { opacity: 0.06 !important; }
+  .mermaid .gl-trace-active .edgeLabel:not(.gl-keep) { opacity: 0.15; }
+  .mermaid .gl-trace-active .node.gl-keep,
+  .mermaid .gl-trace-active .edgePath.gl-keep { opacity: 1 !important; }
+  .mermaid .gl-trace-active .edgePath.gl-keep path { stroke-width: 2.6px !important; opacity: 1 !important; }
+  .mermaid .gl-trace-active .node.gl-source rect,
+  .mermaid .gl-trace-active .node.gl-source polygon,
+  .mermaid .gl-trace-active .node.gl-source circle {
+    filter: drop-shadow(0 0 14px currentColor) drop-shadow(0 0 4px rgba(255,255,255,0.4));
+  }
 
   table.engines {
     width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px;
@@ -402,7 +413,7 @@
 <!-- ===================================================================== -->
 <section id="engines" class="zone">
   <h2>1. Shared engines</h2>
-  <p class="subtitle">Cross-cutting modules behind multiple screens. A bug in any of these cascades. Sorted by reach (engines feeding the most screens are the most load-bearing).</p>
+  <p class="subtitle">Cross-cutting modules behind multiple screens. A bug in any of these cascades. Sorted by reach. <strong style="color:#a78bfa">Each engine + its outgoing arrows share a color.</strong> <strong style="color:#34d399">Click any box</strong> to dim everything except its connected boxes and edges; click empty space to restore.</p>
 
   <div class="legend">
     <span><span class="reach r-all">19+ screens</span> Critical foundation — touches almost everything.</span>
@@ -417,7 +428,7 @@
 %%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':60,'rankSpacing':110,'padding':22} }}%%
 flowchart LR
 
-  subgraph CORE["⚙️ CORE ENGINES (color = engine identity)"]
+  subgraph CORE["⚙️ CORE ENGINES"]
     Store["GLStore<br/>state cache"]
     Lifecycle["GL_PAGE_READY<br/>_navSeq"]
     Focus["Focus engine<br/>getNowFocus"]
@@ -433,7 +444,7 @@ flowchart LR
     Practice["PracticeSession<br/>local + Firebase"]
   end
 
-  subgraph SCREENS["📱 SCREENS (consumer surfaces)"]
+  subgraph SCREENS["📱 SCREENS"]
     Home["🏠 Home Dashboard"]
     Songs["🎵 Songs"]
     SongDetail["🎶 Song Detail"]
@@ -575,7 +586,7 @@ flowchart LR
 <!-- ===================================================================== -->
 <section id="fields" class="zone">
   <h2>2. Field cascades</h2>
-  <p class="subtitle">Eight load-bearing data fields. Touch one → these engines react. Pinpoints what to test when a field changes shape.</p>
+  <p class="subtitle">Eight load-bearing data fields (top) → consumer surfaces that read them (bottom). <strong style="color:#a78bfa">Each field + its outgoing arrows share a color.</strong> <strong style="color:#34d399">Click any field</strong> to isolate its consumers; click empty space to restore.</p>
 
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering field cascade graph…</div>
@@ -583,7 +594,7 @@ flowchart LR
 %%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':22} }}%%
 flowchart TB
 
-  subgraph FIELDS["🔑 LOAD-BEARING FIELDS (top — color = field identity)"]
+  subgraph FIELDS["🔑 LOAD-BEARING FIELDS"]
     F1["song.title"]
     F2["song.status"]
     F3["song.bpm + key"]
@@ -594,7 +605,7 @@ flowchart TB
     F8["meta build-version"]
   end
 
-  subgraph CONSUMERS["🎯 CONSUMERS (bottom — surfaces that read these fields)"]
+  subgraph CONSUMERS["🎯 CONSUMERS"]
     Charts["Charts<br/>9+ paths"]
     Active["GLStore.isActiveSong<br/>scope filter"]
     Pacing["Rehearsal pacing<br/>+ Pocket Meter"]
@@ -915,11 +926,114 @@ flowchart TB
       });
       await window.mermaid.run({ querySelector: 'pre.mermaid' });
       hideAll();
+      // Click-to-trace: clicking a node dims everything that's not on
+      // its outgoing/incoming edge path. Click empty space (or the node
+      // again) to restore full view.
+      setupNodeClickFiltering();
     } catch (err) {
       console.error('[deep-dive] mermaid render failed:', err);
       showFallback(String(err && err.message || err));
     }
   })();
+
+  // ── Click-to-trace: per-SVG, walk nodes + edges, attach handlers ──
+  function setupNodeClickFiltering() {
+    document.querySelectorAll('.mermaid svg').forEach(svg => {
+      const nodes = Array.from(svg.querySelectorAll('g.node'));
+      const edges = Array.from(svg.querySelectorAll('g.edgePath'));
+      const edgeLabels = Array.from(svg.querySelectorAll('.edgeLabel'));
+      if (!nodes.length || !edges.length) return;
+
+      // Extract a node's logical name from its SVG id.
+      // Mermaid v10 ids look like "flowchart-Store-1" → "Store".
+      // Underscored names are preserved (e.g. "GL_PAGE_READY").
+      function nodeName(n) {
+        const id = n.id || '';
+        const m = id.match(/^flowchart-(.+)-\d+$/);
+        return m ? m[1] : id;
+      }
+      // Mermaid puts source/target node names into edge classList as
+      // "LS-{source}" and "LE-{target}". Parse them out.
+      function edgeEndpoints(e) {
+        const cls = (e.getAttribute('class') || '').split(/\s+/);
+        let source = null, target = null;
+        for (const c of cls) {
+          if (c.startsWith('LS-')) source = c.slice(3);
+          else if (c.startsWith('LE-')) target = c.slice(3);
+        }
+        // Fallback: try to parse the id (format L-source-target-N)
+        if ((!source || !target) && e.id) {
+          const m = e.id.match(/^L-([^-]+)-([^-]+)-/);
+          if (m) { source = source || m[1]; target = target || m[2]; }
+        }
+        return { source, target };
+      }
+
+      // Build adjacency: nodeName → { outEdges:[], inEdges:[], outNodes:Set, inNodes:Set }
+      const adj = new Map();
+      function ensure(n) {
+        if (!adj.has(n)) adj.set(n, { outEdges: [], inEdges: [], outNodes: new Set(), inNodes: new Set() });
+        return adj.get(n);
+      }
+      const edgeMeta = new Map(); // edge element → endpoints
+      edges.forEach(e => {
+        const ep = edgeEndpoints(e);
+        edgeMeta.set(e, ep);
+        if (ep.source) {
+          ensure(ep.source).outEdges.push(e);
+          if (ep.target) ensure(ep.source).outNodes.add(ep.target);
+        }
+        if (ep.target) {
+          ensure(ep.target).inEdges.push(e);
+          if (ep.source) ensure(ep.target).inNodes.add(ep.source);
+        }
+      });
+
+      // Map name → node element so we can highlight target nodes
+      const nodeByName = new Map();
+      nodes.forEach(n => nodeByName.set(nodeName(n), n));
+
+      function clearTrace() {
+        svg.classList.remove('gl-trace-active');
+        svg.querySelectorAll('.gl-keep, .gl-source').forEach(el => {
+          el.classList.remove('gl-keep', 'gl-source');
+        });
+      }
+
+      function focusNode(node) {
+        const name = nodeName(node);
+        const a = adj.get(name) || { outEdges: [], inEdges: [], outNodes: new Set(), inNodes: new Set() };
+        clearTrace();
+        svg.classList.add('gl-trace-active');
+        node.classList.add('gl-keep', 'gl-source');
+        a.outNodes.forEach(n => { const el = nodeByName.get(n); if (el) el.classList.add('gl-keep'); });
+        a.inNodes.forEach(n => { const el = nodeByName.get(n); if (el) el.classList.add('gl-keep'); });
+        a.outEdges.forEach(e => e.classList.add('gl-keep'));
+        a.inEdges.forEach(e => e.classList.add('gl-keep'));
+        // Edge labels too — match by source/target endpoints (same parser)
+        edgeLabels.forEach(el => {
+          const text = el.textContent || '';
+          // edgeLabels are unlabeled in our diagrams, no-op safe
+        });
+      }
+
+      nodes.forEach(node => {
+        node.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const wasSource = node.classList.contains('gl-source');
+          if (wasSource) clearTrace();
+          else focusNode(node);
+        });
+      });
+
+      // Click anywhere else inside the SVG (background) to clear.
+      svg.addEventListener('click', clearTrace);
+      // Keyboard ESC also clears
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') clearTrace();
+      });
+    });
+  }
 
   // Active TOC highlighting — deterministic scroll-spy.
   //
