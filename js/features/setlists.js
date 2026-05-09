@@ -2002,15 +2002,19 @@ function parachuteBuildHtml(sl, songs) {
     var totalSongs = songs.length;
 
     // \u2500\u2500 Pick column count + font size for the front-page summary \u2500\u2500
-    // Goal: largest font that still fits all songs on one page in N columns.
-    // Letter @ 0.4" margin gives ~9.6" usable height. Per-row footprint:
-    // padding (top/bot) + line-height. Trial-and-error tiers.
+    // Goal: FILL the page. Earlier tiers were too conservative \u2014 a 22-song
+    // setlist at 15pt left ~40% of the page blank. Bumped fonts so the
+    // summary acts like a real "stage list" rather than a tiny index.
+    // Letter @ 0.4" margin gives ~9.6" usable height; per-row footprint
+    // \u2248 fontPt \u00d7 1.667 + 6px padding. Tiers leave ~10% safety margin.
     var summaryCols, summaryFont;
-    if (totalSongs <= 14)      { summaryCols = 2; summaryFont = 18; }
-    else if (totalSongs <= 22) { summaryCols = 2; summaryFont = 15; }
-    else if (totalSongs <= 32) { summaryCols = 3; summaryFont = 14; }
-    else if (totalSongs <= 48) { summaryCols = 3; summaryFont = 12; }
-    else                       { summaryCols = 4; summaryFont = 11; }
+    if (totalSongs <= 6)       { summaryCols = 1; summaryFont = 36; }
+    else if (totalSongs <= 12) { summaryCols = 1; summaryFont = 26; }
+    else if (totalSongs <= 22) { summaryCols = 2; summaryFont = 26; }
+    else if (totalSongs <= 32) { summaryCols = 2; summaryFont = 18; }
+    else if (totalSongs <= 44) { summaryCols = 3; summaryFont = 16; }
+    else if (totalSongs <= 60) { summaryCols = 3; summaryFont = 13; }
+    else                       { summaryCols = 4; summaryFont = 12; }
 
     var h = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+_esc(name)+' \u2014 Gig Pack</title>';
     h += '<style>';
@@ -2024,7 +2028,7 @@ function parachuteBuildHtml(sl, songs) {
     h += '.summary-name{font-size:26pt;font-weight:900;line-height:1.05;margin:0;letter-spacing:-0.01em}';
     h += '.summary-meta{font-size:11pt;color:#444;margin-top:3px;font-weight:600}';
     h += '.summary-body{flex:1 1 auto}';
-    h += '.summary-cols{column-count:'+summaryCols+';column-gap:22px;column-rule:1px solid #ddd}';
+    h += '.summary-cols{column-count:'+summaryCols+';column-gap:22px;'+(summaryCols>1?'column-rule:1px solid #ddd':'')+'}';
     h += '.summary-set{font-weight:900;text-transform:uppercase;letter-spacing:0.04em;background:#000;color:#fff;padding:4px 9px;margin:0 0 6px;border-radius:3px;break-after:avoid;break-inside:avoid;font-size:'+(summaryFont-3)+'pt}';
     h += '.summary-set:not(:first-child){margin-top:10px}';
     h += '.summary-row{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid #e0e0e0;break-inside:avoid;font-size:'+summaryFont+'pt;line-height:1.25}';
