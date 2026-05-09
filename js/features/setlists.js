@@ -1898,13 +1898,14 @@ function _slShowShareModal(sl, idx) {
         } catch(e) {}
     }
 
-    // 6 actions in a 2-column grid — single-line labels, full detail in tooltips
+    // 7 actions in a 2-column grid — single-line labels, full detail in tooltips
     html += '<div style="' + _btnGrid + '">';
     html += '<button onclick="slShareCopyText()" title="Copy a plain-text version of the setlist to your clipboard" style="' + _btnPri + '">📋 Copy as text</button>';
     html += '<button onclick="parachutePublicUrl(' + idx + ')" title="Generate a short public URL anyone can open without signing in" style="' + _btnPri + '">🔗 Copy public link</button>';
     html += '<button onclick="parachuteCacheOffline(' + idx + ')" title="Cache all charts locally so the gig pack survives no WiFi at the venue" style="' + _btnSec + '">💾 Cache offline</button>';
     html += '<button onclick="parachuteEmail(' + idx + ')" title="Email the gig pack as HTML to yourself" style="' + _btnSec + '">📧 Email to myself</button>';
-    html += '<button onclick="parachutePrint(' + idx + ')" title="Open a print-ready PDF of all charts (good for Kinkos)" style="' + _btnPrint + ';grid-column:1/-1">🖨️ Print / PDF — all charts</button>';
+    html += '<button onclick="parachutePrintSetlistBig(' + idx + ')" title="Big-font setlist (titles, key, BPM only). One set per page — fits a 2-set show on one duplex sheet. Stage-readable at arms length." style="' + _btnPrint + '">🖨️ Print setlist (big font)</button>';
+    html += '<button onclick="parachutePrint(' + idx + ')" title="Print every chord chart for the whole setlist. Good for Kinkos / a binder." style="' + _btnPrint + '">📚 Print all charts</button>';
     html += '</div>';
 
     // Setlist preview (collapsible, default closed, at the bottom so it
@@ -2067,6 +2068,123 @@ async function parachutePrint(slIdx) {
     win.document.close();
     win.focus();
     setTimeout(function(){win.print();}, 600);
+}
+
+// Big-font setlist printout \u2014 gig-stage readable, NOT the full chart pack.
+// Each set gets its own page (page-break-after) so a 2-set show prints on
+// one duplex sheet (Set 1 front, Set 2 back). Built per a band-member
+// request: "make an additional gig formatted setlist page that had a much
+// bigger font, include the tempo, and be printed front and back."
+async function parachutePrintSetlistBig(slIdx) {
+    document.getElementById('slShareModal')?.remove();
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists')||[]);
+    var sl = setlists[slIdx];
+    if (!sl) { showToast('Setlist not found'); return; }
+
+    function _esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+    var name = sl.name || 'Setlist';
+    var date = sl.date || '';
+    var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
+
+    var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'
+        + _esc(name) + ' \u2014 Gig Setlist</title><style>'
+        + '@page { size: letter; margin: 0.5in; }'
+        + 'html, body { margin: 0; padding: 0; color: #000; background: #fff; '
+        +   'font-family: Helvetica, Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }'
+        + '.page { padding: 24px 28px; page-break-after: always; min-height: calc(100vh - 1in); }'
+        + '.page:last-child { page-break-after: auto; }'
+        + '.show-header { border-bottom: 4px solid #000; padding-bottom: 10px; margin-bottom: 18px; }'
+        + '.show-name { font-size: 32pt; font-weight: 900; line-height: 1.05; margin: 0; letter-spacing: -0.01em; }'
+        + '.show-meta { font-size: 13pt; color: #444; margin-top: 4px; font-weight: 600; }'
+        + '.set-name { font-size: 22pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; '
+        +   'background: #000; color: #fff; padding: 8px 14px; margin: 0 0 16px; border-radius: 4px; }'
+        + '.song-row { display: flex; align-items: baseline; gap: 14px; padding: 9px 0; '
+        +   'border-bottom: 1px solid #d0d0d0; page-break-inside: avoid; }'
+        + '.song-num { font-size: 18pt; font-weight: 800; color: #666; min-width: 36px; text-align: right; }'
+        + '.song-title { font-size: 22pt; font-weight: 700; flex: 1; line-height: 1.2; word-break: break-word; }'
+        + '.song-segue { color: #888; font-weight: 500; margin-left: 4px; font-size: 18pt; }'
+        + '.song-meta { font-size: 16pt; font-weight: 700; color: #000; white-space: nowrap; '
+        +   'background: #f0f0f0; padding: 3px 10px; border-radius: 6px; border: 1px solid #999; }'
+        + '.song-meta .key { color: #1a1a1a; }'
+        + '.song-meta .bpm { color: #444; }'
+        + '.song-meta .sep { color: #999; margin: 0 4px; font-weight: 400; }'
+        + '.page-footer { margin-top: 18px; font-size: 10pt; color: #888; text-align: center; '
+        +   'border-top: 1px solid #ddd; padding-top: 8px; }'
+        + '.empty { font-size: 14pt; color: #888; padding: 12px 0; font-style: italic; }'
+        + '@media print { .no-print { display: none; } }'
+        + '.no-print { background: #fffbe6; border-bottom: 2px solid #fbbf24; padding: 10px 16px; '
+        +   'font-family: -apple-system, sans-serif; font-size: 13px; color: #78350f; text-align: center; }'
+        + '.no-print button { margin-left: 12px; padding: 6px 14px; background: #fbbf24; border: none; '
+        +   'border-radius: 6px; font-weight: 700; cursor: pointer; }'
+        + '</style></head><body>';
+
+    // Banner shown only on screen (not print) explaining the duplex tip
+    html += '<div class="no-print">'
+        + '\ud83d\udda8 In your printer dialog, choose <strong>"Print on both sides"</strong> '
+        + '(or "duplex") to fit a 2-set show on a single sheet. '
+        + '<button onclick="window.print()">Print now</button>'
+        + '</div>';
+
+    var sets = sl.sets || [];
+    if (!sets.length) {
+        html += '<div class="page"><div class="empty">No sets in this setlist yet.</div></div>';
+    } else {
+        sets.forEach(function(set, si) {
+            var setName = set.name || ('Set ' + (si + 1));
+            var setSongs = set.songs || [];
+            html += '<div class="page">';
+            // Show header only on first page; later pages get a smaller continuation header
+            if (si === 0) {
+                html += '<div class="show-header">'
+                    + '<h1 class="show-name">' + _esc(name) + '</h1>'
+                    + (date ? '<div class="show-meta">' + _esc(date) + ' \u00b7 ' + sets.length + (sets.length === 1 ? ' set' : ' sets') + '</div>' : '')
+                    + '</div>';
+            }
+            html += '<div class="set-name">' + _esc(setName) + '</div>';
+
+            if (!setSongs.length) {
+                html += '<div class="empty">(no songs in this set)</div>';
+            } else {
+                setSongs.forEach(function(item, i) {
+                    var title = typeof item === 'string' ? item : (item.title || '');
+                    var segue = (typeof item === 'object' && item.segue && item.segue !== 'stop') ? item.segue : '';
+                    var segArrow = segue === 'flow' ? ' \u2192' : (segue === 'segue' ? ' ~' : (segue === 'cutoff' ? ' |' : ''));
+                    var sd = allSongsList.find(function(a){ return a.title === title; }) || {};
+                    var key = sd.key || (typeof item === 'object' ? item.key : '') || '';
+                    var bpm = sd.bpm || (typeof item === 'object' ? item.bpm : '') || '';
+                    var metaPieces = [];
+                    if (key) metaPieces.push('<span class="key">' + _esc(key) + '</span>');
+                    if (bpm) metaPieces.push('<span class="bpm">' + _esc(String(bpm)) + ' bpm</span>');
+                    var meta = metaPieces.length
+                        ? '<span class="song-meta">' + metaPieces.join('<span class="sep">\u00b7</span>') + '</span>'
+                        : '';
+                    html += '<div class="song-row">'
+                        + '<span class="song-num">' + (i + 1) + '.</span>'
+                        + '<span class="song-title">' + _esc(title)
+                        + (segArrow ? '<span class="song-segue">' + segArrow + '</span>' : '')
+                        + '</span>'
+                        + meta
+                        + '</div>';
+                });
+            }
+
+            html += '<div class="page-footer">'
+                + _esc(name) + (date ? ' \u00b7 ' + _esc(date) : '')
+                + ' \u00b7 Set ' + (si + 1) + ' of ' + sets.length
+                + ' \u00b7 GrooveLinx'
+                + '</div>';
+            html += '</div>';
+        });
+    }
+
+    html += '</body></html>';
+    var win = window.open('', '_blank');
+    if (!win) { showToast('Pop-up blocked \u2014 allow pop-ups and try again'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(function(){ win.print(); }, 400);
 }
 
 async function parachuteEmail(slIdx) {
@@ -3143,6 +3261,7 @@ window.slSharePrint = slSharePrint;
 window.parachuteLoadSetlistData = parachuteLoadSetlistData;
 window.parachuteBuildHtml = parachuteBuildHtml;
 window.parachutePrint = parachutePrint;
+window.parachutePrintSetlistBig = parachutePrintSetlistBig;
 window.parachuteEmail = parachuteEmail;
 window.parachutePublicUrl = parachutePublicUrl;
 window.parachuteCheckUrlHash = parachuteCheckUrlHash;
