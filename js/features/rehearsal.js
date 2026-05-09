@@ -462,11 +462,30 @@ async function _rhRenderCommandFlow(el) {
     var _ctaStartPrimary = hasSavedPlan && _gigDays <= 7;
 
     // ── PRIMARY ACTIONS ──
-    // Phase-1+: when no plan exists and we're not in Plan Mode, show the
-    // intent picker INSTEAD of the bare "Plan Next Rehearsal" button.
-    // Each intent button reuses existing logic via the _rhIntent* handlers.
-    var _renderIntentPicker = !_rhPlanningMode && !hasSavedPlan;
+    // Phase 2: page is intent-driven. When NOT in Plan Mode the intent
+    // picker is always the entry surface. If a plan already exists, a
+    // "Continue last plan?" chip pins ABOVE the picker so the user can
+    // resume in one click without the plan dominating the page.
+    var _renderIntentPicker = !_rhPlanningMode;
     if (_renderIntentPicker) {
+        // Continue chip first (only when a plan exists)
+        if (hasSavedPlan && _rhPlanCache) {
+            var _ccUnits = _rhGetUnits() || [];
+            var _ccSongCount = _ccUnits.reduce(function(n, u) {
+                return n + (u.type === 'linked' ? (u.songs || []).length : 1);
+            }, 0);
+            var _ccDefaults = { exercise: 10, business: 15, jam: 10, note: 5, section: 0 };
+            var _ccTotalMin = _ccUnits.reduce(function(sum, u) {
+                var bt = u.type || 'single';
+                if (u.durationMinOverride > 0) return sum + u.durationMinOverride;
+                if (_ccDefaults[bt] !== undefined) return sum + _ccDefaults[bt];
+                return sum + 9;
+            }, 0);
+            var _ccLabel = _ccTotalMin >= 60
+                ? Math.floor(_ccTotalMin / 60) + 'h ' + (_ccTotalMin % 60) + 'm'
+                : _ccTotalMin + 'm';
+            html += _rhRenderContinueChip(_rhPlanCache, _ccSongCount, _ccLabel);
+        }
         var _hasSnapshots = false, _hasSessions = false;
         try { var _snaps = await _rhLoadSnapshots(1); _hasSnapshots = !!(_snaps && _snaps.length); } catch(e) {}
         try { var _sess = _rhSessionsCache || await _rhLoadSessions(); _hasSessions = !!(_sess && _sess.length); } catch(e) {}
@@ -479,9 +498,10 @@ async function _rhRenderCommandFlow(el) {
         });
     }
 
-    html += '<div style="display:flex;gap:10px;margin-bottom:var(--gl-space-md);align-items:center;flex-wrap:wrap">';
+    // Phase 2: action-row only renders in Plan Mode now. The intent picker
+    // + Continue chip (rendered above) cover all not-in-Plan-Mode CTAs.
     if (_rhPlanningMode) {
-        // Plan Mode: planning controls
+        html += '<div style="display:flex;gap:10px;margin-bottom:var(--gl-space-md);align-items:center;flex-wrap:wrap">';
         html += '<button onclick="_rhExitPlanMode()" style="padding:8px 16px;font-size:0.82em;font-weight:700;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.12);background:none;color:var(--gl-text-tertiary);font-family:inherit">\u2190 Back to Review</button>';
         html += '<span id="rhSaveStateTop" style="font-size:0.72em;color:var(--gl-green);font-weight:600"></span>';
         html += '<div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap">';
@@ -489,21 +509,15 @@ async function _rhRenderCommandFlow(el) {
         html += '<button onclick="_rhClearSavedPlan()" style="padding:6px 12px;font-size:0.78em;border-radius:6px;cursor:pointer;border:1px solid rgba(239,68,68,0.15);background:none;color:#f87171;font-family:inherit">Clear Plan</button>';
         html += '<button onclick="_rhLaunchSavedPlan()" class="gl-btn-primary" style="padding:8px 18px;font-size:0.85em;background:linear-gradient(135deg,#667eea,#764ba2)">\u25B6 Start This Plan</button>';
         html += '</div>';
-    } else if (_ctaStartPrimary) {
-        // Gig <=7d + plan exists -- get rehearsing.
-        html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
-        html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-ghost" style="padding:8px 16px;font-size:0.82em">\uD83D\uDCCB Edit Plan</button>';
-    } else if (!_renderIntentPicker) {
-        // Has a saved plan but gig is far/none \u2014 keep the prior button row.
-        // The intent picker (above) handles the truly-empty case.
-        html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\uD83D\uDCCB Plan Next Rehearsal</button>';
-        if (hasSavedPlan) {
-            html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-ghost" style="padding:8px 16px;font-size:0.82em">\u25B6 Start Rehearsal</button>';
-        }
+        html += '</div>';
     }
-    // Context metadata (both modes)
+    // Context metadata (both modes). In Plan Mode this lives inside the
+    // action row above; outside Plan Mode the context-metadata block is
+    // self-contained (Phase 2: action row no longer emits when picker is
+    // the entry surface). The orphan </div> from the old always-emitted
+    // action row was removed when the action row became Plan-Mode-only.
     if (!_rhPlanningMode) {
-        html += '<div style="margin-left:auto;display:flex;gap:var(--gl-space-sm);align-items:center;flex-wrap:wrap">';
+        html += '<div style="display:flex;gap:var(--gl-space-sm);align-items:center;flex-wrap:wrap;margin-bottom:var(--gl-space-md)">';
         if (_gigContext && _gigDays <= 30) {
             var _urgColor = _gigDays <= 3 ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
             html += '<span style="color:' + _urgColor + ';font-size:0.72em">\uD83C\uDFA4 ' + escHtml(_gigContext) + ' \u00B7 ' + _gigDays + 'd</span>';
@@ -513,7 +527,6 @@ async function _rhRenderCommandFlow(el) {
         }
         html += '</div>';
     }
-    html += '</div>';
 
     // Directive headline: tell the user what's actually next instead of an abstract Readiness label.
     if (!_rhPlanningMode) {
@@ -606,6 +619,17 @@ async function _rhRenderCommandFlow(el) {
             return sum + 9;
         }, 0);
         var _preTotalLabel = _preTotalMin >= 60 ? Math.floor(_preTotalMin / 60) + 'h ' + (_preTotalMin % 60) + 'm' : _preTotalMin + 'm';
+
+        // Phase 2: intent badge surfaces "what was this plan built for"
+        // (Run the Gig / Practice Transitions / Work Weak Songs / Custom).
+        // Empty when intent is unknown (legacy plans pre-Phase-2).
+        var _planIntentMeta = (_rhPlanCache && _rhPlanCache.intent)
+            ? _rhPlanIntentMeta(_rhPlanCache.intent)
+            : null;
+        var _planIntentBadge = _planIntentMeta
+            ? '<span title="' + escHtml(_planIntentMeta.label) + '" style="font-size:0.62em;font-weight:700;color:' + _planIntentMeta.color + ';background:rgba(255,255,255,0.04);border:1px solid ' + _planIntentMeta.color + '40;padding:2px 7px;border-radius:10px;text-transform:uppercase;letter-spacing:0.05em;flex-shrink:0">' + _planIntentMeta.emoji + ' ' + escHtml(_planIntentMeta.label) + '</span>'
+            : '';
+
         if (_rhPlanningMode) {
             // ── PLAN MODE: plan is the primary workspace (no collapsible) ──
             html += '<div id="rhPlanWorkspace" style="margin-bottom:12px">';
@@ -618,6 +642,7 @@ async function _rhRenderCommandFlow(el) {
             _planSubCtx += '</div>';
             html += _planSubCtx;
             html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+                + _planIntentBadge
                 + '<span onclick="_rhEditPlanName()" style="font-size:0.88em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
                 + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.65em;padding:3px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
                 + '</div>';
@@ -631,6 +656,7 @@ async function _rhRenderCommandFlow(el) {
                 + '</summary>'
                 + '<div style="padding:4px 14px 12px">'
                 + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+                + _planIntentBadge
                 + '<span onclick="_rhEditPlanName()" style="font-size:0.72em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
                 + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
                 + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.6em;padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear</button>'
@@ -1123,6 +1149,54 @@ window._rhClearSavedPlan = async function() {
 // restore for "Resume Last Plan", existing session timeline for
 // "Review Last Rehearsal". No new systems built.
 
+// Phase 2: intent metadata is the single source of truth for label /
+// emoji / color across the intent picker, plan-card badge, and Continue
+// chip. Keep these definitions in sync with the picker buttons below.
+function _rhPlanIntentMeta(intent) {
+    var defs = {
+        'gig-run':     { label: 'Run the Gig',          emoji: '🎤', color: '#a5b4fc' },
+        'transitions': { label: 'Practice Transitions', emoji: '🔗', color: '#86efac' },
+        'weak':        { label: 'Work Weak Songs',      emoji: '🎯', color: '#fbbf24' },
+        'custom':      { label: 'Custom Plan',          emoji: '📋', color: '#94a3b8' }
+    };
+    return defs[intent] || null;
+}
+
+// Phase 2: canonical plan-naming derived from intent + context. Used by
+// each intent handler so naming stays consistent and the user can tell
+// at a glance what the plan was built for.
+function _rhDerivePlanName(intent, ctx) {
+    if (intent === 'gig-run')     return 'Run ' + ((ctx && ctx.gig && ctx.gig.venue) || 'the Gig');
+    if (intent === 'transitions') return 'Transitions for ' + ((ctx && ctx.gig && ctx.gig.venue) || 'gig');
+    if (intent === 'weak')        return 'Work weak songs (' + ((ctx && ctx.count) || 0) + ')';
+    if (intent === 'custom')      return 'Custom plan';
+    return 'Rehearsal Plan';
+}
+
+// Phase 2: "Continue last plan?" chip pinned above the intent picker
+// when a plan exists. Replaces the old "plan card is the dominant
+// surface" pattern — the page is intent-driven now, the existing plan
+// is a one-click resume affordance, not the entry point.
+function _rhRenderContinueChip(planCache, songCount, durationLabel) {
+    if (!planCache) return '';
+    var intent = planCache.intent || 'custom';
+    var meta = _rhPlanIntentMeta(intent) || _rhPlanIntentMeta('custom');
+    var planName = planCache.name || 'Rehearsal Plan';
+    var html = '<div style="margin-bottom:var(--gl-space-md);padding:12px 16px;border-radius:10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.25);display:flex;align-items:center;gap:12px;flex-wrap:wrap">';
+    html += '<span style="font-size:1.4em;flex-shrink:0">' + meta.emoji + '</span>';
+    html += '<div style="flex:1;min-width:200px">';
+    html += '<div style="font-size:0.7em;font-weight:700;color:' + meta.color + ';text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px">Continue: ' + meta.label + '</div>';
+    html += '<div style="font-size:0.92em;font-weight:700;color:var(--gl-text)">' + escHtml(planName) + '</div>';
+    html += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:2px">' + (songCount || 0) + ' song' + (songCount === 1 ? '' : 's') + ' in plan' + (durationLabel ? ' · ' + durationLabel : '') + '</div>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;flex-shrink:0">';
+    html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:9px 18px;font-size:0.85em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">▶ Start</button>';
+    html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-ghost" style="padding:7px 14px;font-size:0.78em">📋 Edit</button>';
+    html += '</div>';
+    html += '</div>';
+    return html;
+}
+
 function _rhRenderIntentPicker(opts) {
     opts = opts || {};
     var nextGig = opts.nextGig || null;
@@ -1286,8 +1360,12 @@ window._rhIntentRunGig = async function() {
         if (typeof showToast === 'function') showToast('No upcoming gig with setlist');
         return;
     }
-    if (_rhPlanCache) await _rhSaveSnapshot('Before Run the Gig intent');
-    if (_rhPlanCache) _rhPlanCache.name = 'Run ' + (ctx.gig.venue || 'the Gig');
+    if (_rhPlanCache && _rhPlanCache.units && _rhPlanCache.units.length) {
+        await _rhSaveSnapshot('Before Run the Gig intent');
+    }
+    _rhPlanCache = _rhPlanCache || {};
+    _rhPlanCache.intent = 'gig-run';
+    _rhPlanCache.name = _rhDerivePlanName('gig-run', ctx);
     _rhSaveUnits(ctx.units);
     if (typeof showToast === 'function') showToast('▶ Plan loaded with setlist (' + ctx.units.length + ' songs)');
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
@@ -1300,8 +1378,12 @@ window._rhIntentPracticeTransitions = async function() {
         if (typeof showToast === 'function') showToast(ctx.gig ? 'No linked transitions in this setlist' : 'No upcoming gig with setlist');
         return;
     }
-    if (_rhPlanCache) await _rhSaveSnapshot('Before Practice Transitions intent');
-    if (_rhPlanCache) _rhPlanCache.name = 'Transitions for ' + (ctx.gig.venue || 'gig');
+    if (_rhPlanCache && _rhPlanCache.units && _rhPlanCache.units.length) {
+        await _rhSaveSnapshot('Before Practice Transitions intent');
+    }
+    _rhPlanCache = _rhPlanCache || {};
+    _rhPlanCache.intent = 'transitions';
+    _rhPlanCache.name = _rhDerivePlanName('transitions', ctx);
     _rhSaveUnits(ctx.units);
     if (typeof showToast === 'function') showToast('🔗 Plan loaded with ' + ctx.units.length + ' transition' + (ctx.units.length > 1 ? 's' : ''));
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
@@ -1315,11 +1397,15 @@ window._rhIntentWorkWeakSongs = async function() {
         if (typeof showToast === 'function') showToast('No focus songs flagged right now');
         return;
     }
-    if (_rhPlanCache) await _rhSaveSnapshot('Before Work Weak Songs intent');
+    if (_rhPlanCache && _rhPlanCache.units && _rhPlanCache.units.length) {
+        await _rhSaveSnapshot('Before Work Weak Songs intent');
+    }
     var units = list.map(function(s) {
         return { type: 'single', title: s.title, band: s.band || '', block: 'song-work' };
     });
-    if (_rhPlanCache) _rhPlanCache.name = 'Work weak songs (' + list.length + ')';
+    _rhPlanCache = _rhPlanCache || {};
+    _rhPlanCache.intent = 'weak';
+    _rhPlanCache.name = _rhDerivePlanName('weak', { count: list.length });
     _rhSaveUnits(units);
     if (typeof showToast === 'function') showToast('🎯 Plan loaded with ' + list.length + ' focus song' + (list.length > 1 ? 's' : ''));
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
@@ -1330,7 +1416,9 @@ window._rhIntentBuildCustom = function() {
     // Reuse existing wizard / plan-mode entry. _rhOpenPlanMode seeds units
     // from focus if empty, which is the same default the wizard's Step 1
     // would offer. Drew can also click "Edit Structure" to enter the
-    // multi-step wizard from inside Plan Mode.
+    // multi-step wizard from inside Plan Mode. Stamp intent='custom' on
+    // any plan that comes out of this path so the badge is accurate.
+    if (_rhPlanCache && !_rhPlanCache.intent) _rhPlanCache.intent = 'custom';
     if (typeof _rhOpenPlanMode === 'function') return _rhOpenPlanMode();
 };
 
@@ -3554,6 +3642,9 @@ function _rhSaveUnits(units) {
         var plan = _rhPlanCache || {};
         plan.planId = plan.planId || _rhGenPlanId();
         plan.name = plan.name || 'Next Rehearsal';
+        // Phase 2: default intent so plans built without an explicit intent
+        // (e.g. via Plan Mode drag-drop from scratch) still render a badge.
+        plan.intent = plan.intent || 'custom';
         plan.createdAt = plan.createdAt || now;
         plan.createdBy = plan.createdBy || (typeof currentUserEmail !== 'undefined' ? currentUserEmail : '');
         plan.updatedAt = now;
