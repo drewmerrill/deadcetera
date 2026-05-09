@@ -163,7 +163,7 @@
   .mermaid .nodeLabel p,
   .mermaid foreignObject > div {
     white-space: normal !important;
-    min-width: 120px;
+    min-width: 150px;
     text-align: center;
     font-weight: 500;
   }
@@ -327,6 +327,55 @@
   .color-key .ck strong { font-weight: 700; color: var(--text); }
   .color-key .ck span { color: var(--text-dim); font-size: 11px; }
 
+  /* Click-to-describe panel — shown when a node is focused, hidden when
+     trace is cleared. Sits below the diagram-frame so it never blocks
+     arrows. position:sticky pins it to the viewport top while scrolling. */
+  .dd-info-panel {
+    margin-top: 10px;
+    padding: 14px 18px;
+    border: 1px solid rgba(167, 139, 250, 0.35);
+    border-left: 4px solid var(--accent, #a78bfa);
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.92));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    font-size: 13px; line-height: 1.5;
+    color: var(--text);
+    position: sticky; top: 80px; z-index: 5;
+    backdrop-filter: blur(8px);
+  }
+  .dd-info-panel[hidden] { display: none; }
+  .dd-info-panel .ddi-header {
+    display: flex; align-items: baseline; gap: 10px;
+    flex-wrap: wrap; margin-bottom: 6px;
+  }
+  .dd-info-panel .ddi-name {
+    font-size: 16px; font-weight: 800;
+    color: var(--accent, #a78bfa);
+  }
+  .dd-info-panel .ddi-reach {
+    font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 4px;
+    background: rgba(99, 102, 241, 0.18);
+    color: #c7d2fe;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .dd-info-panel .ddi-job { color: var(--text); margin: 0; }
+  .dd-info-panel .ddi-break {
+    margin-top: 6px; font-size: 12px; color: #fbbf24;
+  }
+  .dd-info-panel .ddi-break strong { color: #fbbf24; font-weight: 700; }
+  .dd-info-panel .ddi-close {
+    position: absolute; top: 6px; right: 8px;
+    background: none; border: none; color: var(--text-dim);
+    cursor: pointer; font-size: 18px; padding: 2px 8px;
+    border-radius: 4px; line-height: 1;
+  }
+  .dd-info-panel .ddi-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+  .dd-info-panel .ddi-hint {
+    margin-top: 6px; font-size: 11px; color: var(--text-faint, #64748b);
+    font-style: italic;
+  }
+
   .insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 16px; }
   .insight {
     border: 1px solid var(--border);
@@ -459,7 +508,7 @@
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering engine dependency graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':60,'rankSpacing':110,'padding':28} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':60,'rankSpacing':110,'padding':36} }}%%
 flowchart LR
 
   subgraph CORE["⚙️ CORE ENGINES"]
@@ -570,6 +619,17 @@ flowchart LR
 </pre>
   </div>
 
+  <div class="dd-info-panel" id="ddInfoPanel-engines" hidden role="region" aria-live="polite">
+    <button type="button" class="ddi-close" aria-label="Close" onclick="ddClearInfo('engines')">×</button>
+    <div class="ddi-header">
+      <span class="ddi-name" id="ddiName-engines"></span>
+      <span class="ddi-reach" id="ddiReach-engines"></span>
+    </div>
+    <p class="ddi-job" id="ddiJob-engines"></p>
+    <div class="ddi-break" id="ddiBreak-engines"></div>
+    <div class="ddi-hint">Click another box to switch · Click empty space or press ESC to close</div>
+  </div>
+
   <div class="color-key" aria-label="Engine color key">
     <span class="ck" style="--ck-color:#60a5fa"><strong>GLStore</strong> <span>state cache</span></span>
     <span class="ck" style="--ck-color:#a78bfa"><strong>GL_PAGE_READY</strong> <span>router</span></span>
@@ -625,7 +685,7 @@ flowchart LR
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering field cascade graph…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':28} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'12px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':55,'rankSpacing':90,'padding':36} }}%%
 flowchart TB
 
   subgraph FIELDS["🔑 LOAD-BEARING FIELDS"]
@@ -715,6 +775,17 @@ flowchart TB
 </pre>
   </div>
 
+  <div class="dd-info-panel" id="ddInfoPanel-fields" hidden role="region" aria-live="polite">
+    <button type="button" class="ddi-close" aria-label="Close" onclick="ddClearInfo('fields')">×</button>
+    <div class="ddi-header">
+      <span class="ddi-name" id="ddiName-fields"></span>
+      <span class="ddi-reach" id="ddiReach-fields"></span>
+    </div>
+    <p class="ddi-job" id="ddiJob-fields"></p>
+    <div class="ddi-break" id="ddiBreak-fields"></div>
+    <div class="ddi-hint">Click another field to switch · Click empty space or press ESC to close</div>
+  </div>
+
   <div class="insight-grid">
     <div class="insight">
       <h4><span class="marker warn">!</span> song.title is a Firebase key</h4>
@@ -757,7 +828,7 @@ flowchart TB
   <div class="diagram-frame">
     <div class="diagram-loading"><div class="spinner"></div>Rendering boot sequence…</div>
 <pre class="mermaid">
-%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':45,'rankSpacing':55,'padding':25} }}%%
+%%{init: {'theme':'dark', 'themeVariables': { 'primaryColor':'#1e293b','primaryTextColor':'#e2e8f0','primaryBorderColor':'#475569','lineColor':'#94a3b8','fontFamily':'-apple-system, sans-serif','fontSize':'13px' }, 'flowchart': {'curve':'basis','useMaxWidth':false,'htmlLabels':true,'nodeSpacing':45,'rankSpacing':55,'padding':30} }}%%
 flowchart TB
 
   P0["📄 Phase 0 · 0-50ms<br/>Parse index.html<br/>Inline CSS<br/>Show hero gate"]
@@ -956,7 +1027,7 @@ flowchart TB
     try {
       window.mermaid.initialize({
         startOnLoad: false, theme: 'dark', securityLevel: 'loose',
-        flowchart: { curve: 'basis', useMaxWidth: false, htmlLabels: true, nodeSpacing: 50, rankSpacing: 70, padding: 25 }
+        flowchart: { curve: 'basis', useMaxWidth: false, htmlLabels: true, nodeSpacing: 50, rankSpacing: 70, padding: 30 }
       });
       await window.mermaid.run({ querySelector: 'pre.mermaid' });
       hideAll();
@@ -970,11 +1041,102 @@ flowchart TB
     }
   })();
 
+  // ── Description data for the click-info panel ──
+  // Keyed by mermaid variable name (Store, Lifecycle, etc.) NOT by display
+  // label. Reach + onBreak mirror the engines table so the table stays the
+  // canonical source — if you update one, update the other.
+  const DD_DESCRIPTIONS = {
+    engines: {
+      Store:     { display: 'GLStore',         reach: '19 features',     job: 'Central state cache + change events. Subscribers re-render when keys change.', onBreak: 'Whole app fails to render or save.' },
+      Lifecycle: { display: 'GL_PAGE_READY',   reach: 'Every render',    job: 'Router contract; _navSeq counter guards stale renders. SYSTEM-LOCKED.',     onBreak: 'Pages flicker or paint stale data.' },
+      Focus:     { display: 'Focus engine',    reach: '4 screens',       job: '"What should the band work on next?" — weakest songs, top gaps.',           onBreak: 'Recommendation cards blank; "needs work" sort breaks.' },
+      Insights:  { display: 'GLInsights',      reach: '2 screens',       job: 'Cross-band intelligence aggregation. Readiness rollups, score deltas.',     onBreak: 'Readiness scores wrong.' },
+      Player:    { display: 'GLPlayerEngine',  reach: '4 screens',       job: 'YouTube IFrame Player wrapper with autoplay watchdog.',                     onBreak: 'Audio playback fails for setlist + live-gig + practice.' },
+      CalSync:   { display: 'GLCalendarSync',  reach: '3 screens',       job: 'Two-way Google Calendar bridge. Phase 1 push + Phase 2 pull + freebusy.',  onBreak: 'Calendar drifts from Google; gig dates wrong.' },
+      Audio:     { display: 'GLAudioSession',  reach: '4 surfaces',      job: 'Single shared Web Audio context across stems / harmony / rehearsal.',       onBreak: 'iOS audio randomly stops or distorts.' },
+      Stems:     { display: 'GLStems',         reach: '2 surfaces',      job: 'Stem-separation orchestrator (Modal calls).',                                onBreak: "Stems lens can't load or play." },
+      Actions:   { display: 'GLActions',       reach: '3 screens',       job: 'Action registry — avatar router + GrooveMate trigger UI through it.',       onBreak: 'Avatar commands and GrooveMate "Apply" silently no-op.' },
+      Context:   { display: 'GLContext',       reach: '2 screens',       job: 'Frozen snapshot of GLStore + globals + localStorage.',                       onBreak: 'GrooveMate fires on stale state.' },
+      Mate:      { display: 'GLGrooveMate',    reach: '2 screens',       job: 'Decision engine — heuristic + Claude-augmented suggestion pills.',          onBreak: 'No suggestion cards; avatar still works.' },
+      Notes:     { display: 'GLNotes',         reach: '4 screens',       job: 'Unified notes API across 5 scopes (chart, rehearsal, gig, personal_critique, stem). Each scope adapter writes to its existing Firebase path.', onBreak: 'Note writes fall back to documented legacy branches; Practice quick-note silently fails.' },
+      Practice:  { display: 'PracticeSession', reach: '3 screens',       job: 'localStorage-backed session model + per-user Firebase mirror for personal critique notes.', onBreak: 'Resume button + Quick Note silently no-op.' },
+      // Screens — concise role descriptions
+      Home:          { display: '🏠 Home Dashboard',  reach: 'Screen', job: 'Landing surface. Avg readiness, top weak songs, today\'s focus, recent activity.', onBreak: 'No-op fallback; menu navigation still works.' },
+      Songs:         { display: '🎵 Songs',           reach: 'Screen', job: 'Active library + scope filter (Active vs Library). Status badges, gaps, sort by reach.', onBreak: 'Song list blank.' },
+      SongDetail:    { display: '🎶 Song Detail',     reach: 'Screen', job: 'Per-song multi-lens hub: Band, Learn, Sing, Stems, Harmony Lab, Versions.',         onBreak: 'Drill-down navigation breaks.' },
+      Setlists:      { display: '📋 Setlists',        reach: 'Screen', job: 'Setlist editor + share modal + parachute slug-URL system + Big-font / Kinkos print.', onBreak: 'Cannot build or share setlists.' },
+      Calendar:      { display: '📅 Calendar',        reach: 'Screen', job: 'Month + week views, gig editor, schedule blocks, Google sync admin panel.',         onBreak: 'Schedule UI blank.' },
+      Gigs:          { display: '🎤 Gigs',            reach: 'Screen', job: 'Upcoming gig list + per-gig readiness + setlist linkage.',                          onBreak: 'Gig list blank.' },
+      Rehearsal:     { display: '🥁 Rehearsal',       reach: 'Screen', job: 'Group rehearsal mode — multi-tab (Plan / Chart / Versions / Recording).',          onBreak: 'Group rehearsal blocked.' },
+      LiveGig:       { display: '🔥 Live Gig',        reach: 'Screen', job: 'On-stage chart reader with auto-scroll, focus mode, and YouTube playback.',         onBreak: 'On-stage display blocked.' },
+      HarmonyLab:    { display: '🎼 Harmony Lab',     reach: 'Screen', job: 'Per-part harmony reference clips with isolated vocal stems.',                       onBreak: 'Harmony lessons blocked.' },
+      StemsLens:     { display: '🎚 Stems Lens',      reach: 'Screen', job: 'Per-stem mixer (vocals / drums / bass / other) with pan + spatial split.',          onBreak: 'Stems mixer blocked.' },
+      Notifications: { display: '🔔 Notifications',   reach: 'Screen', job: 'In-app banner + browser push (FCM) + SMS (Twilio) — 3-layer notification stack.',   onBreak: 'Notification center blank; pushes still arrive via OS.' },
+      PracticePg:    { display: '🎸 Practice',        reach: 'Screen', job: 'Solo practice entry + GrooveMate suggestions + Resume Last Session.',               onBreak: 'Practice flow blocked.' }
+    },
+    fields: {
+      F1: { display: 'song.title',         reach: 'Firebase key', job: 'The song\'s primary identifier across charts, readiness, discussions, moments, and 4+ other paths.',                  onBreak: 'Renaming a song orphans child data — songs_v2 migration tool handles this.' },
+      F2: { display: 'song.status',        reach: 'Scope filter', job: 'active / learning / prospect / wip / shelved / parked / retired. Drives every "active" vs "library" scope filter.',  onBreak: 'GLStore.isActiveSong returns wrong values; recommendations and intelligence scope incorrectly.' },
+      F3: { display: 'song.bpm + key',     reach: 'Pacing + intel', job: 'Used by Rehearsal pacing, Pocket Meter, song intelligence ratings.',                                                onBreak: 'Pacing and Pocket Meter lose tempo reference; intelligence scores skew.' },
+      F4: { display: 'song.readiness',     reach: 'Per-member',   job: 'Per-member 0-5 score per song. Drives Focus engine, Intelligence, Home dashboard, GrooveMate.',                       onBreak: '"Needs work" lists empty; weakest-song recommendations silent.' },
+      F5: { display: 'meta/members',       reach: 'Auth gate',    job: 'Authoritative band membership map. Cloud Function members_index_CF mirrors it for the auth gate.',                    onBreak: 'New members get bounced at the auth gate.' },
+      F6: { display: 'calendar_events',    reach: 'Calendar',     job: 'Local mirror of band calendar events (gigs + rehearsals + blocks).',                                                  onBreak: 'Calendar grid blank; ICS feed empty; gigs disconnect from dates.' },
+      F7: { display: 'gigs',               reach: 'Parallel mirror', job: 'Parallel gig store (kept in sync with calendar_events via _syncGigToCalendar). Step 2 of unified merge pending.', onBreak: 'Gigs page falls behind calendar; setlist linkage breaks.' },
+      F8: { display: 'meta build-version', reach: 'Reload signal', job: 'Stamped into version.json on every deploy. Drives "Update available" banner + service-worker cache invalidation.',  onBreak: 'Stale builds linger after deploy.' }
+    }
+  };
+
+  // Map svgIdx → which panel/section to update on click
+  const DD_PANEL_FOR_SVG = ['engines', 'fields', null]; // 3rd is boot — no panel
+
+  function ddShowInfo(panelKey, varName) {
+    if (!panelKey) return;
+    const map = DD_DESCRIPTIONS[panelKey];
+    if (!map) return;
+    const data = map[varName];
+    const panel = document.getElementById('ddInfoPanel-' + panelKey);
+    if (!panel) return;
+    if (!data) {
+      panel.hidden = true;
+      return;
+    }
+    document.getElementById('ddiName-' + panelKey).textContent = data.display || varName;
+    document.getElementById('ddiReach-' + panelKey).textContent = data.reach || '';
+    document.getElementById('ddiJob-' + panelKey).textContent = data.job || '';
+    const breakEl = document.getElementById('ddiBreak-' + panelKey);
+    if (data.onBreak) {
+      breakEl.innerHTML = '<strong>If it breaks:</strong> ' + data.onBreak;
+      breakEl.style.display = '';
+    } else {
+      breakEl.style.display = 'none';
+    }
+    panel.hidden = false;
+  }
+
+  function ddClearInfo(panelKey) {
+    const panel = document.getElementById('ddInfoPanel-' + panelKey);
+    if (panel) panel.hidden = true;
+    // Also clear the SVG trace state if user closed via the panel × button
+    const sectionEl = panel ? panel.closest('section.zone') : null;
+    if (sectionEl) {
+      const svg = sectionEl.querySelector('.mermaid svg');
+      if (svg) {
+        svg.classList.remove('gl-trace-active');
+        svg.querySelectorAll('.gl-keep, .gl-source').forEach(el => {
+          el.classList.remove('gl-keep', 'gl-source');
+        });
+      }
+    }
+  }
+  // Expose ddClearInfo for the inline onclick handlers in the panels
+  window.ddClearInfo = ddClearInfo;
+
   // ── Click-to-trace: per-SVG, walk nodes + edges, attach handlers ──
   function setupNodeClickFiltering() {
     const svgs = document.querySelectorAll('.mermaid svg');
     console.log('[deep-dive] click-trace: found ' + svgs.length + ' SVGs');
     svgs.forEach((svg, svgIdx) => {
+      const panelKey = DD_PANEL_FOR_SVG[svgIdx] || null;
       // Permissive selectors — mermaid v10 minor versions vary slightly
       // in whether classes sit on g.node vs g[id^="flowchart-"], and
       // whether edges live in g.edgePath wrappers vs bare path.flowchart-link.
@@ -1039,23 +1201,26 @@ flowchart TB
         svg.querySelectorAll('.gl-keep, .gl-source').forEach(el => {
           el.classList.remove('gl-keep', 'gl-source');
         });
+        if (panelKey) ddClearInfo(panelKey);
       }
 
       function focusNode(node) {
         const name = nodeName(node);
         const a = adj.get(name) || { outEdges: [], inEdges: [], outNodes: new Set(), inNodes: new Set() };
-        clearTrace();
+        // Don't recurse — clear trace classes but skip the panel hide so
+        // the panel can transition straight to the new content below.
+        svg.classList.remove('gl-trace-active');
+        svg.querySelectorAll('.gl-keep, .gl-source').forEach(el => {
+          el.classList.remove('gl-keep', 'gl-source');
+        });
         svg.classList.add('gl-trace-active');
         node.classList.add('gl-keep', 'gl-source');
         a.outNodes.forEach(n => { const el = nodeByName.get(n); if (el) el.classList.add('gl-keep'); });
         a.inNodes.forEach(n => { const el = nodeByName.get(n); if (el) el.classList.add('gl-keep'); });
         a.outEdges.forEach(e => e.classList.add('gl-keep'));
         a.inEdges.forEach(e => e.classList.add('gl-keep'));
-        // Edge labels too — match by source/target endpoints (same parser)
-        edgeLabels.forEach(el => {
-          const text = el.textContent || '';
-          // edgeLabels are unlabeled in our diagrams, no-op safe
-        });
+        // Show description panel for this section (engines / fields)
+        if (panelKey) ddShowInfo(panelKey, name);
       }
 
       nodes.forEach(node => {
