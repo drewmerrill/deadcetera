@@ -85,6 +85,24 @@ window.ChartRenderer = (function () {
         }
     }
 
+    // ── Multi-source fetch (used by rehearsal-mode) ─────────────────────
+    // Rehearsal-mode falls back through three legacy paths:
+    //   1. 'chart'           → modern path; returns { text: '...' }
+    //   2. 'rehearsal_crib'  → legacy; returns raw string
+    //   3. 'gig_notes'       → very-legacy; returns array, joined w/ \n
+    // Each source has a different shape, so this returns the raw results
+    // array — caller picks the first non-empty using its own shape rules.
+    // All requests fire in parallel.
+    async function loadFromFirebaseMulti(songTitle, sources) {
+        if (!sources || !sources.length) return [];
+        if (typeof loadBandDataFromDrive !== 'function') {
+            return sources.map(function(){ return null; });
+        }
+        return Promise.all(sources.map(function(src) {
+            return loadBandDataFromDrive(songTitle, src).catch(function(){ return null; });
+        }));
+    }
+
     // ── Render: chart body as styled HTML ───────────────────────────────
     // Opts: { fontSize:px, lineHeight, maxHeight, color, fontFamily }
     function renderHtml(chartText, opts) {
@@ -137,10 +155,11 @@ window.ChartRenderer = (function () {
         setCached: setCached,
         // Loading
         loadFromFirebase: loadFromFirebase,
+        loadFromFirebaseMulti: loadFromFirebaseMulti,
         // Rendering
         renderHtml: renderHtml,
         renderEmptyState: renderEmptyState,
-        // Constants exposed for migration verification + future B.2-B.4 work
+        // Constants exposed for migration verification + future B.3-B.4 work
         _CACHE_PREFIX: CACHE_PREFIX
     };
 })();

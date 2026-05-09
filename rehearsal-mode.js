@@ -532,14 +532,24 @@ async function rmLoadChart() {
     var cached = _rmCache[song.title];
     let crib = (cached && cached.chart !== undefined) ? cached.chart : null;
     if (crib === null) {
-        // Load all chart sources in parallel, use first non-empty
-        var _cr = await Promise.all([
-            loadBandDataFromDrive(song.title, 'chart').catch(function(){return null;}),
-            loadBandDataFromDrive(song.title, 'rehearsal_crib').catch(function(){return null;}),
-            loadBandDataFromDrive(song.title, 'gig_notes').catch(function(){return null;})
-        ]);
+        // Phase B.2 (audit §8.4): route Firebase fetch through ChartRenderer
+        // when available. Cached-shell legacy fallback (same pattern Phase A
+        // used for GLNotes) keeps a stale service-worker shell working.
+        var _cr;
+        if (typeof window.ChartRenderer !== 'undefined' && typeof window.ChartRenderer.loadFromFirebaseMulti === 'function') {
+            _cr = await window.ChartRenderer.loadFromFirebaseMulti(song.title, ['chart', 'rehearsal_crib', 'gig_notes']);
+        } else {
+            // Legacy fallback (cached-shell safety) — kept verbatim
+            _cr = await Promise.all([
+                loadBandDataFromDrive(song.title, 'chart').catch(function(){return null;}),
+                loadBandDataFromDrive(song.title, 'rehearsal_crib').catch(function(){return null;}),
+                loadBandDataFromDrive(song.title, 'gig_notes').catch(function(){return null;})
+            ]);
+        }
         // Stale check: if user navigated during async load, discard this result
         if (rmIndex !== loadIdx) return;
+        // Source-specific shape pick — same logic as before, just operating
+        // on results from ChartRenderer's multi-fetch.
         if (_cr[0]?.text?.trim()) crib = _cr[0].text;
         else if (_cr[1] && typeof _cr[1] === 'string' && _cr[1].trim()) crib = _cr[1];
         else if (_cr[2]) { var _gn = toArray(_cr[2]); if (_gn.length) crib = _gn.join('\n'); }
