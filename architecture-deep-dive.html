@@ -147,16 +147,23 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   pre.mermaid { background: transparent !important; }
-  /* CRITICAL: do NOT override font-size, line-height, padding, or min-width
-     on .nodeLabel / foreignObject children. Mermaid measures the label
-     during layout to size the rect; any post-measurement override pushes
-     content outside the box. The only safe override is white-space:normal
-     (so multi-word labels can wrap if mermaid measured them as wrapped). */
+  /* IMPORTANT: do NOT override line-height — that's what caused 2-line
+     labels to overflow the rect. min-width / padding / text-align are
+     SAFE because mermaid measures the foreignObject content with these
+     styles already applied (the CSS loads before mermaid.run runs).
+     min-width gives every box a uniform comfortable width regardless of
+     how short its label is. */
   .mermaid svg { overflow: visible !important; max-width: none !important; height: auto !important; }
   .mermaid foreignObject { overflow: visible !important; }
   .mermaid .nodeLabel,
   .mermaid .nodeLabel p,
-  .mermaid foreignObject > div { white-space: normal !important; }
+  .mermaid foreignObject > div {
+    white-space: normal !important;
+    min-width: 130px;
+    padding: 6px 14px;
+    text-align: center;
+    font-weight: 500;
+  }
   .mermaid .label foreignObject { display: block; }
   /* Visual polish on every node — rounded corners, soft glow, crisper border. */
   .mermaid .node rect,
@@ -211,18 +218,31 @@
   .mermaid path.path { stroke-width: 1.6px !important; opacity: 0.65; }
   .mermaid .flowchart-link:hover { opacity: 1; stroke-width: 2.5px !important; }
   /* Click-to-trace: nodes are clickable; once a node is "focused" the
-     non-related nodes/edges fade out and related ones stay full-opacity. */
+     non-related nodes/edges fade out and related ones stay full-opacity.
+     pointer-events:all forces every shape inside the node group to bubble
+     clicks to g.node — without it, clicks on the inner foreignObject text
+     can be swallowed and the handler never fires. */
   .mermaid .node { cursor: pointer; transition: opacity 0.18s ease; }
-  .mermaid .gl-trace-active .node:not(.gl-keep) { opacity: 0.12; }
-  .mermaid .gl-trace-active .edgePath:not(.gl-keep) { opacity: 0.06 !important; }
-  .mermaid .gl-trace-active .edgeLabel:not(.gl-keep) { opacity: 0.15; }
+  .mermaid .node *, .mermaid .node foreignObject, .mermaid .node foreignObject * {
+    pointer-events: none;
+  }
+  .mermaid .node { pointer-events: all; }
+  .mermaid .gl-trace-active .node:not(.gl-keep) { opacity: 0.10; }
+  .mermaid .gl-trace-active .edgePath:not(.gl-keep) { opacity: 0.05 !important; }
+  .mermaid .gl-trace-active path.flowchart-link:not(.gl-keep) { opacity: 0.05 !important; }
+  .mermaid .gl-trace-active .edgeLabel:not(.gl-keep) { opacity: 0.10; }
   .mermaid .gl-trace-active .node.gl-keep,
-  .mermaid .gl-trace-active .edgePath.gl-keep { opacity: 1 !important; }
-  .mermaid .gl-trace-active .edgePath.gl-keep path { stroke-width: 2.6px !important; opacity: 1 !important; }
+  .mermaid .gl-trace-active .edgePath.gl-keep,
+  .mermaid .gl-trace-active path.flowchart-link.gl-keep { opacity: 1 !important; }
+  .mermaid .gl-trace-active .edgePath.gl-keep path,
+  .mermaid .gl-trace-active path.flowchart-link.gl-keep { stroke-width: 3px !important; opacity: 1 !important; }
+  /* Source node glow — works on whatever shape mermaid chose for the box */
   .mermaid .gl-trace-active .node.gl-source rect,
   .mermaid .gl-trace-active .node.gl-source polygon,
-  .mermaid .gl-trace-active .node.gl-source circle {
-    filter: drop-shadow(0 0 14px currentColor) drop-shadow(0 0 4px rgba(255,255,255,0.4));
+  .mermaid .gl-trace-active .node.gl-source circle,
+  .mermaid .gl-trace-active .node.gl-source path {
+    filter: drop-shadow(0 0 14px currentColor) drop-shadow(0 0 6px rgba(255,255,255,0.55));
+    stroke-width: 3px !important;
   }
 
   table.engines {
@@ -938,10 +958,17 @@ flowchart TB
 
   // ── Click-to-trace: per-SVG, walk nodes + edges, attach handlers ──
   function setupNodeClickFiltering() {
-    document.querySelectorAll('.mermaid svg').forEach(svg => {
-      const nodes = Array.from(svg.querySelectorAll('g.node'));
-      const edges = Array.from(svg.querySelectorAll('g.edgePath'));
+    const svgs = document.querySelectorAll('.mermaid svg');
+    console.log('[deep-dive] click-trace: found ' + svgs.length + ' SVGs');
+    svgs.forEach((svg, svgIdx) => {
+      // Permissive selectors — mermaid v10 minor versions vary slightly
+      // in whether classes sit on g.node vs g[id^="flowchart-"], and
+      // whether edges live in g.edgePath wrappers vs bare path.flowchart-link.
+      const nodes = Array.from(svg.querySelectorAll('g.node, g[id^="flowchart-"]'));
+      let edges = Array.from(svg.querySelectorAll('g.edgePath'));
+      if (!edges.length) edges = Array.from(svg.querySelectorAll('path.flowchart-link'));
       const edgeLabels = Array.from(svg.querySelectorAll('.edgeLabel'));
+      console.log('[deep-dive] svg #' + svgIdx + ': ' + nodes.length + ' nodes, ' + edges.length + ' edges');
       if (!nodes.length || !edges.length) return;
 
       // Extract a node's logical name from its SVG id.
@@ -961,9 +988,9 @@ flowchart TB
           if (c.startsWith('LS-')) source = c.slice(3);
           else if (c.startsWith('LE-')) target = c.slice(3);
         }
-        // Fallback: try to parse the id (format L-source-target-N)
+        // Fallback: try to parse the id (format L-source-target-N or L_source_target_N)
         if ((!source || !target) && e.id) {
-          const m = e.id.match(/^L-([^-]+)-([^-]+)-/);
+          const m = e.id.match(/^L[-_]([^-_]+)[-_]([^-_]+)[-_]/);
           if (m) { source = source || m[1]; target = target || m[2]; }
         }
         return { source, target };
@@ -1020,7 +1047,12 @@ flowchart TB
       nodes.forEach(node => {
         node.addEventListener('click', (ev) => {
           ev.stopPropagation();
+          ev.preventDefault();
           const wasSource = node.classList.contains('gl-source');
+          const name = nodeName(node);
+          const a = adj.get(name);
+          console.log('[deep-dive] node clicked:', name, '— adjacency:',
+            a ? (a.outNodes.size + ' out, ' + a.inNodes.size + ' in') : 'NONE');
           if (wasSource) clearTrace();
           else focusNode(node);
         });
