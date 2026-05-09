@@ -462,6 +462,23 @@ async function _rhRenderCommandFlow(el) {
     var _ctaStartPrimary = hasSavedPlan && _gigDays <= 7;
 
     // ── PRIMARY ACTIONS ──
+    // Phase-1+: when no plan exists and we're not in Plan Mode, show the
+    // intent picker INSTEAD of the bare "Plan Next Rehearsal" button.
+    // Each intent button reuses existing logic via the _rhIntent* handlers.
+    var _renderIntentPicker = !_rhPlanningMode && !hasSavedPlan;
+    if (_renderIntentPicker) {
+        var _hasSnapshots = false, _hasSessions = false;
+        try { var _snaps = await _rhLoadSnapshots(1); _hasSnapshots = !!(_snaps && _snaps.length); } catch(e) {}
+        try { var _sess = _rhSessionsCache || await _rhLoadSessions(); _hasSessions = !!(_sess && _sess.length); } catch(e) {}
+        html += _rhRenderIntentPicker({
+            nextGig: nextGig,
+            gigDays: nextGig ? _gigDays : null,
+            focusCount: _rhFocusCount,
+            hasSnapshots: _hasSnapshots,
+            hasSessions: _hasSessions
+        });
+    }
+
     html += '<div style="display:flex;gap:10px;margin-bottom:var(--gl-space-md);align-items:center;flex-wrap:wrap">';
     if (_rhPlanningMode) {
         // Plan Mode: planning controls
@@ -476,8 +493,9 @@ async function _rhRenderCommandFlow(el) {
         // Gig <=7d + plan exists -- get rehearsing.
         html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\u25B6 Start Rehearsal</button>';
         html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-ghost" style="padding:8px 16px;font-size:0.82em">\uD83D\uDCCB Edit Plan</button>';
-    } else {
-        // Default: planning is the next move (no plan yet, or gig is far/none).
+    } else if (!_renderIntentPicker) {
+        // Has a saved plan but gig is far/none \u2014 keep the prior button row.
+        // The intent picker (above) handles the truly-empty case.
         html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-primary" style="padding:10px 24px;font-size:0.9em;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 2px 8px rgba(99,102,241,0.15)">\uD83D\uDCCB Plan Next Rehearsal</button>';
         if (hasSavedPlan) {
             html += '<button onclick="rhStartRehearsalSession()" class="gl-btn-ghost" style="padding:8px 16px;font-size:0.82em">\u25B6 Start Rehearsal</button>';
@@ -594,7 +612,7 @@ async function _rhRenderCommandFlow(el) {
             // Subcontext bar
             var _planSubCtx = '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;border-radius:8px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.12)">';
             if (nextGig && _gigDays <= 30) _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFA4 ' + escHtml(nextGig.venue || 'Gig') + ' in ' + _gigDays + ' days</span>';
-            _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-text-tertiary)">' + songCount + ' songs \u00B7 ' + _preTotalLabel + '</span>';
+            _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-text-tertiary)">' + songCount + ' songs in plan \u00B7 ' + _preTotalLabel + '</span>';
             if (_rhFocusCount > 0) _planSubCtx += '<span style="font-size:0.72em;color:var(--gl-amber)">\uD83C\uDFAF ' + _rhFocusCount + ' focus</span>';
             _planSubCtx += '<span id="rhSaveState" style="font-size:0.68em;font-weight:600;margin-left:auto"></span>';
             _planSubCtx += '</div>';
@@ -608,7 +626,7 @@ async function _rhRenderCommandFlow(el) {
             html += '<details id="rhPlanCard" style="margin-bottom:12px;border-radius:10px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.2)">'
                 + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
                 + '<span style="font-size:0.72em;font-weight:800;color:#86efac">\uD83D\uDCCB Plan</span>'
-                + '<span style="font-size:0.65em;color:var(--text-dim)">' + songCount + ' songs \u00B7 ' + _preTotalLabel + '</span>'
+                + '<span style="font-size:0.65em;color:var(--text-dim)">' + songCount + ' songs in plan \u00B7 ' + _preTotalLabel + '</span>'
                 + '<span style="font-size:0.6em;color:var(--text-dim);margin-left:auto">\u25B8 expand</span>'
                 + '</summary>'
                 + '<div style="padding:4px 14px 12px">'
@@ -1083,11 +1101,257 @@ window._rhClearSavedPlan = async function() {
         localStorage.removeItem('glPlannerQueue');
         localStorage.removeItem('glPlannerGuidance');
         localStorage.removeItem('glPlannerUnits');
+        localStorage.removeItem('glSavedPlanName');
     } catch(e) {}
-    _rhDeletePlanFromFirebase();
+    // Delete ALL rehearsal_plans/* entries (not just the cached planId). Old
+    // planIds accumulate across sessions and auto-rise on reload via
+    // _rhLoadPlanFromFirebase's "newest by updatedAt" rule. Wiping the
+    // whole collection is the only way "no plan" survives a reload.
+    await _rhClearAllPlansFromFirebase();
+    _rhPlanCache = null;
     if (typeof showToast === 'function') showToast('Plan cleared (snapshot saved)');
     var el = document.getElementById('rhMain');
     if (el) _rhRenderCommandFlow(document.querySelector('.app-page:not(.hidden)') || document.body);
+};
+
+// ── Intent-Based Entry (Phase 1+) ─────────────────────────────────────────────
+// Shown when no active plan exists. Replaces the single "Plan Next Rehearsal"
+// CTA with 4 intent buttons + 2 secondary actions. Each handler reuses
+// existing logic: setlist for "Run the Gig", linkedPairs detection for
+// "Practice Transitions", GLStore.getNowFocus() for "Work Weak Songs",
+// existing wizard/plan-mode for "Build Custom Plan", existing snapshot
+// restore for "Resume Last Plan", existing session timeline for
+// "Review Last Rehearsal". No new systems built.
+
+function _rhRenderIntentPicker(opts) {
+    opts = opts || {};
+    var nextGig = opts.nextGig || null;
+    var focusCount = opts.focusCount || 0;
+    var hasGigSetlist = !!(nextGig && nextGig.setlistId);
+    var hasFocus = focusCount > 0;
+    var hasSnapshots = !!opts.hasSnapshots;
+    var hasSessions = !!opts.hasSessions;
+
+    var html = '<div class="gl-intent-picker" style="margin-bottom:var(--gl-space-md);padding:18px 16px;border-radius:12px;background:rgba(99,102,241,0.04);border:1px solid rgba(99,102,241,0.12)">';
+    html += '<div style="font-size:0.95em;font-weight:700;color:var(--gl-text);margin-bottom:14px;text-align:center">What do you want to do?</div>';
+
+    // Primary intents (4 buttons, 2-up grid on wide, 1-up on narrow)
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:12px">';
+
+    // Run the Gig
+    var runGigDisabled = !hasGigSetlist;
+    var runGigSub = hasGigSetlist
+        ? escHtml(nextGig.venue || 'Upcoming gig') + (opts.gigDays != null && opts.gigDays >= 0 ? ' · ' + opts.gigDays + 'd away' : '')
+        : 'No upcoming gig with setlist';
+    html += _rhIntentBtnHtml({
+        action: '_rhIntentRunGig()',
+        emoji: '🎤',
+        label: 'Run the Gig',
+        sub: runGigSub,
+        disabled: runGigDisabled
+    });
+
+    // Practice Transitions
+    var ptDisabled = !hasGigSetlist;
+    var ptSub = hasGigSetlist
+        ? 'Drill linked pairs from the setlist'
+        : 'No upcoming gig with setlist';
+    html += _rhIntentBtnHtml({
+        action: '_rhIntentPracticeTransitions()',
+        emoji: '🔗',
+        label: 'Practice Transitions',
+        sub: ptSub,
+        disabled: ptDisabled
+    });
+
+    // Work Weak Songs
+    var wsDisabled = !hasFocus;
+    var wsSub = hasFocus
+        ? focusCount + ' song' + (focusCount > 1 ? 's' : '') + ' need' + (focusCount === 1 ? 's' : '') + ' work'
+        : 'No focus songs flagged';
+    html += _rhIntentBtnHtml({
+        action: '_rhIntentWorkWeakSongs()',
+        emoji: '🎯',
+        label: 'Work Weak Songs',
+        sub: wsSub,
+        disabled: wsDisabled
+    });
+
+    // Build Custom Plan
+    html += _rhIntentBtnHtml({
+        action: '_rhIntentBuildCustom()',
+        emoji: '📋',
+        label: 'Build Custom Plan',
+        sub: 'Use the planner step-by-step',
+        disabled: false
+    });
+
+    html += '</div>'; // end primary grid
+
+    // Secondary actions (2 small chips)
+    html += '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">';
+    html += '<button onclick="_rhIntentResumeLastPlan()"' + (hasSnapshots ? '' : ' disabled') + ' style="padding:6px 14px;font-size:0.78em;border-radius:6px;cursor:' + (hasSnapshots ? 'pointer' : 'not-allowed') + ';border:1px solid rgba(255,255,255,0.08);background:none;color:var(--gl-text-tertiary);font-family:inherit;opacity:' + (hasSnapshots ? '1' : '0.45') + '" title="' + (hasSnapshots ? 'Restore the most recent saved plan' : 'No prior plans to restore') + '">↺ Resume Last Plan</button>';
+    html += '<button onclick="_rhIntentReviewLastRehearsal()"' + (hasSessions ? '' : ' disabled') + ' style="padding:6px 14px;font-size:0.78em;border-radius:6px;cursor:' + (hasSessions ? 'pointer' : 'not-allowed') + ';border:1px solid rgba(255,255,255,0.08);background:none;color:var(--gl-text-tertiary);font-family:inherit;opacity:' + (hasSessions ? '1' : '0.45') + '" title="' + (hasSessions ? 'Open the most recent rehearsal timeline' : 'No past rehearsals to review') + '">📊 Review Last Rehearsal</button>';
+    html += '</div>';
+
+    html += '</div>'; // end picker
+    return html;
+}
+
+function _rhIntentBtnHtml(b) {
+    var bg = b.disabled
+        ? 'rgba(255,255,255,0.02)'
+        : 'linear-gradient(135deg,rgba(102,126,234,0.18),rgba(118,75,162,0.12))';
+    var border = b.disabled
+        ? 'rgba(255,255,255,0.06)'
+        : 'rgba(99,102,241,0.35)';
+    var color = b.disabled ? 'var(--gl-text-tertiary)' : 'var(--gl-text)';
+    var cursor = b.disabled ? 'not-allowed' : 'pointer';
+    var opacity = b.disabled ? '0.5' : '1';
+    var html = '<button ' + (b.disabled ? 'disabled ' : '') + 'onclick="' + b.action + '" style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 16px;border-radius:10px;cursor:' + cursor + ';border:1px solid ' + border + ';background:' + bg + ';color:' + color + ';opacity:' + opacity + ';text-align:left;font-family:inherit;transition:transform 0.1s">';
+    html += '<div style="display:flex;align-items:center;gap:8px;width:100%"><span style="font-size:1.3em">' + b.emoji + '</span><span style="font-size:0.92em;font-weight:700">' + b.label + '</span></div>';
+    html += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-left:30px">' + b.sub + '</div>';
+    html += '</button>';
+    return html;
+}
+
+// Build a units array from a setlist's songs in order. Each song becomes
+// a single-block. Reuses the same shape _rhSaveUnits already accepts.
+async function _rhBuildUnitsFromUpcomingGigSetlist() {
+    var gigs = [];
+    try { gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []); } catch(e) {}
+    var today = new Date().toISOString().split('T')[0];
+    var nextGig = gigs.filter(function(g) { return g.date >= today && g.setlistId; })
+        .sort(function(a,b) { return a.date.localeCompare(b.date); })[0] || null;
+    if (!nextGig) return { units: [], gig: null, setlist: null };
+
+    var setlists = window._glCachedSetlists || [];
+    var sl = setlists.find(function(s) { return s.setlistId === nextGig.setlistId; });
+    if (!sl) {
+        try {
+            setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+            sl = setlists.find(function(s) { return s.setlistId === nextGig.setlistId; });
+        } catch(e) {}
+    }
+    if (!sl) return { units: [], gig: nextGig, setlist: null };
+
+    // Same extraction logic as _rpSelectGig (rehearsal.js:4985-4995): preserves
+    // setlist order and segue metadata. We reuse this for both "Run the Gig"
+    // and "Practice Transitions" intents.
+    var songs = [];
+    (sl.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(sg) {
+            var title = typeof sg === 'string' ? sg : (sg.title || '');
+            if (!title) return;
+            var segue = (typeof sg === 'object') ? (sg.segue || 'stop') : 'stop';
+            var songData = (typeof allSongs !== 'undefined') ? allSongs.find(function(s) { return s.title === title; }) : null;
+            songs.push({ title: title, band: songData ? (songData.band || '') : '', _segue: segue });
+        });
+    });
+
+    var units = songs.map(function(s) {
+        return { type: 'single', title: s.title, band: s.band, block: 'flow' };
+    });
+    return { units: units, gig: nextGig, setlist: sl, songs: songs };
+}
+
+// Build linked-pair units from the upcoming gig's setlist segue data. Reuses
+// the same detection logic as _rpSelectGig (rehearsal.js:4998-5007).
+async function _rhBuildUnitsFromGigLinkedPairs() {
+    var ctx = await _rhBuildUnitsFromUpcomingGigSetlist();
+    if (!ctx.songs || !ctx.songs.length) return { units: [], gig: ctx.gig, setlist: ctx.setlist };
+    var songs = ctx.songs;
+    var units = [];
+    for (var i = 0; i < songs.length - 1; i++) {
+        if (songs[i]._segue === 'flow' || songs[i]._segue === 'segue') {
+            units.push({
+                type: 'linked',
+                title: songs[i].title + ' → ' + songs[i+1].title,
+                songs: [
+                    { title: songs[i].title,   band: songs[i].band   || '' },
+                    { title: songs[i+1].title, band: songs[i+1].band || '' }
+                ],
+                block: 'flow'
+            });
+        }
+    }
+    return { units: units, gig: ctx.gig, setlist: ctx.setlist };
+}
+
+// ── Intent handlers ──────────────────────────────────────────────────────────
+
+window._rhIntentRunGig = async function() {
+    var ctx = await _rhBuildUnitsFromUpcomingGigSetlist();
+    if (!ctx.units.length) {
+        if (typeof showToast === 'function') showToast('No upcoming gig with setlist');
+        return;
+    }
+    if (_rhPlanCache) await _rhSaveSnapshot('Before Run the Gig intent');
+    if (_rhPlanCache) _rhPlanCache.name = 'Run ' + (ctx.gig.venue || 'the Gig');
+    _rhSaveUnits(ctx.units);
+    if (typeof showToast === 'function') showToast('▶ Plan loaded with setlist (' + ctx.units.length + ' songs)');
+    var el = document.querySelector('.app-page:not(.hidden)') || document.body;
+    renderRehearsalPage(el);
+};
+
+window._rhIntentPracticeTransitions = async function() {
+    var ctx = await _rhBuildUnitsFromGigLinkedPairs();
+    if (!ctx.units.length) {
+        if (typeof showToast === 'function') showToast(ctx.gig ? 'No linked transitions in this setlist' : 'No upcoming gig with setlist');
+        return;
+    }
+    if (_rhPlanCache) await _rhSaveSnapshot('Before Practice Transitions intent');
+    if (_rhPlanCache) _rhPlanCache.name = 'Transitions for ' + (ctx.gig.venue || 'gig');
+    _rhSaveUnits(ctx.units);
+    if (typeof showToast === 'function') showToast('🔗 Plan loaded with ' + ctx.units.length + ' transition' + (ctx.units.length > 1 ? 's' : ''));
+    var el = document.querySelector('.app-page:not(.hidden)') || document.body;
+    renderRehearsalPage(el);
+};
+
+window._rhIntentWorkWeakSongs = async function() {
+    var focus = (typeof GLStore !== 'undefined' && GLStore.getNowFocus) ? GLStore.getNowFocus() : { list: [] };
+    var list = (focus.list || []).slice(0, 8); // top 8 weak songs
+    if (!list.length) {
+        if (typeof showToast === 'function') showToast('No focus songs flagged right now');
+        return;
+    }
+    if (_rhPlanCache) await _rhSaveSnapshot('Before Work Weak Songs intent');
+    var units = list.map(function(s) {
+        return { type: 'single', title: s.title, band: s.band || '', block: 'song-work' };
+    });
+    if (_rhPlanCache) _rhPlanCache.name = 'Work weak songs (' + list.length + ')';
+    _rhSaveUnits(units);
+    if (typeof showToast === 'function') showToast('🎯 Plan loaded with ' + list.length + ' focus song' + (list.length > 1 ? 's' : ''));
+    var el = document.querySelector('.app-page:not(.hidden)') || document.body;
+    renderRehearsalPage(el);
+};
+
+window._rhIntentBuildCustom = function() {
+    // Reuse existing wizard / plan-mode entry. _rhOpenPlanMode seeds units
+    // from focus if empty, which is the same default the wizard's Step 1
+    // would offer. Drew can also click "Edit Structure" to enter the
+    // multi-step wizard from inside Plan Mode.
+    if (typeof _rhOpenPlanMode === 'function') return _rhOpenPlanMode();
+};
+
+window._rhIntentResumeLastPlan = function() {
+    // Reuses existing _rhDuplicatePriorPlan which loads most recent snapshot
+    // and prompts before overwriting. Keeps snapshot-system semantics intact.
+    if (typeof _rhDuplicatePriorPlan === 'function') return _rhDuplicatePriorPlan();
+};
+
+window._rhIntentReviewLastRehearsal = async function() {
+    if (typeof _rhLoadSessions !== 'function') return;
+    var sessions = _rhSessionsCache || await _rhLoadSessions();
+    if (!sessions || !sessions.length) {
+        if (typeof showToast === 'function') showToast('No past rehearsals yet');
+        return;
+    }
+    // Sessions are sorted newest-first by _rhLoadSessions.
+    var latest = sessions[0];
+    if (typeof _rhShowSessionReport === 'function') {
+        _rhShowSessionReport(latest.sessionId);
+    }
 };
 
 // ── Duplicate prior plan (load most recent snapshot into active plan) ─────────
@@ -3201,6 +3465,18 @@ async function _rhDeletePlanFromFirebase() {
         await db.ref(bandPath('rehearsal_plans/' + _rhPlanCache.planId)).remove();
     } catch(e) { console.warn('[RhPlan] Firebase delete failed:', e.message); }
     _rhPlanCache = null;
+}
+
+// Wipe the entire rehearsal_plans collection. Used by "Clear Plan" so the
+// "no plan" state survives a reload — _rhLoadPlanFromFirebase otherwise
+// resolves to the newest entry by updatedAt and resurrects an old plan.
+// Snapshots in rehearsal_history are NOT touched (that's the audit log).
+async function _rhClearAllPlansFromFirebase() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        await db.ref(bandPath('rehearsal_plans')).remove();
+    } catch(e) { console.warn('[RhPlan] Firebase wipe failed:', e.message); }
 }
 
 // Show save state indicator
