@@ -284,6 +284,7 @@ var _glPageScripts = {
     ideas:           ['js/features/band-comms.js', 'js/features/song-pitch.js'],
     feed:            ['js/features/band-feed.js'],
     'rehearsal-mode': ['rehearsal-mode.js'],
+    workbench:       ['js/features/workbench.js'],
     help:            ['help.js', 'js/ui/gl-help-v2.js']
 };
 
@@ -415,7 +416,7 @@ var pageRenderers = window.pageRenderers = {
 // Pages the hash router will accept. Anything else falls back to 'home'.
 var _HASH_VALID_PAGES = ['songs','home','setlists','playlists','practice','rehearsal','calendar','gigs',
     'venues','finances','tuner','metronome','bestshot','admin',
-    'social','notifications','pocketmeter','help','equipment','contacts','rehearsal-intel','stageplot','ideas','feed'];
+    'social','notifications','pocketmeter','help','equipment','contacts','rehearsal-intel','stageplot','ideas','feed','workbench'];
 
 function _sanitizeHashPage(raw) {
     if (!raw) return 'home';

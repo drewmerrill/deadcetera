@@ -1888,10 +1888,12 @@ window._rhDeletePracticeTask = async function(taskId) {
     } catch (e) {}
 };
 
-// Open a practice task → minimal launch behavior since Workbench doesn't
-// exist yet. Navigate to Songs page + select the song; show a sticky
-// banner with the task context. When Workbench ships, this becomes
-// "openWorkbench(songId, 'practice', { loop: timestamp, taskId })".
+// Open a practice task → routes through the new Workbench shell so the
+// loop window + task highlight + "From last rehearsal" badge land in
+// one coherent surface. Falls back to the old selectSong path if the
+// Workbench script hasn't loaded yet (defensive — not expected in
+// normal nav flow since `js/features/workbench.js` is lazy-loaded by
+// the page system).
 window._rhOpenPracticeTask = async function(taskId) {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return;
@@ -1902,13 +1904,26 @@ window._rhOpenPracticeTask = async function(taskId) {
         if (typeof showToast === 'function') showToast('Task not found');
         return;
     }
-    // Stash the open task so the song surface can read it on render
+    var songId = task.songId || task.songTitle;
+    if (!songId) {
+        if (typeof showToast === 'function') showToast('Task has no song');
+        return;
+    }
+    // Stash for any non-Workbench surfaces that still read this (legacy).
+    // Workbench will overwrite it via _wbApplyTaskContext once it mounts.
     window._rhActivePracticeTask = task;
-    // Best-effort: try to select the song. selectSong is a global from songs.js.
-    if (typeof selectSong === 'function' && task.songTitle) {
+    if (typeof openWorkbench === 'function') {
+        openWorkbench(songId, 'practice', { taskId: taskId });
+    } else if (typeof selectSong === 'function' && task.songTitle) {
+        // Fallback if workbench.js wasn't lazy-loaded yet.
         try { selectSong(task.songTitle); } catch (e) {}
     }
-    if (typeof showToast === 'function') showToast('🎯 Opened: ' + (task.songTitle || 'song') + (typeof task.timestampSec === 'number' ? ' at ' + Math.floor(task.timestampSec / 60) + ':' + (Math.floor(task.timestampSec % 60) < 10 ? '0' : '') + Math.floor(task.timestampSec % 60) : ''));
+    if (typeof showToast === 'function') {
+        var ts = (typeof task.timestampSec === 'number')
+            ? ' at ' + Math.floor(task.timestampSec / 60) + ':' + (Math.floor(task.timestampSec % 60) < 10 ? '0' : '') + Math.floor(task.timestampSec % 60)
+            : '';
+        showToast('🎯 Opened: ' + (task.songTitle || 'song') + ts);
+    }
 };
 
 async function _rhRenderSessionHistory() {
