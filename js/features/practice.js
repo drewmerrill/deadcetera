@@ -743,12 +743,30 @@ window._pmStartGigRun = function _pmStartGigRun(gigKey) {
         perSongSec: 90,
         remainingSec: 90,
         paused: false,
+        autoAdvance: false,   // Manual by default — timer is a guide, not a
+                              // forcing function. User toggles 🔁 Auto in
+                              // the strip to opt into auto-advance per run.
         intervalId: null,
         openTimeoutId: null,
         startedAt: Date.now(),
         gigKey: gigKey
     };
     _gigRunOpenCurrent();
+};
+
+window._gigRunToggleAuto = function() {
+    var st = window._gigRunState;
+    if (!st) return;
+    st.autoAdvance = !st.autoAdvance;
+    // If they just enabled auto and the timer was already at 0, advance now.
+    if (st.autoAdvance && st.remainingSec <= 0) {
+        window._gigRunNext();
+        return;
+    }
+    // Restart the timer if it was stopped at 0:00 in manual mode and they
+    // turned auto on (so countdown can complete and trigger advance).
+    if (st.autoAdvance && !st.intervalId && !st.paused) _gigRunStartTimer();
+    _gigRunRenderStrip();
 };
 
 // Emergency kill switch — surfaceable from console for debugging.
@@ -803,19 +821,30 @@ function _gigRunStartTimer() {
     var capturedGen = st.gen;
     // Use a local timer ref so the callback can self-clear on stale gen.
     var localTimerId = setInterval(function() {
-        // Stale-callback guard — this is the critical fix for the rapid-
-        // cycling bug. If the run state was replaced or killed, an older
-        // interval that hasn't been cleared yet must NOT touch _gigRunState
-        // or call _gigRunNext.
+        // Stale-callback guard — fixes the rapid-cycling bug.
         var cur = window._gigRunState;
         if (!cur || cur.gen !== capturedGen) {
             clearInterval(localTimerId);
             return;
         }
         if (cur.paused) return;
+        if (cur.remainingSec <= 0) {
+            // Manual mode: timer already at 0, just stop counting. The user
+            // will click ⏭ Next when they're ready. We keep the strip alive
+            // showing 0:00 so the budget is visible but no advance fires.
+            if (!cur.autoAdvance) {
+                clearInterval(localTimerId);
+                cur.intervalId = null;
+                _gigRunRefreshTimerOnly();
+                return;
+            }
+            // Auto mode: advance.
+            window._gigRunNext();
+            return;
+        }
         cur.remainingSec--;
         _gigRunRefreshTimerOnly();
-        if (cur.remainingSec <= 0) {
+        if (cur.remainingSec <= 0 && cur.autoAdvance) {
             window._gigRunNext();
         }
     }, 1000);
@@ -926,15 +955,18 @@ function _gigRunRenderStrip() {
         existing.className = 'gig-run-strip';
         document.body.appendChild(existing);
     }
+    var autoLabel = st.autoAdvance ? '🔁 Auto: ON' : '🔁 Auto: OFF';
+    var autoCls = st.autoAdvance ? 'gig-run-btn gig-run-btn-auto-on' : 'gig-run-btn gig-run-btn-auto-off';
     existing.innerHTML =
         '<div class="gig-run-eyebrow">🏃 RUN · ' + pos + '</div>' +
         '<div class="gig-run-title">' + safeTitle + '</div>' +
         '<div class="gig-run-timer" id="gigRunTimer">' + _gigRunFormatTime(st.remainingSec) + '</div>' +
         '<div class="gig-run-controls">' +
             '<button class="gig-run-btn" onclick="_gigRunBack()" title="Previous song">⏪</button>' +
-            '<button class="gig-run-btn gig-run-btn-pause" onclick="_gigRunPause()" title="Pause / Resume">' + pauseLabel + '</button>' +
-            '<button class="gig-run-btn" onclick="_gigRunNext()" title="Next song">⏩</button>' +
+            '<button class="gig-run-btn gig-run-btn-pause" onclick="_gigRunPause()" title="Pause / Resume timer">' + pauseLabel + '</button>' +
+            '<button class="gig-run-btn gig-run-btn-next" onclick="_gigRunNext()" title="Next song (move on when ready)">⏭ Next</button>' +
             '<button class="gig-run-btn" onclick="_gigRunToggleJumpMenu()" title="Jump to any song">☰</button>' +
+            '<button class="' + autoCls + '" onclick="_gigRunToggleAuto()" title="Toggle auto-advance when timer hits 0">' + autoLabel + '</button>' +
             '<button class="gig-run-btn gig-run-btn-end" onclick="_gigRunEnd()" title="End run">✕</button>' +
         '</div>';
 }
@@ -1618,6 +1650,10 @@ function _pmInjectStyles(){
     '.gig-run-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:#fff;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:0.85em;font-weight:700;font-family:inherit;}'+
     '.gig-run-btn:hover{background:rgba(255,255,255,0.25);}'+
     '.gig-run-btn-pause{min-width:78px;}'+
+    '.gig-run-btn-next{background:rgba(255,255,255,0.22);border-color:rgba(255,255,255,0.3);font-weight:800;}'+
+    '.gig-run-btn-next:hover{background:rgba(255,255,255,0.32);}'+
+    '.gig-run-btn-auto-off{opacity:0.75;}'+
+    '.gig-run-btn-auto-on{background:rgba(0,0,0,0.30);border-color:rgba(0,0,0,0.35);}'+
     '.gig-run-btn-end{background:rgba(0,0,0,0.25);border-color:rgba(0,0,0,0.3);}'+
     '.gig-run-btn-end:hover{background:rgba(0,0,0,0.4);}'+
     // Push Workbench (and any page) down so the strip doesn\'t cover content.
