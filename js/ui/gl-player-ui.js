@@ -196,7 +196,12 @@ window.GLPlayerUI = (function() {
             else { _floatEl.style.right = '12px'; _floatEl.style.bottom = liftedBottom; }
         }
         var vid = _floatEl.querySelector('#glpFloatVideo');
-        if (vid) vid.style.display = dims.showVideo ? '' : 'none';
+        // In bottom-bar dock the player stretches full-width — a 16:9 video
+        // at that width is ~810px tall and pushes size/dock controls above
+        // the viewport. Bottom-bar is an audio-focus dock; hide the video
+        // there regardless of size selection.
+        var showVid = dims.showVideo && dock !== 'bottom-bar';
+        if (vid) vid.style.display = showVid ? '' : 'none';
         ['mini','medium','large'].forEach(function(sz) {
             var btn = _floatEl.querySelector('[data-glp-size="' + sz + '"]');
             if (btn) btn.style.background = (sz === _floatState.size) ? 'rgba(102,126,234,0.25)' : 'transparent';
@@ -235,7 +240,7 @@ window.GLPlayerUI = (function() {
         _removeFloat();
         _floatEl = document.createElement('div');
         _floatEl.id = 'glpFloat';
-        _floatEl.style.cssText = 'position:fixed;z-index:9800;background:rgba(15,23,42,0.97);border:1px solid rgba(99,102,241,0.3);box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:none;color:#e2e8f0;font-family:inherit';
+        _floatEl.style.cssText = 'position:fixed;z-index:9800;background:rgba(15,23,42,0.97);border:1px solid rgba(99,102,241,0.3);box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 24px);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:none;color:#e2e8f0;font-family:inherit';
         _floatEl.innerHTML = ''
             + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:grab;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.7em">'
                 + '<span style="color:#475569;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;flex-shrink:0">Player</span>'
