@@ -814,6 +814,11 @@
         // Exit chart fullscreen if open so the next song doesn't inherit it.
         var fs = document.getElementById('wbChartFs');
         if (fs) _wbExitChartFs();
+        // If a Run-the-Gig is active, ✕ Close ends it cleanly (matches the
+        // user's expectation that closing the surface ends the run too).
+        if (window._gigRunState && typeof window._gigRunKill === 'function') {
+            window._gigRunKill();
+        }
         // Return to Practice Command Center — that's where the user came
         // from in the new flow. (Old behavior was 'songs', kept available
         // by clicking Songs in the left rail.)

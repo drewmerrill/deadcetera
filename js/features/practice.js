@@ -717,6 +717,8 @@ window._pmSwitchGig = function _pmSwitchGig(gigKey) {
 // tools" — the run is a contextual strip rendered above the Workbench
 // header, not a new mode tab.
 window._gigRunState = null;
+var _gigRunGen = 0;  // generation counter — bumped on every state change
+                     // so stale interval/timeout callbacks can bail out
 
 window._pmStartGigRun = function _pmStartGigRun(gigKey) {
     var songs = _pmGigPrepFullSongs[gigKey] || [];
@@ -724,21 +726,45 @@ window._pmStartGigRun = function _pmStartGigRun(gigKey) {
         if (typeof showToast === 'function') showToast('No songs in this gig\'s setlist');
         return;
     }
+    // Defensive: if a prior run is somehow still active, nuke it cleanly
+    // before starting a new one. _pmStartGigRun → multiple times caused
+    // the cycling bug.
+    if (window._gigRunState) {
+        _gigRunFinish(true);
+    }
     // Close the picker modal so the Workbench surface is visible.
     var modal = document.getElementById('pmSongPickerOverlay');
     if (modal) modal.remove();
 
     window._gigRunState = {
+        gen: ++_gigRunGen,
         songs: songs.slice(),
         idx: 0,
         perSongSec: 90,
         remainingSec: 90,
         paused: false,
         intervalId: null,
+        openTimeoutId: null,
         startedAt: Date.now(),
         gigKey: gigKey
     };
     _gigRunOpenCurrent();
+};
+
+// Emergency kill switch — surfaceable from console for debugging.
+// Also called by _wbClose etc. so abandoned runs don't keep ticking.
+window._gigRunKill = function() {
+    var st = window._gigRunState;
+    if (st) {
+        if (st.intervalId) clearInterval(st.intervalId);
+        if (st.openTimeoutId) clearTimeout(st.openTimeoutId);
+    }
+    window._gigRunState = null;
+    _gigRunGen++; // invalidate any stale closures still pending
+    var strip = document.getElementById('gigRunStrip');
+    if (strip) strip.remove();
+    var menu = document.getElementById('gigRunJumpMenu');
+    if (menu) menu.remove();
 };
 
 function _gigRunOpenCurrent() {
@@ -749,14 +775,24 @@ function _gigRunOpenCurrent() {
         return;
     }
     st.remainingSec = st.perSongSec;
+    // Clear ALL pending timers/timeouts so stale callbacks don't fire
+    // _gigRunNext after we've already advanced.
     if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    if (st.openTimeoutId) { clearTimeout(st.openTimeoutId); st.openTimeoutId = null; }
+    // Bump generation so any in-flight closure (e.g. an interval tick
+    // that's already queued in the event loop) bails out on next fire.
+    var capturedGen = ++_gigRunGen;
+    st.gen = capturedGen;
     if (typeof openWorkbench === 'function') {
         openWorkbench(st.songs[st.idx], 'practice', { gigRun: true });
     }
     // Defer strip refresh + timer until Workbench has had a moment to mount.
-    setTimeout(function() {
+    st.openTimeoutId = setTimeout(function() {
+        // Stale check — if state changed between when we queued this and
+        // when it fires, bail.
+        if (!window._gigRunState || window._gigRunState.gen !== capturedGen) return;
         _gigRunRenderStrip();
-        if (!st.paused) _gigRunStartTimer();
+        if (!window._gigRunState.paused) _gigRunStartTimer();
     }, 100);
 }
 
@@ -764,20 +800,33 @@ function _gigRunStartTimer() {
     var st = window._gigRunState;
     if (!st) return;
     if (st.intervalId) clearInterval(st.intervalId);
-    st.intervalId = setInterval(function() {
-        if (!st || st.paused) return;
-        st.remainingSec--;
+    var capturedGen = st.gen;
+    // Use a local timer ref so the callback can self-clear on stale gen.
+    var localTimerId = setInterval(function() {
+        // Stale-callback guard — this is the critical fix for the rapid-
+        // cycling bug. If the run state was replaced or killed, an older
+        // interval that hasn't been cleared yet must NOT touch _gigRunState
+        // or call _gigRunNext.
+        var cur = window._gigRunState;
+        if (!cur || cur.gen !== capturedGen) {
+            clearInterval(localTimerId);
+            return;
+        }
+        if (cur.paused) return;
+        cur.remainingSec--;
         _gigRunRefreshTimerOnly();
-        if (st.remainingSec <= 0) {
+        if (cur.remainingSec <= 0) {
             window._gigRunNext();
         }
     }, 1000);
+    st.intervalId = localTimerId;
 }
 
 window._gigRunNext = function() {
     var st = window._gigRunState;
     if (!st) return;
     if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    if (st.openTimeoutId) { clearTimeout(st.openTimeoutId); st.openTimeoutId = null; }
     st.idx++;
     if (st.idx >= st.songs.length) { _gigRunFinish(); return; }
     _gigRunOpenCurrent();
@@ -787,6 +836,7 @@ window._gigRunBack = function() {
     var st = window._gigRunState;
     if (!st) return;
     if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    if (st.openTimeoutId) { clearTimeout(st.openTimeoutId); st.openTimeoutId = null; }
     st.idx = Math.max(0, st.idx - 1);
     _gigRunOpenCurrent();
 };
@@ -805,6 +855,7 @@ window._gigRunJump = function(idx) {
     if (!st) return;
     if (idx < 0 || idx >= st.songs.length) return;
     if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    if (st.openTimeoutId) { clearTimeout(st.openTimeoutId); st.openTimeoutId = null; }
     st.idx = idx;
     // Close the jump menu if it's open.
     var menu = document.getElementById('gigRunJumpMenu');
@@ -841,9 +892,11 @@ function _gigRunFinish(canceled) {
     var st = window._gigRunState;
     if (!st) return;
     if (st.intervalId) clearInterval(st.intervalId);
+    if (st.openTimeoutId) clearTimeout(st.openTimeoutId);
     var doneCount = canceled ? st.idx : st.songs.length;
     var elapsedMin = Math.max(1, Math.round((Date.now() - st.startedAt) / 60000));
     window._gigRunState = null;
+    _gigRunGen++;  // invalidate any in-flight stale closures
     var strip = document.getElementById('gigRunStrip');
     if (strip) strip.remove();
     var menu = document.getElementById('gigRunJumpMenu');
