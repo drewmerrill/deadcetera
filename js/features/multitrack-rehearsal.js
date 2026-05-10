@@ -63,6 +63,14 @@ var _MT_TAGS = [
     'transition', 'too loud', 'too quiet', 'tone', 'nail this', 'revisit'
 ];
 
+// Phase B+ (Workbench prelude): songs need to be derived from a multitrack
+// session for "🎯 Practice this" to know what songId the task targets. v0.2
+// of the spec defers full song-segment detection (it'd run the segmentation
+// engine over the multitrack master mix). For MVP, we ASK the user which song
+// the comment is about when they promote it — single dropdown of the band's
+// active songs. If the user has set _mtState.player.songContext at any point
+// (e.g. they're reviewing a single-song mix), we default to that.
+
 // Module-level state
 var _mtState = {
     pickedFiles: [],     // [{file, inferredRole, inferredMember}]
@@ -743,6 +751,107 @@ function _mtMaybeUpdateMasterPosition() {
     if (label) label.textContent = _mtFmtTime(a0.currentTime) + ' / ' + _mtFmtTime(a0.duration);
 }
 
+// ── Phase B+ (Workbench prelude): PracticeTask data layer ────────────────────
+// Stored at bands/{slug}/practice_tasks/{taskId}. Per spec §5.4, tasks are
+// distinct from notes — they have lifecycle (open/in-progress/resolved) and
+// always carry a back-ref to their source. Created via "🎯 Practice this"
+// on a multitrack rehearsal comment for now; future surfaces (rehearsal-flag,
+// manual) layer on later.
+
+function _mtGenTaskId() {
+    return 'tsk_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+async function _mtSavePracticeTask(task) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return false;
+    try {
+        await db.ref(bandPath('practice_tasks/' + task.taskId)).set(task);
+        return true;
+    } catch (e) {
+        console.warn('[Multitrack] save task failed:', e.message);
+        return false;
+    }
+}
+
+// Promote a comment to a PracticeTask. Asks the user which song the comment
+// was about (no auto-segmentation in v0.2). Auto-fills section / track /
+// member / tags / text from the comment. Saves to Firebase, surfaces toast
+// confirmation, marks the comment row with a "→ task" badge for the rest of
+// the session.
+window._mtPromoteCommentToTask = async function(commentId) {
+    var p = _mtState.player;
+    if (!p) return;
+    var comment = (p.comments || []).find(function(c) { return c.commentId === commentId; });
+    if (!comment) {
+        if (typeof showToast === 'function') showToast('Comment not found');
+        return;
+    }
+    // Ask which song this comment was about. Defaults to band's Active songs.
+    var allSongsList = (typeof allSongs !== 'undefined') ? allSongs : [];
+    if (!allSongsList.length) {
+        if (typeof showToast === 'function') showToast('No songs in library — can\'t create task');
+        return;
+    }
+    // Build a lightweight prompt: comma-separated alphabetical titles, user
+    // types or pastes one. (No full picker UI — Drew's "don't over-engineer"
+    // guard. Phase 2 of Workbench introduces a real song picker.)
+    var defaultGuess = '';
+    var bandMembersMap = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var trackById = {};
+    p.tracks.forEach(function(t) { trackById[t.trackId] = t; });
+    var anchorTrack = comment.trackId ? trackById[comment.trackId] : null;
+    var songTitle = prompt(
+        'Which song is this about? (type the title)\n\n'
+        + 'Comment: "' + (comment.text || '(no text)') + '"\n'
+        + 'Tags: ' + ((comment.tags || []).join(', ') || '(none)') + '\n'
+        + 'At: ' + _mtFmtTime(comment.timestampSec)
+        + (anchorTrack ? '\nTrack: ' + anchorTrack.label : ''),
+        defaultGuess
+    );
+    if (songTitle === null) return; // cancelled
+    songTitle = songTitle.trim();
+    if (!songTitle) return;
+    // Best-effort canonical song lookup: prefer exact title match
+    var matched = allSongsList.find(function(s) { return (s.title || '').toLowerCase() === songTitle.toLowerCase(); });
+    var songId = matched ? (matched.songId || matched.title) : songTitle;
+    var canonicalTitle = matched ? matched.title : songTitle;
+
+    var task = {
+        taskId: _mtGenTaskId(),
+        songId: songId,
+        songTitle: canonicalTitle,
+        section: null,
+        sectionLabel: null,
+        timestampSec: comment.timestampSec,
+        trackId: comment.trackId || null,
+        memberKey: anchorTrack ? (anchorTrack.memberKey || null) : null,
+        noteText: comment.text || '',
+        tags: (comment.tags || []).slice(),
+        status: 'open',
+        source: 'review-comment',
+        sourceRef: {
+            sessionId: p.sessionId,
+            commentId: commentId
+        },
+        createdAt: new Date().toISOString(),
+        createdBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '',
+        updatedAt: new Date().toISOString()
+    };
+    var ok = await _mtSavePracticeTask(task);
+    if (!ok) {
+        if (typeof showToast === 'function') showToast('⚠ Task save failed');
+        return;
+    }
+    // Track the task back-ref on the comment in module state so the row's
+    // "→ task" badge persists for this player session. Optional Firebase
+    // write back to comments[].promotedTaskId is deferred — adds a write
+    // per promotion; not worth the round-trip for visual breadcrumb only.
+    comment.promotedTaskId = task.taskId;
+    if (typeof showToast === 'function') showToast('✅ Task created — ' + canonicalTitle + ' · ' + _mtFmtTime(comment.timestampSec));
+    _mtRefreshCommentPanel();
+};
+
 // ── Phase B: comments data layer ─────────────────────────────────────────────
 // Per-session sub-collection at:
 //   bands/{slug}/rehearsal_sessions/{sessionId}/comments/{commentId}
@@ -900,15 +1009,23 @@ function _mtRenderCommentList() {
             : '';
         // Phase B+: data-comment-time so the playback ticker can find this
         // row by timestamp and apply an "active" highlight as we cross it.
-        return '<div class="mt-comment-row" data-comment-time="' + c.timestampSec + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
+        // Workbench prelude: "→ task" badge if this comment was promoted.
+        var taskBadge = c.promotedTaskId
+            ? ' <span title="A practice task was created from this comment" style="font-size:0.6em;color:#22c55e;font-weight:700;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);padding:1px 5px;border-radius:8px">→ task</span>'
+            : '';
+        var practiceBtn = c.promotedTaskId
+            ? ''
+            : '<button onclick="_mtPromoteCommentToTask(\'' + escHtml(c.commentId) + '\')" title="Convert this comment into a practice task for the relevant song" style="background:none;border:1px solid rgba(34,197,94,0.3);color:#86efac;cursor:pointer;font-size:0.62em;padding:1px 5px;border-radius:4px;font-family:inherit;white-space:nowrap;font-weight:600">🎯 Practice this</button>';
+        return '<div class="mt-comment-row" data-comment-time="' + c.timestampSec + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr auto 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
             + '<button onclick="_mtJumpToComment(' + c.timestampSec + ')" title="Jump to ' + _mtFmtTime(c.timestampSec) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(c.timestampSec) + '</button>'
             + '<div style="min-width:0">'
-              + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + '</div>'
+              + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + taskBadge + '</div>'
               + '<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
                 + '<span style="font-size:0.65em;color:var(--text-dim);font-style:italic">' + escHtml(trackLabel) + '</span>'
                 + (tagsHtml ? '<span style="color:var(--text-dim);font-size:0.65em">·</span> ' + tagsHtml : '')
               + '</div>'
             + '</div>'
+            + '<div style="align-self:center">' + practiceBtn + '</div>'
             + '<button onclick="_mtDeleteCommentUI(\'' + escHtml(c.commentId) + '\')" title="Delete" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:0">×</button>'
             + '</div>';
     }).join('');

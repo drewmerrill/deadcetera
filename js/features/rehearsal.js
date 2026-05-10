@@ -1079,6 +1079,15 @@ async function _rhRenderCommandFlow(el) {
             // "S..." and made the plan unreadable. The plan is the page's
             // primary content and belongs in main.)
             _railHtml += (_rhGuidance ? '<div class="gl-context-card">' + _rhGuidance + '</div>' : '');
+            // Practice Tasks (Workbench prelude — Phase B+) — open by default;
+            // body filled in async by _rhRenderPracticeTasks() after render.
+            _railHtml += '<details class="gl-context-card" id="rhTasksRailCard" style="padding:0" open>'
+                + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
+                + '<span class="gl-section-label" style="padding:0;margin:0">🎯 Practice Tasks</span>'
+                + '<span id="rhTasksCountBadge" style="font-size:0.62em;color:var(--gl-text-tertiary);margin-left:auto"></span>'
+                + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">▸</span></summary>'
+                + '<div style="padding:0 14px 10px"><div id="rhPracticeTasks"></div></div>'
+                + '</details>';
             // History — collapsed
             _railHtml += '<details class="gl-context-card" style="padding:0">'
                 + '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px">'
@@ -1147,6 +1156,8 @@ async function _rhRenderCommandFlow(el) {
     _rhRenderLastRehearsalTimeline();
     // Render full history list (inside collapsed History section)
     _rhRenderSessionHistory();
+    // Render practice tasks panel (right rail, Workbench prelude)
+    _rhRenderPracticeTasks();
   } catch (_glRenderE) {
     if (typeof _glRenderError === 'function') _glRenderError(main, '_rhRenderCommandFlow', _glRenderE);
   } finally {
@@ -1782,6 +1793,122 @@ window._rhBulkDelete = async function() {
     _rhBulkSelected = {};
     _rhRenderSessionHistory();
     _rhRenderLastRehearsalTimeline();
+};
+
+// ── Practice Tasks panel (Workbench prelude) ────────────────────────────────
+// Reads bands/{slug}/practice_tasks/* (created by _mtPromoteCommentToTask
+// in multitrack-rehearsal.js). Shows only OPEN tasks; resolved tasks are
+// surfaced via a count badge for affordance ("3 done in last 7 days") but
+// don't clutter the list. Click a task → opens song detail with a context
+// banner (full Workbench launch comes when Workbench shell ships).
+async function _rhLoadPracticeTasks() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return [];
+    try {
+        var snap = await db.ref(bandPath('practice_tasks')).once('value');
+        var val = snap.val();
+        if (!val) return [];
+        return Object.values(val).sort(function(a, b) {
+            return (b.createdAt || '').localeCompare(a.createdAt || '');
+        });
+    } catch (e) {
+        console.warn('[Rehearsal] load practice tasks failed:', e.message);
+        return [];
+    }
+}
+
+async function _rhRenderPracticeTasks() {
+    var el = document.getElementById('rhPracticeTasks');
+    var badge = document.getElementById('rhTasksCountBadge');
+    if (!el) return;
+    var tasks = await _rhLoadPracticeTasks();
+    var open = tasks.filter(function(t) { return t.status === 'open' || t.status === 'in-progress'; });
+    var resolved = tasks.filter(function(t) { return t.status === 'resolved'; });
+    if (badge) badge.textContent = open.length ? open.length + ' open' : '';
+
+    if (!open.length) {
+        el.innerHTML = '<div style="font-size:0.7em;color:var(--gl-text-tertiary);font-style:italic;padding:4px 0">'
+            + 'No open tasks. Create one from a comment in any multitrack rehearsal review.'
+            + '</div>'
+            + (resolved.length ? '<div style="margin-top:4px;font-size:0.62em;color:var(--gl-text-tertiary)">' + resolved.length + ' resolved</div>' : '');
+        return;
+    }
+
+    var bandMembersMap = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var rowsHtml = open.map(function(t) {
+        var mName = t.memberKey ? (bandMembersMap[t.memberKey] ? bandMembersMap[t.memberKey].name.split(' ')[0] : t.memberKey) : '';
+        var meta = [];
+        if (t.songTitle) meta.push(t.songTitle);
+        if (mName) meta.push(mName);
+        if (typeof t.timestampSec === 'number') {
+            var m = Math.floor(t.timestampSec / 60);
+            var s = Math.floor(t.timestampSec - m * 60);
+            meta.push(m + ':' + (s < 10 ? '0' : '') + s);
+        }
+        var tagsHtml = (t.tags && t.tags.length)
+            ? t.tags.map(function(tag) { return '<span style="padding:0 4px;border-radius:6px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;font-size:0.58em;font-weight:600">' + escHtml(tag) + '</span>'; }).join(' ')
+            : '';
+        return '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:6px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.72em;align-items:start">'
+            + '<input type="checkbox" onchange="_rhResolvePracticeTask(\'' + escHtml(t.taskId) + '\')" title="Mark resolved" style="margin-top:3px;accent-color:#22c55e;cursor:pointer">'
+            + '<div style="min-width:0;cursor:pointer" onclick="_rhOpenPracticeTask(\'' + escHtml(t.taskId) + '\')" title="Open this song to practice">'
+                + '<div style="color:var(--text);font-weight:600;line-height:1.3;word-wrap:break-word">' + escHtml(t.noteText || '(no note)') + '</div>'
+                + '<div style="font-size:0.85em;color:var(--gl-text-tertiary);margin-top:2px">' + escHtml(meta.join(' · ')) + '</div>'
+                + (tagsHtml ? '<div style="margin-top:3px;display:flex;gap:3px;flex-wrap:wrap">' + tagsHtml + '</div>' : '')
+            + '</div>'
+            + '<button onclick="_rhDeletePracticeTask(\'' + escHtml(t.taskId) + '\')" title="Delete task" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:0;align-self:start;margin-top:2px">×</button>'
+            + '</div>';
+    }).join('');
+    el.innerHTML = rowsHtml + (resolved.length
+        ? '<div style="margin-top:6px;font-size:0.62em;color:var(--gl-text-tertiary);text-align:center;font-style:italic">' + resolved.length + ' resolved</div>'
+        : '');
+}
+
+window._rhResolvePracticeTask = async function(taskId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        await db.ref(bandPath('practice_tasks/' + taskId)).update({
+            status: 'resolved',
+            updatedAt: new Date().toISOString()
+        });
+        if (typeof showToast === 'function') showToast('✅ Task resolved');
+        _rhRenderPracticeTasks();
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Resolve failed');
+    }
+};
+
+window._rhDeletePracticeTask = async function(taskId) {
+    if (!confirm('Delete this practice task?')) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        await db.ref(bandPath('practice_tasks/' + taskId)).remove();
+        _rhRenderPracticeTasks();
+    } catch (e) {}
+};
+
+// Open a practice task → minimal launch behavior since Workbench doesn't
+// exist yet. Navigate to Songs page + select the song; show a sticky
+// banner with the task context. When Workbench ships, this becomes
+// "openWorkbench(songId, 'practice', { loop: timestamp, taskId })".
+window._rhOpenPracticeTask = async function(taskId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var snap = null;
+    try { snap = await db.ref(bandPath('practice_tasks/' + taskId)).once('value'); } catch (e) {}
+    var task = snap && snap.val();
+    if (!task) {
+        if (typeof showToast === 'function') showToast('Task not found');
+        return;
+    }
+    // Stash the open task so the song surface can read it on render
+    window._rhActivePracticeTask = task;
+    // Best-effort: try to select the song. selectSong is a global from songs.js.
+    if (typeof selectSong === 'function' && task.songTitle) {
+        try { selectSong(task.songTitle); } catch (e) {}
+    }
+    if (typeof showToast === 'function') showToast('🎯 Opened: ' + (task.songTitle || 'song') + (typeof task.timestampSec === 'number' ? ' at ' + Math.floor(task.timestampSec / 60) + ':' + (Math.floor(task.timestampSec % 60) < 10 ? '0' : '') + Math.floor(task.timestampSec % 60) : ''));
 };
 
 async function _rhRenderSessionHistory() {
