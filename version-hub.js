@@ -819,10 +819,30 @@ async function vhSendTo(dest) {
                 return existing === baseUrl;
             });
             if (isDupe) {
-                if (typeof showToast === 'function') showToast('This version is already saved');
+                // Even if duplicate, the user explicitly clicked "Save as
+                // North Star" — promote the existing entry to North Star
+                // rather than no-op'ing.
+                versions.forEach(function(v) {
+                    var ex = (v.url || '').replace(/[?#].*$/, '').replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+                    v.isNorthStar = (ex === baseUrl);
+                });
+                if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
+                if (typeof renderRefVersions === 'function') await renderRefVersions(songTitle, {});
+                if (typeof showToast === 'function') showToast('⭐ Set as North Star');
                 closeVersionHub();
+                setTimeout(function() {
+                    var listenPanel = document.querySelector('.sd-lens-panel[data-lens="listen"]');
+                    if (listenPanel && listenPanel.style.display !== 'none' && typeof _sdPopulateListenLensPublic === 'function') {
+                        _sdPopulateListenLensPublic(songTitle);
+                    }
+                }, 300);
                 return;
             }
+            // Explicit promotion: clear any existing North Star flag, mark
+            // the new version. This overrides the vote-counting render path
+            // so a freshly-added entry actually wins over a popular old one.
+            versions.forEach(function(v) { v.isNorthStar = false; });
+            version.isNorthStar = true;
             versions.push(version);
             console.log('[vh] Saving', versions.length, 'versions for:', songTitle);
             if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);

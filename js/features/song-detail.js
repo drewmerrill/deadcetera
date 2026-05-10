@@ -750,7 +750,17 @@ async function _sdUpgradeListenStep(title) {
         // newly-added entry never displaces an older 0-vote entry that
         // happens to be earlier in the array.
         var northStar = null;
+        // Explicit override first: if any version is flagged isNorthStar
+        // (set by "Save as North Star" via the version hub), it wins
+        // regardless of votes. Take the most-recently-flagged one if
+        // multiple exist (legacy data safety).
+        var explicit = arr.filter(function(v) { return v && v.isNorthStar === true; });
+        if (explicit.length) {
+            explicit.sort(function(a, b) { return _sdVersionTime(b) - _sdVersionTime(a); });
+            northStar = Object.assign({}, explicit[0], { _vc: 0, _addedAt: _sdVersionTime(explicit[0]) });
+        }
         arr.forEach(function(v) {
+            if (northStar && northStar.isNorthStar) return; // explicit pick already won
             var votes = v.votes ? Object.keys(v.votes).filter(function(k) { return v.votes[k]; }).length : 0;
             var thisTime = _sdVersionTime(v);
             var existingTime = northStar ? (northStar._addedAt || 0) : 0;
@@ -4153,7 +4163,16 @@ async function _sdPopulateListenLens(title) {
         // Same tie-breaker logic as the chart-card render path: prefer the
         // most-recently-added entry when votes are tied. Otherwise adding a
         // new North Star via "Change" doesn't visibly replace.
+        // Explicit isNorthStar flag wins over vote-counting. Set by
+        // "Save as North Star" in the version hub. Multiple flagged →
+        // most recently set wins (legacy-data safety).
+        var explicit = refs.filter(function(v) { return v && v.isNorthStar === true; });
+        if (explicit.length) {
+            explicit.sort(function(a, b) { return _sdVersionTime(b) - _sdVersionTime(a); });
+            northStar = Object.assign({}, explicit[0], { _voteCount: 0, _addedAt: _sdVersionTime(explicit[0]) });
+        }
         refs.forEach(function(v){
+            if (northStar && northStar.isNorthStar) return; // explicit pick already won
             var votes=v.votes?Object.keys(v.votes).filter(function(k){return v.votes[k];}).length:0;
             var thisTime = _sdVersionTime(v);
             var existingTime = northStar ? (northStar._addedAt || 0) : 0;
