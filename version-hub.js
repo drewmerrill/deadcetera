@@ -6,7 +6,7 @@ console.log('%c🔍 Version Hub loaded', 'color:#667eea;font-weight:bold');
 
 // ── State ────────────────────────────────────────────────────────────────────
 var vhSong = null;       // { title, band, bandName }
-var vhActiveTab = 'archive';
+var vhActiveTab = 'youtube';   // default landing tab — Drew preference 2026-05-10
 var vhSelectedUrl = '';
 var vhSelectedTitle = '';
 var vhSelectedPlatform = '';
@@ -25,7 +25,7 @@ function openVersionHub(songTitle, opts) {
     var bandCode = songData ? songData.band : 'GD';
     var bandName = typeof getFullBandName === 'function' ? getFullBandName(bandCode) : bandCode;
     vhSong = { title: songTitle, band: bandCode, bandName: bandName };
-    vhActiveTab = opts.tab || 'archive';
+    vhActiveTab = opts.tab || 'youtube';
     vhCallback = opts.callback || null;
     vhReturnTo = opts.returnTo || '';
     vhSelectedUrl = ''; vhSelectedTitle = ''; vhSelectedPlatform = '';
@@ -54,14 +54,15 @@ function vhRender() {
     var ov = document.createElement('div');
     ov.id = 'vhOverlay';
 
-    // Source tabs
+    // Source tabs — YouTube first per Drew preference 2026-05-10
+    // (default open tab; most-likely match for in-app float player).
     var tabs = [
-        { id: 'archive', icon: '🏛️', label: 'Archive' },
-        { id: 'youtube', icon: '📺', label: 'YouTube' },
-        { id: 'relisten', icon: '🔄', label: 'Relisten' }
+        { id: 'youtube',  icon: '📺',   label: 'YouTube'  },
+        { id: 'spotify',  icon: '🟢',   label: 'Spotify'  },
+        { id: 'archive',  icon: '🏛️', label: 'Archive'  },
+        { id: 'relisten', icon: '🔄',   label: 'Relisten' }
     ];
     if (isPhish) tabs.push({ id: 'phishin', icon: '🐟', label: 'Phish.in' });
-    tabs.push({ id: 'spotify', icon: '🟢', label: 'Spotify' });
     tabs.push({ id: 'url', icon: '🔗', label: 'Paste URL' });
 
     var tabsHtml = tabs.map(function(t) {
@@ -541,10 +542,10 @@ function vhRenderUrlPanel() {
     var primaryLabel = destLabels[primaryDest] || '⭐ Save as North Star';
     panel.innerHTML =
         '<div class="vh-url-info">' +
-            '<p>Paste any URL — Spotify, YouTube, Archive.org, SoundCloud, MP3, or any link.</p>' +
+            '<p>Paste any URL — Spotify, YouTube, Archive.org, SoundCloud, MP3, or any link. Or <strong>drop an audio file</strong> right here (under 5MB).</p>' +
         '</div>' +
-        '<div class="vh-search-row">' +
-            '<input id="vhPasteUrl" type="text" class="vh-search-input" placeholder="https://..." onkeydown="if(event.key===\'Enter\')vhSelectAndSend(\'' + primaryDest + '\')" oninput="vhDetectPlatform(this.value)">' +
+        '<div class="vh-search-row" id="vhUrlDropZone">' +
+            '<input id="vhPasteUrl" type="text" class="vh-search-input" placeholder="https://... or drop a file" onkeydown="if(event.key===\'Enter\')vhSelectAndSend(\'' + primaryDest + '\')" oninput="vhDetectPlatform(this.value)">' +
         '</div>' +
         '<div id="vhUrlDetect" class="vh-url-detect"></div>' +
         '<div class="vh-url-fields">' +
@@ -557,6 +558,61 @@ function vhRenderUrlPanel() {
             '<button onclick="vhSelectAndSend(\'stems\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎚️ Stems</button>' +
             '<button onclick="vhSelectAndSend(\'practice\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎵 Practice</button>' +
             '</div>');
+    _vhWireDragDrop();
+}
+
+// Wire drag-drop on the Paste URL drop zone — accepts audio files up to 5MB,
+// converts to data URL, prefills the input/title.
+function _vhWireDragDrop() {
+    var zone = document.getElementById('vhUrlDropZone');
+    if (!zone) return;
+    var stop = function (e) { e.preventDefault(); e.stopPropagation(); };
+    zone.addEventListener('dragenter', function (e) { stop(e); zone.classList.add('vh-drag-over'); });
+    zone.addEventListener('dragover',  function (e) { stop(e); zone.classList.add('vh-drag-over'); });
+    zone.addEventListener('dragleave', function (e) {
+        stop(e);
+        // Only clear if leaving the zone itself (not entering a child)
+        if (!zone.contains(e.relatedTarget)) zone.classList.remove('vh-drag-over');
+    });
+    zone.addEventListener('drop', function (e) {
+        stop(e);
+        zone.classList.remove('vh-drag-over');
+        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (f) _vhHandleDroppedFile(f);
+    });
+}
+
+function _vhHandleDroppedFile(file) {
+    var MAX_BYTES = 5 * 1024 * 1024;
+    var isAudio = (file.type && file.type.indexOf('audio/') === 0) ||
+                  /\.(mp3|m4a|wav|ogg|flac|aac)$/i.test(file.name || '');
+    if (!isAudio) {
+        if (typeof showToast === 'function') showToast('Drop an audio file (MP3, M4A, WAV, OGG, FLAC)');
+        return;
+    }
+    if (file.size > MAX_BYTES) {
+        if (typeof showToast === 'function') showToast('File too large — keep it under 5MB');
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+        var urlInput = document.getElementById('vhPasteUrl');
+        var titleInput = document.getElementById('vhPasteTitle');
+        if (urlInput) {
+            urlInput.value = ev.target.result;
+            // Trigger oninput so vhDetectPlatform runs
+            try { urlInput.dispatchEvent(new Event('input', { bubbles: true })); } catch(e) {}
+        }
+        if (titleInput && !titleInput.value) {
+            var name = (file.name || '').replace(/\.[^.]+$/, '');
+            titleInput.value = name || 'Dropped audio';
+        }
+        if (typeof showToast === 'function') showToast('File loaded — click save');
+    };
+    reader.onerror = function () {
+        if (typeof showToast === 'function') showToast('Could not read file');
+    };
+    reader.readAsDataURL(file);
 }
 
 function vhUrlPanelSendTo(btn) {

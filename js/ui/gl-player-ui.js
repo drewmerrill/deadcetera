@@ -127,14 +127,24 @@ window.GLPlayerUI = (function() {
         large:  { width: 520, showVideo: true  }
     };
     function _loadFloatState() {
+        var hasSaved = false;
         try {
             var s = localStorage.getItem('glPlayerFloatState');
             if (s) {
                 var parsed = JSON.parse(s);
-                if (parsed && parsed.size && _SIZE_DIMS[parsed.size]) _floatState.size = parsed.size;
-                if (parsed && parsed.dock) _floatState.dock = parsed.dock;
+                if (parsed && parsed.size && _SIZE_DIMS[parsed.size]) { _floatState.size = parsed.size; hasSaved = true; }
+                if (parsed && parsed.dock) { _floatState.dock = parsed.dock; hasSaved = true; }
             }
         } catch (e) {}
+        if (!hasSaved) {
+            // Responsive defaults (Drew spec 2026-05-10): phone=mini, tablet=bottom-bar, desktop=medium bottom-right
+            try {
+                var w = window.innerWidth || document.documentElement.clientWidth || 1200;
+                if (w < 600) { _floatState.size = 'mini'; _floatState.dock = 'bottom-right'; }
+                else if (w < 1024) { _floatState.size = 'medium'; _floatState.dock = 'bottom-bar'; }
+                else { _floatState.size = 'medium'; _floatState.dock = 'bottom-right'; }
+            } catch (e) {}
+        }
     }
     function _saveFloatState() {
         try { localStorage.setItem('glPlayerFloatState', JSON.stringify(_floatState)); } catch (e) {}
@@ -227,6 +237,14 @@ window.GLPlayerUI = (function() {
             + '<div style="padding:6px 10px 4px">'
                 + '<div id="glpFloatTitle" style="font-size:0.84em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song ? song.title : '') + '</div>'
                 + '<div id="glpFloatSource" style="font-size:0.66em;color:#475569;margin-top:1px"></div>'
+            + '</div>'
+            + '<div id="glpFloatTagRow" style="display:flex;align-items:center;gap:4px;padding:2px 8px 4px;font-size:0.68em">'
+                + '<span style="color:#475569;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Tag</span>'
+                + '<button onclick="GLPlayerUI.tagCurrentAs(\'northstar\')" title="Set as North Star" style="background:none;border:1px solid rgba(251,191,36,0.35);color:#fbbf24;cursor:pointer;padding:3px 7px;border-radius:5px;font-weight:700">⭐ NS</button>'
+                + '<button onclick="GLPlayerUI.tagCurrentAs(\'lesson\')" title="Save as Lesson" style="background:none;border:1px solid rgba(244,114,182,0.30);color:#f9a8d4;cursor:pointer;padding:3px 7px;border-radius:5px">🎬 Lesson</button>'
+                + '<button onclick="GLPlayerUI.tagCurrentAs(\'alternate\')" title="Save as Alternate" style="background:none;border:1px solid rgba(125,211,252,0.30);color:#7dd3fc;cursor:pointer;padding:3px 7px;border-radius:5px">🎧 Alt</button>'
+                + '<span style="flex:1"></span>'
+                + '<button onclick="GLPlayerUI.deleteCurrent()" title="Delete this version" style="background:none;border:1px solid rgba(239,68,68,0.30);color:#fca5a5;cursor:pointer;padding:3px 7px;border-radius:5px">🗑</button>'
             + '</div>'
             + '<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;font-size:0.7em">'
                 + '<button onclick="GLPlayerEngine.seekRelative(-30)" title="Back 30s" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#94a3b8;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">-30</button>'
@@ -367,17 +385,12 @@ window.GLPlayerUI = (function() {
         var E = window.GLPlayerEngine;
         var song = E ? E.getCurrentSong() : null;
         var title = song ? song.title : '';
-        var rows = [];
-        var done = function() {
-            if (!rows.length) {
-                menu.innerHTML = '<div style="font-size:0.72em;color:#64748b;padding:8px 4px;text-align:center">No saved sources for this song.</div>';
-                return;
-            }
-            rows.sort(function(a, b) {
-                if (a.isNorthStar !== b.isNorthStar) return a.isNorthStar ? -1 : 1;
-                return 0;
-            });
-            menu.innerHTML = rows.map(function(r) {
+        var groups = { northstar: [], lesson: [], reference: [], bestshot: [] };
+        var renderGroup = function(label, key) {
+            var arr = groups[key];
+            if (!arr.length) return '';
+            var html = '<div style="font-size:0.62em;color:#64748b;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:6px 4px 2px">' + label + '</div>';
+            html += arr.map(function(r) {
                 var safeUrl = r.url.replace(/'/g, "\\'");
                 var safeTitle = (title || '').replace(/'/g, "\\'");
                 return '<button onclick="GLPlayerUI.switchToSource(\'' + safeUrl + '\', \'' + safeTitle + '\')" style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;background:none;border:0;color:#cbd5e1;cursor:pointer;font-family:inherit;font-size:0.78em;text-align:left;border-radius:5px">' +
@@ -385,6 +398,36 @@ window.GLPlayerUI = (function() {
                     '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(r.label) + '</span>' +
                 '</button>';
             }).join('');
+            return html;
+        };
+        var done = function() {
+            var any = groups.northstar.length + groups.lesson.length + groups.reference.length + groups.bestshot.length;
+            if (!any) {
+                menu.innerHTML = '<div style="font-size:0.72em;color:#64748b;padding:8px 4px;text-align:center">No saved sources for this song.</div>';
+                return;
+            }
+            menu.innerHTML =
+                renderGroup('\u2B50 North Star', 'northstar') +
+                renderGroup('\uD83C\uDFAC Lessons', 'lesson') +
+                renderGroup('\uD83C\uDFA7 References / Alternates', 'reference') +
+                renderGroup('\uD83C\uDFC6 Best Shot', 'bestshot');
+        };
+        var loadBest = function() {
+            try {
+                if (typeof loadBandDataFromDrive !== 'function') return Promise.resolve();
+                return Promise.resolve(loadBandDataFromDrive(title, 'best_shot_takes')).then(function(d) {
+                    var shots = (typeof toArray === 'function') ? toArray(d || []) : (Array.isArray(d) ? d : []);
+                    var crowned = shots.find(function(s) { return s && s.crowned; });
+                    if (!crowned && shots.length) crowned = shots[shots.length - 1];
+                    if (crowned) {
+                        var url = crowned.audioUrl || crowned.externalUrl || '';
+                        if (url) {
+                            var label = crowned.label || (crowned.uploadedAt ? new Date(crowned.uploadedAt).toLocaleDateString() : 'Crowned take');
+                            groups.bestshot.push({ icon: '\uD83C\uDFC6', label: label, url: url });
+                        }
+                    }
+                }).catch(function(e) { console.warn('[switcher] best shot load failed', e); });
+            } catch (e) { return Promise.resolve(); }
         };
         try {
             if (typeof loadRefVersions === 'function') {
@@ -393,15 +436,90 @@ window.GLPlayerUI = (function() {
                     versions.forEach(function(v) {
                         var url = v.url || v.spotifyUrl || '';
                         if (!url) return;
-                        var icon = v.isNorthStar ? '\u2B50' : (v.type === 'lesson' ? '\uD83C\uDFAC' : '\uD83C\uDFA7');
                         var label = v.fetchedTitle || v.title || (v.isNorthStar ? 'North Star' : 'Version');
-                        if (v.type === 'lesson') label = 'Lesson \u2014 ' + label;
-                        rows.push({ icon: icon, label: label, url: url, isNorthStar: !!v.isNorthStar });
+                        if (v.isNorthStar) {
+                            groups.northstar.push({ icon: '\u2B50', label: label, url: url });
+                        } else if (v.type === 'lesson') {
+                            groups.lesson.push({ icon: '\uD83C\uDFAC', label: label, url: url });
+                        } else {
+                            // 'reference' or 'alternate' or unset \u2192 grouped together
+                            var icon = (v.type === 'alternate') ? '\uD83C\uDFA7' : '\uD83C\uDFA7';
+                            groups.reference.push({ icon: icon, label: label, url: url });
+                        }
                     });
-                    done();
-                }).catch(function(e) { console.warn('[switcher] load failed', e); done(); });
-            } else { done(); }
+                    return loadBest();
+                }).then(done).catch(function(e) { console.warn('[switcher] load failed', e); done(); });
+            } else {
+                loadBest().then(done);
+            }
         } catch (e) { console.warn('[switcher] load failed', e); done(); }
+    }
+
+    // \u2500\u2500 Tag actions: identify the currently-loaded version by URL/youtubeId,
+    // then patch its `type` (or `isNorthStar`) and persist via saveRefVersions.
+    function _floatCurrentMatchKey() {
+        var E = window.GLPlayerEngine;
+        var s = E ? E.getCurrentSong() : null;
+        if (!s) return null;
+        if (s.youtubeId) return { kind: 'yt', id: s.youtubeId, title: s.title };
+        if (s.url) return { kind: 'url', id: s.url, title: s.title };
+        return null;
+    }
+    function _versionMatches(v, key) {
+        if (!v) return false;
+        var url = v.url || v.spotifyUrl || '';
+        if (key.kind === 'yt') {
+            var m = url.match(/(?:youtu\.be\/|[?&]v=|youtube\.com\/embed\/)([\w-]{11})/);
+            return !!(m && m[1] === key.id);
+        }
+        return url === key.id;
+    }
+    async function tagCurrentAs(type) {
+        if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+        var key = _floatCurrentMatchKey();
+        if (!key || !key.title) { if (typeof showToast === 'function') showToast('No source loaded'); return; }
+        if (typeof loadRefVersions !== 'function' || typeof saveRefVersions !== 'function') return;
+        try {
+            var versions = (await loadRefVersions(key.title)) || [];
+            var idx = versions.findIndex(function(v) { return _versionMatches(v, key); });
+            if (idx < 0) { if (typeof showToast === 'function') showToast('Source not found in saved versions'); return; }
+            if (type === 'northstar') {
+                versions.forEach(function(v, i) { v.isNorthStar = (i === idx); });
+            } else {
+                versions[idx].type = type;
+                versions[idx].isNorthStar = false;
+            }
+            await saveRefVersions(key.title, versions);
+            var label = type === 'northstar' ? '\u2B50 North Star' : (type === 'lesson' ? '\uD83C\uDFAC Lesson' : '\uD83C\uDFA7 Alternate');
+            if (typeof showToast === 'function') showToast('Tagged as ' + label);
+            // Refresh switcher menu if open
+            var menu = document.getElementById('glpFloatSwitcher');
+            if (menu && menu.style.display !== 'none') _populateSwitcher(menu);
+        } catch (e) {
+            console.warn('[player] tag failed', e);
+            if (typeof showToast === 'function') showToast('Tag failed: ' + (e.message || e));
+        }
+    }
+    async function deleteCurrent() {
+        if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+        var key = _floatCurrentMatchKey();
+        if (!key || !key.title) return;
+        if (typeof loadRefVersions !== 'function' || typeof saveRefVersions !== 'function') return;
+        try {
+            var versions = (await loadRefVersions(key.title)) || [];
+            var idx = versions.findIndex(function(v) { return _versionMatches(v, key); });
+            if (idx < 0) { if (typeof showToast === 'function') showToast('Source not found'); return; }
+            var label = versions[idx].fetchedTitle || versions[idx].title || 'this version';
+            if (!confirm('Delete "' + label + '"? Votes will be lost.')) return;
+            versions.splice(idx, 1);
+            await saveRefVersions(key.title, versions);
+            if (typeof showToast === 'function') showToast('Version deleted');
+            var menu = document.getElementById('glpFloatSwitcher');
+            if (menu && menu.style.display !== 'none') _populateSwitcher(menu);
+        } catch (e) {
+            console.warn('[player] delete failed', e);
+            if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || e));
+        }
     }
     function switchToSource(url, title) {
         var menu = document.getElementById('glpFloatSwitcher');
@@ -886,6 +1004,9 @@ window.GLPlayerUI = (function() {
         // Source switcher
         toggleSwitcher: toggleSwitcher,
         switchToSource: switchToSource,
+        // SongMedia tag actions
+        tagCurrentAs: tagCurrentAs,
+        deleteCurrent: deleteCurrent,
         _onPrefChange: _onPrefChange,
         _playPastedUrl: _playPastedUrl
     };

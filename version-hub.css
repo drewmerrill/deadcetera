@@ -33,7 +33,9 @@
 .vh-panel { display:none; }
 
 /* Search row */
-.vh-search-row { display:flex; gap:6px; margin-bottom:10px; }
+.vh-search-row { display:flex; gap:6px; margin-bottom:10px; border-radius:10px; transition:background 0.15s, box-shadow 0.15s; }
+.vh-search-row.vh-drag-over { background:rgba(102,126,234,0.12); box-shadow:0 0 0 2px #667eea inset; }
+.vh-search-row.vh-drag-over .vh-search-input { border-color:#667eea; background:rgba(102,126,234,0.08); }
 .vh-search-input { flex:1; background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.12); border-radius:8px; color:#e2e8f0; padding:10px 12px; font-size:0.88em; font-family:inherit; }
 .vh-search-input:focus { outline:none; border-color:#667eea; }
 .vh-search-input::placeholder { color:#475569; }
