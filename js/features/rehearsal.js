@@ -7636,9 +7636,16 @@ function _riStyles() {
 }
 
 // ── Focus change listener — re-render Rehearsal when focus data changes ──────
+// Skip the re-render when the user is in Plan Mode (or inside the wizard, which
+// renders into #rhTabContent under #rhMain). Re-rendering wipes #rhMain and
+// strands the wizard's DOM mid-edit, which surfaces as rage-clicks on
+// checkboxes that "do nothing" while the rerender keeps swallowing them.
+// Focus data isn't the primary surface in Plan Mode anyway — it's just used
+// to seed new plans.
 if (typeof GLStore !== 'undefined' && GLStore.on) {
   GLStore.on('focusChanged', function() {
     if (typeof currentPage !== 'undefined' && currentPage === 'rehearsal') {
+      if (_rhPageMode === 'plan') return;
       var el = document.getElementById('page-rehearsal');
       if (el) renderRehearsalPage(el);
     }
