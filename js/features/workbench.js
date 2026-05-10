@@ -779,17 +779,36 @@
     function _wbInjectChartHint() {
         var body = document.getElementById('wb-body');
         if (!body) return;
-        var existing = document.getElementById('wb-chart-hint');
+        var existing = document.getElementById('wb-lens-switcher');
         if (existing) existing.remove();
-        var hint = document.createElement('div');
-        hint.id = 'wb-chart-hint';
-        hint.style.cssText = 'margin:14px 0 6px;padding:8px 12px;border:1px dashed rgba(255,255,255,0.12);border-radius:8px;font-size:0.78em;color:var(--text-dim);display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.015)';
-        hint.innerHTML =
-            '<span style="font-size:1em">📋</span>' +
-            '<span>Need chords?</span>' +
-            '<button onclick="window._wbJumpLens(\'band\')" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid rgba(102,126,234,0.3);background:rgba(102,126,234,0.08);color:#a5b4fc;cursor:pointer;font-size:0.92em;font-weight:600">View Chart</button>';
-        body.appendChild(hint);
+        // Bi-directional lens switcher — replaces the old one-way "View
+        // Chart" hint. Active lens is highlighted. Switching back to Stems
+        // (or any other) is one click; no stranded state.
+        var sw = document.createElement('div');
+        sw.id = 'wb-lens-switcher';
+        sw.className = 'wb-lens-switcher';
+        var lenses = [
+            { id: 'stems',   label: '🎚 Stems' },
+            { id: 'band',    label: '📋 Chart' },
+            { id: 'sing',    label: '🎤 Harmony' },
+            { id: 'listen',  label: '🎧 Versions' }
+        ];
+        sw.innerHTML = lenses.map(function(l) {
+            return '<button class="wb-lens-btn" data-lens="' + l.id + '" onclick="window._wbJumpLens(\'' + l.id + '\');window._wbUpdateLensSwitcherActive(\'' + l.id + '\')">' + l.label + '</button>';
+        }).join('');
+        body.appendChild(sw);
+        // Default highlight = stems (Workbench auto-defaults to stems lens)
+        window._wbUpdateLensSwitcherActive('stems');
     }
+
+    window._wbUpdateLensSwitcherActive = function(activeLens) {
+        var sw = document.getElementById('wb-lens-switcher');
+        if (!sw) return;
+        Array.prototype.forEach.call(sw.querySelectorAll('[data-lens]'), function(btn) {
+            if (btn.getAttribute('data-lens') === activeLens) btn.classList.add('is-active');
+            else btn.classList.remove('is-active');
+        });
+    };
 
     // "More views" — switch the embedded song-detail to a different lens.
     // Defaults are hidden (Practice mode auto-loads Stems); this lets a
@@ -898,6 +917,13 @@
             '.wb-note-scope { font-size: 0.66em; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1px; }',
             '.wb-note-text { color: var(--text); line-height: 1.4; }',
             '.wb-empty { font-size: 0.82em; color: var(--text-dim); font-style: italic; padding: 4px 0; }',
+            // Bi-directional lens switcher — pinned to the bottom of wb-body
+            // so it stays reachable from any lens. Sticky-bottom inside the
+            // scrollable body so it doesn\'t scroll away.
+            '.wb-lens-switcher { position: sticky; bottom: 0; display: flex; gap: 4px; margin-top: 14px; padding: 8px; background: rgba(15,23,42,0.95); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); justify-content: center; flex-wrap: wrap; }',
+            '.wb-lens-btn { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--text-dim); cursor: pointer; padding: 7px 14px; border-radius: 7px; font-size: 0.84em; font-weight: 600; font-family: inherit; transition: background 0.12s, color 0.12s, border-color 0.12s; }',
+            '.wb-lens-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); border-color: rgba(255,255,255,0.18); }',
+            '.wb-lens-btn.is-active { background: rgba(99,102,241,0.18); color: #a5b4fc; border-color: rgba(99,102,241,0.4); }',
             // Action bar — sticky bottom completion controls. Only shown
             // when a PracticeTask is active (revealed via `hidden` toggle).
             '.wb-action-bar { position: sticky; bottom: 0; display: flex; gap: 10px; padding: 12px 16px; background: var(--bg-primary, #0f172a); border-top: 1px solid rgba(255,255,255,0.08); z-index: 48; box-shadow: 0 -8px 24px rgba(0,0,0,0.35); }',

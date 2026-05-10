@@ -2948,11 +2948,17 @@ function rmConfirmAddSong(){const t=document.getElementById('rmQueuePicker').val
 function rmOpenYouTube(){
     var s = rmQueue[rmIndex];
     if (!s) return;
-    var fallbackSearch = function(){ window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+_rmFullBandName(s.band)+' live'),'_blank'); };
-    // Per Player Layer spec: prefer in-app Floating Player when we have a
-    // saved YouTube URL for this song. Only fall back to a YouTube search
-    // tab when nothing is saved.
-    if (typeof loadRefVersions !== 'function' || typeof openMusicLink !== 'function') { fallbackSearch(); return; }
+    // In-app fallback: when no saved YouTube version exists, open Version
+    // Hub on the YouTube tab for this song. Lets the user add one via the
+    // existing in-app search/paste flow instead of being kicked to a new
+    // browser tab. Per the Player Layer "never leave the app" rule.
+    var inAppFallback = function() {
+        if (typeof openVersionHub === 'function') {
+            try { openVersionHub(s.title, { tab: 'youtube' }); return; } catch (e) {}
+        }
+        if (typeof showToast === 'function') showToast('No saved YouTube for this song yet — add one in Version Hub.');
+    };
+    if (typeof loadRefVersions !== 'function' || typeof openMusicLink !== 'function') { inAppFallback(); return; }
     Promise.resolve(loadRefVersions(s.title)).then(function(versions){
         versions = versions || [];
         var pick = null;
@@ -2964,8 +2970,8 @@ function rmOpenYouTube(){
             if (!pick) pick = url;
         }
         if (pick) openMusicLink(pick, { title: s.title });
-        else fallbackSearch();
-    }).catch(fallbackSearch);
+        else inAppFallback();
+    }).catch(inAppFallback);
 }
 function rmOpenPocketMeter() {
     var song = rmQueue[rmIndex] || {};
