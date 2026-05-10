@@ -1860,11 +1860,15 @@ function _sdRenderStemsSetup(title) {
       '<div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.02)">' +
         '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:6px">Or upload an audio file</label>' +
         '<input type="file" id="sdStemsFile" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac" onchange="_sdRunStemSeparationFromFile(\'' + safeSong + '\', this)" style="width:100%;font-size:0.85em;color:var(--text)">' +
-        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Up to ~50MB. Use this if your audio isn\'t online.</div>' +
+        '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Up to ~50MB. After loading you\'ll get Pan check + Separate buttons — nothing runs automatically.</div>' +
       '</div>' +
     '</div>';
 }
 
+// File selection used to auto-separate immediately. Now it stages the
+// file in memory and surfaces two explicit choices: Pan Check (client-
+// side, no upload, instant) and Separate (the GPU-cost path). Avoids
+// burning Demucs runs on files the user hadn't decided to commit to yet.
 window._sdRunStemSeparationFromFile = function(title, input) {
     if (!input || !input.files || !input.files[0]) return;
     var file = input.files[0];
@@ -1876,16 +1880,98 @@ window._sdRunStemSeparationFromFile = function(title, input) {
         input.value = '';
         return;
     }
+    window._sdStemsPendingFile = file;
+    window._sdStemsPendingTitle = title;
+    var result = document.getElementById('sdPanCheckResult');
+    if (!result) return;
+    result.innerHTML =
+        '<div style="padding:12px;border:1px solid rgba(102,126,234,0.3);border-radius:8px;background:rgba(102,126,234,0.05)">' +
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+            '<span style="font-size:1.2em">📁</span>' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-size:0.85em;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(file.name) + '</div>' +
+              '<div style="font-size:0.7em;color:var(--text-dim)">' + (Math.round(file.size/1024)) + ' KB · ready to process</div>' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px">' +
+            '<button onclick="_sdRunPanCheckOnFile()" style="flex:1;background:rgba(34,211,238,0.1);color:#67e8f9;border:1px solid rgba(34,211,238,0.3);padding:8px 12px;border-radius:6px;font-size:0.82em;cursor:pointer">🎧 Pan check first</button>' +
+            '<button onclick="_sdSeparateFile()" style="flex:1;background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:8px 12px;border-radius:6px;font-size:0.82em;font-weight:700;cursor:pointer">▶ Separate</button>' +
+          '</div>' +
+          '<div id="sdPanCheckFileResult" style="margin-top:10px"></div>' +
+        '</div>';
+};
+
+// Run the actual separation on the stashed file (deferred from selection
+// time so the user can pan-check first).
+window._sdSeparateFile = function() {
+    var file = window._sdStemsPendingFile;
+    var title = window._sdStemsPendingTitle;
+    if (!file || !title) { alert('No file selected. Pick one first.'); return; }
     var reader = new FileReader();
     var model = _sdStemsSelectedModel();
     reader.onload = function() {
         _sdRunStemSeparationFromTake(title, { audioDataUrl: reader.result, sourceLabel: file.name, model: model });
     };
-    reader.onerror = function() {
-        alert('Failed to read file.');
-    };
+    reader.onerror = function() { alert('Failed to read file.'); };
     reader.readAsDataURL(file);
 };
+
+// Client-side pan analysis for a local file. Uses Web Audio
+// decodeAudioData + L/R energy ratio per short window. No upload needed,
+// no Modal cost. Mirrors the Modal _energy_pan_histogram math closely
+// enough that the histogram visually matches the URL-path output.
+window._sdRunPanCheckOnFile = async function() {
+    var file = window._sdStemsPendingFile;
+    if (!file) { alert('No file selected.'); return; }
+    var out = document.getElementById('sdPanCheckFileResult');
+    if (!out) return;
+    out.innerHTML = '<div style="font-size:0.78em;color:var(--text-dim);text-align:center;padding:10px">⏳ Decoding + analyzing…</div>';
+    try {
+        var arrayBuf = await file.arrayBuffer();
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) throw new Error('Web Audio not supported in this browser');
+        var ctx = new Ctx();
+        var audioBuf = await ctx.decodeAudioData(arrayBuf);
+        try { ctx.close(); } catch(e) {}
+        if (audioBuf.numberOfChannels < 2) {
+            out.innerHTML = '<div style="padding:10px;border:1px solid rgba(245,158,11,0.3);border-radius:8px;background:rgba(245,158,11,0.05);font-size:0.78em;color:#fbbf24">This file is mono — pan analysis isn\'t meaningful. Hit ▶ Separate to run Demucs directly.</div>';
+            return;
+        }
+        var hist = _sdComputePanHistogram(audioBuf.getChannelData(0), audioBuf.getChannelData(1), 21);
+        out.innerHTML =
+            '<div style="padding:10px;border:1px solid rgba(34,211,238,0.25);border-radius:8px;background:rgba(34,211,238,0.04)">' +
+              '<div style="font-size:0.78em;font-weight:700;color:#67e8f9;margin-bottom:6px">🎧 Pan-energy histogram</div>' +
+              '<canvas id="sdPanCheckCanvas" width="400" height="80" style="width:100%;height:80px;background:rgba(0,0,0,0.25);border-radius:6px;display:block"></canvas>' +
+              '<div style="display:flex;justify-content:space-between;font-size:0.66em;color:var(--text-dim);margin-top:4px"><span>Hard L</span><span>C</span><span>Hard R</span></div>' +
+              '<div style="font-size:0.74em;color:var(--text-muted);margin-top:10px;line-height:1.5">Tall off-center bars = an instrument is panned there. Distinct L/R peaks → spatial split (after a Demucs pass) can isolate them. Everything piled at center → mono-leaning mix; Demucs alone is your best path.</div>' +
+            '</div>';
+        _sdRenderSpatialHistogram(hist, 'sdPanCheckCanvas');
+    } catch (e) {
+        out.innerHTML = '<div style="font-size:0.78em;color:#fca5a5;padding:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px">Pan check failed: ' + _sdEsc(e.message || String(e)) + '</div>';
+    }
+};
+
+// Energy-weighted pan histogram from L/R channel Float32Arrays. For each
+// short window: compute eL = sum L^2, eR = sum R^2, pan = (eR-eL)/(eR+eL),
+// add window energy to the matching bin. nBins=21 matches the Modal side.
+function _sdComputePanHistogram(L, R, nBins) {
+    var windowSize = 2048;
+    var bins = new Array(nBins).fill(0);
+    var n = Math.min(L.length, R.length);
+    for (var i = 0; i < n; i += windowSize) {
+        var eL = 0, eR = 0;
+        var end = Math.min(i + windowSize, n);
+        for (var j = i; j < end; j++) { eL += L[j] * L[j]; eR += R[j] * R[j]; }
+        var tot = eL + eR;
+        if (tot < 1e-9) continue;
+        var pan = (eR - eL) / tot;
+        var idx = Math.floor((pan + 1) / 2 * nBins);
+        if (idx >= nBins) idx = nBins - 1;
+        if (idx < 0) idx = 0;
+        bins[idx] += tot;
+    }
+    return bins;
+}
 
 // Best Shot picker — fetches takes async and renders a button per usable
 // take. Drive takes pass the user's access token so Modal can fetch via
