@@ -150,6 +150,26 @@ window.GLPlayerUI = (function() {
         try { localStorage.setItem('glPlayerFloatState', JSON.stringify(_floatState)); } catch (e) {}
     }
 
+    // Sum the heights of any visible bottom-stuck bars (now-playing,
+    // Workbench action bar, song-detail mobile bar) so the Float can sit
+    // above them in bottom-bar dock instead of being covered.
+    function _bottomChromeOffset() {
+        var sum = 0;
+        var visible = function(el) {
+            if (!el) return false;
+            var cs = window.getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+            return (el.offsetHeight || 0) > 0;
+        };
+        var np = document.getElementById('gl-now-playing');
+        if (visible(np)) sum += np.offsetHeight;
+        var wb = document.querySelector('.wb-action-bar');
+        if (wb && !wb.hasAttribute('hidden') && visible(wb)) sum += wb.offsetHeight;
+        var sd = document.querySelector('.sd-mobile-bar');
+        if (visible(sd)) sum += sd.offsetHeight;
+        return sum;
+    }
+
     function _applyFloatSizeAndDock() {
         if (!_floatEl) return;
         var dims = _SIZE_DIMS[_floatState.size] || _SIZE_DIMS.medium;
@@ -161,16 +181,19 @@ window.GLPlayerUI = (function() {
         if (dock === 'bottom-bar') {
             _floatEl.style.left = '0';
             _floatEl.style.right = '0';
-            _floatEl.style.bottom = '0';
+            _floatEl.style.bottom = _bottomChromeOffset() + 'px';
             _floatEl.style.width = '100%';
             _floatEl.style.borderRadius = '14px 14px 0 0';
         } else {
             _floatEl.style.width = dims.width + 'px';
             _floatEl.style.borderRadius = '14px';
-            if (dock === 'bottom-right') { _floatEl.style.right = '12px'; _floatEl.style.bottom = '80px'; }
-            else if (dock === 'bottom-left') { _floatEl.style.left = '12px'; _floatEl.style.bottom = '80px'; }
+            // Lift floating widget above bottom chrome too (so it doesn't sit
+            // on top of the now-playing bar in bottom-right/bottom-left docks).
+            var liftedBottom = (80 + _bottomChromeOffset()) + 'px';
+            if (dock === 'bottom-right') { _floatEl.style.right = '12px'; _floatEl.style.bottom = liftedBottom; }
+            else if (dock === 'bottom-left') { _floatEl.style.left = '12px'; _floatEl.style.bottom = liftedBottom; }
             else if (dock === 'top-right') { _floatEl.style.right = '12px'; _floatEl.style.top = '12px'; }
-            else { _floatEl.style.right = '12px'; _floatEl.style.bottom = '80px'; }
+            else { _floatEl.style.right = '12px'; _floatEl.style.bottom = liftedBottom; }
         }
         var vid = _floatEl.querySelector('#glpFloatVideo');
         if (vid) vid.style.display = dims.showVideo ? '' : 'none';
@@ -217,7 +240,7 @@ window.GLPlayerUI = (function() {
             + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:grab;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.7em">'
                 + '<span style="color:#475569;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;flex-shrink:0">Player</span>'
                 + '<div style="flex:1;min-width:0;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="glpFloatHeaderTitle">' + _esc(song ? song.title : '') + '</div>'
-                + '<button onclick="GLPlayerUI.toggleSwitcher()" id="glpFloatSwitchBtn" title="Switch source" style="background:none;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;font-size:0.95em;padding:2px 7px;border-radius:5px;flex-shrink:0">Switch \u25BE</button>'
+                + '<button onclick="GLPlayerUI.toggleSwitcher()" id="glpFloatSwitchBtn" title="Switch to a different version (North Star, Lessons, Covers, Alternates, Best Shot)" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;cursor:pointer;font-size:0.78em;font-weight:700;padding:3px 9px;border-radius:5px;flex-shrink:0">\uD83D\uDCDA Versions \u25BE</button>'
                 + '<button onclick="GLPlayerUI.closeAll()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.95em;padding:2px 6px;flex-shrink:0" title="Close">\u2715</button>'
             + '</div>'
             + '<div id="glpFloatSwitcher" style="display:none;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.02);max-height:240px;overflow-y:auto"></div>'
@@ -238,8 +261,8 @@ window.GLPlayerUI = (function() {
                 + '<div id="glpFloatTitle" style="font-size:0.84em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song ? song.title : '') + '</div>'
                 + '<div id="glpFloatSource" style="font-size:0.66em;color:#475569;margin-top:1px"></div>'
             + '</div>'
-            + '<div id="glpFloatTagRow" style="display:flex;align-items:center;gap:4px;padding:2px 8px 4px;font-size:0.68em">'
-                + '<span style="color:#475569;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Tag</span>'
+            + '<div id="glpFloatTagRow" style="display:flex;align-items:center;gap:4px;padding:2px 8px 4px;font-size:0.68em" title="Tag the version currently playing — does NOT switch versions. Use 📚 Versions ▾ above to switch.">'
+                + '<span style="color:#94a3b8;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Tag this:</span>'
                 + '<button onclick="GLPlayerUI.tagCurrentAs(\'northstar\')" title="Set as North Star" style="background:none;border:1px solid rgba(251,191,36,0.35);color:#fbbf24;cursor:pointer;padding:3px 7px;border-radius:5px;font-weight:700">⭐ NS</button>'
                 + '<button onclick="GLPlayerUI.tagCurrentAs(\'lesson\')" title="Save as Lesson" style="background:none;border:1px solid rgba(244,114,182,0.30);color:#f9a8d4;cursor:pointer;padding:3px 7px;border-radius:5px">🎬 Lesson</button>'
                 + '<button onclick="GLPlayerUI.tagCurrentAs(\'cover\')" title="Save as Cover (another band\'s take)" style="background:none;border:1px solid rgba(167,139,250,0.30);color:#c4b5fd;cursor:pointer;padding:3px 7px;border-radius:5px">🎤 Cover</button>'
