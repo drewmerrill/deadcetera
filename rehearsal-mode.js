@@ -2945,7 +2945,28 @@ async function rmSaveNote(){
 }
 function rmAddSongToQueue(){const p=document.getElementById('rmQueuePicker');p.innerHTML='<option value="">— Pick a song —</option>';const iq=new Set(rmQueue.map(s=>s.title));(typeof allSongs!=='undefined'?allSongs:[]).forEach(s=>{if(!iq.has(s.title)){const o=document.createElement('option');o.value=s.title;o.textContent=s.title+(s.band?' · '+s.band:'');p.appendChild(o);}});document.getElementById('rmQueueSheet').classList.remove('hidden');}
 function rmConfirmAddSong(){const t=document.getElementById('rmQueuePicker').value;if(!t)return;const sd=(typeof allSongs!=='undefined'?allSongs:[]).find(s=>s.title===t);rmQueue.splice(rmIndex+1,0,{title:t,band:sd?.band||''});rmCloseSheet('rmQueueSheet');showToast(`✅ "${t}" added — next up`);document.getElementById('rmPosition').textContent=rmQueue.length>1?`${rmIndex+1} / ${rmQueue.length}`:'';document.getElementById('rmNextBtn').style.opacity='1';}
-function rmOpenYouTube(){const s=rmQueue[rmIndex];window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+_rmFullBandName(s.band)+' live'),'_blank');}
+function rmOpenYouTube(){
+    var s = rmQueue[rmIndex];
+    if (!s) return;
+    var fallbackSearch = function(){ window.open('https://www.youtube.com/results?search_query='+encodeURIComponent(s.title+' '+_rmFullBandName(s.band)+' live'),'_blank'); };
+    // Per Player Layer spec: prefer in-app Floating Player when we have a
+    // saved YouTube URL for this song. Only fall back to a YouTube search
+    // tab when nothing is saved.
+    if (typeof loadRefVersions !== 'function' || typeof openMusicLink !== 'function') { fallbackSearch(); return; }
+    Promise.resolve(loadRefVersions(s.title)).then(function(versions){
+        versions = versions || [];
+        var pick = null;
+        for (var i = 0; i < versions.length; i++) {
+            var v = versions[i];
+            var url = (v && (v.url || v.spotifyUrl)) || '';
+            if (!/youtu\.?be/i.test(url)) continue;
+            if (v.isNorthStar) { pick = url; break; }
+            if (!pick) pick = url;
+        }
+        if (pick) openMusicLink(pick, { title: s.title });
+        else fallbackSearch();
+    }).catch(fallbackSearch);
+}
 function rmOpenPocketMeter() {
     var song = rmQueue[rmIndex] || {};
     var bpm  = rmSongBpm || 120;

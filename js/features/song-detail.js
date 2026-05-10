@@ -164,7 +164,7 @@ function _sdShellHTML(title) {
 
     // Unified action bar — same actions regardless of mode
     var safeSong = _sdEsc(title).replace(/'/g,"\\'");
-    var action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="openRehearsalMode(\''+safeSong+'\')" >\u25B6 Practice</button>';
+    var action = '<button class="sd-mobile-bar__btn sd-mobile-bar__btn--primary" onclick="(typeof openWorkbench===\'function\')?openWorkbench(\''+safeSong+'\',\'practice\',{}):openRehearsalMode(\''+safeSong+'\')" >\u25B6 Practice</button>';
 
     // Panel mode (inside gl-right-panel): single column, no dual layout
     var _isPanelMode = !!window._sdPanelMode;
@@ -4735,7 +4735,7 @@ async function _sdPopulateLearnLens(title) {
         // ── HERO ──
         '<div style="text-align:center;padding:18px 16px;margin-bottom:14px;background:linear-gradient(135deg,rgba(99,102,241,0.05),rgba(34,197,94,0.03));border:1px solid rgba(99,102,241,0.15);border-radius:12px">'+
         '<div style="font-size:1.05em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:10px">\uD83C\uDFB8 Practice This Song</div>'+
-        '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="padding:12px 32px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.92em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.2);min-width:200px">Start Practice Session</button>'+
+        '<button onclick="(typeof openWorkbench===\'function\')?openWorkbench(\''+safeSong+'\',\'practice\',{}):openRehearsalMode(\''+safeSong+'\')" style="padding:12px 32px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;font-size:0.92em;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,0.2);min-width:200px">Start Practice Session</button>'+
         '<div style="font-size:0.75em;color:var(--text-dim);margin-top:8px">Start a guided practice run</div>'+
         '</div>'+
 
