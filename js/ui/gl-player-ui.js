@@ -242,7 +242,7 @@ window.GLPlayerUI = (function() {
         _floatEl.id = 'glpFloat';
         _floatEl.style.cssText = 'position:fixed;z-index:9800;background:rgba(15,23,42,0.97);border:1px solid rgba(99,102,241,0.3);box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow-y:auto;overflow-x:hidden;max-height:calc(100vh - 24px);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:none;color:#e2e8f0;font-family:inherit';
         _floatEl.innerHTML = ''
-            + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:grab;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.7em">'
+            + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:grab;background:rgba(15,23,42,0.97);border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.7em;position:sticky;top:0;z-index:5">'
                 + '<span style="color:#475569;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;flex-shrink:0">Player</span>'
                 + '<div style="flex:1;min-width:0;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="glpFloatHeaderTitle">' + _esc(song ? song.title : '') + '</div>'
                 + '<button onclick="GLPlayerUI.toggleSwitcher()" id="glpFloatSwitchBtn" title="Switch to a different version (North Star, Lessons, Covers, Alternates, Best Shot)" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;cursor:pointer;font-size:0.78em;font-weight:700;padding:3px 9px;border-radius:5px;flex-shrink:0">\uD83D\uDCDA Versions \u25BE</button>'
@@ -419,14 +419,23 @@ window.GLPlayerUI = (function() {
         var renderGroup = function(label, key) {
             var arr = groups[key];
             if (!arr.length) return '';
+            var canDelete = (key !== 'bestshot'); // best_shot_takes is a different store
             var html = '<div style="font-size:0.62em;color:#64748b;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:6px 4px 2px">' + label + '</div>';
             html += arr.map(function(r) {
                 var safeUrl = r.url.replace(/'/g, "\\'");
                 var safeTitle = (title || '').replace(/'/g, "\\'");
-                return '<button onclick="GLPlayerUI.switchToSource(\'' + safeUrl + '\', \'' + safeTitle + '\')" style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;background:none;border:0;color:#cbd5e1;cursor:pointer;font-family:inherit;font-size:0.78em;text-align:left;border-radius:5px">' +
-                    '<span style="font-size:1.05em;flex-shrink:0">' + r.icon + '</span>' +
-                    '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(r.label) + '</span>' +
-                '</button>';
+                var rowHtml =
+                    '<div style="display:flex;align-items:center;gap:4px;border-radius:5px" onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'\'">' +
+                    '<button onclick="GLPlayerUI.switchToSource(\'' + safeUrl + '\', \'' + safeTitle + '\')" style="display:flex;align-items:center;gap:8px;flex:1;padding:6px 8px;background:none;border:0;color:#cbd5e1;cursor:pointer;font-family:inherit;font-size:0.78em;text-align:left;border-radius:5px;min-width:0">' +
+                        '<span style="font-size:1.05em;flex-shrink:0">' + r.icon + '</span>' +
+                        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(r.label) + '</span>' +
+                    '</button>';
+                if (canDelete) {
+                    rowHtml +=
+                    '<button onclick="GLPlayerUI.deleteVersionByUrl(\'' + safeUrl + '\', \'' + safeTitle + '\')" title="Delete this version" style="background:none;border:0;color:#64748b;cursor:pointer;padding:4px 8px;border-radius:4px;font-size:0.85em;flex-shrink:0" onmouseover="this.style.color=\'#fca5a5\'" onmouseout="this.style.color=\'#64748b\'">🗑</button>';
+                }
+                rowHtml += '</div>';
+                return rowHtml;
             }).join('');
             return html;
         };
@@ -550,6 +559,33 @@ window.GLPlayerUI = (function() {
             if (menu && menu.style.display !== 'none') _populateSwitcher(menu);
         } catch (e) {
             console.warn('[player] delete failed', e);
+            if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || e));
+        }
+    }
+
+    // Delete a specific version straight from the switcher (any row, not
+    // necessarily the currently-loaded source). Mirrors deleteCurrent but
+    // matches by URL.
+    async function deleteVersionByUrl(url, title) {
+        if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+        if (!url || !title) return;
+        if (typeof loadRefVersions !== 'function' || typeof saveRefVersions !== 'function') return;
+        try {
+            var versions = (await loadRefVersions(title)) || [];
+            var idx = versions.findIndex(function(v) {
+                var vUrl = (v && (v.url || v.spotifyUrl)) || '';
+                return vUrl === url;
+            });
+            if (idx < 0) { if (typeof showToast === 'function') showToast('Version not found'); return; }
+            var label = versions[idx].fetchedTitle || versions[idx].title || 'this version';
+            if (!confirm('Delete "' + label + '"? Votes will be lost.')) return;
+            versions.splice(idx, 1);
+            await saveRefVersions(title, versions);
+            if (typeof showToast === 'function') showToast('Version deleted');
+            var menu = document.getElementById('glpFloatSwitcher');
+            if (menu && menu.style.display !== 'none') _populateSwitcher(menu);
+        } catch (e) {
+            console.warn('[player] delete-by-url failed', e);
             if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || e));
         }
     }
@@ -1122,6 +1158,7 @@ window.GLPlayerUI = (function() {
         // SongMedia tag actions
         tagCurrentAs: tagCurrentAs,
         deleteCurrent: deleteCurrent,
+        deleteVersionByUrl: deleteVersionByUrl,
         _onPrefChange: _onPrefChange,
         _playPastedUrl: _playPastedUrl
     };
