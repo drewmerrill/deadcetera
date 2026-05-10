@@ -242,7 +242,7 @@ Goal: 5 buttons, each creates the right plan with no wizard.
 
 Goal: clean separation of concerns; future-proof for Workbench.
 
-1. **Plan ↔ gig back-reference.** Plans get a `gigId` field. UI can show "this plan was built for [gig]" reliably; gig page can show "rehearsal plans for this gig."
+1. **Plan ↔ gig back-reference.** Plans get a `gigId` field. UI can show "this plan was built for [gig]" reliably; gig page can show "rehearsal plans for this gig." **[3a SHIPPED 2026-05-10 build 20260510-000609]** — `gigId/gigDate/gigVenue` persisted via `_rhSaveUnits`; stamped by `_rhIntentRunGig`, `_rhIntentPracticeTransitions`, and `_rpSelectGig`; `_rhIntentWorkWeakSongs` explicitly nulls. New `_rhPlanGigChip()` helper renders "🎤 Built for [venue] · [date]" badge in Continue chip + Plan Mode header + Review Mode plan card. Gig-page-side "Plans for this gig" deferred to follow-up.
 2. **Distinguish plan / setlist / focus list cleanly in the data model.** Each is a different concept; current code blurs them via "the wizard's Step 1 loads setlist as candidates, then plan inherits some of them."
 3. **True `null` plan state** — plans collection can be empty without auto-resolving to "newest."
 4. **Versioning = audit log only.** Strip Preview/Restore from the primary UI; replace with "View change history" admin-style view.

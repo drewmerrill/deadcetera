@@ -653,6 +653,7 @@ async function _rhRenderCommandFlow(el) {
             html += _planSubCtx;
             html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
                 + _planIntentBadge
+                + _rhPlanGigChip(_rhPlanCache) // Phase 3a: gig back-ref chip
                 + '<span onclick="_rhEditPlanName()" style="font-size:0.88em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
                 + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.65em;padding:3px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear Plan</button>'
                 + '</div>';
@@ -667,6 +668,7 @@ async function _rhRenderCommandFlow(el) {
                 + '<div style="padding:4px 14px 12px">'
                 + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
                 + _planIntentBadge
+                + _rhPlanGigChip(_rhPlanCache) // Phase 3a: gig back-ref chip
                 + '<span onclick="_rhEditPlanName()" style="font-size:0.72em;font-weight:700;color:#86efac;cursor:pointer;border-bottom:1px dashed rgba(134,239,172,0.3)" title="Click to rename">' + escHtml(planName) + '</span>'
                 + '<span id="rhSaveState" style="font-size:0.58em;font-weight:600"></span>'
                 + '<button onclick="_rhClearSavedPlan()" style="margin-left:auto;font-size:0.6em;padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer">Clear</button>'
@@ -1197,6 +1199,27 @@ function _rhDerivePlanName(intent, ctx) {
     return 'Rehearsal Plan';
 }
 
+// Phase 3a: render a "🎤 Built for [venue] · [date]" chip given a plan that
+// carries gigId/gigDate/gigVenue. Returns '' for unlinked plans (legacy or
+// weak-songs intent) so callers can blindly inject the result.
+function _rhPlanGigChip(planCache) {
+    if (!planCache || !planCache.gigId) return '';
+    var venue = planCache.gigVenue || 'Gig';
+    var dateLabel = '';
+    if (planCache.gigDate) {
+        try {
+            dateLabel = new Date(planCache.gigDate + 'T12:00:00')
+                .toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } catch(e) {}
+    }
+    var label = '🎤 Built for ' + venue + (dateLabel ? ' · ' + dateLabel : '');
+    return '<span title="This plan is linked to ' + escHtml(venue) + (dateLabel ? ' on ' + dateLabel : '') + '" '
+        + 'style="font-size:0.62em;font-weight:700;color:#fbbf24;background:rgba(245,158,11,0.08);'
+        + 'border:1px solid rgba(245,158,11,0.3);padding:2px 7px;border-radius:10px;'
+        + 'text-transform:uppercase;letter-spacing:0.04em;flex-shrink:0;white-space:nowrap">'
+        + escHtml(label) + '</span>';
+}
+
 // Phase 2: "Continue last plan?" chip pinned above the intent picker
 // when a plan exists. Replaces the old "plan card is the dominant
 // surface" pattern — the page is intent-driven now, the existing plan
@@ -1210,7 +1233,10 @@ function _rhRenderContinueChip(planCache, songCount, durationLabel) {
     html += '<span style="font-size:1.4em;flex-shrink:0">' + meta.emoji + '</span>';
     html += '<div style="flex:1;min-width:200px">';
     html += '<div style="font-size:0.7em;font-weight:700;color:' + meta.color + ';text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px">Continue: ' + meta.label + '</div>';
-    html += '<div style="font-size:0.92em;font-weight:700;color:var(--gl-text)">' + escHtml(planName) + '</div>';
+    html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">';
+    html += '<span style="font-size:0.92em;font-weight:700;color:var(--gl-text)">' + escHtml(planName) + '</span>';
+    html += _rhPlanGigChip(planCache); // Phase 3a: gig back-ref chip (empty when unlinked)
+    html += '</div>';
     html += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-top:2px">' + (songCount || 0) + ' song' + (songCount === 1 ? '' : 's') + ' in plan' + (durationLabel ? ' · ' + durationLabel : '') + '</div>';
     html += '</div>';
     html += '<div style="display:flex;gap:6px;flex-shrink:0">';
@@ -1390,6 +1416,10 @@ window._rhIntentRunGig = async function() {
     _rhPlanCache = _rhPlanCache || {};
     _rhPlanCache.intent = 'gig-run';
     _rhPlanCache.name = _rhDerivePlanName('gig-run', ctx);
+    // Phase 3a: gig back-reference
+    _rhPlanCache.gigId = (ctx.gig && ctx.gig.gigId) || null;
+    _rhPlanCache.gigDate = (ctx.gig && ctx.gig.date) || null;
+    _rhPlanCache.gigVenue = (ctx.gig && ctx.gig.venue) || null;
     _rhSaveUnits(ctx.units);
     if (typeof showToast === 'function') showToast('▶ Plan loaded with setlist (' + ctx.units.length + ' songs)');
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
@@ -1408,6 +1438,10 @@ window._rhIntentPracticeTransitions = async function() {
     _rhPlanCache = _rhPlanCache || {};
     _rhPlanCache.intent = 'transitions';
     _rhPlanCache.name = _rhDerivePlanName('transitions', ctx);
+    // Phase 3a: gig back-reference
+    _rhPlanCache.gigId = (ctx.gig && ctx.gig.gigId) || null;
+    _rhPlanCache.gigDate = (ctx.gig && ctx.gig.date) || null;
+    _rhPlanCache.gigVenue = (ctx.gig && ctx.gig.venue) || null;
     _rhSaveUnits(ctx.units);
     if (typeof showToast === 'function') showToast('🔗 Plan loaded with ' + ctx.units.length + ' transition' + (ctx.units.length > 1 ? 's' : ''));
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
@@ -1430,6 +1464,11 @@ window._rhIntentWorkWeakSongs = async function() {
     _rhPlanCache = _rhPlanCache || {};
     _rhPlanCache.intent = 'weak';
     _rhPlanCache.name = _rhDerivePlanName('weak', { count: list.length });
+    // Phase 3a: weak-songs plans aren't gig-scoped — explicitly null so we
+    // don't inherit a previous plan's gig back-ref.
+    _rhPlanCache.gigId = null;
+    _rhPlanCache.gigDate = null;
+    _rhPlanCache.gigVenue = null;
     _rhSaveUnits(units);
     if (typeof showToast === 'function') showToast('🎯 Plan loaded with ' + list.length + ' focus song' + (list.length > 1 ? 's' : ''));
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
@@ -3669,6 +3708,13 @@ function _rhSaveUnits(units) {
         // Phase 2: default intent so plans built without an explicit intent
         // (e.g. via Plan Mode drag-drop from scratch) still render a badge.
         plan.intent = plan.intent || 'custom';
+        // Phase 3a: gig back-reference. Intent handlers + wizard stamp these on
+        // _rhPlanCache before _rhSaveUnits runs; we just default to null so
+        // legacy plans round-trip cleanly. Denormalized date/venue avoid an
+        // extra gig-collection lookup on every render.
+        if (plan.gigId === undefined) plan.gigId = null;
+        if (plan.gigDate === undefined) plan.gigDate = null;
+        if (plan.gigVenue === undefined) plan.gigVenue = null;
         plan.createdAt = plan.createdAt || now;
         plan.createdBy = plan.createdBy || (typeof currentUserEmail !== 'undefined' ? currentUserEmail : '');
         plan.updatedAt = now;
@@ -5366,6 +5412,14 @@ window._rpSelectGig = async function(gigId) {
     var gig = (window._rpGigs || []).find(function(g) { return g.gigId === gigId; });
     if (!gig) return;
     _rpState.gigId = gigId;
+    // Phase 3a: stamp the gig back-ref onto _rhPlanCache so the next
+    // _rhSaveUnits picks it up. Wizard's own persistence path doesn't
+    // route through _rhSaveUnits, but any subsequent edit (e.g. user
+    // tweaks a block in Plan Mode after Build Plan) will persist it.
+    _rhPlanCache = _rhPlanCache || {};
+    _rhPlanCache.gigId = gig.gigId || null;
+    _rhPlanCache.gigDate = gig.date || null;
+    _rhPlanCache.gigVenue = gig.venue || null;
 
     // Load setlist
     var setlists = window._glCachedSetlists || [];
