@@ -1002,6 +1002,89 @@ window.GLPlayerUI = (function() {
 
     function _setText(id, text) { var el = document.getElementById(id); if (el) el.textContent = text; }
 
+    // ── Keyboard shortcuts (active only when the float player is open) ─────
+    // Classic media-player set. Skips when focus is in an input/textarea/
+    // select/contenteditable so typing in the volume slider, speed dropdown,
+    // chart editor, or any other field still works normally.
+    function _isTypingTarget(el) {
+        if (!el) return false;
+        var tag = el.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+        if (el.isContentEditable) return true;
+        return false;
+    }
+    document.addEventListener('keydown', function(e) {
+        if (!_floatEl) return;
+        if (_isTypingTarget(e.target)) return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return; // leave modifier combos to the OS
+        var E = window.GLPlayerEngine;
+        var key = e.key;
+        // Space → play/pause
+        if (key === ' ' || key === 'Spacebar') {
+            if (E && E.togglePlay) { E.togglePlay(); e.preventDefault(); }
+            return;
+        }
+        // ←/→ seek; with Shift → 30s, without → 10s
+        if (key === 'ArrowLeft') {
+            if (E && E.seekRelative) { E.seekRelative(e.shiftKey ? -30 : -10); e.preventDefault(); }
+            return;
+        }
+        if (key === 'ArrowRight') {
+            if (E && E.seekRelative) { E.seekRelative(e.shiftKey ? 30 : 10); e.preventDefault(); }
+            return;
+        }
+        // ↑/↓ volume ±5
+        if (key === 'ArrowUp' || key === 'ArrowDown') {
+            try {
+                var slider = document.getElementById('glpFloatVolume');
+                if (slider) {
+                    var v = parseInt(slider.value, 10) || 0;
+                    v = Math.max(0, Math.min(100, v + (key === 'ArrowUp' ? 5 : -5)));
+                    slider.value = String(v);
+                    setVolume(v);
+                    e.preventDefault();
+                }
+            } catch (err) {}
+            return;
+        }
+        // Single-letter shortcuts
+        var lower = (typeof key === 'string') ? key.toLowerCase() : '';
+        if (lower === 'r') { restart(); e.preventDefault(); return; }
+        if (lower === 'l') {
+            // L cycles A → B → clear, mirroring the [A] [B] [×] buttons
+            if (_loop.aSec == null) loopSetA();
+            else if (_loop.bSec == null) loopSetB();
+            else loopClear();
+            e.preventDefault();
+            return;
+        }
+        if (lower === 'm') {
+            // M = toggle mute via the volume slider (no separate mute API today)
+            try {
+                var s = document.getElementById('glpFloatVolume');
+                if (s) {
+                    if (parseInt(s.value, 10) > 0) { s.dataset.preMute = s.value; s.value = '0'; setVolume(0); }
+                    else { var prev = parseInt(s.dataset.preMute || '80', 10); s.value = String(prev); setVolume(prev); }
+                    e.preventDefault();
+                }
+            } catch (err) {}
+            return;
+        }
+        // 1–5 → playback speed presets matching the dropdown options
+        if (key >= '1' && key <= '5') {
+            var rates = { '1': 0.5, '2': 0.75, '3': 1.0, '4': 1.25, '5': 1.5 };
+            setSpeed(rates[key]);
+            try { var sel = document.getElementById('glpFloatSpeed'); if (sel) sel.value = String(rates[key]); } catch (err) {}
+            e.preventDefault();
+            return;
+        }
+        if (key === 'Escape') {
+            closeAll();
+            e.preventDefault();
+            return;
+        }
+    });
+
     // ── Init ────────────────────────────────────────────────────────────────
 
     // Wire events when engine is available
