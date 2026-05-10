@@ -787,11 +787,16 @@
         var sw = document.createElement('div');
         sw.id = 'wb-lens-switcher';
         sw.className = 'wb-lens-switcher';
+        // Labels are intent-based, not feature-named (Drew 2026-05-10):
+        //   Play   = play along with stems + player (lens id: stems)
+        //   Chart  = chords + lyrics (lens id: band)
+        //   Harmony = vocals (lens id: sing)
+        //   Listen = references / versions (lens id: listen)
         var lenses = [
-            { id: 'stems',   label: '🎚 Stems' },
+            { id: 'stems',   label: '🎸 Play' },
             { id: 'band',    label: '📋 Chart' },
             { id: 'sing',    label: '🎤 Harmony' },
-            { id: 'listen',  label: '🎧 Versions' }
+            { id: 'listen',  label: '🎧 Listen' }
         ];
         sw.innerHTML = lenses.map(function(l) {
             return '<button class="wb-lens-btn" data-lens="' + l.id + '" onclick="window._wbJumpLens(\'' + l.id + '\');window._wbUpdateLensSwitcherActive(\'' + l.id + '\')">' + l.label + '</button>';
@@ -800,6 +805,114 @@
         // Default highlight = stems (Workbench auto-defaults to stems lens)
         window._wbUpdateLensSwitcherActive('stems');
     }
+
+    // ── Workbench-native Chart Editor overlay ───────────────────────────────
+    // Drew 2026-05-10: Edit Chart must stay inside Workbench. Full-screen
+    // modal that reuses the same data shape as the legacy editor
+    // (loadBandDataFromDrive/saveBandDataToDrive on the 'chart' path) so
+    // saves are read-compatible with rehearsal-mode and any other consumer.
+    window._wbOpenChartEditor = async function(songId) {
+        songId = songId || (window._wbState && window._wbState.songId);
+        if (!songId) return;
+        // Remove any existing instance (defensive)
+        var existing = document.getElementById('wbChartEditor');
+        if (existing) existing.remove();
+
+        var overlay = document.createElement('div');
+        overlay.id = 'wbChartEditor';
+        overlay.className = 'wb-chart-editor';
+        overlay.dataset.song = songId;
+        overlay.innerHTML = ''+
+            '<div class="wb-chart-editor-toolbar">' +
+                '<div class="wb-chart-editor-titleblock">' +
+                    '<div class="wb-chart-editor-eyebrow">EDIT CHART</div>' +
+                    '<div class="wb-chart-editor-title">' + _wbEsc(songId) + '</div>' +
+                '</div>' +
+                '<div class="wb-chart-editor-actions">' +
+                    '<button class="wb-fs-btn wb-chart-editor-cancel" onclick="window._wbCloseChartEditor(false)" title="Discard changes (Esc)">Cancel</button>' +
+                    '<button class="wb-fs-btn wb-chart-editor-save" onclick="window._wbSaveChartEditor()" title="Save and return">💾 Save</button>' +
+                    '<button class="wb-fs-btn wb-fs-exit" onclick="window._wbCloseChartEditor(false)" title="Close (Esc)">✕</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="wb-chart-editor-hint">Chord chart, structure, lyrics — anything you need on the floor. Use [Verse] / [Chorus] / [Bridge] markers to auto-derive song structure.</div>' +
+            '<div class="wb-chart-editor-body">' +
+                '<textarea id="wbChartEditorText" class="wb-chart-editor-textarea" placeholder="G  C  D  G\n\n[Verse]\nA  E  D\nLyrics here..." spellcheck="false"></textarea>' +
+            '</div>';
+        document.body.appendChild(overlay);
+
+        // Load existing chart text into the textarea
+        var textarea = document.getElementById('wbChartEditorText');
+        if (textarea && typeof loadBandDataFromDrive === 'function') {
+            try {
+                var d = await loadBandDataFromDrive(songId, 'chart');
+                if (d && d.text) textarea.value = d.text;
+            } catch (e) { console.warn('[wb] chart load failed:', e); }
+        }
+        if (textarea) {
+            textarea.focus();
+            // Place cursor at end for new edits
+            textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }
+    };
+
+    window._wbSaveChartEditor = async function() {
+        var overlay = document.getElementById('wbChartEditor');
+        var textarea = document.getElementById('wbChartEditorText');
+        if (!overlay || !textarea) return;
+        var songId = overlay.dataset.song;
+        if (!songId) return;
+        var text = textarea.value.trim();
+        try {
+            // Same save contract as rmSaveChart — keeps legacy reads working.
+            if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+                await GLStore.saveSongData(songId, 'chart', text ? { text: text } : null);
+            } else if (typeof saveBandDataToDrive === 'function') {
+                await saveBandDataToDrive(songId, 'chart', text ? { text: text } : null);
+            }
+            if (typeof showToast === 'function') showToast('✅ Chart saved');
+            window._wbCloseChartEditor(true);
+        } catch (e) {
+            console.warn('[wb] chart save failed:', e);
+            if (typeof showToast === 'function') showToast('Save failed: ' + (e.message || e));
+        }
+    };
+
+    window._wbCloseChartEditor = function(saved) {
+        var overlay = document.getElementById('wbChartEditor');
+        if (!overlay) return;
+        var songId = overlay.dataset.song;
+        overlay.remove();
+        if (saved && songId) {
+            // Refresh the band-lens panel so the saved text shows up.
+            // sdShowChart re-renders the lens via loadBandDataFromDrive.
+            if (typeof window.sdShowChart === 'function') {
+                try { window.sdShowChart(songId); } catch (e) {}
+            }
+            // If the chart fullscreen overlay is open on the same song,
+            // refresh its body too so the user sees the new text.
+            var fsBody = document.getElementById('wbChartFsBody');
+            if (fsBody && window._wbChartFs) {
+                // Re-trigger the fullscreen overlay so it reloads chart text
+                if (typeof window._wbToggleChartMax === 'function') {
+                    var open = document.getElementById('wbChartFs');
+                    if (open) {
+                        window._wbToggleChartMax(); // close
+                        setTimeout(function() { window._wbToggleChartMax(); }, 50); // reopen
+                    }
+                }
+            }
+        }
+    };
+
+    // Esc handler for the chart editor (separate from chart-fullscreen)
+    document.addEventListener('keydown', function(e) {
+        var overlay = document.getElementById('wbChartEditor');
+        if (!overlay) return;
+        if (e.key === 'Escape') {
+            window._wbCloseChartEditor(false);
+            e.preventDefault();
+        }
+    });
 
     window._wbUpdateLensSwitcherActive = function(activeLens) {
         var sw = document.getElementById('wb-lens-switcher');
@@ -924,6 +1037,20 @@
             '.wb-lens-btn { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: var(--text-dim); cursor: pointer; padding: 7px 14px; border-radius: 7px; font-size: 0.84em; font-weight: 600; font-family: inherit; transition: background 0.12s, color 0.12s, border-color 0.12s; }',
             '.wb-lens-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); border-color: rgba(255,255,255,0.18); }',
             '.wb-lens-btn.is-active { background: rgba(99,102,241,0.18); color: #a5b4fc; border-color: rgba(99,102,241,0.4); }',
+            // ── Chart Editor overlay (Workbench-native) ────────────────────
+            '.wb-chart-editor { position: fixed; inset: 0; z-index: 9710; background: var(--bg-primary, #0f172a); display: flex; flex-direction: column; }',
+            '.wb-chart-editor-toolbar { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: rgba(15,23,42,0.97); border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }',
+            '.wb-chart-editor-titleblock { flex: 1; min-width: 0; }',
+            '.wb-chart-editor-eyebrow { font-size: 0.68em; font-weight: 800; letter-spacing: 0.08em; color: #a5b4fc; }',
+            '.wb-chart-editor-title { font-size: 1.05em; font-weight: 800; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }',
+            '.wb-chart-editor-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }',
+            '.wb-chart-editor-save { background: linear-gradient(135deg,#22c55e,#16a34a) !important; color: #fff !important; border-color: rgba(34,197,94,0.5) !important; font-weight: 800 !important; }',
+            '.wb-chart-editor-save:hover { box-shadow: 0 2px 12px rgba(34,197,94,0.35); }',
+            '.wb-chart-editor-hint { padding: 8px 16px; font-size: 0.78em; color: var(--text-dim); background: rgba(255,255,255,0.015); border-bottom: 1px solid rgba(255,255,255,0.04); }',
+            '.wb-chart-editor-body { flex: 1; display: flex; min-height: 0; padding: 14px 16px 16px; }',
+            '.wb-chart-editor-textarea { flex: 1; width: 100%; resize: none; background: rgba(0,0,0,0.30); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; color: #e2e8f0; padding: 16px; font-family: "Courier New", monospace; font-size: 14px; line-height: 1.7; letter-spacing: 0.01em; outline: none; }',
+            '.wb-chart-editor-textarea:focus { border-color: rgba(99,102,241,0.4); }',
+            '@media (max-width: 640px) { .wb-chart-editor-toolbar { flex-direction: column; align-items: stretch; } .wb-chart-editor-actions { justify-content: flex-end; } }',
             // Action bar — sticky bottom completion controls. Only shown
             // when a PracticeTask is active (revealed via `hidden` toggle).
             '.wb-action-bar { position: sticky; bottom: 0; display: flex; gap: 10px; padding: 12px 16px; background: var(--bg-primary, #0f172a); border-top: 1px solid rgba(255,255,255,0.08); z-index: 48; box-shadow: 0 -8px 24px rgba(0,0,0,0.35); }',
