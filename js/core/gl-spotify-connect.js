@@ -130,26 +130,58 @@ window.GLSpotifyConnect = (function() {
     return devices.some(function(d){ return !d.is_restricted; });
   }
 
-  // Heuristic: prefer ACTIVE device > device matching this platform's type >
-  // first non-restricted device. Returns the device object or null.
+  // Heuristic: prefer the device that matches the user's CURRENT platform.
+  // The earlier version preferred 'active' globally, but that caused a bug
+  // (Drew 2026-05-10): playing on iPhone GL routed to MacBook because the
+  // MacBook was 'active' from an earlier desktop session. Mobile users
+  // intend to play on the device they're holding.
+  //
+  // Priority on mobile (iPhone/iPad):
+  //   1. Platform-matched + active (iPhone Spotify playing on iPhone GL)
+  //   2. Platform-matched + idle  (iPhone Spotify present but paused)
+  //   3. null → engine emits needsSpotifyApp → user sees wake CTA
+  //   (deliberately does NOT fall back to desktop — surprising and wrong)
+  //
+  // Priority on desktop:
+  //   1. Platform-matched (Computer) + active or idle
+  //   2. Any active device  (e.g., user transferred playback elsewhere)
+  //   3. Any non-restricted device
   async function pickPreferredDevice() {
     var devices = await listDevices();
     if (!devices.length) return null;
 
-    var active = devices.find(function(d){ return d.is_active && !d.is_restricted; });
-    if (active) return active;
-
     var ua = navigator.userAgent;
+    var onMobile = isMobilePlatform();
     var preferType =
-      /iPhone/i.test(ua)        ? 'Smartphone' :
+      /iPhone|iPod/i.test(ua)   ? 'Smartphone' :
       /iPad/i.test(ua)          ? 'Tablet' :
       /Android.*Mobile/i.test(ua) ? 'Smartphone' :
       /Android/i.test(ua)         ? 'Tablet' :
                                    'Computer';
 
-    var matched = devices.find(function(d){ return d.type === preferType && !d.is_restricted; });
-    if (matched) return matched;
+    // 1. Platform-matched + active
+    var matchedActive = devices.find(function(d){
+        return d.type === preferType && d.is_active && !d.is_restricted;
+    });
+    if (matchedActive) return matchedActive;
 
+    // 2. Platform-matched + idle (registered but not currently playing)
+    var matchedIdle = devices.find(function(d){
+        return d.type === preferType && !d.is_restricted;
+    });
+    if (matchedIdle) return matchedIdle;
+
+    // 3. Mobile: don't fall back to desktop. Returning null triggers the
+    //    wake CTA in the engine — user gets routed to "Open Spotify on
+    //    your phone" rather than music magically playing on their laptop
+    //    in another room.
+    if (onMobile) return null;
+
+    // 4. Desktop fallback: any active device
+    var anyActive = devices.find(function(d){ return d.is_active && !d.is_restricted; });
+    if (anyActive) return anyActive;
+
+    // 5. Last resort: first non-restricted device
     return devices.find(function(d){ return !d.is_restricted; }) || null;
   }
 
