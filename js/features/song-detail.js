@@ -177,8 +177,12 @@ function _sdShellHTML(title) {
         ? '<button class="sd-back-btn" title="Edit song info" style="margin-left:6px;padding:5px 10px" onclick="showEditCustomSongModal(\''+safeSong+'\')">\u270f\ufe0f Edit</button>'
         : '';
     if (_isPanelMode) {
-        // Single-column layout for right panel rendering
-        // Include sd-right-info/extras/structure so _sdPopulateRightPanel renders love + readiness
+        // Single-column layout for right panel rendering.
+        // Order matters: tabs go RIGHT under the title (under the DNA bar)
+        // because they're the primary actions. Per ChatGPT/Drew critique
+        // 2026-05-10: love/readiness/structure/discussion sections used to
+        // sit ABOVE the tabs, pushing the most-important nav below the
+        // fold. Secondary metadata now lives below the panels.
         return '<div class="song-detail-page">'+
                '<div class="sd-header">'+
                '  <div class="sd-header-top">'+
@@ -189,11 +193,11 @@ function _sdShellHTML(title) {
                _dnaBar+
                '  <div id="sd-readiness-strip" class="sd-readiness-strip"></div>'+
                '</div>'+
+               '<nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
+               '<div class="sd-panels">'+panels+'</div>'+
                '<div id="sd-right-info"></div>'+
                '<div id="sd-right-structure"></div>'+
                '<div id="sd-right-extras"></div>'+
-               '<nav class="sd-tab-bar"'+tabBarStyle+'>'+tabs+'</nav>'+
-               '<div class="sd-panels">'+panels+'</div>'+
                '<div class="sd-mobile-bar">'+action+'</div>'+
                '</div>';
     }
@@ -4377,10 +4381,10 @@ function _sdInitStemsPlayer() {
 
 window._sdPopulateListenLensPublic = function(title) { _sdPopulateListenLens(title); };
 
-// Render the All Versions card body — list every saved version with vote
-// chips per band member. Sort by votes desc, then recency desc. The
-// explicit isNorthStar flag gets a visual highlight; voting is band
-// democracy and orthogonal to the explicit pick.
+// Render the All Versions card body. Per Drew/ChatGPT critique 2026-05-10:
+// - Vote chips collapsed by default (show count + tap-to-expand)
+// - Delete + promote-to-North-Star actions on each row
+// - Sort by votes desc, then recency desc
 function _sdRenderAllVersionsList(title, refs) {
     var safeSong = title.replace(/'/g, "\\'");
     if (!refs || !refs.length) {
@@ -4404,6 +4408,8 @@ function _sdRenderAllVersionsList(title, refs) {
         var voteCount = v.votes ? Object.keys(v.votes).filter(function(k){return v.votes[k];}).length : 0;
         var isStar = v.isNorthStar === true;
         var titleStr = v.fetchedTitle || v.title || 'Untitled';
+        var voteSummary = voteCount > 0 ? '👍 ' + voteCount : 'No votes yet';
+        // Collapsed-by-default chips. <details> handles toggle natively.
         var chips = memberEmails.map(function(email) {
             var member = members[email] || {};
             var voted = !!(v.votes && v.votes[email]);
@@ -4411,20 +4417,65 @@ function _sdRenderAllVersionsList(title, refs) {
             var bg = voted ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.04)';
             var fg = voted ? '#86efac' : 'var(--text-dim)';
             var bd = voted ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)';
-            return '<span onclick="_sdToggleVersionVote(\''+safeSong+'\','+origIdx+',\''+email.replace(/'/g,"\\'")+'\')" title="Toggle '+_sdEsc(name)+'’s vote" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:4px 9px;border-radius:12px;font-size:0.72em;font-weight:600;background:'+bg+';color:'+fg+';border:1px solid '+bd+';white-space:nowrap">'+(voted?'✓ ':'')+_sdEsc(name)+'</span>';
+            return '<span onclick="_sdToggleVersionVote(\''+safeSong+'\','+origIdx+',\''+email.replace(/'/g,"\\'")+'\');event.stopPropagation()" title="Toggle '+_sdEsc(name)+'’s vote" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:4px 9px;border-radius:12px;font-size:0.72em;font-weight:600;background:'+bg+';color:'+fg+';border:1px solid '+bd+';white-space:nowrap">'+(voted?'✓ ':'')+_sdEsc(name)+'</span>';
         }).join('');
-        return '<div style="margin-bottom:10px;padding:10px;border:1px solid '+(isStar?'rgba(102,126,234,0.4)':'var(--border)')+';border-radius:8px;background:'+(isStar?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)')+'">'+
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
-            (isStar?'<span title="North Star (explicitly chosen)" style="font-size:1.05em">⭐</span>':'')+
+        var promoteBtn = isStar ? '' :
+            '<button onclick="_sdPromoteVersionToNorthStar(\''+safeSong+'\','+origIdx+');event.stopPropagation()" title="Make this the North Star reference" style="font-size:0.66em;padding:3px 7px;border-radius:5px;border:1px solid rgba(245,158,11,0.35);background:rgba(245,158,11,0.08);color:#fbbf24;cursor:pointer;white-space:nowrap">⭐ Promote</button>';
+        var deleteBtn = '<button onclick="_sdDeleteVersion(\''+safeSong+'\','+origIdx+');event.stopPropagation()" title="Delete this version" style="font-size:0.66em;padding:3px 7px;border-radius:5px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);color:#fca5a5;cursor:pointer;white-space:nowrap">🗑</button>';
+        return '<details style="margin-bottom:8px;padding:8px 10px;border:1px solid '+(isStar?'rgba(102,126,234,0.4)':'var(--border)')+';border-radius:8px;background:'+(isStar?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)')+'">'+
+          '<summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px">'+
+            (isStar?'<span title="North Star" style="font-size:1.05em">⭐</span>':'')+
             '<div style="flex:1;min-width:0;font-size:0.84em;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_sdEsc(titleStr)+'</div>'+
-            '<div style="font-size:0.7em;color:var(--text-dim);font-weight:700;flex-shrink:0">'+voteCount+' '+(voteCount===1?'vote':'votes')+'</div>'+
+            '<span style="font-size:0.7em;color:var(--text-dim);font-weight:700;flex-shrink:0">'+voteSummary+'</span>'+
+            '<span style="font-size:0.7em;opacity:0.45;flex-shrink:0">▶</span>'+
+          '</summary>'+
+          '<div style="padding-top:8px;margin-top:6px;border-top:1px solid rgba(255,255,255,0.04)">'+
+            (v.url?'<div style="font-size:0.66em;color:var(--text-dim);margin-bottom:6px;word-break:break-all;opacity:0.7">'+_sdEsc(v.url)+'</div>':'')+
+            '<div style="font-size:0.66em;color:var(--text-muted);margin-bottom:4px">Tap a name to vote:</div>'+
+            '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">'+chips+'</div>'+
+            '<div style="display:flex;gap:6px;justify-content:flex-end">'+promoteBtn+deleteBtn+'</div>'+
           '</div>'+
-          (v.url?'<div style="font-size:0.66em;color:var(--text-dim);margin-bottom:6px;word-break:break-all;opacity:0.7">'+_sdEsc(v.url)+'</div>':'')+
-          '<div style="font-size:0.66em;color:var(--text-muted);margin-bottom:4px">Tap a name to vote:</div>'+
-          '<div style="display:flex;flex-wrap:wrap;gap:4px">'+chips+'</div>'+
-        '</div>';
+        '</details>';
     }).join('');
 }
+
+// Promote a version to North Star — sets isNorthStar:true on the chosen
+// entry and clears it from all others. Mirrors the same flag-flip
+// vhSendTo does in version-hub.js so the song-detail Listen lens render
+// path picks it up consistently.
+window._sdPromoteVersionToNorthStar = async function(songTitle, versionIndex) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    try {
+        var versions = (typeof loadRefVersions === 'function') ? (await loadRefVersions(songTitle) || []) : [];
+        if (!versions[versionIndex]) return;
+        versions.forEach(function(v, i) { v.isNorthStar = (i === versionIndex); });
+        if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
+        if (typeof _sdPopulateListenLensPublic === 'function') _sdPopulateListenLensPublic(songTitle);
+        if (typeof showToast === 'function') showToast('⭐ Promoted to North Star');
+    } catch (e) {
+        console.warn('[sd] promote failed:', e);
+        if (typeof showToast === 'function') showToast('Failed to promote: ' + (e.message || e));
+    }
+};
+
+// Delete a version. Confirms first because votes (band history) are lost.
+window._sdDeleteVersion = async function(songTitle, versionIndex) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    try {
+        var versions = (typeof loadRefVersions === 'function') ? (await loadRefVersions(songTitle) || []) : [];
+        var v = versions[versionIndex];
+        if (!v) return;
+        var label = v.fetchedTitle || v.title || 'this version';
+        if (!confirm('Delete "' + label + '"? Votes on this version will be lost.')) return;
+        versions.splice(versionIndex, 1);
+        if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
+        if (typeof _sdPopulateListenLensPublic === 'function') _sdPopulateListenLensPublic(songTitle);
+        if (typeof showToast === 'function') showToast('Version deleted');
+    } catch (e) {
+        console.warn('[sd] delete failed:', e);
+        if (typeof showToast === 'function') showToast('Failed to delete: ' + (e.message || e));
+    }
+};
 
 // Toggle a single member's vote on a version. Re-renders the Listen
 // lens so vote counts + ordering refresh. Mirrors the legacy
@@ -4910,21 +4961,41 @@ async function _sdPopulateRightPanel(title) {
 
     var safeSong = _sdEsc(title).replace(/'/g, "\\'");
 
-    // ── ALWAYS VISIBLE: Band Love + Audience Love (primary position — above fold) ──
-    // Key/BPM/Lead/Status editing is in the header DNA bar only — not rendered here
-    infoEl.innerHTML = '<div style="padding:8px 12px" id="sd-love-card">'
+    // ── COLLAPSED BY DEFAULT: Band Love + Audience Love ──
+    // Per Drew/ChatGPT critique 2026-05-10: love hearts used to take up
+    // ~150px above the fold and weren't actionable in the moment. Hidden
+    // behind a one-line summary; tap to expand for the full hearts UI.
+    var bandLove = (typeof GLStore !== 'undefined' && GLStore.getBandLove) ? (GLStore.getBandLove(title) || 0) : 0;
+    var audLove = (typeof GLStore !== 'undefined' && GLStore.getAudienceLove) ? (GLStore.getAudienceLove(title) || 0) : 0;
+    var loveSummary = '❤️ ' + bandLove + '/5  ·  💜 ' + audLove + '/5';
+    infoEl.innerHTML =
+        '<details class="sd-details" style="border-top:1px solid rgba(255,255,255,0.04)">'
+        + '<summary style="padding:8px 12px;font-size:0.78em;font-weight:600;color:var(--text-dim);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
+        + '<span><span style="font-size:0.7em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-right:8px">Love</span>' + loveSummary + '</span>'
+        + '<span style="font-size:0.9em;opacity:0.5">▶</span>'
+        + '</summary>'
+        + '<div style="padding:6px 12px 12px" id="sd-love-card">'
         + _sdRenderBandLove(title, safeSong)
         + _sdRenderAudienceLove(title, safeSong)
-        + '</div>';
+        + '</div>'
+        + '</details>';
 
-    // ── ALWAYS VISIBLE: Readiness (full card) ──
-    // Current member gets an interactive slider; other members render read-only bars.
+    // ── COLLAPSED BY DEFAULT: Readiness ──
+    // Was always-open and dominated vertical space. Compressed to a
+    // one-line "5/5 band average" summary; expand for the full per-member
+    // sliders. Current member sees interactive slider on expand.
     var songScores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
     var rpMembers = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var rpMyKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
-    var readinessHtml = '<div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)">'
-        + '<div style="font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin-bottom:6px">Readiness</div>'
-        + '<div style="display:flex;flex-direction:column;gap:4px">';
+    var rdScores = rpMembers.map(function(m) { return songScores[m.key || m] || 0; }).filter(function(v) { return v > 0; });
+    var rdAvg = rdScores.length ? (rdScores.reduce(function(a, b) { return a + b; }, 0) / rdScores.length) : 0;
+    var rdAvgLabel = rdAvg > 0 ? rdAvg.toFixed(1) + '/5 band average' : 'no ratings yet';
+    var readinessHtml = '<details class="sd-details" style="border-top:1px solid rgba(255,255,255,0.04)">'
+        + '<summary style="padding:8px 12px;font-size:0.78em;font-weight:600;color:var(--text-dim);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
+        + '<span><span style="font-size:0.7em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-right:8px">Readiness</span>' + rdAvgLabel + '</span>'
+        + '<span style="font-size:0.9em;opacity:0.5">▶</span>'
+        + '</summary>'
+        + '<div style="padding:6px 12px 12px"><div style="display:flex;flex-direction:column;gap:4px">';
     rpMembers.forEach(function(m) {
         var key = m.key || m, name = m.name || (key.charAt(0).toUpperCase() + key.slice(1));
         var score = songScores[key];
@@ -4948,7 +5019,7 @@ async function _sdPopulateRightPanel(title) {
             + '<span id="' + rpLblId + '" style="color:' + color + ';font-weight:700;min-width:16px;text-align:right">' + (score || '\u2014') + '</span>'
             + '</div>';
     });
-    readinessHtml += '</div></div>';
+    readinessHtml += '</div></div></details>';
 
     // Love cards are now rendered in infoEl (above readiness, above fold)
 
@@ -4972,27 +5043,25 @@ async function _sdPopulateRightPanel(title) {
         }).catch(function() {});
     }
 
-    // ── COLLAPSIBLE: Discussion + Prospect Voting ──
-    var extrasHtml = '<details class="sd-details" style="border-top:1px solid rgba(255,255,255,0.04)">'
-        + '<summary style="padding:8px 12px;font-size:0.68em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
-        + '\uD83D\uDCCB Discussion <span style="font-size:0.9em;opacity:0.5">\u25B6</span></summary>'
-        + '<div style="padding:4px 12px 10px">'
-        + '<div id="sd-rp-discussion"><div style="font-size:0.78em;color:var(--text-dim)">Loading...</div></div>'
-        + '<div id="sd-rp-prospect-vote"></div>'
-        + '</div></details>';
-
+    // Discussion section removed from the right rail per Drew/ChatGPT
+    // critique 2026-05-10 — wasn't actionable from this surface, was
+    // generating noise. Discussion is still reachable via the Practice
+    // lens. Prospect voting kept (rare, conditional).
+    var rpStatus = (typeof statusCache !== 'undefined' && statusCache[title]) ? statusCache[title] : '';
+    var extrasHtml = '';
+    if (rpStatus === 'prospect') {
+        extrasHtml = '<div style="padding:8px 12px;border-top:1px solid rgba(255,255,255,0.04)">'
+            + '<div id="sd-rp-prospect-vote"></div>'
+            + '</div>';
+    }
     if (extrasEl) {
         extrasEl.innerHTML = readinessHtml + extrasHtml;
-        // Load discussion into right panel
-        setTimeout(function() {
-            var discMount = document.getElementById('sd-rp-discussion');
-            if (discMount && typeof renderSongDiscussion === 'function') renderSongDiscussion(title, discMount);
-            // Prospect voting (conditional — only shows for prospect status)
-            var voteMount = document.getElementById('sd-rp-prospect-vote');
-            if (voteMount && status === 'prospect') {
-                _sdRenderProspectVote(title);
-            }
-        }, 300);
+        if (rpStatus === 'prospect') {
+            setTimeout(function() {
+                var voteMount = document.getElementById('sd-rp-prospect-vote');
+                if (voteMount) _sdRenderProspectVote(title);
+            }, 300);
+        }
     }
 }
 
