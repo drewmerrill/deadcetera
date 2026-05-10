@@ -747,8 +747,14 @@ window.GLPlayerUI = (function() {
     // visible (Spotify app force-quit). Tapping opens spotify:// — user
     // bounces to the Spotify app, then back to GL via app switcher / back
     // button. The next play() call finds the now-running app as a device.
+    //
+    // Target both the float (glpFloatVideo) and overlay (glpVideoContainer)
+    // containers depending on which mode is active. Drew hit a black-screen
+    // bug 2026-05-10 because we only checked the overlay container while
+    // the floating player on iPhone uses glpFloatVideo.
     function _renderNeedsSpotifyApp(d) {
-        var container = document.getElementById('glpVideoContainer');
+        var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
+        var container = document.getElementById(containerId);
         if (!container) return;
         container.innerHTML =
             '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;text-align:center">'
