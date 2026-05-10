@@ -259,11 +259,19 @@
         s.textContent = [
             '#page-workbench { padding: 0; }',
             '.wb-root { display: flex; flex-direction: column; min-height: calc(100vh - 60px); }',
-            '.wb-header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); }',
+            // Sticky-top so the Workbench mode tabs stay visible while the
+            // song-detail body scrolls. Without this, scrolling into the
+            // body makes the song-detail lens tabs (PRACTICE/PLAY/VERSIONS
+            // /HARMONY/STEMS) appear as the new top-bar, which reads like
+            // a duplicate menu.
+            '.wb-header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; background: var(--bg-primary, #0f172a); }',
             '.wb-song-title { font-size: 1.15em; font-weight: 700; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
             '.wb-close { background: none; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; padding: 4px 12px; border-radius: 6px; font-size: 0.95em; }',
             '.wb-close:hover { color: var(--text); border-color: rgba(255,255,255,0.3); }',
-            '.wb-mode-tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.01); }',
+            // Mode tabs stick directly under the header. 56px is the header
+            // height (14px*2 padding + ~28px content). Adjust if header
+            // padding changes.
+            '.wb-mode-tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--bg-primary, #0f172a); position: sticky; top: 56px; z-index: 49; }',
             '.wb-mode-tab { background: none; border: 0; padding: 11px 18px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; font-size: 0.92em; font-weight: 600; transition: color 0.15s, border-color 0.15s; }',
             '.wb-mode-tab:hover:not(.disabled) { color: var(--text); }',
             '.wb-mode-tab.active { color: var(--text); border-bottom-color: #818cf8; }',
