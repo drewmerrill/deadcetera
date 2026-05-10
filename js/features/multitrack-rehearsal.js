@@ -55,12 +55,21 @@ var _MT_ROLES = {
     'aux':       { label: 'Aux',       group: 'misc',  order: 99 }
 };
 
+// Phase B: fixed tag catalog. Multi-select on each comment. Optional —
+// adding a comment without tags stays one keystroke + Enter. Order matters
+// for chip rendering. Drew picked these 11 explicitly when greenlighting B.
+var _MT_TAGS = [
+    'rushed', 'dragged', 'pitchy', 'wrong chord', 'missed cue',
+    'transition', 'too loud', 'too quiet', 'tone', 'nail this', 'revisit'
+];
+
 // Module-level state
 var _mtState = {
     pickedFiles: [],     // [{file, inferredRole, inferredMember}]
     sessionId: null,
     uploads: {},         // { trackId: { progress, status, url } }
-    player: null         // { sessionId, tracks, audios, masterPlaying, soloed, muted }
+    player: null,        // { sessionId, tracks, audios, masterPlaying, soloed, muted, comments, composerTags, anchorTrackId }
+    composerTags: {}     // { tagName: true } — fresh per comment
 };
 
 // ── Filename inference ───────────────────────────────────────────────────────
@@ -455,8 +464,8 @@ window._mtOpenPlayer = async function(sessionId) {
     }).join('');
 
     ov.innerHTML =
-        '<div style="max-width:780px;width:100%;background:#0f172a;border-radius:14px;padding:20px;border:1px solid rgba(255,255,255,0.08);max-height:90vh;display:flex;flex-direction:column">' +
-          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:20px;border:1px solid rgba(255,255,255,0.08);max-height:92vh;display:flex;flex-direction:column">' +
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0">' +
             '<span style="font-size:1.25em">🎚</span>' +
             '<div style="flex:1">' +
               '<div style="font-size:1em;font-weight:800;color:#f1f5f9">Multitrack rehearsal</div>' +
@@ -464,13 +473,17 @@ window._mtOpenPlayer = async function(sessionId) {
             '</div>' +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
           '</div>' +
-          '<div style="display:flex;align-items:center;gap:12px;padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px">' +
+          '<div style="display:flex;align-items:center;gap:12px;padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
             '<button onclick="_mtTogglePlayAll()" id="mtPlayAll" style="padding:8px 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;cursor:pointer;font-size:0.92em;min-width:90px">▶ Play</button>' +
             '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekMaster(this.value)" style="flex:1;accent-color:#a5b4fc">' +
             '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right">0:00 / 0:00</div>' +
           '</div>' +
-          '<div style="overflow-y:auto;flex:1">' + trackRowsHtml + '</div>' +
-          '<div style="margin-top:10px;font-size:0.68em;color:var(--text-dim);text-align:center">M = mute · S = solo · click anywhere on the seek bar to scrub all tracks</div>' +
+          // Tracks list — capped height so comment panel always has room
+          '<div style="overflow-y:auto;max-height:35vh;border:1px solid rgba(255,255,255,0.04);border-radius:8px;flex-shrink:0">' + trackRowsHtml + '</div>' +
+          '<div style="margin-top:6px;font-size:0.66em;color:var(--text-dim);text-align:center;flex-shrink:0">M = mute · S = solo · seek bar scrubs all tracks</div>' +
+          // Phase B: comment list (fills remaining vertical space) + composer (sticky bottom)
+          '<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:120px"></div>' +
+          '<div id="mtComposerArea"></div>' +
         '</div>';
     document.body.appendChild(ov);
     ov.addEventListener('click', function(e) { if (e.target === ov) _mtClosePlayer(); });
@@ -482,9 +495,28 @@ window._mtOpenPlayer = async function(sessionId) {
         tracks: tracks,
         audios: audios,
         masterPlaying: false,
-        soloed: {},      // { trackId: true }
-        muted: {}        // { trackId: true }
+        soloed: {},                  // { trackId: true }
+        muted: {},                   // { trackId: true }
+        comments: [],                // Phase B — populated below
+        anchorTrackId: '',           // composer anchor selection
+        commentFilterToSoloed: false // per-track filter toggle
     };
+
+    // Phase B: load existing comments and render composer + list
+    _mtLoadComments(sessionId).then(function(comments) {
+        if (_mtState.player && _mtState.player.sessionId === sessionId) {
+            _mtState.player.comments = comments;
+            _mtRefreshCommentPanel();
+            // Auto-tick the composer playhead label every second so it doesn't
+            // look stale while the user pauses/scrubs before adding a note.
+            if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
+            _mtState.player._timeTicker = setInterval(function() {
+                var t = _mtCurrentPlayhead();
+                var el = document.getElementById('mtComposerTime');
+                if (el) el.textContent = _mtFmtTime(t);
+            }, 500);
+        }
+    });
     // Re-evaluate mute states when one audio reports duration (they should
     // all have the same duration if exported from the same X-LIVE session).
     audios.forEach(function(a) {
@@ -502,9 +534,11 @@ window._mtClosePlayer = function() {
     var ov = document.getElementById('mtPlayerOverlay');
     if (ov) ov.remove();
     if (_mtState.player) {
+        if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
         _mtState.player.audios.forEach(function(a) { try { a.pause(); a.src = ''; } catch (e) {} });
         _mtState.player = null;
     }
+    _mtState.composerTags = {};
 };
 
 window._mtTogglePlayAll = function() {
@@ -553,6 +587,12 @@ window._mtToggleSolo = function(trackId) {
         btn.style.background = p.soloed[trackId] ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.04)';
         btn.style.color = p.soloed[trackId] ? '#fbbf24' : 'var(--text-dim)';
     }
+    // Phase B: refresh comment panel so the per-track filter chip
+    // appears/disappears and the composer's anchor default tracks the solo.
+    var soloedIds = Object.keys(p.soloed).filter(function(k) { return p.soloed[k]; });
+    if (soloedIds.length === 1) p.anchorTrackId = soloedIds[0];
+    else if (soloedIds.length === 0 && p.anchorTrackId) p.anchorTrackId = '';
+    _mtRefreshCommentPanel();
 };
 
 function _mtApplyMuteSolo() {
@@ -606,4 +646,243 @@ function _mtMaybeUpdateMasterPosition() {
     if (label) label.textContent = _mtFmtTime(a0.currentTime) + ' / ' + _mtFmtTime(a0.duration);
 }
 
-console.log('🎚 multitrack-rehearsal.js loaded (Phase A)');
+// ── Phase B: comments data layer ─────────────────────────────────────────────
+// Per-session sub-collection at:
+//   bands/{slug}/rehearsal_sessions/{sessionId}/comments/{commentId}
+// Shape: { commentId, timestampSec, text, trackId|null, tags:[], createdAt, createdBy }
+
+function _mtGenCommentId() {
+    return 'cmt_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+async function _mtLoadComments(sessionId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return [];
+    try {
+        var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/comments')).once('value');
+        var val = snap.val();
+        if (!val) return [];
+        return Object.values(val).sort(function(a, b) {
+            return (a.timestampSec || 0) - (b.timestampSec || 0);
+        });
+    } catch (e) {
+        console.warn('[Multitrack] load comments failed:', e.message);
+        return [];
+    }
+}
+
+async function _mtSaveComment(sessionId, comment) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return false;
+    try {
+        await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/comments/' + comment.commentId)).set(comment);
+        return true;
+    } catch (e) {
+        console.warn('[Multitrack] save comment failed:', e.message);
+        return false;
+    }
+}
+
+async function _mtDeleteComment(sessionId, commentId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return false;
+    try {
+        await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/comments/' + commentId)).remove();
+        return true;
+    } catch (e) {
+        console.warn('[Multitrack] delete comment failed:', e.message);
+        return false;
+    }
+}
+
+// ── Phase B: comment list rendering ──────────────────────────────────────────
+
+function _mtTagChipHtml(tag, selected, onClick) {
+    var color = selected ? '#fbbf24' : 'var(--text-dim)';
+    var bg = selected ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)';
+    var border = selected ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.08)';
+    return '<button onclick="' + onClick + '" style="padding:2px 8px;border-radius:10px;border:1px solid ' + border + ';background:' + bg + ';color:' + color + ';cursor:pointer;font-size:0.66em;font-weight:600;white-space:nowrap;font-family:inherit">' + escHtml(tag) + '</button>';
+}
+
+function _mtRenderComposer() {
+    var p = _mtState.player;
+    if (!p) return '';
+    // Anchor selector: if a track is soloed, default to that track; otherwise "all"
+    var soloedIds = Object.keys(p.soloed).filter(function(k) { return p.soloed[k]; });
+    var defaultAnchor = soloedIds.length === 1 ? soloedIds[0] : '';
+    if (p.anchorTrackId === undefined) p.anchorTrackId = defaultAnchor;
+
+    var anchorOptions = '<option value=""' + (!p.anchorTrackId ? ' selected' : '') + '>This moment (no track)</option>';
+    var bandMembersMap = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    p.tracks.forEach(function(t) {
+        var mName = t.memberKey ? (bandMembersMap[t.memberKey] ? bandMembersMap[t.memberKey].name.split(' ')[0] : t.memberKey) : '';
+        var label = t.label + (mName ? ' · ' + mName : ' · ambient');
+        anchorOptions += '<option value="' + escHtml(t.trackId) + '"' + (t.trackId === p.anchorTrackId ? ' selected' : '') + '>' + escHtml(label) + '</option>';
+    });
+
+    var tagChips = _MT_TAGS.map(function(tag) {
+        return _mtTagChipHtml(tag, !!_mtState.composerTags[tag], '_mtToggleComposerTag(\'' + tag.replace(/'/g, "\\'") + '\')');
+    }).join(' ');
+
+    return '<div style="border-top:1px solid rgba(255,255,255,0.06);padding-top:10px;margin-top:6px;background:#0f172a;flex-shrink:0">'
+        + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+        + '<span id="mtComposerTime" style="font-family:ui-monospace,monospace;font-size:0.78em;color:#a5b4fc;font-weight:700;min-width:46px">' + _mtFmtTime(_mtCurrentPlayhead()) + '</span>'
+        + '<select id="mtComposerAnchor" onchange="_mtSetAnchor(this.value)" style="background:#1e293b;color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:3px 6px;font-size:0.78em;flex-shrink:0">' + anchorOptions + '</select>'
+        + '<input type="text" id="mtComposerText" placeholder="What did you notice? (Enter to add)" onkeydown="if(event.key===\'Enter\')_mtAddComment()" style="flex:1;background:#1e293b;color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:5px 8px;font-size:0.85em;font-family:inherit">'
+        + '<button onclick="_mtAddComment()" style="padding:5px 12px;border-radius:6px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:700;cursor:pointer;font-size:0.82em">Add</button>'
+        + '</div>'
+        + '<div id="mtComposerTags" style="display:flex;flex-wrap:wrap;gap:4px">' + tagChips + '</div>'
+        + '</div>';
+}
+
+function _mtRenderCommentList() {
+    var p = _mtState.player;
+    if (!p) return '';
+    var comments = p.comments || [];
+    var bandMembersMap = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var trackById = {};
+    p.tracks.forEach(function(t) { trackById[t.trackId] = t; });
+
+    // Per-track filter state — when a track is soloed, allow filtering list
+    var soloedIds = Object.keys(p.soloed).filter(function(k) { return p.soloed[k]; });
+    var soloedTrackId = soloedIds.length === 1 ? soloedIds[0] : null;
+    var filterToTrack = !!p.commentFilterToSoloed && !!soloedTrackId;
+
+    var filtered = filterToTrack
+        ? comments.filter(function(c) { return c.trackId === soloedTrackId; })
+        : comments;
+
+    var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.06)">'
+        + '<span style="font-size:0.68em;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Comments (' + filtered.length + (filterToTrack ? ' / ' + comments.length : '') + ')</span>';
+    if (soloedTrackId) {
+        var soloLabel = (trackById[soloedTrackId] && trackById[soloedTrackId].label) || 'soloed track';
+        headerHtml += '<button onclick="_mtToggleCommentFilter()" style="padding:2px 8px;border-radius:10px;border:1px solid ' + (filterToTrack ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.1)') + ';background:' + (filterToTrack ? 'rgba(245,158,11,0.12)' : 'none') + ';color:' + (filterToTrack ? '#fbbf24' : 'var(--text-dim)') + ';cursor:pointer;font-size:0.66em;font-weight:600;font-family:inherit">' + (filterToTrack ? '✓ Only ' + escHtml(soloLabel) : 'Only ' + escHtml(soloLabel)) + '</button>';
+    }
+    headerHtml += '</div>';
+
+    if (!filtered.length) {
+        return headerHtml
+            + '<div style="padding:14px;text-align:center;color:var(--text-dim);font-size:0.78em;font-style:italic">'
+            + (filterToTrack ? 'No comments on this track yet.' : 'No comments yet — scrub to a moment, type a note, hit Enter.')
+            + '</div>';
+    }
+
+    var rowsHtml = filtered.map(function(c) {
+        var t = c.trackId ? trackById[c.trackId] : null;
+        var mName = t && t.memberKey ? (bandMembersMap[t.memberKey] ? bandMembersMap[t.memberKey].name.split(' ')[0] : t.memberKey) : '';
+        var trackLabel = t ? (t.label + (mName ? ' · ' + mName : '')) : 'this moment';
+        var tagsHtml = (c.tags && c.tags.length)
+            ? c.tags.map(function(tag) { return '<span style="padding:1px 6px;border-radius:8px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;font-size:0.62em;font-weight:600">' + escHtml(tag) + '</span>'; }).join(' ')
+            : '';
+        return '<div style="display:grid;grid-template-columns:50px 1fr 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em">'
+            + '<button onclick="_mtJumpToComment(' + c.timestampSec + ')" title="Jump to ' + _mtFmtTime(c.timestampSec) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(c.timestampSec) + '</button>'
+            + '<div style="min-width:0">'
+              + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + '</div>'
+              + '<div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;align-items:center">'
+                + '<span style="font-size:0.65em;color:var(--text-dim);font-style:italic">' + escHtml(trackLabel) + '</span>'
+                + (tagsHtml ? '<span style="color:var(--text-dim);font-size:0.65em">·</span> ' + tagsHtml : '')
+              + '</div>'
+            + '</div>'
+            + '<button onclick="_mtDeleteCommentUI(\'' + escHtml(c.commentId) + '\')" title="Delete" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.85em;padding:0">×</button>'
+            + '</div>';
+    }).join('');
+
+    return headerHtml + '<div>' + rowsHtml + '</div>';
+}
+
+function _mtCurrentPlayhead() {
+    var p = _mtState.player;
+    if (!p || !p.audios[0]) return 0;
+    return p.audios[0].currentTime || 0;
+}
+
+function _mtRefreshCommentPanel() {
+    var panel = document.getElementById('mtCommentPanel');
+    if (panel) panel.innerHTML = _mtRenderCommentList();
+    var composerArea = document.getElementById('mtComposerArea');
+    if (composerArea) composerArea.innerHTML = _mtRenderComposer();
+}
+
+// ── Phase B: composer + list handlers ────────────────────────────────────────
+
+window._mtToggleComposerTag = function(tag) {
+    if (_mtState.composerTags[tag]) delete _mtState.composerTags[tag];
+    else _mtState.composerTags[tag] = true;
+    var area = document.getElementById('mtComposerTags');
+    if (area) {
+        area.innerHTML = _MT_TAGS.map(function(t) {
+            return _mtTagChipHtml(t, !!_mtState.composerTags[t], '_mtToggleComposerTag(\'' + t.replace(/'/g, "\\'") + '\')');
+        }).join(' ');
+    }
+};
+
+window._mtSetAnchor = function(trackId) {
+    if (_mtState.player) _mtState.player.anchorTrackId = trackId || '';
+};
+
+window._mtAddComment = async function() {
+    var p = _mtState.player;
+    if (!p) return;
+    var input = document.getElementById('mtComposerText');
+    var text = input ? input.value.trim() : '';
+    var tags = Object.keys(_mtState.composerTags).filter(function(k) { return _mtState.composerTags[k]; });
+    if (!text && !tags.length) {
+        if (typeof showToast === 'function') showToast('Type a note or pick a tag first');
+        return;
+    }
+    var comment = {
+        commentId: _mtGenCommentId(),
+        timestampSec: _mtCurrentPlayhead(),
+        text: text,
+        trackId: p.anchorTrackId || null,
+        tags: tags,
+        createdAt: new Date().toISOString(),
+        createdBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
+    };
+    var ok = await _mtSaveComment(p.sessionId, comment);
+    if (!ok) {
+        if (typeof showToast === 'function') showToast('⚠ Save failed');
+        return;
+    }
+    p.comments = (p.comments || []).concat([comment]).sort(function(a, b) {
+        return (a.timestampSec || 0) - (b.timestampSec || 0);
+    });
+    if (input) input.value = '';
+    _mtState.composerTags = {};
+    _mtRefreshCommentPanel();
+    // Refocus the input so user can keep typing comments without re-clicking
+    setTimeout(function() {
+        var i2 = document.getElementById('mtComposerText');
+        if (i2) i2.focus();
+    }, 50);
+};
+
+window._mtJumpToComment = function(timestampSec) {
+    var p = _mtState.player;
+    if (!p || !p.audios.length) return;
+    var t = parseFloat(timestampSec) || 0;
+    p.audios.forEach(function(a) { try { a.currentTime = t; } catch (e) {} });
+    _mtMaybeUpdateMasterPosition();
+};
+
+window._mtDeleteCommentUI = async function(commentId) {
+    var p = _mtState.player;
+    if (!p) return;
+    if (!confirm('Delete this comment?')) return;
+    var ok = await _mtDeleteComment(p.sessionId, commentId);
+    if (!ok) {
+        if (typeof showToast === 'function') showToast('⚠ Delete failed');
+        return;
+    }
+    p.comments = (p.comments || []).filter(function(c) { return c.commentId !== commentId; });
+    _mtRefreshCommentPanel();
+};
+
+window._mtToggleCommentFilter = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    p.commentFilterToSoloed = !p.commentFilterToSoloed;
+    _mtRefreshCommentPanel();
+};
+
+console.log('🎚 multitrack-rehearsal.js loaded (Phase A + B)');
