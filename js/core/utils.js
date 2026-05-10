@@ -125,10 +125,29 @@ window.openMusicLink = function openMusicLink(url, opts) {
         }
     }
 
-    // Spotify: convert web URL to app deep link
+    // Spotify track → in-app floating player. Engine routes to Connect
+    // on iOS (audio plays in user's Spotify app on same device, GL stays
+    // foreground) or to Web Playback SDK on desktop. Either way, never
+    // leaves GL. Drew hit this 2026-05-10: Versions lens "Open in Spotify"
+    // button was deeplinking out via _tryDeepLink, defeating the in-app
+    // playback architecture.
     if (lower.includes('spotify.com/track/')) {
-        var id = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
-        if (id) { _tryDeepLink('spotify:track:' + id[1], url); return; }
+        var spMatch = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
+        var spTrackId = spMatch ? spMatch[1] : null;
+        if (spTrackId && window.GLPlayerEngine && window.GLPlayerUI) {
+            try {
+                var spTitle = opts.title || '';
+                var spSong = { title: spTitle || ('Spotify track'), spotifyTrackId: spTrackId };
+                window.GLPlayerEngine.loadQueue([spSong], { name: spTitle || 'Spotify' });
+                window.GLPlayerUI.showFloat({ size: opts.size || 'medium' });
+                window.GLPlayerEngine.play(0);
+                return;
+            } catch (e) {
+                console.warn('[openMusicLink] in-app Spotify play failed, falling back:', e);
+            }
+        }
+        // Engine not loaded → fall through to deeplink behavior.
+        if (spTrackId) { _tryDeepLink('spotify:track:' + spTrackId, url); return; }
     }
     if (lower.includes('spotify.com/album/')) {
         var id = url.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/);
