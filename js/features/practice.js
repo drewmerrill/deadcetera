@@ -263,11 +263,15 @@ function _pmRenderCommandCenter(items) {
     var first = items[0];
     var firstSafe = first.songTitle.replace(/'/g, "\\'");
     var firstTaskAttr = first.taskId ? ",'" + String(first.taskId).replace(/'/g, "\\'") + "'" : ',null';
+    var firstReason = first.reason ? esc(first.reason) : '';
     return ''+
     '<div class="pm-section pm-section-a">'+
     '  <div class="pm-section-label">🎯 Today\'s Focus</div>'+
     '  <div class="pm-cc-list">' + rows + '</div>'+
-    '  <button class="pm-start-btn pm-cc-start" onclick="window._pmCCStart(\'' + firstSafe + '\'' + firstTaskAttr + ')">▶ Start Practice Session</button>'+
+    '  <button class="pm-start-btn pm-cc-start" onclick="window._pmCCStart(\'' + firstSafe + '\'' + firstTaskAttr + ')" title="Launches the #1 focus song. Click any other song row above to practice that one instead.">'+
+    '    <div class="pm-cc-start-main">▶ Start with #1: ' + esc(first.songTitle) + '</div>'+
+    (firstReason ? '    <div class="pm-cc-start-sub">' + firstReason + '</div>' : '')+
+    '  </button>'+
     '</div>';
 }
 
@@ -1307,7 +1311,9 @@ function _pmInjectStyles(){
     '.pm-cc-reason{font-size:0.78em;color:var(--text-dim,#94a3b8);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
     '.pm-cc-cta{font-size:1em;color:#a5b4fc;flex-shrink:0;font-weight:700;opacity:0.7;transition:opacity 0.12s,transform 0.12s;}'+
     '.pm-cc-item:hover .pm-cc-cta{opacity:1;transform:translateX(2px);}'+
-    '.pm-cc-start{margin-top:4px;}'+
+    '.pm-cc-start{margin-top:4px;display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.3;}'+
+    '.pm-cc-start-main{font-size:1em;font-weight:800;}'+
+    '.pm-cc-start-sub{font-size:0.74em;font-weight:500;opacity:0.85;letter-spacing:0.01em;}'+
     /* Empty state */
     '.pm-empty-card{background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:14px;padding:28px 20px;text-align:center;}'+
     '.pm-empty-emoji{font-size:2em;margin-bottom:8px;opacity:0.6;}'+
