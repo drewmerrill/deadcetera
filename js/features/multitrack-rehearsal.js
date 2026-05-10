@@ -201,6 +201,7 @@ window._mtCancelImport = function() {
     _mtState.pickedFiles = [];
     _mtState.sessionId = null;
     _mtState.uploads = {};
+    _mtState.activeUpload = null;
 };
 
 window._mtFilesPicked = function(files) {
@@ -319,74 +320,154 @@ window._mtConfirmMapping = async function() {
         };
     });
 
-    // Replace mapping area with progress UI
+    // Stash everything retry needs in module state. Per-trackId entry tracks
+    // file + status + result so a failed upload can be retried in isolation
+    // without re-doing the successful ones.
+    var fileByTrackId = {};
+    tracks.forEach(function(t, i) { fileByTrackId[t.trackId] = picked[i].file; });
+    _mtState.activeUpload = {
+        sessionId: sessionId,
+        date: date,
+        venue: venue,
+        tracks: tracks,
+        fileByTrackId: fileByTrackId
+    };
+
+    _mtRenderUploadProgress();
+
+    // Upload all in parallel (workers handle concurrent fetches; browser will
+    // throttle if needed). For very large rehearsals (>20 files) we may want
+    // to add a concurrency limit later; defer until we see real numbers.
+    await Promise.allSettled(tracks.map(function(t) {
+        return _mtUploadOne(fileByTrackId[t.trackId], sessionId, t);
+    }));
+
+    await _mtMaybeFinalizeSession();
+};
+
+// Render the upload progress UI from module state. Failed rows get a Retry
+// button; successful rows get a green check; pending rows show "queued".
+// Idempotent — safe to call after every status change.
+function _mtRenderUploadProgress() {
+    var u = _mtState.activeUpload;
+    if (!u) return;
     var area = document.getElementById('mtMappingArea');
     var footer = document.getElementById('mtFooter');
-    if (footer) footer.innerHTML = '<div style="font-size:0.78em;color:var(--text-dim)">Uploading… closing the modal will cancel.</div>';
+    if (footer) {
+        var failedCount = u.tracks.filter(function(t) { return t._uploadStatus === 'failed'; }).length;
+        var doneCount = u.tracks.filter(function(t) { return t.stemUrl; }).length;
+        if (failedCount > 0) {
+            footer.innerHTML = '<div style="font-size:0.78em;color:#fbbf24">⚠ ' + failedCount + ' upload(s) failed — click Retry on any failed row, or close to abort.</div>'
+                + '<button onclick="_mtRetryAllFailed()" style="margin-left:auto;padding:5px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-size:0.78em;font-weight:700">↻ Retry all failed</button>';
+            footer.style.display = 'flex';
+            footer.style.alignItems = 'center';
+            footer.style.gap = '8px';
+        } else if (doneCount === u.tracks.length) {
+            footer.innerHTML = '<div style="font-size:0.78em;color:#22c55e">✓ All uploaded — finalizing session…</div>';
+        } else {
+            footer.innerHTML = '<div style="font-size:0.78em;color:var(--text-dim)">Uploading… ' + doneCount + ' / ' + u.tracks.length + ' done. Closing the modal will cancel pending uploads.</div>';
+        }
+    }
     if (area) {
         var progressRows = '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden">';
-        tracks.forEach(function(t) {
-            progressRows += '<div id="mtUp_' + t.trackId + '" style="display:grid;grid-template-columns:1fr 80px 70px;gap:6px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);align-items:center;font-size:0.78em">'
+        u.tracks.forEach(function(t) {
+            var statusHtml;
+            if (t.stemUrl) {
+                statusHtml = '<span style="color:#22c55e;font-size:0.85em;font-weight:600">✓ done</span>';
+            } else if (t._uploadStatus === 'failed') {
+                var errTitle = t._uploadError ? ' title="' + escHtml(t._uploadError) + '"' : '';
+                statusHtml = '<button onclick="_mtRetryUpload(\'' + escHtml(t.trackId) + '\')"' + errTitle + ' style="padding:2px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">↻ Retry</button>';
+            } else if (t._uploadStatus === 'uploading') {
+                statusHtml = '<span style="color:#fbbf24;font-size:0.85em">uploading…</span>';
+            } else {
+                statusHtml = '<span style="color:var(--text-dim);font-size:0.85em">queued</span>';
+            }
+            progressRows += '<div id="mtUp_' + escHtml(t.trackId) + '" style="display:grid;grid-template-columns:1fr 90px 70px;gap:6px;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);align-items:center;font-size:0.78em">'
                 + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,monospace">' + escHtml(t.filename) + '</div>'
-                + '<div class="mtUpStatus" style="color:var(--text-dim);font-size:0.88em">queued</div>'
+                + '<div class="mtUpStatus">' + statusHtml + '</div>'
                 + '<div class="mtUpSize" style="color:var(--text-dim);font-size:0.78em;text-align:right">' + _mtBytesLabel(t.sizeBytes) + '</div>'
                 + '</div>';
         });
         progressRows += '</div>';
         area.innerHTML = progressRows;
     }
+}
 
-    // Upload all in parallel (workers handle concurrent fetches; browser will
-    // throttle if needed). For very large rehearsals (>20 files) we may want
-    // to add a concurrency limit later; defer until we see real numbers.
-    var uploadResults = await Promise.allSettled(tracks.map(function(t, i) {
-        return _mtUploadOne(picked[i].file, sessionId, t);
+window._mtRetryUpload = async function(trackId) {
+    var u = _mtState.activeUpload;
+    if (!u) return;
+    var track = u.tracks.find(function(t) { return t.trackId === trackId; });
+    if (!track || track.stemUrl) return;
+    var file = u.fileByTrackId[trackId];
+    if (!file) return;
+    track._uploadStatus = 'queued';
+    track._uploadError = null;
+    _mtRenderUploadProgress();
+    await _mtUploadOne(file, u.sessionId, track);
+    await _mtMaybeFinalizeSession();
+};
+
+window._mtRetryAllFailed = async function() {
+    var u = _mtState.activeUpload;
+    if (!u) return;
+    var failed = u.tracks.filter(function(t) { return t._uploadStatus === 'failed'; });
+    if (!failed.length) return;
+    failed.forEach(function(t) { t._uploadStatus = 'queued'; t._uploadError = null; });
+    _mtRenderUploadProgress();
+    await Promise.allSettled(failed.map(function(t) {
+        return _mtUploadOne(u.fileByTrackId[t.trackId], u.sessionId, t);
     }));
+    await _mtMaybeFinalizeSession();
+};
 
-    var failed = uploadResults.filter(function(r) { return r.status === 'rejected' || !r.value || !r.value.ok; });
-    if (failed.length) {
-        if (typeof showToast === 'function') showToast('⚠ ' + failed.length + ' upload(s) failed — keep modal open + retry');
-        return;
-    }
+// Write the session to Firebase if (and only if) every track has succeeded.
+// Safe to call multiple times — early-returns until all uploads are done.
+async function _mtMaybeFinalizeSession() {
+    var u = _mtState.activeUpload;
+    if (!u) return;
+    var allDone = u.tracks.every(function(t) { return !!t.stemUrl; });
+    if (!allDone) return;
 
-    // All uploads succeeded; stitch publicUrls into tracks
-    uploadResults.forEach(function(r, i) {
-        tracks[i].stemUrl = r.value.publicUrl;
-    });
-
-    // Write session to Firebase
     var session = {
-        sessionId: sessionId,
+        sessionId: u.sessionId,
         type: 'multitrack',
-        date: date,
-        venue: venue || null,
-        tracks: tracks,
-        comments: [],            // Phase B will populate
+        date: u.date,
+        venue: u.venue || null,
+        tracks: u.tracks.map(function(t) {
+            // Strip transient _upload* fields before persisting
+            var copy = {};
+            Object.keys(t).forEach(function(k) { if (k.indexOf('_upload') !== 0) copy[k] = t[k]; });
+            return copy;
+        }),
+        comments: [],
         createdAt: new Date().toISOString(),
         createdBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
     };
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (db && typeof bandPath === 'function') {
         try {
-            await db.ref(bandPath('rehearsal_sessions/' + sessionId)).set(session);
+            await db.ref(bandPath('rehearsal_sessions/' + u.sessionId)).set(session);
         } catch (e) {
             if (typeof showToast === 'function') showToast('⚠ Session save failed: ' + (e.message || 'unknown'));
             return;
         }
     }
-
-    // Close modal, open the player
+    var sId = u.sessionId;
+    _mtState.activeUpload = null;
     _mtCancelImport();
-    if (typeof showToast === 'function') showToast('✅ Multitrack session created (' + tracks.length + ' tracks)');
-    setTimeout(function() { window._mtOpenPlayer(sessionId); }, 200);
-};
+    if (typeof showToast === 'function') showToast('✅ Multitrack session created (' + session.tracks.length + ' tracks)');
+    setTimeout(function() { window._mtOpenPlayer(sId); }, 200);
+}
 
-// Upload a single FLAC to the worker. Returns { ok, key, publicUrl } or { ok:false, error }.
+// Upload a single FLAC to the worker. Mutates track._uploadStatus and
+// track.stemUrl in place so the rest of the module can read state from
+// the track object. Always re-renders the progress UI on status change.
 async function _mtUploadOne(file, sessionId, track) {
     var url = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev') + '/multitrack/upload';
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
-    var statusEl = document.querySelector('#mtUp_' + track.trackId + ' .mtUpStatus');
-    if (statusEl) { statusEl.textContent = 'uploading…'; statusEl.style.color = '#fbbf24'; }
+    track._uploadStatus = 'uploading';
+    track._uploadError = null;
+    _mtRenderUploadProgress();
     try {
         var res = await fetch(url, {
             method: 'POST',
@@ -402,15 +483,21 @@ async function _mtUploadOne(file, sessionId, track) {
         try { json = await res.json(); } catch (e) {}
         if (!res.ok || !json || !json.ok) {
             var msg = (json && json.error) ? json.error : ('HTTP ' + res.status);
-            if (statusEl) { statusEl.textContent = 'failed'; statusEl.style.color = '#f87171'; statusEl.title = msg; }
+            track._uploadStatus = 'failed';
+            track._uploadError = msg;
             console.warn('[Multitrack] upload failed for', file.name, msg);
+            _mtRenderUploadProgress();
             return { ok: false, error: msg };
         }
-        if (statusEl) { statusEl.textContent = '✓ done'; statusEl.style.color = '#22c55e'; }
+        track.stemUrl = json.publicUrl;
+        track._uploadStatus = 'done';
+        _mtRenderUploadProgress();
         return { ok: true, key: json.key, publicUrl: json.publicUrl };
     } catch (e) {
-        if (statusEl) { statusEl.textContent = 'error'; statusEl.style.color = '#f87171'; statusEl.title = e.message || ''; }
+        track._uploadStatus = 'failed';
+        track._uploadError = e.message || 'network';
         console.warn('[Multitrack] upload error for', file.name, e);
+        _mtRenderUploadProgress();
         return { ok: false, error: e.message || 'network' };
     }
 }
