@@ -427,6 +427,8 @@ function _pmOpenSolo(songTitle, mode) {
     if (!songTitle) return;
     mode = mode || 'focus';
 
+    // Record the focus/mode for downstream surfaces (Workbench, charts,
+    // recommendations). Independent of the routing target below.
     if (typeof GLStore !== 'undefined' && GLStore.PracticeSession) {
         try {
             GLStore.PracticeSession.start(songTitle, mode, { songTitle: songTitle });
@@ -435,26 +437,30 @@ function _pmOpenSolo(songTitle, mode) {
         }
     }
 
+    // Practice intent → Workbench (per the controlled migration 2026-05-10).
+    // Falls through to the legacy selectSong + Stems-lens path if Workbench
+    // isn't loaded; that path in turn falls back to the chart overlay.
+    if (typeof openWorkbench === 'function') {
+        openWorkbench(songTitle, 'practice', {});
+        return;
+    }
     if (typeof selectSong === 'function') {
-        // selectSong sets selectedSong + calls showPage('songdetail'), which
-        // mounts renderSongDetail. Switch to the Stems lens after a tick so
-        // the lens panels exist in the DOM.
         selectSong(songTitle);
         setTimeout(function() {
             if (typeof switchLens === 'function') {
                 try { switchLens('stems'); } catch (e) { console.warn('[Practice] switchLens failed:', e && e.message); }
             }
         }, 200);
-    } else {
-        // Fallback to the chart overlay if selectSong somehow isn't available.
-        var songList = typeof allSongs !== 'undefined' ? allSongs : [];
-        var songData = songList.find(function(s) { return s.title === songTitle; });
-        var queue = [{ title: songTitle, band: songData ? (songData.band || '') : '' }];
-        if (typeof openRehearsalModePractice === 'function') {
-            openRehearsalModePractice(queue);
-        } else if (typeof openRehearsalMode === 'function') {
-            openRehearsalMode(songTitle);
-        }
+        return;
+    }
+    // Last-resort fallback to the chart overlay.
+    var songList = typeof allSongs !== 'undefined' ? allSongs : [];
+    var songData = songList.find(function(s) { return s.title === songTitle; });
+    var queue = [{ title: songTitle, band: songData ? (songData.band || '') : '' }];
+    if (typeof openRehearsalModePractice === 'function') {
+        openRehearsalModePractice(queue);
+    } else if (typeof openRehearsalMode === 'function') {
+        openRehearsalMode(songTitle);
     }
 }
 
