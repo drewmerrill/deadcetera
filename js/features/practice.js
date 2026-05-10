@@ -1248,12 +1248,16 @@ function _pmMixCard(mix) {
     var shareTag = mix.isShared
         ? '<span style="font-size:0.7em;background:rgba(102,126,234,0.15);color:#818cf8;padding:2px 8px;border-radius:8px;font-weight:700;flex-shrink:0">Shared</span>'
         : '';
+    var derivedTag = mix.sourceLabel
+        ? '<div style="font-size:0.7em;color:#a5b4fc;margin-top:2px">🔗 Derived from: '+_pmEsc(mix.sourceLabel)+' setlist</div>'
+        : '';
     return '<div class="app-card" style="margin-bottom:10px">'+
            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
            '<span style="font-size:1.1em">'+type.emoji+'</span>'+
            '<div style="flex:1;min-width:0">'+
            '<div style="font-weight:700;font-size:0.9em;color:var(--text)">'+_pmEsc(mix.title)+'</div>'+
            '<div style="font-size:0.72em;color:var(--text-dim)">'+type.label+' · '+songs.length+' songs</div>'+
+           derivedTag+
            '</div>'+
            shareTag+
            '<button onclick="pmEditMix(\''+mix.id+'\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:4px 8px">✏️</button>'+
@@ -1271,8 +1275,16 @@ function _pmMixCard(mix) {
 }
 
 // ── Mix Editor ────────────────────────────────────────────────────────────────
+// Source-derivation fields (Drew 2026-05-10): when type='gig', mixes can be
+// auto-populated from a gig's linked setlist. sourceType/sourceId/sourceLabel
+// record the provenance so we can show "Derived from: [Gig] setlist" and
+// later re-sync if the setlist changes.
 window.pmNewMix = function pmNewMix() {
-    _pmEditingMix = { id: null, title:'', type:'practice', songIds:[], isShared:false, createdBy: _pmMyKey() };
+    _pmEditingMix = {
+        id: null, title:'', type:'practice', songIds:[],
+        isShared:false, createdBy: _pmMyKey(),
+        sourceType: null, sourceId: null, sourceLabel: null
+    };
     _pmMixSongs = [];
     _pmShowEditor();
 };
@@ -1280,10 +1292,125 @@ window.pmNewMix = function pmNewMix() {
 window.pmEditMix = function pmEditMix(mixId) {
     var mix = _pmMixes.find(function(m){return m.id===mixId;});
     if (!mix) return;
-    _pmEditingMix = Object.assign({}, mix);
+    _pmEditingMix = Object.assign({
+        sourceType: null, sourceId: null, sourceLabel: null
+    }, mix);
     _pmMixSongs = (mix.songIds || []).slice();
     _pmShowEditor();
 };
+
+// Cache of upcoming gigs for the gig picker — refreshed each time the
+// editor opens so newly-added gigs surface without a page reload.
+var _pmMixUpcomingGigs = [];
+
+async function _pmLoadMixUpcomingGigs() {
+    var gigs = [];
+    if (typeof GLStore !== 'undefined' && GLStore.getGigsAsync) {
+        try { gigs = await GLStore.getGigsAsync(); } catch(e) { gigs = []; }
+    }
+    if (!gigs || !gigs.length) {
+        gigs = (typeof GLStore !== 'undefined' && GLStore.getGigs) ? GLStore.getGigs() : [];
+    }
+    var todayStr = new Date().toISOString().split('T')[0];
+    var upcoming = (gigs || []).filter(function(g) { return g && g.date && g.date >= todayStr; });
+    upcoming.sort(function(a, b) { return (a.date || '').localeCompare(b.date || ''); });
+    _pmMixUpcomingGigs = upcoming;
+    return upcoming;
+}
+
+// Resolve a gig's setlist songs (deduped, structural-titles filtered) the
+// same way Gig Prep / Run-the-Gig do. Returns { songs: [titles], setlist }.
+function _pmResolveGigSongs(gig) {
+    if (!gig) return { songs: [], setlist: null };
+    var setlists = (typeof GLStore !== 'undefined' && GLStore.getSetlists) ? GLStore.getSetlists() : [];
+    var setlist = null;
+    if (gig.setlistId) {
+        setlist = setlists.find(function(s) { return s && s.setlistId === gig.setlistId; }) || null;
+    }
+    if (!setlist && gig.date) {
+        setlist = setlists.find(function(s) { return s && s.date === gig.date; }) || null;
+    }
+    if (!setlist) return { songs: [], setlist: null };
+    var seen = {};
+    var songs = [];
+    (setlist.sets || []).forEach(function(set) {
+        (set.songs || []).forEach(function(sg) {
+            var title = typeof sg === 'string' ? sg : (sg && sg.title) || '';
+            if (!title || seen[title]) return;
+            if (typeof isStructuralTitle === 'function' && isStructuralTitle(title)) return;
+            seen[title] = true;
+            songs.push(title);
+        });
+    });
+    return { songs: songs, setlist: setlist };
+}
+
+window.pmMixTypeChanged = function(newType) {
+    if (!_pmEditingMix) return;
+    _pmEditingMix.type = newType;
+    // If user switched AWAY from gig, the source is no longer meaningful
+    // for display — but we keep the data in case they switch back.
+    _pmShowEditor();
+};
+
+window.pmMixDeriveFromGig = async function(gigKey) {
+    if (!gigKey) return;
+    var gig = _pmMixUpcomingGigs.find(function(g) { return _pmGigKey(g) === gigKey; });
+    if (!gig) {
+        if (typeof showToast === 'function') showToast('Gig not found');
+        return;
+    }
+    var resolved = _pmResolveGigSongs(gig);
+    if (!resolved.songs.length) {
+        if (typeof showToast === 'function') {
+            showToast(resolved.setlist
+                ? 'Setlist for this gig is empty — add songs in Setlists first.'
+                : 'No setlist linked to this gig yet — link one in Setlists.');
+        }
+        return;
+    }
+    // Confirm replace if mix already has songs
+    if (_pmMixSongs.length) {
+        var ok = confirm('Replace the current ' + _pmMixSongs.length + ' song(s) with the ' + resolved.songs.length + ' song(s) from this gig\'s setlist? You can still edit afterward.');
+        if (!ok) return;
+    }
+    _pmMixSongs = resolved.songs.slice();
+    _pmEditingMix.sourceType = 'setlist';
+    _pmEditingMix.sourceId = gig.gigId || resolved.setlist.setlistId || _pmGigKey(gig);
+    _pmEditingMix.sourceLabel = _pmFormatGigLabel(gig);
+    // Auto-fill the title on first derive (only if title is empty or looks
+    // like the default placeholder)
+    var titleEl = document.getElementById('pm-mix-title');
+    if (titleEl && !titleEl.value.trim()) {
+        titleEl.value = 'Gig Prep · ' + _pmEditingMix.sourceLabel;
+        _pmEditingMix.title = titleEl.value;
+    }
+    _pmShowEditor();
+    if (typeof showToast === 'function') showToast('Loaded ' + resolved.songs.length + ' songs from ' + _pmEditingMix.sourceLabel);
+};
+
+window.pmMixClearSource = function() {
+    if (!_pmEditingMix) return;
+    if (!confirm('Unlink this mix from the gig setlist? The current songs stay; you\'ll just lose the "Derived from" tag.')) return;
+    _pmEditingMix.sourceType = null;
+    _pmEditingMix.sourceId = null;
+    _pmEditingMix.sourceLabel = null;
+    _pmShowEditor();
+};
+
+function _pmFormatGigLabel(gig) {
+    if (!gig) return 'Gig';
+    var dateStr = gig.date || '';
+    var venueStr = gig.venue || 'Venue TBD';
+    var datePart = '';
+    try {
+        if (dateStr) {
+            var d = new Date(dateStr + 'T00:00:00');
+            datePart = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+    } catch(e) { datePart = dateStr; }
+    return (datePart ? datePart + ' · ' : '') + venueStr;
+}
 
 function _pmShowEditor() {
     var el = document.getElementById('pm-mix-editor');
@@ -1292,6 +1419,34 @@ function _pmShowEditor() {
     var typeOpts = MIX_TYPES.map(function(t){
         return '<option value="'+t.id+'"'+(_pmEditingMix.type===t.id?' selected':'')+'>'+t.emoji+' '+t.label+'</option>';
     }).join('');
+
+    // Gig-source picker (only shown when type='gig'). Populated async on first
+    // open — see the deferred _pmLoadMixUpcomingGigs() call after innerHTML.
+    var gigSourceHtml = '';
+    if (_pmEditingMix.type === 'gig') {
+        var gigOpts = '<option value="">— Pick an upcoming gig to autopopulate —</option>' +
+            _pmMixUpcomingGigs.map(function(g) {
+                var key = _pmGigKey(g);
+                var lbl = _pmFormatGigLabel(g);
+                return '<option value="'+_pmEsc(key)+'">'+_pmEsc(lbl)+'</option>';
+            }).join('');
+        var sourceBadge = _pmEditingMix.sourceLabel
+            ? '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding:6px 10px;background:rgba(102,126,234,0.12);border:1px solid rgba(102,126,234,0.3);border-radius:8px">'+
+              '<span style="font-size:0.78em;color:#a5b4fc;flex:1">🔗 Derived from: <strong>'+_pmEsc(_pmEditingMix.sourceLabel)+'</strong> setlist</span>'+
+              '<button onclick="pmMixClearSource()" style="background:none;border:1px solid rgba(255,255,255,0.15);color:var(--text-dim);cursor:pointer;font-size:0.72em;padding:3px 8px;border-radius:6px">Unlink</button>'+
+              '</div>'
+            : '';
+        var emptyHint = _pmMixUpcomingGigs.length
+            ? ''
+            : '<div style="font-size:0.74em;color:var(--text-dim);margin-top:4px">No upcoming gigs found — add one in Schedule first.</div>';
+        gigSourceHtml =
+            '<div style="margin-bottom:12px;padding:10px;background:rgba(0,0,0,0.15);border-radius:8px;border:1px solid rgba(255,255,255,0.05)">'+
+            '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:6px">🎤 Autopopulate from gig</div>'+
+            '<select id="pm-mix-gig-source" class="app-select" style="font-size:0.85em;width:100%" onchange="pmMixDeriveFromGig(this.value)">'+gigOpts+'</select>'+
+            emptyHint+
+            sourceBadge+
+            '</div>';
+    }
 
     var songSearchHtml =
         '<input type="text" id="pm-song-search" placeholder="Type to search songs…" '+
@@ -1326,8 +1481,10 @@ function _pmShowEditor() {
 
         '<span style="display:block;margin-bottom:12px">'+
         '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:4px">Type</div>'+
-        '<select id="pm-mix-type" class="app-select" style="font-size:0.88em">'+typeOpts+'</select>'+
+        '<select id="pm-mix-type" class="app-select" style="font-size:0.88em" onchange="pmMixTypeChanged(this.value)">'+typeOpts+'</select>'+
         '</label>'+
+
+        gigSourceHtml+
 
         '<div style="margin-bottom:12px">'+
         '<div style="font-size:0.78em;font-weight:700;color:var(--text-muted);margin-bottom:6px">Songs ('+_pmMixSongs.length+')</div>'+
@@ -1349,6 +1506,16 @@ function _pmShowEditor() {
 
     // Initial song search results (show all)
     pmSongSearchFilter('');
+
+    // If we're showing the gig picker and haven't loaded the upcoming gigs
+    // cache yet, fetch and re-render once. Cheap idempotent refresh otherwise.
+    if (_pmEditingMix.type === 'gig' && !_pmMixUpcomingGigs.length) {
+        _pmLoadMixUpcomingGigs().then(function(gigs) {
+            if (gigs && gigs.length && _pmEditingMix && _pmEditingMix.type === 'gig') {
+                _pmShowEditor();
+            }
+        }).catch(function(){});
+    }
 }
 
 window.pmSongSearchFilter = function pmSongSearchFilter(term) {
@@ -1442,6 +1609,11 @@ window.pmSaveMix = async function pmSaveMix() {
         isShared:  isShared,
         createdBy: _pmMyKey(),
         updatedAt: new Date().toISOString(),
+        // Source-derivation provenance — null for hand-built mixes, set when
+        // autopopulated from a gig's setlist via pmMixDeriveFromGig.
+        sourceType:  (_pmEditingMix && _pmEditingMix.sourceType)  || null,
+        sourceId:    (_pmEditingMix && _pmEditingMix.sourceId)    || null,
+        sourceLabel: (_pmEditingMix && _pmEditingMix.sourceLabel) || null,
     };
 
     try {

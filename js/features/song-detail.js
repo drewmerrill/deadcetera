@@ -2159,6 +2159,18 @@ async function _sdRunStemSeparationFromTake(title, opts) {
     };
     try {
         await GLStems.separate(title, Object.assign({}, opts, { onProgress: onProgress }));
+        // Drew 2026-05-10: any prior LALAL Lead/Backing split + spatial
+        // splits are derived from the OLD Demucs vocals. A fresh Demucs
+        // run makes them stale by definition (different songId in the
+        // R2 path) and triggers the "Lead/Backing may be out of sync"
+        // warning. Auto-clear them so the warning never appears and the
+        // user re-derives only what they want.
+        try {
+            if (GLStems.clearLeadBackingSplit) await GLStems.clearLeadBackingSplit(title);
+            if (GLStems.clearSpatialSplits)    await GLStems.clearSpatialSplits(title);
+        } catch (cleanupErr) {
+            console.warn('[stems] post-separation derived-split cleanup failed:', cleanupErr);
+        }
         _sdLensPopulated.stems = false;
         _sdPopulateStemsLens(title);
         if (typeof showToast === 'function') showToast('Stems ready for ' + title);
