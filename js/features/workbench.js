@@ -692,11 +692,22 @@
     // the rehearsal flagged. Falls back silently if no reference exists.
     async function _wbAutoLaunchPlayer(songId, opts) {
         if (!window.GLPlayerEngine || !window.GLPlayerUI) return;
+        // Helper: when this song has no playable reference, the old song's
+        // audio MUST stop. Otherwise the player keeps playing the prior
+        // song (Sugaree) while Workbench shows the new one (Tall Boy) — a
+        // confusing stale state Drew hit in Run-the-Gig on 2026-05-10.
+        var stopStale = function(reason) {
+            try { if (window.GLPlayerEngine.stop) window.GLPlayerEngine.stop(); } catch (e) {}
+            if (typeof showToast === 'function') {
+                showToast('No audio reference for "' + songId + '" — add a YouTube version in Listen lens.');
+            }
+            console.log('[wb] auto-launch skipped:', songId, reason);
+        };
         try {
             var url = await _wbResolvePrimaryUrl(songId);
-            if (!url) return;
+            if (!url) { stopStale('no reference URL'); return; }
             var ytId = _wbExtractYouTubeId(url);
-            if (!ytId) return;
+            if (!ytId) { stopStale('non-YouTube reference (' + url.slice(0, 40) + '…)'); return; }
             var queue = [{ title: songId, youtubeId: ytId }];
             window.GLPlayerEngine.loadQueue(queue, { name: songId });
             window.GLPlayerUI.showFloat({ size: 'medium', dock: 'bottom-right' });
