@@ -329,7 +329,30 @@ window._rhSaveRecreatedSession = async function() {
 };
 
 var rhCurrentEventId = null; // which event is open in detail view
-var _rhPlanningMode = false; // true = Plan Mode, false = Review Mode
+
+// Phase 3d: page-mode enum.
+// _rhPageMode is the single source of truth for which mode the rehearsal
+// page is in: 'review' (default) or 'plan'. Mutate it ONLY via
+// _rhSetPageMode(mode) below — that gives us one chokepoint for transitions
+// and keeps the legacy _rhPlanningMode boolean in sync (back-compat alias
+// still read by ~30 render branches).
+//
+// "Active" rehearsal isn't a page mode — clicking Start Rehearsal exits to
+// rehearsal-mode.js (chart overlay), which is a separate surface. So Active
+// lives outside this enum.
+//
+// Full render-path split (separate _rhRenderPlanMode / _rhRenderReviewMode
+// functions per audit §9 Phase 3 item 5) is deferred — would touch ~700
+// lines of intermingled branches; this enum + chokepoint is the prerequisite
+// architectural step that makes that split safe to do later.
+var _rhPageMode = 'review';
+var _rhPlanningMode = false; // back-compat alias; reflects _rhPageMode === 'plan'
+function _rhSetPageMode(mode) {
+    if (mode !== 'review' && mode !== 'plan') return;
+    _rhPageMode = mode;
+    _rhPlanningMode = (mode === 'plan');
+}
+
 var _rhViewingSessionId = null; // which session timeline is currently displayed
 
 // ── Page entry point ──────────────────────────────────────────────────────────
@@ -375,6 +398,23 @@ async function renderRehearsalPage(el) {
 
 var _rhRenderInProgress = false; // guard against concurrent renders
 var _rhRenderQueued = false;     // set when a render arrived during another; flushed in finally
+//
+// _rhRenderCommandFlow — orchestrator for the rehearsal page.
+//
+// Phase 3d structure (audit §9 item 5 — full mode-split deferred):
+//   1. Concurrent-render guard + ctx loading (shared)
+//   2. PRIMARY ACTIONS surface — branched on _rhPageMode:
+//        'review' → intent picker + Continue chip          (~lines 470-540)
+//        'plan'   → action row (Back / Duplicate / Clear) (~lines 545-575)
+//   3. PLAN SECTION — branched on _rhPageMode + hasSavedPlan:
+//        'plan'   → workspace (no collapsible, plan name editable inline)
+//        'review' → collapsible card with intent + gig chips
+//      The unit-row rendering inside is shared.
+//   4. POST-RENDER hooks — timeline, snapshots, history (shared)
+//
+// To split this into _rhRenderPlanMode + _rhRenderReviewMode functions
+// later: extract sections 2 + 3 of each branch into named helpers; keep
+// section 1 (orchestration) and 4 (post-render) here.
 async function _rhRenderCommandFlow(el) {
     if (_rhRenderInProgress) { _rhRenderQueued = true; return; }
     _rhRenderInProgress = true;
@@ -1135,13 +1175,13 @@ window._rhOpenPlanMode = function() {
         }
     }
     // Enter Plan Mode
-    _rhPlanningMode = true;
+    _rhSetPageMode('plan');
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
     renderRehearsalPage(el);
 };
 
 window._rhExitPlanMode = function() {
-    _rhPlanningMode = false;
+    _rhSetPageMode('review');
     var el = document.querySelector('.app-page:not(.hidden)') || document.body;
     renderRehearsalPage(el);
 };
@@ -5411,7 +5451,7 @@ window.renderRehearsalPlanner = async function() {
 };
 
 window._rhExitPlannerMode = function() {
-    _rhPlanningMode = false; // Return to review mode when exiting planner
+    _rhSetPageMode('review'); // Return to review mode when exiting planner
     var el = document.getElementById('page-rehearsal') || document.querySelector('.gl-page-primary');
     if (el) renderRehearsalPage(el);
 };
