@@ -821,6 +821,22 @@ window.GLPlayerUI = (function() {
                 + '</div>';
         }
 
+        // Spotify Connect \u2014 audio plays in the user's Spotify app on the
+        // same device (iPhone/iPad). No iframe; no SDK. Engine routes
+        // pause/resume/seek/skip via REST. Volume hint shown when device
+        // doesn't accept Connect volume (iOS smartphone supports_volume=false).
+        if (d.source === 'spotify_connect' && d.trackId) {
+            var volNote = d.supportsVolume
+                ? ''
+                : '<div style="font-size:0.65em;color:#94a3b8;margin-top:6px;line-height:1.3">Volume: use ' + _esc(d.deviceName || 'device') + ' hardware buttons</div>';
+            if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;text-align:center">'
+                + '<div style="font-size:1.5em;margin-bottom:6px">\uD83D\uDCF1</div>'
+                + '<div style="font-size:0.88em;font-weight:700;color:#1ed760">Playing on ' + _esc(d.deviceName || 'Spotify') + '</div>'
+                + '<div style="font-size:0.7em;color:#b3b3b3;margin-top:4px">Full track \u00B7 via Spotify Connect</div>'
+                + volNote
+                + '</div>';
+        }
+
         // Spotify SDK requires interaction (iOS)
         if (d.source === 'spotify_sdk_interaction' && d.trackId) {
             if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;cursor:pointer" onclick="if(typeof GLSpotifyPlayer!==\'undefined\')GLSpotifyPlayer.playTrackId(\'' + d.trackId + '\')">'

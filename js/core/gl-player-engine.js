@@ -27,6 +27,8 @@ window.GLPlayerEngine = (function() {
     var _setOverrides = null;
     var _activeSource = null; // 'youtube' | 'spotify' | 'archive'
     var _activeResult = null;
+    var _activeMethod = null; // for spotify: 'connect' | 'sdk' | 'embed'
+    var _activeDeviceId = null; // for connect: the Spotify device id
     var _ytPlayer = null;
     var _ytReady = false;
     var _ytLoading = false;
@@ -189,11 +191,41 @@ window.GLPlayerEngine = (function() {
 
     function prev() { if (_currentIdx > 0) play(_currentIdx - 1); }
 
+    // Skip within the currently-playing source (in-track skip-next on
+    // Spotify Connect → tells the iPhone Spotify app to advance to the
+    // next track in ITS queue, not GL's queue). Used by the floating
+    // player's ⏭ button when the source supports in-source skip.
+    function skipInSource() {
+        if (_activeSource === 'spotify' && _activeMethod === 'connect' && typeof GLSpotifyConnect !== 'undefined') {
+            GLSpotifyConnect.next(_activeDeviceId).catch(function(e) {
+                console.warn('[GLPlayer] Connect skip-next failed:', e.message || e);
+            });
+        } else {
+            // For other sources, fall back to GL queue advance.
+            next();
+        }
+    }
+
     function togglePlay() {
         if (_activeSource === 'youtube' && _ytPlayer && _ytPlayer.getPlayerState) {
             if (_ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) { _ytPlayer.pauseVideo(); _isPlaying = false; }
             else { _ytPlayer.playVideo(); _isPlaying = true; }
             _emit('stateChange', { state: _state, isPlaying: _isPlaying });
+        } else if (_activeSource === 'spotify' && _activeMethod === 'connect' && typeof GLSpotifyConnect !== 'undefined') {
+            // Connect path: REST pause/resume against the iPhone Spotify app.
+            // Optimistic UI update — we flip _isPlaying first then fire the
+            // REST call. Polling will reconcile within ~1.5s if the call
+            // failed silently.
+            var SC = GLSpotifyConnect;
+            var wasPlaying = _isPlaying;
+            _isPlaying = !wasPlaying;
+            _emit('stateChange', { state: _state, isPlaying: _isPlaying });
+            (wasPlaying ? SC.pause(_activeDeviceId) : SC.resume(_activeDeviceId)).catch(function(e) {
+                // Revert optimistic update on failure
+                console.warn('[GLPlayer] Connect togglePlay failed:', e.message || e);
+                _isPlaying = wasPlaying;
+                _emit('stateChange', { state: _state, isPlaying: _isPlaying });
+            });
         }
     }
 
@@ -202,6 +234,18 @@ window.GLPlayerEngine = (function() {
             var current = _ytPlayer.getCurrentTime();
             var target = Math.max(0, current + deltaSec);
             _ytPlayer.seekTo(target, true);
+        } else if (_activeSource === 'spotify' && _activeMethod === 'connect' && typeof GLSpotifyConnect !== 'undefined') {
+            // Connect path: read current position from polling cache, add
+            // delta, send seek REST. Connect doesn't expose realtime position
+            // so we fetch fresh via getCurrentPlayback.
+            GLSpotifyConnect.getCurrentPlayback().then(function(state) {
+                if (!state) return;
+                var currentMs = state.progress_ms || 0;
+                var targetMs = Math.max(0, currentMs + (deltaSec * 1000));
+                return GLSpotifyConnect.seek(targetMs, _activeDeviceId);
+            }).catch(function(e) {
+                console.warn('[GLPlayer] Connect seekRelative failed:', e.message || e);
+            });
         }
         // Spotify SDK seek not supported in embed mode
     }
@@ -209,9 +253,21 @@ window.GLPlayerEngine = (function() {
     function stop() {
         if (_ytPlayer && _ytPlayer.destroy) { try { _ytPlayer.destroy(); } catch(e) {} }
         _ytPlayer = null;
+        // Stop Connect polling + pause Spotify app on the same device so we
+        // don't leave audio playing on the user's phone after they close the
+        // GL player. Best-effort — swallow errors since the device may be
+        // gone (force-quit) by the time we get here.
+        if (_activeSource === 'spotify' && _activeMethod === 'connect' && typeof GLSpotifyConnect !== 'undefined') {
+            try { GLSpotifyConnect.stopPolling(); } catch(e) {}
+            if (_activeDeviceId) {
+                GLSpotifyConnect.pause(_activeDeviceId).catch(function(){});
+            }
+        }
         _isPlaying = false;
         _activeSource = null;
         _activeResult = null;
+        _activeMethod = null;
+        _activeDeviceId = null;
         _setState(State.IDLE);
     }
 
@@ -320,6 +376,8 @@ window.GLPlayerEngine = (function() {
                 _emit('status', { message: 'Sending to Spotify on ' + device.name + '…' });
                 try {
                     await SC.play('spotify:track:' + trackId, device.id);
+                    _activeMethod = 'connect';
+                    _activeDeviceId = device.id;
                     _setState(State.PLAYING, { source: 'spotify', method: 'connect' });
                     _emit('embedReady', {
                         source: 'spotify_connect',
@@ -501,7 +559,10 @@ window.GLPlayerEngine = (function() {
         prev: prev,
         togglePlay: togglePlay,
         seekRelative: seekRelative,
+        skipInSource: skipInSource,
         stop: stop,
+        getActiveMethod: function() { return _activeMethod; },
+        getActiveDeviceId: function() { return _activeDeviceId; },
         destroy: destroy,
 
         // YouTube
