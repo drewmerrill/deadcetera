@@ -350,22 +350,216 @@
     };
 
     // ── Chart fullscreen toggle ─────────────────────────────────────────────
-    // Recreates the old "1-click fullscreen chart" experience but stays
-    // inside Workbench. Hides the top bar, left rail, Workbench header,
-    // mode tabs, right rail, and action bar so only the chart content
-    // remains. Keyboard: F to toggle, Esc to exit.
+    // Recreates the old "1-click fullscreen chart" experience as a top-level
+    // overlay (independent of song-detail's max-width constraints). Brings
+    // the legacy rehearsal-mode chart toolbar (font size, transpose, auto-
+    // scroll) so practice in fullscreen has the same controls as gigs.
+    // Keyboard: F to toggle, Esc to exit.
     window._wbChartMaxState = false;
-    window._wbToggleChartMax = function() {
-        window._wbChartMaxState = !window._wbChartMaxState;
-        document.body.classList.toggle('gl-wb-chart-max', window._wbChartMaxState);
+    var _CHART_NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    // Match a chord root (A-G with optional #/b) followed by its quality/
+    // extension token. Word-boundary anchored to skip lyric words.
+    var _CHART_NOTE_RE = /\b([A-G][#b]?)((?:m|maj|min|dim|aug|sus|add)?[0-9b#+\-/]*)?\b/g;
+    window._wbChartFs = {
+        fontSize: 14,     // px
+        semitones: 0,     // transpose
+        scrolling: false,
+        scrollSpeed: 2,   // 1-5
+        scrollTimer: null,
+        originalText: ''
+    };
+
+    async function _wbLoadChartTextForCurrent() {
+        var st = window._wbState;
+        if (!st || !st.songId) return null;
+        // Try cached chart first (set by song-detail when it loaded)
+        if (typeof window._sdCachedChart === 'string' && window._sdCachedChart) {
+            return window._sdCachedChart;
+        }
+        if (typeof loadBandDataFromDrive !== 'function') return null;
+        try {
+            var d = await loadBandDataFromDrive(st.songId, 'chart');
+            return (d && d.text && d.text.trim()) ? d.text : null;
+        } catch (e) { return null; }
+    }
+
+    window._wbToggleChartMax = async function() {
+        var existing = document.getElementById('wbChartFs');
+        if (existing) { _wbExitChartFs(); return; }
+        var st = window._wbState;
+        if (!st || !st.songId) return;
+        var chartText = await _wbLoadChartTextForCurrent();
+        var songObj = (typeof allSongs !== 'undefined') ? (allSongs.find(function(s){return s.title === st.songId;}) || {}) : {};
+        window._wbChartFs.originalText = chartText || '';
+        window._wbChartFs.semitones = 0;
+        window._wbChartFs.scrolling = false;
+        window._wbChartFs.songKey = songObj.key || '';
+        window._wbChartFs.songBpm = songObj.bpm || '';
+        var overlay = document.createElement('div');
+        overlay.id = 'wbChartFs';
+        overlay.className = 'wb-chart-fs';
+        overlay.innerHTML = _wbBuildChartFsHTML(st.songId, chartText);
+        document.body.appendChild(overlay);
+        // Set chart text via textContent (avoids HTML-encoding issues with
+        // chord characters like # in chart text)
+        var pre = document.getElementById('wbChartFsText');
+        if (pre && chartText) {
+            var decoded = (typeof window.glDecodeHtmlEntities === 'function')
+                ? window.glDecodeHtmlEntities(chartText)
+                : chartText;
+            window._wbChartFs.originalText = decoded;
+            pre.textContent = decoded;
+        }
+        window._wbChartMaxState = true;
         var btn = document.getElementById('wb-chart-max-btn');
-        if (btn) {
-            btn.textContent = window._wbChartMaxState ? '⤡' : '⤢';
-            btn.title = window._wbChartMaxState ? 'Restore chart (Esc to exit)' : 'Maximize chart (F · Esc to exit)';
+        if (btn) { btn.textContent = '⤡'; btn.title = 'Restore chart (Esc to exit)'; }
+    };
+
+    function _wbExitChartFs() {
+        var existing = document.getElementById('wbChartFs');
+        if (!existing) return;
+        if (window._wbChartFs.scrollTimer) {
+            clearInterval(window._wbChartFs.scrollTimer);
+            window._wbChartFs.scrollTimer = null;
+        }
+        existing.remove();
+        window._wbChartMaxState = false;
+        var btn = document.getElementById('wb-chart-max-btn');
+        if (btn) { btn.textContent = '⤢'; btn.title = 'Maximize chart (F · Esc to exit)'; }
+    }
+
+    function _wbBuildChartFsHTML(songId, chartText) {
+        var st = window._wbChartFs;
+        var keyDisplay = st.songKey || '—';
+        var bpm = st.songBpm ? (st.songBpm + ' BPM') : '';
+        var hasChart = !!(chartText && chartText.trim());
+        var chartBody = hasChart
+            ? '<pre id="wbChartFsText" class="wb-chart-fs-text" style="font-size:' + st.fontSize + 'px"></pre>'
+            : '<div class="wb-chart-fs-empty"><div style="font-size:2.4em;margin-bottom:10px">📋</div><div style="font-weight:700;font-size:1.05em;margin-bottom:6px">No chord chart yet for ' + _wbEsc(songId) + '</div><div style="color:var(--text-dim)">Add one in Classic Mode → Edit, then come back to read it fullscreen.</div></div>';
+        return ''+
+        '<div class="wb-chart-fs-toolbar">'+
+            '<div class="wb-chart-fs-song">'+
+                '<div class="wb-chart-fs-title">' + _wbEsc(songId) + '</div>'+
+                '<div class="wb-chart-fs-meta">' +
+                    '<span id="wbChartFsKeyDisplay">' + _wbEsc(keyDisplay) + '</span>' +
+                    (bpm ? ' · <span>' + _wbEsc(bpm) + '</span>' : '') +
+                '</div>'+
+            '</div>'+
+            '<div class="wb-chart-fs-controls">'+
+                '<button class="wb-fs-btn" onclick="window._wbChartFsTranspose(-1)" title="Transpose down (♭)">♭</button>'+
+                '<span class="wb-fs-val" id="wbChartFsSemi">' + (st.semitones === 0 ? '0' : (st.semitones > 0 ? '+' + st.semitones : st.semitones)) + '</span>'+
+                '<button class="wb-fs-btn" onclick="window._wbChartFsTranspose(1)" title="Transpose up (♯)">♯</button>'+
+                '<span class="wb-fs-sep"></span>'+
+                '<button class="wb-fs-btn" onclick="window._wbChartFsFont(-1)" title="Smaller text">A−</button>'+
+                '<button class="wb-fs-btn" onclick="window._wbChartFsFont(1)" title="Larger text">A+</button>'+
+                '<span class="wb-fs-sep"></span>'+
+                '<button class="wb-fs-btn" id="wbChartFsScrollBtn" onclick="window._wbChartFsToggleScroll()" title="Auto-scroll">📜</button>'+
+                '<button class="wb-fs-btn wb-fs-btn-scroll-adj wb-fs-hidden" id="wbChartFsScrollDown" onclick="window._wbChartFsScrollSpeed(-1)" title="Slower">−</button>'+
+                '<span class="wb-fs-val wb-fs-hidden" id="wbChartFsScrollSpeed">' + st.scrollSpeed + '</span>'+
+                '<button class="wb-fs-btn wb-fs-btn-scroll-adj wb-fs-hidden" id="wbChartFsScrollUp" onclick="window._wbChartFsScrollSpeed(1)" title="Faster">+</button>'+
+                '<span class="wb-fs-sep"></span>'+
+                '<button class="wb-fs-btn wb-fs-exit" onclick="window._wbToggleChartMax()" title="Exit fullscreen (Esc)">✕</button>'+
+            '</div>'+
+        '</div>'+
+        '<div class="wb-chart-fs-body" id="wbChartFsBody">' + chartBody + '</div>';
+    }
+
+    // ── Chart toolbar handlers ─────────────────────────────────────────────
+    window._wbChartFsFont = function(delta) {
+        var st = window._wbChartFs;
+        st.fontSize = Math.max(10, Math.min(36, st.fontSize + delta));
+        var pre = document.getElementById('wbChartFsText');
+        if (pre) pre.style.fontSize = st.fontSize + 'px';
+    };
+
+    window._wbChartFsTranspose = function(delta) {
+        var st = window._wbChartFs;
+        st.semitones = ((st.semitones + delta) % 12 + 12) % 12;
+        if (st.semitones > 6) st.semitones -= 12; // prefer signed range -5..+6
+        _wbChartFsApplyTranspose();
+        var semiEl = document.getElementById('wbChartFsSemi');
+        if (semiEl) semiEl.textContent = st.semitones === 0 ? '0' : (st.semitones > 0 ? '+' + st.semitones : String(st.semitones));
+        // Update key display if we know the original key
+        var keyEl = document.getElementById('wbChartFsKeyDisplay');
+        if (keyEl && st.songKey) {
+            var keyRoot = (st.songKey.match(/^[A-G][#b]?/) || ['C'])[0];
+            var keyIdx = _CHART_NOTES.indexOf(keyRoot);
+            if (keyRoot.length === 2 && keyRoot[1] === 'b') {
+                keyIdx = (_CHART_NOTES.indexOf(keyRoot[0]) - 1 + 12) % 12;
+            }
+            if (keyIdx >= 0) {
+                var newKeyIdx = (keyIdx + st.semitones + 12) % 12;
+                var suffix = st.songKey.replace(/^[A-G][#b]?/, '');
+                keyEl.textContent = _CHART_NOTES[newKeyIdx] + suffix + (st.semitones !== 0 ? ' (' + (st.semitones > 0 ? '+' : '') + st.semitones + ')' : '');
+            }
         }
     };
+
+    function _wbChartFsApplyTranspose() {
+        var st = window._wbChartFs;
+        var pre = document.getElementById('wbChartFsText');
+        if (!pre || !st.originalText) return;
+        if (st.semitones === 0) {
+            pre.textContent = st.originalText;
+            return;
+        }
+        var transposed = st.originalText.replace(_CHART_NOTE_RE, function(match, root, suffix) {
+            if (!root) return match;
+            var idx = _CHART_NOTES.indexOf(root);
+            if (root.length === 2 && root[1] === 'b') {
+                idx = (_CHART_NOTES.indexOf(root[0]) - 1 + 12) % 12;
+            }
+            if (idx === -1) return match;
+            var newIdx = (idx + st.semitones + 12) % 12;
+            return _CHART_NOTES[newIdx] + (suffix || '');
+        });
+        pre.textContent = transposed;
+    }
+
+    window._wbChartFsToggleScroll = function() {
+        var st = window._wbChartFs;
+        st.scrolling = !st.scrolling;
+        var btn = document.getElementById('wbChartFsScrollBtn');
+        if (btn) {
+            btn.textContent = st.scrolling ? '⏸' : '📜';
+            btn.classList.toggle('wb-fs-active', st.scrolling);
+        }
+        ['wbChartFsScrollDown','wbChartFsScrollSpeed','wbChartFsScrollUp'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.classList.toggle('wb-fs-hidden', !st.scrolling);
+        });
+        if (st.scrollTimer) { clearInterval(st.scrollTimer); st.scrollTimer = null; }
+        if (st.scrolling) _wbChartFsStartScroll();
+    };
+
+    window._wbChartFsScrollSpeed = function(delta) {
+        var st = window._wbChartFs;
+        st.scrollSpeed = Math.max(1, Math.min(5, st.scrollSpeed + delta));
+        var el = document.getElementById('wbChartFsScrollSpeed');
+        if (el) el.textContent = st.scrollSpeed;
+        if (st.scrolling) {
+            if (st.scrollTimer) clearInterval(st.scrollTimer);
+            _wbChartFsStartScroll();
+        }
+    };
+
+    function _wbChartFsStartScroll() {
+        var st = window._wbChartFs;
+        var body = document.getElementById('wbChartFsBody');
+        if (!body) return;
+        // Speeds 1-5 → 1px every 80/60/45/30/20 ms
+        var intervalMs = [80, 60, 45, 30, 20][st.scrollSpeed - 1] || 45;
+        st.scrollTimer = setInterval(function() {
+            if (!body || !st.scrolling) return;
+            body.scrollTop += 1;
+            if (body.scrollTop + body.clientHeight >= body.scrollHeight - 1) {
+                // Stop at the bottom
+                window._wbChartFsToggleScroll();
+            }
+        }, intervalMs);
+    }
+
     document.addEventListener('keydown', function(e) {
-        // Only active inside Workbench, not when typing
         var page = document.getElementById('page-workbench');
         if (!page || page.classList.contains('hidden')) return;
         var t = e.target;
@@ -378,10 +572,11 @@
             return;
         }
         if (e.key === 'Escape' && window._wbChartMaxState) {
-            window._wbToggleChartMax();
+            _wbExitChartFs();
             e.preventDefault();
         }
     });
+
 
     async function _wbAdvanceToNextTask() {
         var current = window._wbActiveTask;
@@ -616,11 +811,9 @@
     window._wbClose = function() {
         // Clear active task so subsequent surfaces don't pick up stale state.
         window._wbActiveTask = null;
-        // Reset chart-max state so the next open doesn't inherit it.
-        if (window._wbChartMaxState) {
-            window._wbChartMaxState = false;
-            document.body.classList.remove('gl-wb-chart-max');
-        }
+        // Exit chart fullscreen if open so the next song doesn't inherit it.
+        var fs = document.getElementById('wbChartFs');
+        if (fs) _wbExitChartFs();
         // Return to Practice Command Center — that's where the user came
         // from in the new flow. (Old behavior was 'songs', kept available
         // by clicking Songs in the left rail.)
@@ -662,20 +855,28 @@
             // reachable as the surrounding chrome hides.
             '.wb-chart-max-btn { position: absolute; top: 4px; right: 8px; z-index: 30; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; cursor: pointer; padding: 4px 9px; border-radius: 6px; font-size: 0.85em; font-family: inherit; line-height: 1; }',
             '.wb-chart-max-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.3); background: rgba(15,23,42,0.95); }',
-            // Maximized state: viewport-fill the chart, hide all surrounding
-            // chrome (top bar, left nav, workbench header/tabs/rail/actions,
-            // now-playing bar). Floating Player stays visible — it lives at
-            // z-index 9800 above this layer.
-            'body.gl-wb-chart-max .topbar { display: none !important; }',
-            'body.gl-wb-chart-max #gl-left-rail { display: none !important; }',
-            'body.gl-wb-chart-max .wb-header { display: none !important; }',
-            'body.gl-wb-chart-max .wb-mode-tabs { display: none !important; }',
-            'body.gl-wb-chart-max .wb-rail { display: none !important; }',
-            'body.gl-wb-chart-max .wb-action-bar { display: none !important; }',
-            'body.gl-wb-chart-max #gl-now-playing { display: none !important; }',
-            'body.gl-wb-chart-max .wb-layout { grid-template-columns: 1fr; padding: 0; gap: 0; }',
-            'body.gl-wb-chart-max .wb-root { min-height: 100vh; }',
-            'body.gl-wb-chart-max .wb-chart-max-btn { position: fixed; top: 12px; right: 12px; z-index: 9900; }',
+            // True chart fullscreen: a top-level overlay independent of
+            // song-detail's max-width constraints. Z-index just below the
+            // floating player (9800) so playback controls stay visible if
+            // the user wants them.
+            '.wb-chart-fs { position: fixed; inset: 0; z-index: 9700; background: var(--bg-primary, #0f172a); display: flex; flex-direction: column; }',
+            '.wb-chart-fs-toolbar { display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: rgba(15,23,42,0.97); border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }',
+            '.wb-chart-fs-song { flex: 1; min-width: 0; }',
+            '.wb-chart-fs-title { font-size: 1.05em; font-weight: 800; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+            '.wb-chart-fs-meta { font-size: 0.78em; color: var(--text-dim); margin-top: 2px; }',
+            '.wb-chart-fs-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; flex-wrap: wrap; }',
+            '.wb-fs-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.10); color: var(--text); cursor: pointer; padding: 6px 10px; border-radius: 6px; font-size: 0.85em; font-weight: 700; font-family: inherit; min-width: 32px; }',
+            '.wb-fs-btn:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.20); }',
+            '.wb-fs-btn.wb-fs-active { background: rgba(99,102,241,0.20); color: #a5b4fc; border-color: rgba(99,102,241,0.40); }',
+            '.wb-fs-btn.wb-fs-exit { background: rgba(239,68,68,0.10); color: #fca5a5; border-color: rgba(239,68,68,0.25); }',
+            '.wb-fs-btn.wb-fs-exit:hover { background: rgba(239,68,68,0.20); }',
+            '.wb-fs-val { font-size: 0.78em; color: var(--text-dim); padding: 0 6px; font-variant-numeric: tabular-nums; min-width: 22px; text-align: center; }',
+            '.wb-fs-sep { width: 1px; height: 22px; background: rgba(255,255,255,0.10); margin: 0 4px; }',
+            '.wb-fs-hidden { display: none !important; }',
+            '.wb-chart-fs-body { flex: 1; overflow-y: auto; padding: 24px 32px 60px; -webkit-overflow-scrolling: touch; }',
+            '.wb-chart-fs-text { white-space: pre-wrap; font-family: "Courier New", monospace; line-height: 1.7; color: #e2e8f0; margin: 0; letter-spacing: 0.01em; max-width: 100%; }',
+            '.wb-chart-fs-empty { text-align: center; padding: 60px 24px; color: var(--text); }',
+            '@media (max-width: 640px) { .wb-chart-fs-toolbar { flex-direction: column; align-items: stretch; gap: 8px; } .wb-chart-fs-controls { justify-content: center; } }',
             '.wb-rail { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 12px; }',
             '@media (max-width: 900px) { .wb-rail { position: static; } }',
             '.wb-rail-card { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.02); }',
