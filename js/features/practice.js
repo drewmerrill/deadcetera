@@ -592,8 +592,18 @@ function _pmRenderGigPrepForGig(gig) {
         return a.title.localeCompare(b.title);
     });
 
+    // Stash the full song list so "Run the Gig" can grab it without
+    // re-walking the setlist. Keyed per-gig so back-and-forth between
+    // gigs in the modal stays correct.
+    _pmGigPrepFullSongs[_pmGigKey(gig)] = allSongsInSetlist.map(function(s) { return s.title; });
+
     _pmShowGigPrepModal(gig, setlist, needsWork, allSongsInSetlist.length);
 }
+
+// Per-gig stash of the full setlist song list, populated by
+// _pmRenderGigPrepForGig and read by _pmStartGigRun when the user clicks
+// "Run the Gig" from the modal.
+var _pmGigPrepFullSongs = {};
 
 function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
     var existing = document.getElementById('pmSongPickerOverlay');
@@ -657,6 +667,23 @@ function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
             '</div>';
     }
 
+    // "Run the Gig" CTA — only meaningful when the gig has a setlist with
+    // songs in it. Estimated time uses 90s per song (the default per-song
+    // budget for a quick run).
+    var runCta = '';
+    if (setlist && totalCount) {
+        var estMin = Math.max(1, Math.round((totalCount * 90) / 60));
+        var safeKey = _pmGigKey(gig).replace(/'/g, "\\'");
+        runCta =
+            '<div class="pm-gig-mode-row">'+
+            '  <button class="pm-gig-mode-btn pm-gig-mode-run" onclick="_pmStartGigRun(\''+safeKey+'\')">'+
+            '    <div class="pm-gig-mode-title">🏃 Run the Gig</div>'+
+            '    <div class="pm-gig-mode-sub">Touch all '+totalCount+' songs · ~'+estMin+' min</div>'+
+            '  </button>'+
+            '  <div class="pm-gig-mode-or">or pick one to focus on ↓</div>'+
+            '</div>';
+    }
+
     var overlay = document.createElement('div');
     overlay.id = 'pmSongPickerOverlay';
     overlay.className = 'modal-overlay pm-picker-overlay';
@@ -671,6 +698,7 @@ function _pmShowGigPrepModal(gig, setlist, needsWork, totalCount) {
         '    </div>'+
         '    <button class="pm-picker-close" onclick="document.getElementById(\'pmSongPickerOverlay\').remove()">✕</button>'+
         '  </div>'+
+        runCta +
         '  <div class="pm-picker-list" id="pmPickerList">'+bodyRows+'</div>'+
         otherGigsHtml +
         '</div>';
@@ -681,6 +709,204 @@ window._pmSwitchGig = function _pmSwitchGig(gigKey) {
     var target = _pmGigPrepUpcoming.find(function(g) { return _pmGigKey(g) === gigKey; });
     if (target) _pmRenderGigPrepForGig(target);
 };
+
+// ── Run the Gig ─────────────────────────────────────────────────────────
+// Multi-song queue runner for the selected gig's setlist. Per-song budget
+// defaults to 90s; auto-advances unless paused; supports prev/next/jump.
+// Drew spec 2026-05-10: "Workbench remains one surface with contextual
+// tools" — the run is a contextual strip rendered above the Workbench
+// header, not a new mode tab.
+window._gigRunState = null;
+
+window._pmStartGigRun = function _pmStartGigRun(gigKey) {
+    var songs = _pmGigPrepFullSongs[gigKey] || [];
+    if (!songs.length) {
+        if (typeof showToast === 'function') showToast('No songs in this gig\'s setlist');
+        return;
+    }
+    // Close the picker modal so the Workbench surface is visible.
+    var modal = document.getElementById('pmSongPickerOverlay');
+    if (modal) modal.remove();
+
+    window._gigRunState = {
+        songs: songs.slice(),
+        idx: 0,
+        perSongSec: 90,
+        remainingSec: 90,
+        paused: false,
+        intervalId: null,
+        startedAt: Date.now(),
+        gigKey: gigKey
+    };
+    _gigRunOpenCurrent();
+};
+
+function _gigRunOpenCurrent() {
+    var st = window._gigRunState;
+    if (!st) return;
+    if (st.idx < 0 || st.idx >= st.songs.length) {
+        _gigRunFinish();
+        return;
+    }
+    st.remainingSec = st.perSongSec;
+    if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    if (typeof openWorkbench === 'function') {
+        openWorkbench(st.songs[st.idx], 'practice', { gigRun: true });
+    }
+    // Defer strip refresh + timer until Workbench has had a moment to mount.
+    setTimeout(function() {
+        _gigRunRenderStrip();
+        if (!st.paused) _gigRunStartTimer();
+    }, 100);
+}
+
+function _gigRunStartTimer() {
+    var st = window._gigRunState;
+    if (!st) return;
+    if (st.intervalId) clearInterval(st.intervalId);
+    st.intervalId = setInterval(function() {
+        if (!st || st.paused) return;
+        st.remainingSec--;
+        _gigRunRefreshTimerOnly();
+        if (st.remainingSec <= 0) {
+            window._gigRunNext();
+        }
+    }, 1000);
+}
+
+window._gigRunNext = function() {
+    var st = window._gigRunState;
+    if (!st) return;
+    if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    st.idx++;
+    if (st.idx >= st.songs.length) { _gigRunFinish(); return; }
+    _gigRunOpenCurrent();
+};
+
+window._gigRunBack = function() {
+    var st = window._gigRunState;
+    if (!st) return;
+    if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    st.idx = Math.max(0, st.idx - 1);
+    _gigRunOpenCurrent();
+};
+
+window._gigRunPause = function() {
+    var st = window._gigRunState;
+    if (!st) return;
+    st.paused = !st.paused;
+    if (st.paused && st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    else if (!st.paused) _gigRunStartTimer();
+    _gigRunRenderStrip();
+};
+
+window._gigRunJump = function(idx) {
+    var st = window._gigRunState;
+    if (!st) return;
+    if (idx < 0 || idx >= st.songs.length) return;
+    if (st.intervalId) { clearInterval(st.intervalId); st.intervalId = null; }
+    st.idx = idx;
+    // Close the jump menu if it's open.
+    var menu = document.getElementById('gigRunJumpMenu');
+    if (menu) menu.remove();
+    _gigRunOpenCurrent();
+};
+
+window._gigRunToggleJumpMenu = function() {
+    var existing = document.getElementById('gigRunJumpMenu');
+    if (existing) { existing.remove(); return; }
+    var st = window._gigRunState;
+    if (!st) return;
+    var menu = document.createElement('div');
+    menu.id = 'gigRunJumpMenu';
+    menu.className = 'gig-run-jump-menu';
+    menu.innerHTML = st.songs.map(function(title, i) {
+        var isActive = (i === st.idx);
+        var safeTitle = (window.escHtml ? window.escHtml(title) : title);
+        return '<button class="gig-run-jump-item' + (isActive ? ' is-active' : '') + '" onclick="_gigRunJump(' + i + ')">' +
+               '<span class="gig-run-jump-rank">' + (i + 1) + '</span>' +
+               '<span class="gig-run-jump-title">' + safeTitle + '</span>' +
+               (isActive ? '<span class="gig-run-jump-now">now</span>' : '') +
+               '</button>';
+    }).join('');
+    document.body.appendChild(menu);
+};
+
+window._gigRunEnd = function() {
+    if (!confirm('End this run?')) return;
+    _gigRunFinish(true);
+};
+
+function _gigRunFinish(canceled) {
+    var st = window._gigRunState;
+    if (!st) return;
+    if (st.intervalId) clearInterval(st.intervalId);
+    var doneCount = canceled ? st.idx : st.songs.length;
+    var elapsedMin = Math.max(1, Math.round((Date.now() - st.startedAt) / 60000));
+    window._gigRunState = null;
+    var strip = document.getElementById('gigRunStrip');
+    if (strip) strip.remove();
+    var menu = document.getElementById('gigRunJumpMenu');
+    if (menu) menu.remove();
+    if (typeof showToast === 'function') {
+        showToast(canceled
+            ? '🏁 Run ended — ' + doneCount + ' of ' + st.songs.length + ' songs in ' + elapsedMin + ' min'
+            : '🎉 Run complete — ' + doneCount + ' songs in ' + elapsedMin + ' min'
+        );
+    }
+}
+
+// Render or refresh the gig-run strip pinned at the very top of the page.
+// Inserted into <body> directly so it persists across openWorkbench calls
+// (which rebuild the #page-workbench DOM each time).
+function _gigRunRenderStrip() {
+    var st = window._gigRunState;
+    var existing = document.getElementById('gigRunStrip');
+    if (!st) { if (existing) existing.remove(); return; }
+    var pos = (st.idx + 1) + ' / ' + st.songs.length;
+    var title = st.songs[st.idx];
+    var safeTitle = (window.escHtml ? window.escHtml(title) : title);
+    var pauseLabel = st.paused ? '▶ Resume' : '⏸ Pause';
+    if (!existing) {
+        existing = document.createElement('div');
+        existing.id = 'gigRunStrip';
+        existing.className = 'gig-run-strip';
+        document.body.appendChild(existing);
+    }
+    existing.innerHTML =
+        '<div class="gig-run-eyebrow">🏃 RUN · ' + pos + '</div>' +
+        '<div class="gig-run-title">' + safeTitle + '</div>' +
+        '<div class="gig-run-timer" id="gigRunTimer">' + _gigRunFormatTime(st.remainingSec) + '</div>' +
+        '<div class="gig-run-controls">' +
+            '<button class="gig-run-btn" onclick="_gigRunBack()" title="Previous song">⏪</button>' +
+            '<button class="gig-run-btn gig-run-btn-pause" onclick="_gigRunPause()" title="Pause / Resume">' + pauseLabel + '</button>' +
+            '<button class="gig-run-btn" onclick="_gigRunNext()" title="Next song">⏩</button>' +
+            '<button class="gig-run-btn" onclick="_gigRunToggleJumpMenu()" title="Jump to any song">☰</button>' +
+            '<button class="gig-run-btn gig-run-btn-end" onclick="_gigRunEnd()" title="End run">✕</button>' +
+        '</div>';
+}
+
+function _gigRunRefreshTimerOnly() {
+    var el = document.getElementById('gigRunTimer');
+    var st = window._gigRunState;
+    if (!el || !st) return;
+    el.textContent = _gigRunFormatTime(st.remainingSec);
+    if (st.remainingSec <= 10) el.classList.add('gig-run-timer-warn');
+    else el.classList.remove('gig-run-timer-warn');
+}
+
+function _gigRunFormatTime(sec) {
+    sec = Math.max(0, sec | 0);
+    return Math.floor(sec / 60) + ':' + (sec % 60 < 10 ? '0' : '') + (sec % 60);
+}
+
+// Safety-net listener for the custom event Workbench dispatches when
+// it re-renders. The normal _gigRunOpenCurrent path already refreshes
+// the strip via setTimeout; this handles direct openWorkbench jumps
+// from outside the run controller.
+document.addEventListener('gigrun:refresh', function() {
+    if (window._gigRunState) _gigRunRenderStrip();
+});
 
 // Stable identifier for an upcoming gig record. Prefer gigId when present;
 // fall back to date+venue (collision-resistant for one band's calendar).
@@ -1320,6 +1546,39 @@ function _pmInjectStyles(){
     '.pm-cc-start{margin-top:4px;display:flex;flex-direction:column;align-items:center;gap:2px;line-height:1.3;}'+
     '.pm-cc-start-main{font-size:1em;font-weight:800;}'+
     '.pm-cc-start-sub{font-size:0.74em;font-weight:500;opacity:0.85;letter-spacing:0.01em;}'+
+    // ── Run the Gig CTA inside Gig Prep modal ──────────────────────────
+    '.pm-gig-mode-row{padding:14px 16px 6px;display:flex;flex-direction:column;gap:6px;}'+
+    '.pm-gig-mode-btn{width:100%;padding:14px 16px;border:none;border-radius:12px;background:linear-gradient(135deg,#16a34a,#059669);color:#fff;cursor:pointer;font-family:inherit;text-align:left;box-shadow:0 4px 14px rgba(22,163,74,0.32);transition:transform 0.08s,box-shadow 0.15s;}'+
+    '.pm-gig-mode-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(22,163,74,0.45);}'+
+    '.pm-gig-mode-btn:active{transform:translateY(0);}'+
+    '.pm-gig-mode-title{font-size:1em;font-weight:800;margin-bottom:2px;}'+
+    '.pm-gig-mode-sub{font-size:0.78em;font-weight:500;opacity:0.92;}'+
+    '.pm-gig-mode-or{font-size:0.74em;color:var(--text-dim);text-align:center;letter-spacing:0.04em;text-transform:uppercase;font-weight:600;padding:4px 0;}'+
+    // ── Run the Gig strip (top of viewport during a run) ───────────────
+    '.gig-run-strip{position:fixed;top:0;left:0;right:0;z-index:9700;display:flex;align-items:center;gap:14px;padding:10px 16px;background:linear-gradient(135deg,#16a34a,#059669);color:#fff;box-shadow:0 4px 16px rgba(0,0,0,0.4);font-family:inherit;}'+
+    '.gig-run-eyebrow{font-size:0.7em;font-weight:800;letter-spacing:0.08em;opacity:0.9;flex-shrink:0;}'+
+    '.gig-run-title{flex:1;font-size:0.95em;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}'+
+    '.gig-run-timer{font-size:1.1em;font-weight:800;font-variant-numeric:tabular-nums;padding:4px 10px;border-radius:6px;background:rgba(0,0,0,0.25);min-width:54px;text-align:center;flex-shrink:0;transition:background 0.2s;}'+
+    '.gig-run-timer-warn{background:rgba(220,38,38,0.85);animation:gigRunPulse 1s ease-in-out infinite;}'+
+    '@keyframes gigRunPulse{50%{opacity:0.7;}}'+
+    '.gig-run-controls{display:flex;gap:4px;flex-shrink:0;}'+
+    '.gig-run-btn{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:#fff;cursor:pointer;padding:5px 10px;border-radius:6px;font-size:0.85em;font-weight:700;font-family:inherit;}'+
+    '.gig-run-btn:hover{background:rgba(255,255,255,0.25);}'+
+    '.gig-run-btn-pause{min-width:78px;}'+
+    '.gig-run-btn-end{background:rgba(0,0,0,0.25);border-color:rgba(0,0,0,0.3);}'+
+    '.gig-run-btn-end:hover{background:rgba(0,0,0,0.4);}'+
+    // Push Workbench (and any page) down so the strip doesn\'t cover content.
+    'body:has(#gigRunStrip) #app{padding-top:48px;}'+
+    'body:has(#gigRunStrip) #page-workbench{padding-top:0;}'+
+    // ── Jump-to-song menu ──────────────────────────────────────────────
+    '.gig-run-jump-menu{position:fixed;top:54px;right:12px;z-index:9750;max-width:340px;max-height:60vh;overflow-y:auto;background:rgba(15,23,42,0.97);border:1px solid rgba(255,255,255,0.12);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,0.55);padding:6px;}'+
+    '.gig-run-jump-item{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;background:none;border:0;color:#cbd5e1;cursor:pointer;font-family:inherit;font-size:0.84em;text-align:left;border-radius:6px;}'+
+    '.gig-run-jump-item:hover{background:rgba(255,255,255,0.06);color:#fff;}'+
+    '.gig-run-jump-item.is-active{background:rgba(22,163,74,0.18);color:#86efac;}'+
+    '.gig-run-jump-rank{font-size:0.7em;font-weight:800;color:var(--text-dim);min-width:22px;text-align:right;font-variant-numeric:tabular-nums;}'+
+    '.gig-run-jump-item.is-active .gig-run-jump-rank{color:#86efac;}'+
+    '.gig-run-jump-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
+    '.gig-run-jump-now{font-size:0.66em;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;background:rgba(34,197,94,0.2);color:#86efac;padding:2px 6px;border-radius:4px;}'+
     /* Empty state */
     '.pm-empty-card{background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:14px;padding:28px 20px;text-align:center;}'+
     '.pm-empty-emoji{font-size:2em;margin-bottom:8px;opacity:0.6;}'+

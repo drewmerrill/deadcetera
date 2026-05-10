@@ -24,6 +24,25 @@
         }
         window._wbState = { songId: songId, mode: mode || 'practice', opts: opts || {} };
         if (typeof showPage === 'function') showPage('workbench');
+        // Re-render the Run-the-Gig strip if a run is active. showPage
+        // rebuilds the page DOM but the strip lives at <body> level so
+        // it persists; we still need to refresh its label/timer to match
+        // the new song.
+        if (window._gigRunState && typeof window._gigRunRenderStripIfActive === 'function') {
+            setTimeout(window._gigRunRenderStripIfActive, 0);
+        }
+    };
+
+    // Tiny window-scoped helper so practice.js can poke the strip from
+    // openWorkbench without practice.js having to re-export anything.
+    window._gigRunRenderStripIfActive = function() {
+        if (!window._gigRunState) return;
+        // The render function is internal to practice.js; we expose a
+        // refresh trigger by dispatching a custom event practice.js can
+        // listen for. Simpler: practice.js's _gigRunOpenCurrent already
+        // calls _gigRunRenderStrip after openWorkbench, so this is a
+        // safety net for direct showPage('workbench') jumps.
+        try { document.dispatchEvent(new CustomEvent('gigrun:refresh')); } catch (e) {}
     };
 
     // ── Shell render ────────────────────────────────────────────────────────
