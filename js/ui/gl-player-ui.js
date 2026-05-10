@@ -757,15 +757,19 @@ window.GLPlayerUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         container.innerHTML =
-            '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:14px;text-align:center">'
-            + '<div style="font-size:1.5em;margin-bottom:6px">📱</div>'
-            + '<div style="font-size:0.85em;font-weight:700;color:#1ed760;margin-bottom:4px">Wake Spotify to play this song</div>'
-            + '<div style="font-size:0.68em;color:#b3b3b3;margin-bottom:10px;line-height:1.35;max-width:240px">iOS hides Spotify until it\'s playing. Tap Open Spotify, hit play on any track, then come back here.</div>'
+            '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:12px;text-align:center">'
+            + '<div style="font-size:1.4em;margin-bottom:4px">📱</div>'
+            + '<div style="font-size:0.82em;font-weight:700;color:#1ed760;margin-bottom:4px">Wake Spotify on your iPhone</div>'
+            + '<ol style="font-size:0.68em;color:#cbd5e1;margin:0 0 10px;padding:0 0 0 18px;line-height:1.45;text-align:left;max-width:240px">'
+            +   '<li>Tap <b>Open Spotify</b></li>'
+            +   '<li>Play any track — let it play 2-3 seconds</li>'
+            +   '<li>Swipe back to GrooveLinx (don\'t pause)</li>'
+            + '</ol>'
             + '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">'
             + '<button onclick="if(typeof GLSpotifyConnect!==\'undefined\')GLSpotifyConnect.openSpotifyApp()" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:#1ed760;color:#000;border:0;cursor:pointer">▶ Open Spotify</button>'
             + '<button onclick="if(typeof GLPlayerEngine!==\'undefined\'&&GLPlayerEngine.retryAfterSpotifyWake)GLPlayerEngine.retryAfterSpotifyWake()" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);cursor:pointer">↻ Try Again</button>'
             + '</div>'
-            + '<div style="font-size:0.62em;color:#64748b;margin-top:8px">Auto-retries when you return</div>'
+            + '<div style="font-size:0.6em;color:#64748b;margin-top:6px">Auto-retries when you return (polls 5x · 7s)</div>'
             + '</div>';
     }
 

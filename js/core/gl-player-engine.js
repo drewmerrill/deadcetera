@@ -208,6 +208,19 @@ window.GLPlayerEngine = (function() {
     }
 
     function togglePlay() {
+        // If we're in the awaiting-Spotify-app state, the play button means
+        // "retry now" — same as tapping the wake CTA's Try Again button.
+        // Without this, tapping play after the wake cycle did nothing, which
+        // Drew confirmed 2026-05-10 (rage-clicked #glpFloatPlayPause).
+        if (_awaitingSpotifyApp) {
+            console.log('[GLPlayer] togglePlay during awaiting-Spotify state — retrying');
+            // Use the public retry helper exported below; calling via this
+            // self-reference avoids depending on declaration order.
+            if (typeof window !== 'undefined' && window.GLPlayerEngine && window.GLPlayerEngine.retryAfterSpotifyWake) {
+                window.GLPlayerEngine.retryAfterSpotifyWake();
+            }
+            return;
+        }
         if (_activeSource === 'youtube' && _ytPlayer && _ytPlayer.getPlayerState) {
             if (_ytPlayer.getPlayerState() === YT.PlayerState.PLAYING) { _ytPlayer.pauseVideo(); _isPlaying = false; }
             else { _ytPlayer.playVideo(); _isPlaying = true; }
@@ -626,15 +639,44 @@ window.GLPlayerEngine = (function() {
 
         // Spotify Connect awaiting-app state (Phase 4 wake CTA)
         isAwaitingSpotifyApp: function() { return _awaitingSpotifyApp; },
-        retryAfterSpotifyWake: function() {
+        retryAfterSpotifyWake: async function() {
             // Called by UI button OR visibility listener when user returns
-            // from the Spotify app. Re-runs the resolve+play chain for the
-            // current song. If iPhone Spotify is now in the device list,
-            // Connect plays. If not (force-quit again), the wake CTA shows
-            // again — same recovery loop.
+            // from the Spotify app. Polls /me/player/devices up to 5 times
+            // (1.5s apart) waiting for iPhone Spotify to register as a
+            // Connect device — Drew 2026-05-10 found that immediate retry
+            // often missed the device because Spotify's Connect heartbeat
+            // takes 1-3s to propagate after the audio session starts.
             if (_currentIdx < 0 || _currentIdx >= _queue.length) return;
+            console.log('[GLPlayer] retryAfterSpotifyWake: polling for device…');
+            var SC = (typeof GLSpotifyConnect !== 'undefined') ? GLSpotifyConnect : null;
+            if (SC && SC.isIOSPlatform()) {
+                var attempts = 0;
+                var maxAttempts = 5;
+                while (attempts < maxAttempts) {
+                    attempts++;
+                    var d = null;
+                    try { d = await SC.pickPreferredDevice(); } catch(e) {}
+                    if (d && !d.is_restricted) {
+                        console.log('[GLPlayer] retryAfterSpotifyWake: device found on attempt', attempts, '— playing');
+                        _awaitingSpotifyApp = false;
+                        play(_currentIdx);
+                        return;
+                    }
+                    console.log('[GLPlayer] retryAfterSpotifyWake: no device on attempt', attempts, '/ ' + maxAttempts);
+                    if (attempts < maxAttempts) {
+                        await new Promise(function(r) { setTimeout(r, 1500); });
+                    }
+                }
+                // All attempts exhausted — re-emit needsSpotifyApp so the
+                // wake CTA shows again with a clear retry path.
+                console.log('[GLPlayer] retryAfterSpotifyWake: gave up after', maxAttempts, 'attempts');
+                var trackId = _queue[_currentIdx] && _queue[_currentIdx].spotifyTrackId;
+                _awaitingSpotifyApp = true;
+                _emit('needsSpotifyApp', { trackId: trackId, reason: 'retry_exhausted' });
+                return;
+            }
+            // Non-iOS or no SC: just call play() and let it sort out.
             _awaitingSpotifyApp = false;
-            console.log('[GLPlayer] Retrying current song after Spotify wake');
             play(_currentIdx);
         }
     };
