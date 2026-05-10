@@ -254,7 +254,7 @@ function _sdRenderBandChart(title, safeSong, chartText) {
             return window.ChartRenderer.renderEmptyState({
                 loadFailed: !!window._sdChartLoadFailed,
                 safeSong: safeSong,
-                onAddChart: 'openRehearsalMode',
+                onAddChart: 'openWorkbenchChartEditor',
                 onRetry: 'renderSongDetail'
             });
         }
@@ -4811,8 +4811,17 @@ function _sdEmptyAdd(msg, fn, safeSong) {
         + '</div>';
 }
 
-// Import external tab URL into band chart — opens rehearsal mode to paste
+// Import external tab URL into band chart — opens the Workbench chart
+// editor overlay so the user can paste the copied chart text in-app.
 window._sdImportTabAsChart = function(songTitle) {
+    if (typeof window.openWorkbenchChartEditor === 'function') {
+        window.openWorkbenchChartEditor(songTitle);
+        setTimeout(function() {
+            if (typeof showToast === 'function') showToast('Open the tab link, copy the chart, and paste it here', 5000);
+        }, 600);
+        return;
+    }
+    // Defensive fallback: only if the Workbench shim hasn't loaded yet.
     if (typeof openRehearsalMode === 'function') {
         openRehearsalMode(songTitle);
         setTimeout(function() {

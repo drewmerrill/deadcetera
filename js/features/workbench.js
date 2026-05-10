@@ -131,7 +131,6 @@
             '<header class="wb-header">' +
                 '<div class="wb-song-title">' + _wbEsc(songId) + '</div>' +
                 moreViewsHTML +
-                '<button class="wb-classic-link" onclick="(typeof openRehearsalMode===\'function\')&&openRehearsalMode(\'' + _wbEsc(songId).replace(/'/g, "\\'") + '\')" title="Open this song in the legacy fullscreen Rehearsal Mode (chart edit, Mem palace, recorder)">↗ Classic Mode</button>' +
                 '<button class="wb-close" onclick="window._wbClose()" title="Back to Practice">✕</button>' +
             '</header>' +
             '<nav class="wb-mode-tabs" role="tablist">' + modeTabs + '</nav>' +
@@ -435,7 +434,7 @@
         var hasChart = !!(chartText && chartText.trim());
         var chartBody = hasChart
             ? '<pre id="wbChartFsText" class="wb-chart-fs-text" style="font-size:' + st.fontSize + 'px"></pre>'
-            : '<div class="wb-chart-fs-empty"><div style="font-size:2.4em;margin-bottom:10px">📋</div><div style="font-weight:700;font-size:1.05em;margin-bottom:6px">No chord chart yet for ' + _wbEsc(songId) + '</div><div style="color:var(--text-dim)">Add one in Classic Mode → Edit, then come back to read it fullscreen.</div></div>';
+            : '<div class="wb-chart-fs-empty"><div style="font-size:2.4em;margin-bottom:10px">📋</div><div style="font-weight:700;font-size:1.05em;margin-bottom:6px">No chord chart yet for ' + _wbEsc(songId) + '</div><div style="color:var(--text-dim);margin-bottom:14px">Add one now — type or paste chords, lyrics, and section markers.</div><button class="wb-fs-btn wb-chart-editor-save" onclick="window._wbToggleChartMax();window._wbOpenChartEditor()" style="padding:8px 18px">📝 Add Chart</button></div>';
         return ''+
         '<div class="wb-chart-fs-toolbar">'+
             '<div class="wb-chart-fs-song">'+
@@ -806,6 +805,34 @@
         window._wbUpdateLensSwitcherActive('stems');
     }
 
+    // ── Public wrappers (Drew 2026-05-10 deprecation directive) ────────────
+    // The user-facing API is the openWorkbench* family. rehearsal-mode is
+    // hidden fallback only — never a primary entry point.
+    //
+    //   openWorkbenchChartEditor(song)    — chart editor overlay
+    //   openWorkbenchRunQueue(queue)       — run a multi-song queue
+    //   openWorkbenchRecording(session)    — TODO when recording playback
+    //                                         needs a Workbench-native UI
+    //
+    // These names are stable; internal implementations may change.
+
+    // Run a multi-song queue inside Workbench. For MVP we open the first
+    // song in Practice mode and leave queue management to the calling
+    // surface (e.g. rehearsal.js Live Mode already maintains its own
+    // timeline and song-list UI; clicking a song just routes to Workbench).
+    // Future: integrate with the _gigRunState contextual strip if a queue
+    // explicitly wants auto-advance / per-song budget semantics.
+    window.openWorkbenchRunQueue = function(queue, opts) {
+        opts = opts || {};
+        if (!Array.isArray(queue) || !queue.length) return;
+        var first = queue[0];
+        var title = (typeof first === 'string') ? first : (first && (first.title || first.songTitle));
+        if (!title) return;
+        if (typeof window.openWorkbench === 'function') {
+            window.openWorkbench(title, opts.mode || 'practice', opts);
+        }
+    };
+
     // ── Workbench-native Chart Editor overlay ───────────────────────────────
     // Drew 2026-05-10: Edit Chart must stay inside Workbench. Full-screen
     // modal that reuses the same data shape as the legacy editor
@@ -876,6 +903,9 @@
             if (typeof showToast === 'function') showToast('Save failed: ' + (e.message || e));
         }
     };
+
+    // Public alias — preferred name per deprecation spec
+    window.openWorkbenchChartEditor = window._wbOpenChartEditor;
 
     window._wbCloseChartEditor = function(saved) {
         var overlay = document.getElementById('wbChartEditor');
@@ -974,8 +1004,6 @@
             '.wb-song-title { font-size: 1.15em; font-weight: 700; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
             '.wb-close { background: none; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; padding: 4px 12px; border-radius: 6px; font-size: 0.95em; }',
             '.wb-close:hover { color: var(--text); border-color: rgba(255,255,255,0.3); }',
-            '.wb-classic-link { background: none; border: 1px dashed rgba(148,163,184,0.25); color: var(--text-dim); cursor: pointer; padding: 4px 10px; border-radius: 6px; font-size: 0.74em; font-weight: 600; }',
-            '.wb-classic-link:hover { color: var(--text); border-color: rgba(148,163,184,0.5); background: rgba(255,255,255,0.03); }',
             // Mode tabs stick directly under the header. 56px is the header
             // height (14px*2 padding + ~28px content). Adjust if header
             // padding changes.

@@ -126,12 +126,13 @@ window.ChartRenderer = (function () {
     //   loadFailed: bool — show retry banner instead of "no chart yet"
     //   safeSong:  pre-escaped (single-quote-escaped) song title for
     //              inline onclick handlers
-    //   onAddChart: function-call string. Default 'openRehearsalMode'
+    //   onAddChart: function-call string. Default 'openWorkbenchChartEditor'
+    //               (legacy default 'openRehearsalMode' is deprecated)
     //   onRetry:   function-call string. Default 'renderSongDetail'
     function renderEmptyState(opts) {
         opts = opts || {};
         var safeSong = opts.safeSong || '';
-        var onAdd    = opts.onAddChart || 'openRehearsalMode';
+        var onAdd    = opts.onAddChart || 'openWorkbenchChartEditor';
         var onRetry  = opts.onRetry    || 'renderSongDetail';
         if (opts.loadFailed) {
             return '<div class="sd-card" style="text-align:center;padding:24px;border-color:rgba(251,191,36,0.25);background:rgba(251,191,36,0.04)">'

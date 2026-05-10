@@ -97,10 +97,12 @@ window._rhOpenChartsOnly = function() {
             if (u.title) queue.push({ title: u.title, band: '' });
         }
     }
-    if (queue.length > 0 && typeof openRehearsalModePractice === 'function') {
-        openRehearsalModePractice(queue);
-    } else if (queue.length > 0 && typeof openRehearsalMode === 'function') {
-        openRehearsalMode(queue[0].title); // fallback single-song
+    if (queue.length > 0 && typeof openWorkbenchRunQueue === 'function') {
+        openWorkbenchRunQueue(queue);
+    } else if (queue.length > 0 && typeof openWorkbench === 'function') {
+        openWorkbench(queue[0].title, 'practice', {});
+    } else if (queue.length > 0 && typeof openRehearsalModePractice === 'function') {
+        openRehearsalModePractice(queue); // hidden legacy fallback
     } else {
         showPage('songs');
     }
@@ -7766,8 +7768,11 @@ window.riOpenSongChart = function(songTitle, queueIdx, tab) {
         var container = document.getElementById('rhTabContent');
         if (container) renderRiLiveMode(window._riLastCtx || {}, window._riLastFocusSongs || [], container);
     }
-    // Open rehearsal-mode overlay with this song
-    if (typeof openRehearsalMode === 'function') {
+    // Route to Workbench (legacy rehearsal-mode is hidden fallback per
+    // Drew's deprecation directive 2026-05-10).
+    if (typeof openWorkbench === 'function') {
+        openWorkbench(songTitle, 'practice', {});
+    } else if (typeof openRehearsalMode === 'function') {
         openRehearsalMode(songTitle);
     }
 };
