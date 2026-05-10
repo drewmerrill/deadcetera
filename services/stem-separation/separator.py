@@ -54,19 +54,22 @@ def _get_youtube_cookies_path():
         # Export YouTube cookies from your default browser
         yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt \\
                --skip-download "https://www.youtube.com/"
-        # Encode for Modal secret (one line, no newline)
-        base64 -i /tmp/yt.txt | pbcopy
+        # Gzip + base64 (Modal secrets cap at 32 KB; raw cookie jar is bigger)
+        gzip -c /tmp/yt.txt | base64 | pbcopy
         # Paste into Modal dashboard:
         #   Secrets → groovelinx-stems → Add field
         #   Key: YOUTUBE_COOKIES_BASE64
         #   Value: <paste>
         # Re-deploy not needed — function reads env on each call.
+        # Decoder auto-detects gzip via magic bytes; raw base64 still works
+        # for tiny filtered cookie files.
 
     Cookies typically last 1-3 months before YouTube rotates session tokens.
     When yt-dlp starts failing again with "Sign in to confirm you're not a
     bot", refresh the cookies and update the secret.
     """
     import base64
+    import gzip
     import tempfile
 
     cookies_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64", "").strip()
@@ -77,6 +80,16 @@ def _get_youtube_cookies_path():
     except Exception as e:
         print(f"[Cookies] Failed to decode YOUTUBE_COOKIES_BASE64: {e}")
         return None
+    # Auto-detect gzip via magic bytes (1f 8b). Modal secrets cap at 32 KB,
+    # so a full browser cookie jar must be gzipped first:
+    #   gzip -c /tmp/yt.txt | base64 | pbcopy
+    if cookies_data[:2] == b"\x1f\x8b":
+        try:
+            cookies_data = gzip.decompress(cookies_data)
+            print(f"[Cookies] Decompressed gzipped cookies ({len(cookies_data)} bytes)")
+        except Exception as e:
+            print(f"[Cookies] Failed to gunzip cookies: {e}")
+            return None
     if not cookies_data or len(cookies_data) < 50:
         print(f"[Cookies] YOUTUBE_COOKIES_BASE64 decoded to suspiciously small payload ({len(cookies_data)} bytes) — ignoring")
         return None
@@ -176,7 +189,7 @@ def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
                 # error tells the user (Drew) what to refresh, instead of a
                 # generic dump of yt-dlp's wall of text.
                 if "Sign in to confirm" in err_str or "not a bot" in err_str:
-                    cookie_status = "WITH cookies (likely expired — refresh)" if cookies_path else "WITHOUT cookies (set YOUTUBE_COOKIES_BASE64 secret)"
+                    cookie_status = "WITH cookies (likely expired — refresh)" if cookies_path else "WITHOUT cookies (set YOUTUBE_COOKIES_BASE64 secret — use gzip -c /tmp/yt.txt | base64 | pbcopy)"
                     raise RuntimeError(
                         f"YouTube bot challenge — running {cookie_status}. "
                         f"Refresh: yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt --skip-download 'https://www.youtube.com/' "
