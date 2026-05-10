@@ -203,12 +203,27 @@ def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
                 # error tells the user (Drew) what to refresh, instead of a
                 # generic dump of yt-dlp's wall of text.
                 if "Sign in to confirm" in err_str or "not a bot" in err_str:
-                    cookie_status = "WITH cookies (likely expired — refresh)" if cookies_path else "WITHOUT cookies (set YOUTUBE_COOKIES_BASE64 secret — use gzip -c /tmp/yt.txt | base64 | pbcopy)"
+                    if cookies_path:
+                        # Cookies present → bot-challenge usually means
+                        # the SPECIFIC video has heightened protection
+                        # (Content ID claim from copyrighted sheet music,
+                        # song, or other matched material). yt-dlp can't
+                        # get past this server-side regardless of cookies.
+                        # Workaround: download locally, use file upload.
+                        raise RuntimeError(
+                            "YouTube bot challenge — cookies are loaded but YouTube is blocking this specific video. "
+                            "Most common cause: the video has a Content ID claim (copyrighted sheet music, song, or other matched material), "
+                            "which heightens download protection. yt-dlp can't bypass this server-side. "
+                            "Workaround: download the audio locally (e.g. yt-dlp on your Mac, which has your browser session) "
+                            "and use the file upload option in the Stems UI instead. "
+                            "If MULTIPLE different videos start failing this way, cookies probably expired — refresh with: "
+                            "yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt --skip-download 'https://www.youtube.com/' "
+                            "then gzip -c /tmp/yt.txt | base64 | pbcopy and update Modal secret groovelinx-stems → YOUTUBE_COOKIES_BASE64."
+                        )
                     raise RuntimeError(
-                        f"YouTube bot challenge — running {cookie_status}. "
-                        f"Refresh: yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt --skip-download 'https://www.youtube.com/' "
-                        f"then base64 -i /tmp/yt.txt | pbcopy and update Modal secret groovelinx-stems → YOUTUBE_COOKIES_BASE64. "
-                        f"Original: {err_str[:200]}"
+                        "YouTube bot challenge — no cookies configured. Set the YOUTUBE_COOKIES_BASE64 secret on Modal: "
+                        "yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt --skip-download 'https://www.youtube.com/' "
+                        "then gzip -c /tmp/yt.txt | base64 | pbcopy and paste into Modal secret groovelinx-stems → YOUTUBE_COOKIES_BASE64."
                     )
                 raise RuntimeError(
                     f"yt-dlp could not extract audio from {source_url[:80]}: {e}"
