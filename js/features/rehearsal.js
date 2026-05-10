@@ -3543,8 +3543,15 @@ async function _rhRenderSnapshots() {
     }
     if (!snaps.length) { el.innerHTML = _currentHtml || ''; return; }
     var html = _currentHtml;
-    html += '<details style="margin-bottom:4px"><summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">\uD83D\uDCC2 Prior Versions (' + snaps.length + ')</summary>'
-        + '<div style="margin-top:6px">';
+    // Phase 3c: audit-log framing. Was "Prior Versions" with Preview/Restore
+    // buttons that suggested switching. Now framed as "Plan change history"
+    // with a View button (read-only inspection) \u2014 restore from inside the
+    // modal is still destructive overwrite, but the entry surface no longer
+    // suggests these are alternatives.
+    html += '<details style="margin-bottom:4px;opacity:0.85">'
+        + '<summary style="font-size:0.7em;font-weight:700;letter-spacing:0.08em;color:var(--text-dim);text-transform:uppercase;cursor:pointer;padding:4px 0">\uD83D\uDCDC Plan change history (' + snaps.length + ')</summary>'
+        + '<div style="margin-top:6px">'
+        + '<div style="font-size:0.68em;color:var(--text-dim);font-style:italic;margin:0 4px 6px;line-height:1.4">Audit log of past plan states. Viewing is read-only; "Replace" inside a snapshot overwrites the current plan.</div>';
     snaps.forEach(function(s) {
         var d = s.savedAt ? new Date(s.savedAt) : null;
         var dateStr = d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
@@ -3560,7 +3567,7 @@ async function _rhRenderSnapshots() {
             + '<div style="font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(label) + '</div>'
             + '<div style="font-size:0.82em;color:var(--text-dim)">' + dateStr + ' \u00B7 ' + songCount + ' songs \u00B7 ' + _snapDurLabel + '</div>'
             + '</div>'
-            + '<button onclick="_rhPreviewSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-size:0.82em;font-weight:600;flex-shrink:0">Preview</button>'
+            + '<button onclick="_rhPreviewSnapshot(\'' + s.snapshotId + '\')" title="View this snapshot read-only (restore is a separate action inside the modal)" style="padding:4px 10px;border-radius:5px;border:1px solid rgba(148,163,184,0.25);background:rgba(148,163,184,0.06);color:var(--text-dim);cursor:pointer;font-size:0.82em;font-weight:600;flex-shrink:0">View</button>'
             + '<button onclick="_rhDeleteSnapshot(\'' + s.snapshotId + '\')" style="padding:4px 6px;border-radius:5px;border:1px solid rgba(239,68,68,0.2);background:none;color:#f87171;cursor:pointer;font-size:0.78em;flex-shrink:0">\u2715</button>'
             + '</div>';
     });
