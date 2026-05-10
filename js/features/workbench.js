@@ -699,17 +699,29 @@
         var stopStale = function(reason) {
             try { if (window.GLPlayerEngine.stop) window.GLPlayerEngine.stop(); } catch (e) {}
             if (typeof showToast === 'function') {
-                showToast('No audio reference for "' + songId + '" — add a YouTube version in Listen lens.');
+                showToast('No audio reference for "' + songId + '" — add a version in Listen lens.');
             }
             console.log('[wb] auto-launch skipped:', songId, reason);
         };
         try {
             var url = await _wbResolvePrimaryUrl(songId);
             if (!url) { stopStale('no reference URL'); return; }
+            // Build the queue item by URL type. The engine handles both
+            // YouTube and Spotify natively (gl-player-engine.js:91-127);
+            // we just need to hand it the right ID field. Anything else
+            // (Bandcamp, SoundCloud, direct mp3/flac) currently has no
+            // engine path — stop the player and let the user fix the ref.
             var ytId = _wbExtractYouTubeId(url);
-            if (!ytId) { stopStale('non-YouTube reference (' + url.slice(0, 40) + '…)'); return; }
-            var queue = [{ title: songId, youtubeId: ytId }];
-            window.GLPlayerEngine.loadQueue(queue, { name: songId });
+            var spId = (typeof window.extractSpotifyTrackId === 'function')
+                ? window.extractSpotifyTrackId(url) : null;
+            if (!ytId && !spId) {
+                stopStale('unsupported reference type (' + url.slice(0, 40) + '…)');
+                return;
+            }
+            var queueItem = { title: songId };
+            if (ytId) queueItem.youtubeId = ytId;
+            if (spId) queueItem.spotifyTrackId = spId;
+            window.GLPlayerEngine.loadQueue([queueItem], { name: songId });
             window.GLPlayerUI.showFloat({ size: 'medium', dock: 'bottom-right' });
             window.GLPlayerEngine.play(0);
             // PracticeTask auto-loop: ±15s around timestampSec. We rely on
