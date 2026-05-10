@@ -2239,13 +2239,19 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
             '<div class="sd-stem-playhead" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.7);left:0;pointer-events:none;box-shadow:0 0 4px rgba(255,255,255,0.5)"></div>' +
             '<div class="sd-stem-activity-loading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:0.62em;color:var(--text-dim);pointer-events:none">…</div>' +
           '</div>' +
-          '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + t.id + '" style="width:64px;flex-shrink:0;accent-color:' + t.color + '" title="Volume">' +
-          '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0" title="Pan (L ↔ R)">' +
-            '<input type="range" min="-100" max="100" value="0" class="sd-stem-pan" data-stem="' + t.id + '" style="width:48px;accent-color:' + t.color + '">' +
-            '<span class="sd-stem-pan-val" data-stem="' + t.id + '" onclick="_sdStemsResetPan(\'' + t.id + '\')" title="Tap to center" style="font-size:0.58em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1;cursor:pointer;padding:2px 4px;border-radius:3px;-webkit-tap-highlight-color:rgba(102,126,234,0.2)">C</span>' +
-          '</div>' +
+          // Per-row Mix controls — hidden by default. The musician-first
+          // default surfaces only mute (the primary practice control) and
+          // the activity strip. Volume / pan / solo move under ⚙️ Mix
+          // (toggled via `.show-mix` on the player root). Nothing removed.
           '<button class="sd-stem-mute" data-stem="' + t.id + '" title="Mute" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">M</button>' +
-          '<button class="sd-stem-solo" data-stem="' + t.id + '" title="Solo" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">S</button>' +
+          '<div class="sd-stem-mix-controls" style="display:none;align-items:center;gap:8px">' +
+            '<input type="range" min="0" max="100" value="80" class="sd-stem-vol" data-stem="' + t.id + '" style="width:64px;flex-shrink:0;accent-color:' + t.color + '" title="Volume">' +
+            '<div style="display:flex;flex-direction:column;align-items:center;gap:0;flex-shrink:0" title="Pan (L ↔ R)">' +
+              '<input type="range" min="-100" max="100" value="0" class="sd-stem-pan" data-stem="' + t.id + '" style="width:48px;accent-color:' + t.color + '">' +
+              '<span class="sd-stem-pan-val" data-stem="' + t.id + '" onclick="_sdStemsResetPan(\'' + t.id + '\')" title="Tap to center" style="font-size:0.58em;color:var(--text-dim);font-variant-numeric:tabular-nums;line-height:1;cursor:pointer;padding:2px 4px;border-radius:3px;-webkit-tap-highlight-color:rgba(102,126,234,0.2)">C</span>' +
+            '</div>' +
+            '<button class="sd-stem-solo" data-stem="' + t.id + '" title="Solo" style="padding:4px 7px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.66em;font-weight:700">S</button>' +
+          '</div>' +
           '<div class="sd-stem-overflow-wrap" style="position:relative;flex-shrink:0">' +
             '<button class="sd-stem-overflow" onclick="_sdStemsToggleOverflow(this);event.stopPropagation()" title="More" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.95em;line-height:1;font-weight:700">⋮</button>' +
             '<div class="sd-stem-overflow-menu" style="position:absolute;top:calc(100% + 4px);right:0;display:none;background:#1e293b;border:1px solid var(--border);border-radius:6px;padding:4px 0;z-index:30;min-width:200px;box-shadow:0 6px 18px rgba(0,0,0,0.55)">' +
@@ -2301,12 +2307,18 @@ function _sdRenderStemsPlayer(title, stems, lalalSplit, spatialSplits) {
         .map(function(t){
             return '<button class="sd-stems-preset" data-stem="' + t.id + '" data-color="' + t.color + '" onclick="_sdStemsApplyPreset(\'' + t.id + '\')" title="Mute ' + t.label + ' — play/sing along" style="display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border-radius:6px;border:1px solid ' + t.color + '40;background:rgba(255,255,255,0.03);color:var(--text-dim);cursor:pointer;font-size:0.78em;font-weight:700;white-space:nowrap">' + (presetIcons[t.id] || '🎵') + ' ' + t.label + '</button>';
         }).join('');
-    var presetsRow = '<div id="sdStemsPresetsRow" style="display:flex;align-items:center;gap:6px;margin-top:10px;padding:8px 10px;border:1px dashed var(--border);border-radius:10px;flex-wrap:wrap;font-size:0.78em;color:var(--text-dim)">' +
-        '<span style="font-weight:700;color:var(--text-muted);white-space:nowrap">🎯 Practice (mute):</span>' +
+    // Promoted: practice presets are now the primary stem-control surface.
+    // Per-stem vol/pan/solo move under ⚙️ Mix toggle (right side). The
+    // bigger label + accent border signal "this is what you do here."
+    var presetsRow = '<div id="sdStemsPresetsRow" style="display:flex;align-items:center;gap:6px;margin-top:10px;padding:10px 12px;border:1px solid rgba(102,126,234,0.28);border-radius:10px;flex-wrap:wrap;font-size:0.84em;color:var(--text-dim);background:rgba(102,126,234,0.04)">' +
+        '<span style="font-weight:800;color:#a5b4fc;white-space:nowrap;font-size:0.92em">🎯 Practice — mute one and play along:</span>' +
         presetButtons +
         '<button onclick="_sdStemsResetPresets()" title="Unmute everything" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em">↺ Reset</button>' +
         '<span style="flex:1;min-width:8px"></span>' +
-        '<button onclick="_sdStemsResetVolumes()" title="Reset all stem volumes back to 80%" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em;white-space:nowrap">🔊 Reset volumes</button>' +
+        // ⚙️ Mix toggle — reveals per-stem vol/pan/solo + reset-volumes.
+        // Hidden by default per the "musician-first, not DAW" principle.
+        '<button id="sdStemsMixToggle" onclick="window._sdStemsToggleMix()" title="Show per-stem volume, pan, and solo controls" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.78em;white-space:nowrap">⚙️ Mix ▾</button>' +
+        '<button id="sdStemsResetVolumesBtn" onclick="_sdStemsResetVolumes()" title="Reset all stem volumes back to 80%" style="display:none;padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em;white-space:nowrap">🔊 Reset volumes</button>' +
     '</div>';
 
     // ── Loop bar — explicit "Set In/Out here" buttons make the entry path
@@ -2449,6 +2461,17 @@ function _sdEnsureStemsFsStyle() {
       // mute or solo is engaged so it pops at any density.
       '.sd-stem-mute[data-active="1"]{background:rgba(239,68,68,0.22)!important;color:#fca5a5!important;border-color:rgba(239,68,68,0.5)!important}' +
       '.sd-stem-solo[data-active="1"]{background:rgba(245,158,11,0.22)!important;color:#fbbf24!important;border-color:rgba(245,158,11,0.5)!important}' +
+      // ⚙️ Mix collapse — per-stem mix controls hidden by default. Stems
+      // wrap gets `.show-mix` to reveal them. Inline `display:none` on the
+      // .sd-stem-mix-controls element wins until JS flips it.
+      '.sd-stems-wrap.show-mix .sd-stem-mix-controls{display:flex!important}' +
+      '.sd-stems-wrap.show-mix #sdStemsResetVolumesBtn{display:inline-flex!important}' +
+      '.sd-stems-wrap.show-mix #sdStemsMixToggle{background:rgba(102,126,234,0.18)!important;color:#a5b4fc!important;border-color:rgba(102,126,234,0.4)!important}' +
+      // 🎯 Focus chip — auto-injected when a PracticeTask with trackId is
+      // active. Sits at the top of the stems player; one-tap mute focus.
+      '.sd-stems-focus-chip{display:flex;align-items:center;gap:10px;margin-bottom:10px;padding:10px 14px;border:1px solid rgba(245,158,11,0.4);border-radius:10px;background:linear-gradient(135deg,rgba(245,158,11,0.10),rgba(239,68,68,0.06))}' +
+      '.sd-stems-focus-chip-label{font-size:0.84em;font-weight:800;color:#fbbf24}' +
+      '.sd-stems-focus-chip-action{margin-left:auto;padding:6px 14px;border-radius:8px;border:0;background:#fbbf24;color:#1f2937;cursor:pointer;font-weight:800;font-size:0.84em}' +
       'body.sd-stems-overlay-open{overflow:hidden}' +
       // Hover-capable / fine-pointer devices = desktop. Coarse pointer = touch.
       // Default is desktop visibility (kbd hint shown, touch hint hidden);
@@ -2528,6 +2551,67 @@ window._sdStemsResetVolumes = function() {
         slider.value = 80;
         try { slider.dispatchEvent(new Event('input', { bubbles: true })); } catch(e) {}
     });
+};
+
+// ⚙️ Mix toggle — flips per-stem vol/pan/solo + reset-volumes between
+// hidden (default) and shown. The musician-first default keeps the player
+// uncluttered; the toggle gives full DAW-style control to anyone who
+// wants it. Persists per-page-load only — re-mount resets to hidden.
+window._sdStemsToggleMix = function() {
+    var wrap = document.querySelector('.sd-stems-wrap');
+    if (!wrap) return;
+    var on = wrap.classList.toggle('show-mix');
+    var btn = document.getElementById('sdStemsMixToggle');
+    if (btn) btn.innerHTML = on ? '⚙️ Mix ▴' : '⚙️ Mix ▾';
+};
+
+// 🎯 Focus auto-button — when a PracticeTask carries a `trackId`, surface
+// a one-tap "Focus on [Bass]" chip + auto-apply the mute preset for that
+// stem so the user lands ready to play along. Reads window._wbActiveTask
+// stamped by the Workbench shell. No-op if no task or no matching stem.
+window._sdStemsApplyFocusFromTask = function() {
+    try {
+        var task = window._wbActiveTask;
+        if (!task || !task.trackId) return;
+        // Find a row matching this trackId. memberKey conventions in
+        // multitrack rehearsal map roughly to stem ids (drums/bass/guitar/
+        // keys/vocals). Try direct match first, then prefix-match the
+        // memberKey value as a fallback.
+        var trackId = String(task.trackId).toLowerCase();
+        var row = document.querySelector('.sd-stem-row[data-stem="' + trackId + '"]');
+        if (!row) {
+            document.querySelectorAll('.sd-stem-row').forEach(function(r) {
+                if (row) return;
+                var sid = (r.dataset.stem || '').toLowerCase();
+                if (sid && trackId.indexOf(sid) === 0) row = r;
+            });
+        }
+        if (!row) return;
+        var stemId = row.dataset.stem;
+        // Insert the chip at the top of the stems player root if not present.
+        var wrap = document.querySelector('.sd-stems-wrap');
+        if (wrap && !wrap.querySelector('.sd-stems-focus-chip')) {
+            var label = (function() {
+                var lbl = row.querySelector('span:nth-child(2)');
+                return lbl ? lbl.textContent.trim() : stemId;
+            })();
+            var chip = document.createElement('div');
+            chip.className = 'sd-stems-focus-chip';
+            chip.innerHTML =
+                '<span style="font-size:1.1em">🎯</span>' +
+                '<span class="sd-stems-focus-chip-label">Focus: ' + _sdEsc(label) + '</span>' +
+                '<span style="font-size:0.78em;color:var(--text-dim)">— from your practice task</span>' +
+                '<button class="sd-stems-focus-chip-action" onclick="window._sdStemsApplyPreset(\'' + stemId.replace(/'/g, "\\'") + '\')">Mute & Play Along</button>';
+            wrap.insertBefore(chip, wrap.firstChild);
+        }
+        // Auto-apply the preset so the user can just hit play. If they
+        // don't want it, they can click the chip's button to toggle off.
+        if (typeof window._sdStemsApplyPreset === 'function') {
+            window._sdStemsApplyPreset(stemId);
+        }
+    } catch (e) {
+        console.warn('[sd] focus-from-task failed:', e);
+    }
 };
 
 // Visual state mirroring — dim a stem row whenever its audio is muted (by
@@ -4281,6 +4365,14 @@ function _sdInitStemsPlayer() {
             window._sdStemsApplySeek((scrub.value / 1000) * master.duration);
         });
     }
+    // Wire PracticeTask trackId → 🎯 Focus chip + auto-mute. Defer one
+    // tick so all rows + buttons are in the DOM. Silent no-op if no
+    // active task or no trackId.
+    setTimeout(function() {
+        if (typeof window._sdStemsApplyFocusFromTask === 'function') {
+            window._sdStemsApplyFocusFromTask();
+        }
+    }, 50);
 }
 
 window._sdPopulateListenLensPublic = function(title) { _sdPopulateListenLens(title); };

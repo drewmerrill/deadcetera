@@ -35,10 +35,28 @@
 
         // Mount existing song-detail into the body. panelMode keeps it
         // single-column so it slots into the workbench layout cleanly.
+        // Mark the container with `wb-mounted-detail` so Workbench-scoped
+        // CSS can hide the song-detail lens tab strip — Workbench's own
+        // mode tabs are the outer navigation; the inner lens picker felt
+        // like a duplicate menu (Drew's feedback).
         var body = page.querySelector('#wb-body');
         if (body && typeof renderSongDetail === 'function') {
-            try { renderSongDetail(songId, body, { panelMode: true }); }
-            catch (e) { console.error('[wb] song-detail mount failed:', e); body.innerHTML = '<div class="wb-empty">Could not mount practice surface.</div>'; }
+            body.classList.add('wb-mounted-detail');
+            try {
+                renderSongDetail(songId, body, { panelMode: true });
+                // Auto-default to Stems lens — that's where the player +
+                // loop live, and Practice mode's whole point is "play
+                // along with the section the task flagged." Defer a tick
+                // so song-detail finishes setting up its tabs first.
+                setTimeout(function() {
+                    if (typeof window.switchLens === 'function') {
+                        try { window.switchLens('stems'); } catch (e) {}
+                    }
+                }, 60);
+            } catch (e) {
+                console.error('[wb] song-detail mount failed:', e);
+                body.innerHTML = '<div class="wb-empty">Could not mount practice surface.</div>';
+            }
         }
 
         // Initial rail (will re-render once task context loads if a taskId
@@ -65,9 +83,26 @@
                 : 'disabled title="Coming soon"';
             return '<button class="' + classes + '" ' + attrs + '>' + m.label + '</button>';
         }).join('');
+        // "More views" dropdown surfaces the song-detail lenses we hide
+        // inside Workbench. Most of Practice mode wants the Stems lens
+        // visible, but users still need access to Versions (vote/north
+        // star), Harmony (chart), Inspire (related), etc.
+        var moreViewsHTML =
+            '<div class="wb-more-views">' +
+                '<button class="wb-more-views-btn" onclick="window._wbToggleMoreViews(this)" title="Switch the inner panel to a different view">More views ▾</button>' +
+                '<div class="wb-more-views-menu" hidden>' +
+                    '<button onclick="window._wbJumpLens(\'stems\')">🎚 Stems (default)</button>' +
+                    '<button onclick="window._wbJumpLens(\'band\')">📋 Chart</button>' +
+                    '<button onclick="window._wbJumpLens(\'learn\')">🎓 Practice</button>' +
+                    '<button onclick="window._wbJumpLens(\'listen\')">🎧 Versions</button>' +
+                    '<button onclick="window._wbJumpLens(\'sing\')">🎤 Harmony</button>' +
+                    '<button onclick="window._wbJumpLens(\'inspire\')">✨ Inspire</button>' +
+                '</div>' +
+            '</div>';
         return '<div class="wb-root">' +
             '<header class="wb-header">' +
                 '<div class="wb-song-title">' + _wbEsc(songId) + '</div>' +
+                moreViewsHTML +
                 '<button class="wb-close" onclick="window._wbClose()" title="Back to Practice">✕</button>' +
             '</header>' +
             '<nav class="wb-mode-tabs" role="tablist">' + modeTabs + '</nav>' +
@@ -327,6 +362,23 @@
         _wbRender(window._wbState.songId, mode, window._wbState.opts || {});
     };
 
+    // "More views" — switch the embedded song-detail to a different lens.
+    // Defaults are hidden (Practice mode auto-loads Stems); this lets a
+    // user pop into Chart / Versions / Harmony / Inspire without leaving
+    // Workbench. Lens id maps directly to song-detail's switchLens.
+    window._wbToggleMoreViews = function(btn) {
+        var menu = btn && btn.parentElement && btn.parentElement.querySelector('.wb-more-views-menu');
+        if (!menu) return;
+        menu.hidden = !menu.hidden;
+    };
+    window._wbJumpLens = function(lensId) {
+        if (typeof window.switchLens === 'function') {
+            try { window.switchLens(lensId); } catch (e) {}
+        }
+        // Close the dropdown after selection
+        document.querySelectorAll('.wb-more-views-menu').forEach(function(m) { m.hidden = true; });
+    };
+
     window._wbClose = function() {
         // Clear active task so subsequent surfaces don't pick up stale state.
         window._wbActiveTask = null;
@@ -388,7 +440,20 @@
             '.wb-action-improved { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; box-shadow: 0 4px 14px rgba(34,197,94,0.32); }',
             '.wb-action-improved:hover { box-shadow: 0 6px 20px rgba(34,197,94,0.45); }',
             '.wb-action-next { background: rgba(102,126,234,0.18); color: #a5b4fc; border: 1px solid rgba(102,126,234,0.35); flex: 0 0 auto; padding-left: 22px; padding-right: 22px; }',
-            '.wb-action-next:hover { background: rgba(102,126,234,0.28); }'
+            '.wb-action-next:hover { background: rgba(102,126,234,0.28); }',
+            // Hide the song-detail lens tab strip when mounted inside
+            // Workbench. The Workbench mode tabs (Practice/Rehearsal/Gig/
+            // Review) are the outer nav; an inner duplicate-tab strip
+            // confused testers. "More views" pill in the header gives
+            // power users a way to swap lenses if they need to.
+            '.wb-mounted-detail .sd-tab-bar { display: none !important; }',
+            // More views dropdown
+            '.wb-more-views { position: relative; }',
+            '.wb-more-views-btn { background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; padding: 4px 12px; border-radius: 6px; font-size: 0.82em; font-family: inherit; font-weight: 600; }',
+            '.wb-more-views-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.25); }',
+            '.wb-more-views-menu { position: absolute; right: 0; top: calc(100% + 6px); background: #1e293b; border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); z-index: 60; }',
+            '.wb-more-views-menu button { display: block; width: 100%; text-align: left; padding: 8px 14px; background: none; border: 0; color: var(--text); cursor: pointer; font-family: inherit; font-size: 0.86em; }',
+            '.wb-more-views-menu button:hover { background: rgba(102,126,234,0.12); color: #a5b4fc; }'
         ].join('\n');
         document.head.appendChild(s);
     }
