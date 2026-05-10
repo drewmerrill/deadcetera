@@ -757,12 +757,15 @@ window.GLPlayerUI = (function() {
         var container = document.getElementById(containerId);
         if (!container) return;
         container.innerHTML =
-            '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;text-align:center">'
-            + '<div style="font-size:1.6em;margin-bottom:8px">📱</div>'
-            + '<div style="font-size:0.88em;font-weight:700;color:#1ed760;margin-bottom:6px">Wake Spotify to play this song</div>'
-            + '<div style="font-size:0.7em;color:#b3b3b3;margin-bottom:12px;line-height:1.4;max-width:240px">iOS hides the Spotify app until it\'s playing. Tap below to launch it, then come back.</div>'
-            + '<button onclick="if(typeof GLSpotifyConnect!==\'undefined\')GLSpotifyConnect.openSpotifyApp()" style="padding:8px 16px;border-radius:20px;font-size:0.8em;font-weight:700;background:#1ed760;color:#000;border:0;cursor:pointer">▶ Open Spotify</button>'
-            + '<div style="font-size:0.65em;color:#64748b;margin-top:10px">Then tap the song again in GrooveLinx</div>'
+            '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:14px;text-align:center">'
+            + '<div style="font-size:1.5em;margin-bottom:6px">📱</div>'
+            + '<div style="font-size:0.85em;font-weight:700;color:#1ed760;margin-bottom:4px">Wake Spotify to play this song</div>'
+            + '<div style="font-size:0.68em;color:#b3b3b3;margin-bottom:10px;line-height:1.35;max-width:240px">iOS hides Spotify until it\'s playing. Tap Open Spotify, hit play on any track, then come back here.</div>'
+            + '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">'
+            + '<button onclick="if(typeof GLSpotifyConnect!==\'undefined\')GLSpotifyConnect.openSpotifyApp()" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:#1ed760;color:#000;border:0;cursor:pointer">▶ Open Spotify</button>'
+            + '<button onclick="if(typeof GLPlayerEngine!==\'undefined\'&&GLPlayerEngine.retryAfterSpotifyWake)GLPlayerEngine.retryAfterSpotifyWake()" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);cursor:pointer">↻ Try Again</button>'
+            + '</div>'
+            + '<div style="font-size:0.62em;color:#64748b;margin-top:8px">Auto-retries when you return</div>'
             + '</div>';
     }
 

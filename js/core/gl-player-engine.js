@@ -29,6 +29,7 @@ window.GLPlayerEngine = (function() {
     var _activeResult = null;
     var _activeMethod = null; // for spotify: 'connect' | 'sdk' | 'embed'
     var _activeDeviceId = null; // for connect: the Spotify device id
+    var _awaitingSpotifyApp = false; // armed when we emit needsSpotifyApp; auto-retry on tab return
     var _ytPlayer = null;
     var _ytReady = false;
     var _ytLoading = false;
@@ -436,6 +437,7 @@ window.GLPlayerEngine = (function() {
                 // emit, taking him out of the app entirely.
                 _activeMethod = null;
                 _activeDeviceId = null;
+                _awaitingSpotifyApp = true;  // armed for visibilitychange auto-retry
                 _setState(State.IDLE, { source: 'spotify', method: 'awaiting_spotify_app' });
                 _emit('needsSpotifyApp', { trackId: trackId });
                 console.log('[GLPlayer] iOS Spotify route: no Connect device, showing wake CTA, NOT falling through');
@@ -620,8 +622,46 @@ window.GLPlayerEngine = (function() {
 
         // Events
         on: on,
-        off: off
+        off: off,
+
+        // Spotify Connect awaiting-app state (Phase 4 wake CTA)
+        isAwaitingSpotifyApp: function() { return _awaitingSpotifyApp; },
+        retryAfterSpotifyWake: function() {
+            // Called by UI button OR visibility listener when user returns
+            // from the Spotify app. Re-runs the resolve+play chain for the
+            // current song. If iPhone Spotify is now in the device list,
+            // Connect plays. If not (force-quit again), the wake CTA shows
+            // again — same recovery loop.
+            if (_currentIdx < 0 || _currentIdx >= _queue.length) return;
+            _awaitingSpotifyApp = false;
+            console.log('[GLPlayer] Retrying current song after Spotify wake');
+            play(_currentIdx);
+        }
     };
+
+    // Auto-retry on visibility change: when the user comes back to GL after
+    // tapping our Open Spotify button + waking the Spotify app, the GL tab
+    // becomes visible again. If we're armed (awaitingSpotifyApp), re-run
+    // the play attempt — iPhone Spotify is now likely in the device list.
+    // Drew 2026-05-10: without this, user had to manually retry, which
+    // wasn't obvious. Now the flow is: tap Open Spotify → start any track
+    // in Spotify → swipe back to GL → music auto-plays via Connect.
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && _awaitingSpotifyApp) {
+                // Tiny delay so the Spotify-app-handoff completes first and
+                // the device shows up in the next /me/player/devices call.
+                setTimeout(function() {
+                    if (_awaitingSpotifyApp) {
+                        console.log('[GLPlayer] Tab visible + awaiting Spotify — auto-retrying');
+                        var idx = _currentIdx;
+                        _awaitingSpotifyApp = false;
+                        if (idx >= 0 && idx < _queue.length) play(idx);
+                    }
+                }, 600);
+            }
+        });
+    }
 
 })();
 
