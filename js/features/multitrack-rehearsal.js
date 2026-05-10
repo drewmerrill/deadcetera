@@ -475,7 +475,12 @@ window._mtOpenPlayer = async function(sessionId) {
           '</div>' +
           '<div style="display:flex;align-items:center;gap:12px;padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
             '<button onclick="_mtTogglePlayAll()" id="mtPlayAll" style="padding:8px 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;cursor:pointer;font-size:0.92em;min-width:90px">▶ Play</button>' +
-            '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekMaster(this.value)" style="flex:1;accent-color:#a5b4fc">' +
+            // Seek bar wrapped so comment markers can absolute-position above
+            '<div style="position:relative;flex:1">' +
+              '<div id="mtSeekMarkers" style="position:absolute;left:0;right:0;top:-3px;height:8px;pointer-events:none"></div>' +
+              '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekMaster(this.value)" style="width:100%;accent-color:#a5b4fc">' +
+            '</div>' +
+            '<button onclick="_mtExportDigest()" title="Copy a markdown digest of all comments to your clipboard" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">📋 Digest</button>' +
             '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right">0:00 / 0:00</div>' +
           '</div>' +
           // Tracks list — capped height so comment panel always has room
@@ -499,7 +504,8 @@ window._mtOpenPlayer = async function(sessionId) {
         muted: {},                   // { trackId: true }
         comments: [],                // Phase B — populated below
         anchorTrackId: '',           // composer anchor selection
-        commentFilterToSoloed: false // per-track filter toggle
+        commentFilterToSoloed: false,// per-track filter toggle
+        commentFilterMember: ''      // per-member filter (Phase C step 1)
     };
 
     // Phase B: load existing comments and render composer + list
@@ -520,7 +526,10 @@ window._mtOpenPlayer = async function(sessionId) {
     // Re-evaluate mute states when one audio reports duration (they should
     // all have the same duration if exported from the same X-LIVE session).
     audios.forEach(function(a) {
-        a.addEventListener('loadedmetadata', _mtMaybeUpdateDuration);
+        a.addEventListener('loadedmetadata', function() {
+            _mtMaybeUpdateDuration();
+            _mtRenderSeekMarkers(); // duration now known — markers can place
+        });
         a.addEventListener('timeupdate', _mtMaybeUpdateMasterPosition);
         a.addEventListener('ended', function() {
             if (_mtState.player) _mtState.player.masterPlaying = false;
@@ -748,17 +757,44 @@ function _mtRenderCommentList() {
     var soloedTrackId = soloedIds.length === 1 ? soloedIds[0] : null;
     var filterToTrack = !!p.commentFilterToSoloed && !!soloedTrackId;
 
-    var filtered = filterToTrack
-        ? comments.filter(function(c) { return c.trackId === soloedTrackId; })
-        : comments;
+    // Per-member filter (Phase C step 1): drop comments where the anchor
+    // track's memberKey doesn't match the selected member. "this moment"
+    // comments (no trackId) are excluded when a specific member is selected.
+    var filterMember = p.commentFilterMember || '';
+    var filterMemberFn = filterMember
+        ? function(c) {
+            if (!c.trackId) return false;
+            var t = trackById[c.trackId];
+            return !!(t && t.memberKey === filterMember);
+          }
+        : null;
 
-    var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.06)">'
-        + '<span style="font-size:0.68em;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Comments (' + filtered.length + (filterToTrack ? ' / ' + comments.length : '') + ')</span>';
+    var filtered = comments;
+    if (filterToTrack) filtered = filtered.filter(function(c) { return c.trackId === soloedTrackId; });
+    if (filterMemberFn) filtered = filtered.filter(filterMemberFn);
+
+    // Build member dropdown from members who actually OWN tracks in this session
+    var memberKeysWithTracks = {};
+    p.tracks.forEach(function(t) { if (t.memberKey) memberKeysWithTracks[t.memberKey] = true; });
+    var members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+    var memberOptions = '<option value="">All members</option>';
+    members.forEach(function(ref) {
+        var key = (typeof ref === 'object') ? ref.key : ref;
+        if (!memberKeysWithTracks[key]) return;
+        var name = bandMembersMap[key] ? bandMembersMap[key].name : key;
+        memberOptions += '<option value="' + escHtml(key) + '"' + (key === filterMember ? ' selected' : '') + '>' + escHtml(name) + '</option>';
+    });
+
+    var anyFilterActive = filterToTrack || !!filterMember;
+    var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.06);gap:8px;flex-wrap:wrap">'
+        + '<span style="font-size:0.68em;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Comments (' + filtered.length + (anyFilterActive ? ' / ' + comments.length : '') + ')</span>'
+        + '<div style="display:flex;gap:6px;align-items:center">';
+    headerHtml += '<select onchange="_mtSetMemberFilter(this.value)" style="background:#1e293b;color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:2px 6px;font-size:0.7em;font-family:inherit">' + memberOptions + '</select>';
     if (soloedTrackId) {
         var soloLabel = (trackById[soloedTrackId] && trackById[soloedTrackId].label) || 'soloed track';
         headerHtml += '<button onclick="_mtToggleCommentFilter()" style="padding:2px 8px;border-radius:10px;border:1px solid ' + (filterToTrack ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.1)') + ';background:' + (filterToTrack ? 'rgba(245,158,11,0.12)' : 'none') + ';color:' + (filterToTrack ? '#fbbf24' : 'var(--text-dim)') + ';cursor:pointer;font-size:0.66em;font-weight:600;font-family:inherit">' + (filterToTrack ? '✓ Only ' + escHtml(soloLabel) : 'Only ' + escHtml(soloLabel)) + '</button>';
     }
-    headerHtml += '</div>';
+    headerHtml += '</div></div>';
 
     if (!filtered.length) {
         return headerHtml
@@ -801,7 +837,115 @@ function _mtRefreshCommentPanel() {
     if (panel) panel.innerHTML = _mtRenderCommentList();
     var composerArea = document.getElementById('mtComposerArea');
     if (composerArea) composerArea.innerHTML = _mtRenderComposer();
+    _mtRenderSeekMarkers();
 }
+
+// Phase B+: render comment markers on the master seek bar. Each comment is
+// a small dot positioned at left:%. Tagged comments render amber; un-tagged
+// render slate. Click jumps to the comment's timestamp. Hover shows a
+// preview tooltip.
+function _mtRenderSeekMarkers() {
+    var p = _mtState.player;
+    var host = document.getElementById('mtSeekMarkers');
+    if (!host || !p) return;
+    var dur = p.audios[0] && isFinite(p.audios[0].duration) ? p.audios[0].duration : 0;
+    if (dur <= 0 || !p.comments || !p.comments.length) {
+        host.innerHTML = '';
+        return;
+    }
+    var markers = p.comments.map(function(c) {
+        var pct = Math.max(0, Math.min(100, (c.timestampSec / dur) * 100));
+        var hasTags = c.tags && c.tags.length > 0;
+        var color = hasTags ? '#fbbf24' : '#94a3b8';
+        var tipText = _mtFmtTime(c.timestampSec) + ' · ' + (c.text || '(no text)') + (c.tags && c.tags.length ? ' [' + c.tags.join(', ') + ']' : '');
+        return '<div onclick="_mtJumpToComment(' + c.timestampSec + ')" '
+            + 'title="' + escHtml(tipText) + '" '
+            + 'style="position:absolute;left:calc(' + pct.toFixed(2) + '% - 4px);top:0;width:8px;height:8px;border-radius:50%;background:' + color + ';border:1px solid rgba(0,0,0,0.4);cursor:pointer;pointer-events:auto;box-shadow:0 0 3px rgba(0,0,0,0.5)"></div>';
+    }).join('');
+    host.innerHTML = markers;
+}
+
+// Phase B+: copy a markdown digest of all comments in this session to the
+// clipboard. Sections by timestamp + by tag for skim-ability. Useful for
+// pasting into band-comms / Slack / email without forcing the band into
+// the app.
+window._mtExportDigest = async function() {
+    var p = _mtState.player;
+    if (!p) return;
+    var comments = (p.comments || []).slice().sort(function(a, b) { return (a.timestampSec || 0) - (b.timestampSec || 0); });
+    if (!comments.length) {
+        if (typeof showToast === 'function') showToast('No comments to export yet');
+        return;
+    }
+    var bandMembersMap = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+    var trackById = {};
+    p.tracks.forEach(function(t) { trackById[t.trackId] = t; });
+
+    var sessionDateLabel = '';
+    try {
+        var s = await firebaseDB.ref(bandPath('rehearsal_sessions/' + p.sessionId)).once('value');
+        var sv = s && s.val();
+        if (sv && sv.date) sessionDateLabel = new Date(sv.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+        var sessionVenue = (sv && sv.venue) ? ' · ' + sv.venue : '';
+    } catch (e) {}
+
+    function trackLabel(c) {
+        if (!c.trackId) return 'this moment';
+        var t = trackById[c.trackId];
+        if (!t) return c.trackId;
+        var mName = t.memberKey ? (bandMembersMap[t.memberKey] ? bandMembersMap[t.memberKey].name.split(' ')[0] : t.memberKey) : 'ambient';
+        return t.label + ' · ' + mName;
+    }
+
+    var lines = [];
+    lines.push('# Multitrack rehearsal — ' + (sessionDateLabel || 'undated') + (sessionVenue || ''));
+    lines.push(p.tracks.length + ' tracks · ' + comments.length + ' comments');
+    lines.push('');
+    lines.push('## By timestamp');
+    lines.push('');
+    comments.forEach(function(c) {
+        var tagSuffix = c.tags && c.tags.length ? ' `' + c.tags.join('` `') + '`' : '';
+        lines.push('- **[' + _mtFmtTime(c.timestampSec) + ']** ' + (c.text || '(no text)') + ' — _' + trackLabel(c) + '_' + tagSuffix);
+    });
+
+    // Group by tag — only includes tagged comments
+    var byTag = {};
+    comments.forEach(function(c) {
+        (c.tags || []).forEach(function(tag) {
+            if (!byTag[tag]) byTag[tag] = [];
+            byTag[tag].push(c);
+        });
+    });
+    var tagKeys = Object.keys(byTag).sort();
+    if (tagKeys.length) {
+        lines.push('');
+        lines.push('## By tag');
+        lines.push('');
+        tagKeys.forEach(function(tag) {
+            lines.push('### ' + tag + ' (' + byTag[tag].length + ')');
+            byTag[tag].forEach(function(c) {
+                lines.push('- **[' + _mtFmtTime(c.timestampSec) + ']** ' + (c.text || '(no text)') + ' — _' + trackLabel(c) + '_');
+            });
+            lines.push('');
+        });
+    }
+
+    var md = lines.join('\n');
+    try {
+        await navigator.clipboard.writeText(md);
+        if (typeof showToast === 'function') showToast('✅ Copied digest (' + comments.length + ' comments) to clipboard');
+    } catch (e) {
+        // Fallback: open a textarea so the user can copy manually
+        var ta = document.createElement('textarea');
+        ta.value = md;
+        ta.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:80vw;height:60vh;z-index:6000;background:#1e293b;color:white;border:1px solid #475569;font-family:monospace;font-size:13px;padding:12px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        if (typeof showToast === 'function') showToast('Clipboard blocked — text shown for manual copy');
+        setTimeout(function() { try { ta.remove(); } catch (e) {} }, 30000);
+    }
+};
 
 // ── Phase B: composer + list handlers ────────────────────────────────────────
 
@@ -882,6 +1026,13 @@ window._mtToggleCommentFilter = function() {
     var p = _mtState.player;
     if (!p) return;
     p.commentFilterToSoloed = !p.commentFilterToSoloed;
+    _mtRefreshCommentPanel();
+};
+
+window._mtSetMemberFilter = function(memberKey) {
+    var p = _mtState.player;
+    if (!p) return;
+    p.commentFilterMember = memberKey || '';
     _mtRefreshCommentPanel();
 };
 
