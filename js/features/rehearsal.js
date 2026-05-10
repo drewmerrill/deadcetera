@@ -1085,7 +1085,10 @@ async function _rhRenderCommandFlow(el) {
                 + '<span class="gl-section-label" style="padding:0;margin:0">History</span>'
                 + '<span style="font-size:0.5em;color:var(--gl-text-tertiary)">\u25B8</span></summary>'
                 + '<div style="padding:0 14px 10px">'
-                + '<div style="margin-bottom:6px"><button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Analyze recording</button></div>'
+                + '<div style="margin-bottom:6px;display:flex;gap:4px;flex-wrap:wrap">'
+                + '<button onclick="_rhRecreateFromRecording()" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Analyze recording</button>'
+                + '<button onclick="_mtOpenImportModal()" title="Import per-track FLACs exported from REAPER (X32 multitrack)" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 6px">+ Import multitrack 🎚</button>'
+                + '</div>'
                 + '<div id="rhSessionHistory"></div>'
                 + '</div></details>';
             // Recordings — collapsed
@@ -1786,9 +1789,13 @@ async function _rhRenderSessionHistory() {
     if (!el) return;
     var sessions = await _rhLoadSessions();
 
-    // Filter: hide noisy micro-sessions (< 2 min, 0 blocks, or missing data)
+    // Filter: hide noisy micro-sessions (< 2 min, 0 blocks, or missing data).
+    // Phase A multitrack: pass through any session with type==='multitrack'
+    // even though it lacks blocks/duration — those fields are populated by
+    // the segmentation engine on single-file sessions only.
     var clean = sessions.filter(function(s) {
         if (!s.date) return false;
+        if (s.type === 'multitrack' && s.tracks && s.tracks.length) return true;
         if ((s.totalActualMin || 0) < 2 && (s.blocksCompleted || 0) === 0) return false;
         return true;
     });
@@ -1838,6 +1845,28 @@ async function _rhRenderSessionHistory() {
         var d = s.date ? new Date(s.date) : null;
         var dateStr = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
         var totalActual = s.totalActualMin || 0;
+
+        // Phase A multitrack: distinct compact card. Doesn't have a
+        // segmentation-engine timeline so we surface tracks count + Open
+        // button instead of the standard duration/headline/scorecard layout.
+        if (s.type === 'multitrack') {
+            var trackCount = (s.tracks && s.tracks.length) || 0;
+            html += '<div class="app-card" style="padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px' + (isLatest ? ';border-left:3px solid #fbbf24;background:rgba(245,158,11,0.04)' : '') + '">'
+                + (_rhBulkMode ? '<input type="checkbox" id="rhBulkCb_' + s.sessionId + '" onchange="_rhBulkToggle(\'' + s.sessionId + '\')"' + (_rhBulkSelected[s.sessionId] ? ' checked' : '') + ' style="accent-color:#ef4444;width:14px;height:14px;cursor:pointer;flex-shrink:0">' : '')
+                + '<div style="flex:1;min-width:0">'
+                + '<div style="display:flex;align-items:center;gap:6px">'
+                + '<span style="font-size:0.78em">🎚</span>'
+                + '<span style="font-weight:700;font-size:0.82em;color:var(--text)">' + dateStr + '</span>'
+                + (s.venue ? '<span style="font-size:0.72em;color:var(--text-muted)">· ' + escHtml(s.venue) + '</span>' : '')
+                + '<span style="font-size:0.72em;color:var(--text-muted)">· ' + trackCount + ' tracks</span>'
+                + '</div>'
+                + '<div style="font-size:0.6em;font-weight:700;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-top:1px">Multitrack</div>'
+                + '</div>'
+                + '<button onclick="_mtOpenPlayer(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;white-space:nowrap;flex-shrink:0">▶ Open</button>'
+                + (_rhBulkMode ? '' : '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.6em;padding:3px 6px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.12);background:none;color:#64748b;flex-shrink:0">🗑️</button>')
+                + '</div>';
+            return; // skip standard card for multitrack
+        }
 
         // Duration label
         var durLabel = '';

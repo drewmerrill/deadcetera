@@ -156,6 +156,14 @@ export default {
       return handleLalalStart(request, env);
     if (path === '/lalal/check' && request.method === 'POST')
       return handleLalalCheck(request, env);
+    // Multitrack rehearsal ingest — direct browser→R2 upload via worker.
+    // Each per-track FLAC file is POSTed as raw bytes (no base64, no JSON
+    // wrapper). Worker streams body to STEMS_BUCKET under
+    //   multitrack/{bandSlug}/{sessionId}/{filename}
+    // and returns the public URL. Identifying info comes from headers
+    // (X-Band-Slug, X-Session-Id, X-Filename) so the body stays pure binary.
+    if (path === '/multitrack/upload' && request.method === 'POST')
+      return handleMultitrackUpload(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -248,7 +256,7 @@ function cors(response) {
   const h = new Headers(response.headers);
   h.set('Access-Control-Allow-Origin', '*');
   h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Band-Slug, X-Session-Id, X-Filename');
   h.set('Access-Control-Max-Age', '86400');
   return new Response(response.body, { status: response.status, headers: h });
 }
@@ -1758,6 +1766,49 @@ async function handleTwilioSmsSend(request, env) {
 // though the GPU function itself succeeded. Mirrors the LALAL async flow.
 
 const STEMS_ALLOWED_MODELS = new Set(['htdemucs', 'htdemucs_6s', 'htdemucs_ft', 'mdx_extra']);
+
+// ── Multitrack rehearsal upload ───────────────────────────────────────────
+// POST /multitrack/upload — raw FLAC bytes in body, identity in headers.
+// Streams to R2 at multitrack/{bandSlug}/{sessionId}/{filename}. Filename
+// must match the strict NN_role-member.flac convention (validated below) so
+// downstream inference is deterministic. No size cap enforced here — Worker
+// Paid plan handles streaming uploads natively.
+async function handleMultitrackUpload(request, env) {
+  if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
+    return cors(jsonError('multitrack_not_configured: STEMS_BUCKET binding and STEMS_R2_PUBLIC_BASE var required', 500));
+  }
+  var bandSlug = String(request.headers.get('X-Band-Slug') || '').trim();
+  var sessionId = String(request.headers.get('X-Session-Id') || '').trim();
+  var filename = String(request.headers.get('X-Filename') || '').trim();
+
+  // Sanity: required headers.
+  if (!bandSlug)  return cors(jsonError('missing_header: X-Band-Slug', 400));
+  if (!sessionId) return cors(jsonError('missing_header: X-Session-Id', 400));
+  if (!filename)  return cors(jsonError('missing_header: X-Filename', 400));
+
+  // Sanity: filename shape — must be NN_role-member.ext (avoids path traversal
+  // and enforces the convention that makes inference deterministic).
+  if (!/^[0-9]{1,3}_[a-z0-9-]+\.(flac|wav|opus|mp3|m4a)$/i.test(filename)) {
+    return cors(jsonError('bad_filename: must match NN_role-member.ext (e.g. 01_kick-jay.flac)', 400));
+  }
+  // Sanity: bandSlug + sessionId limited to safe chars.
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+
+  var contentType = request.headers.get('Content-Type') || 'audio/flac';
+  var key = 'multitrack/' + bandSlug + '/' + sessionId + '/' + filename;
+
+  try {
+    // request.body is a ReadableStream; R2 binding accepts streams natively.
+    await env.STEMS_BUCKET.put(key, request.body, {
+      httpMetadata: { contentType: contentType }
+    });
+  } catch (e) {
+    return cors(jsonError('r2_upload_failed: ' + (e && e.message), 502));
+  }
+  var publicUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
+  return jsonResp({ ok: true, key: key, publicUrl: publicUrl });
+}
 
 async function _stemsResolveSource(body, env, request) {
   // Returns { sourceUrl } or { error, status }.
