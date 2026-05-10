@@ -16,7 +16,7 @@ var vhSourceFilter = 'all';
 var vhCache = {};        // { archive: [], relisten: [], youtube: [], phishin: [] }
 var vhJamChartData = null;
 var vhCallback = null;   // optional callback(url, title, platform) when "Send To" is used
-var vhReturnTo = '';     // 'northstar' | 'coverme' | 'fadr' | 'practice' | ''
+var vhReturnTo = '';     // 'northstar' | 'coverme' | 'stems' | 'practice' | ''
 
 // ── Launch ───────────────────────────────────────────────────────────────────
 function openVersionHub(songTitle, opts) {
@@ -78,7 +78,7 @@ function vhRender() {
     // Return-to banner
     var returnBanner = '';
     if (vhReturnTo) {
-        var dest = { northstar: '⭐ North Star', coverme: '🎤 Cover Me', fadr: '🎚️ Fadr Stems', practice: '🎵 Practice Mode' }[vhReturnTo] || vhReturnTo;
+        var dest = { northstar: '⭐ North Star', coverme: '🎤 Cover Me', stems: '🎚️ Stems', practice: '🎵 Practice Mode' }[vhReturnTo] || vhReturnTo;
         returnBanner = '<div class="vh-return-banner">Finding for: <strong>' + dest + '</strong></div>';
     }
 
@@ -537,7 +537,7 @@ function vhRenderUrlPanel() {
     var panel = document.getElementById('vhPanelUrl');
     // Determine primary destination — use returnTo if set, default to northstar
     var primaryDest = vhReturnTo || 'northstar';
-    var destLabels = { northstar: '⭐ Save as North Star', coverme: '🎤 Save to Cover Me', fadr: '🎚️ Send to Fadr', practice: '🎵 Load in Practice' };
+    var destLabels = { northstar: '⭐ Save as North Star', coverme: '🎤 Save to Cover Me', stems: '🎚️ Open in Stems', practice: '🎵 Open in Practice' };
     var primaryLabel = destLabels[primaryDest] || '⭐ Save as North Star';
     panel.innerHTML =
         '<div class="vh-url-info">' +
@@ -554,7 +554,7 @@ function vhRenderUrlPanel() {
         (primaryDest !== 'northstar' ? '' :
             '<div style="display:flex;gap:6px;margin-top:8px;justify-content:center">' +
             '<button onclick="vhSelectAndSend(\'coverme\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎤 Cover Me</button>' +
-            '<button onclick="vhSelectAndSend(\'fadr\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎚️ Fadr</button>' +
+            '<button onclick="vhSelectAndSend(\'stems\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎚️ Stems</button>' +
             '<button onclick="vhSelectAndSend(\'practice\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim);cursor:pointer;font-size:0.72em">🎵 Practice</button>' +
             '</div>');
 }
@@ -614,7 +614,7 @@ function vhDetectPlatform(url) {
         '<span style="font-size:0.72em;color:#64748b;align-self:center;margin-right:4px">Send to:</span>' +
         '<button class="vh-action-btn vh-action-northstar" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="northstar" onclick="vhUrlPanelSendTo(this)">&#11088; North Star</button>' +
         '<button class="vh-action-btn vh-action-coverme" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="coverme" onclick="vhUrlPanelSendTo(this)">&#127908; Cover Me</button>' +
-        '<button class="vh-action-btn vh-action-fadr" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="fadr" onclick="vhUrlPanelSendTo(this)">&#127928; Fadr</button>' +
+        '<button class="vh-action-btn vh-action-stems" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="stems" onclick="vhUrlPanelSendTo(this)">&#127928; Stems</button>' +
         '<button class="vh-action-btn vh-action-practice" style="flex:0 0 auto;padding:6px 10px;font-size:0.72em" data-dest="practice" onclick="vhUrlPanelSendTo(this)">&#127925; Practice</button>' +
         '</div>';
 }
@@ -715,7 +715,7 @@ function vhShowActions() {
 
     // If launched with a specific returnTo, show a prominent "Use This" button
     if (vhReturnTo) {
-        var dest = { northstar: '⭐ Set as North Star', coverme: '🎤 Add to Cover Me', fadr: '🎚️ Send to Fadr', practice: '🎵 Load in Practice Mode' }[vhReturnTo] || 'Use This';
+        var dest = { northstar: '⭐ Save as North Star', coverme: '🎤 Save to Cover Me', stems: '🎚️ Open in Stems', practice: '🎵 Open in Practice' }[vhReturnTo] || 'Use This';
         bar.innerHTML =
             '<button class="vh-action-primary" onclick="vhSendTo(\'' + vhReturnTo + '\')">' + dest + '</button>' +
             '<button class="vh-action-secondary" onclick="vhShowAllActions()">More ▾</button>';
@@ -730,7 +730,7 @@ function vhShowAllActions() {
     bar.innerHTML =
         '<button class="vh-action-btn vh-action-northstar" onclick="vhSendTo(\'northstar\')">⭐ North Star</button>' +
         '<button class="vh-action-btn vh-action-coverme" onclick="vhSendTo(\'coverme\')">🎤 Cover Me</button>' +
-        '<button class="vh-action-btn vh-action-fadr" onclick="vhSendTo(\'fadr\')">🎚️ Fadr</button>' +
+        '<button class="vh-action-btn vh-action-stems" onclick="vhSendTo(\'stems\')">🎚️ Stems</button>' +
         '<button class="vh-action-btn vh-action-practice" onclick="vhSendTo(\'practice\')">🎵 Practice</button>' +
         '<button class="vh-action-btn" onclick="vhCopyLink()" style="background:rgba(255,255,255,0.06);color:var(--text-muted,#94a3b8)">📋 Copy Link</button>';
 }
@@ -881,19 +881,21 @@ async function vhSendTo(dest) {
         if (typeof showToast === 'function') showToast('🎤 Added to Cover Me!');
         closeVersionHub();
 
-    } else if (dest === 'fadr') {
-        // Launch the Fadr stem separation modal directly
-        if (typeof pmSelectedAudioUrl !== 'undefined') pmSelectedAudioUrl = url;
+    } else if (dest === 'stems') {
+        // Open the song-detail Stems lens with the URL pre-filled. The
+        // version hub is launched from inside song detail, so we just
+        // need to switch lens — no song-detail re-open needed. Replaces
+        // the dead Fadr destination, which routed to the legacy modal.
         closeVersionHub();
-        if (typeof importHarmoniesFromFadr === 'function') {
-            importHarmoniesFromFadr(songTitle);
-            // Pre-fill the URL after a tick (modal needs to render first)
-            setTimeout(function() {
-                var u = document.getElementById('fadrArchiveUrl');
-                if (u) u.value = url;
-            }, 150);
-        }
-        if (typeof showToast === 'function') showToast('🎚️ Fadr stem separation ready — hit Start!');
+        if (typeof switchLens === 'function') switchLens('stems');
+        setTimeout(function() {
+            var input = document.getElementById('sdStemsSourceUrl');
+            if (input) {
+                input.value = url;
+                input.focus();
+            }
+        }, 250);
+        if (typeof showToast === 'function') showToast('🎚️ URL loaded — pick a model and hit Separate');
 
     } else if (dest === 'practice') {
         // Open in Practice Mode harmony tab

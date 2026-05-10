@@ -3533,6 +3533,12 @@ window._sdStemsApplyPreset = function(stemId) {
         window._sdStemsResetPresets();
         return;
     }
+    // Clear any active solo first. Without this, solo + practice mute
+    // silently no-op (the soloed stem keeps playing alone, ignoring the
+    // mute the user just clicked). Programmatic click hits the existing
+    // solo handler so its closure-scoped `soloed` var stays in sync.
+    var activeSoloBtn = document.querySelector('.sd-stem-solo[data-active="1"]');
+    if (activeSoloBtn) activeSoloBtn.click();
     _sdActivePreset = stemId;
     document.querySelectorAll('.sd-stem-audio').forEach(function(a) {
         var isTarget = (a.dataset.stem === stemId);
@@ -3548,6 +3554,11 @@ window._sdStemsApplyPreset = function(stemId) {
 
 window._sdStemsResetPresets = function() {
     _sdActivePreset = null;
+    // Reset is "Unmute everything" — clean slate to listen to the full
+    // mix. That has to clear solos too, otherwise muted+soloOff stems
+    // stay silent even though their mute button is back to inactive.
+    var activeSoloBtn = document.querySelector('.sd-stem-solo[data-active="1"]');
+    if (activeSoloBtn) activeSoloBtn.click();
     document.querySelectorAll('.sd-stem-audio').forEach(function(a) {
         a.dataset.muted = '';
         _sdStemsApplyVolFor(a);
