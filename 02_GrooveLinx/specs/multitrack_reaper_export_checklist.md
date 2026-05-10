@@ -12,6 +12,8 @@ The strict filename convention `NN_role-member.flac` is what enables the GrooveL
 
 Open REAPER → File → New project. Add 22 tracks (or however many channels your X32 records — Drew's setup is ~22). Name each track precisely with the GrooveLinx convention:
 
+Deadcetera roster (corrected 2026-05-10): Drew = lead vocal + rhythm guitar, Brian = lead guitar + sings, Pierce = keys + sings, Chris = bass + sings, Jay = drums (no vocal).
+
 | Track # | Name (exactly this) | Source |
 |---|---|---|
 | 1 | `01_kick-jay` | Kick mic |
@@ -22,17 +24,17 @@ Open REAPER → File → New project. Add 22 tracks (or however many channels yo
 | 6 | `06_tom-1-jay` | Rack tom |
 | 7 | `07_tom-2-jay` | Floor tom |
 | 8 | `08_ride-jay` | Ride cymbal |
-| 9 | `09_bass-brian` | Bass DI |
-| 10 | `10_guitar-drew` | Guitar mic/DI |
-| 11 | `11_keys-pierce` | Keys L |
-| 12 | `12_keys-r-pierce` | Keys R |
-| 13 | `13_vocal-drew` | Drew vocal |
+| 9 | `09_bass-chris` | Bass DI (Chris) |
+| 10 | `10_guitar-brian` | Lead guitar (Brian) |
+| 11 | `11_guitar-drew` | Rhythm guitar (Drew) |
+| 12 | `12_keys-pierce` | Keys (or split L/R as `12_keys-l-pierce` + `13_keys-r-pierce`) |
+| 13 | `13_vocal-drew` | Drew vocal (lead) |
 | 14 | `14_vocal-brian` | Brian vocal |
 | 15 | `15_vocal-pierce` | Pierce vocal |
-| 16 | `16_vocal-jay` | Jay vocal |
+| 16 | `16_vocal-chris` | Chris vocal |
 | 17 | `17_room-l` | Room mic L (no member) |
 | 18 | `18_room-r` | Room mic R (no member) |
-| ... | ... | ... |
+| — | _omit Jay's mic from render_ | Discussion mic only — no vocal contribution |
 
 (Adjust to your actual mic plot.)
 

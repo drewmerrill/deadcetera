@@ -386,8 +386,22 @@ async function renderRehearsalPage(el) {
     var _pageTitle = _rhPlanningMode
         ? '\uD83D\uDCCB Planning Next Rehearsal'
         : '\uD83C\uDFB8 Rehearsal';
+    // Prominent multitrack ingest tile — Drew 2026-05-10: needs an
+    // unmissable entry so the X32 SD card → GrooveLinx flow is one click.
+    var ingestTile = ''+
+        '<div onclick="_mtOpenImportModal()" style="cursor:pointer;margin:0 0 14px;padding:14px 18px;border-radius:12px;border:1px solid rgba(99,102,241,0.30);background:linear-gradient(135deg,rgba(99,102,241,0.10),rgba(168,85,247,0.06));display:flex;align-items:center;gap:14px;transition:transform 0.08s,box-shadow 0.15s" '+
+        'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 8px 24px rgba(99,102,241,0.20)\'" '+
+        'onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'+
+            '<div style="font-size:1.8em;flex-shrink:0">🎚</div>'+
+            '<div style="flex:1;min-width:0">'+
+                '<div style="font-weight:800;font-size:0.96em;color:#e0e7ff">Ingest a multitrack recording</div>'+
+                '<div style="font-size:0.78em;color:var(--text-dim);margin-top:2px">Walk through the X32 SD card → REAPER → upload flow in 5 steps</div>'+
+            '</div>'+
+            '<div style="font-size:0.74em;font-weight:700;color:#a5b4fc;background:rgba(99,102,241,0.16);border:1px solid rgba(99,102,241,0.35);padding:6px 12px;border-radius:7px;flex-shrink:0">Start →</div>'+
+        '</div>';
     el.innerHTML = '<div class="gl-page">'
         + '<div class="gl-page-title" id="rhPageTitle">' + _pageTitle + '</div>'
+        + ingestTile
         + '<div class="gl-page-split">'
         + '<div class="gl-page-primary"><div id="rhMain"><div style="color:var(--text-dim);padding:40px;text-align:center">Loading...</div></div></div>'
         + '<div class="gl-page-context" id="rhContextRail"></div>'

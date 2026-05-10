@@ -162,46 +162,376 @@ function _mtGenTrackId(role, memberKey) {
 
 // ── Import modal ─────────────────────────────────────────────────────────────
 
+// ── Wizard (5-step ingest walkthrough) ──────────────────────────────────────
+// Drew 2026-05-10: needs a "REALLY easy simple UI that walks me through
+// exactly where to do it and where it ends up." Five steps from SD card to
+// playback. Steps 1-2 are pure instructions; step 3 reuses the existing
+// drop zone; step 4 reuses _mtRenderMappingTable + _mtConfirmMapping; step
+// 5 is the post-upload success state. All existing IDs preserved.
+
+var _MT_WIZ_STEPS = [
+    { n: 1, title: 'SD Card → Mac',     icon: '💾' },
+    { n: 2, title: 'REAPER render',     icon: '🎛' },
+    { n: 3, title: 'Drop stems',        icon: '📂' },
+    { n: 4, title: 'Confirm + upload',  icon: '🚀' },
+    { n: 5, title: 'Review',            icon: '🎚' }
+];
+
+function _mtTodayStamp() {
+    var d = new Date();
+    return d.toISOString().slice(0, 10);
+}
+
+function _mtRehearsalFolderHint() {
+    return '~/Rehearsals/' + _mtTodayStamp() + '-deadcetera/';
+}
+
+function _mtRenderWizardStepper() {
+    var cur = _mtState.wizardStep || 1;
+    var html = '<div class="mt-wiz-stepper">';
+    _MT_WIZ_STEPS.forEach(function(s, i) {
+        var state = s.n < cur ? 'done' : (s.n === cur ? 'current' : 'todo');
+        html += '<button class="mt-wiz-pill mt-wiz-pill--' + state + '" onclick="_mtWizGoTo(' + s.n + ')">' +
+                '<span class="mt-wiz-pill-num">' + (state === 'done' ? '✓' : s.n) + '</span>' +
+                '<span class="mt-wiz-pill-label">' + s.title + '</span>' +
+                '</button>';
+        if (i < _MT_WIZ_STEPS.length - 1) html += '<span class="mt-wiz-divider"></span>';
+    });
+    html += '</div>';
+    return html;
+}
+
+function _mtRenderStep1() {
+    var safePath = _mtRehearsalFolderHint();
+    return ''+
+    '<div class="mt-wiz-step">' +
+        '<div class="mt-wiz-step-eyebrow">STEP 1 OF 5</div>' +
+        '<div class="mt-wiz-step-title">💾 Get the recording onto your Mac</div>' +
+        '<div class="mt-wiz-checklist">' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Pop the SD card</strong> out of the X32 → into a USB 3.0 reader → into your Mac.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Copy the X-LIVE folder</strong> from the card to:<div class="mt-wiz-path">' + escHtml(safePath) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(safePath) + '\')">📋 Copy</button></div></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>Eject the card safely</strong> when copy finishes.</div></div>' +
+        '</div>' +
+        '<div class="mt-wiz-callout">' +
+            '<strong>Why a folder?</strong> The X32 records as multiplexed WAV — multiple channels packed into one file. REAPER demuxes it into per-channel tracks in the next step.' +
+        '</div>' +
+        '<div class="mt-wiz-time-est">⏱ ~2 min for ~30 GB at USB 3.0 speeds</div>' +
+    '</div>';
+}
+
+function _mtRenderStep2() {
+    var path = _mtRehearsalFolderHint();
+    return ''+
+    '<div class="mt-wiz-step">' +
+        '<div class="mt-wiz-step-eyebrow">STEP 2 OF 5</div>' +
+        '<div class="mt-wiz-step-title">🎛 Demux + render to FLAC stems (REAPER)</div>' +
+        '<div class="mt-wiz-checklist">' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Open REAPER</strong> → File → New project from template → <code>GrooveLinx-Multitrack</code></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Drag the X-LIVE folder</strong> onto the timeline. REAPER routes channels to your pre-named tracks.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>(Optional) Trim silence</strong> at start/end.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">④</span><div><strong>File → Render</strong> with preset <code>GrooveLinx FLAC stems</code> (24-bit / 48 kHz).</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑤</span><div><strong>Stems land in:</strong> <code>' + escHtml(path) + 'stems/</code></div></div>' +
+        '</div>' +
+        '<details class="mt-wiz-details" open>' +
+            '<summary>Expected files (Deadcetera roster)</summary>' +
+            '<table class="mt-wiz-roster">' +
+                '<tr><td><code>01–08</code></td><td>Drums</td><td><strong>Jay</strong> (kick, snare, hat, OH-L/R, toms, ride)</td></tr>' +
+                '<tr><td><code>09</code></td><td>Bass</td><td><strong>Chris</strong></td></tr>' +
+                '<tr><td><code>10</code></td><td>Lead guitar</td><td><strong>Brian</strong></td></tr>' +
+                '<tr><td><code>11</code></td><td>Rhythm guitar</td><td><strong>Drew</strong></td></tr>' +
+                '<tr><td><code>12</code></td><td>Keys</td><td><strong>Pierce</strong></td></tr>' +
+                '<tr><td><code>13</code></td><td>Vocal</td><td><strong>Drew</strong></td></tr>' +
+                '<tr><td><code>14</code></td><td>Vocal</td><td><strong>Brian</strong></td></tr>' +
+                '<tr><td><code>15</code></td><td>Vocal</td><td><strong>Pierce</strong></td></tr>' +
+                '<tr><td><code>16</code></td><td>Vocal</td><td><strong>Chris</strong></td></tr>' +
+                '<tr><td><code>17–18</code></td><td>Room L+R</td><td>(no member)</td></tr>' +
+            '</table>' +
+            '<div class="mt-wiz-note">Jay\'s talk mic is for between-song discussion — leave it out of the render unless you want it captured.</div>' +
+        '</details>' +
+        '<div class="mt-wiz-time-est">⏱ ~5 min render time. One-time setup of template + preset is documented in <code>02_GrooveLinx/specs/multitrack_reaper_export_checklist.md</code>.</div>' +
+    '</div>';
+}
+
+function _mtRenderStep3() {
+    return ''+
+    '<div class="mt-wiz-step">' +
+        '<div class="mt-wiz-step-eyebrow">STEP 3 OF 5</div>' +
+        '<div class="mt-wiz-step-title">📂 Drop stems folder into GrooveLinx</div>' +
+        '<div class="mt-wiz-step-sub">Drag the entire <code>stems/</code> folder onto the box, or click to pick the FLAC files. Auto-mapping fires the moment files land.</div>' +
+        // Drop zone — same id/wiring as the legacy modal so _mtFilesPicked
+        // and the change/drop handlers work unchanged.
+        '<div id="mtDropZone" class="mt-wiz-dropzone">' +
+            '<div class="mt-wiz-dropzone-icon">📁</div>' +
+            '<div class="mt-wiz-dropzone-title">Drop FLACs here</div>' +
+            '<div class="mt-wiz-dropzone-sub">or click to browse — multiple files OK. Convention: <code>NN_role-member.flac</code></div>' +
+            '<input type="file" id="mtFileInput" multiple accept=".flac,.wav,.opus,.mp3,.m4a" style="display:none">' +
+        '</div>' +
+        '<div class="mt-wiz-time-est">⏱ Files stay local until you click Upload in the next step.</div>' +
+    '</div>';
+}
+
+function _mtRenderStep4() {
+    return ''+
+    '<div class="mt-wiz-step">' +
+        '<div class="mt-wiz-step-eyebrow">STEP 4 OF 5</div>' +
+        '<div class="mt-wiz-step-title">🚀 Confirm mapping & upload</div>' +
+        '<div class="mt-wiz-step-sub">Review the auto-mapped roles. Set the date and venue. Then upload — runs in parallel.</div>' +
+        // Existing IDs reused so _mtRenderMappingTable populates them
+        '<div id="mtMappingArea" class="mt-wiz-mapping"></div>' +
+        '<div id="mtFooter" class="mt-wiz-confirm-row"></div>' +
+        '<div class="mt-wiz-destinations">' +
+            '<div class="mt-wiz-destinations-title">Where it ends up</div>' +
+            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">📦 Files</span><span class="mt-wiz-dest-val">Cloudflare R2 — <code>groovelinx-multitrack</code> bucket</span></div>' +
+            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">🗂 Metadata</span><span class="mt-wiz-dest-val">Firebase — <code>bands/deadcetera/multitrack_sessions/{sessionId}</code></span></div>' +
+            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">▶ Playback</span><span class="mt-wiz-dest-val">Streamed back through the multitrack player (mute / solo / scrub)</span></div>' +
+            '<div class="mt-wiz-dest-row"><span class="mt-wiz-dest-key">📝 Comments</span><span class="mt-wiz-dest-val">Timestamped + tagged; promotable to PracticeTasks</span></div>' +
+        '</div>' +
+        '<div class="mt-wiz-time-est">⏱ ~3–5 min for ~14 GB on a 100 Mbps connection.</div>' +
+    '</div>';
+}
+
+function _mtRenderStep5() {
+    var sid = _mtState.sessionId || '';
+    var trackCount = (_mtState.pickedFiles || []).length;
+    var totalBytes = (_mtState.pickedFiles || []).reduce(function(s, p) { return s + (p.sizeBytes || 0); }, 0);
+    return ''+
+    '<div class="mt-wiz-step">' +
+        '<div class="mt-wiz-step-eyebrow">STEP 5 OF 5 · DONE</div>' +
+        '<div class="mt-wiz-step-title">🎉 Session uploaded — ready to review</div>' +
+        '<div class="mt-wiz-summary">' +
+            '<div class="mt-wiz-summary-row"><span>Session ID</span><code>' + escHtml(sid) + '</code></div>' +
+            '<div class="mt-wiz-summary-row"><span>Tracks</span><strong>' + trackCount + '</strong></div>' +
+            '<div class="mt-wiz-summary-row"><span>Total size</span><strong>' + _mtBytesLabel(totalBytes) + '</strong></div>' +
+        '</div>' +
+        '<div class="mt-wiz-next-actions">' +
+            '<div class="mt-wiz-step-sub">Up next inside the multitrack player:</div>' +
+            '<ul>' +
+                '<li><strong>Mute / solo</strong> any combination of tracks. Scrub the master timeline.</li>' +
+                '<li><strong>Drop timestamped comments</strong> with tags (rushed, dragged, pitchy, wrong chord, missed cue, transition, too loud, too quiet, tone, nail this, revisit).</li>' +
+                '<li><strong>Promote a comment</strong> to a PracticeTask so it surfaces in the next Practice session for that song.</li>' +
+            '</ul>' +
+        '</div>' +
+        '<div class="mt-wiz-action-row">' +
+            '<button class="mt-wiz-btn-primary" onclick="_mtWizOpenPlayer()">▶ Open multitrack player</button>' +
+            '<button class="mt-wiz-btn-ghost" onclick="_mtCancelImport()">Close</button>' +
+        '</div>' +
+    '</div>';
+}
+
+window._mtWizGoTo = function(n) {
+    if (n < 1 || n > 5) return;
+    _mtState.wizardStep = n;
+    _mtRenderWizardStep();
+};
+
+window._mtWizNext = function() {
+    var n = (_mtState.wizardStep || 1) + 1;
+    if (n > 5) return;
+    _mtWizGoTo(n);
+};
+
+window._mtWizBack = function() {
+    var n = (_mtState.wizardStep || 1) - 1;
+    if (n < 1) return;
+    _mtWizGoTo(n);
+};
+
+window._mtWizOpenPlayer = function() {
+    var sid = _mtState.sessionId;
+    _mtCancelImport();
+    if (sid && typeof window._mtOpenPlayer === 'function') {
+        window._mtOpenPlayer(sid);
+    }
+};
+
+window._mtCopyPath = function(path) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(path);
+            if (typeof showToast === 'function') showToast('Path copied to clipboard');
+            return;
+        }
+    } catch (e) {}
+    if (typeof showToast === 'function') showToast(path);
+};
+
+function _mtRenderWizardStep() {
+    var body = document.getElementById('mtWizBody');
+    var stepper = document.getElementById('mtWizStepper');
+    var footer = document.getElementById('mtWizFooter');
+    if (!body || !footer) return;
+    if (stepper) stepper.outerHTML = _mtRenderWizardStepper();
+    var step = _mtState.wizardStep || 1;
+    if (step === 1) body.innerHTML = _mtRenderStep1();
+    else if (step === 2) body.innerHTML = _mtRenderStep2();
+    else if (step === 3) {
+        body.innerHTML = _mtRenderStep3();
+        _mtWireDropZoneInWizard();
+    }
+    else if (step === 4) {
+        body.innerHTML = _mtRenderStep4();
+        _mtRenderMappingTable();
+        // Patch the existing Confirm button so it advances to step 5 on success
+        _mtPatchConfirmForWizard();
+    }
+    else if (step === 5) body.innerHTML = _mtRenderStep5();
+
+    // Footer: prev / next buttons (hidden on step 5)
+    if (step >= 5) {
+        footer.innerHTML = '';
+    } else {
+        var canBack = step > 1;
+        var canNext = step < 4 || (step === 4 && !!_mtState.uploadComplete);
+        var nextLabel = step === 1 ? 'Did the copy → Step 2 →' :
+                        step === 2 ? 'Render done → Step 3 →' :
+                        step === 3 ? (_mtState.pickedFiles.length ? 'Files loaded → Step 4 →' : 'Drop files first to continue') :
+                        step === 4 ? 'Upload first to continue' : 'Next →';
+        footer.innerHTML =
+            '<button class="mt-wiz-btn-ghost" ' + (canBack ? '' : 'disabled ') + 'onclick="_mtWizBack()">← Back</button>' +
+            '<span style="flex:1"></span>' +
+            '<button class="mt-wiz-btn-primary" ' + (canNext ? '' : 'disabled ') + 'onclick="_mtWizNext()">' + nextLabel + '</button>';
+    }
+}
+
+function _mtWireDropZoneInWizard() {
+    var dz = document.getElementById('mtDropZone');
+    var input = document.getElementById('mtFileInput');
+    if (!dz || !input) return;
+    dz.addEventListener('click', function() { input.click(); });
+    input.addEventListener('change', function(e) {
+        _mtFilesPicked(Array.from(e.target.files));
+        // Auto-advance if files came in
+        if (_mtState.pickedFiles.length) setTimeout(function() { _mtWizGoTo(4); }, 250);
+    });
+    dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('mt-wiz-dropzone--hot'); });
+    dz.addEventListener('dragleave', function() { dz.classList.remove('mt-wiz-dropzone--hot'); });
+    dz.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dz.classList.remove('mt-wiz-dropzone--hot');
+        var files = Array.from(e.dataTransfer.files || []);
+        _mtFilesPicked(files);
+        if (_mtState.pickedFiles.length) setTimeout(function() { _mtWizGoTo(4); }, 250);
+    });
+}
+
+function _mtPatchConfirmForWizard() {
+    // Poll _mtState.activeUpload.tracks for completion. Each track gets
+    // a `stemUrl` once its R2 upload succeeds. When every track has a
+    // stemUrl, the session has been written to Firebase and we're ready
+    // to advance to step 5.
+    var observer = setInterval(function() {
+        if (!document.getElementById('mtImportModal')) { clearInterval(observer); return; }
+        var u = _mtState.activeUpload;
+        if (!u || !u.tracks || !u.tracks.length) return;
+        var allDone = u.tracks.every(function(t) { return !!t.stemUrl; });
+        if (allDone) {
+            _mtState.uploadComplete = true;
+            clearInterval(observer);
+            if ((_mtState.wizardStep || 1) === 4) _mtWizGoTo(5);
+        }
+    }, 800);
+}
+
 window._mtOpenImportModal = function() {
     var existing = document.getElementById('mtImportModal');
     if (existing) existing.remove();
+    _mtState.wizardStep = 1;
+    _mtState.pickedFiles = [];
+    _mtState.sessionId = null;
+    _mtState.uploads = {};
+    _mtState.uploadComplete = false;
+
     var ov = document.createElement('div');
     ov.id = 'mtImportModal';
-    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(4px)';
+    ov.className = 'mt-wiz-overlay';
     ov.innerHTML =
-        '<div style="max-width:560px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(255,255,255,0.08);max-height:85vh;display:flex;flex-direction:column">' +
-          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
-            '<span style="font-size:1.25em">🎚</span>' +
-            '<div style="flex:1">' +
-              '<div style="font-size:1em;font-weight:800;color:#f1f5f9">Import multitrack rehearsal</div>' +
-              '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Drop a folder of <code>NN_role-member.flac</code> files exported from REAPER.</div>' +
+        '<div class="mt-wiz-card">' +
+            '<div class="mt-wiz-header">' +
+                '<div class="mt-wiz-header-icon">🎚</div>' +
+                '<div class="mt-wiz-header-titleblock">' +
+                    '<div class="mt-wiz-header-title">Multitrack Rehearsal Ingest</div>' +
+                    '<div class="mt-wiz-header-sub">X32 SD card → GrooveLinx in 5 steps</div>' +
+                '</div>' +
+                '<button class="mt-wiz-close" onclick="_mtCancelImport()" title="Cancel">×</button>' +
             '</div>' +
-            '<button onclick="_mtCancelImport()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
-          '</div>' +
-          '<div id="mtDropZone" style="border:2px dashed rgba(99,102,241,0.4);border-radius:10px;padding:28px 16px;text-align:center;cursor:pointer;background:rgba(99,102,241,0.04);margin-bottom:10px">' +
-            '<div style="font-size:0.92em;color:var(--text);margin-bottom:6px">📂 Drop FLAC files here, or click to choose</div>' +
-            '<div style="font-size:0.7em;color:var(--text-dim)">Multiple files OK. Filename convention: <code>NN_role-member.flac</code></div>' +
-            '<input type="file" id="mtFileInput" multiple accept=".flac,.wav,.opus,.mp3,.m4a" style="display:none">' +
-          '</div>' +
-          '<div id="mtMappingArea" style="overflow-y:auto;flex:1"></div>' +
-          '<div id="mtFooter" style="margin-top:12px;display:flex;gap:8px;align-items:center"></div>' +
+            '<div id="mtWizStepper">' + _mtRenderWizardStepper() + '</div>' +
+            '<div class="mt-wiz-body" id="mtWizBody"></div>' +
+            '<div class="mt-wiz-footer" id="mtWizFooter"></div>' +
         '</div>';
     document.body.appendChild(ov);
     ov.addEventListener('click', function(e) { if (e.target === ov) _mtCancelImport(); });
-
-    var dz = document.getElementById('mtDropZone');
-    var input = document.getElementById('mtFileInput');
-    dz.addEventListener('click', function() { input.click(); });
-    input.addEventListener('change', function(e) { _mtFilesPicked(Array.from(e.target.files)); });
-    dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.style.background = 'rgba(99,102,241,0.12)'; });
-    dz.addEventListener('dragleave', function() { dz.style.background = 'rgba(99,102,241,0.04)'; });
-    dz.addEventListener('drop', function(e) {
-        e.preventDefault();
-        dz.style.background = 'rgba(99,102,241,0.04)';
-        var files = Array.from(e.dataTransfer.files || []);
-        _mtFilesPicked(files);
-    });
+    _mtInjectWizardStyles();
+    _mtRenderWizardStep();
 };
+
+function _mtInjectWizardStyles() {
+    if (document.getElementById('mtWizStyles')) return;
+    var s = document.createElement('style');
+    s.id = 'mtWizStyles';
+    s.textContent = [
+        '.mt-wiz-overlay { position: fixed; inset: 0; z-index: 5000; background: rgba(0,0,0,0.82); display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }',
+        '.mt-wiz-card { width: 100%; max-width: 760px; max-height: 92vh; background: linear-gradient(160deg, #0f172a, #1e293b); border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(0,0,0,0.5); }',
+        '.mt-wiz-header { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }',
+        '.mt-wiz-header-icon { font-size: 1.6em; }',
+        '.mt-wiz-header-titleblock { flex: 1; min-width: 0; }',
+        '.mt-wiz-header-title { font-size: 1.05em; font-weight: 800; color: #f1f5f9; }',
+        '.mt-wiz-header-sub { font-size: 0.78em; color: var(--text-dim); margin-top: 2px; }',
+        '.mt-wiz-close { background: none; border: none; color: #64748b; font-size: 1.5em; cursor: pointer; padding: 0 6px; }',
+        '.mt-wiz-stepper { display: flex; align-items: center; gap: 4px; padding: 10px 16px; background: rgba(0,0,0,0.18); border-bottom: 1px solid rgba(255,255,255,0.04); overflow-x: auto; flex-shrink: 0; }',
+        '.mt-wiz-pill { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 0.74em; white-space: nowrap; }',
+        '.mt-wiz-pill:hover { background: rgba(255,255,255,0.05); color: var(--text); }',
+        '.mt-wiz-pill--current { background: rgba(99,102,241,0.15); color: #a5b4fc; border-color: rgba(99,102,241,0.45); font-weight: 700; }',
+        '.mt-wiz-pill--done { background: rgba(34,197,94,0.10); color: #86efac; border-color: rgba(34,197,94,0.30); }',
+        '.mt-wiz-pill-num { font-weight: 800; min-width: 14px; text-align: center; }',
+        '.mt-wiz-divider { width: 14px; height: 1px; background: rgba(255,255,255,0.10); flex-shrink: 0; }',
+        '.mt-wiz-body { flex: 1; overflow-y: auto; padding: 20px 24px; min-height: 0; }',
+        '.mt-wiz-footer { display: flex; gap: 8px; align-items: center; padding: 14px 20px; border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }',
+        '.mt-wiz-step-eyebrow { font-size: 0.66em; font-weight: 800; letter-spacing: 0.10em; color: #818cf8; }',
+        '.mt-wiz-step-title { font-size: 1.20em; font-weight: 800; color: var(--text); margin: 4px 0 12px; }',
+        '.mt-wiz-step-sub { font-size: 0.85em; color: var(--text-dim); margin-bottom: 14px; line-height: 1.5; }',
+        '.mt-wiz-checklist { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }',
+        '.mt-wiz-li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; font-size: 0.88em; line-height: 1.5; color: var(--text); }',
+        '.mt-wiz-li-num { font-weight: 800; color: #a5b4fc; flex-shrink: 0; min-width: 22px; }',
+        '.mt-wiz-li code, .mt-wiz-step code { background: rgba(99,102,241,0.12); padding: 1px 6px; border-radius: 4px; font-size: 0.92em; color: #c7d2fe; }',
+        '.mt-wiz-path { margin-top: 4px; padding: 6px 8px; background: #0a0e1a; border-radius: 6px; font-family: ui-monospace,monospace; font-size: 0.85em; color: #c7d2fe; display: flex; align-items: center; gap: 8px; }',
+        '.mt-wiz-copy { background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.35); color: #a5b4fc; cursor: pointer; padding: 3px 8px; border-radius: 4px; font-size: 0.78em; font-family: inherit; margin-left: auto; }',
+        '.mt-wiz-callout { background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.20); border-radius: 8px; padding: 10px 12px; font-size: 0.82em; color: var(--text); line-height: 1.5; margin-bottom: 12px; }',
+        '.mt-wiz-time-est { font-size: 0.74em; color: var(--text-dim); font-style: italic; padding: 8px 0 0; border-top: 1px solid rgba(255,255,255,0.04); margin-top: 8px; }',
+        '.mt-wiz-details { margin-top: 12px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; }',
+        '.mt-wiz-details summary { cursor: pointer; font-size: 0.85em; font-weight: 700; color: var(--text); }',
+        '.mt-wiz-roster { width: 100%; margin-top: 8px; font-size: 0.80em; border-collapse: collapse; }',
+        '.mt-wiz-roster td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text); }',
+        '.mt-wiz-roster td:first-child { color: #a5b4fc; font-family: ui-monospace,monospace; width: 60px; }',
+        '.mt-wiz-roster td:nth-child(2) { color: var(--text-dim); width: 110px; }',
+        '.mt-wiz-note { font-size: 0.74em; color: var(--text-dim); font-style: italic; margin-top: 8px; }',
+        '.mt-wiz-dropzone { border: 2px dashed rgba(99,102,241,0.4); border-radius: 12px; padding: 36px 20px; text-align: center; cursor: pointer; background: rgba(99,102,241,0.04); transition: background 0.15s, border-color 0.15s; }',
+        '.mt-wiz-dropzone--hot { background: rgba(99,102,241,0.14); border-color: #818cf8; }',
+        '.mt-wiz-dropzone-icon { font-size: 2em; }',
+        '.mt-wiz-dropzone-title { font-size: 1em; font-weight: 700; color: var(--text); margin-top: 6px; }',
+        '.mt-wiz-dropzone-sub { font-size: 0.78em; color: var(--text-dim); margin-top: 4px; }',
+        '.mt-wiz-mapping { max-height: 320px; overflow-y: auto; margin-top: 4px; }',
+        '.mt-wiz-confirm-row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }',
+        '.mt-wiz-destinations { margin-top: 16px; padding: 12px 14px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; }',
+        '.mt-wiz-destinations-title { font-size: 0.72em; font-weight: 800; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px; }',
+        '.mt-wiz-dest-row { display: flex; gap: 10px; padding: 4px 0; font-size: 0.80em; }',
+        '.mt-wiz-dest-key { min-width: 100px; color: var(--text); font-weight: 600; }',
+        '.mt-wiz-dest-val { color: var(--text-dim); }',
+        '.mt-wiz-summary { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.20); border-radius: 8px; margin-bottom: 14px; }',
+        '.mt-wiz-summary-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.85em; color: var(--text); }',
+        '.mt-wiz-summary-row span { color: var(--text-dim); }',
+        '.mt-wiz-next-actions { font-size: 0.84em; color: var(--text); line-height: 1.5; }',
+        '.mt-wiz-next-actions ul { padding-left: 20px; margin-top: 6px; }',
+        '.mt-wiz-next-actions li { margin-bottom: 4px; }',
+        '.mt-wiz-action-row { display: flex; gap: 8px; margin-top: 16px; }',
+        '.mt-wiz-btn-primary { padding: 10px 18px; border: none; border-radius: 8px; background: linear-gradient(135deg,#667eea,#764ba2); color: #fff; font-weight: 800; cursor: pointer; font-family: inherit; font-size: 0.88em; }',
+        '.mt-wiz-btn-primary[disabled] { background: rgba(99,102,241,0.2); cursor: not-allowed; opacity: 0.6; }',
+        '.mt-wiz-btn-primary:not([disabled]):hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(102,126,234,0.4); }',
+        '.mt-wiz-btn-ghost { padding: 10px 14px; border: 1px solid rgba(255,255,255,0.10); border-radius: 8px; background: rgba(255,255,255,0.02); color: var(--text-dim); cursor: pointer; font-family: inherit; font-size: 0.84em; }',
+        '.mt-wiz-btn-ghost[disabled] { opacity: 0.4; cursor: not-allowed; }',
+        '.mt-wiz-btn-ghost:not([disabled]):hover { color: var(--text); border-color: rgba(255,255,255,0.25); }'
+    ].join('\n');
+    document.head.appendChild(s);
+}
 
 window._mtCancelImport = function() {
     var ov = document.getElementById('mtImportModal');
