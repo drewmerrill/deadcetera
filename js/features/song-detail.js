@@ -744,11 +744,19 @@ async function _sdUpgradeListenStep(title) {
         var refs = await loadBandDataFromDrive(title, 'spotify_versions').catch(function() { return null; });
         if (!refs) return;
         var arr = (typeof toArray === 'function') ? toArray(refs) : (Array.isArray(refs) ? refs : []);
-        // Find top-voted version
+        // Find top-voted version. Tie-breaker: most recently added wins, so
+        // adding a fresh URL via "Change" actually replaces the displayed
+        // North Star when both candidates have 0 votes. Without this, a
+        // newly-added entry never displaces an older 0-vote entry that
+        // happens to be earlier in the array.
         var northStar = null;
         arr.forEach(function(v) {
             var votes = v.votes ? Object.keys(v.votes).filter(function(k) { return v.votes[k]; }).length : 0;
-            if (!northStar || votes > (northStar._vc || 0)) northStar = Object.assign({}, v, { _vc: votes });
+            var thisTime = v.addedAt || v.fetchedAt || '';
+            var existingTime = northStar ? (northStar._addedAt || '') : '';
+            var existingVotes = northStar ? (northStar._vc || 0) : -1;
+            var wins = votes > existingVotes || (votes === existingVotes && thisTime > existingTime);
+            if (wins) northStar = Object.assign({}, v, { _vc: votes, _addedAt: thisTime });
         });
         if (northStar && northStar.url) {
             step.onclick = function() { openMusicLink(northStar.url); };
@@ -4126,9 +4134,16 @@ async function _sdPopulateListenLens(title) {
             loadBandDataFromDrive(title,'best_shot_takes').catch(function(){return null;}),
         ]);
         var refs=_sdArr(res[0]), shots=_sdArr(res[1]);
+        // Same tie-breaker logic as the chart-card render path: prefer the
+        // most-recently-added entry when votes are tied. Otherwise adding a
+        // new North Star via "Change" doesn't visibly replace.
         refs.forEach(function(v){
             var votes=v.votes?Object.keys(v.votes).filter(function(k){return v.votes[k];}).length:0;
-            if(!northStar||votes>(northStar._voteCount||0)) northStar=Object.assign({},v,{_voteCount:votes});
+            var thisTime = v.addedAt || v.fetchedAt || '';
+            var existingTime = northStar ? (northStar._addedAt || '') : '';
+            var existingVotes = northStar ? (northStar._voteCount || 0) : -1;
+            var wins = votes > existingVotes || (votes === existingVotes && thisTime > existingTime);
+            if(wins) northStar=Object.assign({},v,{_voteCount:votes,_addedAt:thisTime});
         });
         bestShot=shots.find(function(s){return s.crowned;})||(shots.length?shots[shots.length-1]:null);
     } catch(e){}
