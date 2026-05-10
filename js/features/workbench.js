@@ -117,7 +117,9 @@
             '</header>' +
             '<nav class="wb-mode-tabs" role="tablist">' + modeTabs + '</nav>' +
             '<div class="wb-layout">' +
-                '<main class="wb-body" id="wb-body"></main>' +
+                '<main class="wb-body" id="wb-body">' +
+                    '<button id="wb-chart-max-btn" class="wb-chart-max-btn" onclick="window._wbToggleChartMax()" title="Maximize chart (F · Esc to exit)">⤢</button>' +
+                '</main>' +
                 '<aside class="wb-rail" id="wb-rail"></aside>' +
             '</div>' +
             // Action bar — sticky bottom. Hidden by default; shown when an
@@ -327,6 +329,40 @@
     window._wbAdvanceToNext = async function() {
         await _wbAdvanceToNextTask();
     };
+
+    // ── Chart fullscreen toggle ─────────────────────────────────────────────
+    // Recreates the old "1-click fullscreen chart" experience but stays
+    // inside Workbench. Hides the top bar, left rail, Workbench header,
+    // mode tabs, right rail, and action bar so only the chart content
+    // remains. Keyboard: F to toggle, Esc to exit.
+    window._wbChartMaxState = false;
+    window._wbToggleChartMax = function() {
+        window._wbChartMaxState = !window._wbChartMaxState;
+        document.body.classList.toggle('gl-wb-chart-max', window._wbChartMaxState);
+        var btn = document.getElementById('wb-chart-max-btn');
+        if (btn) {
+            btn.textContent = window._wbChartMaxState ? '⤡' : '⤢';
+            btn.title = window._wbChartMaxState ? 'Restore chart (Esc to exit)' : 'Maximize chart (F · Esc to exit)';
+        }
+    };
+    document.addEventListener('keydown', function(e) {
+        // Only active inside Workbench, not when typing
+        var page = document.getElementById('page-workbench');
+        if (!page || page.classList.contains('hidden')) return;
+        var t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        var key = (typeof e.key === 'string') ? e.key.toLowerCase() : '';
+        if (key === 'f') {
+            window._wbToggleChartMax();
+            e.preventDefault();
+            return;
+        }
+        if (e.key === 'Escape' && window._wbChartMaxState) {
+            window._wbToggleChartMax();
+            e.preventDefault();
+        }
+    });
 
     async function _wbAdvanceToNextTask() {
         var current = window._wbActiveTask;
@@ -561,6 +597,11 @@
     window._wbClose = function() {
         // Clear active task so subsequent surfaces don't pick up stale state.
         window._wbActiveTask = null;
+        // Reset chart-max state so the next open doesn't inherit it.
+        if (window._wbChartMaxState) {
+            window._wbChartMaxState = false;
+            document.body.classList.remove('gl-wb-chart-max');
+        }
         // Return to Practice Command Center — that's where the user came
         // from in the new flow. (Old behavior was 'songs', kept available
         // by clicking Songs in the left rail.)
@@ -596,7 +637,26 @@
             '.wb-mode-tab.disabled { opacity: 0.35; cursor: not-allowed; }',
             '.wb-layout { display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px; flex: 1; align-items: start; }',
             '@media (max-width: 900px) { .wb-layout { grid-template-columns: 1fr; } .wb-rail { order: -1; } }',
-            '.wb-body { min-width: 0; }',
+            '.wb-body { min-width: 0; position: relative; }',
+            // Chart maximize button — anchored top-right of the body. When
+            // chart-max state is on, switches to fixed position so it stays
+            // reachable as the surrounding chrome hides.
+            '.wb-chart-max-btn { position: absolute; top: 4px; right: 8px; z-index: 30; background: rgba(15,23,42,0.85); border: 1px solid rgba(255,255,255,0.12); color: #cbd5e1; cursor: pointer; padding: 4px 9px; border-radius: 6px; font-size: 0.85em; font-family: inherit; line-height: 1; }',
+            '.wb-chart-max-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.3); background: rgba(15,23,42,0.95); }',
+            // Maximized state: viewport-fill the chart, hide all surrounding
+            // chrome (top bar, left nav, workbench header/tabs/rail/actions,
+            // now-playing bar). Floating Player stays visible — it lives at
+            // z-index 9800 above this layer.
+            'body.gl-wb-chart-max .topbar { display: none !important; }',
+            'body.gl-wb-chart-max #gl-left-rail { display: none !important; }',
+            'body.gl-wb-chart-max .wb-header { display: none !important; }',
+            'body.gl-wb-chart-max .wb-mode-tabs { display: none !important; }',
+            'body.gl-wb-chart-max .wb-rail { display: none !important; }',
+            'body.gl-wb-chart-max .wb-action-bar { display: none !important; }',
+            'body.gl-wb-chart-max #gl-now-playing { display: none !important; }',
+            'body.gl-wb-chart-max .wb-layout { grid-template-columns: 1fr; padding: 0; gap: 0; }',
+            'body.gl-wb-chart-max .wb-root { min-height: 100vh; }',
+            'body.gl-wb-chart-max .wb-chart-max-btn { position: fixed; top: 12px; right: 12px; z-index: 9900; }',
             '.wb-rail { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 12px; }',
             '@media (max-width: 900px) { .wb-rail { position: static; } }',
             '.wb-rail-card { padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.02); }',
