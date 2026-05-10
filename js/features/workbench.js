@@ -52,6 +52,11 @@
                     if (typeof window.switchLens === 'function') {
                         try { window.switchLens('stems'); } catch (e) {}
                     }
+                    // Subtle "Need chords? View Chart" hint per ChatGPT
+                    // critique 2026-05-10. Only injected once (idempotent
+                    // on re-renders). Click jumps to the band/chart lens
+                    // without leaving Workbench.
+                    _wbInjectChartHint();
                 }, 60);
             } catch (e) {
                 console.error('[wb] song-detail mount failed:', e);
@@ -150,7 +155,25 @@
     function _wbRenderTaskRow(task, activeTaskId) {
         var active = (task.taskId === activeTaskId);
         var ts = (typeof task.timestampSec === 'number') ? _wbFmtTime(task.timestampSec) : '';
-        var who = task.memberKey ? (' · ' + _wbEsc(task.memberKey)) : '';
+        // Member context — read by name, not key. "Brian (Bass)" reads
+        // better than "brian · bass" (Drew/ChatGPT critique 2026-05-10).
+        var memberName = '';
+        var trackLabel = task.trackId ? String(task.trackId).charAt(0).toUpperCase() + String(task.trackId).slice(1) : '';
+        try {
+            if (task.memberKey && typeof bandMembers !== 'undefined' && bandMembers) {
+                Object.keys(bandMembers).forEach(function(email) {
+                    var m = bandMembers[email] || {};
+                    if (m.key === task.memberKey || (m.name && m.name.toLowerCase() === String(task.memberKey).toLowerCase())) {
+                        memberName = m.name || '';
+                    }
+                });
+                if (!memberName) memberName = String(task.memberKey).charAt(0).toUpperCase() + String(task.memberKey).slice(1);
+            }
+        } catch (e) {}
+        var who = '';
+        if (memberName && trackLabel) who = ' · ' + _wbEsc(memberName) + ' (' + _wbEsc(trackLabel) + ')';
+        else if (memberName)         who = ' · ' + _wbEsc(memberName);
+        else if (trackLabel)         who = ' · ' + _wbEsc(trackLabel);
         var badge = active
             ? '<span class="wb-task-badge" title="Promoted from a recent rehearsal review">From last rehearsal</span>'
             : '';
@@ -227,6 +250,8 @@
         } catch (e) { return []; }
     }
 
+    var _wbAdvanceTimer = null;
+
     window._wbMarkImproved = async function() {
         var task = window._wbActiveTask;
         if (!task || !task.taskId) {
@@ -244,13 +269,54 @@
                 resolvedAt: Date.now(),
                 resolvedBy: (typeof currentUserEmail !== 'undefined' ? currentUserEmail : '') || ''
             });
-            if (typeof showToast === 'function') showToast('✓ Marked as improved');
         } catch (e) {
             console.warn('[wb] mark improved failed:', e);
             if (typeof showToast === 'function') showToast('Failed to mark: ' + (e.message || e));
             return;
         }
-        await _wbAdvanceToNextTask();
+        // Auto-advance with 1s delay + cancel option per Drew/ChatGPT
+        // critique 2026-05-10: gives the user a moment to feel "I just
+        // finished" before the next task lands. Cancel clears the timer
+        // and stays on the current task. Momentum without whiplash.
+        _wbShowAdvanceCountdown();
+    };
+
+    function _wbShowAdvanceCountdown() {
+        // Replace the action bar with a "Loading next…" + Cancel overlay.
+        var bar = document.getElementById('wb-action-bar');
+        if (!bar) {
+            // No bar to swap — just advance immediately.
+            _wbAdvanceToNextTask();
+            return;
+        }
+        var prevHTML = bar.innerHTML;
+        bar.innerHTML =
+            '<div class="wb-advance-countdown" style="flex:1;display:flex;align-items:center;gap:10px;font-weight:700;color:#86efac">' +
+                '<span style="font-size:1.1em">✓</span>' +
+                '<span>Marked as improved — loading next task…</span>' +
+            '</div>' +
+            '<button class="wb-action wb-action-next" onclick="window._wbCancelAdvance()" style="flex:0 0 auto">Cancel</button>';
+        if (_wbAdvanceTimer) clearTimeout(_wbAdvanceTimer);
+        _wbAdvanceTimer = setTimeout(function() {
+            _wbAdvanceTimer = null;
+            _wbAdvanceToNextTask();
+        }, 1000);
+        // Stash the previous HTML so cancel can restore it (no full
+        // re-render needed — keeps any inline state).
+        bar.dataset._prevHtml = prevHTML;
+    }
+
+    window._wbCancelAdvance = function() {
+        if (_wbAdvanceTimer) {
+            clearTimeout(_wbAdvanceTimer);
+            _wbAdvanceTimer = null;
+        }
+        var bar = document.getElementById('wb-action-bar');
+        if (bar && bar.dataset._prevHtml) {
+            bar.innerHTML = bar.dataset._prevHtml;
+            delete bar.dataset._prevHtml;
+        }
+        if (typeof showToast === 'function') showToast('Stayed on current task');
     };
 
     window._wbAdvanceToNext = async function() {
@@ -361,6 +427,25 @@
         window._wbState.mode = mode;
         _wbRender(window._wbState.songId, mode, window._wbState.opts || {});
     };
+
+    // Subtle hint: "Need chords? View Chart" — surfaces below the player
+    // for users who think "I want the chart" without scanning lens tabs.
+    // Idempotent: removed if already present, then re-added fresh so
+    // it stays in sync with Workbench mode/state changes.
+    function _wbInjectChartHint() {
+        var body = document.getElementById('wb-body');
+        if (!body) return;
+        var existing = document.getElementById('wb-chart-hint');
+        if (existing) existing.remove();
+        var hint = document.createElement('div');
+        hint.id = 'wb-chart-hint';
+        hint.style.cssText = 'margin:14px 0 6px;padding:8px 12px;border:1px dashed rgba(255,255,255,0.12);border-radius:8px;font-size:0.78em;color:var(--text-dim);display:flex;align-items:center;gap:8px;background:rgba(255,255,255,0.015)';
+        hint.innerHTML =
+            '<span style="font-size:1em">📋</span>' +
+            '<span>Need chords?</span>' +
+            '<button onclick="window._wbJumpLens(\'band\')" style="margin-left:auto;padding:4px 10px;border-radius:6px;border:1px solid rgba(102,126,234,0.3);background:rgba(102,126,234,0.08);color:#a5b4fc;cursor:pointer;font-size:0.92em;font-weight:600">View Chart</button>';
+        body.appendChild(hint);
+    }
 
     // "More views" — switch the embedded song-detail to a different lens.
     // Defaults are hidden (Practice mode auto-loads Stems); this lets a

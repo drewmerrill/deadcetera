@@ -2577,10 +2577,6 @@ window._sdStemsApplyFocusFromTask = function() {
     try {
         var task = window._wbActiveTask;
         if (!task || !task.trackId) return;
-        // Find a row matching this trackId. memberKey conventions in
-        // multitrack rehearsal map roughly to stem ids (drums/bass/guitar/
-        // keys/vocals). Try direct match first, then prefix-match the
-        // memberKey value as a fallback.
         var trackId = String(task.trackId).toLowerCase();
         var row = document.querySelector('.sd-stem-row[data-stem="' + trackId + '"]');
         if (!row) {
@@ -2592,24 +2588,49 @@ window._sdStemsApplyFocusFromTask = function() {
         }
         if (!row) return;
         var stemId = row.dataset.stem;
-        // Insert the chip at the top of the stems player root if not present.
         var wrap = document.querySelector('.sd-stems-wrap');
         if (wrap && !wrap.querySelector('.sd-stems-focus-chip')) {
+            // Per ChatGPT/Drew critique 2026-05-10: chip shows pure state,
+            // no action button. The auto-apply already muted the stem;
+            // showing a "Mute & Play Along" button created hesitation
+            // ("did it apply or do I need to click?"). User can still
+            // toggle via the practice presets row below.
             var label = (function() {
                 var lbl = row.querySelector('span:nth-child(2)');
                 return lbl ? lbl.textContent.trim() : stemId;
             })();
+            // Member context: "Brian (Bass)" reads better than just
+            // "Bass" because users think in roles (Brian's part) more
+            // than instrument labels. Map task.memberKey → bandMembers
+            // name; fall back to instrument label only when unknown.
+            var memberLabel = '';
+            try {
+                var mk = task.memberKey;
+                if (mk && typeof bandMembers !== 'undefined' && bandMembers) {
+                    Object.keys(bandMembers).forEach(function(email) {
+                        var m = bandMembers[email] || {};
+                        if (m.key === mk || (m.name && m.name.toLowerCase() === String(mk).toLowerCase())) {
+                            memberLabel = m.name || mk;
+                        }
+                    });
+                    if (!memberLabel) memberLabel = String(mk).charAt(0).toUpperCase() + String(mk).slice(1);
+                }
+            } catch (e) {}
+            var headlineText = memberLabel
+                ? memberLabel + ' (' + label + ')'
+                : label;
             var chip = document.createElement('div');
             chip.className = 'sd-stems-focus-chip';
+            chip.id = 'sdStemsFocusChip';
+            chip.dataset.stemId = stemId;
             chip.innerHTML =
                 '<span style="font-size:1.1em">🎯</span>' +
-                '<span class="sd-stems-focus-chip-label">Focus: ' + _sdEsc(label) + '</span>' +
-                '<span style="font-size:0.78em;color:var(--text-dim)">— from your practice task</span>' +
-                '<button class="sd-stems-focus-chip-action" onclick="window._sdStemsApplyPreset(\'' + stemId.replace(/'/g, "\\'") + '\')">Mute & Play Along</button>';
+                '<span class="sd-stems-focus-chip-label">Focus: ' + _sdEsc(headlineText) + '</span>' +
+                '<span class="sd-stems-focus-chip-state" style="font-size:0.78em;color:#22c55e;font-weight:700">muted · playing along</span>' +
+                '<span style="font-size:0.7em;color:var(--text-dim);margin-left:auto">from your task</span>';
             wrap.insertBefore(chip, wrap.firstChild);
         }
-        // Auto-apply the preset so the user can just hit play. If they
-        // don't want it, they can click the chip's button to toggle off.
+        // Auto-apply the preset so the user can just hit play.
         if (typeof window._sdStemsApplyPreset === 'function') {
             window._sdStemsApplyPreset(stemId);
         }
@@ -2617,6 +2638,23 @@ window._sdStemsApplyFocusFromTask = function() {
         console.warn('[sd] focus-from-task failed:', e);
     }
 };
+
+// Keep the focus chip's state label honest. Called by ApplyPreset and
+// ResetPresets when the active preset changes — if the user toggles the
+// stem back to audible, the chip should say "audible" not "muted".
+function _sdStemsRefreshFocusChipState() {
+    var chip = document.getElementById('sdStemsFocusChip');
+    if (!chip) return;
+    var stemId = chip.dataset.stemId;
+    if (!stemId) return;
+    var audio = document.querySelector('.sd-stem-audio[data-stem="' + stemId + '"]');
+    var muted = audio && audio.dataset.muted === '1';
+    var stateEl = chip.querySelector('.sd-stems-focus-chip-state');
+    if (stateEl) {
+        stateEl.textContent = muted ? 'muted · playing along' : 'audible · listening';
+        stateEl.style.color = muted ? '#22c55e' : '#94a3b8';
+    }
+}
 
 // Visual state mirroring — dim a stem row whenever its audio is muted (by
 // the mute button, the solo "everyone-else-off" mechanic, or a Practice
@@ -3643,11 +3681,13 @@ function _sdStemsRedrawLoopUI() {
     var inEl = document.getElementById('sdStemsLoopIn');
     var outEl = document.getElementById('sdStemsLoopOut');
     var btn = document.getElementById('sdStemsLoopToggle');
+    var bar = document.getElementById('sdStemsLoopBar');
     if (inEl) inEl.textContent = _sdLoop.inSec != null ? _sdStemsFmtTime(_sdLoop.inSec) : '—';
     if (outEl) outEl.textContent = _sdLoop.outSec != null ? _sdStemsFmtTime(_sdLoop.outSec) : '—';
+    var hasMarkers = _sdLoop.inSec != null && _sdLoop.outSec != null;
+    var active = hasMarkers && _sdLoop.enabled;
     if (btn) {
-        var hasMarkers = _sdLoop.inSec != null && _sdLoop.outSec != null;
-        if (hasMarkers && _sdLoop.enabled) {
+        if (active) {
             btn.style.background = 'rgba(245,158,11,0.18)';
             btn.style.color = '#fbbf24';
             btn.style.borderColor = 'rgba(245,158,11,0.45)';
@@ -3657,6 +3697,23 @@ function _sdStemsRedrawLoopUI() {
             btn.style.color = 'var(--text-dim)';
             btn.style.borderColor = 'var(--border)';
             btn.textContent = hasMarkers ? '🔁 Loop OFF' : '🔁 Loop';
+        }
+    }
+    // Loop visibility upgrade per Drew/ChatGPT critique 2026-05-10:
+    // when a loop is active, the bar promotes to a "mode" indicator
+    // — orange background, brighter border. Reads as state ("we are
+    // looping right now"), not just "this is a control."
+    if (bar) {
+        if (active) {
+            bar.classList.add('loop-active');
+            bar.style.background = 'rgba(245,158,11,0.10)';
+            bar.style.borderColor = 'rgba(245,158,11,0.45)';
+            bar.style.color = '#fbbf24';
+        } else {
+            bar.classList.remove('loop-active');
+            bar.style.background = 'rgba(255,255,255,0.02)';
+            bar.style.borderColor = 'var(--border)';
+            bar.style.color = 'var(--text-dim)';
         }
     }
     _sdStemsRedrawLoopMarkers();
@@ -3760,6 +3817,7 @@ window._sdStemsApplyPreset = function(stemId) {
     });
     _sdStemsRefreshAllRowDims();
     _sdStemsRedrawPresetUI();
+    _sdStemsRefreshFocusChipState();
     _sdNotifyPracticeSessionStems(stemId);
 };
 
@@ -3778,6 +3836,7 @@ window._sdStemsResetPresets = function() {
     });
     _sdStemsRefreshAllRowDims();
     _sdStemsRedrawPresetUI();
+    _sdStemsRefreshFocusChipState();
     _sdNotifyPracticeSessionStems(null);
 };
 
