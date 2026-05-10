@@ -309,9 +309,25 @@ window.GLSpotifyConnect = (function() {
   }
 
   // ── Spotify app deeplink (for force-quit recovery) ─────────────────────────
-  // Opens spotify:// to launch the Spotify app. User comes back to GL via
-  // browser back or app switcher. We can then re-discover devices.
+  // Launches the Spotify app via spotify:// URI scheme. User comes back to
+  // GL via app switcher. We can then re-discover devices.
+  //
+  // Use the hidden-iframe technique on iOS Safari: navigating
+  // window.location.href = 'spotify://' would replace the GL tab's URL and
+  // could lose state if the user comes back. Iframe invokes the URI handler
+  // without touching the host page. Falls back to web open for non-iOS.
   function openSpotifyApp() {
+    if (isIOSPlatform()) {
+      try {
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0';
+        iframe.src = 'spotify://';
+        document.body.appendChild(iframe);
+        setTimeout(function() { try { iframe.remove(); } catch(e) {} }, 200);
+        return;
+      } catch(e) {}
+    }
+    // Non-iOS or iframe failed: try direct nav, else open web
     try { window.location.href = 'spotify://'; }
     catch(e) { window.open('https://open.spotify.com', '_blank'); }
   }

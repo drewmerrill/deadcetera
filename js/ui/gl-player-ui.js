@@ -50,6 +50,11 @@ window.GLPlayerUI = (function() {
             E.clearResumeState();
             _showCompletionScreen();
         });
+        // Phase 4: iOS user has Spotify track but no Connect device visible
+        // (Spotify app force-quit or never opened). Render a "wake Spotify"
+        // CTA in the player so they can launch the Spotify app and bounce
+        // back to GL. After they do, the next play() call finds the device.
+        E.on('needsSpotifyApp', function(d) { _renderNeedsSpotifyApp(d); });
     }
 
     // ── Overlay Mode (Full-Screen) ──────────────────────────────────────────
@@ -735,6 +740,24 @@ window.GLPlayerUI = (function() {
         // Fade in the video container smoothly
         var vc = document.getElementById('glpVideoContainer');
         if (vc) { vc.style.transition = 'opacity 0.3s ease'; vc.style.opacity = '1'; }
+    }
+
+    // Phase 4: render the "wake Spotify on this device" CTA in the player.
+    // Shown when iOS has a Spotify track to play but no Connect device is
+    // visible (Spotify app force-quit). Tapping opens spotify:// — user
+    // bounces to the Spotify app, then back to GL via app switcher / back
+    // button. The next play() call finds the now-running app as a device.
+    function _renderNeedsSpotifyApp(d) {
+        var container = document.getElementById('glpVideoContainer');
+        if (!container) return;
+        container.innerHTML =
+            '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;text-align:center">'
+            + '<div style="font-size:1.6em;margin-bottom:8px">📱</div>'
+            + '<div style="font-size:0.88em;font-weight:700;color:#1ed760;margin-bottom:6px">Wake Spotify to play this song</div>'
+            + '<div style="font-size:0.7em;color:#b3b3b3;margin-bottom:12px;line-height:1.4;max-width:240px">iOS hides the Spotify app until it\'s playing. Tap below to launch it, then come back.</div>'
+            + '<button onclick="if(typeof GLSpotifyConnect!==\'undefined\')GLSpotifyConnect.openSpotifyApp()" style="padding:8px 16px;border-radius:20px;font-size:0.8em;font-weight:700;background:#1ed760;color:#000;border:0;cursor:pointer">▶ Open Spotify</button>'
+            + '<div style="font-size:0.65em;color:#64748b;margin-top:10px">Then tap the song again in GrooveLinx</div>'
+            + '</div>';
     }
 
     function _renderStatus(msg) {

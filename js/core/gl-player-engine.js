@@ -225,6 +225,13 @@ window.GLPlayerEngine = (function() {
                 console.warn('[GLPlayer] Connect togglePlay failed:', e.message || e);
                 _isPlaying = wasPlaying;
                 _emit('stateChange', { state: _state, isPlaying: _isPlaying });
+                // 404 = device went away (Spotify app force-quit). Surface
+                // the wake-Spotify CTA so user can recover without losing
+                // their place in the GL queue.
+                if (e && e.status === 404) {
+                    var trackId = _activeResult && _activeResult.trackId;
+                    _emit('needsSpotifyApp', { trackId: trackId, reason: 'device_gone_during_pause' });
+                }
             });
         }
     }
