@@ -607,6 +607,7 @@ window._mtOpenPlayer = async function(sessionId) {
                 var t = _mtCurrentPlayhead();
                 var el = document.getElementById('mtComposerTime');
                 if (el) el.textContent = _mtFmtTime(t);
+                _mtHighlightActiveComment();
             }, 500);
         }
     });
@@ -897,7 +898,9 @@ function _mtRenderCommentList() {
         var tagsHtml = (c.tags && c.tags.length)
             ? c.tags.map(function(tag) { return '<span style="padding:1px 6px;border-radius:8px;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;font-size:0.62em;font-weight:600">' + escHtml(tag) + '</span>'; }).join(' ')
             : '';
-        return '<div style="display:grid;grid-template-columns:50px 1fr 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em">'
+        // Phase B+: data-comment-time so the playback ticker can find this
+        // row by timestamp and apply an "active" highlight as we cross it.
+        return '<div class="mt-comment-row" data-comment-time="' + c.timestampSec + '" data-comment-id="' + escHtml(c.commentId) + '" style="display:grid;grid-template-columns:50px 1fr 26px;gap:8px;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.03);align-items:start;font-size:0.78em;transition:background 0.18s">'
             + '<button onclick="_mtJumpToComment(' + c.timestampSec + ')" title="Jump to ' + _mtFmtTime(c.timestampSec) + '" style="font-family:ui-monospace,monospace;font-size:0.85em;color:#a5b4fc;background:none;border:none;cursor:pointer;padding:0;text-align:left;font-weight:700">' + _mtFmtTime(c.timestampSec) + '</button>'
             + '<div style="min-width:0">'
               + '<div style="color:var(--text);line-height:1.3;word-wrap:break-word">' + escHtml(c.text || '') + '</div>'
@@ -911,6 +914,50 @@ function _mtRenderCommentList() {
     }).join('');
 
     return headerHtml + '<div>' + rowsHtml + '</div>';
+}
+
+// Highlight the comment whose timestamp the playhead is currently passing.
+// Called once per second from the player's _timeTicker. Cheap — DOM query
+// once + class-toggle on at most 2 elements.
+function _mtHighlightActiveComment() {
+    var p = _mtState.player;
+    if (!p) return;
+    var t = _mtCurrentPlayhead();
+    var rows = document.querySelectorAll('.mt-comment-row');
+    if (!rows.length) return;
+    // Find the latest comment whose timestamp <= playhead within a ~3s window
+    // (so highlight feels "now" rather than "ago"). Earlier comments lose
+    // highlight; later ones don't get it yet.
+    var activeRow = null;
+    var bestDelta = Infinity;
+    rows.forEach(function(row) {
+        var ts = parseFloat(row.dataset.commentTime || '0');
+        var delta = t - ts;
+        if (delta >= 0 && delta < 3 && delta < bestDelta) {
+            bestDelta = delta;
+            activeRow = row;
+        }
+    });
+    rows.forEach(function(row) {
+        if (row === activeRow) {
+            if (!row.classList.contains('mt-comment-active')) {
+                row.classList.add('mt-comment-active');
+                row.style.background = 'rgba(99,102,241,0.10)';
+                row.style.borderLeft = '2px solid #a5b4fc';
+                row.style.paddingLeft = '8px';
+                // Scroll into view if not visible; only when player is playing
+                // (avoid scrolling away from where the user is reading).
+                if (p.masterPlaying) {
+                    try { row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+                }
+            }
+        } else if (row.classList.contains('mt-comment-active')) {
+            row.classList.remove('mt-comment-active');
+            row.style.background = '';
+            row.style.borderLeft = '';
+            row.style.paddingLeft = '';
+        }
+    });
 }
 
 function _mtCurrentPlayhead() {
