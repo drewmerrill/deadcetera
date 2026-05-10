@@ -116,75 +116,309 @@ window.GLPlayerUI = (function() {
 
     // ── Float Mode (Mini-Player Over Charts) ────────────────────────────────
 
-    function showFloat() {
+    // ── Float player state (persisted across sessions) ─────────────────────
+    // Per the GrooveLinx Floating Player spec 2026-05-10: three discrete
+    // sizes (no freeform resize), four snap positions. State persists in
+    // localStorage so the player remembers where you docked it last.
+    var _floatState = { size: 'medium', dock: 'bottom-right' };
+    var _SIZE_DIMS = {
+        mini:   { width: 220, showVideo: false },
+        medium: { width: 360, showVideo: true  },
+        large:  { width: 520, showVideo: true  }
+    };
+    function _loadFloatState() {
+        try {
+            var s = localStorage.getItem('glPlayerFloatState');
+            if (s) {
+                var parsed = JSON.parse(s);
+                if (parsed && parsed.size && _SIZE_DIMS[parsed.size]) _floatState.size = parsed.size;
+                if (parsed && parsed.dock) _floatState.dock = parsed.dock;
+            }
+        } catch (e) {}
+    }
+    function _saveFloatState() {
+        try { localStorage.setItem('glPlayerFloatState', JSON.stringify(_floatState)); } catch (e) {}
+    }
+
+    function _applyFloatSizeAndDock() {
+        if (!_floatEl) return;
+        var dims = _SIZE_DIMS[_floatState.size] || _SIZE_DIMS.medium;
+        var dock = _floatState.dock;
+        _floatEl.style.left = '';
+        _floatEl.style.right = '';
+        _floatEl.style.top = '';
+        _floatEl.style.bottom = '';
+        if (dock === 'bottom-bar') {
+            _floatEl.style.left = '0';
+            _floatEl.style.right = '0';
+            _floatEl.style.bottom = '0';
+            _floatEl.style.width = '100%';
+            _floatEl.style.borderRadius = '14px 14px 0 0';
+        } else {
+            _floatEl.style.width = dims.width + 'px';
+            _floatEl.style.borderRadius = '14px';
+            if (dock === 'bottom-right') { _floatEl.style.right = '12px'; _floatEl.style.bottom = '80px'; }
+            else if (dock === 'bottom-left') { _floatEl.style.left = '12px'; _floatEl.style.bottom = '80px'; }
+            else if (dock === 'top-right') { _floatEl.style.right = '12px'; _floatEl.style.top = '12px'; }
+            else { _floatEl.style.right = '12px'; _floatEl.style.bottom = '80px'; }
+        }
+        var vid = _floatEl.querySelector('#glpFloatVideo');
+        if (vid) vid.style.display = dims.showVideo ? '' : 'none';
+        ['mini','medium','large'].forEach(function(sz) {
+            var btn = _floatEl.querySelector('[data-glp-size="' + sz + '"]');
+            if (btn) btn.style.background = (sz === _floatState.size) ? 'rgba(102,126,234,0.25)' : 'transparent';
+        });
+        ['top-right','bottom-right','bottom-left','bottom-bar'].forEach(function(dk) {
+            var btn = _floatEl.querySelector('[data-glp-dock="' + dk + '"]');
+            if (btn) btn.style.background = (dk === _floatState.dock) ? 'rgba(102,126,234,0.25)' : 'transparent';
+        });
+    }
+
+    function setFloatSize(sz) {
+        if (!_SIZE_DIMS[sz]) return;
+        _floatState.size = sz;
+        _saveFloatState();
+        _applyFloatSizeAndDock();
+    }
+    function setFloatDock(dk) {
+        if (['top-right','bottom-right','bottom-left','bottom-bar'].indexOf(dk) === -1) return;
+        _floatState.dock = dk;
+        _saveFloatState();
+        _applyFloatSizeAndDock();
+    }
+
+    function showFloat(opts) {
+        opts = opts || {};
         if (_overlayEl) { _overlayEl.remove(); _overlayEl = null; }
         _mode = 'float';
         var E = window.GLPlayerEngine;
         if (!E) return;
         var song = E.getCurrentSong();
 
+        _loadFloatState();
+        if (opts.size && _SIZE_DIMS[opts.size]) _floatState.size = opts.size;
+        if (opts.dock) _floatState.dock = opts.dock;
+
         _removeFloat();
         _floatEl = document.createElement('div');
         _floatEl.id = 'glpFloat';
-        _floatEl.style.cssText = 'position:fixed;bottom:80px;right:12px;z-index:9800;width:280px;background:rgba(15,23,42,0.97);border:1px solid rgba(99,102,241,0.3);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:none';
+        _floatEl.style.cssText = 'position:fixed;z-index:9800;background:rgba(15,23,42,0.97);border:1px solid rgba(99,102,241,0.3);box-shadow:0 8px 32px rgba(0,0,0,0.5);overflow:hidden;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);touch-action:none;color:#e2e8f0;font-family:inherit';
         _floatEl.innerHTML = ''
-            // Drag handle + minimize + close
-            + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;cursor:grab;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.06)">'
-            + '<span style="font-size:0.6em;color:#475569;letter-spacing:0.08em;text-transform:uppercase;font-weight:700">Player</span>'
-            + '<div style="display:flex;gap:4px">'
-            + '<button onclick="GLPlayerUI.toggleMinimize()" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.78em;padding:2px 4px" title="Minimize">\u2014</button>'
-            + '<button onclick="GLPlayerUI.closeAll()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.9em;padding:2px 4px" title="Close">\u2715</button>'
-            + '</div></div>'
-            // Video area
-            + '<div id="glpFloatVideo" style="width:100%;aspect-ratio:16/9;background:#000"></div>'
-            // Song info
-            + '<div style="padding:8px 10px 6px">'
-            + '<div id="glpFloatTitle" style="font-size:0.82em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song ? song.title : '') + '</div>'
-            + '<div id="glpFloatSource" style="font-size:0.65em;color:#475569;margin-top:1px"></div>'
+            + '<div id="glpFloatDragHandle" style="display:flex;align-items:center;gap:4px;padding:6px 8px;cursor:grab;background:rgba(255,255,255,0.04);border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.7em">'
+                + '<span style="color:#475569;letter-spacing:0.06em;text-transform:uppercase;font-weight:700;flex-shrink:0">Player</span>'
+                + '<div style="flex:1;min-width:0;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="glpFloatHeaderTitle">' + _esc(song ? song.title : '') + '</div>'
+                + '<button onclick="GLPlayerUI.toggleSwitcher()" id="glpFloatSwitchBtn" title="Switch source" style="background:none;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;font-size:0.95em;padding:2px 7px;border-radius:5px;flex-shrink:0">Switch \u25BE</button>'
+                + '<button onclick="GLPlayerUI.closeAll()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.95em;padding:2px 6px;flex-shrink:0" title="Close">\u2715</button>'
             + '</div>'
-            // Transport: ±10s seek + prev/play/next
-            + '<div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 10px 10px">'
-            + '<button onclick="GLPlayerEngine.seekRelative(-30)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.62em;padding:4px;min-width:28px">-30s</button>'
-            + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.68em;padding:4px;min-width:28px">-10s</button>'
-            + '<button onclick="GLPlayerEngine.prev()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1em;padding:4px">\u23EE</button>'
-            + '<button id="glpFloatPlayPause" onclick="GLPlayerEngine.togglePlay()" style="background:none;border:none;color:#a5b4fc;cursor:pointer;font-size:1.3em;padding:4px">\u23F8</button>'
-            + '<button onclick="GLPlayerEngine.next()" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:1em;padding:4px">\u23ED</button>'
-            + '<button onclick="GLPlayerEngine.seekRelative(10)" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.68em;padding:4px;min-width:28px">+10s</button>'
-            + '<button onclick="GLPlayerEngine.seekRelative(30)" style="background:none;border:none;color:#475569;cursor:pointer;font-size:0.62em;padding:4px;min-width:28px">+30s</button>'
+            + '<div id="glpFloatSwitcher" style="display:none;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.05);background:rgba(255,255,255,0.02);max-height:240px;overflow-y:auto"></div>'
+            + '<div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.7em">'
+                + '<span style="color:#475569;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Size</span>'
+                + '<button data-glp-size="mini" onclick="GLPlayerUI.setFloatSize(\'mini\')" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;padding:2px 7px;border-radius:5px;font-size:0.92em" title="Mini \u00b7 audio only">Mini</button>'
+                + '<button data-glp-size="medium" onclick="GLPlayerUI.setFloatSize(\'medium\')" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;padding:2px 7px;border-radius:5px;font-size:0.92em" title="Medium \u00b7 video + controls">Med</button>'
+                + '<button data-glp-size="large" onclick="GLPlayerUI.setFloatSize(\'large\')" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;padding:2px 7px;border-radius:5px;font-size:0.92em" title="Large \u00b7 lesson view">Large</button>'
+                + '<span style="flex:1"></span>'
+                + '<span style="color:#475569;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Dock</span>'
+                + '<button data-glp-dock="top-right" onclick="GLPlayerUI.setFloatDock(\'top-right\')" title="Snap top-right" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;padding:2px 6px;border-radius:5px;font-size:0.95em">\u2197</button>'
+                + '<button data-glp-dock="bottom-right" onclick="GLPlayerUI.setFloatDock(\'bottom-right\')" title="Snap bottom-right" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;padding:2px 6px;border-radius:5px;font-size:0.95em">\u2198</button>'
+                + '<button data-glp-dock="bottom-left" onclick="GLPlayerUI.setFloatDock(\'bottom-left\')" title="Snap bottom-left" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;padding:2px 6px;border-radius:5px;font-size:0.95em">\u2199</button>'
+                + '<button data-glp-dock="bottom-bar" onclick="GLPlayerUI.setFloatDock(\'bottom-bar\')" title="Full-width bottom bar" style="background:transparent;border:1px solid rgba(255,255,255,0.08);color:#94a3b8;cursor:pointer;padding:2px 6px;border-radius:5px;font-size:0.95em">\u25AD</button>'
+            + '</div>'
+            + '<div id="glpFloatVideo" style="width:100%;aspect-ratio:16/9;background:#000"></div>'
+            + '<div style="padding:6px 10px 4px">'
+                + '<div id="glpFloatTitle" style="font-size:0.84em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song ? song.title : '') + '</div>'
+                + '<div id="glpFloatSource" style="font-size:0.66em;color:#475569;margin-top:1px"></div>'
+            + '</div>'
+            + '<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;font-size:0.7em">'
+                + '<button onclick="GLPlayerEngine.seekRelative(-30)" title="Back 30s" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#94a3b8;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">-30</button>'
+                + '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10s" style="background:none;border:1px solid rgba(255,255,255,0.10);color:#cbd5e1;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">-10</button>'
+                + '<button id="glpFloatPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;font-size:1.1em;padding:5px 14px;border-radius:6px;font-weight:700">\u23F8</button>'
+                + '<button onclick="GLPlayerEngine.seekRelative(10)" title="Forward 10s" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#94a3b8;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">+10</button>'
+                + '<button onclick="GLPlayerUI.restart()" title="Restart" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#94a3b8;cursor:pointer;font-size:0.95em;padding:5px 9px;border-radius:6px">\u21BA</button>'
+            + '</div>'
+            + '<div style="display:flex;align-items:center;gap:6px;padding:4px 10px 8px;font-size:0.68em;color:#94a3b8">'
+                + '<button id="glpFloatLoopA" onclick="GLPlayerUI.loopSetA()" title="Set loop start (A)" style="background:none;border:1px solid rgba(16,185,129,0.4);color:#6ee7b7;cursor:pointer;padding:3px 7px;border-radius:5px;font-weight:700">[ A</button>'
+                + '<span id="glpFloatLoopVal" style="font-variant-numeric:tabular-nums;color:#cbd5e1;min-width:60px;text-align:center">\u2014</span>'
+                + '<button id="glpFloatLoopB" onclick="GLPlayerUI.loopSetB()" title="Set loop end (B)" style="background:none;border:1px solid rgba(239,68,68,0.4);color:#fca5a5;cursor:pointer;padding:3px 7px;border-radius:5px;font-weight:700">B ]</button>'
+                + '<button id="glpFloatLoopClear" onclick="GLPlayerUI.loopClear()" title="Clear loop" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#64748b;cursor:pointer;padding:3px 6px;border-radius:5px">\u2715</button>'
+                + '<span style="flex:1"></span>'
+                + '<select id="glpFloatSpeed" onchange="GLPlayerUI.setSpeed(parseFloat(this.value))" title="Playback speed" style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.08);color:#cbd5e1;font-size:0.92em;padding:2px 4px;border-radius:5px;cursor:pointer">'
+                    + '<option value="0.5">0.5\u00d7</option>'
+                    + '<option value="0.75">0.75\u00d7</option>'
+                    + '<option value="1" selected>1.0\u00d7</option>'
+                    + '<option value="1.25">1.25\u00d7</option>'
+                    + '<option value="1.5">1.5\u00d7</option>'
+                + '</select>'
+                + '<input id="glpFloatVolume" type="range" min="0" max="100" value="80" oninput="GLPlayerUI.setVolume(this.value)" title="Volume" style="width:64px;accent-color:#818cf8">'
             + '</div>';
         document.body.appendChild(_floatEl);
+        _applyFloatSizeAndDock();
+        _attachFloatDrag();
+        _wireLoopPolling();
+    }
 
-        // ── Drag to move ──
+    function _attachFloatDrag() {
+        if (!_floatEl) return;
         var _drag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
         var handle = document.getElementById('glpFloatDragHandle');
-        if (handle) {
-            handle.addEventListener('pointerdown', function(e) {
-                if (e.target.tagName === 'BUTTON') return; // don't drag on close button
-                _drag.active = true;
-                _drag.startX = e.clientX;
-                _drag.startY = e.clientY;
-                var rect = _floatEl.getBoundingClientRect();
-                _drag.origX = rect.left;
-                _drag.origY = rect.top;
-                handle.style.cursor = 'grabbing';
-                e.preventDefault();
-            });
-            document.addEventListener('pointermove', function(e) {
-                if (!_drag.active) return;
-                var dx = e.clientX - _drag.startX;
-                var dy = e.clientY - _drag.startY;
-                _floatEl.style.left = (_drag.origX + dx) + 'px';
-                _floatEl.style.top = (_drag.origY + dy) + 'px';
-                _floatEl.style.right = 'auto';
-                _floatEl.style.bottom = 'auto';
-            });
-            document.addEventListener('pointerup', function() {
-                if (_drag.active) {
-                    _drag.active = false;
-                    if (handle) handle.style.cursor = 'grab';
-                }
-            });
+        if (!handle) return;
+        handle.addEventListener('pointerdown', function(e) {
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+            if (_floatState.dock === 'bottom-bar') return;
+            _drag.active = true;
+            _drag.startX = e.clientX;
+            _drag.startY = e.clientY;
+            var rect = _floatEl.getBoundingClientRect();
+            _drag.origX = rect.left;
+            _drag.origY = rect.top;
+            handle.style.cursor = 'grabbing';
+            e.preventDefault();
+        });
+        document.addEventListener('pointermove', function(e) {
+            if (!_drag.active) return;
+            var dx = e.clientX - _drag.startX;
+            var dy = e.clientY - _drag.startY;
+            _floatEl.style.left = (_drag.origX + dx) + 'px';
+            _floatEl.style.top = (_drag.origY + dy) + 'px';
+            _floatEl.style.right = 'auto';
+            _floatEl.style.bottom = 'auto';
+        });
+        document.addEventListener('pointerup', function() {
+            if (_drag.active) {
+                _drag.active = false;
+                if (handle) handle.style.cursor = 'grab';
+            }
+        });
+    }
+
+    // ── Loop A/B (player-level, persists across source switches) ───────────
+    var _loop = { aSec: null, bSec: null, polling: null };
+    function loopSetA() { var t = _ytTime(); if (t == null) return; _loop.aSec = t; _refreshLoopUI(); }
+    function loopSetB() { var t = _ytTime(); if (t == null) return; _loop.bSec = t; _refreshLoopUI(); }
+    function loopClear() { _loop.aSec = null; _loop.bSec = null; _refreshLoopUI(); }
+    function setLoopWindow(aSec, bSec) {
+        _loop.aSec = (typeof aSec === 'number') ? aSec : null;
+        _loop.bSec = (typeof bSec === 'number') ? bSec : null;
+        _refreshLoopUI();
+    }
+    function _ytTime() {
+        try {
+            if (window._ytPlayer && window._ytPlayer.getCurrentTime) return window._ytPlayer.getCurrentTime();
+        } catch (e) {}
+        return null;
+    }
+    function _refreshLoopUI() {
+        var valEl = document.getElementById('glpFloatLoopVal');
+        if (!valEl) return;
+        var fmt = function(s) { s = Math.floor(s||0); return Math.floor(s/60) + ':' + ('0'+(s%60)).slice(-2); };
+        if (_loop.aSec != null && _loop.bSec != null) {
+            valEl.textContent = fmt(_loop.aSec) + '\u2013' + fmt(_loop.bSec);
+            valEl.style.color = '#fbbf24';
+        } else if (_loop.aSec != null) {
+            valEl.textContent = fmt(_loop.aSec) + '\u2013?';
+            valEl.style.color = '#10b981';
+        } else if (_loop.bSec != null) {
+            valEl.textContent = '?\u2013' + fmt(_loop.bSec);
+            valEl.style.color = '#ef4444';
+        } else {
+            valEl.textContent = '\u2014';
+            valEl.style.color = '';
         }
+    }
+    function _wireLoopPolling() {
+        if (_loop.polling) clearInterval(_loop.polling);
+        _loop.polling = setInterval(function() {
+            if (!_floatEl) { clearInterval(_loop.polling); _loop.polling = null; return; }
+            if (_loop.aSec != null && _loop.bSec != null && _loop.aSec < _loop.bSec) {
+                var t = _ytTime();
+                if (t != null && t >= _loop.bSec) {
+                    try {
+                        if (window._ytPlayer && window._ytPlayer.seekTo) window._ytPlayer.seekTo(_loop.aSec, true);
+                    } catch (e) {}
+                }
+            }
+        }, 250);
+    }
+
+    function setSpeed(rate) {
+        try { if (window._ytPlayer && window._ytPlayer.setPlaybackRate) window._ytPlayer.setPlaybackRate(rate); } catch (e) {}
+    }
+    function setVolume(pct) {
+        try { if (window._ytPlayer && window._ytPlayer.setVolume) window._ytPlayer.setVolume(pct); } catch (e) {}
+    }
+    function restart() {
+        try {
+            if (window._ytPlayer && window._ytPlayer.seekTo) {
+                window._ytPlayer.seekTo(0, true);
+                if (window._ytPlayer.playVideo) window._ytPlayer.playVideo();
+            }
+        } catch (e) {}
+    }
+
+    // ── Source switcher dropdown ───────────────────────────────────────────
+    function toggleSwitcher() {
+        var menu = document.getElementById('glpFloatSwitcher');
+        if (!menu) return;
+        if (menu.style.display !== 'none') { menu.style.display = 'none'; return; }
+        menu.innerHTML = '<div style="font-size:0.7em;color:#475569;padding:6px 4px">Loading sources\u2026</div>';
+        menu.style.display = 'block';
+        _populateSwitcher(menu);
+    }
+    function _populateSwitcher(menu) {
+        var E = window.GLPlayerEngine;
+        var song = E ? E.getCurrentSong() : null;
+        var title = song ? song.title : '';
+        var rows = [];
+        var done = function() {
+            if (!rows.length) {
+                menu.innerHTML = '<div style="font-size:0.72em;color:#64748b;padding:8px 4px;text-align:center">No saved sources for this song.</div>';
+                return;
+            }
+            rows.sort(function(a, b) {
+                if (a.isNorthStar !== b.isNorthStar) return a.isNorthStar ? -1 : 1;
+                return 0;
+            });
+            menu.innerHTML = rows.map(function(r) {
+                var safeUrl = r.url.replace(/'/g, "\\'");
+                var safeTitle = (title || '').replace(/'/g, "\\'");
+                return '<button onclick="GLPlayerUI.switchToSource(\'' + safeUrl + '\', \'' + safeTitle + '\')" style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;background:none;border:0;color:#cbd5e1;cursor:pointer;font-family:inherit;font-size:0.78em;text-align:left;border-radius:5px">' +
+                    '<span style="font-size:1.05em;flex-shrink:0">' + r.icon + '</span>' +
+                    '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(r.label) + '</span>' +
+                '</button>';
+            }).join('');
+        };
+        try {
+            if (typeof loadRefVersions === 'function') {
+                Promise.resolve(loadRefVersions(title)).then(function(versions) {
+                    versions = versions || [];
+                    versions.forEach(function(v) {
+                        var url = v.url || v.spotifyUrl || '';
+                        if (!url) return;
+                        var icon = v.isNorthStar ? '\u2B50' : (v.type === 'lesson' ? '\uD83C\uDFAC' : '\uD83C\uDFA7');
+                        var label = v.fetchedTitle || v.title || (v.isNorthStar ? 'North Star' : 'Version');
+                        if (v.type === 'lesson') label = 'Lesson \u2014 ' + label;
+                        rows.push({ icon: icon, label: label, url: url, isNorthStar: !!v.isNorthStar });
+                    });
+                    done();
+                }).catch(function(e) { console.warn('[switcher] load failed', e); done(); });
+            } else { done(); }
+        } catch (e) { console.warn('[switcher] load failed', e); done(); }
+    }
+    function switchToSource(url, title) {
+        var menu = document.getElementById('glpFloatSwitcher');
+        if (menu) menu.style.display = 'none';
+        var ytId = null;
+        try {
+            var m;
+            m = url.match(/youtu\.be\/([\w-]{11})/); if (m) ytId = m[1];
+            if (!ytId) { m = url.match(/[?&]v=([\w-]{11})/); if (m) ytId = m[1]; }
+            if (!ytId) { m = url.match(/youtube\.com\/embed\/([\w-]{11})/); if (m) ytId = m[1]; }
+        } catch (e) {}
+        if (ytId && window.GLPlayerEngine) {
+            window.GLPlayerEngine.loadQueue([{ title: title || 'YouTube', youtubeId: ytId }], { name: title || 'YouTube' });
+            window.GLPlayerEngine.play(0);
+            return;
+        }
+        if (typeof openMusicLink === 'function') openMusicLink(url, { title: title });
     }
 
     // ── Bar Mode (Now-Playing Bottom Bar) ───────────────────────────────────
@@ -637,6 +871,21 @@ window.GLPlayerUI = (function() {
         toggleMinimize: toggleMinimize,
         closeAll: closeAll,
         getMode: function() { return _mode; },
+        // Floating player size + dock controls
+        setFloatSize: setFloatSize,
+        setFloatDock: setFloatDock,
+        // Loop A/B controls (callable from Workbench for PracticeTask auto-loop)
+        loopSetA: loopSetA,
+        loopSetB: loopSetB,
+        loopClear: loopClear,
+        setLoopWindow: setLoopWindow,
+        // Speed / volume / restart
+        setSpeed: setSpeed,
+        setVolume: setVolume,
+        restart: restart,
+        // Source switcher
+        toggleSwitcher: toggleSwitcher,
+        switchToSource: switchToSource,
         _onPrefChange: _onPrefChange,
         _playPastedUrl: _playPastedUrl
     };

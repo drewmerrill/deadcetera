@@ -52,11 +52,15 @@
                     if (typeof window.switchLens === 'function') {
                         try { window.switchLens('stems'); } catch (e) {}
                     }
-                    // Subtle "Need chords? View Chart" hint per ChatGPT
-                    // critique 2026-05-10. Only injected once (idempotent
-                    // on re-renders). Click jumps to the band/chart lens
-                    // without leaving Workbench.
                     _wbInjectChartHint();
+                    // Practice mode auto-launches the floating player with
+                    // the song's North Star (or first available reference)
+                    // so the user can start playing along immediately.
+                    // Per the GLP Floating Player spec 2026-05-10:
+                    //   Practice → Medium, Rehearsal → Mini, Gig → hidden.
+                    if (mode === 'practice') {
+                        _wbAutoLaunchPlayer(songId, opts || {});
+                    }
                 }, 60);
             } catch (e) {
                 console.error('[wb] song-detail mount failed:', e);
@@ -427,6 +431,95 @@
         window._wbState.mode = mode;
         _wbRender(window._wbState.songId, mode, window._wbState.opts || {});
     };
+
+    // ── Auto-launch float player on Practice mode entry ────────────────────
+    // Looks up the song's saved versions, picks the North Star (or the
+    // most-recently-added reference), extracts a YouTube id, and launches
+    // GLPlayerUI.showFloat() with a Medium/bottom-right default. If the
+    // launch was driven by a PracticeTask with timestampSec, applies a
+    // ±15s loop window via GLPlayerUI.setLoopWindow once the player is
+    // loaded — the user can hit play and immediately practice the section
+    // the rehearsal flagged. Falls back silently if no reference exists.
+    async function _wbAutoLaunchPlayer(songId, opts) {
+        if (!window.GLPlayerEngine || !window.GLPlayerUI) return;
+        try {
+            var url = await _wbResolvePrimaryUrl(songId);
+            if (!url) return;
+            var ytId = _wbExtractYouTubeId(url);
+            if (!ytId) return;
+            var queue = [{ title: songId, youtubeId: ytId }];
+            window.GLPlayerEngine.loadQueue(queue, { name: songId });
+            window.GLPlayerUI.showFloat({ size: 'medium', dock: 'bottom-right' });
+            window.GLPlayerEngine.play(0);
+            // PracticeTask auto-loop: ±15s around timestampSec. We rely on
+            // the engine reaching a "playable" state before we can read
+            // currentTime / call setLoopWindow. Poll briefly.
+            var task = window._wbActiveTask;
+            var ts = (task && typeof task.timestampSec === 'number') ? task.timestampSec : null;
+            if (ts != null) {
+                var inSec = Math.max(0, ts - 15);
+                var outSec = ts + 15;
+                var attempts = 0;
+                var poll = setInterval(function() {
+                    attempts++;
+                    var ready = window._ytPlayer && typeof window._ytPlayer.seekTo === 'function';
+                    if (ready) {
+                        clearInterval(poll);
+                        try {
+                            window._ytPlayer.seekTo(ts, true);
+                            // Spec: "start paused" — call pauseVideo right
+                            // after seek so the user has a moment to read
+                            // the chart before hitting play.
+                            if (typeof window._ytPlayer.pauseVideo === 'function') {
+                                window._ytPlayer.pauseVideo();
+                            }
+                        } catch (e) {}
+                        try { window.GLPlayerUI.setLoopWindow(inSec, outSec); } catch (e) {}
+                    } else if (attempts > 50) {
+                        clearInterval(poll);
+                    }
+                }, 200);
+            }
+        } catch (e) {
+            console.warn('[wb] auto-launch player failed:', e);
+        }
+    }
+
+    function _wbExtractYouTubeId(url) {
+        if (!url) return null;
+        var m;
+        m = url.match(/youtu\.be\/([\w-]{11})/); if (m) return m[1];
+        m = url.match(/[?&]v=([\w-]{11})/);       if (m) return m[1];
+        m = url.match(/youtube\.com\/embed\/([\w-]{11})/);  if (m) return m[1];
+        m = url.match(/youtube\.com\/shorts\/([\w-]{11})/); if (m) return m[1];
+        return null;
+    }
+
+    async function _wbResolvePrimaryUrl(songId) {
+        // North Star (explicit isNorthStar) wins; otherwise highest
+        // vote-count YouTube reference; otherwise first version with a URL.
+        try {
+            if (typeof loadRefVersions !== 'function') return null;
+            var versions = await loadRefVersions(songId) || [];
+            if (!versions.length) return null;
+            var ns = versions.find(function(v) { return v && v.isNorthStar === true; });
+            if (ns && ns.url) return ns.url;
+            // Sort by votes desc; pick the first YouTube (player engine
+            // can play YT directly).
+            var sorted = versions.slice().sort(function(a, b) {
+                var va = a.votes ? Object.keys(a.votes).filter(function(k){return a.votes[k];}).length : 0;
+                var vb = b.votes ? Object.keys(b.votes).filter(function(k){return b.votes[k];}).length : 0;
+                return vb - va;
+            });
+            for (var i = 0; i < sorted.length; i++) {
+                var url = sorted[i].url || sorted[i].spotifyUrl || '';
+                if (url && /youtu/.test(url)) return url;
+            }
+            // No YouTube — return whatever we have first (Spotify will be
+            // handled by switchToSource fallback).
+            return sorted[0].url || sorted[0].spotifyUrl || null;
+        } catch (e) { return null; }
+    }
 
     // Subtle hint: "Need chords? View Chart" — surfaces below the player
     // for users who think "I want the chart" without scanning lens tabs.

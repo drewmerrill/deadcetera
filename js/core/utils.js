@@ -100,9 +100,30 @@ window.extractSpotifyTrackId = function extractSpotifyTrackId(url) {
  *   → tries spotify:track:abc123 first (opens Spotify app directly)
  *   → falls back to web URL after a short delay
  */
-window.openMusicLink = function openMusicLink(url) {
+window.openMusicLink = function openMusicLink(url, opts) {
     if (!url) return;
+    opts = opts || {};
     var lower = url.toLowerCase();
+
+    // YouTube → in-app floating player. Per the GrooveLinx Player Layer
+    // spec (2026-05-10): never leave the app during practice. Falls back
+    // to window.open only if the engine isn't loaded yet (e.g. settings
+    // page where the player infra isn't bootstrapped).
+    var ytId = _extractYouTubeId(url);
+    if (ytId && window.GLPlayerEngine && window.GLPlayerUI) {
+        try {
+            var title = opts.title || '';
+            var song = { title: title || ('YouTube · ' + ytId), youtubeId: ytId };
+            window.GLPlayerEngine.loadQueue([song], { name: title || 'YouTube' });
+            // Engine resolves async; show the float UI immediately so the
+            // user sees the surface as soon as they click.
+            window.GLPlayerUI.showFloat({ size: opts.size || 'medium' });
+            window.GLPlayerEngine.play(0);
+            return;
+        } catch (e) {
+            console.warn('[openMusicLink] in-app player failed, falling back:', e);
+        }
+    }
 
     // Spotify: convert web URL to app deep link
     if (lower.includes('spotify.com/track/')) {
@@ -121,6 +142,19 @@ window.openMusicLink = function openMusicLink(url) {
     // Everything else: open directly
     window.open(url, '_blank');
 };
+
+// Pull a YouTube video id from any of the common URL forms:
+// youtu.be/ID, youtube.com/watch?v=ID, youtube.com/embed/ID,
+// youtube.com/shorts/ID. Returns null when no match.
+function _extractYouTubeId(url) {
+    if (!url) return null;
+    var m;
+    m = url.match(/youtu\.be\/([\w-]{11})/); if (m) return m[1];
+    m = url.match(/[?&]v=([\w-]{11})/);       if (m) return m[1];
+    m = url.match(/youtube\.com\/embed\/([\w-]{11})/);  if (m) return m[1];
+    m = url.match(/youtube\.com\/shorts\/([\w-]{11})/); if (m) return m[1];
+    return null;
+}
 
 function _tryDeepLink(deepUrl, fallbackUrl) {
     // On mobile, try the deep link directly
