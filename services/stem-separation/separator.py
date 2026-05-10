@@ -139,7 +139,11 @@ def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
                 "no_warnings": True,
                 "noplaylist": True,
                 "nocheckcertificate": True,
-                "format": "bestaudio/best",
+                # Lenient format chain. YouTube has been restricting
+                # `bestaudio/best` for non-Premium clients on some videos
+                # ("Requested format is not available"). Walk down: any audio,
+                # then mp4 audio, then any combined, then anything.
+                "format": "bestaudio/best/bestaudio*/b",
                 # Match a real Chrome on macOS UA. yt-dlp's default UA is
                 # detected by some YouTube anti-bot heuristics. Cheap belt
                 # alongside the cookies + proxy braces.
@@ -149,6 +153,16 @@ def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
                         "Chrome/126.0.0.0 Safari/537.36"
                     ),
+                },
+                # Ask yt-dlp to try multiple YouTube player clients. The
+                # web client is the most format-restricted; android and ios
+                # often see audio-only formats the web client doesn't, and
+                # tv_embedded works on age-gated content. Order matters —
+                # yt-dlp tries them top-down until one yields formats.
+                "extractor_args": {
+                    "youtube": {
+                        "player_client": ["android", "ios", "web", "tv_embedded"],
+                    },
                 },
             }
             # YouTube cookies (auth) — when present, yt-dlp acts as a
