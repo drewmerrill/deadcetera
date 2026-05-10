@@ -40,6 +40,52 @@ import modal
 app = modal.App("groovelinx-stem-separator")
 
 
+def _get_youtube_cookies_path():
+    """Decode YOUTUBE_COOKIES_BASE64 secret to a temp Netscape cookies.txt file.
+
+    Returns the file path, or None if the secret is unset / unreadable.
+    Cookies are decoded fresh per call (no caching) — function lifetime is
+    short and the secret is small. Caller is responsible for cleanup if it
+    cares; the temp file lives until the Modal container scales down.
+
+    Cookie source workflow (Drew, run on your Mac):
+        # Install yt-dlp locally if you don't have it
+        brew install yt-dlp
+        # Export YouTube cookies from your default browser
+        yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt \\
+               --skip-download "https://www.youtube.com/"
+        # Encode for Modal secret (one line, no newline)
+        base64 -i /tmp/yt.txt | pbcopy
+        # Paste into Modal dashboard:
+        #   Secrets → groovelinx-stems → Add field
+        #   Key: YOUTUBE_COOKIES_BASE64
+        #   Value: <paste>
+        # Re-deploy not needed — function reads env on each call.
+
+    Cookies typically last 1-3 months before YouTube rotates session tokens.
+    When yt-dlp starts failing again with "Sign in to confirm you're not a
+    bot", refresh the cookies and update the secret.
+    """
+    import base64
+    import tempfile
+
+    cookies_b64 = os.environ.get("YOUTUBE_COOKIES_BASE64", "").strip()
+    if not cookies_b64:
+        return None
+    try:
+        cookies_data = base64.b64decode(cookies_b64)
+    except Exception as e:
+        print(f"[Cookies] Failed to decode YOUTUBE_COOKIES_BASE64: {e}")
+        return None
+    if not cookies_data or len(cookies_data) < 50:
+        print(f"[Cookies] YOUTUBE_COOKIES_BASE64 decoded to suspiciously small payload ({len(cookies_data)} bytes) — ignoring")
+        return None
+    f = tempfile.NamedTemporaryFile(suffix=".txt", delete=False, prefix="ytcookies_")
+    f.write(cookies_data)
+    f.close()
+    return f.name
+
+
 def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
     """Fetch audio bytes from a URL.
 
@@ -81,7 +127,29 @@ def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
                 "noplaylist": True,
                 "nocheckcertificate": True,
                 "format": "bestaudio/best",
+                # Match a real Chrome on macOS UA. yt-dlp's default UA is
+                # detected by some YouTube anti-bot heuristics. Cheap belt
+                # alongside the cookies + proxy braces.
+                "http_headers": {
+                    "User-Agent": (
+                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/126.0.0.0 Safari/537.36"
+                    ),
+                },
             }
+            # YouTube cookies (auth) — when present, yt-dlp acts as a
+            # logged-in browser session and YouTube's "Sign in to confirm
+            # you're not a bot" challenge essentially disappears. See
+            # _get_youtube_cookies_path docstring for export workflow.
+            # Cookies are independent of and complement the proxy below
+            # (cookies authenticate; proxy rotates IP).
+            cookies_path = _get_youtube_cookies_path()
+            if cookies_path:
+                ydl_opts["cookiefile"] = cookies_path
+                print(f"{log_prefix} yt-dlp using authenticated YouTube cookies")
+            else:
+                print(f"{log_prefix} yt-dlp running ANONYMOUSLY — no YOUTUBE_COOKIES_BASE64 secret set; expect bot challenges")
             # Sticky-session residential proxy — YouTube signs audio URLs
             # against the manifest-fetch IP, so all requests in one
             # extraction must share an exit IP. country-us also gives
@@ -103,6 +171,18 @@ def _fetch_audio_bytes(source_url: str, log_prefix: str = "[Audio]") -> bytes:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.extract_info(source_url, download=True)
             except Exception as e:
+                err_str = str(e)
+                # Detect the specific YouTube bot challenge so the surfaced
+                # error tells the user (Drew) what to refresh, instead of a
+                # generic dump of yt-dlp's wall of text.
+                if "Sign in to confirm" in err_str or "not a bot" in err_str:
+                    cookie_status = "WITH cookies (likely expired — refresh)" if cookies_path else "WITHOUT cookies (set YOUTUBE_COOKIES_BASE64 secret)"
+                    raise RuntimeError(
+                        f"YouTube bot challenge — running {cookie_status}. "
+                        f"Refresh: yt-dlp --cookies-from-browser chrome --cookies /tmp/yt.txt --skip-download 'https://www.youtube.com/' "
+                        f"then base64 -i /tmp/yt.txt | pbcopy and update Modal secret groovelinx-stems → YOUTUBE_COOKIES_BASE64. "
+                        f"Original: {err_str[:200]}"
+                    )
                 raise RuntimeError(
                     f"yt-dlp could not extract audio from {source_url[:80]}: {e}"
                 )
