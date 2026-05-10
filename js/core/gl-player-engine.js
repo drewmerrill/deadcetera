@@ -402,10 +402,21 @@ window.GLPlayerEngine = (function() {
                     _emit('status', { message: 'Spotify Connect error — trying fallback' });
                 }
             } else {
-                // No Connect device — Spotify app likely force-quit.
-                // Phase 4 UI listens for this to show "Open Spotify" CTA.
+                // No Connect device — Spotify app force-quit or never opened.
+                // Emit the wake CTA AND stop here. Falling through to SDK or
+                // embed would (a) overwrite the wake CTA with the broken-on-
+                // iOS SDK UI or the "open in Spotify" embed link that
+                // deeplinks the user OUT of GrooveLinx — which defeats the
+                // whole point of routing through Connect on iOS.
+                // Bug surfaced by Drew testing Ain't Life Grand on iPhone
+                // 2026-05-10: embed fallback was kicking in after needsSpotifyApp
+                // emit, taking him out of the app entirely.
+                _activeMethod = null;
+                _activeDeviceId = null;
+                _setState(State.IDLE, { source: 'spotify', method: 'awaiting_spotify_app' });
                 _emit('needsSpotifyApp', { trackId: trackId });
-                console.log('[GLPlayer] iOS but no Connect device — falling through to SDK/embed');
+                console.log('[GLPlayer] iOS Spotify route: no Connect device, showing wake CTA, NOT falling through');
+                return;
             }
         }
 
