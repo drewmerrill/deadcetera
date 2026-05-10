@@ -344,24 +344,24 @@ window.GLSpotifyConnect = (function() {
   // Launches the Spotify app via spotify:// URI scheme. User comes back to
   // GL via app switcher. We can then re-discover devices.
   //
-  // Use the hidden-iframe technique on iOS Safari: navigating
-  // window.location.href = 'spotify://' would replace the GL tab's URL and
-  // could lose state if the user comes back. Iframe invokes the URI handler
-  // without touching the host page. Falls back to web open for non-iOS.
+  // History: tried hidden-iframe first (older iOS technique). Modern iOS
+  // Safari (14+) silently blocks programmatic iframe URI scheme invocations
+  // unless they originate from a direct user gesture — Drew confirmed
+  // 2026-05-10 that the iframe approach did nothing on iPhone.
+  //
+  // Reliable modern approach: direct window.location.href = 'spotify://'
+  // inside the click handler. iOS sees a user-gesture-triggered navigation
+  // to a custom URI scheme, activates the registered app handler (Spotify),
+  // and BECAUSE the navigation never actually completes in Safari (the OS
+  // intercepts the scheme), the GL tab's content is preserved. User comes
+  // back via app switcher and finds GL exactly where they left it.
   function openSpotifyApp() {
-    if (isIOSPlatform()) {
-      try {
-        var iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;top:-9999px;border:0';
-        iframe.src = 'spotify://';
-        document.body.appendChild(iframe);
-        setTimeout(function() { try { iframe.remove(); } catch(e) {} }, 200);
-        return;
-      } catch(e) {}
+    try {
+      window.location.href = 'spotify://';
+    } catch(e) {
+      // Last-resort fallback for environments without spotify:// handler
+      window.open('https://open.spotify.com', '_blank');
     }
-    // Non-iOS or iframe failed: try direct nav, else open web
-    try { window.location.href = 'spotify://'; }
-    catch(e) { window.open('https://open.spotify.com', '_blank'); }
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
