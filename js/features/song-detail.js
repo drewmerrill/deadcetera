@@ -1850,7 +1850,12 @@ function _sdRenderStemsSetup(title) {
         '<input id="sdStemsSourceUrl" class="app-input" placeholder="YouTube, SoundCloud, Bandcamp, or direct mp3/wav/m4a/flac" style="width:100%;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text);padding:8px;font-size:0.85em;box-sizing:border-box">' +
         '<div style="font-size:0.7em;color:var(--text-dim);margin-top:6px">Works with most streaming sites. <b>Spotify</b> is the exception — DRM blocks ripping.</div>' +
       '</div>' +
-      '<button onclick="_sdRunStemSeparation(\'' + safeSong + '\')" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;width:100%;margin-bottom:14px">▶ Separate from URL</button>' +
+      '<button onclick="_sdRunStemSeparation(\'' + safeSong + '\')" style="background:rgba(102,126,234,0.18);color:#a5b4fc;border:1px solid rgba(102,126,234,0.35);padding:11px 16px;border-radius:8px;font-weight:700;cursor:pointer;width:100%;margin-bottom:8px">▶ Separate from URL</button>' +
+      // Pan check — quick pre-separation analysis. Lets the user see if
+      // the source has clear L/R panning (common on 60s/70s recordings)
+      // before committing to the full GPU-cost Demucs run.
+      '<button onclick="_sdRunPanCheck()" style="background:rgba(34,211,238,0.1);color:#67e8f9;border:1px solid rgba(34,211,238,0.3);padding:8px 12px;border-radius:8px;font-size:0.82em;cursor:pointer;width:100%;margin-bottom:14px">🎧 Check pan distribution first (no separation, ~10s)</button>' +
+      '<div id="sdPanCheckResult" style="margin-bottom:14px"></div>' +
       // ── File upload (alternative — for offline audio) ───────────────────
       '<div style="padding:10px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,0.02)">' +
         '<label style="font-size:0.78em;font-weight:700;color:var(--text-muted);display:block;margin-bottom:6px">Or upload an audio file</label>' +
@@ -1993,6 +1998,38 @@ window._sdRunStemSeparation = async function(title) {
     var url = input ? input.value.trim() : '';
     if (!url) { alert('Paste an audio URL or pick a Best Shot take.'); return; }
     _sdRunStemSeparationFromTake(title, { sourceUrl: url, sourceLabel: 'URL', model: _sdStemsSelectedModel() });
+};
+
+// Pre-separation pan analysis. Shows the energy-by-pan-position
+// histogram so the user can decide if spatial split is a viable
+// path BEFORE paying for a full Demucs GPU run. Useful on old
+// stereo recordings where instruments are hard-panned.
+window._sdRunPanCheck = async function() {
+    var input = document.getElementById('sdStemsSourceUrl');
+    var url = input ? input.value.trim() : '';
+    if (!url) { alert('Paste an audio URL first (in the box above).'); return; }
+    var result = document.getElementById('sdPanCheckResult');
+    if (!result) return;
+    result.innerHTML = '<div style="font-size:0.78em;color:var(--text-dim);text-align:center;padding:12px;border:1px dashed var(--border);border-radius:8px">⏳ Fetching + analyzing pan distribution… (~10–60s incl. download)</div>';
+    try {
+        if (!window.GLStems || !GLStems.analyzePan) throw new Error('Pan analysis unavailable (GLStems.analyzePan missing)');
+        var data = await GLStems.analyzePan(url);
+        if (!data || !data.histogram) throw new Error('No histogram returned');
+        result.innerHTML =
+            '<div style="padding:10px;border:1px solid rgba(34,211,238,0.25);border-radius:8px;background:rgba(34,211,238,0.04)">' +
+              '<div style="font-size:0.78em;font-weight:700;color:#67e8f9;margin-bottom:6px">🎧 Pan-energy histogram</div>' +
+              '<canvas id="sdPanCheckCanvas" width="400" height="80" style="width:100%;height:80px;background:rgba(0,0,0,0.25);border-radius:6px;display:block"></canvas>' +
+              '<div style="display:flex;justify-content:space-between;font-size:0.66em;color:var(--text-dim);margin-top:4px"><span>Hard L</span><span>C</span><span>Hard R</span></div>' +
+              '<div style="font-size:0.74em;color:var(--text-muted);margin-top:10px;line-height:1.5">' +
+                '<b>How to read it:</b> tall bars off-center mean an instrument is panned there. ' +
+                'Distinct L/R peaks (common on 60s–70s mixes) → spatial split after a Demucs pass can extract those instruments cleanly. ' +
+                'Everything piled at center → it\'s a mono-leaning mix; Demucs alone is your best option.' +
+              '</div>' +
+            '</div>';
+        _sdRenderSpatialHistogram(data.histogram, 'sdPanCheckCanvas');
+    } catch (e) {
+        result.innerHTML = '<div style="font-size:0.78em;color:#fca5a5;padding:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:8px">Pan check failed: ' + _sdEsc(e.message || String(e)) + '</div>';
+    }
 };
 
 async function _sdRunStemSeparationFromTake(title, opts) {
@@ -2968,8 +3005,8 @@ function _sdUpdateZoneBand(i) {
     band.style.width = (hi - lo) + '%';
 }
 
-function _sdRenderSpatialHistogram(hist) {
-    var canvas = document.getElementById('sdSpHistCanvas');
+function _sdRenderSpatialHistogram(hist, canvasId) {
+    var canvas = document.getElementById(canvasId || 'sdSpHistCanvas');
     if (!canvas || !hist || !hist.length) return;
     var ctx = canvas.getContext('2d');
     var W = canvas.width;
@@ -4161,6 +4198,76 @@ function _sdInitStemsPlayer() {
 }
 
 window._sdPopulateListenLensPublic = function(title) { _sdPopulateListenLens(title); };
+
+// Render the All Versions card body — list every saved version with vote
+// chips per band member. Sort by votes desc, then recency desc. The
+// explicit isNorthStar flag gets a visual highlight; voting is band
+// democracy and orthogonal to the explicit pick.
+function _sdRenderAllVersionsList(title, refs) {
+    var safeSong = title.replace(/'/g, "\\'");
+    if (!refs || !refs.length) {
+        return '<div style="color:var(--text-dim);font-size:0.85em">No versions saved yet — Open Version Hub above to add one.</div>';
+    }
+    var members = (typeof bandMembers !== 'undefined' && bandMembers) ? bandMembers : {};
+    var memberEmails = Object.keys(members);
+    if (!memberEmails.length) {
+        return '<div style="color:var(--text-dim);font-size:0.85em">Band roster not loaded yet — try refreshing.</div>';
+    }
+    var sorted = refs.map(function(v, i) { return { v: v, idx: i }; });
+    sorted.sort(function(a, b) {
+        var va = a.v.votes ? Object.keys(a.v.votes).filter(function(k){return a.v.votes[k];}).length : 0;
+        var vb = b.v.votes ? Object.keys(b.v.votes).filter(function(k){return b.v.votes[k];}).length : 0;
+        if (vb !== va) return vb - va;
+        return _sdVersionTime(b.v) - _sdVersionTime(a.v);
+    });
+    return sorted.map(function(entry) {
+        var v = entry.v;
+        var origIdx = entry.idx;
+        var voteCount = v.votes ? Object.keys(v.votes).filter(function(k){return v.votes[k];}).length : 0;
+        var isStar = v.isNorthStar === true;
+        var titleStr = v.fetchedTitle || v.title || 'Untitled';
+        var chips = memberEmails.map(function(email) {
+            var member = members[email] || {};
+            var voted = !!(v.votes && v.votes[email]);
+            var name = member.name || email.split('@')[0];
+            var bg = voted ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.04)';
+            var fg = voted ? '#86efac' : 'var(--text-dim)';
+            var bd = voted ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.1)';
+            return '<span onclick="_sdToggleVersionVote(\''+safeSong+'\','+origIdx+',\''+email.replace(/'/g,"\\'")+'\')" title="Toggle '+_sdEsc(name)+'’s vote" style="cursor:pointer;display:inline-flex;align-items:center;gap:3px;padding:4px 9px;border-radius:12px;font-size:0.72em;font-weight:600;background:'+bg+';color:'+fg+';border:1px solid '+bd+';white-space:nowrap">'+(voted?'✓ ':'')+_sdEsc(name)+'</span>';
+        }).join('');
+        return '<div style="margin-bottom:10px;padding:10px;border:1px solid '+(isStar?'rgba(102,126,234,0.4)':'var(--border)')+';border-radius:8px;background:'+(isStar?'rgba(102,126,234,0.06)':'rgba(255,255,255,0.02)')+'">'+
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'+
+            (isStar?'<span title="North Star (explicitly chosen)" style="font-size:1.05em">⭐</span>':'')+
+            '<div style="flex:1;min-width:0;font-size:0.84em;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_sdEsc(titleStr)+'</div>'+
+            '<div style="font-size:0.7em;color:var(--text-dim);font-weight:700;flex-shrink:0">'+voteCount+' '+(voteCount===1?'vote':'votes')+'</div>'+
+          '</div>'+
+          (v.url?'<div style="font-size:0.66em;color:var(--text-dim);margin-bottom:6px;word-break:break-all;opacity:0.7">'+_sdEsc(v.url)+'</div>':'')+
+          '<div style="font-size:0.66em;color:var(--text-muted);margin-bottom:4px">Tap a name to vote:</div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:4px">'+chips+'</div>'+
+        '</div>';
+    }).join('');
+}
+
+// Toggle a single member's vote on a version. Re-renders the Listen
+// lens so vote counts + ordering refresh. Mirrors the legacy
+// toggleRefVote in app.js but is scoped to the new Workbench surface
+// and re-renders the right container.
+window._sdToggleVersionVote = async function(songTitle, versionIndex, voterEmail) {
+    if (typeof requireSignIn === 'function' && !requireSignIn()) return;
+    try {
+        var versions = (typeof loadRefVersions === 'function') ? (await loadRefVersions(songTitle) || []) : [];
+        if (!versions[versionIndex]) return;
+        if (!versions[versionIndex].votes) versions[versionIndex].votes = {};
+        versions[versionIndex].votes[voterEmail] = !versions[versionIndex].votes[voterEmail];
+        versions[versionIndex].totalVotes = Object.values(versions[versionIndex].votes).filter(function(v){return v;}).length;
+        if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
+        if (typeof _sdPopulateListenLensPublic === 'function') _sdPopulateListenLensPublic(songTitle);
+    } catch (e) {
+        console.error('[sd] vote toggle failed:', e);
+        if (typeof showToast === 'function') showToast('Vote save failed: ' + (e.message || e));
+    }
+};
+
 async function _sdPopulateListenLens(title) {
     var panel=(_sdContainer||document).querySelector('.sd-lens-panel[data-lens="listen"]');
     if (!panel) return;
@@ -4231,6 +4338,9 @@ async function _sdPopulateListenLens(title) {
           '</div>')
         :'<div style="color:var(--text-dim);font-size:0.85em;display:flex;align-items:center;justify-content:space-between;gap:10px">No recording yet<button onclick="addBestShotTake(\''+title.replace(/'/g,"\\'")+'\');" class="btn btn-sm" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);font-size:0.82em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0">\uD83D\uDCE4 Upload Take</button></div>';
 
+    // refs is var-hoisted from inside the try; defensive fallback covers the
+    // case where the load threw and refs never got assigned.
+    var allVersionsHTML = _sdRenderAllVersionsList(title, (typeof refs !== 'undefined' && refs) ? refs : []);
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
         '<div class="sd-card"><div class="sd-card-title">🔍 Find a Version</div>'+
@@ -4238,6 +4348,7 @@ async function _sdPopulateListenLens(title) {
         '<button class="btn btn-primary" onclick="launchVersionHub()" style="width:100%;padding:13px;font-size:0.95em;background:linear-gradient(135deg,#667eea,#764ba2)">🔍 Open Version Hub</button></div>'+
         '<div class="sd-card"><div class="sd-card-title">⭐ North Star <span class="sd-title-badge">Reference</span></div>'+nsHTML+'</div>'+
         '<div class="sd-card"><div class="sd-card-title">🏆 Best Shot <span class="sd-title-badge sd-title-badge--gold">Our Recording</span></div>'+bsHTML+'</div>'+
+        '<div class="sd-card"><div class="sd-card-title">🗳 All Versions <span class="sd-title-badge">Band Vote</span></div>'+allVersionsHTML+'</div>'+
         '</div>';
 }
 
