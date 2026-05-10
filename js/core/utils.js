@@ -162,9 +162,21 @@ function _tryDeepLink(deepUrl, fallbackUrl) {
         window.location.href = deepUrl;
         // If the app doesn't handle it within 1.5s, fall back to web
         setTimeout(function() { window.open(fallbackUrl, '_blank'); }, 1500);
-    } else {
-        // Desktop: open web URL but with intent to trigger app handler
-        // Most desktop Spotify installs register open.spotify.com as a protocol handler
+        return;
+    }
+    // Desktop: hand off to the OS-registered protocol handler (spotify://)
+    // via a hidden iframe so the page itself doesn't navigate AND we never
+    // spawn a Web Player (Chrome) tab. Spawning that tab is what causes
+    // Spotify desktop to "follow" the web player as the active device,
+    // producing the green "playing in Web Player" bar and a stuttery start.
+    try {
+        var f = document.createElement('iframe');
+        f.style.display = 'none';
+        f.src = deepUrl;
+        document.body.appendChild(f);
+        setTimeout(function() { try { f.remove(); } catch (e) {} }, 2000);
+    } catch (e) {
+        // If iframe trick is blocked, fall back to web URL — better than nothing.
         window.open(fallbackUrl, '_blank');
     }
 }
