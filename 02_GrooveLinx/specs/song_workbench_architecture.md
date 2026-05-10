@@ -1,6 +1,6 @@
 # Song Workbench — Architecture + UX Spec
 
-**Version:** v0.1 (initial draft, 2026-05-10)
+**Version:** v0.2 (refined, 2026-05-10 PM)
 **Status:** Spec-only. No code changes yet.
 **Audience:** Drew, ChatGPT, future-Claude implementing migrations
 **Predecessors / required reading:**
@@ -8,6 +8,18 @@
 - `02_GrooveLinx/specs/groovelinx-ui-principles.md` — UI rules
 - `CLAUDE.md` SYSTEM LOCKs §7
 - `02_GrooveLinx/specs/multitrack_reaper_export_checklist.md` — multitrack ingest
+
+## Changelog
+
+**v0.2 (2026-05-10 PM)** — refinements per ChatGPT review:
+1. **Stems demoted from top-level mode → sub-mode toggle inside Practice** (§2: 4 modes now, not 5; §2.1 absorbs stems content; mode parity matrix updated)
+2. **`INTENTS.REVIEW` formalized** with explicit capabilities + events list (§4.5 new); multitrack player must conform (§10 Phase 2 task)
+3. **Notes vs Tasks distinction** made explicit (§5.4 new): notes = observation, tasks = action. Tasks always originate from a note or explicit user action and carry a back-ref. PracticeTask shape locked.
+4. **Right rail behavior clarified** (§3.8 new): desktop always-visible; tablet/mobile peek-button; never collapses below body
+5. **Empty state defined per mode** (§2.X.empty for Practice, Rehearsal, Gig, Review)
+6. **Primary Action per mode** (§2.X.primary): the one action UI must emphasize
+
+Unchanged: core Workbench concept (§1), migration plan (§10), PlayerEngine contract usage (§4.1), GLNotes strategy (§5.1-5.3).
 
 ---
 
@@ -70,82 +82,83 @@ The Workbench is for **one song at a time**. The list/index pages stay as naviga
 
 ## 2 · Modes
 
-Five canonical modes. Each maps to a `PlayerContract.INTENTS` value where applicable.
+**Four** canonical modes (v0.2 — was 5; Stems collapsed into Practice as a sub-mode toggle). Each maps to a `PlayerContract.INTENTS` value.
 
 | Mode | INTENTS | Primary intent | Body |
 |---|---|---|---|
-| **Practice** | `STUDY` | "Learn or polish this song alone" | Chart + part-isolation player + section loop |
-| **Stems** | `STUDY` | "Hear individual instruments" | Multi-track stems mixer (Demucs-separated) |
+| **Practice** | `STUDY` | "Learn or polish this song alone" | Chart + part-isolation player + section loop. **Sub-toggle:** Chart view (default) ↔ Stems view (full mixer) |
 | **Rehearsal** | `PERFORM` | "Lead the band through this song right now" | Big-text chart + live transitions + RSVP-aware band hints |
 | **Gig** | `BROWSE` (lock) | "Play the chart on stage" | Full-screen chart + auto-scroll + minimal touch surface |
-| **Review** | (no playback intent — render-only) | "Look at what we recorded" | Multitrack player OR session timeline + comments |
+| **Review** | `REVIEW` | "Look at what we recorded" | Multitrack player OR session timeline + comments |
+
+**Why Stems isn't its own mode:** the user intent for Stems is the same as Practice — learn or polish a song alone. The mixer is a TOOL within that intent, not a different intent. Forcing it as a top-level tab made the mode strip noisier without giving Stems a separate user-meaning. Sub-toggle keeps the surface area discoverable + uncluttered.
 
 ### Per-mode breakdown
 
 #### 2.1 Practice mode
 
 - **Primary intent:** solo learning or polishing. "I want to nail the bridge."
-- **Default body:** chart with optional auto-scroll, single audio source (preferred reference recording or stems if available)
-- **Visible UI:** chart, playhead position, loop region, part-isolation toggle (mute lead/bass/drums to play along), section nav, transcribe-this-section helper
+- **PRIMARY ACTION:** play/pause the current section (or active loop). The big play button is the visual focal point. Everything else is secondary.
+- **Default body:** chart with optional auto-scroll, single audio source (preferred reference recording).
+- **Sub-mode toggle (v0.2):** small segmented control at top of body — `[ Chart ✓ ] [ Stems ]`. Chart view is default. Stems view replaces the chart with the full mixer (per-stem volume + mute + solo + pan, count-in toggle, fullscreen). Loop region + playhead survive the toggle.
+- **Visible UI:** chart (or stems mixer in stems sub-mode), playhead position, loop region, part-isolation toggle (mute lead/bass/drums to play along — exposed in both sub-views), section nav, transcribe-this-section helper, recommended PracticeTask chips for this song
 - **Hidden UI:** band-coordination affordances, gig timer, setlist next-up
-- **Primary actions:** play/pause, set loop in/out, toggle mute-stem, jump to next section, take a note on a chord/line
-- **Player engine:** `INTENTS.STUDY` resolves to `gl-stems-engine-contract.js` if stems exist for the song; else falls back to `INTENTS.QUEUE` with a single-song queue
-- **Persistence:** PracticeSession (mode='practice', section, lastPosition, mutedStems)
+- **Secondary actions:** play/pause, set loop in/out, toggle mute-stem, jump to next section, take a note on a chord/line, mark a PracticeTask resolved
+- **Player engine:** `INTENTS.STUDY` resolves to `gl-stems-engine-contract.js` if stems exist for the song; else falls back to `INTENTS.QUEUE` with a single-song queue. Sub-mode toggle just changes BODY rendering, not engine choice — same engine plays whether you see the mixer or the chart.
+- **Notes scopes:** `chart` (line/chord), `stem` (timestamp + stemId — written when a note is added in Stems sub-view), `personal`
+- **Persistence:** PracticeSession (mode='practice', subMode='chart'|'stems', section, lastPosition, mutedStems, soloed, loop)
+- **Empty state:** "This song has no chart or reference recording yet. Add a chart from the song detail page, or import a reference audio source." Single CTA: "Open song setup."
 
-#### 2.2 Stems mode
-
-- **Primary intent:** isolate or remove specific instruments. "Mute drums, hear what bass is doing."
-- **Default body:** Stems mixer (existing `_sdStemsAPI` accessor surface in `song-detail.js`, wrapped via `gl-stems-engine-contract.js`)
-- **Visible UI:** per-stem volume + mute + solo + pan, master scrub, count-in toggle, loop in/out, fullscreen toggle
-- **Hidden UI:** chart (collapsed to a thin overlay), gig affordances
-- **Primary actions:** mute/solo a stem, scrub, set loop, mark a moment with a note (anchors timestamp + stem identity to GLNotes)
-- **Player engine:** `INTENTS.STUDY` → Stems mixer
-- **Notes scope:** new `stem` scope (currently defined but unwritten — Workbench activates it)
-- **Persistence:** PracticeSession (mode='stems', mutedStems, soloed, lastPosition, loop)
-
-#### 2.3 Rehearsal mode
+#### 2.2 Rehearsal mode
 
 - **Primary intent:** "I'm leading the band through this right now in our practice space."
+- **PRIMARY ACTION:** big play / pause. Maximally tappable, screen-center. Section jump is one tap away but visually secondary.
 - **Default body:** big-text chart, today's setlist context, who's available
 - **Visible UI:** chart with chord-only / lyrics-only toggle, "next up" peek if in a setlist context, transition reminder ("→ Sugaree, 1 bar piano fill"), avatar dock for band members present, big play/pause + section jump
 - **Hidden UI:** stems mixer (rehearsal isn't for studying), task creation UI (rehearsal is for execution; tasks come up in Review)
-- **Primary actions:** big play, big pause, jump to section, "this transition needs work" tag (creates a Task in the Review/Rehearsal page), attendance toggle
+- **Secondary actions:** jump to section, "this transition needs work" tag (creates a Note that the user can promote to a Task; see §5.4), attendance toggle
 - **Player engine:** `INTENTS.PERFORM` → `GLPlayerEngine` (queue + playback)
 - **Persistence:** PracticeSession (mode='rehearsal', section, lastPosition) + RehearsalEventContext (which session, which plan)
+- **Empty state:** "No active rehearsal context. Pick a setlist or open today's rehearsal plan from the Rehearsal page." Single CTA: "Open Rehearsal page."
 
-#### 2.4 Gig mode
+#### 2.3 Gig mode
 
 - **Primary intent:** "I'm on stage. Show me the chart. Touch nothing else."
+- **PRIMARY ACTION:** auto-scroll toggle. One tap starts/stops scrolling at the saved per-song speed. NOTHING ELSE on screen competes for attention.
 - **Default body:** full-screen chart with locked primary version
 - **Visible UI:** chart, auto-scroll speed control (single tap), section markers, BPM, key
-- **Hidden UI:** EVERYTHING else — no notes UI, no GrooveMate, no nav rail, no tabs. Per `feedback_one_job_per_screen.md`.
-- **Primary actions:** tap to start auto-scroll, tap section to jump, swipe for next song
+- **Hidden UI:** EVERYTHING else — no notes UI, no GrooveMate, no nav rail, no tabs, no Workbench mode tabs (gig mode hides them). Per `feedback_one_job_per_screen.md`.
+- **Secondary actions:** tap section to jump, swipe for next song
 - **Player engine:** `INTENTS.BROWSE` → `setlist-player.js` (already locks primary version when in gig context)
 - **Constraints:** must respect `LOCK_PRIMARY_VERSION` capability; must use `AUTOPLAY_WATCHDOG` (D6 fix); must surface `NOW_PLAYING_BAR` so the band knows what's playing without blocking the chart
 - **Persistence:** minimal — gig progress is captured by the SetlistPlayer; the workbench just mounts it
+- **Empty state:** "This song has no chart. Add one before the gig — you don't want to learn that on stage." Single CTA: "Open Practice mode to add chart now."
 
-#### 2.5 Review mode
+#### 2.4 Review mode
 
 - **Primary intent:** "What happened the last time we played this song? Where were we tight, where were we sloppy?"
+- **PRIMARY ACTION:** add comment. The composer is sticky-bottom and always 1 tap away. Reviewing without commenting is wasted time — the UI biases toward capture.
 - **Default body:** if a multitrack session contains this song → multitrack player rooted at the song's section in the recording. Else the segmented Demucs-style timeline.
 - **Visible UI:** waveform/timeline, comment markers, comment composer + list (Phase B+ shipped), per-track mute/solo if multitrack, segment markers if single-file
 - **Hidden UI:** chart (Review is about audio, not score), live affordances
-- **Primary actions:** scrub, comment, tag (rushed/dragged/etc.), filter by member or by track, export digest
-- **Player engine:** custom — no single PlayerEngine contract intent (Review playback is multi-source: multitrack stems OR Demucs segmented)
-- **Persistence:** comments at `rehearsal_sessions/{sessionId}/comments/{commentId}`; song-level link is the song-context filter
+- **Secondary actions:** scrub, tag (rushed/dragged/etc.), filter by member or by track, export digest, **🎯 Practice this** on any comment (creates a PracticeTask — see §5.4)
+- **Player engine:** `INTENTS.REVIEW` (newly defined — see §4.5) → multitrack engine adapter (to build, mirrors C.3 wrap pattern) OR Demucs segmented timeline
+- **Persistence:** comments at `rehearsal_sessions/{sessionId}/comments/{commentId}`; song-level link is the song-context filter; PracticeTasks at `bands/{slug}/practice_tasks/{taskId}` (see §5.4)
+- **Empty state:** "No rehearsal recordings for this song yet. Record on Monday and import via the multitrack pipeline." Single CTA: "Multitrack recording guide" → opens `multitrack_reaper_export_checklist.md` viewer.
 
 ### Mode parity matrix
 
-What's available across modes:
+What's available across modes (v0.2 — Stems collapsed into Practice as sub-mode):
 
-| Capability | Practice | Stems | Rehearsal | Gig | Review |
+| Capability | Practice (chart) | Practice (stems sub) | Rehearsal | Gig | Review |
 |---|---|---|---|---|---|
 | Chart | ✓ | ◐ overlay | ✓ | ✓ | ✗ |
 | Stems mixer | ✗ | ✓ | ✗ | ✗ | ◐ if multitrack |
-| Comments / notes | chord+line | timestamp+stem | rehearsal-issue | ✗ | timestamp |
-| Loop | ✓ | ✓ | ◐ section | ✗ | ✗ |
-| GrooveMate | ✓ | ✓ | ◐ subtle | ✗ | ✓ |
-| Right rail visible | ✓ | ✓ | ◐ collapsed | ✗ hidden | ✓ |
+| Comments / notes | chord+line | timestamp+stem | rehearsal-issue note | ✗ | timestamp+track |
+| Loop | ✓ | ✓ (shared with chart sub-mode) | ◐ section | ✗ | ✗ |
+| Tasks | ◐ recommended chips | ◐ recommended chips | ✗ create-only | ✗ | ◐ promote from comments |
+| GrooveMate | ✓ | ✓ | ◐ subtle (silent if mid-song) | ✗ | ✓ |
+| Right rail | ✓ desktop / peek mobile | ✓ desktop / peek mobile | ◐ collapsed | ✗ hidden | ✓ desktop / peek mobile |
 
 `◐` = present but secondary/collapsible.
 
@@ -251,20 +264,35 @@ What's available across modes:
 
 **State:** Firebase. Tasks survive across modes and rehearsals.
 
+### 3.8 Right rail behavior (v0.2)
+
+Three breakpoints, NEVER collapses below the body.
+
+| Viewport | Behavior |
+|---|---|
+| **Desktop ≥1024px** | Always visible at right. Body + rail share horizontal width. Rail width fixed ~320-360px; body is fluid. |
+| **Tablet 768-1023px** | Hidden by default. Peek button (right-edge tab) reveals rail as a slide-over panel above the body. Tapping outside dismisses. |
+| **Mobile <768px** | Hidden by default. Same peek-button slide-over, full-width on the panel itself (covers most of the body when open). |
+
+**Why never collapse-below:** stacking the rail underneath the body breaks the "I see one song with tools around it" gestalt. Rail-below behaves more like a separate page than a panel — defeats the Workbench's whole point. Slide-over preserves the conceptual "tools beside the song" model.
+
+**In Gig mode:** rail is hidden at every breakpoint. No peek button (per "one job per screen").
+
 ---
 
 ## 4 · Player architecture
 
 ### 4.1 Single contract, multiple engines
 
-Already in production. The contract (`gl-player-contract.js`) treats intent as the routing key. Workbench picks intent from mode:
+Already in production. The contract (`gl-player-contract.js`) treats intent as the routing key. Workbench picks intent from mode (v0.2 — Stems is a sub-mode, not a primary mode, but the engine choice toggles within Practice):
 
 ```
-mode 'practice'  → STUDY  → gl-stems-engine-contract OR gl-player-engine-contract (fallback)
-mode 'stems'     → STUDY  → gl-stems-engine-contract
+mode 'practice'  → STUDY  → gl-stems-engine-contract        (when sub-mode = 'stems')
+                          OR gl-player-engine-contract       (when sub-mode = 'chart' and stems exist for chart-with-mute)
+                          OR gl-player-engine-contract       (fallback if no stems)
 mode 'rehearsal' → PERFORM → gl-player-engine-contract
 mode 'gig'       → BROWSE  → gl-setlist-player-contract
-mode 'review'    → REVIEW  → gl-multitrack-engine-contract  (new — to build)
+mode 'review'    → REVIEW  → gl-multitrack-engine-contract  (new — to build, see §4.5)
 ```
 
 ### 4.2 Source resolution
@@ -287,18 +315,69 @@ The Workbench UI binds to `STATE` events, not action calls — so latency varian
 
 When the user switches modes, the current engine pauses (workbench calls `engine.pause()` then unmounts), and the new engine mounts at the same playhead position when possible.
 
-For modes that share semantically equivalent positions (Practice ↔ Stems both root in the song at time T), playhead is preserved. For Practice ↔ Review (different recording entirely — practice plays a reference recording; review plays a rehearsal recording), playhead resets and PracticeSession captures both positions separately:
+For modes that share a recording (Practice chart ↔ Practice stems sub ↔ Rehearsal, all root in the same reference recording at time T), playhead is preserved. For Practice ↔ Review (different recording entirely — practice plays a reference recording; review plays a rehearsal recording), playhead resets and PracticeSession captures both positions separately:
 
 ```
 PracticeSession {
   ...,
   positions: {
-    practice: 142.3,     // seconds into the reference recording
-    stems:    142.3,     // same recording → preserved
+    practice: 142.3,     // seconds into the reference recording (chart sub-mode)
+    practice_stems: 142.3, // stems sub-mode of practice — same recording → preserved
     rehearsal: 142.3,    // same playback context as practice
     review:   { sessionId, songSegmentStartSec, lastSeenAtSec }   // different artifact
   }
 }
+```
+
+### 4.5 INTENTS.REVIEW — formal definition (v0.2)
+
+`INTENTS.REVIEW` is added to `gl-player-contract.js`'s `INTENTS` enum. Distinct from `STUDY` (which plays a reference recording for learning) — `REVIEW` plays back a captured rehearsal artifact (multitrack stems OR Demucs-segmented single file) for analysis and commenting.
+
+**Required capabilities:**
+
+| Capability | Required? | Notes |
+|---|---|---|
+| `PLAYBACK` | required | play / pause / stop |
+| `STATE` | required | reports STATE.IDLE / STATE.PLAYING / STATE.PAUSED |
+| `EVENTS` | required | emits canonical events listed below |
+| `SEEK` | required | scrub anywhere in the recording |
+| `STEMS` | optional | only for multitrack-source review; per-track mute/solo |
+| `LOOP` | optional | section loop within the recording |
+
+**Capability declared per engine (NOT per intent):** the multitrack adapter declares `STEMS` + `LOOP`; a future Demucs-segmented review adapter would declare neither. Workbench Review mode adapts UI to declared capabilities (no mute/solo buttons if engine doesn't have STEMS).
+
+**Required events** (additions to the canonical event set; mostly already implemented in multitrack-rehearsal.js Phase B):
+
+| Event | Payload | Emitted when |
+|---|---|---|
+| `PLAY` | `{ position }` | playback resumes |
+| `PAUSE` | `{ position }` | playback pauses |
+| `SEEK` | `{ from, to }` | user scrubs |
+| `ENDED` | `{}` | recording finishes |
+| `COMMENT_ADDED` | `{ commentId, timestampSec, trackId? }` | new comment created |
+| `COMMENT_DELETED` | `{ commentId }` | comment removed |
+| `MARKER_CLICKED` | `{ commentId, timestampSec }` | user clicks a comment marker on the seek bar |
+| `TRACK_MUTE` | `{ trackId, muted }` | per-track mute toggled (multitrack only) |
+| `TRACK_SOLO` | `{ trackId, soloed }` | per-track solo toggled (multitrack only) |
+
+**To-build:** `js/core/gl-multitrack-engine-contract.js` — adapter wrapping the player code in `multitrack-rehearsal.js`. Mirrors the C.3/C.4 wrap pattern: minimal blast radius, additive accessor surface (`window._mtPlayerAPI`) on the source module, the contract adapter as a separate file. Self-registers with `INTENTS.REVIEW`.
+
+**Acceptance for the adapter:**
+```js
+// In console after Workbench Phase 2 lands:
+(function() {
+  var c = GLPlayerContract, a = GLMultitrackEngineContract;
+  return {
+    conforms: c.conforms(a).ok,
+    registeredReview: c.get(c.INTENTS.REVIEW) === a,
+    capabilityCount: a.capabilities.length,
+    hasStems: a.has(c.CAPABILITIES.STEMS),
+    apiPresent: !!window._mtPlayerAPI,
+    allRegistered: Object.keys(c.getAll())
+  };
+})()
+// Expected: { conforms:true, registeredReview:true, capabilityCount:>=6,
+//   hasStems:true, apiPresent:true, allRegistered: includes 'review' }
 ```
 
 ---
@@ -340,6 +419,58 @@ Workbench activates the unwritten scopes:
 ### 5.3 Note → Task promotion
 
 Comments tagged `revisit` or `nail this` (or `wrong chord`, `missed cue` in band-comm context) get a "Promote to Task" button. Promotion creates a `song_task` linked to the original comment.
+
+### 5.4 Notes vs Tasks (v0.2 — explicit distinction)
+
+Two adjacent concepts that must NOT be conflated.
+
+|  | **Note** | **Task** |
+|---|---|---|
+| **Purpose** | Observation. "Here's what I noticed." | Action. "Here's what I (or someone) needs to do." |
+| **Lifecycle** | Append-only (with edit/delete by author). No status. | Has status: `open` → `in-progress` → `resolved`. |
+| **Origin** | Created directly by user via composer in any mode. | **Always originates from a note OR explicit user action.** Never spontaneous from the system. |
+| **Persistence** | GLNotes scopes (`chart`, `personal`, `stem`, `gig`, `rehearsal_session_comment`) | `bands/{slug}/practice_tasks/{taskId}` (NEW collection — see PracticeTask shape below) |
+| **Surfaces** | Inline in mode body (chart overlay, mixer marker, comment list) | Right rail "Tasks" panel; recommended-chips in Practice mode entry; "My tasks" global view (Phase 3) |
+| **Anchor** | Position in source (chord/line/timestamp/track) | Section + (optional) timestamp + (optional) trackId + (optional) memberId |
+| **Visibility** | Per-scope (personal vs band) | Always band-visible |
+
+**The promotion rule:**
+- Every note CAN be promoted to a task with one tap. The task carries `sourceNoteRef` = the originating note's ID + scope.
+- A task can also be created without a source note (Rehearsal mode "flag this transition" → task with `source: 'rehearsal-flag'` and no sourceNoteRef).
+- Tasks NEVER auto-promote from notes. The user is always in the loop.
+
+#### PracticeTask shape (v0.2 — locked)
+
+```
+bands/{slug}/practice_tasks/{taskId} = {
+  taskId,
+  songId,                  // canonical
+  songTitle,               // denormalized for display
+  section?,                // section identifier from chart, when known
+  sectionLabel?,           // e.g. "bridge", "verse 2"
+  timestampSec?,           // playback position, when relevant
+  trackId?,                // when source is a multitrack comment
+  memberKey?,              // assigned member (defaults to source note's member if any)
+  noteText,                // the actionable text — what to work on
+  tags: [],                // copied from source comment if any
+  status: 'open' | 'in-progress' | 'resolved',
+  source: 'review-comment' | 'rehearsal-flag' | 'manual',
+  sourceRef?: {
+    sessionId?,            // multitrack rehearsal session
+    commentId?,            // specific comment within that session
+    noteScope?,            // GLNotes scope if origin was a note
+    noteIndex?
+  },
+  createdAt, createdBy,
+  updatedAt
+}
+```
+
+**Surfaces in v0.2:**
+- **Source surface (Review mode):** every comment row gets a `🎯 Practice this` button next to the existing × delete button. One click → toast confirms task created → comment row gets a small badge `→ task`.
+- **Practice mode entry:** "Recommended for you" panel above the chart shows top 3 open PracticeTasks for THIS song, with "from last rehearsal · 2:14" framing. Click a recommendation → loops at the task's section/timestamp + emphasizes the relevant track if multitrack source.
+- **Right rail "Tasks" panel:** filtered to current song. Click a task to jump to its anchor; mark resolved with a checkbox.
+- **Mark resolved:** single click. No confirmation. Resolved tasks fade after 24h, then archive.
 
 ---
 
