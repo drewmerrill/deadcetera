@@ -292,7 +292,17 @@ window.GLPlayerEngine = (function() {
     async function _resolveAndPlay(song, myToken) {
         if (myToken === undefined) myToken = _token;
 
-        // Quick path: cached IDs — ONLY use if matching preference
+        // Quick path: cached IDs — prefer matching preference, but if the
+        // only available source is the non-preferred one, USE IT rather than
+        // running a full search that's likely to fail.
+        //
+        // Drew's case 2026-05-10: Ain't Life Grand had only a Spotify
+        // reference (no youtubeId). With pref='youtube' (default), the
+        // original logic skipped both quick paths and ran a full YouTube
+        // search → timeout → FALLBACK state → the legacy "Open in Spotify"
+        // deeplink rendered, taking him out of the app. That was the wrong
+        // behavior: when there's a Spotify ID and no YouTube ID, just play
+        // Spotify directly.
         var pref = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver.getPreferred() : 'youtube';
         if (pref === 'youtube' && song.youtubeId && _ytReady) {
             if (myToken !== _token) return;
@@ -304,8 +314,21 @@ window.GLPlayerEngine = (function() {
             _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
             return;
         }
-        // Do NOT fall through to non-preferred cached sources — go to full resolver instead
-        // This ensures "YouTube first" actually searches YouTube, not just uses a cached Spotify ID
+        // Preferred source's ID isn't available — if the OTHER source is
+        // available, use it. Better to play the song via Spotify than to
+        // run a doomed search and fall back to a deeplink-out UI.
+        if (pref === 'youtube' && !song.youtubeId && song.spotifyTrackId) {
+            if (myToken !== _token) return;
+            console.log('[GLPlayer] No YouTube ID but Spotify available — using Spotify directly');
+            _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
+            return;
+        }
+        if (pref === 'spotify' && !song.spotifyTrackId && song.youtubeId && _ytReady) {
+            if (myToken !== _token) return;
+            console.log('[GLPlayer] No Spotify ID but YouTube available — using YouTube directly');
+            _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song);
+            return;
+        }
 
         // Full resolution via GLSourceResolver
         var R = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver : null;
