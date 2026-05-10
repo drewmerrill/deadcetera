@@ -803,7 +803,8 @@ async function vhSendTo(dest) {
                 isDefault: false,
                 addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : '',
                 notes: 'Added via Find a Version',
-                dateAdded: new Date().toLocaleDateString()
+                dateAdded: new Date().toLocaleDateString(),
+                addedAt: new Date().toISOString()
             };
             if (typeof bandMembers !== 'undefined') {
                 Object.keys(bandMembers).forEach(function(email) { version.votes[email] = false; });

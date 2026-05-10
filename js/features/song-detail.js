@@ -752,8 +752,8 @@ async function _sdUpgradeListenStep(title) {
         var northStar = null;
         arr.forEach(function(v) {
             var votes = v.votes ? Object.keys(v.votes).filter(function(k) { return v.votes[k]; }).length : 0;
-            var thisTime = v.addedAt || v.fetchedAt || '';
-            var existingTime = northStar ? (northStar._addedAt || '') : '';
+            var thisTime = _sdVersionTime(v);
+            var existingTime = northStar ? (northStar._addedAt || 0) : 0;
             var existingVotes = northStar ? (northStar._vc || 0) : -1;
             var wins = votes > existingVotes || (votes === existingVotes && thisTime > existingTime);
             if (wins) northStar = Object.assign({}, v, { _vc: votes, _addedAt: thisTime });
@@ -766,6 +766,22 @@ async function _sdUpgradeListenStep(title) {
 }
 
 // Lightweight rehearsal memory: check if latest rehearsal session had notes for this song
+// Numeric timestamp for a version, used to break vote ties so a freshly
+// added "Change" entry wins over an older 0-vote entry. Falls back through
+// addedAt → fetchedAt → id (id is `version_<Date.now()>`) → dateAdded so
+// legacy versions written without addedAt still tie-break sensibly.
+function _sdVersionTime(v) {
+    if (!v) return 0;
+    if (v.addedAt) { var t = Date.parse(v.addedAt); if (!isNaN(t)) return t; }
+    if (v.fetchedAt) { var t2 = Date.parse(v.fetchedAt); if (!isNaN(t2)) return t2; }
+    if (typeof v.id === 'string' && v.id.indexOf('version_') === 0) {
+        var n = parseInt(v.id.slice(8), 10);
+        if (!isNaN(n)) return n;
+    }
+    if (v.dateAdded) { var t3 = Date.parse(v.dateAdded); if (!isNaN(t3)) return t3; }
+    return 0;
+}
+
 function _sdGetRehearsalMemory(title) {
     // Check latest completed rehearsal summary
     if (typeof GLStore === 'undefined' || !GLStore.getLatestCompletedSummary) return null;
@@ -4139,8 +4155,8 @@ async function _sdPopulateListenLens(title) {
         // new North Star via "Change" doesn't visibly replace.
         refs.forEach(function(v){
             var votes=v.votes?Object.keys(v.votes).filter(function(k){return v.votes[k];}).length:0;
-            var thisTime = v.addedAt || v.fetchedAt || '';
-            var existingTime = northStar ? (northStar._addedAt || '') : '';
+            var thisTime = _sdVersionTime(v);
+            var existingTime = northStar ? (northStar._addedAt || 0) : 0;
             var existingVotes = northStar ? (northStar._voteCount || 0) : -1;
             var wins = votes > existingVotes || (votes === existingVotes && thisTime > existingTime);
             if(wins) northStar=Object.assign({},v,{_voteCount:votes,_addedAt:thisTime});
