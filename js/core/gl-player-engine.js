@@ -304,6 +304,45 @@ window.GLPlayerEngine = (function() {
 
     async function _playSpotify(trackId) {
         var SP = (typeof GLSpotifyPlayer !== 'undefined') ? GLSpotifyPlayer : null;
+        var SC = (typeof GLSpotifyConnect !== 'undefined') ? GLSpotifyConnect : null;
+
+        // iOS path: Web Playback SDK is broken on Safari (volume no-op,
+        // resume broken, background audio cuts when screen locks). Route
+        // through Connect REST to drive the user's Spotify app on the same
+        // device. Phase 0+2 smoke testing 2026-05-10 validated pause /
+        // resume / seek / skip all work via Connect on iPhone (volume
+        // hidden when supports_volume=false). Falls through to SDK if no
+        // Connect device available (likely user force-quit Spotify app).
+        if (SC && SC.isIOSPlatform()) {
+            var device = null;
+            try { device = await SC.pickPreferredDevice(); } catch(e) {}
+            if (device && !device.is_restricted) {
+                _emit('status', { message: 'Sending to Spotify on ' + device.name + '…' });
+                try {
+                    await SC.play('spotify:track:' + trackId, device.id);
+                    _setState(State.PLAYING, { source: 'spotify', method: 'connect' });
+                    _emit('embedReady', {
+                        source: 'spotify_connect',
+                        trackId: trackId,
+                        deviceId: device.id,
+                        deviceName: device.name,
+                        supportsVolume: !!device.supports_volume
+                    });
+                    _isPlaying = true;
+                    _emit('stateChange', { state: State.PLAYING, isPlaying: true });
+                    try { SC.startPolling(); } catch(e) {}
+                    return;
+                } catch(e) {
+                    console.warn('[GLPlayer] Connect play failed:', e.message || e, '— falling through to SDK');
+                    _emit('status', { message: 'Spotify Connect error — trying fallback' });
+                }
+            } else {
+                // No Connect device — Spotify app likely force-quit.
+                // Phase 4 UI listens for this to show "Open Spotify" CTA.
+                _emit('needsSpotifyApp', { trackId: trackId });
+                console.log('[GLPlayer] iOS but no Connect device — falling through to SDK/embed');
+            }
+        }
 
         // Try Web Playback SDK first
         if (SP && SP.isAvailable()) {
