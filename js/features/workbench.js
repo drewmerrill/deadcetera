@@ -68,13 +68,20 @@
         return '<div class="wb-root">' +
             '<header class="wb-header">' +
                 '<div class="wb-song-title">' + _wbEsc(songId) + '</div>' +
-                '<button class="wb-close" onclick="window._wbClose()" title="Back to Songs">✕</button>' +
+                '<button class="wb-close" onclick="window._wbClose()" title="Back to Practice">✕</button>' +
             '</header>' +
             '<nav class="wb-mode-tabs" role="tablist">' + modeTabs + '</nav>' +
             '<div class="wb-layout">' +
                 '<main class="wb-body" id="wb-body"></main>' +
                 '<aside class="wb-rail" id="wb-rail"></aside>' +
             '</div>' +
+            // Action bar — sticky bottom. Hidden by default; shown when an
+            // active PracticeTask is loaded. Drives the completion loop:
+            // Mark as Improved → resolve task + auto-advance to next.
+            '<footer class="wb-action-bar" id="wb-action-bar" hidden>' +
+                '<button class="wb-action wb-action-improved" onclick="window._wbMarkImproved()" title="Resolve this task and advance to the next one">✓ Mark as Improved</button>' +
+                '<button class="wb-action wb-action-next" onclick="window._wbAdvanceToNext()" title="Skip to the next task without marking this one">Next ▶</button>' +
+            '</footer>' +
         '</div>';
     }
 
@@ -150,6 +157,9 @@
         // and so the existing rh-side stash stays in sync.
         window._wbActiveTask = task;
         window._rhActivePracticeTask = task;
+        // Reveal the completion action bar (hidden when no task).
+        var bar = document.getElementById('wb-action-bar');
+        if (bar) bar.hidden = false;
         // Re-render the rail with this taskId active (overrides initial pass)
         _wbRenderRail(songId, { taskId: taskId });
         // Defer loop application until the STUDY engine is mounted (which
@@ -158,6 +168,78 @@
         if (typeof task.timestampSec === 'number') {
             _wbWaitForStudyEngineAndApply(task);
         }
+    }
+
+    // ── Completion loop: Mark as Improved + Next ────────────────────────────
+    // The "momentum" pattern from the Practice flow spec — closing one task
+    // should pull the next one in front of the user immediately. Without
+    // auto-advance, every completion drops them back to the Practice page
+    // and they have to click again, breaking flow.
+
+    async function _wbLoadAllOpenTasks() {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return [];
+        try {
+            var snap = await db.ref(bandPath('practice_tasks')).once('value');
+            var all = snap.val() || {};
+            return Object.keys(all)
+                .map(function(k) { return all[k]; })
+                .filter(function(t) {
+                    if (!t) return false;
+                    return !t.status || t.status === 'open' || t.status === 'in-progress';
+                })
+                .sort(function(a, b) { return (b.createdAt || 0) > (a.createdAt || 0) ? 1 : -1; });
+        } catch (e) { return []; }
+    }
+
+    window._wbMarkImproved = async function() {
+        var task = window._wbActiveTask;
+        if (!task || !task.taskId) {
+            if (typeof showToast === 'function') showToast('No active task to mark');
+            return;
+        }
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') {
+            if (typeof showToast === 'function') showToast('Cannot save: offline');
+            return;
+        }
+        try {
+            await db.ref(bandPath('practice_tasks/' + task.taskId)).update({
+                status: 'resolved',
+                resolvedAt: Date.now(),
+                resolvedBy: (typeof currentUserEmail !== 'undefined' ? currentUserEmail : '') || ''
+            });
+            if (typeof showToast === 'function') showToast('✓ Marked as improved');
+        } catch (e) {
+            console.warn('[wb] mark improved failed:', e);
+            if (typeof showToast === 'function') showToast('Failed to mark: ' + (e.message || e));
+            return;
+        }
+        await _wbAdvanceToNextTask();
+    };
+
+    window._wbAdvanceToNext = async function() {
+        await _wbAdvanceToNextTask();
+    };
+
+    async function _wbAdvanceToNextTask() {
+        var current = window._wbActiveTask;
+        var tasks = await _wbLoadAllOpenTasks();
+        // Skip current (in case it hasn't propagated as resolved yet)
+        var next = tasks.find(function(t) {
+            return t && t.taskId && (!current || t.taskId !== current.taskId);
+        });
+        if (next) {
+            var songId = next.songId || next.songTitle;
+            if (songId && typeof window.openWorkbench === 'function') {
+                window.openWorkbench(songId, 'practice', { taskId: next.taskId });
+                return;
+            }
+        }
+        // No more tasks — return to Practice Command Center
+        if (typeof showToast === 'function') showToast('🎉 All practice tasks done — back to Practice');
+        window._wbActiveTask = null;
+        if (typeof showPage === 'function') showPage('practice');
     }
 
     function _wbWaitForStudyEngineAndApply(task) {
@@ -248,7 +330,10 @@
     window._wbClose = function() {
         // Clear active task so subsequent surfaces don't pick up stale state.
         window._wbActiveTask = null;
-        if (typeof showPage === 'function') showPage('songs');
+        // Return to Practice Command Center — that's where the user came
+        // from in the new flow. (Old behavior was 'songs', kept available
+        // by clicking Songs in the left rail.)
+        if (typeof showPage === 'function') showPage('practice');
     };
 
     // ── Styles (scoped to .wb-* classes; injected once) ────────────────────
@@ -294,7 +379,16 @@
             '.wb-note:last-child { border: 0; padding-bottom: 0; }',
             '.wb-note-scope { font-size: 0.66em; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1px; }',
             '.wb-note-text { color: var(--text); line-height: 1.4; }',
-            '.wb-empty { font-size: 0.82em; color: var(--text-dim); font-style: italic; padding: 4px 0; }'
+            '.wb-empty { font-size: 0.82em; color: var(--text-dim); font-style: italic; padding: 4px 0; }',
+            // Action bar — sticky bottom completion controls. Only shown
+            // when a PracticeTask is active (revealed via `hidden` toggle).
+            '.wb-action-bar { position: sticky; bottom: 0; display: flex; gap: 10px; padding: 12px 16px; background: var(--bg-primary, #0f172a); border-top: 1px solid rgba(255,255,255,0.08); z-index: 48; box-shadow: 0 -8px 24px rgba(0,0,0,0.35); }',
+            '.wb-action { flex: 1; padding: 11px 16px; border: 0; border-radius: 10px; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 0.92em; transition: transform 0.08s, box-shadow 0.15s; }',
+            '.wb-action:active { transform: scale(0.98); }',
+            '.wb-action-improved { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; box-shadow: 0 4px 14px rgba(34,197,94,0.32); }',
+            '.wb-action-improved:hover { box-shadow: 0 6px 20px rgba(34,197,94,0.45); }',
+            '.wb-action-next { background: rgba(102,126,234,0.18); color: #a5b4fc; border: 1px solid rgba(102,126,234,0.35); flex: 0 0 auto; padding-left: 22px; padding-right: 22px; }',
+            '.wb-action-next:hover { background: rgba(102,126,234,0.28); }'
         ].join('\n');
         document.head.appendChild(s);
     }

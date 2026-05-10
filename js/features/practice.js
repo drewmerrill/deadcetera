@@ -128,21 +128,112 @@ async function _pmRenderFocusTab() {
     var ps = (typeof GLStore !== 'undefined' && GLStore.PracticeSession) ? GLStore.PracticeSession : null;
     var resumeInfo = (ps && ps.has()) ? ps.describe() : null;
 
-    el.innerHTML =
-        _pmRenderSectionA(focus) +
-        _pmRenderSectionB(resumeInfo);
+    // Stage 1: paint immediately with focus-only items so the user sees
+    // something within ~50ms (Practice page must hit < 1s SLA per Drew's
+    // music-surface rule). Section B + Resume chip don't need tasks.
+    el.innerHTML = _pmRenderCommandCenter(_pmBuildItemsFromFocus(focus)) +
+                   _pmRenderSectionB(resumeInfo);
+
+    // Stage 2: load open PracticeTasks async, then re-render Section A
+    // with tasks merged in at the top. ~200-500ms typical Firebase RTT.
+    _pmLoadOpenPracticeTasks().then(function(tasks) {
+        var fullItems = _pmMergeTasksIntoFocus(tasks, focus);
+        var sectionAEl = el.querySelector('.pm-section-a');
+        if (sectionAEl) {
+            var tmp = document.createElement('div');
+            tmp.innerHTML = _pmRenderCommandCenter(fullItems);
+            sectionAEl.replaceWith(tmp.firstElementChild);
+        }
+    }).catch(function(e) { console.warn('[pm] tasks load failed', e); });
 
     if (typeof performance !== 'undefined') {
         console.log('[PERF] practice-entry-rendered', Math.round(performance.now() - t0), 'ms');
     }
 }
 
-function _pmRenderSectionA(focus) {
-    var primary = focus && focus.primary;
-    if (!primary) {
+// ── Command Center: 3-5 items, one click to start, no thinking ─────────
+// Per spec — "User opens Practice and knows what to do in under 3
+// seconds." Sources: open PracticeTasks (most relevant) + FocusEngine
+// candidates (already weights low-readiness, gig urgency, setlist
+// membership, rehearsal issues).
+
+function _pmBuildItemsFromFocus(focus) {
+    var list = (focus && focus.list) || [];
+    return list.map(function(c) {
+        return {
+            songTitle: c.title,
+            reason: _pmReasonForFocusCandidate(c, focus),
+            source: 'focus',
+            avg: c.avg,
+            inSetlist: c.inSetlist
+        };
+    }).slice(0, 5);
+}
+
+function _pmMergeTasksIntoFocus(tasks, focus) {
+    var items = [];
+    // Tasks first — explicit user intent beats algorithmic recommendation
+    (tasks || []).slice(0, 3).forEach(function(t) {
+        var raw = (t.noteText || '').trim();
+        var reason = raw
+            ? '"' + (raw.length > 80 ? raw.slice(0, 80) + '…' : raw) + '"'
+            : 'Practice task from rehearsal';
+        items.push({
+            songTitle: t.songTitle || t.songId || '',
+            reason: reason,
+            source: 'task',
+            taskId: t.taskId,
+            timestampSec: t.timestampSec,
+            trackId: t.trackId
+        });
+    });
+    // Fill the rest with focus candidates
+    _pmBuildItemsFromFocus(focus).forEach(function(it) { items.push(it); });
+    // Dedup by songTitle, cap at 5
+    var seen = {};
+    return items.filter(function(it) {
+        if (!it.songTitle || seen[it.songTitle]) return false;
+        seen[it.songTitle] = true;
+        return true;
+    }).slice(0, 5);
+}
+
+function _pmReasonForFocusCandidate(c, focus) {
+    var avg = c.avg || 0;
+    var bits = [];
+    if (avg < 2)      bits.push('Low readiness · avg ' + avg.toFixed(1));
+    else if (avg < 3) bits.push('Almost there · avg ' + avg.toFixed(1));
+    else              bits.push('Needs polish · avg ' + avg.toFixed(1));
+    if (c.inSetlist) bits.push('in setlist');
+    return bits.join(' · ');
+}
+
+async function _pmLoadOpenPracticeTasks() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return [];
+    try {
+        var snap = await db.ref(bandPath('practice_tasks')).once('value');
+        var all = snap.val() || {};
+        return Object.keys(all)
+            .map(function(k) { return all[k]; })
+            .filter(function(t) {
+                if (!t) return false;
+                return !t.status || t.status === 'open' || t.status === 'in-progress';
+            })
+            .sort(function(a, b) {
+                return (b.createdAt || 0) > (a.createdAt || 0) ? 1 : -1;
+            });
+    } catch (e) {
+        return [];
+    }
+}
+
+function _pmRenderCommandCenter(items) {
+    var esc = window.escHtml || function(s) { return String(s == null ? '' : s); };
+    if (!items || !items.length) {
         return ''+
         '<div class="pm-section pm-section-a pm-section-a-empty">'+
-        '  <div class="pm-section-label">Recommended for you right now</div>'+
+        '  <div class="pm-section-label">🎯 Today\'s Focus</div>'+
         '  <div class="pm-empty-card">'+
         '    <div class="pm-empty-emoji">🎸</div>'+
         '    <div class="pm-empty-msg">Nothing flagged for practice right now.</div>'+
@@ -150,18 +241,53 @@ function _pmRenderSectionA(focus) {
         '  </div>'+
         '</div>';
     }
-    var title = window.escHtml ? window.escHtml(primary.title) : primary.title;
-    var reason = window.escHtml ? window.escHtml(focus.reason || '') : (focus.reason || '');
-    var safeTitle = primary.title.replace(/'/g, "\\'");
+    var rows = items.map(function(it, i) {
+        var safe = it.songTitle.replace(/'/g, "\\'");
+        var tsLabel = (typeof it.timestampSec === 'number')
+            ? Math.floor(it.timestampSec / 60) + ':' + (Math.floor(it.timestampSec % 60) < 10 ? '0' : '') + Math.floor(it.timestampSec % 60)
+            : '';
+        var icon = it.source === 'task' ? '🎯' : (it.inSetlist ? '🎤' : '🎸');
+        var taskAttr = it.taskId ? ",'" + String(it.taskId).replace(/'/g, "\\'") + "'" : ',null';
+        return '<button class="pm-cc-item" onclick="window._pmCCStart(\'' + safe + '\'' + taskAttr + ')">' +
+            '<div class="pm-cc-rank">' + (i + 1) + '</div>' +
+            '<div class="pm-cc-icon">' + icon + '</div>' +
+            '<div class="pm-cc-body">' +
+                '<div class="pm-cc-title">' + esc(it.songTitle) +
+                    (tsLabel ? ' <span class="pm-cc-ts">' + tsLabel + '</span>' : '') +
+                '</div>' +
+                '<div class="pm-cc-reason">' + esc(it.reason) + '</div>' +
+            '</div>' +
+            '<div class="pm-cc-cta">▶</div>' +
+        '</button>';
+    }).join('');
+    var first = items[0];
+    var firstSafe = first.songTitle.replace(/'/g, "\\'");
+    var firstTaskAttr = first.taskId ? ",'" + String(first.taskId).replace(/'/g, "\\'") + "'" : ',null';
     return ''+
     '<div class="pm-section pm-section-a">'+
-    '  <div class="pm-section-label">Recommended for you right now</div>'+
-    '  <div class="pm-primary-card">'+
-    '    <div class="pm-primary-title">'+title+'</div>'+
-    (reason ? '    <div class="pm-primary-reason">'+reason+'</div>' : '')+
-    '    <button class="pm-start-btn" onclick="_pmStart(\'recommended\', \''+safeTitle+'\')">▶ Start Practice</button>'+
-    '  </div>'+
+    '  <div class="pm-section-label">🎯 Today\'s Focus</div>'+
+    '  <div class="pm-cc-list">' + rows + '</div>'+
+    '  <button class="pm-start-btn pm-cc-start" onclick="window._pmCCStart(\'' + firstSafe + '\'' + firstTaskAttr + ')">▶ Start Practice Session</button>'+
     '</div>';
+}
+
+// One-click launcher — routes through the Workbench shell which handles
+// loop window, track emphasis, and task highlight via existing
+// _wbApplyTaskContext path. Fallback to _pmStart('improve', title) if
+// Workbench isn't loaded for some reason (defensive).
+window._pmCCStart = function(songTitle, taskId) {
+    if (!songTitle) return;
+    if (typeof openWorkbench === 'function') {
+        openWorkbench(songTitle, 'practice', taskId ? { taskId: taskId } : {});
+    } else if (typeof _pmStart === 'function') {
+        _pmStart('improve', songTitle);
+    }
+};
+
+// Kept for backward compatibility with any callers that still reference
+// the old single-card render path. New code should not call this.
+function _pmRenderSectionA(focus) {
+    return _pmRenderCommandCenter(_pmBuildItemsFromFocus(focus));
 }
 
 function _pmRenderSectionB(resumeInfo) {
@@ -1160,13 +1286,28 @@ function _pmInjectStyles(){
     /* Entry screen — Section A (recommended) + Section B (alternatives) */
     '.pm-section{margin-bottom:24px;}'+
     '.pm-section-label{font-size:0.72em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim,#94a3b8);margin-bottom:10px;}'+
-    /* Section A — primary recommendation card */
+    /* Section A — Command Center: 3-5 clickable items + one big CTA */
     '.pm-section-a .pm-primary-card{background:linear-gradient(135deg,rgba(102,126,234,0.12),rgba(118,75,162,0.08));border:1px solid rgba(102,126,234,0.25);border-radius:14px;padding:20px 20px 18px;}'+
     '.pm-primary-title{font-size:1.4em;font-weight:800;color:var(--text,#f1f5f9);line-height:1.2;margin-bottom:6px;letter-spacing:-0.01em;}'+
     '.pm-primary-reason{font-size:0.88em;color:var(--text-dim,#94a3b8);line-height:1.4;margin-bottom:16px;}'+
     '.pm-start-btn{width:100%;padding:14px 18px;border-radius:10px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;font-weight:800;font-size:1em;cursor:pointer;font-family:inherit;letter-spacing:0.02em;box-shadow:0 4px 16px rgba(102,126,234,0.32);transition:transform 0.1s ease,box-shadow 0.15s ease;}'+
     '.pm-start-btn:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(102,126,234,0.45);}'+
     '.pm-start-btn:active{transform:translateY(0);}'+
+    /* CC item list */
+    '.pm-cc-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}'+
+    '.pm-cc-item{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:12px;cursor:pointer;font-family:inherit;text-align:left;transition:background 0.12s ease,border-color 0.12s ease,transform 0.08s ease;-webkit-appearance:none;appearance:none;}'+
+    '.pm-cc-item:hover{background:rgba(102,126,234,0.08);border-color:rgba(102,126,234,0.32);}'+
+    '.pm-cc-item:active{transform:scale(0.99);}'+
+    '.pm-cc-item:first-child{background:linear-gradient(135deg,rgba(102,126,234,0.10),rgba(118,75,162,0.06));border-color:rgba(102,126,234,0.28);}'+
+    '.pm-cc-rank{font-size:0.78em;font-weight:800;color:var(--text-dim,#94a3b8);width:18px;text-align:center;flex-shrink:0;font-variant-numeric:tabular-nums;}'+
+    '.pm-cc-icon{font-size:1.15em;flex-shrink:0;width:22px;text-align:center;}'+
+    '.pm-cc-body{flex:1;min-width:0;}'+
+    '.pm-cc-title{font-size:0.95em;font-weight:700;color:var(--text,#f1f5f9);line-height:1.25;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
+    '.pm-cc-ts{display:inline-block;margin-left:6px;padding:1px 6px;background:rgba(245,158,11,0.16);color:#fbbf24;border-radius:6px;font-size:0.72em;font-weight:700;font-variant-numeric:tabular-nums;vertical-align:middle;}'+
+    '.pm-cc-reason{font-size:0.78em;color:var(--text-dim,#94a3b8);line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}'+
+    '.pm-cc-cta{font-size:1em;color:#a5b4fc;flex-shrink:0;font-weight:700;opacity:0.7;transition:opacity 0.12s,transform 0.12s;}'+
+    '.pm-cc-item:hover .pm-cc-cta{opacity:1;transform:translateX(2px);}'+
+    '.pm-cc-start{margin-top:4px;}'+
     /* Empty state */
     '.pm-empty-card{background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.12);border-radius:14px;padding:28px 20px;text-align:center;}'+
     '.pm-empty-emoji{font-size:2em;margin-bottom:8px;opacity:0.6;}'+
