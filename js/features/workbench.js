@@ -616,6 +616,7 @@
             // Action bar — sticky bottom completion controls. Only shown
             // when a PracticeTask is active (revealed via `hidden` toggle).
             '.wb-action-bar { position: sticky; bottom: 0; display: flex; gap: 10px; padding: 12px 16px; background: var(--bg-primary, #0f172a); border-top: 1px solid rgba(255,255,255,0.08); z-index: 48; box-shadow: 0 -8px 24px rgba(0,0,0,0.35); }',
+            '.wb-action-bar[hidden] { display: none; }',
             '.wb-action { flex: 1; padding: 11px 16px; border: 0; border-radius: 10px; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 0.92em; transition: transform 0.08s, box-shadow 0.15s; }',
             '.wb-action:active { transform: scale(0.98); }',
             '.wb-action-improved { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; box-shadow: 0 4px 14px rgba(34,197,94,0.32); }',
