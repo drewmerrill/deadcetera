@@ -242,6 +242,7 @@ window.GLPlayerUI = (function() {
                 + '<span style="color:#475569;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Tag</span>'
                 + '<button onclick="GLPlayerUI.tagCurrentAs(\'northstar\')" title="Set as North Star" style="background:none;border:1px solid rgba(251,191,36,0.35);color:#fbbf24;cursor:pointer;padding:3px 7px;border-radius:5px;font-weight:700">⭐ NS</button>'
                 + '<button onclick="GLPlayerUI.tagCurrentAs(\'lesson\')" title="Save as Lesson" style="background:none;border:1px solid rgba(244,114,182,0.30);color:#f9a8d4;cursor:pointer;padding:3px 7px;border-radius:5px">🎬 Lesson</button>'
+                + '<button onclick="GLPlayerUI.tagCurrentAs(\'cover\')" title="Save as Cover (another band\'s take)" style="background:none;border:1px solid rgba(167,139,250,0.30);color:#c4b5fd;cursor:pointer;padding:3px 7px;border-radius:5px">🎤 Cover</button>'
                 + '<button onclick="GLPlayerUI.tagCurrentAs(\'alternate\')" title="Save as Alternate" style="background:none;border:1px solid rgba(125,211,252,0.30);color:#7dd3fc;cursor:pointer;padding:3px 7px;border-radius:5px">🎧 Alt</button>'
                 + '<span style="flex:1"></span>'
                 + '<button onclick="GLPlayerUI.deleteCurrent()" title="Delete this version" style="background:none;border:1px solid rgba(239,68,68,0.30);color:#fca5a5;cursor:pointer;padding:3px 7px;border-radius:5px">🗑</button>'
@@ -385,7 +386,7 @@ window.GLPlayerUI = (function() {
         var E = window.GLPlayerEngine;
         var song = E ? E.getCurrentSong() : null;
         var title = song ? song.title : '';
-        var groups = { northstar: [], lesson: [], reference: [], bestshot: [] };
+        var groups = { northstar: [], lesson: [], cover: [], reference: [], bestshot: [] };
         var renderGroup = function(label, key) {
             var arr = groups[key];
             if (!arr.length) return '';
@@ -401,7 +402,7 @@ window.GLPlayerUI = (function() {
             return html;
         };
         var done = function() {
-            var any = groups.northstar.length + groups.lesson.length + groups.reference.length + groups.bestshot.length;
+            var any = groups.northstar.length + groups.lesson.length + groups.cover.length + groups.reference.length + groups.bestshot.length;
             if (!any) {
                 menu.innerHTML = '<div style="font-size:0.72em;color:#64748b;padding:8px 4px;text-align:center">No saved sources for this song.</div>';
                 return;
@@ -409,6 +410,7 @@ window.GLPlayerUI = (function() {
             menu.innerHTML =
                 renderGroup('\u2B50 North Star', 'northstar') +
                 renderGroup('\uD83C\uDFAC Lessons', 'lesson') +
+                renderGroup('\uD83C\uDFA4 Covers', 'cover') +
                 renderGroup('\uD83C\uDFA7 References / Alternates', 'reference') +
                 renderGroup('\uD83C\uDFC6 Best Shot', 'bestshot');
         };
@@ -441,10 +443,11 @@ window.GLPlayerUI = (function() {
                             groups.northstar.push({ icon: '\u2B50', label: label, url: url });
                         } else if (v.type === 'lesson') {
                             groups.lesson.push({ icon: '\uD83C\uDFAC', label: label, url: url });
+                        } else if (v.type === 'cover') {
+                            groups.cover.push({ icon: '\uD83C\uDFA4', label: label, url: url });
                         } else {
                             // 'reference' or 'alternate' or unset \u2192 grouped together
-                            var icon = (v.type === 'alternate') ? '\uD83C\uDFA7' : '\uD83C\uDFA7';
-                            groups.reference.push({ icon: icon, label: label, url: url });
+                            groups.reference.push({ icon: '\uD83C\uDFA7', label: label, url: url });
                         }
                     });
                     return loadBest();
