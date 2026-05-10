@@ -1155,11 +1155,15 @@ window._rhClearSavedPlan = async function() {
         localStorage.removeItem('glPlannerUnits');
         localStorage.removeItem('glSavedPlanName');
     } catch(e) {}
-    // Delete ALL rehearsal_plans/* entries (not just the cached planId). Old
-    // planIds accumulate across sessions and auto-rise on reload via
-    // _rhLoadPlanFromFirebase's "newest by updatedAt" rule. Wiping the
-    // whole collection is the only way "no plan" survives a reload.
-    await _rhClearAllPlansFromFirebase();
+    // Phase 3b: null the currentPlanId pointer instead of wiping the
+    // rehearsal_plans collection. The cleared plan stays in collection as
+    // history; "no plan" survives reload because _rhLoadPlanFromFirebase
+    // honors the explicit-null pointer.
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+        try { await db.ref(bandPath('rehearsal_state/currentPlanId')).set(null); }
+        catch(e) { console.warn('[RhPlan] currentPlanId clear failed:', e.message); }
+    }
     _rhPlanCache = null;
     if (typeof showToast === 'function') showToast('Plan cleared (snapshot saved)');
     var el = document.getElementById('rhMain');
@@ -3575,28 +3579,57 @@ function _rhGenPlanId() {
 }
 
 // Load the latest rehearsal plan from Firebase (or cache)
+// Phase 3b: pointer-based "current plan" resolution.
+// Old behavior was "newest plan in rehearsal_plans by updatedAt wins" — meaning
+// plans collection was load-bearing for "what's current," and clearing the
+// plan required wiping the entire collection. New behavior:
+//   - bands/{slug}/rehearsal_state/currentPlanId is the single source of truth
+//   - Plans collection is append-only history; clearing nulls the pointer
+//   - Legacy bands without a pointer fall back to "newest" once, then upgrade
 async function _rhLoadPlanFromFirebase() {
     if (_rhPlanCache) return _rhPlanCache;
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return null;
     try {
+        // Pointer-first
+        var ptrSnap = await db.ref(bandPath('rehearsal_state/currentPlanId')).once('value');
+        var ptrVal = ptrSnap.val();
+        if (ptrVal === null) {
+            // Pointer exists but is null → user has explicitly cleared. Honor it.
+            return null;
+        }
+        if (typeof ptrVal === 'string' && ptrVal) {
+            var planSnap = await db.ref(bandPath('rehearsal_plans/' + ptrVal)).once('value');
+            var planVal = planSnap.val();
+            if (planVal) { _rhPlanCache = planVal; return _rhPlanCache; }
+            // Pointer dangles — plan was deleted out from under it. Treat as cleared.
+            return null;
+        }
+        // Pointer undefined → legacy band. Fall back to newest, then upgrade.
         var snap = await db.ref(bandPath('rehearsal_plans')).once('value');
         var val = snap.val();
         if (val) {
             var plans = Object.values(val).sort(function(a, b) { return (b.updatedAt || '').localeCompare(a.updatedAt || ''); });
             _rhPlanCache = plans[0] || null;
+            // One-shot upgrade: write the pointer so next load is fast and
+            // this band can use Clear Plan without losing history.
+            if (_rhPlanCache && _rhPlanCache.planId) {
+                try { await db.ref(bandPath('rehearsal_state/currentPlanId')).set(_rhPlanCache.planId); } catch(e) {}
+            }
             return _rhPlanCache;
         }
     } catch(e) { console.warn('[RhPlan] Firebase load failed:', e.message); }
     return null;
 }
 
-// Save plan to Firebase (called by debounce)
+// Save plan to Firebase (called by debounce). Phase 3b: also update the
+// currentPlanId pointer so this plan becomes the resolved current plan.
 async function _rhPersistToFirebase(plan) {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return false;
     try {
         await db.ref(bandPath('rehearsal_plans/' + plan.planId)).set(plan);
+        await db.ref(bandPath('rehearsal_state/currentPlanId')).set(plan.planId);
         _rhPlanCache = plan;
         _rhShowSaveState('saved');
         return true;
@@ -3618,10 +3651,10 @@ async function _rhDeletePlanFromFirebase() {
     _rhPlanCache = null;
 }
 
-// Wipe the entire rehearsal_plans collection. Used by "Clear Plan" so the
-// "no plan" state survives a reload — _rhLoadPlanFromFirebase otherwise
-// resolves to the newest entry by updatedAt and resurrects an old plan.
-// Snapshots in rehearsal_history are NOT touched (that's the audit log).
+// Wipe the entire rehearsal_plans collection. DEPRECATED Phase 3b — use the
+// currentPlanId pointer instead (Clear Plan now nulls the pointer and keeps
+// plans as append-only history). Retained as an admin/debug escape hatch.
+// Snapshots in rehearsal_history are NOT touched.
 async function _rhClearAllPlansFromFirebase() {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return;
