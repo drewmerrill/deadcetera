@@ -1552,7 +1552,10 @@ var _legacySetupSearchAndFilters = function setupSearchAndFilters() {
         } else if (e.key === ' ' && sel && !e.target.matches('input,textarea,select')) {
             e.preventDefault();
             var sTitle = sel.dataset.title;
-            if (sTitle && typeof openRehearsalMode === 'function') openRehearsalMode(sTitle);
+            if (sTitle) {
+                if (typeof openWorkbench === 'function') openWorkbench(sTitle, 'practice', {});
+                else if (typeof openRehearsalMode === 'function') openRehearsalMode(sTitle);
+            }
         } else if (e.key === 'Escape') {
             if (typeof glRightPanel !== 'undefined' && glRightPanel.close) glRightPanel.close();
         } else if (e.key === 'a' && sel && !e.target.matches('input,textarea,select')) {
@@ -1967,7 +1970,7 @@ async function renderChartSection(songTitle) {
     const safePreview = hasChart ? preview.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     
     container.innerHTML = `
-        <div onclick="openRehearsalMode('${safeSong}')" style="cursor:pointer;border-radius:10px;overflow:hidden;background:rgba(102,126,234,0.06);border:1px solid rgba(102,126,234,0.15);transition:all 0.2s" onmouseover="this.style.borderColor='rgba(102,126,234,0.4)';this.style.background='rgba(102,126,234,0.1)'" onmouseout="this.style.borderColor='rgba(102,126,234,0.15)';this.style.background='rgba(102,126,234,0.06)'">
+        <div onclick="(typeof openWorkbench==='function')?openWorkbench('${safeSong}','practice',{}):openRehearsalMode('${safeSong}')" style="cursor:pointer;border-radius:10px;overflow:hidden;background:rgba(102,126,234,0.06);border:1px solid rgba(102,126,234,0.15);transition:all 0.2s" onmouseover="this.style.borderColor='rgba(102,126,234,0.4)';this.style.background='rgba(102,126,234,0.1)'" onmouseout="this.style.borderColor='rgba(102,126,234,0.15)';this.style.background='rgba(102,126,234,0.06)'">
             ${hasChart ? `<pre style="font-family:monospace;font-size:12px;color:#64748b;line-height:1.4;white-space:pre-wrap;margin:0;padding:12px 14px 0;max-height:72px;overflow:hidden">${safePreview}</pre>` : ''}
             <div style="padding:${hasChart ? '8' : '14'}px 14px 12px;display:flex;align-items:center;justify-content:space-between">
                 <div style="display:flex;align-items:center;gap:8px">

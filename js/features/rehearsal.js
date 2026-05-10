@@ -640,7 +640,7 @@ async function _rhRenderCommandFlow(el) {
             html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.02);flex-wrap:wrap">';
             html += '<span style="flex:1;min-width:0;font-size:0.85em;color:var(--text);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(f.title) + '</span>';
             html += '<span style="font-size:0.62em;font-weight:700;color:' + avgColor + ';padding:2px 6px;border-radius:4px;background:' + avgColor + '15;border:1px solid ' + avgColor + '30;white-space:nowrap">' + avgPct + '%</span>';
-            html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + titleSafe + '\')" style="font-size:0.7em;padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.12);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit">🎤 Practice solo</button>';
+            html += '<button onclick="(typeof openWorkbench===\'function\')?openWorkbench(\'' + titleSafe + '\',\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(\'' + titleSafe + '\'))" style="font-size:0.7em;padding:4px 10px;border-radius:5px;border:1px solid rgba(255,255,255,0.12);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit">🎤 Practice solo</button>';
             html += planBtn;
             html += '</div>';
         });
@@ -870,7 +870,7 @@ async function _rhRenderCommandFlow(el) {
             var practiceSoloChip = '';
             if ((bt === 'single' || bt === 'song') && unit.title) {
                 var _soloSafe = unit.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                practiceSoloChip = '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _soloSafe + '\')" style="' + _editBtnStyle + ';color:#a5b4fc" title="Practice this song solo">🎤</button>';
+                practiceSoloChip = '<button onclick="event.stopPropagation();(typeof openWorkbench===\'function\')?openWorkbench(\'' + _soloSafe + '\',\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(\'' + _soloSafe + '\'))" style="' + _editBtnStyle + ';color:#a5b4fc" title="Practice this song solo">🎤</button>';
             }
 
             html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="border-bottom:1px solid rgba(255,255,255,0.03);border-radius:4px;' + rowBg + _focusBorder + '">'
@@ -2282,7 +2282,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             if (hasAudio) {
                 html += '<span class="rh-hover-actions" style="display:flex;gap:3px">'
                     + '<button onclick="event.stopPropagation();_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="background:none;border:none;color:#fbbf24;cursor:pointer;font-size:0.7em;padding:4px" title="Repeat this section on loop">\uD83D\uDD01</button>'
-                    + '<button onclick="event.stopPropagation();if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + escHtml(seg.songTitle || '').replace(/'/g, "\\'") + '\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px" title="Open chart and practice this song">\uD83C\uDFAF</button>'
+                    + '<button onclick="event.stopPropagation();(function(t){(typeof openWorkbench===\'function\')?openWorkbench(t,\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(t))})(\'' + escHtml(seg.songTitle || '').replace(/'/g, "\\'") + '\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px" title="Open chart and practice this song">\uD83C\uDFAF</button>'
                     + '</span>';
             }
             html += '</summary>';
@@ -2405,7 +2405,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             if (_attemptCount >= 2) {
                 html += '<button onclick="_rhCompareAttempts(\'' + _songSafe + '\')" style="' + _abtn + 'border:1px solid rgba(16,185,129,0.2);background:rgba(16,185,129,0.04);color:#10b981" title="See all takes side by side">Compare Takes</button>';
             }
-            html += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + _songSafe + '\')" style="' + _abtn + 'border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)" title="Open chart and work on this song">Practice</button>';
+            html += '<button onclick="(typeof openWorkbench===\'function\')?openWorkbench(\'' + _songSafe + '\',\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(\'' + _songSafe + '\'))" style="' + _abtn + 'border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)" title="Open chart and work on this song">Practice</button>';
             html += '</div>';
             html += '</div></details>';
 
@@ -2665,7 +2665,7 @@ window._rhFixThisNow = function(songTitle, sessionId) {
     });
     ph += '<div style="display:flex;gap:6px;margin-top:8px">';
     ph += '<button onclick="_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId || tl.sessionId || '') + '\',' + (segIdx || 0) + ')" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(245,158,11,0.2);background:rgba(245,158,11,0.06);color:#fbbf24;cursor:pointer;font-size:0.78em;font-weight:700;min-height:36px">\uD83D\uDD01 Loop It</button>';
-    ph += '<button onclick="if(typeof openRehearsalMode===\'function\')openRehearsalMode(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\')" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em;font-weight:600;min-height:36px">Open Chart</button>';
+    ph += '<button onclick="(function(t){(typeof openWorkbench===\'function\')?openWorkbench(t,\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(t))})(\'' + escHtml(songTitle).replace(/'/g, "\\'") + '\')" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-size:0.78em;font-weight:600;min-height:36px">Open Chart</button>';
     ph += '</div>';
     panel.innerHTML = ph;
 

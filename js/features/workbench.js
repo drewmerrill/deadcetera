@@ -112,6 +112,7 @@
             '<header class="wb-header">' +
                 '<div class="wb-song-title">' + _wbEsc(songId) + '</div>' +
                 moreViewsHTML +
+                '<button class="wb-classic-link" onclick="(typeof openRehearsalMode===\'function\')&&openRehearsalMode(\'' + _wbEsc(songId).replace(/'/g, "\\'") + '\')" title="Open this song in the legacy fullscreen Rehearsal Mode (chart edit, Mem palace, recorder)">↗ Classic Mode</button>' +
                 '<button class="wb-close" onclick="window._wbClose()" title="Back to Practice">✕</button>' +
             '</header>' +
             '<nav class="wb-mode-tabs" role="tablist">' + modeTabs + '</nav>' +
@@ -583,6 +584,8 @@
             '.wb-song-title { font-size: 1.15em; font-weight: 700; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
             '.wb-close { background: none; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; padding: 4px 12px; border-radius: 6px; font-size: 0.95em; }',
             '.wb-close:hover { color: var(--text); border-color: rgba(255,255,255,0.3); }',
+            '.wb-classic-link { background: none; border: 1px dashed rgba(148,163,184,0.25); color: var(--text-dim); cursor: pointer; padding: 4px 10px; border-radius: 6px; font-size: 0.74em; font-weight: 600; }',
+            '.wb-classic-link:hover { color: var(--text); border-color: rgba(148,163,184,0.5); background: rgba(255,255,255,0.03); }',
             // Mode tabs stick directly under the header. 56px is the header
             // height (14px*2 padding + ~28px content). Adjust if header
             // padding changes.

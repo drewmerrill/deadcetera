@@ -302,7 +302,7 @@ function _sdRenderPracticeSection(title, safeSong, ytQuery) {
         '<div class="sd-card-title" style="margin-bottom:10px">\uD83C\uDFB8 Practice This Song</div>'+
         '<div style="display:flex;flex-direction:column;gap:8px">'+
         // Play Along
-        '<button onclick="openRehearsalMode(\''+safeSong+'\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;cursor:pointer;text-align:left;width:100%">'+
+        '<button onclick="(typeof openWorkbench===\'function\')?openWorkbench(\''+safeSong+'\',\'practice\',{}):openRehearsalMode(\''+safeSong+'\')" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.15);border-radius:10px;cursor:pointer;text-align:left;width:100%">'+
         '<span style="font-size:1.1em;flex-shrink:0">\u25B6</span>'+
         '<div style="flex:1"><div style="font-weight:700;font-size:0.88em;color:var(--text)">Play Along</div>'+
         '<div style="font-size:0.72em;color:var(--text-dim)">Stay in time. Don\u2019t rush the chorus.</div></div></button>'+
@@ -518,7 +518,7 @@ async function _sdPopulateBandLens(title) {
                 '</div>';
         }).join('') : '<div style="font-size:0.85em;color:var(--text-dim);padding:4px">Looking good \u2014 no critical gaps. Run it once to stay sharp.</div>') +
         '<div style="margin-top:12px;display:flex;gap:8px">'+
-        '<button class="sd-pm-btn" onclick="openRehearsalMode(\''+safeSong+'\')">\uD83D\uDCCB Run Through</button>'+
+        '<button class="sd-pm-btn" onclick="(typeof openWorkbench===\'function\')?openWorkbench(\''+safeSong+'\',\'practice\',{}):openRehearsalMode(\''+safeSong+'\')">\uD83D\uDCCB Run Through</button>'+
         '<button class="sd-pm-btn" style="margin-left:8px" onclick="switchLens(\'learn\')">\uD83C\uDFB8 Practice</button>'+
         '</div></div>'+
         // Band Love (unique to this mode)
@@ -985,7 +985,7 @@ function _sdRenderAttentionCard(title, safeSong) {
     var actions = [];
     var b = item.breakdown;
     if (b.decayRisk >= 4) {
-        actions.push('<button onclick="openRehearsalMode(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📖 Practice Mode</button>');
+        actions.push('<button onclick="(typeof openWorkbench===\'function\')?openWorkbench(\'' + safeSong + '\',\'practice\',{}):openRehearsalMode(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📖 Practice Mode</button>');
     }
     if (b.readinessDeficit >= 4 || item.confidence !== 'rated') {
         actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
@@ -4756,7 +4756,7 @@ async function _sdPopulateLearnLens(title) {
         '</div>'+
 
         // Step 2: Play Along
-        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;'+_cardBorder(2)+';cursor:pointer;transition:background 0.15s" onclick="openRehearsalMode(\''+safeSong+'\')" onmouseover="this.style.background=\'rgba(99,102,241,0.06)\'" onmouseout="this.style.background=\'\'">'+
+        '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;'+_cardBorder(2)+';cursor:pointer;transition:background 0.15s" onclick="(typeof openWorkbench===\'function\')?openWorkbench(\''+safeSong+'\',\'practice\',{}):openRehearsalMode(\''+safeSong+'\')" onmouseover="this.style.background=\'rgba(99,102,241,0.06)\'" onmouseout="this.style.background=\'\'">'+
         '<div style="width:28px;height:28px;border-radius:50%;'+_circleBg(2)+';display:flex;align-items:center;justify-content:center;font-size:0.72em;font-weight:800;'+_circleColor(2)+';flex-shrink:0">'+_circleContent(2)+'</div>'+
         '<div style="flex:1">'+
         '<div style="font-size:0.85em;font-weight:600;color:var(--text,#f1f5f9)">Play it all the way through</div>'+

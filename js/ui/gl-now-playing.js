@@ -108,7 +108,9 @@
 
   window.glNowPlaying._practice = function (title) {
     if (!title) return;
-    if (typeof openRehearsalMode === 'function') {
+    if (typeof openWorkbench === 'function') {
+      openWorkbench(title, 'practice', {});
+    } else if (typeof openRehearsalMode === 'function') {
       openRehearsalMode(title);
     } else {
       if (typeof showToast === 'function') showToast('Practice mode not available');

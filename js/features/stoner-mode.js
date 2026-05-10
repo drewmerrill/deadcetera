@@ -292,11 +292,12 @@ function _stonerEsc(str) {
 
 function _stonerOpenChart() {
     if (!_stonerCurrentSong) return;
-    // Exit stoner, open rehearsal mode chart
+    // Exit stoner, open Workbench (with rehearsal-mode fallback)
     _stonerExit();
     _stonerMode = false;
     localStorage.setItem('deadcetera_stoner_mode', '0');
-    if (typeof openRehearsalMode === 'function') openRehearsalMode(_stonerCurrentSong);
+    if (typeof openWorkbench === 'function') openWorkbench(_stonerCurrentSong, 'practice', {});
+    else if (typeof openRehearsalMode === 'function') openRehearsalMode(_stonerCurrentSong);
 }
 
 function _stonerStartRun() {
@@ -486,7 +487,8 @@ function _stonerQuickOpen(title) {
     localStorage.setItem('deadcetera_stoner_mode', '0');
     var btn = document.getElementById('stonerBtn');
     if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
-    if (typeof openRehearsalMode === 'function') openRehearsalMode(title);
+    if (typeof openWorkbench === 'function') openWorkbench(title, 'practice', {});
+    else if (typeof openRehearsalMode === 'function') openRehearsalMode(title);
 }
 
 // Keep old home renderer as fallback
@@ -519,8 +521,10 @@ function stonerLaunchSong(title) {
     localStorage.setItem('deadcetera_stoner_mode', '0');
     var btn = document.getElementById('stonerBtn');
     if (btn) { btn.textContent = '\uD83C\uDF3F Mode'; btn.style.background = ''; btn.style.color = ''; btn.style.borderColor = ''; }
-    // Use Practice Mode
-    if (typeof openRehearsalMode === 'function') {
+    // Use Workbench (with rehearsal-mode fallback)
+    if (typeof openWorkbench === 'function') {
+        openWorkbench(title, 'practice', {});
+    } else if (typeof openRehearsalMode === 'function') {
         openRehearsalMode(title);
     } else if (typeof selectSong === 'function') {
         showPage('songs');
