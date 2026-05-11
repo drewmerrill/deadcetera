@@ -55,6 +55,7 @@ window.GLPlayerUI = (function() {
         // CTA in the player so they can launch the Spotify app and bounce
         // back to GL. After they do, the next play() call finds the device.
         E.on('needsSpotifyApp', function(d) { _renderNeedsSpotifyApp(d); });
+        E.on('needsSpotifyAuth', function(d) { _renderNeedsSpotifyAuth(d); });
     }
 
     // ── Overlay Mode (Full-Screen) ──────────────────────────────────────────
@@ -752,6 +753,25 @@ window.GLPlayerUI = (function() {
     // containers depending on which mode is active. Drew hit a black-screen
     // bug 2026-05-10 because we only checked the overlay container while
     // the floating player on iPhone uses glpFloatVideo.
+    function _renderNeedsSpotifyAuth(d) {
+        var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        var expired = d && d.reason === 'token_expired';
+        container.innerHTML =
+            '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:12px;text-align:center">'
+            + '<div style="font-size:1.4em;margin-bottom:4px">🔗</div>'
+            + '<div style="font-size:0.82em;font-weight:700;color:#1ed760;margin-bottom:4px">' + (expired ? 'Spotify session expired' : 'Connect Spotify on this device') + '</div>'
+            + '<div style="font-size:0.7em;color:#cbd5e1;margin-bottom:10px;max-width:260px;line-height:1.4">'
+            + (expired
+                ? 'Your Spotify session timed out. Sign in again to keep playing.'
+                : 'Each device needs its own one-time Spotify sign-in. Connect Spotify on this iPhone to enable playback.')
+            + '</div>'
+            + '<button onclick="if(window.ListeningBundles&&window.ListeningBundles.connectSpotify)window.ListeningBundles.connectSpotify();else if(typeof connectSpotify===\'function\')connectSpotify()" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:#1ed760;color:#000;border:0;cursor:pointer">🔗 Connect Spotify</button>'
+            + '<div style="font-size:0.6em;color:#64748b;margin-top:6px">Premium required · one-time per browser</div>'
+            + '</div>';
+    }
+
     function _renderNeedsSpotifyApp(d) {
         var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
         var container = document.getElementById(containerId);

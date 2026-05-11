@@ -414,6 +414,28 @@ window.GLPlayerEngine = (function() {
         // hidden when supports_volume=false). Falls through to SDK if no
         // Connect device available (likely user force-quit Spotify app).
         if (SC && SC.isIOSPlatform()) {
+            // Token check FIRST. Without an OAuth token in this browser's
+            // localStorage, /me/player/devices returns empty and we'd fall
+            // into the "no device" branch — surfacing the wake CTA which
+            // tells the user to open Spotify on their phone. That's wrong:
+            // the real fix is to authenticate this browser. Drew 2026-05-11
+            // diagnostic on iPhone: token=MISSING → polling found 0 devices
+            // 5x, rage-clicked play 6 times. UX bug.
+            // Tokens are per-browser (no cross-device sync yet — see memory
+            // project_spotify_connect.md), so OAuth must happen on each
+            // device the band wants to play from.
+            var hasToken = !!localStorage.getItem('gl_spotify_access_token');
+            var tokenExp = parseInt(localStorage.getItem('gl_spotify_token_expires_at') || '0', 10);
+            var tokenValid = hasToken && (!tokenExp || Date.now() < tokenExp);
+            if (!tokenValid) {
+                _activeMethod = null;
+                _activeDeviceId = null;
+                _awaitingSpotifyApp = false;
+                _setState(State.IDLE, { source: 'spotify', method: 'needs_auth' });
+                _emit('needsSpotifyAuth', { trackId: trackId, reason: hasToken ? 'token_expired' : 'no_token' });
+                console.log('[GLPlayer] iOS Spotify route: ' + (hasToken ? 'token expired' : 'no token in this browser') + ' — surfacing auth CTA');
+                return;
+            }
             var device = null;
             try { device = await SC.pickPreferredDevice(); } catch(e) {}
             if (device && !device.is_restricted) {
