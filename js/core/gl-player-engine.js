@@ -502,6 +502,7 @@ window.GLPlayerEngine = (function() {
                         trackId: trackId,
                         deviceId: device.id,
                         deviceName: device.name,
+                        deviceType: device.type, // for UI icon — Smartphone/Tablet/Computer/Speaker
                         supportsVolume: !!device.supports_volume
                     });
                     _isPlaying = true;

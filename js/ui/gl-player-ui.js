@@ -56,6 +56,38 @@ window.GLPlayerUI = (function() {
         // back to GL. After they do, the next play() call finds the device.
         E.on('needsSpotifyApp', function(d) { _renderNeedsSpotifyApp(d); });
         E.on('needsSpotifyAuth', function(d) { _renderNeedsSpotifyAuth(d); });
+
+        // Phase 5 real-time device pill: subscribe to Connect polling so the
+        // "Playing on X" device label updates live when the user transfers
+        // playback elsewhere or the device drops out (Spotify force-quit).
+        if (typeof GLSpotifyConnect !== 'undefined' && GLSpotifyConnect.on) {
+            GLSpotifyConnect.on('playbackState', _updateConnectDevicePill);
+        }
+    }
+
+    function _deviceIcon(type) {
+        if (!type) return '🎵';
+        if (type === 'Smartphone') return '📱';
+        if (type === 'Tablet') return '📱';
+        if (type === 'Computer') return '💻';
+        if (type === 'Speaker') return '🔊';
+        if (type === 'TV') return '📺';
+        if (type === 'CastVideo' || type === 'CastAudio') return '📡';
+        return '🎵';
+    }
+
+    function _updateConnectDevicePill(state) {
+        var pill = document.getElementById('glpDevicePill');
+        if (!pill) return; // no Connect player active, nothing to update
+        if (!state || !state.device) {
+            pill.innerHTML = '<span style="opacity:0.7">No active device</span>';
+            return;
+        }
+        var icon = _deviceIcon(state.device.type);
+        var dot = state.is_playing
+            ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#1ed760;margin-right:4px;animation:glPulse 1.6s ease-in-out infinite"></span>'
+            : '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#94a3b8;margin-right:4px"></span>';
+        pill.innerHTML = dot + icon + ' ' + _esc(state.device.name);
     }
 
     // ── Overlay Mode (Full-Screen) ──────────────────────────────────────────
@@ -885,9 +917,11 @@ window.GLPlayerUI = (function() {
             var volNote = d.supportsVolume
                 ? ''
                 : '<div style="font-size:0.65em;color:#94a3b8;margin-top:6px;line-height:1.3">Volume: use ' + _esc(d.deviceName || 'device') + ' hardware buttons</div>';
-            if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;text-align:center">'
-                + '<div style="font-size:1.5em;margin-bottom:6px">\uD83D\uDCF1</div>'
-                + '<div style="font-size:0.88em;font-weight:700;color:#1ed760">Playing on ' + _esc(d.deviceName || 'Spotify') + '</div>'
+            var initialIcon = _deviceIcon(d.deviceType);
+            if (container) container.innerHTML = '<style>@keyframes glPulse { 0%,100%{opacity:1} 50%{opacity:0.35} }</style>'
+                + '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;text-align:center">'
+                + '<div style="font-size:1.5em;margin-bottom:6px">' + initialIcon + '</div>'
+                + '<div style="font-size:0.88em;font-weight:700;color:#1ed760">Playing on <span id="glpDevicePill">' + _esc(d.deviceName || 'Spotify') + '</span></div>'
                 + '<div style="font-size:0.7em;color:#b3b3b3;margin-top:4px">Full track \u00B7 via Spotify Connect</div>'
                 + volNote
                 + '</div>';
