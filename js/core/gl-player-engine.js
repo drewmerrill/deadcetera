@@ -183,6 +183,41 @@ window.GLPlayerEngine = (function() {
         _persistState();
 
         _resolveAndPlay(song, myToken);
+        // Pre-warm the NEXT song's Spotify trackId in the background while
+        // this one plays. When the band hits next, _resolveAndPlay's fast
+        // path (pref==='spotify' && song.spotifyTrackId) fires immediately
+        // instead of waiting on a fresh Spotify search (~1-2s). Best-effort:
+        // silent on failure, gated on Spotify preference + missing trackId
+        // to avoid wasting API budget when YouTube-first users don't need it.
+        _prewarmNextSpotifyId();
+    }
+
+    function _prewarmNextSpotifyId() {
+        try {
+            var nextIdx = _currentIdx + 1;
+            if (nextIdx < 0 || nextIdx >= _queue.length) return;
+            var nextSong = _queue[nextIdx];
+            if (!nextSong || nextSong.spotifyTrackId) return;
+            var pref = (typeof GLSourceResolver !== 'undefined' && GLSourceResolver.getPreferred) ? GLSourceResolver.getPreferred() : 'youtube';
+            // Skip prewarm on YouTube-first when the next song has YouTube
+            // ID \u2014 Spotify won't be the play target so the search would be
+            // wasted API budget.
+            if (pref === 'youtube' && nextSong.youtubeId) return;
+            var LB = window.ListeningBundles;
+            if (!LB || !LB.searchSpotifyForSong || !LB.isSpotifyConnected || !LB.isSpotifyConnected()) return;
+            LB.searchSpotifyForSong(nextSong.title).then(function(results) {
+                if (!results || !results.length || !results[0].trackId) return;
+                // Re-check the slot \u2014 user may have hit next/prev or
+                // reordered the queue during the search; only set if the
+                // song at nextIdx is still the same one we searched for.
+                var currentNext = _queue[nextIdx];
+                if (!currentNext || currentNext.title !== nextSong.title) return;
+                if (!currentNext.spotifyTrackId) {
+                    currentNext.spotifyTrackId = results[0].trackId;
+                    console.log('[GLPlayer] Prewarmed Spotify trackId for "' + nextSong.title + '" \u2192 ' + results[0].trackId);
+                }
+            }).catch(function() {}); // silent
+        } catch(e) {}
     }
 
     function next() {
