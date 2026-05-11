@@ -183,7 +183,12 @@
       var latest = setlists[setlists.length - 1];
       if (!latest.sets) latest.sets = [{ name: 'All Songs', songs: [] }];
       latest.sets[0].songs.push({ title: title, segue: 'stop' });
-      await db.ref(_bp('setlists')).set(setlists);
+      // Use safe per-record writer to avoid whole-array clobbers (2026-05-10 incident).
+      if (typeof window.saveBandSetlistsSafe === 'function') {
+        await window.saveBandSetlistsSafe(setlists, { actor: 'groovemate' });
+      } else {
+        await db.ref(_bp('setlists')).set(setlists);
+      }
       return { success: true, message: 'Added "' + title + '" to "' + (latest.name || 'setlist') + '".', action: 'add_song_to_setlist' };
     } catch(e) {
       return { success: false, message: 'Failed to add to setlist: ' + e.message };
@@ -346,7 +351,12 @@
       var snap = await db.ref(_bp('setlists')).once('value');
       var existing = snap.val() ? (Array.isArray(snap.val()) ? snap.val() : Object.values(snap.val())) : [];
       existing.push(setlist);
-      await db.ref(_bp('setlists')).set(existing);
+      // Use safe per-record writer to avoid whole-array clobbers (2026-05-10 incident).
+      if (typeof window.saveBandSetlistsSafe === 'function') {
+        await window.saveBandSetlistsSafe(existing, { actor: 'groovemate' });
+      } else {
+        await db.ref(_bp('setlists')).set(existing);
+      }
       return setlist;
     } catch(e) {
       console.error('[GLTools] Create setlist failed:', e.message);

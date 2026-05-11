@@ -509,6 +509,13 @@ window.handleGoogleDriveAuth = async function handleGoogleDriveAuth(silent) {
  * @returns {Promise<boolean>} true if Firebase write succeeded
  */
 window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataType, data) {
+    // Setlists go through a per-record safe writer to avoid whole-array
+    // clobbers when the cache is stale (the bug that wiped Southern Roots
+    // Tavern, Tim's Birthday, and Avon Theater setlists on 2026-05-10).
+    if (songTitle === '_band' && dataType === 'setlists') {
+        return window.saveBandSetlistsSafe(data);
+    }
+
     var localKey = 'deadcetera_' + dataType + '_' + songTitle;
     try { localStorage.setItem(localKey, JSON.stringify(data)); } catch(e) {}
 
@@ -540,6 +547,124 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
     } catch (error) {
         console.error('❌ Failed to save to Firebase:', error.message || error);
         if (typeof showToast === 'function') showToast('❌ Save failed — ' + (error.message || 'check your connection'));
+        return false;
+    }
+};
+
+// Safe per-record setlist writer. Replaces the whole-array .set() that caused
+// stale SWR cache to roll back unrelated entries. Reads current Firebase truth
+// (not cache), diffs by setlistId, writes only changed records via .update(),
+// stamps updatedAt + updatedBy, then syncs caches from a fresh Firebase read.
+window.saveBandSetlistsSafe = async function saveBandSetlistsSafe(newArray, options) {
+    options = options || {};
+    var stamp = new Date().toISOString();
+    var actor = options.actor
+        || (typeof currentUserEmail !== 'undefined' && currentUserEmail)
+        || (typeof currentUserName !== 'undefined' && currentUserName)
+        || 'unknown';
+
+    var newArr = Array.isArray(newArray) ? newArray : Object.values(newArray || {});
+
+    // Always mirror to legacy localStorage for offline read fallback
+    try { localStorage.setItem('deadcetera_setlists__band', JSON.stringify(newArr)); } catch(e) {}
+
+    if (!firebaseDB) {
+        console.warn('⚠️ Firebase not ready — setlists saved to localStorage only');
+        if (typeof showToast === 'function') showToast('⚠️ Not signed in — changes saved locally only. Sign in to sync.');
+        return false;
+    }
+
+    var path = window.bandPath('setlists');
+
+    try {
+        // Read current Firebase truth — NEVER trust the SWR cache for writes.
+        var snap = await firebaseDB.ref(path).once('value');
+        var liveByKey = snap.val() || {};
+
+        // Index live records by setlistId; track max numeric key for new inserts.
+        var liveById = {};
+        var maxKey = -1;
+        Object.keys(liveByKey).forEach(function(k) {
+            var v = liveByKey[k];
+            if (v && v.setlistId) liveById[v.setlistId] = { key: k, record: v };
+            var n = parseInt(k, 10);
+            if (!isNaN(n) && n > maxKey) maxKey = n;
+        });
+
+        // Index input by setlistId — used to detect deletions.
+        var newById = {};
+        newArr.forEach(function(r) { if (r && r.setlistId) newById[r.setlistId] = r; });
+
+        // Defensive validator: section labels appearing as song titles is the
+        // fingerprint of the flattener bug that produced the 2026-05-10 damage.
+        // Log a warning so we catch any regression at write time.
+        var SECTION_LABEL_RE = /^(soundcheck|set\s*\d+|encore|set\s*break|🔊\s*soundcheck)$/i;
+        newArr.forEach(function(rec) {
+            if (!rec || !Array.isArray(rec.sets)) return;
+            rec.sets.forEach(function(set) {
+                (set.songs || []).forEach(function(sg, idx) {
+                    var title = (typeof sg === 'string') ? sg : (sg && sg.title);
+                    if (title && SECTION_LABEL_RE.test(String(title).trim())) {
+                        console.warn('[saveBandSetlistsSafe] suspicious title "' + title + '" in setlist "' + (rec.name || rec.setlistId) + '" / section "' + (set.name || '?') + '" / idx ' + idx + ' — possible section-flattener artifact');
+                    }
+                });
+            });
+        });
+
+        var nextKey = maxKey + 1;
+        var updated = 0, added = 0, deleted = 0, skipped = 0;
+
+        // Process new + changed records.
+        for (var i = 0; i < newArr.length; i++) {
+            var rec = newArr[i];
+            if (!rec) { skipped++; continue; }
+            if (!rec.setlistId) {
+                console.warn('[saveBandSetlistsSafe] record missing setlistId — skipping', rec.name || '(no name)');
+                skipped++;
+                continue;
+            }
+            var existing = liveById[rec.setlistId];
+            if (existing) {
+                // Strip volatile fields before comparing so a no-op save doesn't churn.
+                var liveSerialized = JSON.stringify(existing.record);
+                var inSerialized = JSON.stringify(rec);
+                if (liveSerialized === inSerialized) continue;
+                var stamped = Object.assign({}, rec, { updatedAt: stamp, updatedBy: actor });
+                await firebaseDB.ref(path + '/' + existing.key).set(stamped);
+                updated++;
+            } else {
+                var stampedNew = Object.assign({}, rec, { updatedAt: stamp, updatedBy: actor });
+                await firebaseDB.ref(path + '/' + nextKey).set(stampedNew);
+                nextKey++;
+                added++;
+            }
+        }
+
+        // Process deletions — records that were in Firebase but NOT in the input.
+        var liveKeys = Object.keys(liveByKey);
+        for (var j = 0; j < liveKeys.length; j++) {
+            var k = liveKeys[j];
+            var v = liveByKey[k];
+            if (v && v.setlistId && !newById[v.setlistId]) {
+                await firebaseDB.ref(path + '/' + k).remove();
+                deleted++;
+            }
+        }
+
+        // Re-read truth and sync both caches from THAT — not from the input.
+        var freshSnap = await firebaseDB.ref(path).once('value');
+        var freshVal = freshSnap.val() || {};
+        var freshArr = Object.values(freshVal);
+        try { _glCacheWrite('_band', 'setlists', freshArr); } catch(e) {}
+        try { localStorage.setItem('deadcetera_setlists__band', JSON.stringify(freshArr)); } catch(e) {}
+
+        if (updated + added + deleted > 0) {
+            console.log('[saveBandSetlistsSafe] ' + updated + ' updated, ' + added + ' added, ' + deleted + ' deleted, ' + skipped + ' skipped — actor=' + actor);
+        }
+        return true;
+    } catch (error) {
+        console.error('❌ saveBandSetlistsSafe failed:', error.message || error);
+        if (typeof showToast === 'function') showToast('❌ Setlist save failed — ' + (error.message || 'check your connection'));
         return false;
     }
 };
