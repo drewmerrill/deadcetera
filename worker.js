@@ -171,6 +171,17 @@ export default {
     // session ID is no longer the only thing keeping it private.
     if (path === '/multitrack/share' && request.method === 'GET')
       return handleMultitrackShare(request, env);
+    // Multitrack zip — async build of a single session.zip via Modal so
+    // Brian (or any bandmate) can download one file instead of clicking
+    // 15 FLACs. Mirrors the /stems/start + /stems/check async pattern.
+    if (path === '/multitrack/zip/start' && request.method === 'POST')
+      return handleMultitrackZipStart(request, env);
+    if (path === '/multitrack/zip/check' && request.method === 'POST')
+      return handleMultitrackZipCheck(request, env);
+    // Quick check: does session.zip exist already in R2? Used by the share
+    // page to short-circuit the Modal build when the user re-visits.
+    if (path === '/multitrack/zip/status' && request.method === 'GET')
+      return handleMultitrackZipStatus(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -1873,6 +1884,113 @@ async function handleMultitrackShare(request, env) {
     }));
   }
   return jsonResp({ bandSlug: bandSlug, sessionId: sessionId, files: files, totalBytes: totalBytes });
+}
+
+// GET /multitrack/zip/status?bandSlug=X&sessionId=Y — head-check R2 for an
+// existing session.zip so the share page can show "Download" immediately
+// when one is already cached. Returns { ready, publicUrl, size }.
+async function handleMultitrackZipStatus(request, env) {
+  if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
+    return cors(jsonError('multitrack_not_configured', 500));
+  }
+  var url = new URL(request.url);
+  var bandSlug  = String(url.searchParams.get('bandSlug')  || '').trim();
+  var sessionId = String(url.searchParams.get('sessionId') || '').trim();
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+
+  var key = 'multitrack/' + bandSlug + '/' + sessionId + '/session.zip';
+  try {
+    var obj = await env.STEMS_BUCKET.head(key);
+    if (obj) {
+      return jsonResp({
+        ready: true,
+        publicUrl: env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key,
+        size: obj.size,
+        uploaded: obj.uploaded,
+      });
+    }
+  } catch (e) { /* fall through to not-found */ }
+  return jsonResp({ ready: false });
+}
+
+// POST /multitrack/zip/start — body: { bandSlug, sessionId }
+// Forwards to Modal zip_start (which spawns zip_session and returns call_id).
+async function handleMultitrackZipStart(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('multitrack_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var startUrl = env.MULTITRACK_ZIP_START_URL;
+  if (!startUrl) {
+    return cors(jsonError('multitrack_not_configured: MULTITRACK_ZIP_START_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var bandSlug  = String(body.bandSlug  || '').trim();
+  var sessionId = String(body.sessionId || '').trim();
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 60000);
+  try {
+    var modalRes = await fetch(startUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bandSlug: bandSlug,
+        sessionId: sessionId,
+        token: env.STEMS_SHARED_SECRET,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// POST /multitrack/zip/check — body: { call_id }
+async function handleMultitrackZipCheck(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('multitrack_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var checkUrl = env.MULTITRACK_ZIP_CHECK_URL;
+  if (!checkUrl) {
+    return cors(jsonError('multitrack_not_configured: MULTITRACK_ZIP_CHECK_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var callId = String(body.call_id || body.callId || '').trim();
+  if (!callId) return cors(jsonError('missing_call_id', 400));
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+  try {
+    var modalRes = await fetch(checkUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
 }
 
 function _renderMultitrackShareHtml(bandSlug, sessionId, files, totalBytes) {
