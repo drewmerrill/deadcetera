@@ -435,6 +435,20 @@ window.GLPlayerEngine = (function() {
             try { tokenInfo = tokenRaw ? JSON.parse(tokenRaw) : null; } catch(e) {}
             var hasToken = !!(tokenInfo && tokenInfo.accessToken);
             var tokenExpired = hasToken && tokenInfo.expiresAt && Date.now() > (tokenInfo.expiresAt - 60000);
+            // No local token? Try Firebase cross-device sync before prompting.
+            // Same user on a different browser/device pulls their own token
+            // from bands/<slug>/spotify_tokens/<email> instead of re-OAuthing.
+            if (!hasToken || tokenExpired) {
+                if (window.ListeningBundles && window.ListeningBundles.hydrateSpotifyTokenFromFirebase) {
+                    try {
+                        var hydrated = await window.ListeningBundles.hydrateSpotifyTokenFromFirebase();
+                        if (hydrated && hydrated.accessToken) {
+                            hasToken = true;
+                            tokenExpired = hydrated.expiresAt && Date.now() > (hydrated.expiresAt - 60000);
+                        }
+                    } catch(e) {}
+                }
+            }
             if (!hasToken || tokenExpired) {
                 _activeMethod = null;
                 _activeDeviceId = null;

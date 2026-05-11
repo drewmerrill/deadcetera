@@ -586,6 +586,60 @@ window.ListeningBundles = (function() {
     var _SPOTIFY_TOKEN_KEY = 'gl_spotify_token';
     var _SPOTIFY_PLAYLISTS_KEY = 'gl_spotify_playlists';
 
+    // ── Cross-device Spotify token sync (per-user) ─────────────────────────
+    // Stores the OAuth token blob at bands/<slug>/spotify_tokens/<email>
+    // so the same user's other devices can hydrate it on first launch.
+    // Per-user only — different members on the same band get different keys.
+    // Refresh tokens don't rotate per Spotify docs, so the initial OAuth's
+    // refresh token in Firebase remains valid for the lifetime of the grant.
+    function _spFbKey() {
+        if (typeof currentUserEmail === 'undefined' || !currentUserEmail) return null;
+        return currentUserEmail.replace(/[.#$\[\]/]/g, '_');
+    }
+    function _spFbPath() {
+        var k = _spFbKey();
+        var slug = (typeof currentBandSlug !== 'undefined' && currentBandSlug) ? currentBandSlug : null;
+        if (!k || !slug) return null;
+        return 'bands/' + slug + '/spotify_tokens/' + k;
+    }
+    async function _syncTokenToFirebase(tokenData) {
+        if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
+        var path = _spFbPath();
+        if (!path || !tokenData) return;
+        try {
+            await firebaseDB.ref(path).set(tokenData);
+            console.log('[Spotify] Token synced to Firebase for cross-device');
+        } catch(e) { console.warn('[Spotify] Token sync failed:', e && e.message); }
+    }
+    async function _pullTokenFromFirebase() {
+        if (typeof firebaseDB === 'undefined' || !firebaseDB) return null;
+        var path = _spFbPath();
+        if (!path) return null;
+        try {
+            var snap = await firebaseDB.ref(path).once('value');
+            return snap.val();
+        } catch(e) { return null; }
+    }
+    async function _clearTokenInFirebase() {
+        if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
+        var path = _spFbPath();
+        if (!path) return;
+        try { await firebaseDB.ref(path).remove(); } catch(e) {}
+    }
+    // Public: lazy hydration. Caller checks local first; if missing, this
+    // tries Firebase, writes to local if found, and returns the token blob.
+    async function hydrateSpotifyTokenFromFirebase() {
+        var local = _getSpotifyTokenData();
+        if (local && local.accessToken && (!local.expiresAt || Date.now() < local.expiresAt - 60000)) return local;
+        var fb = await _pullTokenFromFirebase();
+        if (fb && fb.accessToken) {
+            try { localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify(fb)); } catch(e) {}
+            console.log('[Spotify] Hydrated token from Firebase cross-device sync');
+            return fb;
+        }
+        return null;
+    }
+
     function _getSpotifyTokenData() {
         try {
             var raw = localStorage.getItem(_SPOTIFY_TOKEN_KEY);
@@ -764,11 +818,15 @@ window.ListeningBundles = (function() {
             });
             var data = await resp.json();
             if (data.access_token) {
-                localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify({
+                var tokenBlob = {
                     accessToken: data.access_token,
                     refreshToken: data.refresh_token,
                     expiresAt: Date.now() + (data.expires_in * 1000)
-                }));
+                };
+                localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify(tokenBlob));
+                // Cross-device sync: mirror to Firebase so other browsers
+                // of the same user can hydrate without re-OAuthing.
+                _syncTokenToFirebase(tokenBlob);
                 localStorage.removeItem('gl_spotify_pkce_verifier');
                 // Clean URL
                 var returnUrl = localStorage.getItem('gl_spotify_pkce_return') || '/';
@@ -790,6 +848,8 @@ window.ListeningBundles = (function() {
     function disconnectSpotify() {
         localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
         localStorage.removeItem(_SPOTIFY_PLAYLISTS_KEY);
+        // Also clear the Firebase mirror so other devices re-prompt for OAuth
+        _clearTokenInFirebase();
         if (typeof showToast === 'function') showToast('Spotify disconnected');
     }
 
@@ -1427,6 +1487,7 @@ window.ListeningBundles = (function() {
         isSpotifyConnected: isSpotifyConnected,
         connectSpotify: connectSpotify,
         disconnectSpotify: disconnectSpotify,
+        hydrateSpotifyTokenFromFirebase: hydrateSpotifyTokenFromFirebase,
         handleSpotifyCallback: handleSpotifyCallback,
         syncToSpotify: syncToSpotify,
         resolveSpotifyTrackIds: resolveSpotifyTrackIds,
