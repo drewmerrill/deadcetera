@@ -247,6 +247,18 @@ window.GLPlayerEngine = (function() {
                     _emit('needsSpotifyApp', { trackId: trackId, reason: 'device_gone_during_pause' });
                 }
             });
+        } else if (_activeSource === 'spotify' && _activeMethod === 'sdk' && typeof GLSpotifyPlayer !== 'undefined') {
+            // Web Playback SDK path (desktop browsers). Without this branch,
+            // pause/play buttons did nothing on MBP — Drew 2026-05-11
+            // screenshots: track playing via GL device, transport buttons
+            // inert, had to switch to Spotify desktop to pause.
+            try {
+                GLSpotifyPlayer.togglePlay();
+                _isPlaying = !_isPlaying;
+                _emit('stateChange', { state: _state, isPlaying: _isPlaying });
+            } catch(e) {
+                console.warn('[GLPlayer] SDK togglePlay failed:', e.message || e);
+            }
         }
     }
 
@@ -267,8 +279,19 @@ window.GLPlayerEngine = (function() {
             }).catch(function(e) {
                 console.warn('[GLPlayer] Connect seekRelative failed:', e.message || e);
             });
+        } else if (_activeSource === 'spotify' && _activeMethod === 'sdk' && typeof GLSpotifyPlayer !== 'undefined') {
+            // SDK path: read current state, compute target, seek via SDK.
+            try {
+                if (GLSpotifyPlayer.getCurrentState) {
+                    GLSpotifyPlayer.getCurrentState().then(function(state) {
+                        if (!state) return;
+                        var currentMs = state.position || 0;
+                        var targetMs = Math.max(0, currentMs + (deltaSec * 1000));
+                        GLSpotifyPlayer.seek(targetMs);
+                    });
+                }
+            } catch(e) { console.warn('[GLPlayer] SDK seek failed:', e.message || e); }
         }
-        // Spotify SDK seek not supported in embed mode
     }
 
     function stop() {
@@ -283,6 +306,9 @@ window.GLPlayerEngine = (function() {
             if (_activeDeviceId) {
                 GLSpotifyConnect.pause(_activeDeviceId).catch(function(){});
             }
+        } else if (_activeSource === 'spotify' && _activeMethod === 'sdk' && typeof GLSpotifyPlayer !== 'undefined') {
+            // SDK path: pause to release audio session when player closes.
+            try { GLSpotifyPlayer.pause(); } catch(e) {}
         }
         _isPlaying = false;
         _activeSource = null;
@@ -507,6 +533,7 @@ window.GLPlayerEngine = (function() {
             _emit('status', { message: 'Starting Spotify\u2026' });
             var ok = await SP.playTrackId(trackId);
             if (ok) {
+                _activeMethod = 'sdk'; // load-bearing for togglePlay/seek/stop routing
                 _setState(State.PLAYING, { source: 'spotify', method: 'sdk' });
                 _emit('embedReady', { source: 'spotify_sdk', trackId: trackId });
                 _isPlaying = true;

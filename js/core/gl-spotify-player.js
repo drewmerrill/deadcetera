@@ -358,6 +358,14 @@ window.GLSpotifyPlayer = (function() {
         if (_player) _player.seek(positionMs);
     }
 
+    // Returns the SDK's playback state — used by the engine for relative seek.
+    // Resolves to { position, duration, paused, ... } or null if no track.
+    async function getCurrentState() {
+        if (!_player || !_player.getCurrentState) return null;
+        try { return await _player.getCurrentState(); }
+        catch(e) { return null; }
+    }
+
     function setVolume(vol) {
         if (_player) _player.setVolume(vol);
     }
@@ -402,6 +410,7 @@ window.GLSpotifyPlayer = (function() {
         togglePlay: togglePlay,
         seek: seek,
         setVolume: setVolume,
+        getCurrentState: getCurrentState,
 
         getState: getState,
         getDeviceId: getDeviceId,
