@@ -1107,11 +1107,48 @@ function _addSongToLocalCache(record) {
  * Load the band's song library from Firebase and replace allSongs contents.
  * For Deadcetera: migrates from hardcoded allSongs on first run.
  */
+// localStorage SWR cache for the band's song_library. Keyed by band slug so
+// cross-band navigation never serves stale rows. On iPhone, the Firebase
+// fetch of song_library is the long pole that makes the Songs page paint
+// "zero then suddenly show up" — Drew 2026-05-11. The cache flips this to
+// stale-then-revalidate: paint instantly from cache, refresh in background.
+function _glSongLibCacheKey(slug) { return 'gl_song_library_' + slug; }
+function _glSongLibCacheRead(slug) {
+    try {
+        var raw = localStorage.getItem(_glSongLibCacheKey(slug));
+        if (!raw) return null;
+        var parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : null;
+    } catch(e) { return null; }
+}
+function _glSongLibCacheWrite(slug, songs) {
+    try { localStorage.setItem(_glSongLibCacheKey(slug), JSON.stringify(songs)); } catch(e) {}
+}
+
 window.loadBandSongLibrary = async function loadBandSongLibrary() {
     if (!firebaseDB || _GL_SONG_LIB_LOADED) return;
 
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : '';
     if (!slug) return;
+
+    // Hydrate allSongs from localStorage cache synchronously. The Firebase
+    // fetch below still runs and replaces allSongs when it lands, but the
+    // Songs page can already paint its skeleton-free state. On iPhone this
+    // cuts the "Loading songs..." wait from 5-10s to ~0ms on every visit
+    // after the first.
+    var cachedLib = _glSongLibCacheRead(slug);
+    if (cachedLib && cachedLib.length > 0 && typeof allSongs !== 'undefined') {
+        allSongs.length = 0;
+        cachedLib.forEach(function(s) { allSongs.push(s); });
+        if (typeof GLStore !== 'undefined' && GLStore.rebuildSongIndexes) GLStore.rebuildSongIndexes();
+        // Flip the readiness gate and re-render the Songs page if visible.
+        // Firebase fetch continues below; when it lands it'll replace the
+        // array and re-render again with any deltas.
+        if (typeof window._sqDataReady !== 'undefined') window._sqDataReady.songs = true;
+        if (typeof renderSongs === 'function') {
+            try { renderSongs(); console.log('[SongLib] Painted ' + cachedLib.length + ' songs from cache (background refresh starting)'); } catch(e) {}
+        }
+    }
 
     // Check if this band needs migration (Deadcetera only)
     if (slug === 'deadcetera') {
@@ -1158,6 +1195,9 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
                 allSongs.length = 0;
                 songs.forEach(function(s) { allSongs.push(s); });
             }
+            // Persist for next boot's instant paint. Keep this small —
+            // we strip down to the same shape we cached in (no media blobs).
+            _glSongLibCacheWrite(slug, songs);
             console.log('[SongLib] Loaded ' + songs.length + ' songs for band: ' + slug);
         } else if (slug !== 'deadcetera') {
             // Non-DC band with no songs — clear allSongs

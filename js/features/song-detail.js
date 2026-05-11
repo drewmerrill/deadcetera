@@ -5010,9 +5010,35 @@ function _sdPopulateInspireLens() {
 }
 
 // ── Firebase helpers ──────────────────────────────────────────────────────────
+// SWR cache for _sdGet reads — the two callsites in _sdPopulateBandLens that
+// fetch songs/<id>/metadata and songs/<id>/section_ratings were the only
+// non-cached reads in the song-detail load pipeline, capping the parallel
+// load at iPhone Firebase latency. Drew 2026-05-11: opening Ain't Life
+// Grand took 5-10s; the other 7 parallel reads hit a warm SWR cache via
+// loadBandDataFromDrive, but these two went raw. localStorage cache keyed
+// by band slug + sanitized subpath flips them to stale-then-revalidate.
+function _sdGetCacheKey(subpath) {
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : '';
+    return 'gl_sdget_' + slug + '_' + String(subpath).replace(/[^a-z0-9_-]/gi, '_');
+}
 function _sdGet(subpath){
     if(typeof firebaseDB==='undefined'||!firebaseDB||typeof bandPath!=='function') return Promise.resolve(null);
-    return firebaseDB.ref(bandPath(subpath)).once('value').then(function(s){return s.val();}).catch(function(){return null;});
+    var cacheKey = _sdGetCacheKey(subpath);
+    var cached;
+    try { var raw = localStorage.getItem(cacheKey); if (raw !== null) cached = JSON.parse(raw); } catch(e) {}
+    // Always fire background refresh — keeps cache fresh for next call.
+    var refreshPromise = firebaseDB.ref(bandPath(subpath)).once('value')
+        .then(function(s){
+            var val = s.val();
+            try { localStorage.setItem(cacheKey, JSON.stringify(val)); } catch(e) {}
+            return val;
+        })
+        .catch(function(){ return cached !== undefined ? cached : null; });
+    // Cache hit → return immediately. The refresh updates the cache for
+    // the next call. We use undefined-vs-null distinction to differentiate
+    // "no cache" from "cached null result" (e.g. song has no section ratings).
+    if (cached !== undefined) return Promise.resolve(cached);
+    return refreshPromise;
 }
 function _sdSet(subpath,val){
     if(typeof firebaseDB==='undefined'||!firebaseDB||typeof bandPath!=='function') return;
