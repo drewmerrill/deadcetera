@@ -56,6 +56,7 @@ window.GLPlayerUI = (function() {
         // back to GL. After they do, the next play() call finds the device.
         E.on('needsSpotifyApp', function(d) { _renderNeedsSpotifyApp(d); });
         E.on('needsSpotifyAuth', function(d) { _renderNeedsSpotifyAuth(d); });
+        E.on('needsSpotifyPremium', function(d) { _renderNeedsSpotifyPremium(d); });
 
         // Phase 5 real-time device pill: subscribe to Connect polling so the
         // "Playing on X" device label updates live when the user transfers
@@ -801,6 +802,32 @@ window.GLPlayerUI = (function() {
             + '</div>'
             + '<button onclick="if(window.ListeningBundles&&window.ListeningBundles.connectSpotify)window.ListeningBundles.connectSpotify();else if(typeof connectSpotify===\'function\')connectSpotify()" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:#1ed760;color:#000;border:0;cursor:pointer">🔗 Connect Spotify</button>'
             + '<div style="font-size:0.6em;color:#64748b;margin-top:6px">Premium required · one-time per browser</div>'
+            + '</div>';
+    }
+
+    // Surfaced when the user's Spotify account is Free/Open. Connect REST
+    // and Web Playback SDK both 403 PREMIUM_REQUIRED for non-Premium, so
+    // we can't play in-app. The previous behavior was a generic "Connect
+    // error" toast that left the user retrying forever. Now: explicit
+    // upgrade CTA + escape hatch to the embed (which works on Free).
+    function _renderNeedsSpotifyPremium(d) {
+        var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
+        var container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML =
+            '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:12px;text-align:center">'
+            + '<div style="font-size:1.4em;margin-bottom:4px">⭐</div>'
+            + '<div style="font-size:0.82em;font-weight:700;color:#1ed760;margin-bottom:4px">Spotify Premium required</div>'
+            + '<div style="font-size:0.7em;color:#cbd5e1;margin-bottom:10px;max-width:260px;line-height:1.4">'
+            +   'In-app playback uses Spotify Connect, which is Premium-only. Upgrade to play directly inside GrooveLinx, or open the song in the Spotify app.'
+            + '</div>'
+            + '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">'
+            +   '<a href="https://www.spotify.com/premium/" target="_blank" rel="noopener" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:#1ed760;color:#000;border:0;text-decoration:none;cursor:pointer">Upgrade to Premium</a>'
+            +   (d && d.trackId
+                ? '<a href="https://open.spotify.com/track/' + d.trackId + '" target="_blank" rel="noopener" style="padding:7px 14px;border-radius:18px;font-size:0.78em;font-weight:700;background:rgba(255,255,255,0.08);color:#cbd5e1;border:1px solid rgba(255,255,255,0.15);text-decoration:none;cursor:pointer">Open in Spotify</a>'
+                : '')
+            + '</div>'
+            + '<div style="font-size:0.6em;color:#64748b;margin-top:6px">Account type detected: ' + ((d && d.accountType) || 'free') + '</div>'
             + '</div>';
     }
 

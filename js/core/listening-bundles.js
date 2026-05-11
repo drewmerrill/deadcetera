@@ -749,6 +749,57 @@ window.ListeningBundles = (function() {
         return !!_getSpotifyToken();
     }
 
+    // ── Premium detection ───────────────────────────────────────────────────
+    // Spotify's Connect REST and Web Playback SDK both require a Premium
+    // account. /v1/me returns a `product` field: 'premium' | 'free' | 'open'.
+    // Cached on the token blob so we check once per OAuth (rarely changes).
+    // Cross-device sync via Firebase token mirror means a Premium check on
+    // one device is visible to the user's other devices immediately.
+    async function _checkAndStorePremium() {
+        var tokenData = _getSpotifyTokenData();
+        if (!tokenData || !tokenData.accessToken) return null;
+        try {
+            var resp = await fetch('https://api.spotify.com/v1/me', {
+                headers: { 'Authorization': 'Bearer ' + tokenData.accessToken }
+            });
+            if (!resp.ok) return null;
+            var me = await resp.json();
+            if (!me || !me.product) return null;
+            // Re-read tokenData in case it changed during fetch (e.g. silent
+            // refresh wrote a new blob). Merge product onto the latest blob.
+            var current = _getSpotifyTokenData() || tokenData;
+            current.product = me.product;
+            current.productCheckedAt = Date.now();
+            localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify(current));
+            _syncTokenToFirebase(current);
+            console.log('[Spotify] Account type: ' + me.product);
+            return me.product;
+        } catch(e) {
+            console.warn('[Spotify] Premium check failed:', e && e.message);
+            return null;
+        }
+    }
+    // Public sync getter — returns 'premium' | 'free' | 'open' | null. Null
+    // means we haven't checked yet (or check failed). Callers should treat
+    // null as "unknown, allow attempt + handle 403" rather than blocking.
+    function getSpotifyAccountType() {
+        var d = _getSpotifyTokenData();
+        return d ? (d.product || null) : null;
+    }
+    function isSpotifyPremium() { return getSpotifyAccountType() === 'premium'; }
+    function isSpotifyAccountTypeKnown() { return !!getSpotifyAccountType(); }
+    // Public: force a fresh /me lookup. Useful when a 403 PREMIUM_REQUIRED
+    // is observed during play — refreshing the cached product means future
+    // attempts skip Connect entirely and surface the CTA up front.
+    function refreshSpotifyAccountType() { return _checkAndStorePremium(); }
+    // Lazy hydration — if we have a token but no product info (e.g. token
+    // was cached before this code shipped), do a one-time backfill check.
+    // Called from boot + visibilitychange refresh paths.
+    function _maybeBackfillPremium() {
+        var d = _getSpotifyTokenData();
+        if (d && d.accessToken && !d.product) { _checkAndStorePremium(); }
+    }
+
     // ── Spotify Status Detection ────────────────────────────────────────────
 
     function _getSpotifyFailureState() {
@@ -878,6 +929,11 @@ window.ListeningBundles = (function() {
                 // Cross-device sync: mirror to Firebase so other browsers
                 // of the same user can hydrate without re-OAuthing.
                 _syncTokenToFirebase(tokenBlob);
+                // Detect Premium vs Free immediately — non-Premium accounts
+                // can't use Connect REST or Web Playback SDK, so we want to
+                // gate the UI fast instead of letting the first play attempt
+                // fail with a generic 403.
+                _checkAndStorePremium();
                 localStorage.removeItem('gl_spotify_pkce_verifier');
                 // Clean URL
                 var returnUrl = localStorage.getItem('gl_spotify_pkce_return') || '/';
@@ -1541,7 +1597,12 @@ window.ListeningBundles = (function() {
     }
     // Defer the boot refresh so it doesn't race with _ensureSpotifyConfig on
     // first paint. 2s is enough for the worker to return the client ID.
-    setTimeout(_maybeRefreshSilently, 2000);
+    setTimeout(function() {
+        _maybeRefreshSilently();
+        // Also backfill Premium status for any token that was OAuthed before
+        // this code shipped. One-time per token.
+        _maybeBackfillPremium();
+    }, 2000);
     document.addEventListener('visibilitychange', function() {
         if (!document.hidden) _maybeRefreshSilently();
     });
@@ -1570,6 +1631,10 @@ window.ListeningBundles = (function() {
         disconnectSpotify: disconnectSpotify,
         hydrateSpotifyTokenFromFirebase: hydrateSpotifyTokenFromFirebase,
         ensureValidSpotifyToken: ensureValidSpotifyToken,
+        getSpotifyAccountType: getSpotifyAccountType,
+        isSpotifyPremium: isSpotifyPremium,
+        isSpotifyAccountTypeKnown: isSpotifyAccountTypeKnown,
+        refreshSpotifyAccountType: refreshSpotifyAccountType,
         handleSpotifyCallback: handleSpotifyCallback,
         syncToSpotify: syncToSpotify,
         resolveSpotifyTrackIds: resolveSpotifyTrackIds,

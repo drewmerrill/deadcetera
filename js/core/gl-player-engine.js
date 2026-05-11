@@ -487,6 +487,24 @@ window.GLPlayerEngine = (function() {
                 console.log('[GLPlayer] iOS Spotify route: ' + (tokenExpired ? 'token expired' : 'no token in this browser') + ' — surfacing auth CTA');
                 return;
             }
+            // Premium gate. Connect REST and Web Playback SDK both require
+            // a Premium account; without it /me/player/* returns 403
+            // PREMIUM_REQUIRED. Surface a clear upgrade CTA immediately
+            // instead of letting the user fight a generic "Connect error"
+            // toast. Account type is stored on the token blob by
+            // _checkAndStorePremium and synced across devices via Firebase.
+            // null = unknown (not yet checked) — allow the attempt and
+            // handle 403 below.
+            var acctType = null;
+            try { acctType = window.ListeningBundles && window.ListeningBundles.getSpotifyAccountType && window.ListeningBundles.getSpotifyAccountType(); } catch(e) {}
+            if (acctType && acctType !== 'premium') {
+                _activeMethod = null;
+                _activeDeviceId = null;
+                _setState(State.IDLE, { source: 'spotify', method: 'needs_premium' });
+                _emit('needsSpotifyPremium', { trackId: trackId, accountType: acctType });
+                console.log('[GLPlayer] iOS Spotify route: account type "' + acctType + '" — Premium required for Connect playback');
+                return;
+            }
             var device = null;
             try { device = await SC.pickPreferredDevice(); } catch(e) {}
             if (device && !device.is_restricted) {
@@ -513,6 +531,22 @@ window.GLPlayerEngine = (function() {
                     try { SC.startPolling(); } catch(e) {}
                     return;
                 } catch(e) {
+                    // 403 with PREMIUM_REQUIRED body = account is Free/Open.
+                    // The pre-check above missed it (productCheckedAt was null
+                    // or stale). Surface Premium CTA directly instead of
+                    // falling through to SDK (which also requires Premium).
+                    var msg = (e && (e.message || e.body || '')) + '';
+                    if (e && e.status === 403 && msg.indexOf('PREMIUM') !== -1) {
+                        console.log('[GLPlayer] Connect 403 PREMIUM_REQUIRED — surfacing upgrade CTA');
+                        _activeMethod = null;
+                        _activeDeviceId = null;
+                        _setState(State.IDLE, { source: 'spotify', method: 'needs_premium' });
+                        _emit('needsSpotifyPremium', { trackId: trackId, accountType: 'free' });
+                        // Backfill the cached product type so subsequent plays
+                        // skip Connect entirely instead of retrying the 403.
+                        try { if (window.ListeningBundles && window.ListeningBundles.refreshSpotifyAccountType) window.ListeningBundles.refreshSpotifyAccountType(); } catch(_) {}
+                        return;
+                    }
                     console.warn('[GLPlayer] Connect play failed:', e.message || e, '— falling through to SDK');
                     _emit('status', { message: 'Spotify Connect error — trying fallback' });
                 }
