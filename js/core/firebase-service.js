@@ -566,8 +566,15 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
 window._BAND_ARRAY_ID_FIELDS = {
     setlists: 'setlistId',
     gigs: 'gigId',
-    calendar_events: 'id'
+    calendar_events: 'id',
+    song_pitches: 'id',
+    custom_songs: 'songId'
 };
+// NOT covered (different shape — pattern doesn't apply):
+// - blocked_dates: only manual entries have blockId; calendar-derived rows
+//   have no ID. Per-record diff would silently skip most records.
+// - band_contacts: keyed map, not array.
+// - rehearsal_plan_*: per-date single document, not a shared array.
 
 window.saveBandArrayDataSafe = async function saveBandArrayDataSafe(dataType, newArray, options) {
     options = options || {};
