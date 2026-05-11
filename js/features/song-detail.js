@@ -5015,8 +5015,10 @@ function _sdPopulateInspireLens() {
 // non-cached reads in the song-detail load pipeline, capping the parallel
 // load at iPhone Firebase latency. Drew 2026-05-11: opening Ain't Life
 // Grand took 5-10s; the other 7 parallel reads hit a warm SWR cache via
-// loadBandDataFromDrive, but these two went raw. localStorage cache keyed
-// by band slug + sanitized subpath flips them to stale-then-revalidate.
+// loadBandDataFromDrive, but these two went raw. Uses the shared hardened
+// _glSafeCache helper (versioned envelope, safe-parse, size guard, delta
+// detection) defined in firebase-service.js. Keyed by band slug so cross-
+// band navigation never serves stale rows.
 function _sdGetCacheKey(subpath) {
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : '';
     return 'gl_sdget_' + slug + '_' + String(subpath).replace(/[^a-z0-9_-]/gi, '_');
@@ -5024,19 +5026,19 @@ function _sdGetCacheKey(subpath) {
 function _sdGet(subpath){
     if(typeof firebaseDB==='undefined'||!firebaseDB||typeof bandPath!=='function') return Promise.resolve(null);
     var cacheKey = _sdGetCacheKey(subpath);
-    var cached;
-    try { var raw = localStorage.getItem(cacheKey); if (raw !== null) cached = JSON.parse(raw); } catch(e) {}
-    // Always fire background refresh — keeps cache fresh for next call.
+    var hasCache = (typeof window._glSafeCache === 'object' && window._glSafeCache);
+    var cached = hasCache ? window._glSafeCache.read(cacheKey) : undefined;
+    // Always fire background refresh — keeps cache fresh for next open and
+    // logs a delta if the data changed since we last read it.
     var refreshPromise = firebaseDB.ref(bandPath(subpath)).once('value')
         .then(function(s){
             var val = s.val();
-            try { localStorage.setItem(cacheKey, JSON.stringify(val)); } catch(e) {}
+            if (hasCache) window._glSafeCache.checkDelta(cacheKey, val);
             return val;
         })
         .catch(function(){ return cached !== undefined ? cached : null; });
-    // Cache hit → return immediately. The refresh updates the cache for
-    // the next call. We use undefined-vs-null distinction to differentiate
-    // "no cache" from "cached null result" (e.g. song has no section ratings).
+    // Cache hit → return immediately. undefined-vs-null distinction lets us
+    // cache "song has no section ratings" without mistaking it for cache miss.
     if (cached !== undefined) return Promise.resolve(cached);
     return refreshPromise;
 }

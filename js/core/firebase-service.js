@@ -1107,6 +1107,80 @@ function _addSongToLocalCache(record) {
  * Load the band's song library from Firebase and replace allSongs contents.
  * For Deadcetera: migrates from hardcoded allSongs on first run.
  */
+// ── Hardened SWR cache helper (window._glSafeCache) ────────────────────────
+// Shared by the song_library cache below and by _sdGet in song-detail.js.
+// Versioned envelope so schema changes don't poison old devices; metadata
+// for debugging; safe-parse with auto-clear on invalid shape; size guard
+// to keep audio/blob payloads out of localStorage; delta detection that
+// logs once when fresh data differs from cached. Drew 2026-05-11.
+//
+// Envelope shape:
+//   { __v: SCHEMA_VERSION, cachedAt: ms, refreshedAt: ms, data: <payload> }
+//
+// API:
+//   _glSafeCache.read(key)              → undefined on miss/invalid, payload on hit
+//   _glSafeCache.write(key, payload)    → returns true on success
+//   _glSafeCache.checkDelta(key, fresh) → logs if fresh differs, updates refreshedAt
+//   _glSafeCache.clear(key)
+(function() {
+    var SCHEMA_VERSION = 1;
+    var MAX_BYTES = 1024 * 1024; // 1 MB hard cap per key — keeps blobs out
+    function _read(key) {
+        var raw;
+        try { raw = localStorage.getItem(key); } catch(e) { return undefined; }
+        if (raw === null) return undefined;
+        var env;
+        try { env = JSON.parse(raw); } catch(e) {
+            // Corrupt JSON — nuke so we don't keep tripping on it.
+            try { localStorage.removeItem(key); } catch(e2) {}
+            return undefined;
+        }
+        if (!env || typeof env !== 'object' || env.__v !== SCHEMA_VERSION || !('data' in env)) {
+            // Old-shape cache from before versioning, or shape mismatch.
+            try { localStorage.removeItem(key); } catch(e2) {}
+            return undefined;
+        }
+        return env.data;
+    }
+    function _write(key, payload) {
+        var now = Date.now();
+        var env = { __v: SCHEMA_VERSION, cachedAt: now, refreshedAt: now, data: payload };
+        var serialized;
+        try { serialized = JSON.stringify(env); } catch(e) { return false; }
+        if (serialized.length > MAX_BYTES) {
+            console.warn('[_glSafeCache] Skip oversized payload for ' + key + ' (' + Math.round(serialized.length / 1024) + ' KB > 1 MB cap)');
+            return false;
+        }
+        try { localStorage.setItem(key, serialized); return true; }
+        catch(e) { return false; }
+    }
+    function _checkDelta(key, freshPayload) {
+        // Detect if fresh data differs from what we have cached, log once for
+        // observability, and update refreshedAt without rewriting the payload
+        // if nothing changed. Caller is responsible for the actual write of
+        // changed payloads (so the delta log fires exactly once per change).
+        var raw;
+        try { raw = localStorage.getItem(key); } catch(e) { return false; }
+        if (raw === null) { _write(key, freshPayload); return true; }
+        var env;
+        try { env = JSON.parse(raw); } catch(e) { _write(key, freshPayload); return true; }
+        if (!env || env.__v !== SCHEMA_VERSION) { _write(key, freshPayload); return true; }
+        var cachedStr, freshStr;
+        try { cachedStr = JSON.stringify(env.data); freshStr = JSON.stringify(freshPayload); } catch(e) { return false; }
+        if (cachedStr === freshStr) {
+            // No delta — just refresh the timestamp so we know the cache is alive.
+            env.refreshedAt = Date.now();
+            try { localStorage.setItem(key, JSON.stringify(env)); } catch(e) {}
+            return false;
+        }
+        console.log('[_glSafeCache] Delta for ' + key + ' — payload updated');
+        _write(key, freshPayload);
+        return true;
+    }
+    function _clear(key) { try { localStorage.removeItem(key); } catch(e) {} }
+    window._glSafeCache = { read: _read, write: _write, checkDelta: _checkDelta, clear: _clear, SCHEMA_VERSION: SCHEMA_VERSION };
+})();
+
 // localStorage SWR cache for the band's song_library. Keyed by band slug so
 // cross-band navigation never serves stale rows. On iPhone, the Firebase
 // fetch of song_library is the long pole that makes the Songs page paint
@@ -1114,15 +1188,11 @@ function _addSongToLocalCache(record) {
 // stale-then-revalidate: paint instantly from cache, refresh in background.
 function _glSongLibCacheKey(slug) { return 'gl_song_library_' + slug; }
 function _glSongLibCacheRead(slug) {
-    try {
-        var raw = localStorage.getItem(_glSongLibCacheKey(slug));
-        if (!raw) return null;
-        var parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : null;
-    } catch(e) { return null; }
+    var data = window._glSafeCache.read(_glSongLibCacheKey(slug));
+    return Array.isArray(data) ? data : null;
 }
 function _glSongLibCacheWrite(slug, songs) {
-    try { localStorage.setItem(_glSongLibCacheKey(slug), JSON.stringify(songs)); } catch(e) {}
+    return window._glSafeCache.write(_glSongLibCacheKey(slug), songs);
 }
 
 window.loadBandSongLibrary = async function loadBandSongLibrary() {
@@ -1195,10 +1265,13 @@ window.loadBandSongLibrary = async function loadBandSongLibrary() {
                 allSongs.length = 0;
                 songs.forEach(function(s) { allSongs.push(s); });
             }
-            // Persist for next boot's instant paint. Keep this small —
-            // we strip down to the same shape we cached in (no media blobs).
-            _glSongLibCacheWrite(slug, songs);
-            console.log('[SongLib] Loaded ' + songs.length + ' songs for band: ' + slug);
+            // Persist for next boot's instant paint + delta-check against
+            // any cached version we painted from earlier. Delta logging is
+            // observability only — the existing renderSongs() call below
+            // covers the UI refresh regardless of delta.
+            var _libKey = _glSongLibCacheKey(slug);
+            var _hadDelta = window._glSafeCache.checkDelta(_libKey, songs);
+            if (_hadDelta) console.log('[SongLib] Library changed since last load — UI will refresh');
         } else if (slug !== 'deadcetera') {
             // Non-DC band with no songs — clear allSongs
             if (typeof allSongs !== 'undefined') {
