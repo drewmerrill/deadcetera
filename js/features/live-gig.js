@@ -438,7 +438,10 @@
       songBar.innerHTML =
         '<span class="lg-song-title" style="font-size:1.3rem;text-shadow:0 0 12px rgba(99,102,241,0.2)">' + _esc(song.title) + '</span>' +
         '<span class="lg-song-badges" style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">' + keyStr + bpmStr + transStr + statusStr + '</span>' +
-        '<button onclick="lgQuickNote()" style="margin-left:auto;padding:3px 8px;border-radius:5px;font-size:0.6em;font-weight:700;border:1px solid rgba(255,255,255,0.1);background:none;color:#64748b;cursor:pointer;flex-shrink:0" title="Add a quick note">+ Note</button>';
+        '<span style="margin-left:auto;display:inline-flex;gap:6px;flex-shrink:0">' +
+          '<button onclick="lgEditChart()" style="padding:3px 8px;border-radius:5px;font-size:0.6em;font-weight:700;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer" title="Flash-edit this chart">✎ Edit</button>' +
+          '<button onclick="lgQuickNote()" style="padding:3px 8px;border-radius:5px;font-size:0.6em;font-weight:700;border:1px solid rgba(255,255,255,0.1);background:none;color:#64748b;cursor:pointer" title="Add a quick note">+ Note</button>' +
+        '</span>';
       // Pulse animation on song change
       songBar.style.transition = 'background 0.3s ease';
       songBar.style.background = 'rgba(99,102,241,0.08)';
@@ -1291,6 +1294,107 @@
 
   window.lgQuickNote        = lgQuickNote;
   window.lgSaveNote         = lgSaveNote;
+
+  // ── Flash Chart Edit ─────────────────────────────────────────────────────
+  // Edit the current song's chart in-place during Live Gig without leaving
+  // the run. Same Firebase save contract as the Workbench Chart Editor
+  // (loadBandDataFromDrive / saveBandDataToDrive on the 'chart' path) so
+  // edits are read-compatible with every other consumer (song-detail,
+  // Workbench, rehearsal). Drew 2026-05-11: needed mid-gig-dry-run to fix
+  // chord drift without bouncing to song-detail + back.
+  async function lgEditChart() {
+    var song = _lg.songs[_lg.cursor];
+    if (!song) return;
+    // Toggle off if already open for this song
+    var existing = document.getElementById('lgChartEditor');
+    if (existing) { existing.remove(); return; }
+
+    // Stop auto-scroll while editing so the textarea is stable
+    _lgStopScroll();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'lgChartEditor';
+    overlay.dataset.song = song.title;
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;padding:env(safe-area-inset-top,16px) 16px 16px;color:#e2e8f0;font-family:inherit';
+    overlay.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:0.65em;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;font-weight:700">FLASH EDIT</div>' +
+          '<div style="font-size:1.05em;font-weight:700;color:#a5b4fc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song.title) + '</div>' +
+        '</div>' +
+        '<button onclick="lgCloseChartEditor(false)" style="padding:8px 14px;border-radius:8px;font-size:0.82em;font-weight:600;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;cursor:pointer" title="Discard changes (Esc)">Cancel</button>' +
+        '<button onclick="lgSaveChartEdit()" style="padding:8px 16px;border-radius:8px;font-size:0.82em;font-weight:700;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.12);color:#86efac;cursor:pointer" title="Save and return">💾 Save</button>' +
+      '</div>' +
+      '<div style="font-size:0.7em;color:#64748b;padding:8px 2px;flex-shrink:0">Chord chart, structure, lyrics — anything you need on the floor. Use [Verse] / [Chorus] / [Bridge] markers to auto-derive structure.</div>' +
+      '<textarea id="lgChartEditorText" spellcheck="false" style="flex:1;width:100%;min-height:0;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.4);color:#f1f5f9;font-family:Menlo,Consolas,monospace;font-size:1em;line-height:1.5;resize:none;outline:none" placeholder="G  C  D  G\n\n[Verse]\nA  E  D\nLyrics here..."></textarea>';
+    document.body.appendChild(overlay);
+
+    var textarea = document.getElementById('lgChartEditorText');
+    if (textarea && typeof loadBandDataFromDrive === 'function') {
+      try {
+        var d = await loadBandDataFromDrive(song.title, 'chart');
+        if (d && d.text) textarea.value = d.text;
+      } catch (e) { console.warn('[lg] chart load failed:', e); }
+    }
+    if (textarea) {
+      textarea.focus();
+      // Place cursor at end so a fresh save lands after existing text
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+  }
+
+  async function lgSaveChartEdit() {
+    var overlay = document.getElementById('lgChartEditor');
+    var textarea = document.getElementById('lgChartEditorText');
+    if (!overlay || !textarea) return;
+    var songTitle = overlay.dataset.song;
+    if (!songTitle) return;
+    var text = textarea.value.trim();
+    try {
+      // Same save contract as the Workbench Chart Editor — keeps every
+      // legacy + modern reader consistent. Null payload deletes the chart.
+      if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+        await GLStore.saveSongData(songTitle, 'chart', text ? { text: text } : null);
+      } else if (typeof saveBandDataToDrive === 'function') {
+        await saveBandDataToDrive(songTitle, 'chart', text ? { text: text } : null);
+      }
+      if (typeof showToast === 'function') showToast('✅ Chart saved');
+      lgCloseChartEditor(true);
+    } catch (e) {
+      console.warn('[lg] chart save failed:', e);
+      if (typeof showToast === 'function') showToast('Save failed: ' + (e.message || e));
+    }
+  }
+
+  function lgCloseChartEditor(saved) {
+    var overlay = document.getElementById('lgChartEditor');
+    if (!overlay) return;
+    overlay.remove();
+    if (saved) {
+      // Reload the chart in-place so the edits show up immediately.
+      // _loadChart re-fetches via loadBandDataFromDrive — fresh save lands
+      // through the SWR cache write that GLStore.saveSongData did.
+      var song = _lg.songs[_lg.cursor];
+      if (song) {
+        try { _loadChart(song.title); } catch (e) {}
+      }
+    }
+  }
+
+  // Esc handler — discard the editor without saving. Stays outside the
+  // existing rehearsal-mode keydown wiring to avoid conflicts.
+  document.addEventListener('keydown', function(e) {
+    var overlay = document.getElementById('lgChartEditor');
+    if (!overlay) return;
+    if (e.key === 'Escape') {
+      lgCloseChartEditor(false);
+      e.preventDefault();
+    }
+  });
+
+  window.lgEditChart        = lgEditChart;
+  window.lgSaveChartEdit    = lgSaveChartEdit;
+  window.lgCloseChartEditor = lgCloseChartEditor;
   window.initLiveGig        = initLiveGig;
   window.lgNext             = lgNext;
   window.lgPrev             = lgPrev;
