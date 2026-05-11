@@ -1,6 +1,38 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-05-10 — SWR Cache Clobber Incident_
+_Last updated: 2026-05-10 — Full day comprehensive (SWR clobber + Spotify Connect Phases 1-4 + multi-device sync)_
+
+---
+
+## Bugs Fixed (2026-05-10 — Spotify Connect Phases 1-4 + multi-device follow-ups)
+
+**Severity:** P1 — Spotify playback on iOS was unusable (Web Playback SDK broken: volume no-op, resume broken, no autoplay, screen-lock kills audio). Required REST-API Connect path to drive the user's Spotify app.
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| Spotify Web Playback SDK unusable on iOS Safari | Apple/Spotify limitations: volume control no-op, resume broken, no autoplay, screen-lock kills audio | New `js/core/gl-spotify-connect.js` module — Connect REST API wrapper. iOS path routes through `pickPreferredDevice` → `play(uri, deviceId)` against the user's iPhone Spotify app, NOT through the SDK. 1.5s polling reconciles state. | 20260510-184456 (Phase 1) through 20260510-185030 (Phase 4) |
+| iOS no-Connect-device path fell through to embed → took user OUT of GrooveLinx | When `pickPreferredDevice()` returned null, code fell through to Web Playback SDK then "open in Spotify" embed, deeplinking the user out of GL entirely | Emit `needsSpotifyApp` event with wake CTA, NEVER fall through. `_renderNeedsSpotifyApp` shows "Open Spotify on phone" CTA inside the player area | 20260510-190145 |
+| Spotify track ID not used when YouTube unavailable | engine fell to "no source" error if YouTube failed but Spotify was present | use Spotify track ID directly when YouTube unavailable | 20260510-190545 |
+| openMusicLink deeplinked instead of routing through engine | Spotify intents went straight to spotify:// URL bypassing iOS Connect routing | `js/core/utils.js openMusicLink` routes Spotify intents through `GLPlayerEngine.loadQueue` | 20260510-191145 |
+| Wrong device picked on iPhone (was picking MBP) | `pickPreferredDevice` didn't honor UA-based preferType (Smartphone/Tablet/Computer) | Platform-matched device wins over any-active device. iOS=Smartphone, iPadOS=Tablet, etc. | 20260510-191345 |
+| Wake CTA rendered in wrong container in float mode | `_renderNeedsSpotifyApp` always targeted `glpVideoContainer` even when player was in float mode (uses `glpFloatVideo`) | Detect `_mode === 'float'` and target the right container | 20260510-191945 |
+| openSpotifyApp deeplink silently failed via hidden iframe | Modern iOS Safari 14+ blocks programmatic iframe URI scheme invocations unless from direct user gesture | Use `window.location.href = 'spotify://'` inside click handler. iOS intercepts the scheme before navigation completes — GL tab is preserved | 20260510-192230 |
+| User had to manually retry play after returning from Spotify wake | After tapping Open Spotify → playing in Spotify → returning to GL, the engine was stuck IDLE; togglePlay had no recovery path | New `_awaitingSpotifyApp` flag set when wake CTA emits. `visibilitychange` listener auto-fires `play(_currentIdx)` after 600ms when GL becomes visible AND flag is set | 20260510-192915 |
+| Auto-retry play often fired too fast (Connect heartbeat takes 1-3s after audio session starts) | 600ms delay sometimes wasn't enough; play() returned no-device, re-armed flag, user got wake CTA again | `togglePlay` in awaiting state calls new `retryAfterSpotifyWake()` which polls `/me/player/devices` up to 5× with 1.5s delay before giving up | 20260510-193645 |
+
+---
+
+## Bugs Fixed (2026-05-10 — Spotify multi-device + SDK transport follow-ups, post-incident)
+
+**Severity:** P1 — affected first-time use on each device + MBP transport.
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| iPhone showed "Open Spotify / Try Again" CTA forever, rage-click loop | Per-browser OAuth tokens: iPhone Safari never had Spotify OAuth done, so `/me/player/devices` returned empty regardless of how many times user retried. Wake CTA was misleading — real fix was to authenticate this browser | New `needsSpotifyAuth` event + `_renderNeedsSpotifyAuth` UI in `js/ui/gl-player-ui.js` showing green "Connect Spotify" CTA that calls `ListeningBundles.connectSpotify()`. Engine checks for token BEFORE entering device-discovery path | 20260511-005020 |
+| Auth CTA kept showing even after Drew connected Spotify | Initial check used wrong storage key (`gl_spotify_access_token`, never written) instead of `gl_spotify_token` (JSON blob written by listening-bundles.js connectSpotify) | Parse `gl_spotify_token` as JSON; check `accessToken` field + `expiresAt` with 60s buffer, matching `GLSpotifyConnect._getToken`'s logic exactly | 20260511-005720 |
+| iPad playback routed to MacBook instead of iPad | iPad on iOS 13+ reports UA as "Macintosh" by default. `isIOSPlatform()` already used `maxTouchPoints>1` heuristic to catch this, but `pickPreferredDevice()` + `isMobilePlatform()` used raw UA regex → iPad mis-classified as desktop → `preferType` defaulted to `Computer` → routed to MBP | New `isIPadPlatform()` helper centralizes the heuristic; `isMobilePlatform` + `isIOSPlatform` delegate to it; `pickPreferredDevice` ladder uses it first | 20260511-010715 |
+| Same user OAuthing separately on every browser/device | Per-browser localStorage only — no cross-device sync. Per memory `project_spotify_connect.md` Phase 4 noted this should be fixed via Firebase | New `_syncTokenToFirebase` / `_pullTokenFromFirebase` / `_clearTokenInFirebase` helpers in `listening-bundles.js` write/pull at `bands/<slug>/spotify_tokens/<sanitized-email>` (per-user keyed, not shared). `connectSpotify` mirrors on success; `disconnectSpotify` clears. Engine iOS auth-check awaits `hydrateSpotifyTokenFromFirebase` before showing the Connect CTA — first time on a new device of the same user: silent pull, no prompt | 20260511-011515 |
+| MBP Spotify transport buttons did nothing | `togglePlay`/`seekRelative`/`stop` only had branches for YouTube + Connect; the SDK path (`_activeMethod='sdk'`) had no transport routing. Also: SDK success path was setting `_setState` with `method='sdk'` but never setting `_activeMethod='sdk'` itself, so even if branches existed, gates wouldn't match | Set `_activeMethod='sdk'` on SDK success; add SDK branches to togglePlay (GLSpotifyPlayer.togglePlay + optimistic flip), seekRelative (read position via new `getCurrentState` + compute target + seek), stop (pause to release audio session). Expose `getCurrentState()` on GLSpotifyPlayer wrapping the SDK's internal `_player.getCurrentState()` | 20260511-013215 |
 
 ---
 
