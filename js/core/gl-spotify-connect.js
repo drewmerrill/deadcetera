@@ -152,12 +152,17 @@ window.GLSpotifyConnect = (function() {
 
     var ua = navigator.userAgent;
     var onMobile = isMobilePlatform();
+    // iPad uses the Macintosh UA on iOS 13+, so we need the maxTouchPoints
+    // heuristic via isIPadPlatform() — raw UA regex would miss iPad and
+    // default to 'Computer', sending playback to the user's MacBook.
+    // Drew 2026-05-11 hit this on iPad: tapped play on iPad, song played
+    // on his MBP instead.
     var preferType =
-      /iPhone|iPod/i.test(ua)   ? 'Smartphone' :
-      /iPad/i.test(ua)          ? 'Tablet' :
-      /Android.*Mobile/i.test(ua) ? 'Smartphone' :
-      /Android/i.test(ua)         ? 'Tablet' :
-                                   'Computer';
+      isIPadPlatform()             ? 'Tablet' :
+      /iPhone|iPod/i.test(ua)      ? 'Smartphone' :
+      /Android.*Mobile/i.test(ua)  ? 'Smartphone' :
+      /Android/i.test(ua)          ? 'Tablet' :
+                                     'Computer';
 
     // 1. Platform-matched + active
     var matchedActive = devices.find(function(d){
@@ -328,16 +333,25 @@ window.GLSpotifyConnect = (function() {
   // Used by the engine to decide whether to route through Connect on this
   // device. UA-sniff is brittle but reliable enough for the iOS/iPad cases
   // where the Web Playback SDK is broken.
+  function isIPadPlatform() {
+    var ua = navigator.userAgent;
+    // iPad on iOS 13+ reports its UA as "Macintosh" by default (the
+    // "Request Desktop Website" default Apple shipped). The maxTouchPoints
+    // heuristic is the canonical detection — Macs don't support touch.
+    // Drew 2026-05-11: routing on iPad played on MBP because UA-only
+    // regex missed iPad and preferType defaulted to 'Computer'.
+    return /iPad/i.test(ua)
+      || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+  }
+
   function isMobilePlatform() {
     var ua = navigator.userAgent;
-    return /iPhone|iPad|iPod|Android/i.test(ua);
+    return /iPhone|iPod|Android/i.test(ua) || isIPadPlatform();
   }
 
   function isIOSPlatform() {
     var ua = navigator.userAgent;
-    // iPad on iOS 13+ reports as Macintosh in UA; check for touch as a tell.
-    return /iPhone|iPad|iPod/i.test(ua)
-      || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+    return /iPhone|iPod/i.test(ua) || isIPadPlatform();
   }
 
   // ── Spotify app deeplink (for force-quit recovery) ─────────────────────────
