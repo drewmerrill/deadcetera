@@ -164,6 +164,13 @@ export default {
     // (X-Band-Slug, X-Session-Id, X-Filename) so the body stays pure binary.
     if (path === '/multitrack/upload' && request.method === 'POST')
       return handleMultitrackUpload(request, env);
+    // Multitrack share — list every file under a session prefix and return
+    // either JSON (?format=json, default) or a self-contained HTML page
+    // (?format=html) with download buttons. Path obscurity is the auth
+    // boundary for tonight; tighten with MULTITRACK_SHARE_KEY when the
+    // session ID is no longer the only thing keeping it private.
+    if (path === '/multitrack/share' && request.method === 'GET')
+      return handleMultitrackShare(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -1808,6 +1815,99 @@ async function handleMultitrackUpload(request, env) {
   }
   var publicUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
   return jsonResp({ ok: true, key: key, publicUrl: publicUrl });
+}
+
+// GET /multitrack/share?bandSlug=...&sessionId=...&format=json|html
+// Lists every R2 object under multitrack/{bandSlug}/{sessionId}/ and returns
+// public download URLs. R2 serves HTTP range requests natively, so a 200GB
+// download in a browser resumes cleanly if the connection drops mid-flight.
+async function handleMultitrackShare(request, env) {
+  if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
+    return cors(jsonError('multitrack_not_configured', 500));
+  }
+  var url = new URL(request.url);
+  var bandSlug  = String(url.searchParams.get('bandSlug')  || '').trim();
+  var sessionId = String(url.searchParams.get('sessionId') || '').trim();
+  var format    = String(url.searchParams.get('format')    || 'json').toLowerCase();
+  var key       = String(url.searchParams.get('key')       || '');
+
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+  // Optional shared-secret gate. Off by default — set MULTITRACK_SHARE_KEY
+  // in the worker to require ?key=... on every share request.
+  if (env.MULTITRACK_SHARE_KEY && key !== env.MULTITRACK_SHARE_KEY) {
+    return cors(jsonError('forbidden', 403));
+  }
+
+  var prefix = 'multitrack/' + bandSlug + '/' + sessionId + '/';
+  var files = [];
+  try {
+    // R2.list paginates at 1000 keys. Multitrack sessions can exceed that
+    // on heavy nights (24 channels × multiple takes), so paginate until done.
+    var cursor = undefined;
+    do {
+      var page = await env.STEMS_BUCKET.list({ prefix: prefix, cursor: cursor });
+      for (var i = 0; i < page.objects.length; i++) {
+        var obj = page.objects[i];
+        var name = obj.key.substring(prefix.length);
+        if (!name) continue; // skip the prefix marker itself
+        files.push({
+          name: name,
+          size: obj.size,
+          uploaded: obj.uploaded,
+          url: env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + obj.key
+        });
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  } catch (e) {
+    return cors(jsonError('r2_list_failed: ' + (e && e.message), 502));
+  }
+
+  files.sort(function(a, b) { return a.name.localeCompare(b.name); });
+  var totalBytes = files.reduce(function(s, f) { return s + (f.size || 0); }, 0);
+
+  if (format === 'html') {
+    return cors(new Response(_renderMultitrackShareHtml(bandSlug, sessionId, files, totalBytes), {
+      status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    }));
+  }
+  return jsonResp({ bandSlug: bandSlug, sessionId: sessionId, files: files, totalBytes: totalBytes });
+}
+
+function _renderMultitrackShareHtml(bandSlug, sessionId, files, totalBytes) {
+  function esc(s) { return String(s).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+  }); }
+  function fmtSize(n) {
+    if (!n) return '—';
+    var u = ['B','KB','MB','GB','TB'], i = 0, v = n;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return v.toFixed(v < 10 ? 2 : 1) + ' ' + u[i];
+  }
+  var rows = files.map(function(f) {
+    return '<tr><td><a href="' + esc(f.url) + '" download>' + esc(f.name) + '</a></td>'
+         + '<td style="text-align:right;color:#94a3b8">' + fmtSize(f.size) + '</td></tr>';
+  }).join('');
+  // wgetAll: one-liner Brian can paste into a terminal to grab everything.
+  var wgetAll = files.map(function(f) { return 'curl -LOC - "' + f.url + '"'; }).join(' && ');
+  return '<!doctype html><html><head><meta charset="utf-8"><title>Multitrack — ' + esc(sessionId) + '</title>'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<style>body{font:14px system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}'
+    + 'h1{font-size:1.2em;margin:0 0 4px}.sub{color:#94a3b8;font-size:0.9em;margin-bottom:20px}'
+    + 'table{width:100%;border-collapse:collapse;background:#1e293b;border-radius:10px;overflow:hidden}'
+    + 'td{padding:10px 14px;border-bottom:1px solid #334155}tr:last-child td{border-bottom:none}'
+    + 'a{color:#60a5fa;text-decoration:none}a:hover{text-decoration:underline}'
+    + 'pre{background:#1e293b;padding:14px;border-radius:10px;overflow-x:auto;color:#cbd5e1;font-size:12px;margin-top:24px}'
+    + '.hint{color:#64748b;font-size:0.85em;margin-top:8px}</style></head><body>'
+    + '<h1>Multitrack: ' + esc(bandSlug) + ' / ' + esc(sessionId) + '</h1>'
+    + '<div class="sub">' + files.length + ' files · ' + fmtSize(totalBytes) + ' total</div>'
+    + (files.length ? '<table><tbody>' + rows + '</tbody></table>'
+       + '<div class="hint">Click a filename to download. Downloads resume on dropped connections (R2 supports HTTP range requests).</div>'
+       + '<h2 style="font-size:1em;margin-top:24px">Or grab everything via terminal:</h2>'
+       + '<pre>' + esc(wgetAll) + '</pre>'
+       : '<div class="sub">No files found at this session yet.</div>')
+    + '</body></html>';
 }
 
 async function _stemsResolveSource(body, env, request) {
