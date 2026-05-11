@@ -478,7 +478,6 @@ window.ListeningBundles = (function() {
             }
         }
         var q = songTitle + (artist ? ' ' + artist : '');
-        console.log('[Fallback] Query:', q, '(title:', songTitle, 'artist:', artist, ')');
         return encodeURIComponent(q);
     }
 
@@ -1241,7 +1240,12 @@ window.ListeningBundles = (function() {
 
     async function searchSpotifyForSong(songTitle) {
         if (!_getSpotifyToken()) return [];
-        var q = encodeURIComponent(songTitle);
+        // Use the artist-aware query builder (looks up allSongs for the
+        // band/artist hint) — same logic as _searchSpotifyTrack. Without
+        // this, "Ain't Life Grand" matches a cover by some other artist
+        // before the Widespread Panic version. Affects both the engine's
+        // prewarm and the review/lock UI.
+        var q = _buildSearchQuery(songTitle);
         var data = await _spotifyApi('/search?q=' + q + '&type=track&limit=5');
         if (!data || !data.tracks || !data.tracks.items) return [];
         return data.tracks.items.map(function(t) {
