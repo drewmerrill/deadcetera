@@ -437,7 +437,7 @@
   <div class="meta">
     <span>50+ components</span>
     <span>11 sections</span>
-    <span>Last audited 2026-05-08</span>
+    <span>Last audited 2026-05-11</span>
     <span id="buildInfo">Loading build…</span>
   </div>
 </header>
@@ -665,7 +665,7 @@ flowchart TB
   </div>
   <div class="tiles">
     <a class="tile size-lg" href="https://dash.cloudflare.com" target="_blank"><span class="icon">⚡</span><span class="name">Cloudflare Worker · deadcetera-proxy</span><span class="tag">Proxies every external API: Twilio, Anthropic, Spotify, Genius, Archive.org, Phish.net/in, Relisten, Odesli, ElevenLabs, Deepgram, Fadr, IPRoyal. Keeps API keys server-side. <strong>Also serves <code>share.groovelinx.com/stageplot/{slug}/{plotId}</code></strong> — public read-only stage plot pages for FOH engineers / venue contacts (no GrooveLinx login required). And <code>/ical/{bandSlug}</code> for live ICS calendar feeds.</span><span class="footer"><span>compat 2026-04-10</span><span>open dashboard</span></span></a>
-    <a class="tile" href="https://dash.cloudflare.com" target="_blank"><span class="icon">📦</span><span class="name">Cloudflare R2</span><span class="tag">Stem-file object storage. Public via <code>stems.groovelinx.com</code>.</span><span class="footer"><span>S3-compat</span><span>open</span></span></a>
+    <a class="tile" href="https://dash.cloudflare.com" target="_blank"><span class="badge-status live">live</span><span class="icon">📦</span><span class="name">Cloudflare R2 · groovelinx-stems</span><span class="tag">Stem-file object storage + multitrack rehearsal uploads. Public via <code>stems.groovelinx.com</code>. New 2026-05-11: <code>/multitrack/share?bandSlug=X&amp;sessionId=Y&amp;format=html</code> renders a self-contained download page with native HTTP range support (resumable 200GB downloads). Deployed via <code>wrangler deploy</code> CLI from repo (no more dashboard paste).</span><span class="footer"><span>S3-compat</span><span>open</span></span></a>
   </div>
 </section>
 
@@ -730,7 +730,7 @@ flowchart TB
   <div class="subsection">
     <div class="subsection-title">Music libraries &amp; archives</div>
     <div class="tiles">
-      <a class="tile" href="https://developer.spotify.com/dashboard" target="_blank"><span class="icon">🟢</span><span class="name">Spotify Web API</span><span class="tag">Search + canonical metadata (BPM, duration, art).</span><span class="footer"><span>API</span><span>open</span></span></a>
+      <a class="tile size-lg" href="https://developer.spotify.com/dashboard" target="_blank"><span class="badge-status live">live</span><span class="icon">🟢</span><span class="name">Spotify Web API + Connect REST + Web Playback SDK</span><span class="tag">Three Spotify surfaces, all proxied via Cloudflare Worker. <strong>Search:</strong> canonical metadata (BPM, duration, art) + artist-aware query builder. <strong>Web Playback SDK:</strong> in-tab playback for desktop Premium. <strong>Connect REST</strong> (<code>/me/player/*</code>): drives the user's Spotify app on iOS where the SDK is broken — pickPreferredDevice → play(uri, deviceId), polling at adaptive 1.5s/5s cadence. Premium-gated end-to-end (5/11). Cross-device OAuth token sync via Firebase per-user, silent refresh, race guard for rapid setlist tapping, mid-song session-loss recovery, device picker for Bluetooth/PA/other-phones.</span><span class="footer"><span>API · SDK · REST</span><span>open</span></span></a>
       <a class="tile" href="https://www.youtube.com" target="_blank"><span class="icon">📺</span><span class="name">YouTube Data API + yt-dlp</span><span class="tag">Search + audio extraction for stem separation source.</span><span class="footer"><span>API + tool</span><span>open</span></span></a>
       <a class="tile" href="https://genius.com/api-clients" target="_blank"><span class="icon">📜</span><span class="name">Genius</span><span class="tag">Lyrics + song meaning context.</span><span class="footer"><span>API</span><span>open</span></span></a>
       <a class="tile" href="https://archive.org" target="_blank"><span class="icon">📚</span><span class="name">Archive.org</span><span class="tag">Live concert recording library.</span><span class="footer"><span>open</span><span>open</span></span></a>
@@ -900,7 +900,7 @@ flowchart TB
     <a href="javascript:window.print()">🖨 Print / Save as PDF</a>
   </p>
   <p style="font-size: 11px;">
-    Last audited 2026-05-08 · <code>noindex,nofollow</code> set so search engines ignore this page · Architecture map auto-rendered from <code>02_GrooveLinx/specs/stack_inventory.md</code> · 50+ components / 11 zones
+    Last audited 2026-05-11 · <code>noindex,nofollow</code> set so search engines ignore this page · Architecture map auto-rendered from <code>02_GrooveLinx/specs/stack_inventory.md</code> · 50+ components / 11 zones
   </p>
 </footer>
 

@@ -3,6 +3,64 @@
 Audit of state management centralization around `js/core/groovelinx_store.js`.
 Conducted 2026-03-21 against build `20260321-142328`.
 **Updated 2026-03-30** after data integrity + stabilization pass.
+**Updated 2026-05-11** (build `20260511-113334`) — new hardened SWR cache helper added; band-data write path documented.
+
+---
+
+## 2026-05-11 Update — SWR Cache Layer Hardening
+
+Two new band-scoped localStorage caches were added for iPhone perf, both routed through a new shared helper `window._glSafeCache` defined in `firebase-service.js`:
+
+### `window._glSafeCache` (firebase-service.js)
+Shared hardened SWR helper. Use for any new localStorage cache that needs versioning + safety guarantees. Public API:
+- `read(key)` → undefined on miss/invalid, payload on hit
+- `write(key, payload)` → returns true on success
+- `checkDelta(key, fresh)` → compares fresh vs cached, logs delta, updates refreshedAt; writes if changed
+- `clear(key)` → localStorage.removeItem
+- `SCHEMA_VERSION` constant (currently 1)
+
+Envelope shape:
+```js
+{ __v: 1, cachedAt: <ms>, refreshedAt: <ms>, data: <payload> }
+```
+
+Hardening guarantees:
+1. Band-scoped keys (callers responsible)
+2. Versioned (`__v` mismatch → auto-clear + cache-miss)
+3. cachedAt/refreshedAt for debugging
+4. Safe-parse — invalid JSON OR shape mismatch → `removeItem` so cache can't stay wedged
+5. 1 MB hard cap per key (warns + skips write if exceeded — keeps audio/blob data out of localStorage)
+6. Delta detection (logs `[_glSafeCache] Delta for <key>` once when payload changes)
+7. Logs gated to fire only on actual events (no per-call noise)
+
+### New caches using `_glSafeCache`
+| Cache key | Source | Purpose |
+|-----------|--------|---------|
+| `gl_song_library_<slug>` | `firebase-service.js` `loadBandSongLibrary` | Hydrates `allSongs` synchronously on boot, flips `_sqDataReady.songs` gate, triggers `renderSongs()` before the Firebase fetch lands. Cuts iPhone Songs-page paint from 5-10s to ~0ms on repeat visits. |
+| `gl_sdget_<slug>_<sanitized-subpath>` | `song-detail.js` `_sdGet()` | Caches the two non-SWR Firebase reads (`songs/<id>/metadata` + `songs/<id>/section_ratings`) that were capping song-detail parallel load. Cuts "Ain't Life Grand" open from 5-10s to instant. |
+
+### Pre-existing GL SWR caches (NOT yet on `_glSafeCache` — symmetry opportunity)
+| Cache key prefix | Source | Status |
+|------------------|--------|--------|
+| `gl_cache_<title>_<dataType>` | `firebase-service.js` `_glCacheRead`/`_glCacheWrite` | Older bare JSON cache. Used by `loadBandDataFromDrive`. Future work: migrate to `_glSafeCache` for symmetry. |
+| `gl_chart_<songKey>` | `song-detail.js` chart cache | Bare localStorage. Single-key, no envelope. Tiny payload — low risk. |
+
+### Band-data WRITE path (P0 fix 2026-05-10)
+`saveBandArrayDataSafe(dataType, newArray, options)` in `firebase-service.js` — per-record diff writer covering 5 band-level shared types via `_BAND_ARRAY_ID_FIELDS` registry. Closes the setlist-clobber bug. Reads Firebase truth (bypasses SWR cache), diffs by per-record stable ID, writes only changed records via `.update()`, stamps `updatedAt + updatedBy`, re-syncs both localStorage caches from a FRESH Firebase read.
+
+| Type | ID field | Callsites protected |
+|------|----------|---------------------|
+| setlists | setlistId | 11 |
+| gigs | gigId | 7 |
+| calendar_events | id | 39 |
+| song_pitches | id | 3 |
+| custom_songs | songId | 3 |
+| **Total** | | **63 writers** |
+
+NOT covered (different shape — pattern doesn't apply):
+- `blocked_dates` — calendar-derived rows, no blockId
+- `band_contacts` — keyed map indexed by memberKey, not array
+- `rehearsal_plan_*` — per-date single document, no array
 
 ---
 

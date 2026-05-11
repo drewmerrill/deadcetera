@@ -1,6 +1,7 @@
 # GLStore Navigation & State Contract
 ## 3-Pane Shell Edition
 _Authored: 2026-03-12_
+_Re-verified: 2026-05-11 (build `20260511-113334`) — contract intact. Today's pre-rehearsal hardening (silent Spotify token refresh, Premium gating, device picker, iPhone perf SWR caches via new `_glSafeCache` helper, worker `/multitrack/share`) is all additive at the storage / API layers; no nav state mutations. SYSTEM LOCK §7a (`_navSeq`) untouched across all 14 commits. New band-scoped localStorage caches use a parallel envelope (`{__v,cachedAt,refreshedAt,data}`) documented in `notes/store_architecture_audit.md` 2026-05-11 section — does not overlap with `GLStore._nav`._
 
 > **Source of truth for all navigation state, selection state, and right-panel state in the GrooveLinx 3-pane shell.**
 >

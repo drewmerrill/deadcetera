@@ -462,7 +462,7 @@
     <span>11 load phases</span>
     <span>95+ sync scripts</span>
     <span>~50k lines of feature code</span>
-    <span>Last audited 2026-05-09</span>
+    <span>Last audited 2026-05-11</span>
   </div>
   <div class="related">
     <a href="/stack-map.html">🗺 Stack map (vendors &amp; tools)</a>
@@ -933,6 +933,12 @@ flowchart TB
       <tr><td>10</td><td>Cached service-worker shell vs new <code>gl-notes.js</code> module</td><td>Old shell that doesn't load gl-notes.js → calls to <code>window.GLNotes.write</code> would crash mid-write</td><td><span class="reach r-few">closed 2026-05-09</span> — every migrated call site has a <code>typeof window.GLNotes === 'undefined'</code> guard with a documented legacy-fallback branch that writes to the original Firebase path directly</td></tr>
       <tr><td>11</td><td>Setlist Save & Lock vs Save edit (lock flag never written)</td><td>"Set locked" toast shown but list view always rendered as 🔓 Unlocked</td><td><span class="reach r-few">closed 2026-05-09</span> — both <code>slSaveSetlist</code> and <code>slSaveSetlistEdit</code> now take a <code>shouldLock</code> boolean and write <code>locked / lockedAt / lockedBy</code> when true</td></tr>
       <tr><td>12</td><td>Parachute share URL boot-time race</td><td>Old <code>?gigpack=1#&lt;base64&gt;</code> URL was sync-checked before Firebase init; new <code>?setlist=&lt;slug&gt;</code> needs Firebase</td><td><span class="reach r-few">closed 2026-05-09</span> — <code>parachuteCheckShareUrl()</code> runs INSIDE the <code>initFirebaseOnly().then()</code> block (after Firebase is ready) and replaces the document via <code>document.write()</code> when slug matches; loading splash + 404 handled inline</td></tr>
+      <tr><td>13</td><td>Setlist whole-array writes vs SWR cache (P0 incident)</td><td>Every setlist mutation called <code>saveBandDataToDrive('_band','setlists', wholeArray)</code> where the array came from a stale SWR cache → rolled back unrelated setlists. Section labels (Soundcheck/Set 1/Encore) flattened into <code>songs[]</code></td><td><span class="reach r-few">closed 2026-05-10</span> — new <code>saveBandArrayDataSafe</code> per-record diff writer in <code>firebase-service.js</code>. 63 callsites across 5 band-array types auto-routed through the safe path via <code>_BAND_ARRAY_ID_FIELDS</code> registry. Stamps <code>updatedAt/updatedBy</code>. Section-label flattener validator logs suspicious writes</td></tr>
+      <tr><td>14</td><td>Spotify Web Playback SDK broken on iOS Safari</td><td>Volume no-op, resume broken, no autoplay, screen-lock kills audio. Native SDK was unusable for live rehearsal</td><td><span class="reach r-many">closed 2026-05-10</span> — new <code>js/core/gl-spotify-connect.js</code> Connect REST module. iOS engine path routes through <code>pickPreferredDevice → SC.play(uri, deviceId)</code> against the user's Spotify app. Polls <code>/me/player</code> at 1.5s for state. Phases 1–5 + wake CTA + cross-device token sync + device picker + Premium gate + adaptive polling shipped 2026-05-10 → 2026-05-11</td></tr>
+      <tr><td>15</td><td>Spotify 1-hour token expiry surfaced "Connect Spotify" CTA mid-rehearsal</td><td>OAuth access tokens live 1 hour. <code>_refreshSpotifyToken</code> existed but was only wired into the 401 catch — never proactively used</td><td><span class="reach r-few">closed 2026-05-11</span> — <code>hydrateSpotifyTokenFromFirebase</code> silently refreshes expired tokens; mirrors rotated token back to Firebase (cross-device benefit); proactive triggers 2s after boot + every visibilitychange-to-visible. <code>invalid_grant</code> clears local+Firebase cleanly</td></tr>
+      <tr><td>16</td><td>Rapid setlist tap → song B displayed, song A audio plays</td><td><code>_token</code> guarded <code>_resolveAndPlay</code> but not <code>_playSpotify</code> — its async chain could stomp <code>_activeMethod/_activeDeviceId/_isPlaying</code> after a newer <code>play()</code> superseded it</td><td><span class="reach r-few">closed 2026-05-11</span> — <code>myToken</code> propagates through <code>_playSource</code> → <code>_playSpotify</code>; three supersession checks (after hydrate, after pickPreferredDevice, after SC.play) bail before state mutation</td></tr>
+      <tr><td>17</td><td>Songs page "loads zero then suddenly shows up" on iPhone</td><td><code>loadBandSongLibrary()</code> awaited a full Firebase fetch before the page could paint past the "Loading songs..." skeleton. No localStorage cache</td><td><span class="reach r-many">closed 2026-05-11</span> — hydrate <code>allSongs</code> synchronously from <code>gl_song_library_&lt;slug&gt;</code> on entry; flip <code>_sqDataReady.songs</code>; trigger <code>renderSongs()</code> immediately. Firebase still runs and re-renders on delta</td></tr>
+      <tr><td>18</td><td>Cloudflare dashboard silently truncated a 130KB worker.js paste</td><td>"Edit Code" UI dropped the tail of the file on save → red error toast vanished before capture → no version landed in Deployments tab</td><td><span class="reach r-one">closed 2026-05-11</span> — adopted <code>wrangler deploy</code> CLI as canonical path. <code>wrangler.toml</code> with <code>keep_vars=true</code> preserves dashboard-set vars; secrets never touched by deploy. Dry-run validates in 1s, full error output in terminal</td></tr>
     </tbody>
   </table>
 </section>
@@ -971,6 +977,19 @@ flowchart TB
     </ul>
   </div>
 
+  <div style="margin-top: 18px; padding: 14px 18px; background: rgba(167, 139, 250, 0.08); border: 1px solid rgba(167, 139, 250, 0.3); border-radius: 10px;">
+    <strong style="color: var(--accent); font-size: 13px;">📦 Shipped 2026-05-10 → 2026-05-11 (rehearsal-ready release · 36 commits across 2 days):</strong>
+    <ul style="margin-top: 8px; padding-left: 20px; color: var(--text-dim); line-height: 1.7; font-size: 13px;">
+      <li><strong>Spotify Connect Phases 1–5</strong> — new <code>gl-spotify-connect.js</code> REST module + engine routing through the user's Spotify app on iOS (Web Playback SDK was unusable on iOS Safari). Phase 5 polish: pre-warm device list, sticky preferred-device, real-time device pill, force-quit recovery, wake CTA, cross-device OAuth token sync via Firebase</li>
+      <li><strong>Spotify defensive moats for live rehearsal (5/11)</strong> — silent token refresh (no mid-rehearsal "Connect Spotify" CTA after 1hr), Premium detection + clear upgrade CTA, tap-to-switch device picker (Bluetooth speakers / PA / other phones), race guard for rapid setlist tapping, transient network/5xx retry, mid-song session-lost detection → wake CTA, force-poll on visibility return, setlist trackId prewarm (next song resolves while current plays), artist-aware Spotify search</li>
+      <li><strong>P0 setlist-clobber incident closed (5/10)</strong> — <code>saveBandArrayDataSafe</code> per-record diff writer covering 5 band-level types / 63 callsites. Reads Firebase truth, diffs by stable ID, stamps <code>updatedAt/updatedBy</code>. <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/notes/uat_bug_log.md" target="_blank" style="color: var(--accent);">Full incident details in uat_bug_log.md</a></li>
+      <li><strong>iPhone perf SWR caches (5/11)</strong> — new <code>window._glSafeCache</code> hardened helper (versioned envelope, safe-parse with auto-clear, 1 MB cap, delta detection). Songs-page paint 5–10s → ~0ms on repeat visits; song-detail open 5–10s → instant. Band-scoped keys (<code>gl_song_library_&lt;slug&gt;</code>, <code>gl_sdget_&lt;slug&gt;_*</code>)</li>
+      <li><strong>Worker <code>/multitrack/share</code> endpoint (5/11)</strong> — JSON/HTML listing of FLAC files in an R2 session, R2 native HTTP range = resumable 200GB downloads. Replaces dashboard paste-deploy with <code>wrangler deploy</code> CLI</li>
+      <li><strong>UX polish bundle (5/11)</strong> — volume routing through active source (was YouTube-only), Up Next preview on float player, confident status copy ("Starting on iPhone" not "Sending to Spotify on iPhone…"), adaptive polling cadence (1.5s playing / 5s idle, ~70% fewer ambient API hits)</li>
+      <li>Pre-rehearsal smoke test plan + diagnostic toolkit lives at <a href="https://github.com/drewmerrill/deadcetera/blob/main/02_GrooveLinx/notes/spotify_diagnostic_toolkit.md" target="_blank" style="color: var(--accent);"><code>02_GrooveLinx/notes/spotify_diagnostic_toolkit.md</code></a></li>
+    </ul>
+  </div>
+
   <div style="margin-top: 18px; padding: 14px 18px; background: rgba(52, 211, 153, 0.06); border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 10px;">
     <strong style="color: var(--good); font-size: 13px;">📦 Shipped 2026-05-08 → 2026-05-09:</strong>
     <ul style="margin-top: 8px; padding-left: 20px; color: var(--text-dim); line-height: 1.7; font-size: 13px;">
@@ -998,7 +1017,7 @@ flowchart TB
     <a href="javascript:window.print()">🖨 Print / Save as PDF</a>
   </p>
   <p style="font-size: 11px;">
-    Last audited 2026-05-09 · <code>noindex,nofollow</code> set so search engines ignore this page · Internal architecture reference
+    Last audited 2026-05-11 · <code>noindex,nofollow</code> set so search engines ignore this page · Internal architecture reference
   </p>
   <p style="font-size: 10px; color: rgba(248, 113, 113, 0.75); margin-top: 12px; max-width: 760px; margin-left: auto; margin-right: auto; line-height: 1.5;">
     <strong style="letter-spacing: 0.06em;">CONFIDENTIAL · GROOVELINX PROPRIETARY</strong><br>

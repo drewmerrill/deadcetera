@@ -1,6 +1,53 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-05-10 — Full day comprehensive (SWR clobber + Spotify Connect Phases 1-4 + multi-device sync)_
+_Last updated: 2026-05-11 11:33 EDT — Pre-rehearsal Spotify hardening + iPhone perf SWR caches + worker `/multitrack/share` endpoint (14 commits, builds `20260511-094659` → `20260511-113334`)_
+
+---
+
+## Bugs Fixed (2026-05-11 — Spotify defensive moats for live rehearsal)
+
+**Severity:** P1 — Drew is using GL Spotify in tonight's live UAT rehearsal. Each fix below was a real failure mode that would have caused friction or full breakage at rehearsal.
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| Mid-rehearsal "Connect Spotify" CTA after >1hr session | Spotify access tokens expire after 1 hour. `_refreshSpotifyToken` existed (wired into 401 catch in `_spotifyApi`) but was never proactively used — expired tokens just showed the auth CTA. | `hydrateSpotifyTokenFromFirebase` silently refreshes expired tokens via the OAuth refresh token (doesn't expire per Spotify docs). Mirrors rotated token back to Firebase for cross-device benefit. Public `ensureValidSpotifyToken()` dedupes concurrent requests via `_refreshInflight`. Proactive triggers: 2s after boot + every visibilitychange-to-visible. `invalid_grant` (refresh token revoked) clears local + Firebase cleanly. | 20260511-094659 |
+| Non-Premium accounts hit silent 403 PREMIUM_REQUIRED on play, got generic "Connect error" toast | Connect REST and Web Playback SDK both 403 for Free accounts. No pre-flight detection; no clear upgrade path | `_checkAndStorePremium()` calls `/v1/me` after OAuth, stores `product` on token blob, mirrors to Firebase. Engine iOS path checks `acctType` before attempting Connect — Free → emit `needsSpotifyPremium` immediately. 403 catch path also emits + backfills cached product. New green ⭐ CTA card with "Upgrade to Premium" link + "Open in Spotify" trackId-aware escape hatch | 20260511-105544 |
+| No way to push playback to a Bluetooth speaker / PA / other phone | `transferPlayback` API existed in `gl-spotify-connect.js` but no UI surface. Band wanting to play through a bigger speaker had to disconnect/reconnect Spotify | "Playing on X ▾" pill is now a button. Modal lists every Connect device with active-first sort, green PLAYING badge, restricted-device explanation. Transfer keeps audio rolling. After success: sticky preferred-device, engine's `setActiveDeviceId`, device cache clear so pill updates in 1.5s | 20260511-110057 |
+| Empty device-picker state on iPhone — no action button | "No devices online" was text-only; common cause is Spotify not running on the user's phone but no button to wake it | Add green "▶ Wake Spotify on this device" button on iPhone/iPad picker empty state. Reuses `openSpotifyApp` deeplink + auto-refreshes the picker list | 20260511-113334 |
+| Rapid setlist tapping caused song B to display while audio plays song A | `_token` already protected `_resolveAndPlay` but not the Spotify Connect path. `_playSpotify` could complete its async chain (hydrate → pickPreferredDevice → SC.play) after a newer `play()` raced past it, then stomp `_activeMethod`/`_activeDeviceId`/`_isPlaying` with stale values | `_playSource`/`_playSpotify` accept `myToken`; three supersession checks inside `_playSpotify` (after hydrate, after pickPreferredDevice, after SC.play) bail before any state mutation. All six `_playSource` callsites updated to forward `myToken` | 20260511-110422 |
+| Single network blip during pause/seek = "Connect error" toast, user has to retry manually | `_req` in `gl-spotify-connect.js` only retried 401 (refresh) and 429 (rate limit). Fetch TypeError and 5xx fail immediately. Rehearsal venue WiFi commonly has sub-second drops | One retry with 400ms wait on (a) fetch throw, (b) 5xx response. Skips 5xx retry if a network retry already fired (no double-hammering). 4xx still fails fast | 20260511-110422 |
+| iPhone screen lock → unlock showed stale state (pill, play-pause, progress) for up to 1.5s | Connect polling was paused while tab hidden (`if (document.hidden) return;`) and the next setInterval tick could be up to 1.5s away on visibility return | `forcePoll()` cancels current timer, runs `_pollTick(forceEmit=true)` (re-render even on no-delta), resets `_idleTickCount`, reschedules from now. Connect module's `visibilitychange` listener invokes it; engine also calls it for redundancy | 20260511-111307 |
+| Spotify force-quit mid-song → "Playing on X" stuck indefinitely, pill says "No active device" — UI dissonance with no recovery path | Polling sees state=null, `_updateConnectDevicePill` updates the pill text but the main video container retains the old "Playing on X" message | `_pollTick` detects had-device → no-device transitions, emits `sessionLost`. Engine subscribes; only acts if `_activeMethod==='connect'` AND `_isPlaying`; arms `_awaitingSpotifyApp` + re-emits `needsSpotifyApp`. Existing `_renderNeedsSpotifyApp` wake CTA renders | 20260511-111307 |
+| Volume slider was YouTube-only — silent no-op on Spotify | `setVolume(pct)` only routed to `window._ytPlayer.setVolume`. Spotify users moving the slider got nothing | Route to active source: YouTube + Connect 0-100, Web Playback SDK 0-1 (normalized). Slider hides when Connect device reports `supports_volume=false`. Tracked from `embedReady` AND live polling state so transferPlayback to a new device updates gating | 20260511-112500 |
+| Setlist transitions had a 1-2s search lag every song change | Each song's `play()` waited on Spotify search if `spotifyTrackId` wasn't cached on the song record | While current song plays, background search for `queue[idx+1]` populates its `spotifyTrackId`. Gated on source pref (skip if YouTube-first AND next has youtubeId) + connection state. Re-checks queue slot after search resolves so a user reorder doesn't write to the wrong song. Idempotent | 20260511-113034 |
+| "Ain't Life Grand" search matched a random cover instead of Widespread Panic version | Public `searchSpotifyForSong(songTitle)` passed bare title with no artist hint | Now uses `_buildSearchQuery` (looks up `allSongs` for band/artist hint, appends to query) — same logic as internal `_searchSpotifyTrack` | 20260511-113231 |
+| Console spam: `[Fallback] Query: ...` log fired on every Spotify search call | Diagnostic log left in production code | Removed | 20260511-113231 |
+| Polling hammered API every 1.5s indefinitely even when nothing playing | Fixed `setInterval(tick, 1500)` regardless of activity | Adaptive cadence via self-rescheduling setTimeout. Fast 1500ms when playing, slow 5000ms after 5 consecutive idle ticks (~7.5s before backoff). Resets to fast on state change. ~70% fewer ambient API hits during breaks/tabs-left-open | 20260511-112500 |
+| Status copy felt anxious mid-rehearsal | "Sending to Spotify on X…" / "Starting Spotify…" / "Spotify Connect error — trying fallback" | "Starting on X" / "Starting Spotify" / "Trying another source" — confident verbs, no trailing ellipsis, no internal terminology | 20260511-112500 |
+| Float player on iPhone didn't show next song during setlist play | Overlay had `glpUpNext`; float player did not | New `glpFloatUpNext` slot above Tag Row; populated from same `songChange` handler — overlay and float update in lockstep | 20260511-112500 |
+
+---
+
+## Bugs Fixed (2026-05-11 — iPhone Performance: SWR Caches)
+
+**Severity:** P1 — Drew reported on iPhone: Songs page "loads zero for a while then suddenly shows up", "Ain't Life Grand" detail takes 5-10s. The cumulative effect made the app feel broken on mobile.
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| Songs page "loads zero then suddenly shows up" on iPhone | `loadBandSongLibrary()` fetched the full `song_library` from Firebase before the page could paint past the "Loading songs..." skeleton. No localStorage cache. Render gate at `songs.js:89` (`_sqDataReady.songs`) blocked. On iPhone WiFi/cellular this was 5-10s | Hydrate `allSongs` synchronously from `gl_song_library_<slug>` localStorage on entry. Flip `_sqDataReady.songs`, trigger `renderSongs()` immediately. Firebase fetch still runs and re-renders with deltas when it lands | 20260511-100837 |
+| Song-detail open (e.g. Ain't Life Grand) took 5-10s on iPhone | `_sdGet()` in `song-detail.js` was a raw uncached Firebase read. Two callsites in `_sdPopulateBandLens` (`songs/<id>/metadata` + `songs/<id>/section_ratings`) fired fresh every open, capping the otherwise-SWR-cached parallel load at iPhone Firebase latency | SWR cache keyed by `gl_sdget_<slug>_<subpath>` with `undefined`-vs-`null` distinction so "song has no section ratings" caches correctly without being mistaken for cache-miss | 20260511-100837 |
+| New caches lacked hardening — schema changes could poison old devices, no debugging metadata, no size guard | Initial implementation was minimal (just JSON.parse/stringify) | New shared `window._glSafeCache` helper. Versioned envelope `{ __v: 1, cachedAt, refreshedAt, data }`; mismatch → clear + cache-miss. Safe parse with auto-clear on invalid shape. 1 MB hard cap per key (warns + skips). `checkDelta` logs once when fresh payload differs from cached. Band-scoped keys (unchanged). Console logs gated to fire only on actual events | 20260511-101842 |
+
+---
+
+## Bugs Fixed (2026-05-11 — Worker / `/multitrack/share` endpoint)
+
+**Severity:** P2 — needed for post-rehearsal workflow (Drew controls 256GB SD cards, Brian needs to download the FLACs without taking the cards home).
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| No way to share multitrack files with bandmates | `/multitrack/upload` endpoint existed in worker.js but no companion list/share endpoint | New `GET /multitrack/share?bandSlug=X&sessionId=Y&format=json\|html` in `worker.js`. Paginates `R2.list()`, returns name/size/uploaded/url. `format=html` renders a self-contained dark-theme page with download links + curl one-liner. R2 native HTTP range support = resumable 200GB downloads. Optional `MULTITRACK_SHARE_KEY` env-var auth gate | 20260511-094659 |
+| Dashboard "Edit Code" silently truncated 130KB paste — red error toast vanished before capture, no version landed in Deployments tab | Cloudflare dashboard editor has unreliable behavior on large files. Drew's worker.js is now 2534 lines / 130KB | Adopted `wrangler deploy` CLI as canonical worker deploy path. Wrote `wrangler.toml` with `keep_vars=true` (preserves dashboard-set plain vars), explicit R2 binding (`STEMS_BUCKET` → `groovelinx-stems`) + AI binding, `observability.enabled=true`. Dry-run validates in 1s, deploy completes in 5s with full error output. Drew already had `wrangler` 4.69 installed + logged in | 20260511-094659 |
 
 ---
 

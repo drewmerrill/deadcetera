@@ -5,6 +5,8 @@
 **Scope:** Sync engine, schema dual-node consistency, OAuth/Google API surface, incident retrospective + latent risks
 **Method:** Four parallel read-only agents, each focused on one dimension. Findings consolidated and de-duplicated below.
 
+**Re-verified 2026-05-11** (build `20260511-113334`) — no changes to calendar surface since audit. The SWR clobber fix on 2026-05-10 extended `saveBandArrayDataSafe` to `calendar_events` (39 writers now protected by per-record diff writer); see `store_architecture_audit.md` 2026-05-11 section. Calendar OAuth, sync, conflict-class, time-aware classification all unchanged.
+
 ---
 
 ## TL;DR — Trust verdict

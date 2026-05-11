@@ -1,5 +1,17 @@
 # GrooveLinx — Current Phase
 
+_Updated: 2026-05-11 11:33 EDT (build `20260511-113334`) — **Pre-rehearsal Spotify hardening + iPhone perf SWR caches + worker `/multitrack/share` endpoint. 14 commits this morning bulletproofing tonight's live UAT rehearsal.** Major themes:_
+_  · **Spotify defensive moats**: silent token refresh (no mid-rehearsal "Connect Spotify" CTAs), Premium detection + clear upgrade CTA for non-Premium accounts, tap-to-switch device picker (push to Bluetooth speakers / PA / other phones), rapid-play race guard, transient network/5xx retry, mid-song session-lost detection → wake CTA recovery, force-poll on visibility return (no stale UI after iPhone unlock), prewarm next song's trackId during setlist play (snappy transitions), artist-aware Spotify search ("Ain't Life Grand" now finds Widespread Panic, not a random cover)._
+_  · **iPhone perf**: hardened `window._glSafeCache` (versioned envelope, safe-parse with auto-clear, 1 MB cap, delta detection). Two new caches — `gl_song_library_<slug>` + `gl_sdget_<slug>_<subpath>` — cut Songs-page paint from 5-10s to ~0ms on repeat visits and song-detail open ("Ain't Life Grand") from 5-10s to instant._
+_  · **Worker `/multitrack/share`** — Drew can DM Brian a URL after rehearsal; Brian downloads the FLACs via R2 public URLs with native HTTP range resume. Replaces the brittle dashboard paste-deploy workflow with `wrangler deploy` (CLI gave full error output when the dashboard silently truncated a 130KB paste this morning)._
+_  · **Polish bundle**: volume routing (slider actually works on Spotify now, hides when Connect device can't accept remote volume), status copy ("Starting on iPhone" not "Sending to Spotify on iPhone…"), adaptive polling cadence (1.5s when playing / 5s when idle), Up Next on float player._
+
+_Final build: `20260511-113334` (8 atomic 4-source bumps today). 10-minute pre-rehearsal smoke test plan lives at `02_GrooveLinx/notes/spotify_diagnostic_toolkit.md`._
+
+_**Open thread**: end-to-end test pass on iPhone + iPad + MBP at T-30min before rehearsal per the smoke test plan. Stop coding after that — additional polish has diminishing returns vs regression risk this close to live use._
+
+---
+
 _Updated: 2026-05-11 09:41 EDT (build `20260511-093520`) — **Spotify Phase 5 COMPLETE + cache-invalidation fix for the wake-flow regression.** Phase 5 polish shipped 3 items: pre-warm device list, sticky preferred-device, real-time device pill (with green-pulse/gray play-state dot + device-type icon). Drew tested iPhone and found that the new 30s device cache was breaking `retryAfterSpotifyWake` (5 polls all hit stale cache → "eventually it suddenly worked" = cache TTL expired). Fixed by clearing the cache at start of every wake-retry + on visibilitychange-to-visible. Final build `20260511-093520`._
 
 _Updated: 2026-05-11 ~01:30 EDT (build `20260511-015215`) — **Full day comprehensive close: 22 commits, 2 sessions split by laptop crash, 7 atomic 4-source bumps. (A) Spotify Connect Phases 1–4 shipped end-to-end with 8 follow-up fixes + cross-device token sync + iPad routing fix + MBP transport-control fix. (B) P0 setlist-clobber incident root-caused, fixed, all data recovered, defense extended to 5 of 8 band-level shared types covering 63 callsites.** Final build `20260511-015215`. Full audit trail in CLAUDE_HANDOFF.md._
