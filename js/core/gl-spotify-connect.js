@@ -112,16 +112,58 @@ window.GLSpotifyConnect = (function() {
 
   // ── Device discovery ───────────────────────────────────────────────────────
 
+  // Cache: shaves ~200-300ms off the first play after boot. /me/player/devices
+  // doesn't change often; 30s TTL is plenty for the "open GL → tap song"
+  // window where pre-warm earns its keep.
+  var _deviceCache = null;
+  var _deviceCacheAt = 0;
+  var _DEVICE_CACHE_TTL_MS = 30000;
+
   // Returns array of devices: [{id, name, type, is_active, is_restricted, supports_volume, volume_percent}]
-  async function listDevices() {
+  async function listDevices(opts) {
+    opts = opts || {};
     if (!_hasValidToken()) return [];
+    var now = Date.now();
+    var fresh = _deviceCache && (now - _deviceCacheAt) < _DEVICE_CACHE_TTL_MS;
+    if (fresh && !opts.bypassCache) return _deviceCache;
     try {
       var data = await _req('GET', '/me/player/devices');
-      return (data && data.devices) || [];
+      _deviceCache = (data && data.devices) || [];
+      _deviceCacheAt = now;
+      return _deviceCache;
     } catch(e) {
       console.warn('[GLSpotifyConnect] listDevices failed:', e.message);
-      return [];
+      return _deviceCache || [];
     }
+  }
+
+  // Phase 5 pre-warm: fire-and-forget device discovery on app boot so the
+  // first user-triggered play already has the cache primed. No-op if no
+  // valid token (user hasn't OAuthed yet).
+  async function prewarmDevices() {
+    if (!_hasValidToken()) return;
+    try {
+      await listDevices({ bypassCache: true });
+      console.log('[GLSpotifyConnect] device list pre-warmed (' + (_deviceCache || []).length + ' devices)');
+    } catch(e) {}
+  }
+
+  // ── Sticky preferred-device ────────────────────────────────────────────────
+  // Remember the last device the user successfully played to, so the next
+  // play targets that same device first — useful when the user has multiple
+  // platform-matched devices online (e.g., iPhone + iPad both signed into
+  // their Spotify, only one is being held). Set automatically by the engine
+  // on Connect play-success; honored at the top of pickPreferredDevice.
+  var _PREFERRED_DEVICE_KEY = 'gl_spotify_preferred_device_id';
+  function setPreferredDeviceId(id) {
+    if (!id) return;
+    try { localStorage.setItem(_PREFERRED_DEVICE_KEY, id); } catch(e) {}
+  }
+  function getPreferredDeviceId() {
+    try { return localStorage.getItem(_PREFERRED_DEVICE_KEY) || null; } catch(e) { return null; }
+  }
+  function clearPreferredDeviceId() {
+    try { localStorage.removeItem(_PREFERRED_DEVICE_KEY); } catch(e) {}
   }
 
   // True if at least one non-restricted device is currently visible.
@@ -149,6 +191,15 @@ window.GLSpotifyConnect = (function() {
   async function pickPreferredDevice() {
     var devices = await listDevices();
     if (!devices.length) return null;
+
+    // Phase 5: sticky preference. If the user previously played on a device
+    // and it's still in the list (non-restricted), use it. Trumps platform
+    // matching — explicit user choice from earlier session beats heuristic.
+    var preferredId = getPreferredDeviceId();
+    if (preferredId) {
+      var preferred = devices.find(function(d){ return d.id === preferredId && !d.is_restricted; });
+      if (preferred) return preferred;
+    }
 
     var ua = navigator.userAgent;
     var onMobile = isMobilePlatform();
@@ -385,6 +436,10 @@ window.GLSpotifyConnect = (function() {
     listDevices: listDevices,
     isAvailable: isAvailable,
     pickPreferredDevice: pickPreferredDevice,
+    prewarmDevices: prewarmDevices,
+    setPreferredDeviceId: setPreferredDeviceId,
+    getPreferredDeviceId: getPreferredDeviceId,
+    clearPreferredDeviceId: clearPreferredDeviceId,
     getCurrentPlayback: getCurrentPlayback,
     play: play,
     pause: pause,

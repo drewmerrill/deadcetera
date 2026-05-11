@@ -492,6 +492,10 @@ window.GLPlayerEngine = (function() {
                     await SC.play('spotify:track:' + trackId, device.id);
                     _activeMethod = 'connect';
                     _activeDeviceId = device.id;
+                    // Phase 5: remember this device as the user's preference
+                    // for future plays. Sticky pref trumps platform matching
+                    // on subsequent calls to pickPreferredDevice().
+                    if (SC.setPreferredDeviceId) SC.setPreferredDeviceId(device.id);
                     _setState(State.PLAYING, { source: 'spotify', method: 'connect' });
                     _emit('embedReady', {
                         source: 'spotify_connect',
@@ -777,5 +781,17 @@ window.GLPlayerEngine = (function() {
     }
 
 })();
+
+// Phase 5 pre-warm: a few seconds after boot, if Spotify is connected,
+// pre-fetch the device list so the first play has zero discovery latency.
+// Deferred so we don't compete with critical boot work (Firebase init,
+// auth restore, song-lib load). No-op if no token \u2014 listDevices guards.
+if (typeof window !== 'undefined') {
+    setTimeout(function() {
+        if (window.GLSpotifyConnect && window.GLSpotifyConnect.prewarmDevices) {
+            window.GLSpotifyConnect.prewarmDevices();
+        }
+    }, 5000);
+}
 
 console.log('\uD83C\uDFB5 gl-player-engine.js loaded');

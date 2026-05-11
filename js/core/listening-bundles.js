@@ -848,6 +848,10 @@ window.ListeningBundles = (function() {
     function disconnectSpotify() {
         localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
         localStorage.removeItem(_SPOTIFY_PLAYLISTS_KEY);
+        // Phase 5: clear preferred-device pref so next OAuth starts fresh
+        if (window.GLSpotifyConnect && window.GLSpotifyConnect.clearPreferredDeviceId) {
+            window.GLSpotifyConnect.clearPreferredDeviceId();
+        }
         // Also clear the Firebase mirror so other devices re-prompt for OAuth
         _clearTokenInFirebase();
         if (typeof showToast === 'function') showToast('Spotify disconnected');
