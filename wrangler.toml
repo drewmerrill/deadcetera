@@ -1,0 +1,26 @@
+name = "deadcetera-proxy"
+main = "worker.js"
+compatibility_date = "2026-05-11"
+
+# Preserve plain-text variables set in the Cloudflare dashboard (STEMS_R2_PUBLIC_BASE,
+# ENFORCE_ORIGIN, MULTITRACK_SHARE_KEY, LALAL/STEMS modal URLs, etc.) so wrangler deploy
+# doesn't wipe them. Secrets (FCM_*, ANTHROPIC_API_KEY, TWILIO_*, etc.) are NEVER
+# touched by wrangler deploy — they're managed via `wrangler secret put NAME`.
+keep_vars = true
+
+# Cloudflare Workers AI binding — env.AI in worker.js.
+[ai]
+binding = "AI"
+
+# R2 bucket holding stems, multitrack rehearsal uploads, and LALAL-rehosted files.
+[[r2_buckets]]
+binding = "STEMS_BUCKET"
+bucket_name = "groovelinx-stems"
+
+# Keep observability logs on — Drew uses them for debugging FCM auth, stems,
+# Spotify config fetches, etc. Wrangler turns this off by default if the
+# toml doesn't declare it, even when the dashboard had it enabled.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
