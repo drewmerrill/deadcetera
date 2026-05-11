@@ -945,11 +945,18 @@ window.GLPlayerUI = (function() {
                 ? ''
                 : '<div style="font-size:0.65em;color:#94a3b8;margin-top:6px;line-height:1.3">Volume: use ' + _esc(d.deviceName || 'device') + ' hardware buttons</div>';
             var initialIcon = _deviceIcon(d.deviceType);
+            // Device pill is tappable \u2014 opens a picker so the user can switch
+            // playback to another Spotify Connect device (Bluetooth speaker,
+            // PA system, another bandmate's phone, etc.) without leaving GL.
+            // Phase 6 polish for tonight's rehearsal: bands often want to push
+            // audio from the phone running GL onto a bigger speaker.
             if (container) container.innerHTML = '<style>@keyframes glPulse { 0%,100%{opacity:1} 50%{opacity:0.35} }</style>'
                 + '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:16px;text-align:center">'
                 + '<div style="font-size:1.5em;margin-bottom:6px">' + initialIcon + '</div>'
-                + '<div style="font-size:0.88em;font-weight:700;color:#1ed760">Playing on <span id="glpDevicePill">' + _esc(d.deviceName || 'Spotify') + '</span></div>'
-                + '<div style="font-size:0.7em;color:#b3b3b3;margin-top:4px">Full track \u00B7 via Spotify Connect</div>'
+                + '<button onclick="GLPlayerUI._openDevicePicker()" style="background:none;border:0;padding:0;cursor:pointer;font:inherit;color:inherit">'
+                +   '<div style="font-size:0.88em;font-weight:700;color:#1ed760">Playing on <span id="glpDevicePill">' + _esc(d.deviceName || 'Spotify') + '</span> <span style="font-size:0.7em;opacity:0.75;margin-left:2px">\u25BE</span></div>'
+                + '</button>'
+                + '<div style="font-size:0.7em;color:#b3b3b3;margin-top:4px">Full track \u00B7 via Spotify Connect \u00B7 <span style="opacity:0.7">tap device to switch</span></div>'
                 + volNote
                 + '</div>';
         }
@@ -1263,9 +1270,114 @@ window.GLPlayerUI = (function() {
         setTimeout(_wireEngine, 0);
     }
 
+    // ── Spotify Connect device picker ───────────────────────────────────────
+    // Tap-to-switch playback device. At rehearsal the band might want to push
+    // audio from a phone running GL onto a Bluetooth speaker, the PA system,
+    // or another bandmate's phone — anything that shows up as a Spotify
+    // Connect device. Lists live devices via /me/player/devices, transfers
+    // via PUT /me/player. Sticky preferred-device updates so subsequent plays
+    // also target the chosen device.
+    function _openDevicePicker() {
+        if (typeof GLSpotifyConnect === 'undefined') {
+            if (typeof showToast === 'function') showToast('Spotify Connect not loaded');
+            return;
+        }
+        // Remove any prior picker (rapid tap protection)
+        _closeDevicePicker();
+        var overlay = document.createElement('div');
+        overlay.id = 'glpDevicePicker';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:10100;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;padding:20px;animation:glpFadeIn 0.18s ease';
+        overlay.onclick = function(e) { if (e.target === overlay) _closeDevicePicker(); };
+        overlay.innerHTML = '<div style="background:#191414;border:1px solid rgba(30,215,96,0.25);border-radius:14px;padding:18px 16px;max-width:340px;width:100%;color:#e2e8f0">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+            +   '<div style="font-size:1em;font-weight:800;color:#1ed760">Switch device</div>'
+            +   '<button onclick="GLPlayerUI._closeDevicePicker()" style="background:none;border:0;color:#64748b;font-size:1.2em;cursor:pointer;padding:0 6px">×</button>'
+            + '</div>'
+            + '<div id="glpDeviceList" style="font-size:0.85em;color:#cbd5e1;min-height:60px">'
+            +   '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:0.85em">Finding devices…</div>'
+            + '</div>'
+            + '<div style="font-size:0.65em;color:#64748b;margin-top:10px;line-height:1.4">Open Spotify on any device to make it appear here. Bluetooth speakers show up after they\'ve been paired to a Spotify-connected device.</div>'
+            + '</div>';
+        document.body.appendChild(overlay);
+        _refreshDevicePickerList();
+    }
+    function _closeDevicePicker() {
+        var existing = document.getElementById('glpDevicePicker');
+        if (existing) existing.remove();
+    }
+    async function _refreshDevicePickerList() {
+        var list = document.getElementById('glpDeviceList');
+        if (!list) return;
+        var devices = [];
+        try { devices = await GLSpotifyConnect.listDevices({ bypassCache: true }); } catch(e) {}
+        if (!document.getElementById('glpDevicePicker')) return; // user closed mid-fetch
+        if (!devices || devices.length === 0) {
+            list.innerHTML = '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:0.85em">No devices online.<br><span style="font-size:0.82em;opacity:0.8">Open Spotify on a device to make it appear here.</span></div>';
+            return;
+        }
+        // Active device first, then sorted by name
+        devices.sort(function(a, b) {
+            if (a.is_active && !b.is_active) return -1;
+            if (b.is_active && !a.is_active) return 1;
+            return (a.name || '').localeCompare(b.name || '');
+        });
+        list.innerHTML = devices.map(function(dev) {
+            var icon = _deviceIcon(dev.type);
+            var activeBadge = dev.is_active
+                ? '<span style="font-size:0.65em;color:#1ed760;background:rgba(30,215,96,0.12);padding:2px 6px;border-radius:8px;margin-left:6px">PLAYING</span>'
+                : '';
+            var restrictedNote = dev.is_restricted
+                ? '<div style="font-size:0.65em;color:#94a3b8;margin-top:2px">Read-only — can\'t transfer to this device</div>'
+                : '';
+            var onclick = dev.is_restricted ? '' : 'onclick="GLPlayerUI._transferToDevice(\'' + dev.id + '\',\'' + _esc((dev.name || '').replace(/'/g, "\\'")) + '\')"';
+            var cursor = dev.is_restricted ? 'default' : 'pointer';
+            var hoverBg = dev.is_restricted ? '' : 'onmouseover="this.style.background=\'rgba(255,255,255,0.04)\'" onmouseout="this.style.background=\'transparent\'"';
+            return '<div ' + onclick + ' ' + hoverBg + ' style="display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:8px;cursor:' + cursor + ';transition:background 0.15s">'
+                + '<div style="font-size:1.4em;flex-shrink:0">' + icon + '</div>'
+                + '<div style="flex:1;min-width:0">'
+                +   '<div style="font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _esc(dev.name || 'Unknown') + activeBadge + '</div>'
+                +   '<div style="font-size:0.7em;color:#94a3b8">' + _esc(dev.type || 'Device') + '</div>'
+                +   restrictedNote
+                + '</div>'
+                + '</div>';
+        }).join('');
+    }
+    async function _transferToDevice(deviceId, deviceName) {
+        if (!deviceId) return;
+        var list = document.getElementById('glpDeviceList');
+        if (list) list.innerHTML = '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:0.85em">Sending to ' + _esc(deviceName) + '…</div>';
+        try {
+            // play=true keeps audio rolling on the new device so the band
+            // doesn't lose tempo from a pause-then-press-play handoff.
+            await GLSpotifyConnect.transferPlayback(deviceId, true);
+            // Update sticky preferred-device so the NEXT song play also
+            // routes here without re-opening the picker.
+            if (GLSpotifyConnect.setPreferredDeviceId) GLSpotifyConnect.setPreferredDeviceId(deviceId);
+            // Sync the engine's _activeDeviceId — its transport routing
+            // (pause/resume/seek/next) reads this for the device_id query
+            // param, so without the update it would target the old device.
+            if (window.GLPlayerEngine && GLPlayerEngine.setActiveDeviceId) GLPlayerEngine.setActiveDeviceId(deviceId);
+            // Invalidate device cache so the polling pill reflects reality
+            // within the next 1.5s tick instead of waiting for the 30s TTL.
+            if (GLSpotifyConnect.clearDeviceCache) GLSpotifyConnect.clearDeviceCache();
+            if (typeof showToast === 'function') showToast('Now playing on ' + deviceName);
+            _closeDevicePicker();
+        } catch(e) {
+            var msg = (e && (e.message || '')) + '';
+            if (e && e.status === 404) msg = 'Device went offline. Refresh and try again.';
+            else if (e && e.status === 403 && msg.indexOf('PREMIUM') !== -1) msg = 'Premium required for device transfer.';
+            else msg = 'Transfer failed: ' + (msg || 'unknown error');
+            if (list) list.innerHTML = '<div style="padding:14px;text-align:center;color:#fca5a5;font-size:0.85em">' + _esc(msg) + '</div><div style="text-align:center;margin-top:8px"><button onclick="GLPlayerUI._refreshDevicePickerList()" style="padding:6px 12px;border-radius:14px;font-size:0.78em;background:rgba(255,255,255,0.06);color:#cbd5e1;border:1px solid rgba(255,255,255,0.12);cursor:pointer">Retry</button></div>';
+        }
+    }
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
+        _openDevicePicker: _openDevicePicker,
+        _closeDevicePicker: _closeDevicePicker,
+        _refreshDevicePickerList: _refreshDevicePickerList,
+        _transferToDevice: _transferToDevice,
         showOverlay: showOverlay,
         showFloat: showFloat,
         showBar: showBar,

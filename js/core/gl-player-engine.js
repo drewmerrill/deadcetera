@@ -732,6 +732,10 @@ window.GLPlayerEngine = (function() {
         stop: stop,
         getActiveMethod: function() { return _activeMethod; },
         getActiveDeviceId: function() { return _activeDeviceId; },
+        // Called by the device picker after a successful transferPlayback so
+        // subsequent pause/resume/seek route to the new device instead of
+        // hitting the (now-stale) original one.
+        setActiveDeviceId: function(id) { _activeDeviceId = id; },
         destroy: destroy,
 
         // YouTube
