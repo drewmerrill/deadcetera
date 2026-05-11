@@ -509,11 +509,13 @@ window.handleGoogleDriveAuth = async function handleGoogleDriveAuth(silent) {
  * @returns {Promise<boolean>} true if Firebase write succeeded
  */
 window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataType, data) {
-    // Setlists go through a per-record safe writer to avoid whole-array
-    // clobbers when the cache is stale (the bug that wiped Southern Roots
-    // Tavern, Tim's Birthday, and Avon Theater setlists on 2026-05-10).
-    if (songTitle === '_band' && dataType === 'setlists') {
-        return window.saveBandSetlistsSafe(data);
+    // Setlists/gigs/calendar_events go through a per-record safe writer to
+    // avoid whole-array clobbers when the SWR cache is stale (the bug that
+    // wiped Southern Roots Tavern, Tim's Birthday, Avon Theater setlists +
+    // dropped two others on 2026-05-10). Each type has a stable per-record
+    // ID field configured in window._BAND_ARRAY_ID_FIELDS.
+    if (songTitle === '_band' && window._BAND_ARRAY_ID_FIELDS && window._BAND_ARRAY_ID_FIELDS[dataType]) {
+        return window.saveBandArrayDataSafe(dataType, data);
     }
 
     var localKey = 'deadcetera_' + dataType + '_' + songTitle;
@@ -551,12 +553,29 @@ window.saveBandDataToDrive = async function saveBandDataToDrive(songTitle, dataT
     }
 };
 
-// Safe per-record setlist writer. Replaces the whole-array .set() that caused
-// stale SWR cache to roll back unrelated entries. Reads current Firebase truth
-// (not cache), diffs by setlistId, writes only changed records via .update(),
-// stamps updatedAt + updatedBy, then syncs caches from a fresh Firebase read.
-window.saveBandSetlistsSafe = async function saveBandSetlistsSafe(newArray, options) {
+// Generic safe per-record writer for shared-array band data. Replaces the
+// whole-array .set() pattern that caused stale SWR cache to roll back
+// unrelated entries (2026-05-10 setlist clobber incident). Reads current
+// Firebase truth (not cache), diffs by per-type idField, writes only changed
+// records, stamps updatedAt + updatedBy, then syncs caches from fresh truth.
+//
+// Supported types and their stable IDs:
+//   setlists        → setlistId
+//   gigs            → gigId
+//   calendar_events → id
+window._BAND_ARRAY_ID_FIELDS = {
+    setlists: 'setlistId',
+    gigs: 'gigId',
+    calendar_events: 'id'
+};
+
+window.saveBandArrayDataSafe = async function saveBandArrayDataSafe(dataType, newArray, options) {
     options = options || {};
+    var idField = options.idField || window._BAND_ARRAY_ID_FIELDS[dataType];
+    if (!idField) {
+        console.error('[saveBandArrayDataSafe] no idField configured for dataType=' + dataType + ' — refusing to write');
+        return false;
+    }
     var stamp = new Date().toISOString();
     var actor = options.actor
         || (typeof currentUserEmail !== 'undefined' && currentUserEmail)
@@ -564,52 +583,55 @@ window.saveBandSetlistsSafe = async function saveBandSetlistsSafe(newArray, opti
         || 'unknown';
 
     var newArr = Array.isArray(newArray) ? newArray : Object.values(newArray || {});
+    var legacyKey = 'deadcetera_' + dataType + '__band';
 
     // Always mirror to legacy localStorage for offline read fallback
-    try { localStorage.setItem('deadcetera_setlists__band', JSON.stringify(newArr)); } catch(e) {}
+    try { localStorage.setItem(legacyKey, JSON.stringify(newArr)); } catch(e) {}
 
     if (!firebaseDB) {
-        console.warn('⚠️ Firebase not ready — setlists saved to localStorage only');
+        console.warn('⚠️ Firebase not ready — ' + dataType + ' saved to localStorage only');
         if (typeof showToast === 'function') showToast('⚠️ Not signed in — changes saved locally only. Sign in to sync.');
         return false;
     }
 
-    var path = window.bandPath('setlists');
+    var path = window.bandPath(dataType);
 
     try {
         // Read current Firebase truth — NEVER trust the SWR cache for writes.
         var snap = await firebaseDB.ref(path).once('value');
         var liveByKey = snap.val() || {};
 
-        // Index live records by setlistId; track max numeric key for new inserts.
+        // Index live records by stable ID; track max numeric key for new inserts.
         var liveById = {};
         var maxKey = -1;
         Object.keys(liveByKey).forEach(function(k) {
             var v = liveByKey[k];
-            if (v && v.setlistId) liveById[v.setlistId] = { key: k, record: v };
+            if (v && v[idField]) liveById[v[idField]] = { key: k, record: v };
             var n = parseInt(k, 10);
             if (!isNaN(n) && n > maxKey) maxKey = n;
         });
 
-        // Index input by setlistId — used to detect deletions.
+        // Index input by stable ID — used to detect deletions.
         var newById = {};
-        newArr.forEach(function(r) { if (r && r.setlistId) newById[r.setlistId] = r; });
+        newArr.forEach(function(r) { if (r && r[idField]) newById[r[idField]] = r; });
 
-        // Defensive validator: section labels appearing as song titles is the
-        // fingerprint of the flattener bug that produced the 2026-05-10 damage.
-        // Log a warning so we catch any regression at write time.
-        var SECTION_LABEL_RE = /^(soundcheck|set\s*\d+|encore|set\s*break|🔊\s*soundcheck)$/i;
-        newArr.forEach(function(rec) {
-            if (!rec || !Array.isArray(rec.sets)) return;
-            rec.sets.forEach(function(set) {
-                (set.songs || []).forEach(function(sg, idx) {
-                    var title = (typeof sg === 'string') ? sg : (sg && sg.title);
-                    if (title && SECTION_LABEL_RE.test(String(title).trim())) {
-                        console.warn('[saveBandSetlistsSafe] suspicious title "' + title + '" in setlist "' + (rec.name || rec.setlistId) + '" / section "' + (set.name || '?') + '" / idx ' + idx + ' — possible section-flattener artifact');
-                    }
+        // Setlist-specific defensive validator: section labels appearing as
+        // song titles is the fingerprint of the flattener bug that produced the
+        // 2026-05-10 damage. Log a warning so we catch any regression.
+        if (dataType === 'setlists') {
+            var SECTION_LABEL_RE = /^(soundcheck|set\s*\d+|encore|set\s*break|🔊\s*soundcheck)$/i;
+            newArr.forEach(function(rec) {
+                if (!rec || !Array.isArray(rec.sets)) return;
+                rec.sets.forEach(function(set) {
+                    (set.songs || []).forEach(function(sg, idx) {
+                        var title = (typeof sg === 'string') ? sg : (sg && sg.title);
+                        if (title && SECTION_LABEL_RE.test(String(title).trim())) {
+                            console.warn('[saveBandArrayDataSafe:setlists] suspicious title "' + title + '" in setlist "' + (rec.name || rec[idField]) + '" / section "' + (set.name || '?') + '" / idx ' + idx + ' — possible section-flattener artifact');
+                        }
+                    });
                 });
             });
-        });
+        }
 
         var nextKey = maxKey + 1;
         var updated = 0, added = 0, deleted = 0, skipped = 0;
@@ -618,12 +640,12 @@ window.saveBandSetlistsSafe = async function saveBandSetlistsSafe(newArray, opti
         for (var i = 0; i < newArr.length; i++) {
             var rec = newArr[i];
             if (!rec) { skipped++; continue; }
-            if (!rec.setlistId) {
-                console.warn('[saveBandSetlistsSafe] record missing setlistId — skipping', rec.name || '(no name)');
+            if (!rec[idField]) {
+                console.warn('[saveBandArrayDataSafe:' + dataType + '] record missing ' + idField + ' — skipping', rec.name || rec.title || '(unnamed)');
                 skipped++;
                 continue;
             }
-            var existing = liveById[rec.setlistId];
+            var existing = liveById[rec[idField]];
             if (existing) {
                 // Strip volatile fields before comparing so a no-op save doesn't churn.
                 var liveSerialized = JSON.stringify(existing.record);
@@ -645,7 +667,7 @@ window.saveBandSetlistsSafe = async function saveBandSetlistsSafe(newArray, opti
         for (var j = 0; j < liveKeys.length; j++) {
             var k = liveKeys[j];
             var v = liveByKey[k];
-            if (v && v.setlistId && !newById[v.setlistId]) {
+            if (v && v[idField] && !newById[v[idField]]) {
                 await firebaseDB.ref(path + '/' + k).remove();
                 deleted++;
             }
@@ -655,18 +677,25 @@ window.saveBandSetlistsSafe = async function saveBandSetlistsSafe(newArray, opti
         var freshSnap = await firebaseDB.ref(path).once('value');
         var freshVal = freshSnap.val() || {};
         var freshArr = Object.values(freshVal);
-        try { _glCacheWrite('_band', 'setlists', freshArr); } catch(e) {}
-        try { localStorage.setItem('deadcetera_setlists__band', JSON.stringify(freshArr)); } catch(e) {}
+        try { _glCacheWrite('_band', dataType, freshArr); } catch(e) {}
+        try { localStorage.setItem(legacyKey, JSON.stringify(freshArr)); } catch(e) {}
 
         if (updated + added + deleted > 0) {
-            console.log('[saveBandSetlistsSafe] ' + updated + ' updated, ' + added + ' added, ' + deleted + ' deleted, ' + skipped + ' skipped — actor=' + actor);
+            console.log('[saveBandArrayDataSafe:' + dataType + '] ' + updated + ' updated, ' + added + ' added, ' + deleted + ' deleted, ' + skipped + ' skipped — actor=' + actor);
         }
         return true;
     } catch (error) {
-        console.error('❌ saveBandSetlistsSafe failed:', error.message || error);
-        if (typeof showToast === 'function') showToast('❌ Setlist save failed — ' + (error.message || 'check your connection'));
+        console.error('❌ saveBandArrayDataSafe:' + dataType + ' failed:', error.message || error);
+        if (typeof showToast === 'function') showToast('❌ ' + dataType + ' save failed — ' + (error.message || 'check your connection'));
         return false;
     }
+};
+
+// Backwards-compat alias for the original setlist-specific writer.
+// External callers (e.g. groovemate_tools.js) and the saveBandDataToDrive
+// shim still use this name.
+window.saveBandSetlistsSafe = function saveBandSetlistsSafe(newArray, options) {
+    return window.saveBandArrayDataSafe('setlists', newArray, options);
 };
 
 /**
