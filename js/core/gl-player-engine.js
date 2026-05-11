@@ -528,7 +528,7 @@ window.GLPlayerEngine = (function() {
             // can take 1-3s on cellular when the device cache is cold.
             if (myToken !== _token) { console.log('[GLPlayer] _playSpotify superseded after pickPreferredDevice, bailing'); return; }
             if (device && !device.is_restricted) {
-                _emit('status', { message: 'Sending to Spotify on ' + device.name + '…' });
+                _emit('status', { message: 'Starting on ' + device.name });
                 try {
                     await SC.play('spotify:track:' + trackId, device.id);
                     // Supersession check after the play() await. If a newer
@@ -573,7 +573,7 @@ window.GLPlayerEngine = (function() {
                         return;
                     }
                     console.warn('[GLPlayer] Connect play failed:', e.message || e, '— falling through to SDK');
-                    _emit('status', { message: 'Spotify Connect error — trying fallback' });
+                    _emit('status', { message: 'Trying another source' });
                 }
             } else {
                 // No Connect device — Spotify app force-quit or never opened.
@@ -597,7 +597,7 @@ window.GLPlayerEngine = (function() {
 
         // Try Web Playback SDK first
         if (SP && SP.isAvailable()) {
-            _emit('status', { message: 'Starting Spotify\u2026' });
+            _emit('status', { message: 'Starting Spotify' });
             var ok = await SP.playTrackId(trackId);
             if (ok) {
                 _activeMethod = 'sdk'; // load-bearing for togglePlay/seek/stop routing

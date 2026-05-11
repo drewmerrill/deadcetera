@@ -45,7 +45,14 @@ window.GLPlayerUI = (function() {
         });
         E.on('sourceResolved', function(d) { _renderSource(d); });
         E.on('status', function(d) { _renderStatus(d.message); });
-        E.on('embedReady', function(d) { _createEmbed(d); });
+        E.on('embedReady', function(d) {
+            _createEmbed(d);
+            // Refresh slider visibility on source switch. _createEmbed sets
+            // _connectDeviceSupportsVolume for Connect sources; for YouTube
+            // and SDK paths we still want the slider re-shown if Connect
+            // had hidden it during the prior song.
+            _refreshVolumeSliderVisibility();
+        });
         E.on('queueEnd', function() {
             E.clearResumeState();
             _showCompletionScreen();
@@ -89,6 +96,14 @@ window.GLPlayerUI = (function() {
             ? '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#1ed760;margin-right:4px;animation:glPulse 1.6s ease-in-out infinite"></span>'
             : '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#94a3b8;margin-right:4px"></span>';
         pill.innerHTML = dot + icon + ' ' + _esc(state.device.name);
+        // Track supportsVolume from live state so transferPlayback (which
+        // doesn't fire embedReady) and device-switches mid-session keep
+        // the float volume slider's visibility in sync with reality.
+        var nextSupports = !!state.device.supports_volume;
+        if (nextSupports !== _connectDeviceSupportsVolume) {
+            _connectDeviceSupportsVolume = nextSupports;
+            _refreshVolumeSliderVisibility();
+        }
     }
 
     // ── Overlay Mode (Full-Screen) ──────────────────────────────────────────
@@ -305,6 +320,7 @@ window.GLPlayerUI = (function() {
                 + '<div id="glpFloatTitle" style="font-size:0.84em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song ? song.title : '') + '</div>'
                 + '<div id="glpFloatSource" style="font-size:0.66em;color:#475569;margin-top:1px"></div>'
             + '</div>'
+            + '<div id="glpFloatUpNext" style="padding:2px 10px;font-size:0.65em;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>'
             + '<div id="glpFloatTagRow" style="display:flex;align-items:center;gap:4px;padding:2px 8px 4px;font-size:0.68em" title="Tag the version currently playing — does NOT switch versions. Use 📚 Versions ▾ above to switch.">'
                 + '<span style="color:#94a3b8;font-weight:700;letter-spacing:0.04em;text-transform:uppercase">Tag this:</span>'
                 + '<button onclick="GLPlayerUI.tagCurrentAs(\'northstar\')" title="Set as North Star" style="background:none;border:1px solid rgba(251,191,36,0.35);color:#fbbf24;cursor:pointer;padding:3px 7px;border-radius:5px;font-weight:700">⭐ NS</button>'
@@ -430,7 +446,48 @@ window.GLPlayerUI = (function() {
         try { if (window._ytPlayer && window._ytPlayer.setPlaybackRate) window._ytPlayer.setPlaybackRate(rate); } catch (e) {}
     }
     function setVolume(pct) {
-        try { if (window._ytPlayer && window._ytPlayer.setVolume) window._ytPlayer.setVolume(pct); } catch (e) {}
+        // Route to whichever source is currently active. YouTube + Connect
+        // accept 0-100; Spotify Web Playback SDK accepts 0-1. Previously
+        // only YouTube was wired, so the slider was a silent no-op for
+        // Spotify users.
+        var v = Math.max(0, Math.min(100, parseInt(pct, 10) || 0));
+        var E = window.GLPlayerEngine;
+        var method = E && E.getActiveMethod ? E.getActiveMethod() : null;
+        try { if (window._ytPlayer && window._ytPlayer.setVolume) window._ytPlayer.setVolume(v); } catch (e) {}
+        if (method === 'sdk' && typeof GLSpotifyPlayer !== 'undefined' && GLSpotifyPlayer.setVolume) {
+            try { GLSpotifyPlayer.setVolume(v / 100); } catch(e) {}
+        }
+        if (method === 'connect' && typeof GLSpotifyConnect !== 'undefined' && GLSpotifyConnect.setVolume) {
+            var deviceId = E && E.getActiveDeviceId ? E.getActiveDeviceId() : null;
+            // setVolume on a non-supportsVolume device returns 403/404. We
+            // gate on _connectDeviceSupportsVolume (set when the device pill
+            // renders) so the call is only made for devices that accept it.
+            if (_connectDeviceSupportsVolume) {
+                GLSpotifyConnect.setVolume(v, deviceId).catch(function(e) {
+                    console.warn('[GLPlayerUI] Connect setVolume failed:', e && e.message);
+                });
+            }
+        }
+    }
+    // Tracked from the embedReady event so the slider knows whether to send
+    // setVolume calls to Connect (most iOS smartphones report
+    // supports_volume=false; iOS Connect can't drive volume remotely).
+    var _connectDeviceSupportsVolume = false;
+    // Hides or shows the float volume slider based on the current source's
+    // ability to accept volume changes. Called whenever the active method
+    // or device changes. Avoids dead-control UX — slider just disappears
+    // when it can't do anything useful.
+    function _refreshVolumeSliderVisibility() {
+        var slider = document.getElementById('glpFloatVolume');
+        if (!slider) return;
+        var E = window.GLPlayerEngine;
+        var method = E && E.getActiveMethod ? E.getActiveMethod() : null;
+        // YouTube and Spotify SDK can always set volume. Connect only when
+        // the device supports it. No method known yet = show by default
+        // (avoids flicker during initial source resolution).
+        var canSetVolume = (method === null)
+            || (method === 'connect' ? _connectDeviceSupportsVolume : true);
+        slider.style.display = canSetVolume ? '' : 'none';
     }
     function restart() {
         try {
@@ -733,14 +790,23 @@ window.GLPlayerUI = (function() {
         // Up next — momentum language
         var E = window.GLPlayerEngine;
         var nextEl = document.getElementById('glpUpNext');
-        if (nextEl && E) {
+        // Up next renders into both the overlay (glpUpNext, full-screen)
+        // and the float player (glpFloatUpNext) so iPhone users see the
+        // next song without expanding the player.
+        var upNextHtml = '';
+        if (E) {
             var q = E.getQueue();
-            if (d.idx < q.length - 1) {
-                nextEl.innerHTML = 'Coming up \u2192 <strong style="color:#e2e8f0">' + _esc(q[d.idx + 1].title) + '</strong>';
-            } else {
-                nextEl.innerHTML = '\uD83C\uDFB6 Last song \u2014 finish strong';
+            if (q && q.length > 0) {
+                if (d.idx < q.length - 1) {
+                    upNextHtml = 'Coming up \u2192 <strong style="color:#cbd5e1">' + _esc(q[d.idx + 1].title) + '</strong>';
+                } else {
+                    upNextHtml = '\uD83C\uDFB6 Last song \u2014 finish strong';
+                }
             }
         }
+        if (nextEl) nextEl.innerHTML = upNextHtml;
+        var nextElFloat = document.getElementById('glpFloatUpNext');
+        if (nextElFloat) nextElFloat.innerHTML = upNextHtml;
         // Float
         _setText('glpFloatTitle', song.title);
         // Bar updates on song change
@@ -941,6 +1007,8 @@ window.GLPlayerUI = (function() {
         // pause/resume/seek/skip via REST. Volume hint shown when device
         // doesn't accept Connect volume (iOS smartphone supports_volume=false).
         if (d.source === 'spotify_connect' && d.trackId) {
+            _connectDeviceSupportsVolume = !!d.supportsVolume;
+            _refreshVolumeSliderVisibility();
             var volNote = d.supportsVolume
                 ? ''
                 : '<div style="font-size:0.65em;color:#94a3b8;margin-top:6px;line-height:1.3">Volume: use ' + _esc(d.deviceName || 'device') + ' hardware buttons</div>';

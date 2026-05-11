@@ -408,27 +408,55 @@ window.GLSpotifyConnect = (function() {
     } catch(e) { /* swallow; transient errors expected */ }
   }
 
+  // Adaptive polling cadence. Fast (1500ms) when actively playing, slow
+  // (5000ms) after several consecutive idle ticks. Reset to fast on any
+  // state change. Reduces ambient API hits ~70% during the breaks between
+  // songs / setlists / overnight tabs-left-open without sacrificing the
+  // snappy state-change feedback when something is actually happening.
+  var _FAST_MS = 1500;
+  var _SLOW_MS = 5000;
+  var _IDLE_TICKS_TO_SLOW = 5; // 5 fast ticks idle ≈ 7.5s before backoff
+  var _idleTickCount = 0;
+  function _scheduleNextTick() {
+    if (!_pollingTimer && _pollingTimer !== 0) return; // stopPolling() called
+    var hasPlaybackState = !!_lastPlaybackState;
+    var isPlayingNow = hasPlaybackState && _lastPlaybackState.is_playing;
+    if (isPlayingNow) {
+      _idleTickCount = 0;
+    } else {
+      _idleTickCount++;
+    }
+    var nextMs = _idleTickCount >= _IDLE_TICKS_TO_SLOW ? _SLOW_MS : _FAST_MS;
+    _pollingTimer = setTimeout(function() {
+      _pollTick(false).then(_scheduleNextTick).catch(_scheduleNextTick);
+    }, nextMs);
+  }
   function startPolling(intervalMs) {
+    // intervalMs argument retained for back-compat but ignored — the
+    // adaptive scheduler manages cadence internally.
     stopPolling();
-    var ms = intervalMs || 1500;
-    _pollingTimer = setInterval(function() { _pollTick(false); }, ms);
-    _pollTick(false);
+    _idleTickCount = 0;
+    _pollingTimer = 0; // sentinel; will be replaced by setTimeout id below
+    _pollTick(false).then(_scheduleNextTick).catch(_scheduleNextTick);
   }
 
   function stopPolling() {
-    if (_pollingTimer) { clearInterval(_pollingTimer); _pollingTimer = null; }
+    if (_pollingTimer) { clearTimeout(_pollingTimer); _pollingTimer = null; }
     _lastPlaybackState = null;
+    _idleTickCount = 0;
   }
 
-  // Public: force an immediate poll regardless of the interval timer.
-  // Used by the engine's visibilitychange handler so the UI snaps to the
-  // real playback state on tab-return instead of showing stale data for
-  // up to 1.5s. forceEmit=true so even a no-delta state triggers the
-  // UI subscriber — covers the case where state was actually unchanged
-  // but the UI needs to re-render after being hidden.
+  // Public: force an immediate poll regardless of the schedule. Used by
+  // visibilitychange handlers so the UI snaps to the real playback state
+  // on tab-return. forceEmit=true triggers UI re-render even on no-delta
+  // state. Also resets idle-tick counter + re-schedules from now so the
+  // next tick uses fast cadence (avoids the case where we were in slow
+  // 5s mode and the user just came back to active interaction).
   function forcePoll() {
-    if (!_pollingTimer) return; // not in a Connect session
-    return _pollTick(true);
+    if (_pollingTimer === null) return; // not in a Connect session
+    if (_pollingTimer) { clearTimeout(_pollingTimer); _pollingTimer = 0; }
+    _idleTickCount = 0;
+    return _pollTick(true).then(_scheduleNextTick).catch(_scheduleNextTick);
   }
 
   // Pause polling when tab is hidden, force an immediate sync when it
