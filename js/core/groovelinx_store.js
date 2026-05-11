@@ -233,7 +233,28 @@
     var db = _db();
     var path = _v2Path(songId, dataType);
     if (!db || !path) return Promise.resolve(null);
-    return db.ref(path).set(data);
+    return db.ref(path).set(data).then(function() {
+      // Mirror to the legacy SWR cache (loadBandDataFromDrive). Many
+      // surfaces still read via loadBandDataFromDrive(title, dataType),
+      // which hits the gl_cache_<title>_<dataType> localStorage cache
+      // first — if we don't update it on V2 writes, the next read after
+      // a save returns the STALE cached value until the background
+      // refresh completes one call later.
+      // Drew 2026-05-11: caught this with the Flash Chart Edit overlay
+      // in Live Gig. Chart saved to V2 Firebase path correctly, but the
+      // post-save _loadChart reload pulled the old text from the SWR
+      // cache. Same class of bug as the setlist SWR clobber from 5/10.
+      var song = getSongById(songId);
+      if (song && song.title) {
+        try {
+          localStorage.setItem(
+            'gl_cache_' + song.title + '_' + dataType,
+            JSON.stringify(data)
+          );
+        } catch(e) { /* quota — non-fatal */ }
+      }
+      return data;
+    });
   }
 
   /**
