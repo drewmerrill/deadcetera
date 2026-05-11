@@ -837,12 +837,41 @@ window.GLPlayerEngine = (function() {
     // wasn't obvious. Now the flow is: tap Open Spotify → start any track
     // in Spotify → swipe back to GL → music auto-plays via Connect.
     if (typeof document !== 'undefined') {
+        // Mid-song session loss: when Spotify is force-quit, AirPods drop,
+        // or the device goes offline during a Connect playback, the poll
+        // tick detects the transition and fires sessionLost. We re-emit
+        // needsSpotifyApp (same UX as the initial wake CTA) so the user
+        // has a one-tap recovery path instead of seeing the now-stale
+        // "Playing on X" message indefinitely.
+        if (typeof GLSpotifyConnect !== 'undefined' && GLSpotifyConnect.on) {
+            GLSpotifyConnect.on('sessionLost', function(d) {
+                // Only act if we thought we were playing via Connect.
+                // Other paths (idle, SDK, embed) don't care if Spotify quits.
+                if (_activeMethod !== 'connect' || !_isPlaying) return;
+                console.log('[GLPlayer] Connect session lost mid-song — arming wake CTA');
+                _activeDeviceId = null;
+                _isPlaying = false;
+                _awaitingSpotifyApp = true;
+                _setState(State.IDLE, { source: 'spotify', method: 'awaiting_spotify_app' });
+                _emit('stateChange', { state: State.IDLE, isPlaying: false });
+                var song = _queue[_currentIdx];
+                var trackId = song && song.spotifyTrackId ? song.spotifyTrackId : (_activeResult && _activeResult.trackId) || null;
+                _emit('needsSpotifyApp', { trackId: trackId });
+            });
+        }
         document.addEventListener('visibilitychange', function() {
             // Whenever GL becomes visible, invalidate the device cache —
             // user may have just woken/closed Spotify, transferred playback,
             // or swapped devices. Cheap to refetch; expensive to act on stale.
             if (!document.hidden && typeof GLSpotifyConnect !== 'undefined' && GLSpotifyConnect.clearDeviceCache) {
                 GLSpotifyConnect.clearDeviceCache();
+                // Force an immediate poll so the device pill / play-pause
+                // button / progress snap to current truth instead of showing
+                // pre-lock state for up to 1.5s. The Connect module also
+                // forces its own tick on visibilitychange, but the order of
+                // listeners isn't guaranteed across modules — calling it
+                // here too is idempotent and ensures it happens.
+                if (GLSpotifyConnect.forcePoll) { try { GLSpotifyConnect.forcePoll(); } catch(_) {} }
             }
             if (!document.hidden && _awaitingSpotifyApp) {
                 // Tiny delay so the Spotify-app-handoff completes first and

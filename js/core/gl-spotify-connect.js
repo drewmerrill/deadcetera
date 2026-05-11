@@ -369,31 +369,50 @@ window.GLSpotifyConnect = (function() {
   // The SDK gives us realtime callbacks. With Connect REST we have to poll.
   // Default cadence 1500ms. Stop on visibility hidden to be courteous.
 
+  // Tick is split out so forcePoll() can invoke it on demand (e.g. when the
+  // tab becomes visible after the iPhone unlocks — without this the UI sits
+  // on the last cached state for up to 1.5s waiting for the next interval).
+  // Forces emit-on-any-state to make sure the pill/play-pause/progress
+  // catch up immediately rather than only on a delta.
+  async function _pollTick(forceEmit) {
+    if (document.hidden && !forceEmit) return;
+    try {
+      var state = await getCurrentPlayback();
+      // Capture the prior state BEFORE the update for session-lost detection.
+      var prior = _lastPlaybackState;
+      var changed = forceEmit || !prior
+        || (!!state) !== (!!prior)
+        || (state && prior && (
+            state.is_playing !== prior.is_playing
+            || (state.item && prior.item && state.item.id !== prior.item.id)
+            || (state.device && prior.device && state.device.id !== prior.device.id)
+            || Math.abs((state.progress_ms||0) - (prior.progress_ms||0)) > 500
+        ));
+      // Session-lost detection. If the previous tick had an active session
+      // (state with a device) and now state is null/empty, Spotify was
+      // force-quit, AirPods/speaker disconnected, or the network dropped
+      // long enough for Spotify to clear its session. Surface a one-shot
+      // event so the engine can re-emit the wake CTA. Engine subscribes
+      // and only acts if we thought we were playing — avoids spurious
+      // wake CTAs from idle states.
+      var hadSession = prior && prior.device;
+      var lostSession = hadSession && (!state || !state.device);
+      if (changed) {
+        _lastPlaybackState = state;
+        _emit('playbackState', state);
+      }
+      if (lostSession) {
+        console.log('[GLSpotifyConnect] Session lost (Spotify quit / device dropped) — emitting sessionLost');
+        _emit('sessionLost', { lastDevice: prior.device });
+      }
+    } catch(e) { /* swallow; transient errors expected */ }
+  }
+
   function startPolling(intervalMs) {
     stopPolling();
     var ms = intervalMs || 1500;
-    var tick = async function() {
-      if (document.hidden) return; // skip while tab hidden
-      try {
-        var state = await getCurrentPlayback();
-        // Only emit if something material changed (track, position drift,
-        // play/pause, device). Keeps consumers from re-rendering on every tick.
-        var changed = !_lastPlaybackState
-          || (!!state) !== (!!_lastPlaybackState)
-          || (state && _lastPlaybackState && (
-              state.is_playing !== _lastPlaybackState.is_playing
-              || (state.item && _lastPlaybackState.item && state.item.id !== _lastPlaybackState.item.id)
-              || (state.device && _lastPlaybackState.device && state.device.id !== _lastPlaybackState.device.id)
-              || Math.abs((state.progress_ms||0) - (_lastPlaybackState.progress_ms||0)) > 500
-          ));
-        if (changed) {
-          _lastPlaybackState = state;
-          _emit('playbackState', state);
-        }
-      } catch(e) { /* swallow; transient errors expected */ }
-    };
-    _pollingTimer = setInterval(tick, ms);
-    tick();
+    _pollingTimer = setInterval(function() { _pollTick(false); }, ms);
+    _pollTick(false);
   }
 
   function stopPolling() {
@@ -401,13 +420,24 @@ window.GLSpotifyConnect = (function() {
     _lastPlaybackState = null;
   }
 
-  // Pause polling when tab is hidden, resume when visible (keeps API call
-  // budget low when user isn't looking).
+  // Public: force an immediate poll regardless of the interval timer.
+  // Used by the engine's visibilitychange handler so the UI snaps to the
+  // real playback state on tab-return instead of showing stale data for
+  // up to 1.5s. forceEmit=true so even a no-delta state triggers the
+  // UI subscriber — covers the case where state was actually unchanged
+  // but the UI needs to re-render after being hidden.
+  function forcePoll() {
+    if (!_pollingTimer) return; // not in a Connect session
+    return _pollTick(true);
+  }
+
+  // Pause polling when tab is hidden, force an immediate sync when it
+  // becomes visible again. Without the forced tick, the UI sits on stale
+  // state for up to 1.5s after the user unlocks the phone or comes back
+  // to the tab — particularly noticeable mid-rehearsal where the pill,
+  // play/pause button, and progress could all show last-known values.
   document.addEventListener('visibilitychange', function() {
-    if (document.hidden && _pollingTimer) {
-      // Don't kill the timer entirely — just skip ticks via the document.hidden
-      // check inside tick(). This way we resume immediately on visibility.
-    }
+    if (!document.hidden && _pollingTimer) { _pollTick(true); }
   });
 
   // ── Platform detection helpers ─────────────────────────────────────────────
@@ -481,6 +511,7 @@ window.GLSpotifyConnect = (function() {
     setVolume: setVolume,
     transferPlayback: transferPlayback,
     startPolling: startPolling,
+    forcePoll: forcePoll,
     stopPolling: stopPolling,
     isMobilePlatform: isMobilePlatform,
     isIOSPlatform: isIOSPlatform,
