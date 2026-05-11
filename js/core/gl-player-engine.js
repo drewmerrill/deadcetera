@@ -424,16 +424,24 @@ window.GLPlayerEngine = (function() {
             // Tokens are per-browser (no cross-device sync yet — see memory
             // project_spotify_connect.md), so OAuth must happen on each
             // device the band wants to play from.
-            var hasToken = !!localStorage.getItem('gl_spotify_access_token');
-            var tokenExp = parseInt(localStorage.getItem('gl_spotify_token_expires_at') || '0', 10);
-            var tokenValid = hasToken && (!tokenExp || Date.now() < tokenExp);
-            if (!tokenValid) {
+            // Token is stored under 'gl_spotify_token' as JSON {accessToken,
+            // refreshToken, expiresAt} by listening-bundles.js connectSpotify().
+            // GLSpotifyConnect._getToken() uses the same key. First-pass code
+            // checked the wrong key ('gl_spotify_access_token') and false-
+            // negatived a present token — Drew 2026-05-11 reconnected via the
+            // console one-liner but the player still showed the auth CTA.
+            var tokenRaw = localStorage.getItem('gl_spotify_token');
+            var tokenInfo = null;
+            try { tokenInfo = tokenRaw ? JSON.parse(tokenRaw) : null; } catch(e) {}
+            var hasToken = !!(tokenInfo && tokenInfo.accessToken);
+            var tokenExpired = hasToken && tokenInfo.expiresAt && Date.now() > (tokenInfo.expiresAt - 60000);
+            if (!hasToken || tokenExpired) {
                 _activeMethod = null;
                 _activeDeviceId = null;
                 _awaitingSpotifyApp = false;
                 _setState(State.IDLE, { source: 'spotify', method: 'needs_auth' });
-                _emit('needsSpotifyAuth', { trackId: trackId, reason: hasToken ? 'token_expired' : 'no_token' });
-                console.log('[GLPlayer] iOS Spotify route: ' + (hasToken ? 'token expired' : 'no token in this browser') + ' — surfacing auth CTA');
+                _emit('needsSpotifyAuth', { trackId: trackId, reason: tokenExpired ? 'token_expired' : 'no_token' });
+                console.log('[GLPlayer] iOS Spotify route: ' + (tokenExpired ? 'token expired' : 'no token in this browser') + ' — surfacing auth CTA');
                 return;
             }
             var device = null;
