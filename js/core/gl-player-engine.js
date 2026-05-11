@@ -346,12 +346,12 @@ window.GLPlayerEngine = (function() {
         var pref = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver.getPreferred() : 'youtube';
         if (pref === 'youtube' && song.youtubeId && _ytReady) {
             if (myToken !== _token) return;
-            _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song);
+            _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song, myToken);
             return;
         }
         if (pref === 'spotify' && song.spotifyTrackId) {
             if (myToken !== _token) return;
-            _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
+            _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song, myToken);
             return;
         }
         // Preferred source's ID isn't available — if the OTHER source is
@@ -360,13 +360,13 @@ window.GLPlayerEngine = (function() {
         if (pref === 'youtube' && !song.youtubeId && song.spotifyTrackId) {
             if (myToken !== _token) return;
             console.log('[GLPlayer] No YouTube ID but Spotify available — using Spotify directly');
-            _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song);
+            _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song, myToken);
             return;
         }
         if (pref === 'spotify' && !song.spotifyTrackId && song.youtubeId && _ytReady) {
             if (myToken !== _token) return;
             console.log('[GLPlayer] No Spotify ID but YouTube available — using YouTube directly');
-            _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song);
+            _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song, myToken);
             return;
         }
 
@@ -399,7 +399,7 @@ window.GLPlayerEngine = (function() {
             if (result) {
                 if (result.source === 'youtube' && result.videoId) song.youtubeId = result.videoId;
                 if (result.source === 'spotify' && result.trackId) song.spotifyTrackId = result.trackId;
-                _playSource(result, song);
+                _playSource(result, song, myToken);
             } else {
                 _setState(State.FALLBACK, { song: song.title, reason: 'all sources failed' });
             }
@@ -411,7 +411,15 @@ window.GLPlayerEngine = (function() {
         }
     }
 
-    function _playSource(result, song) {
+    function _playSource(result, song, myToken) {
+        // myToken propagation guards against rapid play() taps. If a newer
+        // play() landed while resolve was running, _token has advanced past
+        // ours; we bail before stomping the newer flow with stale state.
+        if (myToken === undefined) myToken = _token;
+        if (myToken !== _token) {
+            console.log('[GLPlayer] _playSource superseded by newer play(), bailing');
+            return;
+        }
         console.log('[GLPlayer] Source resolved:', result.source, result.confidence || '', result.trackId || result.videoId || '');
         _activeSource = result.source;
         _activeResult = result;
@@ -421,14 +429,22 @@ window.GLPlayerEngine = (function() {
             _playYouTube(result.videoId);
         } else if (result.source === 'spotify') {
             // Prefer Web Playback SDK for full-track playback
-            _playSpotify(result.trackId);
+            _playSpotify(result.trackId, myToken);
         } else if (result.source === 'archive') {
             _setState(State.PLAYING, { source: 'archive' });
             _emit('embedReady', { source: 'archive', identifier: result.identifier });
         }
     }
 
-    async function _playSpotify(trackId) {
+    async function _playSpotify(trackId, myToken) {
+        // Track our generation. Any await below could complete after a newer
+        // play() superseded us; check before mutating shared state. The iOS
+        // Connect path is the slowest (4+ awaits, each potentially seconds on
+        // cellular), so it's where rapid setlist tapping is most likely to
+        // race. Drew's rehearsal scenario: tap "Ain't Life Grand" then
+        // immediately tap next song — old play() must not call SC.play with
+        // the wrong trackId after the new one already did.
+        if (myToken === undefined) myToken = _token;
         var SP = (typeof GLSpotifyPlayer !== 'undefined') ? GLSpotifyPlayer : null;
         var SC = (typeof GLSpotifyConnect !== 'undefined') ? GLSpotifyConnect : null;
 
@@ -471,6 +487,7 @@ window.GLPlayerEngine = (function() {
                         // OAuth refresh token, so an hour-old session no longer
                         // surfaces the auth CTA mid-rehearsal.
                         var hydrated = await window.ListeningBundles.hydrateSpotifyTokenFromFirebase();
+                        if (myToken !== _token) { console.log('[GLPlayer] _playSpotify superseded after hydrate, bailing'); return; }
                         if (hydrated && hydrated.accessToken) {
                             hasToken = true;
                             tokenExpired = hydrated.expiresAt && Date.now() > (hydrated.expiresAt - 60000);
@@ -507,10 +524,18 @@ window.GLPlayerEngine = (function() {
             }
             var device = null;
             try { device = await SC.pickPreferredDevice(); } catch(e) {}
+            // Supersession check after device-pick await. pickPreferredDevice
+            // can take 1-3s on cellular when the device cache is cold.
+            if (myToken !== _token) { console.log('[GLPlayer] _playSpotify superseded after pickPreferredDevice, bailing'); return; }
             if (device && !device.is_restricted) {
                 _emit('status', { message: 'Sending to Spotify on ' + device.name + '…' });
                 try {
                     await SC.play('spotify:track:' + trackId, device.id);
+                    // Supersession check after the play() await. If a newer
+                    // play() raced past us during the network call, we must
+                    // not stomp _activeMethod/_activeDeviceId/_isPlaying with
+                    // stale values — the newer play already owns them now.
+                    if (myToken !== _token) { console.log('[GLPlayer] _playSpotify superseded after SC.play, bailing without state mutation'); return; }
                     _activeMethod = 'connect';
                     _activeDeviceId = device.id;
                     // Phase 5: remember this device as the user's preference

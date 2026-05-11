@@ -61,8 +61,11 @@ window.GLSpotifyConnect = (function() {
   }
 
   // ── Core REST helper ───────────────────────────────────────────────────────
-  // Handles 401 (refresh + retry once), 429 (single backoff), 204 (success
-  // with no body), and JSON decode safely.
+  // Handles 401 (refresh + retry once), 429 (single backoff), 5xx + network
+  // failures (one retry with 400ms wait — rehearsal venue WiFi often has
+  // sub-second blips that recover cleanly), 204 (success with no body),
+  // and JSON decode safely.
+  function _wait(ms) { return new Promise(function(r){ setTimeout(r, ms); }); }
   async function _req(method, path, body) {
     var token = _getToken();
     if (!token) {
@@ -79,7 +82,20 @@ window.GLSpotifyConnect = (function() {
       opts.headers['Content-Type'] = 'application/json';
       opts.body = JSON.stringify(body);
     }
-    var res = await fetch(API + path, opts);
+    // Fetch with transient-failure retry. TypeError = network blip (DNS,
+    // dropped TCP, etc.); 5xx = Spotify's edge having a hiccup. One retry
+    // with a short wait catches the common rehearsal-WiFi sub-second drop
+    // without making the user wait too long when Spotify is truly down.
+    var res;
+    var networkRetried = false;
+    try {
+      res = await fetch(API + path, opts);
+    } catch(networkErr) {
+      console.warn('[GLSpotifyConnect] Network error on ' + method + ' ' + path + ': ' + (networkErr && networkErr.message) + ' — retrying once after 400ms');
+      await _wait(400);
+      networkRetried = true;
+      res = await fetch(API + path, opts); // throws to caller if also fails
+    }
 
     // 401: token rejected — refresh once and retry
     if (res.status === 401) {
@@ -94,7 +110,15 @@ window.GLSpotifyConnect = (function() {
     // 429: rate limit — honor Retry-After once
     if (res.status === 429) {
       var ra = parseInt(res.headers.get('Retry-After') || '1', 10);
-      await new Promise(function(r){ setTimeout(r, Math.min(ra*1000, 5000)); });
+      await _wait(Math.min(ra*1000, 5000));
+      res = await fetch(API + path, opts);
+    }
+
+    // 5xx: Spotify edge hiccup — one short retry. Skip if we already
+    // retried for a network error above (avoid double-retry hammering).
+    if (res.status >= 500 && res.status < 600 && !networkRetried) {
+      console.warn('[GLSpotifyConnect] ' + res.status + ' on ' + method + ' ' + path + ' — retrying once after 400ms');
+      await _wait(400);
       res = await fetch(API + path, opts);
     }
 
