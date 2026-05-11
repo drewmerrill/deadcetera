@@ -1380,7 +1380,15 @@ window.GLPlayerUI = (function() {
         try { devices = await GLSpotifyConnect.listDevices({ bypassCache: true }); } catch(e) {}
         if (!document.getElementById('glpDevicePicker')) return; // user closed mid-fetch
         if (!devices || devices.length === 0) {
-            list.innerHTML = '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:0.85em">No devices online.<br><span style="font-size:0.82em;opacity:0.8">Open Spotify on a device to make it appear here.</span></div>';
+            // Add a "Wake Spotify on this device" button when on iPhone/iPad
+            // — common reason for no-devices is Spotify itself isn't running
+            // on this phone. Reuses GLSpotifyConnect.openSpotifyApp + the
+            // existing retry-after-wake polling flow.
+            var iosBtn = '';
+            if (typeof GLSpotifyConnect !== 'undefined' && GLSpotifyConnect.isIOSPlatform && GLSpotifyConnect.isIOSPlatform()) {
+                iosBtn = '<div style="text-align:center;margin-top:10px"><button onclick="if(typeof GLSpotifyConnect!==\'undefined\')GLSpotifyConnect.openSpotifyApp();GLPlayerUI._refreshDevicePickerList();" style="padding:8px 16px;border-radius:18px;font-size:0.8em;font-weight:700;background:#1ed760;color:#000;border:0;cursor:pointer">▶ Wake Spotify on this device</button><div style="font-size:0.62em;color:#64748b;margin-top:6px">Play any track in Spotify for 2-3s, then come back.</div></div>';
+            }
+            list.innerHTML = '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:0.85em">No devices online.<br><span style="font-size:0.82em;opacity:0.8">Open Spotify on a device to make it appear here.</span></div>' + iosBtn;
             return;
         }
         // Active device first, then sorted by name
