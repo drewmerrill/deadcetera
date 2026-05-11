@@ -864,6 +864,18 @@
     _detachInputListeners(); // safety: remove stale
 
     _lg._keyHandler = function (e) {
+      // Skip global handlers if the user is typing into a textarea / input /
+      // contenteditable element. Without this gate the Flash Chart Edit
+      // overlay (lgEditChart, build 20260511-173950) was a hostage to the
+      // Live Gig shortcuts — typing a space → lgNext (advance to next song),
+      // typing 's' → lgAutoScrollToggle (no letter inserted), pressing Esc →
+      // lgExit (exit Live Gig entirely instead of just closing the editor).
+      // Drew 2026-05-11 caught this mid-rehearsal-prep: editing Bertha's
+      // chart on iPad, spaces typed in the textarea advanced the queue to
+      // Franklin's Tower without saving.
+      var tag = e.target && e.target.tagName;
+      if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return;
+      if (e.target && e.target.isContentEditable) return;
       switch (e.key) {
         case 'ArrowRight':
         case ' ':
@@ -1316,14 +1328,22 @@
     overlay.id = 'lgChartEditor';
     overlay.dataset.song = song.title;
     overlay.style.cssText = 'position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;padding:env(safe-area-inset-top,16px) 16px 16px;color:#e2e8f0;font-family:inherit';
+    // iPad tap-target notes:
+    //   - type="button" prevents implicit submit semantics
+    //   - touch-action:manipulation kills the 300ms iOS tap delay
+    //   - onpointerdown fires BEFORE the soft-keyboard's tap-dismiss eats
+    //     the click event (Drew 2026-05-11: Save was getting hijacked into
+    //     a textarea-refocus event on iPad, keyboard re-popped, no save).
+    //   - min-height:44px meets Apple's recommended touch-target size
+    var sharedBtnStyle = 'min-height:44px;padding:10px 18px;border-radius:8px;font-size:0.92em;font-weight:700;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:rgba(99,102,241,0.3)';
     overlay.innerHTML =
       '<div style="display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.08);flex-shrink:0">' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:0.65em;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;font-weight:700">FLASH EDIT</div>' +
           '<div style="font-size:1.05em;font-weight:700;color:#a5b4fc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song.title) + '</div>' +
         '</div>' +
-        '<button onclick="lgCloseChartEditor(false)" style="padding:8px 14px;border-radius:8px;font-size:0.82em;font-weight:600;border:1px solid rgba(255,255,255,0.1);background:none;color:#94a3b8;cursor:pointer" title="Discard changes (Esc)">Cancel</button>' +
-        '<button onclick="lgSaveChartEdit()" style="padding:8px 16px;border-radius:8px;font-size:0.82em;font-weight:700;border:1px solid rgba(34,197,94,0.4);background:rgba(34,197,94,0.12);color:#86efac;cursor:pointer" title="Save and return">💾 Save</button>' +
+        '<button type="button" onclick="lgCloseChartEditor(false)" style="' + sharedBtnStyle + ';border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.04);color:#cbd5e1" title="Discard changes (Esc)">Cancel</button>' +
+        '<button type="button" onclick="lgSaveChartEdit()" style="' + sharedBtnStyle + ';border:1px solid rgba(34,197,94,0.5);background:rgba(34,197,94,0.18);color:#86efac" title="Save and return">💾 Save</button>' +
       '</div>' +
       '<div style="font-size:0.7em;color:#64748b;padding:8px 2px;flex-shrink:0">Chord chart, structure, lyrics — anything you need on the floor. Use [Verse] / [Chorus] / [Bridge] markers to auto-derive structure.</div>' +
       '<textarea id="lgChartEditorText" spellcheck="false" style="flex:1;width:100%;min-height:0;padding:14px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.4);color:#f1f5f9;font-family:Menlo,Consolas,monospace;font-size:1em;line-height:1.5;resize:none;outline:none" placeholder="G  C  D  G\n\n[Verse]\nA  E  D\nLyrics here..."></textarea>';
@@ -1381,16 +1401,20 @@
     }
   }
 
-  // Esc handler — discard the editor without saving. Stays outside the
-  // existing rehearsal-mode keydown wiring to avoid conflicts.
+  // Esc handler — discard the editor without saving. stopImmediatePropagation
+  // prevents the Live Gig global Esc handler (which calls lgExit() and tears
+  // down the whole gig session) from firing afterward. Drew 2026-05-11:
+  // initial ship had Esc closing the editor AND exiting Live Gig, losing
+  // the queue position mid-rehearsal.
   document.addEventListener('keydown', function(e) {
     var overlay = document.getElementById('lgChartEditor');
     if (!overlay) return;
     if (e.key === 'Escape') {
       lgCloseChartEditor(false);
       e.preventDefault();
+      e.stopImmediatePropagation();
     }
-  });
+  }, true); // capture phase so we run before Live Gig's bubble-phase handler
 
   window.lgEditChart        = lgEditChart;
   window.lgSaveChartEdit    = lgSaveChartEdit;
