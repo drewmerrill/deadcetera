@@ -726,12 +726,18 @@ window.GLPlayerEngine = (function() {
             console.log('[GLPlayer] retryAfterSpotifyWake: polling for device…');
             var SC = (typeof GLSpotifyConnect !== 'undefined') ? GLSpotifyConnect : null;
             if (SC && SC.isIOSPlatform()) {
+                // Phase 5 fix: invalidate device cache before polling. The
+                // user just woke Spotify on their phone — the cached device
+                // list from before that wake is stale by definition. Drew
+                // 2026-05-11: cache made retry-after-wake non-functional
+                // for ~30s after each first attempt.
+                if (SC.clearDeviceCache) SC.clearDeviceCache();
                 var attempts = 0;
                 var maxAttempts = 5;
                 while (attempts < maxAttempts) {
                     attempts++;
                     var d = null;
-                    try { d = await SC.pickPreferredDevice(); } catch(e) {}
+                    try { d = await SC.pickPreferredDevice({ bypassCache: true }); } catch(e) {}
                     if (d && !d.is_restricted) {
                         console.log('[GLPlayer] retryAfterSpotifyWake: device found on attempt', attempts, '— playing');
                         _awaitingSpotifyApp = false;
@@ -766,6 +772,12 @@ window.GLPlayerEngine = (function() {
     // in Spotify → swipe back to GL → music auto-plays via Connect.
     if (typeof document !== 'undefined') {
         document.addEventListener('visibilitychange', function() {
+            // Whenever GL becomes visible, invalidate the device cache —
+            // user may have just woken/closed Spotify, transferred playback,
+            // or swapped devices. Cheap to refetch; expensive to act on stale.
+            if (!document.hidden && typeof GLSpotifyConnect !== 'undefined' && GLSpotifyConnect.clearDeviceCache) {
+                GLSpotifyConnect.clearDeviceCache();
+            }
             if (!document.hidden && _awaitingSpotifyApp) {
                 // Tiny delay so the Spotify-app-handoff completes first and
                 // the device shows up in the next /me/player/devices call.

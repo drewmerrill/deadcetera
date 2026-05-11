@@ -188,8 +188,14 @@ window.GLSpotifyConnect = (function() {
   //   1. Platform-matched (Computer) + active or idle
   //   2. Any active device  (e.g., user transferred playback elsewhere)
   //   3. Any non-restricted device
-  async function pickPreferredDevice() {
-    var devices = await listDevices();
+  function clearDeviceCache() {
+    _deviceCache = null;
+    _deviceCacheAt = 0;
+  }
+
+  async function pickPreferredDevice(opts) {
+    opts = opts || {};
+    var devices = await listDevices({ bypassCache: !!opts.bypassCache });
     if (!devices.length) return null;
 
     // Phase 5: sticky preference. If the user previously played on a device
@@ -437,6 +443,7 @@ window.GLSpotifyConnect = (function() {
     isAvailable: isAvailable,
     pickPreferredDevice: pickPreferredDevice,
     prewarmDevices: prewarmDevices,
+    clearDeviceCache: clearDeviceCache,
     setPreferredDeviceId: setPreferredDeviceId,
     getPreferredDeviceId: getPreferredDeviceId,
     clearPreferredDeviceId: clearPreferredDeviceId,
