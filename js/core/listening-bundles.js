@@ -626,18 +626,48 @@ window.ListeningBundles = (function() {
         if (!path) return;
         try { await firebaseDB.ref(path).remove(); } catch(e) {}
     }
-    // Public: lazy hydration. Caller checks local first; if missing, this
-    // tries Firebase, writes to local if found, and returns the token blob.
+    // Public: lazy hydration. Caller checks local first; if missing or expired,
+    // this tries Firebase, then silently refreshes via the OAuth refresh token
+    // if the access token is dead. Returns a token blob whose accessToken is
+    // valid right now, or null if no usable refresh path exists (user must
+    // re-OAuth). Refresh tokens don't expire per Spotify docs unless the user
+    // revokes the app — so mid-rehearsal 1-hour expiry can't surface as a
+    // "Connect Spotify" CTA anymore.
     async function hydrateSpotifyTokenFromFirebase() {
         var local = _getSpotifyTokenData();
-        if (local && local.accessToken && (!local.expiresAt || Date.now() < local.expiresAt - 60000)) return local;
+        var fresh = local && local.accessToken && (!local.expiresAt || Date.now() < local.expiresAt - 60000);
+        if (fresh) return local;
+        // Local is missing or expired — try Firebase before giving up.
         var fb = await _pullTokenFromFirebase();
         if (fb && fb.accessToken) {
+            // Adopt FB version locally first so _refreshSpotifyToken reads the
+            // latest refreshToken (other devices may have rotated it).
             try { localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify(fb)); } catch(e) {}
-            console.log('[Spotify] Hydrated token from Firebase cross-device sync');
-            return fb;
+            var fbFresh = !fb.expiresAt || Date.now() < fb.expiresAt - 60000;
+            if (fbFresh) {
+                console.log('[Spotify] Hydrated fresh token from Firebase cross-device sync');
+                return fb;
+            }
+            // FB had an expired token too — fall through to refresh.
         }
+        // Both local and FB are expired (or only one had a refresh token).
+        // _getSpotifyTokenData() now reflects whichever blob we just adopted.
+        var refreshed = await _refreshSpotifyToken();
+        if (refreshed) return _getSpotifyTokenData();
         return null;
+    }
+
+    // Public: ensure we have a non-expired access token right now. Returns
+    // true on success. Cheap to call repeatedly — short-circuits if the
+    // token is still fresh, dedupes concurrent refresh requests.
+    async function ensureValidSpotifyToken() {
+        if (_getSpotifyToken() && !_isTokenExpiringSoon()) return true;
+        var data = _getSpotifyTokenData();
+        if (data && data.refreshToken) return await _refreshSpotifyToken();
+        // No local refresh token — try Firebase cross-device hydration which
+        // will itself attempt a refresh if needed.
+        var hydrated = await hydrateSpotifyTokenFromFirebase();
+        return !!(hydrated && hydrated.accessToken && (!hydrated.expiresAt || Date.now() < hydrated.expiresAt - 60000));
     }
 
     function _getSpotifyTokenData() {
@@ -660,30 +690,51 @@ window.ListeningBundles = (function() {
         return (data.expiresAt - Date.now()) < 300000; // < 5 min
     }
 
+    // Avoid stampeding refresh requests when multiple callers race
+    // (visibility-change + engine play + UI pill).
+    var _refreshInflight = null;
     async function _refreshSpotifyToken() {
-        var data = _getSpotifyTokenData();
-        if (!data || !data.refreshToken || !SPOTIFY_CLIENT_ID) return false;
-        try {
-            var resp = await fetch('https://accounts.spotify.com/api/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                    client_id: SPOTIFY_CLIENT_ID,
-                    grant_type: 'refresh_token',
-                    refresh_token: data.refreshToken
-                })
-            });
-            var result = await resp.json();
-            if (result.access_token) {
-                localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify({
-                    accessToken: result.access_token,
-                    refreshToken: result.refresh_token || data.refreshToken,
-                    expiresAt: Date.now() + (result.expires_in * 1000)
-                }));
-                return true;
-            }
-        } catch(e) { console.warn('[Spotify] Refresh failed:', e); }
-        return false;
+        if (_refreshInflight) return _refreshInflight;
+        _refreshInflight = (async function() {
+            await _ensureSpotifyConfig();
+            var data = _getSpotifyTokenData();
+            if (!data || !data.refreshToken || !SPOTIFY_CLIENT_ID) return false;
+            try {
+                var resp = await fetch('https://accounts.spotify.com/api/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        client_id: SPOTIFY_CLIENT_ID,
+                        grant_type: 'refresh_token',
+                        refresh_token: data.refreshToken
+                    })
+                });
+                var result = await resp.json();
+                if (result.access_token) {
+                    var blob = {
+                        accessToken: result.access_token,
+                        refreshToken: result.refresh_token || data.refreshToken,
+                        expiresAt: Date.now() + (result.expires_in * 1000)
+                    };
+                    localStorage.setItem(_SPOTIFY_TOKEN_KEY, JSON.stringify(blob));
+                    // Mirror refreshed token to Firebase so other devices of this
+                    // user pick up the new accessToken instead of refreshing again.
+                    _syncTokenToFirebase(blob);
+                    console.log('[Spotify] Token refreshed silently');
+                    return true;
+                }
+                if (result.error === 'invalid_grant') {
+                    // Refresh token revoked (user removed app from Spotify, or
+                    // grant expired). Clear both local + Firebase so we surface
+                    // a clean reconnect prompt on next play instead of looping.
+                    console.warn('[Spotify] Refresh token revoked — clearing local + Firebase');
+                    localStorage.removeItem(_SPOTIFY_TOKEN_KEY);
+                    _clearTokenInFirebase();
+                }
+            } catch(e) { console.warn('[Spotify] Refresh failed:', e); }
+            return false;
+        })().finally(function() { _refreshInflight = null; });
+        return _refreshInflight;
     }
 
     async function _ensureValidToken() {
@@ -1469,6 +1520,32 @@ window.ListeningBundles = (function() {
             .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     }
 
+    // ── Proactive token refresh ─────────────────────────────────────────────
+    // Spotify access tokens live for 1 hour. Without proactive refresh, a
+    // rehearsal that crosses the hour boundary surfaces the "Connect Spotify"
+    // CTA mid-song. Refresh tokens don't expire (per Spotify docs) so we can
+    // silently rotate the access token whenever it's close to dying.
+    //
+    // Trigger points:
+    //   1. Once on module load — covers fresh app boots after long idles.
+    //   2. On visibilitychange (tab becomes visible) — covers the common case
+    //      where the user switches away to Spotify app and comes back hours
+    //      later. Also catches devices waking from sleep.
+    function _maybeRefreshSilently() {
+        try {
+            var data = _getSpotifyTokenData();
+            if (!data || !data.refreshToken) return; // not connected
+            if (!_isTokenExpiringSoon()) return;     // still fresh
+            _refreshSpotifyToken();
+        } catch(e) {}
+    }
+    // Defer the boot refresh so it doesn't race with _ensureSpotifyConfig on
+    // first paint. 2s is enough for the worker to return the client ID.
+    setTimeout(_maybeRefreshSilently, 2000);
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) _maybeRefreshSilently();
+    });
+
     // ── Public API ──────────────────────────────────────────────────────────
 
     return {
@@ -1492,6 +1569,7 @@ window.ListeningBundles = (function() {
         connectSpotify: connectSpotify,
         disconnectSpotify: disconnectSpotify,
         hydrateSpotifyTokenFromFirebase: hydrateSpotifyTokenFromFirebase,
+        ensureValidSpotifyToken: ensureValidSpotifyToken,
         handleSpotifyCallback: handleSpotifyCallback,
         syncToSpotify: syncToSpotify,
         resolveSpotifyTrackIds: resolveSpotifyTrackIds,

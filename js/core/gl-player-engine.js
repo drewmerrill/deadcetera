@@ -467,6 +467,9 @@ window.GLPlayerEngine = (function() {
             if (!hasToken || tokenExpired) {
                 if (window.ListeningBundles && window.ListeningBundles.hydrateSpotifyTokenFromFirebase) {
                     try {
+                        // hydrate now silently refreshes expired tokens via the
+                        // OAuth refresh token, so an hour-old session no longer
+                        // surfaces the auth CTA mid-rehearsal.
                         var hydrated = await window.ListeningBundles.hydrateSpotifyTokenFromFirebase();
                         if (hydrated && hydrated.accessToken) {
                             hasToken = true;
