@@ -1,6 +1,23 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-03-30 — Data Integrity + Stabilization Pass_
+_Last updated: 2026-05-10 — SWR Cache Clobber Incident_
+
+---
+
+## Bugs Fixed (2026-05-10 — SWR Cache Clobber Incident)
+
+**Severity:** P0 — silent data loss across multiple production setlists. Recovery required forensic localStorage analysis.
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| Setlist clobber bug — Southern Roots Tavern, Tim's Birthday/Earth Brewing 6/28, Avon Theater wiped to flattened single-set lists with section labels as song titles; 2 setlists (MoonShadow 6/5, Earth Brewing 9/11) dropped entirely | All setlist mutations used `saveBandDataToDrive('_band','setlists', wholeArray)` → `ref('setlists').set(wholeArray)`. The input came from SWR cache which returned stale data instantly. Any write replayed that stale snapshot over Firebase, rolling back unrelated entries. No `updatedAt` stamps anywhere — silent. | New `saveBandArrayDataSafe(dataType, newArray, options)` reads Firebase truth (bypasses cache), diffs by per-record ID (`setlistId`/`gigId`/`id`), writes only changed records via `.update()`, stamps `updatedAt`/`updatedBy`, re-syncs caches from fresh Firebase read. `saveBandDataToDrive` shim auto-routes setlists+gigs+calendar_events through it — 11+7+39 writers protected with zero call-site changes. | 20260511-000510, 20260511-001530 |
+| Section-label flattener fingerprint | Damaged setlists had section names ("Soundcheck", "Set 1", "Set Break", "Encore") promoted into songs[] as text entries. Combined with SWR rollback to produce the visible damage. Origin not isolated (may have been pre-existing in old cached state, surfaced by rollback). | Write-time validator in `saveBandArrayDataSafe` logs `[saveBandArrayDataSafe:setlists] suspicious title …` for any section-label-as-song write. Catches regression at write time. | 20260511-000510 |
+| Tim's Birthday 6/27 orphan setlist | Setlist record retained 35 Earth Brewing songs but name/date/gigId got clobbered to a deleted gig ("Tim's Birthday 6/27", `gigId=yzqd9cf6hqfx`). Real Earth Brewing 6/28 gig (`gigId=xec32casc6qr`) lost its setlist link. | Manual per-record `.update()` to restore name → "From The Earth Brewing 06/28/26", date → 2026-06-28, gigId → xec32casc6qr; gig record updated with `setlistId` + `linkedSetlist` back-reference. | manual restore 2026-05-11 |
+| Lost setlists (MoonShadow 6/5 + Earth Brewing 9/11) — content unrecoverable | Drew deleted them earlier thinking they were corrupt artifacts; legacy localStorage snapshot only held them as near-stubs (1-song / 0-song). My initial restore script overwrote the legacy localStorage with post-restore state, destroying remaining forensic copy. | Created empty shell setlists at next available Firebase keys, linked to their gigs. Drew rebuilds content via UI (safe now). Lesson: future recovery scripts must NEVER overwrite legacy LS until a forensic copy is preserved. | manual restore 2026-05-11 |
+
+**Surfaces affected:** all setlist render paths (chart pack, share URLs, big-font print, gig prep, home dashboard).
+**Recovery path used:** legacy `localStorage['deadcetera_setlists__band']` held a 22-entry pre-clobber snapshot. Diffed setlistId-by-setlistId vs live Firebase to find 3 damaged + 2 missing. Per-record restore via direct Firebase `.update()` calls.
+**Memory:** `project_setlist_swr_clobber_bug.md` saved for next session.
 
 ---
 
