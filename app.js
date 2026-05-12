@@ -10596,9 +10596,9 @@ async function _renderNotifSettings() {
         + '<div style="font-size:0.8em;color:var(--text-dim);line-height:1.45;margin-bottom:12px">Get text messages for the same activity push covers — useful when push isn\'t available (e.g. iOS without PWA install, or in spotty cell areas). Optional, off by default.</div>'
         + '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'
         + '<input type="tel" id="smsPhoneInput" placeholder="(555) 123-4567" value="' + safePhone + '" autocomplete="tel" inputmode="tel" style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.88em;font-family:inherit"' + (smsOptedIn ? ' disabled' : '') + '>'
-        + '<button onclick="_smsToggleOptIn()" id="smsToggleBtn" style="padding:8px 18px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;border:1px solid ' + (smsOptedIn ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)') + ';background:' + (smsOptedIn ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (smsOptedIn ? '#86efac' : 'var(--text-dim)') + ';white-space:nowrap">' + (smsOptedIn ? '✓ On' : 'Enable') + '</button>'
+        + '<button onclick="_smsToggleOptIn()" id="smsToggleBtn" style="padding:8px 18px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;border:1px solid ' + (smsOptedIn ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)') + ';background:' + (smsOptedIn ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (smsOptedIn ? '#86efac' : 'var(--text-dim)') + ';white-space:nowrap">' + (smsOptedIn ? '✓ On' : 'Enable SMS') + '</button>'
         + '</div>'
-        + '<div style="font-size:0.7em;color:var(--text-dim);line-height:1.5">By enabling, you authorize GrooveLinx to send SMS to this number about your band. Reply <strong>STOP</strong> to opt out. Reply <strong>HELP</strong> for help. Message and data rates may apply. Message frequency varies (typically a few per week). <a href="/sms-opt-in.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Details</a> · <a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Privacy</a> · <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Terms</a></div>'
+        + '<div style="font-size:0.7em;color:var(--text-dim);line-height:1.5">By enabling, you authorize GrooveLinx to send SMS to this number about rehearsal schedules, gigs, setlist updates, and time-sensitive band logistics. Reply <strong>STOP</strong> to opt out. Reply <strong>HELP</strong> for help. Message and data rates may apply. Message frequency varies, typically 2–5 messages per week. <a href="/sms-opt-in.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Details</a> · <a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Privacy</a> · <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--accent-light)">Terms</a></div>'
         + '</div>';
 
     el.innerHTML = html;
@@ -10667,14 +10667,14 @@ window._smsToggleOptIn = async function() {
             consentVersion: '1.0'
         });
     } catch(e) {
-        if (btn) { btn.textContent = 'Enable'; btn.disabled = false; }
+        if (btn) { btn.textContent = 'Enable SMS'; btn.disabled = false; }
         if (typeof showToast === 'function') showToast('⚠ Failed to save: ' + e.message, 6000);
         return;
     }
 
     // Send confirmation SMS via worker → Twilio.
     var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
-    var confirmMsg = "GrooveLinx: You've opted in to band notifications. Message frequency varies, typically a few per week. Reply HELP for help, STOP to cancel. Message and data rates may apply.";
+    var confirmMsg = "GrooveLinx: You're opted in to band notifications (rehearsals, gigs, schedule updates). Message frequency varies, typically 2–5 messages per week. Message and data rates may apply. Reply STOP to opt out, HELP for help.";
     try {
         var res = await fetch(WORKER_BASE + '/sms/send', {
             method: 'POST',
