@@ -993,29 +993,53 @@ function _chopEnsureAccessToken(timeoutMs) {
     });
 }
 
-// Compose the setlist context the segmenter uses for title matching.
-// Reads the current active setlist (if any) from GLStore and includes per-
-// song metadata (bpm, key, duration) when available. Falls back to an empty
-// array — the segmenter is fine with no setlist (it just doesn't suggest
-// titles in that case).
+// Build the song-matching context the segmenter uses for title attribution.
+// Flattens songs from ALL setlists (deduped by title) and enriches each
+// with bpm/key/duration from the band's song library. Earlier version
+// looked for non-existent GLStore.getActiveSetlist/getCurrentSetlist which
+// always fell back to [] — segmenter received an empty context and
+// matched_to_setlist was 0 for every run.
 function _chopBuildSetlistContext() {
     if (typeof GLStore === 'undefined') return [];
     try {
-        var setlist = (GLStore.getActiveSetlist && GLStore.getActiveSetlist())
-                   || (GLStore.getCurrentSetlist && GLStore.getCurrentSetlist())
-                   || [];
-        if (!Array.isArray(setlist)) return [];
-        return setlist.map(function(entry) {
-            var title = entry.title || entry.name || (entry.song && entry.song.title) || '';
-            if (!title) return null;
+        var titles = new Set();
+        var setlists = (GLStore.getSetlists && GLStore.getSetlists()) || [];
+        if (Array.isArray(setlists)) {
+            setlists.forEach(function(sl) {
+                var sets = sl && sl.sets;
+                if (!Array.isArray(sets)) return;
+                sets.forEach(function(set) {
+                    var songs = (set && set.songs) || [];
+                    songs.forEach(function(sg) {
+                        var title = (typeof sg === 'string')
+                            ? sg
+                            : (sg && (sg.title || sg.name)) || '';
+                        if (title) titles.add(title);
+                    });
+                });
+            });
+        }
+        // Fall back: if we have no setlist content, use all active band songs.
+        // Better noisy context than no context — segmenter scores each
+        // candidate, so extras don't pollute results.
+        if (!titles.size && GLStore.getSongs) {
+            var all = GLStore.getSongs() || [];
+            all.forEach(function(s) {
+                if (s && s.title) titles.add(s.title);
+            });
+        }
+        var ctx = [];
+        titles.forEach(function(title) {
             var song = (GLStore.getSongByTitle && GLStore.getSongByTitle(title)) || null;
-            return {
+            ctx.push({
                 title: title,
-                bpm: (song && song.bpm) || entry.bpm || null,
-                key: (song && song.key) || entry.key || null,
-                duration: (song && song.duration) || entry.duration || null,
-            };
-        }).filter(Boolean);
+                bpm: (song && song.bpm) || null,
+                key: (song && song.key) || null,
+                duration: (song && song.duration) || null,
+            });
+        });
+        console.log('[Chopper] Setlist context: ' + ctx.length + ' candidate songs');
+        return ctx;
     } catch (e) {
         console.warn('[Chopper] setlist context build failed:', e && e.message);
         return [];

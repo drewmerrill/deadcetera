@@ -176,7 +176,7 @@ def _rms_envelope(y, sr, hop_ms: int = 50):
     return rms, times, hop
 
 
-def _detect_silence_spans(rms, times, min_gap_sec: float = 2.5, threshold_pct: float = 0.05):
+def _detect_silence_spans(rms, times, min_gap_sec: float = 4.0, threshold_pct: float = 0.05):
     """Return list of (start_sec, end_sec) tuples for low-energy spans
     of at least min_gap_sec. threshold = threshold_pct * median(rms)."""
     import numpy as np
@@ -366,9 +366,10 @@ def _match_segment_to_setlist(seg, setlist):
         seg_dur = seg.get("duration_sec", 0)
         entry_dur = entry.get("duration", 0) or 0
         if entry_dur > 0 and seg_dur > 0:
-            # Duration similarity — within 30% is good, within 10% is great.
+            # Duration similarity — widened: within 50% counts. Rehearsal takes
+            # vary from studio length wildly (jam tails, false starts, intros).
             dur_ratio = min(seg_dur, entry_dur) / max(seg_dur, entry_dur)
-            dur_score = max(0.0, (dur_ratio - 0.65) / 0.35)  # 0 at 65%, 1 at 100%
+            dur_score = max(0.0, (dur_ratio - 0.5) / 0.5)  # 0 at 50%, 1 at 100%
             score += 0.3 * dur_score
             weight_total += 0.3
             if dur_score > 0.5:
@@ -377,9 +378,13 @@ def _match_segment_to_setlist(seg, setlist):
         seg_bpm = seg.get("bpm", 0) or 0
         entry_bpm = entry.get("bpm", 0) or 0
         if entry_bpm > 0 and seg_bpm > 0:
-            # BPM similarity — within 5 BPM is great, within 15 is OK.
-            bpm_diff = abs(seg_bpm - entry_bpm)
-            bpm_score = max(0.0, 1.0 - bpm_diff / 20.0)
+            # BPM similarity — widened to 30 BPM tolerance. librosa tempo
+            # detection commonly reports half/double-time alternatives, so
+            # we also count the half/double of the segment's BPM as matches.
+            candidates = [seg_bpm, seg_bpm * 2.0, seg_bpm / 2.0]
+            bpm_score = max(
+                max(0.0, 1.0 - abs(c - entry_bpm) / 30.0) for c in candidates
+            )
             score += 0.3 * bpm_score
             weight_total += 0.3
             if bpm_score > 0.7:
@@ -388,9 +393,12 @@ def _match_segment_to_setlist(seg, setlist):
         seg_key = (seg.get("key") or "").strip().lower()
         entry_key = (entry.get("key") or "").strip().lower()
         if entry_key and seg_key and seg_key != "unknown major":
-            # Exact key match (root + mode). Ignore "minor relative" inference
-            # in v1 — too noisy and the band's setlist key field is canonical.
-            key_match = 1.0 if entry_key == seg_key else 0.0
+            # Match root only — many setlist entries record just "G" not
+            # "G major", and librosa's mode (major vs minor) detection on
+            # rehearsal mixes is noisy. Root match is the reliable signal.
+            seg_root = seg_key.split()[0] if seg_key else ""
+            entry_root = entry_key.split()[0] if entry_key else entry_key
+            key_match = 1.0 if seg_root and seg_root == entry_root else 0.0
             score += 0.25 * key_match
             weight_total += 0.25
             if key_match > 0:
@@ -416,7 +424,10 @@ def _match_segment_to_setlist(seg, setlist):
                 best_match = entry
                 best_evidence = {"matched_on": matched_on}
 
-    if best_match and best_score >= 0.55:
+    # Threshold lowered 0.55 → 0.40. Each match still surfaces its evidence
+    # in matched_on so the UI can show "matched on: bpm + key" or similar.
+    # Loose matches get rendered as suggestions, not assertions.
+    if best_match and best_score >= 0.40:
         return {
             "title": best_match.get("title", "Unknown"),
             "confidence": round(best_score, 2),
@@ -537,6 +548,12 @@ def segment_audio(source_url: str, setlist: list = None):
                 print(f"[segment] musical analysis failed for {seg['id']}: {e}")
 
         # Setlist matching.
+        setlist_with_bpm = sum(1 for e in setlist if e.get("bpm"))
+        setlist_with_key = sum(1 for e in setlist if e.get("key"))
+        setlist_with_dur = sum(1 for e in setlist if e.get("duration"))
+        print(f"[segment] Setlist context: {len(setlist)} entries — "
+              f"{setlist_with_bpm} have BPM, {setlist_with_key} have key, "
+              f"{setlist_with_dur} have duration. Matching against music segments…")
         matched_count = 0
         for seg in segments:
             if seg["kind"] != "music":
@@ -545,6 +562,10 @@ def segment_audio(source_url: str, setlist: list = None):
             if match:
                 seg["likely_song"] = match
                 matched_count += 1
+                print(f"[segment]   {seg['id']} ({seg['duration_sec']:.0f}s, "
+                      f"{seg.get('bpm') or '?'}bpm, {seg.get('key') or '?'}) "
+                      f"→ {match['title']} (conf {match['confidence']}, "
+                      f"matched: {','.join(match['matched_on']) or 'none'})")
 
         # Restart detection — pairwise comparison of adjacent music segments.
         _detect_restarts(segments)
