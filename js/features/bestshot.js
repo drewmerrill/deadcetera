@@ -950,6 +950,49 @@ function _chopParseDriveFileId(input) {
     return null;
 }
 
+// Ensure a Google OAuth access token is available. Returns a Promise that
+// resolves with the token. The session-restore path in app.js intentionally
+// skips silent token refresh to avoid flashing a Google popup on some
+// browsers; this helper triggers the refresh on demand the first time a
+// chopper feature needs Drive access.
+function _chopEnsureAccessToken(timeoutMs) {
+    timeoutMs = timeoutMs || 15000;
+    // Already have it? Resolve immediately.
+    var existing = (typeof accessToken !== 'undefined' && accessToken)
+                ? accessToken
+                : (window.accessToken || '');
+    if (existing) return Promise.resolve(existing);
+
+    return new Promise(function(resolve, reject) {
+        var client = (typeof tokenClient !== 'undefined') ? tokenClient : window.tokenClient;
+        if (!client) {
+            return reject(new Error('Google OAuth not initialized — sign in first'));
+        }
+        var start = Date.now();
+        function readToken() {
+            return (typeof accessToken !== 'undefined' && accessToken)
+                ? accessToken
+                : (window.accessToken || '');
+        }
+        function poll() {
+            var t = readToken();
+            if (t) return resolve(t);
+            if (Date.now() - start > timeoutMs) {
+                return reject(new Error('Token refresh timed out — try signing in via the Connect button'));
+            }
+            setTimeout(poll, 250);
+        }
+        try {
+            // prompt:'' lets Google decide between silent grant + popup.
+            // For an already-consented account this completes silently in ~1 s.
+            client.requestAccessToken({ prompt: '' });
+        } catch (e) {
+            return reject(e);
+        }
+        poll();
+    });
+}
+
 // Compose the setlist context the segmenter uses for title matching.
 // Reads the current active setlist (if any) from GLStore and includes per-
 // song metadata (bpm, key, duration) when available. Falls back to an empty
@@ -1012,10 +1055,24 @@ async function chopAnalyzeOnServer() {
     var bodyJson;
     var driveFileId = _chopParseDriveFileId(input);
     if (driveFileId) {
-        var token = (typeof accessToken !== 'undefined' && accessToken) ? accessToken : '';
+        // Token may be null if the session was restored from cache without
+        // an OAuth refresh (app.js:6133 skips silent refresh after cache restore).
+        // Trigger a refresh inline — Google's silent token grant works for
+        // already-consented sessions and completes in ~1 s with no UI.
+        var token = '';
+        try {
+            token = await _chopEnsureAccessToken(15000);
+        } catch (e) {
+            console.error('[Chopper] Token refresh failed:', e);
+            if (typeof showToast === 'function') {
+                showToast('⚠ Google sign-in needed: ' + (e && e.message) +
+                          '. Click the Connect button in the header, then retry.', 8000);
+            }
+            return;
+        }
         if (!token) {
             if (typeof showToast === 'function') {
-                showToast('⚠ No Google access token — sign in to Drive first.', 6000);
+                showToast('⚠ No Google access token — click the Connect button in the header first.', 6000);
             }
             return;
         }
