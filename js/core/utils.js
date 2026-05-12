@@ -21,9 +21,25 @@ window.sanitizeFirebasePath = function sanitizeFirebasePath(str) {
  */
 window.toArray = function toArray(val) {
     if (!val) return [];
-    if (Array.isArray(val)) return val;
-    if (typeof val === 'object') return Object.values(val);
-    return [];
+    var arr;
+    if (Array.isArray(val)) {
+        arr = val;
+    } else if (typeof val === 'object') {
+        arr = Object.values(val);
+    } else {
+        return [];
+    }
+    // 2026-05-12: filter null/undefined entries. Some legacy delete code
+    // paths in calendar_events leave a literal `null` in place of removed
+    // events. Downstream iteration sites (forEach, for, find) all assume
+    // entries are non-null and crash with "Cannot read properties of null".
+    // Filtering here protects every consumer that loads via toArray.
+    // Drew + Brian both hit this on calendar grid render + sync in May UAT.
+    var hasNulls = false;
+    for (var i = 0; i < arr.length; i++) {
+        if (arr[i] == null) { hasNulls = true; break; }
+    }
+    return hasNulls ? arr.filter(function(v) { return v != null; }) : arr;
 };
 
 // ── HTML escaping ────────────────────────────────────────────────────────────

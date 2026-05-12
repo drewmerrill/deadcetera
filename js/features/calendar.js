@@ -5043,6 +5043,11 @@ function _calEventFingerprint(events) {
     var parts = [];
     for (var i = 0; i < events.length; i++) {
         var e = events[i];
+        // Skip null/malformed entries (same class of bug as _calBuildDateMap
+        // crash — corrupt rows in calendar_events from legacy delete code
+        // paths). Without this, a single null kills the whole grid render
+        // and the calendar shows zero events.
+        if (!e || typeof e !== 'object') continue;
         parts.push((e.date || '') + ':' + (e.type || '') + ':' + (e.title || '') + ':' + (e.endDate || '') + ':' + (e.updated || e.googleEventId || i));
     }
     return events.length + ':' + parts.join('|');
