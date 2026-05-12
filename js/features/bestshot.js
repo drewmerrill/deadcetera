@@ -943,7 +943,11 @@ async function chopLoadFile(file) {
         chopAudioBuffer = null;
         // Try the chosen rate; on failure, fall back to progressively lower
         // rates. Each attempt needs fresh bytes (decode detaches the input).
-        var rates = [targetRate, 8000, 4000];
+        // Dedupe so we don't waste an attempt repeating the same rate.
+        var rateSet = {}; var rates = [];
+        [targetRate, 8000, 4000].forEach(function(r) {
+            if (!rateSet[r]) { rateSet[r] = 1; rates.push(r); }
+        });
         var lastErr = null;
         for (var ri = 0; ri < rates.length; ri++) {
             var r = rates[ri];
@@ -1060,14 +1064,31 @@ async function chopLoadFile(file) {
         // the stub buffer but it will be silence — disable that button.
         var audioEl = document.getElementById('chopAudio');
         var dur = audioEl && isFinite(audioEl.duration) ? audioEl.duration : 0;
-        if (!dur) {
-            // Audio metadata not ready yet — try once after loadedmetadata.
-            if (audioEl) {
+        if (!dur && audioEl) {
+            // Audio metadata not ready yet — await it inline. Earlier
+            // version re-called chopLoadFile which re-set audio.src and
+            // looped forever; this just waits for metadata on the existing
+            // src. 8 s safety timeout in case the browser never reports it.
+            dur = await new Promise(function(resolve) {
+                var done = false;
+                function finish(d) { if (!done) { done = true; resolve(d); } }
                 audioEl.addEventListener('loadedmetadata', function once() {
                     audioEl.removeEventListener('loadedmetadata', once);
-                    chopLoadFile(file);
+                    finish(isFinite(audioEl.duration) ? audioEl.duration : 0);
                 }, { once: true });
-            }
+                setTimeout(function() {
+                    finish(isFinite(audioEl.duration) ? audioEl.duration : 0);
+                }, 8000);
+            });
+        }
+        if (!dur || !isFinite(dur)) {
+            // Couldn't recover — show the original red error banner.
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '13px sans-serif';
+            ctx.fillText('Error: file could not be decoded and audio metadata is unavailable',
+                canvas.width / 2, canvas.height / 2);
             return;
         }
         // Tiny 100 Hz stub buffer — non-null for downstream code that
