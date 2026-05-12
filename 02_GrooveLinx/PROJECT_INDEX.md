@@ -1,8 +1,14 @@
 # GrooveLinx Project Index
 
-_Last updated: 2026-03-22_
+_Last updated: 2026-05-12 (build `20260512-232320`)_
 
 This file is the fastest high-level map of the GrooveLinx repo. Any AI assistant or human contributor should read this before proposing structural changes.
+
+For current session state, build numbers, and in-flight work, see:
+- `02_GrooveLinx/CURRENT_PHASE.md` — what's live in the latest build
+- `02_GrooveLinx/CLAUDE_HANDOFF.md` — cumulative session-by-session history
+- `02_GrooveLinx/notes/uat_bug_log.md` — resolved-bug ledger
+- `02_GrooveLinx/uat/bug_queue.md` — open/in-progress/resolved bug queue
 
 ---
 
