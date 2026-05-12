@@ -1053,44 +1053,41 @@ async function chopAnalyzeOnServer() {
     window._chopServerSource = input;
 
     var bodyJson;
-    var driveFileId = _chopParseDriveFileId(input);
-    if (driveFileId) {
-        // Token may be null if the session was restored from cache without
-        // an OAuth refresh (app.js:6133 skips silent refresh after cache restore).
-        // Trigger a refresh inline — Google's silent token grant works for
-        // already-consented sessions and completes in ~1 s with no UI.
-        var token = '';
-        try {
-            token = await _chopEnsureAccessToken(15000);
-        } catch (e) {
-            console.error('[Chopper] Token refresh failed:', e);
-            if (typeof showToast === 'function') {
-                showToast('⚠ Google sign-in needed: ' + (e && e.message) +
-                          '. Click the Connect button in the header, then retry.', 8000);
-            }
-            return;
-        }
-        if (!token) {
-            if (typeof showToast === 'function') {
-                showToast('⚠ No Google access token — click the Connect button in the header first.', 6000);
-            }
-            return;
-        }
+    var trimmed = input.trim();
+    var driveFileId = _chopParseDriveFileId(trimmed);
+    var isDriveShareUrl = /drive\.google\.com\/file\/d\/|drive\.google\.com\/open\?id=|drive\.usercontent\.google\.com\/download/i.test(trimmed);
+
+    if (isDriveShareUrl) {
+        // Drive share URL → pass directly as sourceUrl. The segmenter
+        // uses yt-dlp to handle Drive's auth/redirect flow (works for any
+        // file shared "Anyone with the link"). This bypasses the OAuth
+        // drive.file scope limitation — files manually uploaded to Drive
+        // (not via the GrooveLinx Picker) aren't visible to the app's
+        // OAuth token, so we use the shareable-link path instead.
         bodyJson = {
             songId: 'rehearsal_' + Date.now(),
-            driveFileId: driveFileId,
-            accessToken: token,
+            sourceUrl: trimmed,
             setlist: _chopBuildSetlistContext(),
         };
-    } else if (/^https?:\/\//i.test(input.trim())) {
+    } else if (driveFileId) {
+        // Bare Drive file ID (no URL form). Construct a share URL on the
+        // user's behalf so yt-dlp can fetch it. Same caveat — the file
+        // must be shared with "Anyone with the link" or owned by the
+        // GrooveLinx OAuth identity.
         bodyJson = {
             songId: 'rehearsal_' + Date.now(),
-            sourceUrl: input.trim(),
+            sourceUrl: 'https://drive.google.com/file/d/' + driveFileId + '/view',
+            setlist: _chopBuildSetlistContext(),
+        };
+    } else if (/^https?:\/\//i.test(trimmed)) {
+        bodyJson = {
+            songId: 'rehearsal_' + Date.now(),
+            sourceUrl: trimmed,
             setlist: _chopBuildSetlistContext(),
         };
     } else {
         if (typeof showToast === 'function') {
-            showToast('⚠ Could not parse as Drive ID/URL or HTTPS URL.', 6000);
+            showToast('⚠ Could not parse as Drive URL/ID or HTTPS URL.', 6000);
         }
         return;
     }

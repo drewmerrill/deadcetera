@@ -66,6 +66,10 @@ image = (
             "boto3==1.34.0",
             "fastapi[standard]",
             "requests==2.33.1",
+            # yt-dlp handles Google Drive sharing URLs (including the >100 MB
+            # virus-scan redirect dance), generic HTTPS, YouTube, etc. Same
+            # extractor the stems pipeline uses for URL inputs.
+            "yt-dlp",
         ]
     )
 )
@@ -75,17 +79,80 @@ image = (
 
 
 def _download_source(source_url: str, temp_dir: str) -> str:
-    """Fetch the source audio to local disk. Supports direct https/blob proxies."""
+    """Fetch the source audio to local disk. Two paths:
+      1. URLs from drive.google.com — use yt-dlp (handles the virus-scan
+         redirect dance for files >100 MB on shared links).
+      2. Generic HTTPS — straight urllib fetch.
+
+    Wraps any underlying exception in a clean RuntimeError so Modal's
+    pickle layer can serialize the failure back to the polling endpoint
+    (urllib's HTTPError holds a BufferedReader file handle that can't be
+    pickled — was the source of the "Failed to serialize exception" error
+    Drew hit on his first run).
+    """
     out_path = os.path.join(temp_dir, "source.audio")
-    req = urllib.request.Request(source_url, headers={"User-Agent": "groovelinx-segment/1.0"})
-    with urllib.request.urlopen(req, timeout=600) as resp:
-        with open(out_path, "wb") as f:
-            while True:
-                chunk = resp.read(1024 * 1024)
-                if not chunk:
-                    break
-                f.write(chunk)
-    return out_path
+
+    is_drive = "drive.google.com" in source_url or "drive.usercontent.google.com" in source_url
+
+    if is_drive:
+        # yt-dlp handles Drive's redirect chain + confirm-token cookies.
+        try:
+            import yt_dlp
+        except Exception as e:
+            raise RuntimeError(f"yt-dlp not available: {e}")
+
+        ydl_opts = {
+            "format": "best",
+            "outtmpl": out_path,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "socket_timeout": 600,
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([source_url])
+        except Exception as e:
+            # Re-raise as a clean type — yt-dlp's exceptions are
+            # picklable but adding context here makes debugging easier.
+            raise RuntimeError(f"drive_download_failed: {e}")
+        # yt-dlp may append an extension to outtmpl. Find the real path.
+        if not os.path.exists(out_path):
+            candidates = [
+                os.path.join(temp_dir, f) for f in os.listdir(temp_dir)
+                if f.startswith("source.audio")
+            ]
+            if candidates:
+                out_path = candidates[0]
+            else:
+                raise RuntimeError("drive_download_failed: no output file produced")
+        return out_path
+
+    # Direct HTTPS path.
+    try:
+        req = urllib.request.Request(
+            source_url, headers={"User-Agent": "groovelinx-segment/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=600) as resp:
+            with open(out_path, "wb") as f:
+                while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+        return out_path
+    except urllib.error.HTTPError as e:
+        # HTTPError holds a BufferedReader on .fp that can't pickle. Read
+        # the body now (closes the stream) and re-raise as a plain RuntimeError.
+        try:
+            body = e.read().decode("utf-8", errors="replace")[:500]
+        except Exception:
+            body = ""
+        raise RuntimeError(f"source_fetch_failed: HTTP {e.code} {e.reason} — {body}")
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"source_fetch_failed: URL error — {e}")
+    except Exception as e:
+        raise RuntimeError(f"source_fetch_failed: {type(e).__name__}: {e}")
 
 
 # ── Audio analysis primitives ──────────────────────────────────────────────
