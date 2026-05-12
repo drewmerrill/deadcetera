@@ -366,8 +366,16 @@ window.RehearsalMixdowns = (function() {
         var items = await _load();
         var m = items.find(function(x) { return x.id === id; });
         if (!m) return;
-        var url = m.audio_url || m.drive_url || '';
-        if (!url) { if (typeof showToast === 'function') showToast('No link to copy'); return; }
+        // Prefer drive_url (stable, shareable). Reject any blob: URL \u2014 those
+        // only resolve in the tab that created them and result in dead links
+        // for teammates. Legacy records may still have one in audio_url.
+        var url = '';
+        if (m.drive_url) url = m.drive_url;
+        else if (m.audio_url && m.audio_url.indexOf('blob:') !== 0) url = m.audio_url;
+        if (!url) {
+            if (typeof showToast === 'function') showToast('\u26A0 No shareable link \u2014 paste a Google Drive link in the mixdown details first', 6000);
+            return;
+        }
         try {
             await navigator.clipboard.writeText(url);
             if (typeof showToast === 'function') showToast('\uD83D\uDD17 Link copied');

@@ -1438,19 +1438,23 @@ window._rmSummarySave = async function(sessionId) {
         else if (statusEl) statusEl.innerHTML = '<span style="color:#94a3b8">Direct audio link</span>';
     }
 
-    // Handle file upload
+    // Handle file upload — local-only blob URL for in-session analysis. NEVER
+    // persisted to Firebase: blob: URLs only resolve in the tab that created
+    // them, so saving one would give teammates a dead Copy Link.
     if (_rmSummaryFile) {
         audioUrl = URL.createObjectURL(_rmSummaryFile);
     }
 
-    // Create mixdown record if we have audio/drive
+    // Create mixdown record ONLY if there's a shareable Drive URL. A local
+    // file upload alone doesn't produce a sharable artifact; tell the user
+    // to upload to Drive and paste the link.
     var mixdownId = null;
-    if (audioUrl || driveUrl) {
+    if (driveUrl) {
         mixdownId = 'mx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
         var mxData = {
             title: 'Rehearsal ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
             rehearsal_date: new Date().toISOString().split('T')[0],
-            audio_url: audioUrl,
+            // audio_url intentionally omitted — only Drive links are sharable.
             drive_url: driveUrl,
             notes: notes ? 'From session: ' + notes.substring(0, 100) : '',
             linked_session_id: sessionId,
@@ -1462,6 +1466,8 @@ window._rmSummarySave = async function(sessionId) {
             all[mixdownId] = mxData;
             await saveBandDataToDrive('_band', 'rehearsal_mixdowns', all);
         } catch(e) { console.warn('[Session] Mixdown save failed:', e); }
+    } else if (_rmSummaryFile) {
+        if (typeof showToast === 'function') showToast('⚠ Local file analyzed but not shared — upload to Google Drive and paste the link to share with the band', 8000);
     }
 
     // Generate summary line

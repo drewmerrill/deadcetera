@@ -775,6 +775,8 @@ function openRehearsalChopper() {
         '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">' +
         '<button class="btn btn-primary btn-sm" id="chopDetectBtn">🔍 Detect Pauses</button>' +
         '<button class="btn btn-ghost btn-sm" id="chopServerAnalyzeBtn" title="Server-side segmentation via Modal. Required for multi-hour recordings the browser can\'t decode.">✨ Analyze on Server</button>' +
+        '<button class="btn btn-ghost btn-sm" id="chopSaveTimelineBtn" title="Save the current segment timeline to Firebase so it survives tab close.">💾 Save Timeline</button>' +
+        '<button class="btn btn-ghost btn-sm" id="chopLoadTimelineBtn" title="Reload a previously-saved timeline from Firebase.">📂 Load</button>' +
         '<button class="btn btn-ghost btn-sm" id="chopAddMarkerBtn" title="Split at playhead">+ Split</button>' +
         '<button class="btn btn-ghost btn-sm" id="chopLoopBtn" title="Loop selected region">🔁 Loop</button>' +
         '<button class="btn btn-ghost btn-sm" id="chopZoomFitBtn" title="Zoom to fit full recording">Fit All</button>' +
@@ -809,6 +811,10 @@ function openRehearsalChopper() {
     document.getElementById('chopDetectBtn').addEventListener('click', function() { chopDetectSilence(); });
     var _serverBtn = document.getElementById('chopServerAnalyzeBtn');
     if (_serverBtn) _serverBtn.addEventListener('click', function() { chopAnalyzeOnServer(); });
+    var _saveTlBtn = document.getElementById('chopSaveTimelineBtn');
+    if (_saveTlBtn) _saveTlBtn.addEventListener('click', function() { _chopSaveTimeline(); });
+    var _loadTlBtn = document.getElementById('chopLoadTimelineBtn');
+    if (_loadTlBtn) _loadTlBtn.addEventListener('click', function() { _chopLoadSavedTimeline(); });
     document.getElementById('chopAddMarkerBtn').addEventListener('click', function() { chopAddMarker(); });
     // Keyboard shortcuts: Space=play/pause, Left/Right=skip 5s
     document.addEventListener('keydown', function chopKeyHandler(e) {
@@ -873,6 +879,9 @@ function _chopLoadFromTimeline(tl) {
     chopMarkers = [];
     chopExcluded = {};
     chopSegmentMeta = {};
+    // Capture the raw timeline so it can be persisted via _chopSaveTimeline.
+    // Survives until the next analysis run or page reload.
+    window._chopCurrentTimeline = tl;
 
     for (var i = 0; i < tl.segments.length; i++) {
         var seg = tl.segments[i];
@@ -896,6 +905,87 @@ function _chopLoadFromTimeline(tl) {
     }
     chopMarkers.sort(function(a, b) { return a - b; });
 }
+
+// Persist the currently-loaded timeline to Firebase so it survives tab close.
+// Stored at bands/{bandId}/rehearsal_timelines/{key}. Label + saver email
+// captured so the band can identify timelines later.
+async function _chopSaveTimeline() {
+    var tl = window._chopCurrentTimeline;
+    if (!tl || !tl.segments || !tl.segments.length) {
+        if (typeof showToast === 'function') showToast('⚠ No timeline to save — run analysis first', 4000);
+        return;
+    }
+    var defaultLabel = 'Rehearsal ' + new Date().toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
+    var label = prompt('Label this timeline so you can find it later (e.g. "Deadcetera 5/11/2026"):', defaultLabel);
+    if (!label) return;
+    var key = 'tl_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    var payload = {
+        id: key,
+        label: label,
+        savedAt: new Date().toISOString(),
+        savedBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : '',
+        sourceUrl: window._chopServerSource || null,
+        timeline: tl,
+    };
+    try {
+        var all = (typeof loadBandDataFromDrive === 'function')
+            ? (await loadBandDataFromDrive('_band', 'rehearsal_timelines') || {})
+            : {};
+        all[key] = payload;
+        await saveBandDataToDrive('_band', 'rehearsal_timelines', all);
+        if (typeof showToast === 'function') showToast('💾 Saved: ' + label, 5000);
+        console.log('[Chopper] Saved timeline:', key, '— label:', label, '— segments:', tl.segments.length);
+    } catch (e) {
+        console.error('[Chopper] Timeline save failed:', e);
+        if (typeof showToast === 'function') showToast('⚠ Save failed: ' + (e && e.message || 'unknown'), 6000);
+    }
+}
+window._chopSaveTimeline = _chopSaveTimeline;
+
+// Reload a previously-saved timeline into the chopper. Lists saved timelines
+// and prompts for selection. Requires chopper modal to be open + an audio
+// file already loaded (so playhead/canvas line up).
+async function _chopLoadSavedTimeline() {
+    if (!chopAudioBuffer) {
+        if (typeof showToast === 'function') showToast('⚠ Load an audio file first so the timeline lines up with playback', 5000);
+        return;
+    }
+    try {
+        var all = await loadBandDataFromDrive('_band', 'rehearsal_timelines') || {};
+        var keys = Object.keys(all).filter(function(k) { return all[k] && all[k].timeline; });
+        if (!keys.length) {
+            if (typeof showToast === 'function') showToast('No saved timelines yet — run analysis and click 💾 Save Timeline first', 5000);
+            return;
+        }
+        // Sort newest-first.
+        keys.sort(function(a, b) { return (all[b].savedAt || '').localeCompare(all[a].savedAt || ''); });
+        var listText = keys.map(function(k, i) {
+            var t = all[k];
+            var when = (t.savedAt || '').slice(0, 10);
+            return (i + 1) + '. ' + (t.label || k) + '  (' + when + ', ' + (t.timeline.segments || []).length + ' segs)';
+        }).join('\n');
+        var pick = prompt('Saved timelines — enter the number to load:\n\n' + listText, '1');
+        if (!pick) return;
+        var idx = parseInt(pick, 10) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= keys.length) {
+            if (typeof showToast === 'function') showToast('⚠ Invalid selection', 3000);
+            return;
+        }
+        var chosen = all[keys[idx]];
+        _chopLoadFromTimeline(chosen.timeline);
+        chopTimestampMarkers = [];
+        if (typeof chopComputeRestartHotspots === 'function') chopComputeRestartHotspots();
+        if (typeof chopDrawWaveform === 'function') chopDrawWaveform();
+        if (typeof chopDrawMinimap === 'function') chopDrawMinimap();
+        if (typeof chopRenderSegments === 'function') chopRenderSegments();
+        if (typeof chopRenderTimestampMarkerList === 'function') chopRenderTimestampMarkerList();
+        if (typeof showToast === 'function') showToast('📂 Loaded: ' + (chosen.label || keys[idx]), 5000);
+    } catch (e) {
+        console.error('[Chopper] Load saved timeline failed:', e);
+        if (typeof showToast === 'function') showToast('⚠ Load failed: ' + (e && e.message || 'unknown'), 6000);
+    }
+}
+window._chopLoadSavedTimeline = _chopLoadSavedTimeline;
 
 // Convert the Modal segmenter's snake_case JSON output into the camelCase
 // timeline shape _chopLoadFromTimeline consumes. The browser

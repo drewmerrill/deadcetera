@@ -38,6 +38,23 @@ async function _calFindEventRefKey(eventId) {
 }
 
 // Also update the calendar event DETAIL view for rehearsals to show a "📋 Practice Plan" link
+// Map a band-member email to a display name. Falls back to a Capitalized
+// email-prefix if the email isn't in the roster. Used to render "Added by X"
+// attribution on calendar events.
+function _calResolveCreatorName(email) {
+    if (!email) return '';
+    var lower = String(email).toLowerCase();
+    var map = {
+        'drewmerrill1029@gmail.com': 'Drew',
+        'brian@hrestoration.com': 'Brian',
+        'pierce.d.hale@gmail.com': 'Pierce',
+        'jnault@fegholdings.com': 'Jay'
+    };
+    if (map[lower]) return map[lower];
+    var prefix = lower.split('@')[0];
+    return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+}
+
 async function calShowEvent(idx, occDate) {
     const events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
     const ev = events[idx];
@@ -49,6 +66,8 @@ async function calShowEvent(idx, occDate) {
     const displayDate = occDate || ev.date || '';
     const repeatLbl = _calRepeatLabel(ev.repeatRule);
     const isRecurring = ev.repeatRule && ev.repeatRule.frequency;
+    const creatorEmail = ev.creatorEmail || ev.organizerEmail || '';
+    const creatorName = _calResolveCreatorName(creatorEmail);
     area.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
         <h3 style="margin:0;font-size:1em">${typeIcon} ${ev.title||'Untitled'}</h3>
@@ -63,6 +82,7 @@ async function calShowEvent(idx, occDate) {
         ${ev.venue ? `<span>\uD83C\uDFDB\uFE0F ${ev.venue}</span>` : ''}
         ${ev.meetingLink ? `<a href="${ev.meetingLink}" target="_blank" style="color:var(--accent-light);text-decoration:none">\uD83D\uDD17 Join Meeting</a>` : ''}
         ${repeatLbl ? `<span style="color:var(--accent-light)">\uD83D\uDD04 ${repeatLbl}</span>` : ''}
+        ${creatorName ? `<span title="${creatorEmail}">\uD83D\uDC64 Added by ${creatorName}</span>` : ''}
     </div>
     ${ev.notes ? `<div style="background:rgba(255,255,255,0.04);border-radius:8px;padding:10px;font-size:0.85em;color:var(--text-muted);margin-bottom:12px">${ev.notes}</div>` : ''}
     <div style="margin-bottom:10px;padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">
@@ -7490,6 +7510,10 @@ async function calSaveEvent(editIdx) {
         ev.created = new Date().toISOString();
         ev.updated_at = ev.created;
         ev.id = (typeof generateShortId === 'function') ? generateShortId(12) : Date.now().toString(36);
+        // Attribution: capture the creator's email so we can render
+        // "Added by X" in the event detail. Persists across edits via the
+        // Object.assign merge in the edit branch above.
+        ev.creatorEmail = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail : '';
         // Audit H3 (2026-05-04): explicit syncStatus on push so Phase 1 has an
         // unambiguous signal this is intent-to-push (vs. an already-synced row
         // that lost its googleEventId — which would be 'orphaned' state).

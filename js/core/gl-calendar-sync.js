@@ -1241,12 +1241,28 @@ window.GLCalendarSync = (function() {
   // Firebase .set() rejects any object containing undefined values and
   // silently fails the whole save. Walks an object or array tree and
   // replaces undefined with null in place. Safe to call on plain data.
+  //
+  // Arrays: nulls are FILTERED OUT entirely, not preserved as holes. Firebase
+  // converts arrays-with-holes into pseudo-arrays-with-null-entries, which
+  // then crash downstream code that loops with .forEach or property access
+  // ("Cannot read properties of null"). Filtering at sanitize time is the
+  // canonical source-of-truth fix; the toArray() read-side filter remains as
+  // a belt-and-suspenders defense for legacy data already in Firebase.
   function _sanitizeForFirebase(value) {
     if (value === undefined) return null;
     if (value === null) return null;
     if (Array.isArray(value)) {
-      for (var i = 0; i < value.length; i++) value[i] = _sanitizeForFirebase(value[i]);
-      return value;
+      var out = [];
+      var stripped = 0;
+      for (var i = 0; i < value.length; i++) {
+        var v = _sanitizeForFirebase(value[i]);
+        if (v == null) { stripped++; continue; }
+        out.push(v);
+      }
+      if (stripped > 0) {
+        console.warn('[sanitize] Stripped ' + stripped + ' null entr' + (stripped === 1 ? 'y' : 'ies') + ' from array of length ' + value.length);
+      }
+      return out;
     }
     if (typeof value === 'object') {
       Object.keys(value).forEach(function (k) {
