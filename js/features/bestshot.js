@@ -909,9 +909,40 @@ async function chopLoadFile(file) {
     ctx.fillText('⏳ Analyzing waveform...', canvas.width / 2, canvas.height / 2);
 
     try {
-        chopAudioContext = chopAudioContext || new (window.AudioContext || window.webkitAudioContext)();
+        // Long-file mode: a full-fidelity decode of a multi-hour MP3 produces
+        // a multi-GB AudioBuffer and the browser refuses with "Unable to
+        // decode audio data". Files >= 80 MB (≈ 60+ minutes at typical
+        // bitrates) get decoded into a low-rate AudioContext (11025 Hz).
+        // Every consumer of chopAudioBuffer reads .sampleRate dynamically,
+        // so waveform drawing + pause detection still work correctly.
+        // Tradeoff: take-export (chopExtractTake) inherits the low rate —
+        // fine for vocal/talk segments, lossy for full-band music export.
+        var Ctor = window.AudioContext || window.webkitAudioContext;
+        var longFile = file.size > 80 * 1024 * 1024;
+        if (!chopAudioContext) {
+            chopAudioContext = longFile
+                ? new Ctor({ sampleRate: 11025 })
+                : new Ctor();
+        } else if (longFile && chopAudioContext.sampleRate > 16000) {
+            // Previous load was a normal-rate context; need a low-rate one.
+            try { chopAudioContext.close(); } catch (e) {}
+            chopAudioContext = new Ctor({ sampleRate: 11025 });
+        }
         var arrayBuffer = await file.arrayBuffer();
-        chopAudioBuffer = await chopAudioContext.decodeAudioData(arrayBuffer);
+        try {
+            chopAudioBuffer = await chopAudioContext.decodeAudioData(arrayBuffer);
+        } catch (decodeErr) {
+            // Last-resort fallback: retry at an even lower rate (8 kHz).
+            try { chopAudioContext.close(); } catch (e) {}
+            chopAudioContext = new Ctor({ sampleRate: 8000 });
+            chopAudioBuffer = await chopAudioContext.decodeAudioData(arrayBuffer);
+        }
+        if (longFile) {
+            console.log('[Chopper] Long-file mode: decoded ' +
+                (file.size / 1024 / 1024).toFixed(1) + ' MB MP3 at ' +
+                chopAudioBuffer.sampleRate + ' Hz (analysis quality only — ' +
+                'take-export will inherit this rate).');
+        }
         document.getElementById('chopTimeEnd').textContent = formatChopTime(chopAudioBuffer.duration);
         chopZoom = { startSec: 0, endSec: chopAudioBuffer.duration };
         chopRegion = null;
@@ -993,7 +1024,20 @@ async function chopLoadFile(file) {
         ctx.fillStyle = '#ef4444';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = 'white';
-        ctx.fillText('Error: ' + err.message, canvas.width / 2, canvas.height / 2);
+        ctx.font = '13px sans-serif';
+        var msg = 'Error: ' + (err && err.message ? err.message : 'decode failed');
+        ctx.fillText(msg, canvas.width / 2, canvas.height / 2 - 10);
+        // For huge files, hint at the workaround: split externally and re-load.
+        if (file && file.size > 200 * 1024 * 1024) {
+            ctx.fillStyle = '#fbbf24';
+            ctx.font = '11px sans-serif';
+            ctx.fillText(
+                'File is ' + (file.size / 1024 / 1024).toFixed(0) +
+                ' MB — try splitting into <90 min chunks and load each separately.',
+                canvas.width / 2, canvas.height / 2 + 12
+            );
+        }
+        console.error('[Chopper] decode failed', err);
     }
 }
 
