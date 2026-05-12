@@ -182,6 +182,14 @@ export default {
     // page to short-circuit the Modal build when the user re-visits.
     if (path === '/multitrack/zip/status' && request.method === 'GET')
       return handleMultitrackZipStatus(request, env);
+    // Rehearsal segmenter — server-side analysis of long rehearsal MP3s.
+    // Replaces the in-browser decodeAudioData + RehearsalSegmentationEngine
+    // path for multi-hour files that exceed browser AudioBuffer limits.
+    // Returns { segments, summary } matching the existing engine's shape.
+    if (path === '/rehearsal-segment/start' && request.method === 'POST')
+      return handleRehearsalSegmentStart(request, env);
+    if (path === '/rehearsal-segment/check' && request.method === 'POST')
+      return handleRehearsalSegmentCheck(request, env);
     // Google Calendar API proxy — forwards user's access token to Google.
     // calendarId comes from the query param. We log a clear warning when a
     // mutating call (POST/PATCH/DELETE) arrives without an explicit
@@ -1993,6 +2001,112 @@ async function handleMultitrackZipCheck(request, env) {
   }
 }
 
+// ── Rehearsal Segmenter (Modal proxy) ────────────────────────────────────────
+// Async pipeline. /rehearsal-segment/start spawns the analysis on Modal and
+// returns a call_id. /rehearsal-segment/check polls until the analysis
+// returns a { segments[], summary } result the browser renders as
+// chopper segments. Reuses _stemsResolveSource for Drive→R2 staging since
+// the audio source resolution is identical to the stems pipeline.
+
+// POST /rehearsal-segment/start
+// Body: { songId, sourceUrl } | { songId, driveFileId, accessToken }
+//                              | { songId, audioBase64DataUrl }
+//       Optional: setlist[] — array of { title, bpm?, key?, duration? } for
+//                 setlist matching. Truncated server-side to 200 entries.
+// Returns: { success, call_id, songId }
+async function handleRehearsalSegmentStart(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('rehearsal_segment_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var startUrl = env.REHEARSAL_SEGMENT_START_URL;
+  if (!startUrl) {
+    return cors(jsonError('rehearsal_segment_not_configured: REHEARSAL_SEGMENT_START_URL secret required', 500));
+  }
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const songId = String(body.songId || '').trim();
+  if (!songId) return cors(jsonError('missing songId', 400));
+
+  const driveFileId = String(body.driveFileId || '').trim();
+  const accessToken = String(body.accessToken || '').trim();
+  const audioDataUrl = String(body.audioBase64DataUrl || '').trim();
+  const sourceUrlRaw = String(body.sourceUrl || '').trim();
+  if (!sourceUrlRaw && !audioDataUrl && !(driveFileId && accessToken)) {
+    return cors(jsonError('missing sourceUrl, { driveFileId, accessToken }, or audioBase64DataUrl', 400));
+  }
+
+  // Reuse the stems source-resolver: identical Drive→R2 staging + URL passthrough.
+  const resolved = await _stemsResolveSource(body, env, request);
+  if (resolved.error) return cors(jsonError(resolved.error, resolved.status || 400));
+  const sourceUrl = resolved.sourceUrl;
+
+  const setlist = Array.isArray(body.setlist) ? body.setlist : [];
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(function() { ctrl.abort(); }, 60000);
+  try {
+    var modalRes = await fetch(startUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: env.STEMS_SHARED_SECRET,
+        songId: songId,
+        sourceUrl: sourceUrl,
+        setlist: setlist,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// POST /rehearsal-segment/check
+// Body: { call_id }
+// Returns: { success, status: 'processing' | 'done', segments?, summary?, duration_sec? }
+async function handleRehearsalSegmentCheck(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('rehearsal_segment_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var checkUrl = env.REHEARSAL_SEGMENT_CHECK_URL;
+  if (!checkUrl) {
+    return cors(jsonError('rehearsal_segment_not_configured: REHEARSAL_SEGMENT_CHECK_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var callId = String(body.call_id || body.callId || '').trim();
+  if (!callId) return cors(jsonError('missing_call_id', 400));
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+  try {
+    var modalRes = await fetch(checkUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
 function _renderMultitrackShareHtml(bandSlug, sessionId, files, totalBytes) {
   function esc(s) { return String(s).replace(/[&<>"']/g, function(c) {
     return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
@@ -2185,9 +2299,13 @@ async function handleStemsCheck(request, env) {
 }
 
 // ── Phase 2: Spatial separation (pan + fingerprint) ──────────────────────────
-// All four endpoints proxy to Modal. URL fallbacks derive from STEMS_MODAL_URL
-// by swapping the trailing function-name slug, identical pattern to the
-// stems start/check fallbacks. Setting the explicit secrets is recommended.
+// All four legacy endpoints now proxy to consolidated Modal endpoints to stay
+// under the Modal web-endpoint cap (the rehearsal-segmenter needs 2 of the
+// 8 slots, so we merged):
+//   pan-analyze-http + tone-fingerprint-http → stems-analyze-http (task param)
+//   spatial-separate-start → separate-start (mode='spatial')
+//   spatial-separate-check → separate-check (already generic to call_id)
+// Worker keeps the public /stems/* paths unchanged so browser code is unmodified.
 
 function _spatialUrl(env, slug, secretName) {
   if (env[secretName]) return env[secretName];
@@ -2195,23 +2313,29 @@ function _spatialUrl(env, slug, secretName) {
   return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-' + slug + '$2');
 }
 
-// POST /stems/pan-analyze  Body: { sourceUrl }
-async function handlePanAnalyze(request, env) {
+// Merged sync analysis URL. Prefer the new explicit secret; fall back to
+// deriving from STEMS_MODAL_URL by slug substitution.
+function _stemsAnalyzeUrl(env) {
+  return _spatialUrl(env, 'stems-analyze-http', 'STEMS_MODAL_ANALYZE_URL');
+}
+
+// Shared helper for the two merged sync-analysis paths.
+async function _proxyStemsAnalyze(request, env, task) {
   if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
     return cors(jsonError('stems_not_configured', 500));
   }
   let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   const sourceUrl = String(body.sourceUrl || '').trim();
   if (!sourceUrl) return cors(jsonError('missing sourceUrl', 400));
-  const url = _spatialUrl(env, 'pan-analyze-http', 'STEMS_MODAL_PAN_ANALYZE_URL');
-  if (!url) return cors(jsonError('STEMS_MODAL_PAN_ANALYZE_URL not set', 500));
+  const url = _stemsAnalyzeUrl(env);
+  if (!url) return cors(jsonError('STEMS_MODAL_ANALYZE_URL not set', 500));
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
     const r = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_url: sourceUrl, token: env.STEMS_SHARED_SECRET }),
+      body: JSON.stringify({ task: task, source_url: sourceUrl, token: env.STEMS_SHARED_SECRET }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
@@ -2226,39 +2350,19 @@ async function handlePanAnalyze(request, env) {
   }
 }
 
-// POST /stems/fingerprint  Body: { sourceUrl }
+// POST /stems/pan-analyze  Body: { sourceUrl } — proxies to /stems-analyze task=pan
+async function handlePanAnalyze(request, env) {
+  return _proxyStemsAnalyze(request, env, 'pan');
+}
+
+// POST /stems/fingerprint  Body: { sourceUrl } — proxies to /stems-analyze task=fingerprint
 async function handleToneFingerprint(request, env) {
-  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
-    return cors(jsonError('stems_not_configured', 500));
-  }
-  let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
-  const sourceUrl = String(body.sourceUrl || '').trim();
-  if (!sourceUrl) return cors(jsonError('missing sourceUrl', 400));
-  const url = _spatialUrl(env, 'tone-fingerprint-http', 'STEMS_MODAL_FINGERPRINT_URL');
-  if (!url) return cors(jsonError('STEMS_MODAL_FINGERPRINT_URL not set', 500));
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 90000);
-  try {
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source_url: sourceUrl, token: env.STEMS_SHARED_SECRET }),
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    const text = await r.text();
-    return cors(new Response(text, {
-      status: r.ok ? 200 : (r.status >= 500 ? 502 : r.status),
-      headers: { 'Content-Type': 'application/json' },
-    }));
-  } catch (e) {
-    clearTimeout(timer);
-    return cors(jsonError(e && e.name === 'AbortError' ? 'modal_timeout' : 'modal_fetch_failed: ' + (e && e.message), 504));
-  }
+  return _proxyStemsAnalyze(request, env, 'fingerprint');
 }
 
 // POST /stems/spatial/start
 // Body: { songId, sourceUrl, panWindows, references?, fpStrength?, pathPrefix? }
+// Proxies to the merged /stems/start endpoint with mode='spatial'.
 async function handleSpatialStart(request, env) {
   if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
     return cors(jsonError('stems_not_configured', 500));
@@ -2273,8 +2377,8 @@ async function handleSpatialStart(request, env) {
   if (!songId || !sourceUrl || panWindows.length === 0) {
     return cors(jsonError('missing songId, sourceUrl, or panWindows', 400));
   }
-  const url = _spatialUrl(env, 'spatial-separate-start', 'STEMS_MODAL_SPATIAL_START_URL');
-  if (!url) return cors(jsonError('STEMS_MODAL_SPATIAL_START_URL not set', 500));
+  const url = _stemsStartUrl(env);  // separate-start handles both modes now
+  if (!url) return cors(jsonError('STEMS_MODAL_START_URL not set', 500));
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   try {
@@ -2282,6 +2386,7 @@ async function handleSpatialStart(request, env) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        mode: 'spatial',
         source_url: sourceUrl, song_id: songId,
         pan_windows: panWindows, references: references,
         fp_strength: fpStrength, path_prefix: pathPrefix,
@@ -2302,6 +2407,7 @@ async function handleSpatialStart(request, env) {
 }
 
 // POST /stems/spatial/check  Body: { callId }
+// Proxies to the merged /stems/check endpoint (call_id polling is mode-agnostic).
 async function handleSpatialCheck(request, env) {
   if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
     return cors(jsonError('stems_not_configured', 500));
@@ -2309,8 +2415,8 @@ async function handleSpatialCheck(request, env) {
   let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   const callId = String(body.callId || body.call_id || '').trim();
   if (!callId) return cors(jsonError('missing callId', 400));
-  const url = _spatialUrl(env, 'spatial-separate-check', 'STEMS_MODAL_SPATIAL_CHECK_URL');
-  if (!url) return cors(jsonError('STEMS_MODAL_SPATIAL_CHECK_URL not set', 500));
+  const url = _stemsCheckUrl(env);  // separate-check is generic to any call_id
+  if (!url) return cors(jsonError('STEMS_MODAL_CHECK_URL not set', 500));
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   try {

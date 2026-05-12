@@ -454,27 +454,55 @@ def separate_stems(
 )
 @modal.fastapi_endpoint(method="POST")
 def separate_start(item: dict):
-    """HTTP entry: spawn separate_stems on the GPU, return Modal call_id."""
+    """HTTP entry: spawn a stems-separation job, return Modal call_id.
+
+    Supports two modes (merged from formerly-separate endpoints to stay
+    under the Modal web-endpoint cap):
+      mode='standard' (default) — htdemucs_6s on GPU. Original behavior.
+        Body: { source_url, song_id, model_name?, token }
+      mode='spatial' — pan-aware + tone-fingerprint two-pass separation.
+        Body: { source_url, song_id, pan_windows, references?, fp_strength?,
+                path_prefix?, token, mode:'spatial' }
+    """
     expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
     if not expected_token:
         return {"success": False, "error": "server misconfigured: no shared secret"}
     if item.get("token", "") != expected_token:
         return {"success": False, "error": "unauthorized"}
 
+    mode = item.get("mode", "standard")
     source_url = item.get("source_url", "")
     song_id = item.get("song_id", "")
-    model_name = item.get("model_name", "htdemucs_6s")
     if not source_url or not song_id:
         return {"success": False, "error": "missing source_url or song_id"}
 
     try:
-        call = separate_stems.spawn(source_url, song_id, model_name)
-        return {
-            "success": True,
-            "call_id": call.object_id,
-            "song_id": song_id,
-            "model": model_name,
-        }
+        if mode == "spatial":
+            pan_windows = item.get("pan_windows", [])
+            references = item.get("references", None)
+            fp_strength = float(item.get("fp_strength", 0.5))
+            path_prefix = item.get("path_prefix", "spatial")
+            if not pan_windows:
+                return {"success": False, "error": "missing pan_windows for spatial mode"}
+            call = spatial_separate.spawn(
+                source_url, song_id, pan_windows, references, fp_strength, path_prefix,
+            )
+            return {
+                "success": True,
+                "call_id": call.object_id,
+                "song_id": song_id,
+                "mode": "spatial",
+            }
+        else:
+            model_name = item.get("model_name", "htdemucs_6s")
+            call = separate_stems.spawn(source_url, song_id, model_name)
+            return {
+                "success": True,
+                "call_id": call.object_id,
+                "song_id": song_id,
+                "model": model_name,
+                "mode": "standard",
+            }
     except Exception as e:
         return {"success": False, "error": f"spawn_failed: {e}"}
 
@@ -893,102 +921,39 @@ def spatial_separate(
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
 @modal.fastapi_endpoint(method="POST")
-def tone_fingerprint_http(item: dict):
-    """HTTP entry: fetch ref clip, return fingerprint. Body: {source_url, token}."""
-    expected = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected: return {"success": False, "error": "server misconfigured"}
-    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
-    source_url = item.get("source_url", "")
-    if not source_url: return {"success": False, "error": "missing source_url"}
-    try:
-        return tone_fingerprint.remote(source_url)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+def stems_analyze_http(item: dict):
+    """Merged sync analysis dispatch. Replaces former tone_fingerprint_http
+    and pan_analyze_http endpoints (consolidated to stay under the Modal
+    web-endpoint cap — see the rehearsal-segment migration notes).
 
-
-@app.function(
-    image=image,
-    timeout=180,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def pan_analyze_http(item: dict):
-    """HTTP entry: compute pan histogram + suggestions. Body: {source_url, token}."""
-    expected = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected: return {"success": False, "error": "server misconfigured"}
-    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
-    source_url = item.get("source_url", "")
-    if not source_url: return {"success": False, "error": "missing source_url"}
-    try:
-        return pan_analyze.remote(source_url)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# ─── HTTP endpoints (async start/check) ─────────────────────────────────────
-
-@app.function(
-    image=image,
-    timeout=120,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def spatial_separate_start(item: dict):
-    """Spawn spatial_separate, return Modal call_id.
-
-    Body: { source_url, song_id, pan_windows, references?, fp_strength?, path_prefix?, token }
+    Body: { task: 'pan'|'fingerprint', source_url, token }
+    Returns: whatever the underlying analyzer returns. Errors as
+      { success: false, error: '...' }.
     """
     expected = os.environ.get("STEMS_SHARED_SECRET", "")
     if not expected: return {"success": False, "error": "server misconfigured"}
     if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
+    task = (item.get("task") or "").strip().lower()
     source_url = item.get("source_url", "")
-    song_id = item.get("song_id", "")
-    pan_windows = item.get("pan_windows", [])
-    references = item.get("references", None)
-    fp_strength = float(item.get("fp_strength", 0.5))
-    path_prefix = item.get("path_prefix", "spatial")
-    if not source_url or not song_id or not pan_windows:
-        return {"success": False, "error": "missing source_url, song_id, or pan_windows"}
+    if not source_url: return {"success": False, "error": "missing source_url"}
     try:
-        call = spatial_separate.spawn(
-            source_url, song_id, pan_windows, references, fp_strength, path_prefix,
-        )
-        return {"success": True, "call_id": call.object_id, "song_id": song_id}
+        if task == "fingerprint":
+            return tone_fingerprint.remote(source_url)
+        if task == "pan":
+            return pan_analyze.remote(source_url)
+        return {"success": False, "error": f"unknown task: {task!r} (expected 'pan' or 'fingerprint')"}
     except Exception as e:
-        return {"success": False, "error": f"spawn_failed: {e}"}
+        return {"success": False, "error": str(e)}
 
 
-@app.function(
-    image=image,
-    timeout=60,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def spatial_separate_check(item: dict):
-    """Poll a spatial_separate call. Returns processing | done | error."""
-    expected = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected: return {"success": False, "error": "server misconfigured"}
-    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
-    call_id = item.get("call_id", "")
-    if not call_id: return {"success": False, "error": "missing call_id"}
-    try:
-        call = modal.FunctionCall.from_id(call_id)
-    except Exception as e:
-        return {"success": False, "error": f"bad_call_id: {e}"}
-    try:
-        result = call.get(timeout=0)
-    except modal.exception.OutputExpiredError:
-        return {"success": False, "error": "output_expired"}
-    except TimeoutError:
-        return {"success": True, "status": "processing"}
-    except Exception as e:
-        return {"success": False, "error": f"call_failed: {e}"}
-    if isinstance(result, dict):
-        out = dict(result)
-        out["status"] = "done"
-        out["success"] = out.get("success", True)
-        return out
-    return {"success": True, "status": "done", "result": result}
+# Spatial separation polling: separate_check (above) already handles any
+# modal.FunctionCall regardless of which inner function spawned it, so a
+# dedicated spatial_separate_check endpoint is redundant. Worker routes
+# /stems/spatial/check → /stems/check uniformly.
+#
+# Spatial separation spawning: separate_start now accepts mode='spatial'
+# and dispatches to spatial_separate internally. Worker routes
+# /stems/spatial/start → /stems/start with mode='spatial' in the body.
 
 
 # ============================================================================

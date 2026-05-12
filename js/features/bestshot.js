@@ -774,6 +774,7 @@ function openRehearsalChopper() {
         // Controls bar
         '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">' +
         '<button class="btn btn-primary btn-sm" id="chopDetectBtn">🔍 Detect Pauses</button>' +
+        '<button class="btn btn-ghost btn-sm" id="chopServerAnalyzeBtn" title="Server-side segmentation via Modal. Required for multi-hour recordings the browser can\'t decode.">✨ Analyze on Server</button>' +
         '<button class="btn btn-ghost btn-sm" id="chopAddMarkerBtn" title="Split at playhead">+ Split</button>' +
         '<button class="btn btn-ghost btn-sm" id="chopLoopBtn" title="Loop selected region">🔁 Loop</button>' +
         '<button class="btn btn-ghost btn-sm" id="chopZoomFitBtn" title="Zoom to fit full recording">Fit All</button>' +
@@ -806,6 +807,8 @@ function openRehearsalChopper() {
     fileInput.addEventListener('change', function() { if (this.files[0]) chopLoadFile(this.files[0]); });
     document.getElementById('chopCloseBtn').addEventListener('click', function() { chopStopPlayheadTracker(); modal.remove(); });
     document.getElementById('chopDetectBtn').addEventListener('click', function() { chopDetectSilence(); });
+    var _serverBtn = document.getElementById('chopServerAnalyzeBtn');
+    if (_serverBtn) _serverBtn.addEventListener('click', function() { chopAnalyzeOnServer(); });
     document.getElementById('chopAddMarkerBtn').addEventListener('click', function() { chopAddMarker(); });
     // Keyboard shortcuts: Space=play/pause, Left/Right=skip 5s
     document.addEventListener('keydown', function chopKeyHandler(e) {
@@ -882,10 +885,254 @@ function _chopLoadFromTimeline(tl) {
             confidence: seg.confidence || 0,
             likelyIntent: seg.likelyIntent || 'unknown',
             likelySongTitle: seg.likelySongTitle || null,
+            // Extended metadata from server-side analysis (Modal segmenter):
+            // bpm, key, chords are nice-to-have for downstream rendering and
+            // setlist auditing. Browser engine omits these; this is fine.
+            bpm: seg.bpm || null,
+            key: seg.key || null,
+            chords: seg.chords || null,
+            likelyRestart: !!seg.likelyRestart,
         };
     }
     chopMarkers.sort(function(a, b) { return a - b; });
 }
+
+// Convert the Modal segmenter's snake_case JSON output into the camelCase
+// timeline shape _chopLoadFromTimeline consumes. The browser
+// RehearsalSegmentationEngine already returns this shape natively; the
+// server-side analyzer uses Python conventions so we adapt at the boundary.
+function _chopSegmenterResultToTimeline(modalResult) {
+    var rawSegs = (modalResult && modalResult.segments) || [];
+    var segments = rawSegs.map(function(s) {
+        var likelyTitle = s.likely_song && s.likely_song.title ? s.likely_song.title : null;
+        var likelyIntent = s.likely_restart
+            ? 'restart'
+            : (s.kind === 'music' ? 'song' : s.kind || 'unknown');
+        return {
+            startSec: s.start_sec,
+            endSec: s.end_sec,
+            durationSec: s.duration_sec,
+            kind: s.kind,
+            confidence: s.confidence,
+            likelyIntent: likelyIntent,
+            likelySongTitle: likelyTitle,
+            bpm: s.bpm || null,
+            key: s.key || null,
+            chords: s.chords || null,
+            likelyRestart: !!s.likely_restart,
+        };
+    });
+    return {
+        segments: segments,
+        summary: (modalResult && modalResult.summary) || {},
+        durationSec: (modalResult && modalResult.duration_sec) || 0,
+    };
+}
+
+// Extract a Google Drive file ID from any of the common URL shapes the user
+// might paste. Returns the file ID, or the original input if it already
+// looks like a bare ID. Returns null if we can't extract anything plausible.
+function _chopParseDriveFileId(input) {
+    if (!input) return null;
+    var s = String(input).trim();
+    if (!s) return null;
+    // file/d/<ID>/...
+    var m = s.match(/\/file\/d\/([a-zA-Z0-9_-]{20,})/);
+    if (m) return m[1];
+    // open?id=<ID> or ?id=<ID>
+    m = s.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+    if (m) return m[1];
+    // uc?id=<ID>
+    m = s.match(/uc\?id=([a-zA-Z0-9_-]{20,})/);
+    if (m) return m[1];
+    // Bare ID (no slashes, no protocol)
+    if (/^[a-zA-Z0-9_-]{20,}$/.test(s)) return s;
+    return null;
+}
+
+// Compose the setlist context the segmenter uses for title matching.
+// Reads the current active setlist (if any) from GLStore and includes per-
+// song metadata (bpm, key, duration) when available. Falls back to an empty
+// array — the segmenter is fine with no setlist (it just doesn't suggest
+// titles in that case).
+function _chopBuildSetlistContext() {
+    if (typeof GLStore === 'undefined') return [];
+    try {
+        var setlist = (GLStore.getActiveSetlist && GLStore.getActiveSetlist())
+                   || (GLStore.getCurrentSetlist && GLStore.getCurrentSetlist())
+                   || [];
+        if (!Array.isArray(setlist)) return [];
+        return setlist.map(function(entry) {
+            var title = entry.title || entry.name || (entry.song && entry.song.title) || '';
+            if (!title) return null;
+            var song = (GLStore.getSongByTitle && GLStore.getSongByTitle(title)) || null;
+            return {
+                title: title,
+                bpm: (song && song.bpm) || entry.bpm || null,
+                key: (song && song.key) || entry.key || null,
+                duration: (song && song.duration) || entry.duration || null,
+            };
+        }).filter(Boolean);
+    } catch (e) {
+        console.warn('[Chopper] setlist context build failed:', e && e.message);
+        return [];
+    }
+}
+
+// ── Server-side analysis (Modal rehearsal-segment) ──────────────────────────
+//
+// Entry point for the "✨ Analyze on Server" button. Two source modes:
+//   1. Drive: user pastes a Google Drive URL or file ID. Worker proxies via
+//      /drive-stream using the user's current OAuth access token.
+//   2. Public URL: user pastes a direct HTTPS URL. Modal fetches it directly.
+//
+// The local chopFile (if any) stays for browser playback — we don't upload
+// it. The user is expected to have the same recording available at the URL
+// they paste. For multi-hour files this is the most reliable path since
+// the 100 MB Cloudflare Workers body limit precludes base64 upload.
+//
+// On success: result.segments → _chopLoadFromTimeline → chopper renders.
+async function chopAnalyzeOnServer() {
+    var audio = document.getElementById('chopAudio');
+    if (!audio || !chopAudioBuffer) {
+        if (typeof showToast === 'function') showToast('Open a recording first');
+        return;
+    }
+
+    // Prompt for a source URL. Default to whatever was pasted last so the
+    // user can quickly retry after a transient failure.
+    var hint = 'Paste a Google Drive URL/file ID or a direct HTTPS audio URL.\n\n'
+             + 'The server will fetch and analyze this recording. Local file '
+             + 'playback in the chopper is unaffected.';
+    var lastSrc = window._chopServerSource || '';
+    var input = prompt(hint, lastSrc);
+    if (!input) return;
+    window._chopServerSource = input;
+
+    var bodyJson;
+    var driveFileId = _chopParseDriveFileId(input);
+    if (driveFileId) {
+        var token = (typeof accessToken !== 'undefined' && accessToken) ? accessToken : '';
+        if (!token) {
+            if (typeof showToast === 'function') {
+                showToast('⚠ No Google access token — sign in to Drive first.', 6000);
+            }
+            return;
+        }
+        bodyJson = {
+            songId: 'rehearsal_' + Date.now(),
+            driveFileId: driveFileId,
+            accessToken: token,
+            setlist: _chopBuildSetlistContext(),
+        };
+    } else if (/^https?:\/\//i.test(input.trim())) {
+        bodyJson = {
+            songId: 'rehearsal_' + Date.now(),
+            sourceUrl: input.trim(),
+            setlist: _chopBuildSetlistContext(),
+        };
+    } else {
+        if (typeof showToast === 'function') {
+            showToast('⚠ Could not parse as Drive ID/URL or HTTPS URL.', 6000);
+        }
+        return;
+    }
+
+    // UI: show progress on the canvas + disable Analyze button.
+    var serverBtn = document.getElementById('chopServerAnalyzeBtn');
+    if (serverBtn) { serverBtn.disabled = true; serverBtn.style.opacity = '0.5'; }
+    var canvas = document.getElementById('chopWaveform');
+    var ctx = canvas && canvas.getContext('2d');
+    function paintProgress(msg) {
+        if (!ctx) return;
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#a78bfa';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('✨ ' + msg, canvas.width / 2, canvas.height / 2 - 4);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('Server analysis — usually 3-8 minutes for a full rehearsal',
+            canvas.width / 2, canvas.height / 2 + 16);
+    }
+    paintProgress('Submitting to server…');
+
+    var workerBase = (typeof _workerBase === 'function')
+        ? _workerBase()
+        : 'https://deadcetera-proxy.drewmerrill1029.workers.dev';
+
+    try {
+        var startRes = await fetch(workerBase + '/rehearsal-segment/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bodyJson),
+        });
+        var startData = await startRes.json();
+        if (!startData.success) {
+            throw new Error(startData.error || 'segment_start_failed');
+        }
+        var callId = startData.call_id;
+        console.log('[Chopper] Server analysis started — call_id:', callId);
+        paintProgress('Analyzing recording…');
+
+        // Poll every 5 s. 30 min cap (a 4 h recording analyzes in ~10 min;
+        // 30 min gives headroom for slower Modal containers and queue waits).
+        var maxPolls = 360;
+        var result = null;
+        for (var i = 0; i < maxPolls; i++) {
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            var checkRes = await fetch(workerBase + '/rehearsal-segment/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: callId }),
+            });
+            var checkData = await checkRes.json();
+            if (!checkData.success) {
+                throw new Error(checkData.error || 'segment_check_failed');
+            }
+            if (checkData.status === 'processing') {
+                // Update toast every 30 s so user sees we're still alive.
+                if (i > 0 && i % 6 === 0) {
+                    paintProgress('Still analyzing… (' + (i * 5) + 's elapsed)');
+                }
+                continue;
+            }
+            // status === 'done' — result body is the same dict as checkData.
+            result = checkData;
+            break;
+        }
+        if (!result) {
+            throw new Error('Analysis timed out after 30 min');
+        }
+
+        console.log('[Chopper] Server analysis complete:', result.summary);
+        var timeline = _chopSegmenterResultToTimeline(result);
+        _chopLoadFromTimeline(timeline);
+        chopTimestampMarkers = [];
+        if (typeof chopComputeRestartHotspots === 'function') chopComputeRestartHotspots();
+        if (typeof chopDrawWaveform === 'function') chopDrawWaveform();
+        if (typeof chopDrawMinimap === 'function') chopDrawMinimap();
+        if (typeof chopRenderSegments === 'function') chopRenderSegments();
+        if (typeof chopRenderTimestampMarkerList === 'function') chopRenderTimestampMarkerList();
+
+        var s = result.summary || {};
+        var summaryMsg = '✨ Server analysis: ' + (s.total_segments || 0) + ' segments ('
+            + (s.music_segments || 0) + ' music, '
+            + (s.matched_to_setlist || 0) + ' matched, '
+            + (s.likely_restarts || 0) + ' restarts)';
+        if (typeof showToast === 'function') showToast(summaryMsg, 8000);
+    } catch (err) {
+        console.error('[Chopper] Server analysis failed:', err);
+        paintProgress('Analysis failed');
+        if (typeof showToast === 'function') {
+            showToast('⚠ Server analysis failed: ' + (err && err.message), 8000);
+        }
+    } finally {
+        if (serverBtn) { serverBtn.disabled = false; serverBtn.style.opacity = '1'; }
+    }
+}
+window.chopAnalyzeOnServer = chopAnalyzeOnServer;
 
 async function chopLoadFile(file) {
     chopFile = file;
