@@ -911,37 +911,63 @@ async function chopLoadFile(file) {
     try {
         // Long-file mode: a full-fidelity decode of a multi-hour MP3 produces
         // a multi-GB AudioBuffer and the browser refuses with "Unable to
-        // decode audio data". Files >= 80 MB (≈ 60+ minutes at typical
-        // bitrates) get decoded into a low-rate AudioContext (11025 Hz).
-        // Every consumer of chopAudioBuffer reads .sampleRate dynamically,
-        // so waveform drawing + pause detection still work correctly.
-        // Tradeoff: take-export (chopExtractTake) inherits the low rate —
-        // fine for vocal/talk segments, lossy for full-band music export.
+        // decode audio data". Large files get decoded into a low-rate
+        // AudioContext so the PCM buffer fits in browser memory.
+        // Tiers (file size → decode rate):
+        //   < 80 MB  → 44.1 kHz (native)
+        //   80-200 MB → 11025 Hz (~1.5 GB peak for 3h stereo)
+        //   > 200 MB → 8000 Hz   (~775 MB peak for 3h stereo — fits in Chrome's
+        //                          ~1 GB AudioBuffer cap)
+        // Every consumer of chopAudioBuffer reads .sampleRate dynamically, so
+        // waveform + pause detection work at any rate. decodeAudioData
+        // detaches the input ArrayBuffer on both success AND failure, so we
+        // re-fetch file bytes before each retry attempt.
+        // Tradeoff: chopExtractTake inherits the analysis rate — fine for
+        // vocal/talk segments, lossy for full-band music export. Tracked as
+        // a follow-up to re-decode the source bytes at full rate on export.
         var Ctor = window.AudioContext || window.webkitAudioContext;
-        var longFile = file.size > 80 * 1024 * 1024;
-        if (!chopAudioContext) {
-            chopAudioContext = longFile
-                ? new Ctor({ sampleRate: 11025 })
-                : new Ctor();
-        } else if (longFile && chopAudioContext.sampleRate > 16000) {
-            // Previous load was a normal-rate context; need a low-rate one.
-            try { chopAudioContext.close(); } catch (e) {}
-            chopAudioContext = new Ctor({ sampleRate: 11025 });
+        var sizeMB = file.size / 1024 / 1024;
+        var targetRate = sizeMB < 80 ? 0  // native
+                       : sizeMB < 200 ? 11025
+                       : 8000;
+        var needLowRate = targetRate > 0;
+
+        function makeCtx(rate) {
+            return rate > 0 ? new Ctor({ sampleRate: rate }) : new Ctor();
         }
-        var arrayBuffer = await file.arrayBuffer();
-        try {
-            chopAudioBuffer = await chopAudioContext.decodeAudioData(arrayBuffer);
-        } catch (decodeErr) {
-            // Last-resort fallback: retry at an even lower rate (8 kHz).
-            try { chopAudioContext.close(); } catch (e) {}
-            chopAudioContext = new Ctor({ sampleRate: 8000 });
-            chopAudioBuffer = await chopAudioContext.decodeAudioData(arrayBuffer);
+        if (!chopAudioContext ||
+            (needLowRate && chopAudioContext.sampleRate > targetRate)) {
+            try { if (chopAudioContext) chopAudioContext.close(); } catch (e) {}
+            chopAudioContext = makeCtx(targetRate);
         }
-        if (longFile) {
+        chopAudioBuffer = null;
+        // Try the chosen rate; on failure, fall back to progressively lower
+        // rates. Each attempt needs fresh bytes (decode detaches the input).
+        var rates = [targetRate, 8000, 4000];
+        var lastErr = null;
+        for (var ri = 0; ri < rates.length; ri++) {
+            var r = rates[ri];
+            if (chopAudioContext.sampleRate !== r && r > 0) {
+                try { chopAudioContext.close(); } catch (e) {}
+                chopAudioContext = makeCtx(r);
+            }
+            try {
+                var fresh = await file.arrayBuffer();
+                chopAudioBuffer = await chopAudioContext.decodeAudioData(fresh);
+                break;
+            } catch (e) {
+                lastErr = e;
+                console.warn('[Chopper] decode failed at ' +
+                    (r || 'native') + ' Hz:', e && e.message);
+            }
+        }
+        if (!chopAudioBuffer) throw lastErr || new Error('decode failed at all rates');
+        if (needLowRate) {
             console.log('[Chopper] Long-file mode: decoded ' +
-                (file.size / 1024 / 1024).toFixed(1) + ' MB MP3 at ' +
+                sizeMB.toFixed(1) + ' MB MP3 at ' +
                 chopAudioBuffer.sampleRate + ' Hz (analysis quality only — ' +
-                'take-export will inherit this rate).');
+                'take-export will inherit this rate until the full-quality ' +
+                'extractor lands).');
         }
         document.getElementById('chopTimeEnd').textContent = formatChopTime(chopAudioBuffer.duration);
         chopZoom = { startSec: 0, endSec: chopAudioBuffer.duration };
