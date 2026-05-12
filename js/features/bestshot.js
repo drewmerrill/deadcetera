@@ -1115,9 +1115,11 @@ async function chopAnalyzeOnServer() {
     }
     paintProgress('Submitting to server…');
 
-    var workerBase = (typeof _workerBase === 'function')
-        ? _workerBase()
-        : 'https://deadcetera-proxy.drewmerrill1029.workers.dev';
+    // Worker base URL — match the convention used across the codebase
+    // (worker-api.js, firebase-service.js, gl-stems.js etc. all hardcode this).
+    var workerBase = (typeof WORKER_URL !== 'undefined' && WORKER_URL)
+        ? WORKER_URL
+        : 'https://deadcetera-proxy.drewmerrill.workers.dev';
 
     try {
         var startRes = await fetch(workerBase + '/rehearsal-segment/start', {
