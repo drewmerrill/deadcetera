@@ -2,6 +2,33 @@
 
 # GrooveLinx AI Handoff
 
+_Last updated: 2026-05-12 19:23 EDT (build `20260512-232320`) — **A2P 10DLC resubmission day + 4 follow-up fixes. Nine commits across the day, builds `20260512-145711` → `20260512-232320`. Two parallel threads:**_
+
+_  (A) **A2P 10DLC compliance resubmission** — full alignment of in-app SMS opt-in UI, public `sms-opt-in.html`, screenshot PNG, and Twilio Console submission fields. Eight code/doc/screenshot commits feeding one resubmission. **Submitted:** Campaign SID `CM5eff550348c1933e9b57ce99c6aeafc6`, Brand SID `BN690df404c69f445c14c1be8383f1de93`, Messaging Service `MG70657b62c45c0a77bf4b0721d552553c`. **Status:** In progress (carrier review, 2–3 weeks per Twilio banner). **Frozen until approval:** the 4 public files (`sms-opt-in.html`, `sms-opt-in-screenshot.png`, `privacy.html`, `terms.html`) + the SMS Notifications UI in `app.js`. Rest of repo unfrozen._
+
+_  (B) **One feature + three follow-up fixes** in a single commit `a95fdb59` — closing the data-loss gap from Drew's lost 5/11 rehearsal analysis, plus the three pending tasks from the prior session:_
+_    · **Rehearsal timeline persistence** (`bestshot.js`) — new 💾 Save Timeline + 📂 Load buttons on the chopper toolbar. `_chopSaveTimeline()` writes `{id, label, savedAt, savedBy, sourceUrl, timeline}` to `bands/{band}/rehearsal_timelines/{key}`. `_chopLoadSavedTimeline()` lists newest-first via prompt for reload. `_chopLoadFromTimeline` captures the raw timeline on `window._chopCurrentTimeline` so Save can grab it. Closes the gap where 5–15 min Modal segmenter runs were ephemeral._
+_    · **#5 — blob: URL leak in Copy Link** (`rehearsal-mode.js` + `rehearsal-mixdowns.js`) — root cause: `_rmSummarySave` was persisting `URL.createObjectURL()` output to Firebase as `audio_url`. Fixed at source (only persists mixdowns when `driveUrl` present; toasts user to upload to Drive otherwise) AND defensively in `_copyLink` (rejects blob: URLs from legacy records)._
+_    · **#6 — Null entries in `calendar_events`** (`gl-calendar-sync.js _sanitizeForFirebase`) — root cause: array sanitization recursed into elements but didn't FILTER nulls, so Firebase persisted arrays-with-holes as pseudo-arrays-with-null-entries. Now filters + logs stripped count. `toArray()` read-side patch from prior session remains as belt-and-suspenders for legacy bad data._
+_    · **#7 — Creator name on calendar events** (`calendar.js`) — new `_calResolveCreatorName(email)` maps roster emails to display names. `calSaveEvent` new-event branch stamps `ev.creatorEmail = currentUserEmail`. `calShowEvent` renders "👤 Added by X" in metadata row with email visible on hover. Falls through to `ev.organizerEmail` for Google-synced events._
+
+_**Painful lesson logged in memory:** Drew ran the server segmenter on the 5/11 rehearsal MP3 (3:21, 265MB) before timeline persistence existed; got 81 segments / 26 setlist matches / 0 false-positive speech. He closed the tab before I built Save. The analysis is gone — he'll re-run after this deploy. Updated `project_a2p_10dlc_submission.md` memory with the new framework + active campaign IDs._
+
+_**SYSTEM LOCKs preserved (CLAUDE.md §7):** `_navSeq`, `focusChanged`, Firebase error filter, `ACTIVE_STATUSES` — all untouched._
+
+_**Final build:** `20260512-232320` (9 commits today: 8 A2P-cycle bumps + 1 feature/fix bundle)._
+
+_**What still works / What to watch:**_
+_  · ✅ A2P submission in carrier review — all surfaces consistent, screenshot/description/public-doc story aligns_
+_  · ✅ Spotify Connect, iPhone perf, multitrack share — all unchanged from 5/11 hardening session_
+_  · ✅ Calendar event creator attribution renders correctly (verify by opening any new event after this deploy → expect "👤 Added by Drew" in metadata row)_
+_  · ✅ Calendar null-entry crashes resolved both at source AND read-side_
+_  · ✅ Copy Link button can no longer expose blob: URLs even for legacy records_
+_  · ⚠️ **REHEARSAL ANALYSIS NEEDS RE-RUN** — Drew should re-fetch the 5/11 Drive URL through `✨ Analyze on Server`, then immediately click `💾 Save Timeline` and label it "Deadcetera 5/11/2026" so it's recoverable_
+_  · ⚠️ Twilio Console: don't edit/touch the campaign, don't try to send US SMS (error 30034 during review), don't delete the 5 stale Messaging Services_
+
+---
+
 _Last updated: 2026-05-11 11:33 EDT (build `20260511-113334`) — **Pre-rehearsal hardening session: 14 commits across the morning of 5/11, builds `20260511-094659` → `20260511-113334`. Three parallel threads tackled in sequence:**_
 _  (A) **Spotify silent token refresh + Premium gating + device picker + wake recovery + race/network defenses + adaptive polling + setlist prewarm** — bulletproofing Spotify Connect for tonight's live UAT rehearsal._
 _  (B) **iPhone perf: hardened SWR cache helper** (`window._glSafeCache`, versioned envelope, safe-parse with auto-clear, 1 MB cap, delta detection) protecting two new caches (`gl_song_library_<slug>` + `gl_sdget_<slug>_<subpath>`) that cut iPhone Songs-page and song-detail load from 5-10s to ~0ms on repeat visits._

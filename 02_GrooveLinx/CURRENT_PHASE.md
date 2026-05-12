@@ -1,5 +1,26 @@
 # GrooveLinx — Current Phase
 
+_Updated: 2026-05-12 19:23 EDT (build `20260512-232320`) — **A2P 10DLC resubmission day + rehearsal timeline persistence + 3 follow-up fixes. Nine commits across the day, builds `20260512-145711` → `20260512-232320`.** Two threads:_
+_  · **A2P 10DLC compliance resubmission.** Full alignment of in-app SMS opt-in UI, public `sms-opt-in.html`, screenshot PNG, and Twilio Console submission fields. Disclosure repositioned ABOVE the Enable SMS button (industry-standard informed-consent-before-action pattern, was below). Button label tightened to "Enable SMS". Categories specified verbatim ("rehearsal schedules, gigs, setlist updates, time-sensitive band logistics"). Frequency tightened ("typically 2–5 messages per week"). Verbatim "Message and data rates may apply" everywhere (not the abbreviated form). Three screenshot retakes to keep the public PNG in lockstep with description text. **Submitted:** Campaign SID `CM5eff550348c1933e9b57ce99c6aeafc6`, Brand SID `BN690df404c69f445c14c1be8383f1de93`, MG `MG70657b62c45c0a77bf4b0721d552553c`. Phone `+1 408-539-8813` verified in Sender Pool. Status: **In progress**, ~2–3 week carrier review per Twilio banner._
+_  · **Rehearsal timeline persistence + 3 follow-up fixes** (single commit `a95fdb59`). **Timeline persistence:** 💾 Save Timeline + 📂 Load buttons on chopper toolbar; persists `{id, label, savedAt, savedBy, sourceUrl, timeline}` to `bands/{band}/rehearsal_timelines/{key}`; closes the data-loss gap that ate Drew's 5/11 server analysis when he closed the tab. **#5 blob: URL leak:** `_rmSummarySave` no longer persists `URL.createObjectURL()` output to Firebase as `audio_url`; Copy Link defensively rejects blob: URLs from legacy records. **#6 calendar_events nulls:** `_sanitizeForFirebase` now FILTERS nulls from arrays instead of preserving them (root cause for "Cannot read properties of null" crashes Brian was hitting); `toArray()` read-side filter stays as belt-and-suspenders. **#7 creator attribution:** `_calResolveCreatorName` maps roster emails to display names; `calSaveEvent` stamps `creatorEmail`; `calShowEvent` renders "👤 Added by X" in event detail metadata row, falling through to Google sync's `organizerEmail` for legacy events._
+
+**Frozen surfaces during A2P review:** `sms-opt-in.html`, `sms-opt-in-screenshot.png`, `privacy.html`, `terms.html`, the SMS Notifications UI section in `app.js`. **Rest of repo unfrozen** — daily commits to everything else fine.
+
+**Acceptance for today's bundle:**
+- Open chopper → load audio → ✨ Analyze on Server → click 💾 Save Timeline (label it) → close tab → re-open chopper → 📂 Load → label appears → reload restores all segments.
+- Open any new calendar event → "👤 Added by Drew" appears in metadata row; existing Google-synced events show `organizerEmail`-derived name.
+- Try Copy Link on a legacy mixdown with blob: in `audio_url` → "No shareable link" toast (not the dead blob URL).
+- After any calendar sync, console either silent or shows `[sanitize] Stripped N null entries…` (proves legacy nulls are being scrubbed at save time).
+
+**Verify post-deploy (incognito):**
+- `app.groovelinx.com/sms-opt-in-screenshot.png` → disclosure above phone field, Enable Notifications ON, URL bar visible
+- `app.groovelinx.com/sms-opt-in.html` → "typically 2–5 messages per week", "directly above the phone number field and Enable SMS button"
+- `app.groovelinx.com/version.json` → `20260512-232320`
+
+**Next recommended step:** Drew re-runs the 5/11 rehearsal analysis through `✨ Analyze on Server` with the same Drive URL and clicks `💾 Save Timeline` immediately on completion. Label: "Deadcetera 5/11/2026". Once saved, it's recoverable forever via 📂 Load.
+
+---
+
 _Updated: 2026-05-11 11:33 EDT (build `20260511-113334`) — **Pre-rehearsal Spotify hardening + iPhone perf SWR caches + worker `/multitrack/share` endpoint. 14 commits this morning bulletproofing tonight's live UAT rehearsal.** Major themes:_
 _  · **Spotify defensive moats**: silent token refresh (no mid-rehearsal "Connect Spotify" CTAs), Premium detection + clear upgrade CTA for non-Premium accounts, tap-to-switch device picker (push to Bluetooth speakers / PA / other phones), rapid-play race guard, transient network/5xx retry, mid-song session-lost detection → wake CTA recovery, force-poll on visibility return (no stale UI after iPhone unlock), prewarm next song's trackId during setlist play (snappy transitions), artist-aware Spotify search ("Ain't Life Grand" now finds Widespread Panic, not a random cover)._
 _  · **iPhone perf**: hardened `window._glSafeCache` (versioned envelope, safe-parse with auto-clear, 1 MB cap, delta detection). Two new caches — `gl_song_library_<slug>` + `gl_sdget_<slug>_<subpath>` — cut Songs-page paint from 5-10s to ~0ms on repeat visits and song-detail open ("Ain't Life Grand") from 5-10s to instant._
