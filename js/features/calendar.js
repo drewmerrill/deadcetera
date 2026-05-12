@@ -5093,7 +5093,13 @@ function _calBackgroundRefresh() {
 function _calBuildDateMap(events) {
     _calEventsByDate = {};
     events.forEach(function(ev, idx) {
-        if (!ev.date) return;
+        // 2026-05-12: defend against null entries in the events array.
+        // Some delete code paths leave a literal `null` in place of the
+        // removed event instead of filtering it out (see corrupt rows with
+        // no titles in Drew's data — IDs 5yuzqagwu42n, 2f3vd4h2r5pf etc.).
+        // Without this guard, _calBuildDateMap crashes on first null and
+        // the whole calendar grid stops rendering.
+        if (!ev || !ev.date) return;
         var evCopy = Object.assign({}, ev, { _idx: idx });
         if (ev.endDate && ev.endDate > ev.date) {
             var _s = new Date(ev.date + 'T12:00:00');

@@ -2160,6 +2160,18 @@ window.GLCalendarSync = (function() {
     var events = (typeof toArray === 'function')
       ? toArray(await loadBandDataFromDrive('_band', 'calendar_events') || [])
       : [];
+    // 2026-05-12: defensive sanitize. Some legacy delete code paths leave
+    // literal `null` entries in the calendar_events array, and downstream
+    // iteration sites (Phase 1 loop, Phase 2 forEach, etc.) crashed with
+    // "Cannot read properties of null (reading 'googleEventId'/'date'/...)".
+    // Drew and Brian both hit this in May UAT. Filtering once at load
+    // protects every phase below.
+    var _preCount = events.length;
+    events = events.filter(function(e) { return e && typeof e === 'object'; });
+    if (events.length < _preCount) {
+      console.warn('[CalSync] Filtered', (_preCount - events.length),
+        'null/malformed event entries from calendar_events at sync load');
+    }
     var result = { pushed: 0, pulled: 0, updated: 0, deleted: 0, error: null };
 
     // ── PHASE 1: Push local changes to Google ──
