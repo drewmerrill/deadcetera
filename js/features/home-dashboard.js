@@ -1601,6 +1601,11 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // Nudge — gentle signal below focus
     if (_nudge) _leftHtml += _nudge;
 
+    // Upload Rehearsal CTA — entry to the standalone Chopper.
+    // Sits above the activity feed so it's visible but not above-the-fold
+    // critical (the gig-readiness cards stay at the top).
+    _leftHtml += renderUploadRehearsal();
+
     // What's New — band activity stream (loaded async after first paint)
     _leftHtml += '<div id="hdActivityFeed"></div>';
 
