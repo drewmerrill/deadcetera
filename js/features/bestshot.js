@@ -1047,23 +1047,73 @@ async function chopLoadFile(file) {
             }
         }
     } catch (err) {
-        ctx.fillStyle = '#ef4444';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = 'white';
-        ctx.font = '13px sans-serif';
-        var msg = 'Error: ' + (err && err.message ? err.message : 'decode failed');
-        ctx.fillText(msg, canvas.width / 2, canvas.height / 2 - 10);
-        // For huge files, hint at the workaround: split externally and re-load.
-        if (file && file.size > 200 * 1024 * 1024) {
-            ctx.fillStyle = '#fbbf24';
-            ctx.font = '11px sans-serif';
-            ctx.fillText(
-                'File is ' + (file.size / 1024 / 1024).toFixed(0) +
-                ' MB — try splitting into <90 min chunks and load each separately.',
-                canvas.width / 2, canvas.height / 2 + 12
-            );
-        }
         console.error('[Chopper] decode failed', err);
+        // Manual mode fallback. decodeAudioData has hard limits beyond what
+        // sample-rate reduction alone can work around (very long files OR
+        // sample-count caps in Chrome). The <audio> element still plays the
+        // file fine via streaming, so we degrade gracefully: skip the
+        // waveform + auto-detection, but keep playhead + annotation buttons
+        // (Song Start / Restart / Clean Run / Discussion) functional so
+        // the user can build a golden timeline by scrubbing manually.
+        // Tradeoff: no waveform preview, no auto pause detection, no
+        // segment auto-split. Save-Take still produces *something* via
+        // the stub buffer but it will be silence — disable that button.
+        var audioEl = document.getElementById('chopAudio');
+        var dur = audioEl && isFinite(audioEl.duration) ? audioEl.duration : 0;
+        if (!dur) {
+            // Audio metadata not ready yet — try once after loadedmetadata.
+            if (audioEl) {
+                audioEl.addEventListener('loadedmetadata', function once() {
+                    audioEl.removeEventListener('loadedmetadata', once);
+                    chopLoadFile(file);
+                }, { once: true });
+            }
+            return;
+        }
+        // Tiny 100 Hz stub buffer — non-null for downstream code that
+        // checks chopAudioBuffer, but trivial in memory (~5 MB for 3.5 h).
+        try { if (chopAudioContext) chopAudioContext.close(); } catch (e) {}
+        var StubCtor = window.AudioContext || window.webkitAudioContext;
+        chopAudioContext = new StubCtor({ sampleRate: 100 });
+        chopAudioBuffer = chopAudioContext.createBuffer(
+            1, Math.max(1, Math.ceil(dur * 100)), 100
+        );
+        var endEl = document.getElementById('chopTimeEnd');
+        if (endEl) endEl.textContent = formatChopTime(dur);
+        chopZoom = { startSec: 0, endSec: dur };
+        chopRegion = null;
+        chopLooping = false;
+        // Replace the red error banner with a manual-mode notice.
+        ctx.fillStyle = '#1f2937';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#f59e0b';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Manual mode — file too large for waveform analysis',
+            canvas.width / 2, canvas.height / 2 - 6);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px sans-serif';
+        ctx.fillText(
+            'Scrub the audio + use ANNOTATE buttons below to mark song boundaries',
+            canvas.width / 2, canvas.height / 2 + 14
+        );
+        chopWireCanvasEvents();
+        chopStartPlayheadTracker();
+        // Disable auto-detect + save-take buttons that need real PCM.
+        ['chopDetectBtn'].forEach(function(id) {
+            var b = document.getElementById(id);
+            if (b) {
+                b.disabled = true;
+                b.style.opacity = '0.4';
+                b.style.cursor = 'not-allowed';
+                b.title = 'Disabled in manual mode — auto-detection needs a decoded waveform';
+            }
+        });
+        console.log('[Chopper] Manual mode active. Duration ' +
+            formatChopTime(dur) + '. Use annotation buttons at playhead.');
+        if (typeof showToast === 'function') {
+            showToast('Manual mode — file too large to analyze. Scrub + annotate.', 6000);
+        }
     }
 }
 

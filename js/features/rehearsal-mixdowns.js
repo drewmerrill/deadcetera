@@ -76,7 +76,11 @@ window.RehearsalMixdowns = (function() {
 
     function _renderCard(m) {
         var dateStr = m.rehearsal_date ? _formatDate(m.rehearsal_date) : '';
-        var hasAudio = !!m.audio_url;
+        // Treat blob: URLs as "no audio" — they're only valid within the
+        // session that created them. Old records with persisted blob URLs
+        // would otherwise render <audio src="blob:..."/> and fire
+        // ERR_FILE_NOT_FOUND on every page load.
+        var hasAudio = !!m.audio_url && m.audio_url.indexOf('blob:') !== 0;
         var hasDrive = !!m.drive_url;
         var durationStr = m.duration ? _formatDuration(m.duration) : '';
         var notesPreview = m.notes ? _esc(m.notes).substring(0, 80) + (m.notes.length > 80 ? '\u2026' : '') : '';
@@ -279,8 +283,12 @@ window.RehearsalMixdowns = (function() {
         // Note: for persistent storage, this would use Firebase Storage like practice tracks
         if (_pendingFile && !audioUrl) {
             // Create a local blob URL for now (persists within session)
-            audioUrl = URL.createObjectURL(_pendingFile);
-            if (typeof showToast === 'function') showToast('Audio loaded locally \u2014 paste a Drive link to persist');
+            // Do NOT persist a blob: URL. Those URLs only live for the
+            // current page session, so saving one to Firebase produces stale
+            // refs that fire ERR_FILE_NOT_FOUND on every future page load
+            // when <audio src="blob:..."/> tries to render. Leave audioUrl
+            // empty; user must paste a Drive link to persist across sessions.
+            if (typeof showToast === 'function') showToast('Audio loaded locally \u2014 paste a Drive link to persist across sessions');
         }
 
         var id = existingId || _genId();

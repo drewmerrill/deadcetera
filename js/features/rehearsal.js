@@ -3735,13 +3735,15 @@ window._rhToggleMixdownPlayer = async function(sessionId, mixdownId) {
         if (!mx) { el.innerHTML = '<div style="font-size:0.72em;color:#64748b">Mixdown not found</div>'; return; }
 
         var html = '';
-        if (mx.audio_url) {
+        // Skip blob: URLs \u2014 they only live for the session that created them.
+        var _hasPlayableAudio = mx.audio_url && mx.audio_url.indexOf('blob:') !== 0;
+        if (_hasPlayableAudio) {
             html += '<audio controls preload="metadata" style="width:100%;height:36px;margin-bottom:4px" src="' + escHtml(mx.audio_url) + '"></audio>';
         }
         if (mx.drive_url) {
             html += '<a href="' + escHtml(mx.drive_url) + '" target="_blank" rel="noopener" style="font-size:0.72em;color:#60a5fa;text-decoration:none">\uD83D\uDCC1 Open in Google Drive</a>';
         }
-        if (!mx.audio_url && !mx.drive_url) {
+        if (!_hasPlayableAudio && !mx.drive_url) {
             html = '<div style="font-size:0.72em;color:#64748b">No playable audio attached</div>';
         }
         el.innerHTML = html;
