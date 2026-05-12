@@ -1378,7 +1378,13 @@ async function chopLoadFile(file) {
             }
         }
     } catch (err) {
-        console.error('[Chopper] decode failed', err);
+        // Log as warn — manual mode handles this gracefully (it's the
+        // expected path for multi-hour files past Chrome's AudioBuffer
+        // cap). Red error in the console was misleading users into
+        // thinking something was broken when the fallback was firing
+        // by design.
+        console.warn('[Chopper] decode failed (expected for large files) —',
+            'falling back to manual mode:', err && err.message);
         // Manual mode fallback. decodeAudioData has hard limits beyond what
         // sample-rate reduction alone can work around (very long files OR
         // sample-count caps in Chrome). The <audio> element still plays the
