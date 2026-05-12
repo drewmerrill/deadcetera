@@ -1091,13 +1091,25 @@ async function chopLoadFile(file) {
                 canvas.width / 2, canvas.height / 2);
             return;
         }
-        // Tiny 100 Hz stub buffer — non-null for downstream code that
-        // checks chopAudioBuffer, but trivial in memory (~5 MB for 3.5 h).
+        // Tiny stub buffer — non-null for downstream code that checks
+        // chopAudioBuffer, but trivial in memory (~145 MB for 3.5 h at
+        // 3 kHz, which is Chrome's minimum AudioContext sample rate).
+        // If the explicit-rate constructor fails on this browser, fall
+        // back to a default AudioContext (still tiny since we only
+        // allocate the buffer for `dur` seconds at the native rate).
         try { if (chopAudioContext) chopAudioContext.close(); } catch (e) {}
         var StubCtor = window.AudioContext || window.webkitAudioContext;
-        chopAudioContext = new StubCtor({ sampleRate: 100 });
+        var stubRate = 3000;
+        try {
+            chopAudioContext = new StubCtor({ sampleRate: stubRate });
+        } catch (ctxErr) {
+            console.warn('[Chopper] stub AudioContext at ' + stubRate +
+                ' Hz failed, using default rate:', ctxErr && ctxErr.message);
+            chopAudioContext = new StubCtor();
+            stubRate = chopAudioContext.sampleRate;
+        }
         chopAudioBuffer = chopAudioContext.createBuffer(
-            1, Math.max(1, Math.ceil(dur * 100)), 100
+            1, Math.max(1, Math.ceil(dur * stubRate)), stubRate
         );
         var endEl = document.getElementById('chopTimeEnd');
         if (endEl) endEl.textContent = formatChopTime(dur);
