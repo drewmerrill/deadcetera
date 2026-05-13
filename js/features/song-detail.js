@@ -462,9 +462,20 @@ async function _sdPopulateBandLens(title) {
             '</div>'+
             // Performance confidence cue — one line, subtle
             (_playCue ? '<div style="text-align:center;font-size:0.75em;padding:0 0 14px;color:'+_playCue.color+'">'+_playCue.text+'</div>' : '') +
-            // Clean chart
+            // Clean chart — Stab #05: route Play Mode chart text through
+            // ChartRenderer.renderHtml when available (cached-shell legacy
+            // fallback preserves a stale SW shell). Same opts contract as the
+            // Band lens; Play Mode differs only in fontSize/lineHeight/
+            // letterSpacing and unconstrained max-height. Migrating also
+            // aligns Play Mode with the Band lens on HTML-entity decoding
+            // (previously Play Mode did not decode, so stored `&amp;` showed
+            // as literal "&amp;").
             (chartText
-                ? '<div class="sd-card" style="padding:24px;border-color:rgba(99,102,241,0.12)"><pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:15px;line-height:1.8;color:#e2e8f0;margin:0;letter-spacing:0.02em">' + _sdEsc(chartText) + '</pre></div>'
+                ? '<div class="sd-card" style="padding:24px;border-color:rgba(99,102,241,0.12)">'
+                  + ((typeof window.ChartRenderer !== 'undefined' && typeof window.ChartRenderer.renderHtml === 'function')
+                      ? window.ChartRenderer.renderHtml(chartText, { fontSize: 15, lineHeight: 1.8, letterSpacing: '0.02em', maxHeight: 'none' })
+                      : '<pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:15px;line-height:1.8;color:#e2e8f0;margin:0;letter-spacing:0.02em">' + _sdEsc(chartText) + '</pre>')
+                  + '</div>'
                 : window._sdChartLoadFailed
                     ? '<div class="sd-card" style="text-align:center;padding:32px;color:var(--text-dim)"><div style="font-size:1.6em;margin-bottom:10px">\u26A0</div><div style="font-size:0.95em;margin-bottom:4px;color:#fbbf24">Couldn\u2019t load chart</div><div style="font-size:0.78em;margin-bottom:12px">Network hiccup or Firebase slow to respond. The chart may still exist.</div><button class="sd-pm-btn" onclick="renderSongDetail(\''+safeSong+'\')">Retry</button></div>'
                     : '<div class="sd-card" style="text-align:center;padding:32px;color:var(--text-dim)"><div style="font-size:1.6em;margin-bottom:10px">📖</div><div style="font-size:0.95em;margin-bottom:12px">No chart yet</div><button class="sd-pm-btn" onclick="sdShowGetChartModal(\''+safeSong+'\')">Get Chart</button></div>'

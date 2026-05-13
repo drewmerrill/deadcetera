@@ -2,7 +2,17 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-13 09:37 EDT (build `20260513-133724`) — **Reality Audit thread, day 2. Three Stabilization Fixes shipped today (#02 → #04) extending yesterday's #01.** Build trail today: `20260513-012353` → `20260513-122512` → `20260513-133724`._
+_Last updated: 2026-05-13 11:12 EDT (build `20260513-151218`) — **Reality Audit thread, day 2. Four Stabilization Fixes shipped today (#02 → #05) extending yesterday's #01.** Build trail today: `20260513-012353` → `20260513-122512` → `20260513-133724` → `20260513-151218`._
+
+_  (D) **Stab #05 — Chart Renderer Enforcement** (`20260513-151218`, **this commit**). Audited 12 chart-related surfaces. B.1 (song-detail Band lens) and B.2 (rehearsal-mode Chart Tab load) were already canonical from prior work per `song_workbench_architecture_audit.md §8.4`. **Migrated one new surface:** `song-detail.js:467` Play Mode lens chart text → `ChartRenderer.renderHtml({fontSize:15, lineHeight:1.8, letterSpacing:'0.02em', maxHeight:'none'})`. Added `letterSpacing` opt + `maxHeight:'none'` disable-scrolling sentinel to canonical API (no behavior change for existing callers). **Side effect:** Play Mode now decodes HTML entities, matching Band lens behavior (closes a silent inconsistency where stored `&amp;` showed as literal "&amp;" in Play Mode but as "&" in Band lens). **Documented exceptions** (intentionally NOT migrated): `live-gig.js:_renderChartHTML` smart chord-segment parser (different functionality); `setlists.js:parachuteBuildHtml` print HTML (`<div class="chart">` with print CSS); `workbench.js:_wbToggleChartMax` interactive fullscreen (transpose/auto-scroll/fit-font); `app.js:renderChartSection` (+ `app-dev.js` mirror) 4-line muted preview with `overflow:hidden`+`padding` that canonical can't express; legacy SW-shell fallback branches in song-detail.js:282-294 and rehearsal-mode.js:543-547. Editing surfaces left untouched per scope (`_wbOpenChartEditor`, `lgEditChart`, `rmSaveChart`). **Governance:** rewrote `02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md` Chart Rendering section with full API surface, B.1–B.4 phase map, intentional-exception list, and editing-exception list._
+
+_**Reality Audit ledger so far:** Audits #01 System Inventory (✅), #02 Data Access (✅), #03 Page Coverage (✅). Audits #04 (Listener Lifecycle deep dive) + #05 (Module Decomposition criteria) pending. Stabilization Fixes #01–#05 ✅. **Convergence candidates from Audit #03 §7 progress:** C3 (chart contract) ✅ done as Stab #05; C4 (status badge) ✅ done as Stab #04; C6 (per-route lifecycle) ✅ done as Stab #03. Remaining: C1 (player surface unification), C2 (`GLStore.RehearsalSession` — largest data-ownership conflict), C5 (`GLBandFeedStore`)._
+
+_**Recommended next step:** **Audit #03 C2 — `GLStore.RehearsalSession`**. Five writers + many readers on `rehearsal_sessions` with no canonical owner per Audit #02. L effort, HIGH value. Alternative: Audit #04 (Listener Lifecycle deep dive) if you'd rather stay in inventory mode before the next big convergence._
+
+---
+
+_Previous: 2026-05-13 09:37 EDT (build `20260513-133724`) — **Reality Audit thread, day 2. Three Stabilization Fixes shipped today (#02 → #04) extending yesterday's #01.** Build trail today: `20260513-012353` → `20260513-122512` → `20260513-133724`._
 
 _  (A) **Stab #02 — Groovemate Setlist Write Safety** (`20260513-012353`, commit prior to this session). `groovemate_tools.js:190/358` unsafe `db.ref(_bp('setlists')).set(…)` fallback branches replaced with fail-loud `console.error` + early return. Happy path through `saveBandSetlistsSafe` unchanged. Audit #02's W1 follow-up closed; zero unsafe whole-array setlist writes remain in user/AI-triggered paths._
 

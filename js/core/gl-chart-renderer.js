@@ -104,7 +104,10 @@ window.ChartRenderer = (function () {
     }
 
     // ── Render: chart body as styled HTML ───────────────────────────────
-    // Opts: { fontSize:px, lineHeight, maxHeight, color, fontFamily }
+    // Opts: { fontSize:px, lineHeight, maxHeight, color, fontFamily, letterSpacing }
+    // maxHeight: pass 'none' to disable scrolling (Play Mode lens does this so
+    //   the chart flows the full card height without an inner scrollbar).
+    // letterSpacing: defaults to '0.01em'; Play Mode lens passes '0.02em'.
     function renderHtml(chartText, opts) {
         opts = opts || {};
         if (!chartText) return '';
@@ -114,10 +117,12 @@ window.ChartRenderer = (function () {
         var maxHeight = opts.maxHeight || '400px';
         var color     = opts.color     || '#e2e8f0';
         var fontFam   = opts.fontFamily || "'Courier New', monospace";
+        var letterSp  = opts.letterSpacing || '0.01em';
         return '<pre style="white-space:pre-wrap;font-family:' + fontFam +
             ';font-size:' + fontSize + 'px;line-height:' + lineHt +
             ';color:' + color +
-            ';margin:0;letter-spacing:0.01em;max-height:' + maxHeight +
+            ';margin:0;letter-spacing:' + letterSp +
+            ';max-height:' + maxHeight +
             ';overflow-y:auto">' + _esc(decoded) + '</pre>';
     }
 
