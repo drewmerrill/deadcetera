@@ -6,9 +6,11 @@ _Updated 2026-05-13._
 
 **Reality Audits:** #01 System Inventory ✅ · #02 Data Access ✅ · #03 Page Coverage ✅ · #04 Listener Lifecycle ⏸ · #05 Module Decomposition ⏸
 
-**Stabilization Fixes:** #01 W1 Setlist Clobber + Listener Cleanup ✅ · #02 Groovemate Setlist Write Safety ✅ · #03 Per-Route Lifecycle Hook (`GLRouteLifecycle`) ✅ · #04 Status Display Centralization ✅ · #05 Chart Renderer Enforcement ✅ · #06 Player Lifecycle Integration ✅
+**Stabilization Fixes:** #01 W1 Setlist Clobber + Listener Cleanup ✅ · #02 Groovemate Setlist Write Safety ✅ · #03 Per-Route Lifecycle Hook (`GLRouteLifecycle`) ✅ · #04 Status Display Centralization ✅ · #05 Chart Renderer Enforcement ✅ · #06 Player Lifecycle Integration ✅ · #07 Global pauseAll() Playback Arbitration ✅
 
-**Player lifecycle cleanup now integrated with GLRouteLifecycle** (Stab #06, 2026-05-13). SetlistPlayer overlay closes on route leave (queue + floating bar persist). Harmony Lab pauses on songdetail leave. BestShot chopper pauses + suspends AudioContext on bestshot leave. GLPlayerEngine + GLSpotifyConnect added `beforeunload` defense-in-depth (engine plays cross-route intentionally — no per-route disposer there, which would break the floating-bar UX). `GLPlayerContract.CAPABILITIES.PAUSE_ALL` declared as groundwork for future cross-engine arbitration (not yet implemented).
+**Cross-engine pause arbitration now live** (Stab #07, 2026-05-13). `GLPlayerContract.pauseAll(exceptId)` is the canonical single-owner hook. Five surfaces participate: GLPlayerEngine, SetlistPlayer, Stems mixer, Harmony Lab, BestShot chopper. Each asserts ownership before starting playback; everyone else pauses. Recursion-guarded via `_arbitrating` flag. Excluded by design: app.js memory loops (transient), Spotify SDK/Connect transports (covered by GLPlayerEngine arbitration), pocket-meter mic (input only). Concurrent-audio bug class is now closed-by-construction for the 5 main playback surfaces.
+
+**Player lifecycle cleanup integrated with GLRouteLifecycle** (Stab #06, 2026-05-13). SetlistPlayer overlay closes on route leave (queue + floating bar persist). Harmony Lab pauses on songdetail leave. BestShot chopper pauses + suspends AudioContext on bestshot leave. GLPlayerEngine + GLSpotifyConnect added `beforeunload` defense-in-depth (engine plays cross-route intentionally — no per-route disposer there, which would break the floating-bar UX).
 
 **Convergence Initiatives (from Audit #03 §7):**
 - **C1** — Player surface unification: ⏸ pending

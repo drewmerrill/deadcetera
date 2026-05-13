@@ -71,7 +71,8 @@ window.GLPlayerEngineContract = (function () {
             C.CAPABILITIES.STATE,
             C.CAPABILITIES.EVENTS,
             C.CAPABILITIES.SOURCE_FALLBACK,
-            C.CAPABILITIES.RESUME
+            C.CAPABILITIES.RESUME,
+            C.CAPABILITIES.PAUSE_ALL  // Stab #07 — participates in arbitration
         ],
 
         // ── Queue ───────────────────────────────────────────────────────────

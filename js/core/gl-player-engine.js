@@ -164,6 +164,16 @@ window.GLPlayerEngine = (function() {
         }
         if (!_queue.length || _currentIdx >= _queue.length) return;
 
+        // Stab #07 — assert single-owner playback. Pause every other
+        // registered surface (SetlistPlayer overlay, Stems mixer,
+        // harmony-lab, bestshot) before this engine takes the floor.
+        // Self-skip via the adapter id we registered with.
+        try {
+            if (window.GLPlayerContract && typeof window.GLPlayerContract.pauseAll === 'function') {
+                window.GLPlayerContract.pauseAll('gl-player-engine');
+            }
+        } catch (e) {}
+
         // Guard against rapid taps — each play() gets its own token
         var myToken = ++_token;
 

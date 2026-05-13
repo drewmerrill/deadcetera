@@ -192,6 +192,120 @@ window.GLPlayerContract = (function () {
         return false;
     }
 
+    // ── PAUSABLE REGISTRY (Stab #07) ────────────────────────────────────────
+    // Non-engine playback surfaces (harmony-lab, bestshot, ad-hoc <audio>
+    // owners) register a pause function here so pauseAll() can quiet them
+    // alongside the engine registry. Keyed by stable id; idempotent on
+    // re-registration so a re-rendered feature module doesn't stack entries.
+
+    var _pausables = {};
+
+    function registerPausable(id, pauseFn) {
+        if (!id || typeof id !== 'string' || typeof pauseFn !== 'function') {
+            console.warn('[GLPlayerContract] registerPausable: bad args', id);
+            return false;
+        }
+        _pausables[id] = pauseFn;
+        return true;
+    }
+
+    function unregisterPausable(id) {
+        if (_pausables[id]) {
+            delete _pausables[id];
+            return true;
+        }
+        return false;
+    }
+
+    // ── pauseAll(exceptId) — Stab #07 arbitration core ──────────────────────
+    // Single authoritative "stop everything except me" hook. Engines call
+    // this BEFORE asserting playback ownership so concurrent audio across
+    // surfaces is impossible by construction.
+    //
+    // Walks two registries:
+    //   1. _registry (engine adapters keyed by intent) — pauses any adapter
+    //      that declares CAPABILITIES.PAUSE_ALL. Dedupes by engine.id so an
+    //      adapter registered for multiple intents pauses only once.
+    //   2. _pausables (ad-hoc surfaces keyed by id) — calls pauseFn().
+    //
+    // exceptId can be a string id OR an object with an .id property OR null
+    // (pause everything). Errors are caught and logged — a failing engine
+    // cannot block the cascade.
+    //
+    // Recursion protection: `_arbitrating` flag guards re-entrant calls so
+    // a misbehaving pause() that triggers another pauseAll cannot create a
+    // runaway loop. Re-entrant calls are silently dropped (already
+    // arbitrating; the outer call will reach every surface).
+    //
+    // Logging: one compact summary line per cascade. Verbose enough to
+    // debug a missing pause; quiet enough to not spam the console during
+    // normal use.
+
+    var _arbitrating = false;
+
+    function pauseAll(except) {
+        if (_arbitrating) {
+            // Re-entrant call — drop silently. The outer pauseAll() owns
+            // the cascade and will reach every surface anyway.
+            return { paused: [], skipped: ['<re-entrant>'], failed: [] };
+        }
+        _arbitrating = true;
+
+        var exceptId = (except && typeof except === 'object') ? except.id : except;
+        var seen = {};
+        var paused = [];
+        var skipped = [];
+        var failed = [];
+
+        try {
+            // Walk engine registry — dedupe by engine.id
+            Object.keys(_registry).forEach(function (intent) {
+                var eng = _registry[intent];
+                if (!eng || !eng.id || seen[eng.id]) return;
+                seen[eng.id] = true;
+                if (eng.id === exceptId) { skipped.push(eng.id + ':except'); return; }
+                var caps = eng.capabilities || [];
+                if (caps.indexOf(CAPABILITIES.PAUSE_ALL) === -1) {
+                    skipped.push(eng.id + ':no-cap');
+                    return;
+                }
+                if (typeof eng.pause !== 'function') {
+                    skipped.push(eng.id + ':no-pause');
+                    return;
+                }
+                try { eng.pause(); paused.push(eng.id); }
+                catch (e) {
+                    failed.push(eng.id);
+                    console.warn('[GLPlayerContract.pauseAll] engine pause failed:', eng.id, e && e.message);
+                }
+            });
+
+            // Walk ad-hoc pausable registry
+            Object.keys(_pausables).forEach(function (id) {
+                if (id === exceptId) { skipped.push(id + ':except'); return; }
+                try { _pausables[id](); paused.push(id); }
+                catch (e) {
+                    failed.push(id);
+                    console.warn('[GLPlayerContract.pauseAll] pausable failed:', id, e && e.message);
+                }
+            });
+        } finally {
+            _arbitrating = false;
+        }
+
+        // Only log when something interesting happened (something paused
+        // or something failed). Skipping silently keeps the console quiet.
+        if (paused.length || failed.length) {
+            console.log('[GLPlayerContract.pauseAll]',
+                'except=' + (exceptId || '<none>'),
+                'paused=' + JSON.stringify(paused),
+                (skipped.length ? 'skipped=' + JSON.stringify(skipped) : ''),
+                (failed.length ? 'failed=' + JSON.stringify(failed) : ''));
+        }
+
+        return { paused: paused, skipped: skipped, failed: failed };
+    }
+
     // ── PUBLIC API ──────────────────────────────────────────────────────────
 
     return {
@@ -204,7 +318,11 @@ window.GLPlayerContract = (function () {
         register: register,
         unregister: unregister,
         get: get,
-        getAll: getAll
+        getAll: getAll,
+        // Stab #07 arbitration
+        registerPausable: registerPausable,
+        unregisterPausable: unregisterPausable,
+        pauseAll: pauseAll
     };
 
 })();

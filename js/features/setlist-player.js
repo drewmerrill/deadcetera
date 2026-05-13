@@ -519,6 +519,16 @@ window.SetlistPlayer = (function() {
     // ── Launch ──────────────────────────────────────────────────────────────
 
     async function launch(setlistObj, setlistName, startIdx) {
+        // Stab #07 — assert single-owner playback. Pause every other
+        // registered surface (GLPlayerEngine queue, Stems mixer, harmony-
+        // lab, bestshot) before launching this overlay. Self-skip via the
+        // adapter id registered with GLPlayerContract.
+        try {
+            if (window.GLPlayerContract && typeof window.GLPlayerContract.pauseAll === 'function') {
+                window.GLPlayerContract.pauseAll('gl-setlist-player');
+            }
+        } catch (e) {}
+
         var myToken = ++_launchToken;
         fullClose();
         clearResumeState();

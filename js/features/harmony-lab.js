@@ -67,6 +67,19 @@ window.renderHarmonyLab = function renderHarmonyLab(songTitle, mountId) {
   }
 };
 
+// Stab #07 — register `_hlCleanup` as the pausable for harmony-lab so the
+// global pauseAll() arbitrator can quiet it when another surface asserts
+// ownership. Idempotent: registerPausable de-dupes by id. Runs at module
+// load (with a small defer if GLPlayerContract isn't ready yet).
+(function _hlRegisterPausable() {
+  if (typeof window === 'undefined') return;
+  if (!window.GLPlayerContract || typeof window.GLPlayerContract.registerPausable !== 'function') {
+    setTimeout(_hlRegisterPausable, 0);
+    return;
+  }
+  window.GLPlayerContract.registerPausable('harmony-lab', _hlCleanup);
+})();
+
 // Stab #06 — pause every audio element Harmony Lab has open. Idempotent
 // and safe to call from any state. Does NOT close the AudioContext —
 // that lives on _hlMixState.ctx and is reused when the user comes back
@@ -581,6 +594,12 @@ function _hlInitSplitMixer(audioParts, bpm) {
       audios.forEach(function(a){ a.pause(); });
       playBtn.textContent = '▶ Play';
     } else {
+      // Stab #07 — assert single-owner playback before mixer starts.
+      try {
+        if (window.GLPlayerContract && typeof window.GLPlayerContract.pauseAll === 'function') {
+          window.GLPlayerContract.pauseAll('harmony-lab');
+        }
+      } catch (e) {}
       var t = audios[0].currentTime || 0;
       audios.forEach(function(a){ try { a.currentTime = t; } catch(e){} a.play().catch(function(){}); });
       playBtn.textContent = '⏸ Pause';
@@ -1282,6 +1301,14 @@ window.hlPlayGuide = function hlPlayGuide(singer) {
 
   if (_hlCurrentAudio) { _hlCurrentAudio.pause(); _hlCurrentAudio.currentTime = 0; }
   _hlCurrentAudio = new Audio(asset.url);
+  // Stab #07 — assert single-owner playback before the take-review element
+  // takes the floor. Self-skip via 'harmony-lab' so the split mixer is paused
+  // when a take is auditioned.
+  try {
+    if (window.GLPlayerContract && typeof window.GLPlayerContract.pauseAll === 'function') {
+      window.GLPlayerContract.pauseAll('harmony-lab');
+    }
+  } catch (e) {}
   _hlCurrentAudio.play().catch(function(e) {
     if (typeof showToast === 'function') showToast('Playback failed: ' + e.message);
   });

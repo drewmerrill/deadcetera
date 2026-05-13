@@ -3083,6 +3083,38 @@ function _bsCleanup() {
     } catch (e) {}
 }
 
+// Stab #07 — register `_bsCleanup` as the pausable for bestshot so the
+// global pauseAll() arbitrator can quiet it when another surface asserts
+// ownership. Idempotent: registerPausable de-dupes by id.
+(function _bsRegisterPausable() {
+    if (typeof window === 'undefined') return;
+    if (!window.GLPlayerContract || typeof window.GLPlayerContract.registerPausable !== 'function') {
+        setTimeout(_bsRegisterPausable, 0);
+        return;
+    }
+    window.GLPlayerContract.registerPausable('bestshot', _bsCleanup);
+})();
+
+// Stab #07 — delegated assertion. chopAudio is created by innerHTML in
+// renderBestShotVsNorthStar and has 5+ play() call sites scattered through
+// the file (spacebar, canvas click, region preview, hotspot click,
+// chopPreviewSegment). Rather than wrap each one, listen for the native
+// `play` event in capture-phase (audio events don't bubble — capture is
+// required to delegate from document). One hook covers every play path,
+// including future ones added without touching this file.
+(function _bsArmPlayListener() {
+    if (typeof document === 'undefined') return;
+    document.addEventListener('play', function(e) {
+        if (e.target && e.target.id === 'chopAudio') {
+            try {
+                if (window.GLPlayerContract && typeof window.GLPlayerContract.pauseAll === 'function') {
+                    window.GLPlayerContract.pauseAll('bestshot');
+                }
+            } catch (err) {}
+        }
+    }, true);  // capture-phase — audio `play` does not bubble
+})();
+
 async function renderBestShotOverviewList() {
     var el = document.getElementById('bsOverviewList');
     if (!el) return;

@@ -2710,6 +2710,14 @@ window._sdStemsToggle = async function() {
         audios.forEach(function(a){a.pause();});
         if (btn) btn.textContent = '▶ Play';
     } else {
+        // Stab #07 — assert single-owner playback before stems take the
+        // floor. Self-skip via the Stems adapter's id. Wrapped in try so
+        // a missing contract module doesn't block playback.
+        try {
+            if (window.GLPlayerContract && typeof window.GLPlayerContract.pauseAll === 'function') {
+                window.GLPlayerContract.pauseAll('gl-stems-engine');
+            }
+        } catch (e) {}
         // P1.4 (2026-05-08): gesture-arm each <audio> synchronously inside this
         // user-gesture handler BEFORE any `await`. iOS Safari requires a user
         // gesture to start playback per-element, and the gesture is consumed

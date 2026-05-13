@@ -101,7 +101,8 @@ window.GLSetlistPlayerContract = (function () {
             C.CAPABILITIES.RESUME,
             C.CAPABILITIES.AUTOPLAY_WATCHDOG,
             C.CAPABILITIES.NOW_PLAYING_BAR,
-            C.CAPABILITIES.LOCK_PRIMARY_VERSION
+            C.CAPABILITIES.LOCK_PRIMARY_VERSION,
+            C.CAPABILITIES.PAUSE_ALL  // Stab #07 — participates in arbitration
         ],
 
         // ── Queue ───────────────────────────────────────────────────────────

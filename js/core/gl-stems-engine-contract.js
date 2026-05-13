@@ -102,7 +102,8 @@ window.GLStemsEngineContract = (function () {
             C.CAPABILITIES.LOOP,
             C.CAPABILITIES.STEMS,
             C.CAPABILITIES.COUNT_IN,
-            C.CAPABILITIES.FULLSCREEN
+            C.CAPABILITIES.FULLSCREEN,
+            C.CAPABILITIES.PAUSE_ALL  // Stab #07 — participates in arbitration
         ],
 
         // ── QUEUE (single-item) ─────────────────────────────────────────────

@@ -131,8 +131,40 @@ All intervals/listeners/media streams must register cleanup.
 - `gl-player-engine.js:941` — calls `stop()` + `GLSpotifyConnect.stopPolling()` + closes `_deadceteraAudioCtx`. Engine is intentionally cross-route via the floating now-playing bar; pausing on every route would break that UX, so a route disposer is NOT registered. `beforeunload` releases the Spotify Connect device on tab close.
 - `gl-spotify-connect.js:479` — calls `stopPolling()`. Engine ownership coordination already calls `stopPolling()` from `gl-player-engine.js:340` inside `stop()`; this handler covers the tab-kill path where no explicit stop() fires.
 
-### Future capability (NOT yet implemented)
-`GLPlayerContract.CAPABILITIES.PAUSE_ALL` — declared in `gl-player-contract.js` (Stab #06 groundwork). When the canonical `pauseAll(exceptEngine)` arbitrator is built (post-Stab #06), engines that declare this capability will pause themselves when another asserts ownership. Until then, **no global cross-engine pause coordination exists** — concurrent playback across harmony-lab × bestshot × setlist-player × Stems mixer × app.js memory loops remains a known risk per Audit #04 §4.
+### Cross-engine pause arbitration (Stab #07, 2026-05-13)
+Canonical: `GLPlayerContract.pauseAll(exceptId)` (in `js/core/gl-player-contract.js`).
+
+**Contract:** before any playback surface asserts ownership of the audio session, it MUST call `GLPlayerContract.pauseAll(thisId)`. The arbitrator walks two registries and pauses every other surface:
+1. **Engine registry** — adapters declaring `CAPABILITIES.PAUSE_ALL` in their capabilities array. Adapter's `pause()` method is invoked. Dedupes by `engine.id` so a multi-intent adapter pauses once.
+2. **Pausable registry** — non-engine surfaces (harmony-lab, bestshot) register a `pauseFn` via `GLPlayerContract.registerPausable(id, pauseFn)`. The fn is invoked.
+
+**`exceptId`** can be a string id or an object with `.id` — pauses everything else.
+
+**Participating surfaces (Stab #07):**
+| Surface | id | Mechanism |
+|---|---|---|
+| GLPlayerEngine | `gl-player-engine` | Engine registry + `PAUSE_ALL` capability |
+| SetlistPlayer | `gl-setlist-player` | Engine registry + `PAUSE_ALL` capability |
+| Stems mixer | `gl-stems-engine` | Engine registry + `PAUSE_ALL` capability |
+| Harmony Lab | `harmony-lab` | `registerPausable` |
+| BestShot chopper | `bestshot` | `registerPausable` |
+
+**Excluded (intentional, documented):**
+- **app.js memory loops + multitrack nudge** — 4 `new Audio(base64)` sites scattered through unrelated code paths. Wrapping each is invasive; the surfaces are transient and don't survive route changes anyway. Known limitation per `KNOWN_STABLE_FLOWS.md`.
+- **Spotify SDK / Connect transports** — not player surfaces. They're driven by GLPlayerEngine, which IS arbitrated. Arbitrating them separately would double-pause.
+- **pocket-meter mic** — input only (no output). Different audio direction; arbitration doesn't apply.
+
+**Recursion protection:** `_arbitrating` flag in `gl-player-contract.js`. A re-entrant `pauseAll()` call from a misbehaving `pause()` returns immediately — outer call owns the cascade.
+
+**Logging:** one compact summary line per cascade, only when something paused or failed (silent during no-ops to avoid console spam).
+
+**Assertion call sites (Stab #07):**
+- `gl-player-engine.js:172` — engine `play()` start
+- `setlist-player.js:527` — `launch()` start
+- `song-detail.js:2717` — Stems `_sdStemsToggle` play branch
+- `harmony-lab.js:599` — split-mixer play
+- `harmony-lab.js:1308` — take-review play
+- `bestshot.js:3104` — delegated `play` event listener on `#chopAudio` (capture-phase; covers 5 internal play call sites)
 
 ---
 
