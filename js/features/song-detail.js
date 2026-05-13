@@ -3461,6 +3461,21 @@ window._sdStemsSeekBy = function(seconds) {
 // into the existing chain on first ±semitone click.
 var _sdStemsState = null;
 
+// Reality Stabilization Fix #03 (2026-05-13): expose cleanup so the route
+// lifecycle can stop the 500ms drift timer and release the AudioContext
+// when the user navigates away from songdetail without explicitly unmounting
+// stems. Safe to call multiple times; idempotent.
+window._sdStemsCleanup = function _sdStemsCleanup() {
+    if (_sdStemsState && _sdStemsState.driftTimer) {
+        try { clearInterval(_sdStemsState.driftTimer); } catch(e) {}
+        _sdStemsState.driftTimer = null;
+    }
+    if (_sdStemsState && _sdStemsState.ctx && _sdStemsState.ctx.state !== 'closed') {
+        try { _sdStemsState.ctx.close(); } catch(e) {}
+    }
+    _sdStemsState = null;
+};
+
 // ── A/B loop + practice presets + count-in ──────────────────────────────────
 // Loop state lives on _sdLoop. Markers persist across re-renders within
 // the same song (cleared in _sdPopulateStemsLens between songs). Count-in
@@ -4114,6 +4129,13 @@ function _sdInitStemsPlayer() {
         }
     }
     _sdStemsState = { ctx: ctx, nodes: nodes };
+
+    // Register stems cleanup with the route lifecycle so navigating away
+    // from songdetail without explicit unmount stops the drift timer and
+    // closes the AudioContext. Reality Stabilization Fix #03.
+    if (window.GLRouteLifecycle && typeof window.GLRouteLifecycle.register === 'function') {
+        window.GLRouteLifecycle.register('songdetail', window._sdStemsCleanup);
+    }
 
     // ── Drift resync ────────────────────────────────────────────────────
     // iOS Safari (and to a lesser extent desktop Safari) runs each <audio>

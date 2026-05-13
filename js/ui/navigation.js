@@ -19,6 +19,47 @@
 var currentPage = 'songs';
 var _navSeq = 0; // Navigation sequence counter — prevents stale async renders from setting GL_PAGE_READY
 
+// ── Per-route lifecycle registry ────────────────────────────────────────────
+// Reality Stabilization Fix #03 (2026-05-13). Pages register cleanup
+// disposers via GLRouteLifecycle.register(routeName, fn). When showPage()
+// navigates away, leave(nextRoute) runs every disposer for the previous
+// route and clears the list so the next mount registers fresh ones.
+// Disposers are isolated in try/catch so a failing one cannot block
+// navigation or subsequent cleanup.
+//
+// Spec + rationale: 02_GrooveLinx/00_Governance/DATA_OWNERSHIP_RULES.md
+// Audit reference: 02_GrooveLinx/audits/GROOVELINX_REALITY_AUDIT_03_PAGE_COVERAGE.md §3
+window.GLRouteLifecycle = window.GLRouteLifecycle || {
+    currentRoute: null,
+    disposers: {},
+    register: function(routeName, fn) {
+        if (typeof fn !== 'function' || !routeName) return;
+        if (!this.disposers[routeName]) this.disposers[routeName] = [];
+        // De-dupe by reference so a re-render registering the same fn doesn't stack it.
+        if (this.disposers[routeName].indexOf(fn) === -1) {
+            this.disposers[routeName].push(fn);
+        } else {
+            console.log('[GLRouteLifecycle] duplicate disposer registration skipped for "' + routeName + '"');
+        }
+    },
+    leave: function(nextRoute) {
+        var prev = this.currentRoute;
+        if (prev && prev !== nextRoute) {
+            var fns = this.disposers[prev] || [];
+            if (fns.length) {
+                console.log('[GLRouteLifecycle] leave "' + prev + '" → "' + nextRoute + '" (' + fns.length + ' disposer' + (fns.length === 1 ? '' : 's') + ')');
+            }
+            for (var i = 0; i < fns.length; i++) {
+                try { fns[i](); }
+                catch(e) { console.warn('[GLRouteLifecycle] disposer failed for "' + prev + '":', e && e.message || e); }
+            }
+            // Clear so the next mount registers fresh.
+            this.disposers[prev] = [];
+        }
+        this.currentRoute = nextRoute;
+    }
+};
+
 /**
  * Navigate to a named page.
  * - Closes the slide-out menu.
@@ -59,6 +100,16 @@ window.showPage = function showPage(page) {
         }
         // Fallthrough: no panel or no song -- let full-page nav proceed normally
     }
+
+    // Run previous-route cleanup before changing currentPage.
+    // Disposers registered via GLRouteLifecycle.register() run here.
+    // Reality Stabilization Fix #03 (2026-05-13).
+    try {
+        if (window.GLRouteLifecycle && typeof window.GLRouteLifecycle.leave === 'function') {
+            window.GLRouteLifecycle.leave(page);
+        }
+    } catch(e) { console.warn('[showPage] lifecycle.leave threw:', e && e.message || e); }
+
     // Close slide-out menu
     document.getElementById('slideMenu')?.classList.remove('open');
     document.getElementById('menuOverlay')?.classList.remove('open');

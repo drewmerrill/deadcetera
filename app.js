@@ -9808,6 +9808,19 @@ function renderPocketMeterPage(el) {
         // Consume the pending rehearsal context (one-shot)
         window._pmPendingRehearsalEventId = null;
         _pmInstance.mount();
+
+        // Reality Stabilization Fix #03 (2026-05-13): release the mic stream
+        // + AudioContext + classifier interval + rAF pulse when the user
+        // navigates away from the pocketmeter route. Without this, the
+        // microphone stays open until the next mount-on-this-route.
+        if (window.GLRouteLifecycle && typeof window.GLRouteLifecycle.register === 'function') {
+            window.GLRouteLifecycle.register('pocketmeter', function _pmRouteDispose() {
+                if (_pmInstance) {
+                    try { _pmInstance.destroy(); } catch(e) { console.warn('[PocketMeter] route-leave destroy failed:', e && e.message); }
+                    _pmInstance = null;
+                }
+            });
+        }
     }
     _mountPM();
 }

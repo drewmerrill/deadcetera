@@ -2262,6 +2262,14 @@ if (typeof pageRenderers !== 'undefined') {
 // Lightweight: loads only polls (the primary action-required source) to update
 // the nav badge without loading the full feed.
 (function _feedBgBadgeRefresh() {
+    // Reality Stabilization Fix #03 (2026-05-13): the 5-min badge refresh is
+    // intentionally session-wide — it keeps the nav badge fresh on ANY page,
+    // not just the feed. So we do NOT register this with the route lifecycle.
+    // But we DO capture the timer IDs so a future sign-out / app-quit cleanup
+    // can stop them explicitly. Expose `window._feedBgBadgeTeardown` for that.
+    var _bootTimeout = null;
+    var _refreshInterval = null;
+
     function refresh() {
         var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
@@ -2286,9 +2294,14 @@ if (typeof pageRenderers !== 'undefined') {
         }).catch(function() {});
     }
     // Run after Firebase is likely ready
-    setTimeout(refresh, 4000);
+    _bootTimeout = setTimeout(refresh, 4000);
     // Periodic refresh every 5 minutes (was 2min — reduce for mobile perf)
-    setInterval(refresh, 300000);
+    _refreshInterval = setInterval(refresh, 300000);
+
+    window._feedBgBadgeTeardown = function _feedBgBadgeTeardown() {
+        if (_bootTimeout) { try { clearTimeout(_bootTimeout); } catch(e) {} _bootTimeout = null; }
+        if (_refreshInterval) { try { clearInterval(_refreshInterval); } catch(e) {} _refreshInterval = null; }
+    };
 })();
 
 // ── Real-time notification listener ──────────────────────────────────────────

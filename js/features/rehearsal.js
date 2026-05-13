@@ -7834,14 +7834,27 @@ function _riStyles() {
 // checkboxes that "do nothing" while the rerender keeps swallowing them.
 // Focus data isn't the primary surface in Plan Mode anyway — it's just used
 // to seed new plans.
+// Reality Stabilization Fix #03 (2026-05-13): GLStore.on returns an
+// unsubscribe function. Capture it so `window._rhFocusTeardown()` can
+// detach the subscription on sign-out. Handler is intentionally
+// session-wide (self-guards via `currentPage === 'rehearsal'`) and is NOT
+// registered with the route lifecycle — re-attaching on every rehearsal
+// visit would either double-subscribe or require teardown coordination
+// that this single guarded handler doesn't need.
 if (typeof GLStore !== 'undefined' && GLStore.on) {
-  GLStore.on('focusChanged', function() {
+  var _rhFocusUnsubscribe = GLStore.on('focusChanged', function() {
     if (typeof currentPage !== 'undefined' && currentPage === 'rehearsal') {
       if (_rhPageMode === 'plan') return;
       var el = document.getElementById('page-rehearsal');
       if (el) renderRehearsalPage(el);
     }
   });
+  window._rhFocusTeardown = function _rhFocusTeardown() {
+    if (typeof _rhFocusUnsubscribe === 'function') {
+      try { _rhFocusUnsubscribe(); } catch(e) {}
+      _rhFocusUnsubscribe = null;
+    }
+  };
 }
 
 // ── GLActions: rehearsal-domain actions ─────────────────────────────────────

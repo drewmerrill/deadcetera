@@ -116,12 +116,24 @@ These routes mutate domains they don't own. Each is justified; future mutations 
 2. **Attach guards.** Use a `_setupDone` flag to prevent re-attaching on top of an existing listener. (Pattern used in `band-feed.js`, `calendar.js`.)
 3. **Teardown points required.** At least one of:
    - Component/modal close (rehearsal-mode, live-gig, chopper)
-   - Page navigation away (NOT YET supported by `showPage` — flagged as convergence candidate C6)
+   - **Page navigation away — use `GLRouteLifecycle.register(routeName, disposer)`** (shipped Reality Stabilization Fix #03, 2026-05-13)
    - Sign-out
    - `beforeunload`
 4. **No global listeners in IIFEs** without an exposed teardown function. Pattern: expose `window._foo_teardown` so admin tools / future framework hooks can call it.
 5. **No `setInterval` without `clearInterval`.** Same rule. Store the interval ID; expose a stop function.
 6. **No long-lived `requestAnimationFrame` loops** without a kill switch. Store the rAF ID; expose a stop function.
+7. **Per-route lifecycle hook (Reality Stabilization #03).** Every page that starts intervals, subscriptions, global listeners, media streams, or realtime Firebase listeners MUST register a cleanup disposer via `window.GLRouteLifecycle.register(routeName, fn)`. `showPage()` calls `GLRouteLifecycle.leave(nextRoute)` before any DOM swap; disposers run in registration order with try/catch around each so a failing one cannot block navigation.
+   ```js
+   // Pattern
+   _pmInstance = new PocketMeter(container, opts);
+   _pmInstance.mount();
+   if (window.GLRouteLifecycle && window.GLRouteLifecycle.register) {
+       window.GLRouteLifecycle.register('pocketmeter', function() {
+           if (_pmInstance) { try { _pmInstance.destroy(); } catch(e) {} _pmInstance = null; }
+       });
+   }
+   ```
+   **When to register vs. just expose a teardown:** if the listener/interval should run only while the route is visible → register with GLRouteLifecycle. If it's intentionally session-wide (badge refreshes, push-notification listeners, focus-change subscriptions that self-guard by current page) → just expose a `window._fooTeardown` for future sign-out / `beforeunload` use; **do not register per-route or you'll regress the intended behavior on re-entry**.
 
 ---
 
@@ -168,6 +180,7 @@ When adding a new feature that touches data:
 
 - **Stabilization #01 (2026-05-12)** — W1 setlist clobber + listener cleanup. Codified principles 1, 3, 5.
 - **Stabilization #02 (2026-05-13)** — Groovemate setlist write safety (fail-loud fallback). Codified principle 5.
+- **Stabilization #03 (2026-05-13)** — Per-route lifecycle hook (`GLRouteLifecycle`). Codified listener lifecycle rule #7 (per-route cleanup via `showPage`).
 
 ---
 

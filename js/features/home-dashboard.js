@@ -5720,14 +5720,23 @@ if (typeof pageRenderers !== 'undefined') {
     };
 }
 
-document.addEventListener('visibilitychange', function() {
+// Reality Stabilization Fix #03 (2026-05-13): refresh home when tab becomes
+// visible AND user is on home. Handler is intentionally session-wide (added
+// once at module load), self-guards via `currentPage === 'home'`, and is
+// NOT registered with the route lifecycle. Captured handler ref + exposed
+// `window._homeVisibilityTeardown` so a future sign-out path can detach it.
+var _homeVisibilityHandler = function() {
     if (!document.hidden) {
         var container = document.getElementById('page-home');
         if (container && typeof currentPage !== 'undefined' && currentPage === 'home') {
             window.refreshHomeDashboard();
         }
     }
-});
+};
+document.addEventListener('visibilitychange', _homeVisibilityHandler);
+window._homeVisibilityTeardown = function _homeVisibilityTeardown() {
+    try { document.removeEventListener('visibilitychange', _homeVisibilityHandler); } catch(e) {}
+};
 
 console.log('\uD83C\uDFE0 home-dashboard.js loaded');
 try { if (typeof invalidateHomeCache === 'function') invalidateHomeCache(); } catch(e) {}
