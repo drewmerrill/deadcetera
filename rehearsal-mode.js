@@ -2481,7 +2481,7 @@ function rmLoadHarmony() {
         var nsMajority = Math.ceil(totalMembers / 2);
         if (northStar) {
             var nsUrl = (northStar.url || northStar.spotifyUrl || '').replace(/'/g, "\\'");
-            var nsTitle = _e(northStar.fetchedTitle || northStar.title || 'Reference Version');
+            var nsTitle = _e((typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(northStar, 'Reference Version') : (northStar.fetchedTitle || northStar.title || 'Reference Version'));
             var nsAdded = northStar.addedBy ? northStar.addedBy.split('@')[0] : '';
             var nsDate = northStar.dateAdded || '';
             var nsNotes = _e(northStar.notes || '');

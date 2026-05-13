@@ -530,10 +530,101 @@ window.GLSpotifyConnect = (function() {
     }
   }
 
+  // ── Canonical Spotify API surface (Stab #08, 2026-05-13) ─────────────────
+  //
+  // Public chokepoint for all Spotify Web API access. Wraps the internal
+  // `_req()` helper (which already handles token refresh, 401 retry, 429
+  // backoff, 5xx + transient network blips) and adds three things callers
+  // typically need:
+  //   - opts.legacyShape: returns the legacy `_spotifyApi` shape (null on
+  //     unrecoverable error, error-body JSON on non-ok) instead of throwing.
+  //     Lets listening-bundles.js migrate without rewriting every caller.
+  //   - silent error swallow on opt-in (opts.silent) — for hydration paths
+  //     where the caller just wants a `null` rather than a console warning.
+  //   - hasValidConnection() — lightweight `/me` ping with a short cache so
+  //     consumers can probe connection state without spamming Spotify.
+  //
+  // All callers (listening-bundles, the future hydration paths in app.js,
+  // anything else) MUST go through this surface. Direct `fetch(api.spotify.com)`
+  // is forbidden in new code per DATA_OWNERSHIP_RULES.md.
+
+  async function apiRequest(method, path, body, opts) {
+    opts = opts || {};
+    try {
+      return await _req(method || 'GET', path, body);
+    } catch (e) {
+      // Legacy-shape callers (listening-bundles' _spotifyApi) want the same
+      // return contract: null on no-token / unrecoverable / network, error
+      // body on non-ok. Synthesize it from the thrown error.
+      if (opts.legacyShape) {
+        if (e && e.message === 'no_token') return null;
+        if (e && e.message === 'token_refresh_failed') {
+          // Token expired and refresh failed — caller-facing semantics
+          // match the pre-existing path that cleared the token blob.
+          try { localStorage.removeItem('gl_spotify_token'); } catch (_) {}
+          return null;
+        }
+        if (e && e.body) {
+          // Spotify-shape error response: e.body is the raw text; try to
+          // parse as JSON so callers can read .error.message.
+          try { return JSON.parse(e.body); } catch (_) { return null; }
+        }
+        return null;
+      }
+      if (!opts.silent) {
+        console.warn('[GLSpotifyConnect.apiRequest] ' + method + ' ' + path + ' failed: ' + (e && e.message));
+      }
+      throw e;
+    }
+  }
+
+  // Lightweight connection-state probe. Cached for 60s so repeated calls
+  // (e.g. multiple hydration tasks racing on song-detail entry) don't pile
+  // up `/me` requests. Returns:
+  //   { connected: true,  product: 'premium'|'free'|'open' }   on success
+  //   { connected: false, reason: 'no_token'|'unauthorized'|'network'|'unknown' }
+  var _connCache = null;
+  var _connCacheAt = 0;
+  var _CONN_CACHE_TTL_MS = 60000;
+
+  async function hasValidConnection(opts) {
+    opts = opts || {};
+    var now = Date.now();
+    if (!opts.bypassCache && _connCache && (now - _connCacheAt) < _CONN_CACHE_TTL_MS) {
+      return _connCache;
+    }
+    if (!_hasValidToken()) {
+      _connCache = { connected: false, reason: 'no_token' };
+      _connCacheAt = now;
+      return _connCache;
+    }
+    try {
+      var me = await apiRequest('GET', '/me', null, { silent: true });
+      if (me && me.id) {
+        _connCache = { connected: true, product: me.product || null, id: me.id };
+      } else {
+        _connCache = { connected: false, reason: 'unknown' };
+      }
+    } catch (e) {
+      var reason = 'network';
+      if (e && (e.status === 401 || e.message === 'token_refresh_failed' || e.message === 'no_token')) {
+        reason = 'unauthorized';
+      }
+      _connCache = { connected: false, reason: reason };
+    }
+    _connCacheAt = now;
+    return _connCache;
+  }
+
+  function _clearConnectionCache() { _connCache = null; _connCacheAt = 0; }
+
   // ── Public API ─────────────────────────────────────────────────────────────
   return {
     on: on,
     off: off,
+    apiRequest: apiRequest,
+    hasValidConnection: hasValidConnection,
+    _clearConnectionCache: _clearConnectionCache,
     listDevices: listDevices,
     isAvailable: isAvailable,
     pickPreferredDevice: pickPreferredDevice,

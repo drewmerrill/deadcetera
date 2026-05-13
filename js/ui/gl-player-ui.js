@@ -572,7 +572,7 @@ window.GLPlayerUI = (function() {
                     versions.forEach(function(v) {
                         var url = v.url || v.spotifyUrl || '';
                         if (!url) return;
-                        var label = v.fetchedTitle || v.title || (v.isNorthStar ? 'North Star' : 'Version');
+                        var label = (typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(v, v.isNorthStar ? 'North Star' : 'Version') : (v.fetchedTitle || v.title || (v.isNorthStar ? 'North Star' : 'Version'));
                         if (v.isNorthStar) {
                             groups.northstar.push({ icon: '\u2B50', label: label, url: url });
                         } else if (v.type === 'lesson') {
@@ -646,7 +646,7 @@ window.GLPlayerUI = (function() {
             var versions = (await loadRefVersions(key.title)) || [];
             var idx = versions.findIndex(function(v) { return _versionMatches(v, key); });
             if (idx < 0) { if (typeof showToast === 'function') showToast('Source not found'); return; }
-            var label = versions[idx].fetchedTitle || versions[idx].title || 'this version';
+            var label = (typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(versions[idx], 'this version') : (versions[idx].fetchedTitle || versions[idx].title || 'this version');
             if (!confirm('Delete "' + label + '"? Votes will be lost.')) return;
             versions.splice(idx, 1);
             await saveRefVersions(key.title, versions);
@@ -673,7 +673,7 @@ window.GLPlayerUI = (function() {
                 return vUrl === url;
             });
             if (idx < 0) { if (typeof showToast === 'function') showToast('Version not found'); return; }
-            var label = versions[idx].fetchedTitle || versions[idx].title || 'this version';
+            var label = (typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(versions[idx], 'this version') : (versions[idx].fetchedTitle || versions[idx].title || 'this version');
             if (!confirm('Delete "' + label + '"? Votes will be lost.')) return;
             versions.splice(idx, 1);
             await saveRefVersions(title, versions);

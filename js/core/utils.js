@@ -109,6 +109,41 @@ window.extractSpotifyTrackId = function extractSpotifyTrackId(url) {
 };
 
 /**
+ * Stab #08 — normalize a reference-version title for display.
+ *
+ * Previously the "add reference" flow saved the literal string 'Loading...'
+ * as `v.title` when the user didn't provide one. If metadata hydration
+ * failed (Spotify oEmbed timeout, no OAuth, etc.) the stored title stayed
+ * 'Loading...' forever and that's what every consumer rendered.
+ *
+ * This helper is the canonical "what to show for this version's title":
+ *   1. v.fetchedTitle (hydrated from Spotify/YouTube/etc. metadata) wins,
+ *      UNLESS it's the legacy 'Loading...' sentinel.
+ *   2. v.title falls through, with the same 'Loading...' filter.
+ *   3. Platform-aware fallback ('Spotify Track' / 'YouTube Video' /
+ *      'Archive.org Recording' / etc.) based on v.url.
+ *   4. Final fallback supplied by caller (or 'Reference').
+ *
+ * Safe to call with partial data — pure function, no side effects.
+ */
+window._glNormalizeRefTitle = function _glNormalizeRefTitle(v, fallback) {
+    if (!v) return fallback || 'Reference';
+    var t1 = v.fetchedTitle;
+    if (t1 && t1 !== 'Loading...' && t1.trim()) return t1;
+    var t2 = v.title;
+    if (t2 && t2 !== 'Loading...' && t2.trim()) return t2;
+    var url = (v.url || v.spotifyUrl || '').toLowerCase();
+    if (url.indexOf('spotify.com') !== -1)       return 'Spotify Track';
+    if (url.indexOf('youtube.com') !== -1 ||
+        url.indexOf('youtu.be') !== -1)          return 'YouTube Video';
+    if (url.indexOf('music.apple.com') !== -1)   return 'Apple Music Track';
+    if (url.indexOf('tidal.com') !== -1)         return 'Tidal Track';
+    if (url.indexOf('soundcloud.com') !== -1)    return 'SoundCloud Track';
+    if (url.indexOf('archive.org') !== -1)       return 'Archive.org Recording';
+    return fallback || 'Reference';
+};
+
+/**
  * Smart open for music links. Prefers native app deep links for Spotify
  * to avoid web player login prompts. Falls back to web URL.
  *

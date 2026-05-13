@@ -785,7 +785,7 @@ async function _sdUpgradeListenStep(title) {
         });
         if (northStar && northStar.url) {
             step.onclick = function() { openMusicLink(northStar.url); };
-            sub.innerHTML = '\u2B50 ' + _sdEsc(northStar.fetchedTitle || northStar.title || 'North Star version');
+            sub.innerHTML = '\u2B50 ' + _sdEsc((typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(northStar, 'North Star version') : (northStar.fetchedTitle || northStar.title || 'North Star version'));
         }
     } catch(e) {}
 }
@@ -4519,7 +4519,7 @@ function _sdRenderAllVersionsList(title, refs) {
         var origIdx = entry.idx;
         var voteCount = v.votes ? Object.keys(v.votes).filter(function(k){return v.votes[k];}).length : 0;
         var isStar = v.isNorthStar === true;
-        var titleStr = v.fetchedTitle || v.title || 'Untitled';
+        var titleStr = (typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(v, 'Untitled') : (v.fetchedTitle || v.title || 'Untitled');
         var voteSummary = voteCount > 0 ? '👍 ' + voteCount : 'No votes yet';
         // Collapsed-by-default chips. <details> handles toggle natively.
         var chips = memberEmails.map(function(email) {
@@ -4577,7 +4577,7 @@ window._sdDeleteVersion = async function(songTitle, versionIndex) {
         var versions = (typeof loadRefVersions === 'function') ? (await loadRefVersions(songTitle) || []) : [];
         var v = versions[versionIndex];
         if (!v) return;
-        var label = v.fetchedTitle || v.title || 'this version';
+        var label = (typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(v, 'this version') : (v.fetchedTitle || v.title || 'this version');
         if (!confirm('Delete "' + label + '"? Votes on this version will be lost.')) return;
         versions.splice(versionIndex, 1);
         if (typeof saveRefVersions === 'function') await saveRefVersions(songTitle, versions);
@@ -4656,7 +4656,7 @@ async function _sdPopulateListenLens(title) {
         ?('<div style="padding:10px;background:rgba(102,126,234,0.08);border:1px solid rgba(102,126,234,0.2);border-radius:10px">'+
           '<div style="display:flex;align-items:center;gap:10px">'+
           '<span style="font-size:1.4em;flex-shrink:0">⭐</span><div style="flex:1;min-width:0">'+
-          '<div style="font-size:0.85em;font-weight:700;color:var(--text)">'+_sdEsc(northStar.fetchedTitle||northStar.title||'Reference')+'</div>'+
+          '<div style="font-size:0.85em;font-weight:700;color:var(--text)">'+_sdEsc((typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(northStar, 'Reference') : (northStar.fetchedTitle||northStar.title||'Reference'))+'</div>'+
           '<div style="font-size:0.72em;color:var(--text-dim)">'+(northStar._voteCount||0)+' votes</div></div>'+
           (northStar.url?'<button class="btn btn-sm" onclick="openMusicLink(\''+northStar.url.replace(/'/g,"\\'")+'\');" style="background:rgba(102,126,234,0.2);color:#818cf8;border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;flex-shrink:0">\u25B6 '+_nsLinkLabel+'</button>':'')+
           '</div>'+

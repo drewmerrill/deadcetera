@@ -57,7 +57,7 @@ async function renderBestShotVsNorthStar(songTitle) {
     html += '<div style="font-size:1.2em;margin-bottom:4px">⭐</div>';
     html += '<div style="font-weight:700;font-size:0.85em;color:var(--accent-light);margin-bottom:6px">North Star</div>';
     if (northStar) {
-        var nsTitle = northStar.fetchedTitle || northStar.title || 'Reference';
+        var nsTitle = (typeof window._glNormalizeRefTitle === 'function') ? window._glNormalizeRefTitle(northStar, 'Reference') : (northStar.fetchedTitle || northStar.title || 'Reference');
         var nsUrl = northStar.url || northStar.spotifyUrl || '';
         html += '<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + nsTitle + '</div>';
         html += '<button onclick="openMusicLink(\'' + nsUrl.replace(/'/g, "\\'") + '\')" class="btn btn-sm" style="background:rgba(102,126,234,0.2);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 14px;border-radius:8px;cursor:pointer">\u25B6 Open in Spotify</button>';

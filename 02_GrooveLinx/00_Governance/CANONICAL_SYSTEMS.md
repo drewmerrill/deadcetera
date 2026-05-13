@@ -173,3 +173,66 @@ Canonical owner:
 saveBandSetlistsSafe
 
 Whole-array writes prohibited except documented snapshot restores.
+
+---
+
+## Spotify Web API access (Stab #08, 2026-05-13)
+Canonical owner:
+`window.GLSpotifyConnect.apiRequest(method, path, body?, opts?)`
+(in `js/core/gl-spotify-connect.js`)
+
+**Contract:** every call to `api.spotify.com` from app code MUST route through this helper. The helper wraps the internal `_req()` which already handles token refresh, 401 retry, 429 backoff, 5xx retry, and transient network blip recovery.
+
+### Companion helper
+`GLSpotifyConnect.hasValidConnection({ bypassCache })` → `{ connected: true, product, id }` | `{ connected: false, reason: 'no_token'|'unauthorized'|'network'|'unknown' }`. 60s cache to avoid spamming `/me` from multiple race conditions on the same page.
+
+### Opts
+- `legacyShape: true` — return the legacy `_spotifyApi` shape (null on no-token/unrecoverable, parsed error-body JSON on non-ok) instead of throwing. Lets `listening-bundles.js` migrate without rewriting every caller.
+- `silent: true` — swallow console warnings for opt-in callers (hydration paths).
+
+### Migrated callers
+- `listening-bundles.js:_checkAndStorePremium` (`/me` premium probe) — now routes via `apiRequest('GET','/me')`.
+- `listening-bundles.js:_spotifyApi` (generic Spotify wrapper used by ALL playlist/library calls) — now a thin shim that calls `apiRequest(..., { legacyShape: true })`. Contract preserved.
+- `app.js:fetchRefTrackInfo` (+ `app-dev.js` mirror) — Spotify branch prefers `apiRequest('GET','/tracks/{id}')` when OAuth is connected (richer payload: name + artist + album cover). Falls back to public oEmbed when no OAuth. Final fallback `'Spotify Track'` (NEVER returns "Loading...").
+
+### Cached-shell fallbacks (intentional, MUST remain)
+- `listening-bundles.js:769` (`_checkAndStorePremium` fallback branch)
+- `listening-bundles.js:996, 1001` (`_spotifyApi` fallback branch)
+
+These run only when `window.GLSpotifyConnect` is undefined — protects a stale service-worker shell that loaded before the canonical helper was deployed. Verified by the `typeof window.GLSpotifyConnect.apiRequest === 'function'` guard at the top of each migrated function.
+
+### Prohibition
+New code MUST NOT add `fetch('https://api.spotify.com/v1' + …)`. Use `GLSpotifyConnect.apiRequest`. Existing test/audit-tool sites are out of scope; new app code is not.
+
+---
+
+## Reference-version title rendering (Stab #08)
+Canonical owner:
+`window._glNormalizeRefTitle(v, fallback)` (in `js/core/utils.js`)
+
+**Contract:** every display site that renders a reference-version title (North Star strip, version cards, transport-control source list, etc.) MUST go through this helper. Direct `v.fetchedTitle || v.title || 'X'` chains are prohibited in new code — they don't filter the legacy `'Loading...'` sentinel that was poisoning North Star records before Stab #08.
+
+### Resolution order
+1. `v.fetchedTitle` if set, non-empty, and not equal to `'Loading...'`
+2. `v.title` if set, non-empty, and not equal to `'Loading...'`
+3. Platform-aware fallback from `v.url` (`'Spotify Track'`, `'YouTube Video'`, `'Apple Music Track'`, `'Tidal Track'`, `'SoundCloud Track'`, `'Archive.org Recording'`)
+4. Caller-supplied `fallback` (default `'Reference'`)
+
+### Background hydration
+`renderRefVersions` (in `app.js` + `app-dev.js`) persists hydrated `fetchedTitle` back to Firebase via `saveRefVersions` when:
+- the version was loaded from Firebase (not data.js fallback)
+- `fetchRefTrackInfo` succeeded (`metadata.success === true`)
+- the stored value differs from the fetched value
+
+This means a single Listen-lens visit heals legacy `'Loading...'` records for every other consumer that reads the stored title directly (song-detail entry strip, rehearsal-mode strip, bestshot, gl-player-ui transport list).
+
+### Migrated display sites
+- `song-detail.js:788` (entry-strip North Star)
+- `song-detail.js:4522` (versions list)
+- `song-detail.js:4580` (delete confirmation label)
+- `song-detail.js:4659` (Listen lens North Star card)
+- `rehearsal-mode.js:2484` (rehearsal North Star strip)
+- `bestshot.js:60` (bestshot summary)
+- `gl-player-ui.js:575, 649, 676` (transport source list + delete confirmations)
+
+---

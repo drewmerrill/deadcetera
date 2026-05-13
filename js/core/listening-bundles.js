@@ -758,11 +758,20 @@ window.ListeningBundles = (function() {
         var tokenData = _getSpotifyTokenData();
         if (!tokenData || !tokenData.accessToken) return null;
         try {
-            var resp = await fetch('https://api.spotify.com/v1/me', {
-                headers: { 'Authorization': 'Bearer ' + tokenData.accessToken }
-            });
-            if (!resp.ok) return null;
-            var me = await resp.json();
+            // Stab #08: route through canonical GLSpotifyConnect.apiRequest
+            // so token refresh + 401 retry + 429 backoff are handled in one
+            // place. Falls back to direct fetch only if the canonical helper
+            // isn't loaded (cached SW shell safety).
+            var me;
+            if (window.GLSpotifyConnect && typeof window.GLSpotifyConnect.apiRequest === 'function') {
+                me = await window.GLSpotifyConnect.apiRequest('GET', '/me', null, { silent: true });
+            } else {
+                var resp = await fetch('https://api.spotify.com/v1/me', {
+                    headers: { 'Authorization': 'Bearer ' + tokenData.accessToken }
+                });
+                if (!resp.ok) return null;
+                me = await resp.json();
+            }
             if (!me || !me.product) return null;
             // Re-read tokenData in case it changed during fetch (e.g. silent
             // refresh wrote a new blob). Merge product onto the latest blob.
@@ -966,6 +975,17 @@ window.ListeningBundles = (function() {
     // ── Spotify API helpers ─────────────────────────────────────────────────
 
     async function _spotifyApi(path, method, body) {
+        // Stab #08: route through canonical GLSpotifyConnect.apiRequest with
+        // `legacyShape: true` so the existing return contract is preserved
+        // (null on no-token / unrecoverable / network, parsed error body on
+        // non-ok, json on success). Token refresh + 401 retry + 429 backoff
+        // + 5xx retry + network-blip retry all live in the canonical helper
+        // — this wrapper is now just a contract-shape shim. Cached SW shell
+        // fallback retained for stale-bundle safety.
+        if (window.GLSpotifyConnect && typeof window.GLSpotifyConnect.apiRequest === 'function') {
+            return window.GLSpotifyConnect.apiRequest(method || 'GET', path, body, { legacyShape: true, silent: true });
+        }
+        // Legacy fallback (cached-shell safety) — kept verbatim
         var token = _getSpotifyToken();
         if (!token) return null;
         var opts = {
@@ -975,7 +995,6 @@ window.ListeningBundles = (function() {
         if (body) opts.body = JSON.stringify(body);
         var resp = await fetch('https://api.spotify.com/v1' + path, opts);
         if (resp.status === 401) {
-            // Try silent refresh before giving up
             var refreshed = await _refreshSpotifyToken();
             if (refreshed) {
                 opts.headers['Authorization'] = 'Bearer ' + _getSpotifyToken();
@@ -991,7 +1010,7 @@ window.ListeningBundles = (function() {
             var errBody = null;
             try { errBody = await resp.json(); } catch(e) {}
             console.warn('[Spotify] API ' + resp.status + ' on ' + path, errBody);
-            return errBody || null; // return error body so caller can read error.message
+            return errBody || null;
         }
         return resp.json();
     }

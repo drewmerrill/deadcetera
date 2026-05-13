@@ -2946,16 +2946,40 @@ async function deletePracticeTrackConfirm(songTitle, index) {
 async function fetchRefTrackInfo(trackUrl) {
     try {
         if (!trackUrl) return { title: 'Unknown Track', success: false };
-        
+
         const url = trackUrl.toLowerCase();
-        
-        // Spotify
+
+        // Spotify — Stab #08: prefer canonical GLSpotifyConnect.apiRequest when
+        // the user has OAuth (richer payload). Fall back to public oEmbed
+        // when no token. Final fallback is 'Spotify Track'.
         if (url.includes('spotify.com')) {
             const trackId = extractSpotifyTrackId(trackUrl);
             if (!trackId) return { title: 'Spotify Track', success: false };
-            const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`);
-            const data = await response.json();
-            return { title: data.title, thumbnail: data.thumbnail_url, success: true };
+            if (window.GLSpotifyConnect && typeof window.GLSpotifyConnect.apiRequest === 'function'
+                && window.GLSpotifyConnect.hasValidConnection) {
+                try {
+                    const conn = await window.GLSpotifyConnect.hasValidConnection();
+                    if (conn && conn.connected) {
+                        const track = await window.GLSpotifyConnect.apiRequest('GET', '/tracks/' + trackId, null, { silent: true });
+                        if (track && track.name) {
+                            const artist = (track.artists && track.artists[0] && track.artists[0].name) || '';
+                            const niceTitle = artist ? (track.name + ' — ' + artist) : track.name;
+                            const thumb = (track.album && track.album.images && track.album.images[0] && track.album.images[0].url) || undefined;
+                            return { title: niceTitle, thumbnail: thumb, success: true };
+                        }
+                    }
+                } catch (_) { /* fall through */ }
+            }
+            try {
+                const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.title) {
+                        return { title: data.title, thumbnail: data.thumbnail_url, success: true };
+                    }
+                }
+            } catch (_) { /* fall through */ }
+            return { title: 'Spotify Track', success: false };
         }
         
         // YouTube
@@ -3041,11 +3065,38 @@ async function renderRefVersions(songTitle, bandData) {
             return {
                 ...version,
                 fetchedTitle: metadata.title,
-                thumbnail: metadata.thumbnail
+                thumbnail: metadata.thumbnail,
+                _metadataSuccess: metadata.success
             };
         })
     );
-    
+
+    // Stab #08: persist hydrated titles back to Firebase (mirror of
+    // app.js — heals the legacy 'Loading...' sentinel and lets other
+    // consumers read real titles from the stored record).
+    try {
+        if (firebaseVersions.length > 0) {
+            let dirty = false;
+            const merged = firebaseVersions.map((stored, i) => {
+                const fetched = versionsWithMetadata[i];
+                if (!fetched || !fetched._metadataSuccess) return stored;
+                const realTitle = fetched.fetchedTitle;
+                if (!realTitle || realTitle === 'Loading...') return stored;
+                if (stored.fetchedTitle === realTitle &&
+                    (stored.title !== 'Loading...' || !stored.title)) return stored;
+                dirty = true;
+                const updated = Object.assign({}, stored, { fetchedTitle: realTitle });
+                if (updated.title === 'Loading...') updated.title = realTitle;
+                return updated;
+            });
+            if (dirty && typeof saveRefVersions === 'function') {
+                await saveRefVersions(songTitle, merged);
+            }
+        }
+    } catch (e) {
+        console.warn('[refVersions] persist hydrated titles failed:', e && e.message);
+    }
+
     // Render with real titles
     container.innerHTML = versionsWithMetadata.map((version, index) => {
         const voteCount = version.totalVotes || 0;
@@ -3304,10 +3355,22 @@ async function saveRefVersionFromModal() {
     else if (url.includes('tidal.com')) platform = 'tidal';
     else if (url.includes('soundcloud.com')) platform = 'soundcloud';
     else if (url.includes('archive.org')) platform = 'archive';
-    
+
+    // Stab #08: stop saving the literal 'Loading...' sentinel. If the user
+    // didn't supply a title, store a platform-appropriate fallback that's
+    // a valid display string even if metadata hydration never succeeds.
+    const _platformFallbackTitle = {
+        spotify: 'Spotify Track',
+        youtube: 'YouTube Video',
+        apple_music: 'Apple Music Track',
+        tidal: 'Tidal Track',
+        soundcloud: 'SoundCloud Track',
+        archive: 'Archive.org Recording',
+        link: 'Reference'
+    };
     const version = {
         id: 'version_' + Date.now(),
-        title: title || 'Loading...',
+        title: title || _platformFallbackTitle[platform] || 'Reference',
         url: url,
         spotifyUrl: url,  // backward compat
         platform: platform,

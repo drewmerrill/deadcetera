@@ -1,6 +1,6 @@
 # GrooveLinx — Known Stable Flows
 
-_Last updated: 2026-05-13 (build `20260513-190522`)._
+_Last updated: 2026-05-13 (build `20260513-192327`)._
 
 This doc tracks user-facing flows by **trust level**: how confident we are that the flow works reliably across browsers + iOS Safari + route transitions + arbitration. Updated on every Stabilization Fix that touches a flow.
 
@@ -122,6 +122,28 @@ This table shows which surfaces participate in `GLPlayerContract.pauseAll()`.
 ### Logging
 - Verbose log emitted by `pauseAll()` only when something paused or failed. Quiet during normal use.
 - Example: `[GLPlayerContract.pauseAll] except=gl-setlist-player paused=["harmony-lab"] skipped=["gl-stems-engine:no-cap","bestshot:no-cap"]`
+
+---
+
+---
+
+## North Star reference rendering
+
+### North Star title display (Stab #08, 2026-05-13)
+**Status:** **Stable** (post Stab #08 — was previously broken for Spotify)
+- Display path: every consumer (`song-detail.js` × 4 sites, `rehearsal-mode.js`, `bestshot.js`, `gl-player-ui.js` × 3 sites) now routes through `window._glNormalizeRefTitle(v, fallback)` in `js/core/utils.js`.
+- Resolution order: `v.fetchedTitle` (non-empty, not `'Loading...'`) → `v.title` (same filter) → platform-aware fallback from `v.url` (`'Spotify Track'`, `'YouTube Video'`, `'Archive.org Recording'`, etc.) → caller fallback.
+- Background hydration: `renderRefVersions` (in `app.js` + `app-dev.js`) persists `fetchedTitle` back to Firebase when fetch succeeds. A single Listen-lens visit heals legacy `'Loading...'` records for every other consumer.
+- Fetch path: `fetchRefTrackInfo` for Spotify URLs prefers `GLSpotifyConnect.apiRequest('GET', '/tracks/{id}')` when OAuth is connected (richer metadata: name + artist + album cover) → falls back to public oEmbed → final fallback `'Spotify Track'`. Never returns `'Loading...'`.
+- **Open in Spotify** link still works regardless of metadata hydration state.
+
+### Spotify Web API access
+**Status:** **Stable** (post Stab #08)
+- All `api.spotify.com` calls route through `GLSpotifyConnect.apiRequest(method, path, body, opts)`. Token refresh, 401 retry, 429 backoff, 5xx retry, transient network blip recovery all live in the canonical helper.
+- `GLSpotifyConnect.hasValidConnection({ bypassCache })` is the canonical connection probe (60s cache).
+- `listening-bundles.js` 2 direct-call paths migrated via `legacyShape: true` opt (preserves the legacy return contract — null on no-token, parsed error-body on non-ok, json on success).
+- Cached SW-shell fallbacks retained verbatim — stale bundles without the canonical helper still work.
+- **iPhone:** Web Playback SDK still unusable per `gl-spotify-connect.js:6–10` documented constraints — Connect REST path remains mandatory for iOS. No change here.
 
 ---
 
