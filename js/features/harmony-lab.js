@@ -54,7 +54,43 @@ window.renderHarmonyLab = function renderHarmonyLab(songTitle, mountId) {
   mount.innerHTML = _hlShellHTML(songTitle);
   _hlInjectStyles();
   _hlLoadData(songTitle);
+
+  // Stab #06 lifecycle: Harmony Lab mounts inside Song Detail's harmony
+  // lens. When the user leaves the songdetail route, pause every audio
+  // element this lab created (split-mixer parts + the take-review element).
+  // Registering on every mount is safe — GLRouteLifecycle de-dupes by
+  // function reference and clears disposers after they fire.
+  if (typeof window !== 'undefined'
+      && window.GLRouteLifecycle
+      && typeof window.GLRouteLifecycle.register === 'function') {
+    window.GLRouteLifecycle.register('songdetail', _hlCleanup);
+  }
 };
+
+// Stab #06 — pause every audio element Harmony Lab has open. Idempotent
+// and safe to call from any state. Does NOT close the AudioContext —
+// that lives on _hlMixState.ctx and is reused when the user comes back
+// to the lab on the same song (closing it would force a one-time
+// `new AudioContext()` cost on every re-entry).
+function _hlCleanup() {
+  try {
+    if (_hlMixState && _hlMixState.audios) {
+      Array.prototype.forEach.call(_hlMixState.audios, function(a) {
+        try { a.pause(); } catch(e) {}
+      });
+    }
+  } catch (e) {}
+  try {
+    if (_hlCurrentAudio) {
+      _hlCurrentAudio.pause();
+    }
+  } catch (e) {}
+  // Pause the take-review element if it's playing
+  try {
+    var rev = document.getElementById('hl-playback-audio');
+    if (rev && !rev.paused) rev.pause();
+  } catch (e) {}
+}
 
 window.hlSwitchMode = function hlSwitchMode(mode) {
   if (!['learn','practice','record'].includes(mode)) return;

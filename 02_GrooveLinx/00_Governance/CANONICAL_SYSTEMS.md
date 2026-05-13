@@ -111,9 +111,28 @@ This matches `saveBandArrayDataSafe` semantics so the "what changed last" signal
 
 ## Route Lifecycle
 Canonical owner:
-GLRouteLifecycle
+`window.GLRouteLifecycle` (in `js/ui/navigation.js`)
+
+API: `register(routeName, fn)` + `leave(nextRoute)`. Disposers run once, then the list is cleared so re-entry registers fresh ones. Disposers are isolated in try/catch so a failing one cannot block navigation. Register de-dupes by function reference.
 
 All intervals/listeners/media streams must register cleanup.
+
+### Disposers currently registered (post Stab #06, 2026-05-13)
+| Route | Disposer | Cleans up |
+|---|---|---|
+| `songdetail` | `_sdStemsCleanup` (`song-detail.js:4148`) | Stems WebAudio drift `setInterval` + `AudioContext` |
+| `songdetail` | `_hlCleanup` (`harmony-lab.js:74`) | Harmony Lab split-mixer audios + take-review element |
+| `pocketmeter` | `_pmRouteDispose` (`app.js:9817` + `app-dev.js` mirror) | Mic stream + classifier interval + visibility handler + Firebase listener |
+| `rehearsal` | `_detachAllSubs` (`gl-rehearsal-session.js:271`) | Active `.on()` subscriptions on `rehearsal_sessions` |
+| `bestshot` | `_bsCleanup` (`bestshot.js:3068`) | `chopAudio` pause + `chopAudioContext.suspend()` |
+| `(current route at overlay open)` | `SetlistPlayer.close` (`setlist-player.js:590`) | Closes the player overlay; queue + floating now-playing bar persist |
+
+### Cross-route handlers (NOT route-disposers — beforeunload defense-in-depth)
+- `gl-player-engine.js:941` — calls `stop()` + `GLSpotifyConnect.stopPolling()` + closes `_deadceteraAudioCtx`. Engine is intentionally cross-route via the floating now-playing bar; pausing on every route would break that UX, so a route disposer is NOT registered. `beforeunload` releases the Spotify Connect device on tab close.
+- `gl-spotify-connect.js:479` — calls `stopPolling()`. Engine ownership coordination already calls `stopPolling()` from `gl-player-engine.js:340` inside `stop()`; this handler covers the tab-kill path where no explicit stop() fires.
+
+### Future capability (NOT yet implemented)
+`GLPlayerContract.CAPABILITIES.PAUSE_ALL` — declared in `gl-player-contract.js` (Stab #06 groundwork). When the canonical `pauseAll(exceptEngine)` arbitrator is built (post-Stab #06), engines that declare this capability will pause themselves when another asserts ownership. Until then, **no global cross-engine pause coordination exists** — concurrent playback across harmony-lab × bestshot × setlist-player × Stems mixer × app.js memory loops remains a known risk per Audit #04 §4.
 
 ---
 

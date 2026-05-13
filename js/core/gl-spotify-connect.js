@@ -468,6 +468,19 @@ window.GLSpotifyConnect = (function() {
     if (!document.hidden && _pollingTimer) { _pollTick(true); }
   });
 
+  // Stab #06 lifecycle — beforeunload defense-in-depth. Engine ownership
+  // coordination already stops polling via gl-player-engine.js:340 inside
+  // stop(). This handler covers the path where the tab dies without an
+  // explicit engine.stop() (mobile tab kill, browser quit, etc.) so the
+  // polling Promise loop doesn't keep firing a fetch after page teardown.
+  // Duplicate-poll prevention already lives in startPolling() (line ~437,
+  // calls stopPolling first), so no race added here.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', function _glConnectBeforeUnload() {
+      try { stopPolling(); } catch (e) {}
+    });
+  }
+
   // ── Platform detection helpers ─────────────────────────────────────────────
   // Used by the engine to decide whether to route through Connect on this
   // device. UA-sniff is brittle but reliable enough for the iOS/iPad cases

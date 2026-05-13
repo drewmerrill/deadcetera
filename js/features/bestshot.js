@@ -3049,6 +3049,38 @@ function renderBestShotPage(el) {
         '<input class="app-input" id="bsOverviewSearch" placeholder="Search songs..." oninput="filterBestShotOverview()" style="margin-bottom:12px">' +
         '<div id="bsOverviewList"></div>';
     renderBestShotOverviewList();
+
+    // Stab #06 lifecycle: register chopper cleanup for the bestshot route.
+    // Per-song chopper renders inside renderBestShotVsNorthStar (same route)
+    // — registering at the route entry covers both views. GLRouteLifecycle
+    // de-dupes by function reference so re-renders don't stack disposers.
+    if (typeof window !== 'undefined'
+        && window.GLRouteLifecycle
+        && typeof window.GLRouteLifecycle.register === 'function') {
+        window.GLRouteLifecycle.register('bestshot', _bsCleanup);
+    }
+}
+
+// Stab #06 — pause chopAudio + close any lingering chopAudioContext.
+// Idempotent and safe to call from any state. Does NOT clear the
+// in-memory chopAudioBuffer — that's expensive to recreate and stays
+// useful when the user returns to the same song.
+function _bsCleanup() {
+    try {
+        var audio = document.getElementById('chopAudio');
+        if (audio && !audio.paused) audio.pause();
+    } catch (e) {}
+    try {
+        if (typeof chopAudioContext !== 'undefined'
+            && chopAudioContext
+            && chopAudioContext.state !== 'closed') {
+            // Suspend (not close) — close() destroys decoded buffers.
+            // Suspend is iOS-friendly and the next decode call resumes.
+            if (typeof chopAudioContext.suspend === 'function') {
+                chopAudioContext.suspend().catch(function(){});
+            }
+        }
+    } catch (e) {}
 }
 
 async function renderBestShotOverviewList() {

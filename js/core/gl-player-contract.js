@@ -47,7 +47,20 @@ window.GLPlayerContract = (function () {
         AUTOPLAY_WATCHDOG:   'autoplayWatchdog',
         NOW_PLAYING_BAR:     'nowPlayingBar',
         LOCK_PRIMARY_VERSION:'lockPrimaryVersion',
-        SOURCE_PREFERENCE:   'sourcePreference'
+        SOURCE_PREFERENCE:   'sourcePreference',
+
+        // PAUSE_ALL — Stab #06 groundwork (2026-05-13). Declares that an
+        // engine will pause itself when another engine asserts ownership of
+        // the audio session. The actual global arbitration mechanism is NOT
+        // YET IMPLEMENTED — this constant is reserved so engines can declare
+        // readiness now (no behavior change) and a future build can wire up
+        // a `GLPlayerContract.pauseAll(exceptEngine)` static that walks the
+        // registry. See Reality Audit #04 §6 for the convergence rationale
+        // and the multi-engine race conditions this is meant to close.
+        // Ownership semantics: the canonical arbitrator (future) calls
+        // `engine.pause()` on every registered engine that declares this
+        // capability and is not the engine asserting ownership.
+        PAUSE_ALL:           'pauseAll'
     });
 
     var REQUIRED_CAPABILITIES = [

@@ -925,6 +925,41 @@ window.GLPlayerEngine = (function() {
 
 })();
 
+// ── Stab #06 lifecycle — beforeunload defense-in-depth ─────────────────────
+// Reality Stabilization Fix #06 (2026-05-13). The engine plays cross-route
+// intentionally via the floating now-playing bar — pausing on route change
+// would break that UX, so the engine does NOT register a GLRouteLifecycle
+// disposer. beforeunload is the right place to release the Spotify Connect
+// device (so music doesn't keep playing on the user's phone after the tab
+// closes), destroy the YouTube IFrame, and close the shared AudioContext.
+//
+// `stop()` already calls `GLSpotifyConnect.stopPolling()` (engine internal),
+// so the engine→connect ownership coordination remains canonical. This
+// handler just guarantees the same cleanup if the tab dies without an
+// explicit stop() call (mobile tab kill, browser quit, etc.).
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', function _glPlayerEngineBeforeUnload() {
+        try {
+            if (window.GLPlayerEngine && typeof window.GLPlayerEngine.stop === 'function') {
+                window.GLPlayerEngine.stop();
+            }
+        } catch (e) {}
+        try {
+            if (window.GLSpotifyConnect && typeof window.GLSpotifyConnect.stopPolling === 'function') {
+                window.GLSpotifyConnect.stopPolling();
+            }
+        } catch (e) {}
+        // Close the shared boot AudioContext if it was created (app.js iOS
+        // unlock path). Idempotent — close() on an already-closed context
+        // throws; swallow it.
+        try {
+            if (window._deadceteraAudioCtx && window._deadceteraAudioCtx.state !== 'closed') {
+                window._deadceteraAudioCtx.close();
+            }
+        } catch (e) {}
+    });
+}
+
 // Phase 5 pre-warm: a few seconds after boot, if Spotify is connected,
 // pre-fetch the device list so the first play has zero discovery latency.
 // Deferred so we don't compete with critical boot work (Firebase init,

@@ -576,6 +576,19 @@ window.SetlistPlayer = (function() {
 
     function _createOverlay(name) {
         close();
+        // Stab #06 lifecycle: register `close` as a disposer for the route the
+        // overlay was opened on. When the user navigates away, the overlay
+        // closes BUT the queue + now-playing bar persist (close() removes the
+        // overlay and re-shows the floating bar; fullClose() would also drop
+        // the queue, which is NOT what we want on a casual nav-away).
+        // Register de-dupes by reference so re-opens of the same overlay
+        // don't stack disposers.
+        if (typeof window !== 'undefined'
+            && window.GLRouteLifecycle
+            && typeof window.GLRouteLifecycle.register === 'function'
+            && window.GLRouteLifecycle.currentRoute) {
+            window.GLRouteLifecycle.register(window.GLRouteLifecycle.currentRoute, close);
+        }
         _overlay = document.createElement('div');
         _overlay.id = 'slPlayerOverlay';
         _overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#0f172a;display:flex;flex-direction:column;color:#f1f5f9;font-family:inherit;padding-top:var(--gl-safe-top,0px)';
