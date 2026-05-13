@@ -1148,13 +1148,18 @@ async function _rmSaveSessionSummary() {
             return { title: t.title, budgetMin: t.budgetMin, actualMin: Math.round(t.actualMs / 60000) };
         })
     };
-    // Save to Firebase
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (db && typeof bandPath === 'function') {
-        try {
-            await db.ref(bandPath('rehearsal_sessions/' + summary.sessionId)).set(summary);
-        } catch(e) { console.warn('[RhTiming] Save failed:', e.message); }
-    }
+    // Save to Firebase — C2 Phase 1: route through RehearsalSession.create.
+    try {
+        var _rsCr = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.create);
+        if (_rsCr) {
+            await GLStore.RehearsalSession.create(summary.sessionId, summary);
+        } else {
+            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (db && typeof bandPath === 'function') {
+                await db.ref(bandPath('rehearsal_sessions/' + summary.sessionId)).set(summary);
+            }
+        }
+    } catch(e) { console.warn('[RhTiming] Save failed:', e.message); }
 
     // Show session summary screen instead of just a toast
     window._rmLastSummary = summary;
@@ -1473,20 +1478,27 @@ window._rmSummarySave = async function(sessionId) {
     // Generate summary line
     var autoSummary = _rmGenerateAutoSummary(window._rmLastSummary || {});
 
-    // Update session
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (db && typeof bandPath === 'function') {
-        var updates = {};
-        if (notes) updates.notes = notes;
-        if (mixdownId) updates.mixdown_id = mixdownId;
-        if (_rmSummaryRating) updates.rating = _rmSummaryRating;
-        if (_rmSuggestionAccepted !== null) updates.ratingAcceptedSuggestion = _rmSuggestionAccepted;
-        // Store the original suggestion for analytics (compare suggested vs final)
-        if (window._rmLastSuggestedRating) updates.ratingSuggested = window._rmLastSuggestedRating;
-        if (autoSummary) updates.summary = autoSummary;
-        if (Object.keys(updates).length) {
-            try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates); } catch(e) { console.warn('[Rehearsal] Session update failed', e); }
-        }
+    // Update session — C2 Phase 1: route through RehearsalSession.update.
+    var updates = {};
+    if (notes) updates.notes = notes;
+    if (mixdownId) updates.mixdown_id = mixdownId;
+    if (_rmSummaryRating) updates.rating = _rmSummaryRating;
+    if (_rmSuggestionAccepted !== null) updates.ratingAcceptedSuggestion = _rmSuggestionAccepted;
+    // Store the original suggestion for analytics (compare suggested vs final)
+    if (window._rmLastSuggestedRating) updates.ratingSuggested = window._rmLastSuggestedRating;
+    if (autoSummary) updates.summary = autoSummary;
+    if (Object.keys(updates).length) {
+        try {
+            var _rsU = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.update);
+            if (_rsU) {
+                await GLStore.RehearsalSession.update(sessionId, updates);
+            } else {
+                var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                if (db && typeof bandPath === 'function') {
+                    await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates);
+                }
+            }
+        } catch(e) { console.warn('[Rehearsal] Session update failed', e); }
     }
 
     // Save animation

@@ -230,26 +230,39 @@ window._rhSaveRecreatedSession = async function() {
             recording_url: url,
             blocks: songs.map(function(s) { return { title: s, budgetMin: 0, actualMin: 0 }; })
         };
-        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-        if (db && typeof bandPath === 'function') {
-            try {
-                await db.ref(bandPath('rehearsal_sessions/' + sessionId)).set(session);
-                if (typeof showToast === 'function') showToast('\u2705 Rehearsal saved');
-            } catch(e) {
-                if (typeof showToast === 'function') showToast('Save failed');
-                return;
+        // C2 Phase 1: route through GLStore.RehearsalSession.create when
+        // available; cached-shell legacy fallback preserves a stale SW shell.
+        var _rsCreate = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.create);
+        try {
+            if (_rsCreate) {
+                await GLStore.RehearsalSession.create(sessionId, session);
+            } else {
+                var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                if (db && typeof bandPath === 'function') {
+                    await db.ref(bandPath('rehearsal_sessions/' + sessionId)).set(session);
+                }
             }
+            if (typeof showToast === 'function') showToast('\u2705 Rehearsal saved');
+        } catch(e) {
+            if (typeof showToast === 'function') showToast('Save failed');
+            return;
         }
     } else {
         // Existing session — update notes/songs if provided
-        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-        if (db && typeof bandPath === 'function') {
-            var updates = {};
-            if (notes) updates.notes = notes;
-            if (songs.length) updates.songsWorked = songs;
-            if (url) updates.recording_url = url;
-            if (Object.keys(updates).length) {
-                await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates);
+        // C2 Phase 1: route the partial update through RehearsalSession.update.
+        var updates = {};
+        if (notes) updates.notes = notes;
+        if (songs.length) updates.songsWorked = songs;
+        if (url) updates.recording_url = url;
+        if (Object.keys(updates).length) {
+            var _rsUpdate = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.update);
+            if (_rsUpdate) {
+                await GLStore.RehearsalSession.update(sessionId, updates);
+            } else {
+                var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                if (db && typeof bandPath === 'function') {
+                    await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update(updates);
+                }
             }
         }
         if (typeof showToast === 'function') showToast('\u2705 Adding recording to existing rehearsal');
@@ -305,10 +318,16 @@ window._rhSaveRecreatedSession = async function() {
             onProgress: _updateProgress
         }).then(function(result) {
             if (result && result.segments && result.segments.length) {
-                // Save segments to Firebase
-                var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-                if (db2 && typeof bandPath === 'function') {
-                    db2.ref(bandPath('rehearsal_sessions/' + sessionId + '/audio_segments')).set(result.segments);
+                // Save segments to Firebase — C2 Phase 1: setField wraps the
+                // nested write + parent updatedAt stamp.
+                var _rsSetField = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.setField);
+                if (_rsSetField) {
+                    GLStore.RehearsalSession.setField(sessionId, 'audio_segments', result.segments);
+                } else {
+                    var db2 = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+                    if (db2 && typeof bandPath === 'function') {
+                        db2.ref(bandPath('rehearsal_sessions/' + sessionId + '/audio_segments')).set(result.segments);
+                    }
                 }
                 if (typeof showToast === 'function') showToast('\u2705 Analysis complete \u2014 ' + result.segments.length + ' segments detected');
                 // Show the timeline for this session
@@ -1756,6 +1775,13 @@ var _rhBulkSelected = {};
 var _rhSessionsCache = null;
 
 async function _rhLoadSessions() {
+    // C2 Phase 1: prefer GLStore.RehearsalSession.loadAll (same shape +
+    // sort). Cached-shell legacy fallback for stale SW shells.
+    var _rsLoadAll = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadAll);
+    if (_rsLoadAll) {
+        _rhSessionsCache = await GLStore.RehearsalSession.loadAll();
+        return _rhSessionsCache;
+    }
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') return [];
     try {
@@ -1769,9 +1795,15 @@ async function _rhLoadSessions() {
 }
 
 async function _rhDeleteSession(sessionId) {
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (!db || typeof bandPath !== 'function') return;
-    try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).remove(); } catch(e) {}
+    // C2 Phase 1: route through RehearsalSession.remove.
+    var _rsRemove = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.remove);
+    if (_rsRemove) {
+        await GLStore.RehearsalSession.remove(sessionId);
+    } else {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return;
+        try { await db.ref(bandPath('rehearsal_sessions/' + sessionId)).remove(); } catch(e) {}
+    }
     _rhSessionsCache = null;
 }
 
@@ -3606,10 +3638,13 @@ window._rhCompareAttempts = function(songTitle) {
 
 // ── View Session Timeline (replaces old modal report — loads session and renders inline timeline) ──
 window._rhShowSessionReport = async function(sessionId) {
-    // Load session from Firebase
+    // Load session from Firebase — C2 Phase 1: prefer RehearsalSession.loadById.
     var s = null;
     try {
-        if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+        var _rsLoadById = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadById);
+        if (_rsLoadById) {
+            s = await GLStore.RehearsalSession.loadById(sessionId);
+        } else if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
             var snap = await firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value');
             s = snap.val();
             if (s) s.sessionId = sessionId;
@@ -3708,13 +3743,20 @@ window._rhCycleMixdownTag = async function(sessionId) {
     var nextIdx = (tags.indexOf(cur) + 1) % tags.length;
     var next = tags[nextIdx];
 
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (db && typeof bandPath === 'function') {
-        try {
-            await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update({ mixdown_tag: next || null });
+    // C2 Phase 1: route mixdown-tag toggle through RehearsalSession.update.
+    try {
+        var _rsUpd = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.update);
+        if (_rsUpd) {
+            await GLStore.RehearsalSession.update(sessionId, { mixdown_tag: next || null });
             s.mixdown_tag = next;
-        } catch(e) {}
-    }
+        } else {
+            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (db && typeof bandPath === 'function') {
+                await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update({ mixdown_tag: next || null });
+                s.mixdown_tag = next;
+            }
+        }
+    } catch(e) {}
 
     var labels = { best_take: '\u2B50 Best Take', needs_work: '\uD83D\uDD27 Needs Work' };
     if (typeof showToast === 'function') showToast(labels[next] || 'Tag cleared');

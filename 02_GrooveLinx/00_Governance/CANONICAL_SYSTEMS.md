@@ -67,8 +67,45 @@ All write through `GLStore.saveSongData(title, 'chart', …)` or `saveBandDataTo
 
 ## Rehearsal Session State
 Canonical owner:
-GLStore.RehearsalSession
-(IN PROGRESS)
+`window.GLStore.RehearsalSession` (in `js/core/gl-rehearsal-session.js`)
+
+**C2 Phase 1 (2026-05-13):** wrap-and-centralize introduced. Phase 1 routes 9 sites (`rehearsal.js` × 7, `rehearsal-mode.js` × 2) through the canonical layer. Pattern matches `GLStore.PracticeSession`.
+
+### API
+- `loadAll()` → `Promise<Session[]>` (sorted newest-first by date)
+- `loadById(sessionId)` → `Promise<Session|null>`
+- `create(sessionId, payload)` — `.set()` with auto-stamped `updatedAt`/`updatedBy`/`sessionId`
+- `update(sessionId, patch)` — `.update()` with auto-stamped `updatedAt`/`updatedBy`
+- `setField(sessionId, fieldPath, value)` — nested write (e.g. `audio_segments`) + best-effort parent stamp
+- `remove(sessionId)` — `.remove()` + clears in-memory current pointer if it matches
+- `subscribe(handler)` → `unsubscribeFn` — wraps `.on('value', …)`; duplicate-handler attempts return the existing unsub. Auto-detaches via `GLRouteLifecycle` disposer on `rehearsal` route leave.
+- `setCurrent / getCurrent / clearCurrent` — in-memory "what session is the user looking at" pointer.
+- `getStats()` → telemetry counters (reads/writes/removes/subscribes/duplicates/currentlyOwned/activeSubs).
+
+### Auto-stamping contract
+Writes (`create`, `update`, `setField`-parent) stamp:
+- `updatedAt = Date.now()` (unless caller provided)
+- `updatedBy = currentUserEmail` (unless caller provided)
+
+This matches `saveBandArrayDataSafe` semantics so the "what changed last" signal stays consistent.
+
+### Lifecycle integration
+`gl-rehearsal-session.js` registers a `GLRouteLifecycle` disposer for the `rehearsal` route. The disposer calls `_detachAllSubs()` so any active `.on()` subscription is torn down on route leave. `beforeunload` also detaches as defense-in-depth.
+
+### Phase 1 wrapped sites (9)
+- `js/features/rehearsal.js` lines 236, 252, 311, 1762, 1774, 3613, 3714
+- `rehearsal-mode.js` lines 1155, 1488
+
+### Phase 2 deferred (19 sites — see `02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md`)
+- `multitrack-rehearsal.js` (6 sites) — nested comments + previews
+- `recording-analyzer.js` (6 sites) — `label_overrides`, `songsWorked`, recent-N queries
+- `rehearsal-analysis-pipeline.js` (4 sites) — explicit-slug refs (`bands/{slug}/…`)
+- `gl-insights.js` (1) — explicit-slug
+- `gl-rehearsal-scheduling.js` (1), `groovemate_tools.js` (1), `band-feed.js` (1) — small migrations deferred to keep Phase 1 tight
+- `scripts/apply-golden-timeline*.js` (2) — permanent deferral; build-time only
+
+### Out of scope (not Firebase)
+- `calendar.js:508, 3140` — `loadBandDataFromDrive('_band', 'rehearsal_sessions')` is a Drive-backed snapshot, separate concern.
 
 ---
 

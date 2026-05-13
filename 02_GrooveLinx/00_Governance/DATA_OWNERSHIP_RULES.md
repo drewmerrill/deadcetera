@@ -1,6 +1,6 @@
 # GrooveLinx Data Ownership Rules
 
-_Last updated: 2026-05-13 — synthesized from Reality Audits #01–#03 and Stabilization Fixes #01–#02._
+_Last updated: 2026-05-13 — C2 Phase 1 (`GLStore.RehearsalSession`) shipped; synthesized from Reality Audits #01–#03 and Stabilization Fixes #01–#05._
 
 ## Why this doc exists
 
@@ -53,7 +53,7 @@ This doc codifies the rules every feature must follow when reading, writing, or 
 
 | Domain | Owner | Other authorized mutators | Required helper |
 |---|---|---|---|
-| `rehearsal_sessions` | **proposed: `GLStore.RehearsalSession` (not yet implemented)** | rehearsal, rehearsal-mode, multitrack-rehearsal, recording-analyzer, practice-heartbeat | Per-field writes only; container-level conflict detection still missing — flagged for Stabilization #03+ |
+| `rehearsal_sessions` | **`GLStore.RehearsalSession`** (`js/core/gl-rehearsal-session.js`) | Phase 1 wraps `rehearsal.js` (7 sites) + `rehearsal-mode.js` (2 sites). Phase 2 will wrap `multitrack-rehearsal`, `recording-analyzer`, `rehearsal-analysis-pipeline`, `gl-insights`, plus 3 small consumers. | New code MUST use `GLStore.RehearsalSession.{create,update,setField,remove,loadAll,loadById}`. Direct `db.ref(bandPath('rehearsal_sessions/…')).set/update/remove` is forbidden in new code. Auto-stamps `updatedAt`/`updatedBy`. See `02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md` for the full migration map. |
 | `polls` | `band-comms` (ideas) | `band-feed`, `home`, `notifications` mutate via `FeedActionState` | Vote toggle must use `FeedActionState`; no direct `.set()` on votes |
 | `practice_tasks` | **owner unclear (rehearsal vs practice vs workbench)** | rehearsal, practice, workbench | Resolve ownership before Tier-2 stabilization |
 | `calendar_events` (from `gigs`) | `calendar` (per Tier 1) | `gigs` via `_syncGigToCalendar` documented mirror | |
