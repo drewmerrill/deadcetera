@@ -2296,6 +2296,14 @@ if (typeof pageRenderers !== 'undefined') {
 
 (function _feedRealtimeNotifs() {
     var _feedRealtimeSetup = false; // guard against duplicate listeners
+    // Store query refs + handlers so we can detach on sign-out / unload.
+    // Reality Stabilization Fix #01 (2026-05-12): without these, the
+    // child_added listeners persisted indefinitely. The setup guard limits
+    // damage to 2 stacked listeners max, but defensive teardown lets us
+    // call .off() explicitly when needed.
+    var _pollsQuery = null, _pollsHandler = null;
+    var _ideasQuery = null, _ideasHandler = null;
+
     function setup() {
         if (_feedRealtimeSetup) return; // prevent listener accumulation
         var fas = (typeof FeedActionState !== 'undefined') ? FeedActionState : null;
@@ -2306,7 +2314,8 @@ if (typeof pageRenderers !== 'undefined') {
         if (!myVoteKey) return;
         _feedRealtimeSetup = true;
 
-        db.ref(bandPath('polls')).orderByChild('ts').limitToLast(1).on('child_added', function(snap) {
+        _pollsQuery = db.ref(bandPath('polls')).orderByChild('ts').limitToLast(1);
+        _pollsHandler = function(snap) {
             var p = snap.val();
             if (!p || !p.ts) return;
             if (Date.now() - new Date(p.ts).getTime() > 60000) return; // ignore old
@@ -2316,9 +2325,11 @@ if (typeof pageRenderers !== 'undefined') {
                 (p.question || 'New poll').substring(0, 80),
                 { itemType: 'poll', itemId: snap.key, notifClass: 'action_required',
                   url: '/#songs?item=' + encodeURIComponent('poll:' + snap.key) });
-        });
+        };
+        _pollsQuery.on('child_added', _pollsHandler);
 
-        db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(1).on('child_added', function(snap) {
+        _ideasQuery = db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(1);
+        _ideasHandler = function(snap) {
             var p = snap.val();
             if (!p || !p.ts) return;
             if (Date.now() - new Date(p.ts).getTime() > 60000) return;
@@ -2328,8 +2339,23 @@ if (typeof pageRenderers !== 'undefined') {
                 (p.title || 'Band idea').substring(0, 80),
                 { itemType: 'idea', itemId: snap.key, notifClass: 'action_required',
                   url: '/#songs?item=' + encodeURIComponent('idea:' + snap.key) });
-        });
+        };
+        _ideasQuery.on('child_added', _ideasHandler);
     }
+
+    function teardown() {
+        try { if (_pollsQuery && _pollsHandler) _pollsQuery.off('child_added', _pollsHandler); } catch(e) {}
+        try { if (_ideasQuery && _ideasHandler) _ideasQuery.off('child_added', _ideasHandler); } catch(e) {}
+        _pollsQuery = null; _pollsHandler = null;
+        _ideasQuery = null; _ideasHandler = null;
+        _feedRealtimeSetup = false;
+    }
+    // Expose for explicit cleanup from sign-out paths.
+    window._feedRealtimeTeardown = teardown;
+    // Best-effort cleanup before page unload — browser already destroys the
+    // listener, but explicit .off() releases the Firebase wire sooner.
+    try { window.addEventListener('beforeunload', teardown); } catch(e) {}
+
     setTimeout(setup, 6000);
 })();
 

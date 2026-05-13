@@ -18,6 +18,14 @@
 
 ---
 
+## Stabilization Fixes
+
+| # | Title | Date | Build | What changed | Limits | Linked audit |
+|---|---|---|---|---|---|---|
+| 01 | W1 Setlist Clobber + Firebase Listener Cleanup | 2026-05-12 | `20260513-012027` | (1) **W1 fix:** band-creation flow at `app.js:11882` (+ mirror in `app-dev.js:11490`) no longer does a whole-array `firebaseDB.ref('bands/{slug}/setlists').set(wholeArray)` after a SWR read. Replaced with per-record write to `…/setlists/{nextKey}` with `updatedAt`/`updatedBy` stamps — same semantics as `saveBandArrayDataSafe`, inline because the band-creation flow targets an explicit slug rather than the current band path. (2) **Listener cleanup:** `band-feed.js` real-time polls + ideas listeners now store query refs + handler refs and expose `window._feedRealtimeTeardown()`; wired to `beforeunload`. `calendar.js` connection watcher now stores the handler ref and exposes `window._calUnwatchConnections()`; wired to `beforeunload`. (3) **False positive flagged:** `gl-leader.js:250` rehearsal_sync listener was already cleaned up properly via `_syncAttachListener` → `_syncDetachListener` (`.off()` called before re-subscribe). No change made there; the audit was wrong about it. | No schema migration. No architecture refactor. No GLStore convergence. No A2P file changes. Audit-tool writes (`gl-data-audit.js:344`), `gl-task-engine.js:392` snapshot restore, and `groovemate_tools.js:190/358` left untouched — flagged for a later focused pass. | [Audit #02](./GROOVELINX_REALITY_AUDIT_02_DATA_ACCESS.md) §3.3 (W1) + §2.2 (listeners) |
+
+---
+
 ## Audit philosophy
 
 1. **Inventory before fixing.** Each audit produces a report. No fixes during audit.

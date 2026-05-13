@@ -11873,14 +11873,26 @@ async function _seedBandStarterContent(slug, bandType, subtypes, bandName) {
     };
 
     try {
-        var existing = [];
-        try {
-            var snap = await firebaseDB.ref('bands/' + slug + '/setlists').once('value');
-            existing = snap.val() ? Object.values(snap.val()) : [];
-        } catch(e) {}
-        existing.push(setlist);
-        await firebaseDB.ref('bands/' + slug + '/setlists').set(existing);
-        console.log('[BandCreate] Auto-created first setlist: ' + setlist.name);
+        // Per-record write to avoid the whole-array clobber pattern that caused
+        // the 2026-05-10 setlist incident. Read live state to compute the next
+        // numeric key, then write ONLY the new setlist to that key with
+        // updatedAt/updatedBy stamps. `saveBandArrayDataSafe` operates on the
+        // current band's path; this is a band-creation flow targeting an
+        // explicit slug, so we mirror its per-record + stamp semantics inline.
+        var slPath = 'bands/' + slug + '/setlists';
+        var liveSnap = await firebaseDB.ref(slPath).once('value');
+        var liveByKey = liveSnap.val() || {};
+        var maxKey = -1;
+        Object.keys(liveByKey).forEach(function(k) {
+            var n = parseInt(k, 10);
+            if (!isNaN(n) && n > maxKey) maxKey = n;
+        });
+        var nextKey = maxKey + 1;
+        var stamp = new Date().toISOString();
+        var actor = (typeof currentUserEmail !== 'undefined' && currentUserEmail) || 'groovemate';
+        var stampedSetlist = Object.assign({}, setlist, { updatedAt: stamp, updatedBy: actor });
+        await firebaseDB.ref(slPath + '/' + nextKey).set(stampedSetlist);
+        console.log('[BandCreate] Auto-created first setlist: ' + setlist.name + ' (at key ' + nextKey + ')');
 
         // Mark onboarding Step 1 as done (setlist exists)
         localStorage.setItem('gl_onboard_setlist_done', Date.now().toString());

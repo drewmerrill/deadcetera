@@ -3906,6 +3906,7 @@ function _calShowReconnectPrompt(container) {
 
 // ── Live connection watcher ───────────────────────────────────────────────────
 var _calConnectionWatcher = null;
+var _calConnectionHandler = null;
 var _calConnecting = false; // true while user is actively connecting (suppresses listener re-renders)
 var _calWatchDebounce = null;
 
@@ -3915,7 +3916,9 @@ function _calWatchConnections() {
     if (!db || typeof bandPath !== 'function') return;
     try {
         _calConnectionWatcher = db.ref(bandPath('google_connections'));
-        _calConnectionWatcher.on('value', function() {
+        // Reality Stabilization Fix #01 (2026-05-12): capture the handler so
+        // _calUnwatchConnections() can pass it to .off() for explicit detach.
+        _calConnectionHandler = function() {
             // Suppress re-renders while user is actively connecting (prevents consent UI flash)
             if (_calConnecting) return;
             // Debounce: multiple Firebase updates can fire in quick succession
@@ -3924,9 +3927,25 @@ function _calWatchConnections() {
                 _calConnectedCache = null;
                 _calLoadConnections().then(function() { _calRenderSyncCoverage(); });
             }, 1000);
-        });
+        };
+        _calConnectionWatcher.on('value', _calConnectionHandler);
     } catch(e) {}
 }
+
+// Explicit teardown for the connection watcher. Called from sign-out paths
+// or beforeunload to release the Firebase listener cleanly.
+function _calUnwatchConnections() {
+    try {
+        if (_calConnectionWatcher && _calConnectionHandler) {
+            _calConnectionWatcher.off('value', _calConnectionHandler);
+        }
+    } catch(e) {}
+    _calConnectionWatcher = null;
+    _calConnectionHandler = null;
+    if (_calWatchDebounce) { clearTimeout(_calWatchDebounce); _calWatchDebounce = null; }
+}
+window._calUnwatchConnections = _calUnwatchConnections;
+try { window.addEventListener('beforeunload', _calUnwatchConnections); } catch(e) {}
 
 // ── Token validation on load ─────────────────────────────────────────────────
 // IMPORTANT: accessToken is set asynchronously by the OAuth auto-reconnect.
