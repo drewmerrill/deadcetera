@@ -33,6 +33,44 @@
   // ── Canonical active statuses (SINGLE SOURCE OF TRUTH) ──────────────────
   var ACTIVE_STATUSES = { prospect:1, learning:1, rotation:1, wip:1, active:1, gig_ready:1 };
 
+  // ── Canonical status display maps (Stab #04 — 2026-05-13) ───────────────
+  // Single source for status → label / color used by songs.js and any future
+  // status-rendering surface. Legacy values (wip, active, gig_ready) collapse
+  // to "Learning" per status-migration map in gl-status-migration.js.
+  var STATUS_LABELS = {
+    prospect:  'Prospect',
+    learning:  'Learning',
+    rotation:  'In Rotation',
+    shelved:   'Shelved',
+    wip:       'Learning',
+    active:    'Learning',
+    gig_ready: 'Learning',
+    parked:    'Shelved',
+    retired:   'Shelved'
+  };
+  var STATUS_LABELS_EMOJI = {
+    prospect:  '👀 Prospect',
+    learning:  '📖 Learning',
+    rotation:  '🔄 In Rotation',
+    shelved:   '📦 Shelved',
+    wip:       '📖 Learning',
+    active:    '📖 Learning',
+    gig_ready: '📖 Learning',
+    parked:    '📦 Shelved',
+    retired:   '📦 Shelved'
+  };
+  var STATUS_COLORS = {
+    prospect:  '#7c3aed',
+    learning:  '#2563eb',
+    rotation:  '#059669',
+    shelved:   '#6b7280',
+    wip:       '#2563eb',
+    active:    '#2563eb',
+    gig_ready: '#2563eb',
+    parked:    '#6b7280',
+    retired:   '#6b7280'
+  };
+
   function isActiveSong(title) {
     var st = (typeof statusCache !== 'undefined' && statusCache[title]) ? statusCache[title] : '';
     return !!ACTIVE_STATUSES[st];
@@ -870,6 +908,11 @@
     ACTIVE_STATUSES:   ACTIVE_STATUSES,
     isActiveSong:      isActiveSong,
     getActiveStatuses: getActiveStatuses,
+
+    // Status display maps (canonical — Stab #04)
+    STATUS_LABELS:        STATUS_LABELS,
+    STATUS_LABELS_EMOJI:  STATUS_LABELS_EMOJI,
+    STATUS_COLORS:        STATUS_COLORS,
 
     // Rehearsals
     loadRehearsal:     loadRehearsal,

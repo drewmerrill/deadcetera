@@ -27,6 +27,16 @@
 //   homeCarePackage(gigId)
 //   homeDismissBanner()
 //   homeViewSetlist(setlistId)
+//
+// STATUS FILTERING CONVENTION (Stab #04 — 2026-05-13):
+//   This file uses a 4-key active-status subset
+//     { prospect:1, learning:1, rotation:1, gig_ready:1 }
+//   for weak-songs / songs-needing-work counts. This is INTENTIONALLY
+//   narrower than GLStore.ACTIVE_STATUSES (which includes legacy 'wip' and
+//   'active' for backward compatibility). Do not converge these inline
+//   subset filters onto GLStore.ACTIVE_STATUSES without an explicit decision
+//   — doing so will silently change weak-song counts on the home screen.
+//   See 02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md §Status filtering.
 // ============================================================================
 
 'use strict';
@@ -2998,6 +3008,8 @@ function _renderBandHealthRow(bundle) {
     // 4. Weak Songs count
     var rc = bundle.readinessCache || {};
     var _wkSc = (typeof statusCache !== 'undefined') ? statusCache : {};
+    // Intentional 4-key subset (not GLStore.ACTIVE_STATUSES) — home-dashboard
+    // weak-songs counts exclude legacy 'wip'/'active' statuses by design.
     var _wkA = { prospect: 1, learning: 1, rotation: 1, gig_ready: 1 };
     var weakCount = Object.entries(rc).filter(function(e) {
         if (!_wkA[(_wkSc[e[0]]) || '']) return false;

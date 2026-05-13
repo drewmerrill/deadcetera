@@ -214,7 +214,9 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     });
 
     if (filtered.length === 0) {
-        var statusNames = { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
+        var statusNames = (typeof GLStore !== 'undefined' && GLStore.STATUS_LABELS)
+            ? GLStore.STATUS_LABELS
+            : { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
         var statusLabel = (typeof activeStatusFilter !== 'undefined' && activeStatusFilter)
             ? (statusNames[activeStatusFilter] || activeStatusFilter)
             : '';
@@ -379,8 +381,12 @@ window.renderSongs = function renderSongs(filter, searchTerm) {
     // ────────────────────────────────────────────────────────────────────────
     // Precompute readiness + status + priority signals for simplified rows
     var _hasGLStore = (typeof GLStore !== 'undefined');
-    var _statusDisplay = { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
-    var _statusColor = { prospect:'#7c3aed', learning:'#2563eb', rotation:'#059669', shelved:'#6b7280', wip:'#2563eb', active:'#2563eb', gig_ready:'#2563eb', parked:'#6b7280', retired:'#6b7280' };
+    var _statusDisplay = (_hasGLStore && GLStore.STATUS_LABELS)
+        ? GLStore.STATUS_LABELS
+        : { prospect:'Prospect', learning:'Learning', rotation:'In Rotation', shelved:'Shelved', wip:'Learning', active:'Learning', gig_ready:'Learning', parked:'Shelved', retired:'Shelved' };
+    var _statusColor = (_hasGLStore && GLStore.STATUS_COLORS)
+        ? GLStore.STATUS_COLORS
+        : { prospect:'#7c3aed', learning:'#2563eb', rotation:'#059669', shelved:'#6b7280', wip:'#2563eb', active:'#2563eb', gig_ready:'#2563eb', parked:'#6b7280', retired:'#6b7280' };
 
     // Build upcoming setlist song set for priority signals
     var _upcomingSongs = {};
@@ -857,7 +863,9 @@ function _renderActiveFilterChip() {
         if (existing) existing.remove();
         return;
     }
-    var statusNames = { prospect:'👀 Prospect', learning:'📖 Learning', rotation:'🔄 In Rotation', shelved:'📦 Shelved', wip:'📖 Learning', active:'📖 Learning', gig_ready:'📖 Learning', parked:'📦 Shelved', retired:'📦 Shelved' };
+    var statusNames = (typeof GLStore !== 'undefined' && GLStore.STATUS_LABELS_EMOJI)
+        ? GLStore.STATUS_LABELS_EMOJI
+        : { prospect:'👀 Prospect', learning:'📖 Learning', rotation:'🔄 In Rotation', shelved:'📦 Shelved', wip:'📖 Learning', active:'📖 Learning', gig_ready:'📖 Learning', parked:'📦 Shelved', retired:'📦 Shelved' };
     var label = statusNames[activeStatusFilter] || activeStatusFilter;
     if (!existing) {
         existing = document.createElement('div');
