@@ -183,12 +183,17 @@
       var latest = setlists[setlists.length - 1];
       if (!latest.sets) latest.sets = [{ name: 'All Songs', songs: [] }];
       latest.sets[0].songs.push({ title: title, segue: 'stop' });
-      // Use safe per-record writer to avoid whole-array clobbers (2026-05-10 incident).
-      if (typeof window.saveBandSetlistsSafe === 'function') {
-        await window.saveBandSetlistsSafe(setlists, { actor: 'groovemate' });
-      } else {
-        await db.ref(_bp('setlists')).set(setlists);
+      // Safe per-record writer is the ONLY allowed path here. The 2026-05-10
+      // SWR-clobber incident traced to exactly this kind of read-mutate-write
+      // pattern hitting `firebaseDB.ref('setlists').set(wholeArray)` after a
+      // stale read. If `saveBandSetlistsSafe` ever fails to load (script-order
+      // change, future refactor), fail LOUD rather than silently clobber.
+      // Reality Stabilization Fix #02 (2026-05-13).
+      if (typeof window.saveBandSetlistsSafe !== 'function') {
+        console.error('[GLTools] saveBandSetlistsSafe unavailable — refusing whole-array setlist write to avoid 2026-05-10-style clobber. Aborted.');
+        return { success: false, message: 'Setlist save unavailable — please refresh and try again.', retryable: true };
       }
+      await window.saveBandSetlistsSafe(setlists, { actor: 'groovemate' });
       return { success: true, message: 'Added "' + title + '" to "' + (latest.name || 'setlist') + '".', action: 'add_song_to_setlist' };
     } catch(e) {
       return { success: false, message: 'Failed to add to setlist: ' + e.message };
@@ -351,12 +356,15 @@
       var snap = await db.ref(_bp('setlists')).once('value');
       var existing = snap.val() ? (Array.isArray(snap.val()) ? snap.val() : Object.values(snap.val())) : [];
       existing.push(setlist);
-      // Use safe per-record writer to avoid whole-array clobbers (2026-05-10 incident).
-      if (typeof window.saveBandSetlistsSafe === 'function') {
-        await window.saveBandSetlistsSafe(existing, { actor: 'groovemate' });
-      } else {
-        await db.ref(_bp('setlists')).set(existing);
+      // Safe per-record writer is the ONLY allowed path here. See the matching
+      // comment in `addSongToSetlist` above — fail LOUD if the safe writer
+      // isn't loaded rather than silently clobber other setlists. Reality
+      // Stabilization Fix #02 (2026-05-13).
+      if (typeof window.saveBandSetlistsSafe !== 'function') {
+        console.error('[GLTools] saveBandSetlistsSafe unavailable — refusing whole-array setlist write to avoid 2026-05-10-style clobber. Aborted setlist creation.');
+        return null;
       }
+      await window.saveBandSetlistsSafe(existing, { actor: 'groovemate' });
       return setlist;
     } catch(e) {
       console.error('[GLTools] Create setlist failed:', e.message);
