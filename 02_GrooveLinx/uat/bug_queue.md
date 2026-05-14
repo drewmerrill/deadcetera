@@ -1,6 +1,14 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260512-232320
+**Build Under Test:** 20260513-204319
+
+## Open
+
+| # | Bug | Severity | Diagnosis | Status |
+|---|---|---|---|---|
+| **#8** | 📂 Load button on chopper toolbar silently no-ops when no audio is loaded. Drew opened Best Shot → clicked 📂 Load expecting to retrieve his saved 5/11 timeline. Nothing visible happened. Concluded the save was lost. The save was actually safe in Firebase (`bands/{slug}/rehearsal_timelines/tl_1778719408878_peu1az`, label `Rehearsal 5/11/2026`, 81 segments, saved 2026-05-14T00:43Z) — the UI just wouldn't surface it. Diagnosed via console snippet `loadBandDataFromDrive('_band', 'rehearsal_timelines')` on 2026-05-14. | LOW (UX / discoverability — no data loss) | `_chopLoadSavedTimeline()` in `bestshot.js:948-952` early-returns with a 5-second toast `"⚠ Load an audio file first so the timeline lines up with playback"` when `chopAudioBuffer` is null. The gate exists for a real reason (timeline seconds map to the audio buffer; loading a timeline without audio gives you segment markers floating on an empty waveform). But: (a) the toast is brief and easy to miss, (b) "Load" with no other visible effect reads as "broken button", (c) the user has no signal that saved timelines exist at all until audio is loaded AND the prompt() picker happens to fire. There's no persistent indicator like "📂 N saved" on the toolbar. | **OPEN.** Suggested fixes (any one is sufficient; pick when convenient): (A) Show the picker FIRST, then show the audio-required message AFTER selection — user at least sees their saves exist. (B) Add a persistent "📂 N saved" badge next to the Load button showing the saved-count regardless of audio state; clicking it without audio gives a clearer CTA: "Load the matching audio first → [button to open Drive picker]". (C) Replace the prompt() with a modal that includes a "Load audio for this timeline" button that reads the saved record's `sourceUrl` (the original Drive URL is captured at save time) and feeds it back into ✨ Analyze on Server — closes the loop. Option C is the strongest; needs ~30-50 LOC in bestshot.js, no schema change. **Workaround in the meantime:** load audio first (drop in MP3 OR paste the saved record's `sourceUrl` into ✨ Analyze on Server), THEN click 📂 Load. |
+
+---
 
 ## Resolved 2026-05-12 — Timeline persistence + 3 follow-up bugs
 
