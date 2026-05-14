@@ -334,7 +334,6 @@ var _glPageScripts = {
     calendar:        ['js/features/calendar.js', 'js/core/calendar-export.js'],
     ideas:           ['js/features/band-comms.js', 'js/features/song-pitch.js'],
     feed:            ['js/features/band-feed.js'],
-    'rehearsal-mode': ['rehearsal-mode.js'],
     workbench:       ['js/features/workbench.js'],
     help:            ['help.js', 'js/ui/gl-help-v2.js']
 };
@@ -572,8 +571,6 @@ console.log('✅ navigation.js loaded');
             // Users found this confusing. Now: fresh start on every load.
             // The user must explicitly tap a song to open it.
             try { localStorage.removeItem('glLastSong'); } catch(e) {}
-            if (false) { // dead code — kept for reference
-            }
         } catch(e) {}
     });
 })();

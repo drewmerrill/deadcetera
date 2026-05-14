@@ -1488,9 +1488,6 @@ function _renderModeHeader(icon, title, subtitle) {
         + guidanceHtml;
 }
 
-// _renderSharpenPracticeCard, _renderSharpenWeakSongs, _renderSharpenRecentPractice
-// REMOVED — were only called by the dead _renderSharpenDashboard function.
-
 function _timeAgo(isoStr) {
     if (!isoStr) return '';
     var diff = Date.now() - new Date(isoStr).getTime();
@@ -2783,9 +2780,6 @@ function _buildTrendSignal() {
     var arrow = s.dir === 'up' ? '\u2191' : '\u2193';
     return '<div style="font-size:0.72em;color:' + color + ';font-weight:600;margin-top:4px">' + arrow + ' ' + s.text + '</div>';
 }
-
-// _renderPlayDashboard, _renderPlayUpcomingSet, _renderPlayReadiness
-// REMOVED — were dead code (line 375 always calls _renderLockinDashboard).
 
 // ── Command Center: Header ────────────────────────────────────────────────────
 
