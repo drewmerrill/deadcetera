@@ -1445,6 +1445,9 @@ function _slRenderStageView(idx, sl) {
         // tap-to-pulse on each. iPhone-friendly (full-width sheet).
         + '<button onclick="_slShowDrummerPrep(' + idx + ')" style="display:block;width:100%;padding:10px;border-radius:10px;border:1px solid rgba(251,146,60,0.35);background:rgba(251,146,60,0.08);color:#fb923c;font-size:0.85em;font-weight:700;cursor:pointer;min-height:40px;font-family:inherit;margin-bottom:10px;-webkit-tap-highlight-color:transparent">\uD83E\uDD41 Drummer Prep \u00B7 walk the BPMs</button>';
     html += '<div id="slPrepGigStatus" style="font-size:0.72em;color:#64748b;text-align:center;margin-top:-4px;margin-bottom:10px;min-height:16px">' + (_prepAllReady ? 'Charts stored locally \u2014 no wifi needed at the gig.' : '') + '</div>';
+    // Stab #12 \u2014 slot for partial-failure summary + retry UI. Empty by default;
+    // populated by _slRenderPrepSummary() when a Prep run ends in partial state.
+    html += '<div id="slPrepGigSummary"></div>';
 
     // ── 3. COACHING — calm bandmate voice, no alarm icons ──
     var coaching = _coachingText(totalWarn, totalSongs, totalReady, warnTitles);
@@ -1584,13 +1587,39 @@ window._slShowDrummerPrep = function(idx) {
 
 // Pre-warm every chart + per-song metadata for this setlist into localStorage
 // so everything works offline at the gig (no wifi = no problem).
-window._slPrepForGig = async function(idx) {
+//
+// Stab #12 (2026-05-14) — Trust hardening per Audit #09 §8.2.2. Old behavior
+// silently swallowed per-item failures with `tick(false)` and still showed
+// "Ready for gig" + green button + success toast even if 10 of 50 songs
+// silently failed to cache. Band could show up at a venue offline, charts
+// don't load, trust shattered. New behavior tracks per-item results and
+// distinguishes COMPLETE / PARTIAL / CATASTROPHIC outcomes truthfully.
+//
+// Opts:
+//   retryItems: array of {title, type} — only re-attempts these items
+//               (used by the "Retry failed only" button after a partial run)
+window._slPrepForGig = async function(idx, opts) {
+    opts = opts || {};
+    var retryItems = Array.isArray(opts.retryItems) ? opts.retryItems : null;
+
+    // Re-entrancy guard — duplicate clicks during an in-flight run are
+    // ignored so the user can't end up with two parallel prep loops racing
+    // each other or two completion toasts firing.
+    if (window._slPrepInProgress) {
+        if (typeof showToast === 'function') showToast('Prep already in progress');
+        return;
+    }
+
     var data = window._cachedSetlists || [];
     var sl = data[idx];
     if (!sl) { if (typeof showToast === 'function') showToast('Setlist not found'); return; }
     var btn = document.getElementById('slPrepGigBtn');
     var status = document.getElementById('slPrepGigStatus');
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+
+    // Hide any prior partial-failure summary while the new run is in flight.
+    var summary = document.getElementById('slPrepGigSummary');
+    if (summary) summary.innerHTML = '';
 
     // Ask the service worker to pre-cache the entire app shell (every JS + CSS
     // + icon referenced by index.html with its current ?v= stamp). Required
@@ -1617,48 +1646,248 @@ window._slPrepForGig = async function(idx) {
     // Band-level essentials for setlist + gig context
     var bandTypes = ['setlists', 'gigs', 'song_statuses', 'calendar_events'];
 
-    var total = uniqueTitles.length * perSongTypes.length + bandTypes.length;
+    // Build work items — either full set or retry-only subset.
+    var workItems = [];
+    if (retryItems && retryItems.length) {
+        retryItems.forEach(function(it) {
+            if (it && it.title && it.type) workItems.push({ title: it.title, type: it.type });
+        });
+    } else {
+        bandTypes.forEach(function(type) { workItems.push({ title: '_band', type: type }); });
+        uniqueTitles.forEach(function(title) {
+            perSongTypes.forEach(function(type) { workItems.push({ title: title, type: type }); });
+        });
+    }
+
+    var total = workItems.length;
+    if (total === 0) {
+        if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+        if (status) status.textContent = '';
+        return;
+    }
+
+    // Route-leave cancellation: if user navigates away mid-prep, set
+    // cancelled so the post-loop UI update does not falsely claim success.
+    var cancelled = false;
+    function _abortPrep() { cancelled = true; }
+    if (window.GLRouteLifecycle && typeof window.GLRouteLifecycle.register === 'function') {
+        window.GLRouteLifecycle.register('setlists', _abortPrep);
+    }
+
+    // Offline-mid-run signal — some fetches succeed briefly offline (cached
+    // responses); we don't abort, but we surface the offline event in the
+    // result so the catastrophic-failure message is more helpful.
+    var wentOffline = false;
+    function _onOffline() { wentOffline = true; }
+    window.addEventListener('offline', _onOffline);
+
+    window._slPrepInProgress = true;
     var done = 0;
-    var failed = 0;
-    function tick(ok) {
+    var failures = []; // [{title, type, reason, retryable}]
+
+    function _reasonOf(err) {
+        try {
+            if (!err) return 'unknown';
+            if (typeof err === 'string') return err.slice(0, 100);
+            if (err.message) return String(err.message).slice(0, 100);
+            return 'error';
+        } catch(_re) { return 'error'; }
+    }
+
+    function _tick(item, ok, err) {
         done++;
-        if (!ok) failed++;
-        if (status) status.textContent = 'Downloading… ' + done + ' / ' + total + (failed ? ' (' + failed + ' skipped)' : '');
+        if (!ok) {
+            failures.push({
+                title: item.title,
+                type: item.type,
+                reason: _reasonOf(err),
+                retryable: navigator.onLine !== false
+            });
+        }
+        if (status) {
+            status.textContent = 'Downloading… ' + done + ' / ' + total
+                + (failures.length ? ' (' + failures.length + ' failed)' : '');
+        }
     }
 
     if (status) status.textContent = 'Downloading… 0 / ' + total;
 
-    // Pre-warm band-level data
-    for (var b = 0; b < bandTypes.length; b++) {
-        try {
-            await window.prewarmBandData('_band', bandTypes[b]);
-            tick(true);
-        } catch(e) { tick(false); }
-    }
+    try {
+        // Run band-level items sequentially (4 of them — fast, low risk).
+        var bandWork = workItems.filter(function(w) { return w.title === '_band'; });
+        var songWork = workItems.filter(function(w) { return w.title !== '_band'; });
 
-    // Pre-warm per-song data — 6 songs in parallel to avoid hammering Firebase
-    var BATCH = 6;
-    for (var i = 0; i < uniqueTitles.length; i += BATCH) {
-        var chunk = uniqueTitles.slice(i, i + BATCH);
-        await Promise.all(chunk.map(function(title) {
-            return Promise.all(perSongTypes.map(function(type) {
-                return window.prewarmBandData(title, type).then(function() { tick(true); }).catch(function() { tick(false); });
+        for (var b = 0; b < bandWork.length; b++) {
+            if (cancelled) break;
+            var bItem = bandWork[b];
+            try {
+                await window.prewarmBandData('_band', bItem.type);
+                _tick(bItem, true);
+            } catch(e) { _tick(bItem, false, e); }
+        }
+
+        // Run per-song items in batches of 6 to avoid hammering Firebase.
+        // Group by song title so we still warm one song's full type set in
+        // parallel (chart + key + bpm + ...) before moving to the next batch.
+        var bySong = {};
+        songWork.forEach(function(it) {
+            if (!bySong[it.title]) bySong[it.title] = [];
+            bySong[it.title].push(it);
+        });
+        var songTitles = Object.keys(bySong);
+        var BATCH = 6;
+        for (var i = 0; i < songTitles.length; i += BATCH) {
+            if (cancelled) break;
+            var chunk = songTitles.slice(i, i + BATCH);
+            await Promise.all(chunk.map(function(title) {
+                return Promise.all(bySong[title].map(function(item) {
+                    return window.prewarmBandData(item.title, item.type)
+                        .then(function() { _tick(item, true); })
+                        .catch(function(err) { _tick(item, false, err); });
+                }));
             }));
-        }));
+        }
+    } finally {
+        window._slPrepInProgress = false;
+        try { window.removeEventListener('offline', _onOffline); } catch(_re) {}
     }
 
+    // Surface the run result for the Runtime Health Overlay + future debugging.
+    // Cap failures list so a worst-case run doesn't bloat memory.
+    var _resFailures = failures.slice(0, 100);
+    window._slPrepLastResult = {
+        ok: failures.length === 0 && !cancelled,
+        cancelled: cancelled,
+        wentOffline: wentOffline,
+        total: total,
+        done: done,
+        failed: failures.length,
+        failures: _resFailures,
+        setlistIdx: idx,
+        at: Date.now()
+    };
+
+    // Truthful outcome semantics:
+    //   COMPLETE     - every item succeeded; show "Ready for gig"
+    //   PARTIAL      - some items failed; do NOT claim success
+    //   CATASTROPHIC - every item failed; explicit failure state
+    //   CANCELLED    - route-leave mid-prep; restore neutral state
+    var success = failures.length === 0;
+    var catastrophic = failures.length === total && total > 0;
+
+    if (cancelled) {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+        console.log('[Prep] cancelled - ' + done + '/' + total + ' completed before nav-away');
+        return;
+    }
+
+    if (success) {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.innerHTML = '\u2705 Ready for gig \u00B7 ' + uniqueTitles.length + ' songs cached';
+            btn.style.background = 'rgba(34,197,94,0.12)';
+            btn.style.borderColor = 'rgba(34,197,94,0.4)';
+            btn.style.color = '#86efac';
+        }
+        if (status) status.textContent = 'All ' + uniqueTitles.length + ' songs cached for offline use.';
+        if (typeof showToast === 'function') showToast('Ready for gig — ' + uniqueTitles.length + ' songs offline');
+        console.log('[Prep] success - ' + total + ' items cached');
+        return;
+    }
+
+    if (catastrophic) {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.innerHTML = '\u26A0 Prep failed - try again';
+            btn.style.background = 'rgba(239,68,68,0.10)';
+            btn.style.borderColor = 'rgba(239,68,68,0.40)';
+            btn.style.color = '#fca5a5';
+        }
+        var _offlineNote = (wentOffline || navigator.onLine === false) ? ' Check your connection.' : '';
+        if (status) status.textContent = 'Could not prepare any songs.' + _offlineNote;
+        if (typeof showToast === 'function') showToast('Prep failed - try again');
+        console.warn('[Prep] catastrophic - 0/' + total + ' items cached');
+        return;
+    }
+
+    // PARTIAL - the truthful path Audit #09 demanded.
     if (btn) {
         btn.disabled = false;
         btn.style.opacity = '1';
-        btn.innerHTML = '\u2705 Ready for gig \u00B7 ' + uniqueTitles.length + ' songs cached';
-        btn.style.background = 'rgba(34,197,94,0.12)';
-        btn.style.borderColor = 'rgba(34,197,94,0.4)';
-        btn.style.color = '#86efac';
+        btn.innerHTML = '\u26A0 Partial \u00B7 ' + (total - failures.length) + ' of ' + total + ' items cached';
+        btn.style.background = 'rgba(251,191,36,0.10)';
+        btn.style.borderColor = 'rgba(251,191,36,0.40)';
+        btn.style.color = '#fbbf24';
     }
-    if (status) status.textContent = failed
-        ? 'Done. ' + (total - failed) + ' of ' + total + ' cached (offline-ready).'
-        : 'All ' + uniqueTitles.length + ' songs cached for offline use.';
-    if (typeof showToast === 'function') showToast('Ready for gig — ' + uniqueTitles.length + ' songs offline');
+    if (status) status.textContent = 'Some songs could not be prepared. See below to retry.';
+    if (typeof showToast === 'function') showToast('Some songs need another try');
+
+    // Inline summary + retry UI - listed by song, with "Retry failed only" +
+    // "Try again" buttons. Kept compact (not a modal).
+    _slRenderPrepSummary(idx, failures);
+    console.warn('[Prep] partial - ' + failures.length + ' of ' + total + ' items failed');
+};
+
+// Render the partial-failure summary with per-song fail list + retry buttons.
+// Lives in the existing #slPrepGigSummary slot which sits right under the
+// Prep for Gig button + status line.
+function _slRenderPrepSummary(idx, failures) {
+    var slot = document.getElementById('slPrepGigSummary');
+    if (!slot) return;
+    if (!failures || !failures.length) { slot.innerHTML = ''; return; }
+
+    // Collapse failures by title so the same song doesn't appear N times.
+    var byTitle = {};
+    failures.forEach(function(f) {
+        var key = f.title === '_band' ? 'Band data' : f.title;
+        if (!byTitle[key]) byTitle[key] = [];
+        byTitle[key].push(f.type);
+    });
+    var titles = Object.keys(byTitle);
+
+    var rows = titles.slice(0, 12).map(function(t) {
+        var types = byTitle[t].join(', ');
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.78em">'
+            + '<span style="color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">' + t + '</span>'
+            + '<span style="color:#94a3b8;flex-shrink:0">' + types + '</span>'
+            + '</div>';
+    }).join('');
+    if (titles.length > 12) {
+        rows += '<div style="padding:4px 0;font-size:0.74em;color:#64748b">… and ' + (titles.length - 12) + ' more</div>';
+    }
+
+    var retryable = failures.some(function(f) { return f.retryable; });
+
+    var html = '<div style="margin-top:8px;padding:10px 12px;border-radius:10px;background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.20);max-width:100%">'
+        + '<div style="font-size:0.78em;font-weight:700;color:#fbbf24;margin-bottom:6px">Some songs need another try</div>'
+        + '<div style="margin-bottom:8px">' + rows + '</div>'
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        + (retryable
+            ? '<button onclick="_slPrepRetry(' + idx + ')" style="flex:1;min-width:140px;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.10);color:#fbbf24;font-size:0.8em;font-weight:700;cursor:pointer">Retry failed only</button>'
+            : '')
+        + '<button onclick="_slPrepForGig(' + idx + ')" style="flex:1;min-width:140px;padding:8px;border-radius:8px;border:1px solid rgba(129,140,248,0.4);background:rgba(129,140,248,0.10);color:#a5b4fc;font-size:0.8em;font-weight:700;cursor:pointer">Try again</button>'
+        + '</div>'
+        + '</div>';
+    slot.innerHTML = html;
+}
+
+// Retry handler - re-runs Prep for Gig with only the failed items from the
+// last result. Falls through to a full re-run if no result is cached or
+// nothing remains retryable (e.g., we went offline after the prior run).
+window._slPrepRetry = function(idx) {
+    var last = window._slPrepLastResult;
+    if (!last || !last.failures || !last.failures.length) {
+        return window._slPrepForGig(idx);
+    }
+    var retryOnly = last.failures.filter(function(f) { return f.retryable; })
+        .map(function(f) { return { title: f.title, type: f.type }; });
+    if (!retryOnly.length) return window._slPrepForGig(idx);
+    return window._slPrepForGig(idx, { retryItems: retryOnly });
 };
 
 // Launch into existing Live Gig mode (full-screen overlay, not a page)

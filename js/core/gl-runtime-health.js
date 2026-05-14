@@ -77,11 +77,36 @@
       routeLifecycle: _routeLifecycleSnap(),
       playback: _playbackSnap(),
       spotify: _spotifySnap(),
+      prepForGig: _prepSnap(),
       teardowns: _teardownsSnap(),
       warnings: [],
     };
     snap.warnings = _buildWarnings(snap);
     return snap;
+  }
+
+  // Stab #12 — surface last Prep for Gig run result. Reads the lightweight
+  // `_slPrepLastResult` object set by `_slPrepForGig`. Purely observational.
+  function _prepSnap() {
+    try {
+      var r = window._slPrepLastResult;
+      if (!r) return { available: false };
+      return {
+        available: true,
+        ok: !!r.ok,
+        cancelled: !!r.cancelled,
+        wentOffline: !!r.wentOffline,
+        total: r.total || 0,
+        done: r.done || 0,
+        failed: r.failed || 0,
+        // Sample first 3 fails for the overlay; full list is in window._slPrepLastResult.
+        sampleFailures: Array.isArray(r.failures) ? r.failures.slice(0, 3).map(function(f) {
+          return (f.title || '_band') + ':' + (f.type || '?');
+        }) : [],
+        setlistIdx: typeof r.setlistIdx === 'number' ? r.setlistIdx : null,
+        at: r.at || null,
+      };
+    } catch (e) { return { available: false, error: e && e.message }; }
   }
 
   function _coreSnap() {

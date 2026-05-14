@@ -1,6 +1,6 @@
 # GrooveLinx — Known Stable Flows
 
-_Last updated: 2026-05-14 (build `20260514-124346`)._
+_Last updated: 2026-05-14 (build `20260514-130621`)._
 
 This doc tracks user-facing flows by **trust level**: how confident we are that the flow works reliably across browsers + iOS Safari + route transitions + arbitration. Updated on every Stabilization Fix that touches a flow.
 
@@ -97,6 +97,26 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 - On `visibilitychange` to visible, `gl-spotify-connect.js:467` forces device cache invalidation + immediate poll.
 - `gl-player-engine.js:897-923` retries Spotify Connect if `_awaitingSpotifyApp` and tab becomes visible.
 - Wake-flow CTA in `gl-player-ui.js` directs user to open Spotify app when device unavailable.
+
+---
+
+## Prep for Gig — Truthful Completion (Stab #12, 2026-05-14)
+
+**Status:** **Stable** (build `20260514-130621`)
+- `_slPrepForGig(idx, opts?)` in `setlists.js` now distinguishes **COMPLETE / PARTIAL / CATASTROPHIC / CANCELLED** outcomes instead of always claiming "Ready for gig". Closes Audit #09's most-dangerous-silent-failure-still-open.
+- **Failure tracking shape:** `failures = [{title, type, reason, retryable}]`. `reason` is a 100-char safe extract from the caught error. `retryable` is set from `navigator.onLine` at fail-time.
+- **Outcome semantics:**
+  - COMPLETE — every item succeeded. Existing "Ready for gig" success path preserved verbatim (green button, success toast).
+  - PARTIAL — some items failed. Amber button ("⚠ Partial · N of M items cached"), warning toast ("Some songs need another try"), inline summary in `#slPrepGigSummary` slot listing failed songs collapsed by title with "Retry failed only" + "Try again" buttons.
+  - CATASTROPHIC — every item failed. Red button ("⚠ Prep failed — try again"), red status text with offline note when applicable.
+  - CANCELLED — route-leave mid-prep. Neutral state restored, no success claim, no toast spam.
+- **Re-entrancy:** `window._slPrepInProgress` guard — duplicate clicks during in-flight run surface a "Prep already in progress" toast and return early.
+- **Route-leave cancellation:** `GLRouteLifecycle.register('setlists', _abortPrep)` flips a `cancelled` flag the loop checks between batches. Disposer is de-duped by function ref so repeat registrations are safe.
+- **Offline-mid-run:** `window.addEventListener('offline', _onOffline)` flips a `wentOffline` flag so the catastrophic-message can append "Check your connection."
+- **Retry path:** `window._slPrepRetry(idx)` reads `window._slPrepLastResult.failures`, filters by `retryable`, calls `_slPrepForGig(idx, { retryItems: [...] })`. Falls through to full re-run if no items remain retryable.
+- **Runtime Health Overlay:** new `prepForGig` snapshot section in `js/core/gl-runtime-health.js` reports `available / ok / cancelled / wentOffline / total / done / failed / sampleFailures` (top 3 fail signatures). Purely observational.
+- **DOM slot:** `#slPrepGigSummary` added to the Stage View render path (empty by default; populated by `_slRenderPrepSummary` only on PARTIAL outcomes).
+- **Held back:** M.3 (multitrack upload AbortController) + M.4 (Modal stem job persistence) remain open per Audit #09 — next medium-effort stab.
 
 ---
 
