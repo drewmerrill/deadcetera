@@ -548,11 +548,33 @@ window.GLSpotifyConnect = (function() {
   // anything else) MUST go through this surface. Direct `fetch(api.spotify.com)`
   // is forbidden in new code per DATA_OWNERSHIP_RULES.md.
 
+  // Stab #10 (2026-05-13): lightweight stats for GLRuntimeHealth overlay.
+  // Purely observational — no behavior change. NEVER includes token values.
+  var _stats = {
+    apiCalls: 0,
+    lastApiAt: null,
+    lastApiPath: null,
+    lastApiStatus: null,
+    lastApiError: null,
+    apiFailures: 0,
+    lastConnCheckAt: null,
+    lastConnResult: null,
+  };
+
   async function apiRequest(method, path, body, opts) {
     opts = opts || {};
+    _stats.apiCalls++;
+    _stats.lastApiAt = Date.now();
+    _stats.lastApiPath = path;
     try {
-      return await _req(method || 'GET', path, body);
+      var res = await _req(method || 'GET', path, body);
+      _stats.lastApiStatus = 'ok';
+      _stats.lastApiError = null;
+      return res;
     } catch (e) {
+      _stats.apiFailures++;
+      _stats.lastApiStatus = (e && (e.status || e.message)) || 'error';
+      _stats.lastApiError = e && e.message || 'error';
       // Legacy-shape callers (listening-bundles' _spotifyApi) want the same
       // return contract: null on no-token / unrecoverable / network, error
       // body on non-ok. Synthesize it from the thrown error.
@@ -618,6 +640,30 @@ window.GLSpotifyConnect = (function() {
 
   function _clearConnectionCache() { _connCache = null; _connCacheAt = 0; }
 
+  // Stab #10 (2026-05-13): snapshot for GLRuntimeHealth. NEVER exposes token
+  // values — only presence boolean + connection state + rolling api stats.
+  function getStats() {
+    var hasToken = false;
+    try { hasToken = _hasValidToken(); } catch(e) {}
+    return {
+      pollingActive: _pollingTimer !== null,
+      hasToken: hasToken,
+      // The cached `/me` probe result, if any. Never token bytes.
+      cachedConnection: _connCache ? {
+        connected: !!_connCache.connected,
+        product: _connCache.product || null,
+        reason: _connCache.reason || null,
+        ageMs: _connCacheAt ? (Date.now() - _connCacheAt) : null,
+      } : null,
+      apiCalls: _stats.apiCalls,
+      apiFailures: _stats.apiFailures,
+      lastApiAt: _stats.lastApiAt,
+      lastApiPath: _stats.lastApiPath,
+      lastApiStatus: _stats.lastApiStatus,
+      lastApiError: _stats.lastApiError,
+    };
+  }
+
   // ── Public API ─────────────────────────────────────────────────────────────
   return {
     on: on,
@@ -625,6 +671,8 @@ window.GLSpotifyConnect = (function() {
     apiRequest: apiRequest,
     hasValidConnection: hasValidConnection,
     _clearConnectionCache: _clearConnectionCache,
+    // Stab #10 observability
+    getStats: getStats,
     listDevices: listDevices,
     isAvailable: isAvailable,
     pickPreferredDevice: pickPreferredDevice,

@@ -32,13 +32,27 @@ var _navSeq = 0; // Navigation sequence counter — prevents stale async renders
 window.GLRouteLifecycle = window.GLRouteLifecycle || {
     currentRoute: null,
     disposers: {},
+    // Stab #10 (2026-05-13): lightweight stats for GLRuntimeHealth overlay.
+    // Purely observational — no behavior change. Read-only via getStats().
+    _stats: {
+        registers: 0,
+        duplicatesSkipped: 0,
+        leaves: 0,
+        lastLeaveFrom: null,
+        lastLeaveTo: null,
+        lastLeaveAt: null,
+        lastDisposerCount: 0,
+        cleanupFailures: 0,
+    },
     register: function(routeName, fn) {
         if (typeof fn !== 'function' || !routeName) return;
         if (!this.disposers[routeName]) this.disposers[routeName] = [];
         // De-dupe by reference so a re-render registering the same fn doesn't stack it.
         if (this.disposers[routeName].indexOf(fn) === -1) {
             this.disposers[routeName].push(fn);
+            this._stats.registers++;
         } else {
+            this._stats.duplicatesSkipped++;
             console.log('[GLRouteLifecycle] duplicate disposer registration skipped for "' + routeName + '"');
         }
     },
@@ -46,17 +60,43 @@ window.GLRouteLifecycle = window.GLRouteLifecycle || {
         var prev = this.currentRoute;
         if (prev && prev !== nextRoute) {
             var fns = this.disposers[prev] || [];
+            this._stats.leaves++;
+            this._stats.lastLeaveFrom = prev;
+            this._stats.lastLeaveTo = nextRoute;
+            this._stats.lastLeaveAt = Date.now();
+            this._stats.lastDisposerCount = fns.length;
             if (fns.length) {
                 console.log('[GLRouteLifecycle] leave "' + prev + '" → "' + nextRoute + '" (' + fns.length + ' disposer' + (fns.length === 1 ? '' : 's') + ')');
             }
             for (var i = 0; i < fns.length; i++) {
                 try { fns[i](); }
-                catch(e) { console.warn('[GLRouteLifecycle] disposer failed for "' + prev + '":', e && e.message || e); }
+                catch(e) {
+                    this._stats.cleanupFailures++;
+                    console.warn('[GLRouteLifecycle] disposer failed for "' + prev + '":', e && e.message || e);
+                }
             }
             // Clear so the next mount registers fresh.
             this.disposers[prev] = [];
         }
         this.currentRoute = nextRoute;
+    },
+    getStats: function() {
+        // Snapshot stats + derived live state. Safe to call from anywhere.
+        var routes = Object.keys(this.disposers);
+        var activeRoutes = routes.filter(function(r) { return (this.disposers[r] || []).length > 0; }, this);
+        return {
+            currentRoute: this.currentRoute,
+            registers: this._stats.registers,
+            duplicatesSkipped: this._stats.duplicatesSkipped,
+            leaves: this._stats.leaves,
+            lastLeaveFrom: this._stats.lastLeaveFrom,
+            lastLeaveTo: this._stats.lastLeaveTo,
+            lastLeaveAt: this._stats.lastLeaveAt,
+            lastDisposerCount: this._stats.lastDisposerCount,
+            cleanupFailures: this._stats.cleanupFailures,
+            activeRoutes: activeRoutes,
+            activeRouteDisposerCount: activeRoutes.reduce(function(acc, r) { acc[r] = (this.disposers[r] || []).length; return acc; }.bind(this), {}),
+        };
     }
 };
 

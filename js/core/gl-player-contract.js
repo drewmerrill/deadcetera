@@ -243,10 +243,24 @@ window.GLPlayerContract = (function () {
 
     var _arbitrating = false;
 
+    // Stab #10 (2026-05-13): lightweight stats for GLRuntimeHealth overlay.
+    // Purely observational — no behavior change.
+    var _stats = {
+        pauseAllCalls: 0,
+        reentrantDropped: 0,
+        lastPauseAllAt: null,
+        lastExceptId: null,
+        lastPaused: [],
+        lastSkipped: [],
+        lastFailed: [],
+        totalPauseFailures: 0,
+    };
+
     function pauseAll(except) {
         if (_arbitrating) {
             // Re-entrant call — drop silently. The outer pauseAll() owns
             // the cascade and will reach every surface anyway.
+            _stats.reentrantDropped++;
             return { paused: [], skipped: ['<re-entrant>'], failed: [] };
         }
         _arbitrating = true;
@@ -303,7 +317,37 @@ window.GLPlayerContract = (function () {
                 (failed.length ? 'failed=' + JSON.stringify(failed) : ''));
         }
 
+        // Stab #10 (2026-05-13): snapshot for GLRuntimeHealth.
+        _stats.pauseAllCalls++;
+        _stats.lastPauseAllAt = Date.now();
+        _stats.lastExceptId = exceptId || null;
+        _stats.lastPaused = paused.slice();
+        _stats.lastSkipped = skipped.slice();
+        _stats.lastFailed = failed.slice();
+        _stats.totalPauseFailures += failed.length;
+
         return { paused: paused, skipped: skipped, failed: failed };
+    }
+
+    function getStats() {
+        // Stab #10: snapshot for GLRuntimeHealth. Includes live registry sizes
+        // alongside the rolling pauseAll stats.
+        return {
+            registryCount: Object.keys(_registry).length,
+            pausableCount: Object.keys(_pausables).length,
+            registryIntents: Object.keys(_registry),
+            pausableIds: Object.keys(_pausables),
+            pauseAllAvailable: true,
+            pauseAllCalls: _stats.pauseAllCalls,
+            reentrantDropped: _stats.reentrantDropped,
+            lastPauseAllAt: _stats.lastPauseAllAt,
+            lastExceptId: _stats.lastExceptId,
+            lastPaused: _stats.lastPaused.slice(),
+            lastSkipped: _stats.lastSkipped.slice(),
+            lastFailed: _stats.lastFailed.slice(),
+            totalPauseFailures: _stats.totalPauseFailures,
+            arbitrating: _arbitrating,
+        };
     }
 
     // ── PUBLIC API ──────────────────────────────────────────────────────────
@@ -322,7 +366,9 @@ window.GLPlayerContract = (function () {
         // Stab #07 arbitration
         registerPausable: registerPausable,
         unregisterPausable: unregisterPausable,
-        pauseAll: pauseAll
+        pauseAll: pauseAll,
+        // Stab #10 observability
+        getStats: getStats
     };
 
 })();

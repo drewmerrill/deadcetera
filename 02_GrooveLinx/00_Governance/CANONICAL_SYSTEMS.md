@@ -1,5 +1,31 @@
 # Canonical Systems
 
+## Runtime Observability (Stab #10, 2026-05-13)
+
+Canonical owner:
+`window.GLRuntimeHealth` (in `js/core/gl-runtime-health.js`)
+
+Surfaces live state of: core (build/route), service worker / update detection, GLRouteLifecycle, GLPlayerContract pauseAll arbitration, GLSpotifyConnect, known teardown exports.
+
+**Activation (dev-only):** `?dev=true` OR `localStorage.gl_runtime_health='1'` OR `GLRuntimeHealth.show()` OR `Ctrl+Shift+H`/`Cmd+Shift+H`. Production users see nothing.
+
+**Privacy invariants:**
+- NEVER exposes Spotify access tokens or refresh tokens (presence boolean only).
+- NEVER exposes Firebase auth tokens.
+- NEVER exposes raw localStorage values (only activation-gate presence boolean).
+- NEVER exposes user PII beyond what's already in the app shell.
+
+**Powered by three `getStats()` getters:**
+- `GLRouteLifecycle.getStats()` (`js/ui/navigation.js`)
+- `GLPlayerContract.getStats()` (`js/core/gl-player-contract.js`)
+- `GLSpotifyConnect.getStats()` (`js/core/gl-spotify-connect.js`)
+
+**Prohibited:** adding new monkey-patches of global browser APIs (addEventListener, setInterval, setTimeout, requestAnimationFrame) for instrumentation purposes. The overlay reads existing module state only. New observability metrics belong inside existing canonical modules behind a `getStats()` getter.
+
+**Permitted:** future stats fields on the three existing `getStats()` getters, or new `getStats()` on other canonical modules (e.g. `GLStore.RehearsalSession`, `GLStore.PracticeSession`).
+
+---
+
 ## Song Status — Active Set
 Canonical owner:
 `GLStore.ACTIVE_STATUSES` + `GLStore.isActiveSong(title)` (in `js/core/groovelinx_store.js`)

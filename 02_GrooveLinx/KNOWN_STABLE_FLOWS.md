@@ -100,6 +100,23 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 
 ---
 
+## Observability — Runtime Health Overlay (Stab #10)
+
+**Status:** **Stable** (Stab #10, 2026-05-13)
+- New module `js/core/gl-runtime-health.js` mounts a dev-only floating panel that shows live state of core/SW/route lifecycle/playback/Spotify/teardown exports + auto-derived warnings.
+- **Activation gates (any one):** `?dev=true` in URL; `localStorage.gl_runtime_health === '1'`; console `GLRuntimeHealth.show()`; keyboard `Ctrl+Shift+H` / `Cmd+Shift+H`.
+- **Production users see nothing** by default — the script loads but the overlay DOM only mounts when a gate is satisfied.
+- **Privacy invariants** (verified by grep): no Spotify access/refresh tokens, no Firebase auth tokens, no raw localStorage values, no user PII. `hasToken: boolean` only.
+- **Auto-refresh:** every 1500ms while visible and uncollapsed.
+- **Copy 📋 button** puts the full snapshot JSON on the clipboard for bug-report pasting.
+- **Powered by three new `getStats()` getters** added to `GLRouteLifecycle` (navigation.js), `GLPlayerContract` (gl-player-contract.js), `GLSpotifyConnect` (gl-spotify-connect.js). Purely observational — zero behavior change to the underlying flows.
+
+### `GLRuntimeHealth.snapshot()` shape (for console / scripted use)
+
+Returns `{ core, sw, routeLifecycle, playback, spotify, teardowns, warnings }`. Safe to call from anywhere. No DOM side effect.
+
+---
+
 ## Update / Resume / Reload flows (Stab #09)
 
 ### Foreground update detection
