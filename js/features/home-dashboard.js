@@ -1580,16 +1580,28 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         }
     } catch(_e) { /* non-fatal */ }
 
-    // Risk context (if any) — opens the narrative
-    if (_riskCard) _leftHtml += _riskCard;
+    // Risk context (if any) — opens the narrative. P0.5 (Audit #10): when the
+    // unified Event Risk Card renders, it absorbs the Next Action Card's
+    // recommended-next CTA. We suppress NBA here so the user sees ONE primary
+    // operational narrative instead of two competing "do this next" surfaces.
+    // When _riskCard is empty (no upcoming event within 7 days), Next Action
+    // stays prominent — it remains the right answer in that mode.
+    var _hasRiskCard = !!_riskCard;
+    if (_hasRiskCard) _leftHtml += _riskCard;
 
-    // NBA — the answer to "what should I do?"
-    _leftHtml += _renderNextActionCard(bundle, wf);
+    // NBA — the answer to "what should I do?" (only when no risk card)
+    if (!_hasRiskCard) _leftHtml += _renderNextActionCard(bundle, wf);
 
-    // Band Focus songs — secondary, visually demoted
+    // Band Focus songs — secondary by default. When the risk card is showing,
+    // it's REALLY secondary — visually demoted further and relabeled as
+    // "Additional Focus Areas" so the risk card's primary narrative stays
+    // dominant. When no risk card, focus songs are the natural primary surface.
     if (_focusItems.length > 0) {
-        _leftHtml += '<div style="padding:0 2px;margin-bottom:8px;opacity:0.85">';
-        _leftHtml += '<div class="gl-section-label" style="margin-bottom:6px;padding-top:0">Focus songs</div>';
+        var _focusOpacity = _hasRiskCard ? '0.65' : '0.85';
+        var _focusLabel = _hasRiskCard ? 'Additional focus areas' : 'Focus songs';
+        var _focusChip = (typeof GLScopeChip !== 'undefined' && GLScopeChip.render) ? GLScopeChip.render('band') : '';
+        _leftHtml += '<div style="padding:0 2px;margin-bottom:8px;opacity:' + _focusOpacity + '">';
+        _leftHtml += '<div class="gl-section-label" style="margin-bottom:6px;padding-top:0">' + _focusChip + _focusLabel + '</div>';
         _focusItems.forEach(function(item) {
             var avg = item.avg ? item.avg.toFixed(1) : '?';
             var barPct = item.avg ? Math.round((item.avg / 5) * 100) : 0;
@@ -1617,7 +1629,12 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         } else {
             _leftHtml += '<span style="font-size:0.72em;color:var(--gl-green);font-weight:600">\u2713 Locked for band</span>';
         }
-        if (_alignCount > 0) {
+        // P0.5 (Audit #10 F10): hide the "N/5 aligned" detached count when
+        // the risk card dominates the narrative. Detached polling counts add
+        // noise without context; suppressing during operational pressure keeps
+        // the unified card's primary action clear. Count returns to view when
+        // there's no risk-card narrative competing for attention.
+        if (_alignCount > 0 && !_hasRiskCard) {
             _leftHtml += '<span style="font-size:0.68em;color:var(--text-dim);margin-left:auto;opacity:0.6">' + _alignCount + '/' + memberCount + ' aligned</span>';
         }
         _leftHtml += '</div>';
@@ -1626,16 +1643,27 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
     // Weekly Band Pulse — three compact metrics
     _leftHtml += _renderWeeklyPulse();
 
-    // Nudge — gentle signal below focus
-    if (_nudge) _leftHtml += _nudge;
+    // Nudge — gentle signal below focus. P0.5: suppress when risk card is
+    // already telling the user what to do. Smart Nudge surfaces practice
+    // recency / readiness drops; both are subsumed by the risk-card narrative
+    // when an event is upcoming. Returns to view when no risk card.
+    if (_nudge && !_hasRiskCard) _leftHtml += _nudge;
 
     // Upload Rehearsal CTA — entry to the standalone Chopper.
     // Sits above the activity feed so it's visible but not above-the-fold
     // critical (the gig-readiness cards stay at the top).
     _leftHtml += renderUploadRehearsal();
 
-    // What's New — band activity stream (loaded async after first paint)
-    _leftHtml += '<div id="hdActivityFeed"></div>';
+    // Recent band activity — awareness stream (loaded async after first paint).
+    // P0.5 (Audit #10 F7): visually demoted with reduced opacity + softer
+    // section label. Activity is for AWARENESS, not operational guidance —
+    // the unified Event Risk Card holds the operational narrative; this is
+    // background context. The label change ("Recent band activity" vs
+    // "What's New") telegraphs the lower information-priority.
+    _leftHtml += '<div style="margin-top:20px;opacity:0.78">'
+        + '<div class="gl-section-label" style="margin-bottom:6px;color:var(--text-dim);font-size:0.7em">Recent band activity</div>'
+        + '<div id="hdActivityFeed"></div>'
+        + '</div>';
 
     // Post-rehearsal + polls
     _leftHtml += '<div id="hdPostRehearsalPrompt"></div>';
@@ -1999,14 +2027,29 @@ function _renderBandStatusCompact(bundle) {
     var ratedCount = _agg.ratedCount;
     var lowCount = _agg.belowReadyCount;   // avg > 0 && avg < 3
     var lockedCount = _agg.highReady;      // avg >= 4
+    var totalActive = (_agg.activeSongs || []).length;
     var overallAvg = _agg.overallAvg;
     var pct = ratedCount > 0 ? Math.round(overallAvg / 5 * 100) : 0;
     var barColor = (typeof GLStatus !== 'undefined') ? GLStatus.getBarColor(pct) : '#475569';
 
-    // Headline: use scorecard summary if rated, otherwise specific empty state
-    var headline = sc.healthSummary;
-    if (ratedCount === 0) headline = 'Open a song and rate your readiness';
+    // P0.5 (Audit #10 F4 + F9 fix, 2026-05-14): headline now uses the SAME
+    // count source as the footer (`_agg` aggregate) so the card cannot
+    // self-contradict. Operational copy ("X of Y songs locked") replaces the
+    // abstract score-first headline. The scorecard's `lowReady` (avg <= 2)
+    // threshold is still used for `healthColor` severity but NOT for the
+    // count text \u2014 that prevents the "1 needs attention vs 2 need work"
+    // disagreement Drew called out in Audit #10 F9.
+    var headline = '';
+    if (ratedCount === 0) {
+        headline = 'Open a song and rate your readiness';
+    } else if (totalActive > 0) {
+        // Operational copy \u2014 what does the band actually KNOW about itself?
+        headline = lockedCount + ' of ' + totalActive + ' song' + (totalActive > 1 ? 's' : '') + ' locked';
+    } else {
+        headline = sc.healthSummary || 'Band readiness';
+    }
     var scoreLabel = ratedCount > 0 ? overallAvg.toFixed(1) + '/5' : '\u2014';
+    var _bsChip = (typeof GLScopeChip !== 'undefined' && GLScopeChip.render) ? GLScopeChip.render('band') : '';
 
     // ── Member readiness visibility ──
     var _memberReadiness = '';
@@ -2049,9 +2092,9 @@ function _renderBandStatusCompact(bundle) {
     } catch(e) {}
 
     return '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:12px">'
-        // Headline + score
+        // Headline + score (Audit #10 P0.5: [BAND] scope chip prepended)
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-        + '<span style="font-size:0.8em;font-weight:700;color:' + (ratedCount > 0 ? (sc.healthColor || '#94a3b8') : '#475569') + '">' + _escHtml(headline) + '</span>'
+        + '<span style="font-size:0.8em;font-weight:700;color:' + (ratedCount > 0 ? (sc.healthColor || '#94a3b8') : '#475569') + '">' + _bsChip + _escHtml(headline) + '</span>'
         + '<span style="font-size:0.85em;font-weight:800;color:' + barColor + '">' + scoreLabel + '</span>'
         + '</div>'
         // Readiness bar
@@ -2464,10 +2507,26 @@ function _renderEventRiskCard(bundle) {
         risks.push('Confirm attendance for all members');
     }
 
-    // Check song readiness (if setlist linked)
-    // P1.2 phase 2: belowReadyCount is exactly avg > 0 && avg < 3 — direct match.
-    var lowReadiness = _homeAggregates(bundle).belowReadyCount;
-    if (lowReadiness > 0) risks.push(lowReadiness + ' song' + (lowReadiness > 1 ? 's' : '') + ' below ready');
+    // Check song readiness (if setlist linked).
+    // P0.5 (Audit #10 F1 fix, 2026-05-14): pull the actual weak song TITLES,
+    // not just a count. The unified narrative card needs to name what needs
+    // work so the user can act on it. Threshold (avg > 0 && avg < 3) matches
+    // `belowReadyCount` so totals stay consistent across all surfaces.
+    var _weakSongs = [];
+    try {
+        var _agg = _homeAggregates(bundle);
+        if (_agg && _agg.activeSongs && _agg.activeSongs.length) {
+            _weakSongs = _agg.activeSongs
+                .filter(function(s) { return s.avg > 0 && s.avg < 3; })
+                .sort(function(a, b) { return (a.avg || 0) - (b.avg || 0); });
+        }
+    } catch(e) {}
+    var lowReadiness = _weakSongs.length;
+    if (lowReadiness > 0) {
+        var _named = _weakSongs.slice(0, 3).map(function(s) { return s.title; });
+        var _suffix = (lowReadiness > 3) ? ' (+' + (lowReadiness - 3) + ' more)' : '';
+        risks.push(_named.join(', ') + ' below ready' + _suffix);
+    }
 
     // Check rehearsal recency at the BAND level (most recent rehearsal_sessions entry).
     //
@@ -2521,10 +2580,17 @@ function _renderEventRiskCard(bundle) {
     var borderColor = severity === 'high' ? '#ef4444' : severity === 'medium' ? '#f59e0b' : '#22c55e';
     var bgColor = severity === 'high' ? 'rgba(239,68,68,0.06)' : severity === 'medium' ? 'rgba(245,158,11,0.04)' : 'rgba(34,197,94,0.04)';
 
+    // Audit #10 P0.5 scope chip \u2014 telegraphs whether this insight applies to
+    // a rehearsal context or a gig context. Optional dependency; absent if
+    // gl-scope-chip.js not loaded yet (cached-shell defensive).
+    var _scopeChip = (typeof GLScopeChip !== 'undefined' && GLScopeChip.render)
+        ? GLScopeChip.render(nextEvent.type === 'gig' ? 'gig' : 'rehearsal')
+        : '';
+
     // Pre-rehearsal checklist for events < 24h
     if (daysOut <= 1) {
         var html = '<div style="padding:12px 14px;margin-bottom:12px;border-radius:10px;border-left:3px solid ' + borderColor + ';background:' + bgColor + '">';
-        html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:2px">' + eventLabel + ' ' + dateLabel + '</div>';
+        html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:2px">' + _scopeChip + eventLabel + ' ' + dateLabel + '</div>';
         // Surface the actual event so the user can verify it's real (and
         // jump to the calendar to delete if it's stale).
         var _eventDetail = (nextEvent.title || nextEvent.venue || '(untitled event)')
@@ -2556,14 +2622,25 @@ function _renderEventRiskCard(bundle) {
         return html;
     }
 
-    // Standard risk card for events > 24h
+    // Standard risk card for events > 24h. P0.5: this is the UNIFIED operational
+    // narrative card per Audit #10 \u2014 when it renders, _renderLockinDashboard
+    // suppresses the redundant Next Action Card so the user sees ONE primary
+    // narrative, not multiple competing recommendation surfaces.
     if (risks.length === 0) return '';
 
     var html = '<div style="padding:10px 14px;margin-bottom:12px;border-radius:10px;border-left:3px solid ' + borderColor + ';background:' + bgColor + '">';
-    html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:4px">\u26A0\uFE0F ' + eventLabel + ' ' + dateLabel + ' is at risk</div>';
+    html += '<div style="font-size:0.78em;font-weight:800;color:' + borderColor + ';margin-bottom:4px">' + _scopeChip + '\u26A0\uFE0F ' + eventLabel + ' ' + dateLabel + ' is at risk</div>';
     risks.forEach(function(r) {
         html += '<div style="font-size:0.72em;color:var(--text-muted);padding:1px 0">\u2022 ' + _escHtml(r) + '</div>';
     });
+    // Recommended next \u2014 single primary CTA tied to the dominant risk.
+    // Absorbs the role previously played by the separate "Next Action" card
+    // when weak songs are the issue.
+    if (lowReadiness > 0) {
+        html += '<div style="margin-top:8px">'
+            + '<button onclick="showPage(\'rehearsal\')" style="font-size:0.72em;font-weight:700;padding:5px 14px;border-radius:6px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24">\u25B6 Run focused rehearsal \u2192</button>'
+            + '</div>';
+    }
     html += '</div>';
     return html;
 }
@@ -2586,7 +2663,9 @@ function _renderSmartNudge(bundle) {
     }
     if (lastPractice) {
         var daysSince = Math.floor((Date.now() - lastPractice.getTime()) / 86400000);
-        if (daysSince >= 5) nudges.push({ icon: '\uD83C\uDFB8', text: 'You haven\u2019t practiced in ' + daysSince + ' days', cta: 'Practice now', onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" });
+        // P0.5 (Audit #10 F5): personal-device scope chip \u2014 derived from
+        // localStorage.gl_last_practice_ts which is per-device, not band-shared.
+        if (daysSince >= 5) nudges.push({ icon: '\uD83C\uDFB8', scope: 'you', text: 'You haven\u2019t practiced in ' + daysSince + ' days', cta: 'Practice now', onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" });
     }
 
     // Readiness drop nudge — check if any active song dropped below 3
@@ -2597,19 +2676,22 @@ function _renderSmartNudge(bundle) {
     _aggDr.activeSongs.forEach(function(a) {
         if (a.avg > 0 && a.avg < 2.5) dropped.push(a.title);
     });
+    // P0.5: band-aggregate scope chip \u2014 derived from _aggDr.activeSongs.
     if (dropped.length === 1) {
-        nudges.push({ icon: '\uD83D\uDCC9', text: dropped[0] + ' has dropped in readiness', cta: 'Work on it', onclick: "selectSong('" + _escHtml(dropped[0]).replace(/'/g, "\\'") + "')" });
+        nudges.push({ icon: '\uD83D\uDCC9', scope: 'band', text: dropped[0] + ' has dropped in readiness', cta: 'Work on it', onclick: "selectSong('" + _escHtml(dropped[0]).replace(/'/g, "\\'") + "')" });
     } else if (dropped.length > 1) {
-        nudges.push({ icon: '\uD83D\uDCC9', text: dropped.length + ' songs have dropped in readiness', cta: 'Focus on weak songs', onclick: "showPage('songs')" });
+        nudges.push({ icon: '\uD83D\uDCC9', scope: 'band', text: dropped.length + ' songs have dropped in readiness', cta: 'Focus on weak songs', onclick: "showPage('songs')" });
     }
 
     if (!nudges.length) return '';
 
-    // Show only the most important nudge (first one)
+    // Show only the most important nudge (first one). P0.5: prepend scope
+    // chip so users know whether the nudge applies to them personally or band.
     var n = nudges[0];
+    var _nChip = (n.scope && typeof GLScopeChip !== 'undefined' && GLScopeChip.render) ? GLScopeChip.render(n.scope) : '';
     return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:10px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04)">'
         + '<span style="font-size:0.9em">' + n.icon + '</span>'
-        + '<span style="font-size:0.78em;color:var(--text-muted);flex:1">' + _escHtml(n.text) + '</span>'
+        + '<span style="font-size:0.78em;color:var(--text-muted);flex:1">' + _nChip + _escHtml(n.text) + '</span>'
         + '<button onclick="' + n.onclick + '" style="font-size:0.72em;font-weight:700;padding:4px 10px;border-radius:6px;cursor:pointer;border:1px solid rgba(99,102,241,0.2);background:rgba(99,102,241,0.06);color:#a5b4fc;white-space:nowrap">' + n.cta + '</button>'
         + '</div>';
 }
