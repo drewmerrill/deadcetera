@@ -69,9 +69,37 @@ async function _hdRenderInternal() {
     var container = document.getElementById('page-home');
     if (!container) return;
 
+    // Warm-cache fast path (2026-05-14): when the bundle is fresh in memory
+    // AND the container is currently empty (cold container = in-session
+    // navigation back to Home), render synchronously from the cached bundle
+    // and skip the skeleton entirely. Eliminates the perceived "template
+    // flash" for the most-common navigation case (user clicked away then
+    // tapped Home in the nav). True cold loads (browser refresh, hard
+    // navigation) wipe _homeBundle so the skeleton-then-content path still
+    // runs — but the skeleton is now Home-shaped (see _renderSkeletonHTML
+    // below), so even that case feels like loading, not rebuilding.
+    var _coldContainer = !container.textContent.trim() || container.textContent.trim().length < 50;
+    if (_coldContainer && _homeBundle && (Date.now() - _homeCacheTime < _HOME_CACHE_TTL)) {
+        try {
+            var _ctxCached = _computeHomeContext(_homeBundle);
+            container.innerHTML = _renderDashboard(_homeBundle, _ctxCached);
+            console.log('[PERF] renderHomeDashboard cache-fast-path painted ' + Math.round(performance.now() - _hdRenderT0) + 'ms (skipped skeleton + async load)');
+            _triggerDashboardEntrance();
+            _scheduleWeakSongsFill(_homeBundle);
+            _scheduleActionOwedFill();
+            _scheduleBandAlignFill();
+            _renderHdPollCard();
+            _loadActivityFeed();
+            return;
+        } catch(e) {
+            console.warn('[Home] Cache fast-path failed, falling through to async load:', e && e.message);
+            // Fall through to normal path on any cache-render error.
+        }
+    }
+
     // Progressive: only show skeleton on COLD renders (no existing content)
-    // Warm renders keep stale content visible while data refreshes
-    if (!container.textContent.trim() || container.textContent.trim().length < 50) {
+    // Warm renders keep stale content visible while data refreshes.
+    if (_coldContainer) {
         container.innerHTML = _renderSkeletonHTML();
     }
 
@@ -5641,23 +5669,83 @@ function _renderErrorState() {
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
+//
+// Home-shaped skeleton (2026-05-14): mirrors the actual _renderLockinDashboard
+// layout (left column primary narrative card + focus rows + softer activity
+// strip; right rail compact band-status pillar). Replaces the legacy 2x2
+// generic dashboard grid which caused a jarring "template flash" because its
+// shape bore no resemblance to the final content. With the shape now
+// continuous, the skeleton-to-content transition feels like loading, not like
+// the page rebuilding itself.
 
 function _renderSkeletonHTML() {
     var pulse = 'background:rgba(255,255,255,0.06);border-radius:6px;animation:homeSkeletonPulse 1.4s ease-in-out infinite;';
-    var cardSkeleton = [
-        '<div class="home-card home-card--skeleton">',
-        '  <div style="' + pulse + 'height:20px;width:40%;margin-bottom:12px"></div>',
-        '  <div style="' + pulse + 'height:14px;width:65%;margin-bottom:8px"></div>',
-        '  <div style="' + pulse + 'height:14px;width:50%;margin-bottom:20px"></div>',
-        '  <div style="' + pulse + 'height:36px;width:100%;border-radius:8px"></div>',
+    var pulseFaint = 'background:rgba(255,255,255,0.04);border-radius:6px;animation:homeSkeletonPulse 1.4s ease-in-out infinite;';
+
+    // Left column — primary narrative shape (matches _renderEventRiskCard
+    // dimensions: ~10px padding, ~10px border-radius, primary headline +
+    // 2-3 bullet lines + CTA button).
+    var primaryCard = [
+        '<div style="padding:10px 14px;margin-bottom:12px;border-radius:10px;border-left:3px solid rgba(245,158,11,0.25);background:rgba(245,158,11,0.04)">',
+        '  <div style="' + pulse + 'height:14px;width:55%;margin-bottom:8px"></div>',
+        '  <div style="' + pulseFaint + 'height:10px;width:75%;margin-bottom:5px"></div>',
+        '  <div style="' + pulseFaint + 'height:10px;width:60%;margin-bottom:5px"></div>',
+        '  <div style="' + pulseFaint + 'height:10px;width:45%;margin-bottom:10px"></div>',
+        '  <div style="' + pulse + 'height:26px;width:170px;border-radius:6px"></div>',
         '</div>'
     ].join('');
+
+    // Focus songs strip — three thin rows matching the actual focus-row look
+    // (~26px height with title + bar + score).
+    var focusRow = '<div style="display:flex;align-items:center;gap:8px;padding:4px 2px;margin-bottom:4px">'
+        + '<div style="' + pulseFaint + 'height:10px;flex:1"></div>'
+        + '<div style="' + pulseFaint + 'height:6px;width:54px"></div>'
+        + '<div style="' + pulseFaint + 'height:10px;width:24px"></div>'
+        + '</div>';
+    var focusSection = '<div style="margin-bottom:14px;padding:0 2px">'
+        + '<div style="' + pulseFaint + 'height:11px;width:38%;margin-bottom:8px"></div>'
+        + focusRow + focusRow + focusRow
+        + '</div>';
+
+    // Activity feed strip — three faint rows at reduced opacity to mirror the
+    // demoted "Recent band activity" wrapper from P0.5.
+    var activityRow = '<div style="' + pulseFaint + 'height:10px;width:90%;margin-bottom:6px"></div>';
+    var activitySection = '<div style="margin-top:20px;opacity:0.78">'
+        + '<div style="' + pulseFaint + 'height:10px;width:30%;margin-bottom:8px"></div>'
+        + activityRow + activityRow + activityRow
+        + '</div>';
+
+    // Right rail — compact band status pillar (~100-120px) matching
+    // _renderBandStatusCompact dimensions.
+    var rightRail = [
+        '<div style="padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:12px">',
+        '  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">',
+        '    <div style="' + pulse + 'height:12px;width:55%"></div>',
+        '    <div style="' + pulse + 'height:14px;width:38px"></div>',
+        '  </div>',
+        '  <div style="' + pulseFaint + 'height:4px;width:100%;margin-bottom:10px;border-radius:2px"></div>',
+        '  <div style="display:flex;gap:10px">',
+        '    <div style="' + pulseFaint + 'height:9px;width:30%"></div>',
+        '    <div style="' + pulseFaint + 'height:9px;width:32%"></div>',
+        '    <div style="' + pulseFaint + 'height:9px;width:22%"></div>',
+        '  </div>',
+        '</div>'
+    ].join('');
+
     return [
-        '<style>@keyframes homeSkeletonPulse{0%,100%{opacity:0.4}50%{opacity:0.8}}</style>',
-        '<div class="home-dashboard">',
-        '<div class="home-card-grid">',
-        cardSkeleton, cardSkeleton, cardSkeleton, cardSkeleton,
-        '</div>',
+        '<style>@keyframes homeSkeletonPulse{0%,100%{opacity:0.45}50%{opacity:0.85}}',
+        '.gl-home-skeleton-split{display:grid;grid-template-columns:1fr 280px;gap:18px}',
+        '@media(max-width:900px){.gl-home-skeleton-split{grid-template-columns:1fr}.gl-home-skeleton-rail{display:none}}',
+        '</style>',
+        '<div class="gl-home-skeleton-split">',
+        '  <div>',
+        primaryCard,
+        focusSection,
+        activitySection,
+        '  </div>',
+        '  <div class="gl-home-skeleton-rail">',
+        rightRail,
+        '  </div>',
         '</div>'
     ].join('');
 }
