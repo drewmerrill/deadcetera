@@ -91,6 +91,45 @@ All write through `GLStore.saveSongData(title, 'chart', …)` or `saveBandDataTo
 
 ---
 
+## Band Feed Data (C5 Phase 1, 2026-05-13)
+
+Canonical owner:
+`window.GLBandFeedStore` (in `js/core/gl-band-feed-store.js`)
+
+Covers Firebase paths:
+- `bands/{slug}/ideas/posts/**` — posts / ideas / notes / links / photos
+- `bands/{slug}/polls/**` — polls
+- `bands/{slug}/polls/{id}/votes/{voteKey}` — votes
+- `bands/{slug}/feed_meta/**` — resolved / archived / tag / notes
+
+**Prohibited:** new direct `firebaseDB.ref(bandPath('ideas/posts'...))`, `firebaseDB.ref(bandPath('polls'...))`, or `firebaseDB.ref(bandPath('feed_meta'...))` calls. All new code must route through `GLBandFeedStore`.
+
+**Permitted:** the canonical+fallback shape in existing migrated sites — `if (GLBandFeedStore.X) { ... } else { /* Legacy fallback (cached-shell safety) */ direct firebaseDB.ref(...) }` — is the documented exception. The legacy branch only runs when the canonical helper is unavailable (stale SW shell).
+
+### API
+**Reads:** `loadFeed(limit, opts)`, `loadPosts(limit, opts)`, `loadPolls(limit, opts)`, `loadLatest(type, opts)`, `loadFeedMeta(opts)`
+**Writes:** `createPost(payload, opts)`, `updatePost(id, patch, opts)`, `removePost(id, opts)`, `createPoll(payload, opts)`, `updatePoll(id, patch, opts)`, `removePoll(id, opts)`, `votePoll(pollId, {voteKey, optionIdx}, opts)`, `setFeedMeta(key, patch, opts)`, `removeFeedMeta(key, opts)`
+**Realtime:** `subscribe(type, callback, opts)` returns string subId; `unsubscribe(subId)`; `teardown()` detaches everything owned by the store. Types: `'poll-new'`, `'idea-new'`, `'polls-all'`, `'ideas-all'`, `'feed-meta'`.
+**Telemetry:** `getStats()` — counters + live `activeSubscriptions`/`activePollsListeners`/`activeIdeasListeners`/`pollingLoops`/`lastRealtimeEventAt`/`lastWriteAt`/`cleanupFailures`/`errors`/`lastError`.
+
+All helpers accept `opts.slug` to target an explicit band. All writes auto-stamp `updatedAt`/`updatedBy` (skip-able via `opts.skipStamp` for fragile shapes — used by `votePoll`).
+
+### Lifecycle integration
+`gl-band-feed-store.js` registers a `GLRouteLifecycle` disposer for the `'feed'` route. The disposer detaches only **page-scoped** subscriptions (`'feed-meta'`, `'polls-all'`, `'ideas-all'`). Session-wide notification subscriptions (`'poll-new'`, `'idea-new'` from band-feed.js's `_feedRealtimeNotifs` IIFE) persist intentionally — they fire local notifications even when the user isn't on the feed page. `beforeunload` calls `teardown()` for defense-in-depth.
+
+### Phase 1 migrated sites (15)
+- `band-feed.js` × 11: quick-post create, structured creates (poll/idea/note/link/photo), edit save, post/poll/feed_meta remove, list reads, badge-refresh polling loop, realtime listener pair, feed_meta saves
+- `home-dashboard.js` × 3: action-card polls preview, attention-owed polls preview, Band Room polls+ideas preview
+- `feed-action-state.js` × 1: poll vote write (stale-cleanup multi-key update deferred)
+
+### Phase 2 deferred
+Multi-path Firebase updates (`db.ref().update({path1: v1, path2: v2})` for auto-resolve, auto-archive, stale-vote cleanup, orphan-vote cleanup). Need a `multiPathUpdate(updates)` helper not yet built. Existing direct writes preserved verbatim.
+
+### Out of scope
+- `home-dashboard.js:3744` + `band-comms.js:1117` poll vote writes — both are "should not be reached" legacy fallbacks under `fas.voteOnPoll` (which now routes through GLBandFeedStore). Intentional dead branches; preserved verbatim.
+
+---
+
 ## Rehearsal Session State
 Canonical owner:
 `window.GLStore.RehearsalSession` (in `js/core/gl-rehearsal-session.js`)

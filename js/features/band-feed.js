@@ -602,7 +602,13 @@ window._feedQuickPost = async function() {
     }
 
     try {
-        await db.ref(bandPath('ideas/posts')).push(payload);
+        // C5 Phase 1: route through canonical createPost when available.
+        if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.createPost) {
+            await GLBandFeedStore.createPost(payload);
+        } else {
+            // Legacy fallback (cached-shell safety)
+            await db.ref(bandPath('ideas/posts')).push(payload);
+        }
         var wasFirst = !localStorage.getItem(_FEED_CREATED_KEY);
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         inp.value = '';
@@ -824,34 +830,39 @@ window._feedSubmitCreate = async function(type) {
     }
 
     try {
+        // C5 Phase 1: route through canonical createPoll/createPost when available.
+        var _bfs = (typeof GLBandFeedStore !== 'undefined') ? GLBandFeedStore : null;
         if (type === 'poll') {
             var options = inp2 ? inp2.value.split(',').map(function(o) { return o.trim(); }).filter(Boolean) : [];
             if (options.length < 2) { _feedShowToast('Add at least 2 options'); return; }
             var pollData = { question: text, options: options, votes: {}, author: author, ts: new Date().toISOString(), tag: 'needs_input' };
             Object.assign(pollData, targetPayload);
-            await db.ref(bandPath('polls')).push(pollData);
+            if (_bfs && _bfs.createPoll) { await _bfs.createPoll(pollData); }
+            else { await db.ref(bandPath('polls')).push(pollData); }
         } else if (type === 'idea') {
             var link = inp2 ? inp2.value.trim() : '';
             var ideaData = { title: text, link: link, author: author, ts: new Date().toISOString(), tag: 'needs_input' };
             Object.assign(ideaData, targetPayload);
-            await db.ref(bandPath('ideas/posts')).push(ideaData);
+            if (_bfs && _bfs.createPost) { await _bfs.createPost(ideaData); }
+            else { await db.ref(bandPath('ideas/posts')).push(ideaData); }
         } else if (type === 'note') {
-            await db.ref(bandPath('ideas/posts')).push({
-                title: text, author: author,
-                ts: new Date().toISOString(), tag: 'fyi', post_type: 'note'
-            });
+            var noteData = { title: text, author: author, ts: new Date().toISOString(), tag: 'fyi', post_type: 'note' };
+            if (_bfs && _bfs.createPost) { await _bfs.createPost(noteData); }
+            else { await db.ref(bandPath('ideas/posts')).push(noteData); }
         } else if (type === 'link') {
             var linkUrl = inp2 ? inp2.value.trim() : '';
             if (!linkUrl) { _feedShowToast('Add a URL'); return; }
             var linkData = { title: text || linkUrl, link: linkUrl, author: author, ts: new Date().toISOString(), tag: 'fyi', post_type: 'link' };
             Object.assign(linkData, targetPayload);
-            await db.ref(bandPath('ideas/posts')).push(linkData);
+            if (_bfs && _bfs.createPost) { await _bfs.createPost(linkData); }
+            else { await db.ref(bandPath('ideas/posts')).push(linkData); }
         } else if (type === 'photo') {
             var photoUrl = inp2 ? inp2.value.trim() : '';
             if (!photoUrl) { _feedShowToast('Add a photo URL'); return; }
             var photoData = { title: text || 'Photo', photo_url: photoUrl, author: author, ts: new Date().toISOString(), tag: 'fyi', post_type: 'photo' };
             Object.assign(photoData, targetPayload);
-            await db.ref(bandPath('ideas/posts')).push(photoData);
+            if (_bfs && _bfs.createPost) { await _bfs.createPost(photoData); }
+            else { await db.ref(bandPath('ideas/posts')).push(photoData); }
         }
         localStorage.setItem(_FEED_CREATED_KEY, '1');
         if (typeof FeedMetrics !== 'undefined') FeedMetrics.trackEvent('item_created', { method: 'structured', targeted: _feedCreateTargetType === 'specific' });
@@ -1135,12 +1146,18 @@ function _feedGetNotes(item) { return _feedGetMeta(item).notes || []; }
 
 async function _feedSaveMeta(item, updates) {
     var key = _feedItemKey(item);
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (!db || typeof bandPath !== 'function') return;
     if (!_feedMeta[key]) _feedMeta[key] = {};
     Object.keys(updates).forEach(function(k) { _feedMeta[key][k] = updates[k]; });
-    try { await db.ref(bandPath('feed_meta/' + key)).update(updates); }
-    catch(e) { console.warn('[Feed] Meta save error:', e.message); }
+    // C5 Phase 1: route through canonical setFeedMeta when available.
+    try {
+        if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.setFeedMeta) {
+            await GLBandFeedStore.setFeedMeta(key, updates);
+        } else {
+            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (!db || typeof bandPath !== 'function') return;
+            await db.ref(bandPath('feed_meta/' + key)).update(updates);
+        }
+    } catch(e) { console.warn('[Feed] Meta save error:', e.message); }
 }
 
 // ── Actions ─────────────────────────────────────────────────────────────────
@@ -1210,15 +1227,36 @@ async function _feedDeleteItem(item) {
 
     // Delete from source: ideas/posts is the main store for posts type
     if (item.type === 'post' || item.type === 'idea' || item.type === 'ideas') {
-        try { await db.ref(bandPath('ideas/posts/' + item.id)).remove(); } catch(e) {}
+        // C5 Phase 1: route through canonical removePost when available.
+        try {
+            if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.removePost) {
+                await GLBandFeedStore.removePost(item.id);
+            } else {
+                await db.ref(bandPath('ideas/posts/' + item.id)).remove();
+            }
+        } catch(e) {}
     }
     if (item.type === 'poll') {
-        try { await db.ref(bandPath('polls/' + item.id)).remove(); } catch(e) {}
+        // C5 Phase 1: route through canonical removePoll when available.
+        try {
+            if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.removePoll) {
+                await GLBandFeedStore.removePoll(item.id);
+            } else {
+                await db.ref(bandPath('polls/' + item.id)).remove();
+            }
+        } catch(e) {}
     }
 
     // Delete metadata
     var key = _feedItemKey(item);
-    try { await db.ref(bandPath('feed_meta/' + key)).remove(); } catch(e) {}
+    // C5 Phase 1: route through canonical removeFeedMeta when available.
+    try {
+        if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.removeFeedMeta) {
+            await GLBandFeedStore.removeFeedMeta(key);
+        } else {
+            await db.ref(bandPath('feed_meta/' + key)).remove();
+        }
+    } catch(e) {}
     delete _feedMeta[key];
 
     // Remove from cache
@@ -1302,7 +1340,15 @@ window._feedSaveEdit = async function(type, id) {
     updates.edited_at = new Date().toISOString();
 
     try {
-        await db.ref(bandPath(path)).update(updates);
+        // C5 Phase 1: route through canonical updatePost/updatePoll when available.
+        var _bfsU = (typeof GLBandFeedStore !== 'undefined') ? GLBandFeedStore : null;
+        if (_bfsU && (type === 'post' || type === 'idea' || type === 'ideas') && _bfsU.updatePost) {
+            await _bfsU.updatePost(id, updates);
+        } else if (_bfsU && type === 'poll' && _bfsU.updatePoll) {
+            await _bfsU.updatePoll(id, updates);
+        } else {
+            await db.ref(bandPath(path)).update(updates);
+        }
         _feedShowToast('Updated');
         // Refresh
         var el = document.getElementById('page-feed');
@@ -1601,33 +1647,46 @@ async function _feedLoadAll() {
 
     try {
         // 1. Ideas
-        var ideasSnap = await db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(50).once('value');
-        var ideas = ideasSnap.val();
-        if (ideas) {
-            Object.entries(ideas).forEach(function(entry) {
-                var v = entry[1];
-                if (!v || !v.ts) return;
-                items.push({
-                    id: entry[0], type: 'idea',
-                    text: v.title || '', link: v.link || '',
-                    author: v.author || 'Anonymous', timestamp: v.ts,
-                    tag: v.tag || (v.convertedToPitch ? 'fyi' : 'needs_input'),
-                    resolved: !!v.convertedToPitch,
-                    targetType: v.targetType || 'all',
-                    targetMembers: v.targetMembers || [],
-                    context: v.convertedToPitch ? 'Converted to pitch' : 'Band idea'
-                });
-            });
+        // C5 Phase 1: route through canonical loadPosts when available.
+        // Both branches converge on the same iteration via ideaList[] with .id backfilled.
+        var ideaList = [];
+        if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.loadPosts) {
+            ideaList = await GLBandFeedStore.loadPosts(50);
+        } else {
+            // Legacy fallback (cached-shell safety)
+            var ideasSnap = await db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(50).once('value');
+            var ideas = ideasSnap.val() || {};
+            ideaList = Object.keys(ideas).map(function(k) { var iv = ideas[k] || {}; iv.id = iv.id || k; return iv; });
         }
+        ideaList.forEach(function(v) {
+            if (!v || !v.ts) return;
+            items.push({
+                id: v.id, type: 'idea',
+                text: v.title || '', link: v.link || '',
+                author: v.author || 'Anonymous', timestamp: v.ts,
+                tag: v.tag || (v.convertedToPitch ? 'fyi' : 'needs_input'),
+                resolved: !!v.convertedToPitch,
+                targetType: v.targetType || 'all',
+                targetMembers: v.targetMembers || [],
+                context: v.convertedToPitch ? 'Converted to pitch' : 'Band idea'
+            });
+        });
 
         // 2. Polls — per-user vote tracking
-        var pollSnap = await db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value');
-        var polls = pollSnap.val();
-        if (polls) {
+        // C5 Phase 1: route through canonical loadPolls when available.
+        var pollList = [];
+        if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.loadPolls) {
+            pollList = await GLBandFeedStore.loadPolls(20);
+        } else {
+            // Legacy fallback (cached-shell safety)
+            var pollSnap = await db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value');
+            var polls = pollSnap.val() || {};
+            pollList = Object.keys(polls).map(function(k) { var pv = polls[k] || {}; pv.id = pv.id || k; return pv; });
+        }
+        if (pollList.length) {
             var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
             var myVoteKey = fas ? fas.getMyVoteKey() : null;
-            Object.entries(polls).forEach(function(entry) {
-                var v = entry[1];
+            pollList.forEach(function(v) {
                 if (!v || !v.ts) return;
                 var voteCount = v.votes ? Object.keys(v.votes).length : 0;
                 var allVoted = voteCount >= memberCount;
@@ -1637,7 +1696,7 @@ async function _feedLoadAll() {
                 if (iVoted) ctx.push('You voted');
                 ctx.push(allVoted ? (voteCount + '/' + memberCount + ' voted \u2705') : (remaining + ' of ' + memberCount + ' still need to vote'));
                 items.push({
-                    id: entry[0], type: 'poll',
+                    id: v.id, type: 'poll',
                     text: v.question || v.title || '',
                     author: v.author || 'Anonymous', timestamp: v.ts,
                     tag: v.tag || 'needs_input',
@@ -2283,12 +2342,25 @@ if (typeof pageRenderers !== 'undefined') {
         if (!fas || !db || typeof bandPath !== 'function') return;
         var myVoteKey = fas.getMyVoteKey();
         if (!myVoteKey) return;
-        db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value').then(function(snap) {
-            var polls = snap.val();
-            if (!polls) { fas.setActionCount(0, 0); return; }
+        // C5 Phase 1: route through canonical loadPolls when available.
+        // The `pollingLoop: true` opt bumps the pollingLoops stat counter so the
+        // Runtime Health Overlay can see the badge refresh loop is alive.
+        var _bgPolls;
+        if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.loadPolls) {
+            _bgPolls = GLBandFeedStore.loadPolls(20, { pollingLoop: true });
+        } else {
+            // Legacy fallback (cached-shell safety)
+            _bgPolls = db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value')
+                .then(function(snap) {
+                    var val = snap.val() || {};
+                    return Object.keys(val).map(function(k) { var v = val[k] || {}; v.id = v.id || k; return v; });
+                });
+        }
+        _bgPolls.then(function(polls) {
+            if (!polls || !polls.length) { fas.setActionCount(0, 0); return; }
             var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
             var count = 0;
-            Object.values(polls).forEach(function(p) {
+            polls.forEach(function(p) {
                 if (!p || !p.ts) return;
                 var voteCount = p.votes ? Object.keys(p.votes).length : 0;
                 var allVoted = voteCount >= memberCount;
@@ -2321,8 +2393,12 @@ if (typeof pageRenderers !== 'undefined') {
     // child_added listeners persisted indefinitely. The setup guard limits
     // damage to 2 stacked listeners max, but defensive teardown lets us
     // call .off() explicitly when needed.
+    // C5 Phase 1: subscriptions now route through GLBandFeedStore.subscribe()
+    // when available. We retain the legacy query refs as a fallback path for
+    // stale SW shells, but new code paths get canonical ownership.
     var _pollsQuery = null, _pollsHandler = null;
     var _ideasQuery = null, _ideasHandler = null;
+    var _pollsSubId = null, _ideasSubId = null;
 
     function setup() {
         if (_feedRealtimeSetup) return; // prevent listener accumulation
@@ -2334,7 +2410,8 @@ if (typeof pageRenderers !== 'undefined') {
         if (!myVoteKey) return;
         _feedRealtimeSetup = true;
 
-        _pollsQuery = db.ref(bandPath('polls')).orderByChild('ts').limitToLast(1);
+        var _bfsRT = (typeof GLBandFeedStore !== 'undefined') ? GLBandFeedStore : null;
+
         _pollsHandler = function(snap) {
             var p = snap.val();
             if (!p || !p.ts) return;
@@ -2346,9 +2423,14 @@ if (typeof pageRenderers !== 'undefined') {
                 { itemType: 'poll', itemId: snap.key, notifClass: 'action_required',
                   url: '/#songs?item=' + encodeURIComponent('poll:' + snap.key) });
         };
-        _pollsQuery.on('child_added', _pollsHandler);
+        if (_bfsRT && _bfsRT.subscribe) {
+            _pollsSubId = _bfsRT.subscribe('poll-new', _pollsHandler);
+        } else {
+            // Legacy fallback (cached-shell safety)
+            _pollsQuery = db.ref(bandPath('polls')).orderByChild('ts').limitToLast(1);
+            _pollsQuery.on('child_added', _pollsHandler);
+        }
 
-        _ideasQuery = db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(1);
         _ideasHandler = function(snap) {
             var p = snap.val();
             if (!p || !p.ts) return;
@@ -2360,14 +2442,24 @@ if (typeof pageRenderers !== 'undefined') {
                 { itemType: 'idea', itemId: snap.key, notifClass: 'action_required',
                   url: '/#songs?item=' + encodeURIComponent('idea:' + snap.key) });
         };
-        _ideasQuery.on('child_added', _ideasHandler);
+        if (_bfsRT && _bfsRT.subscribe) {
+            _ideasSubId = _bfsRT.subscribe('idea-new', _ideasHandler);
+        } else {
+            // Legacy fallback (cached-shell safety)
+            _ideasQuery = db.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(1);
+            _ideasQuery.on('child_added', _ideasHandler);
+        }
     }
 
     function teardown() {
+        var _bfsRT = (typeof GLBandFeedStore !== 'undefined') ? GLBandFeedStore : null;
+        if (_pollsSubId && _bfsRT && _bfsRT.unsubscribe) { _bfsRT.unsubscribe(_pollsSubId); }
+        if (_ideasSubId && _bfsRT && _bfsRT.unsubscribe) { _bfsRT.unsubscribe(_ideasSubId); }
         try { if (_pollsQuery && _pollsHandler) _pollsQuery.off('child_added', _pollsHandler); } catch(e) {}
         try { if (_ideasQuery && _ideasHandler) _ideasQuery.off('child_added', _ideasHandler); } catch(e) {}
         _pollsQuery = null; _pollsHandler = null;
         _ideasQuery = null; _ideasHandler = null;
+        _pollsSubId = null; _ideasSubId = null;
         _feedRealtimeSetup = false;
     }
     // Expose for explicit cleanup from sign-out paths.

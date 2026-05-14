@@ -1,6 +1,6 @@
 # GrooveLinx Data Ownership Rules
 
-_Last updated: 2026-05-13 — C2 Phase 1 + Phase 2 (`GLStore.RehearsalSession`) COMPLETE; synthesized from Reality Audits #01–#06 + #08 and Stabilization Fixes #01–#10._
+_Last updated: 2026-05-13 — C2 Phase 1 + Phase 2 (`GLStore.RehearsalSession`) COMPLETE; **C5 Phase 1 (`GLBandFeedStore`) COMPLETE**; synthesized from Reality Audits #01–#06 + #08 and Stabilization Fixes #01–#10._
 
 ## Why this doc exists
 
@@ -54,7 +54,7 @@ This doc codifies the rules every feature must follow when reading, writing, or 
 | Domain | Owner | Other authorized mutators | Required helper |
 |---|---|---|---|
 | `rehearsal_sessions` | **`GLStore.RehearsalSession`** (`js/core/gl-rehearsal-session.js`) | **C2 Phase 1 + Phase 2 COMPLETE** (2026-05-13). All 28 user-facing access sites canonical-routed: `rehearsal.js` (7), `rehearsal-mode.js` (2), `multitrack-rehearsal.js` (6), `recording-analyzer.js` (6), `rehearsal-analysis-pipeline.js` (4), `gl-insights.js` (1), `gl-rehearsal-scheduling.js` (1), `groovemate_tools.js` (1), `band-feed.js` (1). 0 unprotected direct refs remain. Permanent exceptions: 2 calendar Drive-backed snapshots, 2 build-time Node scripts. | New code MUST use `GLStore.RehearsalSession.{loadAll, loadById, loadField, loadRecent, loadForBand, create, update, setField, removeField, setForBand, remove, subscribe}`. Direct `db.ref(bandPath('rehearsal_sessions/…'))` or `firebase.database().ref('bands/<slug>/rehearsal_sessions/…')` are **prohibited** in new code. The canonical+fallback shape `if (GLStore.RehearsalSession.X) {...} else { /* legacy fallback */ }` in migrated sites is the documented exception (cached-shell safety). Auto-stamps `updatedAt`/`updatedBy`. All helpers accept `opts.slug` for explicit-band consumers. See `02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md` for the full Phase 1 + Phase 2 site table. |
-| `polls` | `band-comms` (ideas) | `band-feed`, `home`, `notifications` mutate via `FeedActionState` | Vote toggle must use `FeedActionState`; no direct `.set()` on votes |
+| `polls` | **`GLBandFeedStore`** (`js/core/gl-band-feed-store.js`) | **C5 Phase 1 COMPLETE** (2026-05-13). `band-feed.js` (create/update/remove/realtime listeners/polling), `home-dashboard.js` (previews), `feed-action-state.js` (votePoll). `FeedActionState.toggleVote()` remains the public vote helper; underlying write now routes through `GLBandFeedStore.votePoll()`. | New code MUST use `GLBandFeedStore.{loadPolls, createPoll, updatePoll, removePoll, votePoll, subscribe('poll-new'|'polls-all')}`. Direct `firebaseDB.ref(bandPath('polls/…'))` is **prohibited** in new code. The canonical+fallback shape in migrated sites is the documented exception (cached-shell safety). Multi-path stale/orphan-vote cleanup deferred to C5 Phase 2 (needs `multiPathUpdate(updates)` helper). |
 | `practice_tasks` | **owner unclear (rehearsal vs practice vs workbench)** | rehearsal, practice, workbench | Resolve ownership before Tier-2 stabilization |
 | `calendar_events` (from `gigs`) | `calendar` (per Tier 1) | `gigs` via `_syncGigToCalendar` documented mirror | |
 | `notifications/*` | `notifications` | `home` dismissal handler | Must use `notifications.dismiss(id)` not direct write |
@@ -66,7 +66,7 @@ This doc codifies the rules every feature must follow when reading, writing, or 
 | `songs` / `song_library` / `songs_v2` | `_glSafeCache` (`gl_song_library_<slug>`) | `loadBandSongLibrary()` | `GLStore.updateSongField()` (dual-writes v2 + legacy) |
 | `members` / `band_contacts` | none | `GLStore.getMembers()` | `app.js` admin only — **must stamp `updatedAt`/`updatedBy`** (currently doesn't — W2 from Audit #02) |
 | `band_calendar/{calendarId, calendarName}` | none | `gl-calendar-sync.js` exposes accessors | gl-calendar-sync only |
-| `ideas/posts` | proposed: `_glSafeCache` envelope when `GLBandFeedStore` ships (C5) | direct read currently | `band-comms.js` |
+| `ideas/posts` | none currently (consider `_glSafeCache` envelope in C5 Phase 2) | **`GLBandFeedStore.loadPosts()`** (canonical, C5 Phase 1 — 2026-05-13) | **`GLBandFeedStore.{createPost, updatePost, removePost}`** + `subscribe('idea-new'\|'ideas-all')`. `band-comms.js` direct refs remain (composer surface — separate from feed read/write canonical path) and are tracked for C5 Phase 2. |
 
 ### Tier 4 — Per-key isolated (no central owner needed)
 
@@ -78,7 +78,7 @@ This doc codifies the rules every feature must follow when reading, writing, or 
 | `cal_settings/{memberKey}` | per-member | `gl-calendar-sync.js` |
 | `member_freebusy/{memberKey}` | per-member | `gl-calendar-sync.js` |
 | `google_connections/{memberKey}` | per-member | OAuth flow |
-| `feed_meta/{memberKey}` | per-member | `band-feed.js` |
+| `feed_meta/{memberKey}` | per-member | **`GLBandFeedStore.setFeedMeta(memberKey, updates)`** (C5 Phase 1, 2026-05-13). `band-feed.js` migrated to canonical helper. |
 
 ---
 
@@ -91,8 +91,8 @@ These routes mutate domains they don't own. Each is justified; future mutations 
 | `gigs.js` | `setlists/*` (linkage) | `setlists` | `saveBandArrayDataSafe` | Setlist↔gig back-references |
 | `gigs.js` | `calendar_events/*` (gig → cal mirror) | `calendar` | `_syncGigToCalendar` | Documented mirror; do not bypass |
 | `home-dashboard.js` | `notifications/*` (dismissals) | `notifications` | `notifications.dismiss(id)` | UI shortcut from home |
-| `home-dashboard.js` | `polls/*` (vote toggle) | `ideas` (band-comms) | `FeedActionState.toggleVote()` | UI shortcut from home |
-| `band-feed.js` | `polls/*` (vote toggle) | `ideas` (band-comms) | `FeedActionState.toggleVote()` | UI shortcut from feed |
+| `home-dashboard.js` | `polls/*` (vote toggle) | `GLBandFeedStore` | `FeedActionState.toggleVote()` (which now calls `GLBandFeedStore.votePoll()`) | UI shortcut from home |
+| `band-feed.js` | `polls/*` (vote toggle) | `GLBandFeedStore` | `FeedActionState.toggleVote()` (which now calls `GLBandFeedStore.votePoll()`) | UI shortcut from feed |
 | `setlist-player.js` | `songs/*` (play-count analytics) | `songs` | increment-only writes | Non-blocking analytics |
 | `live-gig.js` | `setlists/*` (re-order during perform) | `setlists` | `saveBandArrayDataSafe` | Live re-order capability |
 | `live-gig.js` | `song_status/*` (perform-event marking) | `songs` | `GLStore.updateSongField` | Live perform state |
@@ -171,7 +171,8 @@ When adding a new feature that touches data:
 | C2 | `GLStore.RehearsalSession` as canonical owner of `rehearsal_sessions` | L | 5-writer ownership conflict |
 | C3 | Force all charts through `gl-chart-renderer.js` | M | Visual drift across 4 surfaces |
 | C4 | Force all status badges through `gl-status-badge.js` | S | 7 inline ACTIVE_STATUSES shadows |
-| C5 | `GLBandFeedStore` with single subscribed listener | M | 20+ duplicate reads + 5-min interval leak |
+| C5 Phase 1 | `GLBandFeedStore` canonical ownership layer + safest-consumer migration | M | **SHIPPED 2026-05-13** — 15 sites migrated (band-feed × 11, home-dashboard × 3, feed-action-state × 1) |
+| C5 Phase 2 | Single subscribed listener convergence + multi-path update helper + remaining `band-comms.js` direct refs | M | 20+ duplicate reads + 5-min interval leak + auto-resolve/auto-archive/stale-vote cleanup |
 | C6 | Per-route lifecycle hook in `showPage()` | M | Listener/interval/rAF leaks at framework level |
 
 ---

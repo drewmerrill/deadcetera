@@ -474,7 +474,15 @@ window.FeedActionState = (function() {
             if (Object.keys(staleUpdates).length) {
                 await db.ref().update(staleUpdates);
             }
-            await db.ref(bandPath('polls/' + pollKey + '/votes/' + voteKey)).set(optionIdx);
+            // C5 Phase 1: route vote write through canonical votePoll when available.
+            // The stale-cleanup multi-key write above stays direct — the wrapper
+            // doesn't model multi-path updates yet (deferred to Phase 2).
+            if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.votePoll) {
+                await GLBandFeedStore.votePoll(pollKey, { voteKey: voteKey, optionIdx: optionIdx });
+            } else {
+                // Legacy fallback (cached-shell safety)
+                await db.ref(bandPath('polls/' + pollKey + '/votes/' + voteKey)).set(optionIdx);
+            }
             return { ok: true, voteKey: voteKey, optionIdx: optionIdx };
         } catch(e) {
             return { ok: false, reason: e.message };

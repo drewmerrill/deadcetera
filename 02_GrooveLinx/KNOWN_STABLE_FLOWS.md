@@ -1,6 +1,6 @@
 # GrooveLinx — Known Stable Flows
 
-_Last updated: 2026-05-13 (build `20260513-192327`)._
+_Last updated: 2026-05-13 (build `20260513-213032`)._
 
 This doc tracks user-facing flows by **trust level**: how confident we are that the flow works reliably across browsers + iOS Safari + route transitions + arbitration. Updated on every Stabilization Fix that touches a flow.
 
@@ -97,6 +97,19 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 - On `visibilitychange` to visible, `gl-spotify-connect.js:467` forces device cache invalidation + immediate poll.
 - `gl-player-engine.js:897-923` retries Spotify Connect if `_awaitingSpotifyApp` and tab becomes visible.
 - Wake-flow CTA in `gl-player-ui.js` directs user to open Spotify app when device unavailable.
+
+---
+
+## Band Feed Ownership (C5 Phase 1 complete, 2026-05-13)
+
+**Status:** **Stable** (build `20260513-213032`)
+- `window.GLBandFeedStore` is the canonical owner of `bands/{slug}/ideas/posts/**`, `bands/{slug}/polls/**`, and `bands/{slug}/feed_meta/**`.
+- **15 of the safest user-facing consumer sites** are canonical-routed: `band-feed.js` × 11 (create/update/remove for posts+polls, edit save, loads, badge polling, realtime listeners, feed_meta), `home-dashboard.js` × 3 (action card polls preview, attention-owed polls preview, Band Room polls+ideas preview), `feed-action-state.js` × 1 (poll vote write).
+- Every migrated site preserves canonical+fallback shape: `if (GLBandFeedStore.X) { canonical } else { /* Legacy fallback (cached-shell safety) */ direct firebaseDB.ref(...) }`. Stale SW shells degrade gracefully.
+- 19 helpers in v1: `loadFeed`, `loadPosts`, `loadPolls`, `loadLatest`, `loadFeedMeta`, `createPost`, `updatePost`, `removePost`, `createPoll`, `updatePoll`, `removePoll`, `votePoll`, `setFeedMeta`, `removeFeedMeta`, `subscribe`, `unsubscribe`, `teardown`, `getStats`, plus subscription registry for `'poll-new'`, `'idea-new'`, `'polls-all'`, `'ideas-all'`, `'feed-meta'` types.
+- Subscription registry de-duplicates by `(type + handler ref)`; teardown counters expose `activeSubscriptions`, `cleanupFailures`, `pollingLoops`, `lastRealtimeEventAt`, `lastWriteAt`, `subscriptionCount`. Visible via `GLBandFeedStore.getStats()` and surfaced through the Runtime Health Overlay.
+- Poll vote writes route through `GLBandFeedStore.votePoll(pollId, {voteKey, optionIdx})`. The public `FeedActionState.toggleVote()` API surface is unchanged for callers.
+- **Deferred to C5 Phase 2:** multi-path Firebase updates (auto-resolve / auto-archive / stale-vote cleanup / orphan-vote cleanup) — needs `multiPathUpdate(updates)` helper not yet built. `band-comms.js` composer surface direct refs also deferred to Phase 2.
 
 ---
 

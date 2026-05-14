@@ -1289,12 +1289,22 @@ function _fillBandAlignmentCard() {
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') { el.innerHTML = 'Offline'; return; }
 
-    db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value').then(function(snap) {
-        var polls = snap.val();
+    // C5 Phase 1: route through canonical loadPolls when available.
+    var _pollsPromise1;
+    if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.loadPolls) {
+        _pollsPromise1 = GLBandFeedStore.loadPolls(20);
+    } else {
+        _pollsPromise1 = db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value')
+            .then(function(snap) {
+                var v = snap.val() || {};
+                return Object.keys(v).map(function(k) { var p = v[k] || {}; p.id = p.id || k; return p; });
+            });
+    }
+    _pollsPromise1.then(function(polls) {
         var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
         var actionable = 0, resolved = 0;
-        if (polls) {
-            Object.values(polls).forEach(function(p) {
+        if (polls && polls.length) {
+            polls.forEach(function(p) {
                 if (!p || !p.ts) return;
                 actionable++;
                 var vc = p.votes ? Object.keys(p.votes).length : 0;
@@ -1376,20 +1386,29 @@ function _fillActionOwedCard() {
         return;
     }
     var myVoteKey = fas.getMyVoteKey();
-    db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value').then(function(snap) {
-        var polls = snap.val();
+    // C5 Phase 1: route through canonical loadPolls when available.
+    var _pollsPromise2;
+    if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.loadPolls) {
+        _pollsPromise2 = GLBandFeedStore.loadPolls(20);
+    } else {
+        _pollsPromise2 = db.ref(bandPath('polls')).orderByChild('ts').limitToLast(20).once('value')
+            .then(function(snap) {
+                var v = snap.val() || {};
+                return Object.keys(v).map(function(k) { var p = v[k] || {}; p.id = p.id || k; return p; });
+            });
+    }
+    _pollsPromise2.then(function(polls) {
         var memberCount = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED.length : 5;
         var myCount = 0, waitCount = 0, topItems = [];
-        if (polls) {
-            Object.entries(polls).forEach(function(entry) {
-                var p = entry[1];
+        if (polls && polls.length) {
+            polls.forEach(function(p) {
                 if (!p || !p.ts) return;
                 var vc = p.votes ? Object.keys(p.votes).length : 0;
                 if (vc >= memberCount) return;
                 var iVoted = !!(myVoteKey && p.votes && p.votes[myVoteKey] !== undefined);
                 if (!iVoted) {
                     myCount++;
-                    if (topItems.length < 3) topItems.push({ text: p.question || p.title || 'Poll', id: entry[0] });
+                    if (topItems.length < 3) topItems.push({ text: p.question || p.title || 'Poll', id: p.id });
                 } else { waitCount++; }
             });
         }
@@ -3654,16 +3673,26 @@ async function _renderHdPollCard() {
         if (!userId) userId = (typeof currentUserEmail !== 'undefined' && currentUserEmail) ? currentUserEmail.split('@')[0] : 'me';
         var cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
 
-        // Load polls, ideas in parallel
-        var pollSnap = await firebaseDB.ref(bandPath('polls')).orderByChild('ts').limitToLast(5).once('value');
-        var ideasSnap = await firebaseDB.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(3).once('value');
-
-        var polls = pollSnap.val() ? Object.entries(pollSnap.val()).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); }) : [];
+        // Load polls, ideas
+        // C5 Phase 1: route through canonical loadPolls/loadPosts when available.
+        var polls = [];
+        var ideas = [];
+        if (typeof GLBandFeedStore !== 'undefined' && GLBandFeedStore.loadPolls && GLBandFeedStore.loadPosts) {
+            var _pollArr = await GLBandFeedStore.loadPolls(5);
+            var _ideaArr = await GLBandFeedStore.loadPosts(3);
+            // Normalize to the existing _key/...spread shape so render code is unchanged.
+            polls = _pollArr.map(function(p) { return Object.assign({ _key: p.id }, p); });
+            ideas = _ideaArr.map(function(i) { return Object.assign({ _key: i.id }, i); });
+        } else {
+            // Legacy fallback (cached-shell safety)
+            var pollSnap = await firebaseDB.ref(bandPath('polls')).orderByChild('ts').limitToLast(5).once('value');
+            var ideasSnap = await firebaseDB.ref(bandPath('ideas/posts')).orderByChild('ts').limitToLast(3).once('value');
+            polls = pollSnap.val() ? Object.entries(pollSnap.val()).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); }) : [];
+            ideas = ideasSnap.val() ? Object.entries(ideasSnap.val()).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); }) : [];
+        }
         polls.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
         var recentPolls = polls.filter(function(p) { return p.ts > cutoff && p.options && p.options.length; });
         var unanswered = recentPolls.filter(function(p) { return !p.votes || p.votes[userId] === undefined; }).length;
-
-        var ideas = ideasSnap.val() ? Object.entries(ideasSnap.val()).map(function(e) { return Object.assign({ _key: e[0] }, e[1]); }) : [];
         ideas.sort(function(a, b) { return (b.ts || '').localeCompare(a.ts || ''); });
         var recentIdeas = ideas.filter(function(i) { return i.ts > cutoff; });
 
