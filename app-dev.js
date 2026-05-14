@@ -540,9 +540,22 @@ if ('serviceWorker' in navigator && !_rt.swInitialized) {
                 })
                 .catch(function() {});
         });
-        // Also detect controller change (another tab triggered update)
+        // Also detect controller change (another tab triggered update).
+        // Stab #09 (2026-05-13): suppress auto-reload during rehearsal-mode
+        // or live-gig — would yank the page from under the band mid-show.
+        // Show the banner instead so the user reloads at a safe moment.
         navigator.serviceWorker.addEventListener('controllerchange', function() {
             if (window._pwaReloading) return;
+            var inPerformance = false;
+            try {
+                inPerformance = typeof GLStore !== 'undefined'
+                    && typeof GLStore.isPerformanceMode === 'function'
+                    && GLStore.isPerformanceMode();
+            } catch(e) {}
+            if (inPerformance) {
+                if (typeof showUpdateBanner === 'function') showUpdateBanner();
+                return;
+            }
             window._pwaReloading = true;
             location.reload();
         });
@@ -12652,7 +12665,6 @@ async function checkForAppUpdate() {
         if (!data.version) { console.log('[Update] version.json missing version field'); return; }
         // Compare server version against the immutable client baseline.
         // Both are now the same short SHA, stamped atomically by GitHub Actions.
-        if (_loadedVersion === '0') { console.log('[Update] No client version — skipping'); return; }
         var same = data.version === _loadedVersion;
         console.log('[Update] client=' + _loadedVersion + ' server=' + data.version + ' → ' + (same ? 'current' : 'NEW'));
         if (!same) {
@@ -12715,6 +12727,25 @@ function showUpdateBanner() {
 
 // Update check: every 5 minutes (was 60s — too aggressive for mobile)
 setTimeout(() => { checkForAppUpdate(); setInterval(checkForAppUpdate, 300 * 1000); }, 15000);
+
+// Stab #09 (2026-05-13): resume hooks — close the iOS PWA backgrounded-tab
+// stale-client gap. setInterval pauses while iOS Safari freezes the tab; on
+// resume there's no automatic poll until the next interval fires (could be
+// up to 5 min away). visibilitychange + pageshow trigger an immediate check.
+// 30s debounce avoids spamming version.json on rapid tab-switching.
+var _glLastVisUpdateCheck = 0;
+function _glVisibilityUpdateCheck() {
+    var now = Date.now();
+    if (now - _glLastVisUpdateCheck < 30000) return;
+    _glLastVisUpdateCheck = now;
+    try { checkForAppUpdate(); } catch(e) {}
+}
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') _glVisibilityUpdateCheck();
+});
+window.addEventListener('pageshow', function(e) {
+    if (e && e.persisted) _glVisibilityUpdateCheck();
+});
 
 // ── Debug panel (visible only with ?debug=true) ──────────────────────────────
 if (DEBUG) {

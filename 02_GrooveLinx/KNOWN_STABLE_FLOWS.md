@@ -100,6 +100,36 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 
 ---
 
+## Update / Resume / Reload flows (Stab #09)
+
+### Foreground update detection
+**Status:** **Stable**
+- `setTimeout` at `app.js:13145` fires `checkForAppUpdate()` 15s after load.
+- `setInterval(checkForAppUpdate, 300_000)` runs the poll every 5 min while tab is foregrounded.
+- `reg.update()` parallel poll at `app.js:529` runs every 5 min checking SW byte-change.
+- Both paths converge on a single per-version banner (`_bannerShownForVersion` gate at `app.js:13077`).
+
+### iOS PWA resume from background freeze
+**Status:** **Stable** (Stab #09, 2026-05-13)
+- `visibilitychange → visible` triggers `_glVisibilityUpdateCheck()` at `app.js:13174` (mirror app-dev.js:12743).
+- `pageshow` with `event.persisted === true` triggers the same handler at `app.js:13178`.
+- 30s debounce via `_glLastVisUpdateCheck` timestamp prevents version.json spam from rapid tab-switching.
+- Closes the gap where iOS Safari pauses `setInterval` during tab freeze — frozen tab resumed after hours would otherwise have no automatic poll until the next interval fire (could be 5 min away).
+
+### SW takeover during normal use
+**Status:** **Stable**
+- `controllerchange` listener at `app.js:545` calls `location.reload()` for normal pages.
+- 1500ms safety timeout on the banner Reload button at `app.js:13139` catches the case where `controllerchange` doesn't fire promptly.
+
+### SW takeover during performance mode (rehearsal / live-gig)
+**Status:** **Stable** (Stab #09, 2026-05-13)
+- `controllerchange` listener checks `GLStore.isPerformanceMode()` FIRST.
+- If true (rehearsal-mode overlay open OR live-gig overlay open — both set `setAppMode('performance')` on entry), the listener shows the existing update banner instead of reloading.
+- Normal pages keep auto-reload behavior.
+- Closes the "page yanked mid-show" risk where a deploy landing during a live rehearsal/gig would reload the page under the band's hands.
+
+---
+
 ## Arbitration matrix (Stab #07)
 
 This table shows which surfaces participate in `GLPlayerContract.pauseAll()`.
