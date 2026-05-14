@@ -162,3 +162,63 @@ Sorted by file. **Classification** uses these tags:
 - **Total:** 32 access points across 12 files
 
 Phase 1 covers the **user-facing primary writers** (the rehearsal page lifecycle + rehearsal-mode session save). Phase 2 covers the analysis pipeline, multitrack flow, and AI tools — all of which are either explicitly scoped out by the Phase 1 task brief or require helpers not yet built.
+
+---
+
+## Phase 2 status — **COMPLETE** (build `20260513-211446`, 2026-05-13)
+
+### Helpers added to `gl-rehearsal-session.js`
+
+| Helper | Signature | Notes |
+|---|---|---|
+| `loadField` | `(sessionId, fieldPath, opts?)` | Nested-field read via Firebase `/` nesting. opts.slug for explicit band. |
+| `setField` | `(sessionId, fieldPath, value, opts?)` | Existing helper extended with opts.slug. Parent updatedAt/updatedBy stamped best-effort. |
+| `removeField` | `(sessionId, fieldPath, opts?)` | Nested-field delete. Parent stamped. |
+| `loadRecent` | `(limit, opts?)` | `orderByChild(opts.orderBy).limitToLast(limit)`. Default orderBy='date'. opts.slug supported. |
+| `loadForBand` | `(slug, sessionId?)` | Thin wrapper. With sessionId → loadById(slug). Without → loadAll(slug). |
+| `setForBand` | `(slug, sessionId, patchOrValue, opts?)` | Thin wrapper. opts.fieldPath → setField semantics. Otherwise update semantics. |
+
+All existing helpers (`loadAll`, `loadById`, `create`, `update`, `setField`, `remove`) now accept `opts.slug` to target an explicit band rather than the current band.
+
+### Site-by-site migration status
+
+| File | Line | Op | Helper used | Fallback retained | Status |
+|---|---|---|---|---|---|
+| `groovemate_tools.js` | 530 | R `limitToLast(10)` | `loadRecent(10)` | yes | ✅ migrated |
+| `band-feed.js` | 1695 | R `orderBy(startedAt).limitToLast(1)` | `loadRecent(1, {orderBy:'startedAt'})` | yes | ✅ migrated |
+| `gl-rehearsal-scheduling.js` | 363 | R bulk load | `loadAll()` | yes | ✅ migrated |
+| `recording-analyzer.js` | 732 | R `orderBy(date).limitToLast(5)` | `loadRecent(5, {orderBy:'date'})` | yes | ✅ migrated |
+| `recording-analyzer.js` | 1534 | W nested `label_overrides/<key>` | `setField(sid, 'label_overrides/'+key, value)` | yes | ✅ migrated |
+| `recording-analyzer.js` | 1547 | R nested `label_overrides` | `loadField(sid, 'label_overrides')` | yes | ✅ migrated |
+| `recording-analyzer.js` | 2101-05 | W multi-field (notes/audio_segments/recording_context/plan_vs_actual) | `update(sid, patch)` | yes | ✅ migrated (4 ref calls collapsed into 1 update) |
+| `recording-analyzer.js` | 2216 | R `orderBy(date).limitToLast(10)` | `loadRecent(10, {orderBy:'date'})` | yes | ✅ migrated |
+| `recording-analyzer.js` | 2293 | R nested `songsWorked` | `loadField(sid, 'songsWorked')` | yes | ✅ migrated |
+| `multitrack-rehearsal.js` | 787 | W new session | `create(sid, session)` | yes | ✅ migrated |
+| `multitrack-rehearsal.js` | 852 | R single session | `loadById(sid)` | yes | ✅ migrated |
+| `multitrack-rehearsal.js` | 1198 | R nested `comments` | `loadField(sid, 'comments')` | yes | ✅ migrated |
+| `multitrack-rehearsal.js` | 1214 | W nested `comments/<id>` | `setField(sid, 'comments/'+cid, comment)` | yes | ✅ migrated |
+| `multitrack-rehearsal.js` | 1226 | W nested `comments/<id>` remove | `removeField(sid, 'comments/'+cid)` | yes | ✅ migrated |
+| `multitrack-rehearsal.js` | 1467 | R single session | `loadById(sid)` | yes | ✅ migrated |
+| `rehearsal-analysis-pipeline.js` | 343 | R explicit-slug single | `loadForBand(slug, sid)` | yes | ✅ migrated |
+| `rehearsal-analysis-pipeline.js` | 453 | W explicit-slug nested `analysis` | `setForBand(slug, sid, analysis, {fieldPath:'analysis'})` | yes | ✅ migrated |
+| `rehearsal-analysis-pipeline.js` | 494 | R explicit-slug nested `analysis` | `loadField(sid, 'analysis', {slug})` | yes | ✅ migrated |
+| `rehearsal-analysis-pipeline.js` | 634 | R explicit-slug `orderBy(date).limitToLast(1)` | `loadRecent(1, {slug, orderBy:'date'})` | yes | ✅ migrated |
+| `gl-insights.js` | 575 | R explicit-slug bulk | `loadForBand(slug)` | yes | ✅ migrated |
+
+**19 of 19 deferred sites migrated.** All preserve canonical+fallback shape: when `GLStore.RehearsalSession.X` is unavailable (stale SW shell), the direct-Firebase path runs verbatim.
+
+### Permanent exceptions (intentionally NOT migrated)
+
+| File | Why |
+|---|---|
+| `js/features/calendar.js:508, 3140` (`loadBandDataFromDrive('_band', 'rehearsal_sessions')`) | Drive-backed snapshot, NOT the Firebase realtime path. Wrapper covers Firebase only. |
+| `scripts/apply-golden-timeline.js`, `scripts/apply-golden-timeline-0323.js` | Build-time Node scripts. No GLStore available at that runtime. |
+
+### Final fragmented-ownership status (post Phase 2)
+
+- **Routed through `GLStore.RehearsalSession` (canonical path):** 28 sites (Phase 1: 9 + Phase 2: 19)
+- **Permanent exceptions:** 4 sites (calendar Drive-backed × 2, scripts × 2)
+- **Cached-shell legacy fallback branches:** 28 (one per migrated site — preserved verbatim for stale SW safety)
+- **Unprotected direct Firebase refs:** **0**
+
+`GLStore.RehearsalSession` is the canonical owner of `bands/{slug}/rehearsal_sessions/**`. The convergence initiative C2 is **fully resolved**.

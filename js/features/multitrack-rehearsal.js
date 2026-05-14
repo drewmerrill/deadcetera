@@ -781,14 +781,18 @@ async function _mtMaybeFinalizeSession() {
         createdAt: new Date().toISOString(),
         createdBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
     };
+    // C2 Phase 2: route through canonical create when available.
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (db && typeof bandPath === 'function') {
-        try {
+    try {
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.create) {
+            await GLStore.RehearsalSession.create(u.sessionId, session);
+        } else if (db && typeof bandPath === 'function') {
+            // Legacy fallback (cached-shell safety)
             await db.ref(bandPath('rehearsal_sessions/' + u.sessionId)).set(session);
-        } catch (e) {
-            if (typeof showToast === 'function') showToast('⚠ Session save failed: ' + (e.message || 'unknown'));
-            return;
         }
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('⚠ Session save failed: ' + (e.message || 'unknown'));
+        return;
     }
     var sId = u.sessionId;
     _mtState.activeUpload = null;
@@ -848,9 +852,16 @@ window._mtOpenPlayer = async function(sessionId) {
         if (typeof showToast === 'function') showToast('Firebase not ready');
         return;
     }
-    var snap = null;
-    try { snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value'); } catch (e) {}
-    var session = snap && snap.val();
+    // C2 Phase 2: route through canonical loadById when available.
+    var session = null;
+    try {
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadById) {
+            session = await GLStore.RehearsalSession.loadById(sessionId);
+        } else {
+            var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value');
+            session = snap && snap.val();
+        }
+    } catch (e) {}
     if (!session || session.type !== 'multitrack' || !session.tracks || !session.tracks.length) {
         if (typeof showToast === 'function') showToast('Session not found or not multitrack');
         return;
@@ -1192,11 +1203,17 @@ function _mtGenCommentId() {
 }
 
 async function _mtLoadComments(sessionId) {
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (!db || typeof bandPath !== 'function') return [];
+    // C2 Phase 2: route through canonical loadField when available.
     try {
-        var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/comments')).once('value');
-        var val = snap.val();
+        var val;
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadField) {
+            val = await GLStore.RehearsalSession.loadField(sessionId, 'comments');
+        } else {
+            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (!db || typeof bandPath !== 'function') return [];
+            var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/comments')).once('value');
+            val = snap.val();
+        }
         if (!val) return [];
         return Object.values(val).sort(function(a, b) {
             return (a.timestampSec || 0) - (b.timestampSec || 0);
@@ -1208,9 +1225,14 @@ async function _mtLoadComments(sessionId) {
 }
 
 async function _mtSaveComment(sessionId, comment) {
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (!db || typeof bandPath !== 'function') return false;
+    // C2 Phase 2: route through canonical setField when available.
     try {
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.setField) {
+            await GLStore.RehearsalSession.setField(sessionId, 'comments/' + comment.commentId, comment);
+            return true;
+        }
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return false;
         await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/comments/' + comment.commentId)).set(comment);
         return true;
     } catch (e) {
@@ -1220,9 +1242,14 @@ async function _mtSaveComment(sessionId, comment) {
 }
 
 async function _mtDeleteComment(sessionId, commentId) {
-    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
-    if (!db || typeof bandPath !== 'function') return false;
+    // C2 Phase 2: route through canonical removeField when available.
     try {
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.removeField) {
+            await GLStore.RehearsalSession.removeField(sessionId, 'comments/' + commentId);
+            return true;
+        }
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function') return false;
         await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/comments/' + commentId)).remove();
         return true;
     } catch (e) {
@@ -1464,8 +1491,14 @@ window._mtExportDigest = async function() {
 
     var sessionDateLabel = '';
     try {
-        var s = await firebaseDB.ref(bandPath('rehearsal_sessions/' + p.sessionId)).once('value');
-        var sv = s && s.val();
+        // C2 Phase 2: route through canonical loadById when available.
+        var sv;
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadById) {
+            sv = await GLStore.RehearsalSession.loadById(p.sessionId);
+        } else {
+            var s = await firebaseDB.ref(bandPath('rehearsal_sessions/' + p.sessionId)).once('value');
+            sv = s && s.val();
+        }
         if (sv && sv.date) sessionDateLabel = new Date(sv.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
         var sessionVenue = (sv && sv.venue) ? ' · ' + sv.venue : '';
     } catch (e) {}

@@ -728,16 +728,21 @@ window.RecordingAnalyzer = (function() {
       // Gather recent rehearsal history for candidate prioritization
       var _recentSessionSongs = [];
       try {
-        if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+        // C2 Phase 2: route through canonical helper when available.
+        var _sessArr = null;
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadRecent) {
+          _sessArr = await GLStore.RehearsalSession.loadRecent(5, { orderBy: 'date' });
+        } else if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+          // Legacy fallback (cached-shell safety)
           var _sessSnap = await firebaseDB.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(5).once('value');
           var _sessVal = _sessSnap.val();
-          if (_sessVal) {
-            var _sessArr = Object.values(_sessVal).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
-            var _recentSet = {};
-            _sessArr.forEach(function(s) {
-              (s.songsWorked || []).forEach(function(t) { if (t && !_recentSet[t]) { _recentSet[t] = true; _recentSessionSongs.push(t); } });
-            });
-          }
+          _sessArr = _sessVal ? Object.values(_sessVal).sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); }) : null;
+        }
+        if (_sessArr) {
+          var _recentSet = {};
+          _sessArr.forEach(function(s) {
+            (s.songsWorked || []).forEach(function(t) { if (t && !_recentSet[t]) { _recentSet[t] = true; _recentSessionSongs.push(t); } });
+          });
         }
       } catch(e) {}
       if (_recentSessionSongs.length) console.log('[RecordingAnalyzer] Recent rehearsal songs: ' + _recentSessionSongs.length + ' [' + _recentSessionSongs.slice(0, 5).join(', ') + '...]');
@@ -1530,8 +1535,14 @@ window.RecordingAnalyzer = (function() {
       var overrideKey = Math.round(seg.startSec) + '_' + Math.round(seg.endSec);
       _userOverrides[overrideKey] = value;
       // Persist to Firebase
-      if (_currentSessionId && typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
-        firebaseDB.ref(bandPath('rehearsal_sessions/' + _currentSessionId + '/label_overrides/' + overrideKey)).set(value).catch(function() {});
+      // C2 Phase 2: route through canonical setField when available.
+      if (_currentSessionId) {
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.setField) {
+          GLStore.RehearsalSession.setField(_currentSessionId, 'label_overrides/' + overrideKey, value).catch(function() {});
+        } else if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+          // Legacy fallback (cached-shell safety)
+          firebaseDB.ref(bandPath('rehearsal_sessions/' + _currentSessionId + '/label_overrides/' + overrideKey)).set(value).catch(function() {});
+        }
       }
     }
   }
@@ -1543,9 +1554,18 @@ window.RecordingAnalyzer = (function() {
   function _applyUserOverrides(segments, sessionId) {
     if (!segments || !segments.length) return;
     // Load overrides from Firebase if not already loaded
-    if (Object.keys(_userOverrides).length === 0 && sessionId && typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
-      firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId + '/label_overrides')).once('value').then(function(snap) {
-        var overrides = snap.val();
+    // C2 Phase 2: route through canonical loadField when available.
+    if (Object.keys(_userOverrides).length === 0 && sessionId) {
+      var _loadPromise;
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadField) {
+        _loadPromise = GLStore.RehearsalSession.loadField(sessionId, 'label_overrides');
+      } else if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+        // Legacy fallback (cached-shell safety) — preserve same `.then(snap)` shape
+        _loadPromise = firebaseDB.ref(bandPath('rehearsal_sessions/' + sessionId + '/label_overrides')).once('value').then(function(snap) { return snap.val(); });
+      } else {
+        return;
+      }
+      _loadPromise.then(function(overrides) {
         if (overrides && typeof overrides === 'object') {
           _userOverrides = overrides;
           // Apply to current segments
@@ -2097,7 +2117,14 @@ window.RecordingAnalyzer = (function() {
         _buildPlanVsActual(_currentSegments);
 
         // Save to Firebase
-        if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+        // C2 Phase 2: route through canonical update when available.
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.update) {
+          var _patch = { notes: notesText, audio_segments: activeSegs };
+          if (_recordingContext) _patch.recording_context = _recordingContext;
+          if (_planVsActual) _patch.plan_vs_actual = _planVsActual;
+          await GLStore.RehearsalSession.update(_currentSessionId, _patch);
+        } else if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
+          // Legacy fallback (cached-shell safety)
           var sessPath = bandPath('rehearsal_sessions/' + _currentSessionId);
           await firebaseDB.ref(sessPath + '/notes').set(notesText);
           await firebaseDB.ref(sessPath + '/audio_segments').set(activeSegs);
@@ -2211,7 +2238,15 @@ window.RecordingAnalyzer = (function() {
         // Can't await from here — use cached data
         // Sessions are typically cached from page render
       }
-      // Use Firebase direct read for session list
+      // C2 Phase 2: route through canonical loadRecent when available.
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadRecent) {
+        GLStore.RehearsalSession.loadRecent(10, { orderBy: 'date' }).then(function(arr) {
+          sessions = (arr || []).filter(function(s) { return s.date && s.songsWorked && s.songsWorked.length; });
+          _renderPlanPicker(modal, sessionId, sessions);
+        }).catch(function() { _renderPlanPicker(modal, sessionId, []); });
+        return;
+      }
+      // Legacy fallback (cached-shell safety) — direct read for session list
       if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
         firebaseDB.ref(bandPath('rehearsal_sessions')).orderByChild('date').limitToLast(10).once('value').then(function(snap) {
           var data = snap.val();
@@ -2288,7 +2323,17 @@ window.RecordingAnalyzer = (function() {
       return;
     } else {
       // Load songs from a specific session
+      // C2 Phase 2: route through canonical loadField when available.
       try {
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadField) {
+          GLStore.RehearsalSession.loadField(sourceId, 'songsWorked').then(function(val) {
+            songs = val || [];
+            _recordingContext = { type: 'rehearsal', referenceSongs: songs, referenceId: sessionId, sourceSessionId: sourceId };
+            _showSongConfirmation(sessionId, songs);
+          });
+          return;
+        }
+        // Legacy fallback (cached-shell safety)
         if (typeof firebaseDB !== 'undefined' && typeof bandPath === 'function') {
           firebaseDB.ref(bandPath('rehearsal_sessions/' + sourceId + '/songsWorked')).once('value').then(function(snap) {
             songs = snap.val() || [];

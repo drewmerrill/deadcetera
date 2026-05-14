@@ -336,13 +336,19 @@
     }
 
     // ── Step 1: Load session data ──
+    // C2 Phase 2: route through canonical loadForBand (explicit slug) when available.
     var session = null;
     try {
       var slug = (typeof GLStore !== 'undefined' && GLStore.getCurrentBand)
         ? GLStore.getCurrentBand() : (localStorage.getItem('deadcetera_current_band') || 'deadcetera');
-      var ref = firebase.database().ref('bands/' + slug + '/rehearsal_sessions/' + sessionId);
-      var snap = await ref.once('value');
-      session = snap.val();
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadForBand) {
+        session = await GLStore.RehearsalSession.loadForBand(slug, sessionId);
+      } else {
+        // Legacy fallback (cached-shell safety)
+        var ref = firebase.database().ref('bands/' + slug + '/rehearsal_sessions/' + sessionId);
+        var snap = await ref.once('value');
+        session = snap.val();
+      }
     } catch(e) {
       console.warn('[RehearsalAnalysis] Failed to load session:', e);
     }
@@ -447,10 +453,16 @@
     }
 
     // ── Step 8: Persist to Firebase ──
+    // C2 Phase 2: route through canonical setForBand (explicit slug, nested field) when available.
     try {
       var slug2 = (typeof GLStore !== 'undefined' && GLStore.getCurrentBand)
         ? GLStore.getCurrentBand() : (localStorage.getItem('deadcetera_current_band') || 'deadcetera');
-      await firebase.database().ref('bands/' + slug2 + '/rehearsal_sessions/' + sessionId + '/analysis').set(analysis);
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.setForBand) {
+        await GLStore.RehearsalSession.setForBand(slug2, sessionId, analysis, { fieldPath: 'analysis' });
+      } else {
+        // Legacy fallback (cached-shell safety)
+        await firebase.database().ref('bands/' + slug2 + '/rehearsal_sessions/' + sessionId + '/analysis').set(analysis);
+      }
       console.log('[RehearsalAnalysis] Analysis persisted to Firebase');
     } catch(e) {
       console.warn('[RehearsalAnalysis] Failed to persist analysis:', e);
@@ -488,9 +500,14 @@
    * @returns {Promise<object|null>}
    */
   async function loadAnalysis(sessionId) {
+    // C2 Phase 2: route through canonical loadField (explicit slug) when available.
     try {
       var slug = (typeof GLStore !== 'undefined' && GLStore.getCurrentBand)
         ? GLStore.getCurrentBand() : (localStorage.getItem('deadcetera_current_band') || 'deadcetera');
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadField) {
+        return await GLStore.RehearsalSession.loadField(sessionId, 'analysis', { slug: slug });
+      }
+      // Legacy fallback (cached-shell safety)
       var snap = await firebase.database().ref('bands/' + slug + '/rehearsal_sessions/' + sessionId + '/analysis').once('value');
       return snap.val();
     } catch(e) {
@@ -628,16 +645,23 @@
    * Returns the analysis object or null.
    */
   async function getLatestAnalysis() {
+    // C2 Phase 2: route through canonical loadRecent (explicit slug) when available.
     try {
       var slug = (typeof GLStore !== 'undefined' && GLStore.getCurrentBand)
         ? GLStore.getCurrentBand() : (localStorage.getItem('deadcetera_current_band') || 'deadcetera');
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadRecent) {
+        var arr = await GLStore.RehearsalSession.loadRecent(1, { slug: slug, orderBy: 'date' });
+        var latest = arr && arr[0];
+        return (latest && latest.analysis) ? latest.analysis : null;
+      }
+      // Legacy fallback (cached-shell safety)
       var snap = await firebase.database().ref('bands/' + slug + '/rehearsal_sessions')
         .orderByChild('date').limitToLast(1).once('value');
       var sessions = snap.val();
       if (!sessions) return null;
       var keys = Object.keys(sessions);
-      var latest = sessions[keys[0]];
-      return latest && latest.analysis ? latest.analysis : null;
+      var latestLegacy = sessions[keys[0]];
+      return latestLegacy && latestLegacy.analysis ? latestLegacy.analysis : null;
     } catch(e) {
       console.warn('[RehearsalAnalysis] Failed to load latest analysis:', e);
       return null;

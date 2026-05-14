@@ -1692,9 +1692,16 @@ async function _feedLoadAll() {
 
 async function _feedGetLastRehearsalTs(db) {
     try {
-        var sessSnap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('startedAt').limitToLast(1).once('value');
-        var sess = sessSnap.val();
-        if (sess) { var latest = Object.values(sess)[0]; if (latest && latest.startedAt) return latest.startedAt; }
+        // C2 Phase 2: route through canonical helper when available.
+        // Falls back to direct Firebase for stale-shell safety.
+        if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadRecent) {
+            var sessions = await GLStore.RehearsalSession.loadRecent(1, { orderBy: 'startedAt' });
+            if (sessions && sessions.length && sessions[0].startedAt) return sessions[0].startedAt;
+        } else {
+            var sessSnap = await db.ref(bandPath('rehearsal_sessions')).orderByChild('startedAt').limitToLast(1).once('value');
+            var sess = sessSnap.val();
+            if (sess) { var latest = Object.values(sess)[0]; if (latest && latest.startedAt) return latest.startedAt; }
+        }
     } catch(e) {}
     try {
         var events = (typeof loadBandDataFromDrive === 'function') ? await loadBandDataFromDrive('_band', 'calendar_events') : null;

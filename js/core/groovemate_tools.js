@@ -527,8 +527,15 @@
     if (!db) return null;
 
     try {
-      var sessSnap = await db.ref(_bp('rehearsal_sessions')).limitToLast(10).once('value');
-      var sessions = sessSnap.val() ? Object.values(sessSnap.val()) : [];
+      // C2 Phase 2: route through canonical helper when available.
+      // Falls back to direct Firebase for stale-shell safety.
+      var sessions;
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadRecent) {
+        sessions = await GLStore.RehearsalSession.loadRecent(10);
+      } else {
+        var sessSnap = await db.ref(_bp('rehearsal_sessions')).limitToLast(10).once('value');
+        sessions = sessSnap.val() ? Object.values(sessSnap.val()) : [];
+      }
       if (sessions.length < 2) return null;
 
       // Analyze patterns

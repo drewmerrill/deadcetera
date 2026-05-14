@@ -1,6 +1,6 @@
 # GrooveLinx Data Ownership Rules
 
-_Last updated: 2026-05-13 — C2 Phase 1 (`GLStore.RehearsalSession`) shipped; synthesized from Reality Audits #01–#03 and Stabilization Fixes #01–#05._
+_Last updated: 2026-05-13 — C2 Phase 1 + Phase 2 (`GLStore.RehearsalSession`) COMPLETE; synthesized from Reality Audits #01–#06 + #08 and Stabilization Fixes #01–#10._
 
 ## Why this doc exists
 
@@ -53,7 +53,7 @@ This doc codifies the rules every feature must follow when reading, writing, or 
 
 | Domain | Owner | Other authorized mutators | Required helper |
 |---|---|---|---|
-| `rehearsal_sessions` | **`GLStore.RehearsalSession`** (`js/core/gl-rehearsal-session.js`) | Phase 1 wraps `rehearsal.js` (7 sites) + `rehearsal-mode.js` (2 sites). Phase 2 will wrap `multitrack-rehearsal`, `recording-analyzer`, `rehearsal-analysis-pipeline`, `gl-insights`, plus 3 small consumers. | New code MUST use `GLStore.RehearsalSession.{create,update,setField,remove,loadAll,loadById}`. Direct `db.ref(bandPath('rehearsal_sessions/…')).set/update/remove` is forbidden in new code. Auto-stamps `updatedAt`/`updatedBy`. See `02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md` for the full migration map. |
+| `rehearsal_sessions` | **`GLStore.RehearsalSession`** (`js/core/gl-rehearsal-session.js`) | **C2 Phase 1 + Phase 2 COMPLETE** (2026-05-13). All 28 user-facing access sites canonical-routed: `rehearsal.js` (7), `rehearsal-mode.js` (2), `multitrack-rehearsal.js` (6), `recording-analyzer.js` (6), `rehearsal-analysis-pipeline.js` (4), `gl-insights.js` (1), `gl-rehearsal-scheduling.js` (1), `groovemate_tools.js` (1), `band-feed.js` (1). 0 unprotected direct refs remain. Permanent exceptions: 2 calendar Drive-backed snapshots, 2 build-time Node scripts. | New code MUST use `GLStore.RehearsalSession.{loadAll, loadById, loadField, loadRecent, loadForBand, create, update, setField, removeField, setForBand, remove, subscribe}`. Direct `db.ref(bandPath('rehearsal_sessions/…'))` or `firebase.database().ref('bands/<slug>/rehearsal_sessions/…')` are **prohibited** in new code. The canonical+fallback shape `if (GLStore.RehearsalSession.X) {...} else { /* legacy fallback */ }` in migrated sites is the documented exception (cached-shell safety). Auto-stamps `updatedAt`/`updatedBy`. All helpers accept `opts.slug` for explicit-band consumers. See `02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md` for the full Phase 1 + Phase 2 site table. |
 | `polls` | `band-comms` (ideas) | `band-feed`, `home`, `notifications` mutate via `FeedActionState` | Vote toggle must use `FeedActionState`; no direct `.set()` on votes |
 | `practice_tasks` | **owner unclear (rehearsal vs practice vs workbench)** | rehearsal, practice, workbench | Resolve ownership before Tier-2 stabilization |
 | `calendar_events` (from `gigs`) | `calendar` (per Tier 1) | `gigs` via `_syncGigToCalendar` documented mirror | |

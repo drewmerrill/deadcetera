@@ -95,21 +95,33 @@ All write through `GLStore.saveSongData(title, 'chart', …)` or `saveBandDataTo
 Canonical owner:
 `window.GLStore.RehearsalSession` (in `js/core/gl-rehearsal-session.js`)
 
-**C2 Phase 1 (2026-05-13):** wrap-and-centralize introduced. Phase 1 routes 9 sites (`rehearsal.js` × 7, `rehearsal-mode.js` × 2) through the canonical layer. Pattern matches `GLStore.PracticeSession`.
+**C2 Phase 1 (2026-05-13):** wrap-and-centralize introduced.
+**C2 Phase 2 (2026-05-13, build `20260513-211446`): COMPLETE.** All 19 deferred sites migrated; helpers expanded; convergence initiative fully resolved. 28 of 28 user-facing access sites canonical-routed. 0 unprotected direct refs remain.
 
-### API
-- `loadAll()` → `Promise<Session[]>` (sorted newest-first by date)
-- `loadById(sessionId)` → `Promise<Session|null>`
-- `create(sessionId, payload)` — `.set()` with auto-stamped `updatedAt`/`updatedBy`/`sessionId`
-- `update(sessionId, patch)` — `.update()` with auto-stamped `updatedAt`/`updatedBy`
-- `setField(sessionId, fieldPath, value)` — nested write (e.g. `audio_segments`) + best-effort parent stamp
-- `remove(sessionId)` — `.remove()` + clears in-memory current pointer if it matches
-- `subscribe(handler)` → `unsubscribeFn` — wraps `.on('value', …)`; duplicate-handler attempts return the existing unsub. Auto-detaches via `GLRouteLifecycle` disposer on `rehearsal` route leave.
+**Prohibited:** new direct `firebaseDB.ref(bandPath('rehearsal_sessions/...'))` or `firebase.database().ref('bands/<slug>/rehearsal_sessions/...')` calls. All new code must route through `GLStore.RehearsalSession`.
+
+**Permitted:** the canonical+fallback shape in existing migrated sites — `if (GLStore.RehearsalSession.X) { ... } else { /* Legacy fallback (cached-shell safety) */ direct firebaseDB.ref(...) }` — is the documented exception. The legacy branch only runs when the canonical helper is unavailable (stale SW shell).
+
+### API (full surface — Phase 1 + Phase 2)
+- `loadAll(opts?)` → `Promise<Session[]>` (sorted newest-first by date)
+- `loadById(sessionId, opts?)` → `Promise<Session|null>`
+- `loadField(sessionId, fieldPath, opts?)` → `Promise<any>` — nested-field read via Firebase `/` nesting (e.g. `'comments'`, `'comments/cmt_xyz'`, `'label_overrides/123_456'`)
+- `loadRecent(limit, opts?)` → `Promise<Session[]>` — `orderByChild(opts.orderBy).limitToLast(limit)`. Default orderBy='date'. opts.orderBy='startedAt' supported.
+- `loadForBand(slug, sessionId?)` — explicit-slug; wraps `loadById` (with sessionId) or `loadAll` (without)
+- `create(sessionId, payload, opts?)` — `.set()` with auto-stamped `updatedAt`/`updatedBy`/`sessionId`
+- `update(sessionId, patch, opts?)` — `.update()` with auto-stamped `updatedAt`/`updatedBy`
+- `setField(sessionId, fieldPath, value, opts?)` — nested write + best-effort parent stamp
+- `removeField(sessionId, fieldPath, opts?)` — nested delete + best-effort parent stamp
+- `setForBand(slug, sessionId, patchOrValue, opts?)` — explicit-slug; opts.fieldPath for nested set
+- `remove(sessionId, opts?)` — `.remove()` + clears in-memory current pointer if matched
+- `subscribe(handler)` → `unsubscribeFn` — wraps `.on('value', …)`. Duplicate-handler attempts return the existing unsub. Auto-detaches via `GLRouteLifecycle` on `rehearsal` route leave.
 - `setCurrent / getCurrent / clearCurrent` — in-memory "what session is the user looking at" pointer.
-- `getStats()` → telemetry counters (reads/writes/removes/subscribes/duplicates/currentlyOwned/activeSubs).
+- `getStats()` → telemetry counters (reads/writes/removes/subscribes/duplicates/currentlyOwned/activeSubs + Phase 2: loadFieldCalls/setFieldCalls/removeFieldCalls/loadRecentCalls/loadForBandCalls/setForBandCalls/errors/lastError/activeSubscriptions)
+
+All existing helpers accept `opts.slug` to target an explicit band rather than the current band. When `opts.slug` is omitted, the call uses `bandPath()` (current band).
 
 ### Auto-stamping contract
-Writes (`create`, `update`, `setField`-parent) stamp:
+Writes (`create`, `update`, `setField`-parent, `setForBand`-parent) stamp:
 - `updatedAt = Date.now()` (unless caller provided)
 - `updatedBy = currentUserEmail` (unless caller provided)
 
@@ -118,20 +130,11 @@ This matches `saveBandArrayDataSafe` semantics so the "what changed last" signal
 ### Lifecycle integration
 `gl-rehearsal-session.js` registers a `GLRouteLifecycle` disposer for the `rehearsal` route. The disposer calls `_detachAllSubs()` so any active `.on()` subscription is torn down on route leave. `beforeunload` also detaches as defense-in-depth.
 
-### Phase 1 wrapped sites (9)
-- `js/features/rehearsal.js` lines 236, 252, 311, 1762, 1774, 3613, 3714
-- `rehearsal-mode.js` lines 1155, 1488
+### Permanent exceptions (intentionally NOT migrated)
+- `calendar.js:508, 3140` — `loadBandDataFromDrive('_band', 'rehearsal_sessions')` is a Drive-backed snapshot, separate concern from Firebase realtime.
+- `scripts/apply-golden-timeline*.js` — Node build scripts; no GLStore available at that runtime.
 
-### Phase 2 deferred (19 sites — see `02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md`)
-- `multitrack-rehearsal.js` (6 sites) — nested comments + previews
-- `recording-analyzer.js` (6 sites) — `label_overrides`, `songsWorked`, recent-N queries
-- `rehearsal-analysis-pipeline.js` (4 sites) — explicit-slug refs (`bands/{slug}/…`)
-- `gl-insights.js` (1) — explicit-slug
-- `gl-rehearsal-scheduling.js` (1), `groovemate_tools.js` (1), `band-feed.js` (1) — small migrations deferred to keep Phase 1 tight
-- `scripts/apply-golden-timeline*.js` (2) — permanent deferral; build-time only
-
-### Out of scope (not Firebase)
-- `calendar.js:508, 3140` — `loadBandDataFromDrive('_band', 'rehearsal_sessions')` is a Drive-backed snapshot, separate concern.
+For the full site-by-site Phase 1 + Phase 2 migration table, see `02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md`.
 
 ---
 

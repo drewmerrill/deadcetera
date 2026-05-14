@@ -100,6 +100,19 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 
 ---
 
+## Rehearsal Session Ownership (C2 Phase 2 complete, 2026-05-13)
+
+**Status:** **Stable** (build `20260513-211446`)
+- `window.GLStore.RehearsalSession` is the canonical owner of `bands/{slug}/rehearsal_sessions/**`.
+- **28 of 28 user-facing Firebase access sites** are canonical-routed (Phase 1: 9, Phase 2: 19).
+- **0 unprotected direct refs** remain. Permanent exceptions: 2 calendar Drive-backed snapshots, 2 build-time Node scripts.
+- Every migrated site preserves canonical+fallback shape: `if (GLStore.RehearsalSession.X) { canonical } else { /* Legacy fallback (cached-shell safety) */ direct firebaseDB.ref(...) }`. Stale SW shells degrade gracefully.
+- Phase 2 added 6 helpers: `loadField`, `removeField`, `loadRecent`, `loadForBand`, `setForBand`, plus extending existing helpers with `opts.slug` for explicit-band consumers (analysis-pipeline, insights).
+- All writes auto-stamp `updatedAt` + `updatedBy` per the canonical contract.
+- Stats expanded with Phase 2 counters (loadFieldCalls / setFieldCalls / removeFieldCalls / loadRecentCalls / loadForBandCalls / setForBandCalls / errors / lastError). Visible via `GLStore.RehearsalSession.getStats()` and surfaced through the Runtime Health Overlay.
+
+---
+
 ## Observability — Runtime Health Overlay (Stab #10)
 
 **Status:** **Stable** (Stab #10, 2026-05-13)

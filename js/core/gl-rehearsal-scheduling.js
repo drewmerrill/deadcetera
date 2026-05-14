@@ -358,18 +358,26 @@
       }
     } catch (e) {}
     try {
-      var db2 = _db();
-      if (db2 && typeof bandPath === 'function') {
-        var snap2 = await db2.ref(bandPath('rehearsal_sessions')).once('value');
-        var val2 = snap2.val();
-        if (val2) {
-          Object.values(val2).forEach(function(s) {
-            if (s.date) {
-              var d = s.date.split('T')[0];
-              if (existingDates.indexOf(d) === -1) existingDates.push(d);
-            }
-          });
+      // C2 Phase 2: route through canonical helper when available.
+      // Falls back to direct Firebase for stale-shell safety.
+      var sessions2 = null;
+      if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadAll) {
+        sessions2 = await GLStore.RehearsalSession.loadAll();
+      } else {
+        var db2 = _db();
+        if (db2 && typeof bandPath === 'function') {
+          var snap2 = await db2.ref(bandPath('rehearsal_sessions')).once('value');
+          var val2 = snap2.val();
+          sessions2 = val2 ? Object.values(val2) : null;
         }
+      }
+      if (sessions2) {
+        sessions2.forEach(function(s) {
+          if (s.date) {
+            var d = s.date.split('T')[0];
+            if (existingDates.indexOf(d) === -1) existingDates.push(d);
+          }
+        });
       }
     } catch (e) {}
 

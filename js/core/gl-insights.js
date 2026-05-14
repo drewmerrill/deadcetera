@@ -572,9 +572,21 @@
     if (typeof RehearsalAnalysis === 'undefined') return { processed: 0, failed: 0, skipped: 0 };
 
     var slug = _getBandSlug();
-    var snap = await firebase.database().ref('bands/' + slug + '/rehearsal_sessions').once('value');
-    var sessions = snap.val();
-    if (!sessions) return { processed: 0, failed: 0, skipped: 0 };
+    // C2 Phase 2: route through canonical loadForBand (explicit slug) when available.
+    // We need the keyed object shape (sessionId -> session) for the ids loop below,
+    // so we re-key the canonical array result back into an object.
+    var sessions;
+    if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadForBand) {
+      var arr = await GLStore.RehearsalSession.loadForBand(slug);
+      if (!arr || !arr.length) return { processed: 0, failed: 0, skipped: 0 };
+      sessions = {};
+      arr.forEach(function(s) { sessions[s.sessionId] = s; });
+    } else {
+      // Legacy fallback (cached-shell safety)
+      var snap = await firebase.database().ref('bands/' + slug + '/rehearsal_sessions').once('value');
+      sessions = snap.val();
+      if (!sessions) return { processed: 0, failed: 0, skipped: 0 };
+    }
 
     var ids = Object.keys(sessions);
     var results = { processed: 0, failed: 0, skipped: 0 };

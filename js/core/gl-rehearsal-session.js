@@ -1,24 +1,39 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // gl-rehearsal-session.js — Canonical ownership layer for rehearsal_sessions
 //
-// C2 Phase 1 (Reality Convergence Initiative — see
-// 02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md).
+// C2 Phase 1 (2026-05-13) introduced the wrapper. C2 Phase 2 (this build) added
+// helpers for nested fields, recent queries, and explicit-slug access so the
+// 19 deferred Firebase access sites can move through the chokepoint. See
+// 02_GrooveLinx/audits/C2_REHEARSAL_SESSION_MIGRATION_MAP.md for the migration
+// status by file:line.
 //
 // Single chokepoint for Firebase access to bands/{slug}/rehearsal_sessions/**.
-// Phase 1 wraps the safest/highest-value paths (rehearsal.js + rehearsal-mode.js
-// — 9 sites). Other callers (multitrack-rehearsal, recording-analyzer,
-// rehearsal-analysis-pipeline, gl-insights, groovemate_tools, band-feed) still
-// hit Firebase directly and will move in Phase 2. The wrapper is deliberately
-// thin: same Firebase semantics, plus updatedAt/updatedBy stamping and
-// defensive logging.
+// Same Firebase semantics, plus updatedAt/updatedBy stamping and defensive
+// logging. No schema change. No behavior change beyond auto-stamping writes.
 //
 // API: GLStore.RehearsalSession.{
+//   // Phase 1
 //   loadAll, loadById,
 //   create, update, setField, remove,
 //   setCurrent, getCurrent, clearCurrent,
 //   subscribe,
-//   getStats
+//   getStats,
+//   // Phase 2 (new)
+//   loadField, removeField, loadRecent,
+//   loadForBand, setForBand
 // }
+//
+// Phase 2 conventions:
+//   • All existing methods accept an optional `opts.slug` to target an
+//     explicit band rather than the current band. When opts.slug is omitted
+//     the call uses bandPath() (current band) — Phase 1 behavior preserved.
+//   • `loadField`/`setField`/`removeField` use Firebase's '/' nesting so a
+//     fieldPath like 'comments/<id>' or 'label_overrides/<key>' works.
+//   • `loadRecent(limit, opts)` runs an `orderByChild(opts.orderBy).
+//     limitToLast(limit)` query. Default orderBy is 'date'. Falls back to
+//     loadAll().slice(0, limit) when the index isn't usable.
+//   • `loadForBand(slug, sessionId?)` and `setForBand(slug, sessionId, patch,
+//     opts)` are thin slug-explicit wrappers.
 //
 // EXPOSES: window.GLStore.RehearsalSession
 // DEPENDS ON: window.GLStore, firebaseDB, bandPath, currentUserEmail
@@ -36,22 +51,38 @@
     var _activeSubs = [];          // [{ ref, handler }] — for .on() subscriptions (Phase 2 callers)
 
     // Lightweight defensive counters. Surfaced via getStats() for telemetry
-    // and tests. Bump in production code — these are cheap.
+    // and the GLRuntimeHealth overlay.
     var _stats = {
+        // Phase 1
         reads: 0,
         writes: 0,
         removes: 0,
         subscribes: 0,
         unsubscribes: 0,
         duplicateSubscribeAttempts: 0,
-        currentlyOwned: 0
+        currentlyOwned: 0,
+        // Phase 2
+        loadFieldCalls: 0,
+        setFieldCalls: 0,
+        removeFieldCalls: 0,
+        loadRecentCalls: 0,
+        loadForBandCalls: 0,
+        setForBandCalls: 0,
+        errors: 0,
+        lastError: null
     };
 
     function _db() {
         return (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     }
 
-    function _bp(suffix) {
+    function _bp(suffix, opts) {
+        // Build a Firebase ref path for rehearsal_sessions. Phase 2 adds
+        // opts.slug for explicit-slug consumers (analysis-pipeline, insights).
+        opts = opts || {};
+        if (opts.slug) {
+            return 'bands/' + opts.slug + '/rehearsal_sessions' + (suffix ? '/' + suffix : '');
+        }
         if (typeof bandPath !== 'function') return null;
         return bandPath('rehearsal_sessions' + (suffix ? '/' + suffix : ''));
     }
@@ -73,11 +104,16 @@
         return patch;
     }
 
+    function _recordError(label, e) {
+        _stats.errors++;
+        _stats.lastError = { at: Date.now(), where: label, message: (e && e.message) || String(e) };
+    }
+
     // ── Reads ────────────────────────────────────────────────────────────
 
-    async function loadAll() {
+    async function loadAll(opts) {
         var db = _db();
-        var path = _bp();
+        var path = _bp(null, opts);
         if (!db || !path) {
             console.warn(TAG, 'loadAll skipped — no firebaseDB or bandPath');
             return [];
@@ -87,9 +123,6 @@
             var snap = await db.ref(path).once('value');
             var val = snap.val();
             if (!val) return [];
-            // Same shape rehearsal.js _rhLoadSessions emitted: array w/ sessionId
-            // backfilled from key. Sort newest-first by date so callers get the
-            // same ordering they had before the wrap.
             var arr = Object.keys(val).map(function (k) {
                 var s = val[k];
                 s.sessionId = s.sessionId || k;
@@ -98,14 +131,15 @@
             arr.sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
             return arr;
         } catch (e) {
+            _recordError('loadAll', e);
             console.warn(TAG, 'loadAll failed:', e && e.message);
             return [];
         }
     }
 
-    async function loadById(sessionId) {
+    async function loadById(sessionId, opts) {
         var db = _db();
-        var path = _bp(sessionId);
+        var path = _bp(sessionId, opts);
         if (!db || !path || !sessionId) return null;
         _stats.reads++;
         try {
@@ -114,28 +148,97 @@
             if (v && !v.sessionId) v.sessionId = sessionId;
             return v;
         } catch (e) {
+            _recordError('loadById', e);
             console.warn(TAG, 'loadById failed:', sessionId, e && e.message);
             return null;
         }
     }
 
+    // Phase 2: nested-field read. fieldPath uses Firebase '/' nesting so
+    //   loadField(sid, 'comments') → bands/X/rehearsal_sessions/<sid>/comments
+    //   loadField(sid, 'comments/cmt_abc') → ...rehearsal_sessions/<sid>/comments/cmt_abc
+    //   loadField(sid, 'label_overrides/123_456') → ...rehearsal_sessions/<sid>/label_overrides/123_456
+    async function loadField(sessionId, fieldPath, opts) {
+        var db = _db();
+        if (!db || !sessionId || !fieldPath) return null;
+        var path = _bp(sessionId + '/' + fieldPath, opts);
+        if (!path) return null;
+        _stats.loadFieldCalls++;
+        _stats.reads++;
+        try {
+            var snap = await db.ref(path).once('value');
+            return snap.val();
+        } catch (e) {
+            _recordError('loadField', e);
+            console.warn(TAG, 'loadField failed:', sessionId, fieldPath, e && e.message);
+            return null;
+        }
+    }
+
+    // Phase 2: recent-N query. Default ordering is 'date' to match the
+    // existing recording-analyzer.js behavior. 'startedAt' is the band-feed
+    // ordering. Returns array of sessions with sessionId backfilled.
+    async function loadRecent(limit, opts) {
+        opts = opts || {};
+        var db = _db();
+        var path = _bp(null, opts);
+        if (!db || !path) return [];
+        var n = (typeof limit === 'number' && limit > 0) ? limit : 5;
+        var orderBy = opts.orderBy || 'date';
+        _stats.loadRecentCalls++;
+        _stats.reads++;
+        try {
+            var snap = await db.ref(path).orderByChild(orderBy).limitToLast(n).once('value');
+            var val = snap.val();
+            if (!val) return [];
+            var arr = Object.keys(val).map(function (k) {
+                var s = val[k];
+                s.sessionId = s.sessionId || k;
+                return s;
+            });
+            // limitToLast() returns ascending; callers historically reverse
+            // to get newest-first.
+            arr.sort(function (a, b) {
+                var av = a[orderBy] || '';
+                var bv = b[orderBy] || '';
+                return String(bv).localeCompare(String(av));
+            });
+            return arr;
+        } catch (e) {
+            _recordError('loadRecent', e);
+            console.warn(TAG, 'loadRecent failed (orderBy=' + orderBy + '):', e && e.message);
+            return [];
+        }
+    }
+
+    // Phase 2: explicit-slug load.
+    //   loadForBand(slug)                    → all sessions for that slug
+    //   loadForBand(slug, sessionId)         → that one session
+    async function loadForBand(slug, sessionId) {
+        if (!slug) return sessionId ? null : [];
+        _stats.loadForBandCalls++;
+        if (sessionId) return loadById(sessionId, { slug: slug });
+        return loadAll({ slug: slug });
+    }
+
     // ── Writes ───────────────────────────────────────────────────────────
 
-    async function create(sessionId, payload) {
+    async function create(sessionId, payload, opts) {
         var db = _db();
-        var path = _bp(sessionId);
+        var path = _bp(sessionId, opts);
         if (!db || !path || !sessionId) {
             console.warn(TAG, 'create skipped — bad args', { sessionId: sessionId, hasDb: !!db, hasPath: !!path });
             return;
         }
         _stats.writes++;
         var stamped = _stamp(Object.assign({}, payload || {}, { sessionId: sessionId }));
-        await db.ref(path).set(stamped);
+        try { await db.ref(path).set(stamped); }
+        catch (e) { _recordError('create', e); throw e; }
     }
 
-    async function update(sessionId, patch) {
+    async function update(sessionId, patch, opts) {
         var db = _db();
-        var path = _bp(sessionId);
+        var path = _bp(sessionId, opts);
         if (!db || !path || !sessionId) {
             console.warn(TAG, 'update skipped — bad args', { sessionId: sessionId });
             return;
@@ -146,41 +249,89 @@
         }
         _stats.writes++;
         var stamped = _stamp(Object.assign({}, patch));
-        await db.ref(path).update(stamped);
+        try { await db.ref(path).update(stamped); }
+        catch (e) { _recordError('update', e); throw e; }
     }
 
-    async function setField(sessionId, fieldPath, value) {
-        // Nested write helper for known sub-paths (e.g. 'audio_segments').
-        // Stamps updatedAt/updatedBy on the PARENT session record so the list
-        // sort and "what changed last" signals stay consistent.
+    async function setField(sessionId, fieldPath, value, opts) {
+        // Nested write helper. Stamps updatedAt/updatedBy on the PARENT session
+        // record so the list sort and "what changed last" signals stay
+        // consistent. fieldPath uses Firebase '/' nesting (see loadField).
         var db = _db();
         if (!db || !sessionId || !fieldPath) {
             console.warn(TAG, 'setField skipped — bad args');
             return;
         }
-        var leafPath = _bp(sessionId + '/' + fieldPath);
+        var leafPath = _bp(sessionId + '/' + fieldPath, opts);
         if (!leafPath) return;
+        _stats.setFieldCalls++;
         _stats.writes++;
-        await db.ref(leafPath).set(value);
+        try {
+            await db.ref(leafPath).set(value);
+        } catch (e) {
+            _recordError('setField', e);
+            throw e;
+        }
         try {
             // Best-effort parent stamp; don't fail the call if this errors.
-            await db.ref(_bp(sessionId)).update(_stamp({}));
+            await db.ref(_bp(sessionId, opts)).update(_stamp({}));
         } catch (e) {
             console.debug(TAG, 'setField parent-stamp failed (non-fatal):', e && e.message);
         }
     }
 
-    async function remove(sessionId) {
+    // Phase 2: nested-field removal. Same '/' nesting as setField.
+    async function removeField(sessionId, fieldPath, opts) {
         var db = _db();
-        var path = _bp(sessionId);
+        if (!db || !sessionId || !fieldPath) {
+            console.warn(TAG, 'removeField skipped — bad args');
+            return;
+        }
+        var leafPath = _bp(sessionId + '/' + fieldPath, opts);
+        if (!leafPath) return;
+        _stats.removeFieldCalls++;
+        _stats.removes++;
+        try {
+            await db.ref(leafPath).remove();
+        } catch (e) {
+            _recordError('removeField', e);
+            throw e;
+        }
+        try {
+            await db.ref(_bp(sessionId, opts)).update(_stamp({}));
+        } catch (e) {
+            console.debug(TAG, 'removeField parent-stamp failed (non-fatal):', e && e.message);
+        }
+    }
+
+    async function remove(sessionId, opts) {
+        var db = _db();
+        var path = _bp(sessionId, opts);
         if (!db || !path || !sessionId) return;
         _stats.removes++;
         try {
             await db.ref(path).remove();
             if (_current && _current.sessionId === sessionId) clearCurrent();
         } catch (e) {
+            _recordError('remove', e);
             console.warn(TAG, 'remove failed:', sessionId, e && e.message);
         }
+    }
+
+    // Phase 2: explicit-slug write. Thin wrapper.
+    //   setForBand(slug, sid, patch)                  → update(sid, patch, {slug})
+    //   setForBand(slug, sid, value, {fieldPath: 'analysis'}) → setField(sid, 'analysis', value, {slug})
+    async function setForBand(slug, sessionId, patchOrValue, opts) {
+        opts = opts || {};
+        if (!slug || !sessionId) {
+            console.warn(TAG, 'setForBand skipped — bad args', { slug: !!slug, sessionId: !!sessionId });
+            return;
+        }
+        _stats.setForBandCalls++;
+        if (opts.fieldPath) {
+            return setField(sessionId, opts.fieldPath, patchOrValue, { slug: slug });
+        }
+        return update(sessionId, patchOrValue, { slug: slug });
     }
 
     // ── In-memory current-session pointer ────────────────────────────────
@@ -250,21 +401,21 @@
     // ── Telemetry ────────────────────────────────────────────────────────
 
     function getStats() {
-        return Object.assign({}, _stats, { activeSubs: _activeSubs.length });
+        return Object.assign({}, _stats, {
+            activeSubs: _activeSubs.length,
+            activeSubscriptions: _activeSubs.length  // alias matching prompt naming
+        });
     }
 
     // ── GLRouteLifecycle integration ─────────────────────────────────────
     //
     // Register a disposer for the 'rehearsal' route so any active Firebase
     // subscription is torn down and the in-memory current pointer is
-    // cleared on navigation away. Phase 1 has no actual subscribers, but
-    // wiring this now means Phase 2 callers get cleanup "for free" by going
-    // through subscribe().
+    // cleared on navigation away.
 
     function _registerLifecycle() {
         if (typeof window === 'undefined') return;
         if (!window.GLRouteLifecycle || typeof window.GLRouteLifecycle.register !== 'function') {
-            // Lifecycle module not loaded yet — try again next tick.
             setTimeout(_registerLifecycle, 0);
             return;
         }
@@ -285,6 +436,7 @@
             return;
         }
         window.GLStore.RehearsalSession = {
+            // Phase 1
             loadAll:      loadAll,
             loadById:     loadById,
             create:       create,
@@ -295,9 +447,15 @@
             getCurrent:   getCurrent,
             clearCurrent: clearCurrent,
             subscribe:    subscribe,
-            getStats:     getStats
+            getStats:     getStats,
+            // Phase 2
+            loadField:    loadField,
+            removeField:  removeField,
+            loadRecent:   loadRecent,
+            loadForBand:  loadForBand,
+            setForBand:   setForBand
         };
-        console.log(TAG, 'attached to GLStore');
+        console.log(TAG, 'attached to GLStore (Phase 2 helpers live)');
         _registerLifecycle();
     }
 
