@@ -96,7 +96,7 @@ Built or half-built. Real but rough. Hiding from testers protects the product pe
 | **Pocket Meter** | Drummer pocket viz — interesting but unclear payoff. |
 | **Best Shot** | Track-best-take tool — emerging. |
 | **Ideas page** | Conceptually overlaps with Feed; needs clearer rules. |
-| **Stageplot page** | Stage diagram tool — emerging. |
+| ~~**Stageplot page**~~ | Reclassified 2026-05-14 → **Category B (MATURE / Deadcetera-used)**. Not D-tier. |
 | **Equipment page** | Gear catalog — emerging. |
 | **Contacts page** | Venue/booker/agent — emerging. |
 | **Finances page** | Income/expense — emerging. |

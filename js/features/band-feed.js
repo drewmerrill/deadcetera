@@ -347,10 +347,13 @@ function _feedRenderCreateBar() {
     var bar = document.getElementById('feedCreateBar');
     if (!bar) return;
 
-    // Messaging-style creation — feels like typing to your band
+    // Activity-stream creation — operational, not chat. Positioned per
+    // 02_GrooveLinx/OPERATOR_MANUAL/15_POSITIONING_AND_ADOPTION.md:
+    // "notifications out; chat stays elsewhere." Feed = action items + band notes,
+    // not Slack/Discord replacement. (2026-05-14 copy refresh.)
     bar.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(99,102,241,0.12);border-radius:12px;padding:10px 12px">'
         + '<div style="display:flex;gap:6px;margin-bottom:8px">'
-        + '<input id="feedQuickAdd" type="text" placeholder="Share something with the band\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.88em;padding:10px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);color:var(--text);outline:none" onfocus="this.style.borderColor=\'rgba(99,102,241,0.3)\'" onblur="this.style.borderColor=\'rgba(255,255,255,0.08)\'">'
+        + '<input id="feedQuickAdd" type="text" placeholder="Add a note or update for the band\u2026" onkeydown="if(event.key===\'Enter\')_feedQuickPost()" style="flex:1;font-size:0.88em;padding:10px 14px;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:rgba(0,0,0,0.15);color:var(--text);outline:none" onfocus="this.style.borderColor=\'rgba(99,102,241,0.3)\'" onblur="this.style.borderColor=\'rgba(255,255,255,0.08)\'">'
         + '<button onclick="_feedQuickPost()" title="Send" style="flex-shrink:0;width:40px;height:40px;border-radius:50%;cursor:pointer;border:none;background:rgba(99,102,241,0.15);color:#a5b4fc;font-size:1em;font-weight:700;display:flex;align-items:center;justify-content:center">\u2191</button>'
         + '</div>'
         + '<div style="display:flex;gap:6px;flex-wrap:wrap">'

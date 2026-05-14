@@ -62,7 +62,7 @@ These currently appear in demos / app-tours but shouldn't:
 
 - Pocket Meter (no clear payoff yet)
 - Best Shot (emerging)
-- Stage Plot (rare-use, not part of any persona's daily flow)
+- ~~Stage Plot~~ — KEEP. Active Deadcetera daily/gig-flow workflow (reclassified 2026-05-14). Anchor in Gig Prep demos.
 - Finances (half-built, misleading)
 - Workbench (hidden by decision)
 - Social page (dead)
@@ -243,7 +243,7 @@ The seven prompts from Operator Manual Phase 2 §7, answered directly.
 1. **`#workbench`** — confirmed hidden per Cutlist; verify it stays hidden.
 2. **`#pocketmeter`** — no clear payoff per 08_PROMOTION_BACKLOG.md §3.
 3. **`#finances`** — half-built; sets wrong expectations.
-4. **`#stageplot`** — rare-use; not on any persona's daily path.
+4. ~~`#stageplot`~~ — RECLASSIFIED 2026-05-14: Stage Plot is a Deadcetera-active workflow. KEEP visible. Not in the HIDE list.
 5. **`#bestshot`** — EMERGING; no daily-use story yet.
 
 **Bonus:** `#social` should be DELETED, not hidden (07_CUTLIST.md §1.1).

@@ -232,7 +232,10 @@ These are not features. They're operational and communication frictions. They ar
 - **Why a blocker:** Tester hits "is this broken?" moment at the first rehearsal-review.
 - **Reduce by:** Fix Bug #8 (highest-leverage bug fix in queue) OR disclaim explicitly in welcome message.
 
-### E.7 — D-tier surface visibility (Pocketmeter / Bestshot / Finances / Stageplot / Workbench)
+### E.7 — D-tier surface visibility (Pocketmeter / Bestshot / Finances / Workbench)
+
+_Stage Plot was reclassified out of this group on 2026-05-14 — it's an active Deadcetera workflow, not a low-value surface._
+
 - **Why a blocker:** Each is a "what's this for?" moment in the tester's first session.
 - **Reduce by:** Cutlist Tier 2 HIDE pass per `07_CUTLIST.md`. ~50-200 LOC, single cleanup commit.
 

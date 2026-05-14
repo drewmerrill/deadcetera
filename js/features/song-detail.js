@@ -14,7 +14,7 @@ var SD_LENSES_FULL = [
     { id:'learn',    icon:'\uD83C\uDFB8', label:'Practice' },
     { id:'band',     icon:'\uD83D\uDCCA', label:'Play'     },
     { id:'listen',   icon:'\uD83C\uDFA7', label:'Versions' },
-    { id:'sing',     icon:'\uD83C\uDFA4', label:'Harmony'  },
+    { id:'sing',     icon:'\uD83C\uDFA4', label:'Harmony Lab'  },
     { id:'stems',    icon:'\ud83c\udf9a', label:'Stems'    },
     { id:'inspire',  icon:'\u2728', label:'Inspire' },
 ];
@@ -43,10 +43,14 @@ window.renderSongDetail = function renderSongDetail(songTitle, containerOverride
     window._sdPanelMode = !!_sdOpts.panelMode;
     container.innerHTML = _sdShellHTML(title);
     _sdInjectStyles();
-    var _defaultTab = 'learn';
+    // Default landing: 'band' (Play / chart). The chart is the single most-used
+    // surface and the strongest first impression. 2026-05-14 beta-readiness pass
+    // shifted from 'learn' → 'band' so the user sees the canonical chart
+    // immediately. Other lenses populate lazily on first switch.
+    var _defaultTab = 'band';
     _sdActivateTab(_defaultTab);
+    _sdLensPopulated.band = true;
     _sdPopulateBandLens(title);
-    if (_defaultTab === 'learn') { _sdLensPopulated.learn = true; _sdPopulateLearnLens(title); }
     _sdPopulateRightPanel(title);
     requestAnimationFrame(function() { container.classList.add('sd-entered'); });
   } catch (_glRenderE) {
@@ -150,8 +154,20 @@ function _sdShellHTML(title) {
     var lenses = SD_LENSES_FULL;
     var pills = (band?'<span class="sd-meta-pill sd-band-pill '+band.toLowerCase()+'">'+_sdEsc(band)+'</span>':'');
 
+    // Per-lens hover tooltips — surface what each lens actually does for
+    // mobile-unfriendly long labels and first-time discoverability. Specifically
+    // calls out Harmony Lab (the buried-but-powerful split-mixer + LALAL surface).
+    var _sdTabTips = {
+        learn:   'Practice this song — guided focus',
+        band:    'Show the chord chart',
+        listen:  'Reference versions (Spotify / YouTube)',
+        sing:    'Harmony Lab — split mixer + lead/backing isolation',
+        stems:   'Per-instrument stem mixer (drums / bass / vocals / other)',
+        inspire: 'Notes and ideas for this song'
+    };
     var tabs = lenses.map(function(l) {
-        return '<button class="sd-tab-btn" data-lens="'+l.id+'" onclick="switchLens(\''+l.id+'\')">'+
+        var tip = _sdTabTips[l.id] || l.label;
+        return '<button class="sd-tab-btn" data-lens="'+l.id+'" onclick="switchLens(\''+l.id+'\')" title="'+_sdEsc(tip)+'" aria-label="'+_sdEsc(tip)+'">'+
                '<span class="sd-tab-icon">'+l.icon+'</span>'+
                '<span class="sd-tab-label">'+l.label+'</span></button>';
     }).join('');

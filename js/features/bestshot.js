@@ -943,13 +943,12 @@ async function _chopSaveTimeline() {
 window._chopSaveTimeline = _chopSaveTimeline;
 
 // Reload a previously-saved timeline into the chopper. Lists saved timelines
-// and prompts for selection. Requires chopper modal to be open + an audio
-// file already loaded (so playhead/canvas line up).
+// FIRST (even when no audio is loaded — Bug #8 fix 2026-05-14), then if a
+// timeline is picked but no audio is loaded yet, surfaces a clear dialog
+// telling the user what URL to analyze to bring the audio in. Previously the
+// no-audio path early-returned with a 5-second toast that was easily missed,
+// making the user conclude their save was lost when it was safely persisted.
 async function _chopLoadSavedTimeline() {
-    if (!chopAudioBuffer) {
-        if (typeof showToast === 'function') showToast('⚠ Load an audio file first so the timeline lines up with playback', 5000);
-        return;
-    }
     try {
         var all = await loadBandDataFromDrive('_band', 'rehearsal_timelines') || {};
         var keys = Object.keys(all).filter(function(k) { return all[k] && all[k].timeline; });
@@ -964,7 +963,10 @@ async function _chopLoadSavedTimeline() {
             var when = (t.savedAt || '').slice(0, 10);
             return (i + 1) + '. ' + (t.label || k) + '  (' + when + ', ' + (t.timeline.segments || []).length + ' segs)';
         }).join('\n');
-        var pick = prompt('Saved timelines — enter the number to load:\n\n' + listText, '1');
+        var header = chopAudioBuffer
+            ? 'Saved timelines — enter the number to load:\n\n'
+            : 'Saved timelines (no audio loaded — pick to see how to attach):\n\n';
+        var pick = prompt(header + listText, '1');
         if (!pick) return;
         var idx = parseInt(pick, 10) - 1;
         if (isNaN(idx) || idx < 0 || idx >= keys.length) {
@@ -972,6 +974,22 @@ async function _chopLoadSavedTimeline() {
             return;
         }
         var chosen = all[keys[idx]];
+        if (!chopAudioBuffer) {
+            // Saved timeline exists but no audio loaded — surface clearly instead of
+            // silently doing nothing. The save is NOT lost; it's just waiting for audio.
+            var label = chosen.label || keys[idx];
+            var segCount = (chosen.timeline && chosen.timeline.segments && chosen.timeline.segments.length) || 0;
+            var msg = '✓ Timeline "' + label + '" is saved (' + segCount + ' segments).\n\n';
+            if (chosen.sourceUrl) {
+                msg += 'It was saved against this audio source:\n' + chosen.sourceUrl + '\n\n';
+                msg += 'To attach: paste the URL above into ✨ Analyze on Server, wait for the audio to load, then click 📂 Load again and pick this timeline.';
+            } else {
+                msg += 'To attach: load the original audio file into the chopper (drag-drop or Analyze on Server), then click 📂 Load again and pick this timeline.';
+            }
+            try { alert(msg); } catch(e) { console.log(msg); }
+            if (typeof showToast === 'function') showToast('📂 Timeline found — load audio to attach', 6000);
+            return;
+        }
         _chopLoadFromTimeline(chosen.timeline);
         chopTimestampMarkers = [];
         if (typeof chopComputeRestartHotspots === 'function') chopComputeRestartHotspots();

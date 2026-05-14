@@ -39,13 +39,21 @@
 
   // All secondary pages — value-weighted ordering for tools drawer
   // Grouped: Rehearse & Practice → Gig Prep → Band → Manage
+  //
+  // Beta-readiness HIDE pass (2026-05-14): pocketmeter / bestshot / finances /
+  // social removed from primary nav. Routes still work via direct URL; the
+  // pages keep their renderers + lazy-load scripts. Stage Plot stays — it's
+  // an active Deadcetera workflow. Per 02_GrooveLinx/OPERATOR_MANUAL/07_CUTLIST.md
+  // (with the 2026-05-14 Stage-Plot reclassification).
   var NAV_MORE = [
     // Rehearse & Practice — things you grab at rehearsal
     // (Practice itself moved to NAV_CORE on 2026-05-09 \u2014 see above)
-    { page: 'pocketmeter',   icon: '\u23F1',         label: 'Pocket Meter', tip: 'Live BPM detection', section: 'Rehearse & Practice' },
-    { page: 'tuner',         icon: '\uD83C\uDFB8',  label: 'Tuner',        tip: 'Tune your instrument' },
+    // pocketmeter HIDDEN from primary nav (2026-05-14 beta-readiness pass).
+    //   Route + renderer preserved \u2014 accessible via #pocketmeter URL or future
+    //   contextual promotion when payoff story is validated.
+    { page: 'tuner',         icon: '\uD83C\uDFB8',  label: 'Tuner',        tip: 'Tune your instrument', section: 'Rehearse & Practice' },
     { page: 'metronome',     icon: '\uD83E\uDD41',  label: 'Metronome',    tip: 'Click track' },
-    { page: 'bestshot',      icon: '\uD83C\uDFC6',  label: 'Best Shot',    tip: 'Compare recordings' },
+    // bestshot HIDDEN \u2014 emerging; no clear daily-use story yet.
     { page: 'playlists',     icon: '\uD83C\uDFA7',  label: 'Playlists',    tip: 'Reference listening' },
     // Gig Prep — before the show
     { page: 'gigs',          icon: '\uD83C\uDFA4',  label: 'Gigs',         tip: 'Shows and performances', section: 'Gig Prep' },
@@ -58,8 +66,8 @@
     { page: 'notifications', icon: '\uD83D\uDD14',  label: 'Care Packages',tip: 'Send charts to the band' },
     // Manage — admin and records
     { page: 'equipment',     icon: '\uD83C\uDF9B',  label: 'Equipment',    tip: 'Gear inventory', section: 'Manage' },
-    { page: 'finances',      icon: '\uD83D\uDCB0',  label: 'Finances',     tip: 'Income and payouts' },
-    { page: 'social',        icon: '\uD83D\uDCE3',  label: 'Social',       tip: 'Social media links' },
+    // finances HIDDEN \u2014 half-built; sets wrong expectations until real money flow lands.
+    // social HIDDEN \u2014 predates Band Feed; route preserved for now.
     { page: 'help',          icon: '\u2753',         label: 'Help',         tip: 'Guides and support' },
   ];
 

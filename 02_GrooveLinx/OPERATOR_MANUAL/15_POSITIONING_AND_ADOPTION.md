@@ -287,7 +287,7 @@ Acceptable to ship-as-is for first 3-5 testers:
 2. **Rehearsal Intel page** — EMERGING; promotion deferred.
 3. **Schedule page** — collapsing into Calendar eventually.
 4. **Ideas page** — collapsing into Feed eventually.
-5. **Pocket Meter / Best Shot / Finances / Stageplot** — HIDDEN per `07_CUTLIST.md`.
+5. **Pocket Meter / Best Shot / Finances** — HIDDEN per `07_CUTLIST.md` (shipped 2026-05-14 build `20260514-151844`). Stage Plot was reclassified KEEP — active Deadcetera workflow.
 6. **MusicXML notation depth** — abcjs is fine for now.
 7. **Mode-B Phase 2 redemption** — Phase 1 mailto acceptable.
 8. **Multi-band switching UI** — single-band-per-tester acceptable.

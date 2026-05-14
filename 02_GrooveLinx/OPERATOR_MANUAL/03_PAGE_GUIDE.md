@@ -171,9 +171,9 @@ _Build `20260514-142926`. Every visible page + route in the app. Pulled from `js
 - **Purpose:** Venue / booker / agent contacts.
 
 ### `#stageplot` — Stage Plot
-- **Maturity:** EMERGING
+- **Maturity:** MATURE — active Deadcetera workflow
 - **Renderer:** `stageplot.js`
-- **Purpose:** Stage diagram per venue/gig.
+- **Purpose:** Stage diagram per venue/gig. Used regularly by Deadcetera (reclassified 2026-05-14 after Drew confirmed daily/gig-flow usage). Kept in primary NAV_MORE under Gig Prep.
 
 ---
 
@@ -238,7 +238,7 @@ These are full-screen UX modes that exist on top of pages, not as routes:
 | `#bestshot` | Best Shot | EMERGING | Rare |
 | `#equipment` | Equipment | EMERGING | Sometimes |
 | `#contacts` | Contacts | EMERGING | Sometimes |
-| `#stageplot` | Stage Plot | EMERGING | Rare |
+| `#stageplot` | Stage Plot | MATURE | Active Deadcetera use |
 | `#admin` | Admin | EXPERIMENTAL | Hidden |
 | `#workbench` | Workbench | EXPERIMENTAL | Hidden |
 | `#help` | Help | MATURE | Onboarding |

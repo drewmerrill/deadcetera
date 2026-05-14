@@ -1,6 +1,16 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-05-12 19:23 EDT — A2P 10DLC resubmission + rehearsal timeline persistence + 3 follow-up bugs (#5/#6/#7); 9 commits, final build `20260512-232320`_
+_Last updated: 2026-05-14 15:18 EDT — Bug #8 (silent Load button) closed as part of Beta-Readiness Execution Pass, build `20260514-151844`_
+
+---
+
+## Bugs Fixed (2026-05-14 — Beta-Readiness Execution Pass)
+
+**Severity:** LOW (UX/discoverability — no data loss). Closed alongside HIDE pass, Harmony Lab label promotion, default-lens shift, and Feed positioning copy refresh in single commit, build `20260514-151844`.
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| **#8 — Chopper 📂 Load button silently no-ops when no audio loaded** (LOW, surfaced 2026-05-14 by Drew checking the saved 5/11 timeline — clicked Load, nothing visible happened, concluded the save was lost; the save was actually safe in Firebase at `bands/{slug}/rehearsal_timelines/tl_1778719408878_peu1az`, 81 segments) | `_chopLoadSavedTimeline()` in `bestshot.js:948-952` early-returned with a 5-second toast when `chopAudioBuffer` was null. The gate existed for a real reason (timeline seconds map to the audio buffer), but: (a) the toast was brief and easy to miss, (b) "Load" with no other visible effect read as "broken button," (c) the user had no signal that saved timelines existed at all until audio was loaded AND the prompt() picker happened to fire | `_chopLoadSavedTimeline()` reworked: the list of saved timelines is now fetched FIRST and the picker is shown EVEN WHEN no audio is loaded. The picker header copy adapts: "Saved timelines (no audio loaded — pick to see how to attach)" vs the normal "Saved timelines — enter the number to load". If the user picks a timeline while audio is absent, a clear `alert()` surfaces the timeline's label + segment count + the original `sourceUrl` it was saved against + how to attach (paste URL into ✨ Analyze on Server). A 6-second confirmation toast reinforces: "📂 Timeline found — load audio to attach". The save is never invisible. Truthful semantics; no silent failures. Approach is closest to bug_queue's suggested Option A (show picker first) with Option C's source-URL surfacing folded in | 20260514-151844 |
 
 ---
 

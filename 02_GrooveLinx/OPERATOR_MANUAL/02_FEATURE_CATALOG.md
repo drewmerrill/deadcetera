@@ -173,7 +173,7 @@ _Build `20260514-142926`. Inventory of every named feature in the codebase, grou
 |---|---|---|---|
 | **Equipment page** | EMERGING | `js/features/equipment.js` | Gear catalog per member. |
 | **Contacts page** | EMERGING | `js/features/contacts.js` | Venue/booker/agent contacts. |
-| **Stageplot page** | EMERGING | `js/features/stageplot.js` | Stage diagram per venue/gig. |
+| **Stageplot page** | MATURE | `js/features/stageplot.js` | Stage diagram per venue/gig. Active Deadcetera daily workflow (reclassified 2026-05-14). |
 | **Member roster** | CORE | `bands/{slug}/meta/members/` | Canonical band roster. |
 | **Member readiness** | MATURE | gl-readiness.js | Per-member per-song readiness. |
 

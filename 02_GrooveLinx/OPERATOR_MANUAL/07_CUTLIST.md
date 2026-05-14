@@ -96,8 +96,8 @@ These surfaces have value but shouldn't burden beta-user cognitive load.
 ### 2.6 `#stageplot` — Stage Plot
 
 - **Why it exists:** Stage diagram per venue/gig.
-- **Current usage:** Rare. Drew uses occasionally.
-- **Recommendation:** **HIDE** unless the gig workflow specifically benefits — then PROMOTE under Gigs as an inline tab, not a top-level nav entry.
+- **Current usage:** **ACTIVE — used extensively by Deadcetera today** (reclassified 2026-05-14 after Drew confirmed real daily/gig-flow usage).
+- **Recommendation:** **KEEP — Deadcetera-used active workflow.** Do NOT hide. Stays in primary NAV_MORE under Gig Prep. Preserve nav, route, and code untouched. This is NOT speculative D-tier surface; it's load-bearing for the user's actual gig workflow. Treat as Category B (amplify / protect) rather than E (reduce visibility).
 
 ---
 
@@ -208,22 +208,25 @@ Surfaces that live INSIDE other pages and may be over-burying value:
 
 ## Recommended sequencing (single cleanup commit)
 
-If Drew wants to do this in one cleanup-commit pass:
+**SHIPPED 2026-05-14 (build `20260514-151844`).** The cleanup commit landed as part of the Beta-Readiness Execution Pass:
 
 ```
-docs: Operator Manual cleanup #1 — Cutlist Tier 1 + Tier 2 hides
+HIDE pass — applied to gl-left-rail.js NAV_MORE only:
+  - #pocketmeter   removed (route + renderer preserved)
+  - #bestshot      removed (route + renderer preserved)
+  - #finances      removed (route + renderer preserved)
+  - #social        removed (route + renderer preserved)
 
-DELETE:
-  - js/features/social.js
-  - any `#social` route registration
+DELETE — held back: social.js is NOT a verified orphan (still in
+  pageRenderers + _glPageScripts + _HASH_VALID_PAGES + has its own
+  render function). HIDE-from-nav was the conservative choice.
 
-HIDE (remove from primary nav, keep code):
-  - #admin (already effectively hidden — add role-check 404)
-  - #bestshot
-  - #pocketmeter
-  - #finances
-  - #stageplot
-  - #workbench (already hidden — confirm)
+NOT HIDDEN (reclassified):
+  - #stageplot     KEEP — active Deadcetera workflow (per 2026-05-14
+                   correction; reclassed from earlier HIDE candidate).
+  - #admin         already gated via gl_dev_mode for the sensitive tabs
+                   (Bugs / UAT / Plan); the Profile/Band/Data/About tabs
+                   are appropriate for all users. No structural change.
 
 KEEP INTERNAL (no change):
   - Beta Feedback FAB, Runtime Health Overlay, console diagnostics
@@ -232,9 +235,11 @@ PROMOTE LATER (no change):
   - #practice, #ideas, #playlists, #schedule
 ```
 
-Estimated diff: ~50 LOC nav-table changes + ~150 LOC social.js deletion + verification grep across `js/features/` and `js/ui/navigation.js`.
+**Routes preserved:** all 4 hidden pages remain URL-reachable via `#pocketmeter` / `#bestshot` / `#finances` / `#social`. The HIDE is purely a nav-table reduction; no functional regression for power users.
 
-**Zero behavior change for valid beta paths.** Tester confusion drops measurably (six fewer mystery nav entries).
+**Diff:** ~20 LOC nav-table changes in `js/ui/gl-left-rail.js`. Build atomic across 4 sources to `20260514-151844`.
+
+**Result:** four fewer mystery nav entries for first-tester onboarding without losing optionality.
 
 ---
 
