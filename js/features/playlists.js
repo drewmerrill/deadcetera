@@ -21,7 +21,7 @@ function renderPlaylistsPage(el) {
     el.innerHTML = `
     <div class="page-header">
         <h1>🎵 Playlists</h1>
-        <p>Curated listening for the whole band — from any source, in any order</p>
+        <p>For rehearsal listening, learning, and reference — <strong>not</strong> the gig running order. Use <a href="#setlists" style="color:#a5b4fc;text-decoration:underline">Setlists</a> when it's time to perform.</p>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
         <button class="btn btn-primary" onclick="plCreateNew()">+ New Playlist</button>

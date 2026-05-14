@@ -389,8 +389,37 @@ function _renderTransitionConfBadge(confidence) {
         + label + '</span>';
 }
 
+// Console-only helper for Beta Semantic Clarity Pass observability.
+// Read with `_glGetRehearsalEntryStats()` to see which entry path testers use.
+// Clear with `_glClearRehearsalEntryStats()`.
+window._glGetRehearsalEntryStats = function() {
+    try { return JSON.parse(localStorage.getItem('gl_rehearsal_entry_stats') || '{}'); }
+    catch(e) { return { error: e && e.message }; }
+};
+window._glClearRehearsalEntryStats = function() {
+    try { localStorage.removeItem('gl_rehearsal_entry_stats'); return 'cleared'; }
+    catch(e) { return 'failed: ' + (e && e.message); }
+};
+
 async function renderRehearsalPage(el) {
   try {
+    // Beta Semantic Clarity Pass (2026-05-14): lightweight entry-source counter.
+    // We have three rehearsal entry paths today (Home dashboard CTA, primary nav,
+    // contextual deep-links) and don't yet know which testers gravitate to.
+    // This is OBSERVATION work — read via _glGetRehearsalEntryStats() in console.
+    // No code branches off this; no behavior depends on it. Purely a tally.
+    try {
+        var _glRES = JSON.parse(localStorage.getItem('gl_rehearsal_entry_stats') || '{}');
+        var _glRESsrc = (window._glRehearsalEntrySource || 'direct');
+        _glRES[_glRESsrc] = (_glRES[_glRESsrc] || 0) + 1;
+        _glRES._lastEntry = new Date().toISOString();
+        _glRES._lastSource = _glRESsrc;
+        localStorage.setItem('gl_rehearsal_entry_stats', JSON.stringify(_glRES));
+        // Reset the source flag so subsequent entries default to 'direct' unless
+        // re-tagged by the next caller.
+        window._glRehearsalEntrySource = null;
+    } catch(e) { /* counter is non-essential; never block render */ }
+
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'rehearsal');
     // If a render is already in flight, do NOT wipe the DOM \u2014 wiping
     // strands the in-flight render's cached `main` element, which becomes

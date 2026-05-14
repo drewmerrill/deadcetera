@@ -925,7 +925,7 @@ window.renderBandFeedPage = async function(el) {
     _feedRemoveBackBar();
     el.innerHTML = '<div class="gl-page">'
         + '<div class="gl-page-title">\uD83D\uDCE1 Band Feed</div>'
-        + '<div class="gl-page-sub">What\u2019s waiting. What changed.</div>'
+        + '<div class="gl-page-sub">Recent band activity \u2014 what\u2019s waiting, what changed, what\u2019s decided. (Discussion + proposals live in <a href="#ideas" style="color:#a5b4fc;text-decoration:underline">Band Room</a>.)</div>'
         + '<div class="gl-page-split">'
         + '<div class="gl-page-primary">'
         + '<div id="feedCreateBar" style="margin-bottom:8px"></div>'

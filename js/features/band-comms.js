@@ -216,7 +216,7 @@ function renderIdeasBoardPage(el) {
   // Section tabs: Needs Votes | Open Ideas | Polls | Decisions | Archive
   el.innerHTML = '<div class="gl-page">'
     + '<div class="gl-page-title">\uD83C\uDFB8 Band Room</div>'
-    + '<div class="gl-page-sub">Decisions, polls, and ideas</div>'
+    + '<div class="gl-page-sub">Decisions, polls, and proposals — the space for deciding things together. (For the recent-activity stream, see <a href="#feed" style="color:#a5b4fc;text-decoration:underline">Feed</a>.)</div>'
     + '<div class="gl-page-split">'
     + '<div class="gl-page-primary">'
     + '<div id="bcQuickCreate" style="margin-bottom:12px"></div>'

@@ -57,7 +57,7 @@ Once Drew executes `02_GrooveLinx/BETA_ONBOARDING_RUNBOOK.md` with tester #1, po
 ## First Tester Run — <tester-name> / <date>
 
 **Tester:** <name>, <email>, <band slug>, <device>
-**Runbook build at session:** 20260514-142926
+**Runbook build at session:** 20260514-155010
 **Session duration:** <minutes>
 
 ### What worked
@@ -68,6 +68,20 @@ Once Drew executes `02_GrooveLinx/BETA_ONBOARDING_RUNBOOK.md` with tester #1, po
 
 ### What broke
 - <list of any console errors, blank states, or "this doesn't work" moments>
+
+### Beta Semantic Clarity Pass observations (2026-05-14)
+The following clarifications were added pre-tester. Capture whether each landed:
+
+- **Playlists vs Setlists subtitles** — Did the tester pause on which one to use? Did the subtitle copy ("not the gig running order" / "performance running order") successfully distinguish them, or did they still ask?
+- **Feed vs Band Room subtitles** — Did the tester understand Feed = activity stream vs Band Room = decisions/proposals? Did the inline cross-references ("see Band Room" / "see Feed") help?
+- **Harmony Lab discoverability** — Did the tester find Harmony Lab on their own? Did the new label ("Harmony Lab" vs "Harmony") + tooltip help?
+- **Song Detail first impression** — Tester now lands on Chart (Play lens) by default. Did they look for or expect something else first?
+
+### Rehearsal entry path observation
+Query in tester's browser console after session: `_glGetRehearsalEntryStats()`
+- Counts per source: <fill in from console output>
+- Most-used path: <home-quickstart | home-cta | direct>
+- Implications: <if dominant path is "direct," consider primary-nav prominence; if "home-quickstart," validate the zero-friction entry; if "home-cta," confirm CTA copy clarity>
 
 ### Success criteria (§6 grading)
 - 8 lines: ✓ / ✗ / N/A

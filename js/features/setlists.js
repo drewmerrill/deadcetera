@@ -118,7 +118,7 @@ function renderSetlistsPage(el) {
     if (typeof glInjectPageHelpTrigger === 'function') glInjectPageHelpTrigger(el, 'setlists');
     // Reset SWR flag so cache is always checked on page entry
     _slLoadedFromNetwork = false;
-    el.innerHTML = '<div class="page-header"><h1>Build Your Set</h1><p>This is what you\u2019ll play. Keep it tight, clear, and fun.</p></div>'
+    el.innerHTML = '<div class="page-header"><h1>Build Your Set</h1><p>The performance running order for a gig or rehearsal. (For reference / listening playlists, see <a href="#playlists" style="color:#a5b4fc;text-decoration:underline">Playlists</a>.)</p></div>'
         + '<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">'
         + '<button class="btn btn-primary" onclick="createNewSetlist()" style="font-size:0.85em">+ Build a New Set</button>'
         + '<div id="slFreshness" class="sl-freshness"></div>'

@@ -248,7 +248,9 @@ window._hdViewSetlist = function(setlistName) {
 
 // ── Rehearsal preview modal ──────────────────────────────────────────────────
 // Zero-friction rehearsal start — no intermediate modal
+// Source-tagged for Beta Semantic Clarity Pass observability (2026-05-14).
 window._hdShowRehearsalPreview = function() {
+    window._glRehearsalEntrySource = 'home-quickstart';
     if (typeof _glQuickStartRehearsal === 'function') _glQuickStartRehearsal();
     else if (typeof GLOrchestrator !== 'undefined' && GLOrchestrator.runBandCycle) GLOrchestrator.runBandCycle();
     else showPage('rehearsal');
@@ -833,7 +835,7 @@ function _renderNextActionCard(bundle, wf) {
         if (ia.cta === 'Start Practice' && ia.song) {
             _cta = { label: '\u25B6 Practice Now' + _timeHint, onclick: "selectSong('" + _escHtml(ia.song).replace(/'/g, "\\'") + "')" };
         } else {
-            _cta = { label: '\uD83C\uDFB8 Start Rehearsal' + _timeHint, onclick: "showPage('rehearsal')" };
+            _cta = { label: '\uD83C\uDFB8 Start Rehearsal' + _timeHint, onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" };
         }
         _highConfidence = true;
 
@@ -842,7 +844,7 @@ function _renderNextActionCard(bundle, wf) {
         var _songNames = _focusList.slice(0, 3).join(', ');
         _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 focus on ' + (weakCount <= 3 ? _songNames : weakCount + ' songs');
         _sub = 'Based on upcoming gig + weak songs' + (weakCount > 3 ? ' (' + _songNames + ' + ' + (weakCount - 3) + ' more)' : '');
-        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" };
         _highConfidence = true;
     } else if (daysOut <= 3 && daysOut > 0) {
         _msg = 'Gig in ' + daysOut + ' day' + (daysOut > 1 ? 's' : '') + ' \u2014 your set is tight. Run it.';
@@ -853,12 +855,12 @@ function _renderNextActionCard(bundle, wf) {
         var _rSongNames = _focusList.slice(0, 3).join(', ');
         _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 focus on ' + (weakCount <= 3 ? _rSongNames : weakCount + ' songs');
         _sub = 'Based on upcoming rehearsal + weak songs' + (weakCount > 3 ? ' (' + _rSongNames + ' + ' + (weakCount - 3) + ' more)' : '');
-        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" };
         _highConfidence = true;
     } else if (_rehearsalDays <= 3 && _rehearsalDays >= 0) {
         _msg = 'Rehearsal ' + (_rehearsalDays === 0 ? 'today' : 'in ' + _rehearsalDays + ' day' + (_rehearsalDays > 1 ? 's' : '')) + ' \u2014 your set is tight. Run it.';
         _sub = '';
-        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" };
         _highConfidence = true;
 
     // ── Priority 5: Default (still directive, not passive) ──
@@ -874,7 +876,7 @@ function _renderNextActionCard(bundle, wf) {
             _msg = 'Run your set to stay tight';
             _sub = 'Everything\u2019s solid. One more run keeps it there.';
         }
-        _cta = { label: '\u25B6 Start Rehearsal', onclick: "showPage('rehearsal')" };
+        _cta = { label: '\u25B6 Start Rehearsal', onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" };
     }
 
     // Add love context to subtitle when meaningful (not when already high confidence with specific copy)
@@ -2548,7 +2550,7 @@ function _renderSmartNudge(bundle) {
     }
     if (lastPractice) {
         var daysSince = Math.floor((Date.now() - lastPractice.getTime()) / 86400000);
-        if (daysSince >= 5) nudges.push({ icon: '\uD83C\uDFB8', text: 'You haven\u2019t practiced in ' + daysSince + ' days', cta: 'Practice now', onclick: "showPage('rehearsal')" });
+        if (daysSince >= 5) nudges.push({ icon: '\uD83C\uDFB8', text: 'You haven\u2019t practiced in ' + daysSince + ' days', cta: 'Practice now', onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')" });
     }
 
     // Readiness drop nudge — check if any active song dropped below 3
@@ -3014,7 +3016,7 @@ function _renderBandHealthRow(bundle) {
         var scColor = sc.score >= 80 ? '#22c55e' : sc.score >= 50 ? '#f59e0b' : '#ef4444';
         tiles.push({
             icon: '&#x1F3C1;', label: 'Last Score', value: String(sc.score), sub: sc.label || '', color: scColor,
-            onclick: "showPage('rehearsal')"
+            onclick: "window._glRehearsalEntrySource='home-cta';showPage('rehearsal')"
         });
     }
 
