@@ -93,6 +93,22 @@ Empty-state copy improvements landed. Capture whether each empty state gave the 
 - **Three rehearsal entry points** — counter armed (`_glGetRehearsalEntryStats()`); structural convergence deferred until real signal.
 - **Lens density** — 6 lenses still present; default `band` landing + tooltips are partial mitigation only.
 
+### Reality Audit #10 — Home Page Intelligence Hierarchy observations
+The audit (2026-05-14, build `20260514-174732`) identified 10 findings on Home. Validate whether each hits Tester #1 in the wild — these answers drive whether P0 fixes ship:
+
+- **F1 Risk card specificity** — When tester saw "N songs below ready" on a rehearsal-risk card, did they understand WHICH songs? Did they want to tap to see them?
+- **F2 Scope confusion (your set vs band set)** — When CTA said "Start Rehearsal" or "Run your full set," did the tester pause on whether it was a personal or band action?
+- **F3 Stacked recommendations** — Did the tester encounter multiple "do this next" suggestions in one viewport and not know which to follow?
+- **F4 "73% gig ready" — explainability** — Did the tester ask what 73% means, what it's based on, or which gig?
+- **F5 "Dropped in readiness" — scope** — When tester saw a song-dropped nudge, did they understand WHOSE readiness dropped?
+- **F6 Recording Analyzer placement** — Did the tester find the Analyze Rehearsal Recording CTA? Did it feel buried or appropriate?
+- **F7 What's New completeness** — Did the tester glance at What's New and think "is that all"? Did they expect to see more activity than what rendered?
+- **F8 Band Room placement** — Did the tester confuse Band Room with the Feed pending alerts at the top?
+- **F9 "1 needs attention" vs "2 need work" disagreement** — Did the tester notice or comment on the contradicting counts? (This is the most-dangerous finding for trust.)
+- **F10 "N/5 aligned on Focus"** — Did the tester try to click the count to see who voted? Did they understand the link to "Count me in"?
+
+**If 2+ findings validated by Tester #1 → schedule Audit #10 P0 (4 surgical fixes, ~150-250 LOC). Otherwise defer architectural work; observe across testers #2-3.**
+
 ### Rehearsal entry path observation
 Query in tester's browser console after session: `_glGetRehearsalEntryStats()`
 - Counts per source: <fill in from console output>

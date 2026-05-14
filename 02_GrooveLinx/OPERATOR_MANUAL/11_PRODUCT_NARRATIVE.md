@@ -268,20 +268,26 @@ This should be the one workflow Drew can demo with eyes closed.
 
 ## §4 — Most dangerous cognitive-overload area
 
-> **Song Detail's 8 lenses.**
+> **Home page + Song Detail lens density — tied.**
 
-Band / Play Mode / Chart / North Star / Reference / Harmony / Notes / Stems.
+**Home page intelligence hierarchy** (formally audited 2026-05-14 — see [Reality Audit #10](../audits/GROOVELINX_REALITY_AUDIT_10_HOME_HIERARCHY.md)). Drew's Ops Review identified 10 findings backed by hard code evidence: three competing readiness thresholds (`avg < 4` / `< 3` / `<= 2`), three independent recommendation engines, zero scope chips, narrow activity feed, broken polling continuity. Symptom: app feels "busy-smart" not "guided-smart." Root cause: no single narrative priority. Audit proposes 4-tier "One Primary Narrative" architecture with canonical `GLReadinessModel` + scope-chip vocabulary. **Phased P0/P1/P2 plan** explicitly gated on Tester #1 signal — DO NOT ship a Home redesign pre-tester.
 
-Each individual lens is well-built. The aggregate is overwhelming. New testers don't know which to land on, and the default isn't always the most useful.
+**Song Detail lens density** (now 6 lenses post-2026-05-14 — Practice / Play / Versions / Harmony Lab / Stems / Inspire). Each individual lens is well-built. The aggregate is overwhelming. New testers don't know which to land on. (Default landing was shifted to `'band'` (Play / Chart) in the Beta-Readiness Execution Pass — partial mitigation.)
 
-**Why dangerous:** Song Detail is the most-visited page in the app. If users get confused here, they get confused everywhere. The fragmentation here radiates outward.
+**Why both are dangerous:** Home is the FIRST page; Song Detail is the MOST-VISITED page. If users get confused at either, they get confused everywhere. The fragmentation radiates outward.
 
-**Mitigation paths:**
-- Smart-default landing per song state (new song → Chart; familiar song → last-used lens)
-- Hide rarely-used lenses behind a "more" affordance
-- Per-mode lens visibility (Practice mode hides Stems, Performance mode hides Notes)
+**Mitigation paths (Home — per Reality Audit #10):**
+- P0 (pre-tester): 4 surgical fixes (specific songs in risk card, scope chip on event card, "based on" subtext for 73%, clickable alignment count)
+- P1 (post-tester): Canonical `GLReadinessModel` + scope-chip system + tier-CSS
+- P2 (future): Recommendation engine consolidation + narrative composition
 
-This is a future Operator Manual Phase 3 candidate.
+**Mitigation paths (Song Detail — already partial):**
+- ✅ Default landing `'band'` (Beta-Readiness Pass)
+- ✅ Tooltips on all 6 lenses (Beta-Readiness Pass)
+- ⏸ Smart-default landing per song state (new song → Chart; familiar song → last-used) — deferred
+- ⏸ Per-mode lens visibility — deferred
+
+Both are future Operator Manual Phase 3 candidates.
 
 ## §5 — Most likely onboarding confusion
 
