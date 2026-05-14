@@ -1,6 +1,6 @@
 # GrooveLinx — Known Stable Flows
 
-_Last updated: 2026-05-14 (build `20260514-141450`)._
+_Last updated: 2026-05-14 (build `20260514-142926`)._
 
 This doc tracks user-facing flows by **trust level**: how confident we are that the flow works reliably across browsers + iOS Safari + route transitions + arbitration. Updated on every Stabilization Fix that touches a flow.
 
@@ -97,6 +97,46 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 - On `visibilitychange` to visible, `gl-spotify-connect.js:467` forces device cache invalidation + immediate poll.
 - `gl-player-engine.js:897-923` retries Spotify Connect if `_awaitingSpotifyApp` and tab becomes visible.
 - Wake-flow CTA in `gl-player-ui.js` directs user to open Spotify app when device unavailable.
+
+---
+
+## Beta Operations — Mode-B Phase 1 (2026-05-14)
+
+**Status:** **Stable** (build `20260514-142926`)
+
+### Auth gate (unchanged — Mode A still hard-blocks)
+- `_glCheckBandMembership(email)` in `app.js` still reads `members_index/{sanitized-email}` from Firebase and returns the band slug or null. Fail-closed on error. **This helper is unchanged from Stab #14.**
+- What changed: the **kick UX** (`_glShowNotAuthorizedOverlay`) now shows a welcome-friendly "Welcome to GrooveLinx — you're not on a band roster yet" surface with a hidden "I have an invite" panel that reveals a mailto-Drew link with prefilled subject/body.
+- **No client-side band creation.** Closes `project_duplicate_band_onboarding_bug` memory — Drew controls roster writes manually.
+- **No self-serve invite-code redemption yet.** Phase 2 will require a Cloudflare Worker endpoint with admin Firebase credentials.
+
+### Beta feedback FAB
+- New module `js/core/gl-beta-feedback.js` (~210 LOC IIFE on `window.GLBetaFeedback`).
+- **Activation gates (any one):**
+  - `?beta=true` URL query
+  - `localStorage.gl_beta_feedback === '1'`
+  - User is on a roster AND running the dev shell (`index-dev.html`)
+  - `GLBetaFeedback.show()` console call
+- Floating chat-bubble button bottom-right (48×48, gradient, fixed positioning, respects safe-area-inset-bottom).
+- Click → modal with:
+  - 8 category buttons (bug / confusion / playback / rehearsal / onboarding / mobile / performance / suggestion)
+  - 5-row textarea
+  - "Attach runtime snapshot" checkbox (default on — pulls `GLRuntimeHealth.snapshot()` if available)
+  - Page + build context shown for confidence
+- Submit routes through existing `GLFeedbackService.submitExplicit()` → `bands/{slug}/feedback_reports/{reportId}` with leading `[category]` tag prefix. Snapshot attaches at `.../{reportId}/betaSnapshot`.
+- Offline-queue fallback to `gl_pending_feedback` localStorage if Firebase write fails.
+- 5s re-check interval handles async user login → FAB mounts when band roster + email land.
+- Public API: `GLBetaFeedback.show()` / `.open(cat)` / `.hide()` / `.isEnabled()` / `.categories[]`.
+
+### Onboarding observability
+- `_glBumpOnboardingCounter(name, email)` in `app.js` writes to `localStorage.gl_onboarding_stats` (versioned envelope, auto-clear on corruption, 32-entry recent-blocked cap).
+- Counters: `gateAllowed`, `gateBlocked`, `gateError`, `inviteCodeViewed`, `inviteCodeSubmitted` (Phase 2 reserved), `feedbackSubmitted`.
+- Runtime Health Overlay new `onboarding` section via `window._glGetOnboardingStats()`.
+- No remote telemetry. Per-device.
+
+### Operational learning pipeline
+- `02_GrooveLinx/BETA_FEEDBACK_QUEUE.md` — Inbound / Triage / In-flight / Closed workflow.
+- Documents Mode-B Phase 1 limitations.
 
 ---
 

@@ -80,11 +80,24 @@
       prepForGig: _prepSnap(),
       multitrack: _multitrackSnap(),
       stems: _stemsSnap(),
+      onboarding: _onboardingSnap(),
       teardowns: _teardownsSnap(),
       warnings: [],
     };
     snap.warnings = _buildWarnings(snap);
     return snap;
+  }
+
+  // Beta-ops: surface onboarding gate stats + invite-code interaction counts +
+  // beta feedback submissions. Reads window._glGetOnboardingStats() — counters
+  // live in localStorage under `gl_onboarding_stats` and are bumped by the
+  // auth gate + beta-feedback widget. No URLs, no PII beyond email counts.
+  function _onboardingSnap() {
+    try {
+      if (typeof window._glGetOnboardingStats !== 'function') return { available: false };
+      var s = window._glGetOnboardingStats() || {};
+      return s;
+    } catch (e) { return { available: false, error: e && e.message }; }
   }
 
   // Stab #14 — surface stem-job persistence state. Reads window.GLStems.getStats()

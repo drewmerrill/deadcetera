@@ -5880,13 +5880,72 @@ async function _glCheckBandMembership(email) {
             ? sanitizeFirebasePath(emailLc)
             : emailLc.replace(/[.#$[\]\/]/g, '_');
         var snap = await firebaseDB.ref('members_index/' + key).once('value');
-        return snap.val() || null;
+        var result = snap.val() || null;
+        // Beta-ops Mode-B: lightweight observability for the onboarding gate.
+        // Increments counters in localStorage; surfaced via Runtime Health
+        // Overlay. No telemetry, no remote calls — purely local + visible to
+        // the dev who opens DevTools or the overlay.
+        _glBumpOnboardingCounter(result ? 'gateAllowed' : 'gateBlocked', email);
+        return result;
     } catch (e) {
         // Fail closed: any error → treat as not-a-member. Better than leaking access.
         console.warn('[Auth gate] Membership check failed, blocking:', e);
+        _glBumpOnboardingCounter('gateError', email);
         return null;
     }
 }
+
+// ── Beta-ops Mode-B onboarding observability ────────────────────────────────
+// Tracks gate outcomes + invite-code interactions in localStorage so Drew can
+// see (a) how many uninvited users hit the gate, (b) which emails were
+// blocked, (c) how often the invite-code path was viewed/used. Stored under
+// `gl_onboarding_stats`. Capped at 32 recent block entries; corrupt JSON
+// auto-clears. Read by GLFeedbackService + the Runtime Health Overlay.
+function _glOnboardingStatsRaw() {
+    try {
+        var raw = localStorage.getItem('gl_onboarding_stats');
+        if (!raw) return { v: 1 };
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            try { localStorage.removeItem('gl_onboarding_stats'); } catch (_re) {}
+            return { v: 1 };
+        }
+        return parsed;
+    } catch (_pe) {
+        try { localStorage.removeItem('gl_onboarding_stats'); } catch (_re) {}
+        return { v: 1 };
+    }
+}
+function _glBumpOnboardingCounter(name, email) {
+    try {
+        var stats = _glOnboardingStatsRaw();
+        stats[name] = (stats[name] || 0) + 1;
+        stats.lastEventAt = Date.now();
+        stats.lastEvent = name;
+        if (name === 'gateBlocked') {
+            var recent = Array.isArray(stats.recentBlocks) ? stats.recentBlocks : [];
+            recent.push({ email: String(email || '').slice(0, 80), at: Date.now() });
+            if (recent.length > 32) recent = recent.slice(recent.length - 32);
+            stats.recentBlocks = recent;
+        }
+        localStorage.setItem('gl_onboarding_stats', JSON.stringify(stats));
+    } catch (_we) { /* quota / private mode — non-fatal */ }
+}
+window._glGetOnboardingStats = function() {
+    var s = _glOnboardingStatsRaw();
+    return {
+        gateChecks: (s.gateAllowed || 0) + (s.gateBlocked || 0) + (s.gateError || 0),
+        gateAllowed: s.gateAllowed || 0,
+        gateBlocked: s.gateBlocked || 0,
+        gateError: s.gateError || 0,
+        inviteCodeViewed: s.inviteCodeViewed || 0,
+        inviteCodeSubmitted: s.inviteCodeSubmitted || 0,
+        feedbackSubmitted: s.feedbackSubmitted || 0,
+        recentBlockedCount: (s.recentBlocks && s.recentBlocks.length) || 0,
+        lastEvent: s.lastEvent || null,
+        lastEventAt: s.lastEventAt || null,
+    };
+};
 
 function _glKickUnauthorized(email) {
     // Revoke OAuth, clear local identity state, show "Not authorized" overlay.
@@ -5911,20 +5970,45 @@ function _glShowNotAuthorizedOverlay(email) {
     var existing = document.getElementById('glAuthDeniedOverlay');
     if (existing) existing.remove();
     var safeEmail = String(email || '').replace(/[<>&"]/g, '');
+    // Beta-ops Mode-B: softer onboarding-friendly messaging. The gate is still
+    // hard (no public self-signup, no client-side band creation) but the UX
+    // acknowledges that an uninvited user landing here is the START of an
+    // onboarding conversation, not a security threat. Adds an optional
+    // "I have an invite code from Drew" path that increments a counter +
+    // shows the user where to find Drew's contact. Code redemption itself
+    // is deferred — Drew handles roster adds manually for now (see
+    // project_duplicate_band_onboarding_bug memory for why we don't
+    // auto-create bands client-side).
     var ov = document.createElement('div');
     ov.id = 'glAuthDeniedOverlay';
     ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.96);display:flex;align-items:center;justify-content:center;padding:32px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
-    ov.innerHTML = '<div style="max-width:440px;text-align:center;color:#e2e8f0">'
-        + '<div style="font-size:2.6em;margin-bottom:14px">🔒</div>'
-        + '<div style="font-size:1.4em;font-weight:800;margin-bottom:10px">Not on a band roster</div>'
+    ov.innerHTML = '<div style="max-width:480px;text-align:center;color:#e2e8f0">'
+        + '<div style="font-size:2.6em;margin-bottom:14px">🎸</div>'
+        + '<div style="font-size:1.4em;font-weight:800;margin-bottom:10px">Welcome to GrooveLinx</div>'
         + '<div style="font-size:0.92em;color:#94a3b8;line-height:1.55;margin-bottom:8px">'
-        + 'You signed in as <strong style="color:#e2e8f0">' + safeEmail + '</strong>, but this account isn’t on any GrooveLinx band’s member list yet.</div>'
-        + '<div style="font-size:0.86em;color:#94a3b8;line-height:1.55;margin-bottom:22px">'
-        + 'Reach out to your band leader to get added. Once your email is on the roster, sign in here again.</div>'
-        + '<button onclick="window.location.reload()" style="font-size:0.92em;font-weight:700;padding:10px 24px;border-radius:8px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;margin-right:8px">Reload</button>'
-        + '<button onclick="(function(){try{localStorage.clear();}catch(e){}window.location.reload();})()" style="font-size:0.92em;padding:10px 24px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim,#94a3b8);cursor:pointer">Sign in differently</button>'
+        + 'You’re signed in as <strong style="color:#e2e8f0">' + safeEmail + '</strong>, but this account isn’t on a band roster yet.</div>'
+        + '<div style="font-size:0.86em;color:#94a3b8;line-height:1.55;margin-bottom:18px">'
+        + 'GrooveLinx is currently in invite-only beta. Your band leader can add your email to their roster, and you’ll have access the next time you sign in.</div>'
+        + '<div id="glInvitePanel" style="display:none;text-align:left;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.22);border-radius:10px;padding:14px;margin-bottom:18px">'
+        +   '<div style="font-size:0.86em;font-weight:700;color:#a5b4fc;margin-bottom:8px">Have an invite from Drew?</div>'
+        +   '<div style="font-size:0.82em;color:#94a3b8;line-height:1.5;margin-bottom:10px">Reply to Drew’s invite email or text him the code from his message — he’ll add your email to the band roster manually.</div>'
+        +   '<div style="font-size:0.78em;color:#94a3b8;line-height:1.5">Contact: <a href="mailto:drewmerrill1029@gmail.com?subject=GrooveLinx%20invite%20-%20' + encodeURIComponent(safeEmail) + '&body=Hi%20Drew%2C%20I%20signed%20in%20as%20' + encodeURIComponent(safeEmail) + '%20and%20want%20to%20join%20a%20band%20on%20GrooveLinx." style="color:#a5b4fc;text-decoration:underline">drewmerrill1029@gmail.com</a></div>'
+        + '</div>'
+        + '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">'
+        +   '<button id="glHaveInviteBtn" style="font-size:0.86em;font-weight:700;padding:8px 14px;border-radius:8px;border:1px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer">I have an invite</button>'
+        +   '<button onclick="window.location.reload()" style="font-size:0.86em;font-weight:700;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.10);background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer">Reload</button>'
+        +   '<button onclick="(function(){try{localStorage.clear();}catch(e){}window.location.reload();})()" style="font-size:0.86em;padding:8px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:none;color:#94a3b8;cursor:pointer">Sign in differently</button>'
+        + '</div>'
         + '</div>';
     document.body.appendChild(ov);
+    var haveInviteBtn = document.getElementById('glHaveInviteBtn');
+    if (haveInviteBtn) {
+        haveInviteBtn.addEventListener('click', function() {
+            var panel = document.getElementById('glInvitePanel');
+            if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            _glBumpOnboardingCounter('inviteCodeViewed', email);
+        });
+    }
 }
 
 // Scan localStorage for any DeadCetera data saved before Firebase was initialized.
