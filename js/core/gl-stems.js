@@ -19,6 +19,163 @@ window.GLStems = (function () {
       : 'https://deadcetera-proxy.drewmerrill.workers.dev';
   }
 
+  // ── Stab #14 — Job persistence + resume + cancellation ────────────────────
+  //
+  // GPU stem jobs run 90s–25min on Modal. If the user closes the tab, refreshes,
+  // or navigates away, the old code just stopped polling — the GPU job continued
+  // burning Modal quota with no way to retrieve the result and no UI signal.
+  //
+  // Strategy: persist active jobs to localStorage under `gl_stem_jobs_active`
+  // keyed by jobId. The entry is small (~300 bytes) and survives reload. On app
+  // boot, `_resumeActiveJobs()` walks the map and re-polls anything still in
+  // 'processing' state, dropping entries older than the per-kind max poll
+  // window (Demucs: 8 min; LALAL: 25 min; Spatial: 10 min).
+  //
+  // localStorage was chosen over Firebase to keep this orthogonal to band-data
+  // schema and avoid adding new ownership conflicts. It's per-device; if the
+  // user starts on iPhone and finishes on desktop the result still lands in
+  // Firebase via the existing `saveBandDataToDrive` call.
+  var _ACTIVE_KEY = 'gl_stem_jobs_active';
+  var _ACTIVE_MAX = 8;  // cap so a runaway loop can't blow out localStorage
+
+  function _now() { return Date.now(); }
+  function _isoNow() { return new Date().toISOString(); }
+
+  // Map of jobId → in-memory live poller promises. Keeps us from double-polling
+  // the same job after a resume call races with the original separate() loop.
+  var _liveJobs = {};
+
+  function _loadActiveJobs() {
+    try {
+      var raw = localStorage.getItem(_ACTIVE_KEY);
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        try { localStorage.removeItem(_ACTIVE_KEY); } catch (_re) {}
+        return {};
+      }
+      return parsed;
+    } catch (e) {
+      try { localStorage.removeItem(_ACTIVE_KEY); } catch (_re) {}
+      console.warn('[GLStems] active jobs cache corrupt — cleared');
+      return {};
+    }
+  }
+
+  function _saveActiveJobs(map) {
+    try { localStorage.setItem(_ACTIVE_KEY, JSON.stringify(map)); }
+    catch (e) { /* quota / private mode — non-fatal; jobs just won't resume */ }
+  }
+
+  function _putActiveJob(job) {
+    var map = _loadActiveJobs();
+    map[job.jobId] = job;
+    // Trim oldest if we exceed cap — defensive; should never happen in normal use.
+    var keys = Object.keys(map);
+    if (keys.length > _ACTIVE_MAX) {
+      keys.sort(function(a, b) { return (map[a].startedAt || 0) - (map[b].startedAt || 0); });
+      while (keys.length > _ACTIVE_MAX) {
+        var k = keys.shift();
+        delete map[k];
+      }
+    }
+    _saveActiveJobs(map);
+  }
+
+  function _updateActiveJob(jobId, patch) {
+    var map = _loadActiveJobs();
+    if (!map[jobId]) return;
+    Object.keys(patch).forEach(function(k) { map[jobId][k] = patch[k]; });
+    map[jobId].updatedAt = _now();
+    _saveActiveJobs(map);
+  }
+
+  function _removeActiveJob(jobId) {
+    var map = _loadActiveJobs();
+    if (!map[jobId]) return;
+    delete map[jobId];
+    _saveActiveJobs(map);
+    delete _liveJobs[jobId];
+  }
+
+  function _maxPollMsForKind(kind) {
+    if (kind === 'lalal') return 25 * 60 * 1000;
+    if (kind === 'spatial') return 10 * 60 * 1000;
+    return 8 * 60 * 1000; // demucs separate (default)
+  }
+
+  // Build a stable jobId so logs + persistence agree. callId from Modal is the
+  // unique identifier; we prefix with kind so different APIs don't collide.
+  function _makeJobId(kind, callId) {
+    return (kind || 'stem') + ':' + (callId || ('j-' + _now()));
+  }
+
+  // Public-ish: stats for the Runtime Health Overlay. NO worker URLs, NO tokens,
+  // NO stem URLs leaked — just counts + kinds + timing.
+  function getStats() {
+    var map = _loadActiveJobs();
+    var jobs = Object.keys(map).map(function(k) { return map[k]; });
+    var byStatus = { processing: 0, completed: 0, cancelled: 0, failed: 0 };
+    jobs.forEach(function(j) {
+      if (byStatus[j.status] != null) byStatus[j.status]++;
+    });
+    var lastPoll = 0;
+    jobs.forEach(function(j) { if (j.lastPollAt && j.lastPollAt > lastPoll) lastPoll = j.lastPollAt; });
+    return {
+      activeCount: jobs.length,
+      processing: byStatus.processing,
+      completed: byStatus.completed,
+      cancelled: byStatus.cancelled,
+      failed: byStatus.failed,
+      lastPollAt: lastPoll || null,
+      kinds: jobs.map(function(j) { return j.kind; }),
+      liveLoops: Object.keys(_liveJobs).length,
+    };
+  }
+
+  // Best-effort cancel. Always clears local state + stops polling. The worker
+  // call is fire-and-forget from the caller's perspective — UI moves on
+  // immediately. Idempotent: calling twice is a no-op the second time.
+  async function cancelJob(jobId) {
+    var map = _loadActiveJobs();
+    var job = map[jobId];
+    if (!job) return { ok: true, alreadyGone: true };
+    if (job.status === 'cancelled' || job.status === 'completed') {
+      return { ok: true, alreadyGone: true };
+    }
+    _updateActiveJob(jobId, { status: 'cancelled', cancelledAt: _now() });
+    console.log('[GLStems] cancel requested for', jobId);
+    var callId = job.callId;
+    var endpoint = job.kind === 'lalal' ? null : '/stems/cancel';
+    // LALAL doesn't have a worker cancel endpoint yet — client-only cancel
+    // is honest (the user sees the spinner stop) but the GPU job runs out.
+    if (callId && endpoint) {
+      try {
+        var res = await fetch(_workerBase() + endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId: callId }),
+        });
+        var data = null;
+        try { data = await res.json(); } catch (_pe) {}
+        console.log('[GLStems] cancel response for', jobId, data && data.cancelled);
+      } catch (e) {
+        console.warn('[GLStems] cancel network error for', jobId, e && e.message);
+      }
+    }
+    // Remove from active map a beat after the cancel — gives any in-flight
+    // poll loop a chance to see the cancelled status and bail cleanly.
+    setTimeout(function() { _removeActiveJob(jobId); }, 500);
+    return { ok: true };
+  }
+
+  // Public: walk active jobs and resume polling for any still-processing
+  // entries. Called once on app boot from _resumeActiveJobsOnBoot below.
+  function getActiveJobs() {
+    var map = _loadActiveJobs();
+    return Object.keys(map).map(function(k) { return map[k]; });
+  }
+
   // Slugged song id used as the R2 prefix so the stems folder is human
   // readable. Append a timestamp so re-runs don't overwrite each other.
   function _stemsKey(title) {
@@ -56,11 +213,77 @@ window.GLStems = (function () {
   // Avoids Modal's ~150s web-endpoint cap that the legacy synchronous
   // /stems/separate flow hit on the heavier models (htdemucs_ft, mdx_extra).
   var ALLOWED_MODELS = ['htdemucs', 'htdemucs_6s', 'htdemucs_ft', 'mdx_extra'];
+
+  // Stab #14 — extracted poll loop so both `separate()` and `_resumeJob()`
+  // share the same polling/finalize/persistence code path. The loop reads
+  // the active-job map between ticks so a cancel() from any context bails
+  // immediately (no second `await fetch` after the abort decision).
+  async function _pollSeparateJob(jobId, callId, opts, onProgress, startedAt) {
+    var pollStart = startedAt || _now();
+    var maxPollMs = _maxPollMsForKind('separate');
+    var lastPercent = 0;
+    while (true) {
+      if (_now() - pollStart > maxPollMs) {
+        _updateActiveJob(jobId, { status: 'failed', failReason: 'client_timeout' });
+        _removeActiveJob(jobId);
+        throw new Error('Stems separation timed out (>8min on client)');
+      }
+      // Cancellation check — if another caller marked the job cancelled
+      // (e.g., user clicked Cancel, or _mtAbort sweep fired), bail cleanly.
+      var snap = _loadActiveJobs()[jobId];
+      if (!snap || snap.status === 'cancelled') {
+        throw Object.assign(new Error('cancelled'), { code: 'CANCELLED' });
+      }
+      await new Promise(function(r) { setTimeout(r, 5000); });
+      var checkRes;
+      try {
+        checkRes = await fetch(_workerBase() + '/stems/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ callId: callId })
+        });
+      } catch (netErr) {
+        // Transient network blip — keep trying until the maxPollMs cap. No
+        // need to mark the job failed; come back next tick.
+        console.warn('[GLStems] poll network blip for', jobId, netErr && netErr.message);
+        _updateActiveJob(jobId, { lastPollAt: _now(), lastPollError: 'network' });
+        continue;
+      }
+      var checkData = null;
+      try { checkData = await checkRes.json(); } catch (e) {}
+      _updateActiveJob(jobId, { lastPollAt: _now() });
+      if (!checkData) {
+        _updateActiveJob(jobId, { status: 'failed', failReason: 'bad_response' });
+        _removeActiveJob(jobId);
+        throw new Error('Bad check response (' + checkRes.status + ')');
+      }
+      if (!checkData.success) {
+        _updateActiveJob(jobId, { status: 'failed', failReason: checkData.error || 'check_failed' });
+        _removeActiveJob(jobId);
+        throw new Error(checkData.error || 'stems_check_failed');
+      }
+      if (checkData.status === 'processing') {
+        var typicalSec = (snap.model === 'htdemucs_ft' || snap.model === 'mdx_extra') ? 180 : 90;
+        var pct = Math.min(95, Math.round(((_now() - pollStart) / 1000) / typicalSec * 100));
+        if (pct !== lastPercent) {
+          lastPercent = pct;
+          onProgress('processing', pct);
+        }
+        continue;
+      }
+      if (checkData.status === 'done') {
+        onProgress('finalizing', 100);
+        return checkData;
+      }
+      console.warn('[GLStems] Unknown stems check status:', checkData.status);
+    }
+  }
+
   async function separate(title, opts) {
     if (!title) throw new Error('title required');
     opts = opts || {};
     var onProgress = typeof opts.onProgress === 'function' ? opts.onProgress : function(){};
-    var startedAt = Date.now();
+    var startedAt = _now();
 
     // Stage 1: kick off the Modal GPU job
     onProgress('starting', 0);
@@ -93,50 +316,51 @@ window.GLStems = (function () {
     var callId = startData.call_id;
     if (!callId) throw new Error('No call_id from /stems/start');
 
-    // Stage 2: poll /stems/check until done. 5s interval, 8 min cap (matches
-    // the model timeout=900 ceiling on Modal with margin).
+    // Stab #14 — persist the job so a tab close / refresh can resume it.
+    // We persist only enough to re-bind the result: kind, title, callId,
+    // model, source pointers (no credentials, no base64 bytes). The
+    // `audioBase64DataUrl` is intentionally NOT persisted — it can be 30+ MB
+    // and would blow out localStorage. If the user closes the tab during
+    // a base64-source job, resume will still poll for the result; the
+    // source-ref restore on completion just won't include audioDataUrl.
+    var jobId = _makeJobId('separate', callId);
+    _putActiveJob({
+      jobId: jobId,
+      kind: 'separate',
+      callId: callId,
+      title: title,
+      status: 'processing',
+      model: startData.model || body.model || 'htdemucs_6s',
+      sourceUrl: opts.sourceUrl || null,
+      driveFileId: opts.driveFileId || null,
+      firebaseAudioRef: opts.firebaseAudioRef || null,
+      sourceLabel: opts.sourceLabel || (opts.sourceUrl ? 'URL' : 'Drive'),
+      startedAt: startedAt,
+      updatedAt: startedAt,
+    });
+    console.log('[GLStems] job started:', jobId, 'model=' + (startData.model || body.model));
+
     onProgress('processing', 0);
-    var pollStart = Date.now();
-    var maxPollMs = 8 * 60 * 1000;
-    var data = null;
-    while (true) {
-      if (Date.now() - pollStart > maxPollMs) {
-        throw new Error('Stems separation timed out (>8min on client)');
+    var data;
+    try {
+      data = await _pollSeparateJob(jobId, callId, opts, onProgress, startedAt);
+    } catch (e) {
+      // CANCELLED — surface a structured error so callers can render the
+      // calm-cancellation UI instead of an alarming failure toast.
+      if (e && e.code === 'CANCELLED') {
+        console.log('[GLStems] job cancelled mid-poll:', jobId);
+        throw e;
       }
-      await new Promise(function(r) { setTimeout(r, 5000); });
-      var checkRes = await fetch(_workerBase() + '/stems/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callId: callId })
-      });
-      var checkData = null;
-      try { checkData = await checkRes.json(); } catch (e) {}
-      if (!checkData) throw new Error('Bad check response (' + checkRes.status + ')');
-      if (!checkData.success) throw new Error(checkData.error || 'stems_check_failed');
-      if (checkData.status === 'processing') {
-        // Modal doesn't give us a percent — synthesize one based on elapsed
-        // time vs typical run length (90s for htdemucs_6s, ~150s for slow
-        // models). Caps at 95% so the UI doesn't jump backward when done.
-        var typicalSec = (startData.model === 'htdemucs_ft' || startData.model === 'mdx_extra') ? 180 : 90;
-        var pct = Math.min(95, Math.round(((Date.now() - pollStart) / 1000) / typicalSec * 100));
-        onProgress('processing', pct);
-        continue;
-      }
-      if (checkData.status === 'done') {
-        onProgress('finalizing', 100);
-        data = checkData;
-        break;
-      }
-      console.warn('[GLStems] Unknown stems check status:', checkData.status);
+      throw e;
     }
 
     var record = {
       stems: data.stems,
       sample_rate: data.sample_rate,
       model: data.model,
-      separatedAt: new Date().toISOString(),
+      separatedAt: _isoNow(),
       sourceLabel: opts.sourceLabel || (opts.sourceUrl ? 'URL' : 'Drive'),
-      elapsedSec: (Date.now() - startedAt) / 1000
+      elapsedSec: (_now() - startedAt) / 1000
     };
     // Save source ref so re-separate can default-fill the source. We save
     // pointers (driveFileId, firebaseAudioRef), not credentials (accessToken
@@ -147,8 +371,126 @@ window.GLStems = (function () {
     if (typeof saveBandDataToDrive === 'function') {
       try { await saveBandDataToDrive(title, 'stems', record); } catch (e) {}
     }
+    _updateActiveJob(jobId, { status: 'completed', completedAt: _now() });
+    _removeActiveJob(jobId);
+    console.log('[GLStems] job completed:', jobId, 'elapsed=' + Math.round(record.elapsedSec) + 's');
     return record;
   }
+
+  // Stab #14 — resume an in-progress 'separate' job after tab close / refresh.
+  // Re-polls /stems/check; if the result is already 'done' on the server side,
+  // returns the record immediately. If still processing, polls until done or
+  // until the original maxPollMs window (computed from startedAt) elapses.
+  // Idempotent — if a live poller already exists for this job, returns its
+  // promise instead of starting a second one.
+  async function _resumeJob(job, onProgress) {
+    if (!job || !job.jobId || !job.callId || !job.title) return null;
+    if (_liveJobs[job.jobId]) return _liveJobs[job.jobId];
+    onProgress = typeof onProgress === 'function' ? onProgress : function(){};
+
+    var promise = (async function() {
+      console.log('[GLStems] resuming job:', job.jobId, 'kind=' + job.kind);
+      onProgress('resuming', 0);
+      var data;
+      try {
+        data = await _pollSeparateJob(job.jobId, job.callId, {}, onProgress, job.startedAt || _now());
+      } catch (e) {
+        if (e && e.code === 'CANCELLED') return null;
+        throw e;
+      }
+      var record = {
+        stems: data.stems,
+        sample_rate: data.sample_rate,
+        model: data.model,
+        separatedAt: _isoNow(),
+        sourceLabel: job.sourceLabel || 'Resumed',
+        elapsedSec: (_now() - (job.startedAt || _now())) / 1000,
+        resumed: true
+      };
+      if (job.sourceUrl) record.sourceUrl = job.sourceUrl;
+      if (job.driveFileId) record.driveFileId = job.driveFileId;
+      if (job.firebaseAudioRef) record.firebaseAudioRef = job.firebaseAudioRef;
+      if (typeof saveBandDataToDrive === 'function') {
+        try { await saveBandDataToDrive(job.title, 'stems', record); } catch (e) {}
+      }
+      _updateActiveJob(job.jobId, { status: 'completed', completedAt: _now() });
+      _removeActiveJob(job.jobId);
+      console.log('[GLStems] resumed job completed:', job.jobId);
+      return record;
+    })();
+
+    _liveJobs[job.jobId] = promise;
+    // Drop ref when promise settles, so a future resume on the same job (very
+    // unlikely — completed jobs are removed from map) can start fresh.
+    promise.then(function() { delete _liveJobs[job.jobId]; },
+                 function() { delete _liveJobs[job.jobId]; });
+    return promise;
+  }
+
+  // Boot-time hook — walks active jobs, prunes stale entries (older than the
+  // per-kind max poll window), and resumes any still-fresh 'processing' job.
+  // Only fires once per page load (idempotent via _bootRanOnce).
+  var _bootRanOnce = false;
+  function _resumeActiveJobsOnBoot() {
+    if (_bootRanOnce) return;
+    _bootRanOnce = true;
+    var map = _loadActiveJobs();
+    var ids = Object.keys(map);
+    if (!ids.length) return;
+    var pruned = 0;
+    ids.forEach(function(id) {
+      var j = map[id];
+      if (!j || j.status !== 'processing') {
+        delete map[id]; pruned++;
+        return;
+      }
+      var window = _maxPollMsForKind(j.kind);
+      // Add a small grace period — the user may have left mid-poll just past
+      // the cap and we want one more check rather than abandoning the result.
+      if (_now() - (j.startedAt || 0) > window + 60000) {
+        delete map[id]; pruned++;
+        return;
+      }
+    });
+    if (pruned > 0) _saveActiveJobs(map);
+    var live = Object.keys(map);
+    if (!live.length) return;
+    console.log('[GLStems] boot resume — found ' + live.length + ' active job(s)');
+    // Resume in background — each separate() consumer can re-find their job
+    // via getActiveJobs() and attach progress callbacks; until they do, the
+    // poll loop just runs to completion and saves the record to Firebase.
+    live.forEach(function(id) {
+      var j = map[id];
+      if (j.kind === 'separate') {
+        _resumeJob(j).catch(function(e) {
+          console.warn('[GLStems] resume failed for', id, e && e.message);
+        });
+      }
+      // LALAL + spatial resume not implemented in M.4 — out of scope for the
+      // primary HIGH RISK item. Their jobs are still persisted; on a fresh
+      // page-load they'll be visible in getActiveJobs() and Drew can decide
+      // whether to abandon or extend resume support in a follow-up.
+    });
+  }
+
+  // Fire resume on load — once per page. Defer via setTimeout(0) so the IIFE
+  // can finish exposing the public surface before the resume loop reads it.
+  if (typeof window !== 'undefined' && !window._glStemsBootScheduled) {
+    window._glStemsBootScheduled = true;
+    setTimeout(_resumeActiveJobsOnBoot, 0);
+  }
+
+  // Stab #14 — beforeunload hook. We don't try to call /stems/cancel on
+  // unload (the navigator.sendBeacon path could be flaky and we'd risk
+  // killing a job the user actually wants to keep). Instead we just leave
+  // the persisted state in place; the next page load resumes it. The poll
+  // loop's `cancelled` check + the `_resumeActiveJobsOnBoot` re-attach is
+  // already idempotent so no race risk.
+  //
+  // For the truly-abandoned case (user closes tab and never returns) the
+  // Modal job runs to completion — wasted but bounded. A future hardening
+  // pass could add a `keepalive: true` fetch to /stems/cancel here, but
+  // tab-close speed makes it unreliable. Survivability > forced cancel.
 
   async function clearStems(title) {
     if (typeof saveBandDataToDrive !== 'function') return;
@@ -468,6 +810,11 @@ window.GLStems = (function () {
     hasStems: hasStems,
     separate: separate,
     clearStems: clearStems,
+    // Stab #14 — job persistence + cancellation + resume
+    getActiveJobs: getActiveJobs,
+    cancelJob: cancelJob,
+    resumeJob: _resumeJob,
+    getStats: getStats,
     // Phase 2: Spatial split (pan + fingerprint)
     fingerprintTone: fingerprintTone,
     loadFingerprints: loadFingerprints,

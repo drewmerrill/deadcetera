@@ -79,11 +79,23 @@
       spotify: _spotifySnap(),
       prepForGig: _prepSnap(),
       multitrack: _multitrackSnap(),
+      stems: _stemsSnap(),
       teardowns: _teardownsSnap(),
       warnings: [],
     };
     snap.warnings = _buildWarnings(snap);
     return snap;
+  }
+
+  // Stab #14 — surface stem-job persistence state. Reads window.GLStems.getStats()
+  // which exposes active job count + status breakdown + live poll loops + last
+  // poll timestamp. Does NOT leak worker URLs, Modal call_ids, or stem URLs.
+  function _stemsSnap() {
+    try {
+      if (!window.GLStems || typeof window.GLStems.getStats !== 'function') return { available: false };
+      var s = window.GLStems.getStats() || {};
+      return s;
+    } catch (e) { return { available: false, error: e && e.message }; }
   }
 
   // Stab #13 — surface multitrack upload state. Reads window._mtGetUploadStats()

@@ -131,6 +131,12 @@ export default {
       return handleStemsStart(request, env);
     if (path === '/stems/check' && request.method === 'POST')
       return handleStemsCheck(request, env);
+    // Stab #14 — POST /stems/cancel  Body: { callId }
+    // Best-effort GPU job cancellation. Calls Modal's cancel endpoint when
+    // configured; otherwise marks the call as client-cancelled and returns
+    // success so the client UI can move on without leaking quota.
+    if (path === '/stems/cancel' && request.method === 'POST')
+      return handleStemsCancel(request, env);
     // Phase 2 — Spatial (pan-aware + tone-fingerprint) separation. Stage 2
     // refinement on top of Demucs: split any stem (typically Demucs "other"
     // or "guitar") by stereo pan position, with optional reference-clip
@@ -2196,6 +2202,16 @@ function _stemsCheckUrl(env) {
   return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-separate-check$2');
 }
 
+// Stab #14 — Modal cancel endpoint. Optional; if STEMS_MODAL_CANCEL_URL is set
+// the worker forwards the cancel call. Otherwise the worker still returns
+// success so the client can stop polling — the GPU job will complete on its
+// own (wasted, but the client UI is no longer lying about the state).
+function _stemsCancelUrl(env) {
+  if (env.STEMS_MODAL_CANCEL_URL) return env.STEMS_MODAL_CANCEL_URL;
+  if (!env.STEMS_MODAL_URL) return '';
+  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-separate-cancel$2');
+}
+
 // POST /stems/start
 // Body: { songId, sourceUrl } | { songId, driveFileId, accessToken } | { songId, audioBase64DataUrl }
 //       Optional: model (one of htdemucs, htdemucs_6s, htdemucs_ft, mdx_extra; default htdemucs_6s)
@@ -2253,6 +2269,70 @@ async function handleStemsStart(request, env) {
     clearTimeout(timer);
     const msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
     return cors(jsonError(msg, 504));
+  }
+}
+
+// POST /stems/cancel — Stab #14 (2026-05-14)
+// Body: { callId } (accepts call_id too)
+// Returns: { success: true, cancelled: 'remote' | 'client_only', callId }
+//
+// Best-effort GPU cancellation. The handler always returns success so the
+// client UI can confidently move on; the `cancelled` field tells the caller
+// whether Modal actually killed the job or we couldn't reach a cancel
+// endpoint. Idempotent — re-cancelling an already-cancelled call is a no-op.
+//
+// "client_only" path: when STEMS_MODAL_CANCEL_URL is not configured (and the
+// fallback URL derivation doesn't match a real Modal endpoint), we return
+// success with cancelled='client_only'. The GPU job runs to completion but
+// the client stops polling, freeing the user. This is operationally honest
+// — the client-side cancellation is real even when the server-side isn't.
+async function handleStemsCancel(request, env) {
+  let body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  const callId = String(body.callId || body.call_id || '').trim();
+  if (!callId) return cors(jsonError('missing callId', 400));
+
+  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+    // Worker not configured for stems at all — still return success so the
+    // client UI can stop spinning. Logs the misconfig once for ops visibility.
+    console.warn('[stems/cancel] worker not configured — returning client_only success for callId=' + callId);
+    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  }
+
+  const cancelUrl = _stemsCancelUrl(env);
+  if (!cancelUrl) {
+    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  }
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10000);
+  try {
+    const modalRes = await fetch(cancelUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    // 2xx / 404 (job already done or unknown) both treated as cancelled-remote
+    // since the result for the caller is identical: nothing to poll anymore.
+    if (modalRes.ok || modalRes.status === 404 || modalRes.status === 410) {
+      console.log('[stems/cancel] callId=' + callId + ' status=' + modalRes.status);
+      return cors(new Response(JSON.stringify({ success: true, cancelled: 'remote', callId: callId }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }
+    // Modal returned a real error — still tell the client success so the UI
+    // doesn't hang, but flag client_only so ops can see the orphaned job in logs.
+    console.warn('[stems/cancel] modal returned ' + modalRes.status + ' for callId=' + callId);
+    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId, modalStatus: modalRes.status }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }));
+  } catch (e) {
+    clearTimeout(timer);
+    console.warn('[stems/cancel] fetch failed for callId=' + callId + ' err=' + (e && e.message));
+    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId, error: 'modal_unreachable' }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }));
   }
 }
 

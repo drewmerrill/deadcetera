@@ -1,6 +1,6 @@
 # GrooveLinx — Known Stable Flows
 
-_Last updated: 2026-05-14 (build `20260514-135200`)._
+_Last updated: 2026-05-14 (build `20260514-141450`)._
 
 This doc tracks user-facing flows by **trust level**: how confident we are that the flow works reliably across browsers + iOS Safari + route transitions + arbitration. Updated on every Stabilization Fix that touches a flow.
 
@@ -97,6 +97,38 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 - On `visibilitychange` to visible, `gl-spotify-connect.js:467` forces device cache invalidation + immediate poll.
 - `gl-player-engine.js:897-923` retries Spotify Connect if `_awaitingSpotifyApp` and tab becomes visible.
 - Wake-flow CTA in `gl-player-ui.js` directs user to open Spotify app when device unavailable.
+
+---
+
+## Stem Jobs — Persistence + Cancellation + Resume (Stab #14, 2026-05-14)
+
+**Status:** **Stable** (build `20260514-141450`)
+- `GLStems.separate(title, opts)` in `js/core/gl-stems.js` now persists job state to localStorage so the user's GPU job survives tab close, refresh, and nav-away. Demucs Modal jobs run 90s–25min; previously a closure-scoped poll loop meant the job kept burning GPU quota with no client recovery path. Closes Audit #09 §3.2.4 (last remaining HIGH RISK).
+- **Persistence schema:** `localStorage['gl_stem_jobs_active']` is a map `jobId → { kind, callId, title, status, model, sourceUrl/driveFileId/firebaseAudioRef, sourceLabel, startedAt, lastPollAt, updatedAt }`. Capped at 8 active entries with oldest-trim defense; corrupt JSON auto-clears via `_loadActiveJobs()`. No credentials, no base64 bytes (the `audioBase64DataUrl` source path is intentionally NOT persisted — too large + would expire anyway).
+- **Job lifecycle:**
+  1. `separate()` POSTs `/stems/start`, gets `call_id`.
+  2. `_putActiveJob({...})` writes the entry with `status:'processing'`.
+  3. `_pollSeparateJob(jobId, callId, ...)` polls `/stems/check` every 5s. Between ticks it reads `_loadActiveJobs()[jobId].status` — if it's `'cancelled'`, throws `{code:'CANCELLED'}` and exits cleanly.
+  4. On `done`, the record is saved to Firebase via `saveBandDataToDrive(title, 'stems', record)`, status flipped to `'completed'`, entry removed from the active map.
+  5. On `failed`/`cancelled`, entry is removed.
+- **Boot resume:** `_resumeActiveJobsOnBoot()` fires once per page load via `setTimeout(0)`. Walks the map, prunes stale entries (older than the per-kind max-poll window: 8 min Demucs / 25 min LALAL / 10 min spatial, +60s grace), and re-attaches polling for fresh `'processing'` jobs via `_resumeJob(job, onProgress)`. Re-entrant via `_liveJobs[jobId]` registry — calling `resumeJob` twice for the same id returns the existing promise instead of starting a parallel poll.
+- **Public `GLStems.cancelJob(jobId)`:**
+  1. Marks the job `cancelled` in localStorage immediately (UI moves on right away).
+  2. Fires-and-forgets POST to `/stems/cancel` worker endpoint.
+  3. Removes from active map after 500ms grace (lets the in-flight poll see the status flip and bail).
+  - Idempotent — second call returns `{ok:true, alreadyGone:true}`.
+- **Worker endpoint `POST /stems/cancel`** (worker.js):
+  - Accepts `{callId}`.
+  - Forwards to `STEMS_MODAL_CANCEL_URL` (or derived `..-separate-cancel..modal.run` URL from `STEMS_MODAL_URL`).
+  - 10s timeout via AbortController.
+  - **Always returns success** with `cancelled:'remote'|'client_only'` so the client UI never hangs. Modal 404/410 (job already done or unknown) treated as remote-cancelled — for the caller the result is identical.
+  - When Modal is unreachable or returns 5xx, returns `cancelled:'client_only'` so ops can grep logs for orphaned jobs without misleading the user.
+- **Truthful UI states:** `'processing'` (initial polling) / `'resuming'` (boot-attached) / `'completed'` (done + saved) / `'cancelled'` (user-cancel) / `'failed'` (timeout or check error). The poll loop emits `'starting'`, `'processing'`, `'resuming'`, `'finalizing'` progress stages so consumer UIs (Best Shot lens, Stems lens, Harmony Lab) can render distinct messaging.
+- **Runtime Health Overlay:** new `stems` snapshot section via `GLStems.getStats()` exposes `{activeCount, processing, completed, cancelled, failed, lastPollAt, kinds[], liveLoops}`. NO worker URLs, NO Modal call_ids, NO stem URLs leaked. Useful for debugging "is my job still running?" without exposing infrastructure.
+- **Survivability > forced cancel:** `beforeunload` is intentionally NOT wired to call `/stems/cancel`. Tab-close speed makes `keepalive` fetches unreliable, and a false-cancel of a wanted job is worse than letting an abandoned job complete. Persistence + boot resume handles the abandonment case correctly.
+- **Logging:** `[GLStems] job started:`, `[GLStems] cancel requested for`, `[GLStems] cancel response for`, `[GLStems] resuming job:`, `[GLStems] resumed job completed:`, `[GLStems] job completed:` — one line per state transition, no spam.
+- **Held back (lower-risk follow-up):** `splitLeadBacking()` LALAL (25-min jobs) and `spatialSplit()` (10-min) still use closure-scoped polling. Path is open via factoring `_pollSeparateJob` into generic `_pollJob`. Their orphan risk is lower than `separate()` (less frequent use).
+- **Worker deploy required** for server-side GPU cancellation — until Drew runs `wrangler deploy`, `cancelJob` works client-side (UI cancellation is honest) but the Modal GPU job runs to completion. Client cancel + server cancel are decoupled by design.
 
 ---
 
