@@ -47,6 +47,44 @@ This is the operational learning pipeline for Mode-B founding-member testing. Re
 
 ---
 
+## First Tester Run
+
+_Reserved for the first real founding-member onboarding session._
+
+Once Drew executes `02_GrooveLinx/BETA_ONBOARDING_RUNBOOK.md` with tester #1, populate this section with the Ops Review summary from runbook §5.5:
+
+```
+## First Tester Run — <tester-name> / <date>
+
+**Tester:** <name>, <email>, <band slug>, <device>
+**Runbook build at session:** 20260514-142926
+**Session duration:** <minutes>
+
+### What worked
+- <list of flows that completed successfully>
+
+### What confused
+- <list of moments where the tester paused/asked>
+
+### What broke
+- <list of any console errors, blank states, or "this doesn't work" moments>
+
+### Success criteria (§6 grading)
+- 8 lines: ✓ / ✗ / N/A
+- Overall: SUCCESSFUL / PARTIAL / FAILED
+
+### Next-action decision (§8 gate)
+- A: onboard 2-3 more testers
+- B: build Mode-B Phase 2 redemption
+- C: fix specific friction before tester #2
+- Chosen: <A | B | C>
+- Reason: <one sentence>
+```
+
+The runbook's §5.5 "Ops Review" instructs Drew to drop the summary here. After the first run, each subsequent tester gets a new sub-section under this heading until the cadence justifies splitting into per-tester pages.
+
+---
+
 ## Inbound — untriaged
 
 _Nothing yet — opening with Mode-B enablement build `20260514-142926`._
