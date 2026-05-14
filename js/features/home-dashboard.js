@@ -2469,15 +2469,51 @@ function _renderEventRiskCard(bundle) {
     var lowReadiness = _homeAggregates(bundle).belowReadyCount;
     if (lowReadiness > 0) risks.push(lowReadiness + ' song' + (lowReadiness > 1 ? 's' : '') + ' below ready');
 
-    // Check practice recency
+    // Check rehearsal recency at the BAND level (most recent rehearsal_sessions entry).
+    //
+    // Defensive copy rule (2026-05-14): NEVER claim "no rehearsal in 2+ weeks"
+    // unless we can actually verify it. _rhSessionsCache starts as null and is
+    // only populated after _rhLoadSessions() awaits, which happens lazily when
+    // the user visits the Rehearsal page. Previously the silent try/catch
+    // collapsed null-cache and stale-cache into the same fall-through, firing
+    // a false positive on cold Home loads even when recent sessions existed in
+    // Firebase. That broke trust ("the band rehearsed 3 days ago — why does it
+    // say 2+ weeks?"). Three distinct states now:
+    //   (a) cache populated, latest > 14d old → factually true claim
+    //   (b) cache populated, no entries at all → factually true claim (never)
+    //   (c) cache null / unavailable → DO NOT make a claim; trigger a lazy
+    //       load so the next Home render has real data, but suppress the
+    //       risk line this pass.
+    var _cacheLoaded = (typeof _rhSessionsCache !== 'undefined' && _rhSessionsCache !== null);
     var lastSession = null;
-    try {
-        var sessions = (typeof _rhSessionsCache !== 'undefined') ? _rhSessionsCache : [];
-        if (sessions.length) lastSession = sessions[0];
-    } catch(e) {}
-    if (!lastSession || _dayDiff(lastSession.date || lastSession.startedAt || '', today) > 14) {
-        risks.push('No rehearsal in 2+ weeks');
+    if (_cacheLoaded) {
+        try {
+            // Cache is sorted newest-first (rehearsal.js _rhLoadSessions +
+            // GLStore.RehearsalSession.loadAll both apply the same sort).
+            if (_rhSessionsCache.length) lastSession = _rhSessionsCache[0];
+        } catch(e) { lastSession = null; }
+    } else {
+        // Fire-and-forget lazy load so subsequent renders have the data.
+        // Don't block this render; don't surface a false claim either.
+        try {
+            if (typeof _rhLoadSessions === 'function') {
+                _rhLoadSessions().catch(function(){ /* non-fatal */ });
+            }
+        } catch(e) {}
     }
+    if (_cacheLoaded) {
+        if (!lastSession) {
+            // Band has zero rehearsal_sessions entries — factually verifiable.
+            risks.push('No rehearsals logged yet');
+        } else {
+            var _lastDate = lastSession.date || lastSession.startedAt || '';
+            if (_lastDate && _dayDiff(_lastDate, today) > 14) {
+                risks.push('Last rehearsal was ' + _dayDiff(_lastDate, today) + ' days ago');
+            }
+        }
+    }
+    // (No `else` branch — when cache is null, we do not surface a recency
+    // risk. Silence is better than a false claim.)
 
     var eventLabel = (nextEvent.type === 'gig' ? '\uD83C\uDFA4 Gig' : '\uD83C\uDFB8 Rehearsal');
     var dateLabel = daysOut === 0 ? 'today' : daysOut === 1 ? 'tomorrow' : 'in ' + daysOut + ' days';
