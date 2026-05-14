@@ -248,11 +248,11 @@ function _hlShellHTML(title) {
     '  <div style="display:flex;gap:12px;margin:16px 0;flex-wrap:wrap">',
     '    <div style="flex:1;min-width:180px">',
     '      <div class="hl-rail-title">My Takes</div>',
-    '      <div id="hl-my-takes" class="hl-takes-list"><div class="hl-rail-empty">No takes yet</div></div>',
+    '      <div id="hl-my-takes" class="hl-takes-list"><div class="hl-rail-empty" style="line-height:1.5">Record yourself practicing the part &mdash; takes save here so the band can hear how it\'s coming along.</div></div>',
     '    </div>',
     '    <div style="flex:1;min-width:180px">',
     '      <div class="hl-rail-title">Band Reference</div>',
-    '      <div id="hl-band-takes" class="hl-takes-list"><div class="hl-rail-empty">No reference take</div></div>',
+    '      <div id="hl-band-takes" class="hl-takes-list"><div class="hl-rail-empty" style="line-height:1.5">The canonical take the band is matching to. (None set for this song yet.)</div></div>',
     '    </div>',
     '  </div>',
 

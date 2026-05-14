@@ -1864,9 +1864,20 @@ function _feedRender(items) {
     }
 
     if (filtered !== null && filtered.length === 0) {
-        el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">'
-            + (_feedFilter === 'archived' ? 'No archived items.' : 'No items match this filter.')
-            + '</div>';
+        var _emptyMsg;
+        if (_feedFilter === 'archived') {
+            _emptyMsg = 'No archived items.';
+        } else if (_feedFilter === 'all') {
+            // First-load / fully-empty state — explain what Feed is for and what to do next.
+            _emptyMsg = '<div style="font-size:1em;color:var(--text-dim);margin-bottom:8px">Nothing in the feed yet</div>'
+                + '<div style="font-size:0.82em;color:var(--text-dim);line-height:1.5;max-width:340px;margin:0 auto">'
+                + 'Recent band activity — rehearsal notes, song updates, what the band needs to know — will show up here. '
+                + 'Use the box above to post your first note, or check <a href="#ideas" style="color:#a5b4fc;text-decoration:underline">Band Room</a> for decisions and proposals.'
+                + '</div>';
+        } else {
+            _emptyMsg = 'No items match this filter.';
+        }
+        el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim)">' + _emptyMsg + '</div>';
         return;
     }
 

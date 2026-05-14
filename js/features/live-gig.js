@@ -48,7 +48,9 @@
     }
 
     if (!setlistId) {
-      _renderError('No setlist selected. Please choose a setlist from the Setlists page.');
+      // Soft empty-state — Stage View is gig-time; no setlist = nothing to drive.
+      // Point the user back to Setlists where they pick or build the running order.
+      _renderError('Pick a setlist to perform first &mdash; head to <a href="#setlists" style="color:#a5b4fc;text-decoration:underline">Setlists</a>, then hit the &#x25B6; Live Gig button on the one you\'re playing.');
       return;
     }
 

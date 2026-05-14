@@ -532,7 +532,10 @@ async function _bcLoadIdeas() {
 
   // Posts
   if (!posts.length) {
-    html += '<div style="text-align:center;color:var(--text-dim);padding:20px;font-size:0.85em">No ideas yet. Be the first to suggest something.</div>';
+    html += '<div style="text-align:center;color:var(--text-dim);padding:20px;font-size:0.85em;line-height:1.5">'
+      + '<div style="margin-bottom:6px">Nothing to decide yet</div>'
+      + '<div style="font-size:0.88em">Ideas, song suggestions, and proposals the band needs to vote on or talk through &mdash; they live here. Post one above to start the discussion.</div>'
+      + '</div>';
   } else {
     posts.forEach(function(p) {
       var linkHTML = '';

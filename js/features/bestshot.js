@@ -63,8 +63,9 @@ async function renderBestShotVsNorthStar(songTitle) {
         html += '<button onclick="openMusicLink(\'' + nsUrl.replace(/'/g, "\\'") + '\')" class="btn btn-sm" style="background:rgba(102,126,234,0.2);color:var(--accent-light);border:1px solid rgba(102,126,234,0.3);font-size:0.78em;padding:6px 14px;border-radius:8px;cursor:pointer">\u25B6 Open in Spotify</button>';
         html += '<div style="font-size:0.68em;color:var(--text-dim);margin-top:6px">' + (northStar._voteCount || 0) + '/' + Object.keys(bandMembers).length + ' votes</div>';
     } else {
-        html += '<div style="font-size:0.78em;color:var(--text-dim)">No reference yet</div>';
-        html += '<button onclick="showPage(\'songs\');setTimeout(function(){document.getElementById(\'step3ref\')?.scrollIntoView({behavior:\'smooth\'})},300)" class="btn btn-sm btn-ghost" style="font-size:0.72em;margin-top:6px">+ Add One</button>';
+        html += '<div style="font-size:0.78em;color:var(--text-dim)">The canonical version</div>';
+        html += '<div style="font-size:0.7em;color:var(--text-dim);margin-top:4px;line-height:1.4">A Spotify / YouTube link the band is matching to</div>';
+        html += '<button onclick="showPage(\'songs\');setTimeout(function(){document.getElementById(\'step3ref\')?.scrollIntoView({behavior:\'smooth\'})},300)" class="btn btn-sm btn-ghost" style="font-size:0.72em;margin-top:6px">+ Add Reference</button>';
     }
     html += '</div>';
 
@@ -79,7 +80,8 @@ async function renderBestShotVsNorthStar(songTitle) {
         else if (crowned.externalUrl) html += '<button onclick="window.open(\'' + crowned.externalUrl.replace(/'/g, "\\'") + '\',\'_blank\')" class="btn btn-sm" style="background:rgba(245,158,11,0.15);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);font-size:0.78em;padding:6px 14px;border-radius:8px;cursor:pointer">▶ Listen</button>';
         html += '<div style="font-size:0.68em;color:var(--text-dim);margin-top:4px">' + who + (crowned.crowned ? ' 👑' : '') + '</div>';
     } else {
-        html += '<div style="font-size:0.78em;color:var(--text-dim)">No recording yet</div>';
+        html += '<div style="font-size:0.78em;color:var(--text-dim)">The band\'s strongest take</div>';
+        html += '<div style="font-size:0.7em;color:var(--text-dim);margin-top:4px;line-height:1.4">Upload a rehearsal/recording the band votes as best</div>';
         html += '<button onclick="addBestShotTake(\'' + songTitle.replace(/'/g, "\\'") + '\')" class="btn btn-sm btn-ghost" style="font-size:0.72em;margin-top:6px">📤 Upload Take</button>';
     }
     html += '</div></div>';

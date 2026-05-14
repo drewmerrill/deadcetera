@@ -1793,8 +1793,8 @@ window._slPrepForGig = async function(idx, opts) {
             btn.style.borderColor = 'rgba(34,197,94,0.4)';
             btn.style.color = '#86efac';
         }
-        if (status) status.textContent = 'All ' + uniqueTitles.length + ' songs cached for offline use.';
-        if (typeof showToast === 'function') showToast('Ready for gig — ' + uniqueTitles.length + ' songs offline');
+        if (status) status.textContent = 'All ' + uniqueTitles.length + ' songs cached for offline use. Safe to use at the venue without wifi.';
+        if (typeof showToast === 'function') showToast('Ready for gig — ' + uniqueTitles.length + ' songs offline. Tap ▶ Live Gig when you’re ready to play.', 6000);
         console.log('[Prep] success - ' + total + ' items cached');
         return;
     }

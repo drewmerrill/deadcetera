@@ -57,7 +57,7 @@ Once Drew executes `02_GrooveLinx/BETA_ONBOARDING_RUNBOOK.md` with tester #1, po
 ## First Tester Run — <tester-name> / <date>
 
 **Tester:** <name>, <email>, <band slug>, <device>
-**Runbook build at session:** 20260514-155010
+**Runbook build at session:** 20260514-160056
 **Session duration:** <minutes>
 
 ### What worked
@@ -76,6 +76,22 @@ The following clarifications were added pre-tester. Capture whether each landed:
 - **Feed vs Band Room subtitles** — Did the tester understand Feed = activity stream vs Band Room = decisions/proposals? Did the inline cross-references ("see Band Room" / "see Feed") help?
 - **Harmony Lab discoverability** — Did the tester find Harmony Lab on their own? Did the new label ("Harmony Lab" vs "Harmony") + tooltip help?
 - **Song Detail first impression** — Tester now lands on Chart (Play lens) by default. Did they look for or expect something else first?
+
+### Contextual Confidence Pass observations (2026-05-14, build 20260514-160056)
+Empty-state copy improvements landed. Capture whether each empty state gave the tester confidence vs hesitation:
+
+- **Band Feed first-load** — When the tester landed on an empty Feed, did the new explanation ("Recent band activity will show up here…") give them a clear sense of what Feed is for? Did they post a first item, or hesitate?
+- **Best Shot column copy** — Did "The canonical version" + "Spotify/YouTube link the band is matching to" make North Star's purpose clear? Same for Best Shot's "strongest take" copy?
+- **Harmony Lab takes empty states** — When the tester opened Harmony Lab on a song with no takes, did the new "Record yourself practicing the part — takes save here so the band can hear how it's coming along" land? Did they record a take?
+- **Band Room empty state** — Did the reframed "Nothing to decide yet — Ideas, song suggestions, and proposals…" copy clarify what Band Room is for, distinct from Feed?
+- **Stage View no-setlist** — If the tester opened Live Gig without a setlist, did the new "Pick a setlist to perform first — head to Setlists, then hit ▶ Live Gig" land as helpful rather than error-y?
+- **Prep-for-Gig success → Live Gig cue** — After Prep completed successfully, did the new "Tap ▶ Live Gig when you're ready" toast successfully orient the tester to the next step? Or did they still wonder what to do next?
+
+### Where guidance still feels weak (observe before next pass)
+- **Practice page** — emerging surface; minimal empty-state work done by design (don't over-promote half-built feature). If tester taps Practice → frustration likely.
+- **Workbench** — hidden by design; tester shouldn't reach it.
+- **Three rehearsal entry points** — counter armed (`_glGetRehearsalEntryStats()`); structural convergence deferred until real signal.
+- **Lens density** — 6 lenses still present; default `band` landing + tooltips are partial mitigation only.
 
 ### Rehearsal entry path observation
 Query in tester's browser console after session: `_glGetRehearsalEntryStats()`
