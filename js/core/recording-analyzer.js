@@ -51,8 +51,23 @@ window.RecordingAnalyzer = (function() {
   // Downsample rate for large files — 22050 Hz mono = 1/4 memory of 44100 stereo
   var _DOWNSAMPLE_RATE = 22050;
 
+  // Stab #11 Q.6: re-entrancy guard. Without this, a double-tap on the
+  // "Analyze" button starts two pipelines on the same file — they race the
+  // Firebase write and produce nondeterministic final state. The guard is
+  // module-scoped (not opts-scoped) because analyze() is the public entry
+  // point and any concurrent invocation is bad. Cleared in finally.
+  var _analysisInProgress = false;
+
   async function analyze(source, opts) {
     opts = opts || {};
+    if (_analysisInProgress) {
+      console.warn('[RecordingAnalyzer] analyze() called while another analysis is in progress — ignoring');
+      var _err = new Error('Analysis already in progress');
+      _err.code = 'ANALYSIS_IN_PROGRESS';
+      throw _err;
+    }
+    _analysisInProgress = true;
+    try {
     var onProgress = opts.onProgress || function() {};
     var _runStartMs = Date.now();
     var _timings = { decode: 0, segment: 0, features: 0, clap: 0, transcribe: 0, match: 0 };
@@ -970,6 +985,11 @@ window.RecordingAnalyzer = (function() {
         features: { bpm: _hasBpm, groove: _hasGroove, chords: _hasChords, embeds: _hasEmbed }
       }
     };
+    } finally {
+      // Stab #11 Q.6: always clear re-entrancy guard so a failed analysis
+      // doesn't permanently block future Analyze taps.
+      _analysisInProgress = false;
+    }
   }
 
   // ── Song Matching Heuristic ─────────────────────────────────────────────────

@@ -80,6 +80,26 @@ window.renderHarmonyLab = function renderHarmonyLab(songTitle, mountId) {
   window.GLPlayerContract.registerPausable('harmony-lab', _hlCleanup);
 })();
 
+// Stab #11 Q.8: iOS Safari bfcache restore (pageshow.persisted) leaves a
+// previously-running AudioContext suspended. Without this, the user taps
+// play and gets silence on the first tap (the second tap works because it
+// re-arms the gesture). Resume only if a context already exists — do NOT
+// create one here (would violate iOS user-gesture requirement and could
+// duplicate the cached context). Resume does NOT autoplay; it only puts
+// the context into a state where a subsequent user-gesture play() works.
+if (typeof window !== 'undefined' && !window._hlPageshowWired) {
+  window._hlPageshowWired = true;
+  window.addEventListener('pageshow', function(e) {
+    if (!e || !e.persisted) return;
+    try {
+      var ctx = _hlMixState && _hlMixState.ctx;
+      if (ctx && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+        ctx.resume().catch(function() {});
+      }
+    } catch(_pse) {}
+  });
+}
+
 // Stab #06 — pause every audio element Harmony Lab has open. Idempotent
 // and safe to call from any state. Does NOT close the AudioContext —
 // that lives on _hlMixState.ctx and is reused when the user comes back

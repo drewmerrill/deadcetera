@@ -3095,6 +3095,27 @@ function _bsCleanup() {
     window.GLPlayerContract.registerPausable('bestshot', _bsCleanup);
 })();
 
+// Stab #11 Q.8: iOS Safari bfcache restore (pageshow.persisted) leaves the
+// previously-suspended chopAudioContext stuck. _bsCleanup suspends it on
+// route leave (intentionally, to preserve decoded buffers); resuming on
+// bfcache restore lets the user tap play and get sound on the first tap
+// instead of silence. Resume only if a context already exists — do NOT
+// create a new one (iOS requires user-gesture for creation) and do NOT
+// trigger playback automatically. Idempotent guard prevents duplicate
+// listeners across multiple bestshot mounts.
+if (typeof window !== 'undefined' && !window._bsPageshowWired) {
+    window._bsPageshowWired = true;
+    window.addEventListener('pageshow', function(e) {
+        if (!e || !e.persisted) return;
+        try {
+            if (chopAudioContext && chopAudioContext.state === 'suspended'
+                && typeof chopAudioContext.resume === 'function') {
+                chopAudioContext.resume().catch(function() {});
+            }
+        } catch(_pse) {}
+    });
+}
+
 // Stab #07 — delegated assertion. chopAudio is created by innerHTML in
 // renderBestShotVsNorthStar and has 5+ play() call sites scattered through
 // the file (spacebar, canvas click, region preview, hotspot click,

@@ -843,6 +843,7 @@ window.runChartImport = async function runChartImport() {
     if (checked.length === 0) { showToast('⚠️ No songs selected'); return; }
 
     var btn = document.getElementById('ciImportBtn');
+    var _origBtnLabel = btn ? btn.textContent : '🎸 Import';
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Importing…'; }
 
     var selectedTitles = checked.map(function(cb) { return cb.value; });
@@ -852,85 +853,96 @@ window.runChartImport = async function runChartImport() {
     var chartsSaved = 0;
     var errors = 0;
 
-    // Load existing custom songs once
-    var existing = [];
     try {
-        existing = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
-    } catch(e) { existing = []; }
-
-    for (var i = 0; i < toImport.length; i++) {
-        var song = toImport[i];
+        // Load existing custom songs once
+        var existing = [];
         try {
-            // 1. Save chord chart (dual-write via GLStore if available)
-            if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
-                await GLStore.saveSongData(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
-            } else {
-                await saveBandDataToDrive(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
-            }
-            chartsSaved++;
+            existing = toArray(await loadBandDataFromDrive('_band', 'custom_songs') || []);
+        } catch(e) { existing = []; }
 
-            // 2. Save key (dual-write via GLStore if available)
-            if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
-                await GLStore.updateSongField(song.title, 'key', song.key);
-            } else {
-                await saveBandDataToDrive(song.title, 'key', { key: song.key, updatedAt: new Date().toISOString() });
-            }
+        for (var i = 0; i < toImport.length; i++) {
+            var song = toImport[i];
+            try {
+                // 1. Save chord chart (dual-write via GLStore if available)
+                if (typeof GLStore !== 'undefined' && GLStore.saveSongData) {
+                    await GLStore.saveSongData(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
+                } else {
+                    await saveBandDataToDrive(song.title, 'chart', { text: song.chart, importedAt: new Date().toISOString() });
+                }
+                chartsSaved++;
 
-            // 3. Save BPM (dual-write via GLStore if available)
-            if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
-                await GLStore.updateSongField(song.title, 'bpm', song.bpm);
-            } else {
-                await saveBandDataToDrive(song.title, 'song_bpm', { bpm: song.bpm, updatedAt: new Date().toISOString() });
-            }
+                // 2. Save key (dual-write via GLStore if available)
+                if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+                    await GLStore.updateSongField(song.title, 'key', song.key);
+                } else {
+                    await saveBandDataToDrive(song.title, 'key', { key: song.key, updatedAt: new Date().toISOString() });
+                }
 
-            // 4. If not in main allSongs library, add as custom song
-            var inLib = typeof allSongs !== 'undefined' && allSongs.find(function(s) {
-                return s.title.toLowerCase() === song.title.toLowerCase();
-            });
-            if (!inLib) {
-                var alreadyCustom = existing.find(function(s) {
+                // 3. Save BPM (dual-write via GLStore if available)
+                if (typeof GLStore !== 'undefined' && GLStore.updateSongField) {
+                    await GLStore.updateSongField(song.title, 'bpm', song.bpm);
+                } else {
+                    await saveBandDataToDrive(song.title, 'song_bpm', { bpm: song.bpm, updatedAt: new Date().toISOString() });
+                }
+
+                // 4. If not in main allSongs library, add as custom song
+                var inLib = typeof allSongs !== 'undefined' && allSongs.find(function(s) {
                     return s.title.toLowerCase() === song.title.toLowerCase();
                 });
-                if (!alreadyCustom) {
-                    existing.push({
-                        title: song.title,
-                        band: song.band,
-                        notes: song.feel,
-                        key: song.key,
-                        bpm: song.bpm,
-                        addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : 'import',
-                        addedAt: new Date().toISOString(),
-                        fromStarterPack: true
+                if (!inLib) {
+                    var alreadyCustom = existing.find(function(s) {
+                        return s.title.toLowerCase() === song.title.toLowerCase();
                     });
-                    customAdded.push(song.title);
+                    if (!alreadyCustom) {
+                        existing.push({
+                            title: song.title,
+                            band: song.band,
+                            notes: song.feel,
+                            key: song.key,
+                            bpm: song.bpm,
+                            addedBy: typeof currentUserEmail !== 'undefined' ? currentUserEmail : 'import',
+                            addedAt: new Date().toISOString(),
+                            fromStarterPack: true
+                        });
+                        customAdded.push(song.title);
+                    }
                 }
+            } catch(e) {
+                console.error('Chart import error for', song.title, e);
+                errors++;
             }
-        } catch(e) {
-            console.error('Chart import error for', song.title, e);
-            errors++;
         }
-    }
 
-    // Save updated custom songs list once
-    if (customAdded.length > 0) {
-        try {
-            await saveBandDataToDrive('_band', 'custom_songs', existing);
-        } catch(e) {
-            console.error('Failed to save custom songs', e);
+        // Save updated custom songs list once
+        if (customAdded.length > 0) {
+            try {
+                await saveBandDataToDrive('_band', 'custom_songs', existing);
+            } catch(e) {
+                console.error('Failed to save custom songs', e);
+            }
         }
+
+        document.getElementById('chartImportModal')?.remove();
+
+        // Refresh song list
+        if (typeof loadCustomSongs === 'function') await loadCustomSongs();
+        if (typeof renderSongs === 'function') renderSongs();
+
+        // Summary toast
+        var msg = '✅ Imported ' + chartsSaved + ' charts';
+        if (customAdded.length > 0) msg += ', added ' + customAdded.length + ' custom songs';
+        if (errors > 0) msg += ' (' + errors + ' errors)';
+        if (typeof showToast === 'function') showToast(msg);
+    } catch (fatalErr) {
+        // Top-level guard — surfaces to user instead of leaving button greyed out forever
+        console.error('Chart import fatal error', fatalErr);
+        if (typeof showToast === 'function') showToast('⚠️ Import failed — try again');
+    } finally {
+        // Always re-enable button so user can retry. If modal was removed (success
+        // path) the button no longer exists — defensive lookup handles that.
+        var _btnLive = document.getElementById('ciImportBtn');
+        if (_btnLive) { _btnLive.disabled = false; _btnLive.textContent = _origBtnLabel; }
     }
-
-    document.getElementById('chartImportModal')?.remove();
-
-    // Refresh song list
-    if (typeof loadCustomSongs === 'function') await loadCustomSongs();
-    if (typeof renderSongs === 'function') renderSongs();
-
-    // Summary toast
-    var msg = '✅ Imported ' + chartsSaved + ' charts';
-    if (customAdded.length > 0) msg += ', added ' + customAdded.length + ' custom songs';
-    if (errors > 0) msg += ' (' + errors + ' errors)';
-    if (typeof showToast === 'function') showToast(msg);
 };
 
 console.log('✅ chart-import.js loaded — ' + STARTER_PACK.length + ' songs in Starter Pack');

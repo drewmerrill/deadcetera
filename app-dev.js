@@ -12668,7 +12668,7 @@ async function checkForAppUpdate() {
         var same = data.version === _loadedVersion;
         console.log('[Update] client=' + _loadedVersion + ' server=' + data.version + ' → ' + (same ? 'current' : 'NEW'));
         if (!same) {
-            showUpdateBanner();
+            showUpdateBanner(data.version);
         }
     } catch(e) {
         console.log('[Update] Error:', e.message || e);
@@ -12676,11 +12676,30 @@ async function checkForAppUpdate() {
 }
 
 var _updateBannerShown = false;
+var _bannerShownForVersion = null;
 
-function showUpdateBanner() {
-    // ONE guard: if banner already shown this page load, done.
-    if (_updateBannerShown) return;
-    if (document.getElementById('dc-update-banner')) return;
+function showUpdateBanner(serverVersion) {
+    serverVersion = serverVersion || 'unknown';
+    // ONE guard: if banner already shown this page load for this version, done.
+    if (_bannerShownForVersion === serverVersion) return;
+    if (_updateBannerShown && serverVersion === 'unknown') return;
+    if (document.getElementById('dc-update-banner')) {
+        _bannerShownForVersion = serverVersion;
+        _updateBannerShown = true;
+        return;
+    }
+    // Stab #11 Q.4: per-version persisted dismissal. Reload should not re-show
+    // a banner the user already dismissed for THIS build. A newer build (new
+    // serverVersion) naturally clears the gate.
+    try {
+        var _dismissed = localStorage.getItem('gl_update_banner_dismissed');
+        if (_dismissed && _dismissed === serverVersion) {
+            _bannerShownForVersion = serverVersion;
+            _updateBannerShown = true;
+            return;
+        }
+    } catch(_dle) {}
+    _bannerShownForVersion = serverVersion;
     _updateBannerShown = true;
     _rt.reloadPromptShown = true;
 
@@ -12718,6 +12737,8 @@ function showUpdateBanner() {
     dismissBtn.style.cssText = 'background:none;color:rgba(255,255,255,0.65);border:none;font-size:1.1em;cursor:pointer;padding:4px 6px;line-height:1';
     dismissBtn.addEventListener('click', function() {
         banner.remove();
+        // Stab #11 Q.4: persist dismissal keyed by build version.
+        try { localStorage.setItem('gl_update_banner_dismissed', serverVersion); } catch(_dse) {}
     });
     banner.appendChild(reloadBtn);
     banner.appendChild(dismissBtn);

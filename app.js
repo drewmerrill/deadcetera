@@ -13095,6 +13095,16 @@ function showUpdateBanner(serverVersion) {
         _bannerShownForVersion = serverVersion;
         return;
     }
+    // Stab #11 Q.4: per-version persisted dismissal. If the user dismissed
+    // this exact build's banner before reloading/navigating, stay dismissed.
+    // A newer build clears this gate naturally (different serverVersion).
+    try {
+        var _dismissed = localStorage.getItem('gl_update_banner_dismissed');
+        if (_dismissed && _dismissed === serverVersion) {
+            _bannerShownForVersion = serverVersion;
+            return;
+        }
+    } catch(_dle) {}
     _bannerShownForVersion = serverVersion;
     _rt.reloadPromptShown = true;
 
@@ -13144,6 +13154,10 @@ function showUpdateBanner(serverVersion) {
     dismissBtn.style.cssText = 'background:none;color:rgba(255,255,255,0.65);border:none;font-size:1.1em;cursor:pointer;padding:4px 6px;line-height:1';
     dismissBtn.addEventListener('click', function() {
         banner.remove();
+        // Stab #11 Q.4: persist dismissal keyed by build version. Reload no
+        // longer re-shows the same banner; next deploy bumps version and the
+        // gate naturally clears.
+        try { localStorage.setItem('gl_update_banner_dismissed', serverVersion); } catch(_dse) {}
     });
     banner.appendChild(reloadBtn);
     banner.appendChild(dismissBtn);

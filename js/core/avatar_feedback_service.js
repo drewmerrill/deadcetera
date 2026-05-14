@@ -230,11 +230,34 @@
     }
   }
 
+  // Cap chosen so pending queue stays well under the 5MB localStorage budget
+  // even for verbose payloads (typical report ~2-3KB → 50 × 3KB ≈ 150KB).
+  var _PENDING_FEEDBACK_CAP = 50;
   function _saveLocal(payload) {
     try {
-      var local = JSON.parse(localStorage.getItem('gl_pending_feedback') || '[]');
+      var raw = localStorage.getItem('gl_pending_feedback') || '[]';
+      var local;
+      try { local = JSON.parse(raw); } catch(_pe) { local = []; }
+      if (!Array.isArray(local)) local = [];
       local.push(payload);
-      localStorage.setItem('gl_pending_feedback', JSON.stringify(local));
+      // Preserve newest — trim oldest from the front
+      if (local.length > _PENDING_FEEDBACK_CAP) {
+        local = local.slice(local.length - _PENDING_FEEDBACK_CAP);
+      }
+      try {
+        localStorage.setItem('gl_pending_feedback', JSON.stringify(local));
+      } catch(_qe) {
+        // Likely QuotaExceededError — drop half and retry once so we don't
+        // leave the key in a corrupt state for the next read.
+        try {
+          var halved = local.slice(Math.floor(local.length / 2));
+          localStorage.setItem('gl_pending_feedback', JSON.stringify(halved));
+          console.warn('[Feedback] localStorage quota — trimmed pending queue to ' + halved.length);
+        } catch(_qe2) {
+          try { localStorage.removeItem('gl_pending_feedback'); } catch(_re) {}
+          console.warn('[Feedback] localStorage quota — cleared pending queue');
+        }
+      }
     } catch(e) {}
   }
 

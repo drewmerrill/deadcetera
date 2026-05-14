@@ -247,6 +247,11 @@
     var ref = db.ref(bandPath('rehearsal_sync/' + sessionId));
     var prevSongId = _sync.session ? _sync.session.songId : null;
 
+    // errorCallback (Stab #11 Q.2): without this, Firebase silently swallows
+    // permission_denied / auth-failure / connection-cancel on the rehearsal_sync
+    // listener — followers think they're synced when they aren't. Throttle to
+    // one log per 30s so a flapping permission error can't spam the console.
+    var _syncListenerLastErrAt = 0;
     var onValue = ref.on('value', function(snap) {
       var data = snap.val();
       if (!data) return;
@@ -269,6 +274,12 @@
 
       // Emit general state change (UI re-renders)
       _emit('syncStateChanged', { session: data, role: _sync.role });
+    }, function(err) {
+      var now = Date.now();
+      if (now - _syncListenerLastErrAt < 30000) return;
+      _syncListenerLastErrAt = now;
+      console.warn('[gl-leader] rehearsal_sync listener error', (err && err.code) || '', (err && err.message) || err);
+      _emit('syncStateChanged', { session: _sync.session, role: _sync.role, error: (err && (err.code || err.message)) || 'unknown' });
     });
 
     _sync.listener = function() { ref.off('value', onValue); };

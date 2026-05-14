@@ -1,6 +1,6 @@
 # GrooveLinx — Known Stable Flows
 
-_Last updated: 2026-05-13 (build `20260513-213032`)._
+_Last updated: 2026-05-14 (build `20260514-124346`)._
 
 This doc tracks user-facing flows by **trust level**: how confident we are that the flow works reliably across browsers + iOS Safari + route transitions + arbitration. Updated on every Stabilization Fix that touches a flow.
 
@@ -97,6 +97,21 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 - On `visibilitychange` to visible, `gl-spotify-connect.js:467` forces device cache invalidation + immediate poll.
 - `gl-player-engine.js:897-923` retries Spotify Connect if `_awaitingSpotifyApp` and tab becomes visible.
 - Wake-flow CTA in `gl-player-ui.js` directs user to open Spotify app when device unavailable.
+
+---
+
+## Recovery & Trust Hardening (Stab #11, 2026-05-14)
+
+**Status:** **Stable** (build `20260514-124346`)
+- **Chart Import button always re-enables** (`chart-import.js:839`). Wrapped in try/catch/finally so fatal exceptions surface a "⚠️ Import failed — try again" toast instead of leaving the button greyed out permanently. Re-enable runs from finally; defensive lookup tolerates the success path where the modal was removed.
+- **`gl-leader.js:250` errorCallback wired**. Firebase realtime listener now receives error callback; logs throttled to 1 per 30s; emits `syncStateChanged` with `error` field so UI can react. Was previously a silent leader-follower sync loss path.
+- **`gl_pending_feedback` localStorage cap = 50** (`avatar_feedback_service.js:233`). Newest entries preserved; oldest trimmed via `slice`. QuotaExceededError: halve-and-retry once, then `removeItem` fallback. No more unbounded growth or corruption cascade.
+- **Update banner per-version dismissal** (`app.js` + `app-dev.js` mirror). Dismissal persisted to `gl_update_banner_dismissed` keyed by `serverVersion`. Reload preserves dismissal for the same build. Next deploy bumps the version → gate naturally clears → banner re-shows.
+- **5 CSS files now `?v=BUILD` stamped** (`styles.css`, `app-shell.css`, `rehearsal-mode.css`, `version-hub.css`, `css/gl-shell.css`). Closes Audit #06 §3.4 partial-deploy visual-corruption window. Both index files updated.
+- **Recording analyzer re-entrancy guard** (`recording-analyzer.js:54`). Module-scoped `_analysisInProgress` flag; concurrent calls throw `{code: 'ANALYSIS_IN_PROGRESS'}` early; finally block clears flag so a failed analysis doesn't permanently block retries.
+- **gl-source-resolver cache auto-heals on corruption** (`gl-source-resolver.js:35`). New `_safeParseCacheObj()` validates JSON + object shape; on invalid → `removeItem(key)` + console warn. YouTube + Spotify caches recover automatically.
+- **AudioContext `pageshow.persisted` resume**. `harmony-lab.js` + `bestshot.js` each install a one-time `pageshow` listener (guarded by `window._hlPageshowWired` / `window._bsPageshowWired`) that calls `ctx.resume()` on the already-existing suspended context after iOS bfcache restore. Does NOT create new contexts (user-gesture requirement) and does NOT autoplay (resume only puts the context into a state where the user's next play tap yields sound on the first tap).
+- **Held back, not yet shipped:** M.2 Prep-for-Gig partial-failure surface (most-dangerous-silent-failure-still-open per Audit #09), M.3 multitrack upload AbortController + modal-close cancellation, M.4 Modal stem job persistence + tab-close cancellation. Will arrive as a follow-up medium-effort stab.
 
 ---
 

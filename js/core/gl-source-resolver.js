@@ -34,14 +34,35 @@ window.GLSourceResolver = (function() {
 
     // ── Local Caches ─────────────────────────────────────────────────────────
 
+    // Stab #11 Q.7: if the cached blob is invalid JSON (truncated write,
+    // pre-versioned shape, manual corruption), remove the key so the next
+    // read can self-heal. Without this, a corrupt cache silently returns
+    // null forever and YouTube/Spotify lookups never persist.
+    function _safeParseCacheObj(key) {
+        var raw = localStorage.getItem(key);
+        if (!raw) return {};
+        try {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+            // Wrong shape — treat as corruption
+            console.warn('[gl-source-resolver] cache ' + key + ' had non-object shape; clearing');
+            try { localStorage.removeItem(key); } catch(_re) {}
+            return {};
+        } catch(_pe) {
+            console.warn('[gl-source-resolver] cache ' + key + ' had invalid JSON; clearing');
+            try { localStorage.removeItem(key); } catch(_re) {}
+            return {};
+        }
+    }
+
     function _getCache(key, title) {
-        try { return (JSON.parse(localStorage.getItem(key) || '{}'))[title] || null; } catch(e) { return null; }
+        try { return _safeParseCacheObj(key)[title] || null; } catch(e) { return null; }
     }
     function _setCache(key, title, val) {
-        try { var c = JSON.parse(localStorage.getItem(key) || '{}'); c[title] = val; localStorage.setItem(key, JSON.stringify(c)); } catch(e) {}
+        try { var c = _safeParseCacheObj(key); c[title] = val; localStorage.setItem(key, JSON.stringify(c)); } catch(e) {}
     }
     function _clearCache(key, title) {
-        try { var c = JSON.parse(localStorage.getItem(key) || '{}'); delete c[title]; localStorage.setItem(key, JSON.stringify(c)); } catch(e) {}
+        try { var c = _safeParseCacheObj(key); delete c[title]; localStorage.setItem(key, JSON.stringify(c)); } catch(e) {}
     }
 
     function getCachedYtId(t) { return _getCache(_YT_CACHE_KEY, t); }
