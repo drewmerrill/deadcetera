@@ -1,6 +1,6 @@
 # GrooveLinx — Known Stable Flows
 
-_Last updated: 2026-05-14 (build `20260514-130621`)._
+_Last updated: 2026-05-14 (build `20260514-135200`)._
 
 This doc tracks user-facing flows by **trust level**: how confident we are that the flow works reliably across browsers + iOS Safari + route transitions + arbitration. Updated on every Stabilization Fix that touches a flow.
 
@@ -97,6 +97,33 @@ This doc tracks user-facing flows by **trust level**: how confident we are that 
 - On `visibilitychange` to visible, `gl-spotify-connect.js:467` forces device cache invalidation + immediate poll.
 - `gl-player-engine.js:897-923` retries Spotify Connect if `_awaitingSpotifyApp` and tab becomes visible.
 - Wake-flow CTA in `gl-player-ui.js` directs user to open Spotify app when device unavailable.
+
+---
+
+## Multitrack Upload — Truthful Cancellation (Stab #13, 2026-05-14)
+
+**Status:** **Stable** (build `20260514-135200`)
+- `_mtUploadOne` in `multitrack-rehearsal.js` now wires an `AbortController` per upload (stored on `track._uploadController`). The fetch receives `{signal: controller.signal}`. Closing the modal really does cancel pending uploads now.
+- **Abort sweep:** `_mtAbortAllUploads(reason)` walks `_mtState.activeUpload.tracks`, calls `.abort()` on each non-null controller, marks unfinished tracks as `'cancelled'` (NOT `'failed'`), sets `activeUpload.aborted = true` + `abortReason`. Idempotent — double-abort safe via the `aborted` flag short-circuit at the top of the function.
+- **Cancellation entry point:** `_mtCancelImport` calls `_mtAbortAllUploads('modal_closed')` BEFORE removing DOM + nulling state. A toast surfaces the abort count ("Cancelled N in-flight uploads") only when at least one fetch was actually aborted (no false "cancelled" toast if the user closes the modal while no uploads are running).
+- **Status taxonomy:**
+  - `'queued'` — not yet started (existing).
+  - `'uploading'` — fetch in flight (existing).
+  - `'done'` — `stemUrl` set (existing).
+  - `'failed'` — network error, 4xx/5xx response, or worker rejection (existing). Per-row "↻ Retry" button (amber).
+  - `'cancelled'` — **new (Stab #13).** AbortError caught or pre-fetch guard fired. Per-row "↻ Re-upload" button (grey — calm, not alarming). Distinct from `failed` so the UI is honest about how the upload ended.
+- **AbortError detection:** catch branch checks `e.name === 'AbortError' || e.code === 20 || (e instanceof DOMException && e.name === 'AbortError')`. AbortError always routes to the `'cancelled'` path; only non-abort errors land in `'failed'`.
+- **Pre-fetch guard:** before a queued upload's fetch fires, `_mtUploadOne` checks `_mtState.activeUpload.aborted` and short-circuits to `'cancelled'` if the session was aborted between Promise.all chunk boundaries. Prevents the "cancel arrives while chunk is rolling" race.
+- **Render UI states (footer):**
+  1. Uploading-progress (existing): "Uploading… N / M done. Closing the modal will cancel pending uploads." + appended "(network interrupted — some uploads may fail)" when `wentOffline` flag is set.
+  2. All-uploaded (existing): green "✓ All uploaded — finalizing session…"
+  3. Some-failed (existing): amber "⚠ N upload(s) failed — click Retry on any failed row, or close to abort." + "↻ Retry all failed" button.
+  4. All-aborted (new): grey "Modal closed — uploads cancelled." + partial-completion count "(K of M completed before cancel)" when applicable.
+- **Offline detection:** `window.addEventListener('offline', ...)` flips `activeUpload.wentOffline = true` and triggers a re-render. Does NOT auto-abort — in-flight bytes may still complete on the way down, and partial-success is better than aggressive teardown.
+- **`finally` cleanup:** `_mtUploadOne` nulls `track._uploadController = null` after settle so subsequent abort sweeps don't try to re-abort an already-completed fetch. Idempotent.
+- **Runtime Health Overlay accessor:** `window._mtGetUploadStats()` returns `{available, sessionId, aborted, abortReason, total, inFlight, queued, done, failed, cancelled}`. NO URLs, NO tokens, NO file paths leaked. Surfaced via a new `multitrack` snapshot section in `gl-runtime-health.js`.
+- **Logging:** Per-file `[Multitrack] upload started/aborted/failed/completed:` + a single `[Multitrack] aborted N in-flight upload(s) — reason:` summary on abort sweep. No spam — one line per state transition.
+- **Held back:** M.4 (Modal stem job persistence + tab-close cancellation) — next medium-stab, needs worker-side cancel endpoint.
 
 ---
 

@@ -78,11 +78,23 @@
       playback: _playbackSnap(),
       spotify: _spotifySnap(),
       prepForGig: _prepSnap(),
+      multitrack: _multitrackSnap(),
       teardowns: _teardownsSnap(),
       warnings: [],
     };
     snap.warnings = _buildWarnings(snap);
     return snap;
+  }
+
+  // Stab #13 — surface multitrack upload state. Reads window._mtGetUploadStats()
+  // which exposes per-track status counts + abort flag without leaking URLs or
+  // user data. Purely observational.
+  function _multitrackSnap() {
+    try {
+      if (typeof window._mtGetUploadStats !== 'function') return { available: false };
+      var s = window._mtGetUploadStats() || {};
+      return s;
+    } catch (e) { return { available: false, error: e && e.message }; }
   }
 
   // Stab #12 — surface last Prep for Gig run result. Reads the lightweight

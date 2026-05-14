@@ -534,13 +534,68 @@ function _mtInjectWizardStyles() {
 }
 
 window._mtCancelImport = function() {
+    // Stab #13 — actually abort in-flight uploads. Previously this just
+    // removed the DOM element; fetches continued running, R2 received
+    // partial files, and the session was left referencing partial URLs.
+    // Idempotent: re-entry (e.g., double-click on the close button or
+    // backdrop) is safe — _mtAbortAllUploads short-circuits on already-aborted.
+    var abortedCount = _mtAbortAllUploads('modal_closed');
     var ov = document.getElementById('mtImportModal');
     if (ov) ov.remove();
     _mtState.pickedFiles = [];
     _mtState.sessionId = null;
     _mtState.uploads = {};
+    if (abortedCount > 0 && typeof showToast === 'function') {
+        showToast('Cancelled ' + abortedCount + ' in-flight upload' + (abortedCount === 1 ? '' : 's'));
+    }
     _mtState.activeUpload = null;
 };
+
+// Stab #13 — Runtime Health Overlay accessor + offline + route-leave hooks.
+// Exposes a small stats object so observability can surface "uploads in
+// flight" + "last abort reason" without monkey-patching the wizard.
+window._mtGetUploadStats = function() {
+    var u = _mtState.activeUpload;
+    if (!u) return { available: false };
+    var inFlight = 0, queued = 0, done = 0, failed = 0, cancelled = 0;
+    (u.tracks || []).forEach(function(t) {
+        if (t.stemUrl) done++;
+        else if (t._uploadStatus === 'uploading') inFlight++;
+        else if (t._uploadStatus === 'failed') failed++;
+        else if (t._uploadStatus === 'cancelled') cancelled++;
+        else queued++;
+    });
+    return {
+        available: true,
+        sessionId: u.sessionId || null,
+        aborted: !!u.aborted,
+        abortReason: u.abortReason || null,
+        total: (u.tracks || []).length,
+        inFlight: inFlight,
+        queued: queued,
+        done: done,
+        failed: failed,
+        cancelled: cancelled,
+    };
+};
+
+// Offline-mid-upload signal — when the network drops, mark the activeUpload
+// so the UI message can distinguish "interrupted by network" from a generic
+// failure. The actual fetch aborts on the underlying socket error and lands
+// in the catch branch of _mtUploadOne with track._uploadStatus = 'failed'.
+// We don't auto-abort here; in-flight bytes may still complete on the way
+// down, and partial-success semantics are better than aggressive teardown.
+if (typeof window !== 'undefined' && !window._mtOfflineWired) {
+    window._mtOfflineWired = true;
+    window.addEventListener('offline', function() {
+        var u = _mtState.activeUpload;
+        if (u && !u.aborted) {
+            u.wentOffline = true;
+            console.log('[Multitrack] offline detected during upload — in-flight fetches may fail');
+            _mtRenderUploadProgress();
+        }
+    });
+}
 
 window._mtFilesPicked = function(files) {
     if (!files || !files.length) return;
@@ -693,8 +748,21 @@ function _mtRenderUploadProgress() {
     var footer = document.getElementById('mtFooter');
     if (footer) {
         var failedCount = u.tracks.filter(function(t) { return t._uploadStatus === 'failed'; }).length;
+        var cancelledCount = u.tracks.filter(function(t) { return t._uploadStatus === 'cancelled'; }).length;
         var doneCount = u.tracks.filter(function(t) { return t.stemUrl; }).length;
-        if (failedCount > 0) {
+        if (u.aborted) {
+            // Stab #13 — truthful cancellation state. Distinguish how the
+            // session was aborted: user closed modal vs. underlying error
+            // path. Partial-success semantics if some tracks did complete
+            // before the abort.
+            var reasonLabel = u.abortReason === 'modal_closed' ? 'Modal closed — uploads cancelled.'
+                : u.abortReason === 'route_left' ? 'Navigated away — uploads cancelled.'
+                : 'Uploads cancelled.';
+            var partialLabel = (doneCount > 0)
+                ? ' (' + doneCount + ' of ' + u.tracks.length + ' completed before cancel)'
+                : '';
+            footer.innerHTML = '<div style="font-size:0.78em;color:#94a3b8">' + reasonLabel + partialLabel + '</div>';
+        } else if (failedCount > 0) {
             footer.innerHTML = '<div style="font-size:0.78em;color:#fbbf24">⚠ ' + failedCount + ' upload(s) failed — click Retry on any failed row, or close to abort.</div>'
                 + '<button onclick="_mtRetryAllFailed()" style="margin-left:auto;padding:5px 10px;border-radius:6px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-size:0.78em;font-weight:700">↻ Retry all failed</button>';
             footer.style.display = 'flex';
@@ -702,8 +770,12 @@ function _mtRenderUploadProgress() {
             footer.style.gap = '8px';
         } else if (doneCount === u.tracks.length) {
             footer.innerHTML = '<div style="font-size:0.78em;color:#22c55e">✓ All uploaded — finalizing session…</div>';
+        } else if (cancelledCount > 0 && (doneCount + cancelledCount === u.tracks.length)) {
+            // All work completed but some pieces were cancelled (no failures)
+            footer.innerHTML = '<div style="font-size:0.78em;color:#94a3b8">' + doneCount + ' uploaded, ' + cancelledCount + ' cancelled.</div>';
         } else {
-            footer.innerHTML = '<div style="font-size:0.78em;color:var(--text-dim)">Uploading… ' + doneCount + ' / ' + u.tracks.length + ' done. Closing the modal will cancel pending uploads.</div>';
+            var offlineNote = u.wentOffline ? ' (network interrupted — some uploads may fail)' : '';
+            footer.innerHTML = '<div style="font-size:0.78em;color:var(--text-dim)">Uploading… ' + doneCount + ' / ' + u.tracks.length + ' done. Closing the modal will cancel pending uploads.' + offlineNote + '</div>';
         }
     }
     if (area) {
@@ -715,6 +787,11 @@ function _mtRenderUploadProgress() {
             } else if (t._uploadStatus === 'failed') {
                 var errTitle = t._uploadError ? ' title="' + escHtml(t._uploadError) + '"' : '';
                 statusHtml = '<button onclick="_mtRetryUpload(\'' + escHtml(t.trackId) + '\')"' + errTitle + ' style="padding:2px 8px;border-radius:5px;border:1px solid rgba(245,158,11,0.4);background:rgba(245,158,11,0.12);color:#fbbf24;cursor:pointer;font-size:0.72em;font-weight:600">↻ Retry</button>';
+            } else if (t._uploadStatus === 'cancelled') {
+                // Stab #13 — cancelled is calm, not alarming. The user did this
+                // on purpose (or accepted it via modal close). Retry is still
+                // available so they can re-upload without re-mapping.
+                statusHtml = '<button onclick="_mtRetryUpload(\'' + escHtml(t.trackId) + '\')" style="padding:2px 8px;border-radius:5px;border:1px solid rgba(148,163,184,0.4);background:rgba(148,163,184,0.10);color:#94a3b8;cursor:pointer;font-size:0.72em;font-weight:600">↻ Re-upload</button>';
             } else if (t._uploadStatus === 'uploading') {
                 statusHtml = '<span style="color:#fbbf24;font-size:0.85em">uploading…</span>';
             } else {
@@ -804,12 +881,37 @@ async function _mtMaybeFinalizeSession() {
 // Upload a single FLAC to the worker. Mutates track._uploadStatus and
 // track.stemUrl in place so the rest of the module can read state from
 // the track object. Always re-renders the progress UI on status change.
+//
+// Stab #13 (2026-05-14) — Trust hardening per Audit #09 §3.2.1/§3.2.2. The
+// modal UI promised "Closing the modal will cancel pending uploads" but no
+// AbortController was actually wired — closing the modal left in-flight
+// fetches running, R2 received partial files, and the session referenced
+// URLs for incomplete uploads. New behavior: per-upload AbortController
+// stored on track._uploadController; `_mtAbortAllUploads(reason)` walks
+// active controllers and aborts; AbortError is treated as 'cancelled'
+// (distinct from 'failed' so the UI doesn't misrepresent the cause).
 async function _mtUploadOne(file, sessionId, track) {
     var url = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev') + '/multitrack/upload';
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+
+    // If the parent upload session was already aborted (e.g., user closed
+    // the modal between Promise.all chunks), don't even fire this fetch.
+    var u = _mtState.activeUpload;
+    if (u && u.aborted) {
+        track._uploadStatus = 'cancelled';
+        track._uploadError = null;
+        _mtRenderUploadProgress();
+        return { ok: false, cancelled: true };
+    }
+
+    // Fresh controller per attempt — a retry will get a new one. Old one (if
+    // present from a previous failed try) is discarded; nothing references it.
+    var controller = (typeof AbortController === 'function') ? new AbortController() : null;
+    track._uploadController = controller;
     track._uploadStatus = 'uploading';
     track._uploadError = null;
     _mtRenderUploadProgress();
+    console.log('[Multitrack] upload started:', file.name);
     try {
         var res = await fetch(url, {
             method: 'POST',
@@ -819,7 +921,8 @@ async function _mtUploadOne(file, sessionId, track) {
                 'X-Session-Id': sessionId,
                 'X-Filename': file.name
             },
-            body: file
+            body: file,
+            signal: controller ? controller.signal : undefined
         });
         var json = null;
         try { json = await res.json(); } catch (e) {}
@@ -827,21 +930,69 @@ async function _mtUploadOne(file, sessionId, track) {
             var msg = (json && json.error) ? json.error : ('HTTP ' + res.status);
             track._uploadStatus = 'failed';
             track._uploadError = msg;
-            console.warn('[Multitrack] upload failed for', file.name, msg);
+            console.warn('[Multitrack] upload failed:', file.name, msg);
             _mtRenderUploadProgress();
             return { ok: false, error: msg };
         }
         track.stemUrl = json.publicUrl;
         track._uploadStatus = 'done';
+        console.log('[Multitrack] upload completed:', file.name);
         _mtRenderUploadProgress();
         return { ok: true, key: json.key, publicUrl: json.publicUrl };
     } catch (e) {
+        // AbortError can show up under a couple of names depending on the
+        // browser; check both. Aborted uploads are NOT failures — they're
+        // intentional cancellations and the UI must reflect that distinction.
+        var isAbort = e && (e.name === 'AbortError' || e.code === 20
+            || (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'AbortError'));
+        if (isAbort) {
+            track._uploadStatus = 'cancelled';
+            track._uploadError = null;
+            console.log('[Multitrack] upload aborted:', file.name);
+            _mtRenderUploadProgress();
+            return { ok: false, cancelled: true };
+        }
         track._uploadStatus = 'failed';
         track._uploadError = e.message || 'network';
-        console.warn('[Multitrack] upload error for', file.name, e);
+        console.warn('[Multitrack] upload error:', file.name, e);
         _mtRenderUploadProgress();
         return { ok: false, error: e.message || 'network' };
+    } finally {
+        // Drop the controller ref so subsequent abort sweeps don't try to
+        // re-abort an already-settled fetch (idempotent but cleaner).
+        if (track._uploadController === controller) track._uploadController = null;
     }
+}
+
+// Walk every track in the active upload session and abort its in-flight
+// fetch. Safe to call multiple times — already-settled fetches' controllers
+// are nulled in the upload finally block. The `aborted` flag prevents
+// _mtUploadOne from firing new fetches for tracks that haven't started yet
+// (relevant during a Promise.all chunk where some uploads kicked off and
+// others are queued waiting for parallel slots).
+function _mtAbortAllUploads(reason) {
+    var u = _mtState.activeUpload;
+    if (!u) return 0;
+    if (u.aborted) return 0; // already done
+    u.aborted = true;
+    u.abortReason = reason || 'user_cancelled';
+    var n = 0;
+    (u.tracks || []).forEach(function(t) {
+        if (t && t._uploadController) {
+            try { t._uploadController.abort(); n++; } catch(_ae) {}
+            t._uploadController = null;
+        }
+        // Any track still in 'uploading' or 'queued' transitions to 'cancelled'
+        // immediately so the UI doesn't show a stale spinner while AbortError
+        // propagates through the fetch chain.
+        if (t && !t.stemUrl && t._uploadStatus !== 'failed' && t._uploadStatus !== 'cancelled') {
+            t._uploadStatus = 'cancelled';
+            t._uploadError = null;
+        }
+    });
+    if (n > 0) console.log('[Multitrack] aborted ' + n + ' in-flight upload(s) — reason: ' + (reason || 'user_cancelled'));
+    _mtRenderUploadProgress();
+    return n;
 }
 
 // ── Multitrack player ────────────────────────────────────────────────────────
