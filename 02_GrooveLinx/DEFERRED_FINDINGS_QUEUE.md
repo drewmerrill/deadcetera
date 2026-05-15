@@ -657,6 +657,99 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Rehearsal Page Refactor)
   - **Status:** open
 
+- **Finding:** Living Set Sheet inline signals fire ONE per row by
+  precedence: ⚠ Transition needs work → 💬 N open notes → ⚠ Low
+  readiness → ✓ Tight last rehearsal. Restraint by design, but the
+  precedence is a heuristic — a song that's both in focus AND has
+  open notes will show the notes signal (higher priority) and the
+  user won't see the readiness flag inline. The data is still in
+  the hero's "Focus: N weak songs" summary, but per-row visibility
+  is reduced.
+  - **Why deferred:** Showing two signals per row would push us into
+    chip-stack territory the spec explicitly forbids. Single-signal
+    restraint wins. If testers report missing readiness context,
+    the precedence can be re-tuned (e.g., low-readiness > notes
+    when avg < 2).
+  - **Trigger:** First tester says "I knew Sugaree was weak but the
+    flow rail didn't show it because it had a comment."
+  - **Discovered:** 2026-05-15 (Living Set Sheet — Rehearsal Flow
+    Intelligence Pass)
+  - **Status:** open
+
+- **Finding:** "Tight last rehearsal" positive signal uses a
+  conservative confidence threshold (avg ≥ 0.7 across the song's
+  music segments in the latest session). On a recent recording where
+  the analyzer confidence is generally low (few audio embeddings,
+  cold matcher start), no songs will fire the positive signal even
+  if the band actually played them tight. The signal will become
+  more reliable as the matcher's embedding bank grows over multiple
+  rehearsals.
+  - **Why deferred:** Auto-tuning the threshold from observed
+    confidence distribution would help, but pre-tester data is too
+    sparse to know the right threshold. Ship the conservative one,
+    observe.
+  - **Trigger:** Drew reports "we played 5 songs tight but only 1
+    shows ✓" after a real rehearsal, OR analyzer matcher tuning
+    pass.
+  - **Discovered:** 2026-05-15 (Living Set Sheet)
+  - **Status:** open
+
+- **Finding:** Annotation count signal ("💬 N open notes") buckets
+  by `anchor.song_id`, which during the songs_v2 migration window
+  stores the song title string (per the existing songs_v2 entry
+  above). When the migration completes, the bucket key will need to
+  switch to canonical songId — and the signal will stop firing for
+  any annotation whose `song_id` was written under the old title-
+  string convention until those annotations are migrated.
+  - **Why deferred:** The fix lives in the songs_v2 migration story,
+    not Phase 3 UI. Logged so the migration plan accounts for the
+    flow-rail consumer.
+  - **Trigger:** songs_v2 migration completion.
+  - **Discovered:** 2026-05-15 (Living Set Sheet)
+  - **Status:** open
+
+- **Finding:** Per-unit "Practice transition" handler queues just the
+  two songs in the linked pair via `openRehearsalModeWithQueue`.
+  Each song gets a flat 5-minute budget — there's no transition-
+  specific time hint or "play through, stop, drill the seam"
+  guidance baked in. Functionally lets the band practice the songs
+  back-to-back; doesn't yet teach the transition itself.
+  - **Why deferred:** A real transition-practice mode (drill the
+    seam, loop the last bar of A into the first bar of B) is a Phase
+    4+ build. Phase 3 keeps it lightweight and additive.
+  - **Trigger:** Phase 4 transition intelligence work, OR first
+    tester reports "Practice transition just plays them in sequence,
+    I needed the seam."
+  - **Discovered:** 2026-05-15 (Living Set Sheet)
+  - **Status:** open
+
+- **Finding:** Transition signal only fires for `linked` units (the
+  paired form built from gig setlist segue metadata). Two adjacent
+  `single` units that the band plays as a transition don't get the
+  signal because the data model doesn't link them. Drew can
+  manually convert adjacent singles to a linked pair via the planner
+  but there's no inline prompt suggesting "these two are adjacent —
+  link them?"
+  - **Why deferred:** Suggesting linkage from adjacency is its own
+    UX problem (false positives if the band always opens with two
+    songs that aren't transitions). Skip until tester signal.
+  - **Trigger:** First tester reports a transition that's actually
+    important but doesn't show inline because the units aren't
+    linked.
+  - **Discovered:** 2026-05-15 (Living Set Sheet)
+  - **Status:** open
+
+- **Finding:** Living Set Sheet signals add zero cost when no signal
+  fires (most rows), but every row pays a synchronous lookup against
+  the `_rhUnitSignals` map. For a 30-unit plan that's 30 hash
+  lookups + 30 conditional render branches per render pass.
+  Imperceptible at MVP scale; flagged for the modularization pass
+  if plan size ever crosses 100+ units.
+  - **Why deferred:** No active perf issue today.
+  - **Trigger:** First plan with 100+ units.
+  - **Discovered:** 2026-05-15 (Living Set Sheet)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.

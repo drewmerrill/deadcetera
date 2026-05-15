@@ -914,6 +914,38 @@ async function _rhRenderCommandFlow(el) {
         var _rhFocusTitles = {};
         _rhFocus.list.forEach(function(f) { _rhFocusTitles[f.title] = true; });
 
+        // Living Set Sheet — bucket annotations by song so per-row signal
+        // computation stays synchronous. Uses GLAnnotations cache when warm;
+        // skips the load when cold (signals degrade gracefully — the page
+        // still renders, missing rows just don't show 💬 hints this pass).
+        var _rhAnnByTitle = {};
+        try {
+            if (window.GLAnnotations && window.GLAnnotations.listAnnotationsByAnchor) {
+                var _annAll = await window.GLAnnotations.listAnnotationsByAnchor({});
+                (_annAll || []).forEach(function(a) {
+                    if (!a || a.archived) return;
+                    if (a.status === 'fixed') return;
+                    var anchor = a.anchor || {};
+                    // anchor.song_id stores the song title string today (see
+                    // songs_v2 migration finding); resolves cleanly post-Phase-2.
+                    var key = anchor.song_id || null;
+                    if (!key) return;
+                    _rhAnnByTitle[key] = (_rhAnnByTitle[key] || 0) + 1;
+                });
+            }
+        } catch (e) {}
+
+        // Latest session for tight-last-rehearsal positive signal. Cache is
+        // populated by `_rhLoadSessions` earlier in the render path.
+        var _rhLatestSession = (Array.isArray(_rhSessionsCache) && _rhSessionsCache.length)
+            ? _rhSessionsCache[0]
+            : null;
+
+        // Compute the per-unit signals once. _rhRenderUnitSignal then reads
+        // from this map at row-render time. Restraint by design: most rows
+        // have no entry and render nothing.
+        var _rhUnitSignals = _rhBuildSongSignals(savedUnits, _rhFocus.list, _rhLatestSession, _rhAnnByTitle);
+
         html += '<div id="rhUnitList">';
         savedUnits.forEach(function(unit, idx) {
             var bt = unit.type || 'single';
@@ -983,6 +1015,12 @@ async function _rhRenderCommandFlow(el) {
                 practiceSoloChip = '<button onclick="event.stopPropagation();(typeof openWorkbench===\'function\')?openWorkbench(\'' + _soloSafe + '\',\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(\'' + _soloSafe + '\'))" style="' + _editBtnStyle + ';color:#a5b4fc" title="Practice this song solo">🎤</button>';
             }
 
+            // Living Set Sheet — at most one inline signal per row,
+            // selected by precedence in _rhBuildSongSignals. Renders empty
+            // for rows without a signal (which is the desired most-of-the-
+            // time state).
+            var _signalHtml = _rhRenderUnitSignal(_rhUnitSignals[idx]);
+
             html += '<div class="rh-unit-row" data-idx="' + idx + '" draggable="true" style="border-bottom:1px solid rgba(255,255,255,0.03);border-radius:4px;' + rowBg + _focusBorder + '">'
                 + '<div>'
                 + dragHandle
@@ -994,6 +1032,7 @@ async function _rhRenderCommandFlow(el) {
                 + '<button onclick="_rhRemoveUnit(' + idx + ')" style="' + _editBtnStyle + ';color:#f87171" title="Remove">✕</button>'
                 + '</span>'
                 + '</div>'
+                + _signalHtml
                 + (noteText ? '<div onclick="_rhEditBlockNote(' + idx + ')" style="padding:0 4px 4px 36px;font-size:0.68em;color:#fbbf24;opacity:0.7;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Click to edit note">📝 ' + escHtml(noteSnippet) + '</div>' : '')
                 + '</div>';
         });
@@ -1396,6 +1435,188 @@ function _rhPlanGigChip(planCache) {
         + 'text-transform:uppercase;letter-spacing:0.04em;flex-shrink:0;white-space:nowrap">'
         + escHtml(label) + '</span>';
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Living Set Sheet — inline rehearsal intelligence (2026-05-15).
+//
+// Each unit row in the flow rail can carry ONE compact signal that adds
+// rehearsal memory without turning the page into a dashboard. Restraint
+// is the rule: most rows show no signal at all. Only the highest-value
+// signal renders, picked by precedence:
+//
+//   1. ⚠ Transition needs work    (linked pair where any song is in focus)
+//   2. 💬 N open notes              (any unit with active annotations)
+//   3. ⚠ Low readiness — N%        (single song in the focus list)
+//   4. ✓ Tight last rehearsal      (single song with high-confidence segments
+//                                    in the most recent session)
+//
+// Signal computation is synchronous + cheap: pre-bucketed lookups keyed by
+// song title. The annotation cache is primed once at page render so this
+// stays a synchronous lookup at row time. Sessions / focus are already
+// loaded by `_rhRenderCommandFlow`.
+//
+// Returns: { [unitIndex]: { icon, color, message, action? { label, onclick } } }
+// Missing entries = no signal for that row (the desired empty state).
+// ─────────────────────────────────────────────────────────────────────────
+function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
+    var signals = {};
+    if (!Array.isArray(units) || !units.length) return signals;
+
+    // Focus map — title -> {avg}
+    var focusByTitle = {};
+    (focusList || []).forEach(function (f) { if (f && f.title) focusByTitle[f.title] = f; });
+
+    // Tight-last-rehearsal map — derived from the latest session's segments.
+    // Threshold 0.7 is intentionally conservative: only fire on solid takes.
+    var tightByTitle = {};
+    if (latestSession && latestSession.audio_segments) {
+        var segs = Array.isArray(latestSession.audio_segments)
+            ? latestSession.audio_segments
+            : Object.values(latestSession.audio_segments);
+        var titleConfs = {};
+        segs.forEach(function (s) {
+            if (!s || !s.songTitle) return;
+            if (typeof s.confidence !== 'number') return;
+            // Skip non-music segment types so talking/false-starts don't seed positive signals
+            var t = s.type || s.segType || 'song';
+            if (t === 'talking' || t === 'speech' || t === 'discussion' || t === 'false_start' || t === 'ignore') return;
+            if (!titleConfs[s.songTitle]) titleConfs[s.songTitle] = [];
+            titleConfs[s.songTitle].push(s.confidence);
+        });
+        Object.keys(titleConfs).forEach(function (t) {
+            var arr = titleConfs[t];
+            var avg = arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
+            if (avg >= 0.7) tightByTitle[t] = avg;
+        });
+    }
+
+    annByTitle = annByTitle || {};
+
+    units.forEach(function (unit, idx) {
+        var bt = unit.type || 'single';
+        // Never signal on dividers, notes, business blocks, exercises, jams.
+        // Those rows are operational labels, not songs.
+        if (bt === 'section' || bt === 'note' || bt === 'business' || bt === 'exercise' || bt === 'jam') return;
+
+        if (bt === 'linked' && unit.songs && unit.songs.length >= 2) {
+            var pairTitles = unit.songs.map(function (s) { return s && s.title; }).filter(Boolean);
+            if (!pairTitles.length) return;
+            var anyFocus = pairTitles.some(function (t) { return !!focusByTitle[t]; });
+            var totalAnns = pairTitles.reduce(function (n, t) { return n + (annByTitle[t] || 0); }, 0);
+
+            if (anyFocus) {
+                // Highest-precedence signal for transitions: a song in the
+                // pair is in focus, so the transition is at risk. Surface a
+                // direct "Practice Transition" affordance inline.
+                signals[idx] = {
+                    icon: '⚠',
+                    color: '#fbbf24',
+                    message: 'Transition needs work',
+                    action: { label: 'Practice transition', onclick: 'window._rhPracticeTransitionUnit(' + idx + ')' }
+                };
+            } else if (totalAnns > 0) {
+                signals[idx] = {
+                    icon: '💬',
+                    color: '#a78bfa',
+                    message: totalAnns + ' open note' + (totalAnns > 1 ? 's' : ''),
+                    action: null
+                };
+            }
+            // Tight-pair positive signal isn't fired here — too noisy for
+            // every clean transition. Worth revisiting after tester signal.
+            return;
+        }
+
+        if (bt === 'single' || bt === 'song') {
+            var t = unit.title;
+            if (!t) return;
+
+            if (annByTitle[t] && annByTitle[t] > 0) {
+                signals[idx] = {
+                    icon: '💬',
+                    color: '#a78bfa',
+                    message: annByTitle[t] + ' open note' + (annByTitle[t] > 1 ? 's' : ''),
+                    action: { label: 'Open notes', onclick: 'window._rhOpenSongNotes(' + idx + ')' }
+                };
+                return;
+            }
+            if (focusByTitle[t]) {
+                var pct = Math.round((focusByTitle[t].avg / 5) * 100);
+                signals[idx] = {
+                    icon: '⚠',
+                    color: '#fbbf24',
+                    message: 'Low readiness — ' + pct + '% locked',
+                    action: null
+                };
+                return;
+            }
+            if (tightByTitle[t]) {
+                signals[idx] = {
+                    icon: '✓',
+                    color: '#22c55e',
+                    message: 'Tight last rehearsal',
+                    action: null
+                };
+                return;
+            }
+        }
+    });
+
+    return signals;
+}
+
+// Render a single inline signal sub-line. Returns '' when sig is null so
+// the call site can blindly inject the result.
+function _rhRenderUnitSignal(sig) {
+    if (!sig) return '';
+    var actionHtml = '';
+    if (sig.action && sig.action.label && sig.action.onclick) {
+        actionHtml = ' · <a href="#" onclick="event.preventDefault();' + sig.action.onclick
+            + '" style="color:#818cf8;text-decoration:none;border-bottom:1px dotted rgba(129,140,248,0.3)">'
+            + escHtml(sig.action.label) + '</a>';
+    }
+    return '<div class="rh-unit-signal" style="padding:0 4px 4px 36px;font-size:0.68em;color:'
+        + sig.color + ';opacity:0.9;line-height:1.3;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
+        + '<span>' + sig.icon + ' ' + escHtml(sig.message) + '</span>'
+        + actionHtml
+        + '</div>';
+}
+
+// Per-unit Practice Transition handler — opens rehearsal mode with just
+// the two songs in the linked pair queued. Reuses the existing
+// `openRehearsalModeWithQueue` API; no new lifecycle work.
+window._rhPracticeTransitionUnit = function (idx) {
+    var units = _rhGetUnits() || [];
+    var u = units[idx];
+    if (!u || u.type !== 'linked' || !u.songs || u.songs.length < 2) {
+        if (typeof showToast === 'function') showToast('Not a transition pair');
+        return;
+    }
+    var queue = u.songs
+        .filter(function (s) { return s && s.title; })
+        .map(function (s) { return { title: s.title, budgetMin: 5 }; });
+    if (!queue.length) return;
+    if (typeof openRehearsalModeWithQueue === 'function') {
+        openRehearsalModeWithQueue(queue);
+    } else if (typeof showToast === 'function') {
+        showToast('Rehearsal mode unavailable');
+    }
+};
+
+// Open Song Detail focused on the notes panel for a unit's single song.
+// Falls back to a song-detail open without notes hash if the deep link
+// isn't supported by the current SD implementation.
+window._rhOpenSongNotes = function (idx) {
+    var units = _rhGetUnits() || [];
+    var u = units[idx];
+    var title = u && u.title;
+    if (!title) return;
+    if (typeof openSongDetail === 'function') {
+        openSongDetail(title);
+    } else if (typeof showPage === 'function') {
+        try { window.location.hash = '#song/' + encodeURIComponent(title); } catch (e) {}
+    }
+};
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tonight's Rehearsal HERO — UX hierarchy refactor (2026-05-15).
