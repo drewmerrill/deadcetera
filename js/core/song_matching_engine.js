@@ -302,6 +302,14 @@ window.SongMatchingEngine = (function() {
         _unresolved++;
       }
 
+      // ── Canonical matching field (for Take primitive + downstream UI) ────────
+      // Consolidates the matcher's internal state into the shape declared by
+      // the Phase 2 spec: { candidate_pool, confidence, confidence_reason,
+      // top_suggestions, correction_source }. UI / Take normalization should
+      // read seg.matching going forward; the older seg.songMatch /
+      // seg._suggestions / seg._unresolved fields are kept for back-compat.
+      seg.matching = _buildMatchingField(seg, result);
+
       // Stage 2: If chord data is available and confidence is not high,
       // re-rank using chord/key signals. This is the 2-stage pipeline:
       // Stage 1 (above) = quick scoring with available signals
@@ -824,6 +832,77 @@ window.SongMatchingEngine = (function() {
       bonus = Math.max(bonus, _CONTINUITY_NEXT[nextLevel] || 0);
     }
     return bonus;
+  }
+
+  // ── Canonical matching field (Take primitive contract) ─────────────────────
+  // Consolidates matcher state into the spec-mandated shape:
+  //   matching: { candidate_pool, confidence, confidence_reason,
+  //               top_suggestions, correction_source }
+  //
+  // Reads:
+  //   result.bestMatch / result.candidates / result.confidence /
+  //   result.activeSignals / result.signalsDisagree / result._planFirstMatch
+  // Plus seg.confirmed (set by user-edit path) for human-correction signal.
+  //
+  // Why a separate field instead of mutating songMatch: songMatch carries
+  // matcher-internal diagnostics (signals, explanation, gap, …). The Take
+  // primitive only needs the small canonical surface here, which downstream
+  // UI / annotations can bind to without depending on matcher internals.
+  function _buildMatchingField(segment, result) {
+    if (!result) {
+      return {
+        candidate_pool: 'unknown',
+        confidence: 'low',
+        confidence_reason: 'no_match',
+        top_suggestions: [],
+        correction_source: segment && segment.confirmed ? 'human' : 'auto'
+      };
+    }
+    var best = result.bestMatch || null;
+    var conf = result.confidence || 'low';
+    var hasAudio = (result.activeSignals || []).indexOf('audio') !== -1;
+    var hasChords = (result.activeSignals || []).indexOf('chords') !== -1;
+    var hasTempo = (result.activeSignals || []).indexOf('tempo') !== -1;
+    var hasPlan = (result.activeSignals || []).indexOf('plan') !== -1;
+    var planFirst = !!result._planFirstMatch;
+
+    // Candidate pool taxonomy — surfaces which bucket the winner came from
+    var pool = 'broad_library';
+    if (planFirst) pool = 'plan_first';
+    else if (best && hasPlan) pool = 'plan_first';
+    else if (!best) pool = 'unknown';
+
+    // Confidence reason — explains WHY the chosen confidence tier was assigned
+    var reason = 'no_match';
+    if (segment && segment.confirmed) {
+      reason = 'human_correction';
+    } else if (!best) {
+      reason = 'no_match';
+    } else if (conf === 'high') {
+      reason = (hasPlan && (hasAudio || hasChords || hasTempo))
+        ? 'plan_match_with_audio'
+        : 'broad_library_match';
+    } else if (conf === 'medium') {
+      reason = result.signalsDisagree
+        ? 'signals_disagree'
+        : (hasPlan && (hasAudio || hasChords || hasTempo))
+          ? 'plan_match_with_audio'
+          : 'broad_library_match';
+    } else { // low
+      reason = (hasPlan && !hasAudio && !hasChords)
+        ? 'plan_only_no_audio'
+        : 'low_confidence';
+    }
+
+    return {
+      candidate_pool: pool,
+      confidence: conf,
+      confidence_reason: reason,
+      top_suggestions: (result.candidates || []).slice(0, 3).map(function (c) {
+        return { title: c.title, songId: c.songId || null, score: c.score };
+      }),
+      correction_source: segment && segment.confirmed ? 'human' : 'auto'
+    };
   }
 
   // ── Explanation text ────────────────────────────────────────────────────────

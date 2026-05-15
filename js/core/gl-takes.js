@@ -132,6 +132,44 @@
     return out;
   }
 
+  // Canonical Take.matching field — defined in
+  // 02_GrooveLinx/specs/rehearsal_song_dna_relationship_model.md (Analyzer
+  // Matching + Breakpoint Reality Check addendum). Surfaces the matcher's
+  // candidate-pool tier, confidence + reason, top-3 suggestions, and whether
+  // a human has corrected this take. Take normalization uses
+  // correction_source='human' as the protection signal that prevents future
+  // auto passes from clobbering a user-assigned song_id.
+  var MATCHING_POOLS = ['plan_first', 'broad_library', 'recent_only', 'human', 'unknown'];
+  var MATCHING_CONFS = ['high', 'medium', 'low', 'unknown'];
+  var MATCHING_SOURCES = ['auto', 'human'];
+
+  function _normalizeMatching(input) {
+    if (!input || typeof input !== 'object') return null;
+    var pool = MATCHING_POOLS.indexOf(input.candidate_pool) !== -1 ? input.candidate_pool : 'unknown';
+    var conf = MATCHING_CONFS.indexOf(input.confidence) !== -1 ? input.confidence : 'unknown';
+    var src = MATCHING_SOURCES.indexOf(input.correction_source) !== -1 ? input.correction_source : 'auto';
+    var out = {
+      candidate_pool: pool,
+      confidence: conf,
+      correction_source: src
+    };
+    if (typeof input.confidence_reason === 'string' && input.confidence_reason) {
+      out.confidence_reason = input.confidence_reason;
+    }
+    if (Array.isArray(input.top_suggestions)) {
+      out.top_suggestions = input.top_suggestions.slice(0, 3).map(function (s) {
+        return {
+          title: s && s.title ? s.title : null,
+          songId: s && s.songId ? s.songId : null,
+          score: typeof (s && s.score) === 'number' ? s.score : null
+        };
+      });
+    } else {
+      out.top_suggestions = [];
+    }
+    return out;
+  }
+
   function _normalizePlaybackRef(input) {
     var pr = input || {};
     var out = {
@@ -156,6 +194,7 @@
     var title = input.song_title || null;
     var songId = (input.song_id != null) ? input.song_id : _resolveSongId(title);
 
+    var matching = _normalizeMatching(input.matching);
     var take = {
       id: '',
       rehearsal_id: input.rehearsal_id || null,
@@ -169,6 +208,9 @@
       created_at: now,
       updated_at: now
     };
+    if (matching) take.matching = matching;
+    if (Array.isArray(input.raw_markers)) take.raw_markers = input.raw_markers.slice(0, 16);
+    if (input.boundary_confidence) take.boundary_confidence = input.boundary_confidence;
 
     var ref = db.ref(p).push();
     take.id = ref.key;
@@ -194,6 +236,12 @@
     if (typeof patch.take_number === 'number') safe.take_number = patch.take_number;
     if (patch.playback_ref) safe.playback_ref = _normalizePlaybackRef(patch.playback_ref);
     if (patch.stats) safe.stats = _normalizeStats(patch.stats);
+    if (patch.matching) {
+      var nm = _normalizeMatching(patch.matching);
+      if (nm) safe.matching = nm;
+    }
+    if (Array.isArray(patch.raw_markers)) safe.raw_markers = patch.raw_markers.slice(0, 16);
+    if (typeof patch.boundary_confidence === 'string') safe.boundary_confidence = patch.boundary_confidence;
     safe.updated_at = Date.now();
 
     return db.ref(p).update(safe).then(function () {
@@ -357,7 +405,9 @@
       });
 
       var creates = [];
+      var humanProtectedUpdates = [];
       var skipped = 0;
+      var protectedFromOverwrite = 0;
 
       ordered.forEach(function (seg) {
         if (!seg) return;
@@ -370,12 +420,40 @@
 
         var segId = seg.id || null;
         if (segId && bySegId[segId]) {
+          // Take already exists for this segment_id. Two cases:
+          // (1) Existing take is human-corrected — never auto-clobber song_id /
+          //     song_title. We may still patch volatile fields (stats /
+          //     boundary_confidence) so analyzer improvements still flow
+          //     through, but the song identity is sacred.
+          // (2) Existing take is auto — currently a no-op (idempotent). A
+          //     future pass can patch matching / stats here when we want
+          //     re-analysis to refine confidence.
+          var existing = bySegId[segId];
+          if (existing && existing.matching && existing.matching.correction_source === 'human') {
+            protectedFromOverwrite++;
+            // Refresh non-identity metadata only
+            var refreshPatch = {};
+            if (Array.isArray(seg.raw_markers)) refreshPatch.raw_markers = seg.raw_markers;
+            if (seg.boundary_confidence) refreshPatch.boundary_confidence = seg.boundary_confidence;
+            if (Object.keys(refreshPatch).length) {
+              humanProtectedUpdates.push({ id: existing.id, patch: refreshPatch });
+            }
+          }
           skipped++;
           return;
         }
 
+        // Honest unresolved policy: when the matcher has explicitly tagged
+        // this segment with a low-confidence matching record (or marked it
+        // unresolved upstream) we still create a Take so the structural
+        // record exists, but we leave song_id null and only carry the
+        // tentative title. The full top_suggestions ride along on
+        // matching.top_suggestions so a UI surface can present them.
         var title = seg.songTitle || null;
-        var songId = _resolveSongId(title);
+        var matching = seg.matching || null;
+        var lowConfidence = matching && matching.confidence === 'low';
+        var unresolved = !!seg._unresolved;
+        var songId = (lowConfidence || unresolved) ? null : _resolveSongId(title);
         var key = songId || title || '__unknown__';
         byKeyCount[key] = (byKeyCount[key] || 0) + 1;
 
@@ -398,18 +476,31 @@
             bpm: (typeof seg.bpm === 'number' && seg.bpm > 0) ? seg.bpm : undefined,
             groove: seg.groove || undefined,
             chord_summary: (seg.chordHints && seg.chordHints.summary) ? seg.chordHints.summary : undefined
-          }
+          },
+          matching: matching,
+          raw_markers: Array.isArray(seg.raw_markers) ? seg.raw_markers : undefined,
+          boundary_confidence: seg.boundary_confidence || undefined
         });
       });
 
-      // Fire the creates serially-ish (Promise.all is fine; the helper writes
-      // each as its own ref().push() so there's no contention on a counter).
-      return Promise.all(creates.map(createTake)).then(function (rows) {
-        return { created: rows, skipped: skipped };
+      // Fire the creates and the protected-update refreshes in parallel.
+      // Return contract preserved from Phase 2: `created` is the array of new
+      // Take rows; `skipped` and `protected` are counts for the existing-take
+      // and human-corrected paths respectively.
+      var createPromise = Promise.all(creates.map(createTake));
+      var refreshPromise = Promise.all(humanProtectedUpdates.map(function (u) {
+        return updateTake(u.id, u.patch);
+      }));
+      return Promise.all([createPromise, refreshPromise]).then(function (results) {
+        return {
+          created: results[0],
+          skipped: skipped,
+          protected: protectedFromOverwrite
+        };
       });
     }).catch(function (err) {
       console.warn('[GLTakes] normalize failed:', err && err.message);
-      return { created: [], skipped: 0 };
+      return { created: [], skipped: 0, protected: 0 };
     });
   }
 

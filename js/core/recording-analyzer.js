@@ -204,7 +204,11 @@ window.RecordingAnalyzer = (function() {
         songTitle: e.song || null,
         confidence: e.confidence || 0.3,
         grooveMetrics: null,
-        tags: e.tags || []
+        tags: e.tags || [],
+        // Phase 2 stabilization: carry segmentation lineage so downstream
+        // (matcher / Take normalization / debug UI) can see boundary trust.
+        raw_markers: Array.isArray(e.raw_markers) ? e.raw_markers : null,
+        boundary_confidence: e.boundary_confidence || null
       };
     });
 
@@ -1548,6 +1552,7 @@ window.RecordingAnalyzer = (function() {
       seg.displayTitle = value;
       seg.confidence = value ? 0.9 : 0.1;
       seg.confirmed = true;
+      if (value) _stampHumanCorrection(seg);
       var btn = document.getElementById('raConfBtn' + idx);
       if (btn) { btn.style.color = '#10b981'; btn.style.borderColor = 'rgba(16,185,129,0.3)'; }
 
@@ -1596,6 +1601,7 @@ window.RecordingAnalyzer = (function() {
               seg.displayTitle = _userOverrides[key];
               seg.confidence = 0.95;
               seg.confirmed = true;
+              _stampHumanCorrection(seg);
               console.log('[RecordingAnalyzer] Applied override: ' + key + ' → ' + _userOverrides[key]);
             }
           });
@@ -1610,9 +1616,23 @@ window.RecordingAnalyzer = (function() {
           seg.displayTitle = _userOverrides[key];
           seg.confidence = 0.95;
           seg.confirmed = true;
+          _stampHumanCorrection(seg);
         }
       });
     }
+  }
+
+  // Phase 2 stabilization: stamp the canonical matching.correction_source
+  // marker so GLTakes.normalizeRehearsalSegments knows to protect this take's
+  // song_id from auto-overwrite on subsequent re-analysis.
+  function _stampHumanCorrection(seg) {
+    if (!seg) return;
+    if (!seg.matching || typeof seg.matching !== 'object') seg.matching = {};
+    seg.matching.correction_source = 'human';
+    seg.matching.confidence = 'high';
+    seg.matching.confidence_reason = 'human_correction';
+    if (!seg.matching.candidate_pool) seg.matching.candidate_pool = 'human';
+    if (!Array.isArray(seg.matching.top_suggestions)) seg.matching.top_suggestions = [];
   }
 
   function _updateSegType(idx, type) {
@@ -2158,7 +2178,11 @@ window.RecordingAnalyzer = (function() {
         // blocking the legacy audio_segments write or the report regen below.
         if (typeof window.GLTakes !== 'undefined' && window.GLTakes.normalizeRehearsalSegments) {
           window.GLTakes.normalizeRehearsalSegments(_currentSessionId, activeSegs)
-            .then(function(r) { console.log('[GLTakes] normalized', (r && r.created || []).length, 'takes after edit for session', _currentSessionId); })
+            .then(function(r) {
+              var created = (r && r.created || []).length;
+              var prot = (r && r.protected) || 0;
+              console.log('[GLTakes] normalized ' + created + ' new takes' + (prot ? ' (' + prot + ' human-protected)' : '') + ' after edit for session ' + _currentSessionId);
+            })
             .catch(function(err) { console.warn('[GLTakes] normalize after edit failed:', err && err.message); });
         }
 

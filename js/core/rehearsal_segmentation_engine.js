@@ -102,6 +102,10 @@
     // Step 12: Flag song-length candidates
     _flagSongCandidates(segments);
 
+    // Step 12b: Stamp boundary_confidence from raw_marker lineage. Pure
+    // metadata — surfaces in debug/UI without altering segmentation.
+    _stampBoundaryConfidence(segments);
+
     // Step 13: Reindex
     for (var ri = 0; ri < segments.length; ri++) segments[ri].id = 'seg_' + ri;
 
@@ -282,7 +286,35 @@
       likelySongId: null,
       likelySongTitle: null,
       notes: [],
+      // Phase 2 stabilization: lineage of original detection markers, so
+      // downstream UI / debug can see "this segment was merged from N raw
+      // boundaries" without re-running the engine. Each marker holds the
+      // original {startSec, endSec, kind?} from a single classified raw
+      // segment. boundary_confidence is derived in _stampBoundaryConfidence
+      // after all merge passes complete: 1 marker = 'hard' (untouched),
+      // 2-3 = 'soft' (small post-classification merge), 4+ = 'inferred'
+      // (consolidation absorbed enough that the boundary is engine-derived).
+      raw_markers: [{ startSec: raw.startSec, endSec: raw.endSec, kind: kind, source: 'classify' }]
     };
+  }
+
+  // Append the cur segment's raw_markers onto prev. Used by every merge pass
+  // (mergeAdjacentSameType, finalCleanup, consolidateSegments) so lineage
+  // accumulates instead of being lost.
+  function _absorbMarkers(prev, cur) {
+    if (!prev || !cur) return;
+    if (!Array.isArray(prev.raw_markers)) prev.raw_markers = [];
+    var add = Array.isArray(cur.raw_markers) ? cur.raw_markers : [];
+    for (var i = 0; i < add.length; i++) prev.raw_markers.push(add[i]);
+  }
+
+  // Final pass — translate raw_marker count into a coarse boundary_confidence
+  // tag. Pure metadata; no behavior change.
+  function _stampBoundaryConfidence(segments) {
+    for (var i = 0; i < segments.length; i++) {
+      var n = (segments[i].raw_markers || []).length;
+      segments[i].boundary_confidence = (n <= 1) ? 'hard' : (n <= 3 ? 'soft' : 'inferred');
+    }
   }
 
   // ── Post-Classification Merge ──────────────────────────────────────────────
@@ -300,6 +332,7 @@
         prev.durationSec = _r1(prev.endSec - prev.startSec);
         // Keep higher confidence
         if (cur.confidence > prev.confidence) prev.confidence = cur.confidence;
+        _absorbMarkers(prev, cur);
       } else {
         merged.push(cur);
       }
@@ -319,6 +352,7 @@
         var prev = cleaned[cleaned.length - 1];
         prev.endSec = seg.endSec;
         prev.durationSec = _r1(prev.endSec - prev.startSec);
+        _absorbMarkers(prev, seg);
       } else {
         cleaned.push(seg);
       }
@@ -353,6 +387,7 @@
           prev.kind = cur.kind;
           prev.likelyIntent = cur.likelyIntent;
         }
+        _absorbMarkers(prev, cur);
       } else {
         merged.push(cur);
       }
@@ -370,8 +405,10 @@
         }
         // Absorb into neighbor
         if (cleaned.length > 0) {
-          cleaned[cleaned.length - 1].endSec = seg.endSec;
-          cleaned[cleaned.length - 1].durationSec = _r1(cleaned[cleaned.length - 1].endSec - cleaned[cleaned.length - 1].startSec);
+          var nbr = cleaned[cleaned.length - 1];
+          nbr.endSec = seg.endSec;
+          nbr.durationSec = _r1(nbr.endSec - nbr.startSec);
+          _absorbMarkers(nbr, seg);
         }
         continue;
       }
@@ -388,6 +425,7 @@
           // Merge into previous restart
           lastCollapsed.endSec = s.endSec;
           lastCollapsed.durationSec = _r1(lastCollapsed.endSec - lastCollapsed.startSec);
+          _absorbMarkers(lastCollapsed, s);
           continue;
         }
       }
@@ -696,7 +734,10 @@
       tags: tags || [],
       // Preserve original classification for debugging
       _originalKind: seg.kind,
-      _originalIntent: seg.likelyIntent
+      _originalIntent: seg.likelyIntent,
+      // Phase 2 stabilization: lineage from the v1 pipeline
+      raw_markers: Array.isArray(seg.raw_markers) ? seg.raw_markers.slice() : null,
+      boundary_confidence: seg.boundary_confidence || null
     };
   }
 

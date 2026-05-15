@@ -335,7 +335,11 @@ window._rhSaveRecreatedSession = async function() {
                 // audio_segments write or the timeline UI.
                 if (typeof window.GLTakes !== 'undefined' && window.GLTakes.normalizeRehearsalSegments) {
                     window.GLTakes.normalizeRehearsalSegments(sessionId, result.segments)
-                        .then(function(r) { console.log('[GLTakes] normalized', (r && r.created || []).length, 'takes for session', sessionId); })
+                        .then(function(r) {
+                            var created = (r && r.created || []).length;
+                            var prot = (r && r.protected) || 0;
+                            console.log('[GLTakes] normalized ' + created + ' new takes' + (prot ? ' (' + prot + ' human-protected)' : '') + ' for session ' + sessionId);
+                        })
                         .catch(function(err) { console.warn('[GLTakes] normalize after analysis failed:', err && err.message); });
                 }
                 if (typeof showToast === 'function') showToast('\u2705 Analysis complete \u2014 ' + result.segments.length + ' segments detected');

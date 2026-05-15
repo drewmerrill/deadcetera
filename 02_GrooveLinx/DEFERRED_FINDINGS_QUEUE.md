@@ -303,6 +303,82 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Phase 2 build, gl-takes.js)
   - **Status:** open
 
+- **Finding:** Analyzer song-mismatch risk — the matcher's plan-first
+  pass + honest-unresolved policy is now wired (LOW confidence segments
+  are returned with `songTitle=null` + top-3 suggestions in
+  `seg.matching.top_suggestions`), but the existing surfaces
+  (recording analyzer segment list, rehearsal report, rehearsal-mode UI)
+  still render `seg.songTitle` directly without surfacing the
+  `matching.confidence_reason` or top suggestions. So an unresolved take
+  shows blank instead of "(uncertain — top guess: X)". Honest, but not
+  yet actionable.
+  - **Why deferred:** The Reality Check pass scoped to data plumbing —
+    surface the canonical `matching` field on the Take primitive without
+    changing visible UI in this commit. UI work belongs in the Phase 3
+    Annotated Review surface where suggestions can be confirmed inline.
+  - **Trigger:** Phase 3 of the Rehearsal ↔ Song DNA proposal, OR first
+    tester reports an unresolved segment with no actionable suggestion.
+  - **Discovered:** 2026-05-15 (Analyzer Matching + Breakpoint Reality
+    Check pass)
+  - **Status:** open
+
+- **Finding:** Breakpoint over-splitting risk — segmentation engine now
+  preserves `raw_markers` lineage and stamps `boundary_confidence`
+  (hard / soft / inferred), but no UI surface exposes these. Operators
+  cannot yet inspect "this take's start was inferred from 4 merged
+  fragments" without a console snippet against the canonical Take.
+  - **Why deferred:** Same scoping rationale — data first, surface
+    later. The metadata is now persistent and queryable, so a debug
+    overlay or a Phase 3 review surface can read it without an analyzer
+    re-run.
+  - **Trigger:** Phase 3 Annotated Review surface, OR a tester reports
+    a take with a clearly wrong start/end boundary that needs a debug
+    explanation.
+  - **Discovered:** 2026-05-15 (Analyzer Matching + Breakpoint Reality
+    Check pass)
+  - **Status:** open
+
+- **Finding:** Human-correction learning loop — `_updateSegTitle` and
+  `_applyUserOverrides` now stamp `matching.correction_source='human'`
+  on the segment, and `GLTakes.normalizeRehearsalSegments` refuses to
+  auto-overwrite the `song_id`/`song_title` of any take whose existing
+  matching record carries that flag. But there is no feedback path back
+  into the matcher's `_accuracyLog` / per-song correction signal beyond
+  what `recordConfirmation` already captured per segment. Corrections
+  should eventually re-rank the candidate pool for the same song
+  cluster across rehearsals.
+  - **Why deferred:** Cross-rehearsal correction propagation requires
+    the embedding bank + accuracy log to be persistent across sessions,
+    which crosses into the Phase 5+ "rehearsal intelligence maturation"
+    territory the Operator Manual flagged as future work.
+  - **Trigger:** Phase 5+ rehearsal intelligence pass, OR observation
+    that the matcher repeats the same wrong guess on the same song
+    across 3+ consecutive rehearsals despite human corrections.
+  - **Discovered:** 2026-05-15 (Analyzer Matching + Breakpoint Reality
+    Check pass)
+  - **Status:** open
+
+- **Finding:** Plan-first matching strategy is now active in the
+  matcher (plan songs get +120 base in candidate pool, recent +50,
+  active +25, library +1; plan-first scoring pass runs before broad
+  search at `song_matching_engine.js:263-271`), but the
+  `matching.candidate_pool` value the Take primitive carries is derived
+  from `result._planFirstMatch` rather than from a single source of
+  truth in the matcher. Future matcher refactors could drift the two
+  apart silently (e.g., a new pool tier added at the candidate-builder
+  level wouldn't propagate to the canonical field). Logged as a
+  fragility note, not an active break.
+  - **Why deferred:** No active mismatch today; introducing a single
+    canonical pool enum on the matcher's return value would require
+    touching the candidate-builder, scoreSegment, and the matching
+    field builder in coordination. Out of scope for this stabilization
+    pass.
+  - **Trigger:** Next matcher tuning pass that adds a candidate pool
+    tier (e.g., "harmonic_neighbors" for chord-similar fallback).
+  - **Discovered:** 2026-05-15 (Analyzer Matching + Breakpoint Reality
+    Check pass)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.
