@@ -1116,33 +1116,49 @@ function _renderTriageBar(dropdown, count) {
     }
 
     var _triageIcons = { no_key:'🔑', no_bpm:'🥁', no_status:'🎯', no_lead:'🎤', no_structure:'🎼', needs_work:'⚠️', not_rotation:'🔄' };
-    var _primaryFilters = { needs_work: true, no_key: true, no_bpm: true };
-    var _secondaryHtml = '';
-    var _hasSecondary = false;
+    var _triageTips = {
+        no_key: 'Songs missing a key — pick the key the band plays it in',
+        no_bpm: 'Songs missing tempo — set the BPM so click + tempo zones work',
+        no_status: 'Songs missing a learning status (Learning / Working / Live / Polished)',
+        no_lead: 'Songs without a lead singer assigned',
+        no_structure: 'Songs without a structural map (intro / verse / chorus / outro)',
+        needs_work: 'Songs below the readiness threshold the band is matching to',
+        not_rotation: 'Songs in the library but not currently being worked'
+    };
+    var _actionFilters = { needs_work: true, not_rotation: true };
+    var _metadataFilters = { no_key: true, no_bpm: true, no_status: true, no_lead: true, no_structure: true };
+    var _actionHtml = '';
+    var _metadataHtml = '';
+    var _activeIsMetadata = tf && _metadataFilters[tf];
     items.forEach(function(it) {
         var active = tf === it.id;
         var itemCount = _missingCounts[it.id] || '';
         var icon = _triageIcons[it.id] || '';
+        var tip = _triageTips[it.id] || '';
         var btnHtml;
         if (tf && !active) {
-            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 7px;opacity:0.4">' + icon + ' ' + it.label + '</button>';
+            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" title="' + tip + '" style="font-size:0.62em;padding:2px 7px;opacity:0.4">' + icon + ' ' + it.label + '</button>';
         } else {
-            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;' + (active ? 'border-color:var(--gl-amber);color:var(--gl-amber);background:rgba(251,191,36,0.15)' : '') + '">' + icon + ' ' + it.label + (itemCount ? ' <span style="opacity:0.6">(' + itemCount + ')</span>' : '') + '</button>';
+            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" title="' + tip + '" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;' + (active ? 'border-color:var(--gl-amber);color:var(--gl-amber);background:rgba(251,191,36,0.15)' : '') + '">' + icon + ' ' + it.label + (itemCount ? ' <span style="opacity:0.6">(' + itemCount + ')</span>' : '') + '</button>';
         }
-        if (_primaryFilters[it.id] || active) {
-            html += btnHtml;
-        } else {
-            _secondaryHtml += btnHtml;
-            _hasSecondary = true;
+        if (_actionFilters[it.id]) {
+            _actionHtml += btnHtml;
+        } else if (_metadataFilters[it.id]) {
+            _metadataHtml += btnHtml;
         }
     });
-    // Collapsed secondary filters
-    if (_hasSecondary && !tf) {
-        html += '<button onclick="var s=document.getElementById(\'sqSecondaryFilters\');if(s){s.style.display=s.style.display===\'none\'?\'flex\':\'none\'}" class="gl-btn-ghost" style="font-size:0.62em;padding:2px 7px;opacity:0.5">More \u25BE</button>';
-        html += '<div id="sqSecondaryFilters" style="display:none;gap:4px;flex-wrap:wrap;width:100%;padding-top:4px">' + _secondaryHtml + '</div>';
-    } else if (_hasSecondary) {
-        html += _secondaryHtml; // show all when a filter is active
-    }
+    // Top row: action filters (Needs Work, Not in Rotation) always visible
+    html += _actionHtml;
+    // Cleanup workspace entry \u2014 collapsible sub-bar holds all metadata-gap filters
+    var _cleanupOpen = _activeIsMetadata || window._sqCleanupOpen;
+    var _cleanupBtnStyle = _activeIsMetadata
+        ? 'border-color:var(--gl-amber);color:var(--gl-amber);background:rgba(251,191,36,0.15);'
+        : '';
+    html += '<button onclick="window._sqCleanupOpen=!window._sqCleanupOpen;var s=document.getElementById(\'sqCleanupSubBar\');if(s){s.style.display=window._sqCleanupOpen?\'flex\':\'none\'}" class="gl-btn-ghost" title="Songs missing metadata (key, tempo, status, lead, structure)" style="font-size:0.68em;font-weight:600;padding:3px 10px;' + _cleanupBtnStyle + '">🧹 Cleanup' + (_totalMissing > 0 ? ' <span style="opacity:0.6">(' + _totalMissing + ' missing)</span>' : '') + ' \u25BE</button>';
+    html += '<div id="sqCleanupSubBar" style="display:' + (_cleanupOpen ? 'flex' : 'none') + ';gap:4px;flex-wrap:wrap;width:100%;padding-top:4px;border-top:1px dashed rgba(255,255,255,0.06);margin-top:4px">'
+        + _metadataHtml
+        + '<button onclick="if(typeof openChartQueue===\'function\')openChartQueue()" title="Open the chart queue to fill in missing chord charts" style="font-size:0.68em;font-weight:600;padding:3px 10px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,165,0,0.2);background:rgba(255,165,0,0.06);color:#fbbf24;transition:all 0.15s">🎸 Fill Missing Charts</button>'
+        + '</div>';
     if (tf) {
         html += '<span style="font-size:0.65em;color:var(--text-dim);margin-left:4px">' + count + ' songs need data</span>';
         if (window._sqTriageDone > 0) {
@@ -1150,10 +1166,7 @@ function _renderTriageBar(dropdown, count) {
         }
         html += '<button onclick="sqTriageSet(null);window._sqTriageFilter=null;renderSongs()" style="font-size:0.62em;background:none;border:none;color:var(--text-dim);cursor:pointer;padding:0 4px">Clear</button>';
     }
-    // Chart queue launcher
-    if (!tf) {
-        html += '<button onclick="if(typeof openChartQueue===\'function\')openChartQueue()" style="font-size:0.68em;font-weight:600;padding:3px 10px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,165,0,0.2);background:rgba(255,165,0,0.06);color:#fbbf24;transition:all 0.15s">🎸 Fill Missing Charts</button>';
-    }
+    // Chart queue launcher now lives inside the Cleanup sub-bar above
     // Sort now via column headers (PL-11) — dropdown removed
     bar.innerHTML = html;
     dropdown.parentElement.insertBefore(bar, dropdown);
