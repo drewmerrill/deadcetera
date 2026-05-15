@@ -145,6 +145,7 @@
     var score = 0;
     var reasons = [];
     var penalties = [];
+    var offPatternNotes = [];
 
     var dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     var dow = new Date(candidateDateStr + 'T12:00:00').getDay();
@@ -160,6 +161,22 @@
     if (strength.label === 'Strong') reasons.push('Everyone’s free');
     else if (strength.available > 0) reasons.push(strength.available + ' of ' + strength.total + ' available');
 
+    // Organizer-conflict penalty: if the person driving the schedule has
+    // a hard conflict on this date, drop the score sharply so the engine
+    // doesn't recommend a date the organizer literally can't attend.
+    // Soft conflicts get a smaller knock — they often clear.
+    var organizerStatus = null;
+    if (opts.organizerName && strength.memberStatuses) {
+      organizerStatus = strength.memberStatuses[opts.organizerName];
+    }
+    if (organizerStatus && organizerStatus.status === 'hard_conflict') {
+      score -= 30;
+      penalties.push('Organizer (' + opts.organizerName + ') has a conflict');
+    } else if (organizerStatus && organizerStatus.status === 'soft_conflict') {
+      score -= 10;
+      offPatternNotes.push('Organizer has a soft conflict');
+    }
+
     // 2. Spacing / cadence fit
     var candidateMs = new Date(candidateDateStr + 'T12:00:00').getTime();
     var minGapDays = 999;
@@ -172,7 +189,6 @@
     }
     var minAcceptableGap = Math.max(2, Math.floor(cadenceDays * 0.6));
     var spacingScore = 0;
-    var offPatternNotes = [];
     var _nearestIsFuture = nearestDate && (new Date(nearestDate + 'T12:00:00').getTime() > candidateMs);
     if (!opts.overrideSpacing && minGapDays < minAcceptableGap) {
       spacingScore = 0;
@@ -230,7 +246,14 @@
 
     var label = 'Good';
     var color = '#22c55e';
-    if (penalties.length > 0) { label = 'Too close'; color = '#f59e0b'; }
+    if (penalties.length > 0) {
+      // Pick the label that matches the dominant penalty so the UI tells
+      // the right story (organizer vs spacing vs other disqualifier).
+      var _hasOrg = penalties.some(function(p) { return p.indexOf('Organizer') === 0; });
+      var _hasSpacing = penalties.some(function(p) { return p.indexOf('Too close') === 0; });
+      if (_hasOrg && !_hasSpacing) { label = 'Organizer conflict'; color = '#ef4444'; }
+      else { label = 'Too close'; color = '#f59e0b'; }
+    }
     else if (strength.label === 'Not viable') { label = 'Not viable'; color = '#64748b'; }
     else if (strength.label === 'Risky') { label = 'Risky'; color = '#ef4444'; }
     else if (score >= 70) { label = 'Great'; color = '#22c55e'; }
@@ -380,6 +403,21 @@
         });
       }
     } catch (e) {}
+    // Also pull rehearsal-type calendar_events. Without this, rehearsals
+    // scheduled via calAddEvent (which writes to calendar_events with
+    // type='rehearsal') are invisible to the spacing algorithm — the
+    // engine recommends a date 2 days after an existing rehearsal because
+    // it can't see it. Operationally this is the bug Drew reported
+    // 2026-05-15: "rehearsal already scheduled May 18 + May 25, but engine
+    // recommends May 20."
+    try {
+      _recCalEvents.forEach(function(ev) {
+        if (ev && ev.type === 'rehearsal' && ev.date) {
+          var d = ev.date.split('T')[0];
+          if (existingDates.indexOf(d) === -1) existingDates.push(d);
+        }
+      });
+    } catch (e) {}
 
     var nextGigDate = null;
     try {
@@ -394,6 +432,17 @@
     var effectiveCadenceDays = cadence.days || detectedCadence.avgDays || _defaultCadenceDays;
     var dayPrefs = detectPreferredDays(existingDates);
 
+    // Identify the organizer (whoever is currently driving the app). When the
+    // organizer is unavailable, the recommendation should drop sharply —
+    // scheduling around an absent organizer is operationally pointless even
+    // if the rest of the band is clear.
+    var _organizerName = null;
+    try {
+      var _myKey2 = (typeof FeedActionState !== 'undefined' && FeedActionState.getMyMemberKey) ? FeedActionState.getMyMemberKey() : null;
+      var _bm2 = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+      if (_myKey2 && _bm2[_myKey2]) _organizerName = _bm2[_myKey2].name || null;
+    } catch (e) {}
+
     var candidates = [];
     for (var i = 1; i <= 21; i++) {
       var d = new Date();
@@ -406,7 +455,8 @@
         nextGigDate: nextGigDate,
         cadenceDays: effectiveCadenceDays,
         overrideSpacing: opts.overrideSpacing || false,
-        preferredDays: dayPrefs.preferred
+        preferredDays: dayPrefs.preferred,
+        organizerName: _organizerName
       });
       candidates.push(scored);
     }

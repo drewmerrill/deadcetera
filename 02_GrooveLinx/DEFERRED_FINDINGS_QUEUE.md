@@ -71,6 +71,19 @@ orphan helpers, broken fallbacks.
   - **Discovered:** 2026-05-15 · bb594402
   - **Status:** open
 
+- **Finding:** `_calRenderBestRehearsalHero` (calendar.js:559) is dead code —
+  its mount point `#calBestRehearsalHero` is never rendered anywhere. The
+  live recommendation hero is `_calRenderDecisionAnchor` mounting at
+  `#calDecisionAnchor`.
+  - **Why deferred:** Surfaced during Schedule coherence pass; out of scope
+    for the engine + action-bar work. Removing it needs a grep sweep to
+    confirm no test/dev surface references the function.
+  - **Trigger:** Next calendar polish pass, or during a deliberate dead-code
+    sweep across calendar.js.
+  - **Discovered:** 2026-05-15 · (pre-existing, surfaced during Schedule
+    coherence pass)
+  - **Status:** open
+
 - **Finding:** `_sdRenderBandChart` legacy fallback (song-detail.js:285+)
   serves cached service-worker shells without `ChartRenderer`. Likely
   rarely hit now; duplicates the canonical path.
@@ -198,6 +211,19 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 · 9f08b2b8
   - **Status:** open
 
+- **Finding:** Do users distinguish the recommendation hero's
+  "Use this date" CTA from the action bar's "+ Rehearsal" button? The
+  former is a date-specific shortcut; the latter is the canonical
+  generic add. They could still read as duplicate scheduling actions
+  to a new band member.
+  - **Why deferred:** Coherence pass deliberately preserved both — the
+    hero CTA is a meaningful shortcut when the engine has a strong
+    recommendation. Removing it would lose operational momentum.
+  - **Trigger:** First tester confusion ("which Schedule button do I
+    use?"), or once we have usage data showing one button dominates.
+  - **Discovered:** 2026-05-15 (Schedule coherence pass)
+  - **Status:** open
+
 ## 5. Intentional Non-Fixes
 
 Things we explicitly chose NOT to fix and want to remember why.
@@ -225,6 +251,18 @@ Future contributors should not "fix" these without checking back.
     pipe it into the cleanup count.
   - **Discovered:** 2026-05-15 · 9f08b2b8
   - **Status:** dismissed — intentional non-fix
+
+- **Finding:** `tooClose` field on rehearsal-date scoring objects now
+  also covers organizer-conflict disqualifications — semantically it's
+  becoming "disqualified for primary recommendation," not just spacing.
+  - **Why deferred:** Renaming the field requires touching every UI
+    consumer that reads `c.tooClose` / `recs.tooClose`. The new
+    organizer-conflict label ("Organizer conflict") already disambiguates
+    the user-facing copy; only the internal field name is overloaded.
+  - **Trigger:** Next deliberate scheduling refactor, or when a third
+    disqualification reason gets added and the overload becomes painful.
+  - **Discovered:** 2026-05-15 (Schedule coherence pass)
+  - **Status:** dismissed — intentional preservation
 
 - **Finding:** Fadr is not being removed; it's behind an "Advanced
   audio tools" disclosure.

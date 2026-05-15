@@ -3205,13 +3205,17 @@ async function _calRenderDecisionAnchor() {
         } else if (p.reasons && p.reasons.length) {
             reason = p.reasons[0];
         }
+        // Eyebrow distinguishes "Recommended" (engine's top pick that respects
+        // cadence + organizer availability) from "Best available" (used in
+        // the fallback hero when nothing strong is found). The CTA reads
+        // "Use this date" so the action bar stays the canonical entry point.
         el.innerHTML = '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:rgba(34,197,94,0.04);border:1px solid rgba(34,197,94,0.1)">'
             + '<div style="flex:1;min-width:0">'
-            + '<div style="font-size:0.72em;font-weight:700;color:var(--gl-green,#22c55e);margin-bottom:2px">Best next rehearsal</div>'
+            + '<div style="font-size:0.72em;font-weight:700;color:var(--gl-green,#22c55e);margin-bottom:2px">Recommended next rehearsal</div>'
             + '<div style="font-size:0.95em;font-weight:800;color:var(--text);letter-spacing:-0.01em">' + pLabel + '</div>'
             + (reason ? '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px">' + (typeof escHtml === 'function' ? escHtml(reason) : reason) + '</div>' : '')
             + '</div>'
-            + '<button onclick="_calLockAndPlan(\'' + _safDate + '\')" class="cal-action-btn cal-action-primary" style="flex-shrink:0;padding:8px 16px;font-size:0.78em">Schedule</button>'
+            + '<button onclick="_calLockAndPlan(\'' + _safDate + '\')" class="cal-action-btn cal-action-primary" style="flex-shrink:0;padding:8px 16px;font-size:0.78em" title="Lock this date and start the rehearsal plan">Use this date</button>'
             + '</div>';
     } catch(e) { el.innerHTML = ''; }
 }
@@ -4632,6 +4636,10 @@ async function _calRenderNextUp() {
             var _evId = ev.id || '';
             var _evDate = ev.date || '';
             var _rsvpBtnStyle = 'padding:6px 12px;border-radius:8px;font-size:0.78em;font-weight:700;cursor:pointer;border:1px solid ';
+            // Eyebrow makes the inline RSVP affordance unambiguous — new band
+            // members otherwise have to infer that these three buttons answer
+            // "will you be there?"
+            html += '<div style="font-size:0.55em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Your RSVP</div>';
             html += '<div style="display:flex;gap:6px;margin-bottom:8px">';
             html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'yes\',\'' + _evId + '\')" style="' + _rsvpBtnStyle + (myStatus === 'yes' ? 'rgba(34,197,94,0.4);background:rgba(34,197,94,0.15);color:#86efac' : 'rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-dim)') + '">\u2705 In</button>';
             html += '<button onclick="_calSetAvailAndRefresh(\'' + _evDate + '\',\'maybe\',\'' + _evId + '\')" style="' + _rsvpBtnStyle + (myStatus === 'maybe' ? 'rgba(245,158,11,0.4);background:rgba(245,158,11,0.15);color:#fbbf24' : 'rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:var(--text-dim)') + '">\u2753 Maybe</button>';
@@ -4737,13 +4745,17 @@ async function renderCalendarInner() {
         '<div id="calFreshness" style="text-align:center;font-size:0.68em;color:var(--text-dim,#64748b);margin:-4px 0 ' + (_calMobile ? '2px' : '6px') + ';min-height:14px;transition:color 0.2s"></div>' +
         '<div id="calGrid" style="transition:opacity 0.12s ease;will-change:opacity"></div>' +
     '</div>' +
-    // Contextual actions — compact on mobile
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:' + (_calMobile ? '8px' : 'var(--gl-space-md,16px)') + '">' +
-        '<button class="cal-action-btn cal-action-primary" onclick="calAddEvent()" style="' + (_calMobile ? 'font-size:0.78em;padding:8px 14px' : '') + '">Schedule Rehearsal</button>' +
-        '<span style="margin-left:auto;display:flex;gap:6px">' +
-            '<button onclick="calBlockDates()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px 8px;opacity:0.6" title="Block a date">\uD83D\uDEAB Block</button>' +
-            '<button onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px 8px;opacity:0.6" title="Subscribe to calendar feed">\uD83D\uDCC5 Subscribe</button>' +
-        '</span>' +
+    // Unified Schedule action zone \u2014 single operational surface for all
+    // scheduling actions. Replaces the prior duplicate "Schedule Rehearsal"
+    // button + orphaned footer Block/Subscribe links. Hero CTA above
+    // ("Use this date") remains for the contextual date-specific path.
+    '<div class="cal-action-zone" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:' + (_calMobile ? '8px' : 'var(--gl-space-md,16px)') + ';padding:8px;border:1px solid rgba(255,255,255,0.06);border-radius:10px;background:rgba(255,255,255,0.015)">' +
+        '<span style="font-size:0.55em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-right:4px">Schedule</span>' +
+        '<button class="cal-action-btn cal-action-primary" onclick="calNewRehearsal()" style="' + (_calMobile ? 'font-size:0.74em;padding:6px 10px' : 'font-size:0.78em;padding:7px 12px') + '" title="Add a rehearsal">+ Rehearsal</button>' +
+        '<button class="cal-action-btn" onclick="calNewGig()" style="font-size:' + (_calMobile ? '0.72em' : '0.76em') + ';padding:6px 10px;background:rgba(99,102,241,0.1);color:#a5b4fc;border:1px solid rgba(99,102,241,0.25);border-radius:6px;cursor:pointer" title="Add a gig">+ Gig</button>' +
+        '<button class="cal-action-btn" onclick="calNewMeeting()" style="font-size:' + (_calMobile ? '0.72em' : '0.76em') + ';padding:6px 10px;background:rgba(168,85,247,0.1);color:#c4b5fd;border:1px solid rgba(168,85,247,0.25);border-radius:6px;cursor:pointer" title="Add a band meeting">+ Band Meeting</button>' +
+        '<button class="cal-action-btn" onclick="calBlockDates()" style="font-size:' + (_calMobile ? '0.72em' : '0.76em') + ';padding:6px 10px;background:rgba(239,68,68,0.08);color:#fca5a5;border:1px solid rgba(239,68,68,0.2);border-radius:6px;cursor:pointer" title="Block dates / mark unavailable">+ Block Time</button>' +
+        '<button onclick="calShowSubscribeModal(window.currentBandSlug||\'deadcetera\')" style="margin-left:auto;background:none;border:1px solid rgba(255,255,255,0.08);color:var(--text-dim);cursor:pointer;font-size:' + (_calMobile ? '0.72em' : '0.76em') + ';padding:6px 10px;border-radius:6px" title="Subscribe to calendar feed (iCal / Google)">\uD83D\uDCC5 Subscribe</button>' +
     '</div>' +
     '<div id="calEventFormArea"></div>';
 
@@ -7907,6 +7919,12 @@ window.calEditBlocked = calEditBlocked;
 window.saveBlockedDatesEdit = saveBlockedDatesEdit;
 window.calDayClick = calDayClick;
 window.calAddEvent = calAddEvent;
+// Type-pinned shortcuts wired from the unified Schedule action zone.
+// Each passes a stub `existing` with the desired type so the form opens
+// with the correct Type select pre-chosen.
+window.calNewRehearsal  = function() { return calAddEvent(null, undefined, { type: 'rehearsal' }); };
+window.calNewGig        = function() { return calAddEvent(null, undefined, { type: 'gig' }); };
+window.calNewMeeting    = function() { return calAddEvent(null, undefined, { type: 'meeting' }); };
 window.calTypeChanged = calTypeChanged;
 window._calInitVenuePicker = _calInitVenuePicker;
 window.calEditEvent = calEditEvent;
