@@ -1067,7 +1067,7 @@ function _renderTriageBar(dropdown, count) {
     ];
     // Count missing data — only active songs, respects band filter
     // Skip counts if DNA preload hasn't completed yet (allSongs lacks key/bpm before preload)
-    var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0 };
+    var _missingCounts = { no_key: 0, no_bpm: 0, no_status: 0, no_lead: 0, no_structure: 0 };
     if (!window._glDnaPreloaded) {
         // DNA not loaded yet — don't show misleading counts
         bar.innerHTML = '';
@@ -1084,10 +1084,14 @@ function _renderTriageBar(dropdown, count) {
             // allSongs[].key and .bpm are single source after preload promotion
             if (!s.key) _missingCounts.no_key++;
             if (!s.bpm) _missingCounts.no_bpm++;
+            if (!s.lead) _missingCounts.no_lead++;
             if (typeof GLStore !== 'undefined' && GLStore.getStatus && !GLStore.getStatus(s.title)) _missingCounts.no_status++;
+            if (!s._hasStructure) _missingCounts.no_structure++;
         });
     }
-    var _totalMissing = _missingCounts.no_key + _missingCounts.no_bpm + _missingCounts.no_status;
+    var _totalMissing = _missingCounts.no_key + _missingCounts.no_bpm + _missingCounts.no_status + _missingCounts.no_lead + _missingCounts.no_structure;
+    var _totalActive = _countPool.length;
+    var _completeness = _totalActive > 0 ? Math.round(((_totalActive * 5 - _totalMissing) / (_totalActive * 5)) * 100) : 100;
 
     var html = '';
     // Entry CTA — dynamic based on active triage or default
@@ -1132,14 +1136,20 @@ function _renderTriageBar(dropdown, count) {
     var _activeIsMetadata = tf && _metadataFilters[tf];
     items.forEach(function(it) {
         var active = tf === it.id;
-        var itemCount = _missingCounts[it.id] || '';
+        var rawCount = _missingCounts[it.id];
+        var itemBadge = '';
+        if (typeof rawCount === 'number') {
+            itemBadge = rawCount > 0
+                ? ' <span style="opacity:0.6">(' + rawCount + ')</span>'
+                : ' <span style="color:#22c55e;font-weight:700">✓</span>';
+        }
         var icon = _triageIcons[it.id] || '';
         var tip = _triageTips[it.id] || '';
         var btnHtml;
         if (tf && !active) {
-            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" title="' + tip + '" style="font-size:0.62em;padding:2px 7px;opacity:0.4">' + icon + ' ' + it.label + '</button>';
+            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" title="' + tip + '" style="font-size:0.62em;padding:2px 7px;opacity:0.4">' + icon + ' ' + it.label + itemBadge + '</button>';
         } else {
-            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" title="' + tip + '" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;' + (active ? 'border-color:var(--gl-amber);color:var(--gl-amber);background:rgba(251,191,36,0.15)' : '') + '">' + icon + ' ' + it.label + (itemCount ? ' <span style="opacity:0.6">(' + itemCount + ')</span>' : '') + '</button>';
+            btnHtml = '<button onclick="sqTriageSet(\'' + it.id + '\')" class="gl-btn-ghost" title="' + tip + '" style="font-size:0.68em;font-weight:' + (active ? '800' : '600') + ';padding:3px 10px;' + (active ? 'border-color:var(--gl-amber);color:var(--gl-amber);background:rgba(251,191,36,0.15)' : '') + '">' + icon + ' ' + it.label + itemBadge + '</button>';
         }
         if (_actionFilters[it.id]) {
             _actionHtml += btnHtml;
@@ -1154,8 +1164,15 @@ function _renderTriageBar(dropdown, count) {
     var _cleanupBtnStyle = _activeIsMetadata
         ? 'border-color:var(--gl-amber);color:var(--gl-amber);background:rgba(251,191,36,0.15);'
         : '';
-    html += '<button onclick="window._sqCleanupOpen=!window._sqCleanupOpen;var s=document.getElementById(\'sqCleanupSubBar\');if(s){s.style.display=window._sqCleanupOpen?\'flex\':\'none\'}" class="gl-btn-ghost" title="Songs missing metadata (key, tempo, status, lead, structure)" style="font-size:0.68em;font-weight:600;padding:3px 10px;' + _cleanupBtnStyle + '">🧹 Cleanup' + (_totalMissing > 0 ? ' <span style="opacity:0.6">(' + _totalMissing + ' missing)</span>' : '') + ' \u25BE</button>';
+    html += '<button onclick="window._sqCleanupOpen=!window._sqCleanupOpen;var s=document.getElementById(\'sqCleanupSubBar\');if(s){s.style.display=window._sqCleanupOpen?\'flex\':\'none\'}" class="gl-btn-ghost" title="Songs missing metadata (key, tempo, status, lead, structure)" style="font-size:0.68em;font-weight:600;padding:3px 10px;' + _cleanupBtnStyle + '">🧹 Cleanup' + (_totalMissing > 0 ? ' <span style="opacity:0.6">(' + _totalMissing + ' missing)</span>' : ' <span style="color:#22c55e">\u2713</span>') + ' \u25BE</button>';
+    var _healthColor = _completeness >= 95 ? '#22c55e' : (_completeness >= 80 ? '#fbbf24' : '#f59e0b');
+    var _healthLine = '<div style="width:100%;font-size:0.65em;color:var(--text-dim);padding:2px 4px 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        + '<span style="color:' + _healthColor + ';font-weight:700">' + _completeness + '%</span>'
+        + '<span>metadata complete</span>'
+        + (_totalMissing > 0 ? '<span style="opacity:0.6">\u00B7 ' + _totalMissing + ' field' + (_totalMissing > 1 ? 's' : '') + ' missing across ' + _totalActive + ' active songs</span>' : '')
+        + '</div>';
     html += '<div id="sqCleanupSubBar" style="display:' + (_cleanupOpen ? 'flex' : 'none') + ';gap:4px;flex-wrap:wrap;width:100%;padding-top:4px;border-top:1px dashed rgba(255,255,255,0.06);margin-top:4px">'
+        + _healthLine
         + _metadataHtml
         + '<button onclick="if(typeof openChartQueue===\'function\')openChartQueue()" title="Open the chart queue to fill in missing chord charts" style="font-size:0.68em;font-weight:600;padding:3px 10px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,165,0,0.2);background:rgba(255,165,0,0.06);color:#fbbf24;transition:all 0.15s">🎸 Fill Missing Charts</button>'
         + '</div>';

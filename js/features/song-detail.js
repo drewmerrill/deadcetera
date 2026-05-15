@@ -277,7 +277,7 @@ function _sdRenderBandChart(title, safeSong, chartText) {
         return '<div class="sd-card" style="padding:16px;border-color:rgba(34,197,94,0.2);background:rgba(34,197,94,0.02)">'
             + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
             + '<div class="sd-card-title" style="margin:0">🎼 Your Chart</div>'
-            + '<button onclick="(typeof window._wbOpenChartEditor===\'function\')?window._wbOpenChartEditor(\'' + safeSong + '\'):openRehearsalMode(\'' + safeSong + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">✏️ Edit</button>'
+            + '<button onclick="(typeof window._wbOpenChartEditor===\'function\')?window._wbOpenChartEditor(\'' + safeSong + '\'):openRehearsalMode(\'' + safeSong + '\',\'paste\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">✏️ Edit</button>'
             + '</div>'
             + window.ChartRenderer.renderHtml(chartText)
             + '</div>';
@@ -299,13 +299,13 @@ function _sdRenderBandChart(title, safeSong, chartText) {
             + '<div style="font-size:1.4em;margin-bottom:8px">\uD83D\uDCDD</div>'
             + '<div style="font-size:0.88em;font-weight:700;color:var(--text);margin-bottom:4px">No chart yet</div>'
             + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px">Paste or type a chart in rehearsal mode</div>'
-            + '<button class="sd-pm-btn" onclick="(typeof window._wbOpenChartEditor===\'function\')?window._wbOpenChartEditor(\'' + safeSong + '\'):openRehearsalMode(\'' + safeSong + '\')">\uD83D\uDCDD Add Chart</button>'
+            + '<button class="sd-pm-btn" onclick="(typeof window._wbOpenChartEditor===\'function\')?window._wbOpenChartEditor(\'' + safeSong + '\'):openRehearsalMode(\'' + safeSong + '\',\'paste\')">\uD83D\uDCDD Add Chart</button>'
             + '</div>';
     }
     return '<div class="sd-card" style="padding:16px;border-color:rgba(34,197,94,0.2);background:rgba(34,197,94,0.02)">'
         + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
         + '<div class="sd-card-title" style="margin:0">\uD83C\uDFBC Your Chart</div>'
-        + '<button onclick="(typeof window._wbOpenChartEditor===\'function\')?window._wbOpenChartEditor(\'' + safeSong + '\'):openRehearsalMode(\'' + safeSong + '\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u270F\uFE0F Edit</button>'
+        + '<button onclick="(typeof window._wbOpenChartEditor===\'function\')?window._wbOpenChartEditor(\'' + safeSong + '\'):openRehearsalMode(\'' + safeSong + '\',\'paste\')" style="font-size:0.72em;padding:4px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.08);color:#a5b4fc;cursor:pointer;font-weight:600">\u270F\uFE0F Edit</button>'
         + '</div>'
         + '<pre style="white-space:pre-wrap;font-family:\'Courier New\',monospace;font-size:13px;line-height:1.7;color:#e2e8f0;margin:0;letter-spacing:0.01em;max-height:400px;overflow-y:auto">' + _sdEsc(typeof window.glDecodeHtmlEntities === 'function' ? window.glDecodeHtmlEntities(chartText) : chartText) + '</pre>'
         + '</div>';
