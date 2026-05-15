@@ -594,8 +594,14 @@ async function _rhRenderCommandFlow(el) {
     // "Continue last plan?" chip pins ABOVE the picker so the user can
     // resume in one click without the plan dominating the page.
     var _renderIntentPicker = !_rhPlanningMode;
+    var _heroRendered = false;
     if (_renderIntentPicker) {
-        // Continue chip first (only when a plan exists)
+        var _hasSnapshots = false, _hasSessions = false;
+        try { var _snaps = await _rhLoadSnapshots(1); _hasSnapshots = !!(_snaps && _snaps.length); } catch(e) {}
+        try { var _sess = _rhSessionsCache || await _rhLoadSessions(); _hasSessions = !!(_sess && _sess.length); } catch(e) {}
+
+        // Tonight's Rehearsal hero — promoted from the old continue chip.
+        // When a plan exists, this is the page's center of gravity.
         if (hasSavedPlan && _rhPlanCache) {
             var _ccUnits = _rhGetUnits() || [];
             var _ccSongCount = _ccUnits.reduce(function(n, u) {
@@ -611,18 +617,46 @@ async function _rhRenderCommandFlow(el) {
             var _ccLabel = _ccTotalMin >= 60
                 ? Math.floor(_ccTotalMin / 60) + 'h ' + (_ccTotalMin % 60) + 'm'
                 : _ccTotalMin + 'm';
-            html += _rhRenderContinueChip(_rhPlanCache, _ccSongCount, _ccLabel);
+            html += _rhRenderTonightsHero(_rhPlanCache, _ccSongCount, _ccLabel, {
+                nextGig: nextGig,
+                gigDays: _gigDays,
+                focusCount: _rhFocusCount,
+                weakSongs: weakSongs,
+                hasSessions: _hasSessions
+            });
+            _heroRendered = true;
         }
-        var _hasSnapshots = false, _hasSessions = false;
-        try { var _snaps = await _rhLoadSnapshots(1); _hasSnapshots = !!(_snaps && _snaps.length); } catch(e) {}
-        try { var _sess = _rhSessionsCache || await _rhLoadSessions(); _hasSessions = !!(_sess && _sess.length); } catch(e) {}
-        html += _rhRenderIntentPicker({
-            nextGig: nextGig,
-            gigDays: nextGig ? _gigDays : null,
-            focusCount: _rhFocusCount,
-            hasSnapshots: _hasSnapshots,
-            hasSessions: _hasSessions
-        });
+
+        // Intent picker — primary entry only when no plan exists. When a plan
+        // is already saved, the picker drops to a "+ Build a different flow"
+        // collapsed details below the flow rail. Removes the "What do you
+        // want to do?" decision tax from the page's entry surface.
+        if (!_heroRendered) {
+            html += _rhRenderIntentPicker({
+                nextGig: nextGig,
+                gigDays: nextGig ? _gigDays : null,
+                focusCount: _rhFocusCount,
+                hasSnapshots: _hasSnapshots,
+                hasSessions: _hasSessions
+            });
+        }
+        // Stash the intent-picker HTML for late injection below the plan rail
+        // when the hero is dominant. Avoids a second async pass.
+        if (_heroRendered) {
+            window._rhDemotedPickerHtml = '<details style="margin-top:var(--gl-space-md);font-size:0.78em">'
+                + '<summary style="cursor:pointer;color:var(--gl-text-tertiary);padding:8px 0;display:inline-block;list-style:none">+ Build a different flow ▾</summary>'
+                + '<div style="margin-top:8px">'
+                + _rhRenderIntentPicker({
+                    nextGig: nextGig,
+                    gigDays: nextGig ? _gigDays : null,
+                    focusCount: _rhFocusCount,
+                    hasSnapshots: _hasSnapshots,
+                    hasSessions: _hasSessions
+                })
+                + '</div></details>';
+        } else {
+            window._rhDemotedPickerHtml = '';
+        }
     }
 
     // Phase 2: action-row only renders in Plan Mode now. The intent picker
@@ -638,12 +672,12 @@ async function _rhRenderCommandFlow(el) {
         html += '</div>';
         html += '</div>';
     }
-    // Context metadata (both modes). In Plan Mode this lives inside the
-    // action row above; outside Plan Mode the context-metadata block is
-    // self-contained (Phase 2: action row no longer emits when picker is
-    // the entry surface). The orphan </div> from the old always-emitted
-    // action row was removed when the action row became Plan-Mode-only.
-    if (!_rhPlanningMode) {
+    // Context metadata + directive headline. The Tonight's Rehearsal hero
+    // already says venue / countdown / focus count; rendering them again
+    // below would duplicate the visual weight and undermine the hero. So
+    // these blocks render ONLY when the hero is NOT shown (no plan yet, or
+    // we're in Plan Mode where the action row replaces the hero).
+    if (!_rhPlanningMode && !_heroRendered) {
         html += '<div style="display:flex;gap:var(--gl-space-sm);align-items:center;flex-wrap:wrap;margin-bottom:var(--gl-space-md)">';
         if (_gigContext && _gigDays <= 30) {
             var _urgColor = _gigDays <= 3 ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
@@ -655,8 +689,7 @@ async function _rhRenderCommandFlow(el) {
         html += '</div>';
     }
 
-    // Directive headline: tell the user what's actually next instead of an abstract Readiness label.
-    if (!_rhPlanningMode) {
+    if (!_rhPlanningMode && !_heroRendered) {
         var _activeCount = (function() {
             try {
                 var s = (typeof allSongs !== 'undefined') ? allSongs : [];
@@ -1067,6 +1100,15 @@ async function _rhRenderCommandFlow(el) {
         html += '<div id="rhLastRehearsalSnapshot" style="margin-bottom:12px"></div>';
     }
 
+    // Demoted intent picker — appended below the flow rail when the
+    // Tonight's Rehearsal hero owns the entry surface. Hidden behind a
+    // collapsed details so the page entry stays clean while the picker
+    // remains discoverable for users who want to start a different flow.
+    if (window._rhDemotedPickerHtml) {
+        html += window._rhDemotedPickerHtml;
+        window._rhDemotedPickerHtml = '';
+    }
+
     // Defensive re-grab: if a re-render wiped the DOM during our awaits, the
     // cached `main` is now an orphan node. Writing into it does nothing visible.
     if (!document.body.contains(main)) {
@@ -1355,10 +1397,94 @@ function _rhPlanGigChip(planCache) {
         + escHtml(label) + '</span>';
 }
 
-// Phase 2: "Continue last plan?" chip pinned above the intent picker
-// when a plan exists. Replaces the old "plan card is the dominant
-// surface" pattern — the page is intent-driven now, the existing plan
-// is a one-click resume affordance, not the entry point.
+// ─────────────────────────────────────────────────────────────────────────
+// Tonight's Rehearsal HERO — UX hierarchy refactor (2026-05-15).
+//
+// Tester feedback: the Rehearsal page felt like a workflow chooser instead
+// of a guided rehearsal flow. This hero becomes the dominant object on the
+// page when a plan exists: venue, song count, duration, focus signal, gig
+// countdown, and three primary CTAs (Start / Edit Flow / Review Last).
+//
+// Reuses existing call sites — `_rhConfirmStartRehearsal`, `_rhOpenPlanMode`,
+// `_rhIntentReviewLastRehearsal` — so the underlying logic is unchanged.
+// What changes is visual gravity: this card is the page's center of
+// attention; the intent picker drops to a "+ Build a different flow"
+// details below the flow rail.
+//
+// Inputs:
+//   planCache       — the saved plan (intent, name, gig back-ref)
+//   songCount       — pre-computed unit count for "N songs"
+//   durationLabel   — pre-computed "Nm" / "Xh Ym" string
+//   opts.nextGig    — { date, venue, setlistId } or null
+//   opts.gigDays    — days until gig (number) or 999 when none
+//   opts.focusCount — weak song count
+//   opts.weakSongs  — full focus list (so we can show top focus song name)
+//   opts.hasSessions— enable/disable "Review Last Rehearsal"
+// ─────────────────────────────────────────────────────────────────────────
+function _rhRenderTonightsHero(planCache, songCount, durationLabel, opts) {
+    if (!planCache) return '';
+    opts = opts || {};
+    var intent = planCache.intent || 'custom';
+    var meta = _rhPlanIntentMeta(intent) || _rhPlanIntentMeta('custom');
+    var planName = planCache.name || 'Rehearsal Plan';
+    var nextGig = opts.nextGig || null;
+    var gigDays = opts.gigDays;
+    var focusCount = opts.focusCount || 0;
+    var hasSessions = !!opts.hasSessions;
+
+    // Build the stat strip: "6 songs · 27 min · Focus: transitions"
+    var statParts = [];
+    if (songCount) statParts.push(songCount + ' song' + (songCount === 1 ? '' : 's'));
+    if (durationLabel) statParts.push(durationLabel);
+    if (focusCount > 0) {
+        statParts.push('Focus: ' + focusCount + ' weak song' + (focusCount > 1 ? 's' : ''));
+    } else if (intent === 'transitions') {
+        statParts.push('Focus: transitions');
+    } else if (intent === 'gig-run') {
+        statParts.push('Focus: gig run-through');
+    }
+
+    // Gig countdown line — only when relevant (within ~60d). Uses the same
+    // urgency color thresholds as the rest of the page.
+    var countdownLine = '';
+    if (nextGig && gigDays != null && gigDays < 60) {
+        var gigVenue = nextGig.venue || 'Upcoming gig';
+        var countdownColor = (gigDays <= 3) ? 'var(--gl-amber)' : (gigDays <= 14) ? '#fbbf24' : 'var(--gl-text-tertiary)';
+        var countdownText;
+        if (gigDays <= 0)      countdownText = '🎤 ' + gigVenue + ' — today';
+        else if (gigDays === 1) countdownText = '🎤 ' + gigVenue + ' — tomorrow';
+        else                    countdownText = '🎤 ' + gigDays + ' days until ' + gigVenue;
+        countdownLine = '<div style="font-size:0.78em;color:' + countdownColor + ';margin-top:6px;font-weight:600">' + escHtml(countdownText) + '</div>';
+    }
+
+    // Review Last button is gated on whether sessions exist; greyed when none.
+    var reviewBtn = hasSessions
+        ? '<button onclick="_rhIntentReviewLastRehearsal()" class="gl-btn-ghost" style="padding:9px 16px;font-size:0.82em;font-family:inherit">📊 Review Last Rehearsal</button>'
+        : '<button disabled class="gl-btn-ghost" title="No past rehearsals to review" style="padding:9px 16px;font-size:0.82em;font-family:inherit;opacity:0.45;cursor:not-allowed">📊 Review Last Rehearsal</button>';
+
+    var html = '';
+    html += '<div class="gl-tonights-hero" style="margin-bottom:var(--gl-space-md);padding:18px 20px;border-radius:14px;background:linear-gradient(135deg,rgba(102,126,234,0.10),rgba(118,75,162,0.06));border:1px solid rgba(99,102,241,0.30);box-shadow:0 2px 14px rgba(99,102,241,0.08)">';
+    html += '<div style="font-size:0.68em;font-weight:800;color:' + meta.color + ';letter-spacing:0.10em;text-transform:uppercase;margin-bottom:6px">' + meta.emoji + ' Tonight’s Rehearsal</div>';
+    html += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">';
+    html += '<div style="font-size:1.15em;font-weight:700;color:var(--gl-text);line-height:1.25">' + escHtml(planName) + '</div>';
+    html += _rhPlanGigChip(planCache);
+    html += '</div>';
+    if (statParts.length) {
+        html += '<div style="font-size:0.84em;color:var(--gl-text-tertiary);line-height:1.4">' + escHtml(statParts.join(' · ')) + '</div>';
+    }
+    html += countdownLine;
+    html += '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">';
+    html += '<button onclick="_rhConfirmStartRehearsal()" class="gl-btn-primary" style="padding:10px 22px;font-size:0.92em;font-weight:700;background:linear-gradient(135deg,#667eea,#764ba2);box-shadow:0 3px 12px rgba(99,102,241,0.20);font-family:inherit">▶ Start Rehearsal</button>';
+    html += '<button onclick="_rhOpenPlanMode()" class="gl-btn-ghost" style="padding:9px 16px;font-size:0.82em;font-family:inherit">✏️ Edit Flow</button>';
+    html += reviewBtn;
+    html += '</div>';
+    html += '</div>';
+    return html;
+}
+
+// Phase 2: "Continue last plan?" chip — kept for back-compat callers that
+// want the slim version (not used by the main Rehearsal page since the
+// Tonight's Rehearsal hero now replaces it at the entry surface).
 function _rhRenderContinueChip(planCache, songCount, durationLabel) {
     if (!planCache) return '';
     var intent = planCache.intent || 'custom';

@@ -552,6 +552,111 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Phase 3B build)
   - **Status:** open
 
+- **Finding:** Rehearsal page hierarchy refactor (Tonight's Rehearsal
+  hero) demoted the intent picker behind a collapsed "+ Build a
+  different flow ▾" details when a plan exists, but did NOT remove the
+  picker. Mental model is improved (the page now answers "what are we
+  rehearsing?" first), but the four-button workflow chooser (Run the
+  Gig / Practice Transitions / Work Weak Songs / Build Custom Plan) is
+  still present one tap away. Some testers may still default to it
+  rather than editing the existing plan from the hero.
+  - **Why deferred:** The intent picker is the only entry path for
+    "no-plan-yet" cases AND the only path that auto-builds plans from
+    setlists / focus songs. Removing it entirely would require a new
+    "+ Add to flow" affordance on the hero that does the same auto-build
+    work — out of scope for the incremental refactor pass.
+  - **Trigger:** First tester explicitly reports the picker still feels
+    like "what should I do?" decision tax, OR when the flow rail gains
+    direct add-from-setlist / add-from-focus inline buttons.
+  - **Discovered:** 2026-05-15 (Rehearsal Page Refactor — Tonight's
+    Rehearsal Flow)
+  - **Status:** open
+
+- **Finding:** Inline intelligence on plan-rail rows — the spec called
+  for "⚠ rough transition into Deal last rehearsal", "⚠ low readiness",
+  "✓ strong" markers per song row. The hero refactor surfaced the
+  signals at the top (focus count, gig countdown), but the existing
+  plan-unit row renderer (rehearsal.js:728-1067) was NOT modified — so
+  individual song rows in the flow rail still render without per-row
+  status hints. The data IS available (`weakSongs` list, focus engine,
+  linked-pair metadata), just not yet displayed at the row level.
+  - **Why deferred:** Surgically modifying the existing 340-line plan
+    unit rendering risked destabilizing the drag-reorder logic + plan
+    edit surfaces. The hero + demoted picker were the highest-impact
+    UX wins; row enrichment is the natural next pass.
+  - **Trigger:** Next Rehearsal page polish pass, OR first tester
+    reports "I can't tell which songs need work just from the flow."
+  - **Discovered:** 2026-05-15 (Rehearsal Page Refactor)
+  - **Status:** open
+
+- **Finding:** Transition pairs rendering — linked-pair units (`{type:
+  'linked', songs:[A,B], title:'A → B'}`) already exist in the data
+  model (built from setlist segue metadata), and the existing plan
+  section renders them as a single combined row. The Phase 3 spec
+  asked for transitions to feel like inline-between-songs UX
+  ("Sugaree → Deal · ⚠ transition flagged · [Practice Transition]"),
+  but the hero refactor pass did not break linked pairs out into
+  inline connector elements. They still display as one combined unit.
+  - **Why deferred:** Splitting linked pairs into two rows + a
+    connector requires touching the same plan unit renderer (with
+    drag-reorder constraints) flagged in the inline intelligence
+    finding above. Both should land together in a row-rendering pass.
+  - **Trigger:** Next Rehearsal page polish pass, OR Phase 4 transition
+    intelligence work.
+  - **Discovered:** 2026-05-15 (Rehearsal Page Refactor)
+  - **Status:** open
+
+- **Finding:** Right rail content (Snapshots / Session History /
+  Mixdowns) is still conditionally rendered into `#rhContextRail`
+  alongside the new Tonight's Rehearsal hero. On wide viewports the
+  rail renders side-by-side with the main column; the hero ends up
+  competing with the rail for visual attention even though the rail
+  contains lower-priority content. Mobile is fine (rail collapses
+  below main).
+  - **Why deferred:** Right rail demotion was flagged in the spec but
+    the existing rail content already uses `<details>` for collapse and
+    only renders one open at a time. A more aggressive demotion (move
+    rail content into a single "More" details below the flow rail)
+    would touch four call sites and risk regressing the rail's existing
+    accordion logic.
+  - **Trigger:** First tester reports the right rail is distracting
+    from the hero on desktop, OR right-rail content is consolidated
+    into a single "Past rehearsals" surface.
+  - **Discovered:** 2026-05-15 (Rehearsal Page Refactor)
+  - **Status:** open
+
+- **Finding:** `window._rhDemotedPickerHtml` is a window-scoped
+  string used to stash the demoted intent-picker HTML across the
+  async branch in `_rhRenderCommandFlow` so it can be appended to
+  the main HTML below the plan section. It works, but using window
+  globals as cross-branch variable storage in a 740-line async
+  function is fragile — a future refactor that re-renders mid-flight
+  could leave a stale picker HTML in place.
+  - **Why deferred:** Threading the picker HTML through closure
+    scope cleanly would have required restructuring more of
+    `_rhRenderCommandFlow` than the incremental refactor pass should
+    attempt. A future rehearsal-page modularization pass should
+    factor the page into smaller render functions that return HTML
+    strings + share state via a normal closure.
+  - **Trigger:** Next Rehearsal page modularization pass.
+  - **Discovered:** 2026-05-15 (Rehearsal Page Refactor)
+  - **Status:** open
+
+- **Finding:** Mobile-specific flow rail testing — the Tonight's
+  Rehearsal hero uses flex-wrap so CTAs stack on narrow viewports,
+  and the existing plan section already renders single-column on
+  mobile. But there's no explicit mobile QA in this pass — the
+  refactor was tested via syntax check + structural reasoning only,
+  not in a mobile browser.
+  - **Why deferred:** The user's spec emphasized mobile as critical;
+    a real mobile-first review on a phone is a separate validation
+    pass that needs Drew or a tester actually opening the app on a
+    phone after this commit deploys.
+  - **Trigger:** Drew's first mobile session post-deploy, OR
+    Tester #1 mobile onboarding.
+  - **Discovered:** 2026-05-15 (Rehearsal Page Refactor)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.
