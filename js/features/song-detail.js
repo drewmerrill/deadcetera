@@ -1015,14 +1015,14 @@ function _sdRenderAttentionCard(title, safeSong) {
         actions.push('<button onclick="(typeof openWorkbench===\'function\')?openWorkbench(\'' + safeSong + '\',\'practice\',{}):openRehearsalMode(\'' + safeSong + '\')" style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.25);color:#818cf8;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📖 Practice Mode</button>');
     }
     if (b.readinessDeficit >= 4 || item.confidence !== 'rated') {
-        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
+        actions.push('<button onclick="sdFocusMyReadinessPill()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
     }
     if (b.exposureBoost >= 8) {
         actions.push('<button onclick="showPage(\'setlists\')" style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.25);color:#fbbf24;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">📋 View Setlist</button>');
     }
     // Fallback: always show at least one action
     if (!actions.length) {
-        actions.push('<button onclick="var el=(_sdContainer||document).querySelector(\'#sd-readiness-card\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'})" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
+        actions.push('<button onclick="sdFocusMyReadinessPill()" style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.25);color:#86efac;font-size:0.78em;font-weight:700;padding:6px 12px;border-radius:8px;cursor:pointer">🔗 Update Readiness</button>');
     }
 
     return '<div class="sd-card" style="padding:10px 14px">'
@@ -1156,6 +1156,22 @@ function _sdBuildReadinessStrip(title) {
 }
 
 // ── Inline readiness popover — opens from member pill, no deep scroll ──────
+// Scroll the readiness strip into view + briefly pulse the current member's
+// pill. Lets the lower informational section direct people back to the
+// primary edit surface without becoming an edit surface itself.
+window.sdFocusMyReadinessPill = function() {
+    var strip = (_sdContainer || document).querySelector('#sd-readiness-strip');
+    if (strip) strip.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var myKey = typeof getCurrentMemberKey === 'function' ? getCurrentMemberKey() : null;
+    if (!myKey) return;
+    setTimeout(function() {
+        var pill = (_sdContainer || document).querySelector('.sd-readiness-pill--editable');
+        if (!pill) return;
+        pill.classList.add('sd-readiness-pill--pulse');
+        setTimeout(function() { pill.classList.remove('sd-readiness-pill--pulse'); }, 1200);
+    }, 350);
+};
+
 window.sdCloseReadinessPopover = function() {
     var existing = document.getElementById('sd-readiness-popover');
     if (existing) existing.remove();
@@ -1810,9 +1826,15 @@ window.sdSaveConfidence = function(songTitle, value) {
 };
 
 window.sdScrollToReadiness = function() {
+    // Edit surface is now the top member-pill popover, not the lower
+    // informational summary. Redirect any legacy callers to the primary
+    // surface so people aren't sent to a read-only view to "update."
+    if (typeof window.sdFocusMyReadinessPill === 'function') {
+        window.sdFocusMyReadinessPill();
+        return;
+    }
     var el = (_sdContainer || document).querySelector('#sd-readiness-card');
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-    // Fallback: try right panel readiness
     var rp = document.querySelector('#sd-right-info');
     if (rp) rp.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
@@ -5262,17 +5284,16 @@ async function _sdPopulateRightPanel(title) {
         + '</div>'
         + '</details>';
 
-    // ── COLLAPSED BY DEFAULT: Readiness ──
-    // Was always-open and dominated vertical space. Compressed to a
-    // one-line "5/5 band average" summary; expand for the full per-member
-    // sliders. Current member sees interactive slider on expand.
+    // ── COLLAPSED BY DEFAULT: Readiness (read-only summary) ──
+    // Editing lives at the top member-pill popover (sdOpenReadinessPopover).
+    // This section is band-wide visibility, not a second edit surface.
     var songScores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
     var rpMembers = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
     var rpMyKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
     var rdScores = rpMembers.map(function(m) { return songScores[m.key || m] || 0; }).filter(function(v) { return v > 0; });
     var rdAvg = rdScores.length ? (rdScores.reduce(function(a, b) { return a + b; }, 0) / rdScores.length) : 0;
     var rdAvgLabel = rdAvg > 0 ? rdAvg.toFixed(1) + '/5 band average' : 'no ratings yet';
-    var readinessHtml = '<details class="sd-details" style="border-top:1px solid rgba(255,255,255,0.04)">'
+    var readinessHtml = '<details id="sd-readiness-card" class="sd-details" style="border-top:1px solid rgba(255,255,255,0.04)">'
         + '<summary style="padding:8px 12px;font-size:0.78em;font-weight:600;color:var(--text-dim);cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">'
         + '<span><span style="font-size:0.7em;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-right:8px">Readiness</span>' + rdAvgLabel + '</span>'
         + '<span style="font-size:0.9em;opacity:0.5">▶</span>'
@@ -5281,27 +5302,19 @@ async function _sdPopulateRightPanel(title) {
     rpMembers.forEach(function(m) {
         var key = m.key || m, name = m.name || (key.charAt(0).toUpperCase() + key.slice(1));
         var score = songScores[key];
-        var color = score ? (score >= 4 ? '#10b981' : score >= 3 ? '#f59e0b' : '#ef4444') : '#475569';
+        var color = score ? _sdReadinessColor(score) : '#475569';
         var barPct = score ? (score / 5 * 100) : 0;
         var isMe = rpMyKey && key === rpMyKey;
-        var rpLblId = 'sd-rp-score-' + key;
         var nameCell = '<span style="color:' + (isMe ? 'var(--text)' : 'var(--text-dim)') + ';font-weight:' + (isMe ? '700' : '500') + ';min-width:50px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _sdEsc(name) + '</span>';
-        var midCell;
-        if (isMe) {
-            midCell = '<input type="range" name="readiness-rp-' + key + '" min="0" max="5" step="1" value="' + (score || 0) + '" '
-                + 'style="flex:1;min-width:0;accent-color:var(--accent);cursor:pointer" '
-                + 'title="Drag to rate 0-5: Unknown \u2192 Rough \u2192 Learning \u2192 Ready \u2192 Gig Ready \u2192 Locked" '
-                + 'oninput="(function(el){var v=parseInt(el.value,10);var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'#475569\';var lbl=document.getElementById(\'' + rpLblId + '\');if(lbl){lbl.textContent=v||(\'\\u2014\');lbl.style.color=c;}})(this)" '
-                + 'onchange="sdSaveReadiness(\'' + safeSong + '\',\'' + key + '\',this.value)">';
-        } else {
-            midCell = '<div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden"><div style="width:' + barPct + '%;height:100%;background:' + color + ';border-radius:3px"></div></div>';
-        }
+        var midCell = '<div style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden"><div style="width:' + barPct + '%;height:100%;background:' + color + ';border-radius:3px"></div></div>';
         readinessHtml += '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em">'
             + nameCell + midCell
-            + '<span id="' + rpLblId + '" style="color:' + color + ';font-weight:700;min-width:16px;text-align:right">' + (score || '\u2014') + '</span>'
+            + '<span style="color:' + color + ';font-weight:700;min-width:16px;text-align:right">' + (score || '\u2014') + '</span>'
             + '</div>';
     });
-    readinessHtml += '</div></div></details>';
+    readinessHtml += '</div>'
+        + (rpMyKey ? '<div class="sd-rp-affordance"><span aria-hidden="true">&#8593;</span> <button type="button" onclick="sdFocusMyReadinessPill()">Rate from your pill at the top</button></div>' : '')
+        + '</div></details>';
 
     // Love cards are now rendered in infoEl (above readiness, above fold)
 
@@ -5365,6 +5378,11 @@ function _sdInjectStyles(){
     '.sd-readiness-pill{font-size:0.7em;font-weight:700;padding:2px 7px;border-radius:10px;color:#fff}'+
     '.sd-readiness-pill--editable{cursor:pointer;outline:1px solid transparent;transition:transform 0.12s ease, box-shadow 0.12s ease}'+
     '.sd-readiness-pill--editable:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(99,102,241,0.35);outline-color:rgba(255,255,255,0.5)}'+
+    '.sd-readiness-pill--pulse{animation:sdPillPulse 1.2s ease}'+
+    '@keyframes sdPillPulse{0%{box-shadow:0 0 0 0 rgba(165,180,252,0.6)}50%{box-shadow:0 0 0 8px rgba(165,180,252,0)}100%{box-shadow:0 0 0 0 rgba(165,180,252,0)}}'+
+    '.sd-rp-affordance{margin-top:8px;padding-top:6px;border-top:1px dashed rgba(255,255,255,0.06);font-size:0.7em;color:var(--text-dim);display:flex;align-items:center;gap:6px}'+
+    '.sd-rp-affordance button{background:none;border:none;color:#a5b4fc;padding:0;cursor:pointer;font:inherit;text-decoration:underline dotted}'+
+    '.sd-rp-affordance button:hover{color:#c7d2fe}'+
     '.sd-readiness-popover{position:fixed;z-index:10004;min-width:240px;max-width:300px;background:#0f172a;border:1px solid rgba(255,255,255,0.12);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,0.55);padding:10px 10px 12px;font-family:inherit;animation:sdRpFadeIn 0.15s ease}'+
     '@keyframes sdRpFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}'+
     '.sd-rp-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}'+
