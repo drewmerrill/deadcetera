@@ -1564,7 +1564,13 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle, histor
                     icon: '⚠',
                     color: '#f97316', // sharper amber for persistence (vs gentle warning)
                     message: targetLabel,
-                    action: { label: 'Practice transition', onclick: 'window._rhPracticeTransitionUnit(' + idx + ')' }
+                    actions: [
+                        { label: 'Practice transition', onclick: 'window._rhPracticeTransitionUnit(' + idx + ')' },
+                        // Closure-pass affordance: resolve the oldest open
+                        // annotation on the affected song so the persistent
+                        // signal can disappear when the band actually fixed it.
+                        { label: 'Mark resolved', onclick: 'window._rhMarkOldestNoteResolved(' + idx + ')' }
+                    ]
                 };
                 return;
             }
@@ -1606,7 +1612,13 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle, histor
                     icon: '⚠',
                     color: '#f97316',
                     message: 'Still rough after ' + ageR + ' rehearsals',
-                    action: { label: 'Open notes', onclick: 'window._rhOpenSongNotes(' + idx + ')' }
+                    actions: [
+                        { label: 'Open notes', onclick: 'window._rhOpenSongNotes(' + idx + ')' },
+                        // Closure-pass affordance: one-tap resolve on the
+                        // oldest open annotation so the signal can clear when
+                        // the band judges the issue fixed.
+                        { label: 'Mark resolved', onclick: 'window._rhMarkOldestNoteResolved(' + idx + ')' }
+                    ]
                 };
                 return;
             }
@@ -1778,14 +1790,26 @@ function _rhBuildAnnotationAge(allAnnotations, sessionsCache) {
 
 // Render a single inline signal sub-line. Returns '' when sig is null so
 // the call site can blindly inject the result.
+//
+// Two action shapes are supported (back-compat preserved):
+//   sig.action  — { label, onclick }   single-action shorthand
+//   sig.actions — [{ label, onclick }] multi-action array (closure pass)
+//
+// Multi-action mode joins links with ' · ' inline; mobile still wraps via
+// the flex container so each link can fall to its own line on narrow widths.
 function _rhRenderUnitSignal(sig) {
     if (!sig) return '';
+    var actions = [];
+    if (Array.isArray(sig.actions)) actions = sig.actions.filter(function (a) { return a && a.label && a.onclick; });
+    else if (sig.action && sig.action.label && sig.action.onclick) actions = [sig.action];
+
+    var linkStyle = 'color:#818cf8;text-decoration:none;border-bottom:1px dotted rgba(129,140,248,0.3);cursor:pointer';
     var actionHtml = '';
-    if (sig.action && sig.action.label && sig.action.onclick) {
-        actionHtml = ' · <a href="#" onclick="event.preventDefault();' + sig.action.onclick
-            + '" style="color:#818cf8;text-decoration:none;border-bottom:1px dotted rgba(129,140,248,0.3)">'
-            + escHtml(sig.action.label) + '</a>';
-    }
+    actions.forEach(function (a) {
+        actionHtml += ' · <a href="#" onclick="event.preventDefault();' + a.onclick + '" style="' + linkStyle + '">'
+            + escHtml(a.label) + '</a>';
+    });
+
     return '<div class="rh-unit-signal" style="padding:0 4px 4px 36px;font-size:0.68em;color:'
         + sig.color + ';opacity:0.9;line-height:1.3;display:flex;flex-wrap:wrap;align-items:center;gap:4px">'
         + '<span>' + sig.icon + ' ' + escHtml(sig.message) + '</span>'
@@ -1827,6 +1851,64 @@ window._rhOpenSongNotes = function (idx) {
     } else if (typeof showPage === 'function') {
         try { window.location.hash = '#song/' + encodeURIComponent(title); } catch (e) {}
     }
+};
+
+// Closure-pass handler: resolve the OLDEST open annotation on the unit's
+// song so the "Still rough after N rehearsals" signal can clear. For
+// linked-pair units we resolve the oldest open annotation across either
+// song in the pair (matches the persistence message that's driving the
+// signal). Lightweight by design — no confirm modal, just an instant
+// resolve + toast. Spec: "Feels fixed? / Mark resolved / Looks good now?"
+window._rhMarkOldestNoteResolved = async function (idx) {
+    if (typeof window.GLAnnotations === 'undefined') {
+        if (typeof showToast === 'function') showToast('Notes system not loaded');
+        return;
+    }
+    var units = _rhGetUnits() || [];
+    var u = units[idx];
+    if (!u) return;
+
+    var titles = [];
+    if (u.type === 'linked' && Array.isArray(u.songs)) {
+        u.songs.forEach(function (s) { if (s && s.title) titles.push(s.title); });
+    } else if (u.title) {
+        titles.push(u.title);
+    }
+    if (!titles.length) return;
+
+    // Load + find the oldest open annotation matching any song in the unit.
+    var oldest = null;
+    try {
+        var all = await window.GLAnnotations.listAnnotationsByAnchor({});
+        (all || []).forEach(function (a) {
+            if (!a || a.archived) return;
+            if (a.status === 'fixed') return;
+            var key = a.anchor && a.anchor.song_id;
+            if (!key || titles.indexOf(key) === -1) return;
+            if (!oldest || (a.created_at && a.created_at < oldest.created_at)) oldest = a;
+        });
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Could not load notes');
+        return;
+    }
+    if (!oldest) {
+        if (typeof showToast === 'function') showToast('No open note to resolve');
+        return;
+    }
+
+    try {
+        await window.GLAnnotations.updateAnnotation(oldest.id, { status: 'fixed' });
+        if (typeof showToast === 'function') showToast('✓ Marked resolved — ' + (oldest.text || '').slice(0, 40));
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Resolve failed');
+        return;
+    }
+
+    // Re-render the page so the persistent signal clears immediately.
+    try {
+        var el = document.getElementById('page-rehearsal');
+        if (el && typeof renderRehearsalPage === 'function') renderRehearsalPage(el);
+    } catch (e) {}
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -4291,6 +4373,7 @@ window._rhShowSessionReport = async function(sessionId) {
     // (when GLTakes has any for this rehearsal) as a compact review list under
     // the legacy timeline. Bails silently when no takes exist so legacy flows
     // are untouched. Best-effort only: failures here never block the report.
+    try { _rhRenderTonightProgress(timelineEl, sessionId, s); } catch (e) { console.warn('[TonightProgress] render failed:', e && e.message); }
     try { _rhRenderTakeReview(timelineEl, sessionId, s); } catch (e) { console.warn('[TakeReview] render failed:', e && e.message); }
 };
 
@@ -4318,6 +4401,203 @@ window._rhShowSessionReport = async function(sessionId) {
 //   - Reuse existing playback pattern (audio.currentTime + timeupdate stop).
 //   - Mobile-safe: rows wrap, touch targets >= 32px, no fixed-width tables.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tonight's Progress — Lightweight Rehearsal Closure (2026-05-15).
+//
+// Small reflective card mounted inside _rhShowSessionReport above the
+// Take Review surface. Surfaces four optional sections:
+//
+//   ✓ Tightened tonight     — songs whose confidence jumped ≥0.15 vs
+//                             the prior session
+//   🔥 Best take of the night — single song with the peak avg confidence
+//                              in THIS session (≥0.7)
+//   📝 Newly resolved        — annotations that flipped to 'fixed'
+//                             between the prior session's date and this
+//                             session's date
+//   ⚠ Still needs work      — open annotations whose oldest predates
+//                             this session (carry-forward awareness)
+//
+// Sections render only when non-empty. The whole card renders nothing
+// when no section has content. Plain text + emoji — no chips, no buttons,
+// no scorecards. Spec rule: "musical and reflective, NOT corporate
+// reporting."
+//
+// Data sources: existing _rhSessionsCache + GLAnnotations.listByAnchor({}).
+// No extra Firebase round-trip; reuses the cache that Take Review already
+// warmed (Phase 3A).
+// ─────────────────────────────────────────────────────────────────────────
+async function _rhRenderTonightProgress(container, sessionId, session) {
+    if (!container || !sessionId || !session) return;
+
+    // Remove any prior render for this session to keep the card idempotent.
+    var existing = document.getElementById('rhTonightProgress_' + sessionId);
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+    // Locate this session in the cache so we can identify the prior session
+    // and bound the resolve-window correctly.
+    var sessions = Array.isArray(_rhSessionsCache) ? _rhSessionsCache : [];
+    var thisIdx = -1;
+    for (var i = 0; i < sessions.length; i++) {
+        if (sessions[i] && sessions[i].sessionId === sessionId) { thisIdx = i; break; }
+    }
+    if (thisIdx === -1) return; // session not in cache — can't bound the window
+
+    var thisSession = sessions[thisIdx];
+    var priorSession = (thisIdx + 1 < sessions.length) ? sessions[thisIdx + 1] : null;
+
+    function _confsBySong(audioSegs) {
+        var out = {};
+        var arr = Array.isArray(audioSegs) ? audioSegs : (audioSegs ? Object.values(audioSegs) : []);
+        var byTitle = {};
+        arr.forEach(function (s) {
+            if (!s || !s.songTitle || typeof s.confidence !== 'number') return;
+            var t = s.type || s.segType || 'song';
+            if (t === 'talking' || t === 'speech' || t === 'discussion' || t === 'false_start' || t === 'ignore') return;
+            if (!byTitle[s.songTitle]) byTitle[s.songTitle] = [];
+            byTitle[s.songTitle].push(s.confidence);
+        });
+        Object.keys(byTitle).forEach(function (title) {
+            var conf = byTitle[title];
+            out[title] = conf.reduce(function (a, b) { return a + b; }, 0) / conf.length;
+        });
+        return out;
+    }
+
+    var thisConfs = _confsBySong(thisSession.audio_segments);
+    var priorConfs = priorSession ? _confsBySong(priorSession.audio_segments) : {};
+
+    // ── Tightened tonight ───────────────────────────────────────────────
+    // Same delta rule as the Living Set Sheet's "Tightened significantly"
+    // signal so per-row signals and the closure card agree.
+    var tightened = [];
+    Object.keys(thisConfs).forEach(function (title) {
+        var cur = thisConfs[title];
+        var prev = priorConfs[title];
+        if (typeof prev === 'number' && (cur - prev) >= 0.15 && cur >= 0.6) {
+            tightened.push({ title: title, deltaPct: Math.round((cur - prev) * 100) });
+        }
+    });
+    tightened.sort(function (a, b) { return b.deltaPct - a.deltaPct; });
+
+    // ── Best take of the night ──────────────────────────────────────────
+    var bestTitle = null, bestConf = 0;
+    Object.keys(thisConfs).forEach(function (title) {
+        if (thisConfs[title] >= 0.7 && thisConfs[title] > bestConf) {
+            bestConf = thisConfs[title];
+            bestTitle = title;
+        }
+    });
+
+    // ── Annotation window scan (newly resolved + still needs work) ─────
+    var newlyResolved = []; // [{ title, count }]
+    var stillRough = [];    // [{ title, count }]
+
+    if (window.GLAnnotations && window.GLAnnotations.listAnnotationsByAnchor) {
+        try {
+            var allAnns = await window.GLAnnotations.listAnnotationsByAnchor({}, { includeArchived: false });
+
+            // Window for "newly resolved" — between the prior session date
+            // (or 0 if there is no prior session) and the END of this session's
+            // date. Annotations whose `updated_at` falls in that window AND
+            // whose status is 'fixed' count as resolved tonight.
+            var windowStart = priorSession && priorSession.date
+                ? new Date(priorSession.date + 'T23:59:59').getTime()
+                : 0;
+            var windowEnd = thisSession.date
+                ? new Date(thisSession.date + 'T23:59:59').getTime()
+                : Date.now();
+
+            var resolvedByTitle = {};
+            var openByTitle = {};
+            (allAnns || []).forEach(function (a) {
+                if (!a) return;
+                var key = a.anchor && a.anchor.song_id;
+                if (!key) return;
+                if (a.status === 'fixed') {
+                    if (typeof a.updated_at === 'number' && a.updated_at > windowStart && a.updated_at <= windowEnd) {
+                        resolvedByTitle[key] = (resolvedByTitle[key] || 0) + 1;
+                    }
+                } else {
+                    // Open AT the time of this session — created on or before
+                    // this session's date so it's not a brand-new note from
+                    // afterward.
+                    if (typeof a.created_at === 'number' && a.created_at <= windowEnd) {
+                        openByTitle[key] = (openByTitle[key] || 0) + 1;
+                    }
+                }
+            });
+
+            Object.keys(resolvedByTitle).forEach(function (t) {
+                newlyResolved.push({ title: t, count: resolvedByTitle[t] });
+            });
+            Object.keys(openByTitle).forEach(function (t) {
+                stillRough.push({ title: t, count: openByTitle[t] });
+            });
+        } catch (e) {}
+    }
+
+    // Cap section lengths to keep the card scannable. Hidden remainder is
+    // accessible via Song Detail / Take Review below.
+    var CAP = 4;
+    var hasContent = tightened.length || bestTitle || newlyResolved.length || stillRough.length;
+    if (!hasContent) return;
+
+    var html = '';
+    html += '<div style="font-size:0.85em;font-weight:700;color:var(--gl-text);margin-bottom:10px;display:flex;align-items:center;gap:6px">';
+    html += '<span style="font-size:1em">✨</span>';
+    html += '<span>Tonight’s progress</span>';
+    html += '</div>';
+
+    function _bulletList(items, renderItem) {
+        var capped = items.slice(0, CAP);
+        var more = items.length - capped.length;
+        var rows = capped.map(function (i) {
+            return '<div style="font-size:0.74em;color:var(--gl-text-tertiary);line-height:1.45;padding:1px 0">· ' + renderItem(i) + '</div>';
+        }).join('');
+        if (more > 0) rows += '<div style="font-size:0.66em;color:var(--text-dim);padding:1px 0;font-style:italic">…and ' + more + ' more</div>';
+        return rows;
+    }
+
+    function _section(label, color, body) {
+        return '<div style="margin-bottom:10px">'
+            + '<div style="font-size:0.7em;font-weight:700;color:' + color + ';letter-spacing:0.04em;margin-bottom:3px">' + label + '</div>'
+            + body
+            + '</div>';
+    }
+
+    if (tightened.length) {
+        html += _section('✓ TIGHTENED TONIGHT', '#22c55e',
+            _bulletList(tightened, function (i) {
+                return escHtml(i.title) + ' <span style="color:#86efac">+' + i.deltaPct + '%</span>';
+            }));
+    }
+
+    if (bestTitle) {
+        html += _section('🔥 BEST TAKE OF THE NIGHT', '#fbbf24',
+            '<div style="font-size:0.78em;color:var(--gl-text);line-height:1.4;padding:1px 0">' + escHtml(bestTitle) + '</div>');
+    }
+
+    if (newlyResolved.length) {
+        html += _section('📝 NEWLY RESOLVED', '#a78bfa',
+            _bulletList(newlyResolved, function (i) {
+                return escHtml(i.title) + ' <span style="color:var(--text-dim)">· ' + i.count + ' note' + (i.count > 1 ? 's' : '') + ' closed</span>';
+            }));
+    }
+
+    if (stillRough.length) {
+        html += _section('⚠ STILL NEEDS WORK', '#f97316',
+            _bulletList(stillRough, function (i) {
+                return escHtml(i.title) + ' <span style="color:var(--text-dim)">· ' + i.count + ' open note' + (i.count > 1 ? 's' : '') + '</span>';
+            }));
+    }
+
+    var card = document.createElement('div');
+    card.id = 'rhTonightProgress_' + sessionId;
+    card.style.cssText = 'margin-top:14px;padding:14px 16px;border-radius:12px;border:1px solid rgba(167,139,250,0.18);background:linear-gradient(135deg,rgba(99,102,241,0.05),rgba(167,139,250,0.04))';
+    card.innerHTML = html;
+    container.appendChild(card);
+}
 
 async function _rhRenderTakeReview(container, sessionId, session) {
     if (!container || !sessionId) return;

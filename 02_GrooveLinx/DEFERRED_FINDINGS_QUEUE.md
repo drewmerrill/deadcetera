@@ -847,6 +847,109 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Rehearsal Progression Memory Pass)
   - **Status:** open
 
+- **Finding:** Mark-resolved is single-tap with no confirm — instantly
+  flips the OLDEST open annotation on the unit's song to
+  `status='fixed'` via `GLAnnotations.updateAnnotation`. Spec said
+  "Simple. Fast. Human." but the absence of a confirm means an
+  accidental tap on mobile (or a misread) silently closes the wrong
+  note. There's no undo affordance in the toast either.
+  - **Why deferred:** A confirm dialog would re-introduce the "task
+    management" feel the spec explicitly forbids. The right safety
+    net is an undo (5-second toast with [Undo]) — out of scope for
+    this pass.
+  - **Trigger:** First tester reports a wrong note closed
+    accidentally, OR observed mis-tap rate is non-zero in early use.
+  - **Discovered:** 2026-05-15 (Lightweight Rehearsal Closure Pass)
+  - **Status:** open
+
+- **Finding:** Mark-resolved closes the OLDEST open annotation only.
+  When a song has multiple open notes (e.g., separate observations
+  about intro timing AND ending drift), tapping [Mark resolved]
+  picks the one created first — which may not be the one the band
+  just judged fixed. The persistent signal will still fire after
+  closing the wrong one, signalling "still rough after N rehearsals"
+  even though one issue was closed.
+  - **Why deferred:** Letting the user pick WHICH note to close from
+    a list reintroduces "open notes" workflow complexity. Today's
+    [Open notes] action already opens Song Detail where granular
+    closing is available — keeping Mark Resolved as a one-tap
+    coarse affordance feels correct.
+  - **Trigger:** First multi-note-per-song scenario reported where
+    Mark Resolved closes the wrong note, OR a "Mark all resolved"
+    affordance becomes desired.
+  - **Discovered:** 2026-05-15 (Lightweight Rehearsal Closure Pass)
+  - **Status:** open
+
+- **Finding:** Tonight's Progress card has no playback affordances —
+  the spec mentioned "quick replay of strongest take" + "quick replay
+  of unresolved section" as a "Where lightweight and useful" feature.
+  Today the best-take line is text-only (just the song title). Users
+  who want to actually listen scroll down to the Take Review card
+  below and tap the ▶ button there. Two-tap, but reasonable.
+  - **Why deferred:** Adding a ▶ Listen button to the Best Take row
+    means computing which Take row corresponds to the song's peak
+    segment then synthesizing a play call — non-trivial coordination
+    between the closure card and Take Review's audio element. The
+    Take Review surface below already provides this; pointing users
+    there with copy ("see Take Review below") is the lighter path.
+  - **Trigger:** First tester says "I want to listen to the best take
+    without scrolling," OR Take Review is consolidated into Tonight's
+    Progress.
+  - **Discovered:** 2026-05-15 (Lightweight Rehearsal Closure Pass)
+  - **Status:** open
+
+- **Finding:** Tonight's Progress "Newly resolved" section only counts
+  annotations whose `updated_at` falls between the prior-session date
+  (23:59:59) and this session date (23:59:59). If a band resolves a
+  note in the wrong rehearsal window (e.g., types up "fixed" in
+  GroovLinx between rehearsals while still listening to the recording),
+  the resolve gets attributed to whichever session-date window
+  encompasses its `updated_at`. Bounded acceptably for MVP — sessions
+  almost always run nightly and resolves stay close to the relevant
+  rehearsal — but could drift in odd cadences.
+  - **Why deferred:** Tighter attribution (e.g., "resolves within 24h
+    after rehearsal end") needs session start/end times that aren't
+    always reliable. The day-bucket heuristic is the simplest
+    correct-most-of-the-time approach.
+  - **Trigger:** Real-use observation of resolve-attribution drift.
+  - **Discovered:** 2026-05-15 (Lightweight Rehearsal Closure Pass)
+  - **Status:** open
+
+- **Finding:** Carry-forward UX is implicit, not explicit — there's
+  no [Bring this back next rehearsal] button. Songs with open
+  annotations automatically carry into the next session's
+  progression signals via the existing `_rhBuildAnnotationAge` path.
+  The spec listed explicit carry-forward as a "Required improvement,"
+  but adding a button would either (a) duplicate "Still needs work"
+  (no real signal added), or (b) create a tag system that's the
+  task-management creep the spec explicitly forbids. Reading
+  implicit-carry-forward as compliant with spec intent.
+  - **Why deferred:** Explicit carry-forward would need a per-song
+    "needs another pass" flag, which is a tag/task primitive. Spec
+    intent (continuity) is met without it.
+  - **Trigger:** First tester reports "I want to mark a song as
+    'definitely bring this back' without leaving a comment."
+  - **Discovered:** 2026-05-15 (Lightweight Rehearsal Closure Pass)
+  - **Status:** open
+
+- **Finding:** Tonight's Progress positive-signal scarcity may need
+  tuning — the card only shows ✓ Tightened songs that gained ≥0.15
+  in confidence between consecutive sessions. On a stable rehearsal
+  where nothing changed much (band is already locked in), the
+  Tightened section will be empty + the Best Take + Newly Resolved
+  sections might also be empty → entire card hidden. The closure
+  experience disappears precisely when the band is at peak quality,
+  which is the inverse of desirable.
+  - **Why deferred:** A "we're locked in tonight" positive signal
+    when nothing improved-or-degraded is its own UX problem — risks
+    feeling patronizing or generic. Better to observe whether real
+    bands hit this empty-card state and report it.
+  - **Trigger:** Drew or tester reports running a tight rehearsal
+    where the Tonight's Progress card was empty/hidden, OR a "Steady
+    tonight — nothing regressed" signal becomes worth designing.
+  - **Discovered:** 2026-05-15 (Lightweight Rehearsal Closure Pass)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.
