@@ -84,6 +84,27 @@ orphan helpers, broken fallbacks.
     coherence pass)
   - **Status:** open
 
+- **Finding:** GLAnnotations cache has **no realtime listener** — other
+  band members or other tabs see new annotations only on their next
+  load. Single-band single-user works fine; multi-user concurrent
+  editing could surface stale reads.
+  - **Why deferred:** Phase 1 deliberately skipped realtime to keep the
+    primitive small. The cache invalidates on local writes; cross-tab
+    invalidation needs a Firebase `.on('value')` subscription.
+  - **Trigger:** First multi-user collision report, OR Phase 3 (Annotated
+    Review) where two members annotating the same playback are likely.
+  - **Discovered:** 2026-05-15 (Phase 1 build, gl-annotations.js)
+  - **Status:** open
+
+- **Finding:** Annotation `song_id` field stores a song **title string**
+  during the songs_v2 migration window — same fragility class as the
+  Take↔Song string-ref entry above. Two debts share one root cause.
+  - **Why deferred:** Identical to the Take entry. Phase 2 of the spec
+    converts both at once when the songs_v2 migration completes.
+  - **Trigger:** Phase 2 of the proposal, OR the next song rename.
+  - **Discovered:** 2026-05-15 (Phase 1 build, song-detail.js call site)
+  - **Status:** open
+
 - **Finding:** `rehearsal_mixdowns.audio_url` is a local-blob field that
   was never meant to persist — leftover from an earlier upload flow.
   Sits next to the canonical `drive_url`; confusing for any future reader.
@@ -210,7 +231,13 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
     `02_GrooveLinx/specs/rehearsal_song_dna_relationship_model.md`,
     OR any tagging/cross-anchor feature request.
   - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
-  - **Status:** open
+  - **Phase 1 active:** 2026-05-15 — `js/core/gl-annotations.js` shipped
+    as the canonical store at `bands/{slug}/annotations/{id}` with the
+    full anchor + tagged_members + status schema. Song Detail is the
+    single proof-point surface; legacy paths remain untouched. Migration
+    of the 5+ legacy paths into this primitive remains future work
+    (Phase 2+).
+  - **Status:** in-progress
 
 - **Finding:** Takes (audio segments) reference songs by **title string**
   (`audio_segments[].songTitle`), not by `songId`. Fragile under the

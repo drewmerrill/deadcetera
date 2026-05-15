@@ -592,6 +592,14 @@ async function _sdPopulateBandLens(title) {
         '<div class="sd-notes-sub" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">Rehearsal Notes</div>'+
         _sdRenderRehearsalNotes(rehearsalNotes)+
         '</div></div></details>'+
+        // Phase 1 \u2014 Annotation primitive proof point. Coexists with the
+        // legacy "Band Notes" card above (Stage Crib + Rehearsal Notes);
+        // does not migrate them. See spec
+        // 02_GrooveLinx/specs/rehearsal_song_dna_relationship_model.md
+        '<details class="sd-details" id="sd-annotations-details"><summary class="sd-details-summary">\uD83D\uDCDD Annotations <span id="sd-ann-summary-count" style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">loading\u2026</span></summary>'+
+        '<div style="padding:12px 0">'+
+        '<div class="sd-card" id="sd-annotations-card"><div style="font-size:0.78em;color:var(--text-dim);padding:6px">Loading annotations\u2026</div></div>'+
+        '</div></details>'+
         '<details class="sd-details"><summary class="sd-details-summary">\uD83D\uDCE6 Assets & Practice <span style="font-size:0.72em;font-weight:500;color:var(--text-dim);margin-left:4px">tap to expand</span></summary>'+
         '<div style="padding:12px 0">'+
         '<div class="sd-card" style="padding:10px 14px"><div class="sd-card-title" style="margin-bottom:8px">\uD83D\uDCE6 Song Assets</div><div id="sd-assets" style="display:flex;flex-wrap:wrap;gap:6px;font-size:0.75em"><span style="color:var(--text-dim)">Loading...</span></div></div>'+
@@ -603,8 +611,216 @@ async function _sdPopulateBandLens(title) {
         var discMount = document.getElementById('sd-discussion-mount');
         if (discMount && typeof renderSongDiscussion === 'function') renderSongDiscussion(title, discMount);
         _sdRenderProspectVote(title);
+        _sdRenderAnnotations(title);
     }, 200);
 }
+
+// ── Annotations (Phase 1) ─────────────────────────────────────────────────────
+// Single proof-point surface for the Annotation primitive defined in
+// 02_GrooveLinx/specs/rehearsal_song_dna_relationship_model.md §1.5.
+// Coexists with the legacy Stage Crib / Rehearsal Notes cards above; does
+// NOT migrate them. Phase 2+ will add additional anchor surfaces.
+//
+// "song_id" passed to GLAnnotations is the song title string for now —
+// the songs_v2 migration is mid-flight; whatever id callers already use
+// for the song is what we store. When the migration completes, this
+// flips to the canonical songs_v2 id without a data shape change
+// (the annotation field is still song_id).
+
+// Per-user toggle state (which annotation statuses to show)
+window._sdAnnShowFixed = (function() {
+    try { return localStorage.getItem('gl_ann_show_fixed') === '1'; } catch(e) { return false; }
+})();
+
+function _sdAnnLabelForStatus(s) {
+    return ({ open: 'Open', in_progress: 'In Progress', fixed: 'Fixed', recheck: 'Recheck' })[s] || s;
+}
+
+function _sdAnnColorForStatus(s) {
+    return ({ open: '#fbbf24', in_progress: '#818cf8', fixed: '#22c55e', recheck: '#f59e0b' })[s] || '#94a3b8';
+}
+
+function _sdAnnMembersForTagging() {
+    return (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+}
+
+function _sdAnnMemberName(key) {
+    var arr = _sdAnnMembersForTagging();
+    for (var i = 0; i < arr.length; i++) {
+        var k = arr[i].key || arr[i];
+        if (k === key) return arr[i].name || k;
+    }
+    return key;
+}
+
+function _sdAnnRenderRow(a) {
+    var safeId = (a.id || '').replace(/'/g, "\\'");
+    var statusColor = _sdAnnColorForStatus(a.status);
+    var statusLabel = _sdAnnLabelForStatus(a.status);
+    var tagged = Array.isArray(a.tagged_members) ? a.tagged_members : [];
+    var tagsHtml = tagged.length
+        ? tagged.map(function(k) {
+            return '<span style="font-size:0.65em;font-weight:700;padding:1px 6px;border-radius:8px;background:rgba(99,102,241,0.12);color:#a5b4fc;border:1px solid rgba(99,102,241,0.25)">@' + _sdEsc(_sdAnnMemberName(k)) + '</span>';
+          }).join(' ')
+        : '<span style="font-size:0.65em;color:var(--text-dim);font-style:italic">no tags</span>';
+    var when = a.created_at ? new Date(a.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    var statusOptions = window.GLAnnotations.STATUSES.map(function(s) {
+        return '<option value="' + s + '"' + (a.status === s ? ' selected' : '') + '>' + _sdAnnLabelForStatus(s) + '</option>';
+    }).join('');
+    return ''
+        + '<div class="sd-ann-row" data-ann-id="' + _sdEsc(a.id) + '" style="padding:8px 10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;margin-bottom:6px;background:rgba(255,255,255,0.02);border-left:3px solid ' + statusColor + '">'
+            + '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">'
+                + '<div style="flex:1;min-width:0;font-size:0.85em;color:var(--text);line-height:1.4">' + _sdEsc(a.text) + '</div>'
+                + '<button onclick="sdAnnArchive(\'' + safeId + '\')" title="Archive (hide from this view)" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.85em;padding:2px 4px">×</button>'
+            + '</div>'
+            + '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+                + '<select onchange="sdAnnSetStatus(\'' + safeId + '\', this.value)" style="font-size:0.68em;padding:2px 6px;border-radius:5px;border:1px solid ' + statusColor + ';background:rgba(0,0,0,0.2);color:' + statusColor + ';font-weight:700;cursor:pointer">' + statusOptions + '</select>'
+                + tagsHtml
+                + '<span style="margin-left:auto;font-size:0.62em;color:var(--text-dim)">' + _sdEsc(_sdAnnMemberName(a.author || 'unknown')) + ' · ' + when + '</span>'
+            + '</div>'
+        + '</div>';
+}
+
+function _sdAnnRenderAddForm(songTitle) {
+    var safeSong = (songTitle || '').replace(/'/g, "\\'");
+    var members = _sdAnnMembersForTagging();
+    var memberCheckboxes = members.map(function(m) {
+        var k = m.key || m;
+        return '<label style="display:inline-flex;align-items:center;gap:4px;font-size:0.72em;padding:3px 7px;border:1px solid rgba(255,255,255,0.08);border-radius:6px;cursor:pointer;background:rgba(255,255,255,0.02)">'
+            + '<input type="checkbox" class="sd-ann-tag-cb" value="' + _sdEsc(k) + '" style="margin:0">'
+            + _sdEsc(m.name || k)
+            + '</label>';
+    }).join(' ');
+    return ''
+        + '<div id="sd-ann-form" style="padding:10px;border:1px dashed rgba(99,102,241,0.25);border-radius:8px;background:rgba(99,102,241,0.04);margin-bottom:8px">'
+            + '<div style="font-size:0.6em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">New annotation</div>'
+            + '<textarea id="sd-ann-text" rows="2" placeholder="What did you notice? Tag members to call their attention. (visible to whole band)" style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.1);border-radius:6px;color:var(--text);padding:7px 9px;font-size:0.82em;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>'
+            + '<div style="font-size:0.58em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px">Tag (attention only — not ownership)</div>'
+            + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">' + memberCheckboxes + '</div>'
+            + '<div style="display:flex;align-items:center;gap:8px">'
+                + '<select id="sd-ann-status" style="font-size:0.78em;padding:4px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.25);color:var(--text)">'
+                    + window.GLAnnotations.STATUSES.map(function(s) { return '<option value="' + s + '"' + (s === 'open' ? ' selected' : '') + '>' + _sdAnnLabelForStatus(s) + '</option>'; }).join('')
+                + '</select>'
+                + '<button onclick="sdAnnSave(\'' + safeSong + '\')" class="sd-pm-btn" style="background:rgba(34,197,94,0.15);color:#86efac;border:1px solid rgba(34,197,94,0.3);font-weight:700">Save</button>'
+                + '<button onclick="sdAnnToggleForm()" class="sd-pm-btn" style="background:none;color:var(--text-dim)">Cancel</button>'
+            + '</div>'
+        + '</div>';
+}
+
+window._sdRenderAnnotations = function(songTitle) {
+    var card = document.getElementById('sd-annotations-card');
+    var summaryCount = document.getElementById('sd-ann-summary-count');
+    if (!card) return;
+    if (typeof window.GLAnnotations === 'undefined') {
+        card.innerHTML = '<div style="font-size:0.78em;color:var(--text-dim);padding:6px">Annotation system not loaded.</div>';
+        if (summaryCount) summaryCount.textContent = '';
+        return;
+    }
+    window.GLAnnotations.listAnnotationsBySong(songTitle).then(function(rows) {
+        // Filter by per-user "show fixed" toggle
+        var visible = rows.filter(function(a) {
+            if (a.archived) return false;
+            if (!window._sdAnnShowFixed && a.status === 'fixed') return false;
+            return true;
+        });
+        var openCount = rows.filter(function(a) { return !a.archived && (a.status === 'open' || a.status === 'in_progress' || a.status === 'recheck'); }).length;
+        var fixedCount = rows.filter(function(a) { return !a.archived && a.status === 'fixed'; }).length;
+
+        if (summaryCount) {
+            summaryCount.textContent = openCount === 0 && fixedCount === 0
+                ? '· none yet'
+                : '· ' + openCount + ' open' + (fixedCount > 0 ? ' · ' + fixedCount + ' fixed' : '');
+        }
+
+        var html = '';
+        // Header row: Add button + Show-Fixed toggle
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+            + '<button onclick="sdAnnToggleForm()" class="sd-pm-btn" style="background:rgba(99,102,241,0.12);color:#a5b4fc;border:1px solid rgba(99,102,241,0.25);font-size:0.78em">+ Add Note</button>'
+            + (fixedCount > 0
+                ? '<label style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:0.7em;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="sd-ann-show-fixed-cb"' + (window._sdAnnShowFixed ? ' checked' : '') + ' onchange="sdAnnToggleShowFixed(this.checked)"> Show fixed (' + fixedCount + ')</label>'
+                : '')
+            + '</div>';
+        // Hidden form
+        html += '<div id="sd-ann-form-host" style="display:none">' + _sdAnnRenderAddForm(songTitle) + '</div>';
+        // List
+        if (visible.length === 0) {
+            html += '<div style="font-size:0.78em;color:var(--text-dim);padding:6px;font-style:italic">'
+                + (rows.length === 0
+                    ? 'No annotations yet. Tap "+ Add Note" to capture something the band should see.'
+                    : (fixedCount > 0 && !window._sdAnnShowFixed
+                        ? 'All annotations are marked Fixed. Toggle "Show fixed" above to see them.'
+                        : 'Nothing visible right now.'))
+                + '</div>';
+        } else {
+            html += visible.map(_sdAnnRenderRow).join('');
+        }
+        card.innerHTML = html;
+    }).catch(function(err) {
+        console.warn('[song-detail] annotations load failed:', err && err.message);
+        card.innerHTML = '<div style="font-size:0.78em;color:#fbbf24;padding:6px">Couldn’t load annotations · ' + _sdEsc(String((err && err.message) || err)) + '</div>';
+    });
+};
+
+window.sdAnnToggleForm = function() {
+    var host = document.getElementById('sd-ann-form-host');
+    if (!host) return;
+    host.style.display = (host.style.display === 'none' || !host.style.display) ? 'block' : 'none';
+    if (host.style.display === 'block') {
+        var ta = document.getElementById('sd-ann-text');
+        if (ta) ta.focus();
+    }
+};
+
+window.sdAnnToggleShowFixed = function(checked) {
+    window._sdAnnShowFixed = !!checked;
+    try { localStorage.setItem('gl_ann_show_fixed', checked ? '1' : '0'); } catch(e) {}
+    if (_sdCurrentSong) _sdRenderAnnotations(_sdCurrentSong);
+};
+
+window.sdAnnSave = function(songTitle) {
+    var ta = document.getElementById('sd-ann-text');
+    var statusEl = document.getElementById('sd-ann-status');
+    if (!ta) return;
+    var text = (ta.value || '').trim();
+    if (!text) { ta.focus(); return; }
+    var tagged = [];
+    document.querySelectorAll('.sd-ann-tag-cb').forEach(function(cb) {
+        if (cb.checked) tagged.push(cb.value);
+    });
+    var status = (statusEl && statusEl.value) || 'open';
+    window.GLAnnotations.createAnnotation({
+        text: text,
+        anchor: { kind: 'song', song_id: songTitle },
+        tagged_members: tagged,
+        status: status
+    }).then(function() {
+        if (typeof showToast === 'function') showToast('📝 Annotation saved');
+        _sdRenderAnnotations(songTitle);
+    }).catch(function(err) {
+        console.warn('[song-detail] annotation save failed:', err && err.message);
+        if (typeof showToast === 'function') showToast('Save failed: ' + ((err && err.message) || err));
+    });
+};
+
+window.sdAnnSetStatus = function(annId, newStatus) {
+    if (!annId) return;
+    window.GLAnnotations.updateAnnotation(annId, { status: newStatus }).then(function() {
+        if (_sdCurrentSong) _sdRenderAnnotations(_sdCurrentSong);
+    }).catch(function(err) {
+        console.warn('[song-detail] annotation status update failed:', err && err.message);
+    });
+};
+
+window.sdAnnArchive = function(annId) {
+    if (!annId) return;
+    if (!confirm('Archive this annotation? It will be hidden from views but the record stays for history.')) return;
+    window.GLAnnotations.archiveAnnotation(annId).then(function() {
+        if (typeof showToast === 'function') showToast('Annotation archived');
+        if (_sdCurrentSong) _sdRenderAnnotations(_sdCurrentSong);
+    }).catch(function(err) {
+        console.warn('[song-detail] annotation archive failed:', err && err.message);
+    });
+};
 
 // ── Focus Items Builder (Lock In) ────────────────────────────────────────────
 function _sdBuildFocusItems(title, avgReadiness, gaps, intel, lowestMembers, status) {
