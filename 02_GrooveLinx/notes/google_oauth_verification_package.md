@@ -10,7 +10,7 @@ _Prepared 2026-05-01. Use these texts verbatim in the Google Cloud Console verif
 |---|---|
 | App name | GrooveLinx |
 | User support email | drewmerrill1029@gmail.com |
-| App logo | `groovelinx-site/groovelinx_app_icon.png` (1024×1024) |
+| App logo | `icon-1024.png` (repo root, 1024×1024 PNG, verified 2026-05-15) |
 | Application home page | https://groovelinx.com |
 | Application privacy policy | https://groovelinx.com/privacy.html |
 | Application terms of service | https://groovelinx.com/terms.html |
@@ -97,36 +97,40 @@ Google's verification team requires the video to:
 **[0:15 – 0:35] OAuth consent screen**
 - Click "Sign in with Google" — sign-in prompt appears
 - Pick the Google account, then the consent screen appears
-- Slow-pan or pause on the consent screen showing the requested scopes:
-  - "View and edit events on all your calendars"
-  - "See and download any calendar you can access"
-  - "See, edit, create, and delete only the specific Google Drive files you use with this app"
-- VO: "When you sign in, GrooveLinx requests three Google scopes: read-write events on the calendars you choose, read-only access to list your calendars and check free/busy availability, and per-file Drive access via Google's Picker for rehearsal recordings."
+- **Pause 5+ seconds** on the consent screen so reviewers can read:
+  - The "This app hasn't been verified by Google" warning banner (top of screen)
+  - The three sensitive-scope checkboxes (currently unchecked — Google's granular consent flow):
+    - "See, edit, create, and delete only the specific Google Drive files you use with this app"
+    - "View and edit events on all your calendars"
+    - "See and download any calendar you can access using your Google Calendar"
+- **Check each scope checkbox on camera**, then click Continue
+- VO: "When you sign in, GrooveLinx asks for three sensitive scopes — calendar event read-write, read-only calendar listing for free/busy availability, and per-file Drive access through Google's Picker. Each is opt-in via the granular consent checkboxes. Email and profile are auto-granted; nothing else is requested."
 
 **[0:35 – 1:15] calendar.events demo (write)**
-- Inside the app, navigate to **Calendar** page
-- Click **Add Gig** → fill in "Demo Gig", venue "The Test Lounge", date/time
-- Save → toast shows "Gig saved + synced to Google Calendar"
+- Inside the app, navigate to the **Schedule** page
+- In the SCHEDULE action zone, click **+ Gig**
+- Fill in: Title "Demo Gig", Venue "The Test Lounge", date/time
+- Save → toast confirms "Gig saved + synced to Google Calendar"
 - Switch tab to https://calendar.google.com — show the new event appearing on the connected calendar
-- VO: "Adding a gig in the app calls `events.insert` to write that gig to the band's shared Google Calendar so every member sees it. Editing or canceling calls `events.patch` or `events.delete` the same way."
+- VO: "Adding a gig writes the event to the band's shared Google Calendar via `events.insert` — every band member sees it on their calendar through Google's normal sharing model. Editing or canceling triggers `events.patch` or `events.delete` the same way."
 
 **[1:15 – 1:45] calendar.readonly demo (calendar list + freeBusy)**
-- Back in the app → **Admin** → **Calendar Settings** (or wherever the band-calendar picker lives)
-- Show the dropdown of calendars (this is `calendarList.list`)
-- VO: "Listing your calendars uses `calendarList.list` from the read-only scope. When a band member opens the scheduling UI..."
-- Open the rehearsal scheduling page (or wherever freeBusy results show up — e.g., gig availability widget)
-- VO: "...the app runs `freeBusy.query` against each member's primary calendar so we can suggest times when nobody has a conflict. Only busy/free time ranges are returned — never event titles or details."
+- Back in the app → **Schedule** page → click **Set Up Band Calendar** (the band-calendar picker)
+- Show the dropdown of available calendars (this is `calendarList.list`)
+- VO: "Listing your calendars uses `calendarList.list` from the read-only scope so the user can pick which calendar is the band calendar."
+- Scroll up to the rehearsal-scheduling area where the **Recommended next rehearsal** card appears
+- VO: "When the scheduling UI loads, the app runs `freeBusy.query` against each band member's primary calendar to suggest times when nobody has a conflict. Only busy/free time ranges are returned — never event titles, locations, or attendees."
 
 **[1:45 – 2:15] drive.file demo (Picker)**
-- Open a rehearsal session → "Recordings" → "+ Add Recording"
+- Open a rehearsal session → "Recordings" → **+ Add Recording**
 - Click **📂 Pick from Google Drive**
 - Google Picker dialog opens — pick an audio file
 - Recording appears in the list, plays back inline
-- VO: "When a band member uploads a rehearsal recording from Drive, they pick the file via Google's Picker — the app only ever sees files explicitly selected this way. This is the non-sensitive `drive.file` scope; the app never browses or scans the user's Drive."
+- VO: "When a band member uploads a rehearsal recording from Drive, they pick the file via Google's Picker. The app only ever sees the file they explicitly select — this is the non-sensitive `drive.file` scope; the app never browses or scans the user's Drive."
 
 **[2:15 – 2:30] Wrap**
 - Back to app home
-- VO: "All three scopes are requested only because they're directly required by core features that the band sees and uses. We removed broader scopes like `drive.readonly` and full `calendar` in our 2026-05-01 cleanup."
+- VO: "All three sensitive scopes are requested only because they're directly required by core features the band sees and uses. We removed broader scopes like `drive.readonly` and full `calendar` in our 2026-05-01 cleanup."
 
 ### Submitting the video
 
@@ -142,7 +146,7 @@ Before clicking "Submit for verification":
 
 - [ ] Consent screen shows exactly the 5 scopes listed in §2 (no extras)
 - [ ] App logo uploaded (1024×1024 PNG)
-- [ ] Privacy + Terms URLs return HTTP 200 (verified 2026-05-01)
+- [ ] Privacy + Terms URLs return HTTP 200 (re-verified 2026-05-15: privacy.html ✓, terms.html ✓, home ✓)
 - [ ] `groovelinx.com` listed under Authorized domains
 - [ ] All 3 sensitive-scope justifications pasted (§3)
 - [ ] Demo video uploaded, set to Unlisted, URL ready to paste
