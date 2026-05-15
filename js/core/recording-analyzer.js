@@ -2152,6 +2152,16 @@ window.RecordingAnalyzer = (function() {
           if (_planVsActual) await firebaseDB.ref(sessPath + '/plan_vs_actual').set(_planVsActual);
         }
 
+        // Phase 2: additive Take normalization. Editing segments here also
+        // refreshes the canonical bands/{slug}/takes/{takeId} records so
+        // annotations / future intelligence keep stable foreign keys without
+        // blocking the legacy audio_segments write or the report regen below.
+        if (typeof window.GLTakes !== 'undefined' && window.GLTakes.normalizeRehearsalSegments) {
+          window.GLTakes.normalizeRehearsalSegments(_currentSessionId, activeSegs)
+            .then(function(r) { console.log('[GLTakes] normalized', (r && r.created || []).length, 'takes after edit for session', _currentSessionId); })
+            .catch(function(err) { console.warn('[GLTakes] normalize after edit failed:', err && err.message); });
+        }
+
         var result = await RehearsalAnalysis.run(_currentSessionId, {
           audioBuffer: _currentAudioBuffer,
           force: true

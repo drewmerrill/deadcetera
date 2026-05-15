@@ -329,6 +329,15 @@ window._rhSaveRecreatedSession = async function() {
                         db2.ref(bandPath('rehearsal_sessions/' + sessionId + '/audio_segments')).set(result.segments);
                     }
                 }
+                // Phase 2: additive Take normalization. Mirrors the segment array into
+                // bands/{slug}/takes/{takeId} so annotations and downstream intelligence
+                // can hold stable foreign keys. Failure here never blocks the legacy
+                // audio_segments write or the timeline UI.
+                if (typeof window.GLTakes !== 'undefined' && window.GLTakes.normalizeRehearsalSegments) {
+                    window.GLTakes.normalizeRehearsalSegments(sessionId, result.segments)
+                        .then(function(r) { console.log('[GLTakes] normalized', (r && r.created || []).length, 'takes for session', sessionId); })
+                        .catch(function(err) { console.warn('[GLTakes] normalize after analysis failed:', err && err.message); });
+                }
                 if (typeof showToast === 'function') showToast('\u2705 Analysis complete \u2014 ' + result.segments.length + ' segments detected');
                 // Show the timeline for this session
                 if (typeof _rhShowSessionReport === 'function') _rhShowSessionReport(sessionId);

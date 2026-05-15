@@ -249,7 +249,18 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Trigger:** Phase 2 of the Rehearsal ↔ Song DNA proposal,
     OR the next song rename, whichever comes first.
   - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
-  - **Status:** open
+  - **Phase 2 active:** 2026-05-15 — `js/core/gl-takes.js` shipped as
+    the canonical Take store at `bands/{slug}/takes/{takeId}` with
+    `song_id` resolved via `getSongByTitle()` when unambiguous (kept
+    `null` + `song_title` populated when the title is ambiguous, so
+    the migration window doesn't drop data). Additive normalization
+    hooks on the two existing `audio_segments` writers
+    (`rehearsal.js:325`, `recording-analyzer.js:2141`) call
+    `GLTakes.normalizeRehearsalSegments()`. Legacy `audio_segments[]`
+    path remains the source of truth for the analyzer / timeline UI;
+    full migration to take FKs (and elimination of `songTitle`) is
+    later-phase work.
+  - **Status:** in-progress
 
 - **Finding:** `rehearsal_mixdowns` records (Recordings) link back to a
   Rehearsal only via a free-text `rehearsal_date` string. No FK to
@@ -260,6 +271,36 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
     without it.
   - **Trigger:** Phase 3 of the proposal.
   - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
+  - **Status:** open
+
+- **Finding:** Phase 2 Takes are written with `recording_id: null` by
+  default — the recording analyzer runs from a transient blob, not from
+  a persisted `rehearsal_mixdowns/{id}` row, so there is no FK to
+  attach. The Take's `playback_ref.recording_id` is therefore also
+  unset; playback today flows through the legacy `audio_segments[]`
+  path on the rehearsal session.
+  - **Why deferred:** Recording↔Rehearsal FK (entry above) is the
+    upstream prerequisite. Once that lands, the analyzer can resolve
+    or create a `rehearsal_mixdowns` row first and pass its id into
+    `GLTakes.normalizeRehearsalSegments({ recording_id })`.
+  - **Trigger:** Phase 3 of the proposal, OR the first feature that
+    needs to play a take from a stable URL (e.g. cross-rehearsal Song
+    Detail history).
+  - **Discovered:** 2026-05-15 (Phase 2 build, gl-takes.js)
+  - **Status:** open
+
+- **Finding:** Phase 2 take-number bucketing keys on
+  `(rehearsal_id, song_id || song_title || '__unknown__')`. Takes that
+  enter with `song_id=null` (ambiguous title) live in a separate bucket
+  from same-title takes that resolved cleanly — and if the title later
+  resolves to a real songId, those numbers do NOT renumber.
+  - **Why deferred:** Renumbering on resolve would race with annotation
+    references to the old number; the safer fix is to wait for the
+    songs_v2 migration to finish so resolution is deterministic at
+    write time.
+  - **Trigger:** songs_v2 migration completion, OR a tester reports a
+    take labelled "Take 2" appearing before "Take 1" in a per-song view.
+  - **Discovered:** 2026-05-15 (Phase 2 build, gl-takes.js)
   - **Status:** open
 
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
