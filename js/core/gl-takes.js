@@ -244,6 +244,36 @@
     if (typeof patch.boundary_confidence === 'string') safe.boundary_confidence = patch.boundary_confidence;
     safe.updated_at = Date.now();
 
+    // Phase 3B: when a human correction overwrites an existing assignment,
+    // auto-capture the prior auto guess into matching.previous_auto_guess.
+    // Lets the calibration surface display "analyzer thought X, you said Y"
+    // without a separate correction-history store. Read happens from cache —
+    // no extra Firebase round-trip.
+    if (safe.matching && safe.matching.correction_source === 'human' && _cache && _cache[id]) {
+      var prior = _cache[id];
+      var priorMatching = prior.matching || {};
+      var titleChanging = (typeof safe.song_title === 'string') && safe.song_title !== prior.song_title;
+      var idChanging = (typeof safe.song_id === 'string' || safe.song_id === null) && safe.song_id !== prior.song_id;
+      var wasAuto = priorMatching.correction_source !== 'human'; // don't stomp the first human guess with a later human guess
+      if ((titleChanging || idChanging) && wasAuto && !safe.matching.previous_auto_guess) {
+        safe.matching.previous_auto_guess = {
+          song_id: prior.song_id || null,
+          song_title: prior.song_title || null,
+          confidence: priorMatching.confidence || null,
+          confidence_reason: priorMatching.confidence_reason || null,
+          candidate_pool: priorMatching.candidate_pool || null,
+          captured_at: Date.now()
+        };
+        if (window.GLObs && window.GLObs.log) {
+          window.GLObs.log('GLTakes', 'previous_auto_guess captured', {
+            takeId: id,
+            from: prior.song_title || '(unresolved)',
+            to: safe.song_title || '(unresolved)'
+          });
+        }
+      }
+    }
+
     return db.ref(p).update(safe).then(function () {
       if (_cache && _cache[id]) {
         Object.keys(safe).forEach(function (k) { _cache[id][k] = safe[k]; });
@@ -492,11 +522,28 @@
         return updateTake(u.id, u.patch);
       }));
       return Promise.all([createPromise, refreshPromise]).then(function (results) {
-        return {
+        var result = {
           created: results[0],
           skipped: skipped,
           protected: protectedFromOverwrite
         };
+        // Phase 3B observability: structured summary of the normalize pass.
+        // Off by default; emits only when calibration mode is on.
+        if (window.GLObs && window.GLObs.log) {
+          var unresolved = 0;
+          (result.created || []).forEach(function (t) {
+            if (!t || !t.song_id) unresolved++;
+          });
+          window.GLObs.log('GLTakes', 'normalize pass', {
+            rehearsal_id: rehearsalId,
+            created: (result.created || []).length,
+            unresolved: unresolved,
+            skipped: skipped,
+            protected: protectedFromOverwrite,
+            segments_in: segments.length
+          });
+        }
+        return result;
       });
     }).catch(function (err) {
       console.warn('[GLTakes] normalize failed:', err && err.message);

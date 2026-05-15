@@ -3783,10 +3783,21 @@ async function _rhRenderTakeReview(container, sessionId, session) {
     var audioUrl = (session && session.recording_url) || '';
     if (audioUrl && audioUrl.indexOf('blob:') === 0) audioUrl = ''; // blobs don't survive
 
+    // Phase 3B: calibration mode toggle. When on, GLObs surfaces appear inline
+    // in this card. When off (default), the card stays Phase-3A-clean.
+    var calMode = !!(window.GLObs && window.GLObs.isEnabled && window.GLObs.isEnabled());
+    if (calMode && window.GLObs && window.GLObs.log) {
+        window.GLObs.log('TakeReview', 'render', {
+            sessionId: sessionId,
+            takes: takes.length,
+            audioUrl: audioUrl || '(none)'
+        });
+    }
+
     var card = document.createElement('div');
     card.id = 'rhTakeReviewCard_' + sessionId;
     card.style.cssText = 'margin-top:14px;padding:14px;border-radius:12px;border:1px solid rgba(99,102,241,0.16);background:rgba(99,102,241,0.04)';
-    card.innerHTML = _rhTakeReviewHTML(takes, sessionId, audioUrl);
+    card.innerHTML = _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode);
     container.appendChild(card);
 
     var audioEl = document.getElementById('rhTakeReviewAudio_' + sessionId);
@@ -3795,7 +3806,7 @@ async function _rhRenderTakeReview(container, sessionId, session) {
     }
 }
 
-function _rhTakeReviewHTML(takes, sessionId, audioUrl) {
+function _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode) {
     var counts = { human: 0, unresolved: 0, low: 0 };
     takes.forEach(function (t) {
         if (t.matching && t.matching.correction_source === 'human') counts.human++;
@@ -3813,6 +3824,11 @@ function _rhTakeReviewHTML(takes, sessionId, audioUrl) {
         + '<div style="font-size:0.7em;color:var(--text-dim)">' + escHtml(summary) + '</div>'
         + '</div>';
 
+    // Phase 3B: calibration banner — only shown when GLObs is enabled.
+    if (calMode) {
+        html += _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl);
+    }
+
     if (!audioUrl) {
         html += '<div style="font-size:0.7em;color:#fbbf24;background:rgba(251,191,36,0.06);padding:6px 10px;border-radius:6px;margin-bottom:10px">'
             + 'No persistent audio attached to this rehearsal — playback disabled. Attach a recording via Mixdowns to enable play.'
@@ -3823,7 +3839,7 @@ function _rhTakeReviewHTML(takes, sessionId, audioUrl) {
 
     html += '<div style="display:flex;flex-direction:column;gap:6px">';
     for (var i = 0; i < takes.length; i++) {
-        html += _rhTakeRowHTML(takes[i], sessionId, !!audioUrl);
+        html += _rhTakeRowHTML(takes[i], sessionId, !!audioUrl, calMode);
     }
     html += '</div>';
 
@@ -3834,7 +3850,55 @@ function _rhTakeReviewHTML(takes, sessionId, audioUrl) {
     return html;
 }
 
-function _rhTakeRowHTML(take, sessionId, audioAvailable) {
+// Phase 3B: calibration banner that sits between the card header and the
+// rows. Surfaces audio-source identity + continuity observations + a
+// quick-disable link. Compact by default; details expand on demand.
+function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl) {
+    var audio = (window.GLObs && window.GLObs.summarizeAudioSource)
+        ? window.GLObs.summarizeAudioSource(session || {})
+        : null;
+    var obs = (window.GLObs && window.GLObs.analyzeTakeContinuity)
+        ? window.GLObs.analyzeTakeContinuity(takes)
+        : [];
+
+    var html = '<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;border:1px dashed rgba(167,139,250,0.35);background:rgba(167,139,250,0.06)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">'
+            + '<div style="font-size:0.72em;font-weight:600;color:#a78bfa">🔬 Calibration mode</div>'
+            + '<button onclick="if(window.GLObs){GLObs.disable();}var c=document.getElementById(\'rhTimelineSection\');if(c&&window._rhShowSessionReport){_rhShowSessionReport(\'' + escHtml(sessionId) + '\')}" style="font-size:0.65em;padding:2px 8px;border-radius:6px;border:1px solid rgba(167,139,250,0.3);background:transparent;color:#a78bfa;cursor:pointer">Disable</button>'
+        + '</div>';
+
+    // Audio source diagnostic
+    if (audio) {
+        var originColor = audio.hasPersistent ? '#10b981' : (audio.isBlob ? '#ef4444' : '#64748b');
+        html += '<div style="font-size:0.66em;color:var(--text-dim);margin-bottom:4px">'
+            + '<span style="color:' + originColor + ';font-weight:500">audio.origin:</span> ' + escHtml(audio.origin)
+            + ' · <span style="color:var(--text-dim)">persistent:</span> ' + (audio.hasPersistent ? 'yes' : 'no')
+            + (audio.isBlob ? ' · <span style="color:#ef4444">⚠ blob URL — session-scoped only</span>' : '')
+            + '</div>';
+        html += '<div style="font-size:0.62em;color:var(--text-dim);margin-bottom:6px">'
+            + escHtml(audio.mixdownLookupNote)
+            + '</div>';
+    }
+
+    // Continuity observations
+    if (obs && obs.length) {
+        html += '<div style="font-size:0.66em;color:#a78bfa;font-weight:500;margin-top:4px">Continuity signals (' + obs.length + ')</div>';
+        html += '<ul style="margin:3px 0 0 16px;padding:0;font-size:0.64em;color:var(--text-dim);line-height:1.5">';
+        obs.slice(0, 6).forEach(function (o) {
+            var sevColor = (o.severity === 'warning') ? '#f59e0b' : '#a78bfa';
+            html += '<li><span style="color:' + sevColor + '">' + escHtml(o.kind) + '</span> — ' + escHtml(o.message) + '</li>';
+        });
+        if (obs.length > 6) html += '<li>… and ' + (obs.length - 6) + ' more</li>';
+        html += '</ul>';
+    } else {
+        html += '<div style="font-size:0.62em;color:var(--text-dim);margin-top:4px">No continuity signals.</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
+function _rhTakeRowHTML(take, sessionId, audioAvailable, calMode) {
     if (!take) return '';
     var matching = take.matching || {};
     var conf = matching.confidence || 'unknown';
@@ -3913,6 +3977,10 @@ function _rhTakeRowHTML(take, sessionId, audioAvailable) {
     var correctLabel = unresolved ? 'Assign …' : 'Correct …';
     var correctBtn = '<button onclick="window._rhTakeOpenCorrect(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\')" style="flex-shrink:0;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:#94a3b8;cursor:pointer;font-size:0.72em;align-self:flex-start">' + correctLabel + '</button>';
 
+    // Phase 3B: per-row diagnostics. Only rendered when calibration mode is
+    // on; collapsed by default to keep the page calm.
+    var diagHtml = calMode ? _rhTakeRowDiagnosticsHTML(take) : '';
+
     return '<div class="rh-take-row" data-take-id="' + escHtml(take.id) + '" style="display:flex;align-items:flex-start;gap:10px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);flex-wrap:wrap">'
         + playBtn
         + '<div style="flex:1;min-width:160px">'
@@ -3920,9 +3988,77 @@ function _rhTakeRowHTML(take, sessionId, audioAvailable) {
             + '<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:center">' + chips + '</div>'
             + suggestHtml
             + '<div id="rhTakeCorrectForm_' + escHtml(take.id) + '" style="display:none;margin-top:6px"></div>'
+            + diagHtml
         + '</div>'
         + correctBtn
         + '</div>';
+}
+
+// Phase 3B: per-row diagnostic <details>. Lazy expansion — content stays in
+// the DOM but the browser only paints it when the <summary> is clicked.
+// Compact layout: short key:value pairs, no JSON dumps, no waveform.
+function _rhTakeRowDiagnosticsHTML(take) {
+    var m = take.matching || {};
+    var rawCount = Array.isArray(take.raw_markers) ? take.raw_markers.length : 0;
+    var markerKinds = {};
+    if (Array.isArray(take.raw_markers)) {
+        take.raw_markers.forEach(function (r) {
+            var k = (r && r.kind) || 'unknown';
+            markerKinds[k] = (markerKinds[k] || 0) + 1;
+        });
+    }
+    var markerKindStr = Object.keys(markerKinds).map(function (k) {
+        return k + ':' + markerKinds[k];
+    }).join(' ') || '—';
+
+    var rows = [
+        ['take.id',              take.id],
+        ['segment_id',           take.segment_id || '—'],
+        ['song_id',              take.song_id || '—'],
+        ['song_title',           take.song_title || '—'],
+        ['take_number',          (take.take_number != null) ? String(take.take_number) : '—'],
+        ['rehearsal_id',         take.rehearsal_id || '—'],
+        ['recording_id',         take.recording_id || '— (Phase 3+ FK)'],
+        ['boundary_confidence',  take.boundary_confidence || '—'],
+        ['raw_markers (n)',      String(rawCount) + (rawCount ? ' [' + markerKindStr + ']' : '')],
+        ['matching.candidate_pool',   m.candidate_pool || '—'],
+        ['matching.confidence',       m.confidence || '—'],
+        ['matching.confidence_reason', m.confidence_reason || '—'],
+        ['matching.correction_source', m.correction_source || '—']
+    ];
+
+    // Previous auto guess — populated by gl-takes.js when a human correction
+    // overwrites an existing assignment.
+    if (m.previous_auto_guess && m.previous_auto_guess.song_title) {
+        rows.push(['previous_auto_guess',
+            (m.previous_auto_guess.song_title || '—')
+            + ' (' + (m.previous_auto_guess.confidence || '?')
+            + (m.previous_auto_guess.confidence_reason ? ' · ' + m.previous_auto_guess.confidence_reason : '')
+            + ')']);
+    }
+
+    if (Array.isArray(m.top_suggestions) && m.top_suggestions.length) {
+        var sugStr = m.top_suggestions.map(function (s) {
+            if (!s) return '';
+            var sc = (typeof s.score === 'number') ? (' ' + s.score.toFixed(2)) : '';
+            return (s.title || '?') + sc;
+        }).filter(Boolean).join(' · ');
+        rows.push(['top_suggestions', sugStr]);
+    }
+
+    var listHtml = rows.map(function (r) {
+        return '<div style="display:flex;gap:6px;font-size:0.62em;line-height:1.4">'
+            + '<span style="color:#a78bfa;min-width:160px;flex-shrink:0">' + escHtml(r[0]) + '</span>'
+            + '<span style="color:var(--text-dim);word-break:break-all">' + escHtml(String(r[1])) + '</span>'
+            + '</div>';
+    }).join('');
+
+    return '<details style="margin-top:6px;font-size:0.7em">'
+        + '<summary style="cursor:pointer;color:#a78bfa;list-style:none;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed rgba(167,139,250,0.3);background:rgba(167,139,250,0.04)">🔬 Diagnostics</summary>'
+        + '<div style="margin-top:6px;padding:8px;border-radius:6px;background:rgba(0,0,0,0.18);border:1px solid rgba(167,139,250,0.18)">'
+        + listHtml
+        + '</div>'
+        + '</details>';
 }
 
 function _rhFormatTakeDuration(sec) {

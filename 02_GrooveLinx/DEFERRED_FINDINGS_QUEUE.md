@@ -462,6 +462,96 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Phase 3A build)
   - **Status:** open
 
+- **Finding:** Phase 3B calibration toggle is hidden by design (URL
+  `?calibration=1`, `localStorage.gl_analyzer_calibration='1'`, or
+  `GLObs.enable()` in console). There is **no visible enable affordance**
+  in the app — a new admin who doesn't know about the flag won't find
+  it. Trade-off: keeping the UI calm for band members vs discoverability
+  for founders/operators.
+  - **Why deferred:** Visible-but-gated UI (e.g. an Admin Settings entry)
+    would require deciding what counts as "admin" + plumbing through
+    the existing `gl_dev_mode` flag. The console toggle is good enough
+    while only Drew uses calibration mode.
+  - **Trigger:** A second founder/operator joins ops, OR the admin
+    settings surface is consolidated.
+  - **Discovered:** 2026-05-15 (Phase 3B — Analyzer Calibration +
+    Observability Layer)
+  - **Status:** open
+
+- **Finding:** `GLObs.analyzeTakeContinuity` is observation-only today
+  — it emits `adjacent_same_song`, `unresolved_cluster`,
+  `restart_loop_candidate`, and `short_take_run` signals that the
+  calibration banner renders, but no downstream consumer reacts to
+  them. The signals are visible, not actionable.
+  - **Why deferred:** Phase 3B spec explicitly says "DO NOT solve
+    continuity yet. Just expose signals." A continuity engine that
+    auto-merges adjacent same-song takes (or flags loops to the user)
+    is the natural Phase 4 follow-up.
+  - **Trigger:** Phase 4 continuity engine, OR Drew observes the same
+    signal repeatedly enough to justify a fix.
+  - **Discovered:** 2026-05-15 (Phase 3B build)
+  - **Status:** open
+
+- **Finding:** Phase 3B `previous_auto_guess` is captured only when a
+  human correction overwrites a take that previously had
+  `correction_source !== 'human'`. If the same take is corrected twice
+  by humans (e.g. Drew picks "Sugaree", then Pierce picks
+  "Brown Eyed Women"), only the first correction's prior auto guess
+  survives — Pierce's correction won't capture Drew's choice as a
+  "prior".
+  - **Why deferred:** Multi-hop correction history needs a small
+    append-only log on the Take (or a separate annotation per
+    correction). The single-slot field is enough for "analyzer vs
+    human" diagnostics, which is the primary Phase 3B use case.
+  - **Trigger:** First time two band members re-correct the same take,
+    OR cross-rehearsal correction learning (Phase 5+) starts to need
+    a richer history.
+  - **Discovered:** 2026-05-15 (Phase 3B build, gl-takes.js
+    updateTake)
+  - **Status:** open
+
+- **Finding:** Calibration banner's audio-source diagnostic reports
+  `mixdownLookupAvailable: false` with the note "Mixdown lookup is not
+  implemented in Phase 3B" — surfacing the same gap as the standing
+  Phase 3A Mixdown finding above, but doing nothing new about it. The
+  diagnostic is informational; the gap remains.
+  - **Why deferred:** Linked to the Phase 3A mixdown finding above.
+    Resolving both at once when Phase 3B+ adds the mixdown→session
+    join.
+  - **Trigger:** Same as the Phase 3A mixdown finding.
+  - **Discovered:** 2026-05-15 (Phase 3B build, GLObs.summarizeAudioSource)
+  - **Status:** open
+
+- **Finding:** GLObs.log is gated only at the call site
+  (`if (window.GLObs && window.GLObs.isEnabled())`). Every gated log
+  pays a function-call overhead even when OFF (the arg expressions
+  still evaluate, even though the log doesn't print). The cost is
+  negligible in practice, but the pattern can drift — a future log
+  with an expensive payload computation (e.g. building a JSON dump
+  before passing it in) would still pay that cost when calibration
+  mode is off.
+  - **Why deferred:** Migrating every call site to a lambda-based API
+    (`GLObs.log('Group', 'event', function() { return expensivePayload(); })`)
+    is overkill for today's payload shapes. Document the pattern; revisit
+    when a callsite genuinely needs lazy evaluation.
+  - **Trigger:** A real log site with non-trivial payload-building cost.
+  - **Discovered:** 2026-05-15 (Phase 3B build)
+  - **Status:** open
+
+- **Finding:** Calibration mode is global — once on, every Take
+  Review card in every rehearsal session gets diagnostics. There's no
+  per-session "calibrate just this rehearsal" toggle. Acceptable today
+  (founder works in their own browser), but if the toggle ever ships
+  to non-founders, a band member could toggle it on and accidentally
+  send a screenshot full of internal IDs to the band chat.
+  - **Why deferred:** Phase 3B explicitly admin-only. Per-session
+    scoping is a Phase 5+ concern once roles + permissions matter.
+  - **Trigger:** Any non-founder access to calibration mode, OR
+    consolidation of band-member-visible diagnostics into a separate
+    public-facing surface.
+  - **Discovered:** 2026-05-15 (Phase 3B build)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.

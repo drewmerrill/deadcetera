@@ -505,7 +505,16 @@ window.SongMatchingEngine = (function() {
     var onlyPlanActive = best.activeSignalCount <= 1 && best.signals && best.signals.planMatch > 0;
     if (onlyPlanActive) {
       confidence = 'low';
-      console.log('[SongMatch] Plan-only match for segment ' + (segment._matchIndex || '?') + ': ' + best.title + ' (score=' + best.score + ') — forced LOW confidence (no audio evidence)');
+      // Phase 3B: gate behind GLObs so production console stays clean. The
+      // signal itself (forced LOW + plan_only_no_audio reason) reaches the
+      // UI via seg.matching regardless.
+      if (window.GLObs && window.GLObs.isEnabled && window.GLObs.isEnabled()) {
+        window.GLObs.log('Matcher', 'plan-only forced LOW', {
+          segIndex: segment._matchIndex || '?',
+          title: best.title,
+          score: best.score
+        });
+      }
     }
 
     // Signal disagreement detection: strong signals pointing at different songs
