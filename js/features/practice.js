@@ -314,7 +314,7 @@ function _pmRenderSectionB(resumeInfo) {
             '<div class="pm-quick-note">'+
             '  <button class="pm-chip pm-chip-quick-note" onclick="_pmOpenQuickNote()" title="Jot a personal note about this practice session">📝 Quick Note</button>'+
             '  <div id="pm-quick-note-form" class="pm-quick-note-form" hidden>'+
-            '    <textarea id="pm-quick-note-text" placeholder="What do you want to remember about this session?" rows="2"></textarea>'+
+            '    <textarea id="pm-quick-note-text" placeholder="What do you want to revisit later? Problem spots, breakthroughs, things to fix… (saved with this practice session)" rows="2"></textarea>'+
             '    <div class="pm-quick-note-actions">'+
             '      <button class="pm-chip" onclick="_pmSaveQuickNote()">Save</button>'+
             '      <button class="pm-chip pm-chip-ghost" onclick="_pmCloseQuickNote()">Cancel</button>'+

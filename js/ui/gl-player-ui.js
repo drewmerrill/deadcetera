@@ -22,9 +22,13 @@ window.GLPlayerUI = (function() {
     var _floatEl = null;
     var _barEl = null;
 
-    var _sourceLabels = { youtube: 'YouTube', spotify: 'Spotify', archive: 'Archive' };
-    var _sourceIcons = { youtube: '\u25B6', spotify: '\uD83C\uDFB5', archive: '\uD83C\uDFDB\uFE0F' };
-    var _sourceColors = { youtube: '#f87171', spotify: '#1ed760', archive: '#94a3b8' };
+    // Canonical source vocabulary \u2014 matches Version Hub order
+    // (YouTube \u2192 Spotify \u2192 Archive \u2192 Relisten \u2192 Paste URL). Keep these
+    // dictionaries in lockstep so the lower-right "Playing on X" label
+    // reflects the actual source instead of falling back to a raw key.
+    var _sourceLabels = { youtube: 'YouTube', spotify: 'Spotify', archive: 'Archive', relisten: 'Relisten', phishin: 'Phish.in', url: 'Link' };
+    var _sourceIcons = { youtube: '\u25B6', spotify: '\uD83C\uDFB5', archive: '\uD83C\uDFDB\uFE0F', relisten: '\uD83D\uDD04', phishin: '\uD83D\uDC1F', url: '\uD83D\uDD17' };
+    var _sourceColors = { youtube: '#f87171', spotify: '#1ed760', archive: '#94a3b8', relisten: '#a78bfa', phishin: '#34d399', url: '#a5b4fc' };
     var _confidenceLabels = { best: 'Best available version', close: 'Found version', live: 'Live recording' };
 
     function _esc(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -129,6 +133,7 @@ window.GLPlayerUI = (function() {
             + '<option value="youtube"' + (pref === 'youtube' ? ' selected' : '') + '>YouTube first</option>'
             + '<option value="spotify"' + (pref === 'spotify' ? ' selected' : '') + '>Spotify first</option>'
             + '<option value="archive"' + (pref === 'archive' ? ' selected' : '') + '>Archive first</option>'
+            + '<option value="relisten"' + (pref === 'relisten' ? ' selected' : '') + '>Relisten first</option>'
             + '</select>'
             + '<button onclick="GLPlayerUI.minimize()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:0.82em;padding:4px 8px" title="Minimize">\u2013</button>'
             + '<button onclick="GLPlayerUI.closeAll()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;padding:4px 8px">\u2715</button>'

@@ -3492,7 +3492,7 @@ async function editVersionNotes(versionIndex) {
     form.style.cssText = 'padding:10px 0;display:flex;flex-direction:column;gap:8px';
     form.innerHTML = `
         <textarea id="versionNotesInput_${versionIndex}" class="app-input"
-            placeholder="Notes about this version..."
+            placeholder="Why this version? Tempo, key, arrangement, mood, who plays what… (shared with band)"
             style="min-height:80px;resize:vertical;font-family:inherit">${current}</textarea>
         <div style="display:flex;gap:8px">
             <button onclick="saveVersionNotes(${versionIndex})" class="btn btn-primary">💾 Save</button>
@@ -4118,7 +4118,7 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
             <div style="padding: 20px; text-align: center;">
                 <p style="color: #9ca3af; font-style: italic; margin-bottom: 15px;">No harmony parts documented yet.</p>
                 <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-bottom:12px">
-                    <button onclick="addFirstHarmonySection('${safeSongTitle}')" 
+                    <button onclick="addFirstHarmonySection('${safeSongTitle}')"
                         class="chart-btn chart-btn-primary" style="background: #667eea;">
                         🎤 Add Harmony Section
                     </button>
@@ -4126,12 +4126,18 @@ async function renderHarmoniesEnhanced(songTitle, bandData) {
                         style="background:#4f46e5;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:600">
                         🎤 Auto-Split (LALAL)
                     </button>
-                    <button onclick="importHarmoniesFromFadr('${safeSongTitle}')"
-                        style="background:#059669;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:600">
-                        🎵 Auto-Import (Fadr)
-                    </button>
                 </div>
-                <p style="color: #9ca3af; font-size: 0.85em;">LALAL splits lead vs. backing then transcribes the lead with Basic Pitch. Fadr extracts per-instrument MIDI directly.</p>
+                <p style="color: #9ca3af; font-size: 0.85em;">LALAL is the primary harmony workflow — splits lead vs. backing then transcribes the lead with Basic Pitch.</p>
+                <details style="margin-top:14px;text-align:left;max-width:480px;margin-left:auto;margin-right:auto;border:1px dashed rgba(255,255,255,0.1);border-radius:8px;padding:8px 12px">
+                    <summary style="cursor:pointer;font-size:0.78em;color:#9ca3af;font-weight:600">⚙️ Advanced audio tools</summary>
+                    <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+                        <button onclick="importHarmoniesFromFadr('${safeSongTitle}')"
+                            style="background:rgba(5,150,105,0.12);color:#6ee7b7;border:1px solid rgba(5,150,105,0.3);padding:7px 14px;border-radius:7px;cursor:pointer;font-size:0.84em;font-weight:600;align-self:flex-start">
+                            🎹 Extract MIDI from audio (Fadr)
+                        </button>
+                        <p style="color:#6b7280;font-size:0.78em;margin:0;line-height:1.4">Fadr extracts per-instrument MIDI directly — useful for notation seeds and experimental harmony workflows. LALAL above is the recommended path for vocal isolation and practice prep.</p>
+                    </div>
+                </details>
             </div>
         `;
         return;
@@ -4573,10 +4579,16 @@ function showABCEditorModal(title, initialAbc, sectionIndex) {
                         style="background:#4f46e5;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
                         🎤 LALAL Auto-Split
                     </button>
-                    <button onclick="importHarmoniesFromFadr('${title.replace(/'/g, "\\\'")}' )"
-                        style="background:#059669;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600">
-                        🤖 Fadr Auto-Import
-                    </button>
+                    <details style="display:inline-block;align-self:center">
+                        <summary style="cursor:pointer;font-size:0.78em;color:#9ca3af;font-weight:600;padding:6px 10px;border-radius:6px;border:1px dashed rgba(255,255,255,0.18)">⚙️ Advanced</summary>
+                        <div style="position:absolute;margin-top:6px;background:#1f2937;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:10px;box-shadow:0 8px 20px rgba(0,0,0,0.4);z-index:10;min-width:240px">
+                            <button onclick="importHarmoniesFromFadr('${title.replace(/'/g, "\\\'")}' )"
+                                style="background:rgba(5,150,105,0.12);color:#6ee7b7;border:1px solid rgba(5,150,105,0.3);padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:600;width:100%">
+                                🎹 Extract MIDI (Fadr)
+                            </button>
+                            <p style="color:#9ca3af;font-size:0.72em;margin:8px 0 0;line-height:1.4">Per-instrument MIDI extraction. Use for notation seeds — not the primary harmony path.</p>
+                        </div>
+                    </details>
                     <span id="abcImportStatus" style="color:#6b7280;font-size:0.82em;align-self:center"></span>
                 </div>
                 </p>
@@ -14216,7 +14228,7 @@ function openPracticeMode(songTitle) {
             <!-- Notes for this singer -->
             <div id="practiceNotesPanel" style="background:rgba(255,255,255,0.04);border-radius:10px;padding:14px">
                 <strong style="color:white;display:block;margin-bottom:10px">📝 My Notes</strong>
-                <textarea id="practiceNoteInput" rows="3" placeholder="Add practice notes for yourself..."
+                <textarea id="practiceNoteInput" rows="3" placeholder="Cue notes, fingerings, vocal reminders — anything you want to find next time you practice this song. (personal · just you)"
                     style="width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;color:white;font-size:0.85em;resize:vertical"></textarea>
                 <button onclick="savePracticeNote('${songTitle.replace(/'/g,"\\'")}', '${currentUser}')"
                     style="margin-top:8px;background:#667eea;color:white;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.82em">

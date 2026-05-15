@@ -137,7 +137,7 @@ window.PlaybackSession = (function() {
         var _startTs = Date.now();
 
         // Contextual starting message
-        var startMsg = { 'Spotify': 'Starting Spotify\u2026', 'YouTube': 'Opening YouTube\u2026', 'Archive.org': 'Launching Archive\u2026' }[detectedSource] || 'Starting playback\u2026';
+        var startMsg = { 'Spotify': 'Starting Spotify\u2026', 'YouTube': 'Opening YouTube\u2026', 'Archive.org': 'Launching Archive\u2026', 'Relisten': 'Launching Relisten\u2026', 'Phish.in': 'Launching Phish.in\u2026' }[detectedSource] || 'Starting playback\u2026';
         if (typeof showToast === 'function') showToast(startMsg);
 
         // Timeout safety net
@@ -192,6 +192,8 @@ window.PlaybackSession = (function() {
         if (l.indexOf('spotify.com') >= 0) return 'Spotify';
         if (l.indexOf('youtube.com') >= 0 || l.indexOf('youtu.be') >= 0) return 'YouTube';
         if (l.indexOf('archive.org') >= 0) return 'Archive.org';
+        if (l.indexOf('relisten.net') >= 0) return 'Relisten';
+        if (l.indexOf('phish.in') >= 0) return 'Phish.in';
         return 'Link';
     }
 

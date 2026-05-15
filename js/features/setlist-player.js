@@ -614,6 +614,7 @@ window.SetlistPlayer = (function() {
             + '<option value="youtube"' + (pref === 'youtube' ? ' selected' : '') + '>YouTube first</option>'
             + '<option value="spotify"' + (pref === 'spotify' ? ' selected' : '') + '>Spotify first</option>'
             + '<option value="archive"' + (pref === 'archive' ? ' selected' : '') + '>Archive first</option>'
+            + '<option value="relisten"' + (pref === 'relisten' ? ' selected' : '') + '>Relisten first</option>'
             + '</select>'
             + '<button onclick="SetlistPlayer.close()" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:1em;padding:4px 8px">\u2715</button>'
             + '</div></div>'

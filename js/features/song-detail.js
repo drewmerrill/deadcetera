@@ -121,27 +121,37 @@ function _sdBuildDnaBar(title) {
         if (_sm) { _dKey = _sm.key || _dKey; _dBpm = _sm.bpm || _dBpm; _dLead = _sm.leadSinger || _dLead; }
     }
 
-    var h = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0">';
-    // Key select
-    h += '<select style="font-size:0.75em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:' + (_dKey ? 'var(--text)' : 'var(--text-dim)') + ';border-radius:5px;cursor:pointer" onchange="sdUpdateSongKey(this.value)">';
-    h += '<option value=""' + (!_dKey ? ' selected' : '') + '>\uD83D\uDD11 Key</option>';
+    // Each control wraps its value in a small "Key" / "BPM" / "Lead" eyebrow
+    // so glanceable values like "E \u00B7 96 \u00B7 Drew" don't read as cryptic strings
+    // to new band members.
+    var lblCss = 'font-size:0.55em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-right:4px';
+    var wrapCss = 'display:flex;align-items:center;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:2px 7px;gap:3px';
+
+    var h = '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0" title="Song key, tempo and lead vocalist. Tap any field to edit.">';
+    // Key
+    h += '<label style="' + wrapCss + ';cursor:pointer" title="Song key \u2014 the key the band plays this in">';
+    h += '<span style="' + lblCss + '">Key</span>';
+    h += '<select style="font-size:0.78em;padding:1px 2px;background:transparent;border:none;color:' + (_dKey ? 'var(--text)' : 'var(--text-dim)') + ';cursor:pointer;outline:none" onchange="sdUpdateSongKey(this.value)">';
+    h += '<option value=""' + (!_dKey ? ' selected' : '') + '>\u2014</option>';
     ['A','A#','Bb','B','C','C#','Db','D','D#','Eb','E','F','F#','Gb','G','G#','Ab','Am','A#m','Bbm','Bm','Cm','C#m','Dm','D#m','Ebm','Em','Fm','F#m','Gm','G#m','Abm'].forEach(function(k) {
         h += '<option value="' + k + '"' + (k === _dKey ? ' selected' : '') + '>' + k + '</option>';
     });
-    h += '</select>';
-    // BPM input
-    h += '<div style="display:flex;align-items:center;gap:3px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:5px;padding:2px 6px">';
-    h += '<span style="font-size:0.68em;color:var(--text-dim)">\uD83E\uDD41</span>';
-    h += '<input type="number" name="dnaBpm" min="40" max="240" placeholder="BPM" value="' + _sdEsc(String(_dBpm)) + '" style="width:42px;font-size:0.75em;padding:1px 2px;background:transparent;border:none;color:' + (_dBpm ? 'var(--text)' : 'var(--text-dim)') + ';outline:none" onchange="sdUpdateSongBpm(this.value)">';
-    h += '</div>';
-    // Lead select
+    h += '</select></label>';
+    // BPM
+    h += '<label style="' + wrapCss + ';cursor:text" title="Tempo in beats per minute">';
+    h += '<span style="' + lblCss + '">BPM</span>';
+    h += '<input type="number" name="dnaBpm" min="40" max="240" placeholder="\u2014" value="' + _sdEsc(String(_dBpm)) + '" style="width:42px;font-size:0.78em;padding:1px 2px;background:transparent;border:none;color:' + (_dBpm ? 'var(--text)' : 'var(--text-dim)') + ';outline:none" onchange="sdUpdateSongBpm(this.value)">';
+    h += '</label>';
+    // Lead
     if (typeof bandMembers !== 'undefined' && Object.keys(bandMembers).length > 0) {
-        h += '<select style="font-size:0.75em;padding:3px 6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:' + (_dLead ? 'var(--text)' : 'var(--text-dim)') + ';border-radius:5px;cursor:pointer" onchange="sdUpdateLeadSinger(this.value)">';
-        h += '<option value=""' + (!_dLead ? ' selected' : '') + '>\uD83C\uDFA4 Lead</option>';
+        h += '<label style="' + wrapCss + ';cursor:pointer" title="Lead vocalist on this song">';
+        h += '<span style="' + lblCss + '">Lead</span>';
+        h += '<select style="font-size:0.78em;padding:1px 2px;background:transparent;border:none;color:' + (_dLead ? 'var(--text)' : 'var(--text-dim)') + ';cursor:pointer;outline:none" onchange="sdUpdateLeadSinger(this.value)">';
+        h += '<option value=""' + (!_dLead ? ' selected' : '') + '>\u2014</option>';
         Object.entries(bandMembers).forEach(function(e) {
             h += '<option value="' + e[0] + '"' + (e[0] === _dLead ? ' selected' : '') + '>' + (e[1].name || e[0]) + '</option>';
         });
-        h += '</select>';
+        h += '</select></label>';
     }
     h += '</div>';
     return h;
@@ -1151,8 +1161,10 @@ function _sdBuildReadinessStrip(title) {
         return '<span class="'+cls+'" style="background:'+color+'" title="'+tip+'"'+click+'>'+
                initials+':'+(score||'—')+'</span>';
     }).join('');
-    // DNA bar is rendered in the header via _sdBuildDnaBar — not duplicated here
-    strip.innerHTML='<div class="sd-readiness-pills">'+pills+'</div>';
+    // DNA bar is rendered in the header via _sdBuildDnaBar — not duplicated here.
+    // Eyebrow label gives new band members a chance to read what these
+    // pills mean before they parse "B:5 D:3 J:4" as cryptic shorthand.
+    strip.innerHTML='<div class="sd-readiness-pills"><span class="sd-readiness-eyebrow" title="Each member\'s readiness on this song (0=Unknown · 5=Locked). Tap your initials to rate.">Readiness</span>'+pills+'</div>';
 }
 
 // ── Inline readiness popover — opens from member pill, no deep scroll ──────
@@ -4840,7 +4852,7 @@ async function _sdPopulateListenLens(title) {
     panel.innerHTML=
         '<div class="sd-panel-inner">'+
         '<div class="sd-card"><div class="sd-card-title">🔍 Find a Version</div>'+
-        '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:12px">Search Archive.org, Relisten, Phish.in, YouTube and more.</div>'+
+        '<div style="font-size:0.85em;color:var(--text-muted);margin-bottom:12px">Search YouTube, Spotify, Archive, Relisten — or paste a URL.</div>'+
         '<button class="btn btn-primary" onclick="launchVersionHub()" style="width:100%;padding:13px;font-size:0.95em;background:linear-gradient(135deg,#667eea,#764ba2)">🔍 Open Version Hub</button></div>'+
         '<div class="sd-card"><div class="sd-card-title">⭐ North Star <span class="sd-title-badge">Reference</span></div>'+nsHTML+'</div>'+
         '<div class="sd-card"><div class="sd-card-title">🏆 Best Shot <span class="sd-title-badge sd-title-badge--gold">Our Recording</span></div>'+bsHTML+'</div>'+
@@ -5374,7 +5386,8 @@ function _sdInjectStyles(){
     '.sd-meta-pill{font-size:0.73em;font-weight:700;padding:3px 8px;border-radius:12px;background:rgba(255,255,255,0.07);color:var(--text-muted,#94a3b8);border:1px solid rgba(255,255,255,0.08)}'+
     '.sd-title{font-size:1.5em;font-weight:800;color:var(--text,#f1f5f9);margin:0 0 8px;line-height:1.2;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06)}'+
     '.sd-readiness-strip{margin-bottom:8px;min-height:20px}'+
-    '.sd-readiness-pills{display:flex;gap:4px;flex-wrap:wrap}'+
+    '.sd-readiness-pills{display:flex;gap:4px;flex-wrap:wrap;align-items:center}'+
+    '.sd-readiness-eyebrow{font-size:0.55em;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-right:4px}'+
     '.sd-readiness-pill{font-size:0.7em;font-weight:700;padding:2px 7px;border-radius:10px;color:#fff}'+
     '.sd-readiness-pill--editable{cursor:pointer;outline:1px solid transparent;transition:transform 0.12s ease, box-shadow 0.12s ease}'+
     '.sd-readiness-pill--editable:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(99,102,241,0.35);outline-color:rgba(255,255,255,0.5)}'+

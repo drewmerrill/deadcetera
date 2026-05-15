@@ -394,7 +394,7 @@ function rmEnsureOverlay() {
         <div class="rm-sheet hidden" id="rmNoteSheet">
             <div class="rm-sheet-inner">
                 <div class="rm-sheet-title">📋 Add Rehearsal Note</div>
-                <textarea class="rm-edit-textarea" id="rmNoteInput" placeholder="What needs work?"></textarea>
+                <textarea class="rm-edit-textarea" id="rmNoteInput" placeholder="Capture issues to revisit at rehearsal — arrangement changes, cue notes, problem spots… (shared with band)"></textarea>
                 <div class="rm-edit-actions">
                     <button class="rm-save-btn" onclick="rmSaveNote()">Save Note</button>
                     <button class="rm-cancel-btn" onclick="rmCloseSheet('rmNoteSheet')">Cancel</button>
