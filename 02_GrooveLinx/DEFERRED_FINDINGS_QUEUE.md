@@ -84,6 +84,16 @@ orphan helpers, broken fallbacks.
     coherence pass)
   - **Status:** open
 
+- **Finding:** `rehearsal_mixdowns.audio_url` is a local-blob field that
+  was never meant to persist — leftover from an earlier upload flow.
+  Sits next to the canonical `drive_url`; confusing for any future reader.
+  - **Why deferred:** Phase 3 of the Rehearsal ↔ Song DNA proposal will
+    touch this surface anyway. Cleaning up now without that context
+    risks scope-creep.
+  - **Trigger:** Phase 3 of the proposal.
+  - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
+  - **Status:** open
+
 - **Finding:** `_sdRenderBandChart` legacy fallback (song-detail.js:285+)
   serves cached service-worker shells without `ChartRenderer`. Likely
   rarely hit now; duplicates the canonical path.
@@ -185,6 +195,57 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
     wrong" recommendation behaviour.
   - **Status:** open
 
+- **Finding:** Notes / comments / annotations live in **5+ separate
+  Firebase storage paths** (`chart_overlay_notes`, `rehearsal_notes`,
+  `gig_notes`, `personal_critique`, `stem_critique_notes`,
+  `best_shot_section_notes`, `rehearsal_sessions/{id}/comments`).
+  `js/core/gl-notes.js` exists as a 5-scope read adapter but is not a
+  canonical write store. Multi-member tagging on comments (a founder ask
+  per the Rehearsal ↔ Song DNA proposal) cannot ship cleanly until these
+  paths converge to a single `Annotation` primitive with an `anchor`
+  field.
+  - **Why deferred:** Phase 1 of the relationship-model proposal; not
+    started yet.
+  - **Trigger:** Starting Phase 1 of
+    `02_GrooveLinx/specs/rehearsal_song_dna_relationship_model.md`,
+    OR any tagging/cross-anchor feature request.
+  - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
+  - **Status:** open
+
+- **Finding:** Takes (audio segments) reference songs by **title string**
+  (`audio_segments[].songTitle`), not by `songId`. Fragile under the
+  songs_v2 migration ([[project_songs_v2_migration]]); silent break on
+  any rename.
+  - **Why deferred:** No active break today; the songs_v2 migration is
+    mid-flight and adding takes→songId would create churn until the
+    migration completes.
+  - **Trigger:** Phase 2 of the Rehearsal ↔ Song DNA proposal,
+    OR the next song rename, whichever comes first.
+  - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
+  - **Status:** open
+
+- **Finding:** `rehearsal_mixdowns` records (Recordings) link back to a
+  Rehearsal only via a free-text `rehearsal_date` string. No FK to
+  `rehearsal_sessions/{sessionId}`. Programmatic queries can't reliably
+  ask "which rehearsal does this recording belong to?"
+  - **Why deferred:** Annotated Rehearsal Review (Phase 3 of the
+    relationship-model proposal) needs this; nothing breaks at MVP
+    without it.
+  - **Trigger:** Phase 3 of the proposal.
+  - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
+  - **Status:** open
+
+- **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
+  The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
+  optional Archived / Deferred / Won't Fix) requires a schema bump.
+  - **Why deferred:** Phase 4 of the Rehearsal ↔ Song DNA proposal;
+    additive change with a clean backward-compat map (old `resolved` →
+    new `fixed`).
+  - **Trigger:** Phase 4 of the proposal, OR any task-management
+    feature request.
+  - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."
@@ -228,6 +289,28 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Trigger:** First tester says it's noise, or first tester quotes
     the % in a band conversation (validation signal).
   - **Discovered:** 2026-05-15 · 9f08b2b8
+  - **Status:** open
+
+- **Finding:** Do testers actually want multi-member tagging on
+  comments, or is "shared with the band" enough? Risk of
+  over-engineering the comment primitive before behaviour is observed.
+  - **Why deferred:** Phase 1 of the Rehearsal ↔ Song DNA proposal will
+    ship tagging on chart-overlay first as a single-surface test before
+    extending it across annotation kinds.
+  - **Trigger:** First tester says "I wish I could send this comment
+    specifically to Brian" — validates demand; OR three weeks pass
+    with no tagging usage in shipped Phase 1 surface — invalidates.
+  - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
+  - **Status:** open
+
+- **Finding:** Does the Annotated Rehearsal Review surface feel like a
+  "document with a comment rail" or a "DAW"? The proposal frames it as
+  the former (Word-style); a tester who reads it as a DAW will look for
+  multitrack-mixer-style controls and feel let down.
+  - **Why deferred:** Unmeasurable without the surface in front of users.
+  - **Trigger:** First Annotated Review surface ships in Phase 3 of the
+    proposal; watch for "where's the mixer?" questions.
+  - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
   - **Status:** open
 
 - **Finding:** Do users distinguish the recommendation hero's
