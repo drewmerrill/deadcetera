@@ -166,6 +166,25 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 · d519673d
   - **Status:** open
 
+- **Finding:** Scheduling intelligence currently reads from multiple
+  event persistence surfaces — `rehearsals`, `rehearsal_sessions`, and
+  `calendar_events`. The May 20 recommendation bug revealed that scoring
+  can silently diverge when one persistence path is excluded from the
+  input set. Long-term direction likely requires one canonical
+  operational calendar graph, a unified event persistence model, and a
+  normalized scheduling-intelligence input layer.
+  - **Why deferred:** The Schedule coherence pass fixed the immediate
+    credibility issue by merging `calendar_events` rehearsals into
+    `existingDates`. Full calendar/event unification would create
+    excessive churn before beta.
+  - **Trigger:** Post-beta scheduling architecture review, OR a
+    recurring class of recommendation inconsistencies that can't be
+    pinned to a single missing input.
+  - **Discovered:** 2026-05-15 · dcd75cd2 (Schedule coherence pass)
+  - **Goal:** Prevent future "algorithmically correct but operationally
+    wrong" recommendation behaviour.
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."
