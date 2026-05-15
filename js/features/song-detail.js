@@ -1087,12 +1087,12 @@ function _sdRenderReadinessInner(title, safeSong) {
         var isMe=myKey&&key===myKey;
         var displayName = isAnon && !isMe ? 'Member ' + (idx + 1) : name;
         var barId='sd-bar-'+key, lblId='sd-lbl-'+key;
-        var RDEFS=['🔴 Never played','🟠 Learning','🟡 Rough','🟢 Getting there','🔵 Tight','⭐ Gig ready'];
+        var RDEFS=['0 Unknown','1 Rough','2 Learning','3 Ready','4 Gig Ready','5 Locked'];
         var tipTitle=RDEFS[score]||'Not rated — slide to set';
         var slider=isMe?'<input type="range" name="readiness-learn-'+key+'" min="0" max="5" step="1" value="'+(score!=null&&score!==''?score:0)+'" '+
                         'style="width:80px;accent-color:var(--accent)" '+
                         'title="'+tipTitle+'" '+
-                        'oninput="(function(el){var v=parseInt(el.value,10);var defs=[\'🔴 Never played\',\'🟠 Learning\',\'🟡 Rough\',\'🟢 Getting there\',\'🔵 Tight\',\'⭐ Gig ready\'];var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'rgba(255,255,255,0.1)\';var pct=v?Math.round((v/5)*100):0;var bar=document.getElementById(\''+barId+'\');var lbl=document.getElementById(\''+lblId+'\');if(bar){bar.style.width=pct+\'%\';bar.style.background=c;}if(lbl){lbl.textContent=v||(\'—\');lbl.style.color=c;}el.title=defs[v]||(\'Not rated\');})(this)" '+
+                        'oninput="(function(el){var v=parseInt(el.value,10);var defs=[\'0 Unknown\',\'1 Rough\',\'2 Learning\',\'3 Ready\',\'4 Gig Ready\',\'5 Locked\'];var colors=[\'#64748b\',\'#ef4444\',\'#f97316\',\'#f59e0b\',\'#10b981\',\'#3b82f6\'];var c=colors[v]||\'rgba(255,255,255,0.1)\';var pct=v?Math.round((v/5)*100):0;var bar=document.getElementById(\''+barId+'\');var lbl=document.getElementById(\''+lblId+'\');if(bar){bar.style.width=pct+\'%\';bar.style.background=c;}if(lbl){lbl.textContent=v||(\'—\');lbl.style.color=c;}el.title=defs[v]||(\'Not rated\');})(this)" '+
                         'onchange="sdSaveReadiness(\''+safeSong+'\',\''+key+'\',this.value)">':'';
         return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0">'+
                '<span style="font-size:0.82em;font-weight:'+(isMe?'800':'600')+';color:var(--text);min-width:52px">'+_sdEsc(displayName)+'</span>'+
@@ -1107,21 +1107,138 @@ function _sdRenderReadinessBlock(title, safeSong) {
     return '<div class="sd-readiness-inner">' + _sdRenderReadinessInner(title, safeSong) + '</div>';
 }
 
+// Calibrated readiness scale — shared vocabulary across the band.
+// Measures operational dependability, not emotional confidence.
+window.SD_READINESS_SCALE = [
+    { score: 0, label: 'Unknown',   desc: "Don't know it yet",          color: '#64748b' },
+    { score: 1, label: 'Rough',     desc: 'Frequent mistakes',          color: '#ef4444' },
+    { score: 2, label: 'Learning',  desc: 'Sections inconsistent',      color: '#f97316' },
+    { score: 3, label: 'Ready',     desc: 'Start-to-finish with band',  color: '#f59e0b' },
+    { score: 4, label: 'Gig Ready', desc: 'Confident and dependable',   color: '#10b981' },
+    { score: 5, label: 'Locked',    desc: 'Automatic, expressive',      color: '#3b82f6' }
+];
+
+function _sdReadinessLabel(score) {
+    var s = parseInt(score, 10);
+    if (isNaN(s) || s < 0 || s > 5) return 'Unrated';
+    return window.SD_READINESS_SCALE[s].label;
+}
+
+function _sdReadinessColor(score) {
+    var s = parseInt(score, 10);
+    if (isNaN(s) || s <= 0) return 'rgba(255,255,255,0.1)';
+    return window.SD_READINESS_SCALE[s].color;
+}
+
 function _sdBuildReadinessStrip(title) {
     var strip=(_sdContainer||document).querySelector('#sd-readiness-strip');
     if (!strip) return;
     var songScores=(typeof GLStore!=='undefined'&&GLStore.getReadiness)?(GLStore.getReadiness(title)||{}):{};
     var members=(typeof BAND_MEMBERS_ORDERED!=='undefined')?BAND_MEMBERS_ORDERED:[];
+    var myKey=typeof getCurrentMemberKey==='function'?getCurrentMemberKey():null;
+    var safeSong=(title||'').replace(/'/g,"\\'");
     var pills=members.map(function(m){
         var key=m.key||m, name=m.name||(key.charAt(0).toUpperCase()+key.slice(1));
         var score=songScores[key];
-        var color=score?(score>=4?'#10b981':score>=3?'#f59e0b':'#ef4444'):'rgba(255,255,255,0.1)';
-        return '<span class="sd-readiness-pill" style="background:'+color+'" title="'+_sdEsc(name)+'">'+
-               (function(n){var p=n.trim().split(/\s+/);return p.length>1?p[0].charAt(0)+p[p.length-1].charAt(0):p[0].charAt(0);})(name)+':'+(score||'—')+'</span>';
+        var color=score?_sdReadinessColor(score):'rgba(255,255,255,0.1)';
+        var isMe=myKey&&key===myKey;
+        var label=score?_sdReadinessLabel(score):'unrated';
+        var scoreText=score?(score+' ('+label+')'):'unrated';
+        var tip=_sdEsc(name)+' — '+scoreText+(isMe?'  ·  click to rate':'');
+        var initials=(function(n){var p=n.trim().split(/\s+/);return p.length>1?p[0].charAt(0)+p[p.length-1].charAt(0):p[0].charAt(0);})(name);
+        var cls='sd-readiness-pill'+(isMe?' sd-readiness-pill--editable':'');
+        var click=isMe?' onclick="sdOpenReadinessPopover(\''+safeSong+'\',\''+key+'\',this)"':'';
+        return '<span class="'+cls+'" style="background:'+color+'" title="'+tip+'"'+click+'>'+
+               initials+':'+(score||'—')+'</span>';
     }).join('');
     // DNA bar is rendered in the header via _sdBuildDnaBar — not duplicated here
     strip.innerHTML='<div class="sd-readiness-pills">'+pills+'</div>';
 }
+
+// ── Inline readiness popover — opens from member pill, no deep scroll ──────
+window.sdCloseReadinessPopover = function() {
+    var existing = document.getElementById('sd-readiness-popover');
+    if (existing) existing.remove();
+    document.removeEventListener('click', _sdReadinessPopoverOutsideClick, true);
+    document.removeEventListener('keydown', _sdReadinessPopoverEsc, true);
+};
+
+function _sdReadinessPopoverOutsideClick(e) {
+    var pop = document.getElementById('sd-readiness-popover');
+    if (!pop) return;
+    if (pop.contains(e.target)) return;
+    if (e.target && e.target.classList && e.target.classList.contains('sd-readiness-pill--editable')) return;
+    window.sdCloseReadinessPopover();
+}
+
+function _sdReadinessPopoverEsc(e) {
+    if (e.key === 'Escape') window.sdCloseReadinessPopover();
+}
+
+window.sdOpenReadinessPopover = function(safeSong, memberKey, anchorEl) {
+    // Toggle off if same pill clicked again
+    var existing = document.getElementById('sd-readiness-popover');
+    if (existing) {
+        var prev = existing.dataset.memberKey;
+        window.sdCloseReadinessPopover();
+        if (prev === memberKey) return;
+    }
+    var title = (safeSong || '').replace(/\\'/g, "'");
+    var songScores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
+    var currentScore = parseInt(songScores[memberKey], 10);
+    if (isNaN(currentScore)) currentScore = -1;
+    var memberName = memberKey.charAt(0).toUpperCase() + memberKey.slice(1);
+    if (typeof BAND_MEMBERS_ORDERED !== 'undefined') {
+        for (var i = 0; i < BAND_MEMBERS_ORDERED.length; i++) {
+            var m = BAND_MEMBERS_ORDERED[i];
+            if ((m.key || m) === memberKey) { memberName = m.name || memberName; break; }
+        }
+    }
+
+    var rows = window.SD_READINESS_SCALE.map(function(d) {
+        var isActive = d.score === currentScore;
+        return '<button type="button" class="sd-rp-row'+(isActive?' is-active':'')+'" '
+            + 'onclick="sdSaveReadiness(\''+safeSong+'\',\''+memberKey+'\','+d.score+');sdCloseReadinessPopover()" '
+            + 'style="--row-color:'+d.color+'">'
+            + '<span class="sd-rp-score" style="background:'+d.color+'">'+d.score+'</span>'
+            + '<span class="sd-rp-text">'
+                + '<span class="sd-rp-label">'+d.label+'</span>'
+                + '<span class="sd-rp-desc">'+d.desc+'</span>'
+            + '</span>'
+            + (isActive?'<span class="sd-rp-check">●</span>':'')
+            + '</button>';
+    }).join('');
+
+    var pop = document.createElement('div');
+    pop.id = 'sd-readiness-popover';
+    pop.className = 'sd-readiness-popover';
+    pop.dataset.memberKey = memberKey;
+    pop.innerHTML = ''
+        + '<div class="sd-rp-header">'
+            + '<span class="sd-rp-name">'+_sdEsc(memberName)+' — Readiness</span>'
+            + '<button type="button" class="sd-rp-close" onclick="sdCloseReadinessPopover()" title="Close (Esc)">✕</button>'
+        + '</div>'
+        + '<div class="sd-rp-hint">Operational dependability, not emotional confidence.</div>'
+        + '<div class="sd-rp-grid">'+rows+'</div>';
+    document.body.appendChild(pop);
+
+    // Position near anchor (below preferred, above if no room)
+    var rect = anchorEl.getBoundingClientRect();
+    var popRect = pop.getBoundingClientRect();
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var left = rect.left;
+    if (left + popRect.width > vw - 8) left = Math.max(8, vw - popRect.width - 8);
+    var top = rect.bottom + 6;
+    if (top + popRect.height > vh - 8) top = Math.max(8, rect.top - popRect.height - 6);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+
+    // Defer outside-click binding so the opening click doesn't immediately close
+    setTimeout(function() {
+        document.addEventListener('click', _sdReadinessPopoverOutsideClick, true);
+        document.addEventListener('keydown', _sdReadinessPopoverEsc, true);
+    }, 50);
+};
 
 // ── DNA update handlers ───────────────────────────────────────────────────────
 // Delegate all writes to canonical app.js functions so data shape and paths stay consistent
@@ -5173,7 +5290,7 @@ async function _sdPopulateRightPanel(title) {
         if (isMe) {
             midCell = '<input type="range" name="readiness-rp-' + key + '" min="0" max="5" step="1" value="' + (score || 0) + '" '
                 + 'style="flex:1;min-width:0;accent-color:var(--accent);cursor:pointer" '
-                + 'title="Drag to rate 0-5: Never played \u2192 Gig ready" '
+                + 'title="Drag to rate 0-5: Unknown \u2192 Rough \u2192 Learning \u2192 Ready \u2192 Gig Ready \u2192 Locked" '
                 + 'oninput="(function(el){var v=parseInt(el.value,10);var c=v>=4?\'#10b981\':v>=3?\'#f59e0b\':v>0?\'#ef4444\':\'#475569\';var lbl=document.getElementById(\'' + rpLblId + '\');if(lbl){lbl.textContent=v||(\'\\u2014\');lbl.style.color=c;}})(this)" '
                 + 'onchange="sdSaveReadiness(\'' + safeSong + '\',\'' + key + '\',this.value)">';
         } else {
@@ -5246,6 +5363,24 @@ function _sdInjectStyles(){
     '.sd-readiness-strip{margin-bottom:8px;min-height:20px}'+
     '.sd-readiness-pills{display:flex;gap:4px;flex-wrap:wrap}'+
     '.sd-readiness-pill{font-size:0.7em;font-weight:700;padding:2px 7px;border-radius:10px;color:#fff}'+
+    '.sd-readiness-pill--editable{cursor:pointer;outline:1px solid transparent;transition:transform 0.12s ease, box-shadow 0.12s ease}'+
+    '.sd-readiness-pill--editable:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(99,102,241,0.35);outline-color:rgba(255,255,255,0.5)}'+
+    '.sd-readiness-popover{position:fixed;z-index:10004;min-width:240px;max-width:300px;background:#0f172a;border:1px solid rgba(255,255,255,0.12);border-radius:12px;box-shadow:0 16px 40px rgba(0,0,0,0.55);padding:10px 10px 12px;font-family:inherit;animation:sdRpFadeIn 0.15s ease}'+
+    '@keyframes sdRpFadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}'+
+    '.sd-rp-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}'+
+    '.sd-rp-name{font-size:0.78em;font-weight:800;color:var(--text,#f1f5f9);letter-spacing:0.02em}'+
+    '.sd-rp-close{background:none;border:none;color:var(--text-dim,#94a3b8);cursor:pointer;font-size:0.95em;padding:2px 6px;border-radius:6px}'+
+    '.sd-rp-close:hover{color:var(--text,#f1f5f9);background:rgba(255,255,255,0.06)}'+
+    '.sd-rp-hint{font-size:0.65em;color:var(--text-dim,#94a3b8);font-style:italic;margin-bottom:8px;padding:0 2px}'+
+    '.sd-rp-grid{display:flex;flex-direction:column;gap:2px}'+
+    '.sd-rp-row{display:flex;align-items:center;gap:10px;padding:6px 8px;background:none;border:1px solid transparent;border-radius:8px;cursor:pointer;font-family:inherit;text-align:left;width:100%;transition:background 0.12s ease, border-color 0.12s ease}'+
+    '.sd-rp-row:hover{background:rgba(255,255,255,0.04);border-color:rgba(255,255,255,0.08)}'+
+    '.sd-rp-row.is-active{background:rgba(255,255,255,0.06);border-color:var(--row-color, #94a3b8)}'+
+    '.sd-rp-score{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;font-size:0.78em;font-weight:800;color:#fff;flex-shrink:0}'+
+    '.sd-rp-text{display:flex;flex-direction:column;flex:1;min-width:0}'+
+    '.sd-rp-label{font-size:0.82em;font-weight:700;color:var(--text,#f1f5f9);line-height:1.2}'+
+    '.sd-rp-desc{font-size:0.7em;color:var(--text-dim,#94a3b8);line-height:1.2}'+
+    '.sd-rp-check{color:var(--row-color, #10b981);font-size:0.85em;margin-left:auto}'+
     '.sd-tab-bar{display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;background:var(--bg-card,#1e293b);border-bottom:2px solid var(--border,rgba(255,255,255,0.08));padding:0 8px;scrollbar-width:none;position:sticky;top:0;z-index:49}'+
     '.sd-tab-bar::-webkit-scrollbar{display:none}'+
     '.sd-tab-btn{display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 14px 6px;background:transparent;border:none;border-bottom:3px solid transparent;color:var(--text-muted,#94a3b8);cursor:pointer;font-weight:600;white-space:nowrap;transition:all 0.15s;flex-shrink:0}'+
