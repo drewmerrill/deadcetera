@@ -818,6 +818,21 @@ window.GLPlayerUI = (function() {
         if (_mode === 'bar') showBar();
     }
 
+    // Source identity matters musically — "archive.org" / "nugs.net" /
+    // "dead.net" / "phish.in" carry context that "Link" throws away.
+    // For the generic url source (or anything we don't have a first-class
+    // label for) we derive a clean hostname from the current track URL.
+    function _hostnameOf(url) {
+        if (!url) return '';
+        try {
+            var u = new URL(url);
+            return u.hostname.replace(/^www\./, '');
+        } catch (e) {
+            var m = String(url).match(/^https?:\/\/([^\/?#]+)/i);
+            return m ? m[1].replace(/^www\./, '') : '';
+        }
+    }
+
     function _renderSource(d) {
         var src = d.source;
         var conf = d.confidence;
@@ -830,6 +845,14 @@ window.GLPlayerUI = (function() {
         var E = window.GLPlayerEngine;
         var song = E ? E.getCurrentSong() : null;
         var songTitle = song ? song.title : '';
+
+        // For generic-URL sources, prefer the actual hostname over "Link".
+        // Keeps musical identity (archive.org, nugs.net, dead.net, phish.in)
+        // legible in the lower-right footer.
+        if (src === 'url' || !_sourceLabels[src]) {
+            var host = _hostnameOf(song && song.url);
+            if (host) name = host;
+        }
 
         var el = document.getElementById('glpSourceLabel');
         if (el) {

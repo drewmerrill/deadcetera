@@ -25,7 +25,8 @@ inviting chaos-driven development.
   - **Why deferred:** why it didn't get fixed in the discovering pass
   - **Trigger:** what condition should pull this back to active
   - **Discovered:** YYYY-MM-DD · <commit hash or release tag>
-  - **Status:** open | in-progress | dismissed
+  - **Resolved:** (optional) YYYY-MM-DD · what changed (only when status flips)
+  - **Status:** open | in-progress | resolved | dismissed
 ```
 
 Keep findings short. If a finding grows beyond a paragraph, it's a real
@@ -94,7 +95,11 @@ vocabulary mismatches, fragmented flows, naming drift.
   - **Trigger:** First tester confusion about "Link" vs. host name; or
     once we have hostname-aware metadata in the source detector.
   - **Discovered:** 2026-05-15 · bb594402
-  - **Status:** open
+  - **Resolved:** 2026-05-15 — Drew's call: hostname rendering wins
+    because source identity matters musically (archive.org, nugs.net,
+    dead.net, phish.in carry context). `_renderSource` now derives a
+    `www.`-stripped hostname for `url`/unknown sources.
+  - **Status:** resolved
 
 - **Finding:** Readiness scale 1↔2 swap (old `1=Learning, 2=Rough`
   → new `1=Rough, 2=Learning`). Pre-existing 1-ratings now render as
