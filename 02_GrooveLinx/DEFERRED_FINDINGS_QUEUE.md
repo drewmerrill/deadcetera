@@ -379,6 +379,89 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
     Check pass)
   - **Status:** open
 
+- **Finding:** Phase 3A Take Review card sources audio from
+  `session.recording_url` only — sessions where the recording was
+  uploaded via Mixdowns (`rehearsal_mixdowns/{mxId}` with `drive_url` /
+  non-blob `audio_url`) render with playback disabled even when a
+  playable source exists in Firebase. The "No persistent audio
+  attached" copy is technically true for `recording_url` but misleading
+  about Mixdowns.
+  - **Why deferred:** Mixdown lookup requires a separate fetch + dedup
+    logic (which mixdown belongs to which session — only date-based
+    today; see `rehearsal_mixdowns.audio_url` deferred entry). The
+    spec asked us not to add fetch complexity in Phase 3A.
+  - **Trigger:** Phase 3B (Annotated Review), OR first tester reports
+    that a session with a known recording shows "no audio" in the
+    Review card.
+  - **Discovered:** 2026-05-15 (Phase 3A — Lightweight Analyzer Review
+    Surface)
+  - **Status:** open
+
+- **Finding:** Phase 3A Take Review card uses its own `<audio>`
+  element (`#rhTakeReviewAudio_{sessionId}`) that does not coordinate
+  with the global Now Playing bar / `GLPlayer` queue. Two streams can
+  play simultaneously if a user hits Play on a take while the global
+  player has audio active.
+  - **Why deferred:** A proper "claim the audio focus" handshake needs
+    a small contract on `GLPlayer` (pause + suppress autoresume) that
+    didn't exist in scope. Practical impact today is low — Now Playing
+    is rarely active inside the Rehearsal page.
+  - **Trigger:** First tester reports overlapping audio, OR when the
+    Phase 3B Annotated Review surface starts to use take playback in
+    contexts where Now Playing IS active.
+  - **Discovered:** 2026-05-15 (Phase 3A build)
+  - **Status:** open
+
+- **Finding:** Auto-stop accuracy — Phase 3A take playback stops at
+  the take's `end_sec` via the `timeupdate` event. Browsers throttle
+  this event to ~250ms intervals, so the actual pause can overshoot
+  the boundary by up to a quarter second. Imperceptible for typical
+  song takes (3-5 min) but noticeable for short restart/false-start
+  takes (10-15s).
+  - **Why deferred:** Tighter stopping needs a `setTimeout(audio.pause,
+    (endSec - startSec) * 1000)` fallback alongside the `timeupdate`
+    listener — adds 2 lines but I deliberately kept the playback loop
+    minimal in Phase 3A to avoid drift risk between the two stop
+    sources during scrubs / network stalls.
+  - **Trigger:** First tester reports overshoot on a short take.
+  - **Discovered:** 2026-05-15 (Phase 3A build)
+  - **Status:** open
+
+- **Finding:** Phase 3A correction picker uses `<datalist>` for song
+  autocomplete. iOS Safari supports the dropdown but typing-to-filter
+  has historically been spotty across iOS versions, and the dropdown
+  shows up below the input field — on a phone with the keyboard up,
+  the dropdown can be clipped by the viewport.
+  - **Why deferred:** Custom autocomplete UI is heavier than the spec
+    allows for Phase 3A. The datalist gets us 80% of the way for free.
+  - **Trigger:** First tester on iOS reports difficulty picking a song
+    from the correction form.
+  - **Discovered:** 2026-05-15 (Phase 3A build)
+  - **Status:** open
+
+- **Finding:** Phase 3A correction flow does not record WHO corrected
+  the take. Takes get `matching.correction_source='human'` but no
+  author field — the Annotation primitive has `author` but Takes do
+  not. For a multi-member band, "Pierce reassigned this take" carries
+  social signal that "Corrected by band" doesn't.
+  - **Why deferred:** Adds a member-key field on Take + UI surfacing
+    of who; not in Phase 3A's lightweight scope.
+  - **Trigger:** First multi-member band tests Take Review, OR Phase
+    3B Annotated Review work surfaces the same need.
+  - **Discovered:** 2026-05-15 (Phase 3A build)
+  - **Status:** open
+
+- **Finding:** Phase 3A re-renders the entire Take Review card after
+  every correction. Cheap at MVP scale (<30 takes per rehearsal) but
+  loses focus + scroll position. A user mid-way down a list of 25
+  takes who corrects take #18 jumps back to the top of the list.
+  - **Why deferred:** Row-level surgical re-render is the right fix
+    but requires a stable row-key model that survives the cache
+    refresh. Phase 3A keeps the simple-and-correct path.
+  - **Trigger:** First tester reports the scroll jump as friction.
+  - **Discovered:** 2026-05-15 (Phase 3A build)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.

@@ -3728,7 +3728,335 @@ window._rhShowSessionReport = async function(sessionId) {
             + '</div>';
         timelineEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+
+    // Phase 3A: Lightweight Analyzer Review Surface — renders canonical Takes
+    // (when GLTakes has any for this rehearsal) as a compact review list under
+    // the legacy timeline. Bails silently when no takes exist so legacy flows
+    // are untouched. Best-effort only: failures here never block the report.
+    try { _rhRenderTakeReview(timelineEl, sessionId, s); } catch (e) { console.warn('[TakeReview] render failed:', e && e.message); }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3A — Lightweight Analyzer Review Surface
+//
+// Renders canonical Takes (from GLTakes.getTakesForRehearsal) below the legacy
+// timeline in _rhShowSessionReport. Surfaces analyzer truthfulness without
+// becoming a DAW: confidence chip, boundary chip, top-3 suggestions, quick
+// play, quick correct. Spotify-row feel, not Pro Tools.
+//
+// Inputs:
+//   container — the timeline mount (#rhTimelineSection) to append into
+//   sessionId — rehearsal_sessions/{sessionId}
+//   session   — already-loaded session object (for recording_url lookup)
+//
+// Rules:
+//   - No takes -> render nothing (legacy timeline above is enough).
+//   - No persistent recording URL -> render the list, disable play buttons,
+//     surface the no-audio reason in the card header.
+//   - Blob URLs are session-scoped; treat as missing for past sessions.
+//
+// Constraints (per Phase 3A spec):
+//   - No waveform UI, no draggable regions, no DAW transport, no realtime.
+//   - Reuse existing playback pattern (audio.currentTime + timeupdate stop).
+//   - Mobile-safe: rows wrap, touch targets >= 32px, no fixed-width tables.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function _rhRenderTakeReview(container, sessionId, session) {
+    if (!container || !sessionId) return;
+    if (typeof window.GLTakes === 'undefined' || !window.GLTakes.getTakesForRehearsal) return;
+
+    var existing = document.getElementById('rhTakeReviewCard_' + sessionId);
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+    var takes = [];
+    try {
+        takes = await window.GLTakes.getTakesForRehearsal(sessionId, { refresh: true });
+    } catch (e) {
+        console.warn('[TakeReview] load failed:', e && e.message);
+        return;
+    }
+    if (!takes || !takes.length) return;
+
+    // Audio source priority: session.recording_url, then nothing. Mixdown
+    // lookup (rehearsal_mixdowns/*) is deferred to Phase 3B - would require
+    // a separate fetch and dedup logic the spec asks us to avoid here.
+    var audioUrl = (session && session.recording_url) || '';
+    if (audioUrl && audioUrl.indexOf('blob:') === 0) audioUrl = ''; // blobs don't survive
+
+    var card = document.createElement('div');
+    card.id = 'rhTakeReviewCard_' + sessionId;
+    card.style.cssText = 'margin-top:14px;padding:14px;border-radius:12px;border:1px solid rgba(99,102,241,0.16);background:rgba(99,102,241,0.04)';
+    card.innerHTML = _rhTakeReviewHTML(takes, sessionId, audioUrl);
+    container.appendChild(card);
+
+    var audioEl = document.getElementById('rhTakeReviewAudio_' + sessionId);
+    if (audioEl && audioUrl) {
+        audioEl.src = audioUrl;
+    }
+}
+
+function _rhTakeReviewHTML(takes, sessionId, audioUrl) {
+    var counts = { human: 0, unresolved: 0, low: 0 };
+    takes.forEach(function (t) {
+        if (t.matching && t.matching.correction_source === 'human') counts.human++;
+        if (!t.song_id && !t.song_title) counts.unresolved++;
+        if (t.matching && t.matching.confidence === 'low') counts.low++;
+    });
+
+    var summary = takes.length + ' take' + (takes.length === 1 ? '' : 's');
+    if (counts.unresolved) summary += ' · ' + counts.unresolved + ' unresolved';
+    if (counts.low && counts.low !== counts.unresolved) summary += ' · ' + counts.low + ' low confidence';
+    if (counts.human) summary += ' · ' + counts.human + ' corrected';
+
+    var html = '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:8px;flex-wrap:wrap">'
+        + '<div style="font-size:0.92em;font-weight:600">📝 Review takes</div>'
+        + '<div style="font-size:0.7em;color:var(--text-dim)">' + escHtml(summary) + '</div>'
+        + '</div>';
+
+    if (!audioUrl) {
+        html += '<div style="font-size:0.7em;color:#fbbf24;background:rgba(251,191,36,0.06);padding:6px 10px;border-radius:6px;margin-bottom:10px">'
+            + 'No persistent audio attached to this rehearsal — playback disabled. Attach a recording via Mixdowns to enable play.'
+            + '</div>';
+    } else {
+        html += '<audio id="rhTakeReviewAudio_' + escHtml(sessionId) + '" preload="metadata" style="display:none"></audio>';
+    }
+
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    for (var i = 0; i < takes.length; i++) {
+        html += _rhTakeRowHTML(takes[i], sessionId, !!audioUrl);
+    }
+    html += '</div>';
+
+    html += '<div style="font-size:0.65em;color:var(--text-dim);margin-top:8px;line-height:1.4">'
+        + 'Tap a suggestion or “Correct…” to reassign. Band corrections are protected from future analyzer overwrites.'
+        + '</div>';
+
+    return html;
+}
+
+function _rhTakeRowHTML(take, sessionId, audioAvailable) {
+    if (!take) return '';
+    var matching = take.matching || {};
+    var conf = matching.confidence || 'unknown';
+    var boundary = take.boundary_confidence || null;
+    var isHuman = matching.correction_source === 'human';
+    var title = take.song_title || null;
+    var unresolved = !title;
+
+    var confColor = (conf === 'high') ? '#10b981'
+                  : (conf === 'medium') ? '#f59e0b'
+                  : (conf === 'low') ? '#ef4444'
+                  : '#64748b';
+    var confLabel = (conf === 'high') ? 'High confidence'
+                  : (conf === 'medium') ? 'Medium'
+                  : (conf === 'low') ? 'Low — review'
+                  : '—';
+
+    var boundaryColor = (boundary === 'hard') ? '#10b981'
+                      : (boundary === 'soft') ? '#f59e0b'
+                      : (boundary === 'inferred') ? '#a78bfa'
+                      : '#64748b';
+    var boundaryLabel = (boundary === 'hard') ? 'Strong boundary'
+                      : (boundary === 'soft') ? 'Soft boundary'
+                      : (boundary === 'inferred') ? 'Inferred boundary'
+                      : null;
+
+    var dur = (take.stats && take.stats.duration) || 0;
+    var durLabel = _rhFormatTakeDuration(dur);
+
+    var playBtn = audioAvailable
+        ? '<button onclick="window._rhTakePlay(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\')" aria-label="Play take" title="Play this take" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.9em;line-height:1">▶</button>'
+        : '<button disabled aria-label="Playback disabled" title="No recording attached" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:#64748b;cursor:not-allowed;font-size:0.9em;line-height:1">▶</button>';
+
+    var titleHtml;
+    if (unresolved) {
+        var reasonHint = (matching.confidence_reason === 'plan_only_no_audio')
+            ? 'plan match, no audio evidence'
+            : (matching.confidence_reason === 'signals_disagree')
+                ? 'analyzer signals disagree'
+                : 'analyzer uncertain';
+        titleHtml = '<span style="color:var(--text-dim);font-style:italic">Unresolved — ' + escHtml(reasonHint) + '</span>';
+    } else {
+        titleHtml = '<span>' + escHtml(title) + '</span>';
+    }
+
+    var humanBadge = isHuman
+        ? '<span title="A band member assigned this song — protected from analyzer overwrite" style="display:inline-flex;align-items:center;gap:3px;font-size:0.62em;padding:1px 6px;border-radius:10px;background:rgba(16,185,129,0.12);color:#10b981;border:1px solid rgba(16,185,129,0.25);margin-left:6px">✓ Corrected by band</span>'
+        : '';
+
+    var poolBadge = '';
+    if (matching.candidate_pool === 'plan_first' && !isHuman) {
+        poolBadge = '<span title="Matched from the rehearsal plan" style="font-size:0.6em;color:#a78bfa;margin-left:6px">• From plan</span>';
+    }
+
+    var chips = '<span title="Analyzer confidence in this match" style="font-size:0.62em;padding:1px 6px;border-radius:10px;color:' + confColor + ';background:' + confColor + '1A;border:1px solid ' + confColor + '40">' + escHtml(confLabel) + '</span>';
+    if (boundaryLabel) {
+        chips += '<span title="How clean the take’s start/end boundary is" style="font-size:0.62em;padding:1px 6px;border-radius:10px;color:' + boundaryColor + ';background:' + boundaryColor + '1A;border:1px solid ' + boundaryColor + '40;margin-left:4px">' + escHtml(boundaryLabel) + '</span>';
+    }
+    chips += '<span style="font-size:0.62em;color:var(--text-dim);margin-left:6px">' + escHtml(durLabel) + '</span>';
+
+    var suggestions = Array.isArray(matching.top_suggestions) ? matching.top_suggestions : [];
+    var suggestHtml = '';
+    if (suggestions.length) {
+        var parts = [];
+        suggestions.slice(0, 3).forEach(function (s) {
+            if (!s || !s.title) return;
+            // Skip a suggestion that already matches the current title - adds nothing.
+            if (!unresolved && title && s.title === title) return;
+            parts.push('<a href="#" onclick="event.preventDefault();window._rhTakeQuickAssign(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\',\'' + escHtml(s.title) + '\')" style="color:#818cf8;text-decoration:none;border-bottom:1px dotted rgba(129,140,248,0.3);cursor:pointer">' + escHtml(s.title) + '</a>');
+        });
+        if (parts.length) {
+            suggestHtml = '<div style="font-size:0.65em;color:var(--text-dim);margin-top:4px">Suggestions: ' + parts.join(' · ') + '</div>';
+        }
+    }
+
+    var correctLabel = unresolved ? 'Assign …' : 'Correct …';
+    var correctBtn = '<button onclick="window._rhTakeOpenCorrect(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\')" style="flex-shrink:0;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:#94a3b8;cursor:pointer;font-size:0.72em;align-self:flex-start">' + correctLabel + '</button>';
+
+    return '<div class="rh-take-row" data-take-id="' + escHtml(take.id) + '" style="display:flex;align-items:flex-start;gap:10px;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);flex-wrap:wrap">'
+        + playBtn
+        + '<div style="flex:1;min-width:160px">'
+            + '<div style="font-size:0.85em;font-weight:500;display:flex;align-items:center;flex-wrap:wrap">' + titleHtml + humanBadge + poolBadge + '</div>'
+            + '<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:center">' + chips + '</div>'
+            + suggestHtml
+            + '<div id="rhTakeCorrectForm_' + escHtml(take.id) + '" style="display:none;margin-top:6px"></div>'
+        + '</div>'
+        + correctBtn
+        + '</div>';
+}
+
+function _rhFormatTakeDuration(sec) {
+    sec = Math.max(0, Math.round(sec || 0));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + (s < 10 ? '0' + s : s);
+}
+
+// ── Take Review playback + correction handlers ──────────────────────────────
+
+// Single auto-stop listener guard. We allow only one take to be auto-stopping
+// at a time; starting a new play tears down the previous timeupdate listener.
+var _rhTakeAutoStop = null;
+
+window._rhTakePlay = async function (sessionId, takeId) {
+    if (typeof window.GLTakes === 'undefined') return;
+    var audio = document.getElementById('rhTakeReviewAudio_' + sessionId);
+    if (!audio || !audio.src) {
+        if (typeof showToast === 'function') showToast('No audio attached to this rehearsal');
+        return;
+    }
+    var take;
+    try { take = await window.GLTakes.getTake(takeId); } catch (e) { return; }
+    if (!take || !take.playback_ref) return;
+    var startSec = take.playback_ref.start_sec || 0;
+    var endSec = take.playback_ref.end_sec || (startSec + ((take.stats && take.stats.duration) || 0));
+
+    if (_rhTakeAutoStop) {
+        try { audio.removeEventListener('timeupdate', _rhTakeAutoStop); } catch (e) {}
+        _rhTakeAutoStop = null;
+    }
+
+    try { audio.currentTime = startSec; } catch (e) { /* readyState not high enough yet - ignore */ }
+    audio.play().catch(function () { /* autoplay/user-gesture errors swallowed */ });
+
+    _rhTakeAutoStop = function () {
+        if (!audio) return;
+        if (audio.currentTime >= endSec || audio.paused || audio.ended) {
+            try { audio.pause(); } catch (e) {}
+            try { audio.removeEventListener('timeupdate', _rhTakeAutoStop); } catch (e) {}
+            _rhTakeAutoStop = null;
+        }
+    };
+    audio.addEventListener('timeupdate', _rhTakeAutoStop);
+};
+
+window._rhTakeQuickAssign = async function (sessionId, takeId, songTitle) {
+    if (!takeId || !songTitle) return;
+    return _rhTakeAssign(sessionId, takeId, songTitle);
+};
+
+window._rhTakeOpenCorrect = function (sessionId, takeId) {
+    var holder = document.getElementById('rhTakeCorrectForm_' + takeId);
+    if (!holder) return;
+    if (holder.style.display !== 'none') {
+        holder.style.display = 'none';
+        holder.innerHTML = '';
+        return;
+    }
+    holder.style.display = '';
+    var songs = (typeof allSongs !== 'undefined' && Array.isArray(allSongs)) ? allSongs : [];
+    var listId = 'rhTakeSongList_' + takeId;
+    var options = songs.slice(0, 400).map(function (s) {
+        if (!s || !s.title) return '';
+        return '<option value="' + escHtml(s.title) + '">';
+    }).join('');
+    holder.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
+        + '<input type="text" list="' + listId + '" placeholder="Type or pick a song…" id="rhTakeCorrectInput_' + escHtml(takeId) + '" '
+        + 'style="flex:1;min-width:140px;max-width:260px;padding:5px 8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:inherit;font-size:0.78em"'
+        + ' onkeydown="if(event.key===\'Enter\'){event.preventDefault();window._rhTakeSubmitCorrect(\'' + escHtml(sessionId) + '\',\'' + escHtml(takeId) + '\')}">'
+        + '<datalist id="' + listId + '">' + options + '</datalist>'
+        + '<button onclick="window._rhTakeSubmitCorrect(\'' + escHtml(sessionId) + '\',\'' + escHtml(takeId) + '\')" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.72em">Save</button>'
+        + '<button onclick="window._rhTakeCancelCorrect(\'' + escHtml(takeId) + '\')" style="padding:5px 8px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.72em">Cancel</button>'
+        + '</div>';
+    var input = document.getElementById('rhTakeCorrectInput_' + takeId);
+    if (input) { try { input.focus(); } catch (e) {} }
+};
+
+window._rhTakeCancelCorrect = function (takeId) {
+    var holder = document.getElementById('rhTakeCorrectForm_' + takeId);
+    if (!holder) return;
+    holder.style.display = 'none';
+    holder.innerHTML = '';
+};
+
+window._rhTakeSubmitCorrect = function (sessionId, takeId) {
+    var input = document.getElementById('rhTakeCorrectInput_' + takeId);
+    var val = input ? (input.value || '').trim() : '';
+    if (!val) {
+        if (typeof showToast === 'function') showToast('Pick a song first');
+        return;
+    }
+    return _rhTakeAssign(sessionId, takeId, val);
+};
+
+async function _rhTakeAssign(sessionId, takeId, songTitle) {
+    if (typeof window.GLTakes === 'undefined' || !window.GLTakes.updateTake) return;
+    var songId = null;
+    try {
+        if (typeof getSongByTitle === 'function') {
+            var s = getSongByTitle(songTitle);
+            if (s && s.songId) songId = s.songId;
+        }
+    } catch (e) {}
+    try {
+        await window.GLTakes.updateTake(takeId, {
+            song_title: songTitle,
+            song_id: songId, // may be null during songs_v2 migration window - OK
+            matching: {
+                candidate_pool: 'human',
+                confidence: 'high',
+                confidence_reason: 'human_correction',
+                correction_source: 'human',
+                top_suggestions: []
+            }
+        });
+        if (typeof showToast === 'function') showToast('✓ Reassigned to ' + songTitle);
+    } catch (e) {
+        console.warn('[TakeReview] assign failed:', e && e.message);
+        if (typeof showToast === 'function') showToast('Reassign failed');
+        return;
+    }
+
+    // Re-render the card so the human badge + new title flow in. Cheap full
+    // re-render - Phase 3A list size is small (a few dozen takes max).
+    var container = document.getElementById('rhTimelineSection');
+    if (!container) return;
+    var session;
+    try {
+        var _rsLoadById = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadById);
+        if (_rsLoadById) session = await GLStore.RehearsalSession.loadById(sessionId);
+    } catch (e) {}
+    try { _rhRenderTakeReview(container, sessionId, session || {}); } catch (e) {}
+}
 
 // ── Headline Insight ────────────────────────────────────────────────────────
 function _rhGetHeadline(session, idx, allSessions) {
