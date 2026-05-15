@@ -750,6 +750,103 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Living Set Sheet)
   - **Status:** open
 
+- **Finding:** Progression-memory signal fatigue risk — "Still rough
+  after N rehearsals" warning persists as long as an open annotation
+  exists on the song. If the band addresses the issue in real
+  rehearsal but doesn't mark the annotation as `fixed`, the signal
+  keeps shouting the count (3, 4, 5 rehearsals…). The system has no
+  auto-resolve heuristic; band hygiene (closing the note when done)
+  is required.
+  - **Why deferred:** Auto-resolving an annotation based on a "tight
+    last rehearsal" positive signal would be guessing about the
+    band's actual judgment. Phase 3-style restraint says: don't
+    auto-act on inference. Worth observing whether annotation hygiene
+    is high or low among real testers.
+  - **Trigger:** First tester reports "this annotation is fixed but
+    GrooveLinx still flags the song as rough," OR observed
+    annotation-resolve rate is low after first month.
+  - **Discovered:** 2026-05-15 (Rehearsal Progression Memory Pass)
+  - **Status:** open
+
+- **Finding:** Recurring-warning desensitization — once a song is in
+  the "Still rough after 3 rehearsals" state, the band might start
+  ignoring the row's warning entirely (banner blindness). The pass
+  uses a sharper amber (`#f97316`) than the soft warning amber
+  (`#fbbf24`) for persistent issues to distinguish them visually,
+  but color alone doesn't fix attention fatigue.
+  - **Why deferred:** Real signal of fatigue requires observation in
+    actual band use. If the user reports it, the response is likely
+    a "snooze this signal for one rehearsal" affordance — out of
+    scope for this pass.
+  - **Trigger:** Tester explicitly mentions ignoring the persistent
+    warning, OR usage data shows zero clicks on the [Open notes]
+    inline action despite ≥3 persistent signals.
+  - **Discovered:** 2026-05-15 (Rehearsal Progression Memory Pass)
+  - **Status:** open
+
+- **Finding:** Positive-signal effectiveness is unmeasured — "🔥
+  Strongest take from last rehearsal", "✓ Tightened significantly
+  since last week", "✓ Tight last rehearsal" are emotionally
+  intended but may not actually shift band behavior or feeling. The
+  signals only show when no warning matches, so they're rare by
+  design. Whether rare-but-positive lands better than frequent-but-
+  warning is an open psychological question.
+  - **Why deferred:** Mood/effect of UI copy is a tester-observation
+    question, not a code question.
+  - **Trigger:** First tester quotes a positive signal back ("hey
+    the system noticed we tightened Sugaree" — validation), OR
+    tester reports the warnings feel disproportionate to praise.
+  - **Discovered:** 2026-05-15 (Rehearsal Progression Memory Pass)
+  - **Status:** open
+
+- **Finding:** "Tightened significantly since last week" copy is
+  loose — the comparison is actually "latest session vs
+  second-to-latest session," not a calendar week. If a band rehearses
+  twice a week, "last week" reads as a stale week-old comparison
+  even though the data is one rehearsal back. If they rehearse every
+  three weeks, "last week" reads forward (the data is older than
+  last week). Copy ergonomics > strict accuracy at MVP, but worth
+  rephrasing once a real cadence is observed.
+  - **Why deferred:** Phrasing tunable once tester signal indicates
+    whether the copy reads naturally or weirdly. Possible alternative:
+    "Tightened significantly since last rehearsal."
+  - **Trigger:** First tester says "we didn't rehearse last week" or
+    similar comment.
+  - **Discovered:** 2026-05-15 (Rehearsal Progression Memory Pass)
+  - **Status:** open
+
+- **Finding:** Strongest-take winner depends on which song has the
+  highest analyzer confidence on the latest session — a single
+  metric. A song with one very-high-confidence segment (e.g. a
+  60-second solo passage) can outscore a song with many medium-
+  confidence segments (a full song run-through). The signal isn't
+  invariant to take length or count, just to mean confidence per
+  song in that session.
+  - **Why deferred:** A confidence-weighted-by-duration or
+    quality-tag-weighted winner would be more "musically true," but
+    requires deeper analyzer surgery + an "is this a song run or a
+    section drill?" classification that Phase 2 didn't ship.
+  - **Trigger:** Drew or tester reports the "strongest take" signal
+    landing on the wrong song.
+  - **Discovered:** 2026-05-15 (Rehearsal Progression Memory Pass)
+  - **Status:** open
+
+- **Finding:** Historical-memory edge case — songs that haven't been
+  played in the last 5 sessions appear without any history signal
+  (no `_rhSongHistory` entry). This is correct behavior, but the
+  spec mentioned "'not played recently'" as a candidate signal kind.
+  Implementing it requires comparing the unit's title against the
+  union of recent `songsWorked` arrays — light work, but the signal
+  itself risks fatigue if half the catalog earns it during a long
+  cycle of focused rehearsals.
+  - **Why deferred:** Restraint by design — adding another signal
+    type before the existing four are observed in real use violates
+    the "use restraint, only show highest-value signal" rule.
+  - **Trigger:** Real tester says "we have a backlog of songs we
+    haven't touched and I can't tell from the flow rail which ones."
+  - **Discovered:** 2026-05-15 (Rehearsal Progression Memory Pass)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.

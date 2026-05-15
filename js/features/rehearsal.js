@@ -919,9 +919,10 @@ async function _rhRenderCommandFlow(el) {
         // skips the load when cold (signals degrade gracefully — the page
         // still renders, missing rows just don't show 💬 hints this pass).
         var _rhAnnByTitle = {};
+        var _annAll = null;
         try {
             if (window.GLAnnotations && window.GLAnnotations.listAnnotationsByAnchor) {
-                var _annAll = await window.GLAnnotations.listAnnotationsByAnchor({});
+                _annAll = await window.GLAnnotations.listAnnotationsByAnchor({});
                 (_annAll || []).forEach(function(a) {
                     if (!a || a.archived) return;
                     if (a.status === 'fixed') return;
@@ -941,10 +942,24 @@ async function _rhRenderCommandFlow(el) {
             ? _rhSessionsCache[0]
             : null;
 
+        // Progression memory — recent-session history fingerprint per song
+        // and annotation-age map (rehearsals since each oldest open note).
+        // Both are derived from already-loaded data (sessions cache +
+        // _annAll) so no extra Firebase round-trip.
+        var _rhSongHistory = _rhBuildSongHistory(_rhSessionsCache);
+        var _rhAnnAgeByTitle = _rhBuildAnnotationAge(_annAll || [], _rhSessionsCache);
+
         // Compute the per-unit signals once. _rhRenderUnitSignal then reads
         // from this map at row-render time. Restraint by design: most rows
         // have no entry and render nothing.
-        var _rhUnitSignals = _rhBuildSongSignals(savedUnits, _rhFocus.list, _rhLatestSession, _rhAnnByTitle);
+        var _rhUnitSignals = _rhBuildSongSignals(
+            savedUnits,
+            _rhFocus.list,
+            _rhLatestSession,
+            _rhAnnByTitle,
+            _rhSongHistory,
+            _rhAnnAgeByTitle
+        );
 
         html += '<div id="rhUnitList">';
         savedUnits.forEach(function(unit, idx) {
@@ -1441,24 +1456,28 @@ function _rhPlanGigChip(planCache) {
 //
 // Each unit row in the flow rail can carry ONE compact signal that adds
 // rehearsal memory without turning the page into a dashboard. Restraint
-// is the rule: most rows show no signal at all. Only the highest-value
-// signal renders, picked by precedence:
+// is the rule: most rows show no signal at all. Precedence (top wins):
 //
-//   1. ⚠ Transition needs work    (linked pair where any song is in focus)
-//   2. 💬 N open notes              (any unit with active annotations)
-//   3. ⚠ Low readiness — N%        (single song in the focus list)
-//   4. ✓ Tight last rehearsal      (single song with high-confidence segments
-//                                    in the most recent session)
+//   1. ⚠ Transition into B still rough after N rehearsals  (linked + persistent + focus)
+//   2. ⚠ Still rough after N rehearsals                    (single + persistent open ann)
+//   3. ⚠ Transition needs work                              (linked + focus, no persistence)
+//   4. 💬 N open notes                                      (active annotations)
+//   5. ⚠ Recurring trouble spot                             (single in focus, played 3+ sessions)
+//   6. ⚠ Low readiness — N%                                 (single in focus, no recurrence)
+//   7. ✓ Tightened significantly since last week           (confidence delta ≥ 0.15)
+//   8. 🔥 Strongest take from last rehearsal                (highest latest-session avg conf)
+//   9. ✓ Tight last rehearsal                              (avg ≥ 0.7 in latest session)
 //
-// Signal computation is synchronous + cheap: pre-bucketed lookups keyed by
-// song title. The annotation cache is primed once at page render so this
-// stays a synchronous lookup at row time. Sessions / focus are already
-// loaded by `_rhRenderCommandFlow`.
+// "Strongest take" + "Tightened" + "Tight last rehearsal" only fire when no
+// warning-level signal matched — per spec, positive signals never displace
+// active issues.
+//
+// All inputs are pre-bucketed lookups; signal computation stays synchronous.
 //
 // Returns: { [unitIndex]: { icon, color, message, action? { label, onclick } } }
 // Missing entries = no signal for that row (the desired empty state).
 // ─────────────────────────────────────────────────────────────────────────
-function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
+function _rhBuildSongSignals(units, focusList, latestSession, annByTitle, history, annAgeByTitle) {
     var signals = {};
     if (!Array.isArray(units) || !units.length) return signals;
 
@@ -1491,6 +1510,30 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
     }
 
     annByTitle = annByTitle || {};
+    history = history || {};
+    annAgeByTitle = annAgeByTitle || {};
+
+    // Cheap lookups derived from history:
+    //   - isStrongest(title)   → highest latest-session avg conf across all titles
+    //   - tightenedDelta(title) → improvement signal (≥0.15 vs prior session)
+    //   - persistAge(title)    → if open annotations span ≥2 prior rehearsals
+    //   - sessionsPlayed(title) → number of recent sessions song appeared in
+    function persistAge(title) {
+        var a = annAgeByTitle[title];
+        return (a && a.rehearsalsAgo >= 2) ? a.rehearsalsAgo : 0;
+    }
+    function tightenedDelta(title) {
+        var h = history[title];
+        if (!h || !Array.isArray(h.sessionConfs) || h.sessionConfs.length < 2) return 0;
+        var latest = h.sessionConfs[0], prev = h.sessionConfs[1];
+        if (typeof latest !== 'number' || typeof prev !== 'number') return 0;
+        var delta = latest - prev;
+        return (delta >= 0.15 && latest >= 0.6) ? delta : 0;
+    }
+    function sessionsPlayed(title) {
+        var h = history[title];
+        return (h && typeof h.appearances === 'number') ? h.appearances : 0;
+    }
 
     units.forEach(function (unit, idx) {
         var bt = unit.type || 'single';
@@ -1504,26 +1547,50 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
             var anyFocus = pairTitles.some(function (t) { return !!focusByTitle[t]; });
             var totalAnns = pairTitles.reduce(function (n, t) { return n + (annByTitle[t] || 0); }, 0);
 
+            // Persistent transition issue — strongest signal for linked pairs.
+            // If either song in the pair has open annotations carrying age ≥2,
+            // surface the persistence ("still rough after N rehearsals") and
+            // name the target song so the warning reads musically.
+            var maxAge = 0, persistTarget = null;
+            pairTitles.forEach(function (t) {
+                var age = persistAge(t);
+                if (age > maxAge) { maxAge = age; persistTarget = t; }
+            });
+            if (maxAge >= 2) {
+                var targetLabel = (persistTarget === pairTitles[pairTitles.length - 1])
+                    ? 'Transition into ' + persistTarget + ' still rough after ' + maxAge + ' rehearsals'
+                    : 'Transition still rough after ' + maxAge + ' rehearsals';
+                signals[idx] = {
+                    icon: '⚠',
+                    color: '#f97316', // sharper amber for persistence (vs gentle warning)
+                    message: targetLabel,
+                    action: { label: 'Practice transition', onclick: 'window._rhPracticeTransitionUnit(' + idx + ')' }
+                };
+                return;
+            }
+
             if (anyFocus) {
-                // Highest-precedence signal for transitions: a song in the
-                // pair is in focus, so the transition is at risk. Surface a
-                // direct "Practice Transition" affordance inline.
+                // Active transition warning — not yet persistent, but a focus
+                // song is in the pair so practicing the seam pays off.
                 signals[idx] = {
                     icon: '⚠',
                     color: '#fbbf24',
                     message: 'Transition needs work',
                     action: { label: 'Practice transition', onclick: 'window._rhPracticeTransitionUnit(' + idx + ')' }
                 };
-            } else if (totalAnns > 0) {
+                return;
+            }
+
+            if (totalAnns > 0) {
                 signals[idx] = {
                     icon: '💬',
                     color: '#a78bfa',
                     message: totalAnns + ' open note' + (totalAnns > 1 ? 's' : ''),
                     action: null
                 };
+                return;
             }
-            // Tight-pair positive signal isn't fired here — too noisy for
-            // every clean transition. Worth revisiting after tester signal.
+            // No positive linked-pair signal — keeping restraint per spec.
             return;
         }
 
@@ -1531,6 +1598,20 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
             var t = unit.title;
             if (!t) return;
 
+            // ── WARNING-LEVEL SIGNALS (top precedence) ────────────────────
+            // Persistent unresolved issue — outranks low readiness.
+            var ageR = persistAge(t);
+            if (ageR >= 2) {
+                signals[idx] = {
+                    icon: '⚠',
+                    color: '#f97316',
+                    message: 'Still rough after ' + ageR + ' rehearsals',
+                    action: { label: 'Open notes', onclick: 'window._rhOpenSongNotes(' + idx + ')' }
+                };
+                return;
+            }
+
+            // Open notes (no persistence yet) — keep as informational warning.
             if (annByTitle[t] && annByTitle[t] > 0) {
                 signals[idx] = {
                     icon: '💬',
@@ -1540,6 +1621,20 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
                 };
                 return;
             }
+
+            // Recurring trouble spot — focus song that's been played 3+ times.
+            // Reads more empathetic than the generic readiness percentage.
+            if (focusByTitle[t] && sessionsPlayed(t) >= 3) {
+                signals[idx] = {
+                    icon: '⚠',
+                    color: '#fbbf24',
+                    message: 'Recurring trouble spot',
+                    action: null
+                };
+                return;
+            }
+
+            // Generic low readiness — the existing baseline warning.
             if (focusByTitle[t]) {
                 var pct = Math.round((focusByTitle[t].avg / 5) * 100);
                 signals[idx] = {
@@ -1550,6 +1645,33 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
                 };
                 return;
             }
+
+            // ── POSITIVE SIGNALS (only fire when no warning matched) ──────
+            // Tightened significantly — emotional improvement signal.
+            var delta = tightenedDelta(t);
+            if (delta >= 0.15) {
+                signals[idx] = {
+                    icon: '✓',
+                    color: '#22c55e',
+                    message: 'Tightened significantly since last week',
+                    action: null
+                };
+                return;
+            }
+
+            // Strongest take from last rehearsal — peak-of-session signal.
+            // Only one song wins this per session (highest avg conf ≥0.7).
+            if (history[t] && history[t].isStrongest) {
+                signals[idx] = {
+                    icon: '🔥',
+                    color: '#22c55e',
+                    message: 'Strongest take from last rehearsal',
+                    action: null
+                };
+                return;
+            }
+
+            // Generic tight-last-rehearsal positive signal.
             if (tightByTitle[t]) {
                 signals[idx] = {
                     icon: '✓',
@@ -1563,6 +1685,95 @@ function _rhBuildSongSignals(units, focusList, latestSession, annByTitle) {
     });
 
     return signals;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Rehearsal history fingerprint — used by the progression-memory signals.
+// Walks the recent 5 sessions; per song captures appearances + per-session
+// confidence avg. Pre-identifies the "strongest take" winner (highest
+// latest-session avg conf, threshold ≥0.7). Returns map keyed by song title.
+// ─────────────────────────────────────────────────────────────────────────
+function _rhBuildSongHistory(sessionsCache) {
+    var out = {};
+    if (!Array.isArray(sessionsCache) || !sessionsCache.length) return out;
+    var recent = sessionsCache.slice(0, 5); // _rhLoadSessions sorts newest-first
+
+    recent.forEach(function (sess, sIdx) {
+        var raw = sess && sess.audio_segments;
+        var segs = Array.isArray(raw) ? raw : (raw ? Object.values(raw) : []);
+        var sessConfs = {};
+        segs.forEach(function (s) {
+            if (!s || !s.songTitle) return;
+            if (typeof s.confidence !== 'number') return;
+            var t = s.type || s.segType || 'song';
+            if (t === 'talking' || t === 'speech' || t === 'discussion' || t === 'false_start' || t === 'ignore') return;
+            if (!sessConfs[s.songTitle]) sessConfs[s.songTitle] = [];
+            sessConfs[s.songTitle].push(s.confidence);
+        });
+        Object.keys(sessConfs).forEach(function (title) {
+            var arr = sessConfs[title];
+            var avg = arr.reduce(function (a, b) { return a + b; }, 0) / arr.length;
+            if (!out[title]) out[title] = { appearances: 0, sessionConfs: [] };
+            out[title].appearances++;
+            out[title].sessionConfs.push(avg); // index 0 = latest, 1 = prev, …
+        });
+    });
+
+    // Identify the strongest-take winner from the latest session only.
+    // (Strongest is a "peak of last rehearsal" signal, not a rolling winner.)
+    var strongestTitle = null, strongestConf = 0;
+    Object.keys(out).forEach(function (t) {
+        var latest = out[t].sessionConfs[0];
+        if (typeof latest === 'number' && latest >= 0.7 && latest > strongestConf) {
+            strongestConf = latest;
+            strongestTitle = t;
+        }
+    });
+    if (strongestTitle) out[strongestTitle].isStrongest = true;
+
+    return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Annotation age — for each song with open annotations, derive how many
+// recent rehearsals have happened since the OLDEST open annotation was
+// created. Drives the "still rough after N rehearsals" persistence signal.
+// Returns: { [title]: { count, rehearsalsAgo } }
+// ─────────────────────────────────────────────────────────────────────────
+function _rhBuildAnnotationAge(allAnnotations, sessionsCache) {
+    var out = {};
+    if (!Array.isArray(allAnnotations) || !allAnnotations.length) return out;
+
+    // First pass — bucket open annotations by song title, keep oldest created_at.
+    allAnnotations.forEach(function (a) {
+        if (!a || a.archived) return;
+        if (a.status === 'fixed') return;
+        var key = a.anchor && a.anchor.song_id;
+        if (!key) return;
+        if (!out[key]) out[key] = { count: 0, oldestCreatedAt: a.created_at || Date.now() };
+        out[key].count++;
+        if (a.created_at && a.created_at < out[key].oldestCreatedAt) {
+            out[key].oldestCreatedAt = a.created_at;
+        }
+    });
+
+    // Second pass — count how many recent sessions (out of the latest 5)
+    // happened after each song's oldest annotation. That count IS the
+    // "still rough after N rehearsals" number.
+    var recent = Array.isArray(sessionsCache) ? sessionsCache.slice(0, 5) : [];
+    var sessionDatesMs = recent.map(function (s) {
+        if (!s || !s.date) return 0;
+        try { return new Date(s.date + 'T12:00:00').getTime(); } catch (e) { return 0; }
+    }).filter(function (n) { return n > 0; });
+
+    Object.keys(out).forEach(function (title) {
+        var oldest = out[title].oldestCreatedAt;
+        var n = 0;
+        sessionDatesMs.forEach(function (ms) { if (ms >= oldest) n++; });
+        out[title].rehearsalsAgo = n;
+    });
+
+    return out;
 }
 
 // Render a single inline signal sub-line. Returns '' when sig is null so
