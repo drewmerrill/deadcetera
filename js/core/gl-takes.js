@@ -408,6 +408,53 @@
       return Promise.resolve({ created: [], skipped: 0 });
     }
 
+    // Phase 3D: auto-resolve recording_id when the caller did not supply one.
+    // This closes the take.playback_ref.recording_id null gap left over from
+    // Phase 2 — every Take produced by this path now carries the canonical
+    // Recording FK, provided GLRecordings is loaded. Falls through to the
+    // legacy null-recording_id behavior on cached-shell or pre-3C bundles.
+    var ensureRecordingId = (opts.recording_id || !window.GLRecordings || !window.GLRecordings.resolvePlaybackSource)
+      ? Promise.resolve(opts.recording_id || null)
+      : _autoResolveRecordingIdForRehearsal(rehearsalId);
+
+    return ensureRecordingId.then(function (resolvedRecId) {
+      if (resolvedRecId && !opts.recording_id) {
+        opts = Object.assign({}, opts, { recording_id: resolvedRecId });
+        if (window.GLObs && window.GLObs.log) {
+          window.GLObs.log('GLTakes', 'recording_id auto-resolved', {
+            rehearsal_id: rehearsalId,
+            recording_id: resolvedRecId
+          });
+        }
+      } else if (!resolvedRecId && !opts.recording_id && window.GLObs && window.GLObs.log) {
+        window.GLObs.log('GLTakes', 'recording_id unresolved — takes will have null playback_ref.recording_id', {
+          rehearsal_id: rehearsalId
+        });
+      }
+      return _normalizeRehearsalSegmentsCore(rehearsalId, segments, opts);
+    });
+  }
+
+  // Loads the session at bands/{slug}/rehearsal_sessions/{rehearsalId},
+  // hands it to GLRecordings.resolvePlaybackSource (which auto-creates +
+  // stamps recording_id on the session if needed), and returns the resolved
+  // canonical recording_id (or null when no playback source can be derived).
+  function _autoResolveRecordingIdForRehearsal(rehearsalId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB
+           : (typeof window !== 'undefined' ? window.firebaseDB : null);
+    var p = (typeof bandPath === 'function') ? bandPath
+          : (typeof window !== 'undefined' ? window.bandPath : null);
+    if (!db || !p) return Promise.resolve(null);
+    return db.ref(p('rehearsal_sessions/' + rehearsalId)).once('value').then(function (snap) {
+      var session = snap.val() || {};
+      session.sessionId = rehearsalId;
+      return window.GLRecordings.resolvePlaybackSource(session, { autoCreate: true })
+        .then(function (res) { return (res && res.recordingId) || null; })
+        .catch(function () { return null; });
+    }).catch(function () { return null; });
+  }
+
+  function _normalizeRehearsalSegmentsCore(rehearsalId, segments, opts) {
     return _ensureLoaded(true).then(function (cache) {
       // Build a fast lookup of existing takes for this rehearsal by segment_id
       var bySegId = {};

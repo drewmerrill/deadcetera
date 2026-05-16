@@ -220,11 +220,18 @@
     // resolvePlaybackSource — calibration banner shows resolver result above
     // this snapshot. Note text reflects the new state.
     var mixdownAvailable = !!(window.GLRecordings && window.GLRecordings.resolvePlaybackSource);
+    // Phase 3D: surface the recording_id gap — a session with audio but no
+    // canonical recording_id stamped is the most common pre-3C state and the
+    // first thing to repair on resolve.
+    var hasRecordingId = !!(session && session.recording_id);
+    var recordingIdGap = hasPersistent && !hasRecordingId;
     return {
       url: url || '(none)',
       isBlob: isBlob,
       hasPersistent: hasPersistent,
       origin: origin,
+      hasRecordingId: hasRecordingId,
+      recordingIdGap: recordingIdGap,
       mixdownLookupAvailable: mixdownAvailable,
       mixdownLookupNote: mixdownAvailable
         ? 'Mixdown lookup is wired via GLRecordings.resolvePlaybackSource (Phase 3C).'

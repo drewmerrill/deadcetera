@@ -4771,6 +4771,36 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
         html += '<div style="font-size:0.62em;color:var(--text-dim);margin-top:4px">No continuity signals.</div>';
     }
 
+    // Phase 3D: Benchmark validation cheat-sheet — convergence health at a
+    // glance. Take recording_id coverage = fraction of takes whose canonical
+    // FK is set. Mismatches = takes with a non-null recording_id that
+    // diverges from the resolver's session-level recording_id (real-world
+    // this happens after re-analysis against a swapped recording).
+    var withRid = 0, mismatches = 0, withTitle = 0, humanCount = 0;
+    var sessRid = (playbackResolution && playbackResolution.recordingId) || null;
+    (takes || []).forEach(function (t) {
+        if (!t) return;
+        var rid = (t.playback_ref && t.playback_ref.recording_id) || t.recording_id || null;
+        if (rid) withRid++;
+        if (rid && sessRid && rid !== sessRid) mismatches++;
+        if (t.song_title || t.song_id) withTitle++;
+        if (t.matching && t.matching.correction_source === 'human') humanCount++;
+    });
+    var totalTakes = (takes || []).length;
+    var ridPct = totalTakes > 0 ? Math.round((withRid / totalTakes) * 100) : 0;
+    var titlePct = totalTakes > 0 ? Math.round((withTitle / totalTakes) * 100) : 0;
+    var ridColor = ridPct >= 95 ? '#10b981' : ridPct >= 60 ? '#f59e0b' : '#ef4444';
+    var titleColor = titlePct >= 80 ? '#10b981' : titlePct >= 50 ? '#f59e0b' : '#ef4444';
+
+    html += '<div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(167,139,250,0.2);font-size:0.62em;color:var(--text-dim);line-height:1.5">'
+        + '<span style="color:#a78bfa;font-weight:600">🎯 Benchmark</span>'
+        + ' · takes: <span style="color:var(--text)">' + totalTakes + '</span>'
+        + ' · recording_id coverage: <span style="color:' + ridColor + ';font-weight:500">' + withRid + '/' + totalTakes + ' (' + ridPct + '%)</span>'
+        + (mismatches > 0 ? ' · <span style="color:#ef4444">⚠ ' + mismatches + ' rid mismatch</span>' : '')
+        + ' · titled: <span style="color:' + titleColor + ';font-weight:500">' + withTitle + ' (' + titlePct + '%)</span>'
+        + (humanCount > 0 ? ' · <span style="color:#10b981">✓ ' + humanCount + ' human-corrected</span>' : '')
+        + '</div>';
+
     html += '</div>';
     return html;
 }
@@ -4953,13 +4983,33 @@ var _rhTakeAutoStop = null;
 window._rhTakePlay = async function (sessionId, takeId) {
     if (typeof window.GLTakes === 'undefined') return;
     var audio = document.getElementById('rhTakeReviewAudio_' + sessionId);
-    if (!audio || !audio.src) {
-        if (typeof showToast === 'function') showToast('No audio attached to this rehearsal');
-        return;
-    }
     var take;
     try { take = await window.GLTakes.getTake(takeId); } catch (e) { return; }
     if (!take || !take.playback_ref) return;
+
+    // Phase 3D: if the audio element has no src yet, try to lazily resolve
+    // playback from take.recording_id (or take.playback_ref.recording_id).
+    // Lets a Take play even when the session's recording_url was not in
+    // the original render-time resolve (e.g. browse-old-history paths).
+    var takeRecId = (take.playback_ref && take.playback_ref.recording_id) || take.recording_id || null;
+    if (audio && !audio.src && takeRecId && window.GLRecordings && window.GLRecordings.getRecording) {
+        try {
+            var rec = await window.GLRecordings.getRecording(takeRecId);
+            if (rec && rec.audio_url && rec.audio_url.indexOf('blob:') !== 0) {
+                audio.src = rec.audio_url;
+                if (window.GLObs && window.GLObs.log) {
+                    window.GLObs.log('TakeReview', 'lazy audio.src from take.recording_id', { takeId: takeId, recording_id: takeRecId });
+                }
+            }
+        } catch (e) {}
+    }
+    if (!audio || !audio.src) {
+        if (window.GLObs && window.GLObs.log) {
+            window.GLObs.log('TakeReview', 'play blocked — no audio source', { takeId: takeId, take_recording_id: takeRecId });
+        }
+        if (typeof showToast === 'function') showToast('No audio attached to this rehearsal');
+        return;
+    }
     var startSec = take.playback_ref.start_sec || 0;
     var endSec = take.playback_ref.end_sec || (startSec + ((take.stats && take.stats.duration) || 0));
 
@@ -5153,22 +5203,42 @@ window._rhToggleMixdownPlayer = async function(sessionId, mixdownId) {
     el.style.display = '';
     el.innerHTML = '<div style="font-size:0.72em;color:#fbbf24">Loading mixdown\u2026</div>';
 
-    // Load mixdown data
     try {
         var all = await loadBandDataFromDrive('_band', 'rehearsal_mixdowns') || {};
         var mx = all[mixdownId];
         if (!mx) { el.innerHTML = '<div style="font-size:0.72em;color:#64748b">Mixdown not found</div>'; return; }
 
+        // Phase 3D: route playback through GLRecordings.resolvePlaybackSource
+        // by handing it a session-shaped object \u2014 Mixdown.audio_url becomes
+        // session.recording_url, the resolver will canonicalize through P2.
+        // Cached-shell fallback uses mx.audio_url directly.
+        var playableUrl = '';
+        if (window.GLRecordings && window.GLRecordings.resolvePlaybackSource) {
+            try {
+                var res = await window.GLRecordings.resolvePlaybackSource({
+                    sessionId: 'mixdown:' + mixdownId,
+                    recording_url: mx.audio_url || '',
+                    date: mx.rehearsal_date || null
+                }, { autoCreate: false });
+                if (res && res.url && !res.isBlob) playableUrl = res.url;
+            } catch (e) {
+                if (window.GLObs && window.GLObs.log) {
+                    window.GLObs.log('Mixdown', 'resolvePlaybackSource failed; falling back', { mixdownId: mixdownId, message: e && e.message });
+                }
+            }
+        }
+        if (!playableUrl && mx.audio_url && mx.audio_url.indexOf('blob:') !== 0) {
+            playableUrl = mx.audio_url;
+        }
+
         var html = '';
-        // Skip blob: URLs \u2014 they only live for the session that created them.
-        var _hasPlayableAudio = mx.audio_url && mx.audio_url.indexOf('blob:') !== 0;
-        if (_hasPlayableAudio) {
-            html += '<audio controls preload="metadata" style="width:100%;height:36px;margin-bottom:4px" src="' + escHtml(mx.audio_url) + '"></audio>';
+        if (playableUrl) {
+            html += '<audio controls preload="metadata" style="width:100%;height:36px;margin-bottom:4px" src="' + escHtml(playableUrl) + '"></audio>';
         }
         if (mx.drive_url) {
             html += '<a href="' + escHtml(mx.drive_url) + '" target="_blank" rel="noopener" style="font-size:0.72em;color:#60a5fa;text-decoration:none">\uD83D\uDCC1 Open in Google Drive</a>';
         }
-        if (!_hasPlayableAudio && !mx.drive_url) {
+        if (!playableUrl && !mx.drive_url) {
             html = '<div style="font-size:0.72em;color:#64748b">No playable audio attached</div>';
         }
         el.innerHTML = html;

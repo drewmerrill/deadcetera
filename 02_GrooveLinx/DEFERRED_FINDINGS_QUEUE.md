@@ -1070,6 +1070,96 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Rehearsal ↔ Song DNA proposal)
   - **Status:** open
 
+- **Finding:** `normalizeRehearsalSegments` auto-resolves recording_id
+  by loading the session via Firebase when `opts.recording_id` is
+  missing. That's one extra `bands/{slug}/rehearsal_sessions/{id}`
+  read per analyze run.
+  - **Why deferred:** The per-session resolver cache short-circuits
+    redundant resolves within a render pass, and the analyzer is
+    already an expensive op — one extra read is negligible against the
+    audio-decode + matching cost. The proper optimization is to teach
+    `recording-analyzer.js` to pre-stamp `opts.recording_id` itself
+    before calling `normalizeRehearsalSegments`, eliminating the hop.
+  - **Trigger:** Profiling shows analyze p95 dominated by the session
+    read, OR a future analyzer refactor unifies the session-load path.
+  - **Discovered:** 2026-05-15 (Phase 3D)
+  - **Status:** open
+
+- **Finding:** The 🎯 Benchmark `rid mismatch` counter is
+  observation-only. When a Take's `recording_id` diverges from the
+  session-level resolver result, the calibration banner flags the
+  count in red but no auto-repair fires.
+  - **Why deferred:** Phase 3D spec explicitly forbade auto-healing.
+    Real-world this only happens after re-analysis against a swapped
+    recording, which is rare and should be a human decision. Until
+    5/11 validation surfaces this in the wild, no fix can be designed
+    without speculation.
+  - **Trigger:** First observed mismatch on the 5/11 benchmark or
+    later sessions, OR a re-analysis flow ships that intentionally
+    rewrites recording_id.
+  - **Discovered:** 2026-05-15 (Phase 3D)
+  - **Status:** open
+
+- **Finding:** `_rhToggleMixdownPlayer` calls
+  `GLRecordings.resolvePlaybackSource(..., { autoCreate: false })` —
+  the Mixdown player surface won't materialize a Recording row even
+  for a Drive-backed mixdown that doesn't yet have one.
+  - **Why deferred:** Intentional. The analyzer pipeline is the
+    canonical write path for Recording rows; surfacing auto-create on
+    a play-only UI would create duplicate Recordings every time the
+    user clicks Play on an unanalyzed mixdown. Better to let the
+    analyzer (which already runs at upload time) own the canonical write.
+  - **Trigger:** If we ever ship a surface that uploads mixdowns
+    without an analyze step, OR the analyzer stops being the only
+    Recording-write path.
+  - **Discovered:** 2026-05-15 (Phase 3D)
+  - **Status:** open
+
+- **Finding:** `_rhTakePlay` lazy-binds `audio.src` from
+  `take.playback_ref.recording_id` via `GLRecordings.getRecording`,
+  but that path bypasses the Phase 3C session-level resolver cache
+  (`_resolveCache`). Two takes from the same recording on the same
+  page render trigger two separate `getRecording` calls.
+  - **Why deferred:** `getRecording` itself uses the GLRecordings
+    60s in-memory cache, so the second call is a no-op against
+    Firebase. The redundancy is at the cache-key-shape level, not
+    a network level. Mitigation cost > benefit until a profile
+    shows it.
+  - **Trigger:** Profiling shows take-row play latency dominated by
+    cache misses, OR a refactor of GLRecordings unifies the two cache
+    layers.
+  - **Discovered:** 2026-05-15 (Phase 3D)
+  - **Status:** open
+
+- **Finding:** The 🎯 Benchmark cheat-sheet line is calibration-mode
+  only — band members never see the convergence health line. If
+  recording_id coverage silently drops below 60% in production, no
+  band-facing surface warns about it.
+  - **Why deferred:** Intentional per Drew's spec ("don't bleed
+    analyzer complexity into band-member UX"). The benchmark line is
+    a founder/admin diagnostic, not a user-facing health bar. The
+    band-facing equivalent (if needed) would be a soft "playback may
+    be unreliable" hint, not a percentage.
+  - **Trigger:** First observed in-production coverage degradation
+    that wasn't caught by Drew's calibration-mode validation pass.
+  - **Discovered:** 2026-05-15 (Phase 3D)
+  - **Status:** open
+
+- **Finding:** `recording-analyzer.js` doesn't pre-stamp
+  `opts.recording_id` when calling `normalizeRehearsalSegments` — it
+  relies on the gl-takes auto-resolve hop to do it. The indirect
+  path works correctly but means a future refactor that touches the
+  analyzer's call shape must remember the indirect dependency.
+  - **Why deferred:** Phase 3D spec forbade touching recording-analyzer
+    architecture. The auto-resolve in gl-takes is the cleaner
+    separation of concerns anyway — the analyzer shouldn't need to
+    know about Recording canonicalization. Direct stamping would be a
+    performance optimization, not an architecture improvement.
+  - **Trigger:** Performance profiling, OR a future analyzer refactor
+    that already needs to load the session for other reasons.
+  - **Discovered:** 2026-05-15 (Phase 3D)
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."
