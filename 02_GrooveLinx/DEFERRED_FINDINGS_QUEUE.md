@@ -1651,6 +1651,49 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-16 (Phase 3I)
   - **Status:** open
 
+- **Finding:** First `modal deploy` after Phase 3I.1 consolidation
+  rebuilds the `embed_image` from scratch — Modal hasn't seen it
+  before (it's a new image instance inside the existing app, so the
+  image cache layer is empty for it). One-time ~5 minute build cost.
+  Subsequent deploys reuse the cached layers and complete in seconds.
+  - **Why deferred:** This is unavoidable on any first image build;
+    pre-baking the image via a Modal CI step would shift the cost,
+    not remove it. Acceptable one-time overhead.
+  - **Trigger:** None — purely informational so the first deploy
+    doesn't look broken.
+  - **Discovered:** 2026-05-16 (Phase 3I.1)
+  - **Status:** open
+
+- **Finding:** Embedding endpoint now shares the stems app's deploy
+  lifecycle — touching either side (stems separator code OR the
+  EMBEDDINGS section) re-runs `modal deploy` on the whole app, which
+  re-verifies both images and republishes both endpoint URLs. The
+  URLs themselves don't change, but the cold-start window for both
+  functions resets simultaneously after every deploy.
+  - **Why deferred:** Coupling is the price of the 8-app limit. The
+    only fix is splitting into two apps again, which the limit
+    forbids. Practical impact is one extra warm-up after deploys.
+  - **Trigger:** Modal raises the app limit OR stems vs embed deploy
+    cadences diverge enough that coupled redeploys become friction.
+  - **Discovered:** 2026-05-16 (Phase 3I.1)
+  - **Status:** open
+
+- **Finding:** Consolidated URL pattern includes `stem-separator` in
+  the embed endpoint:
+  `https://drewmerrill--groovelinx-stem-separator-embed-serve.modal.run`.
+  Semantically misleading (the endpoint serves audio embeddings, not
+  stems) but operationally fine. Renaming the Modal app would require
+  redeploying the stems endpoints too, breaking the existing browser
+  config that points at the current stems URL.
+  - **Why deferred:** Cosmetic only. Browser code reads
+    `window._glEmbedServiceUrl` so the misleading hostname is
+    invisible at the call site. Renaming has nonzero cost
+    (re-pointing stems consumers too) that doesn't earn its weight.
+  - **Trigger:** A future stem-vs-embed identity migration where
+    re-pointing both URLs is acceptable.
+  - **Discovered:** 2026-05-16 (Phase 3I.1)
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."

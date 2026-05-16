@@ -2303,3 +2303,180 @@ def fadr_lead_back(source_url: str, song_id: str, worker_url: str) -> dict:
         "tempo": asset_data.get("tempo") or asset_data.get("bpm"),
         "elapsed_sec": time.time() - started,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  EMBEDDINGS — Phase 3I consolidated into this app (was a separate Modal app
+#  in the original Phase 3I commit, but Modal's 8-app limit forced
+#  consolidation). Sibling functions inside `groovelinx-stem-separator`; each
+#  defines its own image so the existing stems image is unchanged.
+#
+#  Deploy: same single command Drew already uses for stems —
+#      modal deploy services/stem-separation/separator.py
+#
+#  After deploy, Modal emits two ASGI endpoints under one app:
+#      stems  → https://drewmerrill--groovelinx-stem-separator-{stems-fn}.modal.run
+#      embed  → https://drewmerrill--groovelinx-stem-separator-embed-serve.modal.run
+#
+#  Set `window._glEmbedServiceUrl = '<embed URL>'` in index.html /
+#  index-dev.html to activate the audioSimilar matcher signal in the browser.
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Embedding image — isolated from the stems image so torch + transformers +
+# librosa for CLAP don't bloat the stems container's build time. Same numpy<2
+# + torch 2.1.2 pinning rationale as stems (torch 2.1.x is built against
+# numpy 1.x; Modal's resolver otherwise pulls numpy 2.4 and CLAP fails with
+# "Numpy is not available").
+embed_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .apt_install("ffmpeg")
+    .pip_install(
+        "numpy<2.0",
+        "torch==2.1.2",
+        "torchaudio==2.1.2",
+        "transformers>=4.36,<5.0",
+        "librosa>=0.10,<1.0",
+        "soundfile>=0.12,<1.0",
+        "fastapi[standard]==0.136.1",
+        "python-multipart==0.0.27",
+    )
+    # Bake the CLAP weights into the image so cold containers skip the
+    # ~600MB HuggingFace download. .run_commands runs at image-build time.
+    .run_commands(
+        "python -c \"from transformers import ClapModel, ClapProcessor; "
+        "ClapModel.from_pretrained('laion/clap-htsat-unfused'); "
+        "ClapProcessor.from_pretrained('laion/clap-htsat-unfused')\""
+    )
+)
+
+
+EMBED_MODEL_NAME = "laion/clap-htsat-unfused"
+EMBED_MODEL_VERSION = "laion/clap-htsat-unfused-v1"  # stamped onto every embedding
+
+
+# Module-level cache so warm containers reuse the loaded model across requests.
+# Modal containers are single-process so a module-level globals approach is
+# safe — no multi-process serialization concerns.
+_embed_model = None
+_embed_processor = None
+
+
+def _embed_load_model():
+    """Lazy model load inside an embed container. First call pays ~5-10s on
+    warm GPU; subsequent calls reuse the loaded model."""
+    global _embed_model, _embed_processor
+    if _embed_model is not None:
+        return _embed_model, _embed_processor
+
+    import torch
+    from transformers import ClapModel, ClapProcessor
+
+    _embed_processor = ClapProcessor.from_pretrained(EMBED_MODEL_NAME)
+    _embed_model = ClapModel.from_pretrained(EMBED_MODEL_NAME)
+    _embed_model.eval()
+    if torch.cuda.is_available():
+        _embed_model = _embed_model.cuda()
+    return _embed_model, _embed_processor
+
+
+def _embed_bytes(audio_bytes: bytes) -> dict:
+    """Decode → CLAP → L2-normalized 512-d embedding. Self-contained so the
+    embed function has zero cross-file dependencies inside the Modal image."""
+    import librosa
+    import torch
+
+    model, processor = _embed_load_model()
+
+    try:
+        audio, sr = librosa.load(io.BytesIO(audio_bytes), sr=48000, mono=True)
+    except Exception as e:
+        return {"error": f"decode_failed: {e}"}
+
+    if audio is None or audio.size == 0:
+        return {"error": "empty_audio"}
+
+    # CLAP's native window is 10 seconds. Take the middle slice when input is longer.
+    target_samples = 48000 * 10
+    if audio.size > target_samples:
+        start = (audio.size - target_samples) // 2
+        audio = audio[start:start + target_samples]
+
+    inputs = processor(audios=audio, sampling_rate=48000, return_tensors="pt")
+    if torch.cuda.is_available():
+        inputs = {k: v.cuda() for k, v in inputs.items()}
+
+    with torch.no_grad():
+        emb = model.get_audio_features(**inputs)
+
+    # L2-normalize so cosine similarity reduces to dot product downstream.
+    emb = emb / emb.norm(dim=-1, keepdim=True)
+    vec = emb[0].detach().cpu().numpy().tolist()
+
+    return {
+        "model": EMBED_MODEL_NAME,
+        "model_version": EMBED_MODEL_VERSION,
+        "dimension": len(vec),
+        "embedding": vec,
+    }
+
+
+@app.function(
+    image=embed_image,
+    gpu="T4",
+    timeout=120,
+    # Stay warm 5 min after last request — the browser Bootstrap workflow
+    # walks many Takes in sequence; keeping the GPU resident across the loop
+    # turns ~30s cold-start per Take into ~1s warm per Take.
+    scaledown_window=300,
+)
+@modal.asgi_app()
+def embed_serve():
+    """Single ASGI app hosting /health + /embed under one Modal endpoint.
+
+    Browser sets `window._glEmbedServiceUrl` to this URL and calls /health +
+    /embed exactly the way it did against the local FastAPI service at
+    `services/audio-embeddings/main.py`. Same contract, different host.
+    """
+    from fastapi import FastAPI, File, HTTPException, UploadFile
+    from fastapi.middleware.cors import CORSMiddleware
+
+    web = FastAPI(
+        title="GrooveLinx Audio Embeddings (Modal, consolidated)",
+        version="0.2.0",
+    )
+
+    # CORS permissive — the browser calls directly from any GrooveLinx
+    # origin. Tighten to the prod origin list when the deployment URL stabilizes.
+    web.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
+    @web.get("/health")
+    async def _health():
+        # Don't load the model in the health path — keep it a cheap probe.
+        return {
+            "status": "ok",
+            "model": EMBED_MODEL_NAME,
+            "model_version": EMBED_MODEL_VERSION,
+            "gpu": True,
+        }
+
+    @web.post("/embed")
+    async def _embed(file: UploadFile = File(...)):
+        if not file:
+            raise HTTPException(status_code=400, detail="no_file")
+        audio_bytes = await file.read()
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="empty_body")
+
+        started = time.time()
+        result = _embed_bytes(audio_bytes)
+        result["elapsed_ms"] = int((time.time() - started) * 1000)
+        if "error" in result:
+            raise HTTPException(status_code=422, detail=result["error"])
+        return result
+
+    return web

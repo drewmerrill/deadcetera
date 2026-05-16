@@ -9,33 +9,38 @@ Generates normalized audio embeddings using CLAP (laion/clap-htsat-unfused) for 
 | Mode | Entry | When to use |
 |---|---|---|
 | **Local (dev)** | `main.py` + uvicorn → `http://localhost:8200` | Iterating on the CLAP wrapper, testing embeddings against local audio. |
-| **Modal (prod)** | `modal_app.py` → `https://<user>--groovelinx-audio-embeddings-serve.modal.run` | Production. Phase 3I-activated. Browser default config points here once deployed. |
+| **Modal (prod)** | `services/stem-separation/separator.py::embed_serve` → `https://<user>--groovelinx-stem-separator-embed-serve.modal.run` | Production. **Consolidated** into the existing stems Modal app (Modal's 8-app limit forced consolidation). |
 
 Both expose the same `GET /health` and `POST /embed` contract — browser code is endpoint-agnostic and switches via `window._glEmbedServiceUrl`.
 
-## Deploy to Modal (Phase 3I)
+## Deploy to Modal (Phase 3I — consolidated)
+
+The embedding endpoint lives as a sibling function inside the existing `groovelinx-stem-separator` Modal app (look for the `EMBEDDINGS — Phase 3I consolidated` section at the bottom of `services/stem-separation/separator.py`). Sibling functions share the app slot in Modal's 8-app quota; each defines its own image so the stems image stays untouched.
 
 ```bash
 # Once per environment — install Modal CLI + authenticate
 pip install modal
 modal token new
 
-# Deploy
-modal deploy services/audio-embeddings/modal_app.py
+# Deploy — same single command that already deploys stems. This now
+# also deploys the embed_serve sibling function.
+modal deploy services/stem-separation/separator.py
 ```
 
-The deploy emits a single ASGI endpoint URL. Use the base URL as `_glEmbedServiceUrl`:
+The deploy emits multiple ASGI endpoint URLs under one app — find the `embed_serve` one and use its base URL as `_glEmbedServiceUrl`:
 
 ```html
 <!-- in index.html / index-dev.html, near the top -->
 <script>
-  window._glEmbedServiceUrl = 'https://drewmerrill--groovelinx-audio-embeddings-serve.modal.run';
+  window._glEmbedServiceUrl = 'https://drewmerrill--groovelinx-stem-separator-embed-serve.modal.run';
 </script>
 ```
 
-The CLAP weights (~600MB) are baked into the image at build time (`modal_app.py`'s `.run_commands(...)`), so cold starts skip the HuggingFace download. First request after idle: ~5-10s; subsequent requests within the 5-minute `scaledown_window`: ~1s.
+The CLAP weights (~600MB) are baked into the embed image at build time (`embed_image.run_commands(...)`), so cold starts skip the HuggingFace download. First request after idle: ~5-10s; subsequent requests within the 5-minute `scaledown_window`: ~1s.
 
 **Cost estimate (Modal T4 @ $0.59/hr active):** bootstrap of 50 confirmed Takes ≈ 1-2 minutes wall-clock ≈ <$0.03. Steady-state per-rehearsal analyze ≈ 5s/session ≈ <$0.001. Monthly ceiling across 5 active bands at 2 analyzes/week each: ≈ $1-2.
+
+> Historical note: Phase 3I originally shipped a standalone `modal_app.py` in this directory as its own Modal app (`groovelinx-audio-embeddings`). That hit Drew's 8-app limit immediately on deploy, so the same code was moved into `services/stem-separation/separator.py` as the `embed_serve` sibling function. The standalone file has been removed.
 
 ## Install (local dev)
 
