@@ -2334,7 +2334,11 @@ embed_image = (
         "numpy<2.0",
         "torch==2.1.2",
         "torchaudio==2.1.2",
-        "transformers>=4.36,<5.0",
+        # transformers must be <4.40: v4.40+ calls the public
+        # torch.utils._pytree.register_pytree_node which only exists in
+        # torch>=2.2. We're pinned to torch 2.1.2 (matches the stems image),
+        # so cap transformers at the last release before the API switch.
+        "transformers>=4.36,<4.40",
         "librosa>=0.10,<1.0",
         "soundfile>=0.12,<1.0",
         "fastapi[standard]==0.136.1",

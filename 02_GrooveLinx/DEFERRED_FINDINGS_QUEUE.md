@@ -1670,11 +1670,14 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   re-verifies both images and republishes both endpoint URLs. The
   URLs themselves don't change, but the cold-start window for both
   functions resets simultaneously after every deploy.
-  - **Why deferred:** Coupling is the price of the 8-app limit. The
-    only fix is splitting into two apps again, which the limit
-    forbids. Practical impact is one extra warm-up after deploys.
-  - **Trigger:** Modal raises the app limit OR stems vs embed deploy
-    cadences diverge enough that coupled redeploys become friction.
+  - **Why deferred:** Coupling is the price of staying under the
+    8-web-endpoint-per-workspace cap (per commit `bcb809f7`,
+    2026-05-12). The only fix is splitting into two apps again with
+    its own web endpoint, which would push the workspace to 9
+    endpoints. Practical impact is one extra warm-up after deploys.
+  - **Trigger:** Modal raises the workspace web-endpoint cap OR
+    stems vs embed deploy cadences diverge enough that coupled
+    redeploys become friction.
   - **Discovered:** 2026-05-16 (Phase 3I.1)
   - **Status:** open
 
@@ -1692,6 +1695,23 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Trigger:** A future stem-vs-embed identity migration where
     re-pointing both URLs is acceptable.
   - **Discovered:** 2026-05-16 (Phase 3I.1)
+  - **Status:** open
+
+- **Finding:** Embed image's transformers pin is narrowed to
+  `transformers>=4.36,<4.40` because v4.40+ calls the public
+  `torch.utils._pytree.register_pytree_node`, which only exists in
+  torch>=2.2. We're pinned to `torch==2.1.2` (matches stems image).
+  If the stems image's torch pin is ever bumped to 2.2.x+, the
+  embed pin can (and should) be relaxed. The two pins are coupled
+  via the pytree API surface; future torch bumps must touch both.
+  - **Why deferred:** Constraint is documented inline in
+    separator.py's embed_image comment. No reason to bump torch
+    today — stems works fine on 2.1.2 and the demucs pin rationale
+    (line 246) explicitly cites torch 2.1 compatibility.
+  - **Trigger:** Stems image's torch pin is bumped to 2.2.x or
+    higher for any reason (new demucs version, GPU stack update,
+    etc.).
+  - **Discovered:** 2026-05-16 (Phase 3I.2)
   - **Status:** open
 
 ## 4. Beta Observation Candidates
