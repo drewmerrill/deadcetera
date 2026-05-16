@@ -4,7 +4,40 @@ Generates normalized audio embeddings using CLAP (laion/clap-htsat-unfused) for 
 
 **These embeddings measure how audio SOUNDS — not what song it is.** Use for grouping similar segments, not for definitive song identification.
 
-## Install
+## Two ways to run
+
+| Mode | Entry | When to use |
+|---|---|---|
+| **Local (dev)** | `main.py` + uvicorn → `http://localhost:8200` | Iterating on the CLAP wrapper, testing embeddings against local audio. |
+| **Modal (prod)** | `modal_app.py` → `https://<user>--groovelinx-audio-embeddings-serve.modal.run` | Production. Phase 3I-activated. Browser default config points here once deployed. |
+
+Both expose the same `GET /health` and `POST /embed` contract — browser code is endpoint-agnostic and switches via `window._glEmbedServiceUrl`.
+
+## Deploy to Modal (Phase 3I)
+
+```bash
+# Once per environment — install Modal CLI + authenticate
+pip install modal
+modal token new
+
+# Deploy
+modal deploy services/audio-embeddings/modal_app.py
+```
+
+The deploy emits a single ASGI endpoint URL. Use the base URL as `_glEmbedServiceUrl`:
+
+```html
+<!-- in index.html / index-dev.html, near the top -->
+<script>
+  window._glEmbedServiceUrl = 'https://drewmerrill--groovelinx-audio-embeddings-serve.modal.run';
+</script>
+```
+
+The CLAP weights (~600MB) are baked into the image at build time (`modal_app.py`'s `.run_commands(...)`), so cold starts skip the HuggingFace download. First request after idle: ~5-10s; subsequent requests within the 5-minute `scaledown_window`: ~1s.
+
+**Cost estimate (Modal T4 @ $0.59/hr active):** bootstrap of 50 confirmed Takes ≈ 1-2 minutes wall-clock ≈ <$0.03. Steady-state per-rehearsal analyze ≈ 5s/session ≈ <$0.001. Monthly ceiling across 5 active bands at 2 analyzes/week each: ≈ $1-2.
+
+## Install (local dev)
 
 ```bash
 cd services/audio-embeddings

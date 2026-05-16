@@ -4949,7 +4949,9 @@ window._rhBenchHydrateBanner = async function (sessionId) {
 
         var snaps = await window.GLBenchmark.getSnapshotsForSession(rehearsalId);
         var html = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-            + '<button onclick="window._rhBenchSnapshot(\'' + escHtml(sessionId) + '\')" style="font-size:0.62em;padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.08);color:#a78bfa;cursor:pointer">📸 Snapshot benchmark</button>';
+            + '<button onclick="window._rhBenchSnapshot(\'' + escHtml(sessionId) + '\')" style="font-size:0.62em;padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.08);color:#a78bfa;cursor:pointer">📸 Snapshot benchmark</button>'
+            + '<button onclick="window._rhBootstrapEmbeddings(\'' + escHtml(sessionId) + '\')" title="Walk human-confirmed Takes in this session, fetch CLAP embeddings, persist to bands/{slug}/_analyzer/embedding_bank" style="font-size:0.62em;padding:3px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.3);background:rgba(16,185,129,0.08);color:#10b981;cursor:pointer">🌱 Bootstrap embeddings</button>'
+            + '<span id="rhBootstrapStatus_' + escHtml(sessionId) + '" style="font-size:0.62em;color:var(--text-dim)"></span>';
         if (snaps && snaps.length) {
             var latest = snaps[snaps.length - 1];
             var latestDate = latest.created_at ? new Date(latest.created_at).toLocaleString() : '';
@@ -5040,6 +5042,198 @@ window._rhBenchSnapshot = async function (sessionId) {
         if (typeof showToast === 'function') showToast('Snapshot failed: ' + (e && e.message || 'unknown'));
     }
 };
+
+// Phase 3I: Bootstrap the CLAP embedding bank from this session's
+// human-confirmed Takes + benchmark wrong_match observations that name a
+// truth song. Calibration-mode only — fired by the 🌱 button in the
+// snapshot panel. Bad-label-poisoning safeguard: we ONLY ingest Takes
+// whose song identity is human-authoritative.
+window._rhBootstrapEmbeddings = async function (sessionId) {
+    if (!window.GLTakes || !window.GLTakes.getTakesForRehearsal) {
+        if (typeof showToast === 'function') showToast('GLTakes not loaded');
+        return;
+    }
+    if (typeof SongMatchingEngine === 'undefined' || !SongMatchingEngine.storeConfirmedEmbedding) {
+        if (typeof showToast === 'function') showToast('SongMatchingEngine missing storeConfirmedEmbedding');
+        return;
+    }
+
+    var statusEl = document.getElementById('rhBootstrapStatus_' + sessionId);
+    function _status(msg, color) {
+        if (!statusEl) return;
+        statusEl.style.color = color || 'var(--text-dim)';
+        statusEl.textContent = msg;
+    }
+
+    _status('Probing embed service…');
+    var embedUrl = window._glEmbedServiceUrl || 'http://localhost:8200';
+    var healthy = false;
+    try {
+        var hres = await fetch(embedUrl + '/health', { signal: AbortSignal.timeout(2500) });
+        var hdata = await hres.json();
+        healthy = (hdata && (hdata.status === 'ok' || hdata.status === 'ready')) || false;
+    } catch (e) {
+        _status('⚠ Embed service unreachable at ' + embedUrl, '#ef4444');
+        return;
+    }
+    if (!healthy) {
+        _status('⚠ Embed service unhealthy at ' + embedUrl, '#ef4444');
+        return;
+    }
+
+    _status('Loading Takes…');
+    var takes = [];
+    try {
+        takes = await window.GLTakes.getTakesForRehearsal(sessionId);
+    } catch (e) {
+        _status('⚠ Could not load Takes', '#ef4444');
+        return;
+    }
+
+    // Build the truth map: for each eligible Take, what's the authoritative
+    // song identity? Sources:
+    //   (a) take.matching.correction_source === 'human' → use take.song_title / song_id
+    //   (b) benchmark observations of classification='wrong_match' with notes
+    //       naming a song → resolve title to songId.
+    // Source (a) is conservative — Phase 3A confirmation flow stamps this.
+    // Source (b) is more aggressive — analyst note interpretation; gated.
+    var humanTruth = takes.filter(function (t) {
+        return t && t.matching && t.matching.correction_source === 'human'
+            && (t.song_id || t.song_title) && t.playback_ref
+            && t.playback_ref.start_sec != null && t.playback_ref.end_sec != null
+            && (t.playback_ref.end_sec - t.playback_ref.start_sec) >= 30;
+    });
+    if (!humanTruth.length) {
+        _status('No human-confirmed Takes (≥30s) found in this session', '#fbbf24');
+        return;
+    }
+
+    // Resolve audio source via GLRecordings — same path used by Take Review.
+    _status('Resolving audio source…');
+    var session = null;
+    try {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId)).once('value');
+            session = snap.val() || {};
+            session.sessionId = sessionId;
+        }
+    } catch (e) {}
+    var audioUrl = '';
+    if (session && window.GLRecordings && window.GLRecordings.resolvePlaybackSource) {
+        try {
+            var res = await window.GLRecordings.resolvePlaybackSource(session);
+            if (res && res.url && !res.isBlob) audioUrl = res.url;
+        } catch (e) {}
+    }
+    if (!audioUrl) {
+        _status('⚠ No persistent audio source for this session', '#ef4444');
+        return;
+    }
+
+    _status('Decoding audio (' + humanTruth.length + ' takes to embed)…');
+    var fullPcm = null;
+    var sampleRate = 0;
+    try {
+        var resp = await fetch(audioUrl);
+        var buf = await resp.arrayBuffer();
+        var ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var decoded = await ctx.decodeAudioData(buf);
+        fullPcm = decoded.getChannelData(0);
+        sampleRate = decoded.sampleRate;
+        ctx.close();
+    } catch (e) {
+        _status('⚠ Audio decode failed: ' + (e && e.message || 'unknown'), '#ef4444');
+        return;
+    }
+
+    var done = 0, skipped = 0, failed = 0;
+    for (var i = 0; i < humanTruth.length; i++) {
+        var t = humanTruth[i];
+        _status('Embedding ' + (i + 1) + '/' + humanTruth.length + ' · ' + (t.song_title || t.song_id) + '…');
+        try {
+            var startSec = t.playback_ref.start_sec;
+            var endSec = t.playback_ref.end_sec;
+            var startSample = Math.max(0, Math.floor(startSec * sampleRate));
+            var endSample = Math.min(fullPcm.length, Math.floor(endSec * sampleRate));
+            if (endSample - startSample < sampleRate * 30) { skipped++; continue; }
+
+            var slice = fullPcm.subarray(startSample, endSample);
+            var wav = _rhEncodeWavMono(slice, sampleRate);
+            var form = new FormData();
+            form.append('file', new Blob([wav], { type: 'audio/wav' }), 'take_' + t.id + '.wav');
+            var ctrl = new AbortController();
+            var to = setTimeout(function () { ctrl.abort(); }, 30000);
+            var eres = await fetch(embedUrl + '/embed', { method: 'POST', body: form, signal: ctrl.signal });
+            clearTimeout(to);
+            var edata = await eres.json();
+            if (!edata || !edata.embedding || !edata.embedding.length) { failed++; continue; }
+
+            var songId = t.song_id || t.song_title;
+            SongMatchingEngine.storeConfirmedEmbedding(songId, t.song_title || songId, edata.embedding, {
+                segType: 'song',
+                duration: endSec - startSec,
+                qualityScore: 3,
+                source: 'bootstrap',
+                model_version: edata.model_version || (SongMatchingEngine.EMBED_MODEL_VERSION || 'laion/clap-htsat-unfused-v1'),
+                take_id: t.id,
+                recording_id: t.recording_id || (t.playback_ref && t.playback_ref.recording_id) || null,
+                rehearsal_id: t.rehearsal_id || sessionId,
+                confirmed_by: (t.matching && t.matching.corrected_by) || 'human'
+            });
+            done++;
+        } catch (e) {
+            failed++;
+            if (e && e.name === 'AbortError') {
+                _status('⚠ Embed request timed out — stopping bootstrap', '#ef4444');
+                break;
+            }
+        }
+    }
+
+    if (window.GLObs && window.GLObs.log) {
+        window.GLObs.log('EmbedBank', 'bootstrap complete', {
+            session: sessionId,
+            ingested: done,
+            skipped: skipped,
+            failed: failed,
+            eligible: humanTruth.length
+        });
+    }
+    var summary = '✅ Bootstrap: ' + done + ' embedded' + (skipped ? ' · ' + skipped + ' skipped' : '') + (failed ? ' · ' + failed + ' failed' : '');
+    _status(summary, done > 0 ? '#10b981' : '#fbbf24');
+    if (typeof showToast === 'function') showToast(summary);
+};
+
+// Phase 3I: minimal WAV encoder for Bootstrap slices. Mono, 16-bit PCM.
+// Stays local to rehearsal.js so the bootstrap path doesn't depend on
+// recording-analyzer.js _encodeWAV (which is module-private).
+function _rhEncodeWavMono(samples, sampleRate) {
+    var len = samples.length;
+    var buffer = new ArrayBuffer(44 + len * 2);
+    var view = new DataView(buffer);
+    function _ws(off, str) { for (var i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i)); }
+    _ws(0, 'RIFF');
+    view.setUint32(4, 36 + len * 2, true);
+    _ws(8, 'WAVE');
+    _ws(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);          // PCM
+    view.setUint16(22, 1, true);          // mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    _ws(36, 'data');
+    view.setUint32(40, len * 2, true);
+    var off = 44;
+    for (var i = 0; i < len; i++) {
+        var s = Math.max(-1, Math.min(1, samples[i]));
+        view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        off += 2;
+    }
+    return buffer;
+}
 
 function _rhTakeRowHTML(take, sessionId, audioAvailable, calMode) {
     if (!take) return '';

@@ -46,8 +46,24 @@ window.SongMatchingEngine = (function() {
   var MAX_EMBEDDINGS_PER_SONG = 10;
   var EMBED_SERVICE_URL = window._glEmbedServiceUrl || 'http://localhost:8200';
 
+  // Phase 3I: cold-start guardrail. Until a song's bank has at least this
+  // many confirmed embeddings, _signalAudioSimilar caps its output at the
+  // value below. Prevents a 1-2 entry bank from producing false confidence.
+  var COLD_START_MIN_BANK = 5;
+  var COLD_START_CAP = 0.7;
+
+  // Phase 3I: every embedding row carries model_version so a future model
+  // swap can identify stale entries without ambiguous title/songId joins.
+  var EMBED_MODEL_VERSION = 'laion/clap-htsat-unfused-v1';
+
   // ── Trusted embedding bank: { songId: { title, embeddings: [{ vec, addedAt }] } } ──
+  // Phase 3I: bank now persists to Firebase at
+  //   bands/{slug}/_analyzer/embedding_bank/{songId}/{embeddingId}
+  // Hydrated lazily on first preloadEmbeddingBank() call. In-memory remains
+  // the read source — Firebase is the durable layer behind it.
   var _embeddingBank = {};
+  var _bankLoadedAt = 0;
+  var _bankLoadInFlight = null;
   var _MIN_EMBED_DURATION = 30; // seconds — minimum for embedding eligibility
 
   /**
@@ -105,10 +121,25 @@ window.SongMatchingEngine = (function() {
     var avgSimToBank = simToBank.length ? (simToBank.reduce(function(a, b) { return a + b; }, 0) / simToBank.length) : 0;
     var maxSimToBank = simToBank.length ? Math.max.apply(null, simToBank) : 0;
 
-    bank.push({ vec: embedding, addedAt: Date.now() });
+    // Phase 3I: rich row carries provenance + model_version so future model
+    // swaps can identify stale entries and Firebase persistence has a
+    // self-describing payload.
+    var row = {
+      vec: embedding,
+      addedAt: Date.now(),
+      model_version: (segMeta && segMeta.model_version) || EMBED_MODEL_VERSION,
+      source: (segMeta && segMeta.source) || 'auto',
+      duration_sec: Math.round(segMeta.duration || 0),
+      quality_score: segMeta.qualityScore || null,
+      take_id: segMeta.take_id || null,
+      recording_id: segMeta.recording_id || null,
+      rehearsal_id: segMeta.rehearsal_id || null,
+      confirmed_by: segMeta.confirmed_by || null
+    };
+    bank.push(row);
 
     // Evict if over limit — remove weakest
-    var evictedInfo = null;
+    var evictedRow = null;
     if (bank.length > MAX_EMBEDDINGS_PER_SONG) {
       var weakestIdx = 0;
       var weakestScore = Infinity;
@@ -120,18 +151,148 @@ window.SongMatchingEngine = (function() {
         avgSim /= (bank.length - 1);
         if (avgSim < weakestScore) { weakestScore = avgSim; weakestIdx = ei; }
       }
-      evictedInfo = { idx: weakestIdx, avgSim: weakestScore.toFixed(3) };
-      bank.splice(weakestIdx, 1);
+      evictedRow = bank.splice(weakestIdx, 1)[0];
     }
 
     _logEmbedEvent('added', songId, songTitle, {
       bankSize: bank.length,
-      duration: Math.round(segMeta.duration || 0),
-      qualityScore: segMeta.qualityScore || '?',
+      duration: row.duration_sec,
+      qualityScore: row.quality_score || '?',
+      source: row.source,
       avgSimToBank: avgSimToBank.toFixed(3),
       maxSimToBank: maxSimToBank.toFixed(3),
-      evicted: evictedInfo ? 'idx=' + evictedInfo.idx + ' avgSim=' + evictedInfo.avgSim : 'none'
+      evicted: evictedRow ? 'idx=evicted' : 'none'
     });
+
+    // Phase 3I: Firebase write-through. Fire-and-forget — in-memory bank is
+    // the read path, Firebase is the durable layer behind it. If the write
+    // fails (offline, permissions), the bank still works for this session;
+    // only persistence across reload is at risk.
+    _saveEmbeddingRow(songId, songTitle, row, evictedRow);
+  }
+
+  // Phase 3I: Firebase persistence helpers ────────────────────────────────
+  // Storage:
+  //   bands/{slug}/_analyzer/embedding_bank/{songId}/{embeddingId}
+  // Row shape mirrors the in-memory `row` minus vec at top level — the vec
+  // is the bulk of the payload and we store it inline. Firebase Realtime
+  // handles ~512-float arrays cleanly; total per-row ≈ 4KB.
+
+  function _bankPath(songId, embeddingId) {
+    if (typeof bandPath !== 'function') return null;
+    var suffix = '_analyzer/embedding_bank/' + songId + (embeddingId ? '/' + embeddingId : '');
+    return bandPath(suffix);
+  }
+
+  function _firebaseDb() {
+    return (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+  }
+
+  function _saveEmbeddingRow(songId, songTitle, row, evictedRow) {
+    var db = _firebaseDb();
+    var p = _bankPath(songId, '');
+    if (!db || !p) return; // cached-shell or pre-band-context — skip
+    try {
+      var ref = db.ref(p).push();
+      var payload = {
+        id: ref.key,
+        song_id: songId,
+        song_title: songTitle,
+        vector: row.vec,
+        model_version: row.model_version || EMBED_MODEL_VERSION,
+        source: row.source || 'auto',
+        duration_sec: row.duration_sec || null,
+        quality_score: row.quality_score || null,
+        take_id: row.take_id || null,
+        recording_id: row.recording_id || null,
+        rehearsal_id: row.rehearsal_id || null,
+        confirmed_by: row.confirmed_by || null,
+        created_at: row.addedAt || Date.now()
+      };
+      // Stamp the firebase id back onto the in-memory row so future evict
+      // operations can target the right Firebase document.
+      row.id = ref.key;
+      ref.set(payload).catch(function (err) {
+        console.warn('[EmbedBank] save failed for ' + songId + ':', err && err.message);
+      });
+      // If we evicted something during this insert, also remove the
+      // corresponding Firebase document. Evicted rows without an `id`
+      // never made it to Firebase (older rows or cached-shell creates) —
+      // skip the remove cleanly.
+      if (evictedRow && evictedRow.id) {
+        db.ref(_bankPath(songId, evictedRow.id)).remove().catch(function () {});
+      }
+    } catch (e) {
+      console.warn('[EmbedBank] save threw:', e && e.message);
+    }
+  }
+
+  // Lazy hydration. Reads bands/{slug}/_analyzer/embedding_bank/* once per
+  // matcher lifecycle and populates _embeddingBank. Subsequent calls within
+  // 60s are no-ops; recordings-style cache pattern.
+  function preloadEmbeddingBank(force) {
+    if (!force && _bankLoadedAt && (Date.now() - _bankLoadedAt) < 60000) {
+      return Promise.resolve(_embeddingBank);
+    }
+    if (_bankLoadInFlight) return _bankLoadInFlight;
+    var db = _firebaseDb();
+    var root = _bankPath(null, null) ? _bankPath('', '').replace(/\/$/, '') : null;
+    // _bankPath needs a songId; recompute root manually:
+    var bankRoot = (typeof bandPath === 'function') ? bandPath('_analyzer/embedding_bank') : null;
+    if (!db || !bankRoot) {
+      return Promise.resolve(_embeddingBank);
+    }
+    _bankLoadInFlight = db.ref(bankRoot).once('value').then(function (snap) {
+      var raw = snap.val() || {};
+      var staleCount = 0;
+      Object.keys(raw).forEach(function (songId) {
+        var perSong = raw[songId] || {};
+        var entries = Object.keys(perSong).map(function (k) { return perSong[k]; }).filter(Boolean);
+        if (!entries.length) return;
+        var title = entries[0].song_title || songId;
+        if (!_embeddingBank[songId]) _embeddingBank[songId] = { title: title, embeddings: [] };
+        else _embeddingBank[songId].title = title;
+        entries.forEach(function (e) {
+          if (!e || !Array.isArray(e.vector) || !e.vector.length) return;
+          // Phase 3I: model_version drift — if a stored row doesn't match
+          // the current EMBED_MODEL_VERSION, skip on load. Future migration
+          // pass can re-embed; in the meantime stale rows are inert.
+          if (e.model_version && e.model_version !== EMBED_MODEL_VERSION) {
+            staleCount++;
+            return;
+          }
+          _embeddingBank[songId].embeddings.push({
+            id: e.id || null,
+            vec: e.vector,
+            addedAt: e.created_at || Date.now(),
+            model_version: e.model_version || EMBED_MODEL_VERSION,
+            source: e.source || 'auto',
+            duration_sec: e.duration_sec || null,
+            quality_score: e.quality_score || null,
+            take_id: e.take_id || null,
+            recording_id: e.recording_id || null,
+            rehearsal_id: e.rehearsal_id || null,
+            confirmed_by: e.confirmed_by || null
+          });
+        });
+      });
+      _bankLoadedAt = Date.now();
+      _bankLoadInFlight = null;
+      var bankCount = Object.keys(_embeddingBank).length;
+      var totalEmb = Object.keys(_embeddingBank).reduce(function (sum, sid) {
+        return sum + (_embeddingBank[sid].embeddings || []).length;
+      }, 0);
+      console.log('[EmbedBank] hydrated ' + totalEmb + ' embeddings across ' + bankCount + ' songs' + (staleCount ? ' (' + staleCount + ' stale model_version skipped)' : ''));
+      if (window.GLObs && window.GLObs.log) {
+        window.GLObs.log('EmbedBank', 'hydrated', { songs: bankCount, embeddings: totalEmb, stale: staleCount });
+      }
+      return _embeddingBank;
+    }).catch(function (err) {
+      console.warn('[EmbedBank] preload failed:', err && err.message);
+      _bankLoadInFlight = null;
+      return _embeddingBank;
+    });
+    return _bankLoadInFlight;
   }
 
   /**
@@ -682,9 +843,24 @@ window.SongMatchingEngine = (function() {
     };
   }
 
-  // Phase 3H helpers — keep _buildMatchingField passthrough trivial.
+  // Phase 3H/3I helpers — keep _buildMatchingField passthrough trivial.
   function _missingReason(sigKey, segment) {
-    if (sigKey === 'audioSimilar') return 'no audio embedding (bank empty or service offline)';
+    if (sigKey === 'audioSimilar') {
+      // Phase 3I: distinguish three failure modes so the analyst knows
+      // which to chase:
+      //   (1) no embedding extracted for THIS segment → service was down
+      //       or segment too short during the analyze pass
+      //   (2) bank is empty for the catalog overall → bootstrap needed
+      //   (3) bank exists for other songs but not for any candidate of
+      //       this segment → song never had a confirmed Take embedded
+      var bankSongs = Object.keys(_embeddingBank).length;
+      if (!segment.audioEmbedding) {
+        return bankSongs > 0
+          ? 'no audio embedding for this segment (service offline during analyze, or segment <30s)'
+          : 'no audio embedding + bank is empty (deploy embed service + run 🌱 Bootstrap)';
+      }
+      return 'embedding present but no bank entries for any candidate song (run 🌱 Bootstrap on confirmed Takes)';
+    }
     if (sigKey === 'chordSimilar') return 'chord detection unavailable (Essentia service or short segment)';
     if (sigKey === 'tempoProx')    return 'no BPM detected for this segment';
     if (sigKey === 'lyricsMatch')  return 'no transcript or spoken cue for this segment';
@@ -783,12 +959,20 @@ window.SongMatchingEngine = (function() {
     if (topSim >= 0.88 && score < 1.0) score = Math.max(score, 0.85);
     else if (topSim >= 0.82 && score < 0.7) score = Math.max(score, 0.6);
 
+    // Phase 3I: cold-start cap. Tiny banks shouldn't produce 1.0 confidence —
+    // even a perfect single-reference match might be over-fitting to one
+    // performance. Cap at COLD_START_CAP until the bank grows to
+    // COLD_START_MIN_BANK confirmed entries.
+    if (bank.length < COLD_START_MIN_BANK && score > COLD_START_CAP) {
+      score = COLD_START_CAP;
+    }
+
     // Calibration: log final signal outcome for threshold tuning
     if (window._glDebugEmbeddings) {
       console.log('[SongMatch] audioSimilar result: seg=' + (segment.id || '?') +
         ' song=' + candidate.title + ' topSim=' + topSim.toFixed(3) +
         ' avgTop3=' + avgTop3.toFixed(3) + ' finalSignal=' + score.toFixed(2) +
-        ' bank=' + bank.length);
+        ' bank=' + bank.length + (bank.length < COLD_START_MIN_BANK ? ' (cold-start-capped)' : ''));
     }
 
     return score;
@@ -1071,7 +1255,12 @@ window.SongMatchingEngine = (function() {
       var sid = (candidate.song && candidate.song.songId) || _resolveSongId(candidate.title);
       var bankEntry = _embeddingBank[sid];
       var bankSize = bankEntry ? bankEntry.embeddings.length : 0;
-      return 'Similar audio to ' + bankSize + ' confirmed ' + candidate.title + ' segment' + (bankSize > 1 ? 's' : '');
+      // Phase 3I: surface cold-start cap inline so the evidence drawer
+      // explains why a strong-looking match was capped at 0.7.
+      var capNote = (bankSize > 0 && bankSize < COLD_START_MIN_BANK)
+        ? ' (limited bank — score capped at ' + COLD_START_CAP + ')'
+        : '';
+      return 'Similar audio to ' + bankSize + ' confirmed ' + candidate.title + ' segment' + (bankSize > 1 ? 's' : '') + capNote;
     }
     var explanations = {
       planMatch:    'In rehearsal plan',
@@ -1375,6 +1564,8 @@ window.SongMatchingEngine = (function() {
     run: run,
     scoreSegment: scoreSegment,
     storeConfirmedEmbedding: storeConfirmedEmbedding,
+    preloadEmbeddingBank:    preloadEmbeddingBank,
+    EMBED_MODEL_VERSION:     EMBED_MODEL_VERSION,
     getEmbeddingBank: getEmbeddingBank,
     getEmbeddingBankSummary: getEmbeddingBankSummary,
     getRejectedEmbeddingLog: getRejectedEmbeddingLog,

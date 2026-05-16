@@ -1544,6 +1544,113 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-16 (Phase 3H)
   - **Status:** open
 
+- **Finding:** Phase 3I runtime activation requires `modal deploy
+  services/audio-embeddings/modal_app.py` + setting
+  `window._glEmbedServiceUrl` in index.html / index-dev.html. Neither
+  step can ship by code alone — both require Drew's Modal CLI auth
+  and a manual config edit. Until completed, the 0.30 audioSimilar
+  signal remains zero in production.
+  - **Why deferred:** Deployment requires credentials (Modal auth)
+    and GPU quota that only Drew has. Code-side activation is the
+    most this phase can ship.
+  - **Trigger:** Drew runs `modal deploy` AND adds the URL to the
+    index files.
+  - **Discovered:** 2026-05-16 (Phase 3I)
+  - **Status:** open — blocking 3I full activation
+
+- **Finding:** Bootstrap workflow is scoped per-session (one
+  button per rehearsal session). To seed the bank with all corrected
+  Takes across the band's history, Drew has to click 🌱 Bootstrap on
+  every session report individually.
+  - **Why deferred:** Per-session bootstrap is the safest unit —
+    audio is already loaded for that session's surfaces, the user
+    can verify confirmed Takes before triggering. A "bootstrap all
+    sessions" surface would need a different UI placement
+    (calibration-mode admin panel?) and risks accidental
+    multi-Gigabyte audio fetches.
+  - **Trigger:** Drew accumulates ≥10 sessions with confirmed Takes
+    AND finds per-session bootstrap tedious.
+  - **Discovered:** 2026-05-16 (Phase 3I)
+  - **Status:** open
+
+- **Finding:** Embedding vectors are persisted as full 512-float
+  arrays in Firebase Realtime DB (~4KB per row). At MAX 10 embeddings
+  per song × 100 songs × 5 bands = ~20MB storage. Fine at MVP scale;
+  worth re-evaluating if the catalog or band count grows.
+  - **Why deferred:** Float arrays in Firebase Realtime are
+    serialized as JSON arrays — no compression, no quantization. A
+    future optimization could quantize to int8 (75% size reduction)
+    OR migrate to Firebase Storage as binary blobs. Both are
+    deferred until storage cost / load latency surface as actual
+    pain.
+  - **Trigger:** Bank size in any band exceeds 50MB total OR
+    `preloadEmbeddingBank` p95 exceeds 2s.
+  - **Discovered:** 2026-05-16 (Phase 3I)
+  - **Status:** open
+
+- **Finding:** Bootstrap workflow decodes the FULL session WAV in
+  the browser (`AudioContext.decodeAudioData(fullBuffer)`) before
+  slicing per-Take. On a 90-minute rehearsal at 44.1kHz mono, this
+  is ~16MB decoded PCM in memory — fine on desktop, but mobile may
+  hit AudioContext memory limits. The recording-analyzer.js has a
+  large-file on-demand decode path for exactly this reason;
+  Bootstrap hasn't adopted it.
+  - **Why deferred:** Bootstrap is calibration-mode only and Drew
+    runs it on a desktop. Mobile bootstrap isn't a real use case
+    yet. Mirroring the analyzer's on-demand decode pattern is
+    ~80 LOC of additional complexity that doesn't earn its weight
+    until mobile Bootstrap is needed.
+  - **Trigger:** A tester ever needs to bootstrap from a mobile
+    device, OR a >2hr rehearsal becomes the bootstrap target.
+  - **Discovered:** 2026-05-16 (Phase 3I)
+  - **Status:** open
+
+- **Finding:** `model_version` migration isn't automated. If we
+  swap CLAP for another model, `preloadEmbeddingBank` will skip the
+  stale rows (logged as `stale: N` on hydrate), but the actual
+  re-embedding requires re-running Bootstrap manually with the new
+  model active. No "migrate bank" button.
+  - **Why deferred:** Model swaps are rare events (planned, not
+    incidental). When one happens, the right operator action is a
+    deliberate re-bootstrap pass; automating it before the first
+    swap is premature. The stale-skip behavior is the safety net
+    (no false-positive matches against old embeddings).
+  - **Trigger:** Drew swaps to a newer CLAP variant or moves to a
+    different embedding model entirely.
+  - **Discovered:** 2026-05-16 (Phase 3I)
+  - **Status:** open
+
+- **Finding:** `storeConfirmedEmbedding`'s eviction-then-Firebase-
+  remove sequence isn't atomic — if two `storeConfirmedEmbedding`
+  calls fire concurrently and both evict the same in-memory row,
+  the second's Firebase remove targets an already-deleted document
+  (Firebase handles this cleanly as no-op) AND the second's add
+  could in-theory overlap. Minor — but flagged.
+  - **Why deferred:** Concurrent confirmations happen on the same
+    Take row only if two users hit the same button within
+    milliseconds. At single-founder scale: not a real race. At
+    multi-analyst scale: worth a Firebase transaction or a per-song
+    write lock.
+  - **Trigger:** Concurrent multi-analyst editing surfaces as a
+    real workflow.
+  - **Discovered:** 2026-05-16 (Phase 3I)
+  - **Status:** open
+
+- **Finding:** Bootstrap only ingests `correction_source === 'human'`
+  Takes. The Phase 3E spec for embeddings mentioned ingesting from
+  `wrong_match` benchmark observations too (where the analyst noted
+  the correct song title in the observation notes), but that path
+  isn't shipped — it requires natural-language → songId resolution
+  from free-text notes, which is its own decision.
+  - **Why deferred:** Free-text → songId resolution is fuzzy.
+    Better to wait for a structured `truth_song_id` field on
+    benchmark_observations (Phase 3E deferred entry territory) than
+    to ship a fragile note-parser.
+  - **Trigger:** Phase 3E gains a structured `truth_song_id` field
+    on wrong_match observations.
+  - **Discovered:** 2026-05-16 (Phase 3I)
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."

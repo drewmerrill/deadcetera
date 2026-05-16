@@ -738,6 +738,18 @@ window.RecordingAnalyzer = (function() {
       await SongMatchingEngine.preloadChartFingerprints();
     }
 
+    // Phase 3I: hydrate the embedding bank from Firebase before scoring so
+    // _signalAudioSimilar has confirmed-Take vectors to compare against.
+    // No-op if the bank is already warm (60s cache) or if the band context
+    // isn't set up (cached-shell fallback).
+    if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.preloadEmbeddingBank) {
+      try {
+        await SongMatchingEngine.preloadEmbeddingBank();
+      } catch (e) {
+        console.warn('[RecordingAnalyzer] embedding bank preload failed:', e && e.message);
+      }
+    }
+
     // Run Song Matching Engine (multi-signal scoring)
     if (typeof SongMatchingEngine !== 'undefined' && SongMatchingEngine.run) {
       var _refSongs = (_recordingContext && _recordingContext.referenceSongs) || [];
