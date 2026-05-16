@@ -556,6 +556,116 @@ window.SongMatchingEngine = (function() {
     if (limitedEvidence) explanationFull.push('Limited evidence \u2014 only ' + (activeSignalNames[0] || '1 signal') + ' available');
     if (signalsDisagree) explanationFull.push('Signals disagree \u2014 review recommended');
 
+    // Phase 3H: assemble explainable evidence for the winning candidate.
+    // Captures raw signal value, weight applied, normalized contribution,
+    // polarity (positive / weak / missing / conflict), and short explanation.
+    // Drives the calibration UI evidence drawer without needing to re-derive
+    // any matcher state downstream.
+    var evidence = [];
+    var bestSignals = best.signals || {};
+    var bestActiveCount = 0;
+    Object.keys(WEIGHTS).forEach(function (sigKey) {
+      var val = bestSignals[sigKey];
+      var available = val !== null && val !== undefined;
+      if (sigKey === 'audioSimilar' && !segment.audioEmbedding) available = false;
+      if (sigKey === 'chordSimilar' && (val === null || val === undefined)) available = false;
+      if (sigKey === 'tempoProx' && !segment.bpm && !(segment.groove)) available = false;
+      if (sigKey === 'lyricsMatch' && !segment.transcript && !segment.spokenCueHint) available = false;
+      if (sigKey === 'continuity' && !adjacentLabels) available = false;
+
+      if (!available) {
+        evidence.push({
+          signal: sigKey,
+          raw_value: null,
+          weight_raw: WEIGHTS[sigKey],
+          weight_normalized: 0,
+          contribution: 0,
+          polarity: 'missing',
+          explanation: _missingReason(sigKey, segment)
+        });
+        return;
+      }
+      bestActiveCount++;
+      var v = val || 0;
+      var nw = (best.activeSignalCount > 0 && WEIGHTS[sigKey])
+        ? WEIGHTS[sigKey] / (function () {
+            var sum = 0;
+            Object.keys(WEIGHTS).forEach(function (k) {
+              var kv = bestSignals[k];
+              var kAvail = kv !== null && kv !== undefined;
+              if (k === 'audioSimilar' && !segment.audioEmbedding) kAvail = false;
+              if (k === 'chordSimilar' && (kv === null || kv === undefined)) kAvail = false;
+              if (k === 'tempoProx' && !segment.bpm && !(segment.groove)) kAvail = false;
+              if (k === 'lyricsMatch' && !segment.transcript && !segment.spokenCueHint) kAvail = false;
+              if (k === 'continuity' && !adjacentLabels) kAvail = false;
+              if (kAvail) sum += WEIGHTS[k];
+            });
+            return sum || 1;
+          })()
+        : 0;
+      var contribution = Math.round(v * nw * 1000) / 1000;
+      var polarity = v >= 0.7 ? 'strong'
+                   : v >= 0.4 ? 'moderate'
+                   : v > 0    ? 'weak'
+                   :            'inactive';
+      evidence.push({
+        signal: sigKey,
+        raw_value: Math.round(v * 100) / 100,
+        weight_raw: WEIGHTS[sigKey],
+        weight_normalized: Math.round(nw * 1000) / 1000,
+        contribution: contribution,
+        polarity: polarity,
+        explanation: (v > 0) ? _explainSignal(sigKey, v, best) : 'present but zero score'
+      });
+    });
+
+    // Detect cross-signal conflict (a strong signal that pointed at another
+    // candidate). Flips polarity to 'conflict' on the relevant evidence row.
+    if (signalsDisagree) {
+      Object.keys(signalBests || {}).forEach(function (sigKey) {
+        if (signalBests[sigKey].val >= 0.5 && signalBests[sigKey].title !== best.title) {
+          var ev = evidence.find(function (e) { return e.signal === sigKey; });
+          if (ev) {
+            ev.polarity = 'conflict';
+            ev.conflicts_with = signalBests[sigKey].title;
+          }
+        }
+      });
+    }
+
+    // Sort: strongest contribution first, missing/conflict pushed to bottom.
+    evidence.sort(function (a, b) {
+      var rank = { strong: 0, moderate: 1, weak: 2, conflict: 3, missing: 4, inactive: 5 };
+      var ra = rank[a.polarity] != null ? rank[a.polarity] : 6;
+      var rb = rank[b.polarity] != null ? rank[b.polarity] : 6;
+      if (ra !== rb) return ra - rb;
+      return (b.contribution || 0) - (a.contribution || 0);
+    });
+
+    var dominant = evidence.find(function (e) { return e.polarity !== 'missing' && e.polarity !== 'inactive'; });
+    var weakest = evidence.slice().reverse().find(function (e) { return e.polarity === 'missing' || e.polarity === 'inactive'; });
+
+    var confidence_breakdown = {
+      tier: confidence,
+      best_score: best.score,
+      gap_to_second: Math.round(gap * 100) / 100,
+      active_signal_count: best.activeSignalCount,
+      limited_evidence: limitedEvidence,
+      only_plan_active: onlyPlanActive,
+      signals_disagree: signalsDisagree,
+      dominant_signal: dominant ? dominant.signal : null,
+      weakest_signal: weakest ? weakest.signal : null,
+      reasons: _confidenceReasons({
+        confidence: confidence,
+        bestScore: best.score,
+        gap: gap,
+        activeCount: best.activeSignalCount,
+        limitedEvidence: limitedEvidence,
+        onlyPlanActive: onlyPlanActive,
+        signalsDisagree: signalsDisagree
+      })
+    };
+
     return {
       bestMatch: { title: best.title, songId: best.songId, score: best.score },
       candidates: scored.slice(0, 3).map(function(s) {
@@ -566,8 +676,42 @@ window.SongMatchingEngine = (function() {
       signalsDisagree: signalsDisagree,
       explanation: explanationFull,
       activeSignals: activeSignalNames,
-      needsReview: needsReview
+      needsReview: needsReview,
+      evidence: evidence,
+      confidence_breakdown: confidence_breakdown
     };
+  }
+
+  // Phase 3H helpers — keep _buildMatchingField passthrough trivial.
+  function _missingReason(sigKey, segment) {
+    if (sigKey === 'audioSimilar') return 'no audio embedding (bank empty or service offline)';
+    if (sigKey === 'chordSimilar') return 'chord detection unavailable (Essentia service or short segment)';
+    if (sigKey === 'tempoProx')    return 'no BPM detected for this segment';
+    if (sigKey === 'lyricsMatch')  return 'no transcript or spoken cue for this segment';
+    if (sigKey === 'continuity')   return 'no adjacent labeled segment';
+    if (sigKey === 'planMatch')    return 'song not in active rehearsal plan';
+    return 'signal unavailable';
+  }
+
+  function _confidenceReasons(ctx) {
+    var out = [];
+    if (ctx.confidence === 'high') {
+      out.push('best score ' + ctx.bestScore.toFixed(2) + ' ≥ 0.65');
+      out.push('gap to runner-up ' + ctx.gap.toFixed(2) + ' ≥ 0.10');
+      out.push(ctx.activeCount + ' active signals (≥2)');
+    } else if (ctx.confidence === 'medium') {
+      if (ctx.bestScore >= 0.35) out.push('best score ' + ctx.bestScore.toFixed(2) + ' ≥ 0.35');
+      else out.push('weak score ' + ctx.bestScore.toFixed(2) + ' but differentiated (gap ' + ctx.gap.toFixed(2) + ')');
+      if (ctx.signalsDisagree) out.push('downgraded — signals point at different candidates');
+      if (ctx.limitedEvidence) out.push('capped — single active signal');
+    } else {
+      if (ctx.onlyPlanActive) out.push('forced LOW — only plan prior active, no audio evidence');
+      else if (ctx.bestScore < 0.25) out.push('best score ' + ctx.bestScore.toFixed(2) + ' below 0.25 floor');
+      else if (ctx.gap < 0.05) out.push('gap to runner-up ' + ctx.gap.toFixed(2) + ' below 0.05 — too close to call');
+      else if (ctx.activeCount < 2) out.push('only ' + ctx.activeCount + ' active signal');
+      else out.push('did not meet medium threshold');
+    }
+    return out;
   }
 
   // ── Signal computation ──────────────────────────────────────────────────────
@@ -910,7 +1054,13 @@ window.SongMatchingEngine = (function() {
       top_suggestions: (result.candidates || []).slice(0, 3).map(function (c) {
         return { title: c.title, songId: c.songId || null, score: c.score };
       }),
-      correction_source: segment && segment.confirmed ? 'human' : 'auto'
+      correction_source: segment && segment.confirmed ? 'human' : 'auto',
+      // Phase 3H: pass through structured evidence + confidence breakdown so
+      // calibration UI and Take Review can render WHY without re-deriving
+      // matcher state. Both are optional (older scoreSegment paths may not
+      // produce them) so the consumer guards on presence.
+      evidence: Array.isArray(result.evidence) ? result.evidence : undefined,
+      confidence_breakdown: result.confidence_breakdown || undefined
     };
   }
 

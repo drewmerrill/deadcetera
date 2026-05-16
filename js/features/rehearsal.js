@@ -4805,6 +4805,32 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
     var contAppliedStr = contStash ? String(contStash.applied) : '—';
     var contSuggStr = contStash ? String(contStash.suggestions.length) : '—';
 
+    // Phase 3H: dominant-evidence histogram across this session's takes +
+    // fallback-to-plan counter. Surfaces "what's actually picking songs
+    // tonight?" in one glance. Pre-3H Takes without confidence_breakdown
+    // simply don't contribute to the histogram.
+    var domHist = {};
+    var fallbackToPlanCount = 0;
+    var disagreeCount = 0;
+    (takes || []).forEach(function (t) {
+        var cb = t && t.matching && t.matching.confidence_breakdown;
+        if (!cb) return;
+        if (cb.dominant_signal) domHist[cb.dominant_signal] = (domHist[cb.dominant_signal] || 0) + 1;
+        if (cb.only_plan_active) fallbackToPlanCount++;
+        if (cb.signals_disagree) disagreeCount++;
+    });
+    var domParts = Object.keys(domHist).sort(function (a, b) { return domHist[b] - domHist[a]; })
+        .map(function (k) { return k + ':' + domHist[k]; });
+    var domHistStr = domParts.length ? domParts.join(' · ') : null;
+    // Emit a one-shot fallback-to-plan summary log when calibration mode is on.
+    if (window.GLObs && window.GLObs.log && fallbackToPlanCount > 0) {
+        window.GLObs.log('Matcher', 'fallback_to_plan summary', {
+            session: sessionId,
+            count: fallbackToPlanCount,
+            total: (takes || []).length
+        });
+    }
+
     // Benchmark metrics stashed on the session DOM so the snapshot button
     // and the post-render hydrator can read them without re-computing.
     var benchMetrics = {
@@ -4835,6 +4861,23 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
         + ' · <span style="color:' + (contStash && contStash.applied > 0 ? '#10b981' : 'var(--text-dim)') + '">🔗 ' + contAppliedStr + ' merged / ' + contSuggStr + ' suggested</span>'
         + ' · <span id="rhContDecisionsCount_' + escHtml(sessionId) + '" style="color:var(--text-dim)">👤 — decisions</span>'
         + '</div>';
+
+    // Phase 3H: session-level evidence-mix summary. Calibration-only, single
+    // line. Tells the analyst at a glance which signal carried this session.
+    if (domHistStr || fallbackToPlanCount > 0 || disagreeCount > 0) {
+        var fallbackChip = fallbackToPlanCount > 0
+            ? ' · <span style="color:#ef4444">⚠ ' + fallbackToPlanCount + ' fallback-to-plan</span>'
+            : '';
+        var disagreeChip = disagreeCount > 0
+            ? ' · <span style="color:#f59e0b">⚠ ' + disagreeCount + ' signals-disagree</span>'
+            : '';
+        html += '<div style="font-size:0.62em;color:var(--text-dim);margin-top:3px;line-height:1.5">'
+            + '<span style="color:#818cf8">📊 Evidence mix</span>: '
+            + escHtml(domHistStr || '(no per-take breakdowns — re-analyze to populate)')
+            + fallbackChip
+            + disagreeChip
+            + '</div>';
+    }
 
     // Phase 3F: continuity suggestion list — kind counts only. Compact;
     // surfaces what the heuristic noticed without dumping JSON.
@@ -5176,6 +5219,60 @@ function _rhTakeRowDiagnosticsHTML(take) {
             + '</div>';
     }
 
+    // Phase 3H: explainable evidence block. Renders the per-signal voting
+    // breakdown when take.matching.evidence is populated (post-3H Takes).
+    // Pre-3H Takes silently skip this section.
+    var evidenceHtml = '';
+    if (Array.isArray(m.evidence) && m.evidence.length) {
+        var cb = m.confidence_breakdown || {};
+        var tierColor = cb.tier === 'high' ? '#10b981'
+                       : cb.tier === 'medium' ? '#f59e0b'
+                       : cb.tier === 'low' ? '#ef4444' : '#64748b';
+        var reasonChips = (cb.reasons || []).map(function (r) {
+            return '<span style="color:var(--text-dim)">' + escHtml(r) + '</span>';
+        }).join(' · ');
+        var dominantStr = cb.dominant_signal ? '<span style="color:#10b981">dominant: ' + escHtml(cb.dominant_signal) + '</span>' : '';
+        var weakStr = cb.weakest_signal ? '<span style="color:var(--text-dim)">missing: ' + escHtml(cb.weakest_signal) + '</span>' : '';
+
+        var evidenceRows = m.evidence.map(function (e) {
+            var color = e.polarity === 'strong'   ? '#10b981'
+                      : e.polarity === 'moderate' ? '#fbbf24'
+                      : e.polarity === 'weak'     ? '#94a3b8'
+                      : e.polarity === 'conflict' ? '#ef4444'
+                      : '#64748b';
+            var icon = e.polarity === 'strong'   ? '●'
+                     : e.polarity === 'moderate' ? '●'
+                     : e.polarity === 'weak'     ? '○'
+                     : e.polarity === 'conflict' ? '⚠'
+                     : e.polarity === 'missing'  ? '—'
+                     :                              '·';
+            var barPct = Math.max(0, Math.min(100, Math.round((e.contribution || 0) * 200))); // 0.5 contribution → 100%
+            var barHtml = '<span style="display:inline-block;width:36px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;vertical-align:middle;margin:0 4px">'
+                + '<span style="display:block;height:100%;width:' + barPct + '%;background:' + color + ';border-radius:2px"></span>'
+                + '</span>';
+            var contribStr = (typeof e.contribution === 'number') ? ('+' + e.contribution.toFixed(2)) : '—';
+            var conflictTag = e.conflicts_with ? ' <span style="color:#ef4444">(prefers ' + escHtml(e.conflicts_with) + ')</span>' : '';
+            return '<div style="display:flex;gap:6px;align-items:center;padding:2px 0">'
+                + '<span style="color:' + color + ';width:14px;text-align:center">' + icon + '</span>'
+                + '<span style="color:var(--text);min-width:110px">' + escHtml(e.signal) + '</span>'
+                + barHtml
+                + '<span style="color:var(--text-dim);min-width:48px">' + contribStr + '</span>'
+                + '<span style="color:var(--text-dim);flex:1">' + escHtml(e.explanation || '') + conflictTag + '</span>'
+                + '</div>';
+        }).join('');
+
+        evidenceHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(99,102,241,0.2)">'
+            + '<div style="font-size:0.62em;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+                + '<span style="color:#818cf8">📊 Evidence</span>'
+                + '<span style="color:' + tierColor + ';font-weight:700">' + escHtml(cb.tier || m.confidence || '?') + '</span>'
+                + (typeof cb.best_score === 'number' ? '<span style="color:var(--text-dim);font-weight:400">score ' + cb.best_score.toFixed(2) + ' · gap ' + (cb.gap_to_second || 0).toFixed(2) + ' · ' + (cb.active_signal_count || 0) + ' active</span>' : '')
+            + '</div>'
+            + (reasonChips ? '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:4px">' + reasonChips + '</div>' : '')
+            + (dominantStr || weakStr ? '<div style="font-size:0.6em;margin-bottom:6px">' + dominantStr + (dominantStr && weakStr ? ' · ' : '') + weakStr + '</div>' : '')
+            + '<div style="font-size:0.62em;font-family:-apple-system,SF Mono,monospace">' + evidenceRows + '</div>'
+            + '</div>';
+    }
+
     // Phase 3G: merge lineage + analyst authority. Only renders when this
     // Take was born from a continuity merge (take.continuity present).
     var lineageHtml = '';
@@ -5205,6 +5302,7 @@ function _rhTakeRowDiagnosticsHTML(take) {
         + '<summary style="cursor:pointer;color:#a78bfa;list-style:none;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed rgba(167,139,250,0.3);background:rgba(167,139,250,0.04)">🔬 Diagnostics</summary>'
         + '<div style="margin-top:6px;padding:8px;border-radius:6px;background:rgba(0,0,0,0.18);border:1px solid rgba(167,139,250,0.18)">'
         + listHtml
+        + evidenceHtml
         + lineageHtml
         + benchHtml
         + '</div>'

@@ -1440,6 +1440,110 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-16 (Phase 3G)
   - **Status:** open
 
+- **Finding:** Evidence rows are sorted per-take but the calibration
+  banner has no session-level filter like "show me all takes whose
+  dominant signal was planMatch" or "show me takes with signals_disagree
+  flagged." Drew has to scan every Take's drawer to find pattern outliers.
+  - **Why deferred:** Filter-by-signal adds a search/filter UI to the
+    Take Review surface — non-trivial scope that risks tipping into
+    analytics dashboard. The dominant_signal histogram on the banner
+    already exposes the macro pattern; per-take outliers can be found
+    by clicking into the suspicious-looking Takes manually.
+  - **Trigger:** Drew accumulates enough sessions that scanning every
+    drawer becomes friction.
+  - **Discovered:** 2026-05-16 (Phase 3H)
+  - **Status:** open
+
+- **Finding:** `confidence_breakdown.reasons` is heuristic-derived
+  English ("best score 0.72 ≥ 0.65", "forced LOW — only plan prior
+  active"). Not localizable; if GrooveLinx ever serves non-English
+  band-facing UI, the reasons would leak through any future surface
+  that exposed them.
+  - **Why deferred:** Evidence surface is calibration-only — the
+    target audience is Drew (English-speaking founder). Localization
+    is premature until band-facing exposure happens. The structured
+    breakdown fields (best_score, gap, active_signal_count, etc.)
+    ARE language-neutral; reasons[] is the only text fragment.
+  - **Trigger:** A band-facing surface ever wants to render
+    confidence reasons OR a non-English-speaking founder onboards.
+  - **Discovered:** 2026-05-16 (Phase 3H)
+  - **Status:** open
+
+- **Finding:** The matcher's WEIGHTS table (planMatch: 0.15,
+  audioSimilar: 0.30, chordSimilar: 0.20, tempoProx: 0.15,
+  lyricsMatch: 0.05, continuity: 0.05) is hardcoded in
+  song_matching_engine.js. Drew can see contributions per Take but
+  can't see "this build uses weight 0.20 for chord" without reading
+  the source. Tuning requires code-edit + redeploy.
+  - **Why deferred:** Live weight tuning UI is the start of a
+    "matcher control panel" the spec was explicit about avoiding.
+    Hardcoded weights are also the safety property — they can't
+    drift accidentally. Exposing them read-only in calibration mode
+    is a small additive change worth considering later.
+  - **Trigger:** Drew wants to compare snapshot diffs between two
+    weight configurations OR a tester band needs different weights.
+  - **Discovered:** 2026-05-16 (Phase 3H)
+  - **Status:** open
+
+- **Finding:** `_missingReason` is hardcoded English keyed by
+  signal name. Adding a new signal (e.g. future `lyricAnchor` per
+  the lyric audit) requires touching this helper AND the WEIGHTS
+  table AND the active-signal availability check — three places
+  for one schema change.
+  - **Why deferred:** The current six-signal taxonomy is stable.
+    Refactoring to a single signal-descriptor table is a deliberate
+    cleanup, but only worth it once a 7th signal lands.
+  - **Trigger:** Adding `lyricAnchor` or any new signal to WEIGHTS.
+  - **Discovered:** 2026-05-16 (Phase 3H)
+  - **Status:** open
+
+- **Finding:** The Evidence block's contribution bar maps
+  `contribution × 200 → percent width`, so 0.5 contribution = full
+  bar. A higher contribution would visually cap at full while the
+  number still reads correctly. Picks a "good enough" visual ceiling
+  rather than a true 0-100% scale.
+  - **Why deferred:** Real contributions on the current weight
+    layout rarely exceed 0.30 even for strong signals
+    (max single-signal contribution = weight × value = 0.30 × 1.0 =
+    0.30 for audioSimilar at full strength). 0.5 ceiling is generous.
+    If WEIGHTS ever change to where one signal can dominate >0.5,
+    the bar scaling needs revisit.
+  - **Trigger:** WEIGHTS rebalance that pushes single-signal
+    contribution above 0.5.
+  - **Discovered:** 2026-05-16 (Phase 3H)
+  - **Status:** open
+
+- **Finding:** Re-analyzing a session OVERWRITES the existing Take's
+  evidence array with the new analysis's evidence — no diff, no
+  history of "this take used to have chord:0.18, now has chord:0.05."
+  Benchmark snapshots (Phase 3E) capture session-level metrics but
+  NOT per-take evidence.
+  - **Why deferred:** Per-take evidence history would explode storage
+    (every Take × every analyze = N evidence rows × M analyzes).
+    Benchmark snapshots are the right granularity for trend; if Drew
+    needs per-take diff, the right primitive is "snapshot the
+    evidence for this specific take into a Benchmark observation"
+    rather than universal history.
+  - **Trigger:** Drew wants to see "did this specific take's
+    evidence change between analyze runs."
+  - **Discovered:** 2026-05-16 (Phase 3H)
+  - **Status:** open
+
+- **Finding:** The session-level Evidence-mix histogram on the
+  calibration banner counts only `dominant_signal` per Take. A Take
+  where chord and plan tied for top contribution is attributed to
+  whichever sorted first (planMatch wins ties in the current
+  evidence-sort order). The histogram understates ties.
+  - **Why deferred:** Tracking co-dominant signals would double-count
+    Takes (one Take → 2 histogram entries), inflating the totals.
+    The single-attribution model is conventional for "what carried
+    this session" reporting. Ties are rare enough at MVP scale that
+    the distortion is small.
+  - **Trigger:** Drew notices the histogram totals don't match
+    `(takes count)` AND the cause traces to under-counted ties.
+  - **Discovered:** 2026-05-16 (Phase 3H)
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."

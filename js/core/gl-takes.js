@@ -167,6 +167,39 @@
     } else {
       out.top_suggestions = [];
     }
+    // Phase 3H: persist explainable evidence rows + confidence breakdown so
+    // calibration UI can render WHY directly from the Take record without
+    // re-running the matcher. Both are optional.
+    if (Array.isArray(input.evidence)) {
+      out.evidence = input.evidence.slice(0, 16).map(function (e) {
+        if (!e || typeof e !== 'object') return null;
+        return {
+          signal:             typeof e.signal === 'string' ? e.signal : 'unknown',
+          raw_value:          typeof e.raw_value === 'number' ? e.raw_value : null,
+          weight_raw:         typeof e.weight_raw === 'number' ? e.weight_raw : null,
+          weight_normalized:  typeof e.weight_normalized === 'number' ? e.weight_normalized : null,
+          contribution:       typeof e.contribution === 'number' ? e.contribution : null,
+          polarity:           typeof e.polarity === 'string' ? e.polarity : 'inactive',
+          explanation:        typeof e.explanation === 'string' ? e.explanation : '',
+          conflicts_with:     typeof e.conflicts_with === 'string' ? e.conflicts_with : undefined
+        };
+      }).filter(Boolean);
+    }
+    if (input.confidence_breakdown && typeof input.confidence_breakdown === 'object') {
+      var cb = input.confidence_breakdown;
+      out.confidence_breakdown = {
+        tier:                cb.tier || conf,
+        best_score:          typeof cb.best_score === 'number' ? cb.best_score : null,
+        gap_to_second:       typeof cb.gap_to_second === 'number' ? cb.gap_to_second : null,
+        active_signal_count: typeof cb.active_signal_count === 'number' ? cb.active_signal_count : null,
+        limited_evidence:    !!cb.limited_evidence,
+        only_plan_active:    !!cb.only_plan_active,
+        signals_disagree:    !!cb.signals_disagree,
+        dominant_signal:     cb.dominant_signal || null,
+        weakest_signal:      cb.weakest_signal || null,
+        reasons:             Array.isArray(cb.reasons) ? cb.reasons.slice(0, 6) : []
+      };
+    }
     return out;
   }
 
