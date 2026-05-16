@@ -4798,6 +4798,13 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
     var ridColor = ridPct >= 95 ? '#10b981' : ridPct >= 60 ? '#f59e0b' : '#ef4444';
     var titleColor = titlePct >= 80 ? '#10b981' : titlePct >= 50 ? '#f59e0b' : '#ef4444';
 
+    // Phase 3F: pull continuity pre-pass stats stashed by gl-takes during the
+    // most recent normalize. May be absent if takes were loaded from cache
+    // without a fresh analyze — show — to flag the gap.
+    var contStash = (window._glContinuityLatest && window._glContinuityLatest[sessionId]) || null;
+    var contAppliedStr = contStash ? String(contStash.applied) : '—';
+    var contSuggStr = contStash ? String(contStash.suggestions.length) : '—';
+
     // Benchmark metrics stashed on the session DOM so the snapshot button
     // and the post-render hydrator can read them without re-computing.
     var benchMetrics = {
@@ -4806,7 +4813,11 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
         titled_pct: titlePct,
         rid_mismatch_count: mismatches,
         human_corrected_count: humanCount,
-        classified_count: 0 // hydrated post-render
+        classified_count: 0, // hydrated post-render
+        // Phase 3F: continuity pre-pass metrics — null when the latest
+        // normalize didn't run (cached takes path).
+        continuity_suggestions_count: contStash ? contStash.suggestions.length : null,
+        continuity_applied_count:     contStash ? contStash.applied : null
     };
     var benchContinuity = (window.GLBenchmark && window.GLBenchmark.bucketContinuity)
         ? window.GLBenchmark.bucketContinuity(obs)
@@ -4821,7 +4832,26 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
         + ' · titled: <span style="color:' + titleColor + ';font-weight:500">' + withTitle + ' (' + titlePct + '%)</span>'
         + (humanCount > 0 ? ' · <span style="color:#10b981">✓ ' + humanCount + ' human-corrected</span>' : '')
         + ' · <span id="rhBenchClassifiedCount_' + escHtml(sessionId) + '" style="color:var(--text-dim)">📋 — classified</span>'
+        + ' · <span style="color:' + (contStash && contStash.applied > 0 ? '#10b981' : 'var(--text-dim)') + '">🔗 ' + contAppliedStr + ' merged / ' + contSuggStr + ' suggested</span>'
         + '</div>';
+
+    // Phase 3F: continuity suggestion list — kind counts only. Compact;
+    // surfaces what the heuristic noticed without dumping JSON.
+    if (contStash && contStash.suggestions && contStash.suggestions.length) {
+        var kindCounts = contStash.kinds || {};
+        var kindParts = Object.keys(kindCounts).filter(function (k) { return kindCounts[k] > 0; })
+            .map(function (k) { return k + ': ' + kindCounts[k]; });
+        if (kindParts.length) {
+            html += '<div style="font-size:0.62em;color:var(--text-dim);margin-top:3px;line-height:1.5">'
+                + '<span style="color:#a78bfa">🔗 Continuity pre-pass</span>: '
+                + escHtml(kindParts.join(' · '))
+                + '</div>';
+        }
+    } else if (window.GLContinuity) {
+        html += '<div style="font-size:0.62em;color:var(--text-dim);margin-top:3px;font-style:italic">'
+            + '🔗 Continuity pre-pass not run yet (re-analyze to populate)'
+            + '</div>';
+    }
 
     // Phase 3E: snapshot + rerun comparison panel. Empty on first render;
     // hydrated by _rhBenchHydrateBanner once GLBenchmark + GLObs return.
@@ -4910,6 +4940,8 @@ function _rhBenchRenderDiffRows(diff) {
     rows += _row('titled_pct',                diff.metrics.titled_pct);
     rows += _row('rid_mismatch_count',        diff.metrics.rid_mismatch_count);
     rows += _row('classified_count',          diff.metrics.classified_count);
+    rows += _row('continuity_suggestions',    diff.metrics.continuity_suggestions_count);
+    rows += _row('continuity_applied',        diff.metrics.continuity_applied_count);
     rows += _row('adjacent_same_song',        diff.continuity.adjacent_same_song);
     rows += _row('restart_loop_candidate',    diff.continuity.restart_loop_candidate);
     rows += _row('unresolved_cluster',        diff.continuity.unresolved_cluster);

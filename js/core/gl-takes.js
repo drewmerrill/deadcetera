@@ -458,12 +458,57 @@
     return _ensureLoaded(true).then(function (cache) {
       // Build a fast lookup of existing takes for this rehearsal by segment_id
       var bySegId = {};
+      var protectedSegmentIds = {};
       Object.keys(cache).forEach(function (id) {
         var t = cache[id];
         if (t && t.rehearsal_id === rehearsalId && t.segment_id) {
           bySegId[t.segment_id] = t;
+          // Phase 3F: human-corrected takes shield their source segment from
+          // any continuity merge. The matching protection in the merge loop
+          // below is a second belt — this is the suspenders.
+          if (t.matching && t.matching.correction_source === 'human') {
+            protectedSegmentIds[t.segment_id] = true;
+          }
         }
       });
+
+      // Phase 3F: continuity pre-pass. Pure heuristic merges over the segment
+      // array before we even start creating Takes. evaluate() never mutates;
+      // apply() folds high-safety merges into a smaller segment list. Both
+      // are no-ops on cached-shell bundles without GLContinuity loaded.
+      if (window.GLContinuity && window.GLContinuity.evaluate) {
+        try {
+          var contRes = window.GLContinuity.evaluate(segments);
+          var aggressive = !!(opts && opts.continuity_aggressive);
+          var before = segments.length;
+          segments = window.GLContinuity.apply(segments, contRes.suggestions, {
+            protectedSegmentIds: protectedSegmentIds,
+            aggressive: aggressive
+          });
+          var applied = window.GLContinuity.countApplied(contRes.suggestions, aggressive);
+          if (window.GLObs && window.GLObs.log) {
+            window.GLObs.log('GLContinuity', 'pre-pass', {
+              rehearsal_id: rehearsalId,
+              segments_in: before,
+              segments_out: segments.length,
+              suggestions: contRes.suggestions.length,
+              applied: applied,
+              kinds: window.GLContinuity.bucketSuggestions(contRes.suggestions)
+            });
+          }
+          // Stash latest suggestions per session so the calibration banner
+          // can render them without re-walking segments. Cleared on each
+          // analyze + normalize cycle.
+          window._glContinuityLatest = window._glContinuityLatest || {};
+          window._glContinuityLatest[rehearsalId] = {
+            suggestions: contRes.suggestions,
+            applied: applied,
+            kinds: window.GLContinuity.bucketSuggestions(contRes.suggestions)
+          };
+        } catch (e) {
+          console.warn('[GLContinuity] pre-pass failed:', e && e.message);
+        }
+      }
 
       // We tally take_number as we walk segments in chronological order so the
       // numbering is stable regardless of upstream sort.

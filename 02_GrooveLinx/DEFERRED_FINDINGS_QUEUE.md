@@ -1249,6 +1249,97 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Phase 3E)
   - **Status:** open
 
+- **Finding:** H3 restart_loop and H4 weak_boundary_suppression are
+  observation-only by default — they appear in the calibration kind
+  breakdown but don't apply to the segment array. The applier respects
+  `opts.continuity_aggressive` to opt them in, but no UI toggle wires
+  it. Drew has no way to A/B aggressive vs conservative without
+  editing code.
+  - **Why deferred:** Phase 3F spec was explicit about observation-first.
+    A UI toggle would invite premature application before Drew has
+    validated H1 + H2 don't over-merge on 5/11. Adding it later is
+    additive — a single localStorage flag + `opts.continuity_aggressive`
+    pass-through into `normalizeRehearsalSegments`.
+  - **Trigger:** H1 + H2 alone visibly improve 5/11 segmentation AND
+    H3 / H4 suggestions look safe in the kind breakdown.
+  - **Discovered:** 2026-05-15 (Phase 3F)
+  - **Status:** open
+
+- **Finding:** H5 confidence_downgrade is suggestion-only — the
+  applier never rewrites `take.matching.confidence` even when the
+  heuristic flags brittle 'high' confidence under continuity
+  ambiguity. The suggestion shows up in the kind breakdown count
+  but has no UI surface to act on.
+  - **Why deferred:** Auto-downgrade silently changes the
+    confidence the band sees. That's a UX call, not a heuristic call —
+    needs a deliberate decision about whether "high → medium" feels
+    helpful or distressing. Until Drew sees the H5 count climb on
+    real sessions, no point pre-deciding.
+  - **Trigger:** H5 count consistently >0 on 5/11 AND Drew confirms
+    those takes ARE in fact brittle.
+  - **Discovered:** 2026-05-15 (Phase 3F)
+  - **Status:** open
+
+- **Finding:** Continuity pre-pass results only stash for the most
+  recently normalized session — `window._glContinuityLatest[sessionId]`
+  is populated on normalize but never persisted. Reopening an old
+  session report shows "🔗 Continuity pre-pass not run yet" instead of
+  the historical counts.
+  - **Why deferred:** Persisting per-session continuity counts would
+    require a Firebase write inside the analyze path (extra latency)
+    or a new collection (more schema). The Phase 3E benchmark
+    snapshots capture continuity counts at capture time — that IS
+    the durable record. The "not run yet" copy in calibration mode
+    is informational, not a regression.
+  - **Trigger:** Drew accumulates enough sessions that browsing
+    history without snapshots becomes a regular workflow.
+  - **Discovered:** 2026-05-15 (Phase 3F)
+  - **Status:** open
+
+- **Finding:** When the continuity applier merges two segments, the
+  anchor take inherits the FIRST segment's `matching.confidence` —
+  the merged take's confidence is not recomputed from the union of
+  evidence. A high-confidence + medium-confidence merge keeps the
+  anchor's confidence (high) even though the merge implies more
+  evidence than the anchor alone had.
+  - **Why deferred:** Re-running matching against the merged audio
+    span requires the audio buffer + matching engine — re-entry into
+    the analyzer surface that Phase 3F was explicit about NOT
+    touching. The simpler fix (take the max confidence of constituents)
+    would be misleading in the rare opposite case (high anchor merged
+    with low neighbor — the low might have been correct).
+  - **Trigger:** Real 5/11 data shows merged takes mis-confident in
+    either direction.
+  - **Discovered:** 2026-05-15 (Phase 3F)
+  - **Status:** open
+
+- **Finding:** CONFIG thresholds in gl-continuity.js are hardcoded —
+  same_song_max_gap_sec=30, short_gap_max_sec=10, restart_max_gap_sec=90,
+  etc. No per-band or per-genre tuning. A blues band with tight
+  silence between songs needs a tighter gap window than a jam band
+  that holds long ambient transitions.
+  - **Why deferred:** Tuning thresholds requires real cross-band
+    data. The single-band Drew/Deadcetera dataset (5/11) is the
+    starting point; per-band overrides are premature optimization.
+  - **Trigger:** Second tester band onboards AND their 5/11-style
+    benchmark shows the defaults miscalibrate.
+  - **Discovered:** 2026-05-15 (Phase 3F)
+  - **Status:** open
+
+- **Finding:** No UI surface to inspect WHICH specific takes were
+  merged within a session. The calibration banner shows kind counts
+  (e.g. "adjacent_same_song: 3") but the analyst has to inspect the
+  Phase 2 `_continuity_merged_from` stamp on each take to see the
+  per-merge story. No "show me the 3 merges that happened" affordance.
+  - **Why deferred:** Per-merge inspection adds a third UI surface
+    inside calibration mode (alongside kind breakdown + suggestions
+    sublist). Wait until Drew actually wants this — kind counts may
+    be sufficient signal.
+  - **Trigger:** Drew opens a take's diagnostics drawer to read
+    `_continuity_merged_from` more than once.
+  - **Discovered:** 2026-05-15 (Phase 3F)
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."

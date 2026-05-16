@@ -294,7 +294,14 @@
         titled_pct:                  { from: pm.titled_pct, to: lm.titled_pct, delta: _delta(pm.titled_pct, lm.titled_pct), improvement: 'higher_better' },
         rid_mismatch_count:          { from: pm.rid_mismatch_count, to: lm.rid_mismatch_count, delta: _delta(pm.rid_mismatch_count, lm.rid_mismatch_count), improvement: 'lower_better' },
         human_corrected_count:       { from: pm.human_corrected_count, to: lm.human_corrected_count, delta: _delta(pm.human_corrected_count, lm.human_corrected_count), improvement: 'neutral' },
-        classified_count:            { from: pm.classified_count, to: lm.classified_count, delta: _delta(pm.classified_count, lm.classified_count), improvement: 'neutral' }
+        classified_count:            { from: pm.classified_count, to: lm.classified_count, delta: _delta(pm.classified_count, lm.classified_count), improvement: 'neutral' },
+        // Phase 3F: continuity pre-pass metrics. Suggestions count is
+        // observation-only (more isn't inherently better — it just means
+        // the heuristic found more candidates); applied_count is also
+        // neutral because "more merges" can mean better OR worse depending
+        // on whether the original segmentation was over-splitting.
+        continuity_suggestions_count: { from: pm.continuity_suggestions_count, to: lm.continuity_suggestions_count, delta: _delta(pm.continuity_suggestions_count, lm.continuity_suggestions_count), improvement: 'neutral' },
+        continuity_applied_count:     { from: pm.continuity_applied_count, to: lm.continuity_applied_count, delta: _delta(pm.continuity_applied_count, lm.continuity_applied_count), improvement: 'neutral' }
       },
       continuity: {
         adjacent_same_song:          { from: pc.adjacent_same_song, to: lc.adjacent_same_song, delta: _delta(pc.adjacent_same_song, lc.adjacent_same_song), improvement: 'lower_better' },
