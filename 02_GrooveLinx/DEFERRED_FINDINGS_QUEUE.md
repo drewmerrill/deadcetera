@@ -950,6 +950,115 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Lightweight Rehearsal Closure Pass)
   - **Status:** open
 
+- **Finding:** Multiple Mixdown rows can match a single rehearsal
+  session by date. `_findMixdownForSession` returns the **first**
+  match it iterates, with no ordering guarantee from Firebase. For a
+  band that uploads multiple mixdowns for the same date (e.g. dry
+  mix + wet mix), the auto-created Recording will pick whichever
+  Firebase enumerated first — which may not be the band's preferred
+  reference take.
+  - **Why deferred:** Picking the right one needs ordering signal
+    (uploaded_at? user-tagged-as-canonical?). Phase 3C deliberately
+    avoided "Mixdowns architecture rewrite" — one-mixdown-per-date
+    is the simple-and-correct heuristic until tester signal indicates
+    otherwise.
+  - **Trigger:** First tester reports a session resolving to the
+    wrong mixdown, OR Drew uploads two mixdowns for the same date
+    intentionally.
+  - **Discovered:** 2026-05-15 (Phase 3C — Recording Identity)
+  - **Status:** open
+
+- **Finding:** Auto-create writes are not idempotent across concurrent
+  resolves. If two surfaces (e.g. Take Review + a future Tonight's
+  Progress playback hook) both call `resolvePlaybackSource` on the
+  same un-stamped session at the same render tick, both can race to
+  create separate Recording rows before either's `recording_id`
+  writeback completes. The session ends up stamped with one id, but
+  the orphan record persists in `bands/{slug}/recordings`.
+  - **Why deferred:** Adding a per-session resolve mutex needs an
+    in-memory lock that survives Promise reentry — non-trivial
+    plumbing for an edge case. The orphan records are harmless (no
+    Take or playback consumer reads them), and the per-session
+    `_resolveCache` already short-circuits the second resolve within
+    a single render pass.
+  - **Trigger:** Calibration mode shows duplicate canonical-recording
+    counts on the same session, OR Recording cache reaches a size
+    larger than expected.
+  - **Discovered:** 2026-05-15 (Phase 3C build)
+  - **Status:** open
+
+- **Finding:** Auto-create writes happen on every first resolve of
+  an un-stamped session — even for read-only browsing of past
+  rehearsals. A user clicking through 30 historical sessions in one
+  browse triggers 30 Recording creates + 30 session updates,
+  effectively normalizing the back-catalog as a side effect of
+  navigation. Functionally fine and probably desirable, but the
+  write cost is real and not gated by user intent.
+  - **Why deferred:** A bulk migration script would be cleaner but
+    requires a separate admin tool. The lazy-on-resolve approach is
+    incremental and self-healing, which matches the spec's "additive
+    normalization" rule.
+  - **Trigger:** Firebase write quota concerns, OR observed slowness
+    on first-view of historical rehearsals.
+  - **Discovered:** 2026-05-15 (Phase 3C build)
+  - **Status:** open
+
+- **Finding:** Phase 3C migrated only the Phase 3A Take Review
+  surface to use `resolvePlaybackSource`. Other playback consumers
+  remain on legacy paths: `_rhToggleMixdownPlayer` reads `mx.audio_url`
+  / `mx.drive_url` directly; `recording-analyzer.js` uses its own
+  `<audio id="raPlaybackAudio">` element with per-session URL; the
+  in-flight analyzer audio buffer is shared session-wide. The
+  central resolver is the recommended path going forward, but the
+  migration is incremental.
+  - **Why deferred:** Migrating every playback consumer in one pass
+    risks breaking the analyzer's per-session audio handling. Take
+    Review is the highest-leverage consumer (emotional-continuity
+    claims like "Best take from last rehearsal" depend on it
+    resolving reliably) and goes first; the rest follow as their
+    surfaces evolve.
+  - **Trigger:** Next playback work on Mixdowns / analyzer review,
+    OR a confirmed playback inconsistency between surfaces.
+  - **Discovered:** 2026-05-15 (Phase 3C build)
+  - **Status:** open
+
+- **Finding:** Take primitives still write `playback_ref.recording_id:
+  null` (per the Phase 2 deferred entry). Phase 3C didn't backfill
+  existing takes with `recording_id` from their session's resolved
+  Recording. Take playback in Phase 3A still works because it routes
+  through the session-level resolver, but the take's own playback_ref
+  remains incomplete — a future "play this take from anywhere" surface
+  (cross-rehearsal Song Detail history) would need either a backfill
+  pass or an inline resolver call per take.
+  - **Why deferred:** Backfilling thousands of takes mid-render is
+    expensive; doing it lazily-on-resolve-of-take is acceptable but
+    needs the take playback path to thread through GLRecordings —
+    which Phase 3A's `_rhTakePlay` doesn't yet do (it still reads
+    take.playback_ref directly via the session-shared audio element).
+  - **Trigger:** Phase 4+ cross-rehearsal Song Detail playback work,
+    OR observed take-playback failures when the session-level audio
+    element doesn't have a src.
+  - **Discovered:** 2026-05-15 (Phase 3C build)
+  - **Status:** open
+
+- **Finding:** Recording records auto-created from blob-only sessions
+  do NOT happen — Path 4 (blob fallback) returns the URL with
+  `isBlob: true` but skips `_ensureRecordingForSession`. So a band
+  that records straight into a session blob without uploading to
+  Drive/Mixdowns ever gets a canonical Recording for that session.
+  Once they leave the page, the blob URL is gone and there's no
+  Recording to resolve to. The session is permanently un-resolvable.
+  - **Why deferred:** Auto-creating a Recording for a session-scoped
+    blob URL that's about to die would persist a dead reference.
+    The right fix is upload-time normalization (every session blob
+    gets persisted to Drive/Storage when the user explicitly saves)
+    — out of scope for Phase 3C identity stabilization.
+  - **Trigger:** First case of a session that has audio_segments but
+    no canonical Recording can be resolved, OR upload-flow
+    consolidation.
+  - **Discovered:** 2026-05-15 (Phase 3C build)
+  - **Status:** open
+
 - **Finding:** `PracticeTask` schema supports only `open`/`resolved`.
   The proposed task lifecycle (Open / In Progress / Fixed / Recheck +
   optional Archived / Deferred / Won't Fix) requires a schema bump.

@@ -216,14 +216,19 @@
       else if (url.indexOf('http') === 0) origin = 'http';
       else origin = 'unknown';
     }
+    // Phase 3C: mixdown lookup is now available via GLRecordings.
+    // resolvePlaybackSource — calibration banner shows resolver result above
+    // this snapshot. Note text reflects the new state.
+    var mixdownAvailable = !!(window.GLRecordings && window.GLRecordings.resolvePlaybackSource);
     return {
       url: url || '(none)',
       isBlob: isBlob,
       hasPersistent: hasPersistent,
       origin: origin,
-      // Mixdown lookup is deferred work — calibration mode surfaces the gap.
-      mixdownLookupAvailable: false,
-      mixdownLookupNote: 'Mixdown lookup (rehearsal_mixdowns/*) is not implemented in Phase 3B.'
+      mixdownLookupAvailable: mixdownAvailable,
+      mixdownLookupNote: mixdownAvailable
+        ? 'Mixdown lookup is wired via GLRecordings.resolvePlaybackSource (Phase 3C).'
+        : 'Mixdown lookup (rehearsal_mixdowns/*) is not yet wired.'
     };
   }
 

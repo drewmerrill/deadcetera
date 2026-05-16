@@ -4615,11 +4615,27 @@ async function _rhRenderTakeReview(container, sessionId, session) {
     }
     if (!takes || !takes.length) return;
 
-    // Audio source priority: session.recording_url, then nothing. Mixdown
-    // lookup (rehearsal_mixdowns/*) is deferred to Phase 3B - would require
-    // a separate fetch and dedup logic the spec asks us to avoid here.
-    var audioUrl = (session && session.recording_url) || '';
-    if (audioUrl && audioUrl.indexOf('blob:') === 0) audioUrl = ''; // blobs don't survive
+    // Phase 3C: audio source resolves through GLRecordings.resolvePlaybackSource,
+    // which centralizes the priority order (recording_id → session.recording_url →
+    // Mixdown by date → blob fallback) and opportunistically auto-creates a
+    // canonical Recording so future resolves skip directly to Path 1. Closes
+    // the Phase 3A Mixdown gap without breaking legacy session.recording_url.
+    var audioUrl = '';
+    var playbackResolution = null;
+    if (typeof window.GLRecordings !== 'undefined' && window.GLRecordings.resolvePlaybackSource) {
+        try {
+            playbackResolution = await window.GLRecordings.resolvePlaybackSource(session || {});
+            if (playbackResolution && playbackResolution.url && !playbackResolution.isBlob) {
+                audioUrl = playbackResolution.url;
+            }
+        } catch (e) {
+            console.warn('[TakeReview] playback resolve failed:', e && e.message);
+        }
+    } else {
+        // Legacy fallback (cached-shell safety) — same shape as pre-3C.
+        audioUrl = (session && session.recording_url) || '';
+        if (audioUrl && audioUrl.indexOf('blob:') === 0) audioUrl = '';
+    }
 
     // Phase 3B: calibration mode toggle. When on, GLObs surfaces appear inline
     // in this card. When off (default), the card stays Phase-3A-clean.
@@ -4635,7 +4651,7 @@ async function _rhRenderTakeReview(container, sessionId, session) {
     var card = document.createElement('div');
     card.id = 'rhTakeReviewCard_' + sessionId;
     card.style.cssText = 'margin-top:14px;padding:14px;border-radius:12px;border:1px solid rgba(99,102,241,0.16);background:rgba(99,102,241,0.04)';
-    card.innerHTML = _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode);
+    card.innerHTML = _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode, playbackResolution);
     container.appendChild(card);
 
     var audioEl = document.getElementById('rhTakeReviewAudio_' + sessionId);
@@ -4644,7 +4660,7 @@ async function _rhRenderTakeReview(container, sessionId, session) {
     }
 }
 
-function _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode) {
+function _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode, playbackResolution) {
     var counts = { human: 0, unresolved: 0, low: 0 };
     takes.forEach(function (t) {
         if (t.matching && t.matching.correction_source === 'human') counts.human++;
@@ -4662,9 +4678,12 @@ function _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode) {
         + '<div style="font-size:0.7em;color:var(--text-dim)">' + escHtml(summary) + '</div>'
         + '</div>';
 
-    // Phase 3B: calibration banner — only shown when GLObs is enabled.
+    // Phase 3B + 3C: calibration banner — only shown when GLObs is enabled.
+    // playbackResolution (computed by _rhRenderTakeReview via
+    // GLRecordings.resolvePlaybackSource) carries canonical recording id +
+    // mixdown discovery + reason — banner displays it inline.
     if (calMode) {
-        html += _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl);
+        html += _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbackResolution);
     }
 
     if (!audioUrl) {
@@ -4691,7 +4710,7 @@ function _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode) {
 // Phase 3B: calibration banner that sits between the card header and the
 // rows. Surfaces audio-source identity + continuity observations + a
 // quick-disable link. Compact by default; details expand on demand.
-function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl) {
+function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbackResolution) {
     var audio = (window.GLObs && window.GLObs.summarizeAudioSource)
         ? window.GLObs.summarizeAudioSource(session || {})
         : null;
@@ -4705,17 +4724,37 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl) {
             + '<button onclick="if(window.GLObs){GLObs.disable();}var c=document.getElementById(\'rhTimelineSection\');if(c&&window._rhShowSessionReport){_rhShowSessionReport(\'' + escHtml(sessionId) + '\')}" style="font-size:0.65em;padding:2px 8px;border-radius:6px;border:1px solid rgba(167,139,250,0.3);background:transparent;color:#a78bfa;cursor:pointer">Disable</button>'
         + '</div>';
 
-    // Audio source diagnostic
+    // Phase 3C: canonical playback resolution diagnostic (richer + truthful
+    // about which resolver path won). Rendered above the legacy session-only
+    // summarize so the band sees both: what session.recording_url says vs
+    // what GLRecordings actually resolved.
+    if (playbackResolution) {
+        var resOriginColor = playbackResolution.hasPersistent ? '#10b981' : (playbackResolution.isBlob ? '#ef4444' : '#64748b');
+        var resBadge = playbackResolution.recordingId ? '✓ canonical' : (playbackResolution.hasPersistent ? '~ legacy persistent' : '⚠ no canonical');
+        html += '<div style="font-size:0.66em;color:var(--text-dim);margin-bottom:4px">'
+            + '<span style="color:' + resOriginColor + ';font-weight:500">resolved.origin:</span> ' + escHtml(playbackResolution.origin)
+            + ' · <span style="color:var(--text-dim)">via:</span> ' + escHtml(playbackResolution.reason || '—')
+            + ' · ' + escHtml(resBadge)
+            + (playbackResolution.recordingId ? ' · <span style="color:var(--text-dim)">recording_id:</span> ' + escHtml(playbackResolution.recordingId.slice(0, 10)) + '…' : '')
+            + (playbackResolution.mixdownId ? ' · <span style="color:var(--text-dim)">mixdown:</span> ' + escHtml(playbackResolution.mixdownId.slice(0, 10)) + '…' : '')
+            + '</div>';
+    }
+
+    // Audio source diagnostic (legacy session.recording_url snapshot).
     if (audio) {
         var originColor = audio.hasPersistent ? '#10b981' : (audio.isBlob ? '#ef4444' : '#64748b');
         html += '<div style="font-size:0.66em;color:var(--text-dim);margin-bottom:4px">'
-            + '<span style="color:' + originColor + ';font-weight:500">audio.origin:</span> ' + escHtml(audio.origin)
+            + '<span style="color:' + originColor + ';font-weight:500">session.audio.origin:</span> ' + escHtml(audio.origin)
             + ' · <span style="color:var(--text-dim)">persistent:</span> ' + (audio.hasPersistent ? 'yes' : 'no')
             + (audio.isBlob ? ' · <span style="color:#ef4444">⚠ blob URL — session-scoped only</span>' : '')
             + '</div>';
-        html += '<div style="font-size:0.62em;color:var(--text-dim);margin-bottom:6px">'
-            + escHtml(audio.mixdownLookupNote)
-            + '</div>';
+        // Phase 3C: only show the mixdown-lookup gap note when the resolver
+        // didn't actually resolve through a mixdown — otherwise it's stale.
+        if (!playbackResolution || playbackResolution.reason !== 'mixdown_match') {
+            html += '<div style="font-size:0.62em;color:var(--text-dim);margin-bottom:6px">'
+                + escHtml(audio.mixdownLookupNote)
+                + '</div>';
+        }
     }
 
     // Continuity observations
