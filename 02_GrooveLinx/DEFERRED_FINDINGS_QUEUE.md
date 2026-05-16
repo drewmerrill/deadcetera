@@ -1160,6 +1160,95 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-15 (Phase 3D)
   - **Status:** open
 
+- **Finding:** Benchmark snapshot diff only compares against the most
+  recent prior snapshot. No multi-point trend, no historical heatmap,
+  no rolling-window average. If Drew snapshots after every analyzer
+  tweak, he sees "did THIS one improve" but not "is the trend going
+  in the right direction over the last 5 attempts."
+  - **Why deferred:** Phase 3E spec explicitly forbade trend charts /
+    analytics dashboards / time-series. Single-prior diff answers the
+    immediate question. Multi-point trend is a deliberate next-phase
+    decision after Drew accumulates ≥3 snapshots and finds the single
+    comparison insufficient.
+  - **Trigger:** Drew accumulates 3+ snapshots on 5/11 AND reports
+    the single-prior diff doesn't tell him enough.
+  - **Discovered:** 2026-05-15 (Phase 3E)
+  - **Status:** open
+
+- **Finding:** Per-take benchmark classification has no severity
+  picker in the UI — `addObservation` accepts `'info' | 'warning' |
+  'critical'` but the dropdown only writes `severity: 'info'`. All
+  classifications render the same color in the observation list.
+  - **Why deferred:** Adding a severity dropdown doubles the form
+    surface area for marginal benefit; the classification kind already
+    carries enough information (`continuity_failure` is intrinsically
+    more severe than `talking_split`). Severity is reserved for the
+    rare case where two takes share a classification but one is a
+    near-miss and one is catastrophic.
+  - **Trigger:** First time Drew wants to flag a take as "critical"
+    inside an existing classification kind.
+  - **Discovered:** 2026-05-15 (Phase 3E)
+  - **Status:** open
+
+- **Finding:** Benchmark observations have no edit affordance — only
+  add + remove. To fix a typo in a note, the analyst must delete the
+  observation and re-add it (losing the original `created_at`).
+  - **Why deferred:** Edit-in-place adds form-state machinery
+    (loading existing value into the input, distinguishing
+    update-vs-create write paths, optimistic UI rollback on error)
+    for a use case (typo correction) that's cheaper to handle by
+    delete + re-add. Trade-off chosen for code economy.
+  - **Trigger:** First observed Drew frustration at re-typing a long
+    note after a typo correction.
+  - **Discovered:** 2026-05-15 (Phase 3E)
+  - **Status:** open
+
+- **Finding:** Snapshot diff is computed live (current calibration
+  banner metrics) vs stored (prior snapshot's metrics). If calibration
+  mode wasn't on when the prior snapshot fired, OR if a snapshot was
+  captured under different observation-count conditions, the diff may
+  be apples-to-oranges. There's no warning when this happens.
+  - **Why deferred:** Snapshots always include `build` + `created_at`,
+    so the analyst can audit conditions by reading the snapshot
+    history. Adding a "diff conditions changed" warning surfaces a
+    rare edge case loudly; we'd rather Drew notice it manually first.
+  - **Trigger:** First reported false-positive improvement signal
+    traced back to changed conditions between the two compared
+    snapshots.
+  - **Discovered:** 2026-05-15 (Phase 3E)
+  - **Status:** open
+
+- **Finding:** Benchmark classifications are per-take only — there's
+  no first-class slot for session-level observations like "the whole
+  rehearsal had pervasive over-splitting" or "calibration revealed
+  the analyzer can't handle this band's jam style." Such observations
+  end up as a note on an arbitrary take.
+  - **Why deferred:** `addObservation` already accepts a null
+    `take_id` (session-level), but the calibration UI doesn't expose
+    a session-level form. Adding one means another UI surface in the
+    calibration banner, which the spec said keep compact. The store
+    is forward-compatible — adding a session-level form later is
+    additive.
+  - **Trigger:** Drew accumulates enough cross-cutting observations
+    that pinning them to arbitrary takes feels wrong.
+  - **Discovered:** 2026-05-15 (Phase 3E)
+  - **Status:** open
+
+- **Finding:** The 🎯 Benchmark calibration line is rehearsal-only —
+  no cross-band roll-up of benchmark health. With multiple bands on
+  GrooveLinx, founders may want "show me which bands have <80%
+  recording_id coverage" or "which bands have the most classified
+  failures" without opening every rehearsal individually.
+  - **Why deferred:** Cross-band roll-up requires a separate index
+    or aggregation pass. Phase 3E was explicit about avoiding
+    dashboards. Single-band, single-rehearsal view is the right
+    diagnostic primitive; cross-band aggregation is a separate
+    decision later.
+  - **Trigger:** GrooveLinx has 3+ bands actively analyzing AND a
+    founder needs to triage which band's analyzer needs attention.
+  - **Discovered:** 2026-05-15 (Phase 3E)
+  - **Status:** open
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."

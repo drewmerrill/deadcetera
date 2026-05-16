@@ -4658,6 +4658,12 @@ async function _rhRenderTakeReview(container, sessionId, session) {
     if (audioEl && audioUrl) {
         audioEl.src = audioUrl;
     }
+
+    // Phase 3E: hydrate the calibration banner benchmark panel asynchronously
+    // so the synchronous Take Review render isn't blocked on Firebase reads.
+    if (calMode && window._rhBenchHydrateBanner) {
+        window._rhBenchHydrateBanner(sessionId);
+    }
 }
 
 function _rhTakeReviewHTML(takes, sessionId, audioUrl, session, calMode, playbackResolution) {
@@ -4792,6 +4798,21 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
     var ridColor = ridPct >= 95 ? '#10b981' : ridPct >= 60 ? '#f59e0b' : '#ef4444';
     var titleColor = titlePct >= 80 ? '#10b981' : titlePct >= 50 ? '#f59e0b' : '#ef4444';
 
+    // Benchmark metrics stashed on the session DOM so the snapshot button
+    // and the post-render hydrator can read them without re-computing.
+    var benchMetrics = {
+        take_count: totalTakes,
+        recording_id_coverage_pct: ridPct,
+        titled_pct: titlePct,
+        rid_mismatch_count: mismatches,
+        human_corrected_count: humanCount,
+        classified_count: 0 // hydrated post-render
+    };
+    var benchContinuity = (window.GLBenchmark && window.GLBenchmark.bucketContinuity)
+        ? window.GLBenchmark.bucketContinuity(obs)
+        : { adjacent_same_song: 0, restart_loop_candidate: 0, unresolved_cluster: 0, short_take_run: 0 };
+    try { window._rhBenchLastMetrics = window._rhBenchLastMetrics || {}; window._rhBenchLastMetrics[sessionId] = { metrics: benchMetrics, continuity: benchContinuity }; } catch (e) {}
+
     html += '<div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(167,139,250,0.2);font-size:0.62em;color:var(--text-dim);line-height:1.5">'
         + '<span style="color:#a78bfa;font-weight:600">🎯 Benchmark</span>'
         + ' · takes: <span style="color:var(--text)">' + totalTakes + '</span>'
@@ -4799,11 +4820,122 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
         + (mismatches > 0 ? ' · <span style="color:#ef4444">⚠ ' + mismatches + ' rid mismatch</span>' : '')
         + ' · titled: <span style="color:' + titleColor + ';font-weight:500">' + withTitle + ' (' + titlePct + '%)</span>'
         + (humanCount > 0 ? ' · <span style="color:#10b981">✓ ' + humanCount + ' human-corrected</span>' : '')
+        + ' · <span id="rhBenchClassifiedCount_' + escHtml(sessionId) + '" style="color:var(--text-dim)">📋 — classified</span>'
         + '</div>';
+
+    // Phase 3E: snapshot + rerun comparison panel. Empty on first render;
+    // hydrated by _rhBenchHydrateBanner once GLBenchmark + GLObs return.
+    if (window.GLBenchmark) {
+        html += '<div id="rhBenchPanel_' + escHtml(sessionId) + '" style="margin-top:6px;padding-top:6px;border-top:1px dashed rgba(167,139,250,0.12);font-size:0.62em;color:var(--text-dim);line-height:1.5">'
+            + '<span style="color:var(--text-dim);font-style:italic">Loading benchmark snapshots…</span>'
+            + '</div>';
+    }
 
     html += '</div>';
     return html;
 }
+
+// Phase 3E: post-render hydration for the calibration banner benchmark
+// panel. Loads observation count + snapshot history, renders rerun diff vs
+// the most recent prior snapshot, and exposes a [📸 Snapshot] button.
+window._rhBenchHydrateBanner = async function (sessionId) {
+    if (!window.GLBenchmark) return;
+    var rehearsalId = sessionId; // 1:1 in this codebase
+    try {
+        var obsList = await window.GLBenchmark.getObservationsForSession(rehearsalId);
+        var classifiedCount = (obsList || []).filter(function (o) {
+            return o && o.classification && o.classification !== 'note';
+        }).length;
+        var countEl = document.getElementById('rhBenchClassifiedCount_' + sessionId);
+        if (countEl) {
+            countEl.innerHTML = '📋 <span style="color:' + (classifiedCount > 0 ? '#a78bfa' : 'var(--text-dim)') + '">' + classifiedCount + ' classified</span>';
+        }
+
+        var panel = document.getElementById('rhBenchPanel_' + sessionId);
+        if (!panel) return;
+
+        var snaps = await window.GLBenchmark.getSnapshotsForSession(rehearsalId);
+        var html = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+            + '<button onclick="window._rhBenchSnapshot(\'' + escHtml(sessionId) + '\')" style="font-size:0.62em;padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.08);color:#a78bfa;cursor:pointer">📸 Snapshot benchmark</button>';
+        if (snaps && snaps.length) {
+            var latest = snaps[snaps.length - 1];
+            var latestDate = latest.created_at ? new Date(latest.created_at).toLocaleString() : '';
+            html += '<span style="color:var(--text-dim)">Snapshots: ' + snaps.length + ' · latest: ' + escHtml(latest.build || '?') + ' @ ' + escHtml(latestDate) + '</span>';
+        } else {
+            html += '<span style="color:var(--text-dim);font-style:italic">No prior snapshots — first snapshot becomes the baseline.</span>';
+        }
+        html += '</div>';
+
+        // Rerun comparison: latest stored snapshot vs current live metrics.
+        if (snaps && snaps.length && window._rhBenchLastMetrics && window._rhBenchLastMetrics[sessionId]) {
+            var live = window._rhBenchLastMetrics[sessionId];
+            // Inject classified_count into live metrics for fair comparison
+            live.metrics.classified_count = classifiedCount;
+            var prior = snaps[snaps.length - 1];
+            var diff = window.GLBenchmark.diffSnapshots(prior, {
+                metrics: live.metrics,
+                continuity: live.continuity,
+                build: prior.build
+            });
+            if (diff) {
+                html += '<div style="margin-top:4px;padding:6px 8px;border-radius:6px;background:rgba(167,139,250,0.04);border:1px dashed rgba(167,139,250,0.18)">'
+                    + '<div style="color:#a78bfa;font-weight:600;margin-bottom:3px">vs prior snapshot (' + escHtml(prior.build || '?') + ')</div>'
+                    + _rhBenchRenderDiffRows(diff)
+                    + '</div>';
+            }
+        }
+        panel.innerHTML = html;
+    } catch (e) {
+        var panelErr = document.getElementById('rhBenchPanel_' + sessionId);
+        if (panelErr) panelErr.innerHTML = '<span style="color:#ef4444">Benchmark hydration failed: ' + escHtml(e && e.message || 'unknown') + '</span>';
+    }
+};
+
+function _rhBenchRenderDiffRows(diff) {
+    function _row(label, info) {
+        if (!info) return '';
+        var delta = info.delta || 0;
+        var arrow = delta === 0 ? '·' : (delta > 0 ? '▲' : '▼');
+        var improvement = info.improvement || 'neutral';
+        var color = '#94a3b8';
+        if (improvement === 'higher_better') color = delta > 0 ? '#10b981' : (delta < 0 ? '#ef4444' : '#94a3b8');
+        else if (improvement === 'lower_better') color = delta < 0 ? '#10b981' : (delta > 0 ? '#ef4444' : '#94a3b8');
+        return '<div style="display:flex;gap:4px"><span style="min-width:200px;color:var(--text-dim)">' + escHtml(label) + '</span>'
+            + '<span style="color:var(--text)">' + escHtml(String(info.from != null ? info.from : '—')) + ' → ' + escHtml(String(info.to != null ? info.to : '—')) + '</span>'
+            + '<span style="color:' + color + ';margin-left:auto">' + arrow + ' ' + (delta > 0 ? '+' : '') + delta + '</span>'
+            + '</div>';
+    }
+    var rows = '';
+    rows += _row('recording_id_coverage_pct', diff.metrics.recording_id_coverage_pct);
+    rows += _row('titled_pct',                diff.metrics.titled_pct);
+    rows += _row('rid_mismatch_count',        diff.metrics.rid_mismatch_count);
+    rows += _row('classified_count',          diff.metrics.classified_count);
+    rows += _row('adjacent_same_song',        diff.continuity.adjacent_same_song);
+    rows += _row('restart_loop_candidate',    diff.continuity.restart_loop_candidate);
+    rows += _row('unresolved_cluster',        diff.continuity.unresolved_cluster);
+    rows += _row('short_take_run',            diff.continuity.short_take_run);
+    return rows;
+}
+
+window._rhBenchSnapshot = async function (sessionId) {
+    if (!window.GLBenchmark) return;
+    var live = window._rhBenchLastMetrics && window._rhBenchLastMetrics[sessionId];
+    if (!live) {
+        if (typeof showToast === 'function') showToast('Live metrics not yet computed');
+        return;
+    }
+    try {
+        var obsList = await window.GLBenchmark.getObservationsForSession(sessionId);
+        live.metrics.classified_count = (obsList || []).filter(function (o) {
+            return o && o.classification && o.classification !== 'note';
+        }).length;
+        var snap = await window.GLBenchmark.snapshot(sessionId, live.metrics, live.continuity, '');
+        if (typeof showToast === 'function') showToast('📸 Snapshot saved (build ' + (snap.build || '?') + ')');
+        await window._rhBenchHydrateBanner(sessionId);
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Snapshot failed: ' + (e && e.message || 'unknown'));
+    }
+};
 
 function _rhTakeRowHTML(take, sessionId, audioAvailable, calMode) {
     if (!take) return '';
@@ -4960,13 +5092,104 @@ function _rhTakeRowDiagnosticsHTML(take) {
             + '</div>';
     }).join('');
 
-    return '<details style="margin-top:6px;font-size:0.7em">'
+    // Phase 3E: per-take benchmark classification picker. Founder/admin
+    // structured failure tagging — durable, survives re-analysis. The
+    // picker reads CLASSIFICATIONS from GLBenchmark so it stays in sync
+    // with the schema. Existing classifications for this take are listed
+    // above the picker so the analyst sees prior judgments.
+    var benchHtml = '';
+    if (window.GLBenchmark && window.GLBenchmark.CLASSIFICATIONS) {
+        var classOptions = ['<option value="">(classify failure…)</option>',
+            '<option value="note">📝 Note (no failure)</option>']
+            .concat(window.GLBenchmark.CLASSIFICATIONS.map(function (c) {
+                return '<option value="' + c + '">' + c + '</option>';
+            })).join('');
+        benchHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(167,139,250,0.2)">'
+            + '<div style="font-size:0.62em;color:#a78bfa;font-weight:600;margin-bottom:4px">🎯 Benchmark classification</div>'
+            + '<div id="rhBenchObsList_' + escHtml(take.id) + '" style="font-size:0.6em;color:var(--text-dim);margin-bottom:4px"></div>'
+            + '<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">'
+            + '<select id="rhBenchClass_' + escHtml(take.id) + '" style="font-size:0.62em;padding:3px 6px;border-radius:4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:inherit">' + classOptions + '</select>'
+            + '<input type="text" id="rhBenchNote_' + escHtml(take.id) + '" placeholder="optional note…" maxlength="240" style="flex:1;min-width:120px;font-size:0.62em;padding:3px 6px;border-radius:4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);color:inherit">'
+            + '<button onclick="window._rhBenchAddObservation(\'' + escHtml(take.rehearsal_id || '') + '\',\'' + escHtml(take.id) + '\')" style="font-size:0.62em;padding:3px 8px;border-radius:4px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.08);color:#a78bfa;cursor:pointer">Save</button>'
+            + '</div>'
+            + '</div>';
+    }
+
+    return '<details style="margin-top:6px;font-size:0.7em" ontoggle="if(this.open)window._rhBenchLoadObservations(\'' + escHtml(take.id) + '\')">'
         + '<summary style="cursor:pointer;color:#a78bfa;list-style:none;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed rgba(167,139,250,0.3);background:rgba(167,139,250,0.04)">🔬 Diagnostics</summary>'
         + '<div style="margin-top:6px;padding:8px;border-radius:6px;background:rgba(0,0,0,0.18);border:1px solid rgba(167,139,250,0.18)">'
         + listHtml
+        + benchHtml
         + '</div>'
         + '</details>';
 }
+
+// Phase 3E: benchmark classification handlers. Calibration-mode only —
+// these are wired through the global `window` namespace so the existing
+// inline-onclick attribute pattern in _rhTakeRowDiagnosticsHTML works.
+
+window._rhBenchAddObservation = async function (rehearsalId, takeId) {
+    if (!window.GLBenchmark || !window.GLBenchmark.addObservation) return;
+    var selEl = document.getElementById('rhBenchClass_' + takeId);
+    var noteEl = document.getElementById('rhBenchNote_' + takeId);
+    if (!selEl) return;
+    var classification = selEl.value || '';
+    var note = (noteEl && noteEl.value || '').trim();
+    if (!classification && !note) {
+        if (typeof showToast === 'function') showToast('Pick a classification or write a note');
+        return;
+    }
+    try {
+        await window.GLBenchmark.addObservation({
+            rehearsal_id: rehearsalId,
+            take_id: takeId,
+            classification: classification || 'note',
+            notes: note
+        });
+        if (selEl) selEl.value = '';
+        if (noteEl) noteEl.value = '';
+        if (typeof showToast === 'function') showToast('🎯 Benchmark observation saved');
+        await window._rhBenchLoadObservations(takeId);
+    } catch (e) {
+        console.warn('[Benchmark] add failed:', e && e.message);
+        if (typeof showToast === 'function') showToast('Save failed: ' + (e && e.message || 'unknown'));
+    }
+};
+
+window._rhBenchLoadObservations = async function (takeId) {
+    if (!window.GLBenchmark || !window.GLBenchmark.getObservationsForTake) return;
+    var el = document.getElementById('rhBenchObsList_' + takeId);
+    if (!el) return;
+    try {
+        var list = await window.GLBenchmark.getObservationsForTake(takeId);
+        if (!list || !list.length) {
+            el.innerHTML = '<span style="color:var(--text-dim);font-style:italic">No classifications yet.</span>';
+            return;
+        }
+        el.innerHTML = list.map(function (o) {
+            var sev = o.severity || 'info';
+            var sevColor = sev === 'critical' ? '#ef4444' : sev === 'warning' ? '#f59e0b' : '#a78bfa';
+            return '<div style="display:flex;gap:6px;align-items:center;padding:2px 0">'
+                + '<span style="color:' + sevColor + ';font-weight:500">' + escHtml(o.classification || 'note') + '</span>'
+                + (o.notes ? '<span style="color:var(--text-dim)">— ' + escHtml(o.notes) + '</span>' : '')
+                + '<button onclick="window._rhBenchRemoveObservation(\'' + escHtml(o.id) + '\',\'' + escHtml(takeId) + '\')" style="margin-left:auto;font-size:0.9em;padding:0 6px;border:none;background:transparent;color:#ef4444;cursor:pointer" title="Remove">×</button>'
+                + '</div>';
+        }).join('');
+    } catch (e) {
+        el.innerHTML = '<span style="color:#ef4444">Load failed.</span>';
+    }
+};
+
+window._rhBenchRemoveObservation = async function (obsId, takeId) {
+    if (!window.GLBenchmark || !window.GLBenchmark.removeObservation) return;
+    try {
+        await window.GLBenchmark.removeObservation(obsId);
+        if (typeof showToast === 'function') showToast('Removed');
+        await window._rhBenchLoadObservations(takeId);
+    } catch (e) {
+        console.warn('[Benchmark] remove failed:', e && e.message);
+    }
+};
 
 function _rhFormatTakeDuration(sec) {
     sec = Math.max(0, Math.round(sec || 0));
