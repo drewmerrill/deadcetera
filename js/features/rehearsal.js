@@ -4833,6 +4833,7 @@ function _rhRenderCalibrationBanner(takes, sessionId, session, audioUrl, playbac
         + (humanCount > 0 ? ' · <span style="color:#10b981">✓ ' + humanCount + ' human-corrected</span>' : '')
         + ' · <span id="rhBenchClassifiedCount_' + escHtml(sessionId) + '" style="color:var(--text-dim)">📋 — classified</span>'
         + ' · <span style="color:' + (contStash && contStash.applied > 0 ? '#10b981' : 'var(--text-dim)') + '">🔗 ' + contAppliedStr + ' merged / ' + contSuggStr + ' suggested</span>'
+        + ' · <span id="rhContDecisionsCount_' + escHtml(sessionId) + '" style="color:var(--text-dim)">👤 — decisions</span>'
         + '</div>';
 
     // Phase 3F: continuity suggestion list — kind counts only. Compact;
@@ -4879,6 +4880,25 @@ window._rhBenchHydrateBanner = async function (sessionId) {
         var countEl = document.getElementById('rhBenchClassifiedCount_' + sessionId);
         if (countEl) {
             countEl.innerHTML = '📋 <span style="color:' + (classifiedCount > 0 ? '#a78bfa' : 'var(--text-dim)') + '">' + classifiedCount + ' classified</span>';
+        }
+
+        // Phase 3G: hydrate continuity-authority decision count.
+        var decisionsCount = 0;
+        if (window.GLContinuityAuthority && window.GLContinuityAuthority.summarizeDecisionsForSession) {
+            try {
+                var summary = await window.GLContinuityAuthority.summarizeDecisionsForSession(rehearsalId);
+                decisionsCount = (summary && summary.total) || 0;
+                var dEl = document.getElementById('rhContDecisionsCount_' + sessionId);
+                if (dEl) {
+                    var dColor = decisionsCount > 0 ? '#10b981' : 'var(--text-dim)';
+                    var pieces = [];
+                    if (summary.good_merge > 0) pieces.push('✓' + summary.good_merge);
+                    if (summary.keep_separate > 0) pieces.push('⚡' + summary.keep_separate);
+                    if (summary.ignore_kind > 0) pieces.push('🚫' + summary.ignore_kind);
+                    var detail = pieces.length ? ' (' + pieces.join(' ') + ')' : '';
+                    dEl.innerHTML = '👤 <span style="color:' + dColor + '">' + decisionsCount + ' decisions' + detail + '</span>';
+                }
+            } catch (e) {}
         }
 
         var panel = document.getElementById('rhBenchPanel_' + sessionId);
@@ -4942,6 +4962,7 @@ function _rhBenchRenderDiffRows(diff) {
     rows += _row('classified_count',          diff.metrics.classified_count);
     rows += _row('continuity_suggestions',    diff.metrics.continuity_suggestions_count);
     rows += _row('continuity_applied',        diff.metrics.continuity_applied_count);
+    rows += _row('continuity_decisions',      diff.metrics.continuity_decisions_count);
     rows += _row('adjacent_same_song',        diff.continuity.adjacent_same_song);
     rows += _row('restart_loop_candidate',    diff.continuity.restart_loop_candidate);
     rows += _row('unresolved_cluster',        diff.continuity.unresolved_cluster);
@@ -4961,6 +4982,14 @@ window._rhBenchSnapshot = async function (sessionId) {
         live.metrics.classified_count = (obsList || []).filter(function (o) {
             return o && o.classification && o.classification !== 'note';
         }).length;
+        // Phase 3G: also capture analyst authority decision count so the
+        // benchmark snapshot freezes a holistic picture of human curation.
+        if (window.GLContinuityAuthority && window.GLContinuityAuthority.summarizeDecisionsForSession) {
+            try {
+                var sum = await window.GLContinuityAuthority.summarizeDecisionsForSession(sessionId);
+                live.metrics.continuity_decisions_count = (sum && sum.total) || 0;
+            } catch (e) { live.metrics.continuity_decisions_count = 0; }
+        }
         var snap = await window.GLBenchmark.snapshot(sessionId, live.metrics, live.continuity, '');
         if (typeof showToast === 'function') showToast('📸 Snapshot saved (build ' + (snap.build || '?') + ')');
         await window._rhBenchHydrateBanner(sessionId);
@@ -5147,10 +5176,36 @@ function _rhTakeRowDiagnosticsHTML(take) {
             + '</div>';
     }
 
-    return '<details style="margin-top:6px;font-size:0.7em" ontoggle="if(this.open)window._rhBenchLoadObservations(\'' + escHtml(take.id) + '\')">'
+    // Phase 3G: merge lineage + analyst authority. Only renders when this
+    // Take was born from a continuity merge (take.continuity present).
+    var lineageHtml = '';
+    if (take.continuity && Array.isArray(take.continuity.applied) && take.continuity.applied.length) {
+        var appliedLines = take.continuity.applied.map(function (a) {
+            var pk = escHtml(a.pair_key || '');
+            var gap = (typeof a.gap_sec === 'number') ? (' · gap ' + a.gap_sec + 's') : '';
+            return '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:2px 0">'
+                + '<span style="color:#10b981;font-weight:500">' + escHtml(a.kind || '?') + '</span>'
+                + '<span style="color:var(--text-dim)">' + escHtml(a.reason || '') + gap + '</span>'
+                + '<span style="margin-left:auto;display:flex;gap:3px">'
+                + '<button title="Affirm this merge as analyst-approved" onclick="window._rhContAuthorityAct(\'' + escHtml(take.rehearsal_id || '') + '\',\'' + pk + '\',\'' + escHtml(a.kind || '') + '\',\'good_merge\',\'' + escHtml(take.id) + '\')" style="font-size:0.62em;padding:2px 6px;border-radius:4px;border:1px solid rgba(16,185,129,0.3);background:rgba(16,185,129,0.06);color:#10b981;cursor:pointer">✓ Good</button>'
+                + '<button title="Mark these segments to be kept separate in future analyzer runs" onclick="window._rhContAuthorityAct(\'' + escHtml(take.rehearsal_id || '') + '\',\'' + pk + '\',\'' + escHtml(a.kind || '') + '\',\'keep_separate\',\'' + escHtml(take.id) + '\')" style="font-size:0.62em;padding:2px 6px;border-radius:4px;border:1px solid rgba(239,68,68,0.3);background:rgba(239,68,68,0.06);color:#ef4444;cursor:pointer">⚡ Keep separate</button>'
+                + '</span>'
+                + '</div>';
+        }).join('');
+        var mergedFrom = (take.continuity.merged_seg_ids || []).join(', ');
+        lineageHtml = '<div style="margin-top:8px;padding-top:6px;border-top:1px dashed rgba(16,185,129,0.2)">'
+            + '<div style="font-size:0.62em;color:#10b981;font-weight:600;margin-bottom:4px">🔗 Merge lineage</div>'
+            + (mergedFrom ? '<div style="font-size:0.6em;color:var(--text-dim);margin-bottom:4px">merged_from: ' + escHtml(mergedFrom) + '</div>' : '')
+            + '<div style="font-size:0.62em">' + appliedLines + '</div>'
+            + '<div id="rhContAuthorityList_' + escHtml(take.id) + '" style="font-size:0.6em;color:var(--text-dim);margin-top:4px"></div>'
+            + '</div>';
+    }
+
+    return '<details style="margin-top:6px;font-size:0.7em" ontoggle="if(this.open){window._rhBenchLoadObservations(\'' + escHtml(take.id) + '\');window._rhContAuthorityLoad(\'' + escHtml(take.rehearsal_id || '') + '\',\'' + escHtml(take.id) + '\')}">'
         + '<summary style="cursor:pointer;color:#a78bfa;list-style:none;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed rgba(167,139,250,0.3);background:rgba(167,139,250,0.04)">🔬 Diagnostics</summary>'
         + '<div style="margin-top:6px;padding:8px;border-radius:6px;background:rgba(0,0,0,0.18);border:1px solid rgba(167,139,250,0.18)">'
         + listHtml
+        + lineageHtml
         + benchHtml
         + '</div>'
         + '</details>';
@@ -5220,6 +5275,78 @@ window._rhBenchRemoveObservation = async function (obsId, takeId) {
         await window._rhBenchLoadObservations(takeId);
     } catch (e) {
         console.warn('[Benchmark] remove failed:', e && e.message);
+    }
+};
+
+// Phase 3G: continuity authority handlers. Wired through window namespace
+// so the inline-onclick attribute pattern in the lineage block works.
+// All ops calibration-mode only — band members never reach these surfaces.
+
+window._rhContAuthorityAct = async function (rehearsalId, pairKey, kind, action, takeId) {
+    if (!window.GLContinuityAuthority) return;
+    try {
+        if (action === 'keep_separate') {
+            await window.GLContinuityAuthority.markKeepSeparate(rehearsalId, pairKey, kind, '');
+            if (typeof showToast === 'function') showToast('⚡ Keep Separate — next analyze will skip this pair');
+        } else if (action === 'good_merge') {
+            await window.GLContinuityAuthority.markGoodMerge(rehearsalId, pairKey, kind, '');
+            if (typeof showToast === 'function') showToast('✓ Merge affirmed as analyst-approved');
+        } else if (action === 'ignore_kind') {
+            await window.GLContinuityAuthority.markIgnoreKind(rehearsalId, kind, '');
+            if (typeof showToast === 'function') showToast('⚡ Ignoring all ' + kind + ' suggestions on this rehearsal');
+        } else {
+            return;
+        }
+        await window._rhContAuthorityLoad(rehearsalId, takeId);
+    } catch (e) {
+        console.warn('[ContAuthority] act failed:', e && e.message);
+        if (typeof showToast === 'function') showToast('Decision failed: ' + (e && e.message || 'unknown'));
+    }
+};
+
+window._rhContAuthorityLoad = async function (rehearsalId, takeId) {
+    if (!window.GLContinuityAuthority || !window.GLContinuityAuthority.getDecisionsForSession) return;
+    var el = document.getElementById('rhContAuthorityList_' + takeId);
+    if (!el) return;
+    try {
+        // Filter to decisions touching THIS take's continuity provenance.
+        var take = await (window.GLTakes && window.GLTakes.getTake ? window.GLTakes.getTake(takeId) : Promise.resolve(null));
+        var ourPairKeys = {};
+        if (take && take.continuity && Array.isArray(take.continuity.applied)) {
+            take.continuity.applied.forEach(function (a) { if (a.pair_key) ourPairKeys[a.pair_key] = true; });
+        }
+        var all = await window.GLContinuityAuthority.getDecisionsForSession(rehearsalId);
+        var relevant = (all || []).filter(function (d) {
+            if (d && d.decision_type === 'ignore_kind') return true;
+            return d && d.pair_key && ourPairKeys[d.pair_key];
+        });
+        if (!relevant.length) {
+            el.innerHTML = '<span style="font-style:italic">No authority decisions yet.</span>';
+            return;
+        }
+        el.innerHTML = relevant.map(function (d) {
+            var color = d.decision_type === 'keep_separate' ? '#ef4444'
+                      : d.decision_type === 'good_merge' ? '#10b981'
+                      : '#fbbf24';
+            return '<div style="display:flex;gap:6px;align-items:center;padding:2px 0">'
+                + '<span style="color:' + color + ';font-weight:500">' + escHtml(d.decision_type) + '</span>'
+                + (d.kind ? '<span style="color:var(--text-dim)">' + escHtml(d.kind) + '</span>' : '')
+                + '<button onclick="window._rhContAuthorityRemove(\'' + escHtml(d.id) + '\',\'' + escHtml(rehearsalId) + '\',\'' + escHtml(takeId) + '\')" style="margin-left:auto;font-size:0.9em;padding:0 6px;border:none;background:transparent;color:#ef4444;cursor:pointer" title="Reverse this decision">×</button>'
+                + '</div>';
+        }).join('');
+    } catch (e) {
+        el.innerHTML = '<span style="color:#ef4444">Load failed.</span>';
+    }
+};
+
+window._rhContAuthorityRemove = async function (decisionId, rehearsalId, takeId) {
+    if (!window.GLContinuityAuthority || !window.GLContinuityAuthority.removeDecision) return;
+    try {
+        await window.GLContinuityAuthority.removeDecision(decisionId);
+        if (typeof showToast === 'function') showToast('Decision reversed');
+        await window._rhContAuthorityLoad(rehearsalId, takeId);
+    } catch (e) {
+        console.warn('[ContAuthority] remove failed:', e && e.message);
     }
 };
 

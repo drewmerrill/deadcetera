@@ -211,6 +211,13 @@
     if (matching) take.matching = matching;
     if (Array.isArray(input.raw_markers)) take.raw_markers = input.raw_markers.slice(0, 16);
     if (input.boundary_confidence) take.boundary_confidence = input.boundary_confidence;
+    // Phase 3G: durable continuity provenance carried up from the gl-continuity
+    // pre-pass when a Take is born from a merge. Shape:
+    //   { merged_seg_ids: [...], applied: [{ kind, reason, evidence_seg_ids,
+    //                                        safety, pair_key, gap_sec }] }
+    if (input.continuity && typeof input.continuity === 'object') {
+      take.continuity = input.continuity;
+    }
 
     var ref = db.ref(p).push();
     take.id = ref.key;
@@ -472,43 +479,69 @@
         }
       });
 
-      // Phase 3F: continuity pre-pass. Pure heuristic merges over the segment
-      // array before we even start creating Takes. evaluate() never mutates;
-      // apply() folds high-safety merges into a smaller segment list. Both
-      // are no-ops on cached-shell bundles without GLContinuity loaded.
-      if (window.GLContinuity && window.GLContinuity.evaluate) {
-        try {
-          var contRes = window.GLContinuity.evaluate(segments);
-          var aggressive = !!(opts && opts.continuity_aggressive);
-          var before = segments.length;
-          segments = window.GLContinuity.apply(segments, contRes.suggestions, {
-            protectedSegmentIds: protectedSegmentIds,
-            aggressive: aggressive
-          });
-          var applied = window.GLContinuity.countApplied(contRes.suggestions, aggressive);
-          if (window.GLObs && window.GLObs.log) {
-            window.GLObs.log('GLContinuity', 'pre-pass', {
-              rehearsal_id: rehearsalId,
-              segments_in: before,
-              segments_out: segments.length,
-              suggestions: contRes.suggestions.length,
-              applied: applied,
-              kinds: window.GLContinuity.bucketSuggestions(contRes.suggestions)
+      // Phase 3F+3G: continuity pre-pass. Pure heuristic merges over the
+      // segment array before we even start creating Takes. evaluate() never
+      // mutates; apply() folds high-safety merges into a smaller segment list.
+      // 3G adds analyst authority — skipPairKeys + ignoredKinds derived from
+      // stored ContinuityDecisions filter out merges the human said no to.
+      // Cached-shell bundles without GLContinuity loaded are no-ops.
+      var continuityChain = (window.GLContinuity && window.GLContinuity.evaluate)
+        ? Promise.resolve().then(function () {
+            var authority = window.GLContinuityAuthority;
+            return Promise.all([
+              authority && authority.computeSkipPairKeys ? authority.computeSkipPairKeys(rehearsalId) : Promise.resolve({}),
+              authority && authority.computeIgnoredKinds ? authority.computeIgnoredKinds(rehearsalId) : Promise.resolve({})
+            ]).then(function (decs) {
+              try {
+                var skipPairKeys = decs[0] || {};
+                var ignoredKinds = decs[1] || {};
+                var contRes = window.GLContinuity.evaluate(segments);
+                var aggressive = !!(opts && opts.continuity_aggressive);
+                var before = segments.length;
+                segments = window.GLContinuity.apply(segments, contRes.suggestions, {
+                  protectedSegmentIds: protectedSegmentIds,
+                  aggressive: aggressive,
+                  skipPairKeys: skipPairKeys,
+                  ignoredKinds: ignoredKinds
+                });
+                var applied = window.GLContinuity.countApplied(contRes.suggestions, aggressive);
+                var skipped = Object.keys(skipPairKeys).length;
+                var ignored = Object.keys(ignoredKinds).length;
+                if (window.GLObs && window.GLObs.log) {
+                  window.GLObs.log('GLContinuity', 'pre-pass', {
+                    rehearsal_id: rehearsalId,
+                    segments_in: before,
+                    segments_out: segments.length,
+                    suggestions: contRes.suggestions.length,
+                    applied: applied,
+                    authority_skip_pairs: skipped,
+                    authority_ignore_kinds: ignored,
+                    kinds: window.GLContinuity.bucketSuggestions(contRes.suggestions)
+                  });
+                }
+                window._glContinuityLatest = window._glContinuityLatest || {};
+                window._glContinuityLatest[rehearsalId] = {
+                  suggestions: contRes.suggestions,
+                  applied: applied,
+                  kinds: window.GLContinuity.bucketSuggestions(contRes.suggestions),
+                  authority_skip_pairs: skipped,
+                  authority_ignore_kinds: ignored
+                };
+              } catch (e) {
+                console.warn('[GLContinuity] pre-pass failed:', e && e.message);
+              }
             });
-          }
-          // Stash latest suggestions per session so the calibration banner
-          // can render them without re-walking segments. Cleared on each
-          // analyze + normalize cycle.
-          window._glContinuityLatest = window._glContinuityLatest || {};
-          window._glContinuityLatest[rehearsalId] = {
-            suggestions: contRes.suggestions,
-            applied: applied,
-            kinds: window.GLContinuity.bucketSuggestions(contRes.suggestions)
-          };
-        } catch (e) {
-          console.warn('[GLContinuity] pre-pass failed:', e && e.message);
-        }
-      }
+          })
+        : Promise.resolve();
+      return continuityChain.then(function () { return _normalizeRehearsalSegmentsAfterContinuity(rehearsalId, segments, opts, cache, bySegId, protectedSegmentIds); });
+    });
+  }
+
+  // Phase 3G: existing per-segment loop pulled out into its own function so
+  // the continuity pre-pass can `await` its decision fetch without contorting
+  // control flow. Behavior identical to pre-3G; only the call path changed.
+  function _normalizeRehearsalSegmentsAfterContinuity(rehearsalId, segments, opts, cache, bySegId, protectedSegmentIds) {
+    return Promise.resolve().then(function () {
 
       // We tally take_number as we walk segments in chronological order so the
       // numbering is stable regardless of upstream sort.
@@ -601,7 +634,10 @@
           },
           matching: matching,
           raw_markers: Array.isArray(seg.raw_markers) ? seg.raw_markers : undefined,
-          boundary_confidence: seg.boundary_confidence || undefined
+          boundary_confidence: seg.boundary_confidence || undefined,
+          // Phase 3G: forward continuity provenance from the apply() merge so
+          // the Take record carries the merge lineage durably for inspection.
+          continuity: seg._continuity_provenance || undefined
         });
       });
 

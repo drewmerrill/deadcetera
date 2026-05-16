@@ -1338,6 +1338,106 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Trigger:** Drew opens a take's diagnostics drawer to read
     `_continuity_merged_from` more than once.
   - **Discovered:** 2026-05-15 (Phase 3F)
+  - **Resolved:** 2026-05-16 (Phase 3G) — Take Review 🔬 Diagnostics
+    drawer now shows the 🔗 Merge lineage block with per-suggestion
+    kind / reason / gap, sourced from `take.continuity.applied`.
+  - **Status:** resolved
+
+- **Finding:** `good_merge` decisions stamp benchmark truth (analyst
+  affirmed the merge) but don't feed back into future analyzer
+  weighting — a heuristic kind that gets 50 good_merge confirmations
+  on a band still runs with the same default safety tier on the next
+  analyze. No reinforcement learning loop.
+  - **Why deferred:** Phase 3G spec explicitly forbade automatic
+    learning loops. good_merge as durable truth IS the prerequisite
+    for that future loop; capturing the data is the prerequisite
+    decision. Whether to ever close that loop is a separate
+    deliberate decision.
+  - **Trigger:** Drew accumulates 50+ good_merge decisions on a
+    single band AND notices a recurring failure mode that automatic
+    reinforcement could solve.
+  - **Discovered:** 2026-05-16 (Phase 3G)
+  - **Status:** open
+
+- **Finding:** `keep_separate` and `ignore_kind` decisions persist
+  forever unless manually reversed via the [×] button. No expiry,
+  no "review old decisions" prompt. A decision made in haste during
+  early calibration may silently shape analyzer behavior months
+  later after the underlying audio / catalog / band has changed.
+  - **Why deferred:** Decision expiry adds time-of-relevance
+    machinery (when does a decision "go stale"? per-band? per-rehearsal?
+    per-N-analyzes?) that's premature optimization until Drew
+    accumulates enough decisions to notice staleness. Reversibility
+    via [×] is the primary mitigation; the calibration banner already
+    shows the decision count, so old decisions are visible.
+  - **Trigger:** First time a stale `keep_separate` decision is
+    traced to a wrong analyzer behavior on a re-analyzed session.
+  - **Discovered:** 2026-05-16 (Phase 3G)
+  - **Status:** open
+
+- **Finding:** `ignore_kind` is rehearsal-scoped only — there's no
+  per-band global preference like "this band's restart_loop pattern
+  always means real separate attempts, never apply that heuristic."
+  Drew would have to mark ignore_kind on every rehearsal individually.
+  - **Why deferred:** Per-band preferences add a settings layer
+    that's premature until Drew has data on whether a kind is
+    systematically wrong for a band vs case-by-case wrong on a
+    rehearsal. Rehearsal-scoped is the natural unit of analysis;
+    global-scoped is the natural unit of preference.
+  - **Trigger:** Drew marks `ignore_kind` on 3+ consecutive
+    rehearsals for the same band with the same kind.
+  - **Discovered:** 2026-05-16 (Phase 3G)
+  - **Status:** open
+
+- **Finding:** The authority decision load fires twice per render —
+  once for the calibration banner badge (👤 N decisions count via
+  summarizeDecisionsForSession), once per Take Review diagnostics
+  drawer open (via _rhContAuthorityLoad). Both go through the same
+  60s in-memory cache, so the second is a no-op, but it's two
+  redundant cache lookups per render.
+  - **Why deferred:** Both calls already hit the cached path after
+    the first load. The redundancy is at the call-shape level, not
+    network. Refactoring to a shared lookup would couple the
+    diagnostics drawer to the banner hydrator. Wait for profile
+    evidence before doing surgery.
+  - **Trigger:** Profile data shows render latency dominated by
+    GLContinuityAuthority cache lookups.
+  - **Discovered:** 2026-05-16 (Phase 3G)
+  - **Status:** open
+
+- **Finding:** `take.continuity` is the Phase 3G snapshot of merge
+  provenance at Take-creation time, capturing pair_key based on the
+  segment ids THAT analyze produced. A re-analyze regenerates seg
+  ids (analyzer doesn't preserve `seg_N` numbering across runs), so
+  prior `keep_separate` decisions tied to old pair_keys don't
+  automatically migrate to the new pair_keys even when the
+  semantically-same merge fires again.
+  - **Why deferred:** True identity migration would require either
+    stable seg ids across analyze runs (analyzer-engine surgery) or
+    semantic-pair matching (heavy heuristic). Both out of Phase 3G
+    scope. The current behavior is "decisions silently lose
+    binding on re-analyze" — surfaces if Drew makes decisions then
+    re-analyzes and sees the same suggestions re-fire.
+  - **Trigger:** Drew makes 5+ decisions on a session, re-analyzes,
+    and observes that the prior decisions don't filter the new
+    suggestions.
+  - **Discovered:** 2026-05-16 (Phase 3G)
+  - **Status:** open
+
+- **Finding:** No top-level "review all merges this session"
+  workspace. Inspection requires expanding 🔬 Diagnostics on each
+  merged take individually. On a session with 20+ merges, this is
+  click-heavy.
+  - **Why deferred:** A consolidated merge-review surface would be
+    a fourth UI element in calibration mode (banner + classified +
+    decisions + merges) and risks tipping into "giant continuity
+    dashboard" territory the spec was explicit about avoiding. The
+    per-take drawer pattern keeps the surface compact; if Drew
+    finds click-throughput painful on long sessions, a flat list
+    becomes justified.
+  - **Trigger:** Drew analyzes a 30+ take session AND reports
+    drawer-per-take clicking is friction.
+  - **Discovered:** 2026-05-16 (Phase 3G)
   - **Status:** open
 
 ## 4. Beta Observation Candidates

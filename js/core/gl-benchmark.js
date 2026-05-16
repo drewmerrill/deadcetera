@@ -301,7 +301,11 @@
         // neutral because "more merges" can mean better OR worse depending
         // on whether the original segmentation was over-splitting.
         continuity_suggestions_count: { from: pm.continuity_suggestions_count, to: lm.continuity_suggestions_count, delta: _delta(pm.continuity_suggestions_count, lm.continuity_suggestions_count), improvement: 'neutral' },
-        continuity_applied_count:     { from: pm.continuity_applied_count, to: lm.continuity_applied_count, delta: _delta(pm.continuity_applied_count, lm.continuity_applied_count), improvement: 'neutral' }
+        continuity_applied_count:     { from: pm.continuity_applied_count, to: lm.continuity_applied_count, delta: _delta(pm.continuity_applied_count, lm.continuity_applied_count), improvement: 'neutral' },
+        // Phase 3G: durable analyst authority decisions. More decisions =
+        // more curation investment; polarity is neutral (judging "is
+        // analyst calibration growing?" not "is quality up?").
+        continuity_decisions_count:   { from: pm.continuity_decisions_count, to: lm.continuity_decisions_count, delta: _delta(pm.continuity_decisions_count, lm.continuity_decisions_count), improvement: 'neutral' }
       },
       continuity: {
         adjacent_same_song:          { from: pc.adjacent_same_song, to: lc.adjacent_same_song, delta: _delta(pc.adjacent_same_song, lc.adjacent_same_song), improvement: 'lower_better' },

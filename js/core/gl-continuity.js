@@ -214,6 +214,25 @@
       }
     }
 
+    // Phase 3G: stamp canonical pair_key + gap_sec on every suggestion so
+    // downstream authority decisions and UI lineage can address suggestions
+    // by stable identity.
+    suggestions.forEach(function (sug) {
+      sug.pair_key = pairKeyForEvidence(sug.evidence_seg_ids);
+      if (!sug.hasOwnProperty('gap_sec')) {
+        var evid = sug.evidence_seg_ids || [];
+        if (evid.length === 2) {
+          var a = null, b = null;
+          for (var ii = 0; ii < sorted.length; ii++) {
+            if (sorted[ii].id === evid[0]) a = sorted[ii];
+            else if (sorted[ii].id === evid[1]) b = sorted[ii];
+            if (a && b) break;
+          }
+          if (a && b) sug.gap_sec = _segGap(a, b);
+        }
+      }
+    });
+
     return { segments: sorted, suggestions: suggestions };
   }
 
@@ -232,10 +251,19 @@
 
     var protectedIds = opts.protectedSegmentIds || {};
     var aggressive = !!opts.aggressive;
+    // Phase 3G: respect analyst authority. skipPairKeys is a {pairKey: true}
+    // map of evidence pairs the analyst has marked "keep separate".
+    // ignoredKinds is a {kind: true} map of suggestion kinds the analyst
+    // told the heuristic to stop firing for this rehearsal.
+    var skipPairKeys = opts.skipPairKeys || {};
+    var ignoredKinds = opts.ignoredKinds || {};
 
     var allowed = suggestions.filter(function (sug) {
       if (sug.action !== 'merge') return false;
       if (sug.safety === 'medium' && !aggressive) return false;
+      if (ignoredKinds[sug.kind]) return false;
+      var pk = sug.pair_key || pairKeyForEvidence(sug.evidence_seg_ids);
+      if (pk && skipPairKeys[pk]) return false;
       var evid = sug.evidence_seg_ids || [];
       for (var i = 0; i < evid.length; i++) {
         if (protectedIds[evid[i]]) return false;
@@ -300,9 +328,42 @@
         // boundary_confidence: a merged segment's effective boundary is the
         // STRONGEST of its constituents (the merge swallowed the weak ones).
         bucket.anchor.boundary_confidence = _strongerBoundary(bucket.anchor.boundary_confidence, s.boundary_confidence);
-        // Stamp continuity provenance so calibration mode can show what merged.
+        // Phase 3F: short-form provenance list. Kept for backward compatibility.
         if (!bucket.anchor._continuity_merged_from) bucket.anchor._continuity_merged_from = [];
         bucket.anchor._continuity_merged_from.push(s.id);
+      }
+    });
+
+    // Phase 3G: stamp rich provenance on each merged anchor so the take
+    // record can carry it forward. Walks the allowed suggestion list and
+    // attaches the ones whose evidence touched this group's anchor.
+    groupOrder.forEach(function (gid) {
+      var bucket = byGroup[gid];
+      var anchor = bucket.anchor;
+      var memberIds = {};
+      bucket.members.forEach(function (m) { if (m && m.id) memberIds[m.id] = true; });
+      var attached = [];
+      allowed.forEach(function (sug) {
+        var evid = sug.evidence_seg_ids || [];
+        var touchesGroup = false;
+        for (var i = 0; i < evid.length; i++) {
+          if (memberIds[evid[i]]) { touchesGroup = true; break; }
+        }
+        if (!touchesGroup) return;
+        attached.push({
+          kind: sug.kind,
+          reason: sug.reason,
+          evidence_seg_ids: evid,
+          safety: sug.safety,
+          pair_key: sug.pair_key || pairKeyForEvidence(evid),
+          gap_sec: typeof sug.gap_sec === 'number' ? Math.round(sug.gap_sec) : null
+        });
+      });
+      if (attached.length || (anchor._continuity_merged_from || []).length) {
+        anchor._continuity_provenance = {
+          merged_seg_ids: (anchor._continuity_merged_from || []).slice(),
+          applied: attached
+        };
       }
     });
 
@@ -313,6 +374,15 @@
     var rank = { hard: 3, soft: 2, inferred: 1 };
     var ra = rank[a] || 0, rb = rank[b] || 0;
     return ra >= rb ? (a || b || null) : b;
+  }
+
+  // Phase 3G: canonical pair key for analyst authority decisions. Sorting
+  // makes A↔B and B↔A produce the same key so a "Keep Separate" decision
+  // is direction-agnostic.
+  function pairKeyForEvidence(evidenceSegIds) {
+    if (!Array.isArray(evidenceSegIds) || !evidenceSegIds.length) return '';
+    var sorted = evidenceSegIds.slice().filter(Boolean).sort();
+    return sorted.join('|');
   }
 
   // ── Summary helpers for calibration UI ──────────────────────────────────
@@ -335,11 +405,12 @@
 
   // ── Wire to window ──────────────────────────────────────────────────────
   window.GLContinuity = {
-    CONFIG:             CONFIG,
-    evaluate:           evaluate,
-    apply:              apply,
-    bucketSuggestions:  bucketSuggestions,
-    countApplied:       countApplied
+    CONFIG:               CONFIG,
+    evaluate:             evaluate,
+    apply:                apply,
+    bucketSuggestions:    bucketSuggestions,
+    countApplied:         countApplied,
+    pairKeyForEvidence:   pairKeyForEvidence
   };
 
   console.log('✅ GLContinuity initialised');
