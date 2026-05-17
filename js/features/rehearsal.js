@@ -6069,24 +6069,38 @@ window._rhTakeSeek = function (e, takeId) {
 // rest of the pipeline (Bootstrap, preview, embedding bank) is unchanged.
 
 // Parse "mm:ss", "mm:ss.s", "h:mm:ss", or raw seconds → seconds.
+// Bug 2026-05-17 (Drew): accept leading "-" or "−" so users can extend a
+// boundary BEFORE the take's current saved start (e.g. "−0:05.0" = 5s earlier
+// than the anchor). Lets a too-aggressive trim be undone in place without
+// having to re-analyze.
 function _rhParseTrimTime(str) {
     if (str == null) return NaN;
     str = String(str).trim();
     if (!str) return NaN;
-    if (/^-?\d+(\.\d+)?$/.test(str)) return parseFloat(str);
+    var neg = false;
+    if (str.charAt(0) === '-' || str.charAt(0) === '−') {
+        neg = true;
+        str = str.slice(1).trim();
+    }
+    var sign = neg ? -1 : 1;
+    if (/^\d+(\.\d+)?$/.test(str)) return sign * parseFloat(str);
     var hms = str.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/);
-    if (hms) return parseInt(hms[1], 10) * 3600 + parseInt(hms[2], 10) * 60 + parseFloat(hms[3]);
+    if (hms) return sign * (parseInt(hms[1], 10) * 3600 + parseInt(hms[2], 10) * 60 + parseFloat(hms[3]));
     var ms = str.match(/^(\d+):(\d+(?:\.\d+)?)$/);
-    if (ms) return parseInt(ms[1], 10) * 60 + parseFloat(ms[2]);
+    if (ms) return sign * (parseInt(ms[1], 10) * 60 + parseFloat(ms[2]));
     return NaN;
 }
 
-// Format seconds as "m:ss.s" (1 decimal) for Trim inputs.
+// Format seconds as "m:ss.s" or "−m:ss.s" (1 decimal). Negative values mean
+// "earlier than the take's current saved start" — used when expanding the
+// trim window backward to recover from an over-aggressive earlier save.
 function _rhFmtTrimTime(sec) {
-    sec = Math.max(0, sec || 0);
+    sec = sec || 0;
+    var neg = sec < 0;
+    sec = Math.abs(sec);
     var m = Math.floor(sec / 60);
     var s = sec - m * 60;
-    return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+    return (neg ? '−' : '') + m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
 }
 
 // Format absolute rehearsal seconds as "h:mm:ss" or "m:ss" — used to label
@@ -6155,7 +6169,8 @@ window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
         + '<div style="font-size:0.62em;color:var(--text-dim);margin-bottom:8px;line-height:1.5">'
             + 'Take starts <strong>' + _rhFmtAbsTime(anchor) + '</strong> into the rehearsal. '
             + 'Times below are <strong>mm:ss into the take</strong>. '
-            + 'Play the take, then tap <strong>📍 From playhead</strong> when you hear the right start / end moment.'
+            + 'Play the take, then tap <strong>📍 From playhead</strong> when you hear the right start / end moment.<br>'
+            + '<span style="color:#a78bfa">Negative values</span> (e.g. <code>−0:05.0</code> or use the <code>−1s</code>/<code>−0.1</code> buttons) extend the trim <em>earlier</em> than the current saved start — use this to recover from an over-aggressive earlier trim.'
         + '</div>'
         + row('start', 'Start', relStart)
         + row('end', 'End', relEnd)
@@ -6167,21 +6182,26 @@ window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
         + '</div>';
 };
 
-// Nudge a boundary by a fixed delta (seconds). Clamps start ≥ 0 and end > start.
+// Nudge a boundary by a fixed delta (seconds). Cross-boundary clamp keeps
+// start < end. Bug 2026-05-17: no longer clamps start ≥ 0 — negative relative
+// values are allowed so the user can extend the trim BEFORE the take's
+// current saved start (recovering from an over-aggressive earlier save).
+// The absolute-position floor (no earlier than the start of the rehearsal
+// recording) is enforced at save time in _rhReadBoundaryInputs.
 window._rhTakeNudgeBoundary = function (takeId, which, delta) {
     var inputId = 'rhTake' + (which === 'start' ? 'Start' : 'End') + 'In_' + takeId;
     var el = document.getElementById(inputId);
     if (!el) return;
     var cur = _rhParseTrimTime(el.value);
     if (!Number.isFinite(cur)) cur = 0;
-    var next = Math.max(0, cur + delta);
+    var next = cur + delta;
     // Cross-boundary clamp so start can't go past end and vice versa.
     var otherId = 'rhTake' + (which === 'start' ? 'End' : 'Start') + 'In_' + takeId;
     var otherEl = document.getElementById(otherId);
     if (otherEl) {
         var other = _rhParseTrimTime(otherEl.value);
         if (Number.isFinite(other)) {
-            if (which === 'start' && next >= other) next = Math.max(0, other - 0.1);
+            if (which === 'start' && next >= other) next = other - 0.1;
             if (which === 'end' && next <= other) next = other + 0.1;
         }
     }
@@ -6204,7 +6224,9 @@ window._rhTakeBoundaryFromPlayhead = function (sessionId, takeId, which) {
     var inputId = 'rhTake' + (which === 'start' ? 'Start' : 'End') + 'In_' + takeId;
     var el = document.getElementById(inputId);
     if (!el) return;
-    el.value = _rhFmtTrimTime(Math.max(0, rel));
+    // No clamp — a playhead BEFORE the take's anchor produces a negative
+    // relative value, which is the intended way to extend the trim earlier.
+    el.value = _rhFmtTrimTime(rel);
     if (typeof showToast === 'function') showToast('✓ ' + (which === 'start' ? 'Start' : 'End') + ' set to ' + el.value);
 };
 
@@ -6234,8 +6256,12 @@ function _rhReadBoundaryInputs(takeId) {
     }
     var s = anchor + relS;
     var e = anchor + relE;
-    if (!(s >= 0) || !(e > s)) {
-        if (typeof showToast === 'function') showToast('Start must be ≥0 and end must be > start');
+    if (!(s >= 0)) {
+        if (typeof showToast === 'function') showToast('Start can’t go before the beginning of the rehearsal recording.');
+        return null;
+    }
+    if (!(e > s)) {
+        if (typeof showToast === 'function') showToast('End must be after start.');
         return null;
     }
     return { start: s, end: e };
