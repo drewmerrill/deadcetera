@@ -6535,6 +6535,20 @@ window._rhTakeSaveBoundaries = async function (sessionId, takeId) {
         if (_rsLoadById) session = await GLStore.RehearsalSession.loadById(sessionId);
     } catch (e) {}
     try { _rhRenderTakeReview(container, sessionId, session || {}); } catch (e) {}
+    // Bug 2026-05-17 (Drew): after the re-render, the just-saved take used to
+    // disappear off-screen because the browser dropped its scroll anchor when
+    // the entire card got swapped out — landed back at the top of the take
+    // list. Find the take's row after re-render and scroll it back into view
+    // so the user can immediately verify the result of their edit.
+    // requestAnimationFrame waits for the new DOM to paint before scrolling.
+    requestAnimationFrame(function () {
+        try {
+            var row = document.querySelector('.rh-take-row[data-take-id="' + takeId.replace(/"/g, '\\"') + '"]');
+            if (row && typeof row.scrollIntoView === 'function') {
+                row.scrollIntoView({ behavior: 'auto', block: 'center' });
+            }
+        } catch (_e) {}
+    });
 };
 
 window._rhTakeQuickAssign = async function (sessionId, takeId, songTitle) {
@@ -6624,6 +6638,17 @@ async function _rhTakeAssign(sessionId, takeId, songTitle) {
         if (_rsLoadById) session = await GLStore.RehearsalSession.loadById(sessionId);
     } catch (e) {}
     try { _rhRenderTakeReview(container, sessionId, session || {}); } catch (e) {}
+    // Bug 2026-05-17 (Drew): preserve scroll position after re-render so the
+    // user lands back on the take they just corrected, not the top of the
+    // list. Same trick as the boundary save flow.
+    requestAnimationFrame(function () {
+        try {
+            var row = document.querySelector('.rh-take-row[data-take-id="' + takeId.replace(/"/g, '\\"') + '"]');
+            if (row && typeof row.scrollIntoView === 'function') {
+                row.scrollIntoView({ behavior: 'auto', block: 'center' });
+            }
+        } catch (_e) {}
+    });
 }
 
 // ── Headline Insight ────────────────────────────────────────────────────────
