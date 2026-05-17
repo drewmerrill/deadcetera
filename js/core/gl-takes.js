@@ -173,16 +173,21 @@
     if (Array.isArray(input.evidence)) {
       out.evidence = input.evidence.slice(0, 16).map(function (e) {
         if (!e || typeof e !== 'object') return null;
-        return {
+        var row = {
           signal:             typeof e.signal === 'string' ? e.signal : 'unknown',
           raw_value:          typeof e.raw_value === 'number' ? e.raw_value : null,
           weight_raw:         typeof e.weight_raw === 'number' ? e.weight_raw : null,
           weight_normalized:  typeof e.weight_normalized === 'number' ? e.weight_normalized : null,
           contribution:       typeof e.contribution === 'number' ? e.contribution : null,
           polarity:           typeof e.polarity === 'string' ? e.polarity : 'inactive',
-          explanation:        typeof e.explanation === 'string' ? e.explanation : '',
-          conflicts_with:     typeof e.conflicts_with === 'string' ? e.conflicts_with : undefined
+          explanation:        typeof e.explanation === 'string' ? e.explanation : ''
         };
+        // Firebase rejects undefined values on write; only attach conflicts_with
+        // when there's an actual string value (the conflict case).
+        if (typeof e.conflicts_with === 'string' && e.conflicts_with) {
+          row.conflicts_with = e.conflicts_with;
+        }
+        return row;
       }).filter(Boolean);
     }
     if (input.confidence_breakdown && typeof input.confidence_breakdown === 'object') {

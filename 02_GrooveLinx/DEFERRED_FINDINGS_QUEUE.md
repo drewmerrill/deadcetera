@@ -1714,6 +1714,30 @@ fragmentation, recommendation-engine duplication, parallel surfaces.
   - **Discovered:** 2026-05-16 (Phase 3I.2)
   - **Status:** open
 
+- **Finding:** In-browser RecordingAnalyzer is unacceptably slow
+  for full-rehearsal MP3s. Observed 2026-05-17: 277MB / ~2.5hr file
+  takes ~80+ minutes for the "Extracting BPM, groove & chords"
+  stage alone (browser-side single-threaded JavaScript running BPM
+  + key + chord extraction per segment, plus segmentation that
+  produces 40+ segments). Total pipeline ~90+ minutes wall-clock
+  for one rehearsal. The page is unresponsive during the run
+  (Chrome shows the standard "wait for unresponsive page" prompt
+  multiple times). Tester UX impact is severe — any band uploading
+  a real rehearsal hits this on first contact.
+  - **Why deferred:** A faster path exists: `bestshot.js`'s
+    `chopAnalyzeOnServer` button calls the `groovelinx-rehearsal-
+    segment` Modal app (per commit `bcb809f7`, 2026-05-12) which
+    runs CPU-based segmentation on Modal in 3-8 min per its UI
+    hint. But that path is wired only into the Bestshot chopper,
+    not the Rehearsal page modal (`_rhRecreateFromRecording`).
+    Wiring it into the Rehearsal page flow is a UI integration
+    task that warrants its own scoped commit, not an inline fix.
+  - **Trigger:** Any tester reports analyze-time friction OR the
+    next live Deadcetera rehearsal upload exceeds patience.
+  - **Discovered:** 2026-05-17 (Phase 3I.2 validation)
+  - **Status:** open — HIGH severity for tester UX; bottleneck
+    surfaces immediately on first real import
+
 ## 4. Beta Observation Candidates
 
 "Watch whether testers understand X." "Observe if users ignore Y."
