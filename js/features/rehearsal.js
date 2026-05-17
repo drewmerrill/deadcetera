@@ -5946,7 +5946,31 @@ window._rhTakePlay = async function (sessionId, takeId) {
     _rhCurrentTake = { sessionId: sessionId, takeId: takeId, startSec: startSec, endSec: endSec };
 
     try { audio.currentTime = startSec; } catch (e) { /* readyState not high enough yet - ignore */ }
-    audio.play().catch(function () { /* autoplay/user-gesture errors swallowed */ });
+    // Bug 2026-05-17: when audio.src is a Worker /drive-stream URL pointing at
+    // a Drive file ID that has no Picker consent, play() rejects async with
+    // NotSupportedError and the user is left staring at a pause icon over
+    // silent 0:00 / 0:00 (no progress, no music). Probe the URL on rejection
+    // and pop the re-link modal when it's a 4xx — mirrors the segment-play
+    // path in _rhPlaySegment.
+    var _takeAudioSrc = audio.src;
+    audio.play().catch(function (e) {
+        var msg = e && e.message ? e.message : '';
+        console.warn('[TakeReview] Play failed:', msg);
+        // Clear the optimistic playing state so the row doesn't keep flashing
+        // a pause icon over silent dead air while we surface the re-link.
+        _rhSetTakeRowState(takeId, 'stopped');
+        if (_rhCurrentTake && _rhCurrentTake.takeId === takeId) _rhCurrentTake = null;
+        var isWorkerStream = _takeAudioSrc && _takeAudioSrc.indexOf('/drive-stream') !== -1;
+        if (isWorkerStream) {
+            try {
+                fetch(_takeAudioSrc, { headers: { Range: 'bytes=0-0' } }).then(function (r) {
+                    if (r.status >= 400 && r.status < 500) {
+                        _rhPromptDriveRelink(sessionId);
+                    }
+                }).catch(function () {});
+            } catch (_pe) {}
+        }
+    });
 
     _rhSetTakeRowState(takeId, 'playing');
     _rhAttachTakeAutoStop(audio, takeId, endSec);
