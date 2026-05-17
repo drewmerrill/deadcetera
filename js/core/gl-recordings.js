@@ -82,6 +82,37 @@
     return 'unknown';
   }
 
+  // Phase 3I.4 — browsers cannot fetch drive.google.com URLs cross-origin
+  // (CORS blocked) and drive.file scope cannot use direct download URLs
+  // without OAuth. Route Drive URLs through the Cloudflare Worker proxy
+  // (/drive-stream), which fetches via Drive API server-side using the
+  // user's current OAuth token and returns audio bytes with permissive
+  // CORS headers. Mirrors the worker resolution pattern already used in
+  // bestshot.js (Analyze on Server) and worker.js _stemsResolveSource.
+  var _WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+  function _extractDriveFileId(url) {
+    if (!url || typeof url !== 'string') return null;
+    var m = url.match(/\/file\/d\/([^/?]+)/);
+    if (m) return m[1];
+    m = url.match(/[?&]id=([^&]+)/);
+    if (m) return m[1];
+    return null;
+  }
+  function _proxifyDriveUrl(url) {
+    // Returns the proxied URL when (a) url is a Drive URL, (b) we can
+    // extract a fileId, AND (c) an OAuth access token is available.
+    // Otherwise returns the original URL unchanged — the fail-soft path
+    // matches existing resolver behavior (caller still gets the URL it
+    // expected; downstream fetch will fail loudly if it would have anyway).
+    if (!url || url.indexOf('drive.google') === -1) return url;
+    var fileId = _extractDriveFileId(url);
+    if (!fileId) return url;
+    var token = (typeof window !== 'undefined') ? window.accessToken : null;
+    if (!token) return url;
+    return _WORKER_BASE + '/drive-stream?fileId=' + encodeURIComponent(fileId) +
+           '&token=' + encodeURIComponent(token);
+  }
+
   function _ensureLoaded(force) {
     if (!force && _cache && (Date.now() - _cacheLoadedAt) < 60000) {
       return Promise.resolve(_cache);
@@ -332,7 +363,7 @@
       ? getRecording(session.recording_id).then(function (rec) {
           if (!rec || !rec.audio_url) return null;
           return _store({
-            url: rec.audio_url,
+            url: _proxifyDriveUrl(rec.audio_url),
             origin: _classifyOrigin(rec.audio_url),
             isBlob: _isBlobUrl(rec.audio_url),
             hasPersistent: !_isBlobUrl(rec.audio_url),
@@ -351,7 +382,7 @@
       if (sessUrl && !_isBlobUrl(sessUrl)) {
         if (session.recording_id || opts.autoCreate === false) {
           return _store({
-            url: sessUrl,
+            url: _proxifyDriveUrl(sessUrl),
             origin: _classifyOrigin(sessUrl),
             isBlob: false,
             hasPersistent: true,
@@ -361,7 +392,7 @@
         }
         return _ensureRecordingForSession(session, sessUrl).then(function (rec) {
           return _store({
-            url: sessUrl,
+            url: _proxifyDriveUrl(sessUrl),
             origin: _classifyOrigin(sessUrl),
             isBlob: false,
             hasPersistent: true,
@@ -384,14 +415,14 @@
             var origin = (mx.drive_url && mxUrl === mx.drive_url) ? 'mixdown_drive' : 'mixdown_inline';
             if (session.recording_id || opts.autoCreate === false) {
               return _store({
-                url: mxUrl, origin: origin, isBlob: false, hasPersistent: true,
+                url: _proxifyDriveUrl(mxUrl), origin: origin, isBlob: false, hasPersistent: true,
                 recordingId: session.recording_id || null,
                 mixdownId: mx.id, reason: 'mixdown_match'
               });
             }
             return _ensureRecordingForMixdown(session, mx).then(function (rec) {
               return _store({
-                url: mxUrl, origin: origin, isBlob: false, hasPersistent: true,
+                url: _proxifyDriveUrl(mxUrl), origin: origin, isBlob: false, hasPersistent: true,
                 recordingId: rec ? rec.id : null,
                 recording: rec || null,
                 mixdownId: mx.id, reason: 'mixdown_match'
@@ -466,7 +497,8 @@
     resolvePlaybackSource:      resolvePlaybackSource,
     normalizeRecordingReference: normalizeRecordingReference,
     // Cache control
-    refreshCache:               refreshCache
+    refreshCache:               refreshCache,
+    clearResolveCache:          function () { _resolveCache = {}; }
   };
 
   console.log('✅ GLRecordings initialised');
