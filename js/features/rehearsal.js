@@ -3175,9 +3175,19 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
 
     // ── Coaching Insights (merged, actionable) ──
     var _hasInsights = data.recommendations.length > 0 || data.songList.some(function(g) { return g.bestQuality < 2 || g.segments.length >= 3; });
-    if (_hasInsights) {
+    // Phase 3I.6: per-session dismissal — sticky overlay was unclosable, blocking
+    // Take Review interaction. Suppression key is per-sessionId so dismissing on
+    // one rehearsal doesn't hide it on others. Stored in sessionStorage so it
+    // resets on tab close.
+    var _coachDismissKey = 'rhCoachDismiss_' + sessionId;
+    var _coachDismissed = false;
+    try { _coachDismissed = sessionStorage.getItem(_coachDismissKey) === '1'; } catch (e) {}
+    if (_hasInsights && !_coachDismissed) {
         html += '<div id="rhCoachingPanel" style="margin-top:12px;padding:10px 12px;border-radius:8px;border:1px solid rgba(245,158,11,0.12);background:#1a2340;position:sticky;bottom:48px;z-index:50;max-height:220px;overflow:hidden;transition:max-height 0.3s ease">';
-        html += '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">What to Work On</div>';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;gap:8px">'
+            + '<div style="font-size:0.68em;font-weight:800;letter-spacing:0.06em;color:var(--text-dim);text-transform:uppercase">What to Work On</div>'
+            + '<button onclick="window._rhDismissCoachingPanel(\'' + escHtml(sessionId) + '\')" aria-label="Close What to Work On" title="Hide for this session" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:1.1em;line-height:1;padding:2px 6px;border-radius:4px">✕</button>'
+            + '</div>';
 
         // Priority songs — only resolved songs (confidence >= medium), no unresolved segments
         var _prioritySongs = data.songList.filter(function(g) {
@@ -3265,6 +3275,18 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         });
     });
 }
+
+// ── Coaching panel dismiss ───────────────────────────────────────────────────
+// Phase 3I.6: per-session suppression. SessionStorage so the panel is hidden
+// for the current tab session but reappears after a fresh load (we don't want
+// to silently bury insights forever — just give the user breathing room).
+window._rhDismissCoachingPanel = function (sessionId) {
+    try { sessionStorage.setItem('rhCoachDismiss_' + sessionId, '1'); } catch (e) {}
+    var panel = document.getElementById('rhCoachingPanel');
+    if (panel && panel.parentNode) {
+        panel.parentNode.removeChild(panel);
+    }
+};
 
 // ── Coaching panel expand/collapse ────────────────────────────────────────────
 window._rhExpandInsights = function() {
