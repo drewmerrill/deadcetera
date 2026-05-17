@@ -1,10 +1,16 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260517-172152
+**Build Under Test:** 20260517-173026
 
 ## Open
 
 _None._
+
+## Resolved 2026-05-17 (build `20260517-173026`)
+
+| # | Bug | Severity | Diagnosis | Resolution |
+|---|---|---|---|---|
+| **#11** | Find a Version → YouTube tab: clicking a result opens a 200px inline YouTube iframe that covers the bottom of the modal, pushing the ⭐ North Star / 🎤 Cover Me / 🎚 Stems / 🎵 Practice / 📋 Copy Link action bar off-screen. User can't see how to assign the result. Trying to grab the URL by clicking YouTube's built-in Share button inside the iframe pops Chrome's empty Web Share dialog on Mac (Share / Cancel — no copy option). Net effect: no obvious path to either assign the version OR copy its URL. | MED | Two coupled UX issues in `version-hub.js`: **(a)** `vhRenderHub` DOM order placed `#vhPlayer` before `#vhActions`, so the 200px-tall YouTube iframe in the player area pushed the action bar below the visible viewport — especially after YouTube's iframe expanded when its Share button was clicked. **(b)** `vhShowPlayer('youtube', ...)` rendered a `<iframe width="100%" height="200" src="https://www.youtube.com/embed/{videoId}?autoplay=1...">` inline, which surfaced YouTube's own player chrome including a Share button. That Share button fires `navigator.share()`, which on macOS Chrome shows a minimal Share-or-Cancel UI with no copy-to-clipboard option. The user-visible Copy Link button (in `#vhActions`) was rendered correctly but off-screen due to (a). | **FIXED 2026-05-17** build `20260517-173026`. **(a)** Swapped DOM order in `vhRenderHub`: `#vhActions` now renders **above** `#vhPlayer` (line 105-106), so the assign buttons are always visible the moment a result is selected. **(b)** Replaced the 200px YouTube iframe in `vhShowPlayer('youtube', ...)` with a compact ~50px inline strip showing **▶ TITLE / YouTube · playing in floating player** plus two buttons: **📋 Copy Link** (calls existing `vhCopyLink()`) and **⏹ Stop** (tears down preview). Actual playback now routes through `GLPlayerEngine.loadQueue([{title,youtubeId}])` + `GLPlayerUI.showFloat({size:'small'})` + `GLPlayerEngine.play(0)` — the floating Mini/Med/Large dock Drew explicitly wanted. Falls back to a 120px inline iframe only if `GLPlayerEngine`/`GLPlayerUI` aren't loaded yet (cold-boot edge case). `vhStopPlayer` extended to also call `GLPlayerEngine.stop()` + `GLPlayerUI.closeAll()` so the floating dock tears down with the modal. **Note:** this works correctly only because Bug #9 was fixed in the same session — the floating player previously played a wrong fuzzy-match video on first launch; with the `_ytReady` gate dropped, the canonical videoId now wins the first race. **Acceptance:** Open Scarlet Begonias → Find a Version → YouTube → search → click any result. Expect: floating player launches small overlay; ⭐ North Star / 📋 Copy Link visible above the inline strip; first attempt plays the correct video. |
 
 ## Resolved 2026-05-17 (build `20260517-172152`)
 

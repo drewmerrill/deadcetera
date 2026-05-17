@@ -102,8 +102,13 @@ function vhRender() {
             '<div class="vh-panel" id="vhPanelSpotify"></div>' +
             '<div class="vh-panel" id="vhPanelUrl"></div>' +
         '</div>' +
-        '<div id="vhPlayer" class="vh-player hidden"></div>' +
-        '<div id="vhActions" class="vh-actions hidden"></div>';
+        // Bug 2026-05-17: action bar must render ABOVE the player so the
+        // ⭐/🎤/🎚️/🎵/📋 buttons stay visible the moment a result is selected.
+        // Drew's report: previously the 200px YouTube iframe pushed the action
+        // bar off-screen, forcing him to use YouTube's own Share button (which
+        // pops Chrome's empty Web Share dialog on Mac — no copy option).
+        '<div id="vhActions" class="vh-actions hidden"></div>' +
+        '<div id="vhPlayer" class="vh-player hidden"></div>';
 
     document.body.appendChild(ov);
     requestAnimationFrame(function() { ov.classList.add('vh-visible'); });
@@ -730,12 +735,41 @@ function vhShowPlayer(type, src, title) {
                 '</audio>' +
             '</div>';
     } else if (type === 'youtube') {
+        // Bug 2026-05-17: route YouTube previews to the floating GLPlayerUI
+        // overlay (Mini/Med/Large dock) instead of a 200px inline iframe.
+        // The big inline iframe was eating the bottom of the modal AND its
+        // built-in Share button was firing Chrome's empty Web Share dialog
+        // on Mac (no copy option), pushing users to look for our Copy Link
+        // affordance that was below the iframe. The compact inline strip
+        // now exposes Copy Link + Stop directly, and the floating player
+        // is dismissible / resizable independently.
         var videoId = src.length === 11 ? src : (typeof extractYouTubeVideoId === 'function' ? extractYouTubeVideoId(src) : src);
+        var watchUrl = (videoId && videoId.length === 11) ? 'https://www.youtube.com/watch?v=' + videoId : src;
+        var safeTitle = (title || '').substring(0, 80);
+        var safeTitleAttr = safeTitle.replace(/"/g, '&quot;');
         player.innerHTML =
-            '<div class="vh-player-inner vh-player-yt">' +
-                '<iframe id="vhYtFrame" width="100%" height="200" src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen style="border-radius:8px"></iframe>' +
-                '<div class="vh-player-title" style="margin-top:4px">' + (title || '').substring(0, 80) + '</div>' +
+            '<div class="vh-player-inner vh-player-yt" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+                '<div style="flex:1;min-width:160px">' +
+                    '<div class="vh-player-title">▶ ' + safeTitle + '</div>' +
+                    '<div class="vh-player-src">YouTube · playing in floating player</div>' +
+                '</div>' +
+                '<button onclick="vhCopyLink()" title="Copy YouTube URL" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;font-family:inherit;font-size:0.78em">📋 Copy Link</button>' +
+                '<button onclick="vhStopPlayer()" title="Stop preview" style="padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;font-family:inherit;font-size:0.78em">⏹ Stop</button>' +
             '</div>';
+        // Hand off to the floating overlay. Fall back to a 120px inline iframe
+        // if the engine isn't loaded yet (cold-boot edge case).
+        try {
+            if (window.GLPlayerEngine && window.GLPlayerUI) {
+                window.GLPlayerEngine.loadQueue([{ title: safeTitle || ('YouTube · ' + videoId), youtubeId: videoId }], { name: safeTitle || 'YouTube' });
+                window.GLPlayerUI.showFloat({ size: 'small' });
+                window.GLPlayerEngine.play(0);
+            } else {
+                player.innerHTML += '<iframe id="vhYtFrame" width="100%" height="120" src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen style="border-radius:8px;margin-top:8px"></iframe>';
+            }
+        } catch (_fe) {
+            console.warn('[vh] floating player failed, falling back to inline:', _fe);
+            player.innerHTML += '<iframe id="vhYtFrame" width="100%" height="120" src="https://www.youtube.com/embed/' + videoId + '?autoplay=1&rel=0" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen style="border-radius:8px;margin-top:8px"></iframe>';
+        }
     } else if (type === 'spotify') {
         var trackMatch = src.match(/track\/([a-zA-Z0-9]+)/);
         if (trackMatch) {
@@ -761,6 +795,21 @@ function vhStopPlayer() {
     if (audio) { audio.pause(); audio.src = ''; }
     var frame = document.getElementById('vhYtFrame');
     if (frame) frame.src = '';
+    // Bug 2026-05-17: when the YouTube preview path routes through the
+    // floating GLPlayerUI overlay, the inline player has no iframe to clear;
+    // stop the engine + close the floating dock so a new preview can start
+    // clean. Guarded so other in-app playback isn't surprised — only acts on
+    // an engine state that's actively previewing a YouTube version.
+    try {
+        if (window.GLPlayerEngine && typeof window.GLPlayerEngine.stop === 'function') {
+            window.GLPlayerEngine.stop();
+        }
+        if (window.GLPlayerUI && typeof window.GLPlayerUI.closeAll === 'function') {
+            window.GLPlayerUI.closeAll();
+        }
+    } catch (_se) {}
+    var player = document.getElementById('vhPlayer');
+    if (player) player.classList.add('hidden');
     vhPlayerActive = false;
 }
 
