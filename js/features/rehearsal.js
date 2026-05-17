@@ -3604,9 +3604,10 @@ function _rhEnsureAudio(sessionId) {
         else if (typeof RecordingAnalyzer !== 'undefined' && RecordingAnalyzer._currentAudioUrl) _url = RecordingAnalyzer._currentAudioUrl;
         // Drive streaming: proxy through Worker (Safari can't stream from googleapis.com directly)
         if (!_url && window._rhDriveFileId && window._rhDriveToken) {
-            var _wb = (typeof WORKER_BASE !== 'undefined') ? WORKER_BASE
+            var _wb = (typeof WORKER_URL !== 'undefined') ? WORKER_URL
+                : (typeof WORKER_BASE !== 'undefined') ? WORKER_BASE
                 : (typeof window.WORKER_BASE !== 'undefined') ? window.WORKER_BASE
-                : 'https://groovelinx-worker.drewmerrill.workers.dev';
+                : 'https://deadcetera-proxy.drewmerrill.workers.dev';
             _url = _wb + '/drive-stream?fileId=' + encodeURIComponent(window._rhDriveFileId)
                 + '&token=' + encodeURIComponent(window._rhDriveToken);
             // Pre-validate: check if the stream URL actually returns audio before setting as src
@@ -3677,7 +3678,14 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
 
     // For Drive streaming: fetch via JS fetch() and create a blob URL.
     // Safari won't play from any non-blob URL (SRC_NOT_SUPPORTED error 4).
-    var _isDrivePending = window._rhDriveFileId && (!audio.src || audio.src.indexOf('blob:') === -1);
+    // Phase 3I.5 — skip this blob fetch when audio.src is already a Worker
+    // /drive-stream URL: that endpoint already streams Drive bytes with proper
+    // CORS + Range support, and the direct Drive API call this branch makes
+    // 403s on drive.file-scoped tokens that didn't grant for the file via the
+    // (older) Picker association. Path A above set up the stream URL; we just
+    // need to let the audio element fetch it on demand.
+    var _hasWorkerStream = audio.src && audio.src.indexOf('/drive-stream') !== -1;
+    var _isDrivePending = window._rhDriveFileId && (!audio.src || (audio.src.indexOf('blob:') === -1 && !_hasWorkerStream));
     if (_isDrivePending) {
         if (typeof showToast === 'function') showToast('Downloading recording from Drive\u2026 this may take a minute');
         // Use fresh accessToken (not cached _rhDriveToken which may be stale)
