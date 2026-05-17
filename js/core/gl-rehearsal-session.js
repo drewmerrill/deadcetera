@@ -115,7 +115,12 @@
         var db = _db();
         var path = _bp(null, opts);
         if (!db || !path) {
-            console.warn(TAG, 'loadAll skipped — no firebaseDB or bandPath');
+            // Demoted from console.warn 2026-05-17: this fires multiple times
+            // during the Rehearsal page's initial render before Firebase
+            // finishes its async init — pure boot race, the page re-renders
+            // correctly once Firebase ready. Kept as debug so dev tooling
+            // can still surface it on Verbose level for real diagnostics.
+            console.debug(TAG, 'loadAll skipped — no firebaseDB or bandPath');
             return [];
         }
         _stats.reads++;
