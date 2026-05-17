@@ -2969,7 +2969,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
         var pct = ((seg.duration || 0) / totalDur * 100).toFixed(1);
         var color = (!seg.segType || seg.segType === 'song') ? '#667eea' : (seg.segType === 'talking' ? '#a5b4fc' : (seg.segType === 'jam' ? '#f59e0b' : '#334155'));
         if (seg.segType === 'ignore') return;
-        html += '<div class="rh-strip-seg" onclick="var el=document.getElementById(\'rhSeg_' + si + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'center\'});el.classList.add(\'rh-jump-highlight\');setTimeout(function(){el.classList.remove(\'rh-jump-highlight\')},800);if(el.tagName===\'DETAILS\'&&!el.open)el.open=true}" style="width:' + pct + '%;background:' + color + ';min-width:2px" title="' + escHtml(seg.songTitle || seg.segType || '') + ' (' + _rhFmt(seg.startSec) + ')"></div>';
+        html += '<div class="rh-strip-seg" onclick="var el=document.getElementById(\'rhSeg_' + si + '\');if(el){el.scrollIntoView({behavior:\'smooth\',block:\'center\'});el.classList.add(\'rh-jump-highlight\');setTimeout(function(){el.classList.remove(\'rh-jump-highlight\')},800);if(el.dataset&&el.dataset.expanded==\'false\'&&window._rhToggleSeg)window._rhToggleSeg(' + si + ')}" style="width:' + pct + '%;background:' + color + ';min-width:2px" title="' + escHtml(seg.songTitle || seg.segType || '') + ' (' + _rhFmt(seg.startSec) + ')"></div>';
     });
     html += '</div>';
 
@@ -2989,11 +2989,19 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             } else if (seg.qualityScore < 2) {
                 grooveClass = ' rh-groove-incomplete';
             }
-            html += '<details id="rhSeg_' + si + '" class="rh-seg-row' + grooveClass + '" data-song="' + escHtml(seg.songTitle || '') + '" style="margin-bottom:5px;border-radius:7px;border-left:3px solid rgba(99,102,241,0.12);background:rgba(255,255,255,0.015)">';
-            html += '<summary style="padding:7px 10px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px">';
-            html += '<button id="rhPlayBtn_' + si + '" onclick="event.stopPropagation();_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
-            // Song name (primary) + metadata (secondary line)
-            html += '<div style="flex:1;min-width:0">';
+            // Bug 2026-05-17 (a11y): converted from <details>/<summary> to a
+            // <div> with click-to-toggle so the row's play / loop / practice
+            // <button>s aren't nested inside <summary> (Chrome's a11y panel
+            // flagged 32 of these \u2014 interactive elements inside <summary>
+            // don't get reliable keyboard / screen-reader behavior because
+            // <summary> itself owns the toggle key events).
+            html += '<div id="rhSeg_' + si + '" class="rh-seg-row' + grooveClass + '" data-song="' + escHtml(seg.songTitle || '') + '" data-expanded="false" style="margin-bottom:5px;border-radius:7px;border-left:3px solid rgba(99,102,241,0.12);background:rgba(255,255,255,0.015)">';
+            html += '<div class="rh-seg-header" style="padding:7px 10px;display:flex;align-items:center;gap:8px">';
+            html += '<button id="rhPlayBtn_' + si + '" onclick="_rhPlaySegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="' + playBtnStyle + '"' + (hasAudio ? '' : ' disabled') + '>\u25B6</button>';
+            // Song name (primary) + metadata (secondary line). The title block
+            // is the click-to-expand target; play / loop / practice buttons
+            // are siblings, so they don't accidentally toggle the row.
+            html += '<div onclick="window._rhToggleSeg(' + si + ')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();window._rhToggleSeg(' + si + ');}" aria-expanded="false" aria-controls="rhSegBody_' + si + '" style="flex:1;min-width:0;cursor:pointer">';
             var _titleConf = seg.songMatch ? seg.songMatch.confidence : null;
             var _confDot = _titleConf === 'low' ? '<span style="color:#64748b;font-size:0.7em" title="Uncertain match"> ?</span>' : (_titleConf === 'medium' ? '<span style="color:#f59e0b;font-size:0.7em" title="Likely match"> \u00B7</span>' : '');
             html += '<div style="font-size:0.8em;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(seg.songTitle || 'Unknown') + _confDot + '</div>';
@@ -3008,18 +3016,18 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
                 }
             }
             html += '</div></div>';
-            // Hover quick actions
+            // Hover quick actions \u2014 now siblings of the toggle target.
             if (hasAudio) {
                 html += '<span class="rh-hover-actions" style="display:flex;gap:3px">'
-                    + '<button onclick="event.stopPropagation();_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="background:none;border:none;color:#fbbf24;cursor:pointer;font-size:0.7em;padding:4px" title="Repeat this section on loop">\uD83D\uDD01</button>'
-                    + '<button onclick="event.stopPropagation();(function(t){(typeof openWorkbench===\'function\')?openWorkbench(t,\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(t))})(\'' + escHtml(seg.songTitle || '').replace(/'/g, "\\'") + '\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px" title="Open chart and practice this song">\uD83C\uDFAF</button>'
+                    + '<button onclick="_rhLoopSegment(' + seg.startSec + ',' + seg.endSec + ',\'' + escHtml(sessionId) + '\',' + si + ')" style="background:none;border:none;color:#fbbf24;cursor:pointer;font-size:0.7em;padding:4px" title="Repeat this section on loop">\uD83D\uDD01</button>'
+                    + '<button onclick="(function(t){(typeof openWorkbench===\'function\')?openWorkbench(t,\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(t))})(\'' + escHtml(seg.songTitle || '').replace(/'/g, "\\'") + '\')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:0.7em;padding:4px" title="Open chart and practice this song">\uD83C\uDFAF</button>'
                     + '</span>';
             }
-            html += '</summary>';
-            // Expanded detail
+            html += '</div>'; // end .rh-seg-header
+            // Expanded detail (toggle target \u2014 hidden until _rhToggleSeg flips data-expanded)
             var _sSafe = escHtml(sessionId);
             var _songSafe = escHtml(seg.songTitle || '').replace(/'/g, "\\'");
-            html += '<div style="padding:6px 10px 10px 32px;font-size:0.72em;color:var(--text-dim);line-height:1.5">';
+            html += '<div id="rhSegBody_' + si + '" class="rh-seg-body" style="display:none;padding:6px 10px 10px 32px;font-size:0.72em;color:var(--text-dim);line-height:1.5">';
             html += '<div>' + _rhFmt(seg.startSec) + ' \u2013 ' + _rhFmt(seg.endSec) + ' \u00B7 ' + durLabel2 + '</div>';
             // Match confidence + "why this matched" (skip for golden standard — those are definitively correct)
             if (seg.songMatch && !seg._goldenStandard) {
@@ -3137,7 +3145,7 @@ function _rhRenderInlineTimelineDirectly(container, sessionId, session, segments
             }
             html += '<button onclick="(typeof openWorkbench===\'function\')?openWorkbench(\'' + _songSafe + '\',\'practice\',{}):(typeof openRehearsalMode===\'function\'&&openRehearsalMode(\'' + _songSafe + '\'))" style="' + _abtn + 'border:1px solid rgba(255,255,255,0.08);background:none;color:var(--text-dim)" title="Open chart and work on this song">Practice</button>';
             html += '</div>';
-            html += '</div></details>';
+            html += '</div></div>'; // close rh-seg-body + rh-seg-row
 
         } else if (isTalk) {
             // Talking segment — enhanced "Band Note"
@@ -3794,6 +3802,24 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
         }
     };
     audio.addEventListener('timeupdate', _rhTimeUpdateFn);
+};
+
+// Bug 2026-05-17 (a11y): segment row expand/collapse. Replaces the native
+// <details>/<summary> behavior that used to host the play / loop / practice
+// buttons inside <summary> (Chrome a11y panel flagged 32 of those). The row
+// is now a plain <div> and clicking the title block here toggles the body's
+// display + the data-expanded attribute + the aria-expanded state.
+window._rhToggleSeg = function (si) {
+    var row = document.getElementById('rhSeg_' + si);
+    var body = document.getElementById('rhSegBody_' + si);
+    if (!row || !body) return;
+    var expanded = row.dataset.expanded === 'true';
+    var next = expanded ? 'false' : 'true';
+    row.dataset.expanded = next;
+    body.style.display = expanded ? 'none' : 'block';
+    // Keep aria-expanded on the toggle target in sync with the actual state.
+    var toggleTarget = row.querySelector('[aria-controls="rhSegBody_' + si + '"]');
+    if (toggleTarget) toggleTarget.setAttribute('aria-expanded', next);
 };
 
 // ── Pause/resume from transport bar ──────────────────────────────────────────
