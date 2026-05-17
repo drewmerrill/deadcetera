@@ -4117,25 +4117,40 @@ function _rhRelinkFromDrivePicker(sessionId) {
         return;
     }
     window.GLDrivePicker.pickAudio({
-        onPick: function (doc) {
+        onPick: async function (doc) {
             // Persist the new Drive URL on the session record so future
             // session loads use a file ID the token can actually see. The
             // Picker association is per-token; if Drew picks the SAME file ID,
             // the token gains consent for it and the URL value is unchanged
             // (but the update is harmless). If he picks a different upload
             // (e.g. a re-uploaded copy), the new file ID propagates.
+            //
+            // Bug 2026-05-17 (Drew session): the original write was
+            // fire-and-forget. If Firebase rejected (security rules) or the
+            // network dropped, the next session load returned the OLD
+            // recording_url and the user had to re-link every reload. Now
+            // awaited with error surfaced; also stamp recording_id=null so the
+            // stale Recording row's audio_url doesn't get re-resolved into
+            // the session at next load.
+            var persisted = false;
             try {
                 var db = (typeof firebaseDB !== 'undefined') ? firebaseDB : (window.firebaseDB || null);
                 if (db && typeof bandPath === 'function') {
-                    db.ref(bandPath('rehearsal_sessions/' + sessionId)).update({ recording_url: doc.url });
+                    await db.ref(bandPath('rehearsal_sessions/' + sessionId)).update({
+                        recording_url: doc.url,
+                        recording_id: null
+                    });
+                    persisted = true;
+                    console.log('[Re-link] Persisted new recording_url to rehearsal_sessions/' + sessionId);
+                } else {
+                    console.warn('[Re-link] firebaseDB or bandPath not available; new URL NOT persisted to Firebase');
                 }
             } catch (e) {
-                console.warn('[Re-link] Failed to update session recording_url:', e);
+                console.warn('[Re-link] Failed to update session recording_url:', e && e.message);
+                if (typeof showToast === 'function') showToast('⚠ Re-link saved in-session but did NOT persist to Firebase: ' + (e && e.message || 'unknown'), 6000);
             }
             // Reset shared-audio + playback state so the next click on a take
-            // row rebuilds the Worker URL with the new file ID. The resume
-            // branch in _rhPlaySegment (Bug #10b above) now also gates on
-            // audio.src so it can't accidentally re-fire on the empty src.
+            // row rebuilds the Worker URL with the new file ID.
             var a = window._rhSharedAudio;
             if (a) {
                 try { a.pause(); } catch (e) {}
@@ -4146,7 +4161,7 @@ function _rhRelinkFromDrivePicker(sessionId) {
             window._rhAudioSessionId = null;
             try { _rhClearPlayState(); } catch (e) {}
             try { GLRecordings && GLRecordings.clearResolveCache && GLRecordings.clearResolveCache(); } catch (e) {}
-            if (typeof showToast === 'function') showToast('Re-linked — tap play on any segment', 4000);
+            if (typeof showToast === 'function') showToast('Re-linked' + (persisted ? ' (saved)' : '') + ' — tap play on any segment', 4000);
             _rhStreamFromDrive(doc.url, sessionId);
         },
         onCancel: function () {},
@@ -6260,12 +6275,19 @@ window._rhTakeSaveBoundaries = async function (sessionId, takeId) {
             playback_ref: newPref,
             stats: Object.assign({}, stats, { duration: bounds.end - bounds.start })
         });
+        console.log('[TakeReview] boundary save persisted', { takeId: takeId, start_sec: bounds.start, end_sec: bounds.end });
         if (typeof showToast === 'function') showToast('✓ Boundaries saved (' + bounds.start.toFixed(1) + 's → ' + bounds.end.toFixed(1) + 's)');
     } catch (e) {
         console.warn('[TakeReview] boundary save failed:', e && e.message);
         if (typeof showToast === 'function') showToast('Save failed: ' + (e && e.message || 'unknown'));
         return;
     }
+    // Bug 2026-05-17 (Drew session): on re-open, the take editor sometimes
+    // showed the OLD boundaries — the 60-second cache window inside GLTakes
+    // could serve stale data even after a successful write. Force a refresh
+    // before the re-render so the cache reflects what we just wrote AND any
+    // server-side reconciliation.
+    try { if (window.GLTakes && window.GLTakes.refreshCache) await window.GLTakes.refreshCache(); } catch (e) {}
     // Re-render the card so the new duration / start_sec ordering reflects.
     var container = document.getElementById('rhTimelineSection');
     if (!container) return;
