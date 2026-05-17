@@ -6130,7 +6130,8 @@ function _rhFmtTrimTime(sec) {
 }
 
 // Format absolute rehearsal seconds as "h:mm:ss" or "m:ss" — used to label
-// where the take sits in the rehearsal (purely informational).
+// where the take sits in the rehearsal (purely informational, integer
+// precision is fine here).
 function _rhFmtAbsTime(sec) {
     sec = Math.max(0, sec || 0);
     var h = Math.floor(sec / 3600);
@@ -6138,6 +6139,22 @@ function _rhFmtAbsTime(sec) {
     var s = Math.floor(sec % 60);
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
     return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s);
+}
+
+// Same as _rhFmtAbsTime but with 1-decimal seconds precision. Used for the
+// active Start / End readouts in the Trim editor so −0.1 / +0.1 nudges
+// produce a visible change every click. Bug 2026-05-17 (Drew): integer-only
+// display made small nudges look like nothing happened until 10 clicks
+// crossed a whole-second boundary, at which point the display jumped a
+// full second — felt like the buttons were applying way more than +0.1.
+function _rhFmtAbsTimeFine(sec) {
+    sec = Math.max(0, sec || 0);
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec - h * 3600 - m * 60;
+    var padI = function (n) { return (n < 10 ? '0' : '') + n; };
+    var padF = function (x) { return (x < 10 ? '0' : '') + x.toFixed(1); };
+    return h > 0 ? h + ':' + padI(m) + ':' + padF(s) : m + ':' + padF(s);
 }
 
 // Bug 2026-05-17 (Drew rev 2): full Trim editor rewrite.
@@ -6287,8 +6304,12 @@ function _rhTrimUpdateView(takeId) {
     var startRead = document.getElementById('rhTrimStartRead_' + takeId);
     var endRead = document.getElementById('rhTrimEndRead_' + takeId);
     var durRead = document.getElementById('rhTrimDuration_' + takeId);
-    if (startRead) startRead.textContent = _rhFmtAbsTime(startAbs);
-    if (endRead) endRead.textContent = _rhFmtAbsTime(endAbs);
+    // Use the .s-precision variant so every −0.1 / +0.1 nudge produces a
+    // visible change. Integer-only display rounded sub-second adjustments
+    // away and made small nudges look like they did nothing until ~10
+    // clicks accumulated into a whole-second jump.
+    if (startRead) startRead.textContent = _rhFmtAbsTimeFine(startAbs);
+    if (endRead) endRead.textContent = _rhFmtAbsTimeFine(endAbs);
     if (durRead) durRead.textContent = 'take length: ' + _rhFmtTrimTime(Math.max(0, endAbs - startAbs));
 }
 
@@ -6417,7 +6438,7 @@ window._rhTakeBoundaryFromPlayhead = function (sessionId, takeId, which) {
         inner.dataset.endAbs = String(abs);
     }
     _rhTrimUpdateView(takeId);
-    if (typeof showToast === 'function') showToast('✓ ' + (which === 'start' ? 'Start' : 'End') + ' → ' + _rhFmtAbsTime(abs));
+    if (typeof showToast === 'function') showToast('✓ ' + (which === 'start' ? 'Start' : 'End') + ' → ' + _rhFmtAbsTimeFine(abs));
 };
 
 window._rhTakeCancelBoundaries = function (takeId) {
