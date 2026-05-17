@@ -388,8 +388,16 @@ window.GLPlayerEngine = (function() {
         // deeplink rendered, taking him out of the app. That was the wrong
         // behavior: when there's a Spotify ID and no YouTube ID, just play
         // Spotify directly.
+        // Bug #9 fix 2026-05-17: drop the _ytReady gate. When song.youtubeId is
+        // already set (e.g. from openMusicLink → loadQueue, where the videoId is
+        // extracted client-side from the URL), we MUST take the fast path even if
+        // the YouTube IFrame API hasn't finished loading yet. Otherwise the title
+        // 'YouTube · <id>' falls into R.resolve(), which fuzzy-searches by title
+        // string and returns a 'close' match for an unrelated video (Drew 2026-05-17:
+        // saved Scarlet Begonias North Star → first play hit Green Eyed Lady).
+        // _playYouTube self-handles _ytReady=false by deferring through _ensureYouTubeAPI.
         var pref = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver.getPreferred() : 'youtube';
-        if (pref === 'youtube' && song.youtubeId && _ytReady) {
+        if (pref === 'youtube' && song.youtubeId) {
             if (myToken !== _token) return;
             _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song, myToken);
             return;
@@ -408,7 +416,10 @@ window.GLPlayerEngine = (function() {
             _playSource({ source: 'spotify', trackId: song.spotifyTrackId, confidence: 'best' }, song, myToken);
             return;
         }
-        if (pref === 'spotify' && !song.spotifyTrackId && song.youtubeId && _ytReady) {
+        if (pref === 'spotify' && !song.spotifyTrackId && song.youtubeId) {
+            // Bug #9 fix 2026-05-17: same rationale as above — _playYouTube
+            // self-handles _ytReady=false; never fall through to R.resolve when
+            // we already hold a videoId.
             if (myToken !== _token) return;
             console.log('[GLPlayer] No Spotify ID but YouTube available — using YouTube directly');
             _playSource({ source: 'youtube', videoId: song.youtubeId, confidence: 'best' }, song, myToken);

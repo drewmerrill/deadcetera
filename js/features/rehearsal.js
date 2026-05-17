@@ -3668,7 +3668,8 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
 
     // ── Resume: if same segment is paused, resume ──
     if (audio && audio.paused && _rhPlayingSegIdx === segIdx && segIdx !== undefined
-        && audio.currentTime >= startSec && audio.currentTime < endSec) {
+        && audio.currentTime >= startSec && audio.currentTime < endSec
+        && audio.src) {
         audio.play();
         var btn2 = document.getElementById('rhPlayBtn_' + segIdx);
         if (btn2) { btn2.classList.add('rh-playing-btn'); btn2.textContent = '\u23F8'; }
@@ -3757,6 +3758,22 @@ window._rhPlaySegment = function(startSec, endSec, sessionId, segIdx) {
         try { audio.currentTime = startSec; } catch(e) {}
         audio.play().catch(function(e) {
             console.warn('[Timeline] Play failed:', e.message);
+            // Bug #10a 2026-05-17: when playback fails on a Worker /drive-stream
+            // URL the most likely cause is 404 from Drive API (drive.file scope
+            // can't see the file because it wasn't introduced via Drive Picker).
+            // Surface a re-link prompt so Drew (or any band member) can recover
+            // without console magic. Probe the URL HEAD to confirm it's a 4xx
+            // before bothering the user — transient network errors shouldn't
+            // pop the modal.
+            if (_hasWorkerStream && window._rhDriveFileId) {
+                try {
+                    fetch(audio.src, { headers: { Range: 'bytes=0-0' } }).then(function(r) {
+                        if (r.status >= 400 && r.status < 500) {
+                            _rhPromptDriveRelink(sessionId);
+                        }
+                    }).catch(function() {});
+                } catch (_pe) {}
+            }
         });
     }
 
@@ -4059,6 +4076,85 @@ function _rhDoStreamFromDrive(workerBase, driveUrl, sessionId) {
     } else {
         _rhDoStreamViaWorker(workerBase, driveUrl, null, sessionId);
     }
+}
+
+// ── Bug #10a 2026-05-17: Drive Picker re-link affordance ────────────────────
+// When a rehearsal session's recording_url points to a Drive file ID that the
+// current OAuth token can't see (drive.file scope = per-file Picker grant),
+// playback bricks with `404 File not found` from the Drive API behind the
+// Worker proxy. The toast at line 3751 used to direct users to "Recordings →
+// Re-link" but that surface only exists for Mixdowns; sessions created via
+// `_rhRecreateFromRecording` had no such affordance. These two helpers add a
+// modal prompt + Drive Picker re-link flow scoped to rehearsal sessions.
+function _rhPromptDriveRelink(sessionId) {
+    if (window._rhRelinkPromptOpen) return;
+    window._rhRelinkPromptOpen = true;
+
+    var overlay = document.createElement('div');
+    overlay.id = 'rhRelinkPrompt';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;padding:16px';
+    overlay.innerHTML = '<div style="background:var(--bg-card,#1e293b);border:1px solid rgba(255,255,255,0.12);border-radius:14px;padding:24px;max-width:380px;width:100%;box-shadow:0 16px 48px rgba(0,0,0,0.5)">'
+        + '<div style="font-size:0.95em;font-weight:800;color:var(--text,#f1f5f9);margin-bottom:8px">Re-link Drive recording</div>'
+        + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:16px;line-height:1.45">Drive can’t see this file under the app’s current scope. This happens when the recording was uploaded to Drive outside GrooveLinx. Pick the same file again via Drive Picker to grant access — the URL on this session will update automatically.</div>'
+        + '<div style="display:flex;gap:8px">'
+        + '<button id="rhRelinkPick" style="flex:1;padding:10px 14px;border-radius:8px;border:1px solid rgba(66,133,244,0.3);background:rgba(66,133,244,0.08);color:#60a5fa;cursor:pointer;font-family:inherit;font-weight:600">🔗 Re-link from Drive</button>'
+        + '<button id="rhRelinkCancel" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:none;color:var(--text-dim);cursor:pointer;font-family:inherit">Cancel</button>'
+        + '</div></div>';
+    document.body.appendChild(overlay);
+
+    var close = function () {
+        try { overlay.remove(); } catch (e) {}
+        window._rhRelinkPromptOpen = false;
+    };
+    document.getElementById('rhRelinkPick').onclick = function () { close(); _rhRelinkFromDrivePicker(sessionId); };
+    document.getElementById('rhRelinkCancel').onclick = close;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+}
+
+function _rhRelinkFromDrivePicker(sessionId) {
+    if (!window.GLDrivePicker || !window.GLDrivePicker.pickAudio) {
+        if (typeof showToast === 'function') showToast('⚠ Drive Picker not available');
+        return;
+    }
+    window.GLDrivePicker.pickAudio({
+        onPick: function (doc) {
+            // Persist the new Drive URL on the session record so future
+            // session loads use a file ID the token can actually see. The
+            // Picker association is per-token; if Drew picks the SAME file ID,
+            // the token gains consent for it and the URL value is unchanged
+            // (but the update is harmless). If he picks a different upload
+            // (e.g. a re-uploaded copy), the new file ID propagates.
+            try {
+                var db = (typeof firebaseDB !== 'undefined') ? firebaseDB : (window.firebaseDB || null);
+                if (db && typeof bandPath === 'function') {
+                    db.ref(bandPath('rehearsal_sessions/' + sessionId)).update({ recording_url: doc.url });
+                }
+            } catch (e) {
+                console.warn('[Re-link] Failed to update session recording_url:', e);
+            }
+            // Reset shared-audio + playback state so the next click on a take
+            // row rebuilds the Worker URL with the new file ID. The resume
+            // branch in _rhPlaySegment (Bug #10b above) now also gates on
+            // audio.src so it can't accidentally re-fire on the empty src.
+            var a = window._rhSharedAudio;
+            if (a) {
+                try { a.pause(); } catch (e) {}
+                a.src = '';
+                a.removeAttribute('src');
+                try { a.currentTime = 0; } catch (e) {}
+            }
+            window._rhAudioSessionId = null;
+            try { _rhClearPlayState(); } catch (e) {}
+            try { GLRecordings && GLRecordings.clearResolveCache && GLRecordings.clearResolveCache(); } catch (e) {}
+            if (typeof showToast === 'function') showToast('Re-linked — tap play on any segment', 4000);
+            _rhStreamFromDrive(doc.url, sessionId);
+        },
+        onCancel: function () {},
+        onError: function (e) {
+            console.warn('[Re-link] Picker error:', e);
+            if (typeof showToast === 'function') showToast('⚠ Drive Picker failed to open');
+        }
+    });
 }
 
 function _rhDoStreamViaWorker(workerBase, driveUrl, token, sessionId) {
