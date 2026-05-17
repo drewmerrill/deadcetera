@@ -5991,6 +5991,49 @@ window._rhTakeSeek = function (e, takeId) {
 // without persisting, plus Save that writes playback_ref back to Firebase.
 // Tightening boundaries here directly improves what Bootstrap sends to the
 // embedding bank, so the sound bank stays clean.
+// Bug 2026-05-17: Trim editor UX redesign per Drew's feedback. Original UI
+// showed raw absolute seconds (e.g. Start 11152.2 / End 11878.9 for a take
+// at 3:05:52 into the rehearsal) — forced mental math against the playback
+// progress bar that displays mm:ss. New design:
+//   • mm:ss inputs RELATIVE to the take's original start (0:00 → 12:06.7)
+//   • Nudge buttons (-1s / -0.1 / +0.1 / +1s) for fast fine-tuning
+//   • 📍 From playhead — capture current audio position as start or end
+//   • The take's absolute anchor in rehearsal time shown once at the top
+// Internally still saves absolute start_sec/end_sec to playback_ref so the
+// rest of the pipeline (Bootstrap, preview, embedding bank) is unchanged.
+
+// Parse "mm:ss", "mm:ss.s", "h:mm:ss", or raw seconds → seconds.
+function _rhParseTrimTime(str) {
+    if (str == null) return NaN;
+    str = String(str).trim();
+    if (!str) return NaN;
+    if (/^-?\d+(\.\d+)?$/.test(str)) return parseFloat(str);
+    var hms = str.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/);
+    if (hms) return parseInt(hms[1], 10) * 3600 + parseInt(hms[2], 10) * 60 + parseFloat(hms[3]);
+    var ms = str.match(/^(\d+):(\d+(?:\.\d+)?)$/);
+    if (ms) return parseInt(ms[1], 10) * 60 + parseFloat(ms[2]);
+    return NaN;
+}
+
+// Format seconds as "m:ss.s" (1 decimal) for Trim inputs.
+function _rhFmtTrimTime(sec) {
+    sec = Math.max(0, sec || 0);
+    var m = Math.floor(sec / 60);
+    var s = sec - m * 60;
+    return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+}
+
+// Format absolute rehearsal seconds as "h:mm:ss" or "m:ss" — used to label
+// where the take sits in the rehearsal (purely informational).
+function _rhFmtAbsTime(sec) {
+    sec = Math.max(0, sec || 0);
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = Math.floor(sec % 60);
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return h > 0 ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s);
+}
+
 window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
     var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
     if (!holder) return;
@@ -6007,19 +6050,96 @@ window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
     var pref = take.playback_ref || {};
     var s = (typeof pref.start_sec === 'number') ? pref.start_sec : 0;
     var ee = (typeof pref.end_sec === 'number') ? pref.end_sec : (s + ((take.stats && take.stats.duration) || 0));
-    var fmtSec = function (n) { return (Math.round((n || 0) * 10) / 10).toFixed(1); };
+    // Anchor for the relative mm:ss display — frozen on open so the inputs
+    // always read "seconds into the take" from a stable reference point.
+    var anchor = s;
+    var relStart = 0;
+    var relEnd = Math.max(0, ee - anchor);
 
-    holder.innerHTML = '<div style="padding:8px;border:1px dashed rgba(167,139,250,0.3);background:rgba(167,139,250,0.04);border-radius:6px">'
-        + '<div style="font-size:0.66em;color:#a78bfa;font-weight:600;margin-bottom:6px">⏱ Trim boundaries</div>'
-        + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:0.72em">'
-            + '<label style="color:var(--text-dim)">Start (s) <input type="number" step="0.1" min="0" id="rhTakeStartIn_' + escHtml(takeId) + '" value="' + escHtml(fmtSec(s)) + '" style="width:90px;padding:4px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:inherit;font-size:1em"></label>'
-            + '<label style="color:var(--text-dim)">End (s) <input type="number" step="0.1" min="0" id="rhTakeEndIn_' + escHtml(takeId) + '" value="' + escHtml(fmtSec(ee)) + '" style="width:90px;padding:4px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:inherit;font-size:1em"></label>'
-            + '<button onclick="window._rhTakePreviewBoundaries(\'' + escHtml(sessionId) + '\',\'' + escHtml(takeId) + '\')" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.95em">▶ Preview</button>'
-            + '<button onclick="window._rhTakeSaveBoundaries(\'' + escHtml(sessionId) + '\',\'' + escHtml(takeId) + '\')" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(16,185,129,0.3);background:rgba(16,185,129,0.08);color:#10b981;cursor:pointer;font-size:0.95em">💾 Save</button>'
-            + '<button onclick="window._rhTakeCancelBoundaries(\'' + escHtml(takeId) + '\')" style="padding:5px 8px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.95em">Cancel</button>'
+    var tid = escHtml(takeId);
+    var sid = escHtml(sessionId);
+
+    function nudgeBtn(which, delta, label) {
+        return '<button onclick="window._rhTakeNudgeBoundary(\'' + tid + '\',\'' + which + '\',' + delta + ')" '
+            + 'style="padding:3px 7px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.85em;font-family:ui-monospace,monospace">'
+            + label + '</button>';
+    }
+    function playheadBtn(which) {
+        return '<button onclick="window._rhTakeBoundaryFromPlayhead(\'' + sid + '\',\'' + tid + '\',\'' + which + '\')" '
+            + 'title="Set ' + which + ' to the current playback position. Play the take above first, then tap this when you hear the right moment." '
+            + 'style="padding:3px 8px;border-radius:4px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.82em;font-weight:600">'
+            + '📍 From playhead</button>';
+    }
+    function row(which, label, value) {
+        var inputId = 'rhTake' + (which === 'start' ? 'Start' : 'End') + 'In_' + tid;
+        return '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-bottom:6px;font-size:0.72em">'
+            + '<span style="color:var(--text-dim);min-width:46px;font-weight:600">' + label + '</span>'
+            + '<input type="text" id="' + inputId + '" value="' + _rhFmtTrimTime(value) + '" placeholder="m:ss" '
+            + 'style="width:78px;padding:4px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.12);background:rgba(255,255,255,0.04);color:inherit;font-size:0.95em;font-family:ui-monospace,monospace;text-align:right">'
+            + nudgeBtn(which, -1, '−1s')
+            + nudgeBtn(which, -0.1, '−0.1')
+            + nudgeBtn(which, 0.1, '+0.1')
+            + nudgeBtn(which, 1, '+1s')
+            + playheadBtn(which)
+            + '</div>';
+    }
+
+    holder.innerHTML = '<div data-anchor="' + anchor + '" style="padding:10px;border:1px dashed rgba(167,139,250,0.3);background:rgba(167,139,250,0.04);border-radius:6px">'
+        + '<div style="font-size:0.66em;color:#a78bfa;font-weight:600;margin-bottom:4px">⏱ Trim boundaries</div>'
+        + '<div style="font-size:0.62em;color:var(--text-dim);margin-bottom:8px;line-height:1.5">'
+            + 'Take starts <strong>' + _rhFmtAbsTime(anchor) + '</strong> into the rehearsal. '
+            + 'Times below are <strong>mm:ss into the take</strong>. '
+            + 'Play the take, then tap <strong>📍 From playhead</strong> when you hear the right start / end moment.'
         + '</div>'
-        + '<div style="margin-top:6px;font-size:0.6em;color:var(--text-dim);line-height:1.5">Preview plays the proposed slice without saving. Save writes back to <code>playback_ref</code> and feeds Bootstrap the trimmed window.</div>'
+        + row('start', 'Start', relStart)
+        + row('end', 'End', relEnd)
+        + '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">'
+            + '<button onclick="window._rhTakePreviewBoundaries(\'' + sid + '\',\'' + tid + '\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.85em;font-weight:600">▶ Preview slice</button>'
+            + '<button onclick="window._rhTakeSaveBoundaries(\'' + sid + '\',\'' + tid + '\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.1);color:#10b981;cursor:pointer;font-size:0.85em;font-weight:600">💾 Save</button>'
+            + '<button onclick="window._rhTakeCancelBoundaries(\'' + tid + '\')" style="padding:6px 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.85em">Cancel</button>'
+        + '</div>'
         + '</div>';
+};
+
+// Nudge a boundary by a fixed delta (seconds). Clamps start ≥ 0 and end > start.
+window._rhTakeNudgeBoundary = function (takeId, which, delta) {
+    var inputId = 'rhTake' + (which === 'start' ? 'Start' : 'End') + 'In_' + takeId;
+    var el = document.getElementById(inputId);
+    if (!el) return;
+    var cur = _rhParseTrimTime(el.value);
+    if (!Number.isFinite(cur)) cur = 0;
+    var next = Math.max(0, cur + delta);
+    // Cross-boundary clamp so start can't go past end and vice versa.
+    var otherId = 'rhTake' + (which === 'start' ? 'End' : 'Start') + 'In_' + takeId;
+    var otherEl = document.getElementById(otherId);
+    if (otherEl) {
+        var other = _rhParseTrimTime(otherEl.value);
+        if (Number.isFinite(other)) {
+            if (which === 'start' && next >= other) next = Math.max(0, other - 0.1);
+            if (which === 'end' && next <= other) next = other + 0.1;
+        }
+    }
+    el.value = _rhFmtTrimTime(next);
+};
+
+// Capture the audio element's current playback position and write it into the
+// start- or end-input as "seconds into the take" relative to the anchor.
+window._rhTakeBoundaryFromPlayhead = function (sessionId, takeId, which) {
+    var audio = document.getElementById('rhTakeReviewAudio_' + sessionId);
+    if (!audio || !audio.src) {
+        if (typeof showToast === 'function') showToast('Play the take first, then tap From playhead');
+        return;
+    }
+    var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
+    var inner = holder && holder.firstChild;
+    var anchor = inner && inner.dataset ? parseFloat(inner.dataset.anchor || '0') : 0;
+    if (!Number.isFinite(anchor)) anchor = 0;
+    var rel = audio.currentTime - anchor;
+    var inputId = 'rhTake' + (which === 'start' ? 'Start' : 'End') + 'In_' + takeId;
+    var el = document.getElementById(inputId);
+    if (!el) return;
+    el.value = _rhFmtTrimTime(Math.max(0, rel));
+    if (typeof showToast === 'function') showToast('✓ ' + (which === 'start' ? 'Start' : 'End') + ' set to ' + el.value);
 };
 
 window._rhTakeCancelBoundaries = function (takeId) {
@@ -6033,8 +6153,21 @@ function _rhReadBoundaryInputs(takeId) {
     var startEl = document.getElementById('rhTakeStartIn_' + takeId);
     var endEl = document.getElementById('rhTakeEndIn_' + takeId);
     if (!startEl || !endEl) return null;
-    var s = parseFloat(startEl.value);
-    var e = parseFloat(endEl.value);
+    // 2026-05-17 redesign: inputs are mm:ss relative to the take's original
+    // anchor (which is stamped on the form holder's first child as data-anchor).
+    // Convert back to absolute seconds for the playback_ref shape downstream.
+    var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
+    var inner = holder && holder.firstChild;
+    var anchor = inner && inner.dataset ? parseFloat(inner.dataset.anchor || '0') : 0;
+    if (!Number.isFinite(anchor)) anchor = 0;
+    var relS = _rhParseTrimTime(startEl.value);
+    var relE = _rhParseTrimTime(endEl.value);
+    if (!Number.isFinite(relS) || !Number.isFinite(relE)) {
+        if (typeof showToast === 'function') showToast('Use mm:ss or seconds (e.g. 1:23.5)');
+        return null;
+    }
+    var s = anchor + relS;
+    var e = anchor + relE;
     if (!(s >= 0) || !(e > s)) {
         if (typeof showToast === 'function') showToast('Start must be ≥0 and end must be > start');
         return null;
