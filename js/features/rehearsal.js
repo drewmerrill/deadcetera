@@ -5274,7 +5274,7 @@ function _rhTakeRowHTML(take, sessionId, audioAvailable, calMode) {
     var durLabel = _rhFormatTakeDuration(dur);
 
     var playBtn = audioAvailable
-        ? '<button onclick="window._rhTakePlay(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\')" aria-label="Play take" title="Play this take" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.9em;line-height:1">▶</button>'
+        ? '<button id="rhTakePlayBtn_' + escHtml(take.id) + '" data-rh-take-play="' + escHtml(take.id) + '" onclick="window._rhTakePlay(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\')" aria-label="Play take" title="Play this take" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.9em;line-height:1">▶</button>'
         : '<button disabled aria-label="Playback disabled" title="No recording attached" style="flex-shrink:0;width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);color:#64748b;cursor:not-allowed;font-size:0.9em;line-height:1">▶</button>';
 
     var titleHtml;
@@ -5322,6 +5322,27 @@ function _rhTakeRowHTML(take, sessionId, audioAvailable, calMode) {
     var correctLabel = unresolved ? 'Assign …' : 'Correct …';
     var correctBtn = '<button onclick="window._rhTakeOpenCorrect(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\')" style="flex-shrink:0;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:#94a3b8;cursor:pointer;font-size:0.72em;align-self:flex-start">' + correctLabel + '</button>';
 
+    // Phase 3I.6: boundary editor button — opens an inline numeric input + preview
+    // form so the band can tighten start/end on a take before the slice gets
+    // sent to the embedding bank. Bootstrap respects whatever boundaries the
+    // take carries, so tightening here directly improves sound-bank quality.
+    var editBoundsBtn = audioAvailable
+        ? '<button onclick="window._rhTakeOpenBoundaries(\'' + escHtml(sessionId) + '\',\'' + escHtml(take.id) + '\')" title="Edit start/end boundaries before this slice goes to the sound bank" style="flex-shrink:0;padding:5px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:#94a3b8;cursor:pointer;font-size:0.72em;align-self:flex-start">⏱ Trim</button>'
+        : '';
+
+    // Phase 3I.6: per-row inline playback controls. Hidden until _rhTakePlay
+    // starts this take; then the coordinator flips display:flex on it. The
+    // progress bar is click-to-seek within the take's start/end window.
+    var playingControls = audioAvailable
+        ? '<div id="rhTakePlaying_' + escHtml(take.id) + '" style="display:none;margin-top:6px;align-items:center;gap:8px;font-size:0.66em;color:var(--text-dim)">'
+            + '<button onclick="window._rhTakeStop(\'' + escHtml(take.id) + '\')" title="Stop this take" style="flex-shrink:0;width:24px;height:24px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#94a3b8;cursor:pointer;font-size:0.9em;line-height:1">✕</button>'
+            + '<span id="rhTakeProgTime_' + escHtml(take.id) + '" style="min-width:80px;text-align:center;font-variant-numeric:tabular-nums">0:00 / 0:00</span>'
+            + '<div id="rhTakeProgBar_' + escHtml(take.id) + '" onclick="window._rhTakeSeek(event,\'' + escHtml(take.id) + '\')" style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;cursor:pointer;position:relative;overflow:hidden">'
+                + '<div id="rhTakeProgFill_' + escHtml(take.id) + '" style="height:100%;width:0%;background:#818cf8;border-radius:3px;pointer-events:none"></div>'
+            + '</div>'
+        + '</div>'
+        : '';
+
     // Phase 3B: per-row diagnostics. Only rendered when calibration mode is
     // on; collapsed by default to keep the page calm.
     var diagHtml = calMode ? _rhTakeRowDiagnosticsHTML(take) : '';
@@ -5332,10 +5353,15 @@ function _rhTakeRowHTML(take, sessionId, audioAvailable, calMode) {
             + '<div style="font-size:0.85em;font-weight:500;display:flex;align-items:center;flex-wrap:wrap">' + titleHtml + humanBadge + poolBadge + '</div>'
             + '<div style="margin-top:3px;display:flex;flex-wrap:wrap;align-items:center">' + chips + '</div>'
             + suggestHtml
+            + playingControls
             + '<div id="rhTakeCorrectForm_' + escHtml(take.id) + '" style="display:none;margin-top:6px"></div>'
+            + '<div id="rhTakeBoundaryForm_' + escHtml(take.id) + '" style="display:none;margin-top:6px"></div>'
             + diagHtml
         + '</div>'
-        + correctBtn
+        + '<div style="display:flex;flex-direction:column;gap:4px;align-self:flex-start">'
+            + correctBtn
+            + editBoundsBtn
+        + '</div>'
         + '</div>';
 }
 
@@ -5661,6 +5687,94 @@ function _rhFormatTakeDuration(sec) {
 // Single auto-stop listener guard. We allow only one take to be auto-stopping
 // at a time; starting a new play tears down the previous timeupdate listener.
 var _rhTakeAutoStop = null;
+var _rhTakeAutoStopAudio = null;  // audio element the auto-stop listener is attached to
+// Phase 3I.6: single-take coordinator. Tracks which take's audio is currently
+// playing so a second click on the same row toggles pause, while a click on a
+// different row stops the prior take before starting the new one.
+var _rhCurrentTake = null;  // { sessionId, takeId, startSec, endSec }
+
+// Phase 3I.6: hard-stop every rehearsal audio source (shared timeline player
+// + every per-card take-review element). Called before any new take play so
+// only one stream runs at a time — fixes the dual-audio bug where the timeline
+// element kept playing while a take row started a second stream on top.
+function _rhStopAllAudio() {
+    try {
+        if (_rhSharedAudio && !_rhSharedAudio.paused) { _rhSharedAudio.pause(); }
+    } catch (e) {}
+    try { _rhClearPlayState(); } catch (e) {}
+
+    var takeAudios = document.querySelectorAll('audio[id^="rhTakeReviewAudio_"]');
+    for (var i = 0; i < takeAudios.length; i++) {
+        try { if (!takeAudios[i].paused) takeAudios[i].pause(); } catch (e) {}
+    }
+
+    if (_rhTakeAutoStop && _rhTakeAutoStopAudio) {
+        try { _rhTakeAutoStopAudio.removeEventListener('timeupdate', _rhTakeAutoStop); } catch (e) {}
+    }
+    _rhTakeAutoStop = null;
+    _rhTakeAutoStopAudio = null;
+
+    if (_rhCurrentTake && _rhCurrentTake.takeId) {
+        _rhSetTakeRowState(_rhCurrentTake.takeId, 'stopped');
+    }
+    _rhCurrentTake = null;
+}
+
+// Flip play button + show/hide inline progress controls for a take row.
+// state: 'playing' | 'paused' | 'stopped'
+function _rhSetTakeRowState(takeId, state) {
+    var btn = document.getElementById('rhTakePlayBtn_' + takeId);
+    var controls = document.getElementById('rhTakePlaying_' + takeId);
+    if (btn) {
+        if (state === 'playing') {
+            btn.textContent = '⏸'; btn.setAttribute('aria-label', 'Pause take');
+            btn.classList.add('rh-playing-btn');
+        } else {
+            btn.textContent = '▶'; btn.setAttribute('aria-label', 'Play take');
+            btn.classList.remove('rh-playing-btn');
+        }
+    }
+    if (controls) {
+        controls.style.display = (state === 'stopped') ? 'none' : 'flex';
+    }
+    if (state === 'stopped') {
+        var fill = document.getElementById('rhTakeProgFill_' + takeId);
+        if (fill) fill.style.width = '0%';
+    }
+}
+
+function _rhAttachTakeAutoStop(audio, takeId, endSec) {
+    if (_rhTakeAutoStop && _rhTakeAutoStopAudio) {
+        try { _rhTakeAutoStopAudio.removeEventListener('timeupdate', _rhTakeAutoStop); } catch (e) {}
+    }
+    _rhTakeAutoStop = function () {
+        if (!audio) return;
+        // Live progress UI
+        var startSec = (_rhCurrentTake && _rhCurrentTake.startSec) || 0;
+        var fill = document.getElementById('rhTakeProgFill_' + takeId);
+        if (fill) {
+            var range = endSec - startSec;
+            var pct = range > 0 ? Math.max(0, Math.min(100, ((audio.currentTime - startSec) / range) * 100)) : 0;
+            fill.style.width = pct + '%';
+        }
+        var timeEl = document.getElementById('rhTakeProgTime_' + takeId);
+        if (timeEl) {
+            var pos = Math.max(0, audio.currentTime - startSec);
+            var tot = Math.max(0, endSec - startSec);
+            timeEl.textContent = _rhFmt(pos) + ' / ' + _rhFmt(tot);
+        }
+        if (audio.currentTime >= endSec || audio.ended) {
+            try { audio.pause(); } catch (e) {}
+            try { audio.removeEventListener('timeupdate', _rhTakeAutoStop); } catch (e) {}
+            _rhTakeAutoStop = null;
+            _rhTakeAutoStopAudio = null;
+            _rhSetTakeRowState(takeId, 'stopped');
+            _rhCurrentTake = null;
+        }
+    };
+    _rhTakeAutoStopAudio = audio;
+    audio.addEventListener('timeupdate', _rhTakeAutoStop);
+}
 
 window._rhTakePlay = async function (sessionId, takeId) {
     if (typeof window.GLTakes === 'undefined') return;
@@ -5668,6 +5782,22 @@ window._rhTakePlay = async function (sessionId, takeId) {
     var take;
     try { take = await window.GLTakes.getTake(takeId); } catch (e) { return; }
     if (!take || !take.playback_ref) return;
+
+    // Phase 3I.6: pause/resume toggle on the same row — avoids the surprise of
+    // tearing down audio when the band just wants a brief pause.
+    if (_rhCurrentTake && _rhCurrentTake.takeId === takeId && audio) {
+        if (!audio.paused) {
+            try { audio.pause(); } catch (e) {}
+            _rhSetTakeRowState(takeId, 'paused');
+        } else {
+            audio.play().catch(function () {});
+            _rhSetTakeRowState(takeId, 'playing');
+        }
+        return;
+    }
+
+    // Different take (or first play): stop everything else first.
+    _rhStopAllAudio();
 
     // Phase 3D: if the audio element has no src yet, try to lazily resolve
     // playback from take.recording_id (or take.playback_ref.recording_id).
@@ -5695,23 +5825,154 @@ window._rhTakePlay = async function (sessionId, takeId) {
     var startSec = take.playback_ref.start_sec || 0;
     var endSec = take.playback_ref.end_sec || (startSec + ((take.stats && take.stats.duration) || 0));
 
-    if (_rhTakeAutoStop) {
-        try { audio.removeEventListener('timeupdate', _rhTakeAutoStop); } catch (e) {}
-        _rhTakeAutoStop = null;
-    }
+    _rhCurrentTake = { sessionId: sessionId, takeId: takeId, startSec: startSec, endSec: endSec };
 
     try { audio.currentTime = startSec; } catch (e) { /* readyState not high enough yet - ignore */ }
     audio.play().catch(function () { /* autoplay/user-gesture errors swallowed */ });
 
-    _rhTakeAutoStop = function () {
-        if (!audio) return;
-        if (audio.currentTime >= endSec || audio.paused || audio.ended) {
-            try { audio.pause(); } catch (e) {}
+    _rhSetTakeRowState(takeId, 'playing');
+    _rhAttachTakeAutoStop(audio, takeId, endSec);
+};
+
+window._rhTakeStop = function (takeId) {
+    if (!_rhCurrentTake || _rhCurrentTake.takeId !== takeId) {
+        // Out-of-band stop (e.g. row re-rendered) — just clear the row UI.
+        _rhSetTakeRowState(takeId, 'stopped');
+        return;
+    }
+    var sessionId = _rhCurrentTake.sessionId;
+    var audio = document.getElementById('rhTakeReviewAudio_' + sessionId);
+    if (audio) {
+        try { audio.pause(); } catch (e) {}
+        if (_rhTakeAutoStop) {
             try { audio.removeEventListener('timeupdate', _rhTakeAutoStop); } catch (e) {}
-            _rhTakeAutoStop = null;
         }
+    }
+    _rhTakeAutoStop = null;
+    _rhTakeAutoStopAudio = null;
+    _rhSetTakeRowState(takeId, 'stopped');
+    _rhCurrentTake = null;
+};
+
+// Click-to-seek inside the take's [start..end] window. Restricts the seek to
+// the take's own range so we never accidentally scrub into a neighbouring take.
+window._rhTakeSeek = function (e, takeId) {
+    if (!_rhCurrentTake || _rhCurrentTake.takeId !== takeId) return;
+    var bar = document.getElementById('rhTakeProgBar_' + takeId);
+    if (!bar) return;
+    var audio = document.getElementById('rhTakeReviewAudio_' + _rhCurrentTake.sessionId);
+    if (!audio) return;
+    var rect = bar.getBoundingClientRect();
+    var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    var range = _rhCurrentTake.endSec - _rhCurrentTake.startSec;
+    try { audio.currentTime = _rhCurrentTake.startSec + (pct * range); } catch (er) {}
+};
+
+// ── Phase 3I.6: boundary editor ──────────────────────────────────────────────
+// Numeric start/end inputs + a Preview button that plays the proposed slice
+// without persisting, plus Save that writes playback_ref back to Firebase.
+// Tightening boundaries here directly improves what Bootstrap sends to the
+// embedding bank, so the sound bank stays clean.
+window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
+    var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
+    if (!holder) return;
+    if (holder.style.display !== 'none') {
+        holder.style.display = 'none';
+        holder.innerHTML = '';
+        return;
+    }
+    holder.style.display = '';
+    holder.innerHTML = '<div style="font-size:0.7em;color:var(--text-dim)">Loading…</div>';
+    var take;
+    try { take = await window.GLTakes.getTake(takeId); } catch (e) { holder.innerHTML = ''; return; }
+    if (!take) { holder.innerHTML = ''; return; }
+    var pref = take.playback_ref || {};
+    var s = (typeof pref.start_sec === 'number') ? pref.start_sec : 0;
+    var ee = (typeof pref.end_sec === 'number') ? pref.end_sec : (s + ((take.stats && take.stats.duration) || 0));
+    var fmtSec = function (n) { return (Math.round((n || 0) * 10) / 10).toFixed(1); };
+
+    holder.innerHTML = '<div style="padding:8px;border:1px dashed rgba(167,139,250,0.3);background:rgba(167,139,250,0.04);border-radius:6px">'
+        + '<div style="font-size:0.66em;color:#a78bfa;font-weight:600;margin-bottom:6px">⏱ Trim boundaries</div>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:0.72em">'
+            + '<label style="color:var(--text-dim)">Start (s) <input type="number" step="0.1" min="0" id="rhTakeStartIn_' + escHtml(takeId) + '" value="' + escHtml(fmtSec(s)) + '" style="width:90px;padding:4px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:inherit;font-size:1em"></label>'
+            + '<label style="color:var(--text-dim)">End (s) <input type="number" step="0.1" min="0" id="rhTakeEndIn_' + escHtml(takeId) + '" value="' + escHtml(fmtSec(ee)) + '" style="width:90px;padding:4px 6px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:inherit;font-size:1em"></label>'
+            + '<button onclick="window._rhTakePreviewBoundaries(\'' + escHtml(sessionId) + '\',\'' + escHtml(takeId) + '\')" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.95em">▶ Preview</button>'
+            + '<button onclick="window._rhTakeSaveBoundaries(\'' + escHtml(sessionId) + '\',\'' + escHtml(takeId) + '\')" style="padding:5px 10px;border-radius:6px;border:1px solid rgba(16,185,129,0.3);background:rgba(16,185,129,0.08);color:#10b981;cursor:pointer;font-size:0.95em">💾 Save</button>'
+            + '<button onclick="window._rhTakeCancelBoundaries(\'' + escHtml(takeId) + '\')" style="padding:5px 8px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.95em">Cancel</button>'
+        + '</div>'
+        + '<div style="margin-top:6px;font-size:0.6em;color:var(--text-dim);line-height:1.5">Preview plays the proposed slice without saving. Save writes back to <code>playback_ref</code> and feeds Bootstrap the trimmed window.</div>'
+        + '</div>';
+};
+
+window._rhTakeCancelBoundaries = function (takeId) {
+    var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
+    if (!holder) return;
+    holder.style.display = 'none';
+    holder.innerHTML = '';
+};
+
+function _rhReadBoundaryInputs(takeId) {
+    var startEl = document.getElementById('rhTakeStartIn_' + takeId);
+    var endEl = document.getElementById('rhTakeEndIn_' + takeId);
+    if (!startEl || !endEl) return null;
+    var s = parseFloat(startEl.value);
+    var e = parseFloat(endEl.value);
+    if (!(s >= 0) || !(e > s)) {
+        if (typeof showToast === 'function') showToast('Start must be ≥0 and end must be > start');
+        return null;
+    }
+    return { start: s, end: e };
+}
+
+window._rhTakePreviewBoundaries = function (sessionId, takeId) {
+    var bounds = _rhReadBoundaryInputs(takeId);
+    if (!bounds) return;
+    var audio = document.getElementById('rhTakeReviewAudio_' + sessionId);
+    if (!audio || !audio.src) {
+        if (typeof showToast === 'function') showToast('No audio attached — cannot preview');
+        return;
+    }
+    _rhStopAllAudio();
+    _rhCurrentTake = { sessionId: sessionId, takeId: takeId, startSec: bounds.start, endSec: bounds.end };
+    try { audio.currentTime = bounds.start; } catch (e) {}
+    audio.play().catch(function () {});
+    _rhSetTakeRowState(takeId, 'playing');
+    _rhAttachTakeAutoStop(audio, takeId, bounds.end);
+};
+
+window._rhTakeSaveBoundaries = async function (sessionId, takeId) {
+    var bounds = _rhReadBoundaryInputs(takeId);
+    if (!bounds) return;
+    if (typeof window.GLTakes === 'undefined' || !window.GLTakes.updateTake || !window.GLTakes.getTake) return;
+    var existing;
+    try { existing = await window.GLTakes.getTake(takeId); } catch (e) { existing = null; }
+    var pref = (existing && existing.playback_ref) || {};
+    var stats = (existing && existing.stats) || {};
+    var newPref = {
+        start_sec: bounds.start,
+        end_sec: bounds.end
     };
-    audio.addEventListener('timeupdate', _rhTakeAutoStop);
+    if (typeof pref.recording_id === 'string') newPref.recording_id = pref.recording_id;
+    try {
+        await window.GLTakes.updateTake(takeId, {
+            playback_ref: newPref,
+            stats: Object.assign({}, stats, { duration: bounds.end - bounds.start })
+        });
+        if (typeof showToast === 'function') showToast('✓ Boundaries saved (' + bounds.start.toFixed(1) + 's → ' + bounds.end.toFixed(1) + 's)');
+    } catch (e) {
+        console.warn('[TakeReview] boundary save failed:', e && e.message);
+        if (typeof showToast === 'function') showToast('Save failed: ' + (e && e.message || 'unknown'));
+        return;
+    }
+    // Re-render the card so the new duration / start_sec ordering reflects.
+    var container = document.getElementById('rhTimelineSection');
+    if (!container) return;
+    var session;
+    try {
+        var _rsLoadById = (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadById);
+        if (_rsLoadById) session = await GLStore.RehearsalSession.loadById(sessionId);
+    } catch (e) {}
+    try { _rhRenderTakeReview(container, sessionId, session || {}); } catch (e) {}
 };
 
 window._rhTakeQuickAssign = async function (sessionId, takeId, songTitle) {

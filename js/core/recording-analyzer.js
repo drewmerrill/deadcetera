@@ -1581,7 +1581,81 @@ window.RecordingAnalyzer = (function() {
           firebaseDB.ref(bandPath('rehearsal_sessions/' + _currentSessionId + '/label_overrides/' + overrideKey)).set(value).catch(function() {});
         }
       }
+
+      // Phase 3I.6 legacy-Take bridge: the inline-alternatives UI was wired
+      // only to segments + label_overrides, which meant clicks here didn't
+      // mark the corresponding Take as human-corrected. Bootstrap only feeds
+      // human-confirmed Takes into the embedding bank, so without this bridge
+      // the older surface produced zero training signal. Match by segment_id
+      // first; fall back to time-range overlap inside the same rehearsal.
+      if (value && _currentSessionId) {
+        _bridgeSegCorrectionToTake(seg, value).catch(function (e) {
+          if (typeof console !== 'undefined') {
+            console.warn('[RecordingAnalyzer] take bridge failed:', e && e.message);
+          }
+        });
+      }
     }
+  }
+
+  // Phase 3I.6: find the Take that corresponds to the segment the band just
+  // corrected and update song_title / song_id / matching so it counts as
+  // human truth in Bootstrap. Cached-shell safe: silently no-ops if GLTakes
+  // is unavailable (older bundles).
+  function _bridgeSegCorrectionToTake(seg, title) {
+    if (!seg || !title) return Promise.resolve(null);
+    if (typeof window.GLTakes === 'undefined' ||
+        typeof window.GLTakes.getTakesForRehearsal !== 'function' ||
+        typeof window.GLTakes.updateTake !== 'function') {
+      return Promise.resolve(null);
+    }
+    var segId = seg.id || null;
+    var segStart = (typeof seg.startSec === 'number') ? seg.startSec : null;
+    var segEnd = (typeof seg.endSec === 'number') ? seg.endSec : null;
+
+    var songId = null;
+    try {
+      if (typeof getSongByTitle === 'function') {
+        var sObj = getSongByTitle(title);
+        if (sObj && sObj.songId) songId = sObj.songId;
+      }
+    } catch (e) {}
+
+    return window.GLTakes.getTakesForRehearsal(_currentSessionId, { refresh: true }).then(function (takes) {
+      var match = null;
+      if (segId && Array.isArray(takes)) {
+        for (var i = 0; i < takes.length; i++) {
+          if (takes[i] && takes[i].segment_id === segId) { match = takes[i]; break; }
+        }
+      }
+      // Fallback: time-range overlap (within 1.5s tolerance on each edge).
+      if (!match && Array.isArray(takes) && segStart !== null && segEnd !== null) {
+        for (var j = 0; j < takes.length; j++) {
+          var t = takes[j];
+          var p = t && t.playback_ref;
+          if (!p) continue;
+          var ts = (typeof p.start_sec === 'number') ? p.start_sec : null;
+          var te = (typeof p.end_sec === 'number') ? p.end_sec : null;
+          if (ts === null || te === null) continue;
+          if (Math.abs(ts - segStart) <= 1.5 && Math.abs(te - segEnd) <= 1.5) {
+            match = t;
+            break;
+          }
+        }
+      }
+      if (!match || !match.id) return null;
+      return window.GLTakes.updateTake(match.id, {
+        song_title: title,
+        song_id: songId,
+        matching: {
+          candidate_pool: 'human',
+          confidence: 'high',
+          confidence_reason: 'human_correction',
+          correction_source: 'human',
+          top_suggestions: []
+        }
+      });
+    });
   }
 
   /**
