@@ -6003,42 +6003,47 @@ window._rhTakePlay = async function (sessionId, takeId) {
 
     _rhCurrentTake = { sessionId: sessionId, takeId: takeId, startSec: startSec, endSec: endSec };
 
-    try { audio.currentTime = startSec; } catch (e) { /* readyState not high enough yet - ignore */ }
-    // Bug 2026-05-17: when audio.src is a Worker /drive-stream URL pointing at
-    // a Drive file ID that has no Picker consent, play() rejects async with
-    // NotSupportedError and the user is left staring at a pause icon over
-    // silent 0:00 / 0:00 (no progress, no music). Probe the URL on rejection
-    // and pop the re-link modal when it's a 4xx — mirrors the segment-play
-    // path in _rhPlaySegment.
+    // Bug 2026-05-17 rev 3 (Drew): wait for the seek to complete before
+    // calling play(). For Drive-streamed MP3 served via the Worker proxy, a
+    // seek to a not-yet-buffered position requires a Range-request round
+    // trip; if play() fires while the element is still in "seeking" state,
+    // the browser plays from whatever WAS buffered (the previous pause
+    // position) until the new range arrives, then jumps. The visible
+    // symptom: every Preview / Play starts a few seconds away from the
+    // requested boundary, and the jump amount varies per click.
     var _takeAudioSrc = audio.src;
-    audio.play().catch(function (e) {
-        var msg = e && e.message ? e.message : '';
-        console.warn('[TakeReview] Play failed:', msg);
-        // Clear the optimistic playing state so the row doesn't keep flashing
-        // a pause icon over silent dead air while we surface the re-link.
-        _rhSetTakeRowState(takeId, 'stopped');
-        if (_rhCurrentTake && _rhCurrentTake.takeId === takeId) _rhCurrentTake = null;
-        var isWorkerStream = _takeAudioSrc && _takeAudioSrc.indexOf('/drive-stream') !== -1;
-        var isRawDriveUrl = _takeAudioSrc && _takeAudioSrc.indexOf('drive.google.com') !== -1 && !isWorkerStream;
-        if (isWorkerStream) {
-            // Worker URL — probe to distinguish 404 (need re-link) from a
-            // transient network error (don't bother user).
-            try {
-                fetch(_takeAudioSrc, { headers: { Range: 'bytes=0-0' } }).then(function (r) {
-                    if (r.status >= 400 && r.status < 500) {
-                        _rhPromptDriveRelink(sessionId);
-                    }
-                }).catch(function () {});
-            } catch (_pe) {}
-        } else if (isRawDriveUrl) {
-            // A raw `drive.google.com/.../view` URL can NEVER play — browsers
-            // can't fetch Drive HTML pages as audio. Always prompt for re-link.
-            // This branch fires when the lazy re-proxify above didn't run
-            // (no token yet) — the modal flow runs the Picker which sets the
-            // token + persists a fresh recording_url for next time.
-            _rhPromptDriveRelink(sessionId);
+    var played = false;
+    var doPlay = function () {
+        if (played) return;
+        played = true;
+        try { audio.removeEventListener('seeked', doPlay); } catch (_e) {}
+        if (window.GLObs && window.GLObs.log) {
+            window.GLObs.log('TakeReview', 'play after seek', { requested: startSec, actual: audio.currentTime, readyState: audio.readyState });
         }
-    });
+        audio.play().catch(function (e) {
+            var msg = e && e.message ? e.message : '';
+            console.warn('[TakeReview] Play failed:', msg);
+            _rhSetTakeRowState(takeId, 'stopped');
+            if (_rhCurrentTake && _rhCurrentTake.takeId === takeId) _rhCurrentTake = null;
+            var isWorkerStream = _takeAudioSrc && _takeAudioSrc.indexOf('/drive-stream') !== -1;
+            var isRawDriveUrl = _takeAudioSrc && _takeAudioSrc.indexOf('drive.google.com') !== -1 && !isWorkerStream;
+            if (isWorkerStream) {
+                try {
+                    fetch(_takeAudioSrc, { headers: { Range: 'bytes=0-0' } }).then(function (r) {
+                        if (r.status >= 400 && r.status < 500) _rhPromptDriveRelink(sessionId);
+                    }).catch(function () {});
+                } catch (_pe) {}
+            } else if (isRawDriveUrl) {
+                _rhPromptDriveRelink(sessionId);
+            }
+        });
+    };
+    audio.addEventListener('seeked', doPlay, { once: true });
+    // 800ms fallback: covers the case where 'seeked' never fires because
+    // currentTime was set to a value already inside the buffered range. In
+    // that case audio is already at the right place; play() is safe.
+    setTimeout(doPlay, 800);
+    try { audio.currentTime = startSec; } catch (e) { /* readyState not high enough yet - ignore */ }
 
     _rhSetTakeRowState(takeId, 'playing');
     _rhAttachTakeAutoStop(audio, takeId, endSec);
@@ -6388,6 +6393,14 @@ function _rhTrimAttachDrag(takeId) {
 // Nudge a boundary by a fixed delta (seconds). Works against absolute
 // times stored in the form's dataset; cross-boundary + window-bounds
 // clamps applied. Re-syncs the slider via _rhTrimUpdateView.
+//
+// 2026-05-17 instrumentation: console.log the delta and resulting absolute
+// values per click so Drew can confirm whether the dataset is changing by
+// exactly the expected delta (and not by some larger amount). If audio is
+// playing, the audio element is NOT touched here — this handler only
+// updates the editor state. If Drew sees audio "skipping forward" on +0.1
+// clicks, the bug isn't here; the next thing to check is the auto-stop /
+// progress-bar listener or the slider drag.
 window._rhTakeNudgeBoundary = function (takeId, which, delta) {
     var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
     var inner = holder && holder.firstChild;
@@ -6396,6 +6409,8 @@ window._rhTakeNudgeBoundary = function (takeId, which, delta) {
     var winEnd = parseFloat(inner.dataset.winEnd || '0');
     var startAbs = parseFloat(inner.dataset.startAbs);
     var endAbs = parseFloat(inner.dataset.endAbs);
+    var beforeStart = startAbs;
+    var beforeEnd = endAbs;
     if (which === 'start') {
         var nextS = startAbs + delta;
         if (nextS < winStart) nextS = winStart;
@@ -6409,6 +6424,9 @@ window._rhTakeNudgeBoundary = function (takeId, which, delta) {
         inner.dataset.endAbs = String(nextE);
     }
     _rhTrimUpdateView(takeId);
+    console.log('[Trim nudge]', which, 'delta', delta,
+        '| startAbs', beforeStart, '→', inner.dataset.startAbs,
+        '| endAbs', beforeEnd, '→', inner.dataset.endAbs);
 };
 
 // Capture the take-review audio element's current playback position as the
@@ -6482,8 +6500,32 @@ window._rhTakePreviewBoundaries = function (sessionId, takeId) {
     }
     _rhStopAllAudio();
     _rhCurrentTake = { sessionId: sessionId, takeId: takeId, startSec: bounds.start, endSec: bounds.end };
+    // Bug 2026-05-17 (Drew): preview audio sometimes started seconds away from
+    // the requested start because audio.play() ran before the seek completed.
+    // For streamed audio (Drive proxy + MP3), the seek takes a Range-request
+    // round trip; if play() fires while the element is still in "seeking"
+    // state, the browser plays from whatever the last buffered position was
+    // until the new range arrives, then jumps. The net effect: a 0.1s change
+    // in bounds.start could produce a multi-second shift in actual playback
+    // start.
+    //
+    // Fix: wait for the 'seeked' event before calling play(). 800ms fallback
+    // timer catches the case where 'seeked' never fires (some browsers skip
+    // it when currentTime is set to a value already inside the buffered range
+    // — that case is fine to play() immediately anyway).
+    var played = false;
+    var playOnce = function () {
+        if (played) return;
+        played = true;
+        try { audio.removeEventListener('seeked', playOnce); } catch (_e) {}
+        if (window.GLObs && window.GLObs.log) {
+            window.GLObs.log('TakePreview', 'seek complete', { requested: bounds.start, actual: audio.currentTime });
+        }
+        audio.play().catch(function () {});
+    };
+    audio.addEventListener('seeked', playOnce, { once: true });
+    setTimeout(playOnce, 800);
     try { audio.currentTime = bounds.start; } catch (e) {}
-    audio.play().catch(function () {});
     _rhSetTakeRowState(takeId, 'playing');
     _rhAttachTakeAutoStop(audio, takeId, bounds.end);
 };
