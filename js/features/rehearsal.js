@@ -5933,6 +5933,23 @@ window._rhTakePlay = async function (sessionId, takeId) {
             }
         } catch (e) {}
     }
+
+    // Bug 2026-05-17: Take Review's audio.src can be set during the initial
+    // render to a raw `drive.google.com/.../view` share URL — that happens
+    // when `_proxifyDriveUrl` runs before OAuth completes and finds
+    // `window.accessToken` null, so it falls through and returns the original
+    // URL unchanged. By the time the user clicks ▶ the token IS available, so
+    // re-proxify here just before play. No-op when src is already a Worker URL.
+    if (audio && audio.src && audio.src.indexOf('drive.google.com') !== -1
+        && window.GLRecordings && typeof window.GLRecordings.proxifyDriveUrl === 'function') {
+        var _proxied = window.GLRecordings.proxifyDriveUrl(audio.src);
+        if (_proxied && _proxied !== audio.src) {
+            audio.src = _proxied;
+            if (window.GLObs && window.GLObs.log) {
+                window.GLObs.log('TakeReview', 'lazy re-proxify audio.src at play time', { takeId: takeId });
+            }
+        }
+    }
     if (!audio || !audio.src) {
         if (window.GLObs && window.GLObs.log) {
             window.GLObs.log('TakeReview', 'play blocked — no audio source', { takeId: takeId, take_recording_id: takeRecId });
@@ -5961,7 +5978,10 @@ window._rhTakePlay = async function (sessionId, takeId) {
         _rhSetTakeRowState(takeId, 'stopped');
         if (_rhCurrentTake && _rhCurrentTake.takeId === takeId) _rhCurrentTake = null;
         var isWorkerStream = _takeAudioSrc && _takeAudioSrc.indexOf('/drive-stream') !== -1;
+        var isRawDriveUrl = _takeAudioSrc && _takeAudioSrc.indexOf('drive.google.com') !== -1 && !isWorkerStream;
         if (isWorkerStream) {
+            // Worker URL — probe to distinguish 404 (need re-link) from a
+            // transient network error (don't bother user).
             try {
                 fetch(_takeAudioSrc, { headers: { Range: 'bytes=0-0' } }).then(function (r) {
                     if (r.status >= 400 && r.status < 500) {
@@ -5969,6 +5989,13 @@ window._rhTakePlay = async function (sessionId, takeId) {
                     }
                 }).catch(function () {});
             } catch (_pe) {}
+        } else if (isRawDriveUrl) {
+            // A raw `drive.google.com/.../view` URL can NEVER play — browsers
+            // can't fetch Drive HTML pages as audio. Always prompt for re-link.
+            // This branch fires when the lazy re-proxify above didn't run
+            // (no token yet) — the modal flow runs the Picker which sets the
+            // token + persists a fresh recording_url for next time.
+            _rhPromptDriveRelink(sessionId);
         }
     });
 

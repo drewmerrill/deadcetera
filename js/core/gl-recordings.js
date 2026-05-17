@@ -496,6 +496,11 @@
     // Resolution
     resolvePlaybackSource:      resolvePlaybackSource,
     normalizeRecordingReference: normalizeRecordingReference,
+    // Bug 2026-05-17: exposed so consumers can lazy-re-proxify URLs at play
+    // time when the original resolve ran before OAuth completed and
+    // `window.accessToken` was null. Returns the original URL unchanged if
+    // it's not a Drive URL or if no token is available now.
+    proxifyDriveUrl:            _proxifyDriveUrl,
     // Cache control
     refreshCache:               refreshCache,
     clearResolveCache:          function () { _resolveCache = {}; }
