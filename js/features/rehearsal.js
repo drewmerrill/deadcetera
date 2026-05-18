@@ -2901,6 +2901,15 @@ async function _rhRenderLastRehearsalTimeline() {
         // Preload previous groove fingerprints for cross-session comparison
         await _rhPreloadFingerprints();
         _rhRenderInlineTimelineDirectly(timelineEl, latest.sessionId, latest, segments);
+
+        // Bug 2026-05-18 (Drew): _rhShowSessionReport calls both
+        // _rhRenderTonightProgress and _rhRenderTakeReview after the segments
+        // (see line 4543-4544). The home page's _rhRenderLastRehearsalTimeline
+        // historically only rendered segments — so canonical Takes never
+        // appeared at the bottom even though they exist in Firebase. Mirror
+        // the session-detail flow so Take Review is consistent everywhere.
+        try { _rhRenderTonightProgress(timelineEl, latest.sessionId, latest); } catch (e) { console.warn('[TonightProgress] render failed:', e && e.message); }
+        try { _rhRenderTakeReview(timelineEl, latest.sessionId, latest); } catch (e) { console.warn('[TakeReview] render failed:', e && e.message); }
     }
 }
 
