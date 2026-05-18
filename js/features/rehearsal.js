@@ -6498,6 +6498,28 @@ window._rhTakePreviewBoundaries = function (sessionId, takeId) {
         if (typeof showToast === 'function') showToast('No audio attached — cannot preview');
         return;
     }
+    // Bug 2026-05-18 (Drew): audio.src was set during the initial Take
+    // Review render via resolvePlaybackSource → _proxifyDriveUrl. If
+    // window.accessToken wasn't available at render time, proxify fell
+    // through and stored the raw drive.google.com/.../view URL — that URL
+    // is an HTML viewer page, not a media stream. Browser loads it as
+    // audio, reports duration: NaN, and "plays" silently forever (pause
+    // icon shown but no sound). The seek precision diagnostic confirmed
+    // currentTime accepts any value when no real media is loaded, which
+    // is what made this look like an audio-precision issue.
+    //
+    // _rhTakePlay already has the same fix at line 5984. Mirror it here
+    // so the Preview path catches the same stale-token case.
+    if (audio.src.indexOf('drive.google.com') !== -1
+        && window.GLRecordings && typeof window.GLRecordings.proxifyDriveUrl === 'function') {
+        var _proxied = window.GLRecordings.proxifyDriveUrl(audio.src);
+        if (_proxied && _proxied !== audio.src) {
+            audio.src = _proxied;
+            if (window.GLObs && window.GLObs.log) {
+                window.GLObs.log('TakePreview', 'lazy re-proxify audio.src at preview time', { takeId: takeId });
+            }
+        }
+    }
     _rhStopAllAudio();
     _rhCurrentTake = { sessionId: sessionId, takeId: takeId, startSec: bounds.start, endSec: bounds.end };
     // Bug 2026-05-17 (Drew): preview audio sometimes started seconds away from
@@ -6519,13 +6541,28 @@ window._rhTakePreviewBoundaries = function (sessionId, takeId) {
         played = true;
         try { audio.removeEventListener('seeked', playOnce); } catch (_e) {}
         if (window.GLObs && window.GLObs.log) {
-            window.GLObs.log('TakePreview', 'seek complete', { requested: bounds.start, actual: audio.currentTime });
+            window.GLObs.log('TakePreview', 'seek complete', { requested: bounds.start, actual: audio.currentTime, readyState: audio.readyState });
         }
         audio.play().catch(function () {});
     };
     audio.addEventListener('seeked', playOnce, { once: true });
-    setTimeout(playOnce, 800);
-    try { audio.currentTime = bounds.start; } catch (e) {}
+    // Bug 2026-05-18: if audio.src was just re-proxified above, the browser
+    // is doing a fresh load — readyState < 1, no metadata yet, can't seek.
+    // The 800ms fallback would fire before metadata arrives and call play()
+    // on an empty buffer. Wait for loadedmetadata before seeking in that
+    // case; once metadata is in, the normal seeked-event path takes over.
+    function _seekThenWait() {
+        try { audio.currentTime = bounds.start; } catch (e) {}
+        setTimeout(playOnce, 800);
+    }
+    if (audio.readyState < 1) {
+        audio.addEventListener('loadedmetadata', _seekThenWait, { once: true });
+        // Safety: if metadata never arrives (network failure), still
+        // resolve after 5s so the UI doesn't appear hung.
+        setTimeout(function () { if (!played) playOnce(); }, 5000);
+    } else {
+        _seekThenWait();
+    }
     _rhSetTakeRowState(takeId, 'playing');
     _rhAttachTakeAutoStop(audio, takeId, bounds.end);
 };
