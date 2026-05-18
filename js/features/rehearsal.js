@@ -6274,6 +6274,7 @@ window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
         + row('end', 'End')
         + '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">'
             + '<button onclick="window._rhTakePreviewBoundaries(\'' + sid + '\',\'' + tid + '\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.85em;font-weight:600">▶ Preview slice</button>'
+            + '<span id="rhTrimNowPlaying_' + tid + '" style="font-family:ui-monospace,monospace;font-size:0.72em;color:var(--text-dim);min-width:120px">ready</span>'
             + '<button onclick="window._rhTakeSaveBoundaries(\'' + sid + '\',\'' + tid + '\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.1);color:#10b981;cursor:pointer;font-size:0.85em;font-weight:600">💾 Save</button>'
             + '<button onclick="window._rhTakeCancelBoundaries(\'' + tid + '\')" style="padding:6px 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.85em">Cancel</button>'
         + '</div>'
@@ -6522,49 +6523,89 @@ window._rhTakePreviewBoundaries = function (sessionId, takeId) {
     }
     _rhStopAllAudio();
     _rhCurrentTake = { sessionId: sessionId, takeId: takeId, startSec: bounds.start, endSec: bounds.end };
-    // Bug 2026-05-17 (Drew): preview audio sometimes started seconds away from
-    // the requested start because audio.play() ran before the seek completed.
-    // For streamed audio (Drive proxy + MP3), the seek takes a Range-request
-    // round trip; if play() fires while the element is still in "seeking"
-    // state, the browser plays from whatever the last buffered position was
-    // until the new range arrives, then jumps. The net effect: a 0.1s change
-    // in bounds.start could produce a multi-second shift in actual playback
-    // start.
+
+    // Bug 2026-05-18 (Drew) — fixed-duration audition + canplay wait + live readout.
     //
-    // Fix: wait for the 'seeked' event before calling play(). 800ms fallback
-    // timer catches the case where 'seeked' never fires (some browsers skip
-    // it when currentTime is set to a value already inside the buffered range
-    // — that case is fine to play() immediately anyway).
+    // Earlier diagnostic proved seeks land at the requested time to within
+    // microseconds. But variable startup latency (~300ms cold / ~50ms warm
+    // buffer) meant each Preview click played a different *amount* of music
+    // before the user paused — making the seek shift feel like multi-second
+    // drift instead of the actual 0.1s difference.
+    //
+    // Fix:
+    //  1) Wait for readyState >= 3 (HAVE_FUTURE_DATA) before play() so cold
+    //     and warm clicks have the same perceived startup latency.
+    //  2) Audition fixed AUDITION_SEC (2.0s) of audio time, then auto-pause
+    //     via timeupdate. Same length every time → 0.1s shifts now audible.
+    //  3) Live currentTime readout in the boundary editor so the user can
+    //     SEE the seek shifted by 0.1s in addition to hearing it.
+    var AUDITION_SEC = 2.0;
+    var nowEl = document.getElementById('rhTrimNowPlaying_' + takeId);
+    var stopAt = bounds.start + AUDITION_SEC;
     var played = false;
-    var playOnce = function () {
+    var stopped = false;
+    var tickHandler = null;
+
+    function _setNow(text, color) {
+        if (!nowEl) return;
+        nowEl.textContent = text;
+        nowEl.style.color = color || 'var(--text-dim)';
+    }
+
+    function _stopAudition() {
+        if (stopped) return;
+        stopped = true;
+        try { audio.pause(); } catch (_e) {}
+        if (tickHandler) {
+            try { audio.removeEventListener('timeupdate', tickHandler); } catch (_e) {}
+            tickHandler = null;
+        }
+        _setNow('paused @ ' + _rhFmtAbsTimeFine(audio.currentTime), '#94a3b8');
+        _rhSetTakeRowState(takeId, 'paused');
+    }
+
+    function _startPlayback() {
         if (played) return;
         played = true;
-        try { audio.removeEventListener('seeked', playOnce); } catch (_e) {}
+        try { audio.removeEventListener('canplay', _startPlayback); } catch (_e) {}
         if (window.GLObs && window.GLObs.log) {
-            window.GLObs.log('TakePreview', 'seek complete', { requested: bounds.start, actual: audio.currentTime, readyState: audio.readyState });
+            window.GLObs.log('TakePreview', 'audition start', {
+                requested: bounds.start,
+                actual: audio.currentTime,
+                readyState: audio.readyState
+            });
         }
+        tickHandler = function () {
+            if (stopped) return;
+            _setNow('▶ ' + _rhFmtAbsTimeFine(audio.currentTime), '#a78bfa');
+            if (audio.currentTime >= stopAt) _stopAudition();
+        };
+        audio.addEventListener('timeupdate', tickHandler);
         audio.play().catch(function () {});
-    };
-    audio.addEventListener('seeked', playOnce, { once: true });
-    // Bug 2026-05-18: if audio.src was just re-proxified above, the browser
-    // is doing a fresh load — readyState < 1, no metadata yet, can't seek.
-    // The 800ms fallback would fire before metadata arrives and call play()
-    // on an empty buffer. Wait for loadedmetadata before seeking in that
-    // case; once metadata is in, the normal seeked-event path takes over.
+    }
+
     function _seekThenWait() {
         try { audio.currentTime = bounds.start; } catch (e) {}
-        setTimeout(playOnce, 800);
+        _setNow('buffering…', '#fbbf24');
+        // Wait for readyState >= 3 before play. Use 'canplay' event; also
+        // do a synchronous check in case we're already there.
+        if (audio.readyState >= 3) {
+            _startPlayback();
+        } else {
+            audio.addEventListener('canplay', _startPlayback, { once: true });
+            // Safety timeout — if canplay never fires (slow network), play
+            // anyway after 2.5s so the user isn't stuck on "buffering…".
+            setTimeout(function () { if (!played) _startPlayback(); }, 2500);
+        }
     }
+
     if (audio.readyState < 1) {
         audio.addEventListener('loadedmetadata', _seekThenWait, { once: true });
-        // Safety: if metadata never arrives (network failure), still
-        // resolve after 5s so the UI doesn't appear hung.
-        setTimeout(function () { if (!played) playOnce(); }, 5000);
+        setTimeout(function () { if (!played) _seekThenWait(); }, 5000);
     } else {
         _seekThenWait();
     }
     _rhSetTakeRowState(takeId, 'playing');
-    _rhAttachTakeAutoStop(audio, takeId, bounds.end);
 };
 
 window._rhTakeSaveBoundaries = async function (sessionId, takeId) {
