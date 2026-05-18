@@ -5496,8 +5496,8 @@ function _rhTakeRowHTML(take, sessionId, audioAvailable, calMode) {
         ? '<div id="rhTakePlaying_' + escHtml(take.id) + '" style="display:none;margin-top:6px;align-items:center;gap:8px;font-size:0.66em;color:var(--text-dim)">'
             + '<button onclick="window._rhTakeStop(\'' + escHtml(take.id) + '\')" title="Stop this take" style="flex-shrink:0;width:24px;height:24px;border-radius:50%;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#94a3b8;cursor:pointer;font-size:0.9em;line-height:1">✕</button>'
             + '<span id="rhTakeProgTime_' + escHtml(take.id) + '" style="min-width:80px;text-align:center;font-variant-numeric:tabular-nums">0:00 / 0:00</span>'
-            + '<div id="rhTakeProgBar_' + escHtml(take.id) + '" onclick="window._rhTakeSeek(event,\'' + escHtml(take.id) + '\')" style="flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;cursor:pointer;position:relative;overflow:hidden">'
-                + '<div id="rhTakeProgFill_' + escHtml(take.id) + '" style="height:100%;width:0%;background:#818cf8;border-radius:3px;pointer-events:none"></div>'
+            + '<div id="rhTakeProgBar_' + escHtml(take.id) + '" onclick="window._rhTakeSeek(event,\'' + escHtml(take.id) + '\')" onmousedown="window._rhTakeBarDragStart(event,\'' + escHtml(take.id) + '\')" title="Click or drag to seek" style="flex:1;height:12px;background:rgba(255,255,255,0.12);border-radius:6px;cursor:pointer;position:relative;overflow:hidden;border:1px solid rgba(255,255,255,0.06)">'
+                + '<div id="rhTakeProgFill_' + escHtml(take.id) + '" style="height:100%;width:0%;background:linear-gradient(90deg,#818cf8,#a78bfa);border-radius:6px;pointer-events:none;min-width:3px;transition:width 0.08s linear"></div>'
             + '</div>'
         + '</div>'
         : '';
@@ -5944,7 +5944,14 @@ window._rhTakePlay = async function (sessionId, takeId) {
 
     // Phase 3I.6: pause/resume toggle on the same row — avoids the surprise of
     // tearing down audio when the band just wants a brief pause.
-    if (_rhCurrentTake && _rhCurrentTake.takeId === takeId && audio) {
+    // Bug 2026-05-18 (Drew): only take the resume branch if the auto-stop
+    // listener is still attached. After a Trim Preview audition or any
+    // _rhStopAllAudio call, _rhTakeAutoStop is null even though
+    // _rhCurrentTake may still be set — resuming via audio.play() then
+    // leaves the row's progress bar + time display permanently frozen
+    // because nothing's wired to update them. Fall through to the full
+    // play path so _rhAttachTakeAutoStop reattaches.
+    if (_rhCurrentTake && _rhCurrentTake.takeId === takeId && audio && _rhTakeAutoStop) {
         if (!audio.paused) {
             try { audio.pause(); } catch (e) {}
             _rhSetTakeRowState(takeId, 'paused');
@@ -6081,6 +6088,31 @@ window._rhTakeSeek = function (e, takeId) {
     var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     var range = _rhCurrentTake.endSec - _rhCurrentTake.startSec;
     try { audio.currentTime = _rhCurrentTake.startSec + (pct * range); } catch (er) {}
+};
+
+// Bug 2026-05-18 (Drew): drag-to-seek on the take row progress bar. Mousedown
+// captures, mousemove on document updates the seek continuously, mouseup
+// releases. Uses the same bar/range math as _rhTakeSeek above.
+window._rhTakeBarDragStart = function (e, takeId) {
+    if (!_rhCurrentTake || _rhCurrentTake.takeId !== takeId) return;
+    var bar = document.getElementById('rhTakeProgBar_' + takeId);
+    var audio = document.getElementById('rhTakeReviewAudio_' + _rhCurrentTake.sessionId);
+    if (!bar || !audio) return;
+    e.preventDefault();
+    function seekAt(clientX) {
+        var rect = bar.getBoundingClientRect();
+        var pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        var range = _rhCurrentTake.endSec - _rhCurrentTake.startSec;
+        try { audio.currentTime = _rhCurrentTake.startSec + (pct * range); } catch (_e) {}
+    }
+    function onMove(ev) { seekAt(ev.clientX); }
+    function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    seekAt(e.clientX);
 };
 
 // ── Phase 3I.6: boundary editor ──────────────────────────────────────────────
