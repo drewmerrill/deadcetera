@@ -200,7 +200,7 @@ None of these survive a clean OS install. Run/sign into each:
 | Path | Why |
 |---|---|
 | `~/.claude/` | **Auto-memory dir (`memory/`), settings, projects, history — IRREPLACEABLE institutional context across sessions.** Back this up before wipe. |
-| `~/.zshrc` (11.3 KB as of 2026-05-19) | Custom aliases, PATH, env vars |
+| `~/.zshrc` (11.3 KB as of 2026-05-19) | Custom aliases, PATH, env vars. Includes `claude-mem-backup` function (tars `~/.claude/projects/-Users-drewmerrill-Documents-GitHub-deadcetera/memory/` to iCloud Drive — re-run periodically while laptop status is uncertain). |
 | `~/.ssh/` | If you choose to migrate the keypair instead of regenerating. Better: regenerate (see §5). |
 
 ### SHOULD migrate (large, but recoverable from cloud)
