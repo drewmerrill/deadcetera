@@ -400,3 +400,105 @@ At session end:
 - Propose **max 3 durable memory candidates**
 
 Avoid creating standalone session summary docs unless explicitly requested.
+
+---
+
+# GitHub Project Workflow
+
+GitHub Projects is the official GrooveLinx execution system.
+
+Purpose:
+
+* feature tracking
+* sprint management
+* implementation flow
+* collaborative visibility
+
+ChatGPT is NOT the task board.
+
+Claude is NOT the task board.
+
+GitHub Projects owns implementation state.
+
+---
+
+# Stage Definitions
+
+## Idea
+
+Raw concepts, feature thoughts, opportunities, or problems.
+
+May be incomplete or exploratory.
+
+No implementation should begin here.
+
+---
+
+## Specced
+
+Feature/problem has:
+
+* defined objective
+* UX direction
+* implementation approach
+* known constraints
+
+Ready for review and prioritization.
+
+---
+
+## Ready
+
+Approved for implementation.
+
+Claude should be able to execute with:
+
+* clear requirements
+* architecture guidance
+* acceptance criteria
+
+This is the handoff point to implementation.
+
+---
+
+## Building
+
+Actively being implemented/tested/refactored.
+
+May include:
+
+* Claude implementation
+* debugging
+* validation
+* iteration
+
+---
+
+## Shipped
+
+Feature is:
+
+* merged
+* deployed
+* operational
+
+May still require future polish or iteration.
+
+---
+
+# Important Rule
+
+Do NOT duplicate GitHub Project tasks inside governance docs.
+
+Governance docs define:
+
+* strategy
+* architecture
+* continuity
+* priorities
+
+GitHub Projects defines:
+
+* execution state
+* active implementation tracking
+
