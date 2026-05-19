@@ -1428,6 +1428,14 @@ window.sdOpenReadinessPopover = function(safeSong, memberKey, anchorEl) {
         if (prev === memberKey) return;
     }
     var title = (safeSong || '').replace(/\\'/g, "'");
+    // Re-escape apostrophes + backslashes for embedding into the row buttons'
+    // inline onclick strings below. safeSong arrives here with raw apostrophes
+    // because the HTML→JS round-trip on the caller pill already decoded the
+    // first level of escaping. Without this, titles like "Ain't Life Grand"
+    // produced `onclick="sdSaveReadiness('Ain't Life Grand',...)"` — the
+    // unescaped apostrophe closed the JS string early, the onclick was a
+    // syntax error, and the click silently failed.
+    var jsSong = String(safeSong || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     var songScores = (typeof GLStore !== 'undefined' && GLStore.getReadiness) ? (GLStore.getReadiness(title) || {}) : {};
     var currentScore = parseInt(songScores[memberKey], 10);
     if (isNaN(currentScore)) currentScore = -1;
@@ -1442,7 +1450,7 @@ window.sdOpenReadinessPopover = function(safeSong, memberKey, anchorEl) {
     var rows = window.SD_READINESS_SCALE.map(function(d) {
         var isActive = d.score === currentScore;
         return '<button type="button" class="sd-rp-row'+(isActive?' is-active':'')+'" '
-            + 'onclick="sdSaveReadiness(\''+safeSong+'\',\''+memberKey+'\','+d.score+');sdCloseReadinessPopover()" '
+            + 'onclick="sdSaveReadiness(\''+jsSong+'\',\''+memberKey+'\','+d.score+');sdCloseReadinessPopover()" '
             + 'style="--row-color:'+d.color+'">'
             + '<span class="sd-rp-score" style="background:'+d.color+'">'+d.score+'</span>'
             + '<span class="sd-rp-text">'
