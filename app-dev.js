@@ -9809,11 +9809,11 @@ function renderMetronomePage(el) {
     html.push("<div style=\"position:absolute;top:9px;right:9px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#333);box-shadow:0 2px 4px rgba(0,0,0,0.8)\"></div>");
     html.push("<div style=\"position:absolute;bottom:9px;left:9px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#333);box-shadow:0 2px 4px rgba(0,0,0,0.8)\"></div>");
     html.push("<div style=\"position:absolute;bottom:9px;right:9px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#333);box-shadow:0 2px 4px rgba(0,0,0,0.8)\"></div>");
-    // Gold pedal nameplate — engraved with the band name.
-    var _metroBandName = (typeof localStorage !== 'undefined' && localStorage.getItem('deadcetera_band_name')) || 'GrooveLinx';
+    // Gold pedal nameplate — platform brand "GrooveLinx" (per Drew
+    // 2026-05-19: keep this as platform identity).
     html.push("<div style=\"text-align:center;margin-bottom:14px;position:relative;z-index:1\">");
     html.push("<div style=\"display:inline-block;background:linear-gradient(180deg,#d4a843 0%,#8b6010 50%,#c8922a 100%);border-radius:4px;padding:4px 20px;box-shadow:0 2px 6px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.3)\">");
-    html.push("<span style=\"font-size:0.68em;font-weight:900;letter-spacing:0.2em;text-transform:uppercase;color:#1a0e00\">" + _metroBandName.replace(/[<>&\"]/g, '') + "</span>");
+    html.push("<span style=\"font-size:0.68em;font-weight:900;letter-spacing:0.2em;text-transform:uppercase;color:#1a0e00\">GrooveLinx</span>");
     html.push("</div></div>");
     html.push("<div id=\"metroDisplayDigital\" style=\"position:relative;z-index:1;background:#0a0f00;border-radius:8px;border:1px solid #2a2a2a;box-shadow:inset 0 3px 12px rgba(0,0,0,0.9);padding:14px 12px 10px;margin-bottom:14px;text-align:center\">");
     html.push("<div id=\"metroStatusLed\" style=\"position:absolute;top:8px;right:10px;width:8px;height:8px;border-radius:50%;background:#330000;box-shadow:0 0 4px rgba(255,0,0,0.2);transition:all 0.1s\"></div>");
@@ -9883,12 +9883,10 @@ function renderMetronomePage(el) {
     html.push("<label style=\"display:flex;align-items:center;gap:3px;font-size:0.68em;color:rgba(255,255,255,0.35);cursor:pointer\"><input type=\"checkbox\" id=\"mtTrainerOn_9999\" style=\"accent-color:#c8ff00\"> On</label>");
     html.push("</div>");
     html.push("</div>");
-    // Band logo display — bumped 2026-05-19. Was 48px tall, opacity 0.6,
-    // grayscale + brightness-4 filter (the "etched nameplate" pedal look,
-    // designed for the GrooveLinx wordmark fallback). For a custom band
-    // logo we want the actual colors, full opacity, and prominent sizing.
-    html.push("<div style=\"text-align:center;margin-top:14px;position:relative;z-index:1\">");
-    html.push("<img id=\"metroPedalLogo\" src=\"hero-logo.png\" style=\"height:140px;max-width:280px;object-fit:contain\" onerror=\"this.style.display='none'\">");
+    // Band logo display — bumped 2026-05-19 (round 2): 140 → 220px tall,
+    // 280 → 380px max width. Nearly fills the pedal body width.
+    html.push("<div style=\"text-align:center;margin-top:18px;position:relative;z-index:1\">");
+    html.push("<img id=\"metroPedalLogo\" src=\"hero-logo.png\" style=\"height:220px;max-width:380px;width:100%;object-fit:contain\" onerror=\"this.style.display='none'\">");
     html.push("</div>");
     // (IN/OUT decorative jacks removed 2026-05-19 — pure pedal-aesthetic
     // garnish with no functional role. Brushed metal + screws + recessed
