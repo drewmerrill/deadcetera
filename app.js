@@ -8473,12 +8473,30 @@ function mtToggleMetronome(si) {
     var btn = document.getElementById('mtMetronomeToggle_' + si);
     if (mtMetronomeInterval) {
         mtStopMetronome();
-        if (btn) { btn.textContent = '▶ Start'; btn.style.background = '#667eea'; }
+        // Pedal-circle button (si=9999) is icon-only inside an 80px circle —
+        // the red radial gradient stays (real guitar pedals don't change
+        // color on press; the icon change carries the state signal).
+        // Inline-pill button (per-section) keeps the word + color change.
+        if (btn) {
+            if (si === 9999) {
+                btn.textContent = '▶';
+            } else {
+                btn.textContent = '▶ Start';
+                btn.style.background = '#667eea';
+            }
+        }
         _mtTrainerBar = 0;
     } else {
         mtBuildBeatDots(si);
         mtStartMetronome(si);
-        if (btn) { btn.textContent = '⏸ Stop'; btn.style.background = '#ef4444'; }
+        if (btn) {
+            if (si === 9999) {
+                btn.textContent = '⏸';
+            } else {
+                btn.textContent = '⏸ Stop';
+                btn.style.background = '#ef4444';
+            }
+        }
     }
 }
 
@@ -10235,9 +10253,10 @@ function renderMetronomePage(el) {
     html.push("<button onclick=\"mtTapTempo(9999)\" id=\"mtTapBtn_9999\" style=\"background:linear-gradient(180deg,#3a3a3a,#1e1e1e);color:#c8c8c8;border:2px solid #555;padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:900;font-size:0.8em;letter-spacing:0.1em;box-shadow:0 5px 10px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.1);text-transform:uppercase;min-width:56px;flex-shrink:0\">TAP</button>");
     html.push("<div style=\"display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0\">");
     html.push("<div style=\"width:80px;height:80px;border-radius:50%;background:linear-gradient(180deg,#444,#222);border:3px solid #333;box-shadow:0 8px 20px rgba(0,0,0,0.8),0 0 0 3px #1a1a1a,0 0 0 5px #444;padding:6px\">");
-    html.push("<button id=\"mtMetronomeToggle_9999\" onclick=\"mtToggleMetronome(9999)\" style=\"width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 40% 35%,#cc3000,#6b0000);color:white;border:none;cursor:pointer;font-size:1.8em;box-shadow:inset 0 3px 6px rgba(255,255,255,0.1),inset 0 -3px 6px rgba(0,0,0,0.4),0 4px 12px rgba(150,0,0,0.5);display:flex;align-items:center;justify-content:center\">&#x25B6;</button>");
+    // Icon-only button — ▶ stopped / ⏸ playing. Lives entirely inside the
+    // 80px circle. Tooltip carries the action name for accessibility.
+    html.push("<button id=\"mtMetronomeToggle_9999\" onclick=\"mtToggleMetronome(9999)\" title=\"Start / Stop\" aria-label=\"Start or stop the metronome\" style=\"width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 40% 35%,#cc3000,#6b0000);color:white;border:none;cursor:pointer;font-size:2em;box-shadow:inset 0 3px 6px rgba(255,255,255,0.1),inset 0 -3px 6px rgba(0,0,0,0.4),0 4px 12px rgba(150,0,0,0.5);display:flex;align-items:center;justify-content:center;line-height:1\">&#x25B6;</button>");
     html.push("</div>");
-    html.push("<div style=\"font-size:0.55em;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.1em\">START</div>");
     html.push("</div>");
     html.push("<div style=\"display:flex;flex-direction:column;gap:4px;align-items:center;min-width:0;flex-shrink:0\">");
     html.push("<div style=\"font-size:0.55em;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.07em\">Trainer</div>");
@@ -10249,10 +10268,9 @@ function renderMetronomePage(el) {
     html.push("<div style=\"text-align:center;margin-top:6px;position:relative;z-index:1;opacity:0.6;filter:grayscale(1) brightness(4) contrast(1.3)\">");
     html.push("<img id=\"metroPedalLogo\" src=\"hero-logo.png\" style=\"height:48px;max-width:170px;object-fit:contain\" onerror=\"this.style.display='none'\">");
     html.push("</div>");
-    html.push("<div style=\"display:flex;justify-content:space-between;margin-top:10px;padding:0 4px;position:relative;z-index:1\">");
-    html.push("<div style=\"display:flex;align-items:center;gap:3px\"><div style=\"width:10px;height:10px;border-radius:50%;background:#111;border:2px solid #555;box-shadow:inset 0 1px 2px rgba(0,0,0,0.8)\"></div><span style=\"font-size:0.5em;color:rgba(255,255,255,0.2);text-transform:uppercase\">IN</span></div>");
-    html.push("<div style=\"display:flex;align-items:center;gap:3px\"><span style=\"font-size:0.5em;color:rgba(255,255,255,0.2);text-transform:uppercase\">OUT</span><div style=\"width:10px;height:10px;border-radius:50%;background:#111;border:2px solid #555;box-shadow:inset 0 1px 2px rgba(0,0,0,0.8)\"></div></div>");
-    html.push("</div>");
+    // (IN/OUT decorative jacks removed 2026-05-19 — pure pedal-aesthetic
+    // garnish with no functional role. Brushed metal + screws + recessed
+    // BPM display preserve the pedal metaphor on their own.)
     html.push("</div></div></div>");
     el.innerHTML = html.join('');
     mtBuildBeatDots(si);
