@@ -9801,11 +9801,8 @@ function renderMetronomePage(el) {
     html.push("<div class=\"page-header\"><h1>&#x1F941; Metronome</h1><p>Keep time for practice</p></div>");
     html.push("<div style=\"display:flex;justify-content:center;padding:8px 8px 24px\">");
     html.push("<div style=\"width:100%;max-width:420px\">");
-    html.push("<div style=\"display:flex;gap:0;margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid #444;box-shadow:0 2px 8px rgba(0,0,0,0.5)\">");
-    html.push("<button id=\"metroModeDigital\" onclick=\"metroSetMode('digital')\" style=\"flex:1;padding:8px 4px;background:linear-gradient(180deg,#ff6b35,#c43d00);color:white;border:none;font-size:0.7em;font-weight:800;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase\">DIGITAL</button>");
-    html.push("<button id=\"metroModeAnalog\" onclick=\"metroSetMode('analog')\" style=\"flex:1;padding:8px 4px;background:linear-gradient(180deg,#2a2a2a,#1a1a1a);color:rgba(255,255,255,0.4);border:none;border-left:1px solid #444;border-right:1px solid #444;font-size:0.7em;font-weight:800;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase\">ANALOG</button>");
-    html.push("<button id=\"metroModeGroove\" onclick=\"metroSetMode('groove')\" style=\"flex:1;padding:8px 4px;background:linear-gradient(180deg,#2a2a2a,#1a1a1a);color:rgba(255,255,255,0.4);border:none;font-size:0.7em;font-weight:800;letter-spacing:0.08em;cursor:pointer;text-transform:uppercase\">GROOVE</button>");
-    html.push("</div>");
+    // (Mode-switcher tabs DIGITAL / ANALOG / GROOVE removed 2026-05-19 per
+    // Drew's request — digital is now the only mode.)
     html.push("<div id=\"metroPedalBody\" style=\"background:linear-gradient(160deg,#2e2e2e 0%,#1c1c1c 50%,#111 100%);border-radius:18px;border:2px solid #555;box-shadow:0 12px 40px rgba(0,0,0,0.8),inset 0 1px 0 rgba(255,255,255,0.1),inset 0 -3px 6px rgba(0,0,0,0.6);padding:18px 16px 20px;position:relative;overflow:hidden\">");
     html.push("<div style=\"position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,0.015) 0px,rgba(255,255,255,0.015) 1px,transparent 1px,transparent 4px);border-radius:16px;pointer-events:none\"></div>");
     html.push("<div style=\"position:absolute;top:9px;left:9px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#333);box-shadow:0 2px 4px rgba(0,0,0,0.8)\"></div>");
@@ -9884,8 +9881,12 @@ function renderMetronomePage(el) {
     html.push("<label style=\"display:flex;align-items:center;gap:3px;font-size:0.68em;color:rgba(255,255,255,0.35);cursor:pointer\"><input type=\"checkbox\" id=\"mtTrainerOn_9999\" style=\"accent-color:#c8ff00\"> On</label>");
     html.push("</div>");
     html.push("</div>");
-    html.push("<div style=\"text-align:center;margin-top:6px;position:relative;z-index:1;opacity:0.6;filter:grayscale(1) brightness(4) contrast(1.3)\">");
-    html.push("<img id=\"metroPedalLogo\" src=\"hero-logo.png\" style=\"height:48px;max-width:170px;object-fit:contain\" onerror=\"this.style.display='none'\">");
+    // Band logo display — bumped 2026-05-19. Was 48px tall, opacity 0.6,
+    // grayscale + brightness-4 filter (the "etched nameplate" pedal look,
+    // designed for the GrooveLinx wordmark fallback). For a custom band
+    // logo we want the actual colors, full opacity, and prominent sizing.
+    html.push("<div style=\"text-align:center;margin-top:14px;position:relative;z-index:1\">");
+    html.push("<img id=\"metroPedalLogo\" src=\"hero-logo.png\" style=\"height:140px;max-width:280px;object-fit:contain\" onerror=\"this.style.display='none'\">");
     html.push("</div>");
     // (IN/OUT decorative jacks removed 2026-05-19 — pure pedal-aesthetic
     // garnish with no functional role. Brushed metal + screws + recessed
