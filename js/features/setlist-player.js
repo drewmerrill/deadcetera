@@ -627,8 +627,11 @@ window.SetlistPlayer = (function() {
         var pref = getSourcePref();
 
         _overlay.innerHTML = ''
-            + '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;flex-shrink:0">'
-            + '<div id="slpHeader" style="font-size:0.75em;font-weight:600;color:#64748b">' + _esc(name) + '</div>'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;flex-shrink:0;gap:10px">'
+            + '<div id="slpHeader" style="display:flex;align-items:center;gap:8px;font-size:0.75em;font-weight:600;color:#64748b;min-width:0">'
+            +   '<img class="gl-band-logo" src="logo.png" alt="" style="width:24px;height:24px;object-fit:contain;border-radius:4px;flex-shrink:0" onerror="this.style.display=\'none\'">'
+            +   '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(name) + '</span>'
+            + '</div>'
             + '<div style="display:flex;align-items:center;gap:8px">'
             + '<select id="slpSourcePref" onchange="SetlistPlayer._onSourcePrefChange(this.value)" style="font-size:0.7em;padding:3px 6px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:#94a3b8;cursor:pointer">'
             + '<option value="youtube"' + (pref === 'youtube' ? ' selected' : '') + '>YouTube first</option>'
@@ -654,6 +657,7 @@ window.SetlistPlayer = (function() {
             + '</div>'
             + '<div id="slpUpNext" style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;font-size:0.82em;color:#64748b;text-align:center"></div>';
         document.body.appendChild(_overlay);
+        if (typeof window._glRefreshBandLogoSurfaces === 'function') window._glRefreshBandLogoSurfaces();
     }
 
     function _onSourcePrefChange(val) {

@@ -9791,12 +9791,7 @@ async function tunerPlayRef(freq) {
 function renderMetronomePage(el) {
     if (typeof glWakeLock !== 'undefined') glWakeLock.acquire('metronome');
     var si = 9999;
-    try {
-        var slug = typeof getCurrentBandSlug === 'function' ? getCurrentBandSlug() : 'deadcetera';
-        firebaseDB.ref('bands/' + slug + '/profile/logoUrl').once('value', function(snap) {
-            if (snap.val()) { var img = document.getElementById('metroPedalLogo'); if (img) img.src = snap.val(); }
-        });
-    } catch(e) {}
+    // Band-logo hydration via shared .gl-band-logo surface plumbing.
     var html = [];
     html.push("<div class=\"page-header\"><h1>&#x1F941; Metronome</h1><p>Keep time for practice</p></div>");
     html.push("<div style=\"display:flex;justify-content:center;padding:8px 8px 24px\">");
@@ -9886,7 +9881,7 @@ function renderMetronomePage(el) {
     // Band logo display — bumped 2026-05-19 (round 2): 140 → 220px tall,
     // 280 → 380px max width. Nearly fills the pedal body width.
     html.push("<div style=\"text-align:center;margin-top:18px;position:relative;z-index:1\">");
-    html.push("<img id=\"metroPedalLogo\" src=\"hero-logo.png\" style=\"height:220px;max-width:380px;width:100%;object-fit:contain\" onerror=\"this.style.display='none'\">");
+    html.push("<img id=\"metroPedalLogo\" class=\"gl-band-logo\" src=\"hero-logo.png\" style=\"height:220px;max-width:380px;width:100%;object-fit:contain\" onerror=\"this.style.display='none'\">");
     html.push("</div>");
     // (IN/OUT decorative jacks removed 2026-05-19 — pure pedal-aesthetic
     // garnish with no functional role. Brushed metal + screws + recessed
@@ -9894,6 +9889,7 @@ function renderMetronomePage(el) {
     html.push("</div></div></div>");
     el.innerHTML = html.join('');
     mtBuildBeatDots(si);
+    if (typeof window._glRefreshBandLogoSurfaces === 'function') window._glRefreshBandLogoSurfaces();
     setTimeout(function(){ metroSetMode('digital'); }, 50);
 }
 
@@ -10799,9 +10795,38 @@ function _glSaveBtn(btn, saveFn) {
     }
 }
 
+// ── Shared band-logo surface plumbing ────────────────────────────────────────
+// Every band-scoped surface that wants to display the band logo adds an
+// <img class="gl-band-logo"> with a fallback src. This helper hydrates the
+// actual logo from Firebase once per session and applies it to every
+// .gl-band-logo currently in the DOM.
+window._glBandLogoUrl = null;
+window._glApplyBandLogoToAll = function(url) {
+    if (url) window._glBandLogoUrl = url;
+    var useUrl = url || window._glBandLogoUrl;
+    if (!useUrl) return;
+    try {
+        var imgs = document.querySelectorAll('.gl-band-logo');
+        for (var i = 0; i < imgs.length; i++) imgs[i].src = useUrl;
+    } catch(e) { console.warn('[BandLogo] applyAll failed:', e && e.message); }
+};
+window._glHydrateBandLogo = function() {
+    if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
+    var slug = (typeof currentBandSlug !== 'undefined' && currentBandSlug) ? currentBandSlug : 'deadcetera';
+    firebaseDB.ref('bands/' + slug + '/profile/logoUrl').once('value', function(snap) {
+        var url = snap.val();
+        if (url) {
+            window._glBandLogoUrl = url;
+            window._glApplyBandLogoToAll(url);
+        }
+    });
+};
+window._glRefreshBandLogoSurfaces = function() {
+    if (window._glBandLogoUrl) window._glApplyBandLogoToAll();
+    else window._glHydrateBandLogo();
+};
+
 // Band logo: render preview from Firebase if the band has one stored.
-// Called by settingsTab('band') post-render hook so the 🎸 placeholder
-// gets replaced by the actual logo when one exists.
 function _loadBandLogoPreview() {
     try {
         if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
@@ -10882,8 +10907,7 @@ window._handleBandLogoUpload = function(input) {
                     console.log('[BandLogo] Firebase write succeeded');
                     var preview = document.getElementById('setBandLogoPreview');
                     if (preview) preview.innerHTML = '<img src="' + dataUrl + '" alt="Band logo" style="width:100%;height:100%;object-fit:contain">';
-                    var metroImg = document.getElementById('metroPedalLogo');
-                    if (metroImg) metroImg.src = dataUrl;
+                    if (window._glApplyBandLogoToAll) window._glApplyBandLogoToAll(dataUrl);
                     if (typeof showToast === 'function') showToast('✓ Band logo saved', 4000);
                 })
                 .catch(function(err) {

@@ -84,6 +84,7 @@ async function _hdRenderInternal() {
             var _ctxCached = _computeHomeContext(_homeBundle);
             container.innerHTML = _renderDashboard(_homeBundle, _ctxCached);
             console.log('[PERF] renderHomeDashboard cache-fast-path painted ' + Math.round(performance.now() - _hdRenderT0) + 'ms (skipped skeleton + async load)');
+            if (typeof window._glRefreshBandLogoSurfaces === 'function') window._glRefreshBandLogoSurfaces();
             _triggerDashboardEntrance();
             _scheduleWeakSongsFill(_homeBundle);
             _scheduleActionOwedFill();
@@ -108,6 +109,7 @@ async function _hdRenderInternal() {
         var context = _computeHomeContext(bundle);
         container.innerHTML = _renderDashboard(bundle, context);
         console.log('[PERF] renderHomeDashboard painted ' + Math.round(performance.now()) + 'ms (took ' + Math.round(performance.now() - _hdRenderT0) + 'ms)');
+        if (typeof window._glRefreshBandLogoSurfaces === 'function') window._glRefreshBandLogoSurfaces();
         _triggerDashboardEntrance();
         _scheduleWeakSongsFill(bundle);
         _scheduleActionOwedFill();
@@ -161,6 +163,7 @@ window.refreshHomeDashboard = function refreshHomeDashboard() {
     if (_homeBundle && (Date.now() - _homeCacheTime < _HOME_CACHE_TTL)) {
         var context = _computeHomeContext(_homeBundle);
         container.innerHTML = _renderDashboard(_homeBundle, context);
+        if (typeof window._glRefreshBandLogoSurfaces === 'function') window._glRefreshBandLogoSurfaces();
         _triggerDashboardEntrance();
         _scheduleWeakSongsFill(_homeBundle);
         _scheduleActionOwedFill();
@@ -1707,7 +1710,22 @@ function _renderLockinDashboard(bundle, wf, isStoner) {
         var _hdAge = Math.floor((Date.now() - _homeCacheTime) / 60000);
         _hdFreshLabel = _hdAge < 1 ? 'Updated just now' : 'Updated ' + _hdAge + 'm ago';
     }
+    // Band identity header — band logo (.gl-band-logo) + band name at the
+    // top of the dashboard. _glRefreshBandLogoSurfaces is called post-render
+    // (below in the render-completion path) to swap the fallback src out
+    // for the actual band logo from Firebase.
+    var _hdBandName = (typeof localStorage !== 'undefined' && localStorage.getItem('deadcetera_band_name')) || 'GrooveLinx';
+    var _hdSafeBandName = String(_hdBandName).replace(/[<>&"]/g, '');
+    var _hdBandHeader = '<div class="hd-band-header" style="display:flex;align-items:center;gap:14px;padding:6px 4px 14px;margin-bottom:8px">'
+        + '<img class="gl-band-logo" src="hero-logo.png" alt="" style="width:56px;height:56px;object-fit:contain;flex-shrink:0" onerror="this.style.display=\'none\'">'
+        + '<div style="min-width:0;flex:1;overflow:hidden">'
+            + '<div style="font-size:0.6em;font-weight:700;letter-spacing:0.14em;color:var(--text-dim,#64748b);text-transform:uppercase;margin-bottom:2px">Band</div>'
+            + '<div style="font-size:1.35em;font-weight:800;color:var(--text,#f1f5f9);line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _hdSafeBandName + '</div>'
+        + '</div>'
+    + '</div>';
+
     return '<div class="home-dashboard hd-system">'
+        + _hdBandHeader
         + '<div class="hd-date">' + dateStr + (_hdFreshLabel ? '<span style="font-size:0.55em;color:var(--text-dim,#64748b);margin-left:8px;font-weight:400">' + _hdFreshLabel + '</span>' : '') + '</div>'
         + '<div class="hd-layout">'
         + '<div class="hd-primary">' + _leftHtml + '</div>'

@@ -310,6 +310,7 @@
     }
     overlay.innerHTML = _buildStageHTML();
     overlay.style.display = 'flex';
+    if (typeof window._glRefreshBandLogoSurfaces === 'function') window._glRefreshBandLogoSurfaces();
 
     // Wire jump menu close-on-outside-click
     overlay.addEventListener('click', function (e) {
@@ -335,9 +336,12 @@
       /* Header */
       '<div class="lg-header">' +
         '<button class="lg-btn-exit" onclick="lgExit()">&#8592; EXIT</button>' +
-        '<div class="lg-header-center">' +
-          '<span class="lg-band-name">DEADCETERA</span>' +
-          '<span class="lg-setlist-name">' + setName + '</span>' +
+        '<div class="lg-header-center" style="display:flex;align-items:center;gap:10px">' +
+          '<img class="gl-band-logo" src="logo.png" alt="" style="width:32px;height:32px;object-fit:contain;border-radius:5px;flex-shrink:0" onerror="this.style.display=\'none\'">' +
+          '<div style="display:flex;flex-direction:column;min-width:0">' +
+            '<span class="lg-band-name">' + _esc((typeof localStorage !== 'undefined' && localStorage.getItem('deadcetera_band_name')) || 'DEADCETERA').toUpperCase() + '</span>' +
+            '<span class="lg-setlist-name">' + setName + '</span>' +
+          '</div>' +
         '</div>' +
         '<div class="lg-header-right">' +
           '<span class="lg-song-counter" id="lgCounter">1 / ' + totalSongs + '</span>' +
