@@ -1868,3 +1868,22 @@ Future contributors should not "fix" these without checking back.
   - **Discovered:** 2026-05-15 · bb594402
   - **Status:** dismissed — intentional preservation
     (see `project_lalal_fadr_hierarchy` memory)
+
+- **Finding:** `app-dev.js`'s `_renderNotifSettings` is missing the
+  entire SMS Notifications section that exists in production `app.js`
+  (lines 10778–10801 in app.js are absent in app-dev.js, which ends
+  the function at the master/preference toggles). Same drift applies
+  to `_smsToggleOptIn`, `_smsNormalizePhone`, and now
+  `_smsSendTestPing` — none of these exist in app-dev.js. Surfaced
+  while wiring the SMS pipeline smoke test on 2026-05-19.
+  - **Why deferred:** Out of scope for the smoke-test wiring. Mirroring
+    ~80 LOC of SMS opt-in flow + test handler into app-dev.js plus the
+    surrounding stylistic conformance is a separate deliberate sync
+    pass. The dev surface currently has no SMS UI at all, so users
+    testing dev simply don't see the channel.
+  - **Trigger:** Next dev/prod sync pass on notifications, OR if any
+    band member starts using `app-dev.js` for SMS-relevant testing.
+    Per `feedback_dev_prod_sync.md` this should not linger.
+  - **Discovered:** 2026-05-19 · build `20260519-174217` · while
+    wiring SMS pipeline smoke test
+  - **Status:** open

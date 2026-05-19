@@ -10798,6 +10798,13 @@ async function _renderNotifSettings() {
         + '<input type="tel" id="smsPhoneInput" placeholder="(555) 123-4567" value="' + safePhone + '" autocomplete="tel" inputmode="tel" style="flex:1;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(0,0,0,0.3);color:var(--text);font-size:0.88em;font-family:inherit"' + (smsOptedIn ? ' disabled' : '') + '>'
         + '<button onclick="_smsToggleOptIn()" id="smsToggleBtn" style="padding:8px 18px;border-radius:6px;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;border:1px solid ' + (smsOptedIn ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.1)') + ';background:' + (smsOptedIn ? 'rgba(34,197,94,0.1)' : 'none') + ';color:' + (smsOptedIn ? '#86efac' : 'var(--text-dim)') + ';white-space:nowrap">' + (smsOptedIn ? '✓ On' : 'Enable SMS') + '</button>'
         + '</div>'
+        + (smsOptedIn
+            ? '<div style="margin-top:14px;padding-top:14px;border-top:1px dashed rgba(255,255,255,0.06)">'
+                + '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:8px">🧪 <strong>Pipeline diagnostic</strong> — sends a test SMS to your stored number to verify carrier delivery. Counts against your daily SMS budget.</div>'
+                + '<button onclick="_smsSendTestPing()" id="smsTestBtn" style="padding:6px 14px;border-radius:6px;cursor:pointer;font-size:0.78em;font-weight:600;font-family:inherit;border:1px solid rgba(255,255,255,0.1);background:none;color:var(--text-dim)">Send test SMS to ' + safePhone + '</button>'
+                + '<div id="smsTestResult" style="font-size:0.72em;color:var(--text-dim);margin-top:8px;font-family:ui-monospace,SF Mono,Menlo,monospace;word-break:break-all"></div>'
+                + '</div>'
+            : '')
         + '</div>';
 
     el.innerHTML = html;
@@ -10893,6 +10900,54 @@ window._smsToggleOptIn = async function() {
         if (typeof showToast === 'function') showToast('⚠ Subscribed but SMS send errored: ' + e.message, 7000);
     }
     if (typeof _renderNotifSettings === 'function') _renderNotifSettings();
+};
+
+window._smsSendTestPing = async function() {
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    if (!memberKey || typeof firebaseDB === 'undefined' || !firebaseDB || typeof bandPath !== 'function') {
+        if (typeof showToast === 'function') showToast('⚠ Sign in first', 4000);
+        return;
+    }
+    var ref = firebaseDB.ref(bandPath('sms_subscriptions/' + memberKey));
+    var snap = await ref.once('value');
+    var sub = snap.val() || {};
+    if (sub.status !== 'active' || !sub.phone) {
+        if (typeof showToast === 'function') showToast('⚠ Opt in first (enable SMS above)', 5000);
+        return;
+    }
+    if (!confirm('Send a test SMS to ' + sub.phone + '?\n\nBody: "GrooveLinx: SMS pipeline test. Reply STOP to opt out, HELP for help. Message and data rates may apply."')) return;
+
+    var btn = document.getElementById('smsTestBtn');
+    var resultEl = document.getElementById('smsTestResult');
+    var origLabel = btn ? btn.textContent : '';
+    if (btn) { btn.textContent = 'Sending…'; btn.disabled = true; }
+    if (resultEl) resultEl.textContent = '';
+
+    var WORKER_BASE = 'https://deadcetera-proxy.drewmerrill.workers.dev';
+    var testBody = "GrooveLinx: SMS pipeline test. Reply STOP to opt out, HELP for help. Message and data rates may apply.";
+    try {
+        var res = await fetch(WORKER_BASE + '/sms/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: sub.phone, body: testBody })
+        });
+        var json = await res.json();
+        if (json && json.success) {
+            if (typeof showToast === 'function') showToast('✓ Test SMS sent — check your phone', 5000);
+            if (resultEl) resultEl.textContent = '✓ sid=' + json.sid + ' status=' + json.status;
+            console.log('[SMS test] sent:', json);
+        } else {
+            var err = (json && json.error) || ('HTTP ' + res.status);
+            if (typeof showToast === 'function') showToast('⚠ Test SMS failed: ' + err, 8000);
+            if (resultEl) resultEl.textContent = '✗ ' + err;
+            console.warn('[SMS test] failed:', json);
+        }
+    } catch(e) {
+        if (typeof showToast === 'function') showToast('⚠ Worker call failed: ' + e.message, 7000);
+        if (resultEl) resultEl.textContent = '✗ ' + e.message;
+        console.warn('[SMS test] worker error:', e);
+    }
+    if (btn) { btn.textContent = origLabel; btn.disabled = false; }
 };
 
 window._toggleNotifMaster = async function() {
