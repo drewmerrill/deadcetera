@@ -49,6 +49,7 @@ Supporting docs:
 - `02_GrooveLinx/notes/consolidation_recommendations.md`
 - `02_GrooveLinx/specs/groovelinx-dependency-map.md`
 - `02_GrooveLinx/specs/groovelinx-stabilization-audit.md`
+- `02_GrooveLinx/migration/LAPTOP_INVENTORY_AND_MIGRATION.md` — dev-machine software inventory + migration plan (living doc; update on every install/license/auth change)
 
 If memory conflicts with repo docs, **repo docs win**.
 
