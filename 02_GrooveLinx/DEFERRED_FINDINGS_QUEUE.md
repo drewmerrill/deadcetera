@@ -1887,3 +1887,25 @@ Future contributors should not "fix" these without checking back.
   - **Discovered:** 2026-05-19 · build `20260519-174217` · while
     wiring SMS pipeline smoke test
   - **Status:** open
+
+- **Finding:** Inline-onclick handlers in `js/features/song-detail.js`
+  that receive `safeSong` via the HTML→JS parse and then re-emit it
+  into another inline onclick attribute are vulnerable to a classic
+  quoting bug for titles with apostrophes (e.g. "Ain't Life Grand",
+  "Don't Let Go"). One instance found + fixed today
+  (`sdOpenReadinessPopover` — readiness picker silently failed on
+  apostrophe-songs, build `20260519-184759`). Grep for `safeSong = `
+  in song-detail.js shows ~20 other escape sites; most are at render
+  entry points (where the title is freshly escaped from `_sdCurrentSong`
+  or similar), but if any of them are nested inside a handler that
+  receives an already-decoded value through an inline onclick, the
+  same bug pattern may exist.
+  - **Why deferred:** No reported instance beyond the readiness picker.
+    Auditing all 20+ sites preemptively is scope creep.
+  - **Trigger:** Any new "click does nothing only on
+    apostrophe-songs" bug report. Fix template:
+    `var jsSong = String(safeSong || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");`
+    then use `jsSong` (not `safeSong`) in the re-emitted onclick.
+  - **Discovered:** 2026-05-19 · build `20260519-184759` · while
+    fixing readiness picker
+  - **Status:** open
