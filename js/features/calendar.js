@@ -6894,6 +6894,66 @@ function _calShowMobileDateCard(ds, y, m, d) {
         html += '</div>';
     }
 
+    // Event management — show actual events with RSVP / Edit / Cancel for
+    // rehearsals + gigs. Mobile equivalent of the desktop calDayClick
+    // _existingHtml block. Without this, the mobile bottom sheet only
+    // surfaced "Open rehearsal" — leaving no way to RSVP/edit/cancel from
+    // iPhone. Reuses the same global handlers as desktop:
+    //   _calToggleRsvp / calEditEventById / _calDeleteFromPanel
+    // _calDeleteFromPanel already fires the rehearsal-cancellation SMS+FCM
+    // broadcast prompt when ev.type === 'rehearsal' and the date is future.
+    if (_cellState === 'rehearsal' || _cellState === 'gig') {
+        var _dateEvents = (typeof _calEventsByDate !== 'undefined') ? (_calEventsByDate[ds] || []) : [];
+        var _matchingEvents = _dateEvents.filter(function(ev) {
+            return ev.type === _cellState && !ev._syntheticFromFreeBusy;
+        });
+        if (_matchingEvents.length > 0) {
+            var _bm = (typeof bandMembers !== 'undefined') ? bandMembers : {};
+            var _members = (typeof BAND_MEMBERS_ORDERED !== 'undefined') ? BAND_MEMBERS_ORDERED : [];
+            html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--gl-border-subtle)">';
+            _matchingEvents.forEach(function(ev) {
+                var evId = ev.eventId || ev.id || '';
+                if (!evId) return;
+                var _evTime = ev.time ? (ev.time + (ev.endTime ? '–' + ev.endTime : '')) : (ev.isAllDay ? 'all day' : '');
+                var _evLoc = ev.location || ev.venue || '';
+                var _meta = [_evTime, _evLoc].filter(Boolean).join(' · ');
+                html += '<div style="margin-bottom:8px">';
+                if (_meta) {
+                    html += '<div style="font-size:0.72em;color:var(--gl-text-tertiary);margin-bottom:8px">' + _meta + '</div>';
+                }
+                // RSVP row (member initials + status icon, tap to cycle)
+                var _avail = ev.availability || {};
+                if (_members.length > 0) {
+                    html += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">';
+                    _members.forEach(function(ref) {
+                        var mKey = (typeof ref === 'object') ? ref.key : ref;
+                        var name = _bm[mKey] ? _bm[mKey].name : mKey;
+                        var short = name.split(' ')[0];
+                        var a = _avail[mKey];
+                        var status = a ? a.status : null;
+                        var rIcon = status === 'yes' ? '✔' : status === 'no' ? '✖' : status === 'maybe' ? '?' : '•';
+                        var rColor = status === 'yes' ? 'var(--gl-green)' : status === 'no' ? '#f87171' : status === 'maybe' ? 'var(--gl-amber)' : 'var(--gl-text-tertiary)';
+                        var _nextStatus = !status ? 'yes' : status === 'yes' ? 'no' : status === 'no' ? null : 'yes';
+                        var _nextVal = _nextStatus === null ? 'null' : "'" + _nextStatus + "'";
+                        // After toggle, re-render the sheet so the new status is reflected.
+                        // _calToggleRsvp is async; setTimeout 200ms gives the Firebase/Drive
+                        // write + _calEventsByDate refresh time to land before re-render.
+                        var _reRender = '_calShowMobileDateCard(\'' + safDs + '\',' + y + ',' + m + ',' + d + ')';
+                        html += '<span onclick="_calToggleRsvp(\'' + evId + '\',\'' + mKey + '\',' + _nextVal + ',\'' + safDs + '\');setTimeout(function(){' + _reRender + '},200)" style="font-size:0.78em;color:' + rColor + ';cursor:pointer;padding:4px 6px;border-radius:4px;background:rgba(255,255,255,0.03);min-height:32px;display:inline-flex;align-items:center" title="Tap to change RSVP (✔=yes ✖=no •=unknown)">' + rIcon + ' ' + short + '</span>';
+                    });
+                    html += '</div>';
+                }
+                // Edit + Cancel buttons
+                html += '<div style="display:flex;gap:8px">';
+                html += '<button onclick="_calCloseMobileCard();calEditEventById(\'' + evId + '\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;min-height:44px">✏️ Edit</button>';
+                html += '<button onclick="_calCloseMobileCard();_calDeleteFromPanel(\'' + evId + '\',\'' + safDs + '\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.06);color:#f87171;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;min-height:44px">✕ Cancel</button>';
+                html += '</div>';
+                html += '</div>';
+            });
+            html += '</div>';
+        }
+    }
+
     // CTA — quick event type buttons for schedulable dates
     if (ctaLabel && ctaAction && (_cellState === 'best' || _cellState === 'blocked' || _cellState === 'default')) {
         html += '<div style="display:flex;gap:6px;margin-top:12px">';
