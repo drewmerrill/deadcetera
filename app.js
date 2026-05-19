@@ -10465,9 +10465,11 @@ function settingsTab(tab, btn) {
                 <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">Used across your band workspace. Band ID: <code style="color:var(--accent-light)">${currentBandSlug}</code></div></div>
             <div class="form-row" style="margin-top:12px"><span class="form-label">Band Logo</span>
                 <div style="display:flex;align-items:center;gap:12px">
-                    <div style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border)">🎸</div>
-                    <div><input type="file" accept="image/*" class="app-input" style="padding:6px;font-size:0.82em">
-                    <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Displays in the top navigation bar and metronome screen.</div></div>
+                    <div id="setBandLogoPreview" style="width:48px;height:48px;border-radius:10px;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-size:1.5em;border:1px dashed var(--border);overflow:hidden;flex-shrink:0">🎸</div>
+                    <div style="flex:1;min-width:0">
+                        <input type="file" id="setBandLogoFile" accept="image/*" class="app-input" onchange="_handleBandLogoUpload(this)" style="padding:6px;font-size:0.82em">
+                        <div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">200×200 PNG recommended. Auto-saves on selection. Displays in the metronome screen and band-scoped surfaces.</div>
+                    </div>
                 </div></div>
         </div>
         <div class="app-card"><h3>🎧 Playback Preference</h3>
@@ -10600,6 +10602,7 @@ function settingsTab(tab, btn) {
     if (tab === 'uat') _glRefreshUAT();
     if (tab === 'plan') _renderPlanTab();
     if (tab === 'data') checkSyncStatus();
+    if (tab === 'band') _loadBandLogoPreview();
     if (tab === 'profile' || !tab) setTimeout(initSettingsAddressAutocomplete, 300);
 }
 
@@ -11333,6 +11336,93 @@ function _glSaveBtn(btn, saveFn) {
         console.error('Save failed:', err);
     }
 }
+
+// Band logo: render preview from Firebase if the band has one stored.
+// Called by settingsTab('band') post-render hook so the 🎸 placeholder
+// gets replaced by the actual logo when one exists.
+function _loadBandLogoPreview() {
+    try {
+        if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
+        var slug = typeof getCurrentBandSlug === 'function' ? getCurrentBandSlug() : null;
+        if (!slug) return;
+        firebaseDB.ref('bands/' + slug + '/profile/logoUrl').once('value', function(snap) {
+            var url = snap.val();
+            var el = document.getElementById('setBandLogoPreview');
+            if (!el) return;
+            if (url) {
+                el.innerHTML = '<img src="' + String(url).replace(/"/g, '&quot;') + '" alt="Band logo" style="width:100%;height:100%;object-fit:contain">';
+            }
+        });
+    } catch(e) { console.warn('[BandLogo] preview load failed:', e && e.message); }
+}
+
+// Band logo upload: file picker → canvas resize to 200×200 (preserving
+// aspect ratio, transparent background) → PNG data URL → Firebase write
+// at bands/{slug}/profile/logoUrl (same path the metronome reads from).
+// Data URL keeps it self-contained — no Storage/R2 setup needed for what
+// is at most a ~100KB asset. Auto-saves on selection (no separate Save
+// button) since the file input is itself the commitment action.
+window._handleBandLogoUpload = function(input) {
+    var file = input && input.files && input.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+        if (typeof showToast === 'function') showToast('⚠ Please pick an image file', 5000);
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        if (typeof showToast === 'function') showToast('⚠ Image too large (max 5MB before resize)', 5000);
+        return;
+    }
+    var slug = typeof getCurrentBandSlug === 'function' ? getCurrentBandSlug() : null;
+    if (!slug || typeof firebaseDB === 'undefined' || !firebaseDB) {
+        if (typeof showToast === 'function') showToast('⚠ Sign in first', 4000);
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+        var img = new Image();
+        img.onload = function() {
+            var canvas = document.createElement('canvas');
+            canvas.width = 200;
+            canvas.height = 200;
+            var ctx = canvas.getContext('2d');
+            // Aspect-preserving fit into 200×200 with transparent background
+            var scale = Math.min(200 / img.width, 200 / img.height);
+            var w = Math.round(img.width * scale);
+            var h = Math.round(img.height * scale);
+            var x = Math.round((200 - w) / 2);
+            var y = Math.round((200 - h) / 2);
+            ctx.clearRect(0, 0, 200, 200);
+            ctx.drawImage(img, x, y, w, h);
+            var dataUrl;
+            try { dataUrl = canvas.toDataURL('image/png'); }
+            catch(e) {
+                if (typeof showToast === 'function') showToast('⚠ Could not process image: ' + e.message, 6000);
+                return;
+            }
+            firebaseDB.ref('bands/' + slug + '/profile/logoUrl').set(dataUrl)
+                .then(function() {
+                    var preview = document.getElementById('setBandLogoPreview');
+                    if (preview) preview.innerHTML = '<img src="' + dataUrl + '" alt="Band logo" style="width:100%;height:100%;object-fit:contain">';
+                    // Propagate to any live metronome surface
+                    var metroImg = document.getElementById('metroPedalLogo');
+                    if (metroImg) metroImg.src = dataUrl;
+                    if (typeof showToast === 'function') showToast('✓ Band logo saved', 4000);
+                })
+                .catch(function(err) {
+                    if (typeof showToast === 'function') showToast('⚠ Save failed: ' + (err && err.message || 'unknown'), 6000);
+                });
+        };
+        img.onerror = function() {
+            if (typeof showToast === 'function') showToast('⚠ Could not decode image — try a PNG or JPG', 6000);
+        };
+        img.src = ev.target.result;
+    };
+    reader.onerror = function() {
+        if (typeof showToast === 'function') showToast('⚠ Could not read file', 5000);
+    };
+    reader.readAsDataURL(file);
+};
 
 function _saveBandName(btn) {
     _glSaveBtn(btn, function() {
