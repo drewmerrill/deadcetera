@@ -6943,10 +6943,15 @@ function _calShowMobileDateCard(ds, y, m, d) {
                     });
                     html += '</div>';
                 }
-                // Edit + Cancel buttons
+                // Edit + Cancel buttons. Destructive button label is
+                // type-explicit ("Cancel rehearsal" / "Cancel gig") so it
+                // can't be confused with the sheet's ✕ close button or
+                // with a generic modal-cancel ("go back / abort"). Drops
+                // the ✕ icon for the same reason.
+                var _cancelLabel = ev.type === 'gig' ? 'Cancel gig' : (ev.type === 'rehearsal' ? 'Cancel rehearsal' : 'Cancel event');
                 html += '<div style="display:flex;gap:8px">';
                 html += '<button onclick="_calCloseMobileCard();calEditEventById(\'' + evId + '\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(99,102,241,0.25);background:rgba(99,102,241,0.06);color:#a5b4fc;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;min-height:44px">✏️ Edit</button>';
-                html += '<button onclick="_calCloseMobileCard();_calDeleteFromPanel(\'' + evId + '\',\'' + safDs + '\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.06);color:#f87171;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;min-height:44px">✕ Cancel</button>';
+                html += '<button onclick="_calCloseMobileCard();_calDeleteFromPanel(\'' + evId + '\',\'' + safDs + '\')" style="flex:1;padding:10px;border-radius:8px;border:1px solid rgba(239,68,68,0.25);background:rgba(239,68,68,0.06);color:#f87171;cursor:pointer;font-size:0.82em;font-weight:700;font-family:inherit;min-height:44px">' + _cancelLabel + '</button>';
                 html += '</div>';
                 html += '</div>';
             });
