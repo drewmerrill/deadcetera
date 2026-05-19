@@ -153,13 +153,15 @@ window.GLPlayerUI = (function() {
             + '<div id="glpProgress" style="font-size:0.8em;color:#64748b;text-align:center"></div>'
             + '<div id="glpFallback" style="display:none;text-align:center;margin-top:12px;width:100%;max-width:400px"></div>'
             + '</div>'
-            // Controls
-            + '<div style="display:flex;align-items:center;justify-content:center;gap:16px;padding:20px;flex-shrink:0">'
-            + '<button onclick="GLPlayerEngine.prev()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em" title="Previous song">\u23EE</button>'
-            + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.65em;font-weight:700" title="Back 10s">-10s</button>'
-            + '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em">\u23F8</button>'
-            + '<button onclick="GLPlayerEngine.seekRelative(10)" style="width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.65em;font-weight:700" title="Forward 10s">+10s</button>'
-            + '<button onclick="GLPlayerEngine.next()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em" title="Next song">\u23ED</button>'
+            // Controls \u2014 full-width row, space-around for even thumb distribution.
+            // Secondary buttons standardized at 48px (iOS HIG 44px minimum + 4px slack).
+            // Container max-width keeps them within thumb reach on tablet/desktop.
+            + '<div style="display:flex;align-items:center;justify-content:space-around;gap:8px;padding:16px 12px;flex-shrink:0;max-width:520px;width:100%;margin:0 auto;box-sizing:border-box">'
+            + '<button onclick="GLPlayerEngine.prev()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em;flex-shrink:0" title="Previous song">\u23EE</button>'
+            + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em;font-weight:700;flex-shrink:0" title="Back 10s">-10s</button>'
+            + '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em;flex-shrink:0">\u23F8</button>'
+            + '<button onclick="GLPlayerEngine.seekRelative(10)" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em;font-weight:700;flex-shrink:0" title="Forward 10s">+10s</button>'
+            + '<button onclick="GLPlayerEngine.next()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em;flex-shrink:0" title="Next song">\u23ED</button>'
             + '</div>'
             // Up next
             + '<div id="glpUpNext" style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;font-size:0.82em;color:#64748b;text-align:center"></div>';
