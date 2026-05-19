@@ -10804,8 +10804,9 @@ function _glSaveBtn(btn, saveFn) {
 function _loadBandLogoPreview() {
     try {
         if (typeof firebaseDB === 'undefined' || !firebaseDB) return;
-        var slug = typeof getCurrentBandSlug === 'function' ? getCurrentBandSlug() : null;
-        if (!slug) return;
+        // `getCurrentBandSlug` (the function) doesn't exist in this
+        // codebase — only the `currentBandSlug` variable does.
+        var slug = (typeof currentBandSlug !== 'undefined' && currentBandSlug) ? currentBandSlug : 'deadcetera';
         firebaseDB.ref('bands/' + slug + '/profile/logoUrl').once('value', function(snap) {
             var url = snap.val();
             var el = document.getElementById('setBandLogoPreview');
@@ -10838,10 +10839,12 @@ window._handleBandLogoUpload = function(input) {
         if (typeof showToast === 'function') showToast('⚠ Image too large (max 5MB before resize)', 5000);
         return;
     }
-    var slug = typeof getCurrentBandSlug === 'function' ? getCurrentBandSlug() : null;
+    // `getCurrentBandSlug` (the function) doesn't exist — only the
+    // `currentBandSlug` variable does (declared in firebase-service.js).
+    var slug = (typeof currentBandSlug !== 'undefined' && currentBandSlug) ? currentBandSlug : 'deadcetera';
     console.log('[BandLogo] slug:', slug, '| firebaseDB:', typeof firebaseDB !== 'undefined' && !!firebaseDB);
     if (!slug || typeof firebaseDB === 'undefined' || !firebaseDB) {
-        if (typeof showToast === 'function') showToast('⚠ Sign in first', 4000);
+        if (typeof showToast === 'function') showToast('⚠ Band context not ready — refresh the page', 4000);
         return;
     }
     if (typeof showToast === 'function') showToast('Processing logo…', 3000);
