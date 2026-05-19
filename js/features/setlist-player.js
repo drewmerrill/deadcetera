@@ -433,20 +433,40 @@ window.SetlistPlayer = (function() {
     // \u2500\u2500 Autoplay-block detection \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     // YT.Player onStateChange should reach PLAYING within ~1s on a healthy
     // start. If it doesn't, autoplay is being suppressed by the browser.
+    // 2026-05-19: extended the check beyond `state !== PLAYING`. On iOS
+    // Safari, YouTube can briefly report state=1 (PLAYING) and even fire
+    // the corresponding state-change event, but the actual video doesn't
+    // start because autoplay was blocked. The single tell that survives
+    // this is `getCurrentTime()` — if it hasn't advanced from the value
+    // captured when the watchdog was armed, autoplay is blocked even when
+    // state momentarily reports PLAYING. Same fix also syncs _isPlaying
+    // false when the overlay renders so the pause icon flips back to ▶.
     var _autoplayWatchdog = null;
+    var _autoplayWatchdogStartTime = -1;
     function _armAutoplayWatchdog() {
         _clearAutoplayWatchdog();
+        try {
+            _autoplayWatchdogStartTime = (_player && _player.getCurrentTime) ? _player.getCurrentTime() : -1;
+        } catch(_e) { _autoplayWatchdogStartTime = -1; }
         _autoplayWatchdog = setTimeout(function() {
             try {
-                var st = _player && _player.getPlayerState ? _player.getPlayerState() : -1;
-                if (st !== 1) _showAutoplayBlockedOverlay();
+                var st = (_player && _player.getPlayerState) ? _player.getPlayerState() : -1;
+                var nowTime = (_player && _player.getCurrentTime) ? _player.getCurrentTime() : -1;
+                var stuck = (_autoplayWatchdogStartTime >= 0 && nowTime >= 0 && nowTime === _autoplayWatchdogStartTime);
+                if (st !== 1 || stuck) _showAutoplayBlockedOverlay();
             } catch(_e) { _showAutoplayBlockedOverlay(); }
-        }, 1600);
+        }, 1800);
     }
     function _clearAutoplayWatchdog() {
         if (_autoplayWatchdog) { clearTimeout(_autoplayWatchdog); _autoplayWatchdog = null; }
+        _autoplayWatchdogStartTime = -1;
     }
     function _showAutoplayBlockedOverlay() {
+        // Flip _isPlaying false so the pause icon in the controls reflects
+        // reality. Without this, even when the tap-to-play overlay shows
+        // correctly, the controls still display ⏸ as if audio is playing.
+        _isPlaying = false;
+        _updatePlayPauseBtn();
         // Notify any contract-adapter subscribers (Phase C.4 surfaces this
         // as the canonical AUTOPLAY_BLOCKED event). Fire-and-forget — does
         // not change overlay rendering behavior.
