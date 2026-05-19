@@ -10824,25 +10824,33 @@ function _loadBandLogoPreview() {
 // is at most a ~100KB asset. Auto-saves on selection (no separate Save
 // button) since the file input is itself the commitment action.
 window._handleBandLogoUpload = function(input) {
+    console.log('[BandLogo] _handleBandLogoUpload invoked');
     var file = input && input.files && input.files[0];
+    console.log('[BandLogo] file:', file ? { name: file.name, type: file.type, size: file.size } : 'NONE');
     if (!file) return;
     if (!/^image\//.test(file.type)) {
-        if (typeof showToast === 'function') showToast('⚠ Please pick an image file', 5000);
+        console.warn('[BandLogo] rejected: not an image type:', file.type);
+        if (typeof showToast === 'function') showToast('⚠ Please pick an image file (got: ' + file.type + ')', 6000);
         return;
     }
     if (file.size > 5 * 1024 * 1024) {
+        console.warn('[BandLogo] rejected: file too large:', file.size);
         if (typeof showToast === 'function') showToast('⚠ Image too large (max 5MB before resize)', 5000);
         return;
     }
     var slug = typeof getCurrentBandSlug === 'function' ? getCurrentBandSlug() : null;
+    console.log('[BandLogo] slug:', slug, '| firebaseDB:', typeof firebaseDB !== 'undefined' && !!firebaseDB);
     if (!slug || typeof firebaseDB === 'undefined' || !firebaseDB) {
         if (typeof showToast === 'function') showToast('⚠ Sign in first', 4000);
         return;
     }
+    if (typeof showToast === 'function') showToast('Processing logo…', 3000);
     var reader = new FileReader();
     reader.onload = function(ev) {
+        console.log('[BandLogo] FileReader.onload fired, result length:', ev.target.result ? ev.target.result.length : 0);
         var img = new Image();
         img.onload = function() {
+            console.log('[BandLogo] Image.onload fired, dimensions:', img.width, 'x', img.height);
             var canvas = document.createElement('canvas');
             canvas.width = 200;
             canvas.height = 200;
@@ -10855,13 +10863,19 @@ window._handleBandLogoUpload = function(input) {
             ctx.clearRect(0, 0, 200, 200);
             ctx.drawImage(img, x, y, w, h);
             var dataUrl;
-            try { dataUrl = canvas.toDataURL('image/png'); }
-            catch(e) {
-                if (typeof showToast === 'function') showToast('⚠ Could not process image: ' + e.message, 6000);
+            try {
+                dataUrl = canvas.toDataURL('image/png');
+                console.log('[BandLogo] canvas.toDataURL ok, length:', dataUrl.length);
+            } catch(e) {
+                console.error('[BandLogo] canvas.toDataURL threw:', e);
+                if (typeof showToast === 'function') showToast('⚠ Could not process image: ' + e.message, 7000);
                 return;
             }
-            firebaseDB.ref('bands/' + slug + '/profile/logoUrl').set(dataUrl)
+            var path = 'bands/' + slug + '/profile/logoUrl';
+            console.log('[BandLogo] writing to Firebase path:', path);
+            firebaseDB.ref(path).set(dataUrl)
                 .then(function() {
+                    console.log('[BandLogo] Firebase write succeeded');
                     var preview = document.getElementById('setBandLogoPreview');
                     if (preview) preview.innerHTML = '<img src="' + dataUrl + '" alt="Band logo" style="width:100%;height:100%;object-fit:contain">';
                     var metroImg = document.getElementById('metroPedalLogo');
@@ -10869,17 +10883,24 @@ window._handleBandLogoUpload = function(input) {
                     if (typeof showToast === 'function') showToast('✓ Band logo saved', 4000);
                 })
                 .catch(function(err) {
-                    if (typeof showToast === 'function') showToast('⚠ Save failed: ' + (err && err.message || 'unknown'), 6000);
+                    console.error('[BandLogo] Firebase write FAILED:', err);
+                    if (typeof showToast === 'function') showToast('⚠ Save failed: ' + (err && err.message || 'unknown') + ' (check console)', 8000);
                 });
         };
-        img.onerror = function() {
-            if (typeof showToast === 'function') showToast('⚠ Could not decode image — try a PNG or JPG', 6000);
+        img.onerror = function(e) {
+            console.error('[BandLogo] Image.onerror — could not decode:', e);
+            if (typeof showToast === 'function') showToast('⚠ Could not decode image — try saving as PNG or JPG first', 7000);
         };
         img.src = ev.target.result;
     };
-    reader.onerror = function() {
+    reader.onerror = function(e) {
+        console.error('[BandLogo] FileReader.onerror:', e);
         if (typeof showToast === 'function') showToast('⚠ Could not read file', 5000);
     };
+    reader.onabort = function() {
+        console.warn('[BandLogo] FileReader.onabort fired');
+    };
+    console.log('[BandLogo] calling reader.readAsDataURL');
     reader.readAsDataURL(file);
 };
 
