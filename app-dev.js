@@ -10781,11 +10781,20 @@ function _saveBandName(btn) {
     _glSaveBtn(btn, function() {
         var val = (document.getElementById('setBandName') || {}).value || '';
         if (!val.trim()) throw new Error('Band name required');
-        localStorage.setItem('deadcetera_band_name', val.trim());
-        // Also update Firebase band meta if possible
-        if (firebaseDB && typeof bandPath === 'function') {
-            return firebaseDB.ref(bandPath('meta/name')).set(val.trim());
-        }
+        var newName = val.trim();
+        localStorage.setItem('deadcetera_band_name', newName);
+        // Persist to Firebase band meta if possible; then refresh any visible
+        // surfaces that captured the band name at render time. Without this
+        // refresh, the Multi-Band card on this same page kept showing the
+        // pre-save value (its `bn` was captured when settingsTab rendered).
+        var fbWrite = (firebaseDB && typeof bandPath === 'function')
+            ? firebaseDB.ref(bandPath('meta/name')).set(newName)
+            : Promise.resolve();
+        return Promise.resolve(fbWrite).then(function() {
+            var menuEl = document.getElementById('glMenuBandName');
+            if (menuEl) menuEl.textContent = newName;
+            if (typeof settingsTab === 'function') settingsTab('band');
+        });
     });
 }
 
