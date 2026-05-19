@@ -30,6 +30,7 @@ window.GLPlayerEngine = (function() {
     var _activeMethod = null; // for spotify: 'connect' | 'sdk' | 'embed'
     var _activeDeviceId = null; // for connect: the Spotify device id
     var _awaitingSpotifyApp = false; // armed when we emit needsSpotifyApp; auto-retry on tab return
+    var _spotifyLastActiveAt = 0; // ms timestamp of last successful Connect play, for #4 session-continuity retry
     var _ytPlayer = null;
     var _ytReady = false;
     var _ytLoading = false;
@@ -615,6 +616,7 @@ window.GLPlayerEngine = (function() {
                     });
                     _isPlaying = true;
                     _emit('stateChange', { state: State.PLAYING, isPlaying: true });
+                    _spotifyLastActiveAt = Date.now(); // #4 session-continuity marker
                     try { SC.startPolling(); } catch(e) {}
                     return;
                 } catch(e) {
@@ -638,15 +640,74 @@ window.GLPlayerEngine = (function() {
                     _emit('status', { message: 'Trying another source' });
                 }
             } else {
-                // No Connect device — Spotify app force-quit or never opened.
-                // Emit the wake CTA AND stop here. Falling through to SDK or
-                // embed would (a) overwrite the wake CTA with the broken-on-
-                // iOS SDK UI or the "open in Spotify" embed link that
-                // deeplinks the user OUT of GrooveLinx — which defeats the
-                // whole point of routing through Connect on iOS.
-                // Bug surfaced by Drew testing Ain't Life Grand on iPhone
-                // 2026-05-10: embed fallback was kicking in after needsSpotifyApp
-                // emit, taking him out of the app entirely.
+                // No Connect device. Two sub-cases:
+                //   (a) Spotify was active in this session within the last few
+                //       minutes → app may be momentarily unresponsive (iOS
+                //       sleep/wake cycle, brief network blip). Quiet-poll for
+                //       a few seconds before bothering the user — usually
+                //       resolves without a wake CTA. (#4 fix 2026-05-19)
+                //   (b) Cold start / Spotify never been alive this session →
+                //       emit the wake CTA immediately (existing behavior).
+                //
+                // The previous behavior went straight to (b), so users who
+                // had Spotify playing two songs ago (i.e. recently active)
+                // were forced to re-tap Open Spotify each time a Spotify
+                // song followed a YouTube intermediary — even though the
+                // Spotify app was still alive most of the time.
+                var recentlyActive = _spotifyLastActiveAt > 0
+                    && (Date.now() - _spotifyLastActiveAt) < 5 * 60 * 1000;
+                if (recentlyActive) {
+                    console.log('[GLPlayer] iOS Spotify route: no device but recently active — quiet polling retry');
+                    _emit('status', { message: 'Reconnecting to Spotify' });
+                    var quietAttempts = 0;
+                    var quietMax = 3;
+                    while (quietAttempts < quietMax) {
+                        quietAttempts++;
+                        await new Promise(function(r) { setTimeout(r, 1200); });
+                        if (myToken !== _token) { console.log('[GLPlayer] quiet retry superseded, bailing'); return; }
+                        var d2 = null;
+                        try { d2 = await SC.pickPreferredDevice({ bypassCache: true }); } catch(_e) {}
+                        if (myToken !== _token) return;
+                        if (d2 && !d2.is_restricted) {
+                            console.log('[GLPlayer] quiet retry: device found on attempt', quietAttempts, '— playing');
+                            _emit('status', { message: 'Starting on ' + d2.name });
+                            try {
+                                await SC.play('spotify:track:' + trackId, d2.id);
+                                if (myToken !== _token) return;
+                                _activeMethod = 'connect';
+                                _activeDeviceId = d2.id;
+                                if (SC.setPreferredDeviceId) SC.setPreferredDeviceId(d2.id);
+                                _setState(State.PLAYING, { source: 'spotify', method: 'connect' });
+                                _emit('embedReady', {
+                                    source: 'spotify_connect',
+                                    trackId: trackId,
+                                    deviceId: d2.id,
+                                    deviceName: d2.name,
+                                    deviceType: d2.type,
+                                    supportsVolume: !!d2.supports_volume
+                                });
+                                _isPlaying = true;
+                                _emit('stateChange', { state: State.PLAYING, isPlaying: true });
+                                _spotifyLastActiveAt = Date.now();
+                                try { SC.startPolling(); } catch(e) {}
+                                return;
+                            } catch(_e) {
+                                console.warn('[GLPlayer] quiet retry play failed:', _e && _e.message, '— falling through to wake CTA');
+                                break;
+                            }
+                        }
+                        console.log('[GLPlayer] quiet retry: no device on attempt', quietAttempts, '/', quietMax);
+                    }
+                    console.log('[GLPlayer] quiet retry exhausted — proceeding to wake CTA');
+                }
+                // Cold-start path (or quiet retry exhausted) — show wake CTA.
+                // Falling through to SDK or embed would (a) overwrite the wake
+                // CTA with the broken-on-iOS SDK UI or the "open in Spotify"
+                // embed link that deeplinks the user OUT of GrooveLinx —
+                // which defeats the whole point of routing through Connect
+                // on iOS. Bug surfaced by Drew testing Ain't Life Grand on
+                // iPhone 2026-05-10: embed fallback was kicking in after
+                // needsSpotifyApp emit, taking him out of the app entirely.
                 _activeMethod = null;
                 _activeDeviceId = null;
                 _awaitingSpotifyApp = true;  // armed for visibilitychange auto-retry
