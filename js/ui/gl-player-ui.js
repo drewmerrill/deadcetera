@@ -68,6 +68,11 @@ window.GLPlayerUI = (function() {
         E.on('needsSpotifyApp', function(d) { _renderNeedsSpotifyApp(d); });
         E.on('needsSpotifyAuth', function(d) { _renderNeedsSpotifyAuth(d); });
         E.on('needsSpotifyPremium', function(d) { _renderNeedsSpotifyPremium(d); });
+        // iOS autoplay block — the embed loaded but the video isn't moving.
+        // Engine has already flipped _isPlaying=false; we just need to put a
+        // tap-to-play surface over the video so the next interaction is a
+        // genuine user gesture that YouTube's IFrame API will honor.
+        E.on('autoplayBlocked', function(d) { _renderAutoplayBlocked(d); });
 
         // Phase 5 real-time device pill: subscribe to Connect polling so the
         // "Playing on X" device label updates live when the user transfers
@@ -923,6 +928,38 @@ window.GLPlayerUI = (function() {
             + '</div>'
             + '<div style="font-size:0.6em;color:#64748b;margin-top:6px">Account type detected: ' + ((d && d.accountType) || 'free') + '</div>'
             + '</div>';
+    }
+
+    function _renderAutoplayBlocked(d) {
+        // Find whichever video container is currently mounted (overlay or float).
+        var containerIds = ['glpVideoContainer', 'glpFloatVideo'];
+        for (var i = 0; i < containerIds.length; i++) {
+            var container = document.getElementById(containerIds[i]);
+            if (!container) continue;
+            if (document.getElementById('glpTapToPlay_' + containerIds[i])) continue;
+            // Container needs a positioning context for absolute children.
+            try { if (getComputedStyle(container).position === 'static') container.style.position = 'relative'; } catch(_e) {}
+            var btn = document.createElement('button');
+            btn.id = 'glpTapToPlay_' + containerIds[i];
+            btn.type = 'button';
+            btn.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:rgba(15,23,42,0.85);color:#f1f5f9;font-size:1.1em;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;z-index:5;-webkit-tap-highlight-color:transparent';
+            btn.innerHTML = '<div style="font-size:2.2em">▶</div><div>Tap to start</div><div style="font-size:0.6em;font-weight:500;color:#94a3b8;max-width:260px;text-align:center">Browser blocked autoplay. After this tap, the rest of the set plays automatically.</div>';
+            btn.onclick = function() {
+                // Remove overlays from both containers (defensive — only one
+                // exists at a time but float↔overlay switches can leave a
+                // stale one if user resized mid-block).
+                ['glpTapToPlay_glpVideoContainer', 'glpTapToPlay_glpFloatVideo'].forEach(function(id) {
+                    var el = document.getElementById(id);
+                    if (el && el.parentNode) el.parentNode.removeChild(el);
+                });
+                // Re-invoke togglePlay inside the fresh user-gesture chain so
+                // YouTube's IFrame API accepts the playVideo() call.
+                if (window.GLPlayerEngine && window.GLPlayerEngine.togglePlay) {
+                    window.GLPlayerEngine.togglePlay();
+                }
+            };
+            container.appendChild(btn);
+        }
     }
 
     function _renderNeedsSpotifyApp(d) {

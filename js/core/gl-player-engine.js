@@ -682,6 +682,42 @@ window.GLPlayerEngine = (function() {
         _emit('embedReady', { source: 'spotify', trackId: trackId });
     }
 
+    // Autoplay-block watchdog for the YouTube embed path. On iOS Safari,
+    // YT IFrame can briefly report state=PLAYING then halt silently when
+    // autoplay is suppressed — same iOS quirk SetlistPlayer's watchdog
+    // catches. The reliable tell is getCurrentTime() not advancing. When
+    // we detect it: flip _isPlaying=false (so the pause icon flips to ▶)
+    // and emit `autoplayBlocked` so GLPlayerUI can render a tap-to-play
+    // overlay over the embed.
+    var _ytAutoplayWatchdog = null;
+    var _ytAutoplayBaselineTime = -1;
+    function _armYtAutoplayWatchdog() {
+        _clearYtAutoplayWatchdog();
+        try {
+            _ytAutoplayBaselineTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1;
+        } catch(_e) { _ytAutoplayBaselineTime = -1; }
+        _ytAutoplayWatchdog = setTimeout(function() {
+            try {
+                var st = (_ytPlayer && _ytPlayer.getPlayerState) ? _ytPlayer.getPlayerState() : -1;
+                var nowTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1;
+                var stuck = (_ytAutoplayBaselineTime >= 0 && nowTime >= 0 && nowTime === _ytAutoplayBaselineTime);
+                if (st !== 1 || stuck) {
+                    _isPlaying = false;
+                    _emit('stateChange', { state: State.PLAYING, isPlaying: false });
+                    _emit('autoplayBlocked', { source: 'youtube' });
+                }
+            } catch(_e) {
+                _isPlaying = false;
+                _emit('stateChange', { state: State.PLAYING, isPlaying: false });
+                _emit('autoplayBlocked', { source: 'youtube' });
+            }
+        }, 1800);
+    }
+    function _clearYtAutoplayWatchdog() {
+        if (_ytAutoplayWatchdog) { clearTimeout(_ytAutoplayWatchdog); _ytAutoplayWatchdog = null; }
+        _ytAutoplayBaselineTime = -1;
+    }
+
     function _playYouTube(videoId) {
         if (!_ytReady) {
             _ensureYouTubeAPI().then(function() {
@@ -707,11 +743,24 @@ window.GLPlayerEngine = (function() {
             width: '100%', height: '100%', videoId: videoId,
             playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0, playsinline: 1 },
             events: {
-                onReady: function() { _isPlaying = true; _emit('stateChange', { state: State.PLAYING, isPlaying: true }); },
+                onReady: function() {
+                    _isPlaying = true;
+                    _emit('stateChange', { state: State.PLAYING, isPlaying: true });
+                    _armYtAutoplayWatchdog();
+                },
                 onStateChange: function(e) {
-                    if (e.data === YT.PlayerState.ENDED) { next(); }
-                    if (e.data === YT.PlayerState.PLAYING) { _isPlaying = true; _emit('stateChange', { state: State.PLAYING, isPlaying: true }); }
-                    if (e.data === YT.PlayerState.PAUSED) { _isPlaying = false; _emit('stateChange', { state: State.PLAYING, isPlaying: false }); }
+                    if (e.data === YT.PlayerState.ENDED) { _clearYtAutoplayWatchdog(); next(); }
+                    if (e.data === YT.PlayerState.PLAYING) {
+                        // Real PLAYING — clear watchdog only if time has actually advanced.
+                        // The watchdog itself does the time-advance check before firing.
+                        _isPlaying = true;
+                        _emit('stateChange', { state: State.PLAYING, isPlaying: true });
+                    }
+                    if (e.data === YT.PlayerState.PAUSED) {
+                        _clearYtAutoplayWatchdog();
+                        _isPlaying = false;
+                        _emit('stateChange', { state: State.PLAYING, isPlaying: false });
+                    }
                 },
                 onError: function() {
                     _isPlaying = false;
