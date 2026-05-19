@@ -1759,6 +1759,44 @@ window._calToggleRsvp = async function(eventId, memberKey, newStatus, dateStr) {
     }
 };
 
+// Helpers for the rehearsal-cancellation notification flow.
+// `_calIsFutureDate`: cheap "is YYYY-MM-DD today or later?" check.
+// `_calFormatRehearsalWhen`: formats event date+startTime as
+//   "Mon May 25 at 7:30 PM EST" (or "Mon May 25" if startTime missing).
+function _calIsFutureDate(dateStr) {
+    if (!dateStr) return false;
+    var parts = String(dateStr).split('-');
+    if (parts.length !== 3) return false;
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    if (isNaN(d.getTime())) return false;
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d >= today;
+}
+function _calFormatRehearsalWhen(ev) {
+    if (!ev || !ev.date) return 'an upcoming rehearsal';
+    var parts = String(ev.date).split('-');
+    if (parts.length !== 3) return 'an upcoming rehearsal';
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    if (isNaN(d.getTime())) return 'an upcoming rehearsal';
+    var dow = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    var mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    var datePart = dow + ' ' + mon + ' ' + d.getDate();
+    if (ev.startTime) {
+        var tparts = String(ev.startTime).split(':');
+        if (tparts.length >= 2) {
+            var h24 = parseInt(tparts[0]);
+            var min = tparts[1];
+            if (!isNaN(h24) && /^\d{2}$/.test(min)) {
+                var ampm = h24 >= 12 ? 'PM' : 'AM';
+                var h12 = h24 % 12; if (h12 === 0) h12 = 12;
+                return datePart + ' at ' + h12 + ':' + min + ' ' + ampm + ' EST';
+            }
+        }
+    }
+    return datePart;
+}
+
 // Delete event from the date panel with confirmation + Google sync
 window._calDeleteFromPanel = async function(eventId, dateStr) {
     // Check if event is synced to Google and whether we can reach Google
@@ -1777,6 +1815,19 @@ window._calDeleteFromPanel = async function(eventId, dateStr) {
         if (!confirm('This event is synced to Google Calendar, but your Google session has expired.\n\nDelete from GrooveLinx only?\nThe event will remain on Google Calendar until you sign in and sync again.')) return;
     } else {
         if (!confirm('Delete this event?' + (_isSynced ? ' It will also be removed from Google Calendar.' : ''))) return;
+    }
+
+    // Second prompt: rehearsal cancellation broadcast (SMS + FCM push to band).
+    // Only ask for future rehearsals — past events + non-rehearsals fall through silently.
+    var _notifyCancellation = false;
+    var _cancellationWhen = '';
+    if (ev && ev.type === 'rehearsal' && _calIsFutureDate(ev.date)) {
+        _cancellationWhen = _calFormatRehearsalWhen(ev);
+        _notifyCancellation = confirm(
+            'Notify opted-in band members that this rehearsal is cancelled?\n\n' +
+            'SMS body: "GrooveLinx: Rehearsal cancelled — ' + _cancellationWhen + '. Reply STOP to opt out, HELP for help. Message and data rates may apply."\n\n' +
+            'A browser push will also fire for members opted in to push notifications.'
+        );
     }
 
     try {
@@ -1824,6 +1875,39 @@ window._calDeleteFromPanel = async function(eventId, dateStr) {
             _toast += ' (gig + ' + (_cascadeSummary.setlist ? 'blank setlist' : (_cascadeSummary.setlistKept ? 'setlist kept' : 'no setlist')) + ' cleaned up)';
         }
         if (typeof showToast === 'function') showToast(_toast, 4000);
+
+        // Cancellation broadcast — fire after delete is durably saved so users
+        // are never told "cancelled" for an event that didn't actually delete.
+        // Both SMS and FCM run in parallel; neither blocks the UI.
+        if (_notifyCancellation) {
+            var _smsBody = 'GrooveLinx: Rehearsal cancelled — ' + _cancellationWhen + '. Reply STOP to opt out, HELP for help. Message and data rates may apply.';
+            if (typeof GLSms !== 'undefined' && GLSms.notifyBand) {
+                GLSms.notifyBand({ body: _smsBody }).then(function(r) {
+                    if (!r || typeof showToast !== 'function') return;
+                    if (r.ok && r.sent > 0) {
+                        var msg = '✓ Cancellation SMS sent to ' + r.sent + ' of ' + r.total + ' opted-in member' + (r.total === 1 ? '' : 's');
+                        if (r.failed) msg += ' (' + r.failed + ' failed — see console)';
+                        showToast(msg, 5000);
+                    } else if (r.ok && r.total === 0) {
+                        showToast('ℹ No opted-in SMS recipients — push only', 4000);
+                    } else {
+                        showToast('⚠ Cancellation SMS failed: ' + (r.reason || 'all recipients failed'), 6000);
+                    }
+                }).catch(function(e) {
+                    console.warn('[Calendar] GLSms.notifyBand threw:', e && e.message);
+                });
+            }
+            if (typeof GLPush !== 'undefined' && GLPush.notifyBand) {
+                GLPush.notifyBand({
+                    title: 'Rehearsal cancelled',
+                    body: _cancellationWhen,
+                    tag: 'gl-rehearsal-cancel-' + (ev.eventId || ev.id || ev.date),
+                    data: { type: 'rehearsal_cancelled', eventId: ev.eventId || ev.id, date: ev.date }
+                }).catch(function(e) {
+                    console.warn('[Calendar] GLPush.notifyBand threw:', e && e.message);
+                });
+            }
+        }
     } catch(e) {
         if (typeof showToast === 'function') showToast('Delete failed: ' + (e.message || 'unknown error'));
     }
