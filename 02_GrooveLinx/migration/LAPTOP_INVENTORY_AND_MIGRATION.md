@@ -62,6 +62,10 @@ brew install \
   tmux \
   vercel-cli \
   yt-dlp
+
+# Twilio CLI lives on a custom tap
+brew tap twilio/brew
+brew install twilio
 ```
 
 > Note: `node`, `python@3.14`, `deno`, `sqlite`, `openssl@3`, `ca-certificates` etc. install as deps. The full transitive list (53 formulae as of 2026-05-19) is in §10 appendix.
@@ -171,6 +175,7 @@ None of these survive a clean OS install. Run/sign into each:
 | Modal | `modal token new` — opens browser |
 | Firebase | `firebase login` — OAuth via Google |
 | Vercel | `vercel login` |
+| Twilio | `twilio login` → paste Account SID `AC29dd59...` + Auth Token → name profile `GrooveLinx` → `twilio profiles:use GrooveLinx`. Auth Token at console.twilio.com → Account Info. |
 | npm registry | `npm login` (only if publishing — not currently needed for GL) |
 | Anthropic (Claude Code) | Launch `claude` → follow auth flow |
 | Google Chrome | Sign in with Google account → sync restores bookmarks/passwords/extensions |
@@ -188,6 +193,7 @@ None of these survive a clean OS install. Run/sign into each:
 | `~/.npmrc` | npm registry tokens |
 | `~/.config/firebase-tools/` | Firebase CLI |
 | `~/Library/Application Support/Vercel/` | Vercel session |
+| `~/.twilio-cli/config.json` | Twilio CLI profile + API key reference |
 
 > **Recommendation:** prefer fresh re-login over copying tokens. Tokens leak via Time Machine backups + copying them defeats device-rotation security.
 
