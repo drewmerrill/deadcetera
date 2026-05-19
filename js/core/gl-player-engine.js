@@ -756,10 +756,22 @@ window.GLPlayerEngine = (function() {
     // we detect it: flip _isPlaying=false (so the pause icon flips to ▶)
     // and emit `autoplayBlocked` so GLPlayerUI can render a tap-to-play
     // overlay over the embed.
+    //
+    // 2026-05-19 (b): added `_ytAutoplayUnlocked` session flag. iOS's
+    // autoplay restriction only blocks the FIRST programmatic play in a
+    // tab session — once the user taps the overlay (or any video reaches
+    // PLAYING with time > 0 from autoplay), subsequent videos can autoplay
+    // freely. Without this flag, the watchdog fired on every song because
+    // buffering on iOS WiFi can keep state below PLAYING for >1.8s,
+    // surfacing the tap-to-start overlay for songs 2, 3, 4… even after
+    // the gesture chain was unlocked. Now: once unlocked, skip the
+    // watchdog entirely for the rest of the session.
     var _ytAutoplayWatchdog = null;
     var _ytAutoplayBaselineTime = -1;
+    var _ytAutoplayUnlocked = false;
     function _armYtAutoplayWatchdog() {
         _clearYtAutoplayWatchdog();
+        if (_ytAutoplayUnlocked) return; // session already unlocked — autoplay will work
         try {
             _ytAutoplayBaselineTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1;
         } catch(_e) { _ytAutoplayBaselineTime = -1; }
@@ -772,6 +784,11 @@ window.GLPlayerEngine = (function() {
                     _isPlaying = false;
                     _emit('stateChange', { state: State.PLAYING, isPlaying: false });
                     _emit('autoplayBlocked', { source: 'youtube' });
+                } else {
+                    // State is PLAYING and time has advanced — autoplay worked.
+                    // Mark the session as unlocked so we skip the watchdog for
+                    // subsequent songs.
+                    _ytAutoplayUnlocked = true;
                 }
             } catch(_e) {
                 _isPlaying = false;
@@ -784,6 +801,9 @@ window.GLPlayerEngine = (function() {
         if (_ytAutoplayWatchdog) { clearTimeout(_ytAutoplayWatchdog); _ytAutoplayWatchdog = null; }
         _ytAutoplayBaselineTime = -1;
     }
+    // Called by the UI's tap-to-play overlay click handler so the next song
+    // doesn't re-trigger the overlay (the user has just supplied a gesture).
+    function markYtAutoplayUnlocked() { _ytAutoplayUnlocked = true; }
 
     function _playYouTube(videoId) {
         if (!_ytReady) {
@@ -938,6 +958,7 @@ window.GLPlayerEngine = (function() {
         // YouTube
         createYouTubePlayer: createYouTubePlayer,
         ensureYouTubeAPI: _ensureYouTubeAPI,
+        markYtAutoplayUnlocked: markYtAutoplayUnlocked,
 
         // Manual
         playYouTubeUrl: playYouTubeUrl,

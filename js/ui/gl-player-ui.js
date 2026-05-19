@@ -153,10 +153,15 @@ window.GLPlayerUI = (function() {
             + '<div id="glpProgress" style="font-size:0.8em;color:#64748b;text-align:center"></div>'
             + '<div id="glpFallback" style="display:none;text-align:center;margin-top:12px;width:100%;max-width:400px"></div>'
             + '</div>'
-            // Controls \u2014 full-width row, space-around for even thumb distribution.
-            // Secondary buttons standardized at 48px (iOS HIG 44px minimum + 4px slack).
-            // Container max-width keeps them within thumb reach on tablet/desktop.
-            + '<div style="display:flex;align-items:center;justify-content:space-around;gap:8px;padding:16px 12px;flex-shrink:0;max-width:520px;width:100%;margin:0 auto;box-sizing:border-box">'
+            // Controls \u2014 full-width row, space-between for maximum thumb reach.
+            // Drew's iPhone feedback 2026-05-19 (b): space-around still felt
+            // bunched because the play button anchors the middle. space-between
+            // pins \u23ee and \u23ed to the row edges; the others distribute evenly
+            // between. Secondary buttons standardized at 48px (iOS HIG 44px
+            // minimum + 4px slack). Container max-width 480px keeps the row
+            // from spreading absurdly on tablet/desktop while preserving
+            // edge-to-edge thumb spread on iPhone (390-430px viewports).
+            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 20px;flex-shrink:0;max-width:480px;width:100%;margin:0 auto;box-sizing:border-box">'
             + '<button onclick="GLPlayerEngine.prev()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em;flex-shrink:0" title="Previous song">\u23EE</button>'
             + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em;font-weight:700;flex-shrink:0" title="Back 10s">-10s</button>'
             + '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em;flex-shrink:0">\u23F8</button>'
@@ -954,6 +959,14 @@ window.GLPlayerUI = (function() {
                     var el = document.getElementById(id);
                     if (el && el.parentNode) el.parentNode.removeChild(el);
                 });
+                // Mark the session's iOS autoplay-gesture chain as unlocked
+                // so subsequent songs skip the watchdog. Without this, every
+                // song after a tap-to-start kept re-rendering the overlay
+                // because YT IFrame can take >1.8s to reach PLAYING state
+                // even on a session that already has autoplay permission.
+                if (window.GLPlayerEngine && window.GLPlayerEngine.markYtAutoplayUnlocked) {
+                    window.GLPlayerEngine.markYtAutoplayUnlocked();
+                }
                 // Re-invoke togglePlay inside the fresh user-gesture chain so
                 // YouTube's IFrame API accepts the playVideo() call.
                 if (window.GLPlayerEngine && window.GLPlayerEngine.togglePlay) {
