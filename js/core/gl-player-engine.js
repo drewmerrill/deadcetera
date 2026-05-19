@@ -430,20 +430,26 @@ window.GLPlayerEngine = (function() {
         var R = (typeof GLSourceResolver !== 'undefined') ? GLSourceResolver : null;
         if (!R) { _setState(State.FALLBACK, { song: song.title, reason: 'no resolver' }); return; }
 
-        // 4s hard timeout — resolver gets 1.5s per source (fits 3 sources + 1 retry in 4s)
+        // 2.5s hard timeout (tightened from 4s 2026-05-19): user-reported
+        // "Finding best version..." stretches of 20-30s on iPhone setlists
+        // when songs lacked cached IDs. The cascade was sequenced too
+        // generously — by the time the actionable wake CTA / FALLBACK UI
+        // surfaced, the user had already lost trust. New budget gives the
+        // resolver enough to find a hit on warm cache (~1.5s) but caps the
+        // dead-air time before surfacing an actionable next step.
         var timedOut = false;
         var timer = setTimeout(function() {
             if (myToken !== _token) return;
             timedOut = true;
             console.warn('[GLPlayer] resolution timeout for:', song.title);
             _setState(State.FALLBACK, { song: song.title, reason: 'timeout' });
-        }, 4000);
+        }, 2500);
 
         try {
             var result = await R.resolve(song.title, song.bandName || song.band, {
                 mode: _mode,
                 setOverrides: _setOverrides,
-                timeout: 1500,
+                timeout: 1000,
                 onStatus: function(msg) {
                     if (myToken === _token) _emit('status', { message: msg });
                 }

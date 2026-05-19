@@ -352,8 +352,13 @@ window.GLSourceResolver = (function() {
             if (ov.source && ov.id) return ov;
         }
 
-        // Tighten timeouts as we go deeper in the chain
-        var timeouts = [options.timeout || 1500, 1000, 800];
+        // Tighten timeouts as we go deeper in the chain. Per-source budgets
+        // tightened 2026-05-19 (1500/1000/800 → 1000/700/500) to fit within
+        // the engine's new 2.5s hard cap and reach the wake-CTA / FALLBACK
+        // UI faster on slow networks. Worst-case sequential: 1000 + 700 +
+        // 500 = 2.2s — under the engine cap, leaves headroom for the
+        // _playSpotify path that runs after a successful resolve.
+        var timeouts = [options.timeout || 1000, 700, 500];
 
         for (var i = 0; i < chain.length; i++) {
             var src = chain[i];
