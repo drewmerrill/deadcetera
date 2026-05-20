@@ -789,7 +789,18 @@ window.GLPlayerEngine = (function() {
     var _ytAutoplayUnlocked = false;
     function _armYtAutoplayWatchdog() {
         _clearYtAutoplayWatchdog();
-        if (_ytAutoplayUnlocked) { console.log('[YT-Watchdog] skipped (session unlocked)'); return; }
+        // 2026-05-20: removed the `if (_ytAutoplayUnlocked) return` early
+        // skip. iOS Safari's autoplay restriction is enforced PER-IFRAME,
+        // not per-tab-session — every new YT.Player creates a new iframe
+        // with no gesture history, so even after the user has tapped to
+        // start song 1, song 2's iframe still gets blocked. Drew's iPhone
+        // diagnostic trail showed song 2 sitting in UNSTARTED forever
+        // because the watchdog was skipped on the (false) assumption that
+        // unlocking song 1 unlocked the whole session. Now: watchdog runs
+        // for every song. If autoplay works, the success-branch fires
+        // harmlessly and the overlay is never created. The proper fix
+        // (single persistent YT.Player + loadVideoById to preserve the
+        // gesture chain across songs) is queued as a follow-up.
         try {
             _ytAutoplayBaselineTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1;
         } catch(_e) { _ytAutoplayBaselineTime = -1; }
