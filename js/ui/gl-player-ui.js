@@ -161,7 +161,7 @@ window.GLPlayerUI = (function() {
             // minimum + 4px slack). Container max-width 480px keeps the row
             // from spreading absurdly on tablet/desktop while preserving
             // edge-to-edge thumb spread on iPhone (390-430px viewports).
-            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 20px;flex-shrink:0;max-width:480px;width:100%;margin:0 auto;box-sizing:border-box">'
+            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 20px;flex-shrink:0;max-width:480px;width:100%;margin:0 auto;align-self:center;box-sizing:border-box">'
             + '<button onclick="GLPlayerEngine.prev()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em;flex-shrink:0" title="Previous song">\u23EE</button>'
             + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em;font-weight:700;flex-shrink:0" title="Back 10s">-10s</button>'
             + '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em;flex-shrink:0">\u23F8</button>'
