@@ -516,17 +516,28 @@ window.GLPlayerEngine = (function() {
             _ytAutoplayUnlocked = false;
         }
         // Symmetric: pause Spotify when switching away from it. Drew
-        // 2026-05-20 desktop bug: Spotify SDK kept playing in the page's
-        // audio context after YouTube took over the visible container —
-        // both played at once. Wiping container.innerHTML for the YT
-        // embed doesn't pause the SDK (SDK runs in JS, not in an iframe).
-        // Connect path: audio plays on the user's phone via Spotify REST,
-        // also unaffected by container wipe. Both need explicit pause.
-        // Embed-preview path: pause not needed — wiping container kills
-        // the embed iframe which is the only audio source for that path.
-        var _switchingAwayFromSpotify = (_activeSource === 'spotify' && result.source !== 'spotify');
+        // 2026-05-20 desktop bug: Sugaree (Spotify SDK) → Green-Eyed Lady
+        // (YouTube), Sugaree kept playing under the YouTube audio.
+        //
+        // First-pass fix gated on `_activeSource === 'spotify'` — that
+        // check never fired because play() (line ~183) nulls _activeSource
+        // BEFORE _resolveAndPlay runs. By the time we land here, the
+        // source-was field is gone. The YT-away check above has the same
+        // dead-code flaw but YT→Spotify still works "by accident": the
+        // Spotify CTA wipes container.innerHTML, the YT iframe leaves
+        // the DOM, and the audio dies with the iframe element. Spotify
+        // SDK doesn't live in the DOM — it owns its own audio context
+        // — so a DOM wipe never silences it.
+        //
+        // _activeMethod and _activeDeviceId are NOT nulled by play(), so
+        // they retain the prior session's value and are the reliable
+        // "was Spotify active recently" signal. Stale-method false-fires
+        // (e.g. Spotify → YT → YT) call SDK.pause() with nothing playing
+        // — harmless no-op. We clear both after teardown so the third
+        // YT advance is clean.
+        var _switchingAwayFromSpotify = (result.source !== 'spotify' && (_activeMethod === 'sdk' || _activeMethod === 'connect'));
         if (_switchingAwayFromSpotify) {
-            console.log('[Spotify] cross-source switch — pausing (method=' + _activeMethod + ')');
+            console.log('[Spotify] cross-source switch — pausing (method=' + _activeMethod + ', deviceId=' + _activeDeviceId + ')');
             if (_activeMethod === 'sdk' && typeof GLSpotifyPlayer !== 'undefined' && GLSpotifyPlayer.pause) {
                 try { GLSpotifyPlayer.pause(); } catch(_eSdk) {}
             } else if (_activeMethod === 'connect' && typeof GLSpotifyConnect !== 'undefined') {
