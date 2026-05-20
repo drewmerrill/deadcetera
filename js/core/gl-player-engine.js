@@ -183,9 +183,16 @@ window.GLPlayerEngine = (function() {
         _activeResult = null;
         _isPlaying = false;
 
-        // Destroy previous YouTube player immediately
-        if (_ytPlayer && _ytPlayer.destroy) { try { _ytPlayer.destroy(); } catch(e) {} }
-        _ytPlayer = null;
+        // 2026-05-20 (iOS autoplay fix B): do NOT destroy _ytPlayer if it
+        // exists and is healthy. iOS Safari treats each new <iframe> as a
+        // separate gesture context — destroying + recreating per song
+        // means every song requires its own user tap. By keeping the same
+        // YT.Player instance and calling loadVideoById() on it, the gesture
+        // chain from the first user tap propagates through the persistent
+        // iframe so subsequent songs autoplay without intervention.
+        // _playYouTube below detects the existing player and uses
+        // loadVideoById; createYouTubePlayer only creates a new instance
+        // when one doesn't exist yet.
 
         // Immediate visual feedback
         _setState(State.RESOLVING, { song: song.title });
@@ -846,13 +853,43 @@ window.GLPlayerEngine = (function() {
         }
 
         _setState(State.PLAYING, { source: 'youtube', videoId: videoId });
-        // Emit embedReady so UI can create the container
-        _emit('embedReady', { source: 'youtube', videoId: videoId });
+        // Persistent-iframe path (2026-05-20 iOS autoplay fix B): if we
+        // already have a YT.Player AND its iframe is still in the DOM,
+        // call loadVideoById so the existing gesture context survives the
+        // song transition. iOS treats the iframe as the same gesture
+        // continuation, so subsequent songs autoplay after the user has
+        // tapped to start the first one. embedReady is still emitted so
+        // the UI runs its side effects (Copy button, loading-timer cancel);
+        // createYouTubePlayer skips when the player already exists.
+        var reused = false;
+        if (_ytPlayer && _ytPlayer.loadVideoById && document.getElementById('glpYTPlayer')) {
+            try {
+                console.log('[YT] reusing player via loadVideoById:', videoId);
+                _ytPlayer.loadVideoById(videoId);
+                _armYtAutoplayWatchdog();
+                reused = true;
+            } catch(_eReuse) {
+                console.warn('[YT] loadVideoById threw, falling back to fresh player:', _eReuse && _eReuse.message);
+                try { _ytPlayer.destroy(); } catch(_e2) {}
+                _ytPlayer = null;
+            }
+        }
+        // Always emit so UI side effects fire (Copy button, status cleanup).
+        // If we reused, createYouTubePlayer will see the player exists and skip.
+        _emit('embedReady', { source: 'youtube', videoId: videoId, reused: reused });
     }
 
-    // Called by UI after creating the DOM container
+    // Called by UI after creating the DOM container. Skips if a player
+    // already exists (the loadVideoById path in _playYouTube handles
+    // song transitions on an existing player without recreating).
     function createYouTubePlayer(containerId, videoId) {
         if (!_ytReady || !containerId) return;
+        if (_ytPlayer && document.getElementById('glpYTPlayer')) {
+            // Player already exists — _playYouTube's loadVideoById path
+            // is in charge. This guard prevents double-create when both
+            // paths race.
+            return;
+        }
         var el = document.getElementById(containerId);
         if (!el) return;
 

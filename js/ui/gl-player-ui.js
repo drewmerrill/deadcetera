@@ -153,20 +153,25 @@ window.GLPlayerUI = (function() {
             + '<div id="glpProgress" style="font-size:0.8em;color:#64748b;text-align:center"></div>'
             + '<div id="glpFallback" style="display:none;text-align:center;margin-top:12px;width:100%;max-width:400px"></div>'
             + '</div>'
-            // Controls \u2014 full-width row, space-between for maximum thumb reach.
-            // Drew's iPhone feedback 2026-05-19 (b): space-around still felt
-            // bunched because the play button anchors the middle. space-between
-            // pins \u23ee and \u23ed to the row edges; the others distribute evenly
-            // between. Secondary buttons standardized at 48px (iOS HIG 44px
-            // minimum + 4px slack). Container max-width 480px keeps the row
-            // from spreading absurdly on tablet/desktop while preserving
-            // edge-to-edge thumb spread on iPhone (390-430px viewports).
-            + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:16px 20px;flex-shrink:0;max-width:480px;width:100%;margin:0 auto;align-self:center;box-sizing:border-box">'
-            + '<button onclick="GLPlayerEngine.prev()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em;flex-shrink:0" title="Previous song">\u23EE</button>'
-            + '<button onclick="GLPlayerEngine.seekRelative(-10)" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em;font-weight:700;flex-shrink:0" title="Back 10s">-10s</button>'
-            + '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" style="width:80px;height:80px;border-radius:50%;border:2px solid rgba(99,102,241,0.4);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:2em;flex-shrink:0">\u23F8</button>'
-            + '<button onclick="GLPlayerEngine.seekRelative(10)" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.06);background:none;color:#94a3b8;cursor:pointer;font-size:0.68em;font-weight:700;flex-shrink:0" title="Forward 10s">+10s</button>'
-            + '<button onclick="GLPlayerEngine.next()" style="width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:none;color:#e2e8f0;cursor:pointer;font-size:1.2em;flex-shrink:0" title="Next song">\u23ED</button>'
+            // Controls \u2014 full redesign 2026-05-20 (Drew):
+            //   - OUTER wrapper is a full-width flex row with justify-center.
+            //     This is bulletproof centering \u2014 independent of parent's
+            //     align-items default that defeated margin:0 auto + align-self
+            //     center on the previous build (Drew confirmed visually
+            //     left-aligned despite both being applied via diagnostic).
+            //   - INNER row: max-width 440px, justify-content space-between.
+            //   - Visual upgrade: dropped visible borders for a flatter look;
+            //     subtle background tint on tap; gradient + glow on the play
+            //     button to make it the obvious focal point; -10/+10 use
+            //     rotate-arrow glyphs with small "10s" label for a sleeker feel.
+            + '<div style="display:flex;justify-content:center;padding:18px 12px;flex-shrink:0">'
+            +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;max-width:440px">'
+            +     '<button onclick="GLPlayerEngine.prev()" title="Previous song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:flex;align-items:center;justify-content:center;line-height:1;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'">\u23EE</button>'
+            +     '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;font-family:inherit;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'"><span style="font-size:1em">\u21BA</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
+            +     '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;cursor:pointer;font-size:1.7em;display:flex;align-items:center;justify-content:center;line-height:1;padding-left:4px;box-shadow:0 8px 24px rgba(99,102,241,0.45),0 0 0 1px rgba(255,255,255,0.06) inset;transition:transform 0.12s,box-shadow 0.15s" onmousedown="this.style.transform=\'scale(0.96)\'" onmouseup="this.style.transform=\'scale(1)\'" onmouseleave="this.style.transform=\'scale(1)\'">\u23F8</button>'
+            +     '<button onclick="GLPlayerEngine.seekRelative(10)" title="Forward 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;font-family:inherit;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'"><span style="font-size:1em">\u21BB</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
+            +     '<button onclick="GLPlayerEngine.next()" title="Next song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:flex;align-items:center;justify-content:center;line-height:1;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'">\u23ED</button>'
+            +   '</div>'
             + '</div>'
             // Up next
             + '<div id="glpUpNext" style="padding:10px 16px;border-top:1px solid rgba(255,255,255,0.04);flex-shrink:0;font-size:0.82em;color:#64748b;text-align:center"></div>';
