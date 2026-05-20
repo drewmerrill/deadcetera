@@ -354,6 +354,7 @@ window.GLPlayerEngine = (function() {
     function stop() {
         if (_ytPlayer && _ytPlayer.destroy) { try { _ytPlayer.destroy(); } catch(e) {} }
         _ytPlayer = null;
+        _ytAutoplayUnlocked = false;
         // Stop Connect polling + pause Spotify app on the same device so we
         // don't leave audio playing on the user's phone after they close the
         // GL player. Best-effort — swallow errors since the device may be
@@ -506,6 +507,11 @@ window.GLPlayerEngine = (function() {
             console.log('[YT] cross-source switch — destroying persistent player');
             try { _ytPlayer.destroy(); } catch(_eDestroy) {}
             _ytPlayer = null;
+            // New iframe = new gesture context. Reset the unlock flag so the
+            // next YT song's watchdog correctly detects autoplay-block (Drew
+            // 2026-05-20: Green-Eyed Lady appeared `unlocked=true` on a fresh
+            // iframe after a Spotify intermediate, which was misleading).
+            _ytAutoplayUnlocked = false;
         }
         _activeSource = result.source;
         _activeResult = result;
@@ -931,26 +937,25 @@ window.GLPlayerEngine = (function() {
                         _emit('stateChange', { state: State.PLAYING, isPlaying: true });
                     }
                     if (e.data === YT.PlayerState.PAUSED) {
-                        // iOS quirk (Drew 2026-05-20): when autoplay is blocked,
-                        // YT IFrame sends a PAUSED state change at time≈0 *before*
-                        // our 1800ms watchdog fires. The old handler cleared the
-                        // watchdog and set _isPlaying=false but never emitted
-                        // autoplayBlocked — so the UI never rendered tap-to-play
-                        // and the user saw a paused-but-loaded video with no
-                        // recovery path. Detect that here: if session isn't yet
-                        // marked autoplay-unlocked AND currentTime is still at
-                        // the start, treat PAUSED as an autoplay-blocked signal
-                        // and emit accordingly so _renderAutoplayBlocked fires.
+                        // 2026-05-20 (round 2): dropped the autoplayBlocked
+                        // emit from this handler. loadVideoById transitions
+                        // briefly through PAUSED at time=0 mid-swap, which
+                        // was incorrectly triggering the overlay even though
+                        // the song proceeded to play normally a few ms later
+                        // (Drew's trail showed `reason=paused_at_start` then
+                        // state=3 BUFFERING then state=1 PLAYING — false
+                        // positive). The 1800ms watchdog is the single source
+                        // of truth for autoplay detection now.
+                        //
+                        // Only clear the watchdog when this is a USER pause
+                        // (time > 0.5s — past the loadVideoById transition
+                        // window). Time=0 PAUSED is ambiguous; let the
+                        // watchdog at 1800ms decide.
                         var nowTime = -1;
                         try { nowTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1; } catch(_e2) {}
-                        var likelyAutoplayBlock = !_ytAutoplayUnlocked && nowTime >= 0 && nowTime < 0.5;
                         _isPlaying = false;
                         _emit('stateChange', { state: State.PLAYING, isPlaying: false });
-                        if (likelyAutoplayBlock) {
-                            _emit('autoplayBlocked', { source: 'youtube', reason: 'paused_at_start' });
-                            // Don't clear watchdog — let it fire too as belt-and-
-                            // suspenders if my detection here is somehow wrong.
-                        } else {
+                        if (nowTime > 0.5) {
                             _clearYtAutoplayWatchdog();
                         }
                     }
@@ -1081,6 +1086,23 @@ window.GLPlayerEngine = (function() {
         // Spotify Connect awaiting-app state (Phase 4 wake CTA)
         isAwaitingSpotifyApp: function() { return _awaitingSpotifyApp; },
         retryAfterSpotifyWake: async function() {
+            // 2026-05-20: dedupe against rage-click. Drew's trail showed
+            // 4+ overlapping retry loops competing for the same device,
+            // each polling 5×1.5s = 7.5s. Only allow one retry in flight
+            // at a time; subsequent calls are no-ops until the current
+            // poll loop finishes.
+            if (_spotifyRetryInFlight) {
+                console.log('[GLPlayer] retryAfterSpotifyWake: already in flight, skipping duplicate');
+                return;
+            }
+            _spotifyRetryInFlight = true;
+            try { return await _doRetryAfterSpotifyWake(); }
+            finally { _spotifyRetryInFlight = false; }
+        }
+    };
+
+    var _spotifyRetryInFlight = false;
+    async function _doRetryAfterSpotifyWake() {
             // Called by UI button OR visibility listener when user returns
             // from the Spotify app. Polls /me/player/devices up to 5 times
             // (1.5s apart) waiting for iPhone Spotify to register as a
@@ -1125,8 +1147,7 @@ window.GLPlayerEngine = (function() {
             // Non-iOS or no SC: just call play() and let it sort out.
             _awaitingSpotifyApp = false;
             play(_currentIdx);
-        }
-    };
+    }
 
     // Auto-retry on visibility change: when the user comes back to GL after
     // tapping our Open Spotify button + waking the Spotify app, the GL tab
