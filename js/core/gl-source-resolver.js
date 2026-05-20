@@ -360,6 +360,16 @@ window.GLSourceResolver = (function() {
         // _playSpotify path that runs after a successful resolve.
         var timeouts = [options.timeout || 1000, 700, 500];
 
+        // 2026-05-20 (Drew): the old loop returned the FIRST result of any
+        // confidence, so a YouTube fuzzy "close" match for a Spotify-saved
+        // song (e.g. Possum) won over a "best" Spotify match further down
+        // the chain. New behavior: "best" wins immediately from any source;
+        // "close" (fuzzy) matches are saved as a fallback but we keep
+        // looking. If a later source produces "best", that wins. If nothing
+        // returns "best", the first "close" match we found is returned as
+        // last resort. This makes Drew's Spotify-only setlist songs play
+        // as Spotify even when his global source-pref is YouTube-first.
+        var fallbackResult = null;
         for (var i = 0; i < chain.length; i++) {
             var src = chain[i];
             var srcTimeout = timeouts[i] || 800;
@@ -368,18 +378,24 @@ window.GLSourceResolver = (function() {
             // First attempt
             try {
                 var result = await resolvers[src](songTitle, bandName, { timeout: srcTimeout });
-                if (result) return result;
+                if (result) {
+                    if (result.confidence === 'best') return result;
+                    if (!fallbackResult) fallbackResult = result;
+                }
             } catch(e) {}
 
             // Silent retry only for preferred source (index 0)
             if (i === 0) {
                 try {
                     var retry = await resolvers[src](songTitle, bandName, { timeout: srcTimeout, skipCuration: true });
-                    if (retry) return retry;
+                    if (retry) {
+                        if (retry.confidence === 'best') return retry;
+                        if (!fallbackResult) fallbackResult = retry;
+                    }
                 } catch(e) {}
             }
         }
-        return null;
+        return fallbackResult;
     }
 
     // ── Song Metadata Helper ─────────────────────────────────────────────────

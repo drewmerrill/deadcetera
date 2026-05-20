@@ -179,20 +179,24 @@ window.GLPlayerEngine = (function() {
         var myToken = ++_token;
 
         var song = _queue[_currentIdx];
+        var prevSource = _activeSource;
         _activeSource = null;
         _activeResult = null;
         _isPlaying = false;
 
-        // 2026-05-20: Option B (persistent player) attempt reverted —
-        // _renderStatus wipes glpVideoContainer.innerHTML on every status
-        // emit (which fires between songs), so the iframe gets destroyed
-        // regardless. The loadVideoById reuse path never fired in Drew's
-        // trail because the DOM check failed on each transition. Keeping
-        // destroy-on-play means iOS users still tap-once-per-song; the
-        // real fix is to stop wiping the container between same-source
-        // transitions, which is a bigger render-flow refactor.
-        if (_ytPlayer && _ytPlayer.destroy) { try { _ytPlayer.destroy(); } catch(e) {} }
-        _ytPlayer = null;
+        // 2026-05-20 deep refactor (Option B done right): no longer
+        // unconditionally destroy _ytPlayer here. The UI's _renderStatus
+        // now overlays status text on top of an existing iframe instead
+        // of wiping innerHTML, so the YT iframe + player can survive song
+        // transitions. _playYouTube below detects the existing player
+        // and uses loadVideoById to swap videos — preserving the iframe's
+        // user-gesture context so subsequent songs autoplay after the
+        // first tap.
+        //
+        // Cross-source switches (YT → Spotify/Archive, or any → none)
+        // are handled in _playSource below: the YT player gets destroyed
+        // when the new source isn't YouTube. That's the right cut point —
+        // by then we know the next source for certain.
 
         // Immediate visual feedback
         _setState(State.RESOLVING, { song: song.title });
@@ -491,6 +495,18 @@ window.GLPlayerEngine = (function() {
             return;
         }
         console.log('[GLPlayer] Source resolved:', result.source, result.confidence || '', result.trackId || result.videoId || '');
+        // Cross-source destroy: if the previous source was YouTube and we're
+        // switching to anything else, destroy _ytPlayer cleanly. Otherwise the
+        // persistent-player iframe would linger as a phantom that wasn't
+        // visible (the Spotify/Archive embed wipes glpVideoContainer.innerHTML
+        // anyway) but _ytPlayer reference would point at a destroyed iframe,
+        // causing _playYouTube's reuse path to mis-fire on a later YT song.
+        var _switchingAwayFromYT = (_activeSource === 'youtube' && result.source !== 'youtube' && _ytPlayer);
+        if (_switchingAwayFromYT) {
+            console.log('[YT] cross-source switch — destroying persistent player');
+            try { _ytPlayer.destroy(); } catch(_eDestroy) {}
+            _ytPlayer = null;
+        }
         _activeSource = result.source;
         _activeResult = result;
         _emit('sourceResolved', { source: result.source, confidence: result.confidence, song: song });
@@ -853,13 +869,43 @@ window.GLPlayerEngine = (function() {
         }
 
         _setState(State.PLAYING, { source: 'youtube', videoId: videoId });
-        // Emit embedReady so UI can create the container + new player
-        _emit('embedReady', { source: 'youtube', videoId: videoId });
+
+        // Persistent-player path (2026-05-20 Option B done right): if we
+        // have a live _ytPlayer AND its iframe is still in the DOM, swap
+        // videos via loadVideoById. iOS treats the iframe as one gesture
+        // context, so the first user tap unlocks autoplay for the whole
+        // queue. _renderStatus now overlays instead of wiping innerHTML
+        // (see gl-player-ui.js), so the iframe survives song transitions.
+        if (_ytPlayer && _ytPlayer.loadVideoById && document.getElementById('glpYTPlayer')) {
+            try {
+                console.log('[YT] reusing player via loadVideoById:', videoId);
+                _ytPlayer.loadVideoById(videoId);
+                _armYtAutoplayWatchdog();
+                // Emit embedReady with reused:true — UI knows to skip
+                // createYouTubePlayer (no fresh create) but still runs
+                // its side effects (Copy button, status overlay dismiss).
+                _emit('embedReady', { source: 'youtube', videoId: videoId, reused: true });
+                return;
+            } catch(_eReuse) {
+                console.warn('[YT] loadVideoById failed, falling back to fresh player:', _eReuse && _eReuse.message);
+                try { _ytPlayer.destroy(); } catch(_e2) {}
+                _ytPlayer = null;
+            }
+        }
+
+        // No player yet (or reuse failed) — emit so UI creates one fresh.
+        _emit('embedReady', { source: 'youtube', videoId: videoId, reused: false });
     }
 
-    // Called by UI after creating the DOM container.
+    // Called by UI after creating the DOM container. Guards against
+    // double-create when the persistent player is still alive — the
+    // loadVideoById path in _playYouTube already owns the transition.
     function createYouTubePlayer(containerId, videoId) {
         if (!_ytReady || !containerId) return;
+        if (_ytPlayer && document.getElementById('glpYTPlayer')) {
+            console.log('[YT] createYouTubePlayer skipped (persistent player active)');
+            return;
+        }
         var el = document.getElementById(containerId);
         if (!el) return;
 

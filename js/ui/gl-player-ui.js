@@ -146,22 +146,19 @@ window.GLPlayerUI = (function() {
             // Video container
             + '<div id="glpVideoContainer" style="width:100%;max-width:640px;margin:0 auto;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden;flex-shrink:0"></div>'
             // Song info
-            + '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 16px;min-height:0;overflow-y:auto">'
+            + '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px 16px 8px;min-height:0;overflow-y:auto">'
             + '<div id="glpSongTitle" style="font-size:1.8em;font-weight:800;text-align:center;margin-bottom:4px;line-height:1.2"></div>'
             + '<div id="glpSongArtist" style="font-size:0.9em;color:#94a3b8;text-align:center;margin-bottom:4px"></div>'
             + '<div id="glpSourceLabel" style="font-size:0.72em;color:#475569;margin-bottom:4px"></div>'
             + '<div id="glpProgress" style="font-size:0.8em;color:#64748b;text-align:center"></div>'
             + '<div id="glpFallback" style="display:none;text-align:center;margin-top:12px;width:100%;max-width:400px"></div>'
             + '</div>'
-            // Controls \u2014 text-align:center + display:inline-flex (2026-05-20):
-            // Nested flex layouts were rendering vertical on Drew's iPhone
-            // despite diagnostic-confirmed display:flex. Switching to the
-            // most fundamental centering technique: parent block with
-            // text-align:center, inner row as display:inline-flex (treated
-            // like a centered text item). Works regardless of any flex
-            // parent semantics.
-            + '<div style="text-align:center;padding:18px 12px;flex-shrink:0">'
-            +   '<div style="display:inline-flex;align-items:center;gap:18px;vertical-align:middle">'
+            // Controls \u2014 text-align:center + display:inline-flex.
+            // Padding tightened on top to lift controls higher in the
+            // viewport (Drew 2026-05-20). gap:18px \u2192 32px for more
+            // spread between buttons.
+            + '<div style="text-align:center;padding:6px 12px 18px;flex-shrink:0">'
+            +   '<div style="display:inline-flex;align-items:center;gap:32px;vertical-align:middle">'
             +     '<button onclick="GLPlayerEngine.prev()" title="Previous song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0">\u23EE</button>'
             +     '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:0;font-family:inherit"><span style="font-size:1em">\u21BA</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
             +     '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;cursor:pointer;font-size:1.7em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0 0 0 4px;box-shadow:0 8px 24px rgba(99,102,241,0.45)">\u23F8</button>'
@@ -1014,15 +1011,46 @@ window.GLPlayerUI = (function() {
             + '</div>';
     }
 
+    // 2026-05-20 deep refactor: _renderStatus used to wipe glpVideoContainer's
+    // innerHTML with the "Finding best version\u2026" text. That destroyed the
+    // YT iframe between songs, killing any persistent-player attempt. New
+    // behavior: when an iframe is already in the container (transitioning
+    // same-source), render status as an absolute-positioned OVERLAY that
+    // sits on top of the iframe. The iframe stays alive, so the engine's
+    // loadVideoById path in _playYouTube can reuse it. When there's no
+    // iframe yet (fresh cold start), fall back to the old replace-innerHTML
+    // behavior. _hideStatusOverlay() is called from _createEmbed (when
+    // playback is actually starting) and from the YT PLAYING state change.
     function _renderStatus(msg) {
-        // Map system language to confident language
         var friendlyMsg = msg;
         if (msg === 'Loading\u2026' || msg === 'Loading...') friendlyMsg = 'Finding best version\u2026';
         if (msg === 'Retrying\u2026' || msg === 'Retrying...') friendlyMsg = 'Searching again\u2026';
         if (msg && msg.indexOf('Trying') === 0) friendlyMsg = msg.replace('Trying', 'Checking');
 
         var container = document.getElementById('glpVideoContainer');
-        if (container) container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">' + _esc(friendlyMsg) + '</div>';
+        if (!container) return;
+        var hasIframe = !!container.querySelector('iframe');
+        if (hasIframe) {
+            // Overlay path \u2014 keep the iframe alive underneath
+            try { if (getComputedStyle(container).position === 'static') container.style.position = 'relative'; } catch(_e) {}
+            var ov = document.getElementById('glpStatusOverlay');
+            if (!ov) {
+                ov = document.createElement('div');
+                ov.id = 'glpStatusOverlay';
+                // z-index sits below the autoplay tap-to-play overlay
+                // (z 2147483647) but above the iframe layer.
+                ov.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600;background:rgba(15,23,42,0.7);z-index:4;pointer-events:none;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);transform:translateZ(0)';
+                container.appendChild(ov);
+            }
+            ov.textContent = friendlyMsg;
+        } else {
+            container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">' + _esc(friendlyMsg) + '</div>';
+        }
+    }
+
+    function _hideStatusOverlay() {
+        var ov = document.getElementById('glpStatusOverlay');
+        if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
     }
 
     function _renderState(d) {
@@ -1043,13 +1071,21 @@ window.GLPlayerUI = (function() {
     function _createEmbed(d) {
         // Cancel pending loading-text timer — embed is arriving
         if (_loadingTimer) { clearTimeout(_loadingTimer); _loadingTimer = null; }
-        console.log('[GLPlayerUI] Embed created:', d.source, d.trackId || d.videoId || '');
+        console.log('[GLPlayerUI] Embed created:', d.source, d.trackId || d.videoId || '', d.reused ? '(reused)' : '');
         var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
         var container = document.getElementById(containerId);
 
+        // Hide the status overlay — playback is starting (the iframe will
+        // either replace the overlay's content or it stays under it briefly
+        // until YT reaches PLAYING state).
+        _hideStatusOverlay();
+
         if (d.source === 'youtube' && d.videoId) {
             var E = window.GLPlayerEngine;
-            if (E) E.createYouTubePlayer(containerId, d.videoId);
+            // d.reused === true means _playYouTube already called
+            // loadVideoById on a persistent player. Skip createYouTubePlayer
+            // to avoid wiping the live iframe.
+            if (E && !d.reused) E.createYouTubePlayer(containerId, d.videoId);
             // Native YouTube share UI clips because the iframe is too short.
             // Overlay our own "Copy link" button so band members can share the
             // video without fighting Google's modal.
