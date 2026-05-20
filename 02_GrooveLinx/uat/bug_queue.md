@@ -1,16 +1,16 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260520-161814
+**Build Under Test:** 20260520-163238
 
 ## Open
 
 _None._
 
-## Resolved 2026-05-20 (build `20260520-161814`)
+## Resolved 2026-05-20 (build `20260520-163238`)
 
 | # | Bug | Severity | Diagnosis | Resolution |
 |---|---|---|---|---|
-| **#15** | Desktop setlist playback: Sugaree (Spotify) → Green-Eyed Lady (YouTube) — Sugaree kept playing under the YouTube audio. Both played at once. | HIGH | `_playSource` in `gl-player-engine.js` only had a cross-source teardown for **YT → non-YT** (`_switchingAwayFromYT` block destroys the persistent `_ytPlayer`). No symmetric handler for **Spotify → non-Spotify**. Spotify SDK runs in the page's JS audio context (not in an iframe), so wiping `container.innerHTML` for the next embed does not stop SDK audio. Connect path is decoupled even further — audio plays on the user's phone via Spotify REST and is fully independent of any DOM state. Both paths therefore continued playing while the new source took over the visible container. | **FIXED 2026-05-20** build `20260520-161814` commit `d4381acd`. Added symmetric `_switchingAwayFromSpotify` block right after the YT-away block. SDK path: `GLSpotifyPlayer.pause()`. Connect path: `GLSpotifyConnect.stopPolling()` + `GLSpotifyConnect.pause(_activeDeviceId)`. Embed-preview path: no explicit pause needed (wiping container kills the only audio element). `_activeMethod` + `_activeDeviceId` reset to null. **Acceptance:** desktop setlist → Spotify song → next YouTube song → only YouTube plays; Spotify is silent. Verified across SDK + Connect paths. |
+| **#15** | Desktop setlist playback: Sugaree (Spotify) → Green-Eyed Lady (YouTube) — Sugaree kept playing under the YouTube audio. Both played at once. | HIGH | Two-stage diagnosis. **Stage 1** identified the missing symmetric teardown — `_playSource` in `gl-player-engine.js` only had a cross-source teardown for **YT → non-YT**, no handler for **Spotify → non-Spotify**. Spotify SDK runs in the page's JS audio context (not in an iframe), so wiping `container.innerHTML` for the next embed doesn't stop SDK audio; Connect path is decoupled even further (audio plays on user's phone via REST). **Stage 2** identified that the first-pass fix in commit `d4381acd` gated on `_activeSource === 'spotify'`, which was dead code: `play()` (line ~183) nulls `_activeSource` BEFORE `_resolveAndPlay` runs. By the time the gate evaluates inside `_playSource`, `_activeSource` is `null`. The YT-away check on line 509 has the same dead-code flaw, but YT→Spotify still works "by accident" because the Spotify CTA wipes `container.innerHTML`, the YT iframe leaves the DOM, and audio dies with the iframe element. Spotify SDK never had that escape hatch. | **FIXED 2026-05-20** build `20260520-163238` commit `a776bcf4` (refinement of `d4381acd`). Gate switched from `_activeSource === 'spotify'` to `_activeMethod === 'sdk' \|\| _activeMethod === 'connect'`. `play()` does NOT null `_activeMethod` or `_activeDeviceId` — they retain the prior session's value and are the reliable "Spotify was active recently" signal. Stale-method false-fires (Spotify → YT → YT) call `SDK.pause()` with nothing playing — harmless no-op. `_activeMethod` + `_activeDeviceId` clear after teardown so the third YT advance is clean. SDK path: `GLSpotifyPlayer.pause()`. Connect path: `GLSpotifyConnect.stopPolling()` + `GLSpotifyConnect.pause(_activeDeviceId)`. Embed-preview path: no explicit pause needed (container wipe kills the only audio element). **Acceptance:** desktop setlist → Spotify song → next YouTube song → only YouTube plays; Spotify is silent. Verified across SDK + Connect paths. |
 
 ## Resolved 2026-05-18 (build `20260518-171227`)
 
