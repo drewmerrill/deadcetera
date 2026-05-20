@@ -948,12 +948,23 @@ window.GLPlayerUI = (function() {
             if (document.getElementById('glpTapToPlay_' + containerIds[i])) { console.log('[UI] - overlay already present for ' + containerIds[i]); continue; }
             console.log('[UI] - rendering overlay into ' + containerIds[i] + ' (children before=' + container.children.length + ')');
             rendered++;
+            // iOS Safari iframe compositor-layer fix (Drew 2026-05-20):
+            // YouTube IFrame elements get promoted to their own GPU layer
+            // and render ABOVE position:absolute siblings even when z-index
+            // says otherwise. To force the overlay above the iframe, the
+            // overlay itself needs its own GPU layer (translateZ + will-change)
+            // AND we need to establish a stacking context on the container so
+            // both layers compose in the expected order.
+            try {
+                container.style.isolation = 'isolate';
+                container.style.transform = container.style.transform || 'translateZ(0)';
+            } catch(_e3) {}
             // Container needs a positioning context for absolute children.
             try { if (getComputedStyle(container).position === 'static') container.style.position = 'relative'; } catch(_e) {}
             var btn = document.createElement('button');
             btn.id = 'glpTapToPlay_' + containerIds[i];
             btn.type = 'button';
-            btn.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:rgba(15,23,42,0.85);color:#f1f5f9;font-size:1.1em;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;z-index:5;-webkit-tap-highlight-color:transparent';
+            btn.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:rgba(15,23,42,0.92);color:#f1f5f9;font-size:1.1em;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;z-index:2147483647;-webkit-tap-highlight-color:transparent;transform:translateZ(0);will-change:transform;-webkit-transform:translateZ(0)';
             btn.innerHTML = '<div style="font-size:2.2em">▶</div><div>Tap to start</div><div style="font-size:0.6em;font-weight:500;color:#94a3b8;max-width:260px;text-align:center">Browser blocked autoplay. After this tap, the rest of the set plays automatically.</div>';
             btn.onclick = function() {
                 // Remove overlays from both containers (defensive — only one
