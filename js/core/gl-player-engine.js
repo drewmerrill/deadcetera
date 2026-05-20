@@ -844,9 +844,28 @@ window.GLPlayerEngine = (function() {
                         _emit('stateChange', { state: State.PLAYING, isPlaying: true });
                     }
                     if (e.data === YT.PlayerState.PAUSED) {
-                        _clearYtAutoplayWatchdog();
+                        // iOS quirk (Drew 2026-05-20): when autoplay is blocked,
+                        // YT IFrame sends a PAUSED state change at time≈0 *before*
+                        // our 1800ms watchdog fires. The old handler cleared the
+                        // watchdog and set _isPlaying=false but never emitted
+                        // autoplayBlocked — so the UI never rendered tap-to-play
+                        // and the user saw a paused-but-loaded video with no
+                        // recovery path. Detect that here: if session isn't yet
+                        // marked autoplay-unlocked AND currentTime is still at
+                        // the start, treat PAUSED as an autoplay-blocked signal
+                        // and emit accordingly so _renderAutoplayBlocked fires.
+                        var nowTime = -1;
+                        try { nowTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1; } catch(_e2) {}
+                        var likelyAutoplayBlock = !_ytAutoplayUnlocked && nowTime >= 0 && nowTime < 0.5;
                         _isPlaying = false;
                         _emit('stateChange', { state: State.PLAYING, isPlaying: false });
+                        if (likelyAutoplayBlock) {
+                            _emit('autoplayBlocked', { source: 'youtube', reason: 'paused_at_start' });
+                            // Don't clear watchdog — let it fire too as belt-and-
+                            // suspenders if my detection here is somehow wrong.
+                        } else {
+                            _clearYtAutoplayWatchdog();
+                        }
                     }
                 },
                 onError: function() {
