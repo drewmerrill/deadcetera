@@ -299,6 +299,12 @@ window.GLPlayerUI = (function() {
 
     function showFloat(opts) {
         opts = opts || {};
+        // Park YT iframe before removing the overlay element that contains
+        // it — otherwise the iframe would be destroyed along with the
+        // overlay and its iOS gesture context would be lost. After the
+        // float container mounts, the iframe will be unparked into it
+        // when the next YT embedReady fires (or proactively below).
+        _parkYTPlayer();
         if (_overlayEl) { _overlayEl.remove(); _overlayEl = null; }
         _mode = 'float';
         var E = window.GLPlayerEngine;
@@ -724,6 +730,7 @@ window.GLPlayerUI = (function() {
     // ── Bar Mode (Now-Playing Bottom Bar) ───────────────────────────────────
 
     function showBar() {
+        _parkYTPlayer(); // preserve YT iframe across mode switch
         if (_overlayEl) { _overlayEl.remove(); _overlayEl = null; }
         _removeFloat();
         _mode = 'bar';
@@ -748,14 +755,24 @@ window.GLPlayerUI = (function() {
     }
 
     function minimize() {
-        // Overlay → Bar
+        // Overlay → Bar. Park YT iframe before removing the overlay so
+        // its iOS gesture context survives. The Bar has no video slot;
+        // the YT iframe stays in the garage until the user returns to a
+        // visible mode (showOverlay or showFloat).
+        _parkYTPlayer();
         if (_overlayEl) { _overlayEl.remove(); _overlayEl = null; }
         showBar();
     }
 
     // ── Cleanup ─────────────────────────────────────────────────────────────
 
-    function _removeFloat() { if (_floatEl) { _floatEl.remove(); _floatEl = null; } }
+    function _removeFloat() {
+        if (_floatEl) {
+            _parkYTPlayer(); // preserve YT iframe before float container dies
+            _floatEl.remove();
+            _floatEl = null;
+        }
+    }
     function _removeBar() { if (_barEl) { _barEl.remove(); _barEl = null; } }
 
     // Minimize: collapse float to just the drag handle bar (title + controls hidden)
@@ -897,6 +914,7 @@ window.GLPlayerUI = (function() {
         var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
         var container = document.getElementById(containerId);
         if (!container) return;
+        _parkYTPlayer(); // preserve YT iframe before wiping
         var expired = d && d.reason === 'token_expired';
         container.innerHTML =
             '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:12px;text-align:center">'
@@ -921,6 +939,7 @@ window.GLPlayerUI = (function() {
         var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
         var container = document.getElementById(containerId);
         if (!container) return;
+        _parkYTPlayer(); // preserve YT iframe before wiping
         container.innerHTML =
             '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:12px;text-align:center">'
             + '<div style="font-size:1.4em;margin-bottom:4px">⭐</div>'
@@ -997,6 +1016,7 @@ window.GLPlayerUI = (function() {
         var containerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
         var container = document.getElementById(containerId);
         if (!container) return;
+        _parkYTPlayer(); // preserve YT iframe before wiping
         container.innerHTML =
             '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#191414,#1a2a1a);border-radius:8px;padding:12px;text-align:center">'
             + '<div style="font-size:1.4em;margin-bottom:4px">📱</div>'
@@ -1047,6 +1067,26 @@ window.GLPlayerUI = (function() {
             }
             ov.textContent = friendlyMsg;
         } else {
+            // No iframe in container. Check if YT iframe is parked in the
+            // garage \u2014 if so, we're in a transient cross-source transition
+            // and the iframe will be unparked back into the container
+            // shortly (<1s). Skip the destructive innerHTML wipe to avoid
+            // a brief "Finding best version\u2026" text flash between songs.
+            var _garage = document.getElementById('glpYTGarage');
+            if (_garage && _garage.querySelector('#glpYTPlayer')) {
+                // Render as overlay on top of whatever's currently in the
+                // container (Spotify CTA, etc.) \u2014 non-destructive.
+                try { if (getComputedStyle(container).position === 'static') container.style.position = 'relative'; } catch(_e) {}
+                var _ovG = document.getElementById('glpStatusOverlay');
+                if (!_ovG) {
+                    _ovG = document.createElement('div');
+                    _ovG.id = 'glpStatusOverlay';
+                    _ovG.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600;background:rgba(15,23,42,0.7);z-index:4;pointer-events:none;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);transform:translateZ(0)';
+                    container.appendChild(_ovG);
+                }
+                _ovG.textContent = friendlyMsg;
+                return;
+            }
             container.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:0.88em;font-weight:600">' + _esc(friendlyMsg) + '</div>';
         }
     }
@@ -1054,6 +1094,78 @@ window.GLPlayerUI = (function() {
     function _hideStatusOverlay() {
         var ov = document.getElementById('glpStatusOverlay');
         if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    }
+
+    // ─── YT iframe "garage" (2026-05-20 cross-source autoplay continuity) ───
+    // The YT iframe carries an iOS gesture context that's lost if the iframe
+    // element is destroyed. Many UI paths wipe glpVideoContainer.innerHTML
+    // (Spotify embed, archive embed, CTAs, fallback screen, mode switches),
+    // any of which would also destroy a YT iframe sitting in the container.
+    //
+    // Solution: a hidden "garage" div outside the player overlay/float. When
+    // the active source changes away from YouTube, move (detach + reattach)
+    // the YT iframe into the garage. When YouTube becomes active again,
+    // move it back into the visible container. iframe element identity is
+    // preserved across appendChild, so YT.Player JS API + iOS gesture
+    // context survive the round-trip.
+    function _ensureYTGarage() {
+        var g = document.getElementById('glpYTGarage');
+        if (g) return g;
+        g = document.createElement('div');
+        g.id = 'glpYTGarage';
+        g.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;pointer-events:none;visibility:hidden';
+        // Append to body so it survives _overlayEl/_floatEl removal on mode
+        // switches. Document-level scope.
+        document.body.appendChild(g);
+        return g;
+    }
+    function _parkYTPlayer() {
+        var iframe = document.getElementById('glpYTPlayer');
+        if (!iframe) return false; // no iframe to park
+        var garage = _ensureYTGarage();
+        if (iframe.parentNode === garage) return true; // already parked
+        // Do NOT pause here. Cross-source switches pause in the engine's
+        // _playSource path (so YT audio stops when Spotify starts). For
+        // minimize/showBar mode switches, the user expects audio to
+        // continue from the hidden iframe — pausing would be a regression.
+        try {
+            garage.appendChild(iframe); // detach + reattach; iframe state preserved
+            console.log('[YT-Garage] parked iframe');
+            return true;
+        } catch(_e2) {
+            console.warn('[YT-Garage] park failed:', _e2 && _e2.message);
+            return false;
+        }
+    }
+    function _unparkYTPlayer(targetContainerId) {
+        var garage = document.getElementById('glpYTGarage');
+        if (!garage) return false;
+        var iframe = garage.querySelector('#glpYTPlayer');
+        if (!iframe) return false;
+        // Auto-detect container if caller didn't specify — engine doesn't
+        // know UI _mode, so it calls this without args.
+        if (!targetContainerId) {
+            targetContainerId = _mode === 'float' ? 'glpFloatVideo' : 'glpVideoContainer';
+        }
+        var target = document.getElementById(targetContainerId);
+        if (!target) return false;
+        // Clear any other content from target before moving the iframe in.
+        // Spotify embed, CTA HTML, etc. should not coexist with the YT iframe.
+        try {
+            // Preserve overlays the YT path creates (none typically — overlays
+            // come from autoplay-block which only fires after iframe is mounted).
+            target.innerHTML = '';
+            target.appendChild(iframe);
+            console.log('[YT-Garage] unparked iframe into ' + targetContainerId);
+            return true;
+        } catch(_e) {
+            console.warn('[YT-Garage] unpark failed:', _e && _e.message);
+            return false;
+        }
+    }
+    function _destroyYTGarage() {
+        var garage = document.getElementById('glpYTGarage');
+        if (garage && garage.parentNode) garage.parentNode.removeChild(garage);
     }
 
     // Shared dismiss-and-play handler — used by both the autoplay tap-to-play
@@ -1105,8 +1217,23 @@ window.GLPlayerUI = (function() {
         // until YT reaches PLAYING state).
         _hideStatusOverlay();
 
+        // Park the YT iframe before any non-YouTube render path wipes the
+        // container. The garage preserves the iframe (and its iOS gesture
+        // context) so a later YT song can re-attach via loadVideoById
+        // without needing a fresh user tap. No-op if no iframe to park.
+        if (d.source !== 'youtube') {
+            _parkYTPlayer();
+        }
+
         if (d.source === 'youtube' && d.videoId) {
             var E = window.GLPlayerEngine;
+            // If the YT iframe is parked in the garage (from a prior
+            // non-YouTube source), bring it back to the visible container
+            // before we touch anything else. Engine has already called
+            // loadVideoById on the persistent player (reused:true) — we
+            // just need to re-attach the DOM element so the video is
+            // visible. No-op when iframe isn't parked.
+            _unparkYTPlayer(containerId);
             // d.reused === true means _playYouTube already called
             // loadVideoById on a persistent player. Skip createYouTubePlayer
             // to avoid wiping the live iframe.
@@ -1214,6 +1341,7 @@ window.GLPlayerUI = (function() {
     function _showFallbackUI() {
         var fb = document.getElementById('glpFallback');
         var container = document.getElementById('glpVideoContainer');
+        _parkYTPlayer(); // preserve YT iframe before wiping container
 
         // Get current song for external links
         var E = window.GLPlayerEngine;
@@ -1639,7 +1767,9 @@ window.GLPlayerUI = (function() {
         deleteVersionByUrl: deleteVersionByUrl,
         _onPrefChange: _onPrefChange,
         _playPastedUrl: _playPastedUrl,
-        _tapPlayButton: _tapPlayButton
+        _tapPlayButton: _tapPlayButton,
+        _parkYTPlayer: _parkYTPlayer,
+        _unparkYTPlayer: _unparkYTPlayer
     };
 
 })();
