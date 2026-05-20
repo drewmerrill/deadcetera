@@ -1,10 +1,16 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260518-171227
+**Build Under Test:** 20260520-161814
 
 ## Open
 
 _None._
+
+## Resolved 2026-05-20 (build `20260520-161814`)
+
+| # | Bug | Severity | Diagnosis | Resolution |
+|---|---|---|---|---|
+| **#15** | Desktop setlist playback: Sugaree (Spotify) → Green-Eyed Lady (YouTube) — Sugaree kept playing under the YouTube audio. Both played at once. | HIGH | `_playSource` in `gl-player-engine.js` only had a cross-source teardown for **YT → non-YT** (`_switchingAwayFromYT` block destroys the persistent `_ytPlayer`). No symmetric handler for **Spotify → non-Spotify**. Spotify SDK runs in the page's JS audio context (not in an iframe), so wiping `container.innerHTML` for the next embed does not stop SDK audio. Connect path is decoupled even further — audio plays on the user's phone via Spotify REST and is fully independent of any DOM state. Both paths therefore continued playing while the new source took over the visible container. | **FIXED 2026-05-20** build `20260520-161814` commit `d4381acd`. Added symmetric `_switchingAwayFromSpotify` block right after the YT-away block. SDK path: `GLSpotifyPlayer.pause()`. Connect path: `GLSpotifyConnect.stopPolling()` + `GLSpotifyConnect.pause(_activeDeviceId)`. Embed-preview path: no explicit pause needed (wiping container kills the only audio element). `_activeMethod` + `_activeDeviceId` reset to null. **Acceptance:** desktop setlist → Spotify song → next YouTube song → only YouTube plays; Spotify is silent. Verified across SDK + Connect paths. |
 
 ## Resolved 2026-05-18 (build `20260518-171227`)
 
