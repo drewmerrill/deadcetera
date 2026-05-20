@@ -153,24 +153,20 @@ window.GLPlayerUI = (function() {
             + '<div id="glpProgress" style="font-size:0.8em;color:#64748b;text-align:center"></div>'
             + '<div id="glpFallback" style="display:none;text-align:center;margin-top:12px;width:100%;max-width:400px"></div>'
             + '</div>'
-            // Controls \u2014 full redesign 2026-05-20 (Drew):
-            //   - OUTER wrapper is a full-width flex row with justify-center.
-            //     This is bulletproof centering \u2014 independent of parent's
-            //     align-items default that defeated margin:0 auto + align-self
-            //     center on the previous build (Drew confirmed visually
-            //     left-aligned despite both being applied via diagnostic).
-            //   - INNER row: max-width 440px, justify-content space-between.
-            //   - Visual upgrade: dropped visible borders for a flatter look;
-            //     subtle background tint on tap; gradient + glow on the play
-            //     button to make it the obvious focal point; -10/+10 use
-            //     rotate-arrow glyphs with small "10s" label for a sleeker feel.
-            + '<div style="display:flex;justify-content:center;padding:18px 12px;flex-shrink:0">'
-            +   '<div style="display:flex;align-items:center;justify-content:space-between;gap:6px;width:100%;max-width:440px">'
-            +     '<button onclick="GLPlayerEngine.prev()" title="Previous song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:flex;align-items:center;justify-content:center;line-height:1;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'">\u23EE</button>'
-            +     '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;font-family:inherit;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'"><span style="font-size:1em">\u21BA</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
-            +     '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;cursor:pointer;font-size:1.7em;display:flex;align-items:center;justify-content:center;line-height:1;padding-left:4px;box-shadow:0 8px 24px rgba(99,102,241,0.45),0 0 0 1px rgba(255,255,255,0.06) inset;transition:transform 0.12s,box-shadow 0.15s" onmousedown="this.style.transform=\'scale(0.96)\'" onmouseup="this.style.transform=\'scale(1)\'" onmouseleave="this.style.transform=\'scale(1)\'">\u23F8</button>'
-            +     '<button onclick="GLPlayerEngine.seekRelative(10)" title="Forward 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;font-family:inherit;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'"><span style="font-size:1em">\u21BB</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
-            +     '<button onclick="GLPlayerEngine.next()" title="Next song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:flex;align-items:center;justify-content:center;line-height:1;transition:background 0.15s" onmouseenter="this.style.background=\'rgba(255,255,255,0.10)\'" onmouseleave="this.style.background=\'rgba(255,255,255,0.04)\'">\u23ED</button>'
+            // Controls \u2014 text-align:center + display:inline-flex (2026-05-20):
+            // Nested flex layouts were rendering vertical on Drew's iPhone
+            // despite diagnostic-confirmed display:flex. Switching to the
+            // most fundamental centering technique: parent block with
+            // text-align:center, inner row as display:inline-flex (treated
+            // like a centered text item). Works regardless of any flex
+            // parent semantics.
+            + '<div style="text-align:center;padding:18px 12px;flex-shrink:0">'
+            +   '<div style="display:inline-flex;align-items:center;gap:18px;vertical-align:middle">'
+            +     '<button onclick="GLPlayerEngine.prev()" title="Previous song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0">\u23EE</button>'
+            +     '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:0;font-family:inherit"><span style="font-size:1em">\u21BA</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
+            +     '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;cursor:pointer;font-size:1.7em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0 0 0 4px;box-shadow:0 8px 24px rgba(99,102,241,0.45)">\u23F8</button>'
+            +     '<button onclick="GLPlayerEngine.seekRelative(10)" title="Forward 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:0;font-family:inherit"><span style="font-size:1em">\u21BB</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
+            +     '<button onclick="GLPlayerEngine.next()" title="Next song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0">\u23ED</button>'
             +   '</div>'
             + '</div>'
             // Up next
