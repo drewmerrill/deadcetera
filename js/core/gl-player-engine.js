@@ -737,6 +737,24 @@ window.GLPlayerEngine = (function() {
                 _emit('embedReady', { source: 'spotify_sdk_interaction', trackId: trackId, message: SP.getStatusMessage() });
                 return;
             }
+            // Drew 2026-05-20 (Safari desktop): when the SDK hits ERROR
+            // (e.g. token expired, transient 401 that refresh couldn't
+            // recover), the previous code silently fell through to the
+            // 30s embed preview. Surfaces no auth CTA, user can't
+            // recover, every subsequent song re-fails the same way.
+            // Now: emit needsSpotifyAuth so the existing "Connect
+            // Spotify" CTA renders. After the user reconnects once,
+            // subsequent songs use the refreshed token without prompt.
+            if (spState === SP.State.ERROR) {
+                console.log('[GLPlayer] Spotify SDK ERROR — surfacing auth CTA:', SP.getStatusMessage && SP.getStatusMessage());
+                var msg = (SP.getStatusMessage && SP.getStatusMessage()) || '';
+                var isAuthIssue = /auth|token|expired|sign in|reconnect/i.test(msg);
+                _activeMethod = null;
+                _activeDeviceId = null;
+                _setState(State.IDLE, { source: 'spotify', method: 'needs_auth' });
+                _emit('needsSpotifyAuth', { trackId: trackId, reason: isAuthIssue ? 'token_expired' : 'sdk_error', message: msg });
+                return;
+            }
             if (spState === SP.State.UNAVAILABLE) {
                 console.log('[GLPlayer] Spotify SDK unavailable, falling back to embed');
             }
