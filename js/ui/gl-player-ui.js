@@ -164,7 +164,7 @@ window.GLPlayerUI = (function() {
             +   '<div style="display:inline-flex;align-items:center;gap:26px;vertical-align:middle">'
             +     '<button onclick="GLPlayerEngine.prev()" title="Previous song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0">\u23EE</button>'
             +     '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:0;font-family:inherit"><span style="font-size:1em">\u21BA</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
-            +     '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;cursor:pointer;font-size:1.7em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0 0 0 4px;box-shadow:0 8px 24px rgba(99,102,241,0.45)">\u23F8</button>'
+            +     '<button id="glpPlayPause" onclick="GLPlayerUI._tapPlayButton()" title="Play / Pause" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;cursor:pointer;font-size:1.7em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0 0 0 4px;box-shadow:0 8px 24px rgba(99,102,241,0.45)">\u23F8</button>'
             +     '<button onclick="GLPlayerEngine.seekRelative(10)" title="Forward 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:0;font-family:inherit"><span style="font-size:1em">\u21BB</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
             +     '<button onclick="GLPlayerEngine.next()" title="Next song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0">\u23ED</button>'
             +   '</div>'
@@ -351,7 +351,7 @@ window.GLPlayerUI = (function() {
             + '<div style="display:flex;align-items:center;justify-content:center;gap:4px;padding:4px 8px;font-size:0.7em">'
                 + '<button onclick="GLPlayerEngine.seekRelative(-30)" title="Back 30s" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#94a3b8;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">-30</button>'
                 + '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10s" style="background:none;border:1px solid rgba(255,255,255,0.10);color:#cbd5e1;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">-10</button>'
-                + '<button id="glpFloatPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;font-size:1.1em;padding:5px 14px;border-radius:6px;font-weight:700">\u23F8</button>'
+                + '<button id="glpFloatPlayPause" onclick="GLPlayerUI._tapPlayButton()" title="Play / Pause" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;cursor:pointer;font-size:1.1em;padding:5px 14px;border-radius:6px;font-weight:700">\u23F8</button>'
                 + '<button onclick="GLPlayerEngine.seekRelative(10)" title="Forward 10s" style="background:none;border:1px solid rgba(255,255,255,0.10);color:#cbd5e1;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">+10</button>'
                 + '<button onclick="GLPlayerEngine.seekRelative(30)" title="Forward 30s" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#94a3b8;cursor:pointer;font-size:0.92em;padding:5px 9px;border-radius:6px;font-weight:700">+30</button>'
                 + '<button onclick="GLPlayerUI.restart()" title="Restart" style="background:none;border:1px solid rgba(255,255,255,0.06);color:#94a3b8;cursor:pointer;font-size:0.95em;padding:5px 9px;border-radius:6px">\u21BA</button>'
@@ -737,7 +737,7 @@ window.GLPlayerUI = (function() {
         _barEl.id = 'glpBar';
         _barEl.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9500;display:flex;align-items:center;gap:8px;padding:10px 12px;background:rgba(15,23,42,0.95);border-top:1px solid rgba(99,102,241,0.2);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding-bottom:calc(10px + var(--gl-safe-bottom,0px))';
         _barEl.innerHTML = ''
-            + '<button onclick="event.stopPropagation();GLPlayerEngine.togglePlay()" id="glpBarPlayBtn" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:1em;flex-shrink:0;display:flex;align-items:center;justify-content:center">' + (E.isPlaying() ? '\u23F8' : '\u25B6') + '</button>'
+            + '<button onclick="event.stopPropagation();GLPlayerUI._tapPlayButton()" id="glpBarPlayBtn" style="width:36px;height:36px;border-radius:50%;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.1);color:#a5b4fc;cursor:pointer;font-size:1em;flex-shrink:0;display:flex;align-items:center;justify-content:center">' + (E.isPlaying() ? '\u23F8' : '\u25B6') + '</button>'
             + '<div onclick="GLPlayerUI.showOverlay()" style="flex:1;min-width:0;cursor:pointer">'
             + '<div style="font-size:0.85em;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _esc(song.title) + '</div>'
             + '<div style="font-size:0.7em;color:#64748b">' + (E.getCurrentIdx() + 1) + '/' + E.getQueue().length + ' \u00B7 Tap to open</div>'
@@ -1054,6 +1054,28 @@ window.GLPlayerUI = (function() {
     function _hideStatusOverlay() {
         var ov = document.getElementById('glpStatusOverlay');
         if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    }
+
+    // Shared dismiss-and-play handler — used by both the autoplay tap-to-play
+    // overlay AND the blue play/pause control button. Without this, clicking
+    // the blue button while the overlay was up would start the audio (the
+    // click counts as a gesture) but leave the dark overlay covering the
+    // video. User saw audio play but video stayed hidden behind "Tap to start".
+    function _tapPlayButton() {
+        // Strip any autoplay-blocked overlays in both the overlay and float
+        // containers (defensive — only one is mounted at a time).
+        ['glpTapToPlay_glpVideoContainer', 'glpTapToPlay_glpFloatVideo'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        });
+        // Mark the iOS gesture chain unlocked so the watchdog doesn't
+        // re-emit autoplayBlocked on the same iframe.
+        if (window.GLPlayerEngine && window.GLPlayerEngine.markYtAutoplayUnlocked) {
+            window.GLPlayerEngine.markYtAutoplayUnlocked();
+        }
+        if (window.GLPlayerEngine && window.GLPlayerEngine.togglePlay) {
+            window.GLPlayerEngine.togglePlay();
+        }
     }
 
     function _renderState(d) {
@@ -1616,7 +1638,8 @@ window.GLPlayerUI = (function() {
         deleteCurrent: deleteCurrent,
         deleteVersionByUrl: deleteVersionByUrl,
         _onPrefChange: _onPrefChange,
-        _playPastedUrl: _playPastedUrl
+        _playPastedUrl: _playPastedUrl,
+        _tapPlayButton: _tapPlayButton
     };
 
 })();
