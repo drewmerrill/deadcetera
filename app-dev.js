@@ -9798,7 +9798,7 @@ function renderMetronomePage(el) {
     html.push("<div style=\"width:100%;max-width:420px\">");
     // (Mode-switcher tabs DIGITAL / ANALOG / GROOVE removed 2026-05-19 per
     // Drew's request — digital is now the only mode.)
-    html.push("<div id=\"metroPedalBody\" style=\"background:linear-gradient(160deg,#2e2e2e 0%,#1c1c1c 50%,#111 100%);border-radius:18px;border:2px solid #555;box-shadow:0 12px 40px rgba(0,0,0,0.8),inset 0 1px 0 rgba(255,255,255,0.1),inset 0 -3px 6px rgba(0,0,0,0.6);padding:18px 16px 20px;position:relative;overflow:hidden\">");
+    html.push("<div id=\"metroPedalBody\" style=\"background:linear-gradient(160deg,#2e2e2e 0%,#1c1c1c 50%,#111 100%);border-radius:18px;border:2px solid #555;box-shadow:0 12px 40px rgba(0,0,0,0.8),inset 0 1px 0 rgba(255,255,255,0.1),inset 0 -3px 6px rgba(0,0,0,0.6);padding:12px 14px 12px;position:relative;overflow:hidden\">");
     html.push("<div style=\"position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,0.015) 0px,rgba(255,255,255,0.015) 1px,transparent 1px,transparent 4px);border-radius:16px;pointer-events:none\"></div>");
     html.push("<div style=\"position:absolute;top:9px;left:9px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#333);box-shadow:0 2px 4px rgba(0,0,0,0.8)\"></div>");
     html.push("<div style=\"position:absolute;top:9px;right:9px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#333);box-shadow:0 2px 4px rgba(0,0,0,0.8)\"></div>");
@@ -9806,11 +9806,11 @@ function renderMetronomePage(el) {
     html.push("<div style=\"position:absolute;bottom:9px;right:9px;width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#888,#333);box-shadow:0 2px 4px rgba(0,0,0,0.8)\"></div>");
     // Gold pedal nameplate — platform brand "GrooveLinx" (per Drew
     // 2026-05-19: keep this as platform identity).
-    html.push("<div style=\"text-align:center;margin-bottom:14px;position:relative;z-index:1\">");
-    html.push("<div style=\"display:inline-block;background:linear-gradient(180deg,#d4a843 0%,#8b6010 50%,#c8922a 100%);border-radius:4px;padding:4px 20px;box-shadow:0 2px 6px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.3)\">");
-    html.push("<span style=\"font-size:0.68em;font-weight:900;letter-spacing:0.2em;text-transform:uppercase;color:#1a0e00\">GrooveLinx</span>");
+    html.push("<div style=\"text-align:center;margin-bottom:8px;position:relative;z-index:1\">");
+    html.push("<div style=\"display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#d4a843 0%,#8b6010 50%,#c8922a 100%);border-radius:4px;padding:5px 20px 4px;box-shadow:0 2px 6px rgba(0,0,0,0.5),inset 0 1px 0 rgba(255,255,255,0.3)\">");
+    html.push("<span style=\"font-size:0.68em;font-weight:900;letter-spacing:0.2em;text-transform:uppercase;color:#1a0e00;line-height:1\">GrooveLinx</span>");
     html.push("</div></div>");
-    html.push("<div id=\"metroDisplayDigital\" style=\"position:relative;z-index:1;background:#0a0f00;border-radius:8px;border:1px solid #2a2a2a;box-shadow:inset 0 3px 12px rgba(0,0,0,0.9);padding:14px 12px 10px;margin-bottom:14px;text-align:center\">");
+    html.push("<div id=\"metroDisplayDigital\" style=\"position:relative;z-index:1;background:#0a0f00;border-radius:8px;border:1px solid #2a2a2a;box-shadow:inset 0 3px 12px rgba(0,0,0,0.9);padding:10px 12px 8px;margin-bottom:8px;text-align:center\">");
     html.push("<div id=\"metroStatusLed\" style=\"position:absolute;top:8px;right:10px;width:8px;height:8px;border-radius:50%;background:#330000;box-shadow:0 0 4px rgba(255,0,0,0.2);transition:all 0.1s\"></div>");
     html.push("<div style=\"display:flex;align-items:center;justify-content:center;gap:10px\">");
     html.push("<button onclick=\"mtAdjustBPM(9999,-1)\" style=\"background:linear-gradient(180deg,#3a3a3a,#222);color:#aaa;border:1px solid #555;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:1.1em;font-weight:700;box-shadow:0 3px 6px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.08);flex-shrink:0\">&#x2212;</button>");
@@ -9834,7 +9834,7 @@ function renderMetronomePage(el) {
     html.push("<input id=\"mtBPMGroove\" type=\"number\" value=\"120\" min=\"20\" max=\"300\" style=\"width:70px;text-align:center;background:rgba(255,255,255,0.05);color:#a0c8ff;border:1px solid #444;border-radius:6px;font-size:1.1em;font-weight:800;padding:4px\" onchange=\"document.getElementById('mtBPM_9999').value=this.value;document.getElementById('mtBPMSlider_9999').value=this.value;if(mtMetronomeInterval){mtStopMetronome();mtStartMetronome(9999);}\">");
     html.push("<button onclick=\"mtAdjustBPM(9999,1);metroSyncSecondaryBPM(document.getElementById('mtBPM_9999').value)\" style=\"background:linear-gradient(180deg,#3a3a3a,#222);color:#aaa;border:1px solid #555;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:1em;flex-shrink:0\">+</button>");
     html.push("</div></div>");
-    html.push("<div style=\"margin-bottom:14px;padding:0 2px;position:relative;z-index:1\">");
+    html.push("<div style=\"margin-bottom:8px;padding:0 2px;position:relative;z-index:1\">");
     html.push("<input id=\"mtBPMSlider_9999\" type=\"range\" min=\"20\" max=\"300\" value=\"120\" style=\"width:100%;accent-color:#c8ff00;cursor:pointer\" oninput=\"mtSyncBPMFromSlider(9999,this.value);metroSyncSecondaryBPM(this.value)\">");
     html.push("<div style=\"display:flex;justify-content:space-between;font-size:0.55em;color:rgba(255,255,255,0.18);margin-top:1px\"><span>40</span><span>80</span><span>120</span><span>160</span><span>200</span><span>240</span></div>");
     html.push("</div>");
@@ -9861,27 +9861,24 @@ function renderMetronomePage(el) {
     html.push("<div style=\"font-size:0.56em;color:rgba(255,255,255,0.35);text-transform:uppercase;letter-spacing:0.07em;text-align:center\">Sound</div>");
     html.push("</div>");
     html.push("</div>");
-    html.push("<div id=\"mtBeatVisual_9999\" style=\"display:flex;gap:6px;justify-content:center;align-items:center;min-height:20px;margin-bottom:16px;flex-wrap:wrap;position:relative;z-index:1\"></div>");
-    html.push("<div style=\"display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:16px;position:relative;z-index:1\">");
+    html.push("<div id=\"mtBeatVisual_9999\" style=\"display:flex;gap:6px;justify-content:center;align-items:center;min-height:16px;margin-bottom:8px;flex-wrap:wrap;position:relative;z-index:1\"></div>");
+    html.push("<div style=\"display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;position:relative;z-index:1\">");
     html.push("<button onclick=\"mtTapTempo(9999)\" id=\"mtTapBtn_9999\" style=\"background:linear-gradient(180deg,#3a3a3a,#1e1e1e);color:#c8c8c8;border:2px solid #555;padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:900;font-size:0.8em;letter-spacing:0.1em;box-shadow:0 5px 10px rgba(0,0,0,0.6),inset 0 1px 0 rgba(255,255,255,0.1);text-transform:uppercase;min-width:56px;flex-shrink:0\">TAP</button>");
     html.push("<div style=\"display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0\">");
     html.push("<div style=\"width:80px;height:80px;border-radius:50%;background:linear-gradient(180deg,#444,#222);border:3px solid #333;box-shadow:0 8px 20px rgba(0,0,0,0.8),0 0 0 3px #1a1a1a,0 0 0 5px #444;padding:6px\">");
-    // Icon-only button — ▶ stopped / ⏸ playing. Lives entirely inside the
-    // 80px circle. Tooltip carries the action name for accessibility.
-    html.push("<button id=\"mtMetronomeToggle_9999\" onclick=\"mtToggleMetronome(9999)\" title=\"Start / Stop\" aria-label=\"Start or stop the metronome\" style=\"width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 40% 35%,#cc3000,#6b0000);color:white;border:none;cursor:pointer;font-size:2em;box-shadow:inset 0 3px 6px rgba(255,255,255,0.1),inset 0 -3px 6px rgba(0,0,0,0.4),0 4px 12px rgba(150,0,0,0.5);display:flex;align-items:center;justify-content:center;line-height:1\">&#x25B6;</button>");
+    html.push("<button id=\"mtMetronomeToggle_9999\" onclick=\"mtToggleMetronome(9999)\" title=\"Start / Stop\" aria-label=\"Start or stop the metronome\" style=\"width:100%;height:100%;border-radius:50%;background:radial-gradient(circle at 40% 35%,#cc3000,#6b0000);color:white;border:none;cursor:pointer;font-size:2em;box-shadow:inset 0 3px 6px rgba(255,255,255,0.1),inset 0 -3px 6px rgba(0,0,0,0.4),0 4px 12px rgba(150,0,0,0.5);display:flex;align-items:center;justify-content:center;line-height:1;padding-left:6px\">&#x25B6;</button>");
     html.push("</div>");
     html.push("</div>");
     html.push("<div style=\"display:flex;flex-direction:column;gap:4px;align-items:center;min-width:0;flex-shrink:0\">");
-    html.push("<div style=\"font-size:0.55em;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.07em\">Trainer</div>");
+    html.push("<div style=\"display:flex;align-items:center;gap:4px;font-size:0.55em;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.07em\">Trainer<span class=\"gl-help-icon\" title=\"Auto-tempo trainer: every N bars, increase BPM by the set amount. Useful for working up to performance tempo gradually. Set BPM step and bars, then toggle On.\" style=\"width:14px;height:14px;font-size:0.78em\">i</span></div>");
     html.push("<div style=\"display:flex;align-items:center;gap:3px\"><input id=\"mtTrainerAmt_9999\" type=\"number\" value=\"5\" min=\"1\" max=\"20\" style=\"width:32px;text-align:center;background:#1a1a1a;color:#e0e0e0;border:1px solid #444;border-radius:4px;padding:3px;font-size:0.72em\"><span style=\"font-size:0.6em;color:rgba(255,255,255,0.25)\">BPM</span></div>");
     html.push("<div style=\"display:flex;align-items:center;gap:3px\"><input id=\"mtTrainerBars_9999\" type=\"number\" value=\"4\" min=\"1\" max=\"32\" style=\"width:32px;text-align:center;background:#1a1a1a;color:#e0e0e0;border:1px solid #444;border-radius:4px;padding:3px;font-size:0.72em\"><span style=\"font-size:0.6em;color:rgba(255,255,255,0.25)\">bars</span></div>");
     html.push("<label style=\"display:flex;align-items:center;gap:3px;font-size:0.68em;color:rgba(255,255,255,0.35);cursor:pointer\"><input type=\"checkbox\" id=\"mtTrainerOn_9999\" style=\"accent-color:#c8ff00\"> On</label>");
     html.push("</div>");
     html.push("</div>");
-    // Band logo display — bumped 2026-05-19 (round 2): 140 → 220px tall,
-    // 280 → 380px max width. Nearly fills the pedal body width.
-    html.push("<div style=\"text-align:center;margin-top:18px;position:relative;z-index:1\">");
-    html.push("<img id=\"metroPedalLogo\" class=\"gl-band-logo\" src=\"hero-logo.png\" style=\"height:220px;max-width:380px;width:100%;object-fit:contain\" onerror=\"this.style.display='none'\">");
+    // Band logo display — 180px tall fits above-the-fold on desktop.
+    html.push("<div style=\"text-align:center;margin-top:8px;position:relative;z-index:1\">");
+    html.push("<img id=\"metroPedalLogo\" class=\"gl-band-logo\" src=\"hero-logo.png\" style=\"height:180px;max-width:380px;width:100%;object-fit:contain\" onerror=\"this.style.display='none'\">");
     html.push("</div>");
     // (IN/OUT decorative jacks removed 2026-05-19 — pure pedal-aesthetic
     // garnish with no functional role. Brushed metal + screws + recessed
