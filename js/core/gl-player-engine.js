@@ -496,22 +496,24 @@ window.GLPlayerEngine = (function() {
             return;
         }
         console.log('[GLPlayer] Source resolved:', result.source, result.confidence || '', result.trackId || result.videoId || '');
-        // 2026-05-20 garage architecture: cross-source DESTROY removed.
-        // The YT iframe now persists in a hidden "garage" div when a
-        // non-YouTube source plays. UI's _createEmbed parks the iframe
-        // before wiping glpVideoContainer for Spotify/Archive/CTAs.
-        // The next YouTube song unparks it back into the visible
-        // container — preserving the iframe identity (and iOS gesture
-        // context) so subsequent YT songs autoplay without re-tap.
-        //
-        // We DO pause the YT player so its audio doesn't keep playing
-        // from the hidden iframe in the garage while a Spotify song
-        // is playing in the visible container.
+        // 2026-05-20 garage reverted: moving the YT iframe via appendChild
+        // breaks the YouTube IFrame API's postMessage bridge (the iframe
+        // reloads to its original src when moved, and loadVideoById
+        // silently fails because postMessage rejects on origin mismatch).
+        // Drew's trail showed the original Bertha video playing every
+        // time a YT song followed a Spotify song. Back to cross-source
+        // DESTROY: rebuild the YT player fresh whenever YouTube returns
+        // from a non-YouTube source. User taps once per cross-source
+        // transition; same-source YT→YT continues to autoplay via the
+        // loadVideoById path (iframe stays in container, no move).
         var _switchingAwayFromYT = (_activeSource === 'youtube' && result.source !== 'youtube' && _ytPlayer);
         if (_switchingAwayFromYT) {
-            try {
-                if (_ytPlayer.pauseVideo) _ytPlayer.pauseVideo();
-            } catch(_ePause) {}
+            console.log('[YT] cross-source switch — destroying persistent player');
+            try { _ytPlayer.destroy(); } catch(_eDestroy) {}
+            _ytPlayer = null;
+            // New iframe = new gesture context. Reset the unlock flag so
+            // the next YT song correctly enters the autoplay-blocked flow.
+            _ytAutoplayUnlocked = false;
         }
         _activeSource = result.source;
         _activeResult = result;
@@ -889,33 +891,20 @@ window.GLPlayerEngine = (function() {
 
         _setState(State.PLAYING, { source: 'youtube', videoId: videoId });
 
-        // Persistent-player path (2026-05-20 garage architecture): if we
-        // have a live _ytPlayer AND its iframe is still in the DOM
-        // (visible container OR hidden garage), swap videos via
-        // loadVideoById. iOS treats the iframe as one gesture context,
-        // so the first user tap unlocks autoplay for the whole queue —
-        // INCLUDING across cross-source transitions (YT→Spotify→YT)
-        // because the iframe is parked in a hidden garage rather than
-        // destroyed.
+        // Persistent-player path (same-source YT → YT only): if we have a
+        // live _ytPlayer AND its iframe is still in the DOM, swap videos
+        // via loadVideoById. The iframe stays in place — no DOM moves —
+        // so YT API's postMessage bridge stays intact. iOS gesture
+        // context preserved within the same iframe, so subsequent YT
+        // songs autoplay without a tap.
+        //
+        // Cross-source switches destroy _ytPlayer (handled in _playSource
+        // above), so this branch only fires for same-source transitions.
         if (_ytPlayer && _ytPlayer.loadVideoById && document.getElementById('glpYTPlayer')) {
             try {
                 console.log('[YT] reusing player via loadVideoById:', videoId);
-                // CRITICAL: unpark the iframe BACK to the visible
-                // container BEFORE loadVideoById. iOS Safari evaluates
-                // autoplay permission at load-time; if the iframe is
-                // hidden (still in garage) when loadVideoById fires, iOS
-                // may block autoplay even though our gesture context is
-                // technically still valid. Unparking first puts the
-                // iframe in a visible container so loadVideoById's
-                // implicit play() runs with a visible iframe context.
-                if (window.GLPlayerUI && window.GLPlayerUI._unparkYTPlayer) {
-                    window.GLPlayerUI._unparkYTPlayer(); // auto-detects container by _mode
-                }
                 _ytPlayer.loadVideoById(videoId);
                 _armYtAutoplayWatchdog();
-                // Emit embedReady with reused:true — UI knows to skip
-                // createYouTubePlayer (no fresh create) but still runs
-                // its side effects (Copy button, status overlay dismiss).
                 _emit('embedReady', { source: 'youtube', videoId: videoId, reused: true });
                 return;
             } catch(_eReuse) {
