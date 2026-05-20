@@ -515,6 +515,29 @@ window.GLPlayerEngine = (function() {
             // the next YT song correctly enters the autoplay-blocked flow.
             _ytAutoplayUnlocked = false;
         }
+        // Symmetric: pause Spotify when switching away from it. Drew
+        // 2026-05-20 desktop bug: Spotify SDK kept playing in the page's
+        // audio context after YouTube took over the visible container —
+        // both played at once. Wiping container.innerHTML for the YT
+        // embed doesn't pause the SDK (SDK runs in JS, not in an iframe).
+        // Connect path: audio plays on the user's phone via Spotify REST,
+        // also unaffected by container wipe. Both need explicit pause.
+        // Embed-preview path: pause not needed — wiping container kills
+        // the embed iframe which is the only audio source for that path.
+        var _switchingAwayFromSpotify = (_activeSource === 'spotify' && result.source !== 'spotify');
+        if (_switchingAwayFromSpotify) {
+            console.log('[Spotify] cross-source switch — pausing (method=' + _activeMethod + ')');
+            if (_activeMethod === 'sdk' && typeof GLSpotifyPlayer !== 'undefined' && GLSpotifyPlayer.pause) {
+                try { GLSpotifyPlayer.pause(); } catch(_eSdk) {}
+            } else if (_activeMethod === 'connect' && typeof GLSpotifyConnect !== 'undefined') {
+                try { if (GLSpotifyConnect.stopPolling) GLSpotifyConnect.stopPolling(); } catch(_ePoll) {}
+                if (_activeDeviceId && GLSpotifyConnect.pause) {
+                    GLSpotifyConnect.pause(_activeDeviceId).catch(function(){});
+                }
+            }
+            _activeMethod = null;
+            _activeDeviceId = null;
+        }
         _activeSource = result.source;
         _activeResult = result;
         _emit('sourceResolved', { source: result.source, confidence: result.confidence, song: song });
