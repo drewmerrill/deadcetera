@@ -771,26 +771,28 @@ window.GLPlayerEngine = (function() {
     var _ytAutoplayUnlocked = false;
     function _armYtAutoplayWatchdog() {
         _clearYtAutoplayWatchdog();
-        if (_ytAutoplayUnlocked) return; // session already unlocked — autoplay will work
+        if (_ytAutoplayUnlocked) { console.log('[YT-Watchdog] skipped (session unlocked)'); return; }
         try {
             _ytAutoplayBaselineTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1;
         } catch(_e) { _ytAutoplayBaselineTime = -1; }
+        console.log('[YT-Watchdog] armed, baselineTime=' + _ytAutoplayBaselineTime);
         _ytAutoplayWatchdog = setTimeout(function() {
             try {
                 var st = (_ytPlayer && _ytPlayer.getPlayerState) ? _ytPlayer.getPlayerState() : -1;
                 var nowTime = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1;
                 var stuck = (_ytAutoplayBaselineTime >= 0 && nowTime >= 0 && nowTime === _ytAutoplayBaselineTime);
+                console.log('[YT-Watchdog] fired state=' + st + ' nowTime=' + nowTime + ' stuck=' + stuck);
                 if (st !== 1 || stuck) {
+                    console.log('[YT-Watchdog] → emitting autoplayBlocked');
                     _isPlaying = false;
                     _emit('stateChange', { state: State.PLAYING, isPlaying: false });
                     _emit('autoplayBlocked', { source: 'youtube' });
                 } else {
-                    // State is PLAYING and time has advanced — autoplay worked.
-                    // Mark the session as unlocked so we skip the watchdog for
-                    // subsequent songs.
+                    console.log('[YT-Watchdog] → autoplay worked, marking session unlocked');
                     _ytAutoplayUnlocked = true;
                 }
             } catch(_e) {
+                console.log('[YT-Watchdog] threw, emitting autoplayBlocked:', _e && _e.message);
                 _isPlaying = false;
                 _emit('stateChange', { state: State.PLAYING, isPlaying: false });
                 _emit('autoplayBlocked', { source: 'youtube' });
@@ -831,11 +833,14 @@ window.GLPlayerEngine = (function() {
             playerVars: { autoplay: 1, controls: 1, modestbranding: 1, rel: 0, playsinline: 1 },
             events: {
                 onReady: function() {
+                    console.log('[YT] onReady fired, videoId=' + videoId);
                     _isPlaying = true;
                     _emit('stateChange', { state: State.PLAYING, isPlaying: true });
                     _armYtAutoplayWatchdog();
                 },
                 onStateChange: function(e) {
+                    var _tNow = -1; try { _tNow = (_ytPlayer && _ytPlayer.getCurrentTime) ? _ytPlayer.getCurrentTime() : -1; } catch(_) {}
+                    console.log('[YT] onStateChange state=' + e.data + ' (UNSTARTED=-1 ENDED=0 PLAYING=1 PAUSED=2 BUFFERING=3 CUED=5) t=' + _tNow + ' unlocked=' + _ytAutoplayUnlocked);
                     if (e.data === YT.PlayerState.ENDED) { _clearYtAutoplayWatchdog(); next(); }
                     if (e.data === YT.PlayerState.PLAYING) {
                         // Real PLAYING — clear watchdog only if time has actually advanced.

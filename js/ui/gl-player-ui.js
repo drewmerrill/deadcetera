@@ -938,12 +938,16 @@ window.GLPlayerUI = (function() {
     }
 
     function _renderAutoplayBlocked(d) {
+        console.log('[UI] _renderAutoplayBlocked called, reason=' + (d && d.reason || 'n/a'));
         // Find whichever video container is currently mounted (overlay or float).
         var containerIds = ['glpVideoContainer', 'glpFloatVideo'];
+        var rendered = 0;
         for (var i = 0; i < containerIds.length; i++) {
             var container = document.getElementById(containerIds[i]);
-            if (!container) continue;
-            if (document.getElementById('glpTapToPlay_' + containerIds[i])) continue;
+            if (!container) { console.log('[UI] - container missing: ' + containerIds[i]); continue; }
+            if (document.getElementById('glpTapToPlay_' + containerIds[i])) { console.log('[UI] - overlay already present for ' + containerIds[i]); continue; }
+            console.log('[UI] - rendering overlay into ' + containerIds[i] + ' (children before=' + container.children.length + ')');
+            rendered++;
             // Container needs a positioning context for absolute children.
             try { if (getComputedStyle(container).position === 'static') container.style.position = 'relative'; } catch(_e) {}
             var btn = document.createElement('button');
