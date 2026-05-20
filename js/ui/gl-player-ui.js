@@ -155,10 +155,13 @@ window.GLPlayerUI = (function() {
             + '</div>'
             // Controls \u2014 text-align:center + display:inline-flex.
             // Padding tightened on top to lift controls higher in the
-            // viewport (Drew 2026-05-20). gap:18px \u2192 32px for more
-            // spread between buttons.
+            // viewport (Drew 2026-05-20). gap:26px chosen to give more
+            // spread than the prior 18px while still fitting iPhone 15
+            // (393px viewport, ~369px content after padding): 5 buttons
+            // total 264px + 4 gaps \u00d7 26 = 368px. Comfortable on
+            // standard/Pro/Plus screens.
             + '<div style="text-align:center;padding:6px 12px 18px;flex-shrink:0">'
-            +   '<div style="display:inline-flex;align-items:center;gap:32px;vertical-align:middle">'
+            +   '<div style="display:inline-flex;align-items:center;gap:26px;vertical-align:middle">'
             +     '<button onclick="GLPlayerEngine.prev()" title="Previous song" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#e2e8f0;cursor:pointer;font-size:1.25em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0">\u23EE</button>'
             +     '<button onclick="GLPlayerEngine.seekRelative(-10)" title="Back 10 seconds" style="width:48px;height:48px;border-radius:50%;border:none;background:rgba(255,255,255,0.04);color:#cbd5e1;cursor:pointer;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:0;font-family:inherit"><span style="font-size:1em">\u21BA</span><span style="font-size:0.5em;font-weight:700;color:#94a3b8;margin-top:1px">10s</span></button>'
             +     '<button id="glpPlayPause" onclick="GLPlayerEngine.togglePlay()" title="Play / Pause" style="width:72px;height:72px;border-radius:50%;border:none;background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);color:white;cursor:pointer;font-size:1.7em;display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0 0 0 4px;box-shadow:0 8px 24px rgba(99,102,241,0.45)">\u23F8</button>'
