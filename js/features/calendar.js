@@ -1797,6 +1797,51 @@ function _calFormatRehearsalWhen(ev) {
     return datePart;
 }
 
+// Helpers for the setlist-change notification flow (candidate #2, issue #41).
+// `_calHoursUntilEvent`: hours from now until ev.date + ev.startTime (local).
+// `_calIsWithinNotifyWindow`: 24h before gig, 6h before rehearsal.
+// `_calFindUpcomingEventsForSetlist`: reverse-lookup events that reference
+//   a setlist via `linkedSetlist` (currently the setlist NAME — yellow flag,
+//   brittle to renames; TODO migrate to setlistId). Read-only; never writes.
+function _calHoursUntilEvent(ev) {
+    if (!ev || !ev.date) return Number.POSITIVE_INFINITY;
+    var parts = String(ev.date).split('-');
+    if (parts.length !== 3) return Number.POSITIVE_INFINITY;
+    var d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    if (isNaN(d.getTime())) return Number.POSITIVE_INFINITY;
+    if (ev.startTime) {
+        var tparts = String(ev.startTime).split(':');
+        if (tparts.length >= 2) {
+            var h = parseInt(tparts[0]);
+            var m = parseInt(tparts[1]);
+            if (!isNaN(h) && !isNaN(m)) d.setHours(h, m, 0, 0);
+        }
+    }
+    return (d.getTime() - Date.now()) / 3600000;
+}
+function _calIsWithinNotifyWindow(ev) {
+    if (!ev || !ev.type) return false;
+    var hours = _calHoursUntilEvent(ev);
+    if (hours <= 0) return false;
+    if (ev.type === 'gig') return hours <= 24;
+    if (ev.type === 'rehearsal') return hours <= 6;
+    return false;
+}
+async function _calFindUpcomingEventsForSetlist(setlistName) {
+    if (!setlistName) return [];
+    try {
+        var events = toArray(await loadBandDataFromDrive('_band', 'calendar_events') || []);
+        return events.filter(function(ev) {
+            return ev && ev.linkedSetlist === setlistName && _calIsWithinNotifyWindow(ev);
+        }).sort(function(a, b) {
+            return _calHoursUntilEvent(a) - _calHoursUntilEvent(b);
+        });
+    } catch(e) {
+        console.warn('[Calendar] _calFindUpcomingEventsForSetlist failed:', e && e.message);
+        return [];
+    }
+}
+
 // Delete event from the date panel with confirmation + Google sync
 window._calDeleteFromPanel = async function(eventId, dateStr) {
     // Check if event is synced to Google and whether we can reach Google

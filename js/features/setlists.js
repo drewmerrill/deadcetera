@@ -3099,6 +3099,138 @@ function parachuteOpenOfflinePack() {
 }
 
 
+// ── Setlist-change notification (candidate #2, issue #41) ─────────────────
+// When a setlist linked to an upcoming event changes within the notify
+// window (24h gig / 6h rehearsal), prompt the user to broadcast SMS + push.
+// Debounced 1500ms so rapid edits coalesce. Read-only against setlist data —
+// never writes (per setlist SWR clobber bug, mutations would clobber siblings).
+var _slNotifyTimer = null;
+var _slNotifyBurst = null; // { setlistId, preName, preSig, isDelete } | null
+var _slNotifyDebounceMs = 1500;
+
+function _slComputeChangeSig(setlist) {
+    if (!setlist) return '';
+    try {
+        return JSON.stringify({
+            name: setlist.name || '',
+            sets: (setlist.sets || []).map(function(s) {
+                return {
+                    name: (s && s.name) || '',
+                    songs: ((s && s.songs) || []).map(function(song) {
+                        if (typeof song === 'string') return song;
+                        return { title: (song && song.title) || '', notes: (song && song.notes) || '' };
+                    })
+                };
+            }),
+            notes: setlist.notes || ''
+        });
+    } catch(e) { return ''; }
+}
+
+function _slScheduleNotifyCheck(setlistId, preName, preSig, isDelete) {
+    if (!setlistId || !preName) return;
+    // Capture FIRST burst's pre-state; subsequent rapid edits only reset the
+    // timer. If any save in the burst was a delete, that wins.
+    if (!_slNotifyBurst || _slNotifyBurst.setlistId !== setlistId) {
+        _slNotifyBurst = { setlistId: setlistId, preName: preName, preSig: preSig, isDelete: !!isDelete };
+    } else if (isDelete) {
+        _slNotifyBurst.isDelete = true;
+    }
+    if (_slNotifyTimer) clearTimeout(_slNotifyTimer);
+    _slNotifyTimer = setTimeout(function() {
+        var burst = _slNotifyBurst;
+        _slNotifyBurst = null;
+        _slNotifyTimer = null;
+        _slMaybeNotifyChange(burst).catch(function(e) {
+            console.warn('[Setlists] notify check failed:', e && e.message);
+        });
+    }, _slNotifyDebounceMs);
+}
+
+async function _slMaybeNotifyChange(burst) {
+    if (!burst || !burst.setlistId || !burst.preName) return;
+    var setlistId = burst.setlistId;
+    var preName = burst.preName;
+    var displayName = preName;
+    var changed = burst.isDelete;
+
+    if (!burst.isDelete) {
+        // Read fresh setlist from Firebase; if it's gone (deleted in another
+        // tab between edit + debounce), skip. NEVER write — read-only.
+        try {
+            var freshSetlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+            var fresh = freshSetlists.find(function(s) { return s && s.setlistId === setlistId; });
+            if (!fresh) return;
+            changed = (_slComputeChangeSig(fresh) !== burst.preSig);
+            displayName = fresh.name || preName;
+        } catch(e) {
+            console.warn('[Setlists] fresh setlist load failed:', e && e.message);
+            return;
+        }
+    }
+    if (!changed) return;
+
+    // Look up events by PRE-EDIT name (events reference setlists by name; a
+    // rename leaves events pointing at the old name until they're re-linked).
+    // Yellow flag accepted for v1; TODO migrate linkedSetlist to setlistId.
+    var candidates = [];
+    try {
+        if (typeof _calFindUpcomingEventsForSetlist === 'function') {
+            candidates = await _calFindUpcomingEventsForSetlist(preName);
+        }
+    } catch(e) {
+        console.warn('[Setlists] event lookup failed:', e && e.message);
+        return;
+    }
+    if (!candidates.length) return;
+
+    var ev = candidates[0]; // closest event (helper already sorts by hours-until)
+    var when = (typeof _calFormatRehearsalWhen === 'function')
+        ? _calFormatRehearsalWhen(ev)
+        : (ev.date || 'an upcoming event');
+    var eventLabel = ev.type === 'gig' ? (ev.title || ev.venue || 'gig') : 'rehearsal';
+    var verb = burst.isDelete ? 'deleted' : 'updated';
+    var smsBody = 'GrooveLinx: Setlist "' + displayName + '" ' + verb
+        + ' for ' + eventLabel + ' on ' + when
+        + '. Reply STOP to opt out, HELP for help. Message and data rates may apply.';
+
+    var doNotify = confirm(
+        'Notify opted-in band members about this setlist change?\n\n' +
+        'SMS body: "' + smsBody + '"\n\n' +
+        'A browser push will also fire for members opted in to push notifications.'
+    );
+    if (!doNotify) return;
+
+    if (typeof GLSms !== 'undefined' && GLSms.notifyBand) {
+        GLSms.notifyBand({ body: smsBody, excludeMemberKey: '__none__' }).then(function(r) {
+            if (!r || typeof showToast !== 'function') return;
+            if (r.ok && r.sent > 0) {
+                var msg = '✓ Setlist-change SMS sent to ' + r.sent + ' of ' + r.total
+                    + ' opted-in member' + (r.total === 1 ? '' : 's');
+                if (r.failed) msg += ' (' + r.failed + ' failed — see console)';
+                showToast(msg, 5000);
+            } else if (r.ok && r.total === 0) {
+                showToast('ℹ No opted-in SMS recipients — push only', 4000);
+            } else {
+                showToast('⚠ Setlist-change SMS failed: ' + (r.reason || 'all recipients failed'), 6000);
+            }
+        }).catch(function(e) { console.warn('[Setlists] GLSms.notifyBand threw:', e && e.message); });
+    }
+    if (typeof GLPush !== 'undefined' && GLPush.notifyBand) {
+        GLPush.notifyBand({
+            title: 'Setlist ' + verb,
+            body: displayName + ' for ' + eventLabel + ' on ' + when,
+            tag: 'gl-setlist-change-' + (ev.eventId || ev.id || setlistId),
+            data: {
+                type: 'setlist_changed',
+                eventId: ev.eventId || ev.id,
+                setlistId: setlistId,
+                setlistName: displayName
+            }
+        }).catch(function(e) { console.warn('[Setlists] GLPush.notifyBand threw:', e && e.message); });
+    }
+}
+
 async function slSaveSetlistEdit(idx, shouldLock) {
     if (!requireSignIn()) return;
     // Default to locking (preserves prior behavior); explicit `false` from
@@ -3136,12 +3268,25 @@ async function slSaveSetlistEdit(idx, shouldLock) {
         lockedAt: shouldLock ? new Date().toISOString() : (prev.lockedAt || null),
         lockedBy: shouldLock ? _lockerNameEdit : (prev.lockedBy || null)
     };
+    // Capture pre-edit snapshot BEFORE save for change-detection (issue #41).
+    // `prev` still points at the OLD setlist object (data[idx] was reassigned
+    // above, but `prev` was captured before that). Events reference setlists
+    // by NAME (linkedSetlist), so use prev.name even when the user renamed.
+    var _slPreEditSig = _slComputeChangeSig(prev);
+    var _slPreEditName = prev.name || data[idx].name || '';
     var saved = await saveBandDataToDrive('_band', 'setlists', data);
     if (saved === false) {
         showToast('❌ Save failed — check your connection or sign in');
         return;
     }
     showToast(shouldLock ? '\u2705 Set locked' : '\ud83d\udcbe Saved (still unlocked)');
+    // Schedule debounced setlist-change notification check (issue #41).
+    try {
+        var _slSidForNotify = data[idx].setlistId || prev.setlistId || '';
+        if (_slSidForNotify && _slPreEditName) {
+            _slScheduleNotifyCheck(_slSidForNotify, _slPreEditName, _slPreEditSig, false);
+        }
+    } catch(e) { console.warn('[Setlists] notify schedule failed:', e && e.message); }
     if (shouldLock && typeof GLStore !== 'undefined' && GLStore.logBandActivity) {
         var _slName = document.getElementById('slName') ? document.getElementById('slName').value : '';
         GLStore.logBandActivity('setlist_locked', { name: _slName || 'Setlist' });
@@ -3160,9 +3305,17 @@ async function deleteSetlist(idx) {
     if (!confirm('Delete this setlist? This cannot be undone.')) return;
     const raw = window._cachedSetlists || toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
     const data = [...raw];
+    // Capture pre-delete snapshot before splice for notification check (issue #41).
+    var _slPreDelete = data[idx] || null;
     data.splice(idx, 1);
     await saveBandDataToDrive('_band', 'setlists', data);
     showToast('🗑️ Setlist deleted');
+    // Schedule debounced setlist-change notification check (issue #41).
+    try {
+        if (_slPreDelete && _slPreDelete.setlistId && _slPreDelete.name) {
+            _slScheduleNotifyCheck(_slPreDelete.setlistId, _slPreDelete.name, _slComputeChangeSig(_slPreDelete), true);
+        }
+    } catch(e) { console.warn('[Setlists] notify schedule (delete) failed:', e && e.message); }
     loadSetlists();
 }
 
