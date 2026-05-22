@@ -5866,6 +5866,12 @@ var _rhCurrentTake = null;  // { sessionId, takeId, startSec, endSec }
 // only one stream runs at a time — fixes the dual-audio bug where the timeline
 // element kept playing while a take row started a second stream on top.
 function _rhStopAllAudio() {
+    // Safety: if the Trim Preview audition is mid-play, stop it cleanly so
+    // its button label + module state reset (otherwise external stops would
+    // leave the ⏸ button label stuck and _rhTrimAuditionStop dangling).
+    if (typeof _rhTrimAuditionStop === 'function') {
+        try { _rhTrimAuditionStop(); } catch (_e) {}
+    }
     try {
         if (_rhSharedAudio && !_rhSharedAudio.paused) { _rhSharedAudio.pause(); }
     } catch (e) {}
@@ -6229,6 +6235,48 @@ function _rhFmtAbsTimeFine(sec) {
 //     from a single source of truth. No string round-tripping.
 //   • Save calls _rhStopAllAudio() to bust _rhCurrentTake — fixes the
 //     "sits on pause / starts too far in" coordinator-staleness bugs.
+// Trim Preview audition controls (2026-05-22).
+// Drew asked for an audition-length picker on top of the existing fixed 2.0s
+// audition. Three settings ship: 1s / 2s / 4s + hold. Hold mode skips the
+// auto-pause so the user can listen as long as they want (toggle ▶ to stop).
+// The picked mode persists in localStorage so the editor opens at the user's
+// preferred setting next time.
+var _rhTrimAuditionStop = null; // function while audition is active; null otherwise
+
+function _rhGetAuditionMode() {
+    try {
+        var saved = localStorage.getItem('gl_rh_trim_audition_mode');
+        if (saved === '1' || saved === '2' || saved === '4' || saved === 'hold') return saved;
+    } catch (_e) {}
+    return '2';
+}
+
+window._rhTakeSetAuditionMode = function (mode) {
+    if (mode !== '1' && mode !== '2' && mode !== '4' && mode !== 'hold') return;
+    try { localStorage.setItem('gl_rh_trim_audition_mode', mode); } catch (_e) {}
+    _rhRefreshAuditionPickers();
+};
+
+function _rhRefreshAuditionPickers() {
+    var mode = _rhGetAuditionMode();
+    var pickers = document.querySelectorAll('[data-rh-audition-picker]');
+    for (var i = 0; i < pickers.length; i++) {
+        var btns = pickers[i].querySelectorAll('[data-mode]');
+        for (var j = 0; j < btns.length; j++) {
+            var b = btns[j];
+            var on = (b.getAttribute('data-mode') === mode);
+            b.style.background = on ? 'rgba(99,102,241,0.18)' : 'transparent';
+            b.style.color = on ? '#a5b4fc' : 'var(--text-dim)';
+        }
+    }
+}
+
+function _rhUpdatePreviewButton(takeId, isPlaying) {
+    var btn = document.getElementById('rhTrimPreviewBtn_' + takeId);
+    if (!btn) return;
+    btn.textContent = isPlaying ? '⏸ Stop preview' : '▶ Preview slice';
+}
+
 window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
     var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
     if (!holder) return;
@@ -6314,7 +6362,15 @@ window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
         + row('start', 'Start')
         + row('end', 'End')
         + '<div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">'
-            + '<button onclick="window._rhTakePreviewBoundaries(\'' + sid + '\',\'' + tid + '\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.85em;font-weight:600">▶ Preview slice</button>'
+            + '<button id="rhTrimPreviewBtn_' + tid + '" onclick="window._rhTakePreviewBoundaries(\'' + sid + '\',\'' + tid + '\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.08);color:#818cf8;cursor:pointer;font-size:0.85em;font-weight:600">▶ Preview slice</button>'
+            // Audition-length picker (1s / 2s / 4s / hold). Mode persists in
+            // localStorage; `hold` disables auto-pause so user toggles ▶ to stop.
+            + '<span data-rh-audition-picker style="display:inline-flex;border:1px solid rgba(255,255,255,0.08);border-radius:6px;overflow:hidden;font-family:ui-monospace,monospace;font-size:0.74em" title="How long ▶ Preview plays before auto-pausing. hold = play until you stop it.">'
+                + '<button onclick="window._rhTakeSetAuditionMode(\'1\')" data-mode="1" style="padding:5px 9px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:inherit">1s</button>'
+                + '<button onclick="window._rhTakeSetAuditionMode(\'2\')" data-mode="2" style="padding:5px 9px;border:none;border-left:1px solid rgba(255,255,255,0.08);background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:inherit">2s</button>'
+                + '<button onclick="window._rhTakeSetAuditionMode(\'4\')" data-mode="4" style="padding:5px 9px;border:none;border-left:1px solid rgba(255,255,255,0.08);background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:inherit">4s</button>'
+                + '<button onclick="window._rhTakeSetAuditionMode(\'hold\')" data-mode="hold" style="padding:5px 9px;border:none;border-left:1px solid rgba(255,255,255,0.08);background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:inherit">hold</button>'
+            + '</span>'
             + '<span id="rhTrimNowPlaying_' + tid + '" style="font-family:ui-monospace,monospace;font-size:0.72em;color:var(--text-dim);min-width:120px">ready</span>'
             + '<button onclick="window._rhTakeSaveBoundaries(\'' + sid + '\',\'' + tid + '\')" style="padding:6px 12px;border-radius:6px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.1);color:#10b981;cursor:pointer;font-size:0.85em;font-weight:600">💾 Save</button>'
             + '<button onclick="window._rhTakeCancelBoundaries(\'' + tid + '\')" style="padding:6px 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text-dim);cursor:pointer;font-size:0.85em">Cancel</button>'
@@ -6323,6 +6379,7 @@ window._rhTakeOpenBoundaries = async function (sessionId, takeId) {
 
     _rhTrimUpdateView(takeId);
     _rhTrimAttachDrag(takeId);
+    _rhRefreshAuditionPickers();
 };
 
 // Sync the slider thumbs + readouts + fill-bar + duration label to the
@@ -6504,6 +6561,9 @@ window._rhTakeBoundaryFromPlayhead = function (sessionId, takeId, which) {
 window._rhTakeCancelBoundaries = function (takeId) {
     var holder = document.getElementById('rhTakeBoundaryForm_' + takeId);
     if (!holder) return;
+    // Stop any in-flight Trim Preview audition (esp. hold mode, which doesn't
+    // auto-pause). _rhStopAllAudio calls _rhTrimAuditionStop if set.
+    try { _rhStopAllAudio(); } catch (_e) {}
     holder.style.display = 'none';
     holder.innerHTML = '';
 };
@@ -6533,6 +6593,12 @@ function _rhReadBoundaryInputs(takeId) {
 }
 
 window._rhTakePreviewBoundaries = function (sessionId, takeId) {
+    // Toggle: if an audition is currently running, this click stops it.
+    // Applies to all modes (1s/2s/4s/hold) — user can always stop early.
+    if (typeof _rhTrimAuditionStop === 'function') {
+        try { _rhTrimAuditionStop(); } catch (_e) {}
+        return;
+    }
     var bounds = _rhReadBoundaryInputs(takeId);
     if (!bounds) return;
     var audio = document.getElementById('rhTakeReviewAudio_' + sessionId);
@@ -6576,13 +6642,16 @@ window._rhTakePreviewBoundaries = function (sessionId, takeId) {
     // Fix:
     //  1) Wait for readyState >= 3 (HAVE_FUTURE_DATA) before play() so cold
     //     and warm clicks have the same perceived startup latency.
-    //  2) Audition fixed AUDITION_SEC (2.0s) of audio time, then auto-pause
-    //     via timeupdate. Same length every time → 0.1s shifts now audible.
+    //  2) Audition AUDITION_SEC of audio time, then auto-pause via timeupdate.
+    //     Length picker (2026-05-22): 1s / 2s / 4s — same length every time
+    //     within a mode so 0.1s shifts stay audibly comparable. `hold` mode
+    //     skips the auto-stop entirely so users can listen as long as needed.
     //  3) Live currentTime readout in the boundary editor so the user can
     //     SEE the seek shifted by 0.1s in addition to hearing it.
-    var AUDITION_SEC = 2.0;
+    var mode = _rhGetAuditionMode();
+    var AUDITION_SEC = (mode === 'hold') ? null : parseFloat(mode);
     var nowEl = document.getElementById('rhTrimNowPlaying_' + takeId);
-    var stopAt = bounds.start + AUDITION_SEC;
+    var stopAt = (AUDITION_SEC === null) ? null : bounds.start + AUDITION_SEC;
     var played = false;
     var stopped = false;
     var tickHandler = null;
@@ -6603,7 +6672,11 @@ window._rhTakePreviewBoundaries = function (sessionId, takeId) {
         }
         _setNow('paused @ ' + _rhFmtAbsTimeFine(audio.currentTime), '#94a3b8');
         _rhSetTakeRowState(takeId, 'paused');
+        _rhTrimAuditionStop = null;
+        _rhUpdatePreviewButton(takeId, false);
     }
+    _rhTrimAuditionStop = _stopAudition;
+    _rhUpdatePreviewButton(takeId, true);
 
     function _startPlayback() {
         if (played) return;
@@ -6613,13 +6686,14 @@ window._rhTakePreviewBoundaries = function (sessionId, takeId) {
             window.GLObs.log('TakePreview', 'audition start', {
                 requested: bounds.start,
                 actual: audio.currentTime,
-                readyState: audio.readyState
+                readyState: audio.readyState,
+                mode: mode
             });
         }
         tickHandler = function () {
             if (stopped) return;
             _setNow('▶ ' + _rhFmtAbsTimeFine(audio.currentTime), '#a78bfa');
-            if (audio.currentTime >= stopAt) _stopAudition();
+            if (stopAt !== null && audio.currentTime >= stopAt) _stopAudition();
         };
         audio.addEventListener('timeupdate', tickHandler);
         audio.play().catch(function () {});
