@@ -1,10 +1,10 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260522-175203
+**Build Under Test:** 20260522-180511
 
 ## Open
 
-_None. Feature work in flight: notification candidate #2 (setlist change near event) shipped 2026-05-22 build `20260522-175203` — pending in-browser verification per GitHub issue #41 checklist._
+_None. Feature work pending in-browser verification: (a) notification candidate #2 (setlist change near event) — build `20260522-175203` / issue #41; (b) Trim Preview audition length picker — build `20260522-180511` / issue #42._
 
 ## Resolved 2026-05-20 (build `20260520-163238`)
 
