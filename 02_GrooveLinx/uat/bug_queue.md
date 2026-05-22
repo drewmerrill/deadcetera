@@ -1,10 +1,10 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260520-163238
+**Build Under Test:** 20260522-175203
 
 ## Open
 
-_None._
+_None. Feature work in flight: notification candidate #2 (setlist change near event) shipped 2026-05-22 build `20260522-175203` — pending in-browser verification per GitHub issue #41 checklist._
 
 ## Resolved 2026-05-20 (build `20260520-163238`)
 
