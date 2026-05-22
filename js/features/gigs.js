@@ -344,39 +344,112 @@ async function saveGigEdit(idx) {
 // ── Gig map state + Gig page + Gig CRUD (app.js 11867–12335) ────────────────────
 
 var _gigsMap = null;
-var _gigsMapMarkers = [];
-var _gigsMapInfoWindows = [];
-var _gigsMapFilter = 'all'; // 'all' | 'upcoming' | 'past'
+var _gigsMapMarkers = []; // all markers (gigs + homes); each has _isHome/_isBandmate/_isUpcoming flags
+var _gigsMapInfoWindows = []; // legacy ref kept for back-compat with _gigsMapApplyFilter close-all
+var _gigsMapFilter = 'all'; // 'all' | 'upcoming' | 'past' (gig pins only)
+var _gigsMapShowBandmateHomes = false; // toggle, persisted in localStorage
+var _gigsMapHoverCloseTimer = null;
+var _gigsMapGeocoder = null;
+var _glGeocodeCache = null;
+try { _gigsMapShowBandmateHomes = localStorage.getItem('gl_gig_map_show_bandmates') === '1'; } catch (_e) {}
+
+// Geocode helper — Maps Geocoding API w/ localStorage cache so we don't
+// re-pay for the same address across map re-opens. Issue #46.
+function _gigsMapLoadCache() {
+    if (_glGeocodeCache !== null) return _glGeocodeCache;
+    try { _glGeocodeCache = JSON.parse(localStorage.getItem('gl_geocode_cache_v1') || '{}'); }
+    catch (_e) { _glGeocodeCache = {}; }
+    return _glGeocodeCache;
+}
+function _gigsMapSaveCache() {
+    if (!_glGeocodeCache) return;
+    try { localStorage.setItem('gl_geocode_cache_v1', JSON.stringify(_glGeocodeCache)); } catch (_e) {}
+}
+async function _gigsMapGeocode(addr) {
+    if (!addr || !String(addr).trim()) return null;
+    var key = String(addr).trim().toLowerCase();
+    var cache = _gigsMapLoadCache();
+    if (cache[key]) return cache[key];
+    if (!window.google || !google.maps || !google.maps.Geocoder) return null;
+    if (!_gigsMapGeocoder) _gigsMapGeocoder = new google.maps.Geocoder();
+    return new Promise(function(resolve) {
+        _gigsMapGeocoder.geocode({ address: addr }, function(results, status) {
+            if (status === 'OK' && results && results[0]) {
+                var loc = results[0].geometry.location;
+                var entry = { lat: loc.lat(), lng: loc.lng() };
+                cache[key] = entry;
+                _gigsMapSaveCache();
+                resolve(entry);
+            } else {
+                // Don't negative-cache — if user fixes a typo, we want to retry.
+                if (status !== 'OK') console.warn('[GigMap] geocode', status, 'for', addr);
+                resolve(null);
+            }
+        });
+    });
+}
+
+// Hover behavior on every marker: mouseover opens info window, mouseout
+// closes after 250ms (so the user can move into the window without it
+// snapping shut), click PINS the window so it stays open until next click.
+function _gigsMapWireMarker(marker, infoWindow) {
+    marker._infoWindow = infoWindow;
+    marker.addListener('mouseover', function() {
+        if (_gigsMapHoverCloseTimer) { clearTimeout(_gigsMapHoverCloseTimer); _gigsMapHoverCloseTimer = null; }
+        if (marker._pinned) return;
+        _gigsMapMarkers.forEach(function(m) {
+            if (!m._pinned && m._infoWindow) m._infoWindow.close();
+        });
+        infoWindow.open(_gigsMap, marker);
+    });
+    marker.addListener('mouseout', function() {
+        if (marker._pinned) return;
+        if (_gigsMapHoverCloseTimer) clearTimeout(_gigsMapHoverCloseTimer);
+        _gigsMapHoverCloseTimer = setTimeout(function() {
+            if (!marker._pinned) infoWindow.close();
+        }, 250);
+    });
+    marker.addListener('click', function() {
+        _gigsMapMarkers.forEach(function(m) {
+            if (m === marker) return;
+            m._pinned = false;
+            if (m._infoWindow) m._infoWindow.close();
+        });
+        marker._pinned = true;
+        infoWindow.open(_gigsMap, marker);
+    });
+}
+
+// Build SVG pin data URL with given fill color.
+function _gigsMapPinSvg(color) {
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">'
+        + '<path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 24 16 24s16-14 16-24C32 7.163 24.837 0 16 0z" fill="' + color + '"/>'
+        + '<circle cx="16" cy="16" r="7" fill="white" opacity="0.9"/>'
+        + '</svg>';
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+}
+// Home pin: house outline on colored bg; smaller for bandmates.
+function _gigsMapHomePinSvg(color, isSelf) {
+    var size = isSelf ? 34 : 28;
+    var inner = isSelf ? '#fff' : '#fef3c7';
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 32 32">'
+        + '<circle cx="16" cy="16" r="14" fill="' + color + '" stroke="#0f172a" stroke-width="2"/>'
+        + '<path d="M16 8 L24 16 L22 16 L22 22 L18 22 L18 18 L14 18 L14 22 L10 22 L10 16 L8 16 Z" fill="' + inner + '"/>'
+        + '</svg>';
+    return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+}
 
 async function renderGigsMap() {
     var el = document.getElementById('gigsMapContainer');
     if (!el) return;
 
+    el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.88em">Loading map…</div>';
+
     var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     var venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
 
-    // Build venue lookups — venueId primary, name fallback
-    var venueByIdLookup = {};
-    var venueByNameLookup = {};
-    venues.forEach(function(v) {
-        if (v.venueId) venueByIdLookup[v.venueId] = v;
-        if (v.name) venueByNameLookup[v.name] = v;
-    });
-
-    // Attach lat/lng from venues to gigs
-    var gigsWithCoords = gigs.filter(function(g) {
-        var v = (g.venueId && venueByIdLookup[g.venueId]) || venueByNameLookup[g.venue];
-        if (v && v.lat && v.lng) { g._lat = parseFloat(v.lat); g._lng = parseFloat(v.lng); return true; }
-        return false;
-    });
-
-    if (gigsWithCoords.length === 0) {
-        el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.88em">No gigs with venue coordinates yet.<br>Add venues with locations on the Venues page first.</div>';
-        return;
-    }
-
-    el.innerHTML = '';
-    el.style.cssText = 'height:360px;border-radius:12px;overflow:hidden;position:relative';
+    // Track original venue array index for leaf-write Firebase backfill below.
+    venues.forEach(function(v, i) { v._idx = i; });
 
     try {
         if (window.google && google.maps && google.maps.importLibrary) {
@@ -389,12 +462,96 @@ async function renderGigsMap() {
         return;
     }
 
-    // Create map centered on centroid of all gig coords
-    var avgLat = gigsWithCoords.reduce(function(s,g){return s+g._lat;},0)/gigsWithCoords.length;
-    var avgLng = gigsWithCoords.reduce(function(s,g){return s+g._lng;},0)/gigsWithCoords.length;
+    // (Issue #46) BACKFILL missing venue coords via Geocoding API. Bug #16
+    // silently dropped lat/lng on Places-autofilled venues until 2026-05-22;
+    // existing venues have address text but no coords. We geocode each one,
+    // cache locally, and write back to Firebase via leaf-path .set() so we
+    // don't clobber siblings (per project_setlist_swr_clobber_bug discipline).
+    var backfillCount = 0;
+    var venuesNeedingCoords = venues.filter(function(v) {
+        return !(v.lat && v.lng) && (v.address || v.name);
+    });
+    for (var bi = 0; bi < venuesNeedingCoords.length; bi++) {
+        var vbf = venuesNeedingCoords[bi];
+        var coords = await _gigsMapGeocode(vbf.address || vbf.name);
+        if (coords) {
+            vbf.lat = coords.lat;
+            vbf.lng = coords.lng;
+            backfillCount++;
+            try {
+                if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function' && typeof vbf._idx === 'number') {
+                    firebaseDB.ref(bandPath('venues/' + vbf._idx + '/lat')).set(coords.lat);
+                    firebaseDB.ref(bandPath('venues/' + vbf._idx + '/lng')).set(coords.lng);
+                }
+            } catch (_e) {}
+        }
+    }
+    if (backfillCount > 0) console.log('[GigMap] backfilled coords for', backfillCount, 'venues');
+
+    // Build venue lookups — venueId primary, name fallback
+    var venueByIdLookup = {};
+    var venueByNameLookup = {};
+    venues.forEach(function(v) {
+        if (v.venueId) venueByIdLookup[v.venueId] = v;
+        if (v.name) venueByNameLookup[v.name] = v;
+    });
+
+    // Attach lat/lng from venues to gigs
+    var gigsWithCoords = gigs.filter(function(g) {
+        var v = (g.venueId && venueByIdLookup[g.venueId]) || venueByNameLookup[g.venue];
+        if (v && v.lat && v.lng) { g._lat = parseFloat(v.lat); g._lng = parseFloat(v.lng); g._venue = v; return true; }
+        return false;
+    });
+
+    // (Issue #46) HOME markers — signed-in user + opted-in bandmates (toggle).
+    // Member key from localStorage; member records read from `bandMembers`
+    // (global, hydrated from bands/{slug}/meta/members). homeAddress stored
+    // as text at members/{key}/homeAddress; lat/lng lazily geocoded + written
+    // back to leaf paths to avoid clobber.
+    var currentMemberKey = (function() {
+        try { return localStorage.getItem('deadcetera_current_user') || ''; } catch (_e) { return ''; }
+    })();
+    var homePoints = []; // { key, member, isSelf, lat, lng }
+    if (typeof bandMembers !== 'undefined' && bandMembers) {
+        var memberKeys = Object.keys(bandMembers);
+        for (var mi = 0; mi < memberKeys.length; mi++) {
+            var mkey = memberKeys[mi];
+            var m = bandMembers[mkey];
+            if (!m || !m.homeAddress) continue;
+            var isSelf = (mkey === currentMemberKey);
+            if (!isSelf && !_gigsMapShowBandmateHomes) continue; // toggle gates bandmate homes
+            var hlat = (typeof m.homeLat === 'number') ? m.homeLat : null;
+            var hlng = (typeof m.homeLng === 'number') ? m.homeLng : null;
+            if (!hlat || !hlng) {
+                var geo = await _gigsMapGeocode(m.homeAddress);
+                if (!geo) continue;
+                hlat = geo.lat; hlng = geo.lng;
+                try {
+                    if (typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
+                        firebaseDB.ref(bandPath('meta/members/' + mkey + '/homeLat')).set(hlat);
+                        firebaseDB.ref(bandPath('meta/members/' + mkey + '/homeLng')).set(hlng);
+                    }
+                } catch (_e) {}
+            }
+            homePoints.push({ key: mkey, member: m, isSelf: isSelf, lat: hlat, lng: hlng });
+        }
+    }
+
+    // Empty-state guard: nothing at all to render?
+    if (gigsWithCoords.length === 0 && homePoints.length === 0) {
+        el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.88em">No gigs or homes to plot yet.<br>Add a venue (with address) on the Venues page or set your home address in Settings.</div>';
+        return;
+    }
+
+    el.innerHTML = '';
+    el.style.cssText = 'height:360px;border-radius:12px;overflow:hidden;position:relative';
+
+    // Map center: bounds-fit if we have anything, otherwise default Atlanta-ish
+    var anchorLat = gigsWithCoords.length ? gigsWithCoords[0]._lat : (homePoints[0] ? homePoints[0].lat : 33.749);
+    var anchorLng = gigsWithCoords.length ? gigsWithCoords[0]._lng : (homePoints[0] ? homePoints[0].lng : -84.388);
 
     _gigsMap = new google.maps.Map(el, {
-        center: { lat: avgLat, lng: avgLng },
+        center: { lat: anchorLat, lng: anchorLng },
         zoom: 11,
         mapTypeId: 'roadmap',
         styles: [
@@ -419,31 +576,24 @@ async function renderGigsMap() {
     _gigsMapInfoWindows = [];
     var today = new Date().toISOString().split('T')[0];
 
-    gigsWithCoords.forEach(function(g, i) {
+    gigsWithCoords.forEach(function(g) {
         var isUpcoming = (g.date||'') >= today;
         var color = isUpcoming ? '#22c55e' : '#818cf8';
-        var label = isUpcoming ? '🎤' : '🎸';
-
-        // Custom SVG pin
-        var pinSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">'
-            + '<path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 24 16 24s16-14 16-24C32 7.163 24.837 0 16 0z" fill="' + color + '"/>'
-            + '<circle cx="16" cy="16" r="7" fill="white" opacity="0.9"/>'
-            + '</svg>';
-
         var marker = new google.maps.Marker({
             position: { lat: g._lat, lng: g._lng },
             map: _gigsMap,
             title: (g.venue||'Venue') + ' — ' + (g.date||''),
             icon: {
-                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pinSvg),
+                url: _gigsMapPinSvg(color),
                 scaledSize: new google.maps.Size(32, 40),
                 anchor: new google.maps.Point(16, 40)
             },
             optimized: false
         });
 
-        // Build info window content
-        var v = venueLookup[g.venue] || {};
+        // (Issue #46) Use the venue we already resolved via _venue (was a
+        // dangling `venueLookup` undefined-identifier bug before this ship).
+        var v = g._venue || {};
         var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent((v.address||v.name||g.venue||''));
         var statusBadge = isUpcoming
             ? '<span style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">Upcoming</span>'
@@ -454,6 +604,7 @@ async function renderGigsMap() {
             + '<strong style="font-size:0.95em;flex:1">' + (g.venue||'Venue') + '</strong>' + statusBadge
             + '</div>'
             + '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:6px">📅 ' + (g.date||'TBD') + (g.startTime?' &nbsp;⏰ '+g.startTime:'') + '</div>'
+            + (v.address ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">📍 ' + v.address + '</div>' : '')
             + (g.pay ? '<div style="font-size:0.8em;color:#86efac;margin-bottom:4px">💰 ' + g.pay + '</div>' : '')
             + (g.soundPerson ? '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:4px">🔊 ' + g.soundPerson + '</div>' : '')
             + (g.notes ? '<div style="font-size:0.78em;color:#64748b;margin-bottom:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px;margin-top:4px">' + g.notes + '</div>' : '')
@@ -462,22 +613,58 @@ async function renderGigsMap() {
 
         var infoWindow = new google.maps.InfoWindow({ content: infoContent });
         _gigsMapInfoWindows.push(infoWindow);
-
-        marker.addListener('click', function() {
-            _gigsMapInfoWindows.forEach(function(iw) { iw.close(); });
-            infoWindow.open(_gigsMap, marker);
-        });
+        _gigsMapWireMarker(marker, infoWindow);
 
         marker._gigDate = g.date || '';
         marker._isUpcoming = isUpcoming;
+        marker._isHome = false;
         _gigsMapMarkers.push(marker);
     });
 
-    // Fit bounds
+    // (Issue #46) Home markers — render AFTER gig pins so the home icon
+    // sits visually on top of nearby gig pins.
+    homePoints.forEach(function(hp) {
+        var color = hp.isSelf ? '#3b82f6' : '#a78bfa';
+        var marker = new google.maps.Marker({
+            position: { lat: hp.lat, lng: hp.lng },
+            map: _gigsMap,
+            title: (hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : ''),
+            icon: {
+                url: _gigsMapHomePinSvg(color, hp.isSelf),
+                scaledSize: new google.maps.Size(hp.isSelf ? 34 : 28, hp.isSelf ? 34 : 28),
+                anchor: new google.maps.Point(hp.isSelf ? 17 : 14, hp.isSelf ? 17 : 14)
+            },
+            optimized: false,
+            zIndex: hp.isSelf ? 9999 : 9998
+        });
+        var roleLine = (typeof _memberDisplayRole === 'function') ? _memberDisplayRole(hp.member) : (hp.member.role || '');
+        var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(hp.member.homeAddress || '');
+        var infoContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:260px;font-family:-apple-system,sans-serif">'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+            + '<strong style="font-size:0.95em;flex:1">🏠 ' + (hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : '') + '</strong>'
+            + '</div>'
+            + (roleLine ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">' + roleLine + '</div>' : '')
+            + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:8px">📍 ' + (hp.member.homeAddress || '') + '</div>'
+            + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
+            + '</div>';
+        var infoWindow = new google.maps.InfoWindow({ content: infoContent });
+        _gigsMapInfoWindows.push(infoWindow);
+        _gigsMapWireMarker(marker, infoWindow);
+        marker._isHome = true;
+        marker._isBandmate = !hp.isSelf;
+        _gigsMapMarkers.push(marker);
+    });
+
+    // Fit bounds across every visible marker (gigs + homes).
     var bounds = new google.maps.LatLngBounds();
-    gigsWithCoords.forEach(function(g) { bounds.extend({ lat: g._lat, lng: g._lng }); });
-    _gigsMap.fitBounds(bounds);
-    if (gigsWithCoords.length === 1) _gigsMap.setZoom(13);
+    var anyExtended = false;
+    _gigsMapMarkers.forEach(function(m) {
+        if (m.getVisible() !== false) { bounds.extend(m.getPosition()); anyExtended = true; }
+    });
+    if (anyExtended) {
+        _gigsMap.fitBounds(bounds);
+        if (_gigsMapMarkers.length === 1) _gigsMap.setZoom(13);
+    }
 
     _gigsMapApplyFilter();
 }
@@ -485,12 +672,38 @@ async function renderGigsMap() {
 function _gigsMapApplyFilter() {
     var f = _gigsMapFilter;
     _gigsMapMarkers.forEach(function(m) {
-        var show = f === 'all' || (f === 'upcoming' && m._isUpcoming) || (f === 'past' && !m._isUpcoming);
+        var show;
+        if (m._isHome) {
+            // Home pins ignore upcoming/past filter; bandmate homes gated by toggle.
+            show = m._isBandmate ? _gigsMapShowBandmateHomes : true;
+        } else {
+            show = f === 'all' || (f === 'upcoming' && m._isUpcoming) || (f === 'past' && !m._isUpcoming);
+        }
         m.setVisible(show);
+        if (!show) m._pinned = false;
     });
     // close any open info windows when filtering
     _gigsMapInfoWindows.forEach(function(iw) { iw.close(); });
 }
+
+window.gigsMapToggleBandmateHomes = function (btn) {
+    _gigsMapShowBandmateHomes = !_gigsMapShowBandmateHomes;
+    try { localStorage.setItem('gl_gig_map_show_bandmates', _gigsMapShowBandmateHomes ? '1' : '0'); } catch (_e) {}
+    if (btn) {
+        if (_gigsMapShowBandmateHomes) {
+            btn.style.background = 'rgba(167,139,250,0.2)';
+            btn.style.color = '#c4b5fd';
+            btn.style.borderColor = 'rgba(167,139,250,0.4)';
+        } else {
+            btn.style.background = 'rgba(255,255,255,0.04)';
+            btn.style.color = '#64748b';
+            btn.style.borderColor = 'rgba(255,255,255,0.08)';
+        }
+    }
+    // Re-render is overkill — we just need to render bandmate markers we
+    // haven't created yet (or hide ones we have). Simplest path: re-render.
+    if (_gigsMap) renderGigsMap();
+};
 
 function gigsMapSetFilter(f, btn) {
     _gigsMapFilter = f;
@@ -523,6 +736,7 @@ function renderGigsPage(el) {
                     <button id="gmfAll" onclick="event.stopPropagation();gigsMapSetFilter('all',this)" style="background:rgba(102,126,234,0.2);color:#a5b4fc;border:1px solid rgba(102,126,234,0.3);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">All</button>
                     <button id="gmfUpcoming" onclick="event.stopPropagation();gigsMapSetFilter('upcoming',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Upcoming</button>
                     <button id="gmfPast" onclick="event.stopPropagation();gigsMapSetFilter('past',this)" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer">Past</button>
+                    <button id="gmfBandmates" onclick="event.stopPropagation();gigsMapToggleBandmateHomes(this)" title="Show bandmate home locations" style="background:rgba(255,255,255,0.04);color:#64748b;border:1px solid rgba(255,255,255,0.08);padding:3px 10px;border-radius:6px;font-size:0.72em;cursor:pointer;margin-left:4px">🏠 Band</button>
                 </div>
                 <span id="gigsMapChevron" style="color:var(--text-dim);font-size:0.8em;transition:transform 0.2s">▼</span>
             </div>
@@ -547,6 +761,13 @@ function toggleGigsMap() {
     wrap.style.display = _gigsMapOpen ? '' : 'none';
     if (chev) chev.style.transform = _gigsMapOpen ? 'rotate(180deg)' : '';
     if (filterBtns) filterBtns.style.display = _gigsMapOpen ? 'flex' : 'none';
+    // Sync the Bandmates toggle visual to persisted state on open.
+    var bmBtn = document.getElementById('gmfBandmates');
+    if (bmBtn && _gigsMapShowBandmateHomes) {
+        bmBtn.style.background = 'rgba(167,139,250,0.2)';
+        bmBtn.style.color = '#c4b5fd';
+        bmBtn.style.borderColor = 'rgba(167,139,250,0.4)';
+    }
     if (_gigsMapOpen) renderGigsMap();
 }
 window.toggleGigsMap = toggleGigsMap;
