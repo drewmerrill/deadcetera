@@ -9886,6 +9886,49 @@ async function vInitPlacesAutocomplete() {
     // Use new PlaceAutocompleteElement API (replaces deprecated Autocomplete)
     if (container._acInit) return;
     container._acInit = true;
+
+    // Bug #16 (2026-05-22, issue #45): the handler used to listen ONLY for
+    // 'gmp-placeselect' with `ev.place`. That was the beta naming. Google's
+    // GA PlaceAutocompleteElement fires 'gmp-select' with the place exposed
+    // via `ev.placePrediction.toPlace()`. Different Maps API versions ship
+    // different events; listening for both with shape-tolerant extraction
+    // makes the handler version-resilient.
+    async function _vOnPlaceSelected(ev) {
+        var place = null;
+        try {
+            if (ev && ev.placePrediction && typeof ev.placePrediction.toPlace === 'function') {
+                place = ev.placePrediction.toPlace();
+            } else if (ev && ev.place) {
+                place = ev.place;
+            }
+        } catch (_e) {}
+        if (!place) {
+            console.warn('[Places] place-select event fired but no Place could be extracted', ev);
+            return;
+        }
+        try {
+            await place.fetchFields({ fields: ['displayName','formattedAddress','nationalPhoneNumber','websiteURI','location'] });
+        } catch (e) {
+            console.warn('[Places] fetchFields failed:', e && e.message);
+        }
+        var setVal = function(id, val) {
+            var el = document.getElementById(id);
+            if (el && val) el.value = val;
+        };
+        setVal('vName',    (place.displayName || '') + '');
+        setVal('vAddress', (place.formattedAddress || '') + '');
+        setVal('vPhone',   (place.nationalPhoneNumber || '') + '');
+        setVal('vWebsite', (place.websiteURI || '') + '');
+        if (place.location) {
+            var inp = document.getElementById('vName');
+            if (inp) {
+                try { inp.dataset.lat = place.location.lat(); inp.dataset.lng = place.location.lng(); } catch (_e) {}
+            }
+        }
+        var card = document.getElementById('addVenueCard');
+        if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+
     try {
         var acEl = new google.maps.places.PlaceAutocompleteElement({
             types: ['establishment']
@@ -9894,28 +9937,8 @@ async function vInitPlacesAutocomplete() {
         // Replace the input placeholder with the autocomplete element
         container.style.display = 'none';
         container.parentNode.insertBefore(acEl, container.nextSibling);
-        acEl.addEventListener('gmp-placeselect', async function(ev) {
-            var place = ev.place;
-            if (!place) return;
-            try { await place.fetchFields({ fields: ['displayName','formattedAddress','nationalPhoneNumber','websiteURI','location'] }); } catch(e) {}
-            var setVal = function(id, val) {
-                var el = document.getElementById(id);
-                if (el && val) el.value = val;
-            };
-            setVal('vName',    (place.displayName || '') + '');
-            setVal('vAddress', (place.formattedAddress || '') + '');
-            setVal('vPhone',   (place.nationalPhoneNumber || '') + '');
-            setVal('vWebsite', (place.websiteURI || '') + '');
-            if (place.location) {
-                var inp = document.getElementById('vName');
-                if (inp) {
-                    inp.dataset.lat = place.location.lat();
-                    inp.dataset.lng = place.location.lng();
-                }
-            }
-            var card = document.getElementById('addVenueCard');
-            if (card) card.scrollIntoView({behavior:'smooth', block:'start'});
-        });
+        acEl.addEventListener('gmp-select', _vOnPlaceSelected);
+        acEl.addEventListener('gmp-placeselect', _vOnPlaceSelected);
     } catch(e) {
         // Fallback: if PlaceAutocompleteElement not available, use legacy
         console.log('[Places] PlaceAutocompleteElement not available, using legacy Autocomplete');
