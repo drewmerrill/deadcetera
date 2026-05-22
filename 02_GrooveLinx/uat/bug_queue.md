@@ -1,10 +1,16 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260522-180511
+**Build Under Test:** 20260522-214634
 
 ## Open
 
-_None. Feature work pending in-browser verification: (a) notification candidate #2 (setlist change near event) — build `20260522-175203` / issue #41; (b) Trim Preview audition length picker — build `20260522-180511` / issue #42._
+_None. Feature work pending in-browser verification: (a) notification candidate #2 (setlist change near event) — build `20260522-175203` / issue #41; (b) Trim Preview audition length picker — build `20260522-180511` / issue #42; (c) Bug #16 Places autofill — build `20260522-214634` / issue #45._
+
+## Resolved 2026-05-22 (build `20260522-214634`)
+
+| # | Bug | Severity | Diagnosis | Resolution |
+|---|---|---|---|---|
+| **#16** | Venues & Contacts → + Add Venue → tap a Google Places suggestion → suggestion text appears in search box but form fields below (Venue Name / Address / Phone / Website) stay empty. | MED | `vInitPlacesAutocomplete` in `app.js` (~9876) + `app-dev.js` (~9495) listened ONLY for the beta event `'gmp-placeselect'` with `ev.place`. Google's GA `PlaceAutocompleteElement` API fires `'gmp-select'` with the place exposed via `ev.placePrediction.toPlace()` — different event NAME, different event SHAPE. With current Maps JS versions, the beta event never fires → handler never runs → no autofill. Legacy `Autocomplete` fallback never reached because `PlaceAutocompleteElement` construction succeeded; silent failure. | **FIXED 2026-05-22** build `20260522-214634` commit `f355705e`. Extracted place-extraction into shape-tolerant inner async fn `_vOnPlaceSelected(ev)`: tries `ev.placePrediction.toPlace()` first, falls back to `ev.place`, `console.warn` if neither shape yields a Place. The autocomplete element registers BOTH `'gmp-select'` AND `'gmp-placeselect'` listeners to the same handler — version-resilient. Mirrored to `app-dev.js` per `feedback_dev_prod_sync`. **Acceptance:** Venues → + Add Venue → tap a Google Places suggestion → Venue Name + Address + Phone + Website autofill. |
 
 ## Resolved 2026-05-20 (build `20260520-163238`)
 
