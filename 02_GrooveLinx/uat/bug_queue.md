@@ -1,10 +1,14 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260523-185206
+**Build Under Test:** 20260523-191344
 
 ## Open
 
-_None. Feature work pending in-browser verification: (a) notification candidate #2 (setlist change near event) — build `20260522-175203` / issue #41; (b) Trim Preview audition length picker — build `20260522-180511` / issue #42; (c) Bug #16 Places autofill — build `20260522-214634` / issue #45; (d) Gig Map geocode + home pins + hover — build `20260522-225426` / issue #46; (e) Gig Map privacy toggle + dark info-window polish + bandMembers hydration fix — build `20260523-181905` / issue #47; (f) Gig Map venue grouping + hover/click split + free-text geocode fallback — build `20260523-185206` (3 fixes from Drew's 2026-05-23 UAT report: unclickable Directions on hover + missing past-gig pins)._
+_None. Feature work pending in-browser verification: (a) notification candidate #2 (setlist change near event) — build `20260522-175203` / issue #41; (b) Trim Preview audition length picker — build `20260522-180511` / issue #42; (c) Bug #16 Places autofill — build `20260522-214634` / issue #45; (d) Gig Map geocode + home pins + hover — build `20260522-225426` / issue #46; (e) Gig Map privacy toggle + dark info-window polish + bandMembers hydration fix — build `20260523-181905` / issue #47; (f) Gig Map venue grouping + hover/click split + free-text geocode fallback — build `20260523-185206`; (g) Gig-save scroll preservation + setlist Set-Break auto-cleaner + past-gigs RSVP backfill helper + Geocoding-API-denial banner — build `20260523-191344`._
+
+## Deferred (Drew decision needed)
+
+_(2026-05-23) google.maps.Marker → google.maps.marker.AdvancedMarkerElement migration. Console emits a deprecation notice; Marker still works (no scheduled removal). Migration requires a Map ID created in Cloud Console because mapId + inline `styles` are mutually exclusive — moving to AdvancedMarkerElement would drop our dark map theme until Drew configures cloud-based map styling on the new Map ID. **Decision needed:** (A) defer until Drew sets up Map ID, (B) migrate now using DEMO_MAP_ID and live with default light theme, or (C) keep Marker and silence the warning._
 
 ## Resolved 2026-05-22 (build `20260522-214634`)
 

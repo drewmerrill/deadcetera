@@ -1,6 +1,19 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-05-23 18:52 UTC — Gig Map venue-grouping + hover/click split + free-text venue geocode fallback shipped, build `20260523-185206`. Closes Drew's afternoon UAT report._
+_Last updated: 2026-05-23 19:13 UTC — Four UAT follow-ups shipped, build `20260523-191344`._
+
+---
+
+## Gig + Setlist UAT Fixes (2026-05-23 PM Round 2 — Drew's post-geocode-enable report)
+
+**Severity:** MIX (1 UX, 1 data hygiene, 1 user-requested backfill, 1 diagnostic). Closed in build `20260523-191344`, commit `8cf26ae4`.
+
+| # | Issue | Root Cause | Fix | Build |
+|---|-------|-----------|-----|-------|
+| **Gig save scroll-to-top** (UX, Drew 2026-05-23 PM) | After editing a gig and clicking Save, the page scrolled back to the top instead of staying on the edited gig. | `saveGigEdit` called `loadGigs()` fire-and-forget, which re-rendered the gig list and reset scroll position. No anchor existed for "the gig I was just editing" — the row template only carried `data-gig-idx` (positional, shifts if dates re-sort) and no stable id. | Added `data-gig-id="<gigId>"` to `_gigRenderCard`; `saveGigEdit` now captures the saved `gigId`, `await`s `loadGigs()`, then `scrollIntoView({block:'center', behavior:'smooth'})` on the matching row. Sort-aware. | 20260523-191344 |
+| **Setlist "Set Break" artifact** (data hygiene, Drew 2026-05-23 PM) | Saving any gig that touched "From The Earth Brewing 06/28/26" logged `[saveBandArrayDataSafe:setlists] suspicious title "Set Break" in setlist ... / section "Set 2" / idx 12 — possible section-flattener artifact`. The setlist had a literal "Set Break" entry in the songs array. | The section-label detector added after the 2026-05-10 flattener-bug only WARNED — it never removed the rogue entries. Each save logged the artifact and persisted it untouched. | Flipped the detector in `saveBandArrayDataSafe` (`firebase-service.js:629`) from warn-only to strip-and-warn: `set.songs = set.songs.filter(...)` removes any title matching `^(soundcheck|set\s*\d+|encore|set\s*break|🔊\s*soundcheck)$/i`. Safe to auto-strip — these are pure section labels, no song catalog uses them. Plus new `window._gl_cleanSetlistArtifacts()` one-shot sweeps all setlists immediately. | 20260523-191344 |
+| **Past gigs need RSVP backfill** (Drew explicit request, 2026-05-23 PM) | Past gigs in the data had no `availability` entries — nobody had RSVP'd retroactively. Drew wanted them marked "everyone yes" so historical attendance reads correctly. | (Not a bug; data debt from before RSVP was a feature.) | New console one-shot `window._gl_backfillPastGigRsvps()` marks every band member as `{status:'yes', updatedAt, _backfill:true}` on every gig with `date < today`. Idempotent — respects existing RSVPs unless `{overwrite:true}` is passed. Mirrors to `calendar_events` via `_syncGigToCalendar`. `_backfill:true` marker preserves provenance so future audits can distinguish bulk fills from genuine RSVPs. | 20260523-191344 |
+| **Geocoding API denial misleading empty state** (diagnostic, surfaced 2026-05-23 PM debug session) | Map showed "No gigs or homes to plot yet" when the actual problem was every geocode returning `REQUEST_DENIED` (Geocoding API not enabled on the Cloud project that owned the Maps JS key). Burned ~20 min of debug before the REQUEST_DENIED console logs were spotted. | Empty-state guard in `renderGigsMap` only checked `gigGroupsForRender.length === 0 && homePoints.length === 0` and rendered the generic empty message regardless of WHY no pins resolved. | Added `_gigsMapDeniedCount` + `_gigsMapLastDenialAddr` module state, reset at top of `renderGigsMap`. Incremented inside `_gigsMapGeocode` whenever `status === 'REQUEST_DENIED'`. Empty-state guard now branches: if denial count > 0, render a red error banner with the count, last denied address, and a direct deep-link to the Cloud Console Geocoding API enable page. | 20260523-191344 |
 
 ---
 
