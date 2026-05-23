@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260523-192626
+**Build Under Test:** 20260523-202357
 
 ## Open
 
@@ -8,7 +8,7 @@ _None. Feature work pending in-browser verification: (a) notification candidate 
 
 ## Awaiting Drew action (not bugs)
 
-_(2026-05-23) Create a custom Map Style in Cloud Console with the dark theme JSON (see `02_GrooveLinx/specs/gl_view_map.md` "Gig Map dark style (Cloud Console JSON)" section). Steps: console.cloud.google.com → Google Maps Platform → Map Styles → Create → paste JSON → Save → copy the generated Map ID → replace `'DEMO_MAP_ID'` in `js/features/gigs.js` (`_GIGS_MAP_ID` constant) → deploy. Until done, the gig map renders in default light theme; markers + filter + InfoWindows work fine._
+_None._
 
 ## Resolved 2026-05-22 (build `20260522-214634`)
 
