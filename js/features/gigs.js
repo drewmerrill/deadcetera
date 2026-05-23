@@ -462,6 +462,16 @@ window._gigsMapPinHover = function() {
     m._infoWindow.open({ anchor: m, map: _gigsMap });
 };
 
+// Drew 2026-05-23: click the venue name in the popup → scroll the gig list
+// below the map to that venue's first gig card. Uses the same `data-gig-id`
+// attribute we added for gig-save scroll preservation. event.stopPropagation
+// in the inline onclick prevents bubbling to the popup's outer pin handler.
+window._gigsMapJumpToGig = function(gigId) {
+    if (!gigId) return;
+    var row = document.querySelector('[data-gig-id="' + gigId + '"]');
+    if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+};
+
 // Hover vs click content split (issue #47 follow-up). Hover shows a compact
 // preview (no interactive buttons — they were unclickable since mouseout
 // closed the window). Click swaps to full content and PINS the window so
@@ -782,6 +792,18 @@ async function renderGigsMap() {
     _gigsMapInfoWindows = [];
     var today = new Date().toISOString().split('T')[0];
 
+    // Click on map background (not a marker, not a popup) dismisses any
+    // pinned popups. Marker clicks don't bubble to the map; InfoWindow
+    // clicks don't either — so this fires only for "clicked empty area".
+    // Replaces the role the default close-X used to play.
+    _gigsMap.addListener('click', function() {
+        _gigsMapMarkers.forEach(function(m) {
+            m._pinned = false;
+            if (m._infoWindow) m._infoWindow.close();
+        });
+        _gigsMapHoverActiveMarker = null;
+    });
+
     function _esc(s) {
         return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
@@ -828,13 +850,20 @@ async function renderGigsMap() {
         var hoverOverflow = nGigs > 4
             ? '<div style="font-size:0.78em;color:#64748b;line-height:1.5">…and ' + (nGigs - 4) + ' more</div>'
             : '';
+        // Anchor gig id for "jump to listing" — sortedGigs[0] is the next
+        // upcoming (or most-recent past if no upcoming).
+        var anchorGigId = (sortedGigs[0] && sortedGigs[0].gigId) || '';
+        var nameClickAttrs = anchorGigId
+            ? 'onclick="event.stopPropagation();_gigsMapJumpToGig(\'' + _esc(anchorGigId) + '\')" style="font-size:0.95em;flex:1;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(165,180,252,0.5);text-underline-offset:3px"'
+            : 'style="font-size:0.95em;flex:1"';
+
         var hoverContent = '<div onclick="_gigsMapPinHover()" onmouseenter="_gigsMapHoverKeep()" onmouseleave="_gigsMapHoverClose()" style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:200px;max-width:260px;font-family:-apple-system,sans-serif;cursor:pointer">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-            + '<strong style="font-size:0.95em;flex:1">' + _esc(grp.name) + '</strong>' + statusBadge
+            + '<strong ' + nameClickAttrs + '>' + _esc(grp.name) + '</strong>' + statusBadge
             + '</div>'
             + '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:6px">🎤 ' + nGigs + ' show' + (nGigs === 1 ? '' : 's') + ' here</div>'
             + hoverDates + hoverOverflow
-            + '<div style="font-size:0.72em;color:#64748b;margin-top:6px;font-style:italic">Click for details + directions</div>'
+            + '<div style="font-size:0.72em;color:#64748b;margin-top:6px;font-style:italic">Click for details · click name to jump to listing</div>'
             + '</div>';
 
         // ─── CLICK content — full: address + all dates + Directions ───
@@ -860,7 +889,7 @@ async function renderGigsMap() {
             : '';
         var clickContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:220px;max-width:280px;font-family:-apple-system,sans-serif">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-            + '<strong style="font-size:0.95em;flex:1">' + _esc(grp.name) + '</strong>' + statusBadge
+            + '<strong ' + nameClickAttrs + '>' + _esc(grp.name) + '</strong>' + statusBadge
             + '</div>'
             + (grp.address ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:6px">📍 ' + _esc(grp.address) + '</div>' : '')
             + '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:4px">🎤 ' + nGigs + ' show' + (nGigs === 1 ? '' : 's') + ' here</div>'
@@ -869,13 +898,16 @@ async function renderGigsMap() {
             + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;margin-top:8px;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
             + '</div>';
 
-        // pixelOffset pushes the popup further above the marker so there's
-        // clickable marker space underneath. Without this, the popup's tail
-        // touches the pin tip and the marker can't be clicked through the
-        // popup (Drew 2026-05-23).
+        // headerDisabled strips the default close-button row (the X and the
+        // top padding). For hover popups the X is meaningless (mouseout
+        // closes the window) and the padding is dead space. For pinned/click
+        // popups the user dismisses via map-background click OR by clicking
+        // another pin — see the Map-level click listener below.
+        // No pixelOffset — let the default placement put the popup's tail
+        // right against the top of the marker.
         var infoWindow = new google.maps.InfoWindow({
             content: hoverContent,
-            pixelOffset: new google.maps.Size(0, -12)
+            headerDisabled: true
         });
         _gigsMapInfoWindows.push(infoWindow);
         _gigsMapWireMarker(marker, infoWindow, hoverContent, clickContent);
@@ -922,11 +954,12 @@ async function renderGigsMap() {
             + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:8px">📍 ' + _esc(hp.member.homeAddress || '') + '</div>'
             + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
             + '</div>';
-        // Home pin pixelOffset is smaller because the home icon is centered
-        // (not bottom-anchored like the gig pin) — needs less clearance.
+        // headerDisabled: strip the close-button row (no X, no top padding).
+        // Hover popups self-close on mouseout; pinned popups dismiss via the
+        // Map-level click listener below or by clicking another pin.
         var infoWindow = new google.maps.InfoWindow({
             content: homeHoverContent,
-            pixelOffset: new google.maps.Size(0, -8)
+            headerDisabled: true
         });
         _gigsMapInfoWindows.push(infoWindow);
         _gigsMapWireMarker(marker, infoWindow, homeHoverContent, homeClickContent);
