@@ -622,20 +622,32 @@ window.saveBandArrayDataSafe = async function saveBandArrayDataSafe(dataType, ne
         var newById = {};
         newArr.forEach(function(r) { if (r && r[idField]) newById[r[idField]] = r; });
 
-        // Setlist-specific defensive validator: section labels appearing as
-        // song titles is the fingerprint of the flattener bug that produced the
-        // 2026-05-10 damage. Log a warning so we catch any regression.
+        // Setlist-specific defensive validator + auto-cleaner: section labels
+        // appearing as song titles is the fingerprint of the flattener bug
+        // that produced the 2026-05-10 damage. Drew flagged a recurring
+        // "Set Break" artifact 2026-05-23 in the "From The Earth Brewing
+        // 06/28/26" setlist. Strip these in place so the rogue entries leave
+        // Firebase the next time anything touches the setlist — auto-cleaner
+        // is safe because nothing legitimately titles a song "Set Break",
+        // "Soundcheck", "Set 1", "Encore", etc.
         if (dataType === 'setlists') {
             var SECTION_LABEL_RE = /^(soundcheck|set\s*\d+|encore|set\s*break|🔊\s*soundcheck)$/i;
             newArr.forEach(function(rec) {
                 if (!rec || !Array.isArray(rec.sets)) return;
                 rec.sets.forEach(function(set) {
-                    (set.songs || []).forEach(function(sg, idx) {
+                    if (!Array.isArray(set.songs)) return;
+                    var strippedTitles = [];
+                    set.songs = set.songs.filter(function(sg) {
                         var title = (typeof sg === 'string') ? sg : (sg && sg.title);
                         if (title && SECTION_LABEL_RE.test(String(title).trim())) {
-                            console.warn('[saveBandArrayDataSafe:setlists] suspicious title "' + title + '" in setlist "' + (rec.name || rec[idField]) + '" / section "' + (set.name || '?') + '" / idx ' + idx + ' — possible section-flattener artifact');
+                            strippedTitles.push(title);
+                            return false;
                         }
+                        return true;
                     });
+                    if (strippedTitles.length > 0) {
+                        console.warn('[saveBandArrayDataSafe:setlists] stripped ' + strippedTitles.length + ' section-label artifact(s) from setlist "' + (rec.name || rec[idField]) + '" / section "' + (set.name || '?') + '": ' + JSON.stringify(strippedTitles));
+                    }
                 });
             });
         }

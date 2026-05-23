@@ -338,7 +338,15 @@ async function saveGigEdit(idx) {
     } else {
         showToast('\u2705 Gig updated!');
     }
-    loadGigs();
+    // Preserve scroll position by re-anchoring on the saved gig's gigId after
+    // the list re-renders (sort may have shifted indices). data-gig-id is the
+    // stable key \u2014 data-gig-idx changes if dates re-sort the array.
+    var savedGigId = gigData[idx].gigId;
+    await loadGigs();
+    if (savedGigId) {
+        var row = document.querySelector('[data-gig-id="' + savedGigId + '"]');
+        if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
 }
 
 // ── Gig map state + Gig page + Gig CRUD (app.js 11867–12335) ────────────────────
@@ -351,6 +359,12 @@ var _gigsMapShowBandmateHomes = false; // toggle, persisted in localStorage
 var _gigsMapHoverCloseTimer = null;
 var _gigsMapGeocoder = null;
 var _glGeocodeCache = null;
+// Tracks Google Geocoding API errors during the current renderGigsMap pass.
+// REQUEST_DENIED almost always means "API not enabled in Cloud Console" —
+// the empty-state guard at the bottom of renderGigsMap surfaces this as a
+// clear banner instead of the misleading "No gigs to plot yet" message.
+var _gigsMapDeniedCount = 0;
+var _gigsMapLastDenialAddr = '';
 try { _gigsMapShowBandmateHomes = localStorage.getItem('gl_gig_map_show_bandmates') === '1'; } catch (_e) {}
 
 // Geocode helper — Maps Geocoding API w/ localStorage cache so we don't
@@ -382,6 +396,10 @@ async function _gigsMapGeocode(addr) {
                 resolve(entry);
             } else {
                 // Don't negative-cache — if user fixes a typo, we want to retry.
+                if (status === 'REQUEST_DENIED') {
+                    _gigsMapDeniedCount++;
+                    _gigsMapLastDenialAddr = addr;
+                }
                 if (status !== 'OK') console.warn('[GigMap] geocode', status, 'for', addr);
                 resolve(null);
             }
@@ -450,6 +468,12 @@ async function renderGigsMap() {
     if (!el) return;
 
     el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.88em">Loading map…</div>';
+
+    // Reset Geocoding denial telemetry for this render pass. If every geocode
+    // comes back REQUEST_DENIED we surface a clear banner instead of the
+    // misleading "No gigs to plot yet" empty state.
+    _gigsMapDeniedCount = 0;
+    _gigsMapLastDenialAddr = '';
 
     var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
     var venues = toArray(await loadBandDataFromDrive('_band', 'venues') || []);
@@ -593,8 +617,22 @@ async function renderGigsMap() {
         }
     }
 
-    // Empty-state guard: nothing at all to render?
+    // Empty-state guard: nothing at all to render? Distinguish two failure
+    // modes so the next debugging cycle doesn't burn a session on this.
     if (gigGroupsForRender.length === 0 && homePoints.length === 0) {
+        if (_gigsMapDeniedCount > 0) {
+            // Every geocode hit REQUEST_DENIED — almost always means the
+            // Geocoding API isn't enabled on the Cloud project that owns
+            // the Maps JS key. Tell the user where to go instead of
+            // pretending there's no data.
+            el.innerHTML = '<div style="padding:18px 22px;border-radius:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);color:#fecaca;font-size:0.88em;line-height:1.5">'
+                + '<div style="font-weight:700;color:#f87171;margin-bottom:6px">⚠️ Geocoding API not enabled</div>'
+                + 'Google rejected ' + _gigsMapDeniedCount + ' geocode request' + (_gigsMapDeniedCount === 1 ? '' : 's') + ' with <code>REQUEST_DENIED</code>. Enable the <strong>Geocoding API</strong> in the Google Cloud project that owns this site\'s Maps JS API key, then reload.'
+                + '<div style="font-size:0.78em;color:#fca5a5;margin-top:8px;font-style:italic">Last denied address: ' + (_gigsMapLastDenialAddr || '(none)') + '</div>'
+                + '<a href="https://console.cloud.google.com/apis/library/geocoding-backend.googleapis.com" target="_blank" style="display:inline-block;margin-top:10px;background:rgba(239,68,68,0.2);color:#fecaca;border:1px solid rgba(239,68,68,0.4);padding:5px 12px;border-radius:6px;font-size:0.82em;text-decoration:none;font-weight:600">Open Cloud Console →</a>'
+                + '</div>';
+            return;
+        }
         el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.88em">No gigs or homes to plot yet.<br>Add a venue (with address) on the Venues page or set your home address in Settings.</div>';
         return;
     }
@@ -979,7 +1017,7 @@ function _gigRenderCard(g, isUpcoming) {
     var idx = g._origIdx;
     var dateDisplay = (typeof glFormatDate === 'function') ? glFormatDate(g.date, true) : (g.date || 'TBD');
     var countdown = (typeof glCountdownLabel === 'function') ? glCountdownLabel(g.date) : '';
-    return '<div class="app-card" data-gig-idx="' + idx + '" style="margin-bottom:8px;padding:10px 14px">'
+    return '<div class="app-card" data-gig-idx="' + idx + '" data-gig-id="' + (g.gigId || '') + '" style="margin-bottom:8px;padding:10px 14px">'
         + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
         + '<div style="flex:1">'
         + '<div style="font-weight:700;font-size:0.92em;margin-bottom:2px">' + (g.venue || 'TBD') + '</div>'
@@ -2141,6 +2179,67 @@ window.rmCaptureCancel = rmCaptureCancel;
 window.gigsMapSetFilter = gigsMapSetFilter;
 window.renderGigsPage = renderGigsPage;
 window.loadGigHistory = loadGigHistory;
+
+// ── Admin one-shots (run from DevTools console) ──────────────────────────────
+// (2026-05-23 Drew request) Mark every band member as "yes" on every past gig
+// that doesn't already have a final RSVP. Idempotent by default — re-running
+// won't overwrite a member's existing decision. Pass {overwrite:true} to clobber.
+// Mirrors each touched gig to calendar_events via _syncGigToCalendar.
+window._gl_backfillPastGigRsvps = async function(opts) {
+    opts = opts || {};
+    var overwrite = !!opts.overwrite;
+    if (typeof bandMembers === 'undefined' || !bandMembers || Object.keys(bandMembers).length === 0) {
+        console.error('[backfillRSVP] bandMembers not loaded yet — wait for boot and retry');
+        return;
+    }
+    var gigs = toArray(await loadBandDataFromDrive('_band', 'gigs') || []);
+    var today = new Date().toISOString().split('T')[0];
+    var memberKeys = Object.keys(bandMembers);
+    var stamp = new Date().toISOString();
+    var stats = { gigsTouched: 0, entriesAdded: 0, entriesOverwritten: 0, gigsSkippedFuture: 0, gigsSkippedNoDate: 0 };
+    gigs.forEach(function(g) {
+        if (!g) return;
+        if (!g.date) { stats.gigsSkippedNoDate++; return; }
+        if (g.date >= today) { stats.gigsSkippedFuture++; return; }
+        if (!g.availability) g.availability = {};
+        var changed = false;
+        memberKeys.forEach(function(mkey) {
+            var existing = g.availability[mkey];
+            if (existing && existing.status && !overwrite) return; // respect prior decisions
+            g.availability[mkey] = { status: 'yes', updatedAt: stamp, _backfill: true };
+            if (existing && existing.status) stats.entriesOverwritten++; else stats.entriesAdded++;
+            changed = true;
+        });
+        if (changed) {
+            g.updated = stamp;
+            stats.gigsTouched++;
+        }
+    });
+    await saveBandDataToDrive('_band', 'gigs', gigs);
+    if (typeof GLStore !== 'undefined' && GLStore.setGigsCache) GLStore.setGigsCache(gigs);
+    // Mirror each touched gig to calendar_events so the cal surface reflects.
+    if (typeof _syncGigToCalendar === 'function') {
+        for (var i = 0; i < gigs.length; i++) {
+            var gg = gigs[i];
+            if (gg && gg.availability && Object.values(gg.availability).some(function(a){ return a && a._backfill; })) {
+                try { await _syncGigToCalendar(gg); } catch(_e) {}
+            }
+        }
+    }
+    console.log('[backfillRSVP] done', stats);
+    if (typeof showToast === 'function') showToast('✓ Backfilled ' + stats.entriesAdded + ' RSVPs across ' + stats.gigsTouched + ' past gigs');
+    return stats;
+};
+
+// (2026-05-23 Drew request) One-shot: clean section-label artifacts
+// ("Set Break", "Soundcheck", "Set 1", etc.) from every setlist by triggering
+// a save. The validator in saveBandArrayDataSafe strips them inline.
+window._gl_cleanSetlistArtifacts = async function() {
+    var setlists = toArray(await loadBandDataFromDrive('_band', 'setlists') || []);
+    await saveBandDataToDrive('_band', 'setlists', setlists);
+    if (typeof showToast === 'function') showToast('✓ Setlist sweep complete — check console for stripped artifacts');
+    console.log('[cleanSetlistArtifacts] save triggered — auto-cleaner ran inline');
+};
 
 // ── Post event change notification to band feed ──────────────────────────────
 function _postEventChangeNotification(eventType, eventName, changeLabel) {
