@@ -11155,6 +11155,8 @@ async function editMember(key) {
     var curVocal = m.vocalRole || (m.leadVocals ? 'lead' : m.sings ? 'backing' : 'none');
     var instruments = ['Lead Guitar', 'Rhythm Guitar', 'Bass', 'Keys', 'Drums', 'Percussion', 'Other'];
 
+    var curAddr = m.homeAddress || '';
+
     var form = document.createElement('div');
     form.id = formId;
     form.style.cssText = 'padding:8px 0;border-top:1px solid rgba(255,255,255,0.06)';
@@ -11171,6 +11173,11 @@ async function editMember(key) {
         + '<option value="lead"' + (curVocal === 'lead' ? ' selected' : '') + '>Lead</option>'
         + '</select></div>'
         + '</div>'
+        + '<div style="margin-bottom:6px">'
+        + '<label style="font-size:0.68em;font-weight:700;color:var(--text-dim);display:block;margin-bottom:2px">🏠 Home Address (optional)</label>'
+        + '<input id="editHomeAddr_' + key + '" class="app-input" style="width:100%;font-size:0.82em" value="' + curAddr.replace(/"/g, '&quot;') + '" placeholder="123 Main St, City, State">'
+        + '<div style="font-size:0.68em;color:var(--text-dim);margin-top:2px">Used for the Gig Map. Member can also set it themselves in Settings → Profile.</div>'
+        + '</div>'
         + '<div style="display:flex;gap:6px">'
         + '<button id="saveMemberBtn_' + key + '" onclick="saveMemberRole(\'' + key + '\', this)" class="btn btn-primary btn-sm">Save</button>'
         + '<button onclick="document.getElementById(\'' + formId + '\')?.remove()" class="btn btn-ghost btn-sm">Cancel</button>'
@@ -11181,8 +11188,11 @@ async function editMember(key) {
 async function saveMemberRole(key, btn) {
     var instrumentEl = document.getElementById('editInstrument_' + key);
     var vocalEl = document.getElementById('editVocal_' + key);
+    var addrEl = document.getElementById('editHomeAddr_' + key);
     var newInstrument = instrumentEl ? instrumentEl.value : (bandMembers[key].role || '');
     var newVocal = vocalEl ? vocalEl.value : 'none';
+    var newAddr = addrEl ? (addrEl.value || '').trim() : (bandMembers[key].homeAddress || '');
+    var prevAddr = bandMembers[key].homeAddress || '';
     var sings = newVocal !== 'none';
     var leadVocals = (newVocal === 'lead' || newVocal === 'co-lead');
 
@@ -11193,16 +11203,29 @@ async function saveMemberRole(key, btn) {
         bandMembers[key].sings = sings;
         bandMembers[key].leadVocals = leadVocals;
         bandMembers[key].harmonies = sings;
+        bandMembers[key].homeAddress = newAddr;
+        if (newAddr !== prevAddr) {
+            bandMembers[key].homeLat = null;
+            bandMembers[key].homeLng = null;
+        }
         // Persist to Firebase
         if (firebaseDB && typeof bandPath === 'function') {
-            return firebaseDB.ref(bandPath('meta/members/' + key)).update({
+            var updates = {
                 role: newInstrument,
                 primaryInstrument: newInstrument,
                 vocalRole: newVocal,
                 sings: sings,
                 leadVocals: leadVocals,
-                harmonies: sings
-            });
+                harmonies: sings,
+                homeAddress: newAddr
+            };
+            if (newAddr !== prevAddr) {
+                updates.homeLat = null;
+                updates.homeLng = null;
+            }
+            var ops = [firebaseDB.ref(bandPath('meta/members/' + key)).update(updates)];
+            ops.push(firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(newAddr));
+            return Promise.all(ops);
         }
     });
     setTimeout(function() {
