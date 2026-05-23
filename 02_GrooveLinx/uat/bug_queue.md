@@ -1,6 +1,6 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260523-230022
+**Build Under Test:** 20260523-230606
 
 ## Open
 
