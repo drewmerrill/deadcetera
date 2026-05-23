@@ -126,6 +126,26 @@ orphan helpers, broken fallbacks.
     double-click investigation) · 9f08b2b8
   - **Status:** open
 
+- **Finding:** `saveHomeAddress` (app.js + app-dev.js) dual-writes the
+  member's home address to BOTH the legacy path
+  `bands/{slug}/members/{key}/homeAddress` AND the canonical
+  `bands/{slug}/meta/members/{key}/homeAddress`. The legacy write is
+  retained for back-compat with `_restoreHomeAddress` (which still
+  reads from the legacy path on init to repopulate localStorage).
+  - **Why deferred:** Existing user records (pre-`20260523-181905`)
+    only have the address at the legacy path. Removing the dual-write
+    now would orphan the canonical path until every member re-saves;
+    keeping it costs one extra Firebase write per save. Cheap to live
+    with.
+  - **Trigger:** After every active band member has re-saved their
+    address at least once (verifiable via a one-time Firebase scan),
+    drop the legacy write and migrate `_restoreHomeAddress` to read
+    from `meta/members/{key}/homeAddress`. Alternatively, a one-shot
+    migration script that copies legacy → canonical and deletes the
+    legacy path closes this faster.
+  - **Discovered:** 2026-05-23 · 9d7a85df (issue #47)
+  - **Status:** open
+
 ## 2. UX Coherence Debt
 
 Inconsistent terminology, duplicate interaction models, source

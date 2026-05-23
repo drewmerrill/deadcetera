@@ -169,6 +169,11 @@ localStorage and restored on next load (except `songs` and `songdetail`).
 ### Gig Map (collapsible) — inline in Gigs page
 - **Triggered by:** toggle button; lazy-renders on first open
 - Dark Google Map with venue pins
+- **Venue pins:** auto-geocoded on first open (Bug #16 backfill); coords cached in `localStorage['gl_geocode_cache_v1']` + written back to `venues/{idx}/lat,lng` as leaf paths (avoids array clobber per `project_setlist_swr_clobber_bug`)
+- **Home pins:** signed-in user (blue 🏠, larger) always rendered; bandmate homes (purple 🏠, smaller) gated by the "🏠 Band" toggle (off by default; state in `localStorage['gl_gig_map_show_bandmates']`)
+- **Privacy opt-in (issue #47):** each member can hide their home pin from bandmates via Settings → Profile → "🗺 Gig Map Privacy" checkbox. Defaults ON. Stored at `bands/{slug}/meta/members/{key}/showHomeOnMap`. Signed-in user always sees their own pin regardless of their own toggle (self-bypass at `gigs.js:521`).
+- **Hover info windows:** dark-themed (slate-800 override via one-time `<style id="gigsMapStyleOverrides">`). Mouseover opens, mouseout closes after 250ms, click pins the window.
+- **Hydration dependency:** `bandMembers` cache (built by `loadBandMembersFromFirebase` from `meta/members`) MUST include `homeAddress`/`homeLat`/`homeLng`/`showHomeOnMap` on its allowlist — `gigs.js:520` reads `m.homeAddress` to decide whether to render a pin. Save path: `saveHomeAddress` dual-writes to `members/{key}/homeAddress` (legacy) and `meta/members/{key}/homeAddress` (canonical).
 
 ---
 

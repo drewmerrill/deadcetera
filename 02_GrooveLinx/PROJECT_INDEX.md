@@ -1,6 +1,6 @@
 # GrooveLinx Project Index
 
-_Last updated: 2026-05-12 (build `20260512-232320`)_
+_Last updated: 2026-05-23 (build `20260523-181905`)_
 
 This file is the fastest high-level map of the GrooveLinx repo. Any AI assistant or human contributor should read this before proposing structural changes.
 

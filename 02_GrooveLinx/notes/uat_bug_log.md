@@ -1,6 +1,16 @@
 # GrooveLinx UAT Bug Log
 
-_Last updated: 2026-05-14 15:18 EDT — Bug #8 (silent Load button) closed as part of Beta-Readiness Execution Pass, build `20260514-151844`_
+_Last updated: 2026-05-23 18:19 UTC — Gig Map privacy toggle (#47) shipped, build `20260523-181905`. Includes a load-bearing hydration fix that retroactively makes the #46 home-pin feature actually render bandmate pins._
+
+---
+
+## Hydration Fix (2026-05-23 — Issue #47 sidecar)
+
+**Severity:** HIGH (latent — silently broke #46 home-pin rendering for everyone). Closed alongside the privacy-toggle feature in build `20260523-181905`, commit `9d7a85df`.
+
+| Bug | Root Cause | Fix | Build |
+|-----|-----------|-----|-------|
+| **Hydration gap — `bandMembers` cache silently dropped `homeAddress`/`homeLat`/`homeLng`/`showHomeOnMap`** (latent, surfaced 2026-05-23 while building the issue #47 privacy toggle; explains why the prior 2026-05-22 `feat(gigs): map auto-geocode + user/bandmate home pins` shipped pending verification — `gigs.js:520` reads `m.homeAddress` from the cache, but no home pins would have rendered for anyone) | `loadBandMembersFromFirebase` in `app.js:15161` rebuilt `bandMembers` from `bands/{slug}/meta/members` but copied only 9 fields into `newMembers[key]` (`name`, `role`, `email`, `sings`, `leadVocals`, `harmonies`, `primaryInstrument`, `vocalRole`, `isOwner`). The Gig Map fields added by issue #46 were never on the allowlist. Compounding: `saveHomeAddress` wrote `homeAddress` to `bands/{slug}/members/{key}/homeAddress` (non-meta path) while `gigs.js:535` writes geocoded `homeLat`/`homeLng` to `bands/{slug}/meta/members/{key}/homeLat` (meta path) — even if the allowlist had included `homeAddress`, the path mismatch meant the cache would still hydrate empty for the address itself | (a) `loadBandMembersFromFirebase` allowlist extended to include `homeAddress`, `homeLat`, `homeLng`, `showHomeOnMap` with the same `meta/members` source. (b) `saveHomeAddress` now dual-writes to BOTH `members/{key}/homeAddress` (legacy, kept for back-compat with `_restoreHomeAddress`) AND `meta/members/{key}/homeAddress` (canonical — matches where lat/lng land). Future saves end up where the cache hydrates from. Mirrored to `app-dev.js` per dev/prod sync. Existing addresses saved before this build live only at the legacy path; one re-save populates the canonical path. | 20260523-181905 |
 
 ---
 
