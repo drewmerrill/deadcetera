@@ -380,10 +380,11 @@ var _gigsMapLastDenialAddr = '';
 //   3. Associate the style with a new Map ID (e.g. "gl-gig-map-dark").
 //   4. Paste that Map ID here in place of 'DEMO_MAP_ID'.
 //
-// Until the custom Map ID is configured, DEMO_MAP_ID renders the map in
-// Google's default light theme. Markers + InfoWindows work; only the
-// underlying map style is generic.
-var _GIGS_MAP_ID = 'DEMO_MAP_ID';
+// Configured 2026-05-23: Drew created the "GrooveLinx Dark" Map Style
+// (Google's built-in Dark mode, no JSON customizations) and bound it to
+// this Map ID via Cloud Console → Maps Management → Map IDs (Quick create).
+// Style ID for reference: c5e4591436eaf00c2105d0b5.
+var _GIGS_MAP_ID = '40a519c88d84dda410ea0625';
 
 try { _gigsMapShowBandmateHomes = localStorage.getItem('gl_gig_map_show_bandmates') === '1'; } catch (_e) {}
 
