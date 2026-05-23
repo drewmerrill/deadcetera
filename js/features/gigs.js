@@ -520,6 +520,10 @@ async function renderGigsMap() {
             if (!m || !m.homeAddress) continue;
             var isSelf = (mkey === currentMemberKey);
             if (!isSelf && !_gigsMapShowBandmateHomes) continue; // toggle gates bandmate homes
+            // (Issue #47) Privacy opt-in: a bandmate can hide their home pin
+            // from others via Settings → Profile. The signed-in user always
+            // sees their OWN home regardless (they're looking at their own UI).
+            if (!isSelf && m.showHomeOnMap === false) continue;
             var hlat = (typeof m.homeLat === 'number') ? m.homeLat : null;
             var hlng = (typeof m.homeLng === 'number') ? m.homeLng : null;
             if (!hlat || !hlng) {
@@ -545,6 +549,21 @@ async function renderGigsMap() {
 
     el.innerHTML = '';
     el.style.cssText = 'height:360px;border-radius:12px;overflow:hidden;position:relative';
+
+    // (Issue #47) Inject one-time CSS overrides so Google's white default
+    // info-window wrapper matches our dark map theme. Idempotent — the
+    // style tag is only added once even across map re-renders.
+    if (!document.getElementById('gigsMapStyleOverrides')) {
+        var styleEl = document.createElement('style');
+        styleEl.id = 'gigsMapStyleOverrides';
+        styleEl.textContent = '.gm-style .gm-style-iw-c{background:#1e293b!important;box-shadow:0 4px 16px rgba(0,0,0,0.4)!important;padding:0!important;border-radius:10px!important;max-width:280px!important}'
+            + '.gm-style .gm-style-iw-d{background:#1e293b!important;overflow:auto!important;padding:0!important}'
+            + '.gm-style .gm-style-iw-tc::after{background:#1e293b!important}'
+            + '.gm-style .gm-style-iw-chr{background:transparent!important}'
+            + '.gm-style .gm-ui-hover-effect>span{background:#94a3b8!important}'
+            + '.gm-style .gm-style-iw button.gm-ui-hover-effect{opacity:0.6}';
+        document.head.appendChild(styleEl);
+    }
 
     // Map center: bounds-fit if we have anything, otherwise default Atlanta-ish
     var anchorLat = gigsWithCoords.length ? gigsWithCoords[0]._lat : (homePoints[0] ? homePoints[0].lat : 33.749);
@@ -582,7 +601,9 @@ async function renderGigsMap() {
         var marker = new google.maps.Marker({
             position: { lat: g._lat, lng: g._lng },
             map: _gigsMap,
-            title: (g.venue||'Venue') + ' — ' + (g.date||''),
+            // No `title:` — the hover info window replaces the native browser
+            // tooltip; including both produces a duplicate dark tooltip and
+            // visual conflict (issue #47).
             icon: {
                 url: _gigsMapPinSvg(color),
                 scaledSize: new google.maps.Size(32, 40),
@@ -628,7 +649,7 @@ async function renderGigsMap() {
         var marker = new google.maps.Marker({
             position: { lat: hp.lat, lng: hp.lng },
             map: _gigsMap,
-            title: (hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : ''),
+            // No `title:` — hover info window replaces the native tooltip (issue #47).
             icon: {
                 url: _gigsMapHomePinSvg(color, hp.isSelf),
                 scaledSize: new google.maps.Size(hp.isSelf ? 34 : 28, hp.isSelf ? 34 : 28),

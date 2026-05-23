@@ -10082,6 +10082,21 @@ function settingsTab(tab, btn) {
                     </div>
                     <div style="font-size:0.75em;color:var(--text-dim);margin-top:4px">Used for gig directions & leave-time estimates.</div>
                 </div>
+                ${(function(){
+                    // Issue #47 — Privacy opt-in for the home pin on the Gig Map.
+                    // Only meaningful once an address is set; hide otherwise.
+                    var hasAddr = !!(localStorage.getItem('deadcetera_home_address') || '');
+                    if (!hasAddr) return '';
+                    var m = bandMembers[cu] || {};
+                    var checked = (m.showHomeOnMap !== false) ? ' checked' : '';
+                    return '<div class="form-row"><label class="form-label">🗺 Gig Map Privacy</label>'
+                        + '<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;cursor:pointer;font-size:0.88em;color:var(--text)">'
+                        + '<input type="checkbox" id="settingsShowHomeOnMap" style="accent-color:var(--accent);width:16px;height:16px"' + checked + ' onchange="_toggleShowHomeOnMap(this.checked)">'
+                        + '<span>Show my home pin to bandmates on the Gig Map</span>'
+                        + '</label>'
+                        + '<div style="font-size:0.72em;color:var(--text-dim);margin-top:4px">Off = bandmates won\'t see your home pin. You always see your own.</div>'
+                        + '</div>';
+                })()}
             </div>
             <div style="margin-top:12px;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.82em;color:var(--text-dim)">
                 🔗 Google: <span style="color:${isUserSignedIn && currentUserEmail ? '#10b981' : 'var(--text-muted)'}">${isUserSignedIn && currentUserEmail ? currentUserEmail : 'Not connected — click Sign In above'}</span>
@@ -10987,11 +11002,19 @@ function saveHomeAddress(btn) {
     var val = (document.getElementById('settingsHomeAddress') || {}).value || '';
     if (!val.trim()) { showToast('Please enter an address'); return; }
     _glSaveBtn(btn || document.getElementById('saveAddressBtn'), function() {
-        localStorage.setItem('deadcetera_home_address', val.trim());
-        // Save to Firebase under user profile (canonical source of truth)
+        var trimmed = val.trim();
+        localStorage.setItem('deadcetera_home_address', trimmed);
         var key = localStorage.getItem('deadcetera_current_user');
         if (key && typeof firebaseDB !== 'undefined' && firebaseDB && typeof bandPath === 'function') {
-            return firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(val.trim());
+            // Issue #47 — also write to meta/members/{key}/homeAddress so the
+            // bandMembers cache (hydrated from meta/members) picks it up. Keep
+            // the legacy members/{key}/homeAddress write for back-compat with
+            // any reader still pointed at the old path.
+            if (typeof bandMembers !== 'undefined' && bandMembers[key]) bandMembers[key].homeAddress = trimmed;
+            return Promise.all([
+                firebaseDB.ref(bandPath('members/' + key + '/homeAddress')).set(trimmed),
+                firebaseDB.ref(bandPath('meta/members/' + key + '/homeAddress')).set(trimmed)
+            ]);
         }
     });
     // Re-render to show saved state after a brief delay
@@ -11009,6 +11032,24 @@ function _restoreHomeAddress() {
         }
     }).catch(function() {});
 }
+
+// Issue #47 — Toggle whether the signed-in user's home pin is shown to bandmates
+// on the Gig Map. Writes to `meta/members/{key}/showHomeOnMap` (the same path
+// `loadBandMembersFromFirebase` hydrates from) and mirrors the value into the
+// in-memory `bandMembers` cache so a same-session Gig Map re-render reflects it.
+window._toggleShowHomeOnMap = function(checked) {
+    var key = localStorage.getItem('deadcetera_current_user');
+    if (!key) return;
+    var val = !!checked;
+    if (typeof bandMembers !== 'undefined' && bandMembers[key]) {
+        bandMembers[key].showHomeOnMap = val;
+    }
+    if (firebaseDB && typeof bandPath === 'function') {
+        firebaseDB.ref(bandPath('meta/members/' + key + '/showHomeOnMap')).set(val)
+            .then(function() { if (typeof showToast === 'function') showToast(val ? 'Home pin visible to bandmates' : 'Home pin hidden from bandmates'); })
+            .catch(function(e) { if (typeof showToast === 'function') showToast('Save failed: ' + (e && e.message ? e.message : 'unknown')); });
+    }
+};
 
 async function initSettingsAddressAutocomplete() {
     var input = document.getElementById('settingsHomeAddress');
@@ -14575,7 +14616,14 @@ async function loadBandMembersFromFirebase() {
                 harmonies: !!m.harmonies,
                 primaryInstrument: m.primaryInstrument || m.role || '',
                 vocalRole: m.vocalRole || 'none',
-                isOwner: !!m.isOwner
+                isOwner: !!m.isOwner,
+                // Issue #46/#47 — Gig Map fields. homeAddress + lat/lng feed
+                // the home-pin renderer in gigs.js; showHomeOnMap is the
+                // per-member privacy opt-out (undefined/true = visible).
+                homeAddress: m.homeAddress || '',
+                homeLat: (typeof m.homeLat === 'number') ? m.homeLat : null,
+                homeLng: (typeof m.homeLng === 'number') ? m.homeLng : null,
+                showHomeOnMap: (m.showHomeOnMap === false) ? false : true
             };
             var roleLower = (m.role || '').toLowerCase();
             var emoji = '🎸'; // default
