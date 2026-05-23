@@ -389,17 +389,22 @@ async function _gigsMapGeocode(addr) {
     });
 }
 
-// Hover behavior on every marker: mouseover opens info window, mouseout
-// closes after 250ms (so the user can move into the window without it
-// snapping shut), click PINS the window so it stays open until next click.
-function _gigsMapWireMarker(marker, infoWindow) {
+// Hover vs click content split (issue #47 follow-up). Hover shows a compact
+// preview (no interactive buttons — they were unclickable since mouseout
+// closed the window). Click swaps to full content and PINS the window so
+// users can actually press Directions / read details. Same InfoWindow per
+// marker; we just call .setContent() to swap between hover and click states.
+function _gigsMapWireMarker(marker, infoWindow, hoverContent, clickContent) {
     marker._infoWindow = infoWindow;
+    marker._hoverContent = hoverContent || clickContent;
+    marker._clickContent = clickContent || hoverContent;
     marker.addListener('mouseover', function() {
         if (_gigsMapHoverCloseTimer) { clearTimeout(_gigsMapHoverCloseTimer); _gigsMapHoverCloseTimer = null; }
         if (marker._pinned) return;
         _gigsMapMarkers.forEach(function(m) {
             if (!m._pinned && m._infoWindow) m._infoWindow.close();
         });
+        infoWindow.setContent(marker._hoverContent);
         infoWindow.open(_gigsMap, marker);
     });
     marker.addListener('mouseout', function() {
@@ -416,6 +421,7 @@ function _gigsMapWireMarker(marker, infoWindow) {
             if (m._infoWindow) m._infoWindow.close();
         });
         marker._pinned = true;
+        infoWindow.setContent(marker._clickContent);
         infoWindow.open(_gigsMap, marker);
     });
 }
@@ -496,12 +502,58 @@ async function renderGigsMap() {
         if (v.name) venueByNameLookup[v.name] = v;
     });
 
-    // Attach lat/lng from venues to gigs
-    var gigsWithCoords = gigs.filter(function(g) {
-        var v = (g.venueId && venueByIdLookup[g.venueId]) || venueByNameLookup[g.venue];
-        if (v && v.lat && v.lng) { g._lat = parseFloat(v.lat); g._lng = parseFloat(v.lng); g._venue = v; return true; }
-        return false;
+    // (Issue #47 follow-up) GROUP gigs by venue identity so we render ONE pin
+    // per venue with all the dates we've played there, instead of stacking
+    // duplicate pins at the same coordinates for repeat venues.
+    //
+    // Group key: lowercased venue name (matches gigs that share a venue even
+    // when one has venueId set and the other only has venue text). Each group
+    // tries: (1) a resolved venue record's lat/lng, (2) the venue's address
+    // geocoded, (3) the venue NAME itself geocoded as a free-text search.
+    // Step (3) is the load-bearing addition — it rescues past gigs whose
+    // venue field was never added to the venues table (Drew, 2026-05-23:
+    // "I am missing all of the other gigs we have had").
+    var venueGroups = {}; // key → { name, address, venue, gigs[] }
+    gigs.forEach(function(g) {
+        var v = (g.venueId && venueByIdLookup[g.venueId]) || venueByNameLookup[g.venue] || null;
+        var displayName = (v && v.name) || g.venue || '';
+        if (!displayName) return; // can't group a gig with no venue identity
+        var key = displayName.trim().toLowerCase();
+        if (!venueGroups[key]) {
+            venueGroups[key] = {
+                name: displayName,
+                address: (v && v.address) || '',
+                venue: v || null,
+                gigs: []
+            };
+        }
+        venueGroups[key].gigs.push(g);
     });
+
+    var gigGroupsForRender = [];
+    var freeTextGeocodeCount = 0;
+    var groupKeys = Object.keys(venueGroups);
+    for (var gki = 0; gki < groupKeys.length; gki++) {
+        var grp = venueGroups[groupKeys[gki]];
+        var lat = null, lng = null;
+        if (grp.venue && grp.venue.lat && grp.venue.lng) {
+            lat = parseFloat(grp.venue.lat); lng = parseFloat(grp.venue.lng);
+        } else if (grp.address) {
+            var geoAddr = await _gigsMapGeocode(grp.address);
+            if (geoAddr) { lat = geoAddr.lat; lng = geoAddr.lng; }
+        }
+        // Fallback: geocode the venue NAME as a free-text Google search.
+        // Google Maps Geocoding handles "Southern Roots Tavern" reasonably
+        // well — usually within a few hundred meters of the actual venue.
+        if (!lat || !lng) {
+            var geoName = await _gigsMapGeocode(grp.name);
+            if (geoName) { lat = geoName.lat; lng = geoName.lng; freeTextGeocodeCount++; }
+        }
+        if (!lat || !lng) continue; // truly unresolvable
+        grp._lat = lat; grp._lng = lng;
+        gigGroupsForRender.push(grp);
+    }
+    if (freeTextGeocodeCount > 0) console.log('[GigMap] resolved', freeTextGeocodeCount, 'venue(s) by free-text name geocode (no venue record / no address)');
 
     // (Issue #46) HOME markers — signed-in user + opted-in bandmates (toggle).
     // Member key from localStorage; member records read from `bandMembers`
@@ -542,7 +594,7 @@ async function renderGigsMap() {
     }
 
     // Empty-state guard: nothing at all to render?
-    if (gigsWithCoords.length === 0 && homePoints.length === 0) {
+    if (gigGroupsForRender.length === 0 && homePoints.length === 0) {
         el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);font-size:0.88em">No gigs or homes to plot yet.<br>Add a venue (with address) on the Venues page or set your home address in Settings.</div>';
         return;
     }
@@ -566,8 +618,8 @@ async function renderGigsMap() {
     }
 
     // Map center: bounds-fit if we have anything, otherwise default Atlanta-ish
-    var anchorLat = gigsWithCoords.length ? gigsWithCoords[0]._lat : (homePoints[0] ? homePoints[0].lat : 33.749);
-    var anchorLng = gigsWithCoords.length ? gigsWithCoords[0]._lng : (homePoints[0] ? homePoints[0].lng : -84.388);
+    var anchorLat = gigGroupsForRender.length ? gigGroupsForRender[0]._lat : (homePoints[0] ? homePoints[0].lat : 33.749);
+    var anchorLng = gigGroupsForRender.length ? gigGroupsForRender[0]._lng : (homePoints[0] ? homePoints[0].lng : -84.388);
 
     _gigsMap = new google.maps.Map(el, {
         center: { lat: anchorLat, lng: anchorLng },
@@ -595,15 +647,30 @@ async function renderGigsMap() {
     _gigsMapInfoWindows = [];
     var today = new Date().toISOString().split('T')[0];
 
-    gigsWithCoords.forEach(function(g) {
-        var isUpcoming = (g.date||'') >= today;
-        var color = isUpcoming ? '#22c55e' : '#818cf8';
+    function _esc(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    gigGroupsForRender.forEach(function(grp) {
+        // Sort: next-upcoming first (soonest), other upcoming after, then past
+        // (most recent first). This makes the hover list read naturally.
+        var sortedGigs = grp.gigs.slice().sort(function(a, b) {
+            var ad = a.date || '', bd = b.date || '';
+            var au = ad >= today, bu = bd >= today;
+            if (au && !bu) return -1;
+            if (!au && bu) return 1;
+            if (au && bu) return ad.localeCompare(bd);     // upcoming: soonest first
+            return bd.localeCompare(ad);                    // past: most recent first
+        });
+        var hasUpcoming = sortedGigs.some(function(g) { return (g.date||'') >= today; });
+        var hasPast = sortedGigs.some(function(g) { return (g.date||'') !== '' && (g.date||'') < today; });
+
+        // Pin color reflects "any upcoming" — green if there's a future booking
+        // at the venue, indigo if it's only past plays.
+        var color = hasUpcoming ? '#22c55e' : '#818cf8';
         var marker = new google.maps.Marker({
-            position: { lat: g._lat, lng: g._lng },
+            position: { lat: grp._lat, lng: grp._lng },
             map: _gigsMap,
-            // No `title:` — the hover info window replaces the native browser
-            // tooltip; including both produces a duplicate dark tooltip and
-            // visual conflict (issue #47).
             icon: {
                 url: _gigsMapPinSvg(color),
                 scaledSize: new google.maps.Size(32, 40),
@@ -612,32 +679,75 @@ async function renderGigsMap() {
             optimized: false
         });
 
-        // (Issue #46) Use the venue we already resolved via _venue (was a
-        // dangling `venueLookup` undefined-identifier bug before this ship).
-        var v = g._venue || {};
-        var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent((v.address||v.name||g.venue||''));
-        var statusBadge = isUpcoming
+        var statusBadge = hasUpcoming
             ? '<span style="background:rgba(34,197,94,0.2);color:#22c55e;border:1px solid rgba(34,197,94,0.3);border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700">Upcoming</span>'
             : '<span style="background:rgba(129,140,248,0.2);color:#818cf8;border:1px solid rgba(129,140,248,0.3);border-radius:4px;padding:1px 6px;font-size:11px">Past</span>';
+        var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(grp.address || grp.name);
+        var nGigs = sortedGigs.length;
 
-        var infoContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:200px;max-width:260px;font-family:-apple-system,sans-serif">'
+        // ─── HOVER content — compact: venue name + status + first 4 dates ───
+        // Intentionally no Directions button (it's unclickable on hover —
+        // mouseout would close the window before the user could click it).
+        var hoverDates = sortedGigs.slice(0, 4).map(function(g, i) {
+            var d = g.date || 'TBD';
+            var suffix = (i === 0 && hasUpcoming && (g.date||'') >= today) ? ' <span style="color:#22c55e;font-size:0.85em">(next)</span>' : '';
+            return '<div style="font-size:0.8em;color:#cbd5e1;line-height:1.5">• ' + _esc(d) + suffix + '</div>';
+        }).join('');
+        var hoverOverflow = nGigs > 4
+            ? '<div style="font-size:0.78em;color:#64748b;line-height:1.5">…and ' + (nGigs - 4) + ' more</div>'
+            : '';
+        var hoverContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:200px;max-width:260px;font-family:-apple-system,sans-serif">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-            + '<strong style="font-size:0.95em;flex:1">' + (g.venue||'Venue') + '</strong>' + statusBadge
+            + '<strong style="font-size:0.95em;flex:1">' + _esc(grp.name) + '</strong>' + statusBadge
             + '</div>'
-            + '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:6px">📅 ' + (g.date||'TBD') + (g.startTime?' &nbsp;⏰ '+g.startTime:'') + '</div>'
-            + (v.address ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">📍 ' + v.address + '</div>' : '')
-            + (g.pay ? '<div style="font-size:0.8em;color:#86efac;margin-bottom:4px">💰 ' + g.pay + '</div>' : '')
-            + (g.soundPerson ? '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:4px">🔊 ' + g.soundPerson + '</div>' : '')
-            + (g.notes ? '<div style="font-size:0.78em;color:#64748b;margin-bottom:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px;margin-top:4px">' + g.notes + '</div>' : '')
-            + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
+            + '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:6px">🎤 ' + nGigs + ' show' + (nGigs === 1 ? '' : 's') + ' here</div>'
+            + hoverDates + hoverOverflow
+            + '<div style="font-size:0.72em;color:#64748b;margin-top:6px;font-style:italic">Click for details + directions</div>'
             + '</div>';
 
-        var infoWindow = new google.maps.InfoWindow({ content: infoContent });
-        _gigsMapInfoWindows.push(infoWindow);
-        _gigsMapWireMarker(marker, infoWindow);
+        // ─── CLICK content — full: address + all dates + Directions ───
+        // The next-upcoming (or most-recent past if no upcoming) gets enriched
+        // with startTime / pay / soundPerson; remaining dates are just bullets.
+        var anchorGig = sortedGigs[0] || {};
+        var anchorIsUpcoming = (anchorGig.date || '') >= today;
+        var clickDateList = sortedGigs.map(function(g, i) {
+            var d = g.date || 'TBD';
+            var extras = '';
+            if (i === 0) {
+                if (g.startTime) extras += ' &nbsp;⏰ ' + _esc(g.startTime);
+                if (g.pay)       extras += ' &nbsp;<span style="color:#86efac">💰 ' + _esc(g.pay) + '</span>';
+            }
+            var nextTag = (i === 0 && anchorIsUpcoming) ? ' <span style="color:#22c55e;font-size:0.85em">(next)</span>' : '';
+            return '<div style="font-size:0.82em;color:#cbd5e1;line-height:1.55">• ' + _esc(d) + nextTag + extras + '</div>';
+        }).join('');
+        var anchorMetaBits = [];
+        if (anchorGig.soundPerson) anchorMetaBits.push('🔊 ' + _esc(anchorGig.soundPerson));
+        if (anchorGig.notes)       anchorMetaBits.push('<span style="color:#64748b">' + _esc(anchorGig.notes) + '</span>');
+        var anchorMeta = anchorMetaBits.length
+            ? '<div style="font-size:0.78em;color:#94a3b8;margin-top:6px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px">' + anchorMetaBits.join(' &nbsp;·&nbsp; ') + '</div>'
+            : '';
+        var clickContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:220px;max-width:280px;font-family:-apple-system,sans-serif">'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+            + '<strong style="font-size:0.95em;flex:1">' + _esc(grp.name) + '</strong>' + statusBadge
+            + '</div>'
+            + (grp.address ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:6px">📍 ' + _esc(grp.address) + '</div>' : '')
+            + '<div style="font-size:0.8em;color:#94a3b8;margin-bottom:4px">🎤 ' + nGigs + ' show' + (nGigs === 1 ? '' : 's') + ' here</div>'
+            + '<div style="max-height:140px;overflow-y:auto;margin-bottom:8px">' + clickDateList + '</div>'
+            + anchorMeta
+            + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;margin-top:8px;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
+            + '</div>';
 
-        marker._gigDate = g.date || '';
-        marker._isUpcoming = isUpcoming;
+        var infoWindow = new google.maps.InfoWindow({ content: hoverContent });
+        _gigsMapInfoWindows.push(infoWindow);
+        _gigsMapWireMarker(marker, infoWindow, hoverContent, clickContent);
+
+        marker._venueName = grp.name;
+        marker._hasUpcoming = hasUpcoming;
+        marker._hasPast = hasPast;
+        // Back-compat: _isUpcoming reflects "this pin should appear under
+        // the Upcoming filter" — true iff there's any upcoming gig at this
+        // venue. Past pins with NO upcoming behave as before.
+        marker._isUpcoming = hasUpcoming;
         marker._isHome = false;
         _gigsMapMarkers.push(marker);
     });
@@ -660,17 +770,25 @@ async function renderGigsMap() {
         });
         var roleLine = (typeof _memberDisplayRole === 'function') ? _memberDisplayRole(hp.member) : (hp.member.role || '');
         var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(hp.member.homeAddress || '');
-        var infoContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:260px;font-family:-apple-system,sans-serif">'
+        // Hover: just name + role (no address, no Directions). Click: full.
+        var homeHoverContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:240px;font-family:-apple-system,sans-serif">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
-            + '<strong style="font-size:0.95em;flex:1">🏠 ' + (hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : '') + '</strong>'
+            + '<strong style="font-size:0.95em;flex:1">🏠 ' + _esc(hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : '') + '</strong>'
             + '</div>'
-            + (roleLine ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">' + roleLine + '</div>' : '')
-            + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:8px">📍 ' + (hp.member.homeAddress || '') + '</div>'
+            + (roleLine ? '<div style="font-size:0.78em;color:#94a3b8">' + _esc(roleLine) + '</div>' : '')
+            + '<div style="font-size:0.72em;color:#64748b;margin-top:6px;font-style:italic">Click for address + directions</div>'
+            + '</div>';
+        var homeClickContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:260px;font-family:-apple-system,sans-serif">'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+            + '<strong style="font-size:0.95em;flex:1">🏠 ' + _esc(hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : '') + '</strong>'
+            + '</div>'
+            + (roleLine ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">' + _esc(roleLine) + '</div>' : '')
+            + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:8px">📍 ' + _esc(hp.member.homeAddress || '') + '</div>'
             + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
             + '</div>';
-        var infoWindow = new google.maps.InfoWindow({ content: infoContent });
+        var infoWindow = new google.maps.InfoWindow({ content: homeHoverContent });
         _gigsMapInfoWindows.push(infoWindow);
-        _gigsMapWireMarker(marker, infoWindow);
+        _gigsMapWireMarker(marker, infoWindow, homeHoverContent, homeClickContent);
         marker._isHome = true;
         marker._isBandmate = !hp.isSelf;
         _gigsMapMarkers.push(marker);
@@ -698,7 +816,13 @@ function _gigsMapApplyFilter() {
             // Home pins ignore upcoming/past filter; bandmate homes gated by toggle.
             show = m._isBandmate ? _gigsMapShowBandmateHomes : true;
         } else {
-            show = f === 'all' || (f === 'upcoming' && m._isUpcoming) || (f === 'past' && !m._isUpcoming);
+            // Group-aware filter: a venue with both upcoming + past gigs
+            // appears under BOTH the Upcoming and Past filters (deliberate —
+            // it's the same pin showing "we play here / we played here").
+            if (f === 'all') show = true;
+            else if (f === 'upcoming') show = !!m._hasUpcoming;
+            else if (f === 'past') show = !!m._hasPast;
+            else show = true;
         }
         m.setVisible(show);
         if (!show) m._pinned = false;
