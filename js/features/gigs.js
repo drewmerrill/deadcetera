@@ -357,6 +357,11 @@ var _gigsMapInfoWindows = []; // legacy ref kept for back-compat with _gigsMapAp
 var _gigsMapFilter = 'all'; // 'all' | 'upcoming' | 'past' (gig pins only)
 var _gigsMapShowBandmateHomes = false; // toggle, persisted in localStorage
 var _gigsMapHoverCloseTimer = null;
+// Which marker's popup is currently being hovered/displayed. Used by the
+// inline onclick/onmouseenter handlers in the hover-content HTML so the
+// popup can pin itself or hold itself open without depending on the user
+// reaching the marker behind it (which is partly covered by the popup).
+var _gigsMapHoverActiveMarker = null;
 var _gigsMapGeocoder = null;
 var _glGeocodeCache = null;
 // Tracks Google Geocoding API errors during the current renderGigsMap pass.
@@ -428,6 +433,35 @@ async function _gigsMapGeocode(addr) {
     });
 }
 
+// Global helpers called by inline onclick/onmouseenter/onmouseleave attrs in
+// the hover-popup HTML. Inline handlers (vs DOM listeners attached after
+// open) survive InfoWindow.setContent() swaps and don't need re-wiring on
+// every domready. _gigsMapHoverActiveMarker is set in the marker mouseenter
+// path so these helpers know which marker the popup belongs to.
+window._gigsMapHoverKeep = function() {
+    if (_gigsMapHoverCloseTimer) { clearTimeout(_gigsMapHoverCloseTimer); _gigsMapHoverCloseTimer = null; }
+};
+window._gigsMapHoverClose = function() {
+    var m = _gigsMapHoverActiveMarker;
+    if (!m || m._pinned) return;
+    if (_gigsMapHoverCloseTimer) clearTimeout(_gigsMapHoverCloseTimer);
+    _gigsMapHoverCloseTimer = setTimeout(function() {
+        if (m && !m._pinned && m._infoWindow) m._infoWindow.close();
+    }, 250);
+};
+window._gigsMapPinHover = function() {
+    var m = _gigsMapHoverActiveMarker;
+    if (!m || !m._infoWindow) return;
+    _gigsMapMarkers.forEach(function(mm) {
+        if (mm === m) return;
+        mm._pinned = false;
+        if (mm._infoWindow) mm._infoWindow.close();
+    });
+    m._pinned = true;
+    if (m._clickContent) m._infoWindow.setContent(m._clickContent);
+    m._infoWindow.open({ anchor: m, map: _gigsMap });
+};
+
 // Hover vs click content split (issue #47 follow-up). Hover shows a compact
 // preview (no interactive buttons — they were unclickable since mouseout
 // closed the window). Click swaps to full content and PINS the window so
@@ -451,6 +485,10 @@ function _gigsMapWireMarker(marker, infoWindow, hoverContent, clickContent) {
             _gigsMapMarkers.forEach(function(m) {
                 if (!m._pinned && m._infoWindow) m._infoWindow.close();
             });
+            // Set the active marker BEFORE open() so the inline handlers in
+            // the hover-popup HTML (onclick/onmouseenter/onmouseleave) resolve
+            // to the right marker when fired.
+            _gigsMapHoverActiveMarker = marker;
             infoWindow.setContent(marker._hoverContent);
             infoWindow.open({ anchor: marker, map: _gigsMap });
         });
@@ -724,6 +762,13 @@ async function renderGigsMap() {
         // configured via a Cloud Console Map Style associated with this ID.
         // See _GIGS_MAP_ID comment at the top of this file for setup.
         mapId: _GIGS_MAP_ID,
+        // FORCE dark. Recent Maps Platform change: a Map ID binds TWO styles
+        // (Light mode + Dark mode) and the map picks whichever matches the
+        // user's system color scheme via prefers-color-scheme. Drew's Cloud
+        // Console only customized Dark mode; Light mode is Google's default
+        // bright tiles. Without colorScheme:'DARK' the map renders light on
+        // any user whose system is in light mode.
+        colorScheme: 'DARK',
         mapTypeId: 'roadmap',
         disableDefaultUI: false,
         gestureHandling: 'greedy',
@@ -771,8 +816,10 @@ async function renderGigsMap() {
         var nGigs = sortedGigs.length;
 
         // ─── HOVER content — compact: venue name + status + first 4 dates ───
-        // Intentionally no Directions button (it's unclickable on hover —
-        // mouseout would close the window before the user could click it).
+        // Outer wrapper carries onclick/onmouseenter/onmouseleave so the popup
+        // itself acts as the "click target" — solves the issue where the popup
+        // covered the marker and made it unclickable. Inline handlers survive
+        // InfoWindow.setContent() swaps without DOM-listener re-wiring.
         var hoverDates = sortedGigs.slice(0, 4).map(function(g, i) {
             var d = g.date || 'TBD';
             var suffix = (i === 0 && hasUpcoming && (g.date||'') >= today) ? ' <span style="color:#22c55e;font-size:0.85em">(next)</span>' : '';
@@ -781,7 +828,7 @@ async function renderGigsMap() {
         var hoverOverflow = nGigs > 4
             ? '<div style="font-size:0.78em;color:#64748b;line-height:1.5">…and ' + (nGigs - 4) + ' more</div>'
             : '';
-        var hoverContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:200px;max-width:260px;font-family:-apple-system,sans-serif">'
+        var hoverContent = '<div onclick="_gigsMapPinHover()" onmouseenter="_gigsMapHoverKeep()" onmouseleave="_gigsMapHoverClose()" style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:200px;max-width:260px;font-family:-apple-system,sans-serif;cursor:pointer">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
             + '<strong style="font-size:0.95em;flex:1">' + _esc(grp.name) + '</strong>' + statusBadge
             + '</div>'
@@ -822,7 +869,14 @@ async function renderGigsMap() {
             + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;margin-top:8px;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
             + '</div>';
 
-        var infoWindow = new google.maps.InfoWindow({ content: hoverContent });
+        // pixelOffset pushes the popup further above the marker so there's
+        // clickable marker space underneath. Without this, the popup's tail
+        // touches the pin tip and the marker can't be clicked through the
+        // popup (Drew 2026-05-23).
+        var infoWindow = new google.maps.InfoWindow({
+            content: hoverContent,
+            pixelOffset: new google.maps.Size(0, -12)
+        });
         _gigsMapInfoWindows.push(infoWindow);
         _gigsMapWireMarker(marker, infoWindow, hoverContent, clickContent);
 
@@ -850,7 +904,10 @@ async function renderGigsMap() {
         var roleLine = (typeof _memberDisplayRole === 'function') ? _memberDisplayRole(hp.member) : (hp.member.role || '');
         var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(hp.member.homeAddress || '');
         // Hover: just name + role (no address, no Directions). Click: full.
-        var homeHoverContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:240px;font-family:-apple-system,sans-serif">'
+        // Outer wrapper carries onclick/onmouseenter/onmouseleave — same
+        // pattern as gig hover content so the popup is itself the click
+        // target (see _gigsMapPinHover / _gigsMapHoverKeep / _gigsMapHoverClose).
+        var homeHoverContent = '<div onclick="_gigsMapPinHover()" onmouseenter="_gigsMapHoverKeep()" onmouseleave="_gigsMapHoverClose()" style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:240px;font-family:-apple-system,sans-serif;cursor:pointer">'
             + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
             + '<strong style="font-size:0.95em;flex:1">🏠 ' + _esc(hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : '') + '</strong>'
             + '</div>'
@@ -865,7 +922,12 @@ async function renderGigsMap() {
             + '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:8px">📍 ' + _esc(hp.member.homeAddress || '') + '</div>'
             + '<a href="' + mapsUrl + '" target="_blank" style="display:inline-block;background:rgba(129,140,248,0.2);color:#a5b4fc;border:1px solid rgba(129,140,248,0.3);padding:5px 12px;border-radius:6px;font-size:0.78em;text-decoration:none;font-weight:600">🗺 Directions</a>'
             + '</div>';
-        var infoWindow = new google.maps.InfoWindow({ content: homeHoverContent });
+        // Home pin pixelOffset is smaller because the home icon is centered
+        // (not bottom-anchored like the gig pin) — needs less clearance.
+        var infoWindow = new google.maps.InfoWindow({
+            content: homeHoverContent,
+            pixelOffset: new google.maps.Size(0, -8)
+        });
         _gigsMapInfoWindows.push(infoWindow);
         _gigsMapWireMarker(marker, infoWindow, homeHoverContent, homeClickContent);
         marker._isHome = true;
