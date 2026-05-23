@@ -365,6 +365,26 @@ var _glGeocodeCache = null;
 // clear banner instead of the misleading "No gigs to plot yet" message.
 var _gigsMapDeniedCount = 0;
 var _gigsMapLastDenialAddr = '';
+
+// Google Maps Map ID — required by google.maps.marker.AdvancedMarkerElement
+// (the modern replacement for the soft-deprecated google.maps.Marker). The
+// Map ID also references a Cloud-Console-defined Map Style; setting `mapId`
+// makes the inline `styles:` option a no-op (the two are mutually exclusive).
+//
+// SETUP (one-time, Cloud Console):
+//   1. Go to https://console.cloud.google.com/google/maps-apis/studio/maps
+//      (Google Maps Platform → Map Styles)
+//   2. Create a new Map Style. Choose "Dark" or import the JSON from
+//      specs/gl_view_map.md "Gig Map dark style" section to match the prior
+//      slate/navy theme exactly.
+//   3. Associate the style with a new Map ID (e.g. "gl-gig-map-dark").
+//   4. Paste that Map ID here in place of 'DEMO_MAP_ID'.
+//
+// Until the custom Map ID is configured, DEMO_MAP_ID renders the map in
+// Google's default light theme. Markers + InfoWindows work; only the
+// underlying map style is generic.
+var _GIGS_MAP_ID = 'DEMO_MAP_ID';
+
 try { _gigsMapShowBandmateHomes = localStorage.getItem('gl_gig_map_show_bandmates') === '1'; } catch (_e) {}
 
 // Geocode helper — Maps Geocoding API w/ localStorage cache so we don't
@@ -412,26 +432,35 @@ async function _gigsMapGeocode(addr) {
 // closed the window). Click swaps to full content and PINS the window so
 // users can actually press Directions / read details. Same InfoWindow per
 // marker; we just call .setContent() to swap between hover and click states.
+//
+// AdvancedMarkerElement migration (2026-05-23): the marker itself is no
+// longer a Map overlay with custom events — it wraps a regular HTMLElement
+// (`marker.content`). Hover events attach to that DOM element directly;
+// click still uses the marker's `addListener('click', ...)` wrapper (which
+// internally routes to the `gmp-click` event for backwards compatibility).
 function _gigsMapWireMarker(marker, infoWindow, hoverContent, clickContent) {
     marker._infoWindow = infoWindow;
     marker._hoverContent = hoverContent || clickContent;
     marker._clickContent = clickContent || hoverContent;
-    marker.addListener('mouseover', function() {
-        if (_gigsMapHoverCloseTimer) { clearTimeout(_gigsMapHoverCloseTimer); _gigsMapHoverCloseTimer = null; }
-        if (marker._pinned) return;
-        _gigsMapMarkers.forEach(function(m) {
-            if (!m._pinned && m._infoWindow) m._infoWindow.close();
+    var contentEl = marker.content; // HTMLElement on AdvancedMarkerElement
+    if (contentEl && contentEl.addEventListener) {
+        contentEl.addEventListener('mouseenter', function() {
+            if (_gigsMapHoverCloseTimer) { clearTimeout(_gigsMapHoverCloseTimer); _gigsMapHoverCloseTimer = null; }
+            if (marker._pinned) return;
+            _gigsMapMarkers.forEach(function(m) {
+                if (!m._pinned && m._infoWindow) m._infoWindow.close();
+            });
+            infoWindow.setContent(marker._hoverContent);
+            infoWindow.open({ anchor: marker, map: _gigsMap });
         });
-        infoWindow.setContent(marker._hoverContent);
-        infoWindow.open(_gigsMap, marker);
-    });
-    marker.addListener('mouseout', function() {
-        if (marker._pinned) return;
-        if (_gigsMapHoverCloseTimer) clearTimeout(_gigsMapHoverCloseTimer);
-        _gigsMapHoverCloseTimer = setTimeout(function() {
-            if (!marker._pinned) infoWindow.close();
-        }, 250);
-    });
+        contentEl.addEventListener('mouseleave', function() {
+            if (marker._pinned) return;
+            if (_gigsMapHoverCloseTimer) clearTimeout(_gigsMapHoverCloseTimer);
+            _gigsMapHoverCloseTimer = setTimeout(function() {
+                if (!marker._pinned) infoWindow.close();
+            }, 250);
+        });
+    }
     marker.addListener('click', function() {
         _gigsMapMarkers.forEach(function(m) {
             if (m === marker) return;
@@ -440,11 +469,39 @@ function _gigsMapWireMarker(marker, infoWindow, hoverContent, clickContent) {
         });
         marker._pinned = true;
         infoWindow.setContent(marker._clickContent);
-        infoWindow.open(_gigsMap, marker);
+        infoWindow.open({ anchor: marker, map: _gigsMap });
     });
 }
 
-// Build SVG pin data URL with given fill color.
+// AdvancedMarkerElement requires `content` as an HTMLElement (not a data URL).
+// These builders return a positioned <div> wrapping the SVG so the marker can
+// be hover/click-targeted via DOM events. The anchor point (where the pin
+// "touches" the lat/lng) is set via CSS transform so it matches the prior
+// `anchor: new google.maps.Point(...)` behavior of legacy Marker.
+function _gigsMapPinElement(color) {
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'cursor:pointer;transform:translate(-50%, -100%);width:32px;height:40px';
+    wrapper.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40" style="display:block">'
+        + '<path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 24 16 24s16-14 16-24C32 7.163 24.837 0 16 0z" fill="' + color + '"/>'
+        + '<circle cx="16" cy="16" r="7" fill="white" opacity="0.9"/>'
+        + '</svg>';
+    return wrapper;
+}
+function _gigsMapHomePinElement(color, isSelf) {
+    var size = isSelf ? 34 : 28;
+    var inner = isSelf ? '#fff' : '#fef3c7';
+    var wrapper = document.createElement('div');
+    // Home pins are centered on lat/lng (anchor was at center, not bottom).
+    wrapper.style.cssText = 'cursor:pointer;transform:translate(-50%, -50%);width:' + size + 'px;height:' + size + 'px';
+    wrapper.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 32 32" style="display:block">'
+        + '<circle cx="16" cy="16" r="14" fill="' + color + '" stroke="#0f172a" stroke-width="2"/>'
+        + '<path d="M16 8 L24 16 L22 16 L22 22 L18 22 L18 18 L14 18 L14 22 L10 22 L10 16 L8 16 Z" fill="' + inner + '"/>'
+        + '</svg>';
+    return wrapper;
+}
+
+// Legacy data-URL builders — kept in case anything off-screen still calls
+// them. New AdvancedMarkerElement paths use the *Element builders above.
 function _gigsMapPinSvg(color) {
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">'
         + '<path d="M16 0C7.163 0 0 7.163 0 16c0 10 16 24 16 24s16-14 16-24C32 7.163 24.837 0 16 0z" fill="' + color + '"/>'
@@ -452,7 +509,6 @@ function _gigsMapPinSvg(color) {
         + '</svg>';
     return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
 }
-// Home pin: house outline on colored bg; smaller for bandmates.
 function _gigsMapHomePinSvg(color, isSelf) {
     var size = isSelf ? 34 : 28;
     var inner = isSelf ? '#fff' : '#fef3c7';
@@ -662,17 +718,12 @@ async function renderGigsMap() {
     _gigsMap = new google.maps.Map(el, {
         center: { lat: anchorLat, lng: anchorLng },
         zoom: 11,
+        // `mapId` is required by AdvancedMarkerElement (vector map). It also
+        // makes the inline `styles:` option a no-op, so the dark theme is
+        // configured via a Cloud Console Map Style associated with this ID.
+        // See _GIGS_MAP_ID comment at the top of this file for setup.
+        mapId: _GIGS_MAP_ID,
         mapTypeId: 'roadmap',
-        styles: [
-            {elementType:'geometry',stylers:[{color:'#1a1f2e'}]},
-            {elementType:'labels.text.fill',stylers:[{color:'#8ec3b9'}]},
-            {elementType:'labels.text.stroke',stylers:[{color:'#1a1f2e'}]},
-            {featureType:'road',elementType:'geometry',stylers:[{color:'#2c3554'}]},
-            {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#1a1f2e'}]},
-            {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#9ca5b3'}]},
-            {featureType:'water',elementType:'geometry',stylers:[{color:'#0e1626'}]},
-            {featureType:'poi',elementType:'geometry',stylers:[{color:'#263144'}]},
-        ],
         disableDefaultUI: false,
         gestureHandling: 'greedy',
         zoomControl: true,
@@ -706,15 +757,10 @@ async function renderGigsMap() {
         // Pin color reflects "any upcoming" — green if there's a future booking
         // at the venue, indigo if it's only past plays.
         var color = hasUpcoming ? '#22c55e' : '#818cf8';
-        var marker = new google.maps.Marker({
+        var marker = new google.maps.marker.AdvancedMarkerElement({
             position: { lat: grp._lat, lng: grp._lng },
             map: _gigsMap,
-            icon: {
-                url: _gigsMapPinSvg(color),
-                scaledSize: new google.maps.Size(32, 40),
-                anchor: new google.maps.Point(16, 40)
-            },
-            optimized: false
+            content: _gigsMapPinElement(color)
         });
 
         var statusBadge = hasUpcoming
@@ -794,16 +840,10 @@ async function renderGigsMap() {
     // sits visually on top of nearby gig pins.
     homePoints.forEach(function(hp) {
         var color = hp.isSelf ? '#3b82f6' : '#a78bfa';
-        var marker = new google.maps.Marker({
+        var marker = new google.maps.marker.AdvancedMarkerElement({
             position: { lat: hp.lat, lng: hp.lng },
             map: _gigsMap,
-            // No `title:` — hover info window replaces the native tooltip (issue #47).
-            icon: {
-                url: _gigsMapHomePinSvg(color, hp.isSelf),
-                scaledSize: new google.maps.Size(hp.isSelf ? 34 : 28, hp.isSelf ? 34 : 28),
-                anchor: new google.maps.Point(hp.isSelf ? 17 : 14, hp.isSelf ? 17 : 14)
-            },
-            optimized: false,
+            content: _gigsMapHomePinElement(color, hp.isSelf),
             zIndex: hp.isSelf ? 9999 : 9998
         });
         var roleLine = (typeof _memberDisplayRole === 'function') ? _memberDisplayRole(hp.member) : (hp.member.role || '');
@@ -833,10 +873,12 @@ async function renderGigsMap() {
     });
 
     // Fit bounds across every visible marker (gigs + homes).
+    // AdvancedMarkerElement uses `marker.position` (property) and `marker.map`
+    // for visibility (null = hidden) instead of getPosition()/getVisible().
     var bounds = new google.maps.LatLngBounds();
     var anyExtended = false;
     _gigsMapMarkers.forEach(function(m) {
-        if (m.getVisible() !== false) { bounds.extend(m.getPosition()); anyExtended = true; }
+        if (m.map && m.position) { bounds.extend(m.position); anyExtended = true; }
     });
     if (anyExtended) {
         _gigsMap.fitBounds(bounds);
@@ -862,7 +904,9 @@ function _gigsMapApplyFilter() {
             else if (f === 'past') show = !!m._hasPast;
             else show = true;
         }
-        m.setVisible(show);
+        // AdvancedMarkerElement uses `marker.map = null` for hide,
+        // `marker.map = <map>` for show. Replaces legacy setVisible().
+        m.map = show ? _gigsMap : null;
         if (!show) m._pinned = false;
     });
     // close any open info windows when filtering

@@ -176,6 +176,25 @@ localStorage and restored on next load (except `songs` and `songdetail`).
 - **Hover vs click info windows:** dark-themed (slate-800 override via one-time `<style id="gigsMapStyleOverrides">`). Same InfoWindow instance per marker; content swapped via `setContent()` between hover and click. **Hover** = compact preview (name + status + first 4 dates + "click for details" hint) — NO interactive buttons. **Click** = full content (address + scrollable all-dates list + anchor-gig metadata + Directions) AND pins the window so the Directions button is actually clickable. Mouseout closes after 250ms unless pinned.
 - **Filter behavior:** "All" shows everything; "Upcoming" shows pins where `_hasUpcoming` is true; "Past" shows pins where `_hasPast` is true. A venue with both upcoming and past gigs appears under BOTH filters (deliberate — same pin reads "we play here / we played here").
 - **Hydration dependency:** `bandMembers` cache (built by `loadBandMembersFromFirebase` from `meta/members`) MUST include `homeAddress`/`homeLat`/`homeLng`/`showHomeOnMap` on its allowlist — `gigs.js:520` reads `m.homeAddress` to decide whether to render a pin. Save path: `saveHomeAddress` dual-writes to `members/{key}/homeAddress` (legacy) and `meta/members/{key}/homeAddress` (canonical).
+- **Markers use `google.maps.marker.AdvancedMarkerElement`** (post-2026-05-23 migration; replaces soft-deprecated `google.maps.Marker`). Required by the new API: `mapId` on the Map options. The `_GIGS_MAP_ID` constant in `gigs.js` points to a Cloud Console Map Style — see "Gig Map dark style (Cloud Console JSON)" below for the JSON to paste when creating the Map Style. Until a custom Map ID is configured, `_GIGS_MAP_ID = 'DEMO_MAP_ID'` ships markers + InfoWindows working but with Google's default light-theme tiles.
+- **Hover/click DOM events:** `AdvancedMarkerElement` is a DOM-based marker — the `content` HTMLElement carries native `mouseenter`/`mouseleave` events. Click still uses `marker.addListener('click', ...)` (backwards-compat wrapper for `gmp-click`). Visibility toggles via `marker.map = null | _gigsMap` (no more `setVisible`).
+
+### Gig Map dark style (Cloud Console JSON)
+
+Paste this when creating the Map Style in Cloud Console → Google Maps Platform → Map Styles. After creating, copy the generated Map ID and replace `'DEMO_MAP_ID'` in `js/features/gigs.js` (`_GIGS_MAP_ID` constant).
+
+```json
+[
+  { "elementType": "geometry", "stylers": [{ "color": "#1a1f2e" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#8ec3b9" }] },
+  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#1a1f2e" }] },
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#2c3554" }] },
+  { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#1a1f2e" }] },
+  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#9ca5b3" }] },
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0e1626" }] },
+  { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#263144" }] }
+]
+```
 
 ---
 
