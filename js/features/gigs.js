@@ -472,6 +472,19 @@ window._gigsMapJumpToGig = function(gigId) {
     if (row) row.scrollIntoView({ block: 'center', behavior: 'smooth' });
 };
 
+// Drew 2026-05-23: clickContent has a custom X (inline, top-right) because
+// headerDisabled hides Google's built-in X. We want the X on PINNED state
+// (so user can dismiss without clicking outside the map) but NOT on HOVER
+// state (mouseout closes hover; an X there is dead weight). headerDisabled
+// keeps Google's X off both states; we add our own only to clickContent.
+window._gigsMapDismissPinned = function() {
+    _gigsMapMarkers.forEach(function(m) {
+        m._pinned = false;
+        if (m._infoWindow) m._infoWindow.close();
+    });
+    _gigsMapHoverActiveMarker = null;
+};
+
 // Hover vs click content split (issue #47 follow-up). Hover shows a compact
 // preview (no interactive buttons — they were unclickable since mouseout
 // closed the window). Click swaps to full content and PINS the window so
@@ -887,8 +900,9 @@ async function renderGigsMap() {
         var anchorMeta = anchorMetaBits.length
             ? '<div style="font-size:0.78em;color:#94a3b8;margin-top:6px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px">' + anchorMetaBits.join(' &nbsp;·&nbsp; ') + '</div>'
             : '';
-        var clickContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:220px;max-width:280px;font-family:-apple-system,sans-serif">'
-            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+        var clickContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:220px;max-width:280px;font-family:-apple-system,sans-serif;position:relative">'
+            + '<button onclick="event.stopPropagation();_gigsMapDismissPinned()" style="position:absolute;top:6px;right:8px;background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1;font-weight:bold;border-radius:4px" title="Close">✕</button>'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding-right:22px">'
             + '<strong ' + nameClickAttrs + '>' + _esc(grp.name) + '</strong>' + statusBadge
             + '</div>'
             + (grp.address ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:6px">📍 ' + _esc(grp.address) + '</div>' : '')
@@ -946,8 +960,9 @@ async function renderGigsMap() {
             + (roleLine ? '<div style="font-size:0.78em;color:#94a3b8">' + _esc(roleLine) + '</div>' : '')
             + '<div style="font-size:0.72em;color:#64748b;margin-top:6px;font-style:italic">Click for address + directions</div>'
             + '</div>';
-        var homeClickContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:260px;font-family:-apple-system,sans-serif">'
-            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
+        var homeClickContent = '<div style="background:#1e293b;color:#e2e8f0;padding:12px 14px;border-radius:10px;min-width:180px;max-width:260px;font-family:-apple-system,sans-serif;position:relative">'
+            + '<button onclick="event.stopPropagation();_gigsMapDismissPinned()" style="position:absolute;top:6px;right:8px;background:transparent;border:none;color:#94a3b8;cursor:pointer;font-size:16px;padding:2px 6px;line-height:1;font-weight:bold;border-radius:4px" title="Close">✕</button>'
+            + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;padding-right:22px">'
             + '<strong style="font-size:0.95em;flex:1">🏠 ' + _esc(hp.member.name || hp.key) + (hp.isSelf ? ' (you)' : '') + '</strong>'
             + '</div>'
             + (roleLine ? '<div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px">' + _esc(roleLine) + '</div>' : '')
@@ -1021,6 +1036,38 @@ window.gigsMapToggleBandmateHomes = function (btn) {
             btn.style.background = 'rgba(255,255,255,0.04)';
             btn.style.color = '#64748b';
             btn.style.borderColor = 'rgba(255,255,255,0.08)';
+        }
+    }
+    // Drew 2026-05-23: when toggling Band ON, give feedback if there are
+    // no renderable bandmate addresses — otherwise the toggle feels silent
+    // (and Drew assumed the toggle was broken when it was actually a data
+    // issue: bandmates hadn't set their addresses).
+    if (_gigsMapShowBandmateHomes && typeof bandMembers !== 'undefined') {
+        var _cuKey = '';
+        try { _cuKey = localStorage.getItem('deadcetera_current_user') || ''; } catch (_e) {}
+        var renderable = 0;
+        var noAddrNames = [];
+        var hiddenCount = 0;
+        Object.keys(bandMembers).forEach(function(mkey) {
+            if (mkey === _cuKey) return;
+            var m = bandMembers[mkey];
+            if (!m) return;
+            if (m.showHomeOnMap === false) { hiddenCount++; return; }
+            if (m.homeAddress) renderable++;
+            else noAddrNames.push(m.name || mkey);
+        });
+        if (renderable === 0 && typeof showToast === 'function') {
+            var msg;
+            if (noAddrNames.length === 0 && hiddenCount > 0) {
+                msg = (hiddenCount === 1 ? '1 bandmate has' : hiddenCount + ' bandmates have') + ' opted out of map sharing. No pins to show.';
+            } else if (noAddrNames.length > 0) {
+                var who = noAddrNames.slice(0, 3).join(', ');
+                if (noAddrNames.length > 3) who += ' +' + (noAddrNames.length - 3) + ' more';
+                msg = 'No bandmate addresses set. ' + who + ' can add one in Settings → Profile.';
+            } else {
+                msg = 'No bandmates to plot — you\'re the only band member with a record.';
+            }
+            showToast(msg, 6000);
         }
     }
     // Re-render is overkill — we just need to render bandmate markers we
