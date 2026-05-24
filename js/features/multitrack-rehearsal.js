@@ -3815,6 +3815,8 @@ function _mtRenderAnalyzeProgressHtml(inFlight) {
         + '</div>';
 }
 
+// Short-silence toggle — used inside the Silence group header to flip
+// between "30s+ only" and "show all" once the user opts into Silence.
 window._mtSegmentsToggleShorts = function() {
     var p = _mtState.player;
     var el = document.getElementById('mtSegShowShorts');
@@ -3823,10 +3825,33 @@ window._mtSegmentsToggleShorts = function() {
     _mtRenderSegmentsPanel();
 };
 
+// Hint dismissal persists across sessions in localStorage. After first
+// dismiss, the panel header shows a small ? button to bring it back.
 window._mtSegmentsHintDismiss = function() {
+    try { localStorage.setItem('mtSegmentsHintDismissed', '1'); } catch(_) {}
+    _mtRenderSegmentsPanel();
+};
+window._mtSegmentsHintShow = function() {
+    try { localStorage.removeItem('mtSegmentsHintDismissed'); } catch(_) {}
+    _mtRenderSegmentsPanel();
+};
+
+// Phase 4A — filter pills toggle. Multi-select: each pill is an
+// independent include. Default config seeded inside _mtRenderSegmentsPanel
+// when player state is fresh (Songs ON + Needs Review ON, others OFF).
+window._mtSegFilterToggle = function(key) {
     var p = _mtState.player;
-    if (!p) return;
-    p._segmentsHintDismissed = true;
+    if (!p || !p._segFilters) return;
+    p._segFilters[key] = !p._segFilters[key];
+    _mtRenderSegmentsPanel();
+};
+
+// Phase 4A — collapsible group toggle. Persists per-player in
+// _segGroupsOpen so collapsing the noise stays collapsed across re-renders.
+window._mtSegGroupToggle = function(key) {
+    var p = _mtState.player;
+    if (!p || !p._segGroupsOpen) return;
+    p._segGroupsOpen[key] = !p._segGroupsOpen[key];
     _mtRenderSegmentsPanel();
 };
 
@@ -3839,6 +3864,134 @@ window._mtToggleSegmentsPanel = function() {
     if (caret) caret.textContent = collapsed ? '▾' : '▸';
     if (_mtState.player) _mtState.player._segmentsPanelCollapsed = !collapsed;
 };
+
+// Phase 4A — single segment row renderer factored out of
+// _mtRenderSegmentsPanel so the grouped layout can call it per-bucket
+// without duplicating the row HTML. Keeps data-seg-idx/canvas-id
+// attributes intact so _mtPaintSegmentStrips and
+// _mtUpdateActiveSegmentHighlight keep working unchanged.
+function _mtRenderSegmentRow(s, idx, p) {
+    var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
+    var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
+    var meta = _mtKindMeta(s.kind);
+    var display = _mtSegmentDisplayName(s);
+    var reviewState = _mtSegmentReviewState(s);
+    var confidence = _mtSegmentConfidence(s);
+    var canvasId = 'mtSegStrip_' + idx;
+    var titleId = 'mtSegTitle_' + idx;
+
+    var rowBg, rowAlpha, leftStripeColor, ringStyle;
+    if (reviewState === 'excluded') {
+        rowBg = 'rgba(100,116,139,0.05)';
+        rowAlpha = '0.45';
+        leftStripeColor = '#475569';
+        ringStyle = '';
+    } else if (reviewState === 'confirmed') {
+        rowBg = 'rgba(34,197,94,0.07)';
+        rowAlpha = '1';
+        leftStripeColor = '#22c55e';
+        ringStyle = '';
+    } else if (reviewState === 'needs-review') {
+        rowBg = meta.stripBg;
+        rowAlpha = '1';
+        leftStripeColor = '#ef4444';
+        ringStyle = 'box-shadow:inset 2px 0 0 0 rgba(239,68,68,0.55);';
+    } else {
+        rowBg = meta.stripBg;
+        rowAlpha = '1';
+        leftStripeColor = meta.stripe;
+        ringStyle = '';
+    }
+
+    var confChip = _mtConfidenceChipHtml(confidence);
+    var stateChip = '';
+    if (reviewState === 'confirmed') {
+        stateChip = '<span title="Confirmed by user" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">✓ CONFIRMED</span>';
+    } else if (reviewState === 'needs-review') {
+        stateChip = '<span title="Needs review — low confidence" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">⚠ NEEDS REVIEW</span>';
+    } else if (reviewState === 'excluded') {
+        stateChip = '<span title="Excluded — not included in songs-only mix" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.35);color:#fbbf24;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">⊘ EXCLUDED</span>';
+    }
+
+    var confirmBg = (reviewState === 'confirmed') ? 'rgba(34,197,94,0.22)' : 'rgba(255,255,255,0.05)';
+    var confirmBorder = (reviewState === 'confirmed') ? 'rgba(34,197,94,0.45)' : 'rgba(255,255,255,0.1)';
+    var confirmColor = (reviewState === 'confirmed') ? '#86efac' : 'var(--text-dim)';
+    var excludeBg = (reviewState === 'excluded') ? 'rgba(245,158,11,0.22)' : 'rgba(255,255,255,0.05)';
+    var excludeBorder = (reviewState === 'excluded') ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.1)';
+    var excludeColor = (reviewState === 'excluded') ? '#fbbf24' : 'var(--text-dim)';
+
+    var trimOpen = (p._trimOpenIdx === idx);
+    var trimPanelHtml = trimOpen ? (
+        '<div style="grid-column:1/-1;padding:8px 12px;background:rgba(99,102,241,0.04);border-top:1px dashed rgba(99,102,241,0.2);display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:0.76em">'
+        + '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--text-dim);font-weight:700;margin-right:4px">Start</span>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',-5)" title="−5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−5s</button>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',-0.5)" title="−0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−.5</button>'
+        + '<span style="font-family:ui-monospace,monospace;color:#f1f5f9;min-width:46px;text-align:center">' + _mtFmtTimeShort(startSec) + '</span>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',0.5)" title="+0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+.5</button>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',5)" title="+5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+5s</button>'
+        + '</div>'
+        + '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--text-dim);font-weight:700;margin-right:4px">End</span>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',-5)" title="−5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−5s</button>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',-0.5)" title="−0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−.5</button>'
+        + '<span style="font-family:ui-monospace,monospace;color:#f1f5f9;min-width:46px;text-align:center">' + _mtFmtTimeShort(endSec) + '</span>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',0.5)" title="+0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+.5</button>'
+        + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',5)" title="+5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+5s</button>'
+        + '</div>'
+        + '<button onclick="_mtSegmentToggleTrim(' + idx + ')" style="margin-left:auto;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 8px;cursor:pointer;font-size:0.74em">Done</button>'
+        + '</div>'
+    ) : '';
+
+    return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 175px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;outline:none;' + ringStyle + '">'
+        + '<div style="background:' + leftStripeColor + ';width:4px;height:32px;border-radius:2px"></div>'
+        + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em">' + meta.emoji + '</div>'
+        + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
+        + '<canvas id="' + canvasId + '" width="78" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
+        + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
+        + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:80px;font-size:0.92em;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px">'
+        + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
+        + (function() { var pc = _mtProvenanceChipHtml(s); return pc ? '<div style="flex-shrink:0">' + pc + '</div>' : ''; })()
+        + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
+        + '</div>'
+        + '<div style="display:flex;gap:3px;justify-content:flex-end">'
+        + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start (and play)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">▶</button>'
+        + '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split at playhead" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">✂</button>'
+        + '<button onclick="_mtSegmentMerge(' + idx + ')" title="Merge with next segment" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">⛓</button>'
+        + '<button onclick="_mtSegmentToggleTrim(' + idx + ')" title="Trim start/end ±5s / ±0.5s" style="background:' + (trimOpen ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.05)') + ';border:1px solid ' + (trimOpen ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)') + ';border-radius:4px;color:' + (trimOpen ? '#a5b4fc' : 'var(--text-dim)') + ';padding:2px 5px;cursor:pointer;font-size:0.78em">↕</button>'
+        + '<button onclick="_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — click to unconfirm' : 'Confirm') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:4px;color:' + confirmColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">✓</button>'
+        + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — click to unflag' : 'Exclude') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:4px;color:' + excludeColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">⊘</button>'
+        + '</div>'
+        + trimPanelHtml
+        + '</div>';
+}
+
+// Phase 4A — filter pill bar HTML. Each pill is an independent toggle.
+// Active pill = filled bg + colored border. Inactive = outline only.
+// Count comes from raw counters (independent of which other pills are on),
+// so users see "Songs (34)" no matter what else is filtered.
+function _mtRenderFilterPills(filters, counts) {
+    var pills = [
+        { key: 'music',        label: 'Songs',        emoji: '🎵', color: '#a5b4fc', activeBg: 'rgba(99,102,241,0.22)',  activeBorder: 'rgba(99,102,241,0.5)',  count: counts.music },
+        { key: 'needsReview',  label: 'Needs Review', emoji: '⚠',  color: '#fca5a5', activeBg: 'rgba(239,68,68,0.18)',   activeBorder: 'rgba(239,68,68,0.5)',   count: counts.needsReview },
+        { key: 'unnamed',      label: 'Unnamed',      emoji: '❓', color: '#cbd5e1', activeBg: 'rgba(148,163,184,0.22)', activeBorder: 'rgba(148,163,184,0.5)', count: counts.unnamed },
+        { key: 'transition',   label: 'Transitions',  emoji: '🔀', color: '#d8b4fe', activeBg: 'rgba(168,85,247,0.22)',  activeBorder: 'rgba(168,85,247,0.5)',  count: counts.transition },
+        { key: 'speech',       label: 'Chatter',      emoji: '💬', color: '#fbbf24', activeBg: 'rgba(245,158,11,0.22)',  activeBorder: 'rgba(245,158,11,0.5)',  count: counts.speech },
+        { key: 'silence',      label: 'Silence',      emoji: '🔇', color: '#94a3b8', activeBg: 'rgba(100,116,139,0.25)', activeBorder: 'rgba(148,163,184,0.5)', count: counts.silence },
+        { key: 'excluded',     label: 'Excluded',     emoji: '🚫', color: '#fbbf24', activeBg: 'rgba(245,158,11,0.18)',  activeBorder: 'rgba(245,158,11,0.45)', count: counts.excluded },
+    ];
+    var html = pills.map(function(p) {
+        var on = !!filters[p.key];
+        var bg = on ? p.activeBg : 'transparent';
+        var bd = on ? p.activeBorder : 'rgba(255,255,255,0.1)';
+        var col = on ? p.color : 'var(--text-dim)';
+        var weight = on ? '700' : '500';
+        return '<button onclick="_mtSegFilterToggle(\'' + p.key + '\')" '
+            + 'title="' + (on ? 'Hide' : 'Show') + ' ' + p.label + '" '
+            + 'style="background:' + bg + ';border:1px solid ' + bd + ';color:' + col + ';font-weight:' + weight + ';border-radius:14px;padding:3px 10px;cursor:pointer;font-size:0.74em;white-space:nowrap;transition:all 120ms">'
+            + p.emoji + ' ' + p.label + ' <span style="opacity:0.75;font-weight:400;margin-left:2px">' + p.count + '</span>'
+            + '</button>';
+    }).join('');
+    return '<div style="display:flex;flex-wrap:wrap;gap:5px;padding:8px 12px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05)">' + html + '</div>';
+}
 
 function _mtRenderSegmentsPanel() {
     var p = _mtState.player;
@@ -3876,191 +4029,155 @@ function _mtRenderSegmentsPanel() {
     }
 
     var collapsed = !!p._segmentsPanelCollapsed;
-    var showShortSilences = !!p._showShortSilences;     // default OFF — hide noise
-    var SHORT_SILENCE_THRESHOLD = 30; // seconds — silences shorter than this are likely song-internal drops, not between-song breaks
 
-    var music = 0, silence = 0, speech = 0, between = 0, shortSilenceCount = 0;
-    segs.forEach(function(s) {
-        var dur = (typeof s.endSec === 'number' && typeof s.startSec === 'number')
-            ? (s.endSec - s.startSec) : 0;
-        if (s.isBetween) between++;
-        if (s.kind === 'music') music++;
-        else if (s.kind === 'silence') {
-            silence++;
-            if (dur < SHORT_SILENCE_THRESHOLD) shortSilenceCount++;
-        }
-        else if (s.kind === 'speech') speech++;
-    });
+    // Phase 4A — filter pill + group state. Seed defaults on first render
+    // so the user lands in the canonical "review workflow" view: Songs +
+    // Needs Review open; Chatter/Transitions/Silence/Excluded collapsed
+    // behind a single pill click. Per-player so flipping rehearsals
+    // restarts from the canonical default.
+    if (!p._segFilters) {
+        p._segFilters = { music: true, needsReview: true, unnamed: false, transition: false, speech: false, silence: false, excluded: false };
+    }
+    if (!p._segGroupsOpen) {
+        p._segGroupsOpen = { needsReview: true, music: true, transition: false, speech: false, silence: false, excluded: false };
+    }
+    var f = p._segFilters;
+    var g = p._segGroupsOpen;
 
-    // Build the visible-segments list with original indices preserved so
-    // edit handlers (_mtSegmentJump, _mtSegmentTitleSave, etc.) still
-    // point at the right entries.
-    var visible = [];
+    var SHORT_SILENCE_THRESHOLD = 30; // sub-30s silences are almost always song-internal drops, not between-song breaks. Hidden inside the Silence group until the user opts in.
+    var showShortSilences = !!p._showShortSilences;
+
+    // Bucket segments by group + count raw totals for pill labels. Counts
+    // are independent of which pills are on, so "Songs (34)" stays
+    // honest even when Songs is filtered out.
+    var buckets = { needsReview: [], music: [], transition: [], speech: [], silence: [], excluded: [] };
+    var counts = { music: 0, transition: 0, speech: 0, silence: 0, excluded: 0, needsReview: 0, unnamed: 0 };
+    var silenceHiddenShortCount = 0;
+
     segs.forEach(function(s, origIdx) {
-        if (!showShortSilences && s.kind === 'silence') {
-            var dur = (typeof s.endSec === 'number' && typeof s.startSec === 'number')
-                ? (s.endSec - s.startSec) : 0;
-            if (dur < SHORT_SILENCE_THRESHOLD) return;
+        var rs = _mtSegmentReviewState(s);
+        var effKind = _mtSegmentEffectiveKind(s) || 'silence';
+        var disp = _mtSegmentDisplayName(s);
+        var dur = (typeof s.endSec === 'number' && typeof s.startSec === 'number') ? (s.endSec - s.startSec) : 0;
+
+        // Counts (chip labels) — exclude'd rows count only in excluded.
+        if (rs === 'excluded') {
+            counts.excluded++;
+        } else {
+            if (effKind === 'music') {
+                counts.music++;
+                if (rs === 'needs-review') counts.needsReview++;
+                if (!disp.title) counts.unnamed++;
+            } else if (effKind === 'transition') counts.transition++;
+            else if (effKind === 'speech')     counts.speech++;
+            else if (effKind === 'silence')    counts.silence++;
         }
-        visible.push({ seg: s, idx: origIdx });
+
+        // Bucket assignment.
+        if (rs === 'excluded') {
+            if (f.excluded) buckets.excluded.push({ seg: s, idx: origIdx });
+            return;
+        }
+        // Music + needs-review OR music + unnamed → lift into Needs Review
+        // group when the relevant pill is on. Keeps the user's triage
+        // queue at the top of the panel.
+        var isUnnamedMusic = (effKind === 'music' && !disp.title);
+        if (effKind === 'music' && rs === 'needs-review' && f.needsReview) {
+            buckets.needsReview.push({ seg: s, idx: origIdx });
+            return;
+        }
+        if (isUnnamedMusic && f.unnamed) {
+            buckets.needsReview.push({ seg: s, idx: origIdx });
+            return;
+        }
+        if (effKind === 'music' && f.music)                                     buckets.music.push({ seg: s, idx: origIdx });
+        else if (effKind === 'transition' && f.transition)                      buckets.transition.push({ seg: s, idx: origIdx });
+        else if (effKind === 'speech' && f.speech)                              buckets.speech.push({ seg: s, idx: origIdx });
+        else if (effKind === 'silence' && f.silence) {
+            if (!showShortSilences && dur < SHORT_SILENCE_THRESHOLD) {
+                silenceHiddenShortCount++;
+            } else {
+                buckets.silence.push({ seg: s, idx: origIdx });
+            }
+        }
     });
 
-    var hiddenCount = segs.length - visible.length;
-    var headerSummary = visible.length + ' shown · ' + music + ' 🎵 · ' + silence + ' 🤫 · ' + speech + ' 💬'
-        + (between ? ' · ' + between + ' flagged between' : '');
+    var totalVisible = buckets.needsReview.length + buckets.music.length + buckets.transition.length + buckets.speech.length + buckets.silence.length + buckets.excluded.length;
+    var hiddenCount = segs.length - totalVisible;
 
-    // Workflow hint banner — shows once segments are loaded, helps user
-    // know what to do. Three short steps; dismissible if it gets in the way.
-    var hintHtml = (p._segmentsHintDismissed) ? '' :
+    // Workflow hint banner — persists across sessions via localStorage so
+    // dismissed stays dismissed. When dismissed, a small ? in the panel
+    // header brings it back. Replaces the verbose always-on instructional
+    // strip that was eating vertical space at the top of the panel.
+    var hintDismissed = false;
+    try { hintDismissed = (typeof localStorage !== 'undefined' && localStorage.getItem('mtSegmentsHintDismissed') === '1'); } catch(_) {}
+    var hintHtml = hintDismissed ? '' :
         '<div style="padding:8px 12px;background:rgba(99,102,241,0.08);border-bottom:1px solid rgba(99,102,241,0.2);font-size:0.74em;color:#c7d2fe;display:flex;align-items:flex-start;gap:8px">'
         + '<span style="font-size:1em">💡</span>'
-        + '<div style="flex:1;line-height:1.4">'
-        + '<b>To create a songs-only mix for sharing:</b> name the 🎵 music segments below (type into the title field) · use ⊘ to flag obvious between-song chatter · then click <b>🎛 Mix → ☑ Render songs only → Render Mix</b>.'
-        + (music === 1 && silence > 50
-            ? '<div style="margin-top:4px;color:#fbbf24"><b>Warning:</b> ' + silence + ' silence segments suggests this was analyzed on a single stem (likely kick — which drops out during play). Re-run 🎯 Analyze using the <b>Rendered review mix</b> for better results.</div>'
-            : '')
-        + '</div>'
-        + '<button onclick="_mtSegmentsHintDismiss()" title="Dismiss hint" style="background:none;border:none;color:#a5b4fc;cursor:pointer;padding:0 4px;font-size:1em">×</button>'
+        + '<div style="flex:1;line-height:1.4"><b>Review workflow:</b> name 🎵 Songs (type to autocomplete) · ⊘ flag chatter · then 🎛 Mix → ☑ Render songs only.</div>'
+        + '<button onclick="_mtSegmentsHintDismiss()" title="Don\'t show again" style="background:none;border:none;color:#a5b4fc;cursor:pointer;padding:0 4px;font-size:1em">×</button>'
         + '</div>';
 
-    var rowsHtml = visible.map(function(item) {
-        var s = item.seg;
-        var idx = item.idx;
-        var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
-        var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
-        var meta = _mtKindMeta(s.kind);
-        var display = _mtSegmentDisplayName(s);
-        var reviewState = _mtSegmentReviewState(s);
-        var confidence = _mtSegmentConfidence(s);
-        var canvasId = 'mtSegStrip_' + idx;
-        var titleId = 'mtSegTitle_' + idx;
+    // Phase 4A — filter pill bar (replaces the inline "Show N short
+    // silences" toggle and the verbose header summary).
+    var pillsHtml = _mtRenderFilterPills(f, counts);
 
-        // Visual treatment by review state (D + E):
-        //   confirmed   → soft green tint, ✓ button highlighted
-        //   needs-review → red-edge accent, AI-suggested title not pre-filled
-        //   excluded    → dimmed 45%, gray
-        //   unconfirmed → default kind tint
-        var rowBg, rowAlpha, leftStripeColor, ringStyle;
-        if (reviewState === 'excluded') {
-            rowBg = 'rgba(100,116,139,0.05)';
-            rowAlpha = '0.45';
-            leftStripeColor = '#475569';
-            ringStyle = '';
-        } else if (reviewState === 'confirmed') {
-            rowBg = 'rgba(34,197,94,0.07)';
-            rowAlpha = '1';
-            leftStripeColor = '#22c55e';
-            ringStyle = '';
-        } else if (reviewState === 'needs-review') {
-            rowBg = meta.stripBg;
-            rowAlpha = '1';
-            leftStripeColor = '#ef4444';
-            ringStyle = 'box-shadow:inset 2px 0 0 0 rgba(239,68,68,0.55);';
-        } else {
-            rowBg = meta.stripBg;
-            rowAlpha = '1';
-            leftStripeColor = meta.stripe;
-            ringStyle = '';
-        }
-
-        // Build the confidence chip + review-state chip strings.
-        var confChip = _mtConfidenceChipHtml(confidence);
-        var stateChip = '';
-        if (reviewState === 'confirmed') {
-            stateChip = '<span title="Confirmed by user" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">✓ CONFIRMED</span>';
-        } else if (reviewState === 'needs-review') {
-            stateChip = '<span title="Needs review — low confidence" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">⚠ NEEDS REVIEW</span>';
-        } else if (reviewState === 'excluded') {
-            stateChip = '<span title="Excluded — not included in songs-only mix" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.35);color:#fbbf24;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">⊘ EXCLUDED</span>';
-        }
-
-        // Action buttons. Visual states reflect review status.
-        var confirmBg = (reviewState === 'confirmed') ? 'rgba(34,197,94,0.22)' : 'rgba(255,255,255,0.05)';
-        var confirmBorder = (reviewState === 'confirmed') ? 'rgba(34,197,94,0.45)' : 'rgba(255,255,255,0.1)';
-        var confirmColor = (reviewState === 'confirmed') ? '#86efac' : 'var(--text-dim)';
-        var excludeBg = (reviewState === 'excluded') ? 'rgba(245,158,11,0.22)' : 'rgba(255,255,255,0.05)';
-        var excludeBorder = (reviewState === 'excluded') ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.1)';
-        var excludeColor = (reviewState === 'excluded') ? '#fbbf24' : 'var(--text-dim)';
-
-        // Trim panel — collapsed by default. Expanded for the row whose
-        // idx === p._trimOpenIdx. Adjusts startSec/endSec via ±5s/±0.5s
-        // buttons; clamps to neighbors so trim can't invert.
-        var trimOpen = (p._trimOpenIdx === idx);
-        var trimPanelHtml = trimOpen ? (
-            '<div style="grid-column:1/-1;padding:8px 12px;background:rgba(99,102,241,0.04);border-top:1px dashed rgba(99,102,241,0.2);display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:0.76em">'
-            + '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--text-dim);font-weight:700;margin-right:4px">Start</span>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',-5)" title="−5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−5s</button>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',-0.5)" title="−0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−.5</button>'
-            + '<span style="font-family:ui-monospace,monospace;color:#f1f5f9;min-width:46px;text-align:center">' + _mtFmtTimeShort(startSec) + '</span>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',0.5)" title="+0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+.5</button>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',5)" title="+5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+5s</button>'
-            + '</div>'
-            + '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--text-dim);font-weight:700;margin-right:4px">End</span>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',-5)" title="−5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−5s</button>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',-0.5)" title="−0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−.5</button>'
-            + '<span style="font-family:ui-monospace,monospace;color:#f1f5f9;min-width:46px;text-align:center">' + _mtFmtTimeShort(endSec) + '</span>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',0.5)" title="+0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+.5</button>'
-            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',5)" title="+5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+5s</button>'
-            + '</div>'
-            + '<button onclick="_mtSegmentToggleTrim(' + idx + ')" style="margin-left:auto;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 8px;cursor:pointer;font-size:0.74em">Done</button>'
-            + '</div>'
-        ) : '';
-
-        return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 175px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;outline:none;' + ringStyle + '">'
-            // Left stripe (kind color)
-            + '<div style="background:' + leftStripeColor + ';width:4px;height:32px;border-radius:2px"></div>'
-            // Kind chip
-            + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em">' + meta.emoji + '</div>'
-            // Time range
-            + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
-            // Waveform strip
-            + '<canvas id="' + canvasId + '" width="78" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
-            // Title (autocomplete) + state chip + confidence chip + provenance chip
-            + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
-            + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:80px;font-size:0.92em;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px">'
-            + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
-            + (function() { var pc = _mtProvenanceChipHtml(s); return pc ? '<div style="flex-shrink:0">' + pc + '</div>' : ''; })()
-            + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
-            + '</div>'
-            // Actions — Jump, Split, Merge, Trim, Confirm, Exclude
-            + '<div style="display:flex;gap:3px;justify-content:flex-end">'
-            + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">▶</button>'
-            + '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split at playhead" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">✂</button>'
-            + '<button onclick="_mtSegmentMerge(' + idx + ')" title="Merge with next segment" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">⛓</button>'
-            + '<button onclick="_mtSegmentToggleTrim(' + idx + ')" title="Trim start/end ±5s / ±0.5s" style="background:' + (trimOpen ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.05)') + ';border:1px solid ' + (trimOpen ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)') + ';border-radius:4px;color:' + (trimOpen ? '#a5b4fc' : 'var(--text-dim)') + ';padding:2px 5px;cursor:pointer;font-size:0.78em">↕</button>'
-            + '<button onclick="_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — click to unconfirm' : 'Confirm') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:4px;color:' + confirmColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">✓</button>'
-            + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — click to unflag' : 'Exclude') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:4px;color:' + excludeColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">⊘</button>'
-            + '</div>'
-            + trimPanelHtml
+    // Group renderer. Each group gets a clickable header (▾/▸) followed
+    // by its rows when open. Order = triage attention first → bulk
+    // categories → excluded last. Empty groups (no rows after filtering)
+    // are skipped entirely so the panel never shows a "Songs (0)" header.
+    var groupOrder = [
+        { key: 'needsReview',  label: 'Needs Review',  emoji: '⚠',  color: '#fca5a5' },
+        { key: 'music',        label: 'Songs',         emoji: '🎵', color: '#a5b4fc' },
+        { key: 'transition',   label: 'Transitions',   emoji: '🔀', color: '#d8b4fe' },
+        { key: 'speech',       label: 'Chatter',       emoji: '💬', color: '#fbbf24' },
+        { key: 'silence',      label: 'Silence',       emoji: '🔇', color: '#94a3b8' },
+        { key: 'excluded',     label: 'Excluded',      emoji: '🚫', color: '#fbbf24' },
+    ];
+    var groupsHtml = groupOrder.map(function(grp) {
+        var items = buckets[grp.key] || [];
+        if (items.length === 0) return '';
+        var open = (grp.key in g) ? g[grp.key] : false;
+        var headerHtml = '<div onclick="_mtSegGroupToggle(\'' + grp.key + '\')" style="display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;user-select:none;background:rgba(255,255,255,0.04);border-top:1px solid rgba(255,255,255,0.06);font-size:0.77em;font-weight:700">'
+            + '<span style="color:var(--text-dim);font-size:0.85em;width:10px;display:inline-block">' + (open ? '▾' : '▸') + '</span>'
+            + '<span style="color:' + grp.color + '">' + grp.emoji + ' ' + grp.label + '</span>'
+            + '<span style="color:var(--text-dim);font-weight:400;margin-left:auto;font-family:ui-monospace,monospace">' + items.length + '</span>'
             + '</div>';
+        if (!open) return headerHtml;
+        // Silence group only — expose the short-silence toggle right
+        // inside the group header so the threshold control lives next to
+        // the rows it affects.
+        var silenceHelperHtml = '';
+        if (grp.key === 'silence' && silenceHiddenShortCount > 0) {
+            silenceHelperHtml = '<div style="padding:6px 12px;background:rgba(255,255,255,0.015);border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.72em;color:var(--text-dim)">'
+                + '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer">'
+                + '<input type="checkbox" id="mtSegShowShorts" onclick="_mtSegmentsToggleShorts()"' + (showShortSilences ? ' checked' : '') + '>'
+                + 'Show ' + silenceHiddenShortCount + ' short silence' + (silenceHiddenShortCount === 1 ? '' : 's') + ' (&lt; 30 s — usually song-internal drops)'
+                + '</label></div>';
+        }
+        var rowsHtml = items.map(function(item) {
+            return _mtRenderSegmentRow(item.seg, item.idx, p);
+        }).join('');
+        return headerHtml + silenceHelperHtml + rowsHtml;
     }).join('');
 
-    // Tier 1C — Single shared <datalist> for typeahead. Referenced via
-    // list="mtSongTitlesDatalist" on every title input. Re-built on each
-    // panel render (cheap — ~200 song titles).
+    // Empty-after-filter state — the user has all pills off, or every
+    // segment was filtered out. Gentle nudge to re-enable Songs.
+    var emptyAfterFilterHtml = (totalVisible === 0) ?
+        '<div style="padding:18px 12px;text-align:center;font-size:0.78em;color:var(--text-dim)">No segments match the current filters. Click a pill above to show segments.</div>'
+        : '';
+
+    // Tier 1C — Single shared <datalist> for typeahead.
     var datalistHtml = _mtSongsDatalistHtml();
 
-    // Footer: filter toggle for short silences (< 30s) + Phase 2
-    // keyboard shortcut hint. Short-silence checkbox stays off by
-    // default because most short silences are song-internal drops, not
-    // breaks worth listing as separate rows.
+    // Footer: keyboard shortcut hint only (short-silence toggle moved
+    // into the Silence group header).
     var shortcutHintHtml = '<div style="padding:6px 12px;background:rgba(255,255,255,0.02);border-top:1px solid rgba(255,255,255,0.04);font-size:0.7em;color:var(--text-dim)">'
         + '⌨ Click a row, then: <b>S</b>=Song · <b>C</b>=Chatter · <b>T</b>=Transition · <b>X</b>=Exclude · <b>Enter</b>=Confirm · <b>↑/↓</b>=move'
         + '</div>';
-    var filterFooterHtml = (shortSilenceCount > 0)
-        ? '<div style="padding:6px 12px;background:rgba(255,255,255,0.02);border-top:1px solid rgba(255,255,255,0.04);font-size:0.72em;color:var(--text-dim);display:flex;align-items:center;gap:8px">'
-            + '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer">'
-            + '<input type="checkbox" id="mtSegShowShorts" onclick="_mtSegmentsToggleShorts()"' + (showShortSilences ? ' checked' : '') + '>'
-            + 'Show ' + shortSilenceCount + ' short silence' + (shortSilenceCount === 1 ? '' : 's') + ' (&lt; 30 s — usually song-internal drops)'
-            + '</label>'
-            + '</div>'
-        : '';
-    filterFooterHtml += shortcutHintHtml;
 
-    // In-flight banner — ALSO shows when segments already exist (e.g.,
-    // user re-analyzing on top of a prior run). Tells them new results
-    // are coming, what's currently computing, and that the existing
-    // segments below will be replaced when done.
+    // In-flight analyze banner — also shows when segments already exist
+    // (re-analyze on top of prior run).
     var inFlightBannerHtml = '';
     if (p._analyzeInFlight && p._analyzeInFlight.startedAt) {
         inFlightBannerHtml =
@@ -4070,6 +4187,12 @@ function _mtRenderSegmentsPanel() {
             + '</div>';
     }
 
+    // Header summary + ? help icon when hint is dismissed.
+    var summaryStr = totalVisible + ' shown' + (hiddenCount ? ' · ' + hiddenCount + ' filtered out' : '');
+    var helpIconHtml = hintDismissed
+        ? '<button onclick="event.stopPropagation();_mtSegmentsHintShow()" title="Show review workflow help" style="background:none;border:1px solid rgba(255,255,255,0.15);color:var(--text-dim);border-radius:50%;width:18px;height:18px;line-height:14px;padding:0;cursor:pointer;font-size:0.7em;font-weight:700;margin-left:6px">?</button>'
+        : '';
+
     host.innerHTML =
         datalistHtml
         + inFlightBannerHtml
@@ -4077,9 +4200,15 @@ function _mtRenderSegmentsPanel() {
         + '<div onclick="_mtToggleSegmentsPanel()" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;background:rgba(255,255,255,0.03)">'
         + '<span id="mtSegmentsCaret" style="color:var(--text-dim);font-size:0.85em">' + (collapsed ? '▸' : '▾') + '</span>'
         + '<span style="font-weight:700;font-size:0.82em;color:#f1f5f9">🎯 Segments</span>'
-        + '<span style="font-size:0.74em;color:var(--text-dim);margin-left:auto">' + escHtml(headerSummary) + (hiddenCount ? ' · ' + hiddenCount + ' hidden' : '') + '</span>'
+        + helpIconHtml
+        + '<span style="font-size:0.74em;color:var(--text-dim);margin-left:auto">' + escHtml(summaryStr) + '</span>'
         + '</div>'
-        + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + '">' + hintHtml + '<div id="mtSegmentsList" style="max-height:340px;overflow-y:auto">' + rowsHtml + '</div>' + filterFooterHtml + '</div>'
+        + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + '">'
+        + hintHtml
+        + pillsHtml
+        + '<div id="mtSegmentsList" style="max-height:340px;overflow-y:auto">' + groupsHtml + emptyAfterFilterHtml + '</div>'
+        + shortcutHintHtml
+        + '</div>'
         + '</div>';
 
     // Restore scroll position after the list is back in the DOM.
