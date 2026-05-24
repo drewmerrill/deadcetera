@@ -1886,13 +1886,20 @@ window._mtOpenCustomMixModal = async function() {
                     + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px">'
                     + (hasSegs
                         ? 'Uses analyzed rehearsal segments to skip silence, chatter, and dead time between songs. Result is a tight songs-only mix.'
-                        : '🎯 Analyze this rehearsal first to enable a songs-only mix. Without analysis we can only render the full timeline.')
+                        : 'No analysis yet — run Analyze to enable a songs-only mix. Without analysis we can only render the full timeline.')
                     + '</div>'
+                    // Inline Analyze trigger when segments are missing — saves the
+                    // user from cancelling the modal, hunting for the 🎯 Analyze
+                    // button in the transport bar, running it, then reopening
+                    // Custom Mix. Closes this modal and kicks Analyze in one click.
+                    + (hasSegs ? '' :
+                        '<button type="button" onclick="_mtCmxRunAnalyzeAndReopen(event)" style="margin-top:8px;background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);border-radius:6px;color:#a5b4fc;padding:5px 10px;cursor:pointer;font-size:0.78em;font-weight:700">🎯 Run Analyze now</button>'
+                    )
                     + '</div>'
                     + '</label>'
                     + '</div>';
             })() +
-            '<div style="margin-top:12px;font-size:0.74em;color:var(--text-dim)">Reverb is applied to vocals + keys by default. For per-track FX routing, use 🎚 Isolate Mode.</div>' +
+            '<div style="margin-top:12px;font-size:0.74em;color:var(--text-dim)">Reverb is applied to vocals only by default (keys carry their own effects from Pierce\'s rig). For per-track FX routing, use 🎚 Isolate Mode.</div>' +
             '<div id="mtCmxStatus" style="margin-top:14px;min-height:18px;font-size:0.82em;color:var(--text-dim)"></div>' +
             '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">' +
                 '<button onclick="document.getElementById(\'mtCustomMixModal\').remove()" class="btn btn-ghost btn-sm">Cancel</button>' +
@@ -1900,6 +1907,25 @@ window._mtOpenCustomMixModal = async function() {
             '</div>' +
         '</div>';
     document.body.appendChild(modal);
+};
+
+// Inline "🎯 Run Analyze now" trigger from the Custom Mix modal — closes
+// the modal, runs the existing _mtAnalyzeRehearsal flow, and reopens the
+// modal once analysis completes so the songs-only checkbox is enabled.
+// Stops the click from bubbling to the parent <label> (which would
+// otherwise toggle the disabled checkbox).
+window._mtCmxRunAnalyzeAndReopen = function(ev) {
+    if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+    if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+    var modalEl = document.getElementById('mtCustomMixModal');
+    if (modalEl) modalEl.remove();
+    // Flag so the analyzer's done-callback reopens the modal automatically.
+    if (_mtState.player) _mtState.player._reopenCmxAfterAnalyze = true;
+    if (typeof window._mtAnalyzeRehearsal === 'function') {
+        window._mtAnalyzeRehearsal();
+    } else if (typeof showToast === 'function') {
+        showToast('Analyze flow unavailable');
+    }
 };
 
 window._mtCustomMixRender = async function() {
@@ -1938,7 +1964,11 @@ window._mtCustomMixRender = async function() {
         var grp = _mtRoleToGroup(t.role);
         var gain = groupGains[grp];
         if (gain === undefined) gain = 1.0;
-        var sendsReverb = (grp === 'vocals' || grp === 'keys');
+        // Default reverb routing: vocals only. Keys have their own
+        // built-in effects on Pierce's rig (Drew, 2026-05-24) — adding
+        // more reverb here would stack reverb-on-reverb and muddy the
+        // master mix. Drums + bass + guitars stay dry by convention.
+        var sendsReverb = (grp === 'vocals');
         tracksRecipe[t.trackId] = {
             gain: gain,
             mute: false,
@@ -2862,6 +2892,15 @@ window._mtAnalyzeRun = async function() {
             showToast('✓ Detected ' + n + ' segment' + (n === 1 ? '' : 's') + '. Click a marker on the seek bar to name it.');
         }
         _mtAnalyzeClose();
+        // If the Custom Mix modal triggered this Analyze run (via 🎯 Run
+        // Analyze now), reopen Custom Mix so the songs-only checkbox is
+        // now enabled and the user can continue without re-navigating.
+        if (p._reopenCmxAfterAnalyze) {
+            p._reopenCmxAfterAnalyze = false;
+            if (typeof window._mtOpenCustomMixModal === 'function') {
+                setTimeout(function() { window._mtOpenCustomMixModal(); }, 100);
+            }
+        }
     } catch (e) {
         console.error('[Multitrack] analyze failed:', e);
         if (status) status.textContent = '✗ ' + (e.message || 'analysis failed');
