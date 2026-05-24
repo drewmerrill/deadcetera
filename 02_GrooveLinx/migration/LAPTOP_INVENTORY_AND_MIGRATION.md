@@ -2,8 +2,8 @@
 
 **Purpose:** if Drew's current dev Mac dies, melts, or has to be swapped, this file is the single source of truth for "what does the new laptop need." Treated as a living doc — updated alongside any change to installed software, licenses, or auth state.
 
-**Last verified:** 2026-05-19 (build under test `20260518-171227`)
-**Source Mac:** macOS Darwin 25.5.0 (`/Users/drewmerrill`), zsh, iTerm2.
+**Last verified:** 2026-05-24 (build under test `20260523-231254`)
+**Source Mac:** Drew's MacBook Pro (2) — 13-inch MacBook Pro, 2020, Four Thunderbolt 3 ports. **Intel Core i5 2 GHz Quad-Core** (NOT Apple Silicon — affects binary selection for Intel/Universal builds), Intel Iris Plus Graphics 1536 MB, **32 GB 3733 MHz LPDDR4X**, **2 TB** internal SSD, serial `C02DG01HML86`. macOS **Tahoe 26.5** (Darwin 25.5.0), zsh, iTerm2. ⚠️ AppleCare **expired** — if this machine dies, the next one will likely be Apple Silicon, which means several macOS binary picks below need re-selecting (REAPER, plugins, anything where you currently chose "Intel" — pick "Universal" or "Apple Silicon" on the next Mac).
 
 ---
 
@@ -126,6 +126,15 @@ Install per official docs (currently at `~/.local/bin/claude`, version 2.1.144).
 ### Tier B — Music production (license-bound, see §4)
 
 REAPER, MainStage, GarageBand, Final Cut Pro, Audacity, MuseScore 4, Moises, SpectraLayers 8, Topaz Video, Adobe After Effects 2025, Steinberg family (HALion Library Manager, HALion Sonic SE, Groove Agent SE, Steinberg Activation Manager, Steinberg Download Assistant, Steinberg Library Manager), iLok License Manager, License Control Center, UA Connect + Universal Audio + iLok, GE300 + Mooer Studio, AirTurn Manager, JamKazam, DrumBeats+, Muse Hub, Ultimate Guitar, Sonos S1.
+
+**REAPER specifics (added 2026-05-24, when Drew began first GrooveLinx multitrack ingest):**
+
+- **Build to download on current Mac (Intel):** `macOS 64-bit Intel` (24 MB) from https://www.reaper.fm/download.php — native Intel binary, smaller than the Universal build with no functional difference on this machine.
+- **Build for any future Apple Silicon Mac:** `macOS Universal` (29 MB) — runs natively on M-series chips.
+- **Purpose:** sits between the X32 SD card and the GrooveLinx multitrack ingest UI. X32 records 32-channel multiplexed WAV chunks (split at 4 GB FAT32 limit). REAPER demuxes and exports per-track FLACs named `NN_role-member.flac`, which GrooveLinx auto-infers role + member from.
+- **One-time setup required:** `GrooveLinx-Multitrack` project template + `GrooveLinx FLAC stems` render preset. Full recipe at `02_GrooveLinx/specs/multitrack_reaper_export_checklist.md`. The template's track names ARE the load-bearing convention — `$track` render token uses them as the output filenames.
+- **License model:** 60-day free evaluation, then $60 individual license (perpetual + lifetime updates within major version, $60 again for v8+). License is per-user, multi-machine.
+- **Deauthorization on migration:** REAPER's license is per-user-account, not per-machine — no deauth needed. Just re-enter the license key on the new Mac (key emailed at purchase; resend via https://www.reaper.fm/account if lost).
 
 ### Tier C — Cloud sync (sign in, files come back)
 
