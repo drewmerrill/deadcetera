@@ -3603,6 +3603,17 @@ function _mtRenderSegmentsPanel() {
     var p = _mtState.player;
     var host = document.getElementById('mtSegmentsPanel');
     if (!p || !host) return;
+    // Preserve scroll position across re-renders. Drew (UAT 2026-05-24):
+    // "Everytime I type a replacement song and save or change anything in a
+    // song, it goes all the way back up to the top song." Every handler
+    // (_mtSegmentTitleSave, _mtSegmentConfirm, _mtSegmentToggleBetween,
+    // _mtSegmentSplit) calls back through here, which rebuilds the list
+    // DOM and resets scrollTop=0. Capture-restore here keeps the user's
+    // place. The setTimeout dance accounts for the canvas paint deferral
+    // (which happens on the next microtask) — restoring scroll BEFORE
+    // paint scheduling is fine because we own the scroll container.
+    var existingList = document.getElementById('mtSegmentsList');
+    var savedScrollTop = existingList ? existingList.scrollTop : 0;
     var segs = Array.isArray(p.segments) ? p.segments : [];
 
     // Empty state — either no analysis yet OR an analysis is in flight.
@@ -3797,6 +3808,11 @@ function _mtRenderSegmentsPanel() {
         + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + '">' + hintHtml + '<div id="mtSegmentsList" style="max-height:340px;overflow-y:auto">' + rowsHtml + '</div>' + filterFooterHtml + '</div>'
         + '</div>';
 
+    // Restore scroll position after the list is back in the DOM.
+    var newList = document.getElementById('mtSegmentsList');
+    if (newList && savedScrollTop > 0) {
+        newList.scrollTop = savedScrollTop;
+    }
     // Paint canvases after they're in the DOM. Defer so layout settles
     // (canvas width is fixed via attribute, but transform happens on next tick).
     setTimeout(_mtPaintSegmentStrips, 0);
