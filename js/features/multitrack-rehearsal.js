@@ -1259,6 +1259,11 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
     // backdrop should never silently nuke a 5-minute render in progress.
     // Use the explicit × button or the 🎚/👁 mode toggles to leave.
     // (Drew, 2026-05-24: lost a 150s render to an accidental backdrop tap.)
+    // Phase 2D: attach keyboard shortcuts for segment review.
+    if (typeof _mtSegmentsKeydown === 'function') {
+        try { document.removeEventListener('keydown', _mtSegmentsKeydown); } catch (e) {}
+        document.addEventListener('keydown', _mtSegmentsKeydown);
+    }
 
     // Wire up player state
     var audios = Array.from(ov.querySelectorAll('audio[data-track-id]'));
@@ -1472,6 +1477,11 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
     // backdrop should never silently nuke a 5-minute render in progress.
     // Use the explicit × button or the 🎚/👁 mode toggles to leave.
     // (Drew, 2026-05-24: lost a 150s render to an accidental backdrop tap.)
+    // Phase 2D: attach keyboard shortcuts for segment review.
+    if (typeof _mtSegmentsKeydown === 'function') {
+        try { document.removeEventListener('keydown', _mtSegmentsKeydown); } catch (e) {}
+        document.addEventListener('keydown', _mtSegmentsKeydown);
+    }
 
     var reviewAudio = document.getElementById('mtReviewAudio');
     _mtState.player = {
@@ -1822,16 +1832,15 @@ function _mtCollectSongSegments(player) {
     player.segments.forEach(function(s) {
         if (_mtSegmentReviewState(s) === 'excluded') return;  // explicit user exclusion
         if (s.isBetween) return;                              // legacy overlay flag
-        if (s.kind === 'silence') return;                     // server-detected silence
-        if (s.kind === 'speech') return;                      // server-detected speech/chatter
+        var effKind = _mtSegmentEffectiveKind(s);
+        if (effKind === 'silence') return;                    // silence dropped
+        if (effKind === 'speech') return;                     // chatter dropped
+        // music + transition both included — transitions are song-adjacent
+        // (intros, jams, segues) and belong in a songs-only mix.
         var start = (typeof s.startSec === 'number') ? s.startSec : (typeof s.start === 'number' ? s.start : null);
         var end = (typeof s.endSec === 'number') ? s.endSec : (typeof s.end === 'number' ? s.end : null);
         if (start == null || end == null) return;
         if (!(end > start)) return;
-        // Only include canonical song-titled segments when the title is
-        // either user-confirmed OR a high-confidence analyzer match. Low-
-        // confidence guesses get included as untitled so they're still
-        // rendered (band can still hear them) but without misleading names.
         var display = _mtSegmentDisplayName(s);
         var title = (display.kind === 'confirmed' || display.kind === 'matched')
             ? (s.songTitle || (s.likelySong && s.likelySong.title) || null)
@@ -2253,6 +2262,10 @@ window._mtShareCurrentMix = async function() {
 window._mtClosePlayer = function() {
     var ov = document.getElementById('mtPlayerOverlay');
     if (ov) ov.remove();
+    // Phase 2D: detach keyboard shortcuts when leaving the player.
+    if (typeof _mtSegmentsKeydown === 'function') {
+        try { document.removeEventListener('keydown', _mtSegmentsKeydown); } catch (e) {}
+    }
     if (_mtState.player) {
         if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
         _mtStopSyncWatchdog(_mtState.player);
@@ -3271,6 +3284,11 @@ async function _mtLoadSegments(sessionId) {
                 // band's songId so future fingerprint training can key
                 // off it directly. Title remains the user-facing string.
                 if (overlay[s.id].songId) s.songId = overlay[s.id].songId;
+                // Phase 2D: user kind override (Song / Chatter / Transition
+                // via S/C/T keys, or kind change via UI). Distinct from
+                // seg.kind which preserves the analyzer's original verdict.
+                // _mtSegmentEffectiveKind resolves userKind → kind fallback.
+                if (overlay[s.id].userKind) s.userKind = overlay[s.id].userKind;
             }
         });
         p.segments = segs;
@@ -3290,12 +3308,26 @@ async function _mtLoadSegments(sessionId) {
 function _mtKindMeta(kind) {
     // stripe = the 4px left bar that color-codes each row by kind.
     // stripBg/stripFg = subtle row tint + waveform fill color.
+    // 'transition' is a Tier 2 USER-only kind (server emits music/speech/
+    // silence only). Used for jams, intros, segues that aren't a
+    // standalone song but aren't chatter either.
     switch ((kind || '').toLowerCase()) {
-        case 'music':   return { emoji: '🎵', color: '#a5b4fc', name: 'song',    stripe: '#6366f1', stripBg: 'rgba(99,102,241,0.10)', stripFg: 'rgba(165,180,252,0.85)' };
-        case 'silence': return { emoji: '🤫', color: '#94a3b8', name: 'silence', stripe: '#64748b', stripBg: 'rgba(100,116,139,0.05)', stripFg: 'rgba(148,163,184,0.4)' };
-        case 'speech':  return { emoji: '💬', color: '#fbbf24', name: 'speech',  stripe: '#f59e0b', stripBg: 'rgba(245,158,11,0.07)', stripFg: 'rgba(252,211,77,0.75)' };
-        default:        return { emoji: '·',  color: '#94a3b8', name: 'segment', stripe: '#94a3b8', stripBg: 'rgba(148,163,184,0.05)', stripFg: 'rgba(203,213,225,0.55)' };
+        case 'music':      return { emoji: '🎵', color: '#a5b4fc', name: 'song',       stripe: '#6366f1', stripBg: 'rgba(99,102,241,0.10)', stripFg: 'rgba(165,180,252,0.85)' };
+        case 'silence':    return { emoji: '🤫', color: '#94a3b8', name: 'silence',    stripe: '#64748b', stripBg: 'rgba(100,116,139,0.05)', stripFg: 'rgba(148,163,184,0.4)' };
+        case 'speech':     return { emoji: '💬', color: '#fbbf24', name: 'speech',     stripe: '#f59e0b', stripBg: 'rgba(245,158,11,0.07)', stripFg: 'rgba(252,211,77,0.75)' };
+        case 'transition': return { emoji: '🌀', color: '#d8b4fe', name: 'transition', stripe: '#a855f7', stripBg: 'rgba(168,85,247,0.10)', stripFg: 'rgba(216,180,254,0.85)' };
+        default:           return { emoji: '·',  color: '#94a3b8', name: 'segment',    stripe: '#94a3b8', stripBg: 'rgba(148,163,184,0.05)', stripFg: 'rgba(203,213,225,0.55)' };
     }
+}
+
+// Tier 2 + 5C — Effective kind, factoring in user override (`userKind`)
+// stored in the multitrackSegments overlay. Server-emitted kind stays
+// untouched in seg.kind for analyzer-audit purposes; this helper is the
+// single source of truth for display + songs-only filtering.
+function _mtSegmentEffectiveKind(seg) {
+    if (!seg) return null;
+    if (seg.userKind) return seg.userKind;
+    return seg.kind || null;
 }
 
 // Tier 1A — Detection confidence blended from analyzer kind-confidence
@@ -3318,15 +3350,13 @@ function _mtSegmentConfidence(seg) {
 var _MT_SAFE_TITLE_THRESHOLD = 0.65;
 function _mtSegmentDisplayName(seg) {
     if (!seg) return { title: '', placeholder: 'Segment', kind: 'unidentified' };
-    // User-edited title — always trusted.
     if (seg.songTitle) return { title: seg.songTitle, placeholder: 'Song title', kind: 'confirmed' };
-    if (seg.kind === 'music') {
+    var effKind = _mtSegmentEffectiveKind(seg);
+    if (effKind === 'music') {
         if (seg.likelySong && seg.likelySong.title && typeof seg.likelySong.confidence === 'number') {
             if (seg.likelySong.confidence >= _MT_SAFE_TITLE_THRESHOLD) {
-                // High-conf match: pre-fill the canonical title.
                 return { title: seg.likelySong.title, placeholder: 'Song title', kind: 'matched' };
             }
-            // Low/medium conf: keep field empty, show possibility in placeholder.
             return {
                 title: '',
                 placeholder: 'Possible: ' + seg.likelySong.title + ' (' + Math.round(seg.likelySong.confidence * 100) + '%) — type to confirm',
@@ -3335,8 +3365,9 @@ function _mtSegmentDisplayName(seg) {
         }
         return { title: '', placeholder: 'Unidentified Song — type to label', kind: 'unidentified' };
     }
-    if (seg.kind === 'speech')  return { title: '', placeholder: 'Chatter / Speech', kind: 'kind' };
-    if (seg.kind === 'silence') return { title: '', placeholder: 'Silence', kind: 'kind' };
+    if (effKind === 'transition') return { title: '', placeholder: 'Transition / Jam — type to label', kind: 'kind' };
+    if (effKind === 'speech')     return { title: '', placeholder: 'Chatter / Speech', kind: 'kind' };
+    if (effKind === 'silence')    return { title: '', placeholder: 'Silence', kind: 'kind' };
     return { title: '', placeholder: 'Unidentified Segment', kind: 'unidentified' };
 }
 
@@ -3349,7 +3380,7 @@ function _mtSegmentReviewState(seg) {
     if (seg.reviewState === 'excluded' || seg.isBetween) return 'excluded';
     if (seg.reviewState === 'needs-review') return 'needs-review';
     // Auto-flag: low-confidence music or fully unmatched music → needs review.
-    if (seg.kind === 'music') {
+    if (_mtSegmentEffectiveKind(seg) === 'music') {
         var conf = _mtSegmentConfidence(seg);
         if (conf < 0.55) return 'needs-review';
     }
@@ -3741,14 +3772,38 @@ function _mtRenderSegmentsPanel() {
         var excludeBorder = (reviewState === 'excluded') ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.1)';
         var excludeColor = (reviewState === 'excluded') ? '#fbbf24' : 'var(--text-dim)';
 
-        return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 130px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;' + ringStyle + '">'
+        // Trim panel — collapsed by default. Expanded for the row whose
+        // idx === p._trimOpenIdx. Adjusts startSec/endSec via ±5s/±0.5s
+        // buttons; clamps to neighbors so trim can't invert.
+        var trimOpen = (p._trimOpenIdx === idx);
+        var trimPanelHtml = trimOpen ? (
+            '<div style="grid-column:1/-1;padding:8px 12px;background:rgba(99,102,241,0.04);border-top:1px dashed rgba(99,102,241,0.2);display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:0.76em">'
+            + '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--text-dim);font-weight:700;margin-right:4px">Start</span>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',-5)" title="−5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−5s</button>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',-0.5)" title="−0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−.5</button>'
+            + '<span style="font-family:ui-monospace,monospace;color:#f1f5f9;min-width:46px;text-align:center">' + _mtFmtTimeShort(startSec) + '</span>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',0.5)" title="+0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+.5</button>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'start\',5)" title="+5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+5s</button>'
+            + '</div>'
+            + '<div style="display:flex;align-items:center;gap:4px"><span style="color:var(--text-dim);font-weight:700;margin-right:4px">End</span>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',-5)" title="−5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−5s</button>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',-0.5)" title="−0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">−.5</button>'
+            + '<span style="font-family:ui-monospace,monospace;color:#f1f5f9;min-width:46px;text-align:center">' + _mtFmtTimeShort(endSec) + '</span>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',0.5)" title="+0.5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+.5</button>'
+            + '<button onclick="_mtSegmentTrim(' + idx + ',\'end\',5)" title="+5s" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 7px;cursor:pointer;font-size:0.78em">+5s</button>'
+            + '</div>'
+            + '<button onclick="_mtSegmentToggleTrim(' + idx + ')" style="margin-left:auto;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 8px;cursor:pointer;font-size:0.74em">Done</button>'
+            + '</div>'
+        ) : '';
+
+        return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 175px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;outline:none;' + ringStyle + '">'
             // Left stripe (kind color)
             + '<div style="background:' + leftStripeColor + ';width:4px;height:32px;border-radius:2px"></div>'
             // Kind chip
             + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em">' + meta.emoji + '</div>'
             // Time range
             + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
-            // Waveform strip (canvas paints on next tick)
+            // Waveform strip
             + '<canvas id="' + canvasId + '" width="78" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
             // Title (autocomplete) + state chip + confidence chip
             + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
@@ -3756,13 +3811,16 @@ function _mtRenderSegmentsPanel() {
             + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
             + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
             + '</div>'
-            // Actions — Jump, Split, Confirm, Exclude
+            // Actions — Jump, Split, Merge, Trim, Confirm, Exclude
             + '<div style="display:flex;gap:3px;justify-content:flex-end">'
-            + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start (▶)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">▶</button>'
-            + '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split at playhead" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">✂</button>'
-            + '<button onclick="_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — click to unconfirm' : 'Confirm this segment\'s title + kind') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:4px;color:' + confirmColor + ';padding:2px 6px;cursor:pointer;font-size:0.78em">✓</button>'
-            + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — click to unflag' : 'Exclude from songs-only mix') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:4px;color:' + excludeColor + ';padding:2px 6px;cursor:pointer;font-size:0.78em">⊘</button>'
+            + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">▶</button>'
+            + '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split at playhead" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">✂</button>'
+            + '<button onclick="_mtSegmentMerge(' + idx + ')" title="Merge with next segment" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 5px;cursor:pointer;font-size:0.78em">⛓</button>'
+            + '<button onclick="_mtSegmentToggleTrim(' + idx + ')" title="Trim start/end ±5s / ±0.5s" style="background:' + (trimOpen ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.05)') + ';border:1px solid ' + (trimOpen ? 'rgba(99,102,241,0.45)' : 'rgba(255,255,255,0.1)') + ';border-radius:4px;color:' + (trimOpen ? '#a5b4fc' : 'var(--text-dim)') + ';padding:2px 5px;cursor:pointer;font-size:0.78em">↕</button>'
+            + '<button onclick="_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — click to unconfirm' : 'Confirm') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:4px;color:' + confirmColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">✓</button>'
+            + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — click to unflag' : 'Exclude') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:4px;color:' + excludeColor + ';padding:2px 5px;cursor:pointer;font-size:0.78em">⊘</button>'
             + '</div>'
+            + trimPanelHtml
             + '</div>';
     }).join('');
 
@@ -3771,9 +3829,13 @@ function _mtRenderSegmentsPanel() {
     // panel render (cheap — ~200 song titles).
     var datalistHtml = _mtSongsDatalistHtml();
 
-    // Footer: filter toggle for short silences (< 30s). Default OFF
-    // because most short silences are song-internal drops, not breaks
-    // worth listing as separate rows.
+    // Footer: filter toggle for short silences (< 30s) + Phase 2
+    // keyboard shortcut hint. Short-silence checkbox stays off by
+    // default because most short silences are song-internal drops, not
+    // breaks worth listing as separate rows.
+    var shortcutHintHtml = '<div style="padding:6px 12px;background:rgba(255,255,255,0.02);border-top:1px solid rgba(255,255,255,0.04);font-size:0.7em;color:var(--text-dim)">'
+        + '⌨ Click a row, then: <b>S</b>=Song · <b>C</b>=Chatter · <b>T</b>=Transition · <b>X</b>=Exclude · <b>Enter</b>=Confirm · <b>↑/↓</b>=move'
+        + '</div>';
     var filterFooterHtml = (shortSilenceCount > 0)
         ? '<div style="padding:6px 12px;background:rgba(255,255,255,0.02);border-top:1px solid rgba(255,255,255,0.04);font-size:0.72em;color:var(--text-dim);display:flex;align-items:center;gap:8px">'
             + '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer">'
@@ -3782,6 +3844,7 @@ function _mtRenderSegmentsPanel() {
             + '</label>'
             + '</div>'
         : '';
+    filterFooterHtml += shortcutHintHtml;
 
     // In-flight banner — ALSO shows when segments already exist (e.g.,
     // user re-analyzing on top of a prior run). Tells them new results
@@ -4093,6 +4156,210 @@ window._mtSegmentSplit = async function(idx) {
     _mtRenderSegmentsPanel();
     _mtRenderSegmentMarkers();
     if (typeof showToast === 'function') showToast('✂ Split at ' + _mtFmtTimeShort(playhead));
+};
+
+// ── Phase 2 / Tier 2 — Shared edit primitives + new operations ────────────
+// Drew's convergence directive (Tier 5C): merge/split/trim/confirm/exclude/
+// rename/retag must be reusable across Review Mode and Chopper. For now we
+// expose `_mtSegOps` as a thin namespace; the existing window._mtSegment*
+// handlers delegate to it where new code touches them. Full extraction
+// from the legacy handlers is a follow-up — current shape doesn't require
+// a rewrite to land Phase 2.
+var _mtSegOps = (function() {
+    function _ref(p, segId) {
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (!db || typeof bandPath !== 'function' || !segId) return null;
+        return db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + segId));
+    }
+    return {
+        // Merge segments[idx] + segments[idx+1] into one. The result
+        // inherits the LONGER segment's title (preserves user edit) and
+        // the dominant kind ('music' > 'transition' > 'speech' > 'silence').
+        // Stamps a new id (orig + '_merged_' + ts) so multitrackSegments
+        // overlay can persist independently of either parent.
+        merge: async function(idx) {
+            var p = _mtState.player;
+            if (!p || !Array.isArray(p.segments)) return;
+            var a = p.segments[idx];
+            var b = p.segments[idx + 1];
+            if (!a || !b) {
+                if (typeof showToast === 'function') showToast('No next segment to merge with');
+                return;
+            }
+            var aDur = (a.endSec || 0) - (a.startSec || 0);
+            var bDur = (b.endSec || 0) - (b.startSec || 0);
+            var kindRank = { music: 3, transition: 2, speech: 1, silence: 0 };
+            var aEff = _mtSegmentEffectiveKind(a) || 'silence';
+            var bEff = _mtSegmentEffectiveKind(b) || 'silence';
+            var winnerKind = (kindRank[aEff] >= kindRank[bEff]) ? aEff : bEff;
+            var winnerTitle = (aDur >= bDur) ? (a.songTitle || null) : (b.songTitle || null);
+            var winnerSongId = (aDur >= bDur) ? (a.songId || null) : (b.songId || null);
+            if (!confirm('Merge "' + (a.songTitle || a.label || 'segment ' + idx) + '" with "' + (b.songTitle || b.label || 'segment ' + (idx+1)) + '"?\n\nThe combined segment inherits "' + winnerKind + '" kind' + (winnerTitle ? ' and title "' + winnerTitle + '"' : '') + '.')) {
+                return;
+            }
+            var newId = (a.id || ('seg_' + idx)) + '_merged_' + Date.now();
+            var merged = Object.assign({}, a, {
+                id: newId,
+                startSec: Math.min(a.startSec, b.startSec),
+                endSec: Math.max(a.endSec, b.endSec),
+                durationSec: Math.round((Math.max(a.endSec, b.endSec) - Math.min(a.startSec, b.startSec)) * 100) / 100,
+                userKind: winnerKind,
+                songTitle: winnerTitle,
+                songId: winnerSongId,
+                // Reset review state — user should explicitly confirm the merged result.
+                reviewState: null,
+                confirmedAt: null,
+                confirmedBy: null,
+                isBetween: false,
+                // Note source for provenance.
+                mergedFrom: [a.id, b.id],
+                mergedAt: new Date().toISOString(),
+            });
+            var newSegs = p.segments.slice(0, idx).concat([merged]).concat(p.segments.slice(idx + 2));
+            p.segments = newSegs;
+            var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+            if (db && typeof bandPath === 'function') {
+                try {
+                    await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/analysis/story/segments'))
+                        .set(newSegs);
+                    await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/analysis/story/manualMergesAt'))
+                        .set(new Date().toISOString());
+                } catch (e) {
+                    console.warn('[Multitrack] merge persist failed:', e && e.message);
+                    if (typeof showToast === 'function') showToast('Merge UI applied but Firebase save failed: ' + (e && e.message));
+                }
+            }
+            _mtRenderSegmentsPanel();
+            _mtRenderSegmentMarkers();
+            if (typeof showToast === 'function') showToast('⛓ Merged');
+        },
+        // Trim a segment's start or end by a signed delta in seconds.
+        // edge: 'start' | 'end'. deltaSec: positive or negative.
+        // Clamps so we never cross into a neighbor or invert the range.
+        trim: async function(idx, edge, deltaSec) {
+            var p = _mtState.player;
+            if (!p || !Array.isArray(p.segments)) return;
+            var seg = p.segments[idx];
+            if (!seg) return;
+            var prev = p.segments[idx - 1];
+            var next = p.segments[idx + 1];
+            var minStart = prev ? (prev.endSec || 0) : 0;
+            var maxEnd = next ? (next.startSec || 99999) : 99999;
+            var newStart = seg.startSec, newEnd = seg.endSec;
+            if (edge === 'start') {
+                newStart = Math.max(minStart, Math.min(seg.endSec - 1.0, seg.startSec + deltaSec));
+            } else if (edge === 'end') {
+                newEnd = Math.min(maxEnd, Math.max(seg.startSec + 1.0, seg.endSec + deltaSec));
+            }
+            if (newStart === seg.startSec && newEnd === seg.endSec) {
+                if (typeof showToast === 'function') showToast('Trim clamped — already at neighbor edge');
+                return;
+            }
+            seg.startSec = newStart;
+            seg.endSec = newEnd;
+            seg.durationSec = Math.round((newEnd - newStart) * 100) / 100;
+            var ref = _ref(p, seg.id);
+            if (ref) {
+                try { await ref.update({ startSec: seg.startSec, endSec: seg.endSec }); }
+                catch (e) { console.warn('[Multitrack] trim persist failed:', e && e.message); }
+            }
+            _mtRenderSegmentsPanel();
+            _mtRenderSegmentMarkers();
+        },
+        // Set the user-kind override (S/C/T keystrokes). null clears it.
+        setKind: async function(idx, userKind) {
+            var p = _mtState.player;
+            if (!p || !Array.isArray(p.segments)) return;
+            var seg = p.segments[idx];
+            if (!seg) return;
+            var allowed = ['music', 'speech', 'silence', 'transition', null];
+            if (allowed.indexOf(userKind) === -1) return;
+            seg.userKind = userKind;
+            var ref = _ref(p, seg.id);
+            if (ref) {
+                try { await ref.update({ userKind: userKind }); }
+                catch (e) { console.warn('[Multitrack] setKind persist failed:', e && e.message); }
+            }
+            _mtRenderSegmentsPanel();
+            _mtRenderSegmentMarkers();
+            if (typeof showToast === 'function') showToast('Kind → ' + (userKind || 'auto'));
+        },
+    };
+})();
+
+window._mtSegmentMerge = function(idx) { return _mtSegOps.merge(idx); };
+window._mtSegmentTrim = function(idx, edge, delta) { return _mtSegOps.trim(idx, edge, delta); };
+window._mtSegmentSetKind = function(idx, k) { return _mtSegOps.setKind(idx, k); };
+
+// Phase 2D — Keyboard shortcuts. When focus is on a segment row (the
+// row container is tabindex=0), keystrokes operate on that row:
+//   S      → mark as Song (userKind='music')
+//   C      → mark as Chatter (userKind='speech')
+//   T      → mark as Transition (userKind='transition')
+//   X      → toggle Exclude
+//   Enter  → toggle Confirm
+//   ↑ / ↓  → move focus to prev/next row
+//
+// Skipped when focus is on an input/textarea/select (so typing a song
+// title doesn't trigger keyboard ops). Skipped when modal overlays are
+// open (analyze, custom mix, etc) to avoid hijacking.
+function _mtSegmentsKeydown(e) {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments)) return;
+    // Bail when typing in a text field.
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+    // Bail when a modal overlay is open (analyze, custom mix, segment edit, etc).
+    if (document.getElementById('mtAnalyzeModal')
+     || document.getElementById('mtCustomMixModal')
+     || document.getElementById('mtSegmentModal')
+     || document.getElementById('mtHeaderEditModal')) return;
+    // Bail when shift/ctrl/meta — leave browser shortcuts alone.
+    if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Find the row that currently has focus. If none has focus but the
+    // user pressed one of our keys, fall back to the first visible row.
+    var focused = document.activeElement;
+    var row = (focused && focused.closest) ? focused.closest('#mtSegmentsList [data-seg-idx]') : null;
+    if (!row) row = document.querySelector('#mtSegmentsList [data-seg-idx]');
+    if (!row) return;
+    var idx = parseInt(row.getAttribute('data-seg-idx'), 10);
+    if (!isFinite(idx)) return;
+
+    var key = e.key;
+    var keyLower = (typeof key === 'string') ? key.toLowerCase() : '';
+    var handled = true;
+    switch (keyLower) {
+        case 's': _mtSegOps.setKind(idx, 'music'); break;
+        case 'c': _mtSegOps.setKind(idx, 'speech'); break;
+        case 't': _mtSegOps.setKind(idx, 'transition'); break;
+        case 'x': window._mtSegmentToggleBetween(idx); break;
+        case 'enter': window._mtSegmentConfirm(idx); break;
+        case 'arrowdown': {
+            var next = row.nextElementSibling;
+            // Skip the inline trim panel (which is part of the prior row).
+            while (next && !next.hasAttribute('data-seg-idx')) next = next.nextElementSibling;
+            if (next) next.focus();
+            break;
+        }
+        case 'arrowup': {
+            var prev = row.previousElementSibling;
+            while (prev && !prev.hasAttribute('data-seg-idx')) prev = prev.previousElementSibling;
+            if (prev) prev.focus();
+            break;
+        }
+        default: handled = false;
+    }
+    if (handled) e.preventDefault();
+}
+
+// Per-row trim expansion state. Tracks which row's trim controls are
+// expanded inline below the segment row. Only one open at a time.
+window._mtSegmentToggleTrim = function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    p._trimOpenIdx = (p._trimOpenIdx === idx) ? null : idx;
+    _mtRenderSegmentsPanel();
 };
 
 window._mtSegmentJump = function(idx) {
