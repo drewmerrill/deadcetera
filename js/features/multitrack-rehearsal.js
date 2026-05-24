@@ -1076,32 +1076,58 @@ window._mtOpenPlayer = async function(sessionId, opts) {
         return ao - bo;
     });
 
-    // Explicit-mode entry (used by the mode toggle to bypass the auto-pick).
+    // Isolate Mode is a pure UI toggle — no render concerns.
     if (opts.mode === 'isolate') {
         return _mtOpenIsolateMode(session, tracks, sessionId);
     }
-    if (opts.mode === 'review') {
-        return _mtOpenReviewMode(session, tracks, sessionId, opts.render || null);
-    }
 
-    // Auto-pick: check for an existing render. If one exists, use Review.
-    // If not, still open Review (with "Preparing…") and auto-trigger render.
+    // Three-step priority chain so we never fire duplicate renders, even
+    // when the user explicitly toggles to Review Mode. Earlier bug
+    // (2026-05-24): _mtSwitchToReview bypassed /status and blindly opened
+    // Review Mode with no render → auto-render fired EVERY time the user
+    // flipped Isolate → Review on a session that already had a render.
+    //   1. /multitrack/render/status — completed render in R2 → use it
+    //   2. Firebase _renderInFlight — in-flight render started by another
+    //      tab/refresh within the last 15 min → RESUME polling that callId
+    //   3. Neither → kick off a fresh render (in _mtKickAutoRender)
     var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
-    var existingRender = null;
-    try {
-        var sr = await fetch(workerBase + '/multitrack/render/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(sessionId));
-        if (sr.ok) {
-            var sj = await sr.json();
-            if (sj && Array.isArray(sj.renders) && sj.renders.length) {
-                // Newest first (worker sorts by uploaded desc). Use the most recent.
-                existingRender = sj.renders[0];
+    var existingRender = (opts.mode === 'review' && opts.render) ? opts.render : null;
+    var inFlight = null;
+    if (!existingRender) {
+        try {
+            var sr = await fetch(workerBase + '/multitrack/render/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(sessionId));
+            if (sr.ok) {
+                var sj = await sr.json();
+                if (sj && Array.isArray(sj.renders) && sj.renders.length) {
+                    existingRender = sj.renders[0]; // newest by worker sort
+                }
             }
+        } catch (e) {
+            console.warn('[Multitrack] render status check failed (will continue in Review without auto-render):', e && e.message);
         }
-    } catch (e) {
-        console.warn('[Multitrack] render status check failed (will continue in Review without auto-render):', e && e.message);
     }
-    return _mtOpenReviewMode(session, tracks, sessionId, existingRender);
+    // Only consult Firebase if /status returned no completed render — if a
+    // completed one exists, in-flight Firebase entry is stale.
+    if (!existingRender) {
+        try {
+            var ifSnap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/_renderInFlight')).once('value');
+            var ifVal = ifSnap && ifSnap.val();
+            if (ifVal && ifVal.callId && ifVal.startedAt) {
+                var ageMs = Date.now() - new Date(ifVal.startedAt).getTime();
+                if (ageMs >= 0 && ageMs < 15 * 60 * 1000) {
+                    inFlight = ifVal;
+                    console.log('[Multitrack] resuming in-flight render callId=' + ifVal.callId + ' (' + Math.round(ageMs / 1000) + 's old)');
+                } else {
+                    // Stale entry — clear it so we don't poll a dead callId
+                    try { await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/_renderInFlight')).remove(); } catch (e) {}
+                }
+            }
+        } catch (e) {
+            console.warn('[Multitrack] in-flight check failed:', e && e.message);
+        }
+    }
+    return _mtOpenReviewMode(session, tracks, sessionId, existingRender, inFlight);
 };
 
 // ── Isolate Mode (legacy 17-stream player) ──────────────────────────────────
@@ -1370,7 +1396,7 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
 // accurate, fast seek, no drift. If no render exists yet, this UI shows
 // "Preparing review mix…" and triggers /multitrack/render/start in the
 // background; on success it swaps the <audio> src.
-async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo) {
+async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFlight) {
     var existing = document.getElementById('mtPlayerOverlay');
     if (existing) existing.remove();
     var ov = document.createElement('div');
@@ -1491,56 +1517,102 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo) {
         }
     });
 
-    // If no render yet, trigger one. The render-complete handler swaps
-    // the <audio> src in place, updates the banner, and the player picks
-    // up the duration on the next loadedmetadata event.
+    // If no completed render: either RESUME polling an in-flight one (from
+    // Firebase _renderInFlight, set by an earlier session-open in this tab
+    // or another) OR kick off a fresh render. Never start a new render
+    // while another one is already running for the same session.
     if (!renderUrl) {
-        _mtKickAutoRender(session, sessionId);
+        _mtKickAutoRender(session, sessionId, inFlight || null);
     }
 }
 
-// Internal helper — fires off a fresh render and polls until it lands.
-// Used by Review Mode when no render exists for the session yet.
-async function _mtKickAutoRender(session, sessionId) {
+// Internal helper — fires off a fresh render OR resumes polling an
+// in-flight one. Used by Review Mode when no completed render exists.
+//
+// resumeFrom (optional): { callId, startedAt, renderId } from Firebase.
+// When present, skip /start and poll the existing callId instead.
+async function _mtKickAutoRender(session, sessionId, resumeFrom) {
     var p = _mtState.player;
     if (!p || p.sessionId !== sessionId) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
     var banner = document.getElementById('mtReviewStatusBanner');
     function setBanner(text) {
         if (banner) banner.innerHTML = text;
     }
+    function inFlightRef() {
+        if (!db || typeof bandPath !== 'function') return null;
+        return db.ref(bandPath('rehearsal_sessions/' + sessionId + '/_renderInFlight'));
+    }
+    async function clearInFlight() {
+        var ref = inFlightRef();
+        if (ref) { try { await ref.remove(); } catch (e) {} }
+    }
+
+    // Poll budget: 180 attempts × 5s = 15 min. Empirical 2026-05-24
+    // baseline was 8m 20s for a 3-hour 17-stem session pre-parallel-
+    // download optimization. 15 min gives 80% headroom for the slowest
+    // realistic case (longest session × cold Modal start).
+    var POLL_MAX = 180;
+    var POLL_INTERVAL_MS = 5000;
+
+    var callId, renderId, startedAt;
     try {
-        setBanner('⏳ Preparing review mix on the server… (typically ~30-60s for a 3-hour rehearsal)');
-        // Build a default recipe — every track at unity, no mute/solo, default
-        // reverb send. The render service fills the same defaults if we omit
-        // tracks; we pass an empty recipe for simplicity.
-        var renderId = 'auto-' + Date.now();
-        var startRes = await fetch(workerBase + '/multitrack/render/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                bandSlug: slug,
-                sessionId: sessionId,
-                renderId: renderId,
-                recipe: {
-                    tracks: {},                  // empty = every stem unity gain
-                    masterReverbWet: 0,          // no reverb on auto-render
-                    outputFormat: 'mp3',         // small + universally supported
-                    outputName: 'rehearsal-mix-' + (session.date || sessionId) + '.mp3'
+        if (resumeFrom && resumeFrom.callId) {
+            callId = resumeFrom.callId;
+            renderId = resumeFrom.renderId || ('resume-' + Date.now());
+            startedAt = resumeFrom.startedAt || new Date().toISOString();
+            var ageSec = Math.round((Date.now() - new Date(startedAt).getTime()) / 1000);
+            setBanner('⏳ Resuming in-flight render… (' + ageSec + 's elapsed before this tab opened)');
+        } else {
+            setBanner('⏳ Preparing review mix on the server… (~2-4 min for a 3-hour rehearsal)');
+            renderId = 'auto-' + Date.now();
+            startedAt = new Date().toISOString();
+            var startRes = await fetch(workerBase + '/multitrack/render/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bandSlug: slug,
+                    sessionId: sessionId,
+                    renderId: renderId,
+                    recipe: {
+                        tracks: {},                  // empty = every stem unity gain
+                        masterReverbWet: 0,          // no reverb on auto-render
+                        outputFormat: 'mp3',         // small + universally supported
+                        outputName: 'rehearsal-mix-' + (session.date || sessionId) + '.mp3'
+                    }
+                })
+            });
+            var startJson = await startRes.json();
+            if (!startRes.ok || !startJson || !startJson.call_id) {
+                throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+            }
+            callId = startJson.call_id;
+            // Persist so concurrent tabs / refreshes can RESUME instead of
+            // firing a duplicate render. 15-min staleness check happens on
+            // the read side in _mtOpenPlayer.
+            var ref = inFlightRef();
+            if (ref) {
+                try {
+                    await ref.set({
+                        callId: callId,
+                        renderId: renderId,
+                        startedAt: startedAt,
+                        startedBy: (typeof currentUserEmail !== 'undefined' ? currentUserEmail : null),
+                    });
+                } catch (e) {
+                    console.warn('[Multitrack] _renderInFlight write failed (non-fatal):', e && e.message);
                 }
-            })
-        });
-        var startJson = await startRes.json();
-        if (!startRes.ok || !startJson || !startJson.call_id) {
-            throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+            }
         }
-        var callId = startJson.call_id;
-        // Poll every 5s, up to 5 min (60 attempts).
-        for (var attempt = 0; attempt < 60; attempt++) {
+
+        var baseElapsedSec = Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000));
+        for (var attempt = 0; attempt < POLL_MAX; attempt++) {
             if (!_mtState.player || _mtState.player.sessionId !== sessionId) return;
-            await new Promise(function(r) { setTimeout(r, 5000); });
-            setBanner('⏳ Rendering on the server… (' + ((attempt + 1) * 5) + 's elapsed)');
+            await new Promise(function(r) { setTimeout(r, POLL_INTERVAL_MS); });
+            var totalSec = baseElapsedSec + (attempt + 1) * 5;
+            setBanner('⏳ Rendering on the server… (' + totalSec + 's elapsed)');
             var checkRes = await fetch(workerBase + '/multitrack/render/check', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1562,16 +1634,24 @@ async function _mtKickAutoRender(session, sessionId) {
                 };
                 setBanner('✓ Rendered ' + escHtml(checkJson.fileName || 'mix') + ' — playing single stream · seek anywhere instantly');
                 if (typeof showToast === 'function') showToast('✓ Review mix ready');
+                await clearInFlight();
                 return;
             }
             if (checkJson && (checkJson.success === false || checkJson.status === 'error')) {
+                await clearInFlight();
                 throw new Error((checkJson.error || checkJson.detail || 'render_error'));
             }
         }
-        throw new Error('render timed out after 5 minutes');
+        throw new Error('render timed out after 15 minutes');
     } catch (e) {
         console.warn('[Multitrack] auto-render failed:', e);
-        setBanner('⚠️ Auto-render failed: ' + escHtml(String(e && e.message || e)) + '. <button onclick="_mtSwitchToIsolate()" style="background:none;border:none;color:#a5b4fc;text-decoration:underline;cursor:pointer;font:inherit;padding:0">Open Isolate Mode instead</button>');
+        // Don't clear _renderInFlight on timeout — the Modal job may still
+        // succeed, in which case a future session-open will pick up the
+        // completed render via /status. If it actually errored on Modal,
+        // the next /check call would return success:false and the next
+        // open-window will then clear-and-restart. Bias: tolerate dup-poll
+        // over duplicate-render.
+        setBanner('⚠️ Auto-render polling timed out: ' + escHtml(String(e && e.message || e)) + '. The render may still complete on the server — try refreshing in a minute. Or <button onclick="_mtSwitchToIsolate()" style="background:none;border:none;color:#a5b4fc;text-decoration:underline;cursor:pointer;font:inherit;padding:0">open Isolate Mode</button>.');
     }
 }
 
@@ -1581,8 +1661,13 @@ window._mtSwitchToReview = function() {
     if (!p) return;
     if (p.mode === 'review') return;
     var sid = p.sessionId;
+    // Forward any render info we already know about, so the router can
+    // skip the /status network call when toggling. The router still does
+    // a /status check as a safety net when this is absent. Both belt and
+    // suspenders against the 2026-05-24 "Isolate→Review re-renders" bug.
+    var known = p.renderInfo || null;
     _mtClosePlayer();
-    window._mtOpenPlayer(sid, { mode: 'review' });
+    window._mtOpenPlayer(sid, { mode: 'review', render: known });
 };
 window._mtSwitchToIsolate = function() {
     var p = _mtState.player;
@@ -1665,7 +1750,11 @@ window._mtExportRehearsalMix = async function() {
             throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
         }
         var callId = startJson.call_id;
-        for (var attempt = 0; attempt < 60; attempt++) {
+        // Poll budget extended to 15 min (180 × 5s). Empirical 2026-05-24:
+        // a 3-hour 17-stem rehearsal takes ~8 min end-to-end with sequential
+        // R2 downloads; ~2-3 min with parallel ones. 15 min gives headroom
+        // for the slowest case.
+        for (var attempt = 0; attempt < 180; attempt++) {
             await new Promise(function(r) { setTimeout(r, 5000); });
             setLabel('⏳ Rendering (' + ((attempt + 1) * 5) + 's)…', true);
             var checkRes = await fetch(workerBase + '/multitrack/render/check', {
@@ -1685,7 +1774,7 @@ window._mtExportRehearsalMix = async function() {
                 throw new Error((checkJson.error || checkJson.detail || 'render_error'));
             }
         }
-        throw new Error('render timed out after 5 minutes');
+        throw new Error('render timed out after 15 minutes');
     } catch (e) {
         console.warn('[Multitrack] export render failed:', e);
         setLabel('✗ ' + (e.message || 'failed'), false);
