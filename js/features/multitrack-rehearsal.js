@@ -2179,35 +2179,149 @@ window._mtSeekMaster = function(pct) {
     var dur = p.audios[0].duration;
     if (!isFinite(dur) || dur <= 0) return;
     var t = (parseFloat(pct) / 100) * dur;
-    // Explicit pause → seek → resume sequence. Seeking 17 elements while
-    // their previous play() promises are still resolving triggers a cascade
-    // of AbortError rejections — and some tracks fail to recover, producing
-    // the "missing instruments" symptom Drew flagged at the 140-min seek
-    // point. Pausing first kills the in-flight promises cleanly; the brief
-    // 30 ms setTimeout lets the browser settle the currentTime writes
-    // before we re-issue play.
+
     var wasPlaying = p.masterPlaying;
     if (wasPlaying) {
         p.audios.forEach(function(a) { try { a.pause(); } catch (e) {} });
     }
     p.audios.forEach(function(a) { try { a.currentTime = t; } catch (e) {} });
-    if (wasPlaying) {
-        setTimeout(function() {
-            if (!_mtState.player || !_mtState.player.masterPlaying) return;
-            _mtState.player.audios.forEach(function(a) {
-                var pr = a.play();
-                if (pr && typeof pr.catch === 'function') {
-                    pr.catch(function(err) {
-                        // AbortErrors from seek/play races are recoverable
-                        // and self-clearing — silence the console noise.
-                        if (err && err.name && err.name !== 'AbortError') {
-                            console.warn('[Multitrack] play() rejected for', a.dataset.trackId, err.name);
-                        }
-                    });
-                }
-            });
-        }, 30);
+
+    if (!wasPlaying) {
+        _mtMaybeUpdateMasterPosition();
+        return;
     }
+
+    // Far-seek strategy: HTML5 <audio> can't be perfectly sync-started across
+    // 17 streaming elements. After a far seek (e.g. -80 min), each element's
+    // buffer arrives at a different wall-clock time. If we call play() on
+    // all 17 at once, the loaded ones start; the unloaded ones stall, then
+    // auto-resume from their OWN currentTime (still the seek target) while
+    // the playing tracks have already advanced — producing permanent drift
+    // (Drew, 2026-05-24: "tracks come in one by one, full drift").
+    //
+    // The fix: late tracks must rejoin AT THE CURRENT MASTER POSITION, not
+    // at their original seek target. Flow:
+    //   1. Wait for master audio (index 0) to be ready (or 20 s fallback)
+    //   2. Play tracks that are also ready at that moment — synced start
+    //   3. For each NOT-yet-ready track: on canplay → re-seek it to whatever
+    //      master.currentTime is NOW → then play. They join late but
+    //      synchronized, instead of staggered with permanent drift.
+    var playBtn = document.getElementById('mtPlayAll');
+    var totalCount = p.audios.length;
+    var seekToken = (p._seekToken || 0) + 1;
+    p._seekToken = seekToken;
+    var startedPlayback = false;
+    var startedCount = 0;
+    var initialWaitTimer = null;
+    var progressTimer = null;
+    var bufferTick = null;
+
+    function isStale() { return p._seekToken !== seekToken; }
+    function isCancelled() {
+        return !_mtState.player || !_mtState.player.masterPlaying;
+    }
+    function updateBtnBuffering() {
+        if (startedPlayback || !playBtn || isStale()) return;
+        var ready = 0;
+        p.audios.forEach(function(a) { if (a.readyState >= 3) ready++; });
+        playBtn.textContent = '⏳ ' + ready + '/' + totalCount;
+    }
+    function updateBtnPlaying() {
+        if (!playBtn || isStale()) return;
+        if (startedCount >= totalCount) {
+            playBtn.textContent = '⏸ Pause';
+        } else {
+            playBtn.textContent = '⏸ ' + startedCount + '/' + totalCount;
+        }
+    }
+    function safePlay(a) {
+        var pr = a.play();
+        if (pr && typeof pr.catch === 'function') {
+            pr.catch(function(err) {
+                if (err && err.name === 'AbortError') return;
+                console.warn('[Multitrack] play() rejected for', a.dataset.trackId, err && err.name);
+            });
+        }
+    }
+    function catchUpWhenReady(a) {
+        // Latecomer: wait for canplay, re-seek to master playhead, then play.
+        var handler = function() {
+            a.removeEventListener('canplay', handler);
+            if (isStale() || isCancelled()) return;
+            if (a.readyState < 3) {
+                a.addEventListener('canplay', handler);
+                return;
+            }
+            var masterPos = p.audios[0].currentTime;
+            try { a.currentTime = masterPos; } catch (e) {}
+            // Brief settle so the re-seek range fetch lands before play.
+            setTimeout(function() {
+                if (isStale() || isCancelled()) return;
+                safePlay(a);
+                startedCount++;
+                updateBtnPlaying();
+            }, 50);
+        };
+        a.addEventListener('canplay', handler);
+    }
+    function startPlayback() {
+        if (startedPlayback || isStale() || isCancelled()) return;
+        startedPlayback = true;
+        if (initialWaitTimer) { clearTimeout(initialWaitTimer); initialWaitTimer = null; }
+        if (bufferTick) { clearInterval(bufferTick); bufferTick = null; }
+        p.audios.forEach(function(a) {
+            if (a.readyState >= 3) {
+                safePlay(a);
+                startedCount++;
+            } else {
+                catchUpWhenReady(a);
+            }
+        });
+        updateBtnPlaying();
+        progressTimer = setInterval(function() {
+            if (isStale() || isCancelled() || startedCount >= totalCount) {
+                clearInterval(progressTimer);
+                progressTimer = null;
+                if (!isStale() && !isCancelled() && playBtn) {
+                    playBtn.textContent = '⏸ Pause';
+                }
+                return;
+            }
+            updateBtnPlaying();
+        }, 500);
+    }
+
+    updateBtnBuffering();
+
+    // Phase 1: wait for the master audio (index 0) to be ready.
+    if (p.audios[0].readyState >= 3) {
+        startPlayback();
+    } else {
+        var masterHandler = function() {
+            p.audios[0].removeEventListener('canplay', masterHandler);
+            if (isStale() || isCancelled()) return;
+            startPlayback();
+        };
+        p.audios[0].addEventListener('canplay', masterHandler);
+        // Heartbeat: update buffering counter while we wait for master.
+        bufferTick = setInterval(function() {
+            if (startedPlayback || isStale() || isCancelled()) {
+                clearInterval(bufferTick);
+                bufferTick = null;
+                return;
+            }
+            updateBtnBuffering();
+        }, 250);
+        // Fallback: 20 s — if the master track somehow never fires canplay
+        // (network hiccup, server stall), start playback anyway with
+        // whatever's ready. Catch-up handlers still chase the master.
+        initialWaitTimer = setTimeout(function() {
+            if (startedPlayback || isStale() || isCancelled()) return;
+            console.warn('[Multitrack] master track buffer timeout — starting anyway');
+            startPlayback();
+        }, 20000);
+    }
+
     _mtMaybeUpdateMasterPosition();
 };
 
