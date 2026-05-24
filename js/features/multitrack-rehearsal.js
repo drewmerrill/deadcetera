@@ -2865,14 +2865,18 @@ window._mtAnalyzeRehearsal = async function() {
     }).join('');
 
     var pickerHtml = '<div id="mtAnalyzeModal" style="position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)">'
-        + '<div style="max-width:420px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08)">'
-        + '<div style="font-weight:800;font-size:1.05em;color:#f1f5f9;margin-bottom:8px">🎯 Analyze rehearsal for song boundaries</div>'
+        + '<div style="max-width:420px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08);position:relative">'
+        // Top-right ✕ — always available, dismisses the modal without
+        // touching the in-flight Modal job. Matches the close affordance
+        // pattern of the Custom Mix modal.
+        + '<button onclick="_mtAnalyzeClose()" id="mtAnalyzeXBtn" title="Close (analysis keeps running)" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px;line-height:1">×</button>'
+        + '<div style="font-weight:800;font-size:1.05em;color:#f1f5f9;margin-bottom:8px;padding-right:24px">🎯 Analyze rehearsal for song boundaries</div>'
         + '<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:14px;line-height:1.4">Picks one stem to feed the server-side segmentation engine. Drums work best for clean section transitions; vocals for lyric-start detection.</div>'
         + '<label for="mtAnalyzeStem" style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Analysis source stem</label>'
         + '<select id="mtAnalyzeStem" name="mtAnalyzeStem" autocomplete="off" class="app-select" style="width:100%;font-size:0.9em;margin-bottom:14px">' + trackOptionsHtml + '</select>'
         + '<div id="mtAnalyzeStatus" style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px;min-height:18px"></div>'
         + '<div style="display:flex;gap:8px;justify-content:flex-end">'
-        + '<button onclick="_mtAnalyzeClose()" class="btn btn-ghost btn-sm">Cancel</button>'
+        + '<button onclick="_mtAnalyzeClose()" id="mtAnalyzeCancelBtn" class="btn btn-ghost btn-sm">Cancel</button>'
         + '<button id="mtAnalyzeGo" onclick="_mtAnalyzeRun()" class="btn btn-primary btn-sm">🎯 Run analysis</button>'
         + '</div>'
         + '</div>'
@@ -2937,6 +2941,11 @@ window._mtAnalyzeRun = async function() {
         }
         var callId = startJson.call_id;
         if (goBtn) goBtn.textContent = '⏳ Analyzing…';
+        // Once the Modal job is spawned, "Cancel" is misleading — clicking
+        // it only dismisses the modal locally; the GPU/CPU job keeps
+        // running. Relabel to make that clear.
+        var cancelBtn = document.getElementById('mtAnalyzeCancelBtn');
+        if (cancelBtn) cancelBtn.textContent = 'Close (keeps running)';
 
         // 30-minute poll budget — matches the chopper's server-analyze
         // implementation. A 4h rehearsal segments in ~10 min; the slack
