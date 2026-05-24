@@ -1812,7 +1812,9 @@ function _mtCollectSongSegments(player) {
     if (!player || !Array.isArray(player.segments) || !player.segments.length) return [];
     var out = [];
     player.segments.forEach(function(s) {
-        if (s.isBetween) return;             // user-flagged chatter/silence
+        if (s.isBetween) return;                    // user-flagged chatter/silence
+        if (s.kind === 'silence') return;           // server-detected silence
+        if (s.kind === 'speech') return;            // server-detected speech/chatter
         var start = (typeof s.startSec === 'number') ? s.startSec : (typeof s.start === 'number' ? s.start : null);
         var end = (typeof s.endSec === 'number') ? s.endSec : (typeof s.end === 'number' ? s.end : null);
         if (start == null || end == null) return;
@@ -1820,7 +1822,7 @@ function _mtCollectSongSegments(player) {
         out.push({
             start: start,
             end: end,
-            title: s.songTitle || s.label || null,
+            title: s.songTitle || (s.likelySong && s.likelySong.title) || s.label || null,
             id: s.id || null,
         });
     });
@@ -2865,9 +2867,9 @@ window._mtAnalyzeRehearsal = async function() {
     var pickerHtml = '<div id="mtAnalyzeModal" style="position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)">'
         + '<div style="max-width:420px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08)">'
         + '<div style="font-weight:800;font-size:1.05em;color:#f1f5f9;margin-bottom:8px">🎯 Analyze rehearsal for song boundaries</div>'
-        + '<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:14px;line-height:1.4">Picks one stem to feed the segmentation engine. Drums work best for clean section transitions; vocals for lyric-start detection. (Full-multitrack mixdown coming in a future build.)</div>'
-        + '<label style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Analysis source stem</label>'
-        + '<select id="mtAnalyzeStem" class="app-select" style="width:100%;font-size:0.9em;margin-bottom:14px">' + trackOptionsHtml + '</select>'
+        + '<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:14px;line-height:1.4">Picks one stem to feed the server-side segmentation engine. Drums work best for clean section transitions; vocals for lyric-start detection.</div>'
+        + '<label for="mtAnalyzeStem" style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Analysis source stem</label>'
+        + '<select id="mtAnalyzeStem" name="mtAnalyzeStem" autocomplete="off" class="app-select" style="width:100%;font-size:0.9em;margin-bottom:14px">' + trackOptionsHtml + '</select>'
         + '<div id="mtAnalyzeStatus" style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px;min-height:18px"></div>'
         + '<div style="display:flex;gap:8px;justify-content:flex-end">'
         + '<button onclick="_mtAnalyzeClose()" class="btn btn-ghost btn-sm">Cancel</button>'
@@ -2899,50 +2901,112 @@ window._mtAnalyzeRun = async function() {
         if (status) status.textContent = 'Selected stem has no URL';
         return;
     }
-    if (goBtn) { goBtn.disabled = true; goBtn.textContent = '⏳ Analyzing…'; }
-    if (status) status.textContent = 'Fetching stem audio…';
+
+    // Server-side segmenter (Modal segment_endpoint via the worker).
+    // The prior browser-side path (decodeAudioData → RehearsalAnalysis.run)
+    // failed with EncodingError on 3-hour FLAC stems: decoded PCM is ~2 GB
+    // for a 3h mono 48kHz file, exceeding Chrome's AudioBuffer cap.
+    // Modal downloads the URL, decodes in Python, runs segmentation, returns
+    // the segment list. No browser memory pressure.
+    if (goBtn) { goBtn.disabled = true; goBtn.textContent = '⏳ Submitting…'; }
+    if (status) status.textContent = 'Submitting ' + (track.label || track.role) + ' to server segmenter…';
+
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    // Best-effort setlist context for song matching — same helper the
+    // chopper uses. Falls back to empty if not loaded yet.
+    var setlist = [];
+    try {
+        if (typeof _chopBuildSetlistContext === 'function') {
+            setlist = _chopBuildSetlistContext() || [];
+        }
+    } catch (e) {}
 
     try {
-        // Step 1: fetch stem bytes
-        var res = await fetch(track.stemUrl);
-        if (!res.ok) throw new Error('fetch failed: HTTP ' + res.status);
-        var arrayBuffer = await res.arrayBuffer();
-        if (status) status.textContent = 'Decoding audio (' + Math.round(arrayBuffer.byteLength / (1024 * 1024)) + ' MB)…';
-
-        // Step 2: decode via a fresh AudioContext (independent of player's
-        // AudioContext so we don't fight playback). For very long files this
-        // can take a while + hold ~2 GB in memory; we discard after analysis.
-        var Ctx = window.AudioContext || window.webkitAudioContext;
-        var decoder = new Ctx();
-        var decoded = await decoder.decodeAudioData(arrayBuffer);
-        if (status) status.textContent = 'Running segmentation engine (' + Math.round(decoded.duration / 60) + ' min of audio)…';
-
-        // Step 3: feed to the existing pipeline. force:true so we re-run
-        // even if a prior analysis is cached.
-        var result = await window.RehearsalAnalysis.run(p.sessionId, {
-            audioBuffer: decoded,
-            force: true,
-            sourceStemId: track.trackId,
-            sourceStemRole: track.role
+        var startRes = await fetch(workerBase + '/rehearsal-segment/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                songId: p.sessionId,
+                sourceUrl: track.stemUrl,
+                setlist: setlist
+            })
         });
+        var startJson = await startRes.json();
+        if (!startRes.ok || !startJson || !startJson.success || !startJson.call_id) {
+            throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+        }
+        var callId = startJson.call_id;
+        if (goBtn) goBtn.textContent = '⏳ Analyzing…';
 
-        // Step 4: release decoder + buffer ASAP — we don't need them anymore
-        try { decoder.close(); } catch (e) {}
-        decoded = null;
+        // 30-minute poll budget — matches the chopper's server-analyze
+        // implementation. A 4h rehearsal segments in ~10 min; the slack
+        // covers cold Modal containers + queue waits.
+        var result = null;
+        for (var attempt = 0; attempt < 360; attempt++) {
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            var elapsed = (attempt + 1) * 5;
+            if (status) status.textContent = 'Server analyzing (' + elapsed + 's elapsed)… you can close this modal; analysis keeps running.';
+            var checkRes = await fetch(workerBase + '/rehearsal-segment/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: callId })
+            });
+            var checkJson = await checkRes.json();
+            if (!checkJson || !checkJson.success) {
+                throw new Error((checkJson && checkJson.error) || 'check_failed');
+            }
+            if (checkJson.status === 'processing') continue;
+            result = checkJson;
+            break;
+        }
+        if (!result) throw new Error('server analysis timed out after 30 min');
 
-        if (status) status.textContent = '✓ Analysis complete. Loading segments…';
-
-        // Step 5: load segments back and refresh the seek bar markers
+        // Translate the server's snake_case segment shape into the
+        // camelCase shape _mtLoadSegments + _mtCollectSongSegments expect.
+        // Persist to rehearsal_sessions/{sid}/analysis/story so the existing
+        // load path reads it cleanly.
+        var serverSegs = Array.isArray(result.segments) ? result.segments : [];
+        var converted = serverSegs.map(function(s, i) {
+            return {
+                id: s.id || ('seg_' + i),
+                startSec: s.start_sec,
+                endSec: s.end_sec,
+                durationSec: s.duration_sec,
+                kind: s.kind || null,
+                label: (s.likely_song && s.likely_song.title) || s.kind || 'segment',
+                confidence: s.confidence,
+                evidence: s.evidence || null,
+                bpm: s.bpm || null,
+                key: s.key || null,
+                likelySong: s.likely_song || null,
+                likelyRestart: !!s.likely_restart,
+            };
+        });
+        var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+        if (db && typeof bandPath === 'function') {
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/analysis/story')).set({
+                segments: converted,
+                summary: result.summary || {},
+                durationSec: result.duration_sec || null,
+                sourceStemId: track.trackId,
+                sourceStemRole: track.role || null,
+                analyzedAt: new Date().toISOString(),
+                analyzer: 'modal_segment_endpoint',
+            });
+        }
+        if (status) status.textContent = '✓ Detected ' + converted.length + ' segments. Loading…';
         await _mtLoadSegments(p.sessionId);
         _mtRenderSegmentMarkers();
         if (typeof showToast === 'function') {
             var n = (p.segments || []).length;
-            showToast('✓ Detected ' + n + ' segment' + (n === 1 ? '' : 's') + '. Click a marker on the seek bar to name it.');
+            var s = result.summary || {};
+            var detail = (s.music_segments ? s.music_segments + ' music · ' : '')
+                       + (s.matched_to_setlist ? s.matched_to_setlist + ' matched to setlist' : '');
+            showToast('✓ ' + n + ' segments via server analyzer' + (detail ? ' (' + detail + ')' : ''), 6000);
         }
         _mtAnalyzeClose();
-        // If the Custom Mix modal triggered this Analyze run (via 🎯 Run
-        // Analyze now), reopen Custom Mix so the songs-only checkbox is
-        // now enabled and the user can continue without re-navigating.
+        // If Custom Mix triggered this Analyze run, reopen it so the
+        // songs-only checkbox is now enabled.
         if (p._reopenCmxAfterAnalyze) {
             p._reopenCmxAfterAnalyze = false;
             if (typeof window._mtOpenCustomMixModal === 'function') {
@@ -2950,7 +3014,7 @@ window._mtAnalyzeRun = async function() {
             }
         }
     } catch (e) {
-        console.error('[Multitrack] analyze failed:', e);
+        console.error('[Multitrack] server analyze failed:', e);
         if (status) status.textContent = '✗ ' + (e.message || 'analysis failed');
         if (goBtn) { goBtn.disabled = false; goBtn.textContent = '🎯 Retry'; }
     }
