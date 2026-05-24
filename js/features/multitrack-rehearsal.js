@@ -2244,7 +2244,9 @@ window._mtSeekMaster = function(pct) {
         }
     }
     function catchUpWhenReady(a) {
-        // Latecomer: wait for canplay, re-seek to master playhead, then play.
+        // Latecomer: wait for canplay, re-seek to the CURRENT playhead
+        // (median across playing tracks, NOT audios[0] — that may be the
+        // bad-buffering stem itself), then play.
         var handler = function() {
             a.removeEventListener('canplay', handler);
             if (isStale() || isCancelled()) return;
@@ -2252,7 +2254,7 @@ window._mtSeekMaster = function(pct) {
                 a.addEventListener('canplay', handler);
                 return;
             }
-            var masterPos = p.audios[0].currentTime;
+            var masterPos = _mtCurrentPlayheadSec();
             try { a.currentTime = masterPos; } catch (e) {}
             // Brief settle so the re-seek range fetch lands before play.
             setTimeout(function() {
@@ -2293,17 +2295,35 @@ window._mtSeekMaster = function(pct) {
 
     updateBtnBuffering();
 
-    // Phase 1: wait for the master audio (index 0) to be ready.
-    if (p.audios[0].readyState >= 3) {
+    // Phase 1: wait until ANY track is ready (don't pin to audios[0] — one
+    // bad-buffering stem there freezes the whole player, which Drew hit
+    // 2026-05-24 with Kick · Jay). First ready track triggers the start;
+    // others either join immediately or via catchUpWhenReady.
+    function anyReady() {
+        for (var i = 0; i < p.audios.length; i++) {
+            if (p.audios[i].readyState >= 3) return true;
+        }
+        return false;
+    }
+
+    if (anyReady()) {
         startPlayback();
     } else {
-        var masterHandler = function() {
-            p.audios[0].removeEventListener('canplay', masterHandler);
+        var firstReadyHandlers = [];
+        function onAnyReady() {
+            firstReadyHandlers.forEach(function(rec) {
+                rec.a.removeEventListener('canplay', rec.fn);
+            });
+            firstReadyHandlers = [];
             if (isStale() || isCancelled()) return;
             startPlayback();
-        };
-        p.audios[0].addEventListener('canplay', masterHandler);
-        // Heartbeat: update buffering counter while we wait for master.
+        }
+        p.audios.forEach(function(a) {
+            var fn = function() { onAnyReady(); };
+            firstReadyHandlers.push({ a: a, fn: fn });
+            a.addEventListener('canplay', fn);
+        });
+        // Heartbeat: update buffering counter while we wait.
         bufferTick = setInterval(function() {
             if (startedPlayback || isStale() || isCancelled()) {
                 clearInterval(bufferTick);
@@ -2312,12 +2332,12 @@ window._mtSeekMaster = function(pct) {
             }
             updateBtnBuffering();
         }, 250);
-        // Fallback: 20 s — if the master track somehow never fires canplay
-        // (network hiccup, server stall), start playback anyway with
-        // whatever's ready. Catch-up handlers still chase the master.
+        // Fallback: 20 s — if no track has fired canplay (unlikely with 17
+        // streams), start anyway. Browsers will keep buffering and the
+        // catch-up handlers continue to chase the playhead.
         initialWaitTimer = setTimeout(function() {
             if (startedPlayback || isStale() || isCancelled()) return;
-            console.warn('[Multitrack] master track buffer timeout — starting anyway');
+            console.warn('[Multitrack] no track buffered in 20s — starting anyway');
             startPlayback();
         }, 20000);
     }
@@ -2345,7 +2365,12 @@ window._mtSkipBy = function(deltaSec) {
     if (!p || !p.audios[0]) return;
     var dur = p.audios[0].duration;
     if (!isFinite(dur) || dur <= 0) return;
-    var t = Math.max(0, Math.min(dur, (p.audios[0].currentTime || 0) + deltaSec));
+    // Use median playhead as the reference, not audios[0] (which may be
+    // stuck/stalled). Without this, skipping while index 0 is frozen
+    // would compute deltas off a stale reference and re-seek everything
+    // to the same wrong time.
+    var refTime = _mtCurrentPlayheadSec();
+    var t = Math.max(0, Math.min(dur, refTime + deltaSec));
     p.audios.forEach(function(a) { try { a.currentTime = t; } catch (e) {} });
     _mtMaybeUpdateMasterPosition();
 };
@@ -2468,10 +2493,11 @@ window._mtClearAllMix = function() {
 
 window._mtResyncAll = function() {
     var p = _mtState.player;
-    if (!p || !p.audios[0]) return;
-    var refTime = p.audios[0].currentTime;
-    p.audios.forEach(function(a, i) {
-        if (i === 0) return;
+    if (!p || !p.audios || !p.audios.length) return;
+    // Use median playhead, not audios[0] — index 0 may itself be drifted
+    // or stuck. Median of all playing tracks is the robust reference.
+    var refTime = _mtCurrentPlayheadSec();
+    p.audios.forEach(function(a) {
         try { a.currentTime = refTime; } catch (e) {}
         a.playbackRate = 1.0;
     });
@@ -2499,16 +2525,41 @@ function _mtMaybeUpdateDuration() {
     }
 }
 
+// Dynamic playhead: the "current time" for display + latecomer sync is the
+// MEDIAN currentTime of all ready+playing tracks. Falls back to audios[0]
+// if nothing is playing yet. Index 0 (Kick · Jay) used to be the canonical
+// master, but Drew 2026-05-24 hit the case where Kick's FLAC failed to
+// buffer at all on a far seek — the whole sync system froze because every
+// other track was syncing TO a stuck reference. Median across playing
+// tracks tolerates one bad-buffering stem.
+function _mtCurrentPlayheadSec() {
+    var p = _mtState.player;
+    if (!p || !p.audios || !p.audios.length) return 0;
+    var times = [];
+    p.audios.forEach(function(a) {
+        if (!a.paused && a.readyState >= 3 && isFinite(a.currentTime)) {
+            times.push(a.currentTime);
+        }
+    });
+    if (!times.length) {
+        return (p.audios[0] && isFinite(p.audios[0].currentTime)) ? p.audios[0].currentTime : 0;
+    }
+    times.sort(function(a, b) { return a - b; });
+    var mid = Math.floor(times.length / 2);
+    return times.length % 2 ? times[mid] : (times[mid - 1] + times[mid]) / 2;
+}
+
 function _mtMaybeUpdateMasterPosition() {
     var p = _mtState.player;
     if (!p) return;
     var a0 = p.audios[0];
     if (!a0 || !isFinite(a0.duration) || a0.duration <= 0) return;
-    var pct = (a0.currentTime / a0.duration) * 100;
+    var t = _mtCurrentPlayheadSec();
+    var pct = (t / a0.duration) * 100;
     var seek = document.getElementById('mtMasterSeek');
     if (seek && document.activeElement !== seek) seek.value = pct;
     var label = document.getElementById('mtTimeLabel');
-    if (label) label.textContent = _mtFmtTime(a0.currentTime) + ' / ' + _mtFmtTime(a0.duration);
+    if (label) label.textContent = _mtFmtTime(t) + ' / ' + _mtFmtTime(a0.duration);
 }
 
 // ── Phase B+ (Workbench prelude): PracticeTask data layer ────────────────────
