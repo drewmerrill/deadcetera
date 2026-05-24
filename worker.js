@@ -2393,6 +2393,10 @@ async function handleRehearsalSegmentStart(request, env) {
   const sourceUrl = resolved.sourceUrl;
 
   const setlist = Array.isArray(body.setlist) ? body.setlist : [];
+  // Optional progress_id — browser supplies a short opaque key for the
+  // server-side phase tracker (modal.Dict). Forward unchanged; Modal-side
+  // validates the shape.
+  const progressId = String(body.progressId || body.progress_id || '').trim();
 
   const ctrl = new AbortController();
   const timer = setTimeout(function() { ctrl.abort(); }, 60000);
@@ -2406,6 +2410,7 @@ async function handleRehearsalSegmentStart(request, env) {
         songId: songId,
         sourceUrl: sourceUrl,
         setlist: setlist,
+        progress_id: progressId,
       }),
       signal: ctrl.signal,
     });
@@ -2437,6 +2442,10 @@ async function handleRehearsalSegmentCheck(request, env) {
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   var callId = String(body.call_id || body.callId || '').trim();
   if (!callId) return cors(jsonError('missing_call_id', 400));
+  // Optional progress_id — when present, Modal returns the latest phase
+  // marker alongside the processing status so the browser can render
+  // ground-truth progress (replacing the elapsed-time heuristic).
+  var progressId = String(body.progressId || body.progress_id || '').trim();
 
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 30000);
@@ -2448,6 +2457,7 @@ async function handleRehearsalSegmentCheck(request, env) {
         action: 'check',
         call_id: callId,
         token: env.STEMS_SHARED_SECRET,
+        progress_id: progressId,
       }),
       signal: ctrl.signal,
     });

@@ -1820,17 +1820,26 @@ function _mtCollectSongSegments(player) {
     if (!player || !Array.isArray(player.segments) || !player.segments.length) return [];
     var out = [];
     player.segments.forEach(function(s) {
-        if (s.isBetween) return;                    // user-flagged chatter/silence
-        if (s.kind === 'silence') return;           // server-detected silence
-        if (s.kind === 'speech') return;            // server-detected speech/chatter
+        if (_mtSegmentReviewState(s) === 'excluded') return;  // explicit user exclusion
+        if (s.isBetween) return;                              // legacy overlay flag
+        if (s.kind === 'silence') return;                     // server-detected silence
+        if (s.kind === 'speech') return;                      // server-detected speech/chatter
         var start = (typeof s.startSec === 'number') ? s.startSec : (typeof s.start === 'number' ? s.start : null);
         var end = (typeof s.endSec === 'number') ? s.endSec : (typeof s.end === 'number' ? s.end : null);
         if (start == null || end == null) return;
         if (!(end > start)) return;
+        // Only include canonical song-titled segments when the title is
+        // either user-confirmed OR a high-confidence analyzer match. Low-
+        // confidence guesses get included as untitled so they're still
+        // rendered (band can still hear them) but without misleading names.
+        var display = _mtSegmentDisplayName(s);
+        var title = (display.kind === 'confirmed' || display.kind === 'matched')
+            ? (s.songTitle || (s.likelySong && s.likelySong.title) || null)
+            : null;
         out.push({
             start: start,
             end: end,
-            title: s.songTitle || (s.likelySong && s.likelySong.title) || s.label || null,
+            title: title,
             id: s.id || null,
         });
     });
@@ -3035,6 +3044,13 @@ window._mtAnalyzeRun = async function() {
         }
     } catch (e) {}
 
+    // Generate a short opaque progress_id so Modal can stash per-phase
+    // markers in a shared Dict keyed by this ID. The browser polls /check
+    // with the same ID to get ground-truth phase narration instead of
+    // the elapsed-time heuristic. Format: alnum + dash, ≤80 chars
+    // (Modal-side validates this shape).
+    var progressId = 'pg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
     try {
         var startRes = await fetch(workerBase + '/rehearsal-segment/start', {
             method: 'POST',
@@ -3042,7 +3058,8 @@ window._mtAnalyzeRun = async function() {
             body: JSON.stringify({
                 songId: p.sessionId,
                 sourceUrl: sourceUrl,
-                setlist: setlist
+                setlist: setlist,
+                progressId: progressId
             })
         });
         var startJson = await startRes.json();
@@ -3061,9 +3078,13 @@ window._mtAnalyzeRun = async function() {
         // in the success / error blocks below.
         p._analyzeInFlight = {
             callId: callId,
+            progressId: progressId,
             startedAt: Date.now(),
             sourceLabel: sourceLabel,
             sourceUrl: sourceUrl,
+            // Latest ground-truth phase from server (set by check polls).
+            // Falls back to the elapsed-time heuristic when null.
+            serverPhase: null,
         };
         // Trigger an immediate panel render so the user sees the in-flight
         // banner even if they close the modal right away.
@@ -3094,11 +3115,17 @@ window._mtAnalyzeRun = async function() {
             var checkRes = await fetch(workerBase + '/rehearsal-segment/check', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ call_id: callId })
+                body: JSON.stringify({ call_id: callId, progressId: progressId })
             });
             var checkJson = await checkRes.json();
             if (!checkJson || !checkJson.success) {
                 throw new Error((checkJson && checkJson.error) || 'check_failed');
+            }
+            // Stash server-emitted phase if present so the renderer can
+            // prefer it over the heuristic. Cleared automatically when
+            // the next render runs against an in-flight state.
+            if (checkJson.progress && _mtState.player && _mtState.player._analyzeInFlight) {
+                _mtState.player._analyzeInFlight.serverPhase = checkJson.progress;
             }
             if (checkJson.status === 'processing') continue;
             result = checkJson;
@@ -3229,6 +3256,16 @@ async function _mtLoadSegments(sessionId) {
                 if (typeof overlay[s.id].isBetween === 'boolean') s.isBetween = overlay[s.id].isBetween;
                 if (overlay[s.id].startSec != null) s.startSec = overlay[s.id].startSec;
                 if (overlay[s.id].endSec != null) s.endSec = overlay[s.id].endSec;
+                // Phase 1E: user review state. 'confirmed' | 'needs-review' |
+                // 'excluded' | undefined (= unconfirmed, derived from kind+conf).
+                if (overlay[s.id].reviewState) s.reviewState = overlay[s.id].reviewState;
+                if (overlay[s.id].confirmedAt) s.confirmedAt = overlay[s.id].confirmedAt;
+                if (overlay[s.id].confirmedBy) s.confirmedBy = overlay[s.id].confirmedBy;
+                // Phase 1C: canonical Song DNA link. When the user picks
+                // (or types) a song from allSongs, we resolve to the
+                // band's songId so future fingerprint training can key
+                // off it directly. Title remains the user-facing string.
+                if (overlay[s.id].songId) s.songId = overlay[s.id].songId;
             }
         });
         p.segments = segs;
@@ -3246,12 +3283,101 @@ async function _mtLoadSegments(sessionId) {
 // playback synchronization. Drew's product principle 2026-05-24:
 // "rehearsal navigation intelligence, not waveform editing software."
 function _mtKindMeta(kind) {
+    // stripe = the 4px left bar that color-codes each row by kind.
+    // stripBg/stripFg = subtle row tint + waveform fill color.
     switch ((kind || '').toLowerCase()) {
-        case 'music':   return { emoji: '🎵', color: '#a5b4fc', name: 'music',   stripBg: 'rgba(99,102,241,0.10)', stripFg: 'rgba(165,180,252,0.85)' };
-        case 'silence': return { emoji: '🤫', color: '#64748b', name: 'silence', stripBg: 'rgba(100,116,139,0.06)', stripFg: 'rgba(148,163,184,0.4)' };
-        case 'speech':  return { emoji: '💬', color: '#fbbf24', name: 'speech',  stripBg: 'rgba(251,191,36,0.07)', stripFg: 'rgba(252,211,77,0.75)' };
-        default:        return { emoji: '·',  color: '#94a3b8', name: 'segment', stripBg: 'rgba(148,163,184,0.06)', stripFg: 'rgba(203,213,225,0.55)' };
+        case 'music':   return { emoji: '🎵', color: '#a5b4fc', name: 'song',    stripe: '#6366f1', stripBg: 'rgba(99,102,241,0.10)', stripFg: 'rgba(165,180,252,0.85)' };
+        case 'silence': return { emoji: '🤫', color: '#94a3b8', name: 'silence', stripe: '#64748b', stripBg: 'rgba(100,116,139,0.05)', stripFg: 'rgba(148,163,184,0.4)' };
+        case 'speech':  return { emoji: '💬', color: '#fbbf24', name: 'speech',  stripe: '#f59e0b', stripBg: 'rgba(245,158,11,0.07)', stripFg: 'rgba(252,211,77,0.75)' };
+        default:        return { emoji: '·',  color: '#94a3b8', name: 'segment', stripe: '#94a3b8', stripBg: 'rgba(148,163,184,0.05)', stripFg: 'rgba(203,213,225,0.55)' };
     }
+}
+
+// Tier 1A — Detection confidence blended from analyzer kind-confidence
+// + song-match confidence (when present). 0-1 float.
+function _mtSegmentConfidence(seg) {
+    if (!seg) return 0;
+    var kindConf = (typeof seg.confidence === 'number') ? seg.confidence : 0;
+    if (seg.kind === 'music' && seg.likelySong && typeof seg.likelySong.confidence === 'number') {
+        // Weighted blend — match confidence dominates because that's the
+        // claim being shown to the user (the song title).
+        return Math.max(0, Math.min(1, kindConf * 0.4 + seg.likelySong.confidence * 0.6));
+    }
+    return Math.max(0, Math.min(1, kindConf));
+}
+
+// Tier 1B — Safe fallback display name. Returns { title, placeholder,
+// kind: 'confirmed' | 'matched' | 'possible' | 'unidentified' | 'kind' }.
+// Never auto-shows a real song name when confidence is low — replaces
+// with neutral fallbacks so the AI doesn't lie about certainty.
+var _MT_SAFE_TITLE_THRESHOLD = 0.65;
+function _mtSegmentDisplayName(seg) {
+    if (!seg) return { title: '', placeholder: 'Segment', kind: 'unidentified' };
+    // User-edited title — always trusted.
+    if (seg.songTitle) return { title: seg.songTitle, placeholder: 'Song title', kind: 'confirmed' };
+    if (seg.kind === 'music') {
+        if (seg.likelySong && seg.likelySong.title && typeof seg.likelySong.confidence === 'number') {
+            if (seg.likelySong.confidence >= _MT_SAFE_TITLE_THRESHOLD) {
+                // High-conf match: pre-fill the canonical title.
+                return { title: seg.likelySong.title, placeholder: 'Song title', kind: 'matched' };
+            }
+            // Low/medium conf: keep field empty, show possibility in placeholder.
+            return {
+                title: '',
+                placeholder: 'Possible: ' + seg.likelySong.title + ' (' + Math.round(seg.likelySong.confidence * 100) + '%) — type to confirm',
+                kind: 'possible',
+            };
+        }
+        return { title: '', placeholder: 'Unidentified Song — type to label', kind: 'unidentified' };
+    }
+    if (seg.kind === 'speech')  return { title: '', placeholder: 'Chatter / Speech', kind: 'kind' };
+    if (seg.kind === 'silence') return { title: '', placeholder: 'Silence', kind: 'kind' };
+    return { title: '', placeholder: 'Unidentified Segment', kind: 'unidentified' };
+}
+
+// Tier 1E — Review state. Derived from explicit user input (reviewState
+// or isBetween overlay) + low-confidence auto-flag. Returns one of:
+//   'confirmed' | 'needs-review' | 'excluded' | 'unconfirmed'
+function _mtSegmentReviewState(seg) {
+    if (!seg) return 'unconfirmed';
+    if (seg.reviewState === 'confirmed') return 'confirmed';
+    if (seg.reviewState === 'excluded' || seg.isBetween) return 'excluded';
+    if (seg.reviewState === 'needs-review') return 'needs-review';
+    // Auto-flag: low-confidence music or fully unmatched music → needs review.
+    if (seg.kind === 'music') {
+        var conf = _mtSegmentConfidence(seg);
+        if (conf < 0.55) return 'needs-review';
+    }
+    return 'unconfirmed';
+}
+
+// Tier 1A — Confidence chip HTML (small color-coded percentage badge).
+function _mtConfidenceChipHtml(conf) {
+    if (!conf || conf < 0.05) return '';
+    var pct = Math.round(conf * 100);
+    var color, bg, border;
+    if (pct >= 75)      { color = '#86efac'; bg = 'rgba(34,197,94,0.15)';  border = 'rgba(34,197,94,0.35)'; }
+    else if (pct >= 50) { color = '#fbbf24'; bg = 'rgba(245,158,11,0.15)'; border = 'rgba(245,158,11,0.35)'; }
+    else                { color = '#fca5a5'; bg = 'rgba(239,68,68,0.15)';  border = 'rgba(239,68,68,0.35)'; }
+    return '<span title="Detection confidence" style="background:' + bg + ';border:1px solid ' + border + ';color:' + color + ';border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700;font-family:ui-monospace,monospace">' + pct + '%</span>';
+}
+
+// Tier 1C — Build a single <datalist> from the band's canonical Song
+// DNA library (allSongs). Title inputs reference it via list="...".
+// Browsers handle the typeahead UI natively — no popper, no custom
+// dropdown, no library. Songs are deduped + sorted alphabetically.
+var _MT_SONGS_DATALIST_ID = 'mtSongTitlesDatalist';
+function _mtSongsDatalistHtml() {
+    var songs = (typeof allSongs !== 'undefined' && Array.isArray(allSongs)) ? allSongs : [];
+    var titles = {};
+    songs.forEach(function(s) {
+        var t = (s && s.title) ? String(s.title).trim() : '';
+        if (t) titles[t] = true;
+    });
+    var sorted = Object.keys(titles).sort(function(a, b) { return a.localeCompare(b); });
+    return '<datalist id="' + _MT_SONGS_DATALIST_ID + '">'
+        + sorted.map(function(t) { return '<option value="' + escHtml(t) + '">'; }).join('')
+        + '</datalist>';
 }
 
 function _mtFmtTimeShort(sec) {
@@ -3347,14 +3473,44 @@ function _mtCurrentAnalyzePhaseIdx(elapsedSec) {
     return _MT_ANALYZE_PHASES.length - 1;
 }
 
+// Find the phase index whose id matches the server-emitted phase id.
+// Returns -1 if no match (fall back to heuristic).
+function _mtAnalyzePhaseIdxById(phaseId) {
+    if (!phaseId) return -1;
+    for (var i = 0; i < _MT_ANALYZE_PHASES.length; i++) {
+        if (_MT_ANALYZE_PHASES[i].id === phaseId) return i;
+    }
+    return -1;
+}
+
 function _mtRenderAnalyzeProgressHtml(inFlight) {
     var elapsedSec = Math.max(0, Math.round((Date.now() - inFlight.startedAt) / 1000));
     var elapsedLabel = elapsedSec < 60
         ? elapsedSec + 's'
         : Math.floor(elapsedSec / 60) + 'm ' + String(elapsedSec % 60).padStart(2, '0') + 's';
-    var curIdx = _mtCurrentAnalyzePhaseIdx(elapsedSec);
-    var doneCount = curIdx;
+    // Prefer ground-truth server phase when available, fall back to the
+    // elapsed-time heuristic. Browser stamps a small "live"/"est" badge so
+    // it's honest about which source the user is seeing.
     var totalCount = _MT_ANALYZE_PHASES.length;
+    var curIdx;
+    var sourceBadge;
+    if (inFlight.serverPhase && inFlight.serverPhase.phase) {
+        var serverIdx = _mtAnalyzePhaseIdxById(inFlight.serverPhase.phase);
+        if (serverIdx >= 0) {
+            curIdx = serverIdx;
+            sourceBadge = '<span title="Ground-truth phase emitted by the Modal worker" style="background:rgba(34,197,94,0.18);color:#86efac;border:1px solid rgba(34,197,94,0.35);border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700;margin-left:6px">LIVE</span>';
+        } else {
+            // Server emitted an unknown phase id — fall back to heuristic.
+            curIdx = _mtCurrentAnalyzePhaseIdx(elapsedSec);
+            sourceBadge = '<span title="Server phase id not in browser map — using elapsed-time estimate" style="background:rgba(245,158,11,0.18);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700;margin-left:6px">EST</span>';
+        }
+    } else {
+        // No server phase data — either the Modal deploy doesn't emit yet
+        // (older build), or the first marker hasn't landed yet.
+        curIdx = _mtCurrentAnalyzePhaseIdx(elapsedSec);
+        sourceBadge = '<span title="Elapsed-time heuristic — server hasn\'t reported a phase yet" style="background:rgba(148,163,184,0.15);color:var(--text-dim);border:1px solid rgba(148,163,184,0.25);border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700;margin-left:6px">EST</span>';
+    }
+    var doneCount = curIdx;
 
     // Show 3-line phase strip: previous (done) → current (animated) → next (pending).
     function phaseLine(phase, state) {
@@ -3394,7 +3550,7 @@ function _mtRenderAnalyzeProgressHtml(inFlight) {
         + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
         + '<span style="font-size:1.15em">🎯</span>'
         + '<div style="flex:1">'
-        + '<div style="font-weight:700;font-size:0.95em">Server-side rehearsal analysis</div>'
+        + '<div style="font-weight:700;font-size:0.95em">Server-side rehearsal analysis' + sourceBadge + '</div>'
         + '<div style="font-size:0.88em;color:var(--text-dim);margin-top:2px">Source: ' + escHtml(inFlight.sourceLabel || 'rendered mix') + ' · ' + escHtml(elapsedLabel) + ' elapsed · phase ' + (curIdx + 1) + ' of ' + totalCount + '</div>'
         + '</div>'
         + '<button onclick="_mtAnalyzeRehearsal()" title="Reopen Analyze modal" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);border-radius:5px;color:#a5b4fc;padding:4px 10px;cursor:pointer;font-size:0.72em;font-weight:700">📊 Modal</button>'
@@ -3516,31 +3672,88 @@ function _mtRenderSegmentsPanel() {
         var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
         var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
         var meta = _mtKindMeta(s.kind);
-        var title = s.songTitle || (s.likelySong && s.likelySong.title) || '';
-        var isBetween = !!s.isBetween;
-        var rowAlpha = isBetween ? '0.45' : '1';
+        var display = _mtSegmentDisplayName(s);
+        var reviewState = _mtSegmentReviewState(s);
+        var confidence = _mtSegmentConfidence(s);
         var canvasId = 'mtSegStrip_' + idx;
         var titleId = 'mtSegTitle_' + idx;
-        var rowBg = isBetween ? 'rgba(100,116,139,0.04)' : meta.stripBg;
-        return '<div data-seg-idx="' + idx + '" style="display:grid;grid-template-columns:24px 90px 80px 1fr 92px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + '">'
+
+        // Visual treatment by review state (D + E):
+        //   confirmed   → soft green tint, ✓ button highlighted
+        //   needs-review → red-edge accent, AI-suggested title not pre-filled
+        //   excluded    → dimmed 45%, gray
+        //   unconfirmed → default kind tint
+        var rowBg, rowAlpha, leftStripeColor, ringStyle;
+        if (reviewState === 'excluded') {
+            rowBg = 'rgba(100,116,139,0.05)';
+            rowAlpha = '0.45';
+            leftStripeColor = '#475569';
+            ringStyle = '';
+        } else if (reviewState === 'confirmed') {
+            rowBg = 'rgba(34,197,94,0.07)';
+            rowAlpha = '1';
+            leftStripeColor = '#22c55e';
+            ringStyle = '';
+        } else if (reviewState === 'needs-review') {
+            rowBg = meta.stripBg;
+            rowAlpha = '1';
+            leftStripeColor = '#ef4444';
+            ringStyle = 'box-shadow:inset 2px 0 0 0 rgba(239,68,68,0.55);';
+        } else {
+            rowBg = meta.stripBg;
+            rowAlpha = '1';
+            leftStripeColor = meta.stripe;
+            ringStyle = '';
+        }
+
+        // Build the confidence chip + review-state chip strings.
+        var confChip = _mtConfidenceChipHtml(confidence);
+        var stateChip = '';
+        if (reviewState === 'confirmed') {
+            stateChip = '<span title="Confirmed by user" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.4);color:#86efac;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">✓ CONFIRMED</span>';
+        } else if (reviewState === 'needs-review') {
+            stateChip = '<span title="Needs review — low confidence" style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.35);color:#fca5a5;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">⚠ NEEDS REVIEW</span>';
+        } else if (reviewState === 'excluded') {
+            stateChip = '<span title="Excluded — not included in songs-only mix" style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.35);color:#fbbf24;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">⊘ EXCLUDED</span>';
+        }
+
+        // Action buttons. Visual states reflect review status.
+        var confirmBg = (reviewState === 'confirmed') ? 'rgba(34,197,94,0.22)' : 'rgba(255,255,255,0.05)';
+        var confirmBorder = (reviewState === 'confirmed') ? 'rgba(34,197,94,0.45)' : 'rgba(255,255,255,0.1)';
+        var confirmColor = (reviewState === 'confirmed') ? '#86efac' : 'var(--text-dim)';
+        var excludeBg = (reviewState === 'excluded') ? 'rgba(245,158,11,0.22)' : 'rgba(255,255,255,0.05)';
+        var excludeBorder = (reviewState === 'excluded') ? 'rgba(245,158,11,0.45)' : 'rgba(255,255,255,0.1)';
+        var excludeColor = (reviewState === 'excluded') ? '#fbbf24' : 'var(--text-dim)';
+
+        return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" style="display:grid;grid-template-columns:4px 22px 78px 78px 1fr 130px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + ';transition:background 150ms;' + ringStyle + '">'
+            // Left stripe (kind color)
+            + '<div style="background:' + leftStripeColor + ';width:4px;height:32px;border-radius:2px"></div>'
             // Kind chip
-            + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + '">' + meta.emoji + '</div>'
+            + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + ';font-size:1.05em">' + meta.emoji + '</div>'
             // Time range
-            + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim)">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
-            // Waveform strip (canvas paints on next tick — see _mtPaintSegmentStrips)
-            + '<canvas id="' + canvasId + '" width="80" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
-            // Title / label (editable)
-            + '<div style="display:flex;align-items:center;gap:4px;min-width:0">'
-            + '<input id="' + titleId + '" type="text" value="' + escHtml(title) + '" placeholder="' + escHtml(meta.name) + '" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:0;font-size:0.92em;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px">'
+            + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
+            // Waveform strip (canvas paints on next tick)
+            + '<canvas id="' + canvasId + '" width="78" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
+            // Title (autocomplete) + state chip + confidence chip
+            + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
+            + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:80px;font-size:0.92em;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px">'
+            + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
+            + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
             + '</div>'
-            // Actions
-            + '<div style="display:flex;gap:4px;justify-content:flex-end">'
-            + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">▶</button>'
-            + '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split this segment at the current playhead — useful when the analyzer missed a song boundary" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">✂</button>'
-            + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (isBetween ? 'Flagged between-song — click to unflag' : 'Flag as between-song chatter (excluded from songs-only mix)') + '" style="background:' + (isBetween ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)') + ';border:1px solid ' + (isBetween ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.1)') + ';border-radius:4px;color:' + (isBetween ? '#fbbf24' : 'var(--text-dim)') + ';padding:2px 6px;cursor:pointer;font-size:0.78em">' + (isBetween ? '↻' : '⊘') + '</button>'
+            // Actions — Jump, Split, Confirm, Exclude
+            + '<div style="display:flex;gap:3px;justify-content:flex-end">'
+            + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start (▶)" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">▶</button>'
+            + '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split at playhead" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">✂</button>'
+            + '<button onclick="_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — click to unconfirm' : 'Confirm this segment\'s title + kind') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:4px;color:' + confirmColor + ';padding:2px 6px;cursor:pointer;font-size:0.78em">✓</button>'
+            + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — click to unflag' : 'Exclude from songs-only mix') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:4px;color:' + excludeColor + ';padding:2px 6px;cursor:pointer;font-size:0.78em">⊘</button>'
             + '</div>'
             + '</div>';
     }).join('');
+
+    // Tier 1C — Single shared <datalist> for typeahead. Referenced via
+    // list="mtSongTitlesDatalist" on every title input. Re-built on each
+    // panel render (cheap — ~200 song titles).
+    var datalistHtml = _mtSongsDatalistHtml();
 
     // Footer: filter toggle for short silences (< 30s). Default OFF
     // because most short silences are song-internal drops, not breaks
@@ -3568,19 +3781,60 @@ function _mtRenderSegmentsPanel() {
     }
 
     host.innerHTML =
-        inFlightBannerHtml
+        datalistHtml
+        + inFlightBannerHtml
         + '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;background:rgba(255,255,255,0.02)">'
         + '<div onclick="_mtToggleSegmentsPanel()" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;background:rgba(255,255,255,0.03)">'
         + '<span id="mtSegmentsCaret" style="color:var(--text-dim);font-size:0.85em">' + (collapsed ? '▸' : '▾') + '</span>'
         + '<span style="font-weight:700;font-size:0.82em;color:#f1f5f9">🎯 Segments</span>'
         + '<span style="font-size:0.74em;color:var(--text-dim);margin-left:auto">' + escHtml(headerSummary) + (hiddenCount ? ' · ' + hiddenCount + ' hidden' : '') + '</span>'
         + '</div>'
-        + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + '">' + hintHtml + '<div style="max-height:280px;overflow-y:auto">' + rowsHtml + '</div>' + filterFooterHtml + '</div>'
+        + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + '">' + hintHtml + '<div id="mtSegmentsList" style="max-height:340px;overflow-y:auto">' + rowsHtml + '</div>' + filterFooterHtml + '</div>'
         + '</div>';
 
     // Paint canvases after they're in the DOM. Defer so layout settles
     // (canvas width is fixed via attribute, but transform happens on next tick).
     setTimeout(_mtPaintSegmentStrips, 0);
+    // Tier 1F: immediately apply active-segment highlight after re-render
+    // so the user doesn't lose their playhead orientation.
+    setTimeout(_mtUpdateActiveSegmentHighlight, 0);
+}
+
+// Tier 1F — Auto-highlight the row whose time-range contains the
+// current playhead. Auto-scrolls the row into view when it changes,
+// but only on transitions (not every timeupdate tick) so the scroll
+// stays useful, not jittery.
+function _mtUpdateActiveSegmentHighlight() {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments)) return;
+    var t = (typeof _mtCurrentPlayheadSec === 'function') ? _mtCurrentPlayheadSec() : 0;
+    // Find segment containing t (linear search — 50 segments is trivial).
+    var activeOrigIdx = -1;
+    for (var i = 0; i < p.segments.length; i++) {
+        var s = p.segments[i];
+        var st = (typeof s.startSec === 'number') ? s.startSec : 0;
+        var en = (typeof s.endSec === 'number') ? s.endSec : 0;
+        if (t >= st && t < en) { activeOrigIdx = i; break; }
+    }
+    var rows = document.querySelectorAll('#mtSegmentsList [data-seg-idx]');
+    rows.forEach(function(row) {
+        var idx = parseInt(row.getAttribute('data-seg-idx'), 10);
+        if (idx === activeOrigIdx) {
+            row.style.outline = '2px solid rgba(165,180,252,0.75)';
+            row.style.outlineOffset = '-1px';
+        } else {
+            row.style.outline = '';
+            row.style.outlineOffset = '';
+        }
+    });
+    // Scroll into view only on transitions to a new active row.
+    if (activeOrigIdx >= 0 && activeOrigIdx !== p._lastActiveSegIdx) {
+        var activeRow = document.querySelector('#mtSegmentsList [data-seg-idx="' + activeOrigIdx + '"]');
+        if (activeRow) {
+            try { activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {}
+        }
+    }
+    p._lastActiveSegIdx = activeOrigIdx;
 }
 
 function _mtPaintSegmentStrips() {
@@ -3609,6 +3863,21 @@ window._mtSegmentTitleDirty = function(idx) {
     el.style.background = 'rgba(99,102,241,0.06)';
 };
 
+// Tier 1C — Resolve a free-text title to the canonical Song DNA songId
+// when the title matches a record in allSongs. Returns { songId } or
+// null. Case-insensitive exact match — typeahead from <datalist> nudges
+// users toward canonical strings, so exact match is the right rule.
+function _mtResolveSongIdForTitle(title) {
+    var clean = String(title || '').trim().toLowerCase();
+    if (!clean) return null;
+    var songs = (typeof allSongs !== 'undefined' && Array.isArray(allSongs)) ? allSongs : [];
+    var match = songs.find(function(s) {
+        return s && s.title && String(s.title).trim().toLowerCase() === clean;
+    });
+    if (match && (match.id || match.songId)) return { songId: match.id || match.songId };
+    return null;
+}
+
 window._mtSegmentTitleSave = async function(idx) {
     var p = _mtState.player;
     if (!p) return;
@@ -3618,23 +3887,81 @@ window._mtSegmentTitleSave = async function(idx) {
     var seg = p.segments[idx];
     if (!seg) return;
     if ((seg.songTitle || '') === newTitle) {
-        // No change — restore visual.
         el.style.border = '1px solid transparent';
         el.style.background = 'transparent';
         return;
     }
     seg.songTitle = newTitle || null;
+    // Resolve canonical Song DNA songId when the title matches a band-
+    // library record. Stored alongside the user-facing title so future
+    // training / cross-rehearsal lookups can key off it.
+    var resolved = _mtResolveSongIdForTitle(newTitle);
+    seg.songId = resolved ? resolved.songId : null;
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (db && typeof bandPath === 'function' && seg.id) {
         try {
             await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id))
-                .update({ songTitle: newTitle || null });
+                .update({
+                    songTitle: newTitle || null,
+                    songId: seg.songId,
+                });
         } catch (e) {
             console.warn('[Multitrack] segment rename failed:', e && e.message);
         }
     }
     el.style.border = '1px solid transparent';
     el.style.background = 'transparent';
+    // Re-render so the row's confidence/state chips reflect the new title.
+    _mtRenderSegmentsPanel();
+};
+
+// Tier 1E — Explicit user confirmation of a segment's title + kind.
+// Distinct from typing a title (which just sets songTitle). Sets a
+// reviewState='confirmed' flag persisted to multitrackSegments overlay.
+// Stamps confirmedAt + confirmedBy for traceability + future fingerprint
+// training corpus (Phase 3). Toggling re-clicks → unconfirms.
+window._mtSegmentConfirm = async function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    var seg = p.segments[idx];
+    if (!seg) return;
+    // Pull the current title from the input (in case the user typed
+    // without losing focus first).
+    var titleEl = document.getElementById('mtSegTitle_' + idx);
+    var currentTitle = titleEl ? String(titleEl.value || '').trim() : (seg.songTitle || '');
+    if (titleEl && currentTitle !== (seg.songTitle || '')) {
+        // Save title first so we don't confirm a stale value.
+        await window._mtSegmentTitleSave(idx);
+        seg = p.segments[idx]; // refresh
+    }
+    var alreadyConfirmed = (_mtSegmentReviewState(seg) === 'confirmed');
+    var next = alreadyConfirmed ? 'unconfirmed' : 'confirmed';
+    seg.reviewState = (next === 'unconfirmed') ? null : 'confirmed';
+    var nowIso = new Date().toISOString();
+    var who = (typeof currentUserEmail !== 'undefined') ? currentUserEmail : null;
+    if (next === 'confirmed') {
+        seg.confirmedAt = nowIso;
+        seg.confirmedBy = who;
+    } else {
+        seg.confirmedAt = null;
+        seg.confirmedBy = null;
+    }
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function' && seg.id) {
+        try {
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id))
+                .update({
+                    reviewState: seg.reviewState,
+                    confirmedAt: seg.confirmedAt,
+                    confirmedBy: seg.confirmedBy,
+                });
+        } catch (e) {
+            console.warn('[Multitrack] segment confirm failed:', e && e.message);
+            if (typeof showToast === 'function') showToast('Confirm save failed: ' + (e && e.message));
+        }
+    }
+    _mtRenderSegmentsPanel();
+    _mtRenderSegmentMarkers();
 };
 
 window._mtSegmentToggleBetween = async function(idx) {
@@ -3642,15 +3969,22 @@ window._mtSegmentToggleBetween = async function(idx) {
     if (!p) return;
     var seg = p.segments[idx];
     if (!seg) return;
-    var next = !seg.isBetween;
-    seg.isBetween = next;
+    var wasExcluded = (_mtSegmentReviewState(seg) === 'excluded');
+    // Toggle both the legacy isBetween flag AND the new reviewState so
+    // older code paths + new panel UI stay in sync.
+    var nextExcluded = !wasExcluded;
+    seg.isBetween = nextExcluded;
+    seg.reviewState = nextExcluded ? 'excluded' : null;
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (db && typeof bandPath === 'function' && seg.id) {
         try {
             await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id))
-                .update({ isBetween: next });
+                .update({
+                    isBetween: nextExcluded,
+                    reviewState: seg.reviewState,
+                });
         } catch (e) {
-            console.warn('[Multitrack] segment flag toggle failed:', e && e.message);
+            console.warn('[Multitrack] segment exclude toggle failed:', e && e.message);
         }
     }
     _mtRenderSegmentsPanel();
@@ -4262,6 +4596,12 @@ function _mtMaybeUpdateMasterPosition() {
     if (seek && document.activeElement !== seek) seek.value = pct;
     var label = document.getElementById('mtTimeLabel');
     if (label) label.textContent = _mtFmtTime(t) + ' / ' + _mtFmtTime(a0.duration);
+    // Tier 1F — keep the active-segment highlight in sync with playback.
+    // Cheap (linear scan over ~50 segments); browsers fire timeupdate at
+    // 4-25 Hz so this runs plenty often without us touching every frame.
+    if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
+        _mtUpdateActiveSegmentHighlight();
+    }
 }
 
 // ── Phase B+ (Workbench prelude): PracticeTask data layer ────────────────────

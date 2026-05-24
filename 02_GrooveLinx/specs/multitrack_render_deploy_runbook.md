@@ -52,7 +52,7 @@ Run these in order. Each `modal deploy` outputs a printed URL — paste it into 
 
 ```bash
 cd /Users/drewmerrill/Documents/GitHub/deadcetera
-modal deploy services/stem-separation/separator.py
+W
 ```
 
 Modal prints one Web Function URL ending in `…-stems-endpoint.modal.run` and one ending in `…-lalal-endpoint.modal.run` (plus the unchanged `…-embed-serve.modal.run`). Copy the stems-endpoint URL.

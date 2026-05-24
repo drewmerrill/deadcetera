@@ -75,6 +75,65 @@ orphan helpers, broken fallbacks.
   - **Discovered:** 2026-05-24 · `ea72808f`
   - **Status:** open
 
+- **Finding:** Tier 2 segment-correction primitives (Merge with next /
+  Lightweight trimming ±5s ±0.5s / Keyboard review workflow S/C/T/X/Enter).
+  Split-at-playhead already shipped earlier (build `20260524-192317`).
+  Merge + trim + keyboard are net-new and were explicitly held out of
+  Phase 1 per Drew's instruction "no new merge/trim work yet unless
+  it already exists and is only being surfaced safely."
+  - **Why deferred:** Phase 1 needs in-browser verification first to
+    confirm the trust+usability foundation works before layering edit
+    primitives on top. Edit ops change segments destructively; building
+    them on an unverified UI risks user error.
+  - **Trigger:** Drew confirms Phase 1 visually works → Phase 2 lands.
+  - **Discovered:** 2026-05-24 · Phase 1 commit
+  - **Status:** open
+
+- **Finding:** Tier 3 rehearsal-intelligence learning loop —
+  rehearsal-plan-aware analyzer matching (Modal reads upcoming gig
+  setlist as priors); fingerprint training corpus at
+  `bands/{slug}/song_fingerprints/{songSlug}/{sampleId}` written on
+  confirm; segment provenance ("Detected via: rehearsal plan /
+  fingerprint match / bpm-key / prior correction / audio classifier");
+  cross-rehearsal intelligence schema hooks (every Franklin's across
+  all rehearsals, lineage of recurring issues). Phase 1 lays the
+  groundwork (Confirmed state + songId resolution + multitrackSegments
+  overlay) but doesn't connect to matching yet.
+  - **Why deferred:** Phase 3 territory — Drew's convergence directive
+    explicitly phases this after Tier 1 verification + Tier 2 edit
+    primitives. Confirmed segments accumulate in Firebase now so the
+    training corpus has data to read from when Phase 3 ships.
+  - **Trigger:** Phase 1 verified + Phase 2 shipped, then start Phase 3
+    on the next session that touches segment.py.
+  - **Implementation sketch (mostly carried forward from earlier note):**
+    1. `segment_audio` reads `bands/{slug}/song_fingerprints/*` on start
+       (one-time cache load).
+    2. Matching pipeline order: rehearsal plan / setlist (highest weight)
+       → known band fingerprints → general BPM/key/duration heuristics.
+    3. On segment match, emit `provenance: { source, score, prior_id }`
+       in the segment record.
+    4. Browser displays provenance chip in Segments panel.
+    5. Confirmed segments (Phase 1 reviewState='confirmed') auto-promote
+       to fingerprint corpus via a Modal sweep function or worker cron.
+  - **Discovered:** 2026-05-24 · Phase 1 commit
+  - **Status:** open
+
+- **Finding:** Tier 5 advanced rehearsal intelligence — segment quality
+  metadata (keeper / false start / partial / best take / breakdown /
+  needs revisit), annotation graph integration (annotations attach to
+  segment + timestamp + Song DNA + rehearsal + tagged members +
+  open/in-progress/fixed/recheck lifecycle), shared editing primitives
+  extracted into a service (merge/split/trim/confirm/exclude/rename/retag)
+  reusable across Review Mode + Chopper.
+  - **Why deferred:** Phase 5 future-ready territory. Phase 3 schema
+    hooks (provenance + songId + reviewState) lay enough groundwork that
+    Tier 5 features can be added without breaking changes.
+  - **Trigger:** When annotation system gets its next overhaul, OR when
+    we need to unify Review Mode + Chopper edit logic, OR when band
+    requests quality metadata for Best Take tracking.
+  - **Discovered:** 2026-05-24 · Phase 1 commit
+  - **Status:** open
+
 - **Finding:** Per-song share — one shareable URL per analyzed song
   segment instead of one URL for the whole mix. Useful for narrow
   bandmate workflows ("send Brian the new Sugaree arrangement").

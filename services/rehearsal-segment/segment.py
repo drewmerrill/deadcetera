@@ -74,6 +74,20 @@ image = (
     )
 )
 
+# Shared progress dict — segment_audio writes per-phase markers here so the
+# browser can poll for ground-truth phase status via segment_endpoint's
+# check action. Replaces the prior elapsed-time heuristic in the browser
+# with real server state. Drew (2026-05-24): "I would much rather know
+# what is going on then just a flashy front." Keyed by a browser-supplied
+# progress_id so we don't depend on Modal's call_id being available
+# inside the running function. Entries are cleaned up in segment_audio's
+# finally block — orphans from crashed jobs accumulate but Modal Dicts
+# are cheap and we don't write often.
+PROGRESS_DICT = modal.Dict.from_name(
+    "groovelinx-segment-progress",
+    create_if_missing=True,
+)
+
 
 # ── Source resolution ───────────────────────────────────────────────────────
 
@@ -492,26 +506,51 @@ def _detect_restarts(segments):
     memory=8192,
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
-def segment_audio(source_url: str, setlist: list = None):
+def segment_audio(source_url: str, setlist: list = None, progress_id: str = ""):
     """Analyze a full rehearsal recording. Returns
-    { success, status, duration_sec, segments[], summary{} }."""
+    { success, status, duration_sec, segments[], summary{} }.
+
+    progress_id: optional browser-supplied identifier. When non-empty,
+    we write per-phase markers to PROGRESS_DICT[progress_id] so the
+    browser can poll segment_endpoint(action='check', progress_id=...)
+    for ground-truth status. The dict entry is cleaned up in the
+    finally block regardless of success/error.
+    """
+    import time
     import numpy as np
+
+    def _mark(phase: str, label: str):
+        if not progress_id:
+            return
+        try:
+            PROGRESS_DICT[progress_id] = {
+                "phase": phase,
+                "label": label,
+                "updatedAt": time.time(),
+            }
+        except Exception as e:
+            print(f"[segment] progress mark write failed: {e}")
 
     setlist = setlist or []
     temp_dir = tempfile.mkdtemp(prefix="gl_segment_")
     try:
+        _mark("download", "Downloading rendered mix from R2 to Modal worker")
         audio_path = _download_source(source_url, temp_dir)
         size_mb = os.path.getsize(audio_path) / 1024 / 1024
         print(f"[segment] Downloaded {size_mb:.1f} MB to {audio_path}")
 
+        _mark("decode", "Decoding audio into PCM frames (mono @ 16 kHz)")
         y, sr = _load_audio(audio_path)
         duration_sec = len(y) / sr
         print(f"[segment] Loaded {duration_sec / 60:.1f} min mono @ {sr} Hz")
 
+        _mark("envelope", "Computing RMS energy envelope across the timeline")
         rms, times, hop = _rms_envelope(y, sr)
+        _mark("silence", "Detecting silence spans (low-energy gaps)")
         silence_spans = _detect_silence_spans(rms, times)
         print(f"[segment] Found {len(silence_spans)} silence spans >= 2.5 s")
 
+        _mark("candidates", "Building candidate segments from silence boundaries")
         # Build coarse segments from inter-silence regions + the silences themselves.
         boundaries = [0.0]
         for s_start, s_end in silence_spans:
@@ -543,6 +582,7 @@ def segment_audio(source_url: str, setlist: list = None):
 
         print(f"[segment] {len(segments)} candidate segments")
 
+        _mark("classify", f"Classifying {len(segments)} segments — music vs speech vs silence")
         # Classify non-silence segments.
         for seg in segments:
             if seg["kind"] == "silence":
@@ -555,6 +595,7 @@ def segment_audio(source_url: str, setlist: list = None):
         music_count = sum(1 for s in segments if s["kind"] == "music")
         print(f"[segment] {music_count} music segments — running musical analysis")
 
+        _mark("musical", f"Running musical analysis (BPM, key, energy) on {music_count} music segments")
         # Musical analysis on music segments only.
         for seg in segments:
             if seg["kind"] != "music":
@@ -565,6 +606,7 @@ def segment_audio(source_url: str, setlist: list = None):
             except Exception as e:
                 print(f"[segment] musical analysis failed for {seg['id']}: {e}")
 
+        _mark("setlist", "Matching segments to band setlist by BPM/key/duration")
         # Setlist matching.
         setlist_with_bpm = sum(1 for e in setlist if e.get("bpm"))
         setlist_with_key = sum(1 for e in setlist if e.get("key"))
@@ -585,6 +627,7 @@ def segment_audio(source_url: str, setlist: list = None):
                       f"→ {match['title']} (conf {match['confidence']}, "
                       f"matched: {','.join(match['matched_on']) or 'none'})")
 
+        _mark("restarts", "Detecting song restarts via pairwise spectral similarity")
         # Restart detection — pairwise comparison of adjacent music segments.
         _detect_restarts(segments)
         restart_count = sum(1 for s in segments if s.get("likely_restart"))
@@ -614,6 +657,7 @@ def segment_audio(source_url: str, setlist: list = None):
         # This is intentionally NOT zoomable DAW waveform data — it's a
         # navigation aid. Per-segment strips in the browser are computed
         # by slicing this single array, not by re-analyzing audio.
+        _mark("peaks", "Generating waveform peaks for visual scanning")
         PEAK_COUNT = 2000
         peaks = []
         total_samples = len(y)
@@ -632,6 +676,7 @@ def segment_audio(source_url: str, setlist: list = None):
                 peaks.append(round(rms, 3))
         print(f"[segment] Generated {len(peaks)} peaks ({samples_per_peak if total_samples else 0} samples/peak)")
 
+        _mark("wrap", "Finalizing segment list + summary")
         return {
             "success": True,
             "status": "done",
@@ -647,6 +692,13 @@ def segment_audio(source_url: str, setlist: list = None):
             shutil.rmtree(temp_dir)
         except Exception:
             pass
+        # Clean up the progress entry — covers both success and error
+        # paths so we don't accumulate stale dict entries from crashed jobs.
+        if progress_id:
+            try:
+                del PROGRESS_DICT[progress_id]
+            except Exception:
+                pass
 
 
 # ── HTTP entry points (async pattern) ──────────────────────────────────────
@@ -666,11 +718,21 @@ def segment_endpoint(item: dict):
     segment_audio function is unchanged.
 
     Body shapes:
-      action='start' — Body: { action, sourceUrl, setlist?, songId?, token }
-                       Returns: { success, call_id, songId }
-      action='check' — Body: { action, call_id, token }
-                       Returns: { success, status: 'processing' } OR
-                                { success, status: 'done', segments, summary, ... }
+      action='start' — Body: { action, sourceUrl, setlist?, songId?,
+                               progress_id?, token }
+                       Returns: { success, call_id, songId, progress_id }
+      action='check' — Body: { action, call_id, progress_id?, token }
+                       Returns: { success, status: 'processing',
+                                  progress?: {phase, label, updatedAt} } OR
+                                { success, status: 'done', segments,
+                                  summary, peaks, ... }
+
+    progress_id is optional but recommended. When provided, segment_audio
+    writes per-phase markers to a shared Modal Dict; the check action
+    fetches the latest marker and returns it. Browser uses this for
+    ground-truth phase narration instead of an elapsed-time heuristic.
+    Drew, 2026-05-24: "I would much rather know what is going on then
+    just a flashy front."
     """
     expected = os.environ.get("STEMS_SHARED_SECRET", "")
     if not expected:
@@ -689,12 +751,18 @@ def segment_endpoint(item: dict):
             return {"success": False, "error": "setlist must be an array"}
         if len(setlist) > 200:
             setlist = setlist[:200]
+        progress_id = str(item.get("progress_id", "")).strip()
+        # Validate progress_id shape — alnum/_- only, max 80 chars. Keeps
+        # the Modal Dict key space tight in case of malicious input.
+        if progress_id and not re.match(r"^[a-zA-Z0-9_-]{1,80}$", progress_id):
+            progress_id = ""  # silently drop bad ID; analysis still runs
         try:
-            call = segment_audio.spawn(source_url, setlist)
+            call = segment_audio.spawn(source_url, setlist, progress_id)
             return {
                 "success": True,
                 "call_id": call.object_id,
                 "songId": item.get("songId", ""),
+                "progress_id": progress_id,
             }
         except Exception as e:
             return {"success": False, "error": f"spawn_failed: {e}"}
@@ -703,6 +771,9 @@ def segment_endpoint(item: dict):
         call_id = item.get("call_id", "")
         if not call_id:
             return {"success": False, "error": "missing call_id"}
+        progress_id = str(item.get("progress_id", "")).strip()
+        if progress_id and not re.match(r"^[a-zA-Z0-9_-]{1,80}$", progress_id):
+            progress_id = ""
         try:
             call = modal.FunctionCall.from_id(call_id)
         except Exception as e:
@@ -712,7 +783,18 @@ def segment_endpoint(item: dict):
         except modal.exception.OutputExpiredError:
             return {"success": False, "error": "output_expired"}
         except TimeoutError:
-            return {"success": True, "status": "processing"}
+            # Still running — fetch the latest phase marker if we have a
+            # progress_id and return it alongside the processing status.
+            progress = None
+            if progress_id:
+                try:
+                    progress = PROGRESS_DICT.get(progress_id)
+                except Exception:
+                    progress = None
+            out = {"success": True, "status": "processing"}
+            if progress:
+                out["progress"] = progress
+            return out
         except Exception as e:
             return {"success": False, "error": f"call_failed: {e}"}
         return result
