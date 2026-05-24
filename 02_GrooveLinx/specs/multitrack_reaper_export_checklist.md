@@ -10,33 +10,46 @@ The strict filename convention `NN_role-member.flac` is what enables the GrooveL
 
 ### 1. Create a REAPER project template
 
-Open REAPER → File → New project. Add 22 tracks (or however many channels your X32 records — Drew's setup is ~22). Name each track precisely with the GrooveLinx convention:
+Open REAPER → File → New project. Add tracks matching your X32 channel count and name each one precisely with the GrooveLinx filename convention.
 
-Deadcetera roster (corrected 2026-05-10): Drew = lead vocal + rhythm guitar, Brian = lead guitar + sings, Pierce = keys + sings, Chris = bass + sings, Jay = drums (no vocal).
+**Critical:** the channel-to-mic mapping is BAND-SPECIFIC and depends on how YOUR X32 inputs are wired. Don't trust a hypothetical "standard" plot — verify by listening to each channel after import. The earlier version of this doc assumed kick was on ch 1; Deadcetera's actual plot has VOCALS on ch 1-4 (see below).
+
+### Deadcetera's actual X32 plot (captured 2026-05-24, first real ingest)
 
 | Track # | Name (exactly this) | Source |
 |---|---|---|
-| 1 | `01_kick-jay` | Kick mic |
-| 2 | `02_snare-jay` | Snare top |
-| 3 | `03_hat-jay` | Hi-hat |
-| 4 | `04_oh-l-jay` | Overhead L |
-| 5 | `05_oh-r-jay` | Overhead R |
-| 6 | `06_tom-1-jay` | Rack tom |
-| 7 | `07_tom-2-jay` | Floor tom |
-| 8 | `08_ride-jay` | Ride cymbal |
-| 9 | `09_bass-chris` | Bass DI (Chris) |
-| 10 | `10_guitar-brian` | Lead guitar (Brian) |
-| 11 | `11_guitar-drew` | Rhythm guitar (Drew) |
-| 12 | `12_keys-pierce` | Keys (or split L/R as `12_keys-l-pierce` + `13_keys-r-pierce`) |
-| 13 | `13_vocal-drew` | Drew vocal (lead) |
-| 14 | `14_vocal-brian` | Brian vocal |
-| 15 | `15_vocal-pierce` | Pierce vocal |
-| 16 | `16_vocal-chris` | Chris vocal |
-| 17 | `17_room-l` | Room mic L (no member) |
-| 18 | `18_room-r` | Room mic R (no member) |
-| — | _omit Jay's mic from render_ | Discussion mic only — no vocal contribution |
+| 1 | `01_vocal-drew` | Drew's vocal mic (lead vox + rhythm guitar) |
+| 2 | `02_vocal-brian` | Brian's vocal mic (lead guitar + sings) |
+| 3 | `03_vocal-chris` | Chris's vocal mic (bass + sings) |
+| 4 | `04_vocal-pierce` | Pierce's vocal mic (keys + sings) |
+| 5 | `05_guitar-brian` | Brian's guitar (lead) |
+| 6 | `06_guitar-drew` | Drew's guitar (rhythm) |
+| 7 | `07_bass-chris` | Chris's bass DI |
+| 8 | `08_open-jay` | "Open" mic — purpose TBD (audience/talkback? open hi-hat?) |
+| 9 | `09_bongos-jay` | Jay's hand-percussion (bongos) — not the kit |
+| 10 | `10_kick-jay` | Kick drum |
+| 11 | `11_snare-jay` | Snare top |
+| 12 | `12_tom1-jay` | Rack tom 1 |
+| 13 | `13_tom2-jay` | Rack tom 2 |
+| 14 | `14_tom3-jay` | Floor tom |
+| 15 | `15_oh-l-jay` | Overhead L |
+| 16 | `16_oh-r-jay` | Overhead R |
+| 17 | `17_keys-l-pierce` | Keys L (stereo) |
+| 18 | `18_keys-r-pierce` | Keys R (stereo) |
+| 19-32 | _leave un-renamed; will batch-delete_ | Empty inputs / talkback / bus returns |
 
-(Adjust to your actual mic plot.)
+**No room mics** — Deadcetera uses ch 17-18 for stereo keys instead. Adjust to your own band's actual plot.
+
+### For OTHER bands onboarding to GrooveLinx
+
+Each band's X32 mic plot will differ. Best practice on first ingest:
+1. Create a generic 22-track template with placeholder names
+2. Drop the X-LIVE recording in, explode to per-channel tracks
+3. Solo + listen each channel to identify what's on it
+4. Rename the channel tracks in place per the `NN_role-member.flac` convention
+5. Save the project as the band's permanent template — future ingests reuse the same naming
+
+The filename convention itself (next section) is universal; only the channel-to-mic mapping is band-specific.
 
 Save as: **`File → Project Templates → Save Project as Template…`** → name it `GrooveLinx-Multitrack`.
 
