@@ -170,6 +170,13 @@ export default {
     // (X-Band-Slug, X-Session-Id, X-Filename) so the body stays pure binary.
     if (path === '/multitrack/upload' && request.method === 'POST')
       return handleMultitrackUpload(request, env);
+    // 2026-05-24: presigned PUT URL for large files. Cloudflare Workers have
+    // a ~100 MB request body limit at the edge, which kills the old
+    // /multitrack/upload path for typical multitrack FLACs (500 MB-2 GB each).
+    // New flow: client requests a presigned URL, then PUTs the bytes
+    // directly to R2's S3-compatible endpoint, bypassing the worker entirely.
+    if (path === '/multitrack/upload-url' && request.method === 'POST')
+      return handleMultitrackUploadUrl(request, env);
     // Multitrack share — list every file under a session prefix and return
     // either JSON (?format=json, default) or a self-contained HTML page
     // (?format=html) with download buttons. Path obscurity is the auth
@@ -1840,6 +1847,165 @@ async function handleMultitrackUpload(request, env) {
   }
   var publicUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
   return jsonResp({ ok: true, key: key, publicUrl: publicUrl });
+}
+
+// POST /multitrack/upload-url — returns a Sigv4-presigned PUT URL pointing at
+// R2's S3-compatible endpoint. Browser then PUTs the file directly to R2,
+// bypassing the Worker's ~100 MB request body limit. Required for typical
+// multitrack FLAC stems (500 MB-2 GB each).
+//
+// Body: JSON { filename }
+// Headers: X-Band-Slug, X-Session-Id
+// Required secrets: R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID
+// Returns: { uploadUrl, key, publicUrl, expiresAt }
+async function handleMultitrackUploadUrl(request, env) {
+  if (!env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY || !env.R2_ACCOUNT_ID) {
+    return cors(jsonError('multitrack_upload_url_not_configured: requires R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ACCOUNT_ID worker secrets', 500));
+  }
+  if (!env.STEMS_R2_PUBLIC_BASE) {
+    return cors(jsonError('multitrack_upload_url_not_configured: requires STEMS_R2_PUBLIC_BASE var', 500));
+  }
+  var bandSlug = String(request.headers.get('X-Band-Slug') || '').trim();
+  var sessionId = String(request.headers.get('X-Session-Id') || '').trim();
+  if (!bandSlug)  return cors(jsonError('missing_header: X-Band-Slug', 400));
+  if (!sessionId) return cors(jsonError('missing_header: X-Session-Id', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+
+  var body;
+  try { body = await request.json(); } catch (e) {
+    return cors(jsonError('bad_json_body: ' + (e && e.message), 400));
+  }
+  var filename = String((body && body.filename) || '').trim();
+  if (!filename) return cors(jsonError('missing_field: filename', 400));
+  if (!/^[0-9]{1,3}_[a-z0-9-]+\.(flac|wav|opus|mp3|m4a)$/i.test(filename)) {
+    return cors(jsonError('bad_filename: must match NN_role-member.ext (e.g. 01_kick-jay.flac)', 400));
+  }
+
+  var bucket = 'groovelinx-stems';
+  var key = 'multitrack/' + bandSlug + '/' + sessionId + '/' + filename;
+
+  try {
+    var uploadUrl = await _r2PresignedPutUrl(env, bucket, key, 3600 /* 1h expiry */);
+    var publicUrl = env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + key;
+    var expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+    return jsonResp({ ok: true, uploadUrl: uploadUrl, key: key, publicUrl: publicUrl, expiresAt: expiresAt });
+  } catch (e) {
+    return cors(jsonError('presign_failed: ' + (e && e.message), 500));
+  }
+}
+
+// ── Sigv4 presigned URL signer for Cloudflare R2 (S3-compatible) ────────────
+// Pure-JS, no npm deps. R2's S3 endpoint is
+// `<accountId>.r2.cloudflarestorage.com/<bucket>/<key>` and accepts AWS Sigv4
+// signed requests. We sign a PUT URL with `host` as the only signed header
+// and `UNSIGNED-PAYLOAD` as the body hash placeholder, which means the
+// browser can PUT arbitrary bytes without re-signing per chunk.
+//
+// Reference: https://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
+async function _r2PresignedPutUrl(env, bucket, key, expiresSec) {
+  var accessKeyId = env.R2_ACCESS_KEY_ID;
+  var secretAccessKey = env.R2_SECRET_ACCESS_KEY;
+  var accountId = env.R2_ACCOUNT_ID;
+  var region = 'auto';
+  var service = 's3';
+
+  var now = new Date();
+  // YYYYMMDDTHHMMSSZ (no separators per Sigv4 spec)
+  var amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
+  var dateStamp = amzDate.slice(0, 8); // YYYYMMDD
+
+  var host = accountId + '.r2.cloudflarestorage.com';
+  var credentialScope = dateStamp + '/' + region + '/' + service + '/aws4_request';
+  var credential = accessKeyId + '/' + credentialScope;
+
+  // Path: bucket and key are URI-encoded per-segment. The key contains slashes
+  // (multitrack/band/session/file.flac) — we encode each segment individually
+  // so the slashes survive as path separators.
+  var pathEncoded = '/' + bucket + '/' + key.split('/').map(_uriEncodeSegment).join('/');
+
+  // Query string for the presigned URL — these become signed and verifiable.
+  // Param order MUST be alphabetical for the canonical request.
+  var qs = [
+    ['X-Amz-Algorithm', 'AWS4-HMAC-SHA256'],
+    ['X-Amz-Credential', credential],
+    ['X-Amz-Date', amzDate],
+    ['X-Amz-Expires', String(expiresSec)],
+    ['X-Amz-SignedHeaders', 'host']
+  ];
+  qs.sort(function(a, b) { return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0; });
+  var queryString = qs.map(function(p) {
+    return _uriEncodeSegment(p[0]) + '=' + _uriEncodeSegment(p[1]);
+  }).join('&');
+
+  // Canonical request: method \n path \n querystring \n canonical-headers \n
+  // signed-headers \n payload-hash
+  var canonicalRequest = [
+    'PUT',
+    pathEncoded,
+    queryString,
+    'host:' + host + '\n',  // canonical headers (trailing newline required)
+    'host',
+    'UNSIGNED-PAYLOAD'
+  ].join('\n');
+
+  var canonicalRequestHash = await _sha256Hex(canonicalRequest);
+
+  // String to sign
+  var stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    canonicalRequestHash
+  ].join('\n');
+
+  // Derive signing key via HMAC chain
+  var enc = new TextEncoder();
+  var dateKey    = await _hmacSha256(enc.encode('AWS4' + secretAccessKey), dateStamp);
+  var regionKey  = await _hmacSha256(dateKey, region);
+  var serviceKey = await _hmacSha256(regionKey, service);
+  var signingKey = await _hmacSha256(serviceKey, 'aws4_request');
+
+  // Final signature
+  var sigBytes = await _hmacSha256(signingKey, stringToSign);
+  var signature = _bytesToHex(new Uint8Array(sigBytes));
+
+  return 'https://' + host + pathEncoded + '?' + queryString + '&X-Amz-Signature=' + signature;
+}
+
+// URI-encode a single path or query segment per AWS Sigv4 rules.
+// (More restrictive than encodeURIComponent — also encodes !'()*.)
+function _uriEncodeSegment(str) {
+  return encodeURIComponent(str).replace(/[!'()*]/g, function(c) {
+    return '%' + c.charCodeAt(0).toString(16).toUpperCase();
+  });
+}
+
+async function _sha256Hex(text) {
+  var enc = new TextEncoder().encode(text);
+  var hash = await crypto.subtle.digest('SHA-256', enc);
+  return _bytesToHex(new Uint8Array(hash));
+}
+
+async function _hmacSha256(keyBytes, text) {
+  // keyBytes is Uint8Array or ArrayBuffer; text is string
+  var key = await crypto.subtle.importKey(
+    'raw',
+    keyBytes instanceof Uint8Array ? keyBytes : new Uint8Array(keyBytes),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  var sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(text));
+  return new Uint8Array(sig);
+}
+
+function _bytesToHex(bytes) {
+  var hex = '';
+  for (var i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
 }
 
 // GET /multitrack/share?bandSlug=...&sessionId=...&format=json|html

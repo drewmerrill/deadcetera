@@ -898,11 +898,17 @@ async function _mtMaybeFinalizeSession() {
 // active controllers and aborts; AbortError is treated as 'cancelled'
 // (distinct from 'failed' so the UI doesn't misrepresent the cause).
 async function _mtUploadOne(file, sessionId, track) {
-    var url = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev') + '/multitrack/upload';
+    // 2026-05-24: switched from POST-through-worker to two-step
+    // presigned-URL flow. Workers' edge has a ~100 MB request body cap that
+    // killed the old direct-POST path for typical multitrack FLACs (500 MB
+    // - 2 GB). New flow:
+    //   1. POST a small JSON body to /multitrack/upload-url → worker
+    //      returns a Sigv4-presigned R2 PUT URL (~1 KB response)
+    //   2. PUT the file bytes directly to R2 via the presigned URL —
+    //      bypasses the worker entirely, no size cap from R2.
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
 
-    // If the parent upload session was already aborted (e.g., user closed
-    // the modal between Promise.all chunks), don't even fire this fetch.
     var u = _mtState.activeUpload;
     if (u && u.aborted) {
         track._uploadStatus = 'cancelled';
@@ -911,45 +917,63 @@ async function _mtUploadOne(file, sessionId, track) {
         return { ok: false, cancelled: true };
     }
 
-    // Fresh controller per attempt — a retry will get a new one. Old one (if
-    // present from a previous failed try) is discarded; nothing references it.
     var controller = (typeof AbortController === 'function') ? new AbortController() : null;
     track._uploadController = controller;
     track._uploadStatus = 'uploading';
     track._uploadError = null;
     _mtRenderUploadProgress();
     console.log('[Multitrack] upload started:', file.name);
+
     try {
-        var res = await fetch(url, {
+        // ── Step 1: get presigned PUT URL ──────────────────────────────
+        var urlRes = await fetch(workerBase + '/multitrack/upload-url', {
             method: 'POST',
             headers: {
-                'Content-Type': file.type || 'audio/flac',
+                'Content-Type': 'application/json',
                 'X-Band-Slug': slug,
-                'X-Session-Id': sessionId,
-                'X-Filename': file.name
+                'X-Session-Id': sessionId
             },
-            body: file,
+            body: JSON.stringify({ filename: file.name }),
             signal: controller ? controller.signal : undefined
         });
-        var json = null;
-        try { json = await res.json(); } catch (e) {}
-        if (!res.ok || !json || !json.ok) {
-            var msg = (json && json.error) ? json.error : ('HTTP ' + res.status);
+        var urlJson = null;
+        try { urlJson = await urlRes.json(); } catch (e) {}
+        if (!urlRes.ok || !urlJson || !urlJson.ok || !urlJson.uploadUrl) {
+            var urlMsg = (urlJson && urlJson.error) ? urlJson.error : ('HTTP ' + urlRes.status + ' from /multitrack/upload-url');
             track._uploadStatus = 'failed';
-            track._uploadError = msg;
-            console.warn('[Multitrack] upload failed:', file.name, msg);
+            track._uploadError = urlMsg;
+            console.warn('[Multitrack] presign failed:', file.name, urlMsg);
             _mtRenderUploadProgress();
-            return { ok: false, error: msg };
+            return { ok: false, error: urlMsg };
         }
-        track.stemUrl = json.publicUrl;
+
+        // ── Step 2: PUT file directly to R2 via presigned URL ─────────
+        // R2 returns 200 with empty body on success. ETag header is exposed
+        // via the bucket's CORS ExposeHeaders config so we can read it.
+        var putRes = await fetch(urlJson.uploadUrl, {
+            method: 'PUT',
+            body: file,
+            // No custom headers — anything beyond `host` would invalidate
+            // the Sigv4 signature. Content-Type is intentionally omitted;
+            // R2 stores the bytes as-is and the public URL still serves
+            // them with a reasonable default MIME type.
+            signal: controller ? controller.signal : undefined
+        });
+        if (!putRes.ok) {
+            var putMsg = 'R2 PUT failed: HTTP ' + putRes.status;
+            track._uploadStatus = 'failed';
+            track._uploadError = putMsg;
+            console.warn('[Multitrack] R2 PUT failed:', file.name, putMsg);
+            _mtRenderUploadProgress();
+            return { ok: false, error: putMsg };
+        }
+
+        track.stemUrl = urlJson.publicUrl;
         track._uploadStatus = 'done';
         console.log('[Multitrack] upload completed:', file.name);
         _mtRenderUploadProgress();
-        return { ok: true, key: json.key, publicUrl: json.publicUrl };
+        return { ok: true, key: urlJson.key, publicUrl: urlJson.publicUrl };
     } catch (e) {
-        // AbortError can show up under a couple of names depending on the
-        // browser; check both. Aborted uploads are NOT failures — they're
-        // intentional cancellations and the UI must reflect that distinction.
         var isAbort = e && (e.name === 'AbortError' || e.code === 20
             || (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'AbortError'));
         if (isAbort) {
@@ -965,8 +989,6 @@ async function _mtUploadOne(file, sessionId, track) {
         _mtRenderUploadProgress();
         return { ok: false, error: e.message || 'network' };
     } finally {
-        // Drop the controller ref so subsequent abort sweeps don't try to
-        // re-abort an already-settled fetch (idempotent but cleaner).
         if (track._uploadController === controller) track._uploadController = null;
     }
 }
