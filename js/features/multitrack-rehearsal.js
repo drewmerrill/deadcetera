@@ -1120,39 +1120,40 @@ window._mtOpenPlayer = async function(sessionId) {
             '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
           '</div>' +
-          '<div style="display:flex;align-items:center;gap:8px;padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
-            // Skip-30s back. Press-and-hold for continuous rewind (accelerates).
-            '<button onmousedown="_mtHoldStart(-30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-30)" ontouchend="_mtHoldStop()" title="Back 30s (hold for continuous rewind)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 30</button>' +
-            // Skip-5s back
-            '<button onmousedown="_mtHoldStart(-5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-5)" ontouchend="_mtHoldStop()" title="Back 5s (hold for continuous rewind)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 5</button>' +
-            '<button onclick="_mtTogglePlayAll()" id="mtPlayAll" style="padding:8px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;cursor:pointer;font-size:0.92em;min-width:78px">▶ Play</button>' +
-            // Skip+5s forward
-            '<button onmousedown="_mtHoldStart(5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(5)" ontouchend="_mtHoldStop()" title="Forward 5s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">5 ⏩</button>' +
-            // Skip+30s forward
-            '<button onmousedown="_mtHoldStart(30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(30)" ontouchend="_mtHoldStop()" title="Forward 30s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">30 ⏩</button>' +
-            // Seek bar wrapped so comment markers can absolute-position above.
-            // IMPORTANT: oninput previews only (label update, no actual seek).
-            // onchange commits the seek on release. Avoids 17 simultaneous
-            // seeks-per-pixel during drag.
-            '<div style="position:relative;flex:1">' +
-              '<div id="mtSeekMarkers" style="position:absolute;left:0;right:0;top:-3px;height:8px;pointer-events:none"></div>' +
+          // Transport bar — two rows. Row 1: action buttons + time.
+          // Row 2: full-width seek bar (Drew 2026-05-24: "need slider full
+          // length of screen, below everything").
+          '<div style="padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+              // Skip-30s back. Press-and-hold for continuous rewind (accelerates).
+              '<button onmousedown="_mtHoldStart(-30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-30)" ontouchend="_mtHoldStop()" title="Back 30s (hold for continuous rewind)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 30</button>' +
+              // Skip-5s back
+              '<button onmousedown="_mtHoldStart(-5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-5)" ontouchend="_mtHoldStop()" title="Back 5s (hold for continuous rewind)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 5</button>' +
+              '<button onclick="_mtTogglePlayAll()" id="mtPlayAll" style="padding:8px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;cursor:pointer;font-size:0.92em;min-width:78px">▶ Play</button>' +
+              // Skip+5s forward
+              '<button onmousedown="_mtHoldStart(5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(5)" ontouchend="_mtHoldStop()" title="Forward 5s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">5 ⏩</button>' +
+              // Skip+30s forward
+              '<button onmousedown="_mtHoldStart(30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(30)" ontouchend="_mtHoldStop()" title="Forward 30s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">30 ⏩</button>' +
+              // Reverb — master wet/dry knob
+              '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0" title="Reverb wet/dry — playback only, never baked to stems">' +
+                '<span style="font-size:0.74em;color:var(--text-dim);font-weight:700">💧</span>' +
+                '<input type="range" id="mtReverbSlider" min="0" max="100" value="0" step="1" oninput="_mtSetReverbWet(this.value)" style="width:90px;accent-color:#06b6d4;cursor:pointer">' +
+                '<div id="mtReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);min-width:32px;text-align:right">0%</div>' +
+              '</div>' +
+              // Clear all — resets every track's mute / solo / volume / FX
+              // + master reverb wet. One-click way back to a clean baseline.
+              '<button onclick="_mtClearAllMix()" title="Reset all tracks: clear mutes/solos, volumes to 100%, all FX sends off, master reverb to 0" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">🧹 Clear all</button>' +
+              // Manual re-sync — tracks drift naturally over long playback.
+              '<button onclick="_mtResyncAll()" title="Re-sync all tracks to the master playhead" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">🔄 Re-sync</button>' +
+              '<button onclick="_mtAnalyzeRehearsal()" title="Run the segmentation engine to detect song boundaries" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;font-size:0.74em;flex-shrink:0;font-weight:700">🎯 Analyze</button>' +
+              '<button onclick="_mtExportDigest()" title="Copy a markdown digest of all comments to your clipboard" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">📋 Digest</button>' +
+              '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right;margin-left:auto">0:00 / 0:00</div>' +
+            '</div>' +
+            // Row 2: full-width seek bar with comment + segment markers
+            '<div style="position:relative;margin-top:10px;padding-top:4px">' +
+              '<div id="mtSeekMarkers" style="position:absolute;left:0;right:0;top:0;height:8px;pointer-events:none"></div>' +
               '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekPreview(this.value)" onchange="_mtSeekMaster(this.value)" style="width:100%;accent-color:#a5b4fc">' +
             '</div>' +
-            // Phase C reverb — master wet/dry knob. ConvolverNode is wired into
-            // the Web Audio graph on first play. Slider value persists in
-            // mixState; 0 = fully dry, 100 = full wet reverb return level.
-            '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0" title="Reverb wet/dry — playback only, never baked to stems">' +
-              '<span style="font-size:0.74em;color:var(--text-dim);font-weight:700">💧</span>' +
-              '<input type="range" id="mtReverbSlider" min="0" max="100" value="0" step="1" oninput="_mtSetReverbWet(this.value)" style="width:90px;accent-color:#06b6d4;cursor:pointer">' +
-              '<div id="mtReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);min-width:32px;text-align:right">0%</div>' +
-            '</div>' +
-            // Manual re-sync — tracks drift naturally over long playback.
-            // No continuous watchdog (it was glitching). User hits this
-            // when they notice tracks have drifted apart.
-            '<button onclick="_mtResyncAll()" title="Re-sync all tracks to the master playhead (use if tracks have drifted apart)" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">🔄 Re-sync</button>' +
-            '<button onclick="_mtAnalyzeRehearsal()" title="Run the segmentation engine to detect song boundaries. Pick one stem to analyze (drums work best)." style="padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;font-size:0.74em;flex-shrink:0;font-weight:700">🎯 Analyze</button>' +
-            '<button onclick="_mtExportDigest()" title="Copy a markdown digest of all comments to your clipboard" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">📋 Digest</button>' +
-            '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right">0:00 / 0:00</div>' +
           '</div>' +
           // Phase C mix presets — saved snapshots of full mix state. Lives
           // ABOVE the tracks so it's visible without scrolling.
@@ -1345,7 +1346,14 @@ window._mtTogglePlayAll = function() {
             try { a.currentTime = t; } catch (e) {}
             var pr = a.play();
             if (pr && typeof pr.catch === 'function') {
-                pr.catch(function(err) { failed++; console.warn('[Multitrack] play() rejected for', a.dataset.trackId, err && err.name); });
+                pr.catch(function(err) {
+                    // AbortError is self-recovering — happens when the user
+                    // hits play while a previous seek-induced load is still
+                    // in flight. Silence it.
+                    if (err && err.name === 'AbortError') return;
+                    failed++;
+                    console.warn('[Multitrack] play() rejected for', a.dataset.trackId, err && err.name);
+                });
             }
         });
         p.masterPlaying = true;
@@ -2171,7 +2179,35 @@ window._mtSeekMaster = function(pct) {
     var dur = p.audios[0].duration;
     if (!isFinite(dur) || dur <= 0) return;
     var t = (parseFloat(pct) / 100) * dur;
+    // Explicit pause → seek → resume sequence. Seeking 17 elements while
+    // their previous play() promises are still resolving triggers a cascade
+    // of AbortError rejections — and some tracks fail to recover, producing
+    // the "missing instruments" symptom Drew flagged at the 140-min seek
+    // point. Pausing first kills the in-flight promises cleanly; the brief
+    // 30 ms setTimeout lets the browser settle the currentTime writes
+    // before we re-issue play.
+    var wasPlaying = p.masterPlaying;
+    if (wasPlaying) {
+        p.audios.forEach(function(a) { try { a.pause(); } catch (e) {} });
+    }
     p.audios.forEach(function(a) { try { a.currentTime = t; } catch (e) {} });
+    if (wasPlaying) {
+        setTimeout(function() {
+            if (!_mtState.player || !_mtState.player.masterPlaying) return;
+            _mtState.player.audios.forEach(function(a) {
+                var pr = a.play();
+                if (pr && typeof pr.catch === 'function') {
+                    pr.catch(function(err) {
+                        // AbortErrors from seek/play races are recoverable
+                        // and self-clearing — silence the console noise.
+                        if (err && err.name && err.name !== 'AbortError') {
+                            console.warn('[Multitrack] play() rejected for', a.dataset.trackId, err.name);
+                        }
+                    });
+                }
+            });
+        }, 30);
+    }
     _mtMaybeUpdateMasterPosition();
 };
 
@@ -2255,6 +2291,66 @@ function _mtStartSyncWatchdog(p) {
     // Re-introduce only if a future strategy (e.g. AudioBufferSource +
     // chunked decode) is implemented.
 }
+
+// Clear-all mix reset — wipes every per-track adjustment + master reverb,
+// returning the player to a flat unity baseline. Persists via the normal
+// debounced mixState save.
+window._mtClearAllMix = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    if (!confirm('Reset all tracks?\n\nClears every mute + solo, sets all volumes back to 100%, turns off all reverb sends, and zeros the master reverb. Mix presets are kept; only the current live state is reset.')) return;
+    p.muted = {};
+    p.soloed = {};
+    p.mixState = p.mixState || {};
+    p.mixState.volumes = {};
+    p.mixState.reverbSends = {};
+    p.mixState.reverbWet = 0;
+    // Reset UI: every track row's mute/solo/FX buttons + volume slider
+    (p.tracks || []).forEach(function(t) {
+        var muteBtn = document.getElementById('mtMute_' + t.trackId);
+        if (muteBtn) {
+            muteBtn.style.background = 'rgba(255,255,255,0.04)';
+            muteBtn.style.color = 'var(--text-dim)';
+        }
+        var soloBtn = document.getElementById('mtSolo_' + t.trackId);
+        if (soloBtn) {
+            soloBtn.style.background = 'rgba(255,255,255,0.04)';
+            soloBtn.style.color = 'var(--text-dim)';
+        }
+        var fxBtn = document.getElementById('mtFx_' + t.trackId);
+        if (fxBtn) {
+            // Default = OFF after clear (Drew's expectation: "clear all reverbs")
+            fxBtn.style.background = 'rgba(255,255,255,0.04)';
+            fxBtn.style.color = 'var(--text-dim)';
+        }
+        var volSlider = document.getElementById('mtVol_' + t.trackId);
+        if (volSlider) volSlider.value = 100;
+        var volLabel = document.getElementById('mtVolLabel_' + t.trackId);
+        if (volLabel) volLabel.textContent = '100%';
+        // Web Audio graph updates (if initialized)
+        var chain = p.trackChains && p.trackChains[t.trackId];
+        if (chain && p.audioCtx) {
+            try {
+                chain.gain.gain.setTargetAtTime(1.0, p.audioCtx.currentTime, 0.02);
+                if (chain.reverbSend) chain.reverbSend.gain.setTargetAtTime(0, p.audioCtx.currentTime, 0.02);
+            } catch (e) {}
+        }
+    });
+    // Reset master reverb slider
+    var revSlider = document.getElementById('mtReverbSlider');
+    if (revSlider) revSlider.value = 0;
+    var revLabel = document.getElementById('mtReverbLabel');
+    if (revLabel) revLabel.textContent = '0%';
+    if (p.reverbWet && p.audioCtx) {
+        try { p.reverbWet.gain.setTargetAtTime(0, p.audioCtx.currentTime, 0.05); } catch (e) {}
+    }
+    // Apply mute/solo (now empty) so all audio.muted flags clear
+    _mtApplyMuteSolo();
+    // Refresh comment panel since the per-track filter may change
+    _mtRefreshCommentPanel();
+    _mtSaveMixStateDebounced();
+    if (typeof showToast === 'function') showToast('🧹 Mix cleared');
+};
 
 window._mtResyncAll = function() {
     var p = _mtState.player;
