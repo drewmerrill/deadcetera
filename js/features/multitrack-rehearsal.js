@@ -1419,7 +1419,9 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
             '</div>' +
             // ⭐ Keeper, 📤 Export, 🎚 Isolate, ✏️ Edit, × Close
             '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
-            '<button onclick="_mtExportRehearsalMix()" id="mtExportBtn" title="Render and download a stereo mix of this rehearsal" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.35);border-radius:5px;color:#86efac;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📤 Export Mix</button>' +
+            '<button onclick="_mtOpenCustomMixModal()" id="mtCustomMixBtn" title="Dial in vocals/guitars/bass/drums/keys/reverb levels and render a new mix" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);border-radius:5px;color:#a5b4fc;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">🎛 Mix</button>' +
+            '<button onclick="_mtShareCurrentMix()" id="mtShareBtn" title="Text this mix to opted-in bandmates" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.35);border-radius:5px;color:#86efac;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📨 Text</button>' +
+            '<button onclick="_mtExportRehearsalMix()" id="mtExportBtn" title="Render and download a stereo mix of this rehearsal" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📤 Export</button>' +
             '<button onclick="_mtSwitchToIsolate()" title="Switch to Isolate Stems Mode for per-track mute/solo (may drift on long sessions)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">🎚 Isolate</button>' +
             '<button onclick="_mtDownloadStems()" id="mtDownloadBtn" title="Download original FLAC stems as a zip" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📦 Stems</button>' +
             '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
@@ -1780,6 +1782,255 @@ window._mtExportRehearsalMix = async function() {
         setLabel('✗ ' + (e.message || 'failed'), false);
         if (typeof showToast === 'function') showToast('Export failed: ' + (e.message || ''));
         setTimeout(function() { setLabel(orig || '📤 Export Mix', false); }, 4000);
+    }
+};
+
+// ── Custom Mix modal ─────────────────────────────────────────────────────────
+// Lets the user dial vocals/guitars/bass/drums/keys + master reverb in a
+// compact recipe builder, render server-side, and have the result become
+// the new Review Mode playback. The full 17-stem-slider UI lives in
+// Isolate Mode for power-user fine control; this is the "quick mix" path.
+
+function _mtRoleToGroup(role) {
+    role = (role || '').toLowerCase();
+    if (role.startsWith('vocal')) return 'vocals';
+    if (role.startsWith('guitar')) return 'guitars';
+    if (role === 'bass') return 'bass';
+    if (role.indexOf('key') === 0) return 'keys'; // keys, keys-l, keys-r
+    return 'drums'; // kick/snare/tom*/oh*/bongos/hat/ride/open
+}
+
+window._mtOpenCustomMixModal = function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var existing = document.getElementById('mtCustomMixModal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'mtCustomMixModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:6500;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+
+    function sliderRow(emoji, label, key, defaultPct) {
+        return '<div style="display:grid;grid-template-columns:120px 1fr 48px;gap:10px;align-items:center;margin-bottom:8px">' +
+            '<div style="font-size:0.88em;color:var(--text)"><span style="margin-right:6px">' + emoji + '</span>' + escHtml(label) + '</div>' +
+            '<input type="range" id="mtCmx_' + key + '" min="0" max="200" value="' + defaultPct + '" step="1" oninput="document.getElementById(\'mtCmxLabel_' + key + '\').textContent=this.value+\'%\'" style="width:100%;accent-color:#a5b4fc;cursor:pointer">' +
+            '<div id="mtCmxLabel_' + key + '" style="font-family:ui-monospace,monospace;font-size:0.78em;color:var(--text-dim);text-align:right">' + defaultPct + '%</div>' +
+            '</div>';
+    }
+    function reverbRow() {
+        return '<div style="display:grid;grid-template-columns:120px 1fr 48px;gap:10px;align-items:center;margin-bottom:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)">' +
+            '<div style="font-size:0.88em;color:var(--text)"><span style="margin-right:6px">💧</span>Master reverb</div>' +
+            '<input type="range" id="mtCmxReverb" min="0" max="100" value="0" step="1" oninput="document.getElementById(\'mtCmxReverbLabel\').textContent=this.value+\'%\'" style="width:100%;accent-color:#06b6d4;cursor:pointer">' +
+            '<div id="mtCmxReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.78em;color:var(--text-dim);text-align:right">0%</div>' +
+            '</div>';
+    }
+
+    modal.innerHTML =
+        '<div style="max-width:480px;width:100%;background:#0f172a;border-radius:14px;padding:22px;border:1px solid rgba(255,255,255,0.08);max-height:92vh;overflow-y:auto">' +
+            '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+                '<span style="font-size:1.4em">🎛</span>' +
+                '<div style="flex:1;font-weight:800;color:#f1f5f9;font-size:1.05em">Custom Mix</div>' +
+                '<button onclick="document.getElementById(\'mtCustomMixModal\').remove()" style="background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px">×</button>' +
+            '</div>' +
+            '<div style="font-size:0.78em;color:var(--text-dim);margin-bottom:14px">Dial each group, then render. The new mix becomes Review Mode\'s playback.</div>' +
+            sliderRow('🎤', 'Vocals', 'vocals', 100) +
+            sliderRow('🎸', 'Guitars', 'guitars', 100) +
+            sliderRow('🎸', 'Bass', 'bass', 100) +
+            sliderRow('🥁', 'Drums', 'drums', 100) +
+            sliderRow('🎹', 'Keys', 'keys', 100) +
+            reverbRow() +
+            '<div style="margin-top:12px;font-size:0.74em;color:var(--text-dim)">Reverb is applied to vocals + keys by default. For per-track FX routing, use 🎚 Isolate Mode.</div>' +
+            '<div id="mtCmxStatus" style="margin-top:14px;min-height:18px;font-size:0.82em;color:var(--text-dim)"></div>' +
+            '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">' +
+                '<button onclick="document.getElementById(\'mtCustomMixModal\').remove()" class="btn btn-ghost btn-sm">Cancel</button>' +
+                '<button id="mtCmxRenderBtn" onclick="_mtCustomMixRender()" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:6px;color:white;font-weight:700;padding:8px 14px;cursor:pointer;font-size:0.88em">🎬 Render Mix</button>' +
+            '</div>' +
+        '</div>';
+    document.body.appendChild(modal);
+};
+
+window._mtCustomMixRender = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var btn = document.getElementById('mtCmxRenderBtn');
+    var status = document.getElementById('mtCmxStatus');
+    function setStatus(text) { if (status) status.textContent = text; }
+    function setBtn(text, disable) {
+        if (!btn) return;
+        btn.textContent = text;
+        btn.disabled = !!disable;
+        btn.style.opacity = disable ? '0.6' : '1';
+    }
+
+    // Read sliders → group gains (0-2.0 from 0-200% sliders).
+    function readPct(id) {
+        var el = document.getElementById(id);
+        var v = el ? parseFloat(el.value) : 100;
+        return (isFinite(v) ? v : 100) / 100;
+    }
+    var groupGains = {
+        vocals:  readPct('mtCmx_vocals'),
+        guitars: readPct('mtCmx_guitars'),
+        bass:    readPct('mtCmx_bass'),
+        drums:   readPct('mtCmx_drums'),
+        keys:    readPct('mtCmx_keys'),
+    };
+    var masterReverbWet = readPct('mtCmxReverb');
+    if (masterReverbWet > 1) masterReverbWet = 1; // slider tops at 100 here
+
+    // Build per-track recipe. Defaults: vocals + keys send to reverb;
+    // others dry. Mute/solo not exposed in this UI — use Isolate for that.
+    var tracksRecipe = {};
+    (p.tracks || []).forEach(function(t) {
+        var grp = _mtRoleToGroup(t.role);
+        var gain = groupGains[grp];
+        if (gain === undefined) gain = 1.0;
+        var sendsReverb = (grp === 'vocals' || grp === 'keys');
+        tracksRecipe[t.trackId] = {
+            gain: gain,
+            mute: false,
+            solo: false,
+            reverbSend: sendsReverb ? 1 : 0,
+        };
+    });
+
+    var renderId = 'custom-' + Date.now();
+    var recipe = {
+        tracks: tracksRecipe,
+        masterReverbWet: masterReverbWet,
+        outputFormat: 'mp3',  // always MP3 for in-browser playback
+        outputName: 'rehearsal-mix-' + (p.session && p.session.date || p.sessionId) + '-custom.mp3',
+    };
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+
+    setBtn('⏳ Starting…', true);
+    setStatus('Posting recipe to server…');
+    try {
+        var startRes = await fetch(workerBase + '/multitrack/render/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bandSlug: slug,
+                sessionId: p.sessionId,
+                renderId: renderId,
+                recipe: recipe,
+            })
+        });
+        var startJson = await startRes.json();
+        if (!startRes.ok || !startJson || !startJson.call_id) {
+            throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+        }
+        var callId = startJson.call_id;
+        // Same 15-min poll budget as auto-render / export.
+        for (var attempt = 0; attempt < 180; attempt++) {
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            var elapsed = (attempt + 1) * 5;
+            setBtn('⏳ Rendering ' + elapsed + 's…', true);
+            setStatus('Server is rendering your mix… stay on this modal or close it (the render keeps running either way).');
+            var checkRes = await fetch(workerBase + '/multitrack/render/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: callId })
+            });
+            var checkJson = await checkRes.json();
+            if (checkJson && checkJson.status === 'done' && checkJson.publicUrl) {
+                // Swap audio.src in Review Mode so playback uses the new mix.
+                var audio = document.getElementById('mtReviewAudio');
+                if (audio) {
+                    audio.src = checkJson.publicUrl;
+                    audio.load();
+                }
+                if (_mtState.player && _mtState.player.sessionId === p.sessionId) {
+                    _mtState.player.renderInfo = {
+                        url: checkJson.publicUrl,
+                        fileName: checkJson.fileName,
+                        format: checkJson.format,
+                        renderId: checkJson.renderId,
+                    };
+                    // Update Review Mode banner to reflect the new mix.
+                    var banner = document.getElementById('mtReviewStatusBanner');
+                    if (banner) {
+                        banner.innerHTML = '✓ Custom mix rendered — ' + escHtml(checkJson.fileName || 'mix') + ' · ▶ Play to listen';
+                    }
+                }
+                if (typeof showToast === 'function') showToast('✓ Custom mix ready — Review Mode is now playing it');
+                var modalEl = document.getElementById('mtCustomMixModal');
+                if (modalEl) modalEl.remove();
+                return;
+            }
+            if (checkJson && (checkJson.success === false || checkJson.status === 'error')) {
+                throw new Error((checkJson.error || checkJson.detail || 'render_error'));
+            }
+        }
+        throw new Error('render timed out after 15 minutes');
+    } catch (e) {
+        console.warn('[Multitrack] custom mix render failed:', e);
+        setStatus('✗ ' + (e.message || 'failed'));
+        setBtn('🎬 Render Mix', false);
+        if (typeof showToast === 'function') showToast('Render failed: ' + (e.message || ''));
+    }
+};
+
+// ── 📨 Text Band — share current rendered mix via SMS ───────────────────────
+// Uses GLSms.notifyBand (existing 3-layer notification system) to fan out
+// to opted-in band members. Default excludes the sender. A2P-compliant
+// body with brand prefix + STOP/HELP/rates disclosures. URL is the public
+// R2 link; recipient taps it to play in their messaging app.
+window._mtShareCurrentMix = async function() {
+    var p = _mtState.player;
+    if (!p || !p.renderInfo || !p.renderInfo.url) {
+        if (typeof showToast === 'function') showToast('No mix to share yet — wait for the render to finish');
+        return;
+    }
+    if (typeof GLSms === 'undefined' || !GLSms.notifyBand) {
+        if (typeof showToast === 'function') showToast('SMS pipeline unavailable');
+        return;
+    }
+    // Sender name from band roster, fallback to "A bandmate".
+    var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
+    var senderName = 'A bandmate';
+    try {
+        if (memberKey && typeof bandMembers !== 'undefined' && bandMembers[memberKey] && bandMembers[memberKey].name) {
+            senderName = bandMembers[memberKey].name.split(' ')[0];
+        }
+    } catch (e) {}
+    // Rehearsal date label (matches the Review Mode header)
+    var dateLabel = '';
+    try {
+        if (p.session && p.session.date) {
+            dateLabel = new Date(p.session.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+    } catch (e) {}
+    var bodyLead = 'GrooveLinx: ' + senderName + ' shared the' + (dateLabel ? ' ' + dateLabel : '') + ' rehearsal mix: ' + p.renderInfo.url;
+    var body = bodyLead + '. Reply STOP to opt out, HELP for help. Message and data rates may apply.';
+
+    // Show preview + recipient count, confirm before sending.
+    var preview = body.length > 280 ? body.slice(0, 280) + '…' : body;
+    if (!confirm('Send this SMS to opted-in band members?\n\n' + preview)) {
+        return;
+    }
+    var btn = document.getElementById('mtShareBtn');
+    var orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Sending…'; }
+    try {
+        var result = await GLSms.notifyBand({ body: body });
+        if (btn) { btn.disabled = false; btn.textContent = orig || '📨 Text'; }
+        if (result && result.ok) {
+            if (result.total === 0) {
+                if (typeof showToast === 'function') showToast('ℹ No opted-in SMS recipients in your band');
+            } else if (result.sent === result.total) {
+                if (typeof showToast === 'function') showToast('✓ Mix link texted to ' + result.sent + ' bandmate' + (result.sent === 1 ? '' : 's'));
+            } else {
+                if (typeof showToast === 'function') showToast('⚠️ Sent ' + result.sent + ' of ' + result.total + ' (' + result.failed + ' failed)');
+                console.warn('[Multitrack] SMS share partial failure:', result.errors);
+            }
+        } else {
+            if (typeof showToast === 'function') showToast('Share failed: ' + ((result && result.reason) || 'unknown'));
+        }
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = orig || '📨 Text'; }
+        console.warn('[Multitrack] SMS share threw:', e);
+        if (typeof showToast === 'function') showToast('Share failed: ' + (e.message || ''));
     }
 };
 
