@@ -264,7 +264,7 @@ function _mtRenderStep3() {
     '<div class="mt-wiz-step">' +
         '<div class="mt-wiz-step-eyebrow">STEP 3 OF 5</div>' +
         '<div class="mt-wiz-step-title">📂 Drop stems folder into GrooveLinx</div>' +
-        '<div class="mt-wiz-step-sub">Drag the entire <code>stems/</code> folder onto the box, or click to pick the FLAC files. Auto-mapping fires the moment files land.</div>' +
+        '<div class="mt-wiz-step-sub">Open your <code>stems/</code> folder, select all the FLAC files (<code>⌘A</code>), and drag them onto the box. OR click the box to browse + multi-select. Auto-mapping fires the moment files land. <em>(Dragging the folder itself doesn\'t work — browsers don\'t expand folders into the file list.)</em></div>' +
         // Drop zone — same id/wiring as the legacy modal so _mtFilesPicked
         // and the change/drop handlers work unchanged.
         '<div id="mtDropZone" class="mt-wiz-dropzone">' +
