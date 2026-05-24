@@ -2715,10 +2715,11 @@ async function _rhRenderSessionHistory() {
     clean.forEach(function(s, _si) {
         var isLatest = _si === 0;
         // Anchor at LOCAL noon so timezone shifts don't bump the displayed
-        // date back a day. Stored dates are YYYY-MM-DD; new Date('2026-05-18')
-        // is UTC midnight which is 2026-05-17 8 PM EDT — wrong card title.
-        var d = s.date ? new Date(s.date + 'T12:00:00') : null;
-        var dateStr = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+        // date back a day. Some sessions store date as YYYY-MM-DD (multitrack)
+        // and others as a full ISO string with time (legacy single-file).
+        // Take the first 10 chars to normalize, then append T12:00:00.
+        var d = s.date ? new Date(String(s.date).slice(0, 10) + 'T12:00:00') : null;
+        var dateStr = (d && !isNaN(d.getTime())) ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
         var totalActual = s.totalActualMin || 0;
 
         // Phase A multitrack: distinct compact card. Doesn't have a
@@ -2729,13 +2730,14 @@ async function _rhRenderSessionHistory() {
             html += '<div class="app-card" style="padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px' + (isLatest ? ';border-left:3px solid #fbbf24;background:rgba(245,158,11,0.04)' : '') + '">'
                 + (_rhBulkMode ? '<input type="checkbox" id="rhBulkCb_' + s.sessionId + '" onchange="_rhBulkToggle(\'' + s.sessionId + '\')"' + (_rhBulkSelected[s.sessionId] ? ' checked' : '') + ' style="accent-color:#ef4444;width:14px;height:14px;cursor:pointer;flex-shrink:0">' : '')
                 + '<div style="flex:1;min-width:0">'
-                // Top line: emoji + date + track count + Multitrack badge.
-                // Each piece is short; no overflow risk.
+                // Top line: 🎚 emoji + date + track count. The 🎚 emoji
+                // plus the yellow card border already signal "multitrack" —
+                // dropped the redundant text badge that was overlapping the
+                // ▶ Open button in narrow sidebars.
                 + '<div style="display:flex;align-items:center;gap:6px">'
                 + '<span style="font-size:0.78em">🎚</span>'
                 + '<span style="font-weight:700;font-size:0.82em;color:var(--text)">' + dateStr + '</span>'
                 + '<span style="font-size:0.72em;color:var(--text-muted)">· ' + trackCount + ' tracks</span>'
-                + '<span style="font-size:0.58em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase">Multitrack</span>'
                 + '</div>'
                 // Bottom line: venue, with strict single-line ellipsis so a
                 // long string can\'t break the card layout (the previous
@@ -2862,9 +2864,10 @@ async function _rhRenderLastRehearsalTimeline() {
     var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
     var segments = _toArr(latest.audio_segments);
     // Anchor at local noon to avoid timezone shift bumping the displayed
-    // date back a day (UTC midnight on Drew's stored "2026-05-18" is May 17
-    // 8 PM EDT).
-    var dateStr = latest.date ? new Date(latest.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    // date back a day. Tolerate both YYYY-MM-DD and full-ISO date strings
+    // by slicing to the first 10 chars before appending T12:00:00.
+    var _latestD = latest.date ? new Date(String(latest.date).slice(0, 10) + 'T12:00:00') : null;
+    var dateStr = (_latestD && !isNaN(_latestD.getTime())) ? _latestD.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
     var durMin = latest.totalActualMin || 0;
     var durLabel = durMin >= 60 ? Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm' : durMin + 'm';
 
@@ -3583,8 +3586,9 @@ window._rhJumpToTime = function(timeSec) {
 var _rhFmt = function(sec) { if (!sec && sec !== 0) return '0:00'; var m = Math.floor(sec / 60); var s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; };
 
 function _rhPrepareSegmentData(session, segments) {
-    // Anchor at local noon (avoids timezone shift; see _rhRenderPastList)
-    var dateStr = session.date ? new Date(session.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
+    // Anchor at local noon, tolerating both YYYY-MM-DD and full-ISO strings
+    var _sessD = session.date ? new Date(String(session.date).slice(0, 10) + 'T12:00:00') : null;
+    var dateStr = (_sessD && !isNaN(_sessD.getTime())) ? _sessD.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
     var totalDur = session.totalActualMin || 0;
     var durLabel = totalDur >= 60 ? Math.floor(totalDur / 60) + 'h ' + (totalDur % 60) + 'm' : totalDur + 'm';
 
