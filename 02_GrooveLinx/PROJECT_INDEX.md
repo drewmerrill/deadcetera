@@ -35,12 +35,15 @@ These constraints are intentional and should not be casually changed.
 
 The **repo docs are the source of truth**.
 
+**Project guidance file:** `AGENTS.md` / `CLAUDE.md` at the repo root (same file — `AGENTS.md` is a symlink to `CLAUDE.md`). Read by Claude Code natively (via `CLAUDE.md`) and by ~30 other AI agents via the open AGENTS.md standard (Cursor, OpenAI Codex, Aider, GitHub Copilot, JetBrains AI, etc.). Any agent can edit either name — they resolve to the same file.
+
 AI assistants should read these in order:
 
-1. `02_GrooveLinx/CLAUDE_HANDOFF.md`
-2. `02_GrooveLinx/DEV_WORKFLOW.md`
-3. `02_GrooveLinx/specs/groovelinx-architecture.md`
-4. `02_GrooveLinx/notes/uat_bug_log.md`
+1. `AGENTS.md` (a.k.a. `CLAUDE.md`) — project rules + system locks at repo root
+2. `02_GrooveLinx/CLAUDE_HANDOFF.md`
+3. `02_GrooveLinx/DEV_WORKFLOW.md`
+4. `02_GrooveLinx/specs/groovelinx-architecture.md`
+5. `02_GrooveLinx/notes/uat_bug_log.md`
 
 Supporting docs:
 

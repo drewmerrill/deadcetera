@@ -1,7 +1,8 @@
-# CLAUDE.md
-GrooveLinx Project Guidance
+# GrooveLinx — Project Guidance for AI Agents
 
-This file provides architectural guidance for Claude when modifying the GrooveLinx codebase.
+> **Dual readership.** This file is the canonical project-guidance document for any AI coding agent working on GrooveLinx. It's reachable two ways: as `CLAUDE.md` (Claude Code's native convention) and as `AGENTS.md` (the open AGENTS.md standard read by Cursor, OpenAI Codex, Aider, GitHub Copilot, JetBrains AI, and ~30 other agents). `AGENTS.md` is a symlink to `CLAUDE.md` — one file, dual readership, edit either name.
+>
+> Where this doc says "Claude," treat it as "you, the AI agent reading this." All rules apply to every agent equally.
 
 ---
 
