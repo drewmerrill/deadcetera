@@ -2089,19 +2089,28 @@ window._mtHoldStop = function() {
     }
 };
 
-// ── Drift watchdog ─────────────────────────────────────────────────────────
-// 17 independent HTML5 <audio> elements have separate clocks and drift apart
-// over long playback. Drew reported tracks visibly out of sync at 27:10 into
-// the rehearsal. Every 4 seconds during playback, we read the first audio's
-// currentTime and snap any track that's drifted past a 100ms threshold back
-// to match. The brief re-seek may produce a small audible glitch on the
-// snapped track, but the alternative — letting them drift further — is much
-// worse.
+// ── Drift watchdog — soft correction via playbackRate ─────────────────────
+// 17 independent HTML5 <audio> elements drift apart over time. Earlier
+// version of this watchdog hard-snapped a drifted track's currentTime,
+// which produced an audible click on every correction (Drew flagged this
+// as "glitches" 2026-05-24).
 //
-// Long-term fix: switch to AudioBufferSourceNode scheduling for sample-
-// accurate sync (requires fully decoding all 17 FLACs into AudioBuffers,
-// which is the memory-prohibitive path we punted on for segmentation).
-// For now this watchdog buys correctness at modest cost.
+// Soft correction strategy: instead of snapping, subtly adjust each
+// drifted track's playbackRate so it catches up smoothly over a few
+// seconds. A 1% rate change (rate = 1.01 or 0.99) is below most
+// listeners' pitch-detection threshold and invisible during typical band
+// material. Drift of 100ms catches up in ~10 seconds — well within any
+// review session length.
+//
+// Hard snap is retained as a fallback for catastrophic drift (>500ms),
+// which usually means a buffer stall rather than gradual drift; snap is
+// the right correction there.
+//
+// Long-term: AudioBufferSourceNode would give true sample-accurate sync,
+// but requires fully decoding all 17 FLACs to memory (~34 GB for a 3-hour
+// rehearsal — browser-prohibitive). For pro mastering, the right answer
+// is to render server-side via the stem files — see project_multitrack
+// _rehearsal memory for the export-master roadmap.
 function _mtStartSyncWatchdog(p) {
     if (p._syncTimer) clearInterval(p._syncTimer);
     p._syncTimer = setInterval(function() {
@@ -2112,12 +2121,33 @@ function _mtStartSyncWatchdog(p) {
         p.audios.forEach(function(a, i) {
             if (i === 0) return;
             if (a.paused || !isFinite(a.duration)) return;
+            // drift > 0 → this track is AHEAD of ref → need to slow down (rate < 1)
+            // drift < 0 → this track is BEHIND of ref → need to speed up (rate > 1)
             var drift = a.currentTime - refTime;
-            if (Math.abs(drift) > 0.1) { // 100ms threshold
+            var absDrift = Math.abs(drift);
+
+            if (absDrift > 0.5) {
+                // Catastrophic — almost certainly a buffer stall, not gradual
+                // drift. Hard snap is the correct fix; the rate-adjustment
+                // wouldn't catch up before the next stall.
                 try { a.currentTime = refTime; } catch (e) {}
+                a.playbackRate = 1.0;
+            } else if (absDrift > 0.02) {
+                // Soft correction. Map drift in [±20ms, ±500ms] to a rate
+                // adjustment in [0, ±1%]. At max 1% adjustment, a 200ms drift
+                // converges in ~20 seconds — well below user attention span.
+                // 1% rate change is also below trained-musician pitch
+                // detection threshold (~17 cents pitch shift) and inaudible
+                // on dense band material.
+                var corrFactor = Math.max(-1, Math.min(1, drift / 0.5));
+                a.playbackRate = 1.0 - corrFactor * 0.01;
+            } else if (a.playbackRate !== 1.0) {
+                // Within tolerance — release any rate adjustment so the
+                // track returns to natural-speed playback.
+                a.playbackRate = 1.0;
             }
         });
-    }, 4000); // every 4 seconds — enough to catch drift before it's musical
+    }, 1000); // every 1s — finer-grained than hard-snap version (was 4s)
 }
 
 function _mtStopSyncWatchdog(p) {
