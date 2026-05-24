@@ -96,6 +96,18 @@ image = (
     .pip_install(["boto3==1.34.0", "fastapi[standard]"])
 )
 
+# Phase 4 (Custom Mix UX polish, 2026-05-24) — same pattern as
+# segment_audio's PROGRESS_DICT. render_mix writes per-phase markers
+# here so the browser can poll for ground-truth status via
+# render_endpoint(action='check', progress_id=...). Cleaned up in
+# render_mix's finally block. Mirrors the Analyze flow Drew already
+# uses: "I would much rather know what is going on then just a flashy
+# front." Keyed by a browser-supplied progress_id.
+RENDER_PROGRESS_DICT = modal.Dict.from_name(
+    "groovelinx-render-progress",
+    create_if_missing=True,
+)
+
 
 def _safe_token(s: str, max_len: int = 64) -> str:
     """Trim + strict-validate an identifier (band slug / session id / render id)."""
@@ -125,10 +137,34 @@ def render_mix(
     sessionId: str,
     renderId: str,
     recipe: dict,
+    progress_id: str = "",
 ):
-    """Pulls stems, applies recipe via ffmpeg, uploads mixdown to R2."""
+    """Pulls stems, applies recipe via ffmpeg, uploads mixdown to R2.
+
+    progress_id (Phase 4): browser-supplied identifier for per-phase
+    markers written to RENDER_PROGRESS_DICT[progress_id]. Browser polls
+    render_endpoint(action='check', progress_id=...) for ground-truth
+    status. Cleaned up in finally block.
+
+    recipe.previewSliceSec (Phase 4): optional {start, duration} for a
+    short preview render (~30s slice at user's playhead). Output goes
+    to a separate _previews/ key so the renders/ listing for the player
+    doesn't surface preview files.
+    """
     import boto3
     from boto3.s3.transfer import TransferConfig
+
+    def _mark(phase: str, label: str):
+        if not progress_id:
+            return
+        try:
+            RENDER_PROGRESS_DICT[progress_id] = {
+                "phase": phase,
+                "label": label,
+                "updatedAt": time.time(),
+            }
+        except Exception as e:
+            print(f"[render] progress mark write failed: {e}")
 
     endpoint = os.environ["R2_ENDPOINT"]
     access_key = os.environ["R2_ACCESS_KEY_ID"]
@@ -207,6 +243,27 @@ def render_mix(
             last_end = end
         if not segments:
             return {"success": False, "error": "no_valid_segments"}
+
+    # Phase 4 — preview slice. When set, ffmpeg uses -ss/-t to render
+    # only that window. Output goes to a preview-specific R2 path so
+    # the /status route ignores it (otherwise the player would see
+    # 30-second previews mixed into its normal renders list).
+    preview_slice = recipe.get("previewSliceSec")
+    preview_start = 0.0
+    preview_duration = 0.0
+    is_preview = False
+    if preview_slice and isinstance(preview_slice, dict):
+        try:
+            preview_start = float(preview_slice.get("start", 0))
+            preview_duration = float(preview_slice.get("duration", 0))
+        except (TypeError, ValueError):
+            preview_start = preview_duration = 0.0
+        if preview_duration > 0 and preview_start >= 0:
+            is_preview = True
+            # Cap preview duration at 60s — we want fast feedback, not
+            # a sneaky path to free full renders.
+            if preview_duration > 60:
+                preview_duration = 60
 
     # Solo semantics — match the browser: if any track is soloed, mute every
     # non-soloed track in the output (mute=true still overrides solo).
@@ -296,6 +353,7 @@ def render_mix(
     output_path = os.path.join(temp_dir, out_name)
 
     try:
+        _mark("download", f"Downloading {len(active)} stems from R2 (parallel ×8)")
         # Parallel R2 → local downloads. Empirical 2026-05-24: a 3-hour
         # 17-stem session took 8m 20s end-to-end with sequential
         # s3.download_file calls (most of the time was network — each FLAC
@@ -335,6 +393,7 @@ def render_mix(
             f"in {download_elapsed:.1f}s ({(total_in / 1024 / 1024) / download_elapsed:.1f} MB/s)"
         )
 
+        _mark("filter_build", f"Building ffmpeg filter graph ({len(active)} streams" + (f", {len(segments)} song segments" if segments else "") + ")")
         # Build the ffmpeg filter graph.
         #
         # Per-track branch:
@@ -451,15 +510,30 @@ def render_mix(
         full_filter = ";".join(filter_parts + [amix_filter, limiter_filter])
 
         # Build the ffmpeg command. -y overwrites; -hide_banner cleaner logs.
+        # Phase 4 preview: when is_preview, we use -ss BEFORE the inputs
+        # for fast seek (ffmpeg skips containers it doesn't need to decode).
+        # The -t after the filter graph caps duration on the OUTPUT side
+        # (post-filter) so segment concat + amix still works correctly.
         cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
         for t in local_paths:
-            cmd.extend(["-i", t["path"]])
+            if is_preview and not segments:
+                # Fast input seek — only safe when no segment concat is
+                # in play (atrim's ranges are timeline-absolute and would
+                # break if we shifted the input clock).
+                cmd.extend(["-ss", f"{preview_start:.3f}", "-i", t["path"]])
+            else:
+                cmd.extend(["-i", t["path"]])
         cmd.extend([
             "-filter_complex", full_filter,
             "-map", "[out]",
-            "-ac", "2",   # explicit stereo
+            "-ac", "2",
             "-ar", "48000",
         ])
+        if is_preview:
+            # Output-side cap. For songs-only renders with segment concat,
+            # this cuts the concatenated timeline at preview_duration so
+            # we still get a useful slice across segments.
+            cmd.extend(["-t", f"{preview_duration:.3f}"])
         if out_format == "wav":
             cmd.extend(["-c:a", "pcm_s24le"])
         elif out_format == "flac":
@@ -468,7 +542,8 @@ def render_mix(
             cmd.extend(["-c:a", "libmp3lame", "-b:a", "320k"])
         cmd.append(output_path)
 
-        print(f"[render] ffmpeg active branches={len(amix_inputs)}, format={out_format}")
+        _mark("ffmpeg", f"Mixing audio — {len(amix_inputs)} branches → stereo → " + out_format + (f" (preview {preview_duration:.0f}s)" if is_preview else ""))
+        print(f"[render] ffmpeg active branches={len(amix_inputs)}, format={out_format}, preview={is_preview}")
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             print(f"[render] ffmpeg stderr:\n{proc.stderr[:4000]}")
@@ -481,8 +556,15 @@ def render_mix(
         out_size = os.path.getsize(output_path)
         print(f"[render] render complete: {out_size / 1024 / 1024:.1f} MB. Uploading…")
 
-        # Upload to R2 under renders/ subkey.
-        render_key = f"{prefix}renders/{renderId}/{out_name}"
+        _mark("upload", f"Uploading {out_size / 1024 / 1024:.1f} MB to R2")
+        # Upload to R2 under renders/ subkey. Previews go under
+        # renders/_previews/ so the /multitrack/render/status listing
+        # (which the player consumes) doesn't surface them as durable
+        # renders.
+        if is_preview:
+            render_key = f"{prefix}renders/_previews/{renderId}/{out_name}"
+        else:
+            render_key = f"{prefix}renders/{renderId}/{out_name}"
         content_type = {
             "wav": "audio/wav",
             "mp3": "audio/mpeg",
@@ -509,6 +591,7 @@ def render_mix(
         public_url = f"{public_base}/{render_key}" if public_base else None
         print(f"[render] uploaded. publicUrl={public_url}")
 
+        _mark("wrap", "Finalizing — render complete")
         return {
             "success": True,
             "status": "done",
@@ -523,12 +606,20 @@ def render_mix(
             "activeStemCount": len(active),
             "totalStemCount": len(stem_files),
             "masterReverbWet": master_reverb_wet,
+            "isPreview": is_preview,
+            "previewSliceSec": ({"start": preview_start, "duration": preview_duration} if is_preview else None),
         }
     finally:
         try:
             shutil.rmtree(temp_dir)
         except Exception:
             pass
+        # Phase 4 — clear progress entry on all exit paths.
+        if progress_id:
+            try:
+                del RENDER_PROGRESS_DICT[progress_id]
+            except Exception:
+                pass
 
 
 @app.function(
@@ -573,14 +664,19 @@ def render_endpoint(item: dict):
         recipe = item.get("recipe", {})
         if not isinstance(recipe, dict):
             return {"success": False, "error": "bad_recipe"}
+        # Phase 4 — optional progress_id for per-phase markers.
+        progress_id = str(item.get("progress_id", "")).strip()
+        if progress_id and not re.match(r"^[a-zA-Z0-9_-]{1,80}$", progress_id):
+            progress_id = ""
         try:
-            call = render_mix.spawn(band_slug, session_id, render_id, recipe)
+            call = render_mix.spawn(band_slug, session_id, render_id, recipe, progress_id)
             return {
                 "success": True,
                 "call_id": call.object_id,
                 "bandSlug": band_slug,
                 "sessionId": session_id,
                 "renderId": render_id,
+                "progress_id": progress_id,
             }
         except Exception as e:
             return {"success": False, "error": f"spawn_failed: {e}"}
@@ -589,6 +685,11 @@ def render_endpoint(item: dict):
         call_id = item.get("call_id", "")
         if not call_id:
             return {"success": False, "error": "missing call_id"}
+        # Phase 4 — optional progress_id for fetching the latest phase
+        # marker alongside processing status.
+        progress_id = str(item.get("progress_id", "")).strip()
+        if progress_id and not re.match(r"^[a-zA-Z0-9_-]{1,80}$", progress_id):
+            progress_id = ""
         try:
             call = modal.FunctionCall.from_id(call_id)
         except Exception as e:
@@ -598,7 +699,16 @@ def render_endpoint(item: dict):
         except modal.exception.OutputExpiredError:
             return {"success": False, "error": "output_expired"}
         except TimeoutError:
-            return {"success": True, "status": "processing"}
+            progress = None
+            if progress_id:
+                try:
+                    progress = RENDER_PROGRESS_DICT.get(progress_id)
+                except Exception:
+                    progress = None
+            out = {"success": True, "status": "processing"}
+            if progress:
+                out["progress"] = progress
+            return out
         except Exception as e:
             return {"success": False, "error": f"call_failed: {e}"}
         return result

@@ -2222,6 +2222,9 @@ async function handleMultitrackRenderStart(request, env) {
   if (typeof recipe !== 'object' || Array.isArray(recipe)) {
     return cors(jsonError('bad_recipe', 400));
   }
+  // Phase 4 — optional progress_id (mirrors segment route). Forwarded
+  // unchanged; Modal-side validates the shape.
+  var progressId = String(body.progressId || body.progress_id || '').trim();
 
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 60000);
@@ -2236,6 +2239,7 @@ async function handleMultitrackRenderStart(request, env) {
         renderId: renderId,
         recipe: recipe,
         token: env.STEMS_SHARED_SECRET,
+        progress_id: progressId,
       }),
       signal: ctrl.signal,
     });
@@ -2265,6 +2269,8 @@ async function handleMultitrackRenderCheck(request, env) {
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   var callId = String(body.call_id || body.callId || '').trim();
   if (!callId) return cors(jsonError('missing_call_id', 400));
+  // Phase 4 — optional progress_id (mirrors segment route).
+  var progressId = String(body.progressId || body.progress_id || '').trim();
 
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 30000);
@@ -2276,6 +2282,7 @@ async function handleMultitrackRenderCheck(request, env) {
         action: 'check',
         call_id: callId,
         token: env.STEMS_SHARED_SECRET,
+        progress_id: progressId,
       }),
       signal: ctrl.signal,
     });
