@@ -1084,11 +1084,12 @@ window._mtOpenPlayer = async function(sessionId) {
         var subTail = mName
             ? ' <span style="color:var(--text-dim);font-size:0.85em">· ' + escHtml(mName) + '</span>'
             : ' <span style="color:var(--text-dim);font-size:0.78em;font-style:italic;opacity:0.7">· ambient</span>';
-        return '<div class="mt-track-row" data-track-id="' + escHtml(t.trackId) + '" style="display:grid;grid-template-columns:130px 60px 60px 1fr 50px;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.78em">'
+        return '<div class="mt-track-row" data-track-id="' + escHtml(t.trackId) + '" style="display:grid;grid-template-columns:130px 50px 50px 1fr 45px;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.78em">'
             + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-weight:700;color:var(--text)">' + escHtml(t.label) + '</span>' + subTail + '</div>'
             + '<button onclick="_mtToggleMute(\'' + t.trackId + '\')" id="mtMute_' + escHtml(t.trackId) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:3px 6px;cursor:pointer;font-size:0.78em">M</button>'
             + '<button onclick="_mtToggleSolo(\'' + t.trackId + '\')" id="mtSolo_' + escHtml(t.trackId) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:3px 6px;cursor:pointer;font-size:0.78em">S</button>'
-            + '<div id="mtMeter_' + escHtml(t.trackId) + '" style="height:8px;background:rgba(255,255,255,0.05);border-radius:4px;overflow:hidden"><div style="height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#a5b4fc)"></div></div>'
+            + '<input type="range" id="mtVol_' + escHtml(t.trackId) + '" min="0" max="200" value="100" step="1" oninput="_mtSetTrackVolume(\'' + t.trackId + '\', this.value)" title="Volume — 100% = unity gain, 200% = +6 dB boost" style="width:100%;accent-color:#a5b4fc;cursor:pointer">'
+            + '<div id="mtVolLabel_' + escHtml(t.trackId) + '" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);text-align:right">100%</div>'
             + '<audio preload="metadata" src="' + escHtml(t.stemUrl) + '" data-track-id="' + escHtml(t.trackId) + '"></audio>'
             + '</div>';
     }).join('');
@@ -1110,12 +1111,23 @@ window._mtOpenPlayer = async function(sessionId) {
               '<div id="mtSeekMarkers" style="position:absolute;left:0;right:0;top:-3px;height:8px;pointer-events:none"></div>' +
               '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekMaster(this.value)" style="width:100%;accent-color:#a5b4fc">' +
             '</div>' +
+            // Phase C reverb — master wet/dry knob. ConvolverNode is wired into
+            // the Web Audio graph on first play. Slider value persists in
+            // mixState; 0 = fully dry, 100 = full wet reverb return level.
+            '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0" title="Reverb wet/dry — playback only, never baked to stems">' +
+              '<span style="font-size:0.74em;color:var(--text-dim);font-weight:700">💧</span>' +
+              '<input type="range" id="mtReverbSlider" min="0" max="100" value="0" step="1" oninput="_mtSetReverbWet(this.value)" style="width:90px;accent-color:#06b6d4;cursor:pointer">' +
+              '<div id="mtReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);min-width:32px;text-align:right">0%</div>' +
+            '</div>' +
             '<button onclick="_mtExportDigest()" title="Copy a markdown digest of all comments to your clipboard" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">📋 Digest</button>' +
             '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right">0:00 / 0:00</div>' +
           '</div>' +
+          // Phase C mix presets — saved snapshots of full mix state. Lives
+          // ABOVE the tracks so it's visible without scrolling.
+          '<div id="mtMixPresetBar" style="padding:8px 10px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);border-radius:8px;margin-bottom:8px;flex-shrink:0"></div>' +
           // Tracks list — capped height so comment panel always has room
           '<div style="overflow-y:auto;max-height:35vh;border:1px solid rgba(255,255,255,0.04);border-radius:8px;flex-shrink:0">' + trackRowsHtml + '</div>' +
-          '<div style="margin-top:6px;font-size:0.66em;color:var(--text-dim);text-align:center;flex-shrink:0">M = mute · S = solo · seek bar scrubs all tracks</div>' +
+          '<div style="margin-top:6px;font-size:0.66em;color:var(--text-dim);text-align:center;flex-shrink:0">M = mute · S = solo · slider = volume · 💧 = reverb · seek bar scrubs all tracks</div>' +
           // Phase B: comment list (fills remaining vertical space) + composer (sticky bottom)
           '<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:120px"></div>' +
           '<div id="mtComposerArea"></div>' +
@@ -1137,6 +1149,57 @@ window._mtOpenPlayer = async function(sessionId) {
         commentFilterToSoloed: false,// per-track filter toggle
         commentFilterMember: ''      // per-member filter (Phase C step 1)
     };
+
+    // Phase C: load persisted mix state + presets so the player opens
+    // exactly as the user last left it. Web Audio graph is created lazily
+    // on first play (autoplay policy), so volumes set here just go into
+    // mixState — they get applied to the GainNodes after init.
+    _mtLoadMixState(sessionId).then(function(saved) {
+        if (_mtState.player && _mtState.player.sessionId === sessionId && saved) {
+            _mtState.player.mixState = {
+                volumes: saved.volumes || {},
+                reverbWet: saved.reverbWet || 0
+            };
+            // Restore mute/solo state too — these affect audio.muted directly
+            // even before Web Audio init.
+            _mtState.player.muted = saved.mute || {};
+            _mtState.player.soloed = saved.solo || {};
+            _mtApplyMuteSolo();
+            // Reflect in the UI controls
+            Object.keys(saved.volumes || {}).forEach(function(id) {
+                var slider = document.getElementById('mtVol_' + id);
+                var label = document.getElementById('mtVolLabel_' + id);
+                if (slider) slider.value = saved.volumes[id] * 100;
+                if (label) label.textContent = Math.round(saved.volumes[id] * 100) + '%';
+            });
+            var revSlider = document.getElementById('mtReverbSlider');
+            var revLabel = document.getElementById('mtReverbLabel');
+            if (revSlider) revSlider.value = (saved.reverbWet || 0) * 100;
+            if (revLabel) revLabel.textContent = Math.round((saved.reverbWet || 0) * 100) + '%';
+            Object.keys(_mtState.player.muted).forEach(function(id) {
+                if (!_mtState.player.muted[id]) return;
+                var btn = document.getElementById('mtMute_' + id);
+                if (btn) {
+                    btn.style.background = 'rgba(239,68,68,0.18)';
+                    btn.style.color = '#fca5a5';
+                }
+            });
+            Object.keys(_mtState.player.soloed).forEach(function(id) {
+                if (!_mtState.player.soloed[id]) return;
+                var btn = document.getElementById('mtSolo_' + id);
+                if (btn) {
+                    btn.style.background = 'rgba(245,158,11,0.18)';
+                    btn.style.color = '#fbbf24';
+                }
+            });
+        }
+    });
+    _mtLoadMixPresets(sessionId).then(function(presets) {
+        if (_mtState.player && _mtState.player.sessionId === sessionId) {
+            _mtState.player.mixPresets = presets || [];
+            _mtRenderMixPresetBar();
+        }
+    });
 
     // Phase B: load existing comments and render composer + list
     _mtLoadComments(sessionId).then(function(comments) {
@@ -1176,6 +1239,14 @@ window._mtClosePlayer = function() {
     if (_mtState.player) {
         if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
         _mtState.player.audios.forEach(function(a) { try { a.pause(); a.src = ''; } catch (e) {} });
+        // Phase C: flush any pending mixState save, then tear down Web Audio
+        // graph. Closing the AudioContext frees the GainNodes / ConvolverNode
+        // and the synthesized impulse buffer; reopening the player creates a
+        // fresh graph from scratch.
+        if (_mtMixSaveTimer) { clearTimeout(_mtMixSaveTimer); _mtMixSaveTimer = null; _mtSaveMixState(); }
+        if (_mtState.player.audioCtx) {
+            try { _mtState.player.audioCtx.close(); } catch (e) {}
+        }
         _mtState.player = null;
     }
     _mtState.composerTags = {};
@@ -1190,6 +1261,15 @@ window._mtTogglePlayAll = function() {
         p.masterPlaying = false;
         if (btn) btn.textContent = '▶ Play';
     } else {
+        // Phase C: initialize Web Audio graph on first play click. Browser
+        // autoplay policy requires AudioContext creation to be inside a user
+        // gesture handler; this is that handler. Idempotent if already
+        // initialized.
+        _mtInitWebAudio();
+        // Resume context if it was created suspended (some browsers).
+        if (p.audioCtx && p.audioCtx.state === 'suspended') {
+            try { p.audioCtx.resume(); } catch (e) {}
+        }
         // Sync all to first audio's currentTime to compensate for any drift
         var t = (p.audios[0] && p.audios[0].currentTime) || 0;
         var failed = 0;
@@ -1215,6 +1295,7 @@ window._mtToggleMute = function(trackId) {
         btn.style.background = p.muted[trackId] ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)';
         btn.style.color = p.muted[trackId] ? '#fca5a5' : 'var(--text-dim)';
     }
+    _mtSaveMixStateDebounced();
 };
 
 window._mtToggleSolo = function(trackId) {
@@ -1233,6 +1314,7 @@ window._mtToggleSolo = function(trackId) {
     if (soloedIds.length === 1) p.anchorTrackId = soloedIds[0];
     else if (soloedIds.length === 0 && p.anchorTrackId) p.anchorTrackId = '';
     _mtRefreshCommentPanel();
+    _mtSaveMixStateDebounced();
 };
 
 function _mtApplyMuteSolo() {
@@ -1248,6 +1330,271 @@ function _mtApplyMuteSolo() {
             a.muted = !!p.muted[id];
         }
     });
+}
+
+// ── Web Audio graph (Phase C: per-track volume + master reverb) ─────────────
+// Initialized lazily on first user gesture (play click) to satisfy browser
+// autoplay policy. Each <audio> element is wrapped:
+//   audio → MediaElementSource → trackGain → masterDry → AudioContext.destination
+//                                          → reverbSend → convolver → reverbWet → destination
+// Mute/solo continue to operate on audio.muted (pre-graph), so the graph
+// just adjusts levels of whatever signal actually flows through.
+function _mtInitWebAudio() {
+    var p = _mtState.player;
+    if (!p || p.audioCtx) return;
+    try {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) {
+            console.warn('[Multitrack] Web Audio not available — falling back to HTML5 audio only');
+            return;
+        }
+        var ctx = new Ctx();
+        p.audioCtx = ctx;
+        p.trackChains = {}; // { trackId: { source, gain, reverbSend } }
+
+        // Master bus: a dry path and a wet (reverb) path summed at destination.
+        // The wet level controls how loud the reverb return is in the final mix.
+        p.masterDry = ctx.createGain();
+        p.masterDry.gain.value = 1.0;
+        p.masterDry.connect(ctx.destination);
+
+        p.reverbWet = ctx.createGain();
+        p.reverbWet.gain.value = 0.0; // start fully dry
+        p.reverbWet.connect(ctx.destination);
+
+        p.convolver = ctx.createConvolver();
+        p.convolver.buffer = _mtSynthImpulseResponse(ctx, 2.0, 2.5);
+        p.convolver.connect(p.reverbWet);
+
+        // Per-track chain: audio → source → trackGain → (masterDry + reverbSend)
+        p.audios.forEach(function(audio) {
+            var id = audio.dataset.trackId;
+            try {
+                var src = ctx.createMediaElementSource(audio);
+                var gain = ctx.createGain();
+                gain.gain.value = (p.mixState && p.mixState.volumes && p.mixState.volumes[id] != null)
+                    ? p.mixState.volumes[id] : 1.0;
+                var reverbSend = ctx.createGain();
+                // Send level mirrors trackGain — when a track is loud, more of it
+                // goes to reverb. The master wet knob controls overall reverb
+                // amount. Simpler than per-track sends; covers 90% of use cases.
+                reverbSend.gain.value = 1.0;
+                src.connect(gain);
+                gain.connect(p.masterDry);
+                gain.connect(reverbSend);
+                reverbSend.connect(p.convolver);
+                p.trackChains[id] = { source: src, gain: gain, reverbSend: reverbSend };
+            } catch (e) {
+                console.warn('[Multitrack] failed to wire track', id, e && e.message);
+            }
+        });
+
+        // Apply persisted reverb wet level
+        if (p.mixState && typeof p.mixState.reverbWet === 'number') {
+            p.reverbWet.gain.value = p.mixState.reverbWet;
+        }
+    } catch (e) {
+        console.warn('[Multitrack] Web Audio init failed:', e && e.message);
+    }
+}
+
+// Synthesize a generic small-room impulse response (no external file load).
+// Noise burst with exponential decay; 2 channels for natural stereo width.
+function _mtSynthImpulseResponse(ctx, durationSec, decayCurve) {
+    var sampleRate = ctx.sampleRate;
+    var length = Math.floor(sampleRate * durationSec);
+    var impulse = ctx.createBuffer(2, length, sampleRate);
+    var L = impulse.getChannelData(0);
+    var R = impulse.getChannelData(1);
+    for (var i = 0; i < length; i++) {
+        var env = Math.pow(1 - i / length, decayCurve);
+        L[i] = (Math.random() * 2 - 1) * env;
+        R[i] = (Math.random() * 2 - 1) * env;
+    }
+    return impulse;
+}
+
+// ── Volume + reverb setters ────────────────────────────────────────────────
+window._mtSetTrackVolume = function(trackId, pct) {
+    var p = _mtState.player;
+    if (!p) return;
+    var v = parseFloat(pct) / 100;
+    if (!isFinite(v)) v = 1.0;
+    if (!p.mixState) p.mixState = { volumes: {}, reverbWet: 0 };
+    if (!p.mixState.volumes) p.mixState.volumes = {};
+    p.mixState.volumes[trackId] = v;
+    var chain = p.trackChains && p.trackChains[trackId];
+    if (chain && p.audioCtx) {
+        chain.gain.gain.setTargetAtTime(v, p.audioCtx.currentTime, 0.02);
+    }
+    var label = document.getElementById('mtVolLabel_' + trackId);
+    if (label) label.textContent = Math.round(pct) + '%';
+    _mtSaveMixStateDebounced();
+};
+
+window._mtSetReverbWet = function(pct) {
+    var p = _mtState.player;
+    if (!p) return;
+    var v = parseFloat(pct) / 100;
+    if (!isFinite(v)) v = 0;
+    if (!p.mixState) p.mixState = { volumes: {}, reverbWet: 0 };
+    p.mixState.reverbWet = v;
+    if (p.reverbWet && p.audioCtx) {
+        p.reverbWet.gain.setTargetAtTime(v, p.audioCtx.currentTime, 0.05);
+    }
+    var label = document.getElementById('mtReverbLabel');
+    if (label) label.textContent = Math.round(pct) + '%';
+    _mtSaveMixStateDebounced();
+};
+
+var _mtMixSaveTimer = null;
+function _mtSaveMixStateDebounced() {
+    if (_mtMixSaveTimer) clearTimeout(_mtMixSaveTimer);
+    _mtMixSaveTimer = setTimeout(_mtSaveMixState, 600);
+}
+
+async function _mtSaveMixState() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var state = {
+        volumes: (p.mixState && p.mixState.volumes) || {},
+        reverbWet: (p.mixState && p.mixState.reverbWet) || 0,
+        mute: p.muted || {},
+        solo: p.soloed || {},
+        updatedAt: new Date().toISOString()
+    };
+    try {
+        await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/mixState')).set(state);
+    } catch (e) { console.warn('[Multitrack] mixState save failed:', e && e.message); }
+}
+
+async function _mtLoadMixState(sessionId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return null;
+    try {
+        var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/mixState')).once('value');
+        return snap.val();
+    } catch (e) { return null; }
+}
+
+// ── Mix presets — named snapshots of full mix state ────────────────────────
+window._mtSaveMixPreset = async function() {
+    var p = _mtState.player;
+    if (!p) return;
+    var name = prompt('Name this mix preset (e.g. "Vocals up", "Drums only", "Live mix"):');
+    if (!name || !name.trim()) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') {
+        if (typeof showToast === 'function') showToast('Firebase not ready');
+        return;
+    }
+    var preset = {
+        name: name.trim(),
+        savedAt: new Date().toISOString(),
+        savedBy: (typeof currentUserEmail !== 'undefined') ? (currentUserEmail || '') : '',
+        state: {
+            volumes: Object.assign({}, (p.mixState && p.mixState.volumes) || {}),
+            reverbWet: (p.mixState && p.mixState.reverbWet) || 0,
+            mute: Object.assign({}, p.muted || {}),
+            solo: Object.assign({}, p.soloed || {})
+        }
+    };
+    try {
+        var ref = await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/mixPresets')).push(preset);
+        preset._key = ref.key;
+        if (!p.mixPresets) p.mixPresets = [];
+        p.mixPresets.push(preset);
+        _mtRenderMixPresetBar();
+        if (typeof showToast === 'function') showToast('✓ Saved mix preset: ' + preset.name);
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Save failed: ' + (e && e.message));
+    }
+};
+
+window._mtLoadMixPreset = function(presetKey) {
+    var p = _mtState.player;
+    if (!p || !p.mixPresets) return;
+    var preset = p.mixPresets.find(function(x) { return x._key === presetKey; });
+    if (!preset || !preset.state) return;
+    var s = preset.state;
+    // Apply mute states
+    p.muted = Object.assign({}, s.mute || {});
+    p.soloed = Object.assign({}, s.solo || {});
+    Object.keys(p.muted).forEach(function(id) {
+        var btn = document.getElementById('mtMute_' + id);
+        if (btn) {
+            btn.style.background = p.muted[id] ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)';
+            btn.style.color = p.muted[id] ? '#fca5a5' : 'var(--text-dim)';
+        }
+    });
+    Object.keys(p.soloed).forEach(function(id) {
+        var btn = document.getElementById('mtSolo_' + id);
+        if (btn) {
+            btn.style.background = p.soloed[id] ? 'rgba(245,158,11,0.18)' : 'rgba(255,255,255,0.04)';
+            btn.style.color = p.soloed[id] ? '#fbbf24' : 'var(--text-dim)';
+        }
+    });
+    _mtApplyMuteSolo();
+    // Apply volume + reverb
+    p.mixState = { volumes: Object.assign({}, s.volumes || {}), reverbWet: s.reverbWet || 0 };
+    Object.keys(p.mixState.volumes).forEach(function(id) {
+        var pct = p.mixState.volumes[id] * 100;
+        var slider = document.getElementById('mtVol_' + id);
+        if (slider) slider.value = pct;
+        _mtSetTrackVolume(id, pct);
+    });
+    var revSlider = document.getElementById('mtReverbSlider');
+    if (revSlider) revSlider.value = p.mixState.reverbWet * 100;
+    _mtSetReverbWet(p.mixState.reverbWet * 100);
+    if (typeof showToast === 'function') showToast('✓ Loaded: ' + preset.name);
+};
+
+window._mtDeleteMixPreset = async function(presetKey) {
+    var p = _mtState.player;
+    if (!p || !p.mixPresets) return;
+    var preset = p.mixPresets.find(function(x) { return x._key === presetKey; });
+    if (!preset) return;
+    if (!confirm('Delete mix preset "' + preset.name + '"?')) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/mixPresets/' + presetKey)).remove();
+        p.mixPresets = p.mixPresets.filter(function(x) { return x._key !== presetKey; });
+        _mtRenderMixPresetBar();
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Delete failed: ' + (e && e.message));
+    }
+};
+
+async function _mtLoadMixPresets(sessionId) {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return [];
+    try {
+        var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/mixPresets')).once('value');
+        var val = snap.val() || {};
+        return Object.keys(val).map(function(k) { return Object.assign({}, val[k], { _key: k }); });
+    } catch (e) { return []; }
+}
+
+function _mtRenderMixPresetBar() {
+    var bar = document.getElementById('mtMixPresetBar');
+    if (!bar) return;
+    var p = _mtState.player;
+    var presets = (p && p.mixPresets) || [];
+    var presetHtml = presets.map(function(pr) {
+        return '<div style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:3px 4px 3px 8px;font-size:0.74em;margin-right:6px">'
+            + '<button onclick="_mtLoadMixPreset(\'' + escHtml(pr._key) + '\')" style="background:none;border:none;color:#cbd5e1;cursor:pointer;font-size:0.92em;padding:0">' + escHtml(pr.name) + '</button>'
+            + '<button onclick="_mtDeleteMixPreset(\'' + escHtml(pr._key) + '\')" title="Delete preset" style="background:none;border:none;color:#64748b;cursor:pointer;padding:0 4px;font-size:1em;line-height:1">×</button>'
+            + '</div>';
+    }).join('');
+    bar.innerHTML =
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        + '<span style="font-size:0.72em;color:var(--text-dim);font-weight:700;letter-spacing:0.04em">MIX</span>'
+        + (presets.length ? presetHtml : '<span style="font-size:0.72em;color:var(--text-dim);font-style:italic">No saved presets yet</span>')
+        + '<button onclick="_mtSaveMixPreset()" title="Save current mute/solo/volume/reverb as a named preset" style="margin-left:auto;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:6px;color:#a5b4fc;padding:4px 10px;cursor:pointer;font-size:0.74em;font-weight:700">+ Save mix</button>'
+        + '</div>';
 }
 
 window._mtSeekMaster = function(pct) {
