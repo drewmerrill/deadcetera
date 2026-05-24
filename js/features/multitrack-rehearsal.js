@@ -3033,6 +3033,18 @@ window._mtAnalyzeRun = async function() {
         // running. Relabel to make that clear.
         var cancelBtn = document.getElementById('mtAnalyzeCancelBtn');
         if (cancelBtn) cancelBtn.textContent = 'Close (keeps running)';
+        // Persist in-flight state so the Segments panel (and any other
+        // surface) can show progress even after the modal closes. Cleared
+        // in the success / error blocks below.
+        p._analyzeInFlight = {
+            callId: callId,
+            startedAt: Date.now(),
+            sourceLabel: sourceLabel,
+            sourceUrl: sourceUrl,
+        };
+        // Trigger an immediate panel render so the user sees the in-flight
+        // banner even if they close the modal right away.
+        if (typeof _mtRenderSegmentsPanel === 'function') _mtRenderSegmentsPanel();
 
         // 30-minute poll budget — matches the chopper's server-analyze
         // implementation. A 4h rehearsal segments in ~10 min; the slack
@@ -3040,8 +3052,23 @@ window._mtAnalyzeRun = async function() {
         var result = null;
         for (var attempt = 0; attempt < 360; attempt++) {
             await new Promise(function(r) { setTimeout(r, 5000); });
+            // Bail if the user closed the player entirely (new session opened, etc).
+            if (!_mtState.player || _mtState.player.sessionId !== p.sessionId) {
+                console.log('[Multitrack] analyze: player gone, abandoning polling');
+                return;
+            }
             var elapsed = (attempt + 1) * 5;
-            if (status) status.textContent = 'Server analyzing (' + elapsed + 's elapsed)… you can close this modal; analysis keeps running.';
+            // Update modal status if it's still open AND the empty
+            // Segments panel banner regardless. Both surfaces show the
+            // same elapsed counter so the user has visible progress
+            // wherever they look.
+            var statusEl = document.getElementById('mtAnalyzeStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Server analyzing (' + elapsed + 's elapsed)… you can close this modal; analysis keeps running.';
+            }
+            // Re-render segments panel so its "Analyzing…" banner ticks.
+            if (typeof _mtRenderSegmentsPanel === 'function') _mtRenderSegmentsPanel();
+
             var checkRes = await fetch(workerBase + '/rehearsal-segment/check', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -3096,6 +3123,11 @@ window._mtAnalyzeRun = async function() {
             });
         }
         if (status) status.textContent = '✓ Detected ' + converted.length + ' segments. Loading…';
+        // Clear in-flight state BEFORE re-rendering so the panel shows the
+        // segment rows, not the in-flight banner.
+        if (_mtState.player && _mtState.player.sessionId === p.sessionId) {
+            _mtState.player._analyzeInFlight = null;
+        }
         await _mtLoadSegments(p.sessionId);
         _mtRenderSegmentMarkers();
         _mtRenderSegmentsPanel();
@@ -3119,6 +3151,12 @@ window._mtAnalyzeRun = async function() {
         console.error('[Multitrack] server analyze failed:', e);
         if (status) status.textContent = '✗ ' + (e.message || 'analysis failed');
         if (goBtn) { goBtn.disabled = false; goBtn.textContent = '🎯 Retry'; }
+        // Clear in-flight state on error and refresh the panel so it
+        // returns to the empty-state with Analyze button.
+        if (_mtState.player && _mtState.player.sessionId === p.sessionId) {
+            _mtState.player._analyzeInFlight = null;
+            if (typeof _mtRenderSegmentsPanel === 'function') _mtRenderSegmentsPanel();
+        }
     }
 };
 
@@ -3258,6 +3296,101 @@ function _mtDrawSegmentStrip(canvas, buckets, color) {
     }
 }
 
+// ── Server-analyze phase narration ─────────────────────────────────────────
+// Heuristic mapping from elapsed-seconds to the phase segment_audio is
+// likely in. Phases mirror the actual computation in segment.py
+// (download → decode → RMS → silence → classify → musical analysis →
+// setlist match → restart detection → peaks → wrap). The boundaries are
+// empirical-ish — they assume a ~3h rehearsal. Smaller jobs collapse the
+// later phases quickly; bigger jobs stay in musical analysis longer.
+// Not exact, but communicates the real work happening.
+var _MT_ANALYZE_PHASES = [
+    { id: 'download',   emoji: '⬇️', label: 'Downloading rendered mix from R2 to Modal worker',          thresh: 25  },
+    { id: 'decode',     emoji: '🎧', label: 'Decoding audio into PCM frames (mono @ 16 kHz)',           thresh: 50  },
+    { id: 'envelope',   emoji: '📊', label: 'Computing RMS energy envelope across the timeline',         thresh: 75  },
+    { id: 'silence',    emoji: '🤫', label: 'Detecting silence spans (≥ 2.5 s gaps)',                    thresh: 95  },
+    { id: 'candidates', emoji: '✂️', label: 'Building candidate segments from silence boundaries',       thresh: 115 },
+    { id: 'classify',   emoji: '🧠', label: 'Classifying segments — music vs. speech vs. silence',       thresh: 165 },
+    { id: 'musical',    emoji: '🎼', label: 'Running musical analysis (BPM, key, energy) on music segments', thresh: 300 },
+    { id: 'setlist',    emoji: '🎯', label: 'Matching segments to band setlist by BPM/key/duration',     thresh: 325 },
+    { id: 'restarts',   emoji: '🔁', label: 'Detecting song restarts via pairwise spectral similarity',  thresh: 345 },
+    { id: 'peaks',      emoji: '〰️', label: 'Generating waveform peaks for visual scanning',             thresh: 365 },
+    { id: 'wrap',       emoji: '⏳', label: 'Finalizing segment list + summary',                         thresh: Infinity },
+];
+
+function _mtCurrentAnalyzePhaseIdx(elapsedSec) {
+    for (var i = 0; i < _MT_ANALYZE_PHASES.length; i++) {
+        if (elapsedSec < _MT_ANALYZE_PHASES[i].thresh) return i;
+    }
+    return _MT_ANALYZE_PHASES.length - 1;
+}
+
+function _mtRenderAnalyzeProgressHtml(inFlight) {
+    var elapsedSec = Math.max(0, Math.round((Date.now() - inFlight.startedAt) / 1000));
+    var elapsedLabel = elapsedSec < 60
+        ? elapsedSec + 's'
+        : Math.floor(elapsedSec / 60) + 'm ' + String(elapsedSec % 60).padStart(2, '0') + 's';
+    var curIdx = _mtCurrentAnalyzePhaseIdx(elapsedSec);
+    var doneCount = curIdx;
+    var totalCount = _MT_ANALYZE_PHASES.length;
+
+    // Show 3-line phase strip: previous (done) → current (animated) → next (pending).
+    function phaseLine(phase, state) {
+        // state: 'done' | 'current' | 'pending'
+        var icon, opacity, weight, color;
+        if (state === 'done') {
+            icon = '✓';
+            opacity = '0.55';
+            weight = '500';
+            color = '#86efac';
+        } else if (state === 'current') {
+            icon = '▶';
+            opacity = '1';
+            weight = '700';
+            color = '#c7d2fe';
+        } else {
+            icon = '○';
+            opacity = '0.4';
+            weight = '500';
+            color = 'var(--text-dim)';
+        }
+        return '<div style="display:flex;align-items:center;gap:8px;font-size:0.78em;opacity:' + opacity + '">'
+            + '<span style="color:' + color + ';font-family:ui-monospace,monospace;width:14px;text-align:center">' + icon + '</span>'
+            + '<span style="font-size:1em">' + phase.emoji + '</span>'
+            + '<span style="color:' + color + ';font-weight:' + weight + '">' + escHtml(phase.label) + '</span>'
+            + '</div>';
+    }
+
+    var prevHtml = curIdx > 0 ? phaseLine(_MT_ANALYZE_PHASES[curIdx - 1], 'done') : '';
+    var curHtml = phaseLine(_MT_ANALYZE_PHASES[curIdx], 'current');
+    var nextHtml = (curIdx + 1 < totalCount) ? phaseLine(_MT_ANALYZE_PHASES[curIdx + 1], 'pending') : '';
+
+    // Progress bar — fraction of phases done.
+    var progressPct = Math.round((doneCount / totalCount) * 100);
+
+    return '<div style="padding:12px 14px;border:1px solid rgba(99,102,241,0.3);border-radius:8px;background:linear-gradient(180deg,rgba(99,102,241,0.10),rgba(99,102,241,0.04));font-size:0.78em;color:#c7d2fe">'
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+        + '<span style="font-size:1.15em">🎯</span>'
+        + '<div style="flex:1">'
+        + '<div style="font-weight:700;font-size:0.95em">Server-side rehearsal analysis</div>'
+        + '<div style="font-size:0.88em;color:var(--text-dim);margin-top:2px">Source: ' + escHtml(inFlight.sourceLabel || 'rendered mix') + ' · ' + escHtml(elapsedLabel) + ' elapsed · phase ' + (curIdx + 1) + ' of ' + totalCount + '</div>'
+        + '</div>'
+        + '<button onclick="_mtAnalyzeRehearsal()" title="Reopen Analyze modal" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);border-radius:5px;color:#a5b4fc;padding:4px 10px;cursor:pointer;font-size:0.72em;font-weight:700">📊 Modal</button>'
+        + '</div>'
+        // Animated progress strip
+        + '<div style="height:6px;background:rgba(255,255,255,0.04);border-radius:3px;overflow:hidden;margin-bottom:10px">'
+        + '<div style="width:' + progressPct + '%;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);transition:width 1s ease"></div>'
+        + '</div>'
+        // 3-line phase strip
+        + '<div style="display:flex;flex-direction:column;gap:4px;padding:8px 10px;background:rgba(15,23,42,0.5);border-radius:6px">'
+        + prevHtml
+        + curHtml
+        + nextHtml
+        + '</div>'
+        + '<div style="margin-top:8px;font-size:0.74em;color:var(--text-dim);font-style:italic">Safe to navigate away — segments will appear here when done.</div>'
+        + '</div>';
+}
+
 window._mtSegmentsToggleShorts = function() {
     var p = _mtState.player;
     var el = document.getElementById('mtSegShowShorts');
@@ -3289,9 +3422,16 @@ function _mtRenderSegmentsPanel() {
     if (!p || !host) return;
     var segs = Array.isArray(p.segments) ? p.segments : [];
 
-    // Empty state — no analysis yet. Inline 🎯 Analyze button so the user
-    // doesn't have to leave the panel to kick analysis.
+    // Empty state — either no analysis yet OR an analysis is in flight.
+    // The in-flight banner takes priority and ticks an elapsed timer +
+    // a phase narrative so the user sees what's happening on the server
+    // even after closing the Analyze modal.
     if (!segs.length) {
+        var inFlight = p._analyzeInFlight;
+        if (inFlight && inFlight.startedAt) {
+            host.innerHTML = _mtRenderAnalyzeProgressHtml(inFlight);
+            return;
+        }
         host.innerHTML =
             '<div style="padding:8px 12px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;background:rgba(255,255,255,0.02);font-size:0.78em;color:var(--text-dim);display:flex;align-items:center;gap:10px">'
             + '<span>🎯 No segments yet — run Analyze to scan this rehearsal.</span>'
