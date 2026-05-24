@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "groovelinx-firebase": {
+      "command": "node",
+      "args": ["services/mcp-firebase/server.js"],
+      "env": {
+        "FIREBASE_SERVICE_ACCOUNT_PATH": "/Users/drewmerrill/.config/groovelinx/firebase-service-account.json",
+        "FIREBASE_DATABASE_URL": "https://deadcetera-35424-default-rtdb.firebaseio.com",
+        "ALLOWED_BAND_SLUGS": "deadcetera"
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+# NEVER commit Firebase service account credentials
+service-account*.json
+*.serviceaccount.json
+firebase-adminsdk-*.json
+
+# Node deps
+node_modules/
+
+# Local env overrides
+.env
+.env.local
