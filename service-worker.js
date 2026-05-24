@@ -4,7 +4,7 @@
 // banners still work on good connections but never hang at the gig).
 // Firebase / external APIs: bypassed — handled by page code.
 
-const CACHE_NAME = 'groovelinx-20260524-184638';
+const CACHE_NAME = 'groovelinx-20260524-185421';
 const BASE = self.registration.scope;
 
 // Cross-origin hosts we cache because the app depends on them to boot.

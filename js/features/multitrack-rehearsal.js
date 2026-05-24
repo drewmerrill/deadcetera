@@ -2849,39 +2849,65 @@ async function _mtLoadMixPresets(sessionId) {
 window._mtAnalyzeRehearsal = async function() {
     var p = _mtState.player;
     if (!p || !p.sessionId) return;
-    if (typeof window.RehearsalAnalysis === 'undefined' || !window.RehearsalAnalysis.run) {
-        if (typeof showToast === 'function') showToast('Analysis engine not loaded');
-        return;
-    }
 
-    // Default suggestion: a drums or vocal stem. Drums give clean section
-    // transients; vocals give clean lyric-start markers. Both work well for
-    // boundary detection. Pick the kick if present, else any drum, else
-    // the first track.
-    var defaultTrack = p.tracks.find(function(t) { return t.role === 'kick'; })
+    // Source priority:
+    //   1. Rendered review mix (mix_default) — recommended. Has all
+    //      instruments — analyzer sees continuous music across the song
+    //      regardless of which players are dropping out at any moment.
+    //      Empirically (Drew, 2026-05-24) picking the kick stem produced
+    //      381 segments because kick drops out in normal verses → analyzer
+    //      sees silence even mid-song.
+    //   2. Vocals (lyric-start gives clean boundaries when no mix exists)
+    //   3. Any other stem (fallback only)
+    var renderInfo = p.renderInfo || null;
+    var renderIsMixDefault = renderInfo && renderInfo.renderId === 'mix_default' && renderInfo.url;
+    // Default stem suggestion if no mix is available
+    var defaultStem = p.tracks.find(function(t) { return (t.role || '').startsWith('vocal'); })
+                    || p.tracks.find(function(t) { return t.role === 'kick'; })
                     || p.tracks.find(function(t) { return (_MT_ROLES[t.role] || {}).group === 'drums'; })
                     || p.tracks[0];
-    if (!defaultTrack) {
+    if (!defaultStem && !renderIsMixDefault) {
         if (typeof showToast === 'function') showToast('No tracks loaded');
         return;
     }
 
-    var trackOptionsHtml = p.tracks.map(function(t) {
+    var trackOptionsHtml = (p.tracks || []).map(function(t) {
         var label = (t.label || t.role) + (t.memberKey ? ' · ' + t.memberKey : '');
-        var sel = (t.trackId === defaultTrack.trackId) ? ' selected' : '';
+        var sel = (defaultStem && t.trackId === defaultStem.trackId) ? ' selected' : '';
         return '<option value="' + escHtml(t.trackId) + '"' + sel + '>' + escHtml(label) + '</option>';
     }).join('');
 
+    // Source picker: radio between rendered-mix (when available) and
+    // individual stem. Rendered mix is the safer default.
+    var mixOptionHtml = renderIsMixDefault
+        ? '<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.35);border-radius:6px;margin-bottom:8px;cursor:pointer">'
+            + '<input type="radio" name="mtAnalyzeSrcKind" value="mix" checked onclick="_mtAnalyzeSrcKindChanged()" style="margin-top:2px">'
+            + '<div style="flex:1">'
+            + '<div style="font-size:0.84em;font-weight:700;color:#c7d2fe">🎚 Rendered review mix <span style="font-weight:400;color:var(--text-dim);font-size:0.92em">(recommended)</span></div>'
+            + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px">Uses all instruments. Best segment quality — silence in the mix means everyone is actually quiet, not just one player dropping out.</div>'
+            + '</div>'
+            + '</label>'
+        : '<div style="padding:8px 10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:6px;margin-bottom:8px;font-size:0.78em;color:#fbbf24">'
+            + '⚠️ No rendered mix yet — analyzing a single stem will over-segment. Render the review mix first (it auto-runs on session open) for best results.'
+            + '</div>';
+
+    var stemOptionHtml = '<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;margin-bottom:12px;cursor:pointer">'
+        + '<input type="radio" name="mtAnalyzeSrcKind" value="stem"' + (renderIsMixDefault ? '' : ' checked') + ' onclick="_mtAnalyzeSrcKindChanged()" style="margin-top:2px">'
+        + '<div style="flex:1">'
+        + '<div style="font-size:0.84em;font-weight:700;color:#cbd5e1">🎵 Individual stem</div>'
+        + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px;margin-bottom:6px">Vocals work well (clean lyric-start markers). Avoid the kick — it drops out during normal play.</div>'
+        + '<label for="mtAnalyzeStem" class="sr-only">Analysis source stem</label>'
+        + '<select id="mtAnalyzeStem" name="mtAnalyzeStem" autocomplete="off" class="app-select" style="width:100%;font-size:0.88em"' + (renderIsMixDefault ? ' disabled' : '') + '>' + trackOptionsHtml + '</select>'
+        + '</div>'
+        + '</label>';
+
     var pickerHtml = '<div id="mtAnalyzeModal" style="position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)">'
-        + '<div style="max-width:420px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08);position:relative">'
-        // Top-right ✕ — always available, dismisses the modal without
-        // touching the in-flight Modal job. Matches the close affordance
-        // pattern of the Custom Mix modal.
+        + '<div style="max-width:460px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08);position:relative">'
         + '<button onclick="_mtAnalyzeClose()" id="mtAnalyzeXBtn" title="Close (analysis keeps running)" style="position:absolute;top:10px;right:12px;background:none;border:none;color:#64748b;font-size:1.3em;cursor:pointer;padding:0 6px;line-height:1">×</button>'
         + '<div style="font-weight:800;font-size:1.05em;color:#f1f5f9;margin-bottom:8px;padding-right:24px">🎯 Analyze rehearsal for song boundaries</div>'
-        + '<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:14px;line-height:1.4">Picks one stem to feed the server-side segmentation engine. Drums work best for clean section transitions; vocals for lyric-start detection.</div>'
-        + '<label for="mtAnalyzeStem" style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Analysis source stem</label>'
-        + '<select id="mtAnalyzeStem" name="mtAnalyzeStem" autocomplete="off" class="app-select" style="width:100%;font-size:0.9em;margin-bottom:14px">' + trackOptionsHtml + '</select>'
+        + '<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:14px;line-height:1.4">Server-side segmentation engine detects song boundaries + setlist matches.</div>'
+        + mixOptionHtml
+        + stemOptionHtml
         + '<div id="mtAnalyzeStatus" style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px;min-height:18px"></div>'
         + '<div style="display:flex;gap:8px;justify-content:flex-end">'
         + '<button onclick="_mtAnalyzeClose()" id="mtAnalyzeCancelBtn" class="btn btn-ghost btn-sm">Cancel</button>'
@@ -2896,6 +2922,14 @@ window._mtAnalyzeRehearsal = async function() {
     document.body.appendChild(div.firstChild);
 };
 
+// Toggle the stem-select enabled state based on which radio is checked.
+window._mtAnalyzeSrcKindChanged = function() {
+    var mixRadio = document.querySelector('input[name="mtAnalyzeSrcKind"][value="mix"]');
+    var stemSel = document.getElementById('mtAnalyzeStem');
+    if (!stemSel) return;
+    stemSel.disabled = !!(mixRadio && mixRadio.checked);
+};
+
 window._mtAnalyzeClose = function() {
     var el = document.getElementById('mtAnalyzeModal');
     if (el) el.remove();
@@ -2904,24 +2938,40 @@ window._mtAnalyzeClose = function() {
 window._mtAnalyzeRun = async function() {
     var p = _mtState.player;
     if (!p) return;
-    var sel = document.getElementById('mtAnalyzeStem');
     var status = document.getElementById('mtAnalyzeStatus');
     var goBtn = document.getElementById('mtAnalyzeGo');
-    if (!sel || !sel.value) return;
-    var track = p.tracks.find(function(t) { return t.trackId === sel.value; });
-    if (!track || !track.stemUrl) {
-        if (status) status.textContent = 'Selected stem has no URL';
-        return;
+
+    // Decide source. Radio picker: 'mix' or 'stem'.
+    var mixRadio = document.querySelector('input[name="mtAnalyzeSrcKind"][value="mix"]');
+    var useMix = !!(mixRadio && mixRadio.checked);
+    var sourceUrl = null;
+    var sourceLabel = '';
+    var sourceStemId = '';
+    var sourceStemRole = null;
+    if (useMix) {
+        if (!p.renderInfo || !p.renderInfo.url) {
+            if (status) status.textContent = 'Rendered mix unavailable — pick a stem instead';
+            return;
+        }
+        sourceUrl = p.renderInfo.url;
+        sourceLabel = 'rendered review mix';
+        sourceStemId = 'mix_default';
+    } else {
+        var sel = document.getElementById('mtAnalyzeStem');
+        if (!sel || !sel.value) return;
+        var track = (p.tracks || []).find(function(t) { return t.trackId === sel.value; });
+        if (!track || !track.stemUrl) {
+            if (status) status.textContent = 'Selected stem has no URL';
+            return;
+        }
+        sourceUrl = track.stemUrl;
+        sourceLabel = track.label || track.role;
+        sourceStemId = track.trackId;
+        sourceStemRole = track.role || null;
     }
 
-    // Server-side segmenter (Modal segment_endpoint via the worker).
-    // The prior browser-side path (decodeAudioData → RehearsalAnalysis.run)
-    // failed with EncodingError on 3-hour FLAC stems: decoded PCM is ~2 GB
-    // for a 3h mono 48kHz file, exceeding Chrome's AudioBuffer cap.
-    // Modal downloads the URL, decodes in Python, runs segmentation, returns
-    // the segment list. No browser memory pressure.
     if (goBtn) { goBtn.disabled = true; goBtn.textContent = '⏳ Submitting…'; }
-    if (status) status.textContent = 'Submitting ' + (track.label || track.role) + ' to server segmenter…';
+    if (status) status.textContent = 'Submitting ' + sourceLabel + ' to server segmenter…';
 
     var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
     // Best-effort setlist context for song matching — same helper the
@@ -2939,7 +2989,7 @@ window._mtAnalyzeRun = async function() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 songId: p.sessionId,
-                sourceUrl: track.stemUrl,
+                sourceUrl: sourceUrl,
                 setlist: setlist
             })
         });
@@ -3010,8 +3060,8 @@ window._mtAnalyzeRun = async function() {
                 // zoomable DAW data — purely a navigation aid.
                 peaks: Array.isArray(result.peaks) ? result.peaks : [],
                 peaksCount: result.peaks_count || (Array.isArray(result.peaks) ? result.peaks.length : 0),
-                sourceStemId: track.trackId,
-                sourceStemRole: track.role || null,
+                sourceStemId: sourceStemId,
+                sourceStemRole: sourceStemRole,
                 analyzedAt: new Date().toISOString(),
                 analyzer: 'modal_segment_endpoint',
             });
@@ -3179,6 +3229,21 @@ function _mtDrawSegmentStrip(canvas, buckets, color) {
     }
 }
 
+window._mtSegmentsToggleShorts = function() {
+    var p = _mtState.player;
+    var el = document.getElementById('mtSegShowShorts');
+    if (!p) return;
+    p._showShortSilences = !!(el && el.checked);
+    _mtRenderSegmentsPanel();
+};
+
+window._mtSegmentsHintDismiss = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    p._segmentsHintDismissed = true;
+    _mtRenderSegmentsPanel();
+};
+
 window._mtToggleSegmentsPanel = function() {
     var body = document.getElementById('mtSegmentsBody');
     var caret = document.getElementById('mtSegmentsCaret');
@@ -3207,17 +3272,56 @@ function _mtRenderSegmentsPanel() {
     }
 
     var collapsed = !!p._segmentsPanelCollapsed;
-    var music = 0, silence = 0, speech = 0, between = 0;
+    var showShortSilences = !!p._showShortSilences;     // default OFF — hide noise
+    var SHORT_SILENCE_THRESHOLD = 30; // seconds — silences shorter than this are likely song-internal drops, not between-song breaks
+
+    var music = 0, silence = 0, speech = 0, between = 0, shortSilenceCount = 0;
     segs.forEach(function(s) {
+        var dur = (typeof s.endSec === 'number' && typeof s.startSec === 'number')
+            ? (s.endSec - s.startSec) : 0;
         if (s.isBetween) between++;
         if (s.kind === 'music') music++;
-        else if (s.kind === 'silence') silence++;
+        else if (s.kind === 'silence') {
+            silence++;
+            if (dur < SHORT_SILENCE_THRESHOLD) shortSilenceCount++;
+        }
         else if (s.kind === 'speech') speech++;
     });
-    var headerSummary = segs.length + ' segments · ' + music + ' 🎵 · ' + silence + ' 🤫 · ' + speech + ' 💬'
-        + (between ? ' · ' + between + ' flagged between-song' : '');
 
-    var rowsHtml = segs.map(function(s, idx) {
+    // Build the visible-segments list with original indices preserved so
+    // edit handlers (_mtSegmentJump, _mtSegmentTitleSave, etc.) still
+    // point at the right entries.
+    var visible = [];
+    segs.forEach(function(s, origIdx) {
+        if (!showShortSilences && s.kind === 'silence') {
+            var dur = (typeof s.endSec === 'number' && typeof s.startSec === 'number')
+                ? (s.endSec - s.startSec) : 0;
+            if (dur < SHORT_SILENCE_THRESHOLD) return;
+        }
+        visible.push({ seg: s, idx: origIdx });
+    });
+
+    var hiddenCount = segs.length - visible.length;
+    var headerSummary = visible.length + ' shown · ' + music + ' 🎵 · ' + silence + ' 🤫 · ' + speech + ' 💬'
+        + (between ? ' · ' + between + ' flagged between' : '');
+
+    // Workflow hint banner — shows once segments are loaded, helps user
+    // know what to do. Three short steps; dismissible if it gets in the way.
+    var hintHtml = (p._segmentsHintDismissed) ? '' :
+        '<div style="padding:8px 12px;background:rgba(99,102,241,0.08);border-bottom:1px solid rgba(99,102,241,0.2);font-size:0.74em;color:#c7d2fe;display:flex;align-items:flex-start;gap:8px">'
+        + '<span style="font-size:1em">💡</span>'
+        + '<div style="flex:1;line-height:1.4">'
+        + '<b>To create a songs-only mix for sharing:</b> name the 🎵 music segments below (type into the title field) · use ⊘ to flag obvious between-song chatter · then click <b>🎛 Mix → ☑ Render songs only → Render Mix</b>.'
+        + (music === 1 && silence > 50
+            ? '<div style="margin-top:4px;color:#fbbf24"><b>Warning:</b> ' + silence + ' silence segments suggests this was analyzed on a single stem (likely kick — which drops out during play). Re-run 🎯 Analyze using the <b>Rendered review mix</b> for better results.</div>'
+            : '')
+        + '</div>'
+        + '<button onclick="_mtSegmentsHintDismiss()" title="Dismiss hint" style="background:none;border:none;color:#a5b4fc;cursor:pointer;padding:0 4px;font-size:1em">×</button>'
+        + '</div>';
+
+    var rowsHtml = visible.map(function(item) {
+        var s = item.seg;
+        var idx = item.idx;
         var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
         var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
         var meta = _mtKindMeta(s.kind);
@@ -3246,14 +3350,26 @@ function _mtRenderSegmentsPanel() {
             + '</div>';
     }).join('');
 
+    // Footer: filter toggle for short silences (< 30s). Default OFF
+    // because most short silences are song-internal drops, not breaks
+    // worth listing as separate rows.
+    var filterFooterHtml = (shortSilenceCount > 0)
+        ? '<div style="padding:6px 12px;background:rgba(255,255,255,0.02);border-top:1px solid rgba(255,255,255,0.04);font-size:0.72em;color:var(--text-dim);display:flex;align-items:center;gap:8px">'
+            + '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer">'
+            + '<input type="checkbox" id="mtSegShowShorts" onclick="_mtSegmentsToggleShorts()"' + (showShortSilences ? ' checked' : '') + '>'
+            + 'Show ' + shortSilenceCount + ' short silence' + (shortSilenceCount === 1 ? '' : 's') + ' (&lt; 30 s — usually song-internal drops)'
+            + '</label>'
+            + '</div>'
+        : '';
+
     host.innerHTML =
         '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;background:rgba(255,255,255,0.02)">'
         + '<div onclick="_mtToggleSegmentsPanel()" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;background:rgba(255,255,255,0.03)">'
         + '<span id="mtSegmentsCaret" style="color:var(--text-dim);font-size:0.85em">' + (collapsed ? '▸' : '▾') + '</span>'
         + '<span style="font-weight:700;font-size:0.82em;color:#f1f5f9">🎯 Segments</span>'
-        + '<span style="font-size:0.74em;color:var(--text-dim);margin-left:auto">' + escHtml(headerSummary) + '</span>'
+        + '<span style="font-size:0.74em;color:var(--text-dim);margin-left:auto">' + escHtml(headerSummary) + (hiddenCount ? ' · ' + hiddenCount + ' hidden' : '') + '</span>'
         + '</div>'
-        + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + ';max-height:240px;overflow-y:auto">' + rowsHtml + '</div>'
+        + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + '">' + hintHtml + '<div style="max-height:280px;overflow-y:auto">' + rowsHtml + '</div>' + filterFooterHtml + '</div>'
         + '</div>';
 
     // Paint canvases after they're in the DOM. Defer so layout settles
@@ -3266,9 +3382,11 @@ function _mtPaintSegmentStrips() {
     if (!p || !Array.isArray(p.segments)) return;
     var peaks = p.peaks || [];
     var dur = p.peaksDurationSec || 0;
+    // Only paint canvases that are actually in the DOM (the panel may be
+    // filtering out short-silence rows so not every segment has a canvas).
     p.segments.forEach(function(s, idx) {
         var canvas = document.getElementById('mtSegStrip_' + idx);
-        if (!canvas) return;
+        if (!canvas) return; // filtered out — skip cleanly
         var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
         var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
         var buckets = _mtPeaksForSegment(peaks, dur, startSec, endSec, 40);
