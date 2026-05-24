@@ -1146,6 +1146,10 @@ window._mtOpenPlayer = async function(sessionId) {
               '<input type="range" id="mtReverbSlider" min="0" max="100" value="0" step="1" oninput="_mtSetReverbWet(this.value)" style="width:90px;accent-color:#06b6d4;cursor:pointer">' +
               '<div id="mtReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);min-width:32px;text-align:right">0%</div>' +
             '</div>' +
+            // Manual re-sync — tracks drift naturally over long playback.
+            // No continuous watchdog (it was glitching). User hits this
+            // when they notice tracks have drifted apart.
+            '<button onclick="_mtResyncAll()" title="Re-sync all tracks to the master playhead (use if tracks have drifted apart)" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">🔄 Re-sync</button>' +
             '<button onclick="_mtAnalyzeRehearsal()" title="Run the segmentation engine to detect song boundaries. Pick one stem to analyze (drums work best)." style="padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;font-size:0.74em;flex-shrink:0;font-weight:700">🎯 Analyze</button>' +
             '<button onclick="_mtExportDigest()" title="Copy a markdown digest of all comments to your clipboard" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">📋 Digest</button>' +
             '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right">0:00 / 0:00</div>' +
@@ -2221,66 +2225,48 @@ window._mtHoldStop = function() {
     }
 };
 
-// ── Drift watchdog — soft correction via playbackRate ─────────────────────
-// 17 independent HTML5 <audio> elements drift apart over time. Earlier
-// version of this watchdog hard-snapped a drifted track's currentTime,
-// which produced an audible click on every correction (Drew flagged this
-// as "glitches" 2026-05-24).
+// ── Drift handling — passive, no continuous watchdog ─────────────────────
+// Earlier tonight we tried two automatic drift-correction schemes:
+//   1. Hard-snap watchdog (every 4s): caused audible glitches on snap
+//   2. Soft rate-adjustment watchdog (every 1s): caused glitches every
+//      4-8s and at one point looped a 1s segment at 58min mark.
 //
-// Soft correction strategy: instead of snapping, subtly adjust each
-// drifted track's playbackRate so it catches up smoothly over a few
-// seconds. A 1% rate change (rate = 1.01 or 0.99) is below most
-// listeners' pitch-detection threshold and invisible during typical band
-// material. Drift of 100ms catches up in ~10 seconds — well within any
-// review session length.
+// Both failed for the same root reason: HTML5 <audio> reports
+// currentTime only at decode boundaries (~250ms granularity), so the
+// "drift" we measure includes 100-200ms of jitter that isn't real drift.
+// Acting on phantom drift produces audible artifacts (rate flicks,
+// re-buffers) that are worse than the drift itself.
 //
-// Hard snap is retained as a fallback for catastrophic drift (>500ms),
-// which usually means a buffer stall rather than gradual drift; snap is
-// the right correction there.
+// New approach: NO continuous watchdog. Let tracks drift naturally
+// during playback. Re-sync only fires on user-initiated events:
+//   - Play (existing): all tracks snap to audios[0].currentTime
+//   - Seek (existing): all tracks set to the new position
+//   - Manual 🔄 Re-sync button (new): explicit user re-sync
 //
-// Long-term: AudioBufferSourceNode would give true sample-accurate sync,
-// but requires fully decoding all 17 FLACs to memory (~34 GB for a 3-hour
-// rehearsal — browser-prohibitive). For pro mastering, the right answer
-// is to render server-side via the stem files — see project_multitrack
-// _rehearsal memory for the export-master roadmap.
+// For long review sessions the user notices drift and hits Re-sync;
+// for typical short reviews (one song at a time) the tracks stay
+// in sync naturally from the play-start alignment. Trade-off accepted.
+//
+// Proper architectural fix lives in the render-pipeline proposal
+// (specs/rehearsal_render_pipeline.md) — server-renders a stereo
+// master mix that has no drift by definition.
 function _mtStartSyncWatchdog(p) {
-    if (p._syncTimer) clearInterval(p._syncTimer);
-    p._syncTimer = setInterval(function() {
-        if (!p.masterPlaying) return;
-        var ref = p.audios[0];
-        if (!ref || ref.paused || !isFinite(ref.duration)) return;
-        var refTime = ref.currentTime;
-        p.audios.forEach(function(a, i) {
-            if (i === 0) return;
-            if (a.paused || !isFinite(a.duration)) return;
-            // drift > 0 → this track is AHEAD of ref → need to slow down (rate < 1)
-            // drift < 0 → this track is BEHIND of ref → need to speed up (rate > 1)
-            var drift = a.currentTime - refTime;
-            var absDrift = Math.abs(drift);
-
-            if (absDrift > 0.5) {
-                // Catastrophic — almost certainly a buffer stall, not gradual
-                // drift. Hard snap is the correct fix; the rate-adjustment
-                // wouldn't catch up before the next stall.
-                try { a.currentTime = refTime; } catch (e) {}
-                a.playbackRate = 1.0;
-            } else if (absDrift > 0.02) {
-                // Soft correction. Map drift in [±20ms, ±500ms] to a rate
-                // adjustment in [0, ±1%]. At max 1% adjustment, a 200ms drift
-                // converges in ~20 seconds — well below user attention span.
-                // 1% rate change is also below trained-musician pitch
-                // detection threshold (~17 cents pitch shift) and inaudible
-                // on dense band material.
-                var corrFactor = Math.max(-1, Math.min(1, drift / 0.5));
-                a.playbackRate = 1.0 - corrFactor * 0.01;
-            } else if (a.playbackRate !== 1.0) {
-                // Within tolerance — release any rate adjustment so the
-                // track returns to natural-speed playback.
-                a.playbackRate = 1.0;
-            }
-        });
-    }, 1000); // every 1s — finer-grained than hard-snap version (was 4s)
+    // Intentional no-op. Kept as a hook so callers don't break.
+    // Re-introduce only if a future strategy (e.g. AudioBufferSource +
+    // chunked decode) is implemented.
 }
+
+window._mtResyncAll = function() {
+    var p = _mtState.player;
+    if (!p || !p.audios[0]) return;
+    var refTime = p.audios[0].currentTime;
+    p.audios.forEach(function(a, i) {
+        if (i === 0) return;
+        try { a.currentTime = refTime; } catch (e) {}
+        a.playbackRate = 1.0;
+    });
+    if (typeof showToast === 'function') showToast('🔄 Tracks re-synced');
+};
 
 function _mtStopSyncWatchdog(p) {
     if (p && p._syncTimer) {
