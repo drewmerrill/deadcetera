@@ -1853,9 +1853,31 @@ window._mtOpenCustomMixModal = async function() {
     function reverbRow() {
         return '<div style="display:grid;grid-template-columns:120px 1fr 48px;gap:10px;align-items:center;margin-bottom:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)">' +
             '<div style="font-size:0.88em;color:var(--text)"><span style="margin-right:6px">💧</span>Master reverb</div>' +
-            '<input type="range" id="mtCmxReverb" min="0" max="100" value="0" step="1" oninput="document.getElementById(\'mtCmxReverbLabel\').textContent=this.value+\'%\'" style="width:100%;accent-color:#06b6d4;cursor:pointer">' +
+            '<input type="range" id="mtCmxReverb" min="0" max="100" value="0" step="1" oninput="document.getElementById(\'mtCmxReverbLabel\').textContent=this.value+\'%\';_mtCmxUpdateSendsDimmer()" style="width:100%;accent-color:#06b6d4;cursor:pointer">' +
             '<div id="mtCmxReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.78em;color:var(--text-dim);text-align:right">0%</div>' +
             '</div>';
+    }
+    function sendsRow() {
+        // Per-group reverb-send checkboxes. Defaults: vocals only ON.
+        // Greyed visually when master reverb is at 0% (since sends have no
+        // audible effect without a master wet level), but checkboxes stay
+        // interactive so user can pre-arrange routing before raising the slider.
+        function chk(key, label, checked) {
+            return '<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:0.78em;color:var(--text-dim);user-select:none">'
+                + '<input type="checkbox" id="mtCmxSend_' + key + '"' + (checked ? ' checked' : '') + ' style="cursor:pointer">'
+                + label
+                + '</label>';
+        }
+        return '<div id="mtCmxSendsRow" style="display:grid;grid-template-columns:120px 1fr;gap:10px;align-items:center;margin-bottom:8px;opacity:0.55;transition:opacity 120ms">'
+            + '<div style="font-size:0.78em;color:var(--text-dim)">Send to reverb</div>'
+            + '<div style="display:flex;gap:14px;flex-wrap:wrap">'
+            + chk('vocals',  '🎤 Vocals',  true)
+            + chk('guitars', '🎸 Guitars', false)
+            + chk('bass',    '🎸 Bass',    false)
+            + chk('drums',   '🥁 Drums',   false)
+            + chk('keys',    '🎹 Keys',    false)
+            + '</div>'
+            + '</div>';
     }
 
     modal.innerHTML =
@@ -1872,6 +1894,7 @@ window._mtOpenCustomMixModal = async function() {
             sliderRow('🥁', 'Drums', 'drums', 100) +
             sliderRow('🎹', 'Keys', 'keys', 100) +
             reverbRow() +
+            sendsRow() +
             // Segment-aware render toggle — gated on a successful Analyze run.
             (function() {
                 var songSegs = _mtCollectSongSegments(p);
@@ -1899,7 +1922,7 @@ window._mtOpenCustomMixModal = async function() {
                     + '</label>'
                     + '</div>';
             })() +
-            '<div style="margin-top:12px;font-size:0.74em;color:var(--text-dim)">Reverb is applied to vocals only by default (keys carry their own effects from Pierce\'s rig). For per-track FX routing, use 🎚 Isolate Mode.</div>' +
+            '<div style="margin-top:12px;font-size:0.74em;color:var(--text-dim)">Reverb sends are configurable above (defaults to vocals only — keys carry their own effects from Pierce\'s rig). For per-track FX, use 🎚 Isolate Mode.</div>' +
             '<div id="mtCmxStatus" style="margin-top:14px;min-height:18px;font-size:0.82em;color:var(--text-dim)"></div>' +
             '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">' +
                 '<button onclick="document.getElementById(\'mtCustomMixModal\').remove()" class="btn btn-ghost btn-sm">Cancel</button>' +
@@ -1907,6 +1930,17 @@ window._mtOpenCustomMixModal = async function() {
             '</div>' +
         '</div>';
     document.body.appendChild(modal);
+};
+
+// Visual dimmer for the reverb-sends row — when the master wet slider is
+// at 0% the sends don't do anything audible. Stays interactive so the
+// user can pre-arrange routing before raising the master.
+window._mtCmxUpdateSendsDimmer = function() {
+    var slider = document.getElementById('mtCmxReverb');
+    var row = document.getElementById('mtCmxSendsRow');
+    if (!slider || !row) return;
+    var v = parseFloat(slider.value);
+    row.style.opacity = (isFinite(v) && v > 0) ? '1' : '0.55';
 };
 
 // Inline "🎯 Run Analyze now" trigger from the Custom Mix modal — closes
@@ -1959,16 +1993,26 @@ window._mtCustomMixRender = async function() {
 
     // Build per-track recipe. Defaults: vocals + keys send to reverb;
     // others dry. Mute/solo not exposed in this UI — use Isolate for that.
+    // Read per-group reverb-send overrides. Default state matches the
+    // 'vocals only' convention if the modal checkboxes are missing for
+    // any reason (defensive — the modal builder ships them all).
+    function readSend(key, dflt) {
+        var el = document.getElementById('mtCmxSend_' + key);
+        return el ? !!el.checked : !!dflt;
+    }
+    var sendsByGroup = {
+        vocals:  readSend('vocals',  true),
+        guitars: readSend('guitars', false),
+        bass:    readSend('bass',    false),
+        drums:   readSend('drums',   false),
+        keys:    readSend('keys',    false),
+    };
     var tracksRecipe = {};
     (p.tracks || []).forEach(function(t) {
         var grp = _mtRoleToGroup(t.role);
         var gain = groupGains[grp];
         if (gain === undefined) gain = 1.0;
-        // Default reverb routing: vocals only. Keys have their own
-        // built-in effects on Pierce's rig (Drew, 2026-05-24) — adding
-        // more reverb here would stack reverb-on-reverb and muddy the
-        // master mix. Drums + bass + guitars stay dry by convention.
-        var sendsReverb = (grp === 'vocals');
+        var sendsReverb = !!sendsByGroup[grp];
         tracksRecipe[t.trackId] = {
             gain: gain,
             mute: false,
@@ -1998,7 +2042,11 @@ window._mtCustomMixRender = async function() {
     // don't clobber the canonical mix_songs_only with a tweaked variant.
     var isDefaultSliders = (
         groupGains.vocals === 1 && groupGains.guitars === 1 && groupGains.bass === 1 &&
-        groupGains.drums === 1 && groupGains.keys === 1 && masterReverbWet === 0
+        groupGains.drums === 1 && groupGains.keys === 1 && masterReverbWet === 0 &&
+        // Reverb sends also at defaults (vocals on, everything else off).
+        sendsByGroup.vocals === true && sendsByGroup.guitars === false &&
+        sendsByGroup.bass === false && sendsByGroup.drums === false &&
+        sendsByGroup.keys === false
     );
     var renderId;
     if (songsOnly && isDefaultSliders) {
