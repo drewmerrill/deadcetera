@@ -160,9 +160,17 @@ function _mtBytesLabel(b) {
 }
 
 function _mtFmtTime(sec) {
+    // 2026-05-24: switched to h:mm:ss when over an hour so the transport
+    // label matches segment-row time format (which uses _mtFmtTimeShort,
+    // same h:mm:ss switch). Before: transport showed "187:54" while
+    // rows showed "3:07:54" — Drew (UAT): "the time in the right corner
+    // is 187:54... but all the songs are in hour format 3:07:54...
+    // which makes it hard to match to the song I am on."
     if (!isFinite(sec) || sec < 0) sec = 0;
-    var m = Math.floor(sec / 60);
-    var s = Math.floor(sec - m * 60);
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = Math.floor(sec % 60);
+    if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
     return m + ':' + (s < 10 ? '0' : '') + s;
 }
 
@@ -4100,29 +4108,33 @@ function _mtUpdateActiveSegmentHighlight() {
     var p = _mtState.player;
     if (!p || !Array.isArray(p.segments)) return;
     var rows = document.querySelectorAll('#mtSegmentsList [data-seg-idx]');
-    // Active = at least one audio element is currently un-paused.
-    var anyPlaying = false;
-    if (p.audios && p.audios.length) {
-        for (var ai = 0; ai < p.audios.length; ai++) {
-            var a = p.audios[ai];
-            if (a && !a.paused && !a.ended) { anyPlaying = true; break; }
-        }
-    }
-    if (!anyPlaying) {
-        rows.forEach(function(row) {
-            row.style.outline = '';
-            row.style.outlineOffset = '';
-        });
-        p._lastActiveSegIdx = -1;
-        return;
-    }
+    // Drew (UAT 2026-05-24): "the box around each song needs to stay
+    // until the time ticks over to the next section and then the box
+    // immediately moves to the next one. Sometimes, the box disappears."
+    // Old behavior cleared the highlight on pause + on every gap
+    // between segments. New behavior: highlight tracks the playhead
+    // ALWAYS (regardless of paused state), and falls back to the most
+    // recent segment whose start ≤ playhead when the playhead lands in
+    // a gap (silence/chatter between two music segments).
     var t = (typeof _mtCurrentPlayheadSec === 'function') ? _mtCurrentPlayheadSec() : 0;
     var activeOrigIdx = -1;
+    // First pass: segment whose time range CONTAINS the playhead.
     for (var i = 0; i < p.segments.length; i++) {
         var s = p.segments[i];
         var st = (typeof s.startSec === 'number') ? s.startSec : 0;
         var en = (typeof s.endSec === 'number') ? s.endSec : 0;
         if (t >= st && t < en) { activeOrigIdx = i; break; }
+    }
+    // Fallback: most recent segment whose start ≤ playhead. Keeps the
+    // box sticky during gaps so the user doesn't "lose" their place.
+    if (activeOrigIdx === -1) {
+        for (var j = p.segments.length - 1; j >= 0; j--) {
+            var sg = p.segments[j];
+            var sst = (typeof sg.startSec === 'number') ? sg.startSec : 0;
+            if (sst <= t) { activeOrigIdx = j; break; }
+        }
+        // If even that fails (playhead before the first segment), pick row 0.
+        if (activeOrigIdx === -1 && p.segments.length > 0) activeOrigIdx = 0;
     }
     rows.forEach(function(row) {
         var idx = parseInt(row.getAttribute('data-seg-idx'), 10);
@@ -4719,6 +4731,19 @@ window._mtSegmentJump = function(idx) {
     var slider = document.getElementById('mtMasterSeek');
     if (slider) slider.value = pct;
     window._mtSeekMaster(pct);
+    // Drew (UAT 2026-05-24): "Should jump to segment start also begin
+    // playing instead of just going to the top of the segment and
+    // stopping?" Yes — Jump is the "play this song" button intent. If
+    // playback isn't already going, kick it off after the seek lands.
+    if (!p.masterPlaying) {
+        // Slight delay so the seek's currentTime writes settle before
+        // _mtTogglePlayAll snaps everything to audios[0].currentTime.
+        setTimeout(function() {
+            if (_mtState.player === p && !p.masterPlaying) {
+                window._mtTogglePlayAll();
+            }
+        }, 80);
+    }
 };
 
 function _mtRenderSegmentMarkers() {
