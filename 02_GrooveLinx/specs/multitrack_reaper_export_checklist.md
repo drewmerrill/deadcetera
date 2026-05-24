@@ -25,7 +25,7 @@ Open REAPER → File → New project. Add tracks matching your X32 channel count
 | 5 | `05_guitar-brian` | Brian's guitar (lead) |
 | 6 | `06_guitar-drew` | Drew's guitar (rhythm) |
 | 7 | `07_bass-chris` | Chris's bass DI |
-| 8 | `08_open-jay` | "Open" mic — purpose TBD (audience/talkback? open hi-hat?) |
+| 8 | `08_open-jay` | **Reserved placeholder** for a future Jay mic. Currently empty — MUTE this track before render so no noise-floor FLAC gets written. Rename + unmute when the mic goes live. |
 | 9 | `09_bongos-jay` | Jay's hand-percussion (bongos) — not the kit |
 | 10 | `10_kick-jay` | Kick drum |
 | 11 | `11_snare-jay` | Snare top |
