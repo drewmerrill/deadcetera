@@ -176,12 +176,30 @@ def _rms_envelope(y, sr, hop_ms: int = 50):
     return rms, times, hop
 
 
-def _detect_silence_spans(rms, times, min_gap_sec: float = 4.0, threshold_pct: float = 0.05):
+def _detect_silence_spans(rms, times, min_gap_sec: float = 2.5, threshold_percentile: float = 15.0):
     """Return list of (start_sec, end_sec) tuples for low-energy spans
-    of at least min_gap_sec. threshold = threshold_pct * median(rms)."""
+    of at least min_gap_sec.
+
+    The threshold is the Nth percentile of the RMS distribution (adaptive
+    to the recording's noise floor) — not a fixed fraction of the median.
+
+    Empirical 2026-05-24: the previous threshold (5% of median) found
+    zero silences on Drew's 3-hour rendered band-rehearsal mix because
+    the room has constant ambient noise (amps, chatter, drum bleed) that
+    keeps RMS well above 5% of median throughout. Percentile-based
+    detection adapts: in a recording with truly quiet gaps, the 15th
+    percentile is near zero (catches them all); in a noisy recording, it
+    sits above the ambient floor but still below typical music levels,
+    so the quiet zones between songs do get detected.
+
+    min_gap_sec reduced from 4.0 → 2.5 to catch tighter between-song
+    transitions (especially common on the rendered-mix path where the
+    audio is densely packed)."""
     import numpy as np
-    median_rms = float(np.median(rms))
-    threshold = max(threshold_pct * median_rms, 1e-4)
+    threshold = float(np.percentile(rms, threshold_percentile))
+    # Floor at 1e-4 so a near-silent recording still gets *some* threshold
+    # rather than picking up every microsecond of literal zero.
+    threshold = max(threshold, 1e-4)
     is_silent = rms < threshold
 
     spans = []

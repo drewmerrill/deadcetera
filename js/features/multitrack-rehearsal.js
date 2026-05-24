@@ -3522,7 +3522,7 @@ function _mtRenderSegmentsPanel() {
         var canvasId = 'mtSegStrip_' + idx;
         var titleId = 'mtSegTitle_' + idx;
         var rowBg = isBetween ? 'rgba(100,116,139,0.04)' : meta.stripBg;
-        return '<div data-seg-idx="' + idx + '" style="display:grid;grid-template-columns:24px 90px 80px 1fr 60px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + '">'
+        return '<div data-seg-idx="' + idx + '" style="display:grid;grid-template-columns:24px 90px 80px 1fr 92px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + '">'
             // Kind chip
             + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + '">' + meta.emoji + '</div>'
             // Time range
@@ -3536,6 +3536,7 @@ function _mtRenderSegmentsPanel() {
             // Actions
             + '<div style="display:flex;gap:4px;justify-content:flex-end">'
             + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">▶</button>'
+            + '<button onclick="_mtSegmentSplit(' + idx + ')" title="Split this segment at the current playhead — useful when the analyzer missed a song boundary" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">✂</button>'
             + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (isBetween ? 'Flagged between-song — click to unflag' : 'Flag as between-song chatter (excluded from songs-only mix)') + '" style="background:' + (isBetween ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)') + ';border:1px solid ' + (isBetween ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.1)') + ';border-radius:4px;color:' + (isBetween ? '#fbbf24' : 'var(--text-dim)') + ';padding:2px 6px;cursor:pointer;font-size:0.78em">' + (isBetween ? '↻' : '⊘') + '</button>'
             + '</div>'
             + '</div>';
@@ -3654,6 +3655,70 @@ window._mtSegmentToggleBetween = async function(idx) {
     }
     _mtRenderSegmentsPanel();
     _mtRenderSegmentMarkers();
+};
+
+// Manual segment split at current playhead. Used when the analyzer
+// misses a song boundary (e.g., busy live-room with no real silences).
+// Splits the segment in place: replaces one row with two rows that
+// share the original's kind + likely_song but with start/end times
+// carved at the playhead. Writes back to analysis.story.segments —
+// a fresh Analyze run will overwrite manual splits, which is the
+// intended trade-off (user can always re-edit after).
+window._mtSegmentSplit = async function(idx) {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments)) return;
+    var seg = p.segments[idx];
+    if (!seg) return;
+    var startSec = (typeof seg.startSec === 'number') ? seg.startSec : 0;
+    var endSec = (typeof seg.endSec === 'number') ? seg.endSec : 0;
+    var playhead = (typeof _mtCurrentPlayheadSec === 'function') ? _mtCurrentPlayheadSec() : 0;
+    // Tolerance: require playhead to be at least 1s inside both edges
+    // so we don't create absurdly short slivers.
+    if (!(playhead > startSec + 1 && playhead < endSec - 1)) {
+        if (typeof showToast === 'function') {
+            showToast('Move the playhead inside this segment (≥ 1s from each edge) before splitting');
+        }
+        return;
+    }
+    if (!confirm('Split "' + (seg.songTitle || seg.label || 'segment') + '" at ' + _mtFmtTimeShort(playhead) + '?\n\nThe upper half becomes a new segment; the lower half keeps the original\'s title and kind.')) {
+        return;
+    }
+    var nowIso = new Date().toISOString();
+    // Build two replacement segments. The first keeps original metadata
+    // (title, kind, etc); the second is a fresh blank with same kind so
+    // the user can rename it. New IDs derive from original id + suffix
+    // so multitrackSegments overlay (isBetween, songTitle) still works.
+    var baseId = seg.id || ('seg_' + idx);
+    var first = Object.assign({}, seg, {
+        endSec: playhead,
+        durationSec: Math.round((playhead - startSec) * 100) / 100,
+    });
+    var second = Object.assign({}, seg, {
+        id: baseId + '_split_' + Date.now(),
+        startSec: playhead,
+        durationSec: Math.round((endSec - playhead) * 100) / 100,
+        songTitle: null,
+        isBetween: false,
+        // Inherit kind + classification so songs-only filter still works.
+    });
+    var newSegs = p.segments.slice(0, idx).concat([first, second]).concat(p.segments.slice(idx + 1));
+    p.segments = newSegs;
+    // Persist back to Firebase.
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+        try {
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/analysis/story/segments'))
+                .set(newSegs);
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/analysis/story/manualSplitsAt'))
+                .set(nowIso);
+        } catch (e) {
+            console.warn('[Multitrack] segment split persist failed:', e && e.message);
+            if (typeof showToast === 'function') showToast('Split UI applied but Firebase save failed: ' + (e && e.message));
+        }
+    }
+    _mtRenderSegmentsPanel();
+    _mtRenderSegmentMarkers();
+    if (typeof showToast === 'function') showToast('✂ Split at ' + _mtFmtTimeShort(playhead));
 };
 
 window._mtSegmentJump = function(idx) {
