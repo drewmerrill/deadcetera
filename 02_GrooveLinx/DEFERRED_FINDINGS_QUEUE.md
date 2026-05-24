@@ -39,6 +39,33 @@ work item — graduate it to a GitHub issue and link from here.
 Dead listeners, no-op toggles, stale render paths, async race risks,
 orphan helpers, broken fallbacks.
 
+- **Finding:** Per-song share — one shareable URL per analyzed song
+  segment instead of one URL for the whole mix. Useful for narrow
+  bandmate workflows ("send Brian the new Sugaree arrangement").
+  Currently we share `mix_songs_only` which is all songs concatenated.
+  - **Why deferred:** Drew explicitly excluded this from the Option A
+    scope ("Do NOT create per-song share yet"). Songs-only mix covers
+    the immediate bandmate-sharing need.
+  - **Trigger:** When the band wants to share individual songs without
+    sending the whole rehearsal, OR when Take Review / chopper gets
+    integrated with the multitrack render flow.
+  - **Discovered:** 2026-05-24 · `9d561f86`
+  - **Status:** open
+
+- **Finding:** Multitrack player has no UI to flag individual segments
+  as between-song chatter. Today the songs-only mix relies on the
+  analyzer's segmentation + any `isBetween` flags set via the
+  chopper/segment editor surface in `rehearsal.js`. If the analyzer
+  misclassifies (e.g., includes 90s of tuning as a "song"), the user
+  has no in-player way to fix it before rendering songs-only.
+  - **Why deferred:** Out of Option A's scope. The analyzer is good
+    enough for most rehearsals; misclassifications are visible at the
+    output stage (Drew can listen back and re-render).
+  - **Trigger:** First time the songs-only mix has clearly wrong
+    segment boundaries that bandmates complain about.
+  - **Discovered:** 2026-05-24 · `9d561f86`
+  - **Status:** open
+
 - **Finding:** Multitrack browser playback architecture cannot meet the
   product requirement (17 stems × 3 hours, no audible drift, fast seek,
   responsive). Confirmed via thorough audit at
