@@ -1,10 +1,57 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260523-231254
+**Build Under Test:** 20260524-160224
 
 ## Open
 
-_None. Feature work pending in-browser verification: (a) notification candidate #2 (setlist change near event) — build `20260522-175203` / issue #41; (b) Trim Preview audition length picker — build `20260522-180511` / issue #42; (c) Bug #16 Places autofill — build `20260522-214634` / issue #45; (d) Gig Map geocode + home pins + hover — build `20260522-225426` / issue #46; (e) Gig Map privacy toggle + dark info-window polish + bandMembers hydration fix — build `20260523-181905` / issue #47; (f) Gig Map venue grouping + hover/click split + free-text geocode fallback — build `20260523-185206`; (g) Gig-save scroll preservation + setlist Set-Break auto-cleaner + past-gigs RSVP backfill helper + Geocoding-API-denial banner — build `20260523-191344`; (h) Marker → AdvancedMarkerElement migration — build `20260523-192626` (default light theme until Drew creates custom Map ID; see specs/gl_view_map.md for the JSON + steps)._
+### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH)
+
+**Build first seen:** `20260524-153606` (and persisted through `20260524-155054` + `20260524-160224`)
+**Reporter:** Drew, in-session UAT 2026-05-24 PM
+**Surface:** Multitrack player (Multitrack rehearsal review modal, `js/features/multitrack-rehearsal.js`)
+**Status:** OPEN, three patch attempts all failed in different ways — needs fresh architectural look in a new session.
+
+**Symptom (canonical Drew quote):** "When I went to 180, then 98:50… it took 30 seconds to start playing at 98:50." Then on the next attempt: "moved slider to 140 minutes. very glitchy, missing instruments, etc." Then on the most-recent build (`160224`): "stuck on 53:19, but sound is going… and all tracks are off and not in synch still."
+
+**Console signature on the latest build:** repeated `[Multitrack] master track buffer timeout — starting anyway` log lines from `multitrack-rehearsal.js:2320`-ish. Time label freezes at the seek target; audio is audibly playing but tracks are out of sync.
+
+**What was tried this session:**
+
+1. **`14a878ff` (build `20260524-153606`)** — pause → seek → setTimeout(30ms) → resume. Suppressed AbortError noise. **Result:** Drew reported tracks coming in one-by-one over 30s with permanent drift.
+2. **`f1bd0379` (build `20260524-155054`)** — latecomer tracks re-seek to `p.audios[0].currentTime` on their `canplay` event before joining. Wait for `p.audios[0]` to be ready or 20s fallback. **Result:** still 30s of silence, then full drift — because `p.audios[0]` (Kick · Jay) is sometimes the slow-buffering track, so the wait-for-master phase hits the 20s fallback and the catch-up re-seek target is itself stale.
+3. **`50a36ec3` (build `20260524-160224`)** — replaced `p.audios[0]` references with median-playhead across all ready+playing tracks. `_mtCurrentPlayheadSec()` helper. Wait-for-master phase changed to "wait for ANY track ready." **Result (per Drew's screenshot):** time label stuck on 53:19, console still shows `master track buffer timeout — starting anyway` twice, sound is playing but tracks are not in sync. The median fix improved the time-label freezing case only marginally — if too few tracks are playing, median is computed off a small unstable sample.
+
+**Suspected root causes (for next session to verify):**
+
+- **Browser connection-pool limit.** Chromium caps 6 simultaneous connections per origin. 17 simultaneous range-requests to R2 serialize, producing the 20-30s tail latency on far seeks. Empirical: Drew's 4-5 hour rehearsal FLACs are large; a far seek invalidates the existing buffer and forces fresh range-requests for all 17.
+- **HTML5 `<audio>` element auto-resume semantics.** When a stalled element's buffer fills, it auto-resumes from its OWN `currentTime` (the original seek target), not from any external reference. Even with the median-based catch-up handler attached, there's a race: if `canplay` fires AFTER auto-resume has already started, the element is already playing at the wrong position before catch-up can intervene.
+- **`canplay` fires prematurely.** Browsers can fire `canplay` when the buffer has *some* data but not enough to play at the seek target. The re-seek then triggers another range-fetch.
+- **No safeguard against duplicate concurrent seeks.** Drew likely scrubbed multiple times during the slow buffer — the `_seekToken` guard exists but the user can issue many seeks before the first one finishes buffering. Each new seek's pause-all races against the prior seek's catch-up handlers still adding listeners.
+
+**Why the architectural fix is "server-side render."** The `02_GrooveLinx/specs/rehearsal_render_pipeline.md` proposal (shipped this session, `91c1fdd9`) explicitly anticipates this: streaming 17 simultaneous FLACs in the browser is the WRONG architecture for collaborative review of long rehearsals. The browser is a review tool, not a multi-stream player. The correct path is to build the server-side render pipeline (R1-R3 in the proposal — ~5 hours of work) and have the browser play a SINGLE pre-rendered stereo mix instead of 17 streams. Far seeks become near-instant because there's only one HTTP range to fetch.
+
+**Recommended next steps (next session, in order):**
+
+1. **Don't keep iterating on the 17-stream sync code.** Three patches in one session, none worked. The architecture is the bug. Build R1 (Modal `render_mix` endpoint).
+2. **If the band needs the multitrack player to work TONIGHT for review,** consider a worst-case workaround: when the user opens a session, immediately kick off a server-side mixdown render in the background; the browser player streams the 17 FLACs as a fallback but as soon as the rendered mix is available (~30-60s for a 3-hour rehearsal), switch the player to single-stream playback. This eliminates the multi-stream sync problem entirely for the >99% case where the user just wants to review.
+3. **If a code-only fix is required:** investigate Web Audio's `AudioWorklet` + `MediaSource` extensions to fetch FLAC bytes manually and submit them to a single AudioBufferSourceNode-based mixer with a synthetic clock. This is essentially building a browser DAW — Drew has explicitly said NO to this (`feedback_workbench_no_new_destinations.md`, "browser is review, server is render"). Don't go down this path without re-asking.
+
+**Working code paths (do not regress):**
+
+- The dynamic-median playhead helper `_mtCurrentPlayheadSec()` (build `160224`) DOES correctly tolerate one bad-buffering stem for time-display purposes. Even if the seek-sync logic is rewritten, keep this helper — it's load-bearing for the time label and Re-sync button.
+- The 🔄 Re-sync button works. If the user is stuck with drifted tracks, that button (now median-based) is the manual escape hatch.
+- The 🧹 Clear all button + 2-row transport bar (build `153606`) are unrelated to the sync bug and DO work — don't accidentally break them when rewriting.
+- The ⭐ Keeper flag + 📦 Download stems (build `151343`) are unrelated and DO work.
+
+**Files to read first in the next session:**
+
+- `js/features/multitrack-rehearsal.js` — `_mtSeekMaster` (line ~2176), `_mtCurrentPlayheadSec` (line ~2502), `_mtResyncAll`, `_mtSkipBy`
+- `02_GrooveLinx/specs/rehearsal_render_pipeline.md` — the server-side render architecture (the recommended fix)
+- Memory `project_multitrack_rehearsal.md` — Phase A-C architecture
+- Memory `feedback_workbench_no_new_destinations.md` — Drew's explicit "no browser DAW" rule
+
+**Pre-existing relevant feature work pending in-browser verification (not new bugs):**
+(a) notification candidate #2 (setlist change near event) — build `20260522-175203` / issue #41; (b) Trim Preview audition length picker — build `20260522-180511` / issue #42; (c) Bug #16 Places autofill — build `20260522-214634` / issue #45; (d) Gig Map geocode + home pins + hover — build `20260522-225426` / issue #46; (e) Gig Map privacy toggle + dark info-window polish + bandMembers hydration fix — build `20260523-181905` / issue #47; (f) Gig Map venue grouping + hover/click split + free-text geocode fallback — build `20260523-185206`; (g) Gig-save scroll preservation + setlist Set-Break auto-cleaner + past-gigs RSVP backfill helper + Geocoding-API-denial banner — build `20260523-191344`; (h) Marker → AdvancedMarkerElement migration — build `20260523-192626`; (i) admin home-address entry per bandmate — build `20260523-231254`.
 
 ## Awaiting Drew action (not bugs)
 
