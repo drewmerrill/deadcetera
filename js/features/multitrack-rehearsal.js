@@ -2280,6 +2280,11 @@ window._mtTogglePlayAll = function() {
         p.masterPlaying = false;
         _mtStopSyncWatchdog(p);
         if (btn) btn.textContent = '▶ Play';
+        // Tier 1F — clear the active-segment highlight on pause so it
+        // doesn't appear to be tracking the analyzer (which it isn't).
+        if (typeof _mtUpdateActiveSegmentHighlight === 'function') {
+            setTimeout(_mtUpdateActiveSegmentHighlight, 0);
+        }
     } else {
         // Phase C: initialize Web Audio graph on first play click. Browser
         // autoplay policy requires AudioContext creation to be inside a user
@@ -3804,11 +3809,32 @@ function _mtRenderSegmentsPanel() {
 // current playhead. Auto-scrolls the row into view when it changes,
 // but only on transitions (not every timeupdate tick) so the scroll
 // stays useful, not jittery.
+//
+// Highlight ONLY appears while audio is actively playing. When the
+// user pauses (or the player just opened with playhead at 0:00), the
+// highlight clears. Otherwise the box looked like it was tracking
+// "what the analyzer is processing" — it isn't (Drew, 2026-05-24).
 function _mtUpdateActiveSegmentHighlight() {
     var p = _mtState.player;
     if (!p || !Array.isArray(p.segments)) return;
+    var rows = document.querySelectorAll('#mtSegmentsList [data-seg-idx]');
+    // Active = at least one audio element is currently un-paused.
+    var anyPlaying = false;
+    if (p.audios && p.audios.length) {
+        for (var ai = 0; ai < p.audios.length; ai++) {
+            var a = p.audios[ai];
+            if (a && !a.paused && !a.ended) { anyPlaying = true; break; }
+        }
+    }
+    if (!anyPlaying) {
+        rows.forEach(function(row) {
+            row.style.outline = '';
+            row.style.outlineOffset = '';
+        });
+        p._lastActiveSegIdx = -1;
+        return;
+    }
     var t = (typeof _mtCurrentPlayheadSec === 'function') ? _mtCurrentPlayheadSec() : 0;
-    // Find segment containing t (linear search — 50 segments is trivial).
     var activeOrigIdx = -1;
     for (var i = 0; i < p.segments.length; i++) {
         var s = p.segments[i];
@@ -3816,7 +3842,6 @@ function _mtUpdateActiveSegmentHighlight() {
         var en = (typeof s.endSec === 'number') ? s.endSec : 0;
         if (t >= st && t < en) { activeOrigIdx = i; break; }
     }
-    var rows = document.querySelectorAll('#mtSegmentsList [data-seg-idx]');
     rows.forEach(function(row) {
         var idx = parseInt(row.getAttribute('data-seg-idx'), 10);
         if (idx === activeOrigIdx) {
@@ -3827,7 +3852,6 @@ function _mtUpdateActiveSegmentHighlight() {
             row.style.outlineOffset = '';
         }
     });
-    // Scroll into view only on transitions to a new active row.
     if (activeOrigIdx >= 0 && activeOrigIdx !== p._lastActiveSegIdx) {
         var activeRow = document.querySelector('#mtSegmentsList [data-seg-idx="' + activeOrigIdx + '"]');
         if (activeRow) {
