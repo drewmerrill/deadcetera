@@ -34,12 +34,26 @@ var _MT_ROLES = {
     'kick':      { label: 'Kick',      group: 'drums', order: 1 },
     'snare':     { label: 'Snare',     group: 'drums', order: 2 },
     'hat':       { label: 'Hi-Hat',    group: 'drums', order: 3 },
+    // Both with-hyphen and without-hyphen tom keys are recognized so the
+    // auto-inference works for either filename convention (`tom-1-jay` and
+    // `tom1-jay` both parse cleanly). Same display label = same dropdown
+    // entry semantically — choosing either is fine.
+    'tom1':      { label: 'Tom 1',     group: 'drums', order: 4 },
     'tom-1':     { label: 'Tom 1',     group: 'drums', order: 4 },
+    'tom2':      { label: 'Tom 2',     group: 'drums', order: 5 },
     'tom-2':     { label: 'Tom 2',     group: 'drums', order: 5 },
+    'tom3':      { label: 'Tom 3',     group: 'drums', order: 6 },
     'tom-3':     { label: 'Tom 3',     group: 'drums', order: 6 },
+    'tom4':      { label: 'Tom 4',     group: 'drums', order: 6.5 },
     'ride':      { label: 'Ride',      group: 'drums', order: 7 },
     'oh-l':      { label: 'OH Left',   group: 'drums', order: 8 },
     'oh-r':      { label: 'OH Right',  group: 'drums', order: 9 },
+    // Hand/auxiliary percussion (added 2026-05-24 from Drew's mic plot).
+    'bongos':    { label: 'Bongos',    group: 'percussion', order: 9.1 },
+    'congas':    { label: 'Congas',    group: 'percussion', order: 9.2 },
+    'shaker':    { label: 'Shaker',    group: 'percussion', order: 9.3 },
+    'tambourine':{ label: 'Tambourine',group: 'percussion', order: 9.4 },
+    'percussion':{ label: 'Percussion',group: 'percussion', order: 9.5 },
     'room-l':    { label: 'Room L',    group: 'room',  order: 10 },
     'room-r':    { label: 'Room R',    group: 'room',  order: 11 },
     'bass':      { label: 'Bass',      group: 'bass',  order: 20 },
