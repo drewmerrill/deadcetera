@@ -2727,17 +2727,21 @@ async function _rhRenderSessionHistory() {
         // button instead of the standard duration/headline/scorecard layout.
         if (s.type === 'multitrack') {
             var trackCount = (s.tracks && s.tracks.length) || 0;
-            html += '<div class="app-card" style="padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px' + (isLatest ? ';border-left:3px solid #fbbf24;background:rgba(245,158,11,0.04)' : '') + '">'
+            // ⭐ Keeper sessions get a brighter gold accent + sit at the top
+            // visually so they're hard to miss when reviewing.
+            var keeperAccent = s.keeper ? ';box-shadow:0 0 0 1px rgba(251,191,36,0.5),0 0 12px rgba(251,191,36,0.15);background:rgba(251,191,36,0.06)' : '';
+            html += '<div class="app-card" style="padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px' + (isLatest ? ';border-left:3px solid #fbbf24;background:rgba(245,158,11,0.04)' : '') + keeperAccent + '">'
                 + (_rhBulkMode ? '<input type="checkbox" id="rhBulkCb_' + s.sessionId + '" onchange="_rhBulkToggle(\'' + s.sessionId + '\')"' + (_rhBulkSelected[s.sessionId] ? ' checked' : '') + ' style="accent-color:#ef4444;width:14px;height:14px;cursor:pointer;flex-shrink:0">' : '')
                 + '<div style="flex:1;min-width:0">'
-                // Top line: 🎚 emoji + date + track count. The 🎚 emoji
-                // plus the yellow card border already signal "multitrack" —
-                // dropped the redundant text badge that was overlapping the
-                // ▶ Open button in narrow sidebars.
+                // Top line: 🎚 emoji + date + track count + (optional) ⭐
+                // Keeper marker. The 🎚 emoji + yellow card border signal
+                // "multitrack"; the ⭐ marker signals "keeper — stems
+                // retained forever." Visible at a glance in history scroll.
                 + '<div style="display:flex;align-items:center;gap:6px">'
                 + '<span style="font-size:0.78em">🎚</span>'
                 + '<span style="font-weight:700;font-size:0.82em;color:var(--text)">' + dateStr + '</span>'
                 + '<span style="font-size:0.72em;color:var(--text-muted)">· ' + trackCount + ' tracks</span>'
+                + (s.keeper ? '<span title="Keeper — stems retained forever" style="font-size:0.74em;color:#fbbf24">⭐</span>' : '')
                 + '</div>'
                 // Bottom line: venue, with strict single-line ellipsis so a
                 // long string can\'t break the card layout (the previous

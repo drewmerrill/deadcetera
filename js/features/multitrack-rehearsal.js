@@ -1110,6 +1110,13 @@ window._mtOpenPlayer = async function(sessionId) {
               '<div style="font-size:1em;font-weight:800;color:#f1f5f9">Multitrack rehearsal</div>' +
               '<div id="mtHeaderMeta" style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + escHtml(dateLabel) + (session.venue ? ' · ' + escHtml(session.venue) : '') + ' · ' + tracks.length + ' tracks</div>' +
             '</div>' +
+            // ⭐ Keeper button — flags this rehearsal as "save the per-track
+            // FLAC stems forever, never auto-tier." Initial state pulled
+            // from session.keeper; toggled live by _mtToggleKeeper.
+            '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper — stems retained forever for future mastering" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
+            // 📦 Download stems — kicks off the existing /multitrack/zip
+            // pipeline, polls, and surfaces the download link when ready.
+            '<button onclick="_mtDownloadStems()" id="mtDownloadBtn" title="Download original FLAC stems as a zip — for ProTools / other DAWs" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📦 Stems</button>' +
             '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
           '</div>' +
@@ -1491,6 +1498,131 @@ window._mtSetTrackVolume = function(trackId, pct) {
     var label = document.getElementById('mtVolLabel_' + trackId);
     if (label) label.textContent = Math.round(pct) + '%';
     _mtSaveMixStateDebounced();
+};
+
+// ⭐ Keeper flag — explicit "save this rehearsal's stems forever" marker.
+// Architectural reason: any future auto-tiering of stems (Phase D, deferred)
+// MUST exempt sessions where keeper === true. Without this, a great take
+// could get auto-archived/submixed before the band decides to master it.
+// Mastering requires the original per-track FLACs — once lost, they're gone.
+window._mtToggleKeeper = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var btn = document.getElementById('mtKeeperBtn');
+    try {
+        // Read current value fresh (don't trust local state if user opened
+        // from a tab where another device toggled it)
+        var snap = await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/keeper')).once('value');
+        var current = !!snap.val();
+        var next = !current;
+        await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/keeper')).set(next);
+        if (btn) {
+            btn.textContent = next ? '⭐ Keeper' : '☆ Keeper';
+            btn.style.background = next ? 'rgba(251,191,36,0.15)' : 'rgba(255,255,255,0.04)';
+            btn.style.borderColor = next ? 'rgba(251,191,36,0.35)' : 'rgba(255,255,255,0.1)';
+            btn.style.color = next ? '#fbbf24' : 'var(--text-dim)';
+        }
+        if (typeof showToast === 'function') {
+            showToast(next ? '⭐ Marked as Keeper — stems will be retained forever' : '☆ Unmarked as Keeper');
+        }
+        // Refresh history sidebar so the visual flag shows up there too
+        try { if (typeof _rhRenderSessionHistory === 'function') _rhRenderSessionHistory(); } catch (e) {}
+    } catch (e) {
+        if (typeof showToast === 'function') showToast('Save failed: ' + (e && e.message));
+    }
+};
+
+// 📦 Download stems — uses the existing /multitrack/zip async pipeline.
+// Flow:
+//   1. Check /multitrack/zip/status — if a session.zip is already cached
+//      in R2, redirect to it immediately.
+//   2. Otherwise POST /multitrack/zip/start to spawn the Modal job, get
+//      a call_id back.
+//   3. Poll /multitrack/zip/check every 5s until state==='done'.
+//   4. Trigger a browser download via the returned publicUrl.
+window._mtDownloadStems = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var btn = document.getElementById('mtDownloadBtn');
+    var origLabel = btn ? btn.textContent : '';
+
+    function setLabel(text, isError) {
+        if (!btn) return;
+        btn.textContent = text;
+        btn.disabled = !isError;
+        btn.style.opacity = isError ? '1' : '0.7';
+    }
+    function resetLabel() {
+        if (!btn) return;
+        btn.textContent = origLabel || '📦 Stems';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    }
+
+    setLabel('⏳ Checking…');
+    try {
+        // 1. Cache check
+        var statusRes = await fetch(workerBase + '/multitrack/zip/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(p.sessionId));
+        var statusJson = await statusRes.json();
+        if (statusJson && statusJson.ready && statusJson.publicUrl) {
+            setLabel('📥 Downloading…');
+            window.location.href = statusJson.publicUrl;
+            setTimeout(resetLabel, 2000);
+            return;
+        }
+
+        // 2. Spawn a fresh build
+        setLabel('🛠 Building zip…');
+        var startRes = await fetch(workerBase + '/multitrack/zip/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bandSlug: slug, sessionId: p.sessionId })
+        });
+        var startJson = await startRes.json();
+        if (!startRes.ok || !startJson || !startJson.call_id) {
+            throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+        }
+        var callId = startJson.call_id;
+
+        // 3. Poll. Max ~5 min (60 attempts × 5s each) for very large sessions.
+        for (var attempt = 0; attempt < 60; attempt++) {
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            setLabel('⏳ Zipping (' + ((attempt + 1) * 5) + 's)…');
+            var checkRes = await fetch(workerBase + '/multitrack/zip/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: callId })
+            });
+            var checkJson = await checkRes.json();
+            if (checkJson && (checkJson.state === 'done' || checkJson.status === 'done')) {
+                var url = checkJson.publicUrl || checkJson.url;
+                if (!url) {
+                    // Fall back to status check — Modal said done but didn't return URL
+                    var s2 = await fetch(workerBase + '/multitrack/zip/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(p.sessionId));
+                    var s2j = await s2.json();
+                    url = s2j && s2j.publicUrl;
+                }
+                if (!url) throw new Error('zip ready but no URL returned');
+                setLabel('📥 Downloading…');
+                window.location.href = url;
+                setTimeout(resetLabel, 2000);
+                return;
+            }
+            if (checkJson && (checkJson.state === 'error' || checkJson.status === 'error')) {
+                throw new Error((checkJson.error || 'modal_error'));
+            }
+        }
+        throw new Error('zip build timed out after 5 minutes');
+    } catch (e) {
+        console.warn('[Multitrack] download stems failed:', e);
+        setLabel('✗ ' + (e.message || 'failed'), true);
+        if (typeof showToast === 'function') showToast('Download failed: ' + (e.message || ''));
+        setTimeout(resetLabel, 4000);
+    }
 };
 
 // Edit the session header (date + venue) inline. Persists to
