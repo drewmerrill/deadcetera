@@ -2851,22 +2851,46 @@ window._mtAnalyzeRehearsal = async function() {
     if (!p || !p.sessionId) return;
 
     // Source priority:
-    //   1. Rendered review mix (mix_default) — recommended. Has all
-    //      instruments — analyzer sees continuous music across the song
-    //      regardless of which players are dropping out at any moment.
-    //      Empirically (Drew, 2026-05-24) picking the kick stem produced
-    //      381 segments because kick drops out in normal verses → analyzer
-    //      sees silence even mid-song.
+    //   1. ANY rendered stereo mix — recommended. Has all instruments —
+    //      analyzer sees continuous music across songs regardless of which
+    //      players are dropping out at any moment. Empirically (Drew,
+    //      2026-05-24) picking the kick stem produced 381 segments because
+    //      kick drops out during verses → analyzer sees silence mid-song.
     //   2. Vocals (lyric-start gives clean boundaries when no mix exists)
     //   3. Any other stem (fallback only)
+    //
+    // We also hit /multitrack/render/status to find the freshest available
+    // render — Review Mode's currently-loaded renderInfo might be a custom
+    // mix; for Analyze we prefer the canonical mix_default if any exists.
     var renderInfo = p.renderInfo || null;
-    var renderIsMixDefault = renderInfo && renderInfo.renderId === 'mix_default' && renderInfo.url;
+    var bestMix = null;
+    try {
+        var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+        var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+        var sr = await fetch(workerBase + '/multitrack/render/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(p.sessionId));
+        if (sr.ok) {
+            var sj = await sr.json();
+            var renders = (sj && sj.renders) || [];
+            // Prefer canonical mix_default; fall back to any other render.
+            bestMix = renders.find(function(r) { return r.renderId === 'mix_default'; })
+                   || renders[0]
+                   || null;
+        }
+    } catch (e) { /* fall back to renderInfo or no-mix path */ }
+    // If /status didn't surface a render but the player has one loaded,
+    // use it. This catches sessions whose only render is a legacy
+    // 'auto-<ts>' naming convention that didn't include renderId on the
+    // R2 path level (newer renders have stable renderId keys).
+    if (!bestMix && renderInfo && renderInfo.url) {
+        bestMix = { url: renderInfo.url, fileName: renderInfo.fileName, renderId: renderInfo.renderId };
+    }
+    var hasMix = !!(bestMix && bestMix.url);
     // Default stem suggestion if no mix is available
     var defaultStem = p.tracks.find(function(t) { return (t.role || '').startsWith('vocal'); })
                     || p.tracks.find(function(t) { return t.role === 'kick'; })
                     || p.tracks.find(function(t) { return (_MT_ROLES[t.role] || {}).group === 'drums'; })
                     || p.tracks[0];
-    if (!defaultStem && !renderIsMixDefault) {
+    if (!defaultStem && !hasMix) {
         if (typeof showToast === 'function') showToast('No tracks loaded');
         return;
     }
@@ -2877,14 +2901,18 @@ window._mtAnalyzeRehearsal = async function() {
         return '<option value="' + escHtml(t.trackId) + '"' + sel + '>' + escHtml(label) + '</option>';
     }).join('');
 
+    // Cache best mix into player state so _mtAnalyzeRun can read it back.
+    p._analyzeBestMix = bestMix || null;
+    var mixLabel = (bestMix && bestMix.fileName) ? bestMix.fileName : 'rendered mix';
+
     // Source picker: radio between rendered-mix (when available) and
     // individual stem. Rendered mix is the safer default.
-    var mixOptionHtml = renderIsMixDefault
+    var mixOptionHtml = hasMix
         ? '<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.35);border-radius:6px;margin-bottom:8px;cursor:pointer">'
             + '<input type="radio" name="mtAnalyzeSrcKind" value="mix" checked onclick="_mtAnalyzeSrcKindChanged()" style="margin-top:2px">'
             + '<div style="flex:1">'
             + '<div style="font-size:0.84em;font-weight:700;color:#c7d2fe">🎚 Rendered review mix <span style="font-weight:400;color:var(--text-dim);font-size:0.92em">(recommended)</span></div>'
-            + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px">Uses all instruments. Best segment quality — silence in the mix means everyone is actually quiet, not just one player dropping out.</div>'
+            + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px">' + escHtml(mixLabel) + ' — uses all instruments. Best segment quality.</div>'
             + '</div>'
             + '</label>'
         : '<div style="padding:8px 10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:6px;margin-bottom:8px;font-size:0.78em;color:#fbbf24">'
@@ -2892,12 +2920,12 @@ window._mtAnalyzeRehearsal = async function() {
             + '</div>';
 
     var stemOptionHtml = '<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;margin-bottom:12px;cursor:pointer">'
-        + '<input type="radio" name="mtAnalyzeSrcKind" value="stem"' + (renderIsMixDefault ? '' : ' checked') + ' onclick="_mtAnalyzeSrcKindChanged()" style="margin-top:2px">'
+        + '<input type="radio" name="mtAnalyzeSrcKind" value="stem"' + (hasMix ? '' : ' checked') + ' onclick="_mtAnalyzeSrcKindChanged()" style="margin-top:2px">'
         + '<div style="flex:1">'
         + '<div style="font-size:0.84em;font-weight:700;color:#cbd5e1">🎵 Individual stem</div>'
         + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px;margin-bottom:6px">Vocals work well (clean lyric-start markers). Avoid the kick — it drops out during normal play.</div>'
         + '<label for="mtAnalyzeStem" class="sr-only">Analysis source stem</label>'
-        + '<select id="mtAnalyzeStem" name="mtAnalyzeStem" autocomplete="off" class="app-select" style="width:100%;font-size:0.88em"' + (renderIsMixDefault ? ' disabled' : '') + '>' + trackOptionsHtml + '</select>'
+        + '<select id="mtAnalyzeStem" name="mtAnalyzeStem" autocomplete="off" class="app-select" style="width:100%;font-size:0.88em"' + (hasMix ? ' disabled' : '') + '>' + trackOptionsHtml + '</select>'
         + '</div>'
         + '</label>';
 
@@ -2949,13 +2977,14 @@ window._mtAnalyzeRun = async function() {
     var sourceStemId = '';
     var sourceStemRole = null;
     if (useMix) {
-        if (!p.renderInfo || !p.renderInfo.url) {
+        var mix = p._analyzeBestMix || (p.renderInfo && p.renderInfo.url ? p.renderInfo : null);
+        if (!mix || !mix.url) {
             if (status) status.textContent = 'Rendered mix unavailable — pick a stem instead';
             return;
         }
-        sourceUrl = p.renderInfo.url;
-        sourceLabel = 'rendered review mix';
-        sourceStemId = 'mix_default';
+        sourceUrl = mix.url;
+        sourceLabel = mix.fileName || 'rendered review mix';
+        sourceStemId = mix.renderId || 'mix_default';
     } else {
         var sel = document.getElementById('mtAnalyzeStem');
         if (!sel || !sel.value) return;
