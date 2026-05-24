@@ -13524,13 +13524,37 @@ async function checkForAppUpdate() {
 // banner even if the prior one was dismissed.
 var _bannerShownForVersion = null;
 
+// Hard session lock: once ANY banner has been shown (or even ATTEMPTED)
+// in this page session, block all further attempts. Page reload clears
+// it. This is stricter than the per-version gate — it guarantees at most
+// ONE banner per page session even when multiple SW/polling paths race
+// concurrently with different (or no) versions. Drew (2026-05-24): "Still
+// getting two purple reload banners when you send a new version."
+// Per-version gate kept for diagnostic clarity but session lock wins.
+var _bannerSessionLocked = false;
+
 async function showUpdateBanner(serverVersion) {
-    // 2026-05-24: SW-lifecycle paths (reg.waiting, updatefound, controllerchange)
-    // call this with NO argument, so version defaulted to 'unknown' — which
-    // didn't collide with the polling-path's real-version gate. Result: the
-    // banner could fire TWICE for the same deploy (once with 'unknown', once
-    // with the real version). Fix: when no version supplied, fetch
-    // version.json so the gate has the real key.
+    // Diagnostic: log every call with caller stack frame. If two banners
+    // appear, the console captures exactly which paths fired and when.
+    try {
+        var _trace = (new Error()).stack || '';
+        var _callerLine = _trace.split('\n').slice(2, 4).join(' | ').replace(/https?:\/\/[^/]+/g, '').slice(0, 200);
+        console.log('[Update] showUpdateBanner enter — version=' + (serverVersion || '(none)')
+            + ' · session_locked=' + _bannerSessionLocked
+            + ' · gate=' + _bannerShownForVersion
+            + ' · dom=' + !!document.getElementById('dc-update-banner')
+            + ' · from: ' + _callerLine);
+    } catch(_te) {}
+
+    // PRIMARY GATE — session lock. Set IMMEDIATELY upon entry (before
+    // any await) so concurrent calls can't both pass. The first call to
+    // reach this line wins; all subsequent calls in this session bail.
+    if (_bannerSessionLocked) {
+        console.log('[Update] suppressed — session lock already set');
+        return;
+    }
+    _bannerSessionLocked = true;
+
     if (!serverVersion) {
         try {
             var _vbase = location.hostname.indexOf('github.io') !== -1 ? '/deadcetera' : '';
@@ -13542,6 +13566,8 @@ async function showUpdateBanner(serverVersion) {
         } catch(_ve) {}
     }
     serverVersion = serverVersion || 'unknown';
+    // Per-version gate retained (now redundant with session lock but
+    // harmless and useful for diagnostic clarity).
     if (_bannerShownForVersion === serverVersion) return;
     if (document.getElementById('dc-update-banner')) {
         _bannerShownForVersion = serverVersion;

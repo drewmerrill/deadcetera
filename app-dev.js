@@ -12926,13 +12926,26 @@ async function checkForAppUpdate() {
 var _updateBannerShown = false;
 var _bannerShownForVersion = null;
 
+// Hard session lock — see app.js comment. Mirror.
+var _bannerSessionLocked = false;
+
 async function showUpdateBanner(serverVersion) {
-    // 2026-05-24: SW-lifecycle paths (reg.waiting, updatefound, controllerchange)
-    // call this with NO argument, so version defaulted to 'unknown' — which
-    // didn't collide with the polling-path's real-version gate. Result: the
-    // banner could fire TWICE for the same deploy (once with 'unknown', once
-    // with the real version). Fix: when no version supplied, fetch
-    // version.json so the gate has the real key.
+    try {
+        var _trace = (new Error()).stack || '';
+        var _callerLine = _trace.split('\n').slice(2, 4).join(' | ').replace(/https?:\/\/[^/]+/g, '').slice(0, 200);
+        console.log('[Update] showUpdateBanner enter — version=' + (serverVersion || '(none)')
+            + ' · session_locked=' + _bannerSessionLocked
+            + ' · gate=' + _bannerShownForVersion
+            + ' · dom=' + !!document.getElementById('dc-update-banner')
+            + ' · from: ' + _callerLine);
+    } catch(_te) {}
+
+    if (_bannerSessionLocked) {
+        console.log('[Update] suppressed — session lock already set');
+        return;
+    }
+    _bannerSessionLocked = true;
+
     if (!serverVersion) {
         try {
             var _vbase = location.hostname.indexOf('github.io') !== -1 ? '/deadcetera' : '';
