@@ -1246,6 +1246,9 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
           '<div style="overflow-y:auto;max-height:35vh;border:1px solid rgba(255,255,255,0.04);border-radius:8px;flex-shrink:0">' + trackRowsHtml + '</div>' +
           '<div style="margin-top:6px;font-size:0.66em;color:var(--text-dim);text-align:center;flex-shrink:0">M = mute · S = solo · slider = volume · 💧 = reverb · seek bar scrubs all tracks</div>' +
           // Phase B: comment list (fills remaining vertical space) + composer (sticky bottom)
+          // Segments panel — server-precomputed waveforms + analyzer
+          // results. Rehearsal navigation intelligence, not a DAW.
+          '<div id="mtSegmentsPanel" style="margin-top:8px;flex-shrink:0"></div>' +
           '<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:120px"></div>' +
           '<div id="mtComposerArea"></div>' +
         '</div>';
@@ -1355,6 +1358,7 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
     _mtLoadSegments(sessionId).then(function() {
         if (_mtState.player && _mtState.player.sessionId === sessionId) {
             _mtRenderSegmentMarkers();
+            _mtRenderSegmentsPanel();
         }
     });
 
@@ -1455,6 +1459,9 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
           // waiting for the render, this slot is empty and play() is a no-op.
           '<audio id="mtReviewAudio" preload="metadata" crossorigin="anonymous"' + (renderUrl ? (' src="' + escHtml(renderUrl) + '"') : '') + '></audio>' +
           // Comments panel + composer — same as Isolate Mode.
+          // Segments panel — server-precomputed waveforms + analyzer
+          // results. Rehearsal navigation intelligence, not a DAW.
+          '<div id="mtSegmentsPanel" style="margin-top:8px;flex-shrink:0"></div>' +
           '<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:160px"></div>' +
           '<div id="mtComposerArea"></div>' +
         '</div>';
@@ -1503,6 +1510,7 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
     _mtLoadSegments(sessionId).then(function() {
         if (_mtState.player && _mtState.player.sessionId === sessionId) {
             _mtRenderSegmentMarkers();
+            _mtRenderSegmentsPanel();
         }
     });
     _mtLoadComments(sessionId).then(function(comments) {
@@ -2997,6 +3005,11 @@ window._mtAnalyzeRun = async function() {
                 segments: converted,
                 summary: result.summary || {},
                 durationSec: result.duration_sec || null,
+                // Lightweight RMS peaks (~2000 buckets across the full
+                // rehearsal) for the Segments panel waveform strips. NOT
+                // zoomable DAW data — purely a navigation aid.
+                peaks: Array.isArray(result.peaks) ? result.peaks : [],
+                peaksCount: result.peaks_count || (Array.isArray(result.peaks) ? result.peaks.length : 0),
                 sourceStemId: track.trackId,
                 sourceStemRole: track.role || null,
                 analyzedAt: new Date().toISOString(),
@@ -3006,6 +3019,7 @@ window._mtAnalyzeRun = async function() {
         if (status) status.textContent = '✓ Detected ' + converted.length + ' segments. Loading…';
         await _mtLoadSegments(p.sessionId);
         _mtRenderSegmentMarkers();
+        _mtRenderSegmentsPanel();
         if (typeof showToast === 'function') {
             var n = (p.segments || []).length;
             var s = result.summary || {};
@@ -3043,6 +3057,16 @@ async function _mtLoadSegments(sessionId) {
         var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/analysis')).once('value');
         var analysis = snap.val();
         var segs = [];
+        // Lightweight waveform peaks for the Segments panel (server
+        // precomputed during analysis). One array per session; each
+        // segment row slices it to draw its own thin strip.
+        if (analysis && analysis.story && Array.isArray(analysis.story.peaks)) {
+            p.peaks = analysis.story.peaks;
+            p.peaksDurationSec = analysis.story.durationSec || 0;
+        } else {
+            p.peaks = [];
+            p.peaksDurationSec = 0;
+        }
         if (analysis && analysis.story && Array.isArray(analysis.story.segments)) {
             segs = analysis.story.segments.slice();
         } else if (analysis && analysis.v2Result && Array.isArray(analysis.v2Result.events)) {
@@ -3074,6 +3098,254 @@ async function _mtLoadSegments(sessionId) {
         p.segments = [];
     }
 }
+
+// ── Segments panel — rehearsal navigation intelligence ─────────────────────
+// Lightweight inline list of analyzed segments with thin waveform strips
+// per row. Renders from p.segments (Firebase-loaded) + p.peaks (server
+// precomputed RMS downsample). NOT a DAW: waveforms are a navigation
+// aid only — no zoom, no sample-accurate editing. Independent from
+// playback synchronization. Drew's product principle 2026-05-24:
+// "rehearsal navigation intelligence, not waveform editing software."
+function _mtKindMeta(kind) {
+    switch ((kind || '').toLowerCase()) {
+        case 'music':   return { emoji: '🎵', color: '#a5b4fc', name: 'music',   stripBg: 'rgba(99,102,241,0.10)', stripFg: 'rgba(165,180,252,0.85)' };
+        case 'silence': return { emoji: '🤫', color: '#64748b', name: 'silence', stripBg: 'rgba(100,116,139,0.06)', stripFg: 'rgba(148,163,184,0.4)' };
+        case 'speech':  return { emoji: '💬', color: '#fbbf24', name: 'speech',  stripBg: 'rgba(251,191,36,0.07)', stripFg: 'rgba(252,211,77,0.75)' };
+        default:        return { emoji: '·',  color: '#94a3b8', name: 'segment', stripBg: 'rgba(148,163,184,0.06)', stripFg: 'rgba(203,213,225,0.55)' };
+    }
+}
+
+function _mtFmtTimeShort(sec) {
+    if (!isFinite(sec) || sec < 0) return '0:00';
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = Math.floor(sec % 60);
+    if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    return m + ':' + String(s).padStart(2, '0');
+}
+
+// Slice the session's global peaks array down to the segment's time
+// range, then RMS-downsample to a fixed bucket count for the strip canvas.
+function _mtPeaksForSegment(peaks, durationSec, startSec, endSec, outBuckets) {
+    if (!Array.isArray(peaks) || !peaks.length || !durationSec || durationSec <= 0) return [];
+    var n = peaks.length;
+    var pStart = Math.max(0, Math.floor((startSec / durationSec) * n));
+    var pEnd = Math.min(n, Math.ceil((endSec / durationSec) * n));
+    if (pEnd <= pStart) return [];
+    var slice = peaks.slice(pStart, pEnd);
+    // Re-bucket the slice into outBuckets evenly. Each output bucket is the
+    // MAX of its input range (peaky look beats RMS-of-RMS for visual cues).
+    var out = new Array(outBuckets);
+    for (var i = 0; i < outBuckets; i++) {
+        var aStart = Math.floor((i / outBuckets) * slice.length);
+        var aEnd = Math.floor(((i + 1) / outBuckets) * slice.length);
+        if (aEnd <= aStart) aEnd = aStart + 1;
+        var mx = 0;
+        for (var j = aStart; j < aEnd && j < slice.length; j++) {
+            if (slice[j] > mx) mx = slice[j];
+        }
+        out[i] = mx;
+    }
+    // Normalize against this segment's own max so quiet segments still
+    // show some shape (instead of looking flat when the overall rehearsal
+    // had a single loud section). Falls back to absolute if max is 0.
+    var localMax = 0;
+    for (var k = 0; k < out.length; k++) if (out[k] > localMax) localMax = out[k];
+    if (localMax > 0) {
+        for (var k2 = 0; k2 < out.length; k2++) out[k2] = out[k2] / localMax;
+    }
+    return out;
+}
+
+// Paint a single segment's waveform strip into a canvas. Bars from center,
+// thin spacing. Drew's constraint: lightweight navigation aid only.
+function _mtDrawSegmentStrip(canvas, buckets, color) {
+    if (!canvas) return;
+    var w = canvas.width;
+    var h = canvas.height;
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, w, h);
+    if (!buckets.length) return;
+    ctx.fillStyle = color;
+    var barW = Math.max(1, Math.floor(w / buckets.length) - 1);
+    for (var i = 0; i < buckets.length; i++) {
+        var v = buckets[i];
+        if (!isFinite(v) || v <= 0) continue;
+        var barH = Math.max(1, Math.round(v * (h - 2)));
+        var x = Math.floor((i / buckets.length) * w);
+        var y = Math.floor((h - barH) / 2);
+        ctx.fillRect(x, y, barW, barH);
+    }
+}
+
+window._mtToggleSegmentsPanel = function() {
+    var body = document.getElementById('mtSegmentsBody');
+    var caret = document.getElementById('mtSegmentsCaret');
+    if (!body) return;
+    var collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? 'block' : 'none';
+    if (caret) caret.textContent = collapsed ? '▾' : '▸';
+    if (_mtState.player) _mtState.player._segmentsPanelCollapsed = !collapsed;
+};
+
+function _mtRenderSegmentsPanel() {
+    var p = _mtState.player;
+    var host = document.getElementById('mtSegmentsPanel');
+    if (!p || !host) return;
+    var segs = Array.isArray(p.segments) ? p.segments : [];
+
+    // Empty state — no analysis yet. Inline 🎯 Analyze button so the user
+    // doesn't have to leave the panel to kick analysis.
+    if (!segs.length) {
+        host.innerHTML =
+            '<div style="padding:8px 12px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;background:rgba(255,255,255,0.02);font-size:0.78em;color:var(--text-dim);display:flex;align-items:center;gap:10px">'
+            + '<span>🎯 No segments yet — run Analyze to scan this rehearsal.</span>'
+            + '<button onclick="_mtAnalyzeRehearsal()" style="margin-left:auto;background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);border-radius:5px;color:#a5b4fc;padding:4px 10px;cursor:pointer;font-size:0.78em;font-weight:700">Analyze</button>'
+            + '</div>';
+        return;
+    }
+
+    var collapsed = !!p._segmentsPanelCollapsed;
+    var music = 0, silence = 0, speech = 0, between = 0;
+    segs.forEach(function(s) {
+        if (s.isBetween) between++;
+        if (s.kind === 'music') music++;
+        else if (s.kind === 'silence') silence++;
+        else if (s.kind === 'speech') speech++;
+    });
+    var headerSummary = segs.length + ' segments · ' + music + ' 🎵 · ' + silence + ' 🤫 · ' + speech + ' 💬'
+        + (between ? ' · ' + between + ' flagged between-song' : '');
+
+    var rowsHtml = segs.map(function(s, idx) {
+        var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
+        var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
+        var meta = _mtKindMeta(s.kind);
+        var title = s.songTitle || (s.likelySong && s.likelySong.title) || '';
+        var isBetween = !!s.isBetween;
+        var rowAlpha = isBetween ? '0.45' : '1';
+        var canvasId = 'mtSegStrip_' + idx;
+        var titleId = 'mtSegTitle_' + idx;
+        var rowBg = isBetween ? 'rgba(100,116,139,0.04)' : meta.stripBg;
+        return '<div data-seg-idx="' + idx + '" style="display:grid;grid-template-columns:24px 90px 80px 1fr 60px;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.76em;background:' + rowBg + ';opacity:' + rowAlpha + '">'
+            // Kind chip
+            + '<div title="' + escHtml(meta.name) + '" style="text-align:center;color:' + meta.color + '">' + meta.emoji + '</div>'
+            // Time range
+            + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim)">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
+            // Waveform strip (canvas paints on next tick — see _mtPaintSegmentStrips)
+            + '<canvas id="' + canvasId + '" width="80" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
+            // Title / label (editable)
+            + '<div style="display:flex;align-items:center;gap:4px;min-width:0">'
+            + '<input id="' + titleId + '" type="text" value="' + escHtml(title) + '" placeholder="' + escHtml(meta.name) + '" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:0;font-size:0.92em;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px">'
+            + '</div>'
+            // Actions
+            + '<div style="display:flex;gap:4px;justify-content:flex-end">'
+            + '<button onclick="_mtSegmentJump(' + idx + ')" title="Jump to segment start" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:4px;color:var(--text-dim);padding:2px 6px;cursor:pointer;font-size:0.78em">▶</button>'
+            + '<button onclick="_mtSegmentToggleBetween(' + idx + ')" title="' + (isBetween ? 'Flagged between-song — click to unflag' : 'Flag as between-song chatter (excluded from songs-only mix)') + '" style="background:' + (isBetween ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.05)') + ';border:1px solid ' + (isBetween ? 'rgba(245,158,11,0.4)' : 'rgba(255,255,255,0.1)') + ';border-radius:4px;color:' + (isBetween ? '#fbbf24' : 'var(--text-dim)') + ';padding:2px 6px;cursor:pointer;font-size:0.78em">' + (isBetween ? '↻' : '⊘') + '</button>'
+            + '</div>'
+            + '</div>';
+    }).join('');
+
+    host.innerHTML =
+        '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;background:rgba(255,255,255,0.02)">'
+        + '<div onclick="_mtToggleSegmentsPanel()" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;background:rgba(255,255,255,0.03)">'
+        + '<span id="mtSegmentsCaret" style="color:var(--text-dim);font-size:0.85em">' + (collapsed ? '▸' : '▾') + '</span>'
+        + '<span style="font-weight:700;font-size:0.82em;color:#f1f5f9">🎯 Segments</span>'
+        + '<span style="font-size:0.74em;color:var(--text-dim);margin-left:auto">' + escHtml(headerSummary) + '</span>'
+        + '</div>'
+        + '<div id="mtSegmentsBody" style="display:' + (collapsed ? 'none' : 'block') + ';max-height:240px;overflow-y:auto">' + rowsHtml + '</div>'
+        + '</div>';
+
+    // Paint canvases after they're in the DOM. Defer so layout settles
+    // (canvas width is fixed via attribute, but transform happens on next tick).
+    setTimeout(_mtPaintSegmentStrips, 0);
+}
+
+function _mtPaintSegmentStrips() {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.segments)) return;
+    var peaks = p.peaks || [];
+    var dur = p.peaksDurationSec || 0;
+    p.segments.forEach(function(s, idx) {
+        var canvas = document.getElementById('mtSegStrip_' + idx);
+        if (!canvas) return;
+        var startSec = (typeof s.startSec === 'number') ? s.startSec : 0;
+        var endSec = (typeof s.endSec === 'number') ? s.endSec : 0;
+        var buckets = _mtPeaksForSegment(peaks, dur, startSec, endSec, 40);
+        var meta = _mtKindMeta(s.kind);
+        _mtDrawSegmentStrip(canvas, buckets, meta.stripFg);
+    });
+}
+
+// Mark the title input as dirty (visual cue). Save happens on blur.
+window._mtSegmentTitleDirty = function(idx) {
+    var el = document.getElementById('mtSegTitle_' + idx);
+    if (!el) return;
+    el.style.border = '1px solid rgba(165,180,252,0.4)';
+    el.style.background = 'rgba(99,102,241,0.06)';
+};
+
+window._mtSegmentTitleSave = async function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    var el = document.getElementById('mtSegTitle_' + idx);
+    if (!el) return;
+    var newTitle = (el.value || '').trim();
+    var seg = p.segments[idx];
+    if (!seg) return;
+    if ((seg.songTitle || '') === newTitle) {
+        // No change — restore visual.
+        el.style.border = '1px solid transparent';
+        el.style.background = 'transparent';
+        return;
+    }
+    seg.songTitle = newTitle || null;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function' && seg.id) {
+        try {
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id))
+                .update({ songTitle: newTitle || null });
+        } catch (e) {
+            console.warn('[Multitrack] segment rename failed:', e && e.message);
+        }
+    }
+    el.style.border = '1px solid transparent';
+    el.style.background = 'transparent';
+};
+
+window._mtSegmentToggleBetween = async function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    var seg = p.segments[idx];
+    if (!seg) return;
+    var next = !seg.isBetween;
+    seg.isBetween = next;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function' && seg.id) {
+        try {
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id))
+                .update({ isBetween: next });
+        } catch (e) {
+            console.warn('[Multitrack] segment flag toggle failed:', e && e.message);
+        }
+    }
+    _mtRenderSegmentsPanel();
+    _mtRenderSegmentMarkers();
+};
+
+window._mtSegmentJump = function(idx) {
+    var p = _mtState.player;
+    if (!p || !Array.isArray(p.audios) || !p.audios[0]) return;
+    var seg = p.segments && p.segments[idx];
+    if (!seg) return;
+    var start = (typeof seg.startSec === 'number') ? seg.startSec : 0;
+    var dur = p.audios[0].duration;
+    if (!isFinite(dur) || dur <= 0) return;
+    var pct = Math.max(0, Math.min(100, (start / dur) * 100));
+    var slider = document.getElementById('mtMasterSeek');
+    if (slider) slider.value = pct;
+    window._mtSeekMaster(pct);
+};
 
 function _mtRenderSegmentMarkers() {
     var p = _mtState.player;
@@ -3165,6 +3437,7 @@ window._mtSegmentSave = async function(idx) {
     var modal = document.getElementById('mtSegmentModal');
     if (modal) modal.remove();
     _mtRenderSegmentMarkers();
+    _mtRenderSegmentsPanel();
     if (typeof showToast === 'function') showToast('✓ Segment saved');
 };
 

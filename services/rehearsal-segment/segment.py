@@ -581,12 +581,47 @@ def segment_audio(source_url: str, setlist: list = None):
         }
         print(f"[segment] Summary: {summary}")
 
+        # Lightweight waveform peaks for the BROWSER segments panel.
+        # We're already holding the decoded mono audio array `y` from
+        # _load_audio; computing a fixed-count RMS downsample is ~free
+        # compared to the segmentation work above.
+        #
+        # 2000 buckets across the full rehearsal:
+        #   3 h × 3600 s = 10800 s → ~5.4 s per peak
+        #   1 h × 3600 s = 3600 s → ~1.8 s per peak
+        # Each bucket is RMS (smoother than peak amplitude for visual
+        # scanning). Result is ~2000 floats × ~6 chars each ≈ 12 KB JSON,
+        # well within Firebase node size limits.
+        #
+        # This is intentionally NOT zoomable DAW waveform data — it's a
+        # navigation aid. Per-segment strips in the browser are computed
+        # by slicing this single array, not by re-analyzing audio.
+        PEAK_COUNT = 2000
+        peaks = []
+        total_samples = len(y)
+        if total_samples > 0:
+            samples_per_peak = max(1, total_samples // PEAK_COUNT)
+            for i in range(PEAK_COUNT):
+                s = i * samples_per_peak
+                e = min(total_samples, s + samples_per_peak)
+                if e <= s:
+                    peaks.append(0.0)
+                    continue
+                chunk = y[s:e]
+                rms = float(np.sqrt(float(np.mean(chunk * chunk))))
+                # Round aggressively — 3 decimal places of RMS is more
+                # than enough precision for a 60px-wide rendering strip.
+                peaks.append(round(rms, 3))
+        print(f"[segment] Generated {len(peaks)} peaks ({samples_per_peak if total_samples else 0} samples/peak)")
+
         return {
             "success": True,
             "status": "done",
             "duration_sec": round(duration_sec, 2),
             "segments": segments,
             "summary": summary,
+            "peaks": peaks,
+            "peaks_count": len(peaks),
         }
     finally:
         try:
