@@ -1113,12 +1113,23 @@ window._mtOpenPlayer = async function(sessionId) {
             '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
           '</div>' +
-          '<div style="display:flex;align-items:center;gap:12px;padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
-            '<button onclick="_mtTogglePlayAll()" id="mtPlayAll" style="padding:8px 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;cursor:pointer;font-size:0.92em;min-width:90px">▶ Play</button>' +
-            // Seek bar wrapped so comment markers can absolute-position above
+          '<div style="display:flex;align-items:center;gap:8px;padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
+            // Skip-30s back. Press-and-hold for continuous rewind (accelerates).
+            '<button onmousedown="_mtHoldStart(-30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-30)" ontouchend="_mtHoldStop()" title="Back 30s (hold for continuous rewind)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 30</button>' +
+            // Skip-5s back
+            '<button onmousedown="_mtHoldStart(-5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-5)" ontouchend="_mtHoldStop()" title="Back 5s (hold for continuous rewind)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 5</button>' +
+            '<button onclick="_mtTogglePlayAll()" id="mtPlayAll" style="padding:8px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;cursor:pointer;font-size:0.92em;min-width:78px">▶ Play</button>' +
+            // Skip+5s forward
+            '<button onmousedown="_mtHoldStart(5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(5)" ontouchend="_mtHoldStop()" title="Forward 5s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">5 ⏩</button>' +
+            // Skip+30s forward
+            '<button onmousedown="_mtHoldStart(30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(30)" ontouchend="_mtHoldStop()" title="Forward 30s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">30 ⏩</button>' +
+            // Seek bar wrapped so comment markers can absolute-position above.
+            // IMPORTANT: oninput previews only (label update, no actual seek).
+            // onchange commits the seek on release. Avoids 17 simultaneous
+            // seeks-per-pixel during drag.
             '<div style="position:relative;flex:1">' +
               '<div id="mtSeekMarkers" style="position:absolute;left:0;right:0;top:-3px;height:8px;pointer-events:none"></div>' +
-              '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekMaster(this.value)" style="width:100%;accent-color:#a5b4fc">' +
+              '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekPreview(this.value)" onchange="_mtSeekMaster(this.value)" style="width:100%;accent-color:#a5b4fc">' +
             '</div>' +
             // Phase C reverb — master wet/dry knob. ConvolverNode is wired into
             // the Web Audio graph on first play. Slider value persists in
@@ -1281,6 +1292,8 @@ window._mtClosePlayer = function() {
     if (ov) ov.remove();
     if (_mtState.player) {
         if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
+        _mtStopSyncWatchdog(_mtState.player);
+        if (_mtState.player._holdTimer) { clearInterval(_mtState.player._holdTimer); _mtState.player._holdTimer = null; }
         _mtState.player.audios.forEach(function(a) { try { a.pause(); a.src = ''; } catch (e) {} });
         // Phase C: flush any pending mixState save, then tear down Web Audio
         // graph. Closing the AudioContext frees the GainNodes / ConvolverNode
@@ -1302,6 +1315,7 @@ window._mtTogglePlayAll = function() {
     if (p.masterPlaying) {
         p.audios.forEach(function(a) { try { a.pause(); } catch (e) {} });
         p.masterPlaying = false;
+        _mtStopSyncWatchdog(p);
         if (btn) btn.textContent = '▶ Play';
     } else {
         // Phase C: initialize Web Audio graph on first play click. Browser
@@ -1324,6 +1338,7 @@ window._mtTogglePlayAll = function() {
             }
         });
         p.masterPlaying = true;
+        _mtStartSyncWatchdog(p);
         if (btn) btn.textContent = '⏸ Pause';
     }
 };
@@ -1548,13 +1563,13 @@ window._mtSaveSessionHeader = async function() {
         var modal = document.getElementById('mtHeaderEditModal');
         if (modal) modal.remove();
         if (typeof showToast === 'function') showToast('✓ Saved');
-        // Refresh the rehearsal-page list in the background so the sidebar
-        // history card picks up the new date/venue. Best-effort — if the
-        // refresh fn isn't available (e.g., user opened player from another
-        // page), the list updates on next manual navigation.
+        // Refresh just the rehearsal history list in the sidebar so the
+        // updated date/venue shows without a full page re-render. Targeted
+        // refresh — calling the whole renderRehearsalPage was crashing
+        // because its target element doesn't exist when called from inside
+        // the player modal.
         try {
-            if (typeof window._rhRefreshRehearsalPage === 'function') window._rhRefreshRehearsalPage();
-            else if (typeof renderRehearsalPage === 'function') renderRehearsalPage();
+            if (typeof _rhRenderSessionHistory === 'function') _rhRenderSessionHistory();
         } catch (e) {}
     } catch (e) {
         if (status) status.textContent = '✗ ' + (e.message || 'save failed');
@@ -2023,6 +2038,94 @@ window._mtSeekMaster = function(pct) {
     p.audios.forEach(function(a) { try { a.currentTime = t; } catch (e) {} });
     _mtMaybeUpdateMasterPosition();
 };
+
+// Live preview during a seek drag — updates the time label only, no
+// audio.currentTime writes. Final commit happens on `change` (release).
+// Without this, dragging the slider triggered 17 simultaneous seeks per
+// pixel, locking up playback for several seconds.
+window._mtSeekPreview = function(pct) {
+    var p = _mtState.player;
+    if (!p || !p.audios[0]) return;
+    var dur = p.audios[0].duration;
+    if (!isFinite(dur) || dur <= 0) return;
+    var t = (parseFloat(pct) / 100) * dur;
+    var label = document.getElementById('mtTimeLabel');
+    if (label) label.textContent = _mtFmtTime(t) + ' / ' + _mtFmtTime(dur);
+};
+
+// Skip the master playhead by a fixed delta. Bounded to [0, duration].
+window._mtSkipBy = function(deltaSec) {
+    var p = _mtState.player;
+    if (!p || !p.audios[0]) return;
+    var dur = p.audios[0].duration;
+    if (!isFinite(dur) || dur <= 0) return;
+    var t = Math.max(0, Math.min(dur, (p.audios[0].currentTime || 0) + deltaSec));
+    p.audios.forEach(function(a) { try { a.currentTime = t; } catch (e) {} });
+    _mtMaybeUpdateMasterPosition();
+};
+
+// Press-and-hold support for skip buttons. Single click = one skip (the
+// initial call on mousedown). Hold = continuous skip every 200ms, with
+// acceleration over time so a long hold scans through minutes quickly.
+window._mtHoldStart = function(deltaSec) {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p._holdTimer) clearInterval(p._holdTimer);
+    _mtSkipBy(deltaSec); // immediate single jump
+    var rate = 1;
+    p._holdTimer = setInterval(function() {
+        _mtSkipBy(deltaSec * rate);
+        // Ramp from 1x → 10x over ~3 seconds of holding
+        rate = Math.min(rate * 1.25, 10);
+    }, 200);
+};
+
+window._mtHoldStop = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p._holdTimer) {
+        clearInterval(p._holdTimer);
+        p._holdTimer = null;
+    }
+};
+
+// ── Drift watchdog ─────────────────────────────────────────────────────────
+// 17 independent HTML5 <audio> elements have separate clocks and drift apart
+// over long playback. Drew reported tracks visibly out of sync at 27:10 into
+// the rehearsal. Every 4 seconds during playback, we read the first audio's
+// currentTime and snap any track that's drifted past a 100ms threshold back
+// to match. The brief re-seek may produce a small audible glitch on the
+// snapped track, but the alternative — letting them drift further — is much
+// worse.
+//
+// Long-term fix: switch to AudioBufferSourceNode scheduling for sample-
+// accurate sync (requires fully decoding all 17 FLACs into AudioBuffers,
+// which is the memory-prohibitive path we punted on for segmentation).
+// For now this watchdog buys correctness at modest cost.
+function _mtStartSyncWatchdog(p) {
+    if (p._syncTimer) clearInterval(p._syncTimer);
+    p._syncTimer = setInterval(function() {
+        if (!p.masterPlaying) return;
+        var ref = p.audios[0];
+        if (!ref || ref.paused || !isFinite(ref.duration)) return;
+        var refTime = ref.currentTime;
+        p.audios.forEach(function(a, i) {
+            if (i === 0) return;
+            if (a.paused || !isFinite(a.duration)) return;
+            var drift = a.currentTime - refTime;
+            if (Math.abs(drift) > 0.1) { // 100ms threshold
+                try { a.currentTime = refTime; } catch (e) {}
+            }
+        });
+    }, 4000); // every 4 seconds — enough to catch drift before it's musical
+}
+
+function _mtStopSyncWatchdog(p) {
+    if (p && p._syncTimer) {
+        clearInterval(p._syncTimer);
+        p._syncTimer = null;
+    }
+}
 
 function _mtMaybeUpdateDuration() {
     var p = _mtState.player;
