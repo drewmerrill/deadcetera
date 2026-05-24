@@ -1119,6 +1119,7 @@ window._mtOpenPlayer = async function(sessionId) {
               '<input type="range" id="mtReverbSlider" min="0" max="100" value="0" step="1" oninput="_mtSetReverbWet(this.value)" style="width:90px;accent-color:#06b6d4;cursor:pointer">' +
               '<div id="mtReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);min-width:32px;text-align:right">0%</div>' +
             '</div>' +
+            '<button onclick="_mtAnalyzeRehearsal()" title="Run the segmentation engine to detect song boundaries. Pick one stem to analyze (drums work best)." style="padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;font-size:0.74em;flex-shrink:0;font-weight:700">🎯 Analyze</button>' +
             '<button onclick="_mtExportDigest()" title="Copy a markdown digest of all comments to your clipboard" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">📋 Digest</button>' +
             '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right">0:00 / 0:00</div>' +
           '</div>' +
@@ -1198,6 +1199,12 @@ window._mtOpenPlayer = async function(sessionId) {
         if (_mtState.player && _mtState.player.sessionId === sessionId) {
             _mtState.player.mixPresets = presets || [];
             _mtRenderMixPresetBar();
+        }
+    });
+    // Load any prior analysis segments so the seek bar markers show on open.
+    _mtLoadSegments(sessionId).then(function() {
+        if (_mtState.player && _mtState.player.sessionId === sessionId) {
+            _mtRenderSegmentMarkers();
         }
     });
 
@@ -1577,6 +1584,266 @@ async function _mtLoadMixPresets(sessionId) {
         return Object.keys(val).map(function(k) { return Object.assign({}, val[k], { _key: k }); });
     } catch (e) { return []; }
 }
+
+// ── Segmentation analysis — pipeline reuse for multitrack ─────────────────
+// Bridges the multitrack player to the existing single-file analysis pipeline
+// (window.RehearsalAnalysis.run). The analyzer takes any AudioBuffer; we
+// supply one decoded stem at the user's choice rather than a full mixdown,
+// because mixing N 3-hour FLACs in-browser exceeds heap limits. Picking a
+// single representative stem (drums for tempo/section, vocal for lyric
+// breaks) is usually sufficient to detect song boundaries.
+//
+// Future enhancement: server-side mixdown via Modal so the full multitrack
+// signal feeds the analyzer. Tonight's single-stem approach is the bridge.
+window._mtAnalyzeRehearsal = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    if (typeof window.RehearsalAnalysis === 'undefined' || !window.RehearsalAnalysis.run) {
+        if (typeof showToast === 'function') showToast('Analysis engine not loaded');
+        return;
+    }
+
+    // Default suggestion: a drums or vocal stem. Drums give clean section
+    // transients; vocals give clean lyric-start markers. Both work well for
+    // boundary detection. Pick the kick if present, else any drum, else
+    // the first track.
+    var defaultTrack = p.tracks.find(function(t) { return t.role === 'kick'; })
+                    || p.tracks.find(function(t) { return (_MT_ROLES[t.role] || {}).group === 'drums'; })
+                    || p.tracks[0];
+    if (!defaultTrack) {
+        if (typeof showToast === 'function') showToast('No tracks loaded');
+        return;
+    }
+
+    var trackOptionsHtml = p.tracks.map(function(t) {
+        var label = (t.label || t.role) + (t.memberKey ? ' · ' + t.memberKey : '');
+        var sel = (t.trackId === defaultTrack.trackId) ? ' selected' : '';
+        return '<option value="' + escHtml(t.trackId) + '"' + sel + '>' + escHtml(label) + '</option>';
+    }).join('');
+
+    var pickerHtml = '<div id="mtAnalyzeModal" style="position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)">'
+        + '<div style="max-width:420px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08)">'
+        + '<div style="font-weight:800;font-size:1.05em;color:#f1f5f9;margin-bottom:8px">🎯 Analyze rehearsal for song boundaries</div>'
+        + '<div style="font-size:0.82em;color:var(--text-muted);margin-bottom:14px;line-height:1.4">Picks one stem to feed the segmentation engine. Drums work best for clean section transitions; vocals for lyric-start detection. (Full-multitrack mixdown coming in a future build.)</div>'
+        + '<label style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Analysis source stem</label>'
+        + '<select id="mtAnalyzeStem" class="app-select" style="width:100%;font-size:0.9em;margin-bottom:14px">' + trackOptionsHtml + '</select>'
+        + '<div id="mtAnalyzeStatus" style="font-size:0.78em;color:var(--text-dim);margin-bottom:12px;min-height:18px"></div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="_mtAnalyzeClose()" class="btn btn-ghost btn-sm">Cancel</button>'
+        + '<button id="mtAnalyzeGo" onclick="_mtAnalyzeRun()" class="btn btn-primary btn-sm">🎯 Run analysis</button>'
+        + '</div>'
+        + '</div>'
+        + '</div>';
+    var existing = document.getElementById('mtAnalyzeModal');
+    if (existing) existing.remove();
+    var div = document.createElement('div');
+    div.innerHTML = pickerHtml;
+    document.body.appendChild(div.firstChild);
+};
+
+window._mtAnalyzeClose = function() {
+    var el = document.getElementById('mtAnalyzeModal');
+    if (el) el.remove();
+};
+
+window._mtAnalyzeRun = async function() {
+    var p = _mtState.player;
+    if (!p) return;
+    var sel = document.getElementById('mtAnalyzeStem');
+    var status = document.getElementById('mtAnalyzeStatus');
+    var goBtn = document.getElementById('mtAnalyzeGo');
+    if (!sel || !sel.value) return;
+    var track = p.tracks.find(function(t) { return t.trackId === sel.value; });
+    if (!track || !track.stemUrl) {
+        if (status) status.textContent = 'Selected stem has no URL';
+        return;
+    }
+    if (goBtn) { goBtn.disabled = true; goBtn.textContent = '⏳ Analyzing…'; }
+    if (status) status.textContent = 'Fetching stem audio…';
+
+    try {
+        // Step 1: fetch stem bytes
+        var res = await fetch(track.stemUrl);
+        if (!res.ok) throw new Error('fetch failed: HTTP ' + res.status);
+        var arrayBuffer = await res.arrayBuffer();
+        if (status) status.textContent = 'Decoding audio (' + Math.round(arrayBuffer.byteLength / (1024 * 1024)) + ' MB)…';
+
+        // Step 2: decode via a fresh AudioContext (independent of player's
+        // AudioContext so we don't fight playback). For very long files this
+        // can take a while + hold ~2 GB in memory; we discard after analysis.
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        var decoder = new Ctx();
+        var decoded = await decoder.decodeAudioData(arrayBuffer);
+        if (status) status.textContent = 'Running segmentation engine (' + Math.round(decoded.duration / 60) + ' min of audio)…';
+
+        // Step 3: feed to the existing pipeline. force:true so we re-run
+        // even if a prior analysis is cached.
+        var result = await window.RehearsalAnalysis.run(p.sessionId, {
+            audioBuffer: decoded,
+            force: true,
+            sourceStemId: track.trackId,
+            sourceStemRole: track.role
+        });
+
+        // Step 4: release decoder + buffer ASAP — we don't need them anymore
+        try { decoder.close(); } catch (e) {}
+        decoded = null;
+
+        if (status) status.textContent = '✓ Analysis complete. Loading segments…';
+
+        // Step 5: load segments back and refresh the seek bar markers
+        await _mtLoadSegments(p.sessionId);
+        _mtRenderSegmentMarkers();
+        if (typeof showToast === 'function') {
+            var n = (p.segments || []).length;
+            showToast('✓ Detected ' + n + ' segment' + (n === 1 ? '' : 's') + '. Click a marker on the seek bar to name it.');
+        }
+        _mtAnalyzeClose();
+    } catch (e) {
+        console.error('[Multitrack] analyze failed:', e);
+        if (status) status.textContent = '✗ ' + (e.message || 'analysis failed');
+        if (goBtn) { goBtn.disabled = false; goBtn.textContent = '🎯 Retry'; }
+    }
+};
+
+// ── Segments loading + naming ──────────────────────────────────────────────
+async function _mtLoadSegments(sessionId) {
+    var p = _mtState.player;
+    if (!p || p.sessionId !== sessionId) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    try {
+        // Segments live under rehearsal_sessions/{sid}/analysis/segments
+        // (the existing pipeline writes there). For multitrack-specific
+        // overrides (named songs, between-song flags) we also overlay
+        // rehearsal_sessions/{sid}/multitrackSegments.
+        var snap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/analysis')).once('value');
+        var analysis = snap.val();
+        var segs = [];
+        if (analysis && analysis.story && Array.isArray(analysis.story.segments)) {
+            segs = analysis.story.segments.slice();
+        } else if (analysis && analysis.v2Result && Array.isArray(analysis.v2Result.events)) {
+            // Older pipeline shape — convert events into segment-like objects
+            segs = analysis.v2Result.events.map(function(ev, i) {
+                return {
+                    id: 'ev_' + i,
+                    startSec: ev.startSec || ev.time || 0,
+                    endSec: ev.endSec || ev.time + (ev.duration || 0),
+                    label: ev.label || 'segment',
+                    confidence: ev.confidence || null
+                };
+            });
+        }
+        // Overlay multitrack-specific renames + between flags
+        var overlaySnap = await db.ref(bandPath('rehearsal_sessions/' + sessionId + '/multitrackSegments')).once('value');
+        var overlay = overlaySnap.val() || {};
+        segs.forEach(function(s) {
+            if (overlay[s.id]) {
+                if (overlay[s.id].songTitle) s.songTitle = overlay[s.id].songTitle;
+                if (typeof overlay[s.id].isBetween === 'boolean') s.isBetween = overlay[s.id].isBetween;
+                if (overlay[s.id].startSec != null) s.startSec = overlay[s.id].startSec;
+                if (overlay[s.id].endSec != null) s.endSec = overlay[s.id].endSec;
+            }
+        });
+        p.segments = segs;
+    } catch (e) {
+        console.warn('[Multitrack] segments load failed:', e && e.message);
+        p.segments = [];
+    }
+}
+
+function _mtRenderSegmentMarkers() {
+    var p = _mtState.player;
+    if (!p || !p.audios[0]) return;
+    var dur = p.audios[0].duration;
+    if (!isFinite(dur) || dur <= 0) return;
+    // Reuse the existing #mtSeekMarkers container the comment renderer uses
+    var container = document.getElementById('mtSeekMarkers');
+    if (!container) return;
+    // Drop any prior segment markers (class mt-seg-marker); leave comment ones
+    Array.from(container.querySelectorAll('.mt-seg-marker')).forEach(function(n) { n.remove(); });
+    (p.segments || []).forEach(function(s, i) {
+        if (s.startSec == null) return;
+        var pct = (s.startSec / dur) * 100;
+        if (pct < 0 || pct > 100) return;
+        var marker = document.createElement('button');
+        marker.className = 'mt-seg-marker';
+        marker.dataset.segIdx = i;
+        marker.title = (s.songTitle || s.label || 'segment') + ' · click to name';
+        marker.onclick = function(ev) { ev.stopPropagation(); _mtSegmentClick(i); };
+        var color = s.isBetween ? '#64748b' : (s.songTitle ? '#22c55e' : '#a5b4fc');
+        marker.style.cssText = 'position:absolute;left:' + pct + '%;top:0;height:14px;width:3px;background:' + color + ';border:none;padding:0;cursor:pointer;border-radius:1.5px;pointer-events:auto;transform:translateX(-50%)';
+        container.appendChild(marker);
+    });
+}
+
+window._mtSegmentClick = function(idx) {
+    var p = _mtState.player;
+    if (!p || !p.segments || !p.segments[idx]) return;
+    var seg = p.segments[idx];
+
+    // Build a song-picker from the band's active songs library.
+    var songs = [];
+    try {
+        if (typeof GLStore !== 'undefined' && GLStore.getSongs) {
+            songs = (GLStore.getSongs() || []).filter(function(s) {
+                return s && (typeof GLStore.isActiveSong === 'function' ? GLStore.isActiveSong(s.title) : true);
+            }).map(function(s) { return s.title; }).sort();
+        }
+    } catch (e) {}
+    var songOptions = '<option value="">— pick a song —</option>'
+        + songs.map(function(t) {
+            var sel = (seg.songTitle === t) ? ' selected' : '';
+            return '<option value="' + escHtml(t) + '"' + sel + '>' + escHtml(t) + '</option>';
+        }).join('');
+
+    var startMmss = _mtFmtTime(seg.startSec || 0);
+    var endMmss = _mtFmtTime(seg.endSec || seg.startSec || 0);
+    var modal = document.createElement('div');
+    modal.id = 'mtSegmentModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    modal.innerHTML = '<div style="max-width:460px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08)">'
+        + '<div style="font-weight:800;font-size:1em;color:#f1f5f9;margin-bottom:6px">🎵 Name this segment</div>'
+        + '<div style="font-size:0.78em;color:var(--text-muted);margin-bottom:14px">' + escHtml(startMmss) + ' → ' + escHtml(endMmss) + ' · ' + Math.round((seg.endSec || seg.startSec || 0) - (seg.startSec || 0)) + 's</div>'
+        + '<label style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Song</label>'
+        + '<select id="mtSegSong" class="app-select" style="width:100%;font-size:0.9em;margin-bottom:12px">' + songOptions + '</select>'
+        + '<label style="display:flex;align-items:center;gap:8px;font-size:0.82em;color:var(--text);margin-bottom:14px;cursor:pointer">'
+        + '<input type="checkbox" id="mtSegBetween"' + (seg.isBetween ? ' checked' : '') + ' style="accent-color:#a5b4fc">'
+        + '<span>Between songs — mark as trim-fat / discussion gap</span>'
+        + '</label>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="document.getElementById(\'mtSegmentModal\').remove()" class="btn btn-ghost btn-sm">Cancel</button>'
+        + '<button onclick="_mtSegmentSave(' + idx + ')" class="btn btn-primary btn-sm">💾 Save</button>'
+        + '</div>'
+        + '</div>';
+    document.body.appendChild(modal);
+};
+
+window._mtSegmentSave = async function(idx) {
+    var p = _mtState.player;
+    if (!p || !p.segments || !p.segments[idx]) return;
+    var seg = p.segments[idx];
+    var songEl = document.getElementById('mtSegSong');
+    var betweenEl = document.getElementById('mtSegBetween');
+    seg.songTitle = (songEl && songEl.value) ? songEl.value : '';
+    seg.isBetween = !!(betweenEl && betweenEl.checked);
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (db && typeof bandPath === 'function') {
+        try {
+            await db.ref(bandPath('rehearsal_sessions/' + p.sessionId + '/multitrackSegments/' + seg.id)).set({
+                songTitle: seg.songTitle,
+                isBetween: seg.isBetween,
+                startSec: seg.startSec,
+                endSec: seg.endSec,
+                updatedAt: new Date().toISOString()
+            });
+        } catch (e) { console.warn('[Multitrack] segment save failed:', e); }
+    }
+    var modal = document.getElementById('mtSegmentModal');
+    if (modal) modal.remove();
+    _mtRenderSegmentMarkers();
+    if (typeof showToast === 'function') showToast('✓ Segment saved');
+};
 
 function _mtRenderMixPresetBar() {
     var bar = document.getElementById('mtMixPresetBar');
