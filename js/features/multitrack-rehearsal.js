@@ -183,7 +183,7 @@ function _mtTodayStamp() {
 }
 
 function _mtRehearsalFolderHint() {
-    return '~/Rehearsals/' + _mtTodayStamp() + '-deadcetera/';
+    return '~/Music/DeadCetera/Rehearsals/' + _mtTodayStamp() + '-deadcetera/';
 }
 
 function _mtRenderWizardStepper() {
@@ -209,13 +209,13 @@ function _mtRenderStep1() {
         '<div class="mt-wiz-step-title">💾 Get the recording onto your Mac</div>' +
         '<div class="mt-wiz-checklist">' +
             '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Pop the SD card</strong> out of the X32 → into a USB 3.0 reader → into your Mac.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Copy the X-LIVE folder</strong> from the card to:<div class="mt-wiz-path">' + escHtml(safePath) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(safePath) + '\')">📋 Copy</button></div></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Copy the dated session folder</strong> (named like <code>5CB2934C/</code>) from the card to:<div class="mt-wiz-path">' + escHtml(safePath) + ' <button class="mt-wiz-copy" onclick="_mtCopyPath(\'' + escHtml(safePath) + '\')">📋 Copy</button></div>Skip the empty <code>X_LIVE/</code> folder and any <code>.Spotlight-V100</code> / <code>.fseventsd</code> metadata.</div></div>' +
             '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>Eject the card safely</strong> when copy finishes.</div></div>' +
         '</div>' +
         '<div class="mt-wiz-callout">' +
-            '<strong>Why a folder?</strong> The X32 records as multiplexed WAV — multiple channels packed into one file. REAPER demuxes it into per-channel tracks in the next step.' +
+            '<strong>What\'s in the folder?</strong> The X32 records multi-channel WAV split into chunks at 4 GB (FAT32 limit). A 3-hour rehearsal is ~17 chunks at ~4.3 GB each plus one smaller tail file. REAPER reassembles + demuxes them in the next step.' +
         '</div>' +
-        '<div class="mt-wiz-time-est">⏱ ~2 min for ~30 GB at USB 3.0 speeds</div>' +
+        '<div class="mt-wiz-time-est">⏱ ~2-4 min for ~30-70 GB at USB 3.0 speeds. Longer rehearsals = larger card contents.</div>' +
     '</div>';
 }
 
@@ -226,29 +226,36 @@ function _mtRenderStep2() {
         '<div class="mt-wiz-step-eyebrow">STEP 2 OF 5</div>' +
         '<div class="mt-wiz-step-title">🎛 Demux + render to FLAC stems (REAPER)</div>' +
         '<div class="mt-wiz-checklist">' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Open REAPER</strong> → File → New project from template → <code>GrooveLinx-Multitrack</code></div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Drag the X-LIVE folder</strong> onto the timeline. REAPER routes channels to your pre-named tracks.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>(Optional) Trim silence</strong> at start/end.</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">④</span><div><strong>File → Render</strong> with preset <code>GrooveLinx FLAC stems</code> (24-bit / 48 kHz).</div></div>' +
-            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑤</span><div><strong>Stems land in:</strong> <code>' + escHtml(path) + 'stems/</code></div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">①</span><div><strong>Open REAPER</strong> → File → New project from template → <code>GrooveLinx-Multitrack</code>.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">②</span><div><strong>Set project sample rate to 48 kHz.</strong> ⌘⇧P → <em>check the "Project sample rate" box</em> → 48000 → OK. (If unchecked, REAPER falls back to hardware default; X32 records at 48.)</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">③</span><div><strong>Bulk-drag all WAV chunks in.</strong> Select all in Finder, drag together onto the empty arrange area. Prompt → pick <strong>"Sequential time positions on a single track"</strong>.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">④</span><div><strong>Glue + Explode.</strong> Select all items (⌘A) → right-click → <strong>Glue items</strong>. Then right-click the glued item → <strong>Item processing → Explode multichannel audio to new one-channel items</strong>. ~10 min wait. Result: ~32 mono tracks named <code>[c1]</code>–<code>[c32]</code>.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑤</span><div><strong>Solo + listen + rename</strong> each <code>[cN]</code> track per the convention <code>NN_role-member</code> (see table). <em>Don\'t delete the source track</em> — exploded items reference it.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑥</span><div><strong>Reset all track faders to 0 dB + pans to center</strong> before render. Track levels bake into the stems and bias analysis. Action list (<code>?</code>) → <code>Track: Set selected track(s) volume to 0 dB</code>.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑦</span><div><strong>File → Render…</strong> Select the audio tracks only (NOT the source / Master File). Load preset <code>GrooveLinx FLAC stems</code> (24-bit · 48 kHz · mono · FLAC). Click <strong>Render N files</strong>. ~5-15 min.</div></div>' +
+            '<div class="mt-wiz-li"><span class="mt-wiz-li-num">⑧</span><div><strong>Stems land in:</strong> <code>' + escHtml(path) + 'stems/</code></div></div>' +
         '</div>' +
         '<details class="mt-wiz-details" open>' +
-            '<summary>Expected files (Deadcetera roster)</summary>' +
+            '<summary>Expected files (Deadcetera X32 plot — verify the first time)</summary>' +
             '<table class="mt-wiz-roster">' +
-                '<tr><td><code>01–08</code></td><td>Drums</td><td><strong>Jay</strong> (kick, snare, hat, OH-L/R, toms, ride)</td></tr>' +
-                '<tr><td><code>09</code></td><td>Bass</td><td><strong>Chris</strong></td></tr>' +
-                '<tr><td><code>10</code></td><td>Lead guitar</td><td><strong>Brian</strong></td></tr>' +
-                '<tr><td><code>11</code></td><td>Rhythm guitar</td><td><strong>Drew</strong></td></tr>' +
-                '<tr><td><code>12</code></td><td>Keys</td><td><strong>Pierce</strong></td></tr>' +
-                '<tr><td><code>13</code></td><td>Vocal</td><td><strong>Drew</strong></td></tr>' +
-                '<tr><td><code>14</code></td><td>Vocal</td><td><strong>Brian</strong></td></tr>' +
-                '<tr><td><code>15</code></td><td>Vocal</td><td><strong>Pierce</strong></td></tr>' +
-                '<tr><td><code>16</code></td><td>Vocal</td><td><strong>Chris</strong></td></tr>' +
-                '<tr><td><code>17–18</code></td><td>Room L+R</td><td>(no member)</td></tr>' +
+                '<tr><td><code>01</code></td><td>Vocal</td><td><strong>Drew</strong></td></tr>' +
+                '<tr><td><code>02</code></td><td>Vocal</td><td><strong>Brian</strong></td></tr>' +
+                '<tr><td><code>03</code></td><td>Vocal</td><td><strong>Chris</strong></td></tr>' +
+                '<tr><td><code>04</code></td><td>Vocal</td><td><strong>Pierce</strong></td></tr>' +
+                '<tr><td><code>05</code></td><td>Lead guitar</td><td><strong>Brian</strong></td></tr>' +
+                '<tr><td><code>06</code></td><td>Rhythm guitar</td><td><strong>Drew</strong></td></tr>' +
+                '<tr><td><code>07</code></td><td>Bass</td><td><strong>Chris</strong></td></tr>' +
+                '<tr><td><code>08</code></td><td>Reserved — mute</td><td><em>future Jay mic</em></td></tr>' +
+                '<tr><td><code>09</code></td><td>Bongos</td><td><strong>Jay</strong></td></tr>' +
+                '<tr><td><code>10</code></td><td>Kick</td><td><strong>Jay</strong></td></tr>' +
+                '<tr><td><code>11</code></td><td>Snare</td><td><strong>Jay</strong></td></tr>' +
+                '<tr><td><code>12–14</code></td><td>Toms 1-3</td><td><strong>Jay</strong></td></tr>' +
+                '<tr><td><code>15–16</code></td><td>Overheads L/R</td><td><strong>Jay</strong></td></tr>' +
+                '<tr><td><code>17–18</code></td><td>Keys L/R</td><td><strong>Pierce</strong></td></tr>' +
             '</table>' +
-            '<div class="mt-wiz-note">Jay\'s talk mic is for between-song discussion — leave it out of the render unless you want it captured.</div>' +
+            '<div class="mt-wiz-note">Channel <code>08</code> is a placeholder for a future Jay mic — mute the track before render so no noise-only FLAC gets written. Channels 19-32 are unused inputs; don\'t include them in the render selection.</div>' +
         '</details>' +
-        '<div class="mt-wiz-time-est">⏱ ~5 min render time. One-time setup of template + preset is documented in <code>02_GrooveLinx/specs/multitrack_reaper_export_checklist.md</code>.</div>' +
+        '<div class="mt-wiz-time-est">⏱ First-time setup: ~25 min (template + verify channel layout). Future rehearsals: ~10 min using the saved template + preset. Full recipe: <code>02_GrooveLinx/specs/multitrack_reaper_export_checklist.md</code></div>' +
     '</div>';
 }
 
