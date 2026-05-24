@@ -1569,7 +1569,11 @@ async function _mtKickAutoRender(session, sessionId, resumeFrom) {
             setBanner('⏳ Resuming in-flight render… (' + ageSec + 's elapsed before this tab opened)');
         } else {
             setBanner('⏳ Preparing review mix on the server… (~2-4 min for a 3-hour rehearsal)');
-            renderId = 'auto-' + Date.now();
+            // Stable renderId 'mix_default' — overwrites previous full-timeline
+            // auto-renders rather than stacking 'auto-<ts>' copies. Songs-only
+            // and custom mixes use distinct conventions (mix_songs_only,
+            // custom-<ts>) so they coexist with mix_default in R2.
+            renderId = 'mix_default';
             startedAt = new Date().toISOString();
             var startRes = await fetch(workerBase + '/multitrack/render/start', {
                 method: 'POST',
@@ -1800,9 +1804,39 @@ function _mtRoleToGroup(role) {
     return 'drums'; // kick/snare/tom*/oh*/bongos/hat/ride/open
 }
 
-window._mtOpenCustomMixModal = function() {
+// Returns array of segments suitable for recipe.segments, filtered to
+// exclude between-song chatter (multitrackSegments overlay `isBetween`).
+// Empty array means "no song segments available" — caller should treat
+// as "songs-only mode unavailable, render full timeline."
+function _mtCollectSongSegments(player) {
+    if (!player || !Array.isArray(player.segments) || !player.segments.length) return [];
+    var out = [];
+    player.segments.forEach(function(s) {
+        if (s.isBetween) return;             // user-flagged chatter/silence
+        var start = (typeof s.startSec === 'number') ? s.startSec : (typeof s.start === 'number' ? s.start : null);
+        var end = (typeof s.endSec === 'number') ? s.endSec : (typeof s.end === 'number' ? s.end : null);
+        if (start == null || end == null) return;
+        if (!(end > start)) return;
+        out.push({
+            start: start,
+            end: end,
+            title: s.songTitle || s.label || null,
+            id: s.id || null,
+        });
+    });
+    // Ensure ascending + non-overlapping
+    out.sort(function(a, b) { return a.start - b.start; });
+    return out;
+}
+
+window._mtOpenCustomMixModal = async function() {
     var p = _mtState.player;
     if (!p || !p.sessionId) return;
+    // Ensure segments are loaded (the player loads them async on open;
+    // if the user clicks 🎛 Mix before that finishes, await it now).
+    if (!Array.isArray(p.segments)) {
+        try { await _mtLoadSegments(p.sessionId); } catch (e) {}
+    }
     var existing = document.getElementById('mtCustomMixModal');
     if (existing) existing.remove();
     var modal = document.createElement('div');
@@ -1838,6 +1872,26 @@ window._mtOpenCustomMixModal = function() {
             sliderRow('🥁', 'Drums', 'drums', 100) +
             sliderRow('🎹', 'Keys', 'keys', 100) +
             reverbRow() +
+            // Segment-aware render toggle — gated on a successful Analyze run.
+            (function() {
+                var songSegs = _mtCollectSongSegments(p);
+                var hasSegs = songSegs.length > 0;
+                var totalSec = songSegs.reduce(function(sum, s) { return sum + (s.end - s.start); }, 0);
+                var minLabel = totalSec > 0 ? (' ~' + Math.round(totalSec / 60) + ' min of audio') : '';
+                return '<div style="margin-top:14px;padding:10px 12px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px">'
+                    + '<label style="display:flex;align-items:flex-start;gap:8px;cursor:' + (hasSegs ? 'pointer' : 'not-allowed') + '">'
+                    + '<input type="checkbox" id="mtCmxSongsOnly"' + (hasSegs ? '' : ' disabled') + ' style="margin-top:2px;cursor:' + (hasSegs ? 'pointer' : 'not-allowed') + '">'
+                    + '<div style="flex:1">'
+                    + '<div style="font-weight:700;font-size:0.86em;color:' + (hasSegs ? '#c7d2fe' : 'var(--text-dim)') + '">Render songs only' + (hasSegs ? ' (' + songSegs.length + ' segments' + minLabel + ')' : '') + '</div>'
+                    + '<div style="font-size:0.74em;color:var(--text-dim);margin-top:2px">'
+                    + (hasSegs
+                        ? 'Uses analyzed rehearsal segments to skip silence, chatter, and dead time between songs. Result is a tight songs-only mix.'
+                        : '🎯 Analyze this rehearsal first to enable a songs-only mix. Without analysis we can only render the full timeline.')
+                    + '</div>'
+                    + '</div>'
+                    + '</label>'
+                    + '</div>';
+            })() +
             '<div style="margin-top:12px;font-size:0.74em;color:var(--text-dim)">Reverb is applied to vocals + keys by default. For per-track FX routing, use 🎚 Isolate Mode.</div>' +
             '<div id="mtCmxStatus" style="margin-top:14px;min-height:18px;font-size:0.82em;color:var(--text-dim)"></div>' +
             '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">' +
@@ -1893,13 +1947,44 @@ window._mtCustomMixRender = async function() {
         };
     });
 
-    var renderId = 'custom-' + Date.now();
+    // Pull "Render songs only" checkbox + segments. Skip the segment chain
+    // gracefully when no analysis exists (checkbox is disabled in that
+    // case but we double-check the segment list here).
+    var songsOnlyEl = document.getElementById('mtCmxSongsOnly');
+    var songsOnly = !!(songsOnlyEl && songsOnlyEl.checked);
+    var songSegs = songsOnly ? _mtCollectSongSegments(p) : [];
+    if (songsOnly && !songSegs.length) {
+        // Edge case: user toggled songs-only but segments aren't actually
+        // available (race, manual override). Fall back to full timeline
+        // rather than failing the render.
+        songsOnly = false;
+    }
+
+    // RenderId conventions:
+    //   mix_default      = full timeline at unity gain, no reverb (auto-render)
+    //   mix_songs_only   = analyzed songs-only at unity gain, default reverb routing
+    //   custom-<ts>      = any custom slider state
+    // If the user touched sliders, we always stamp custom-<ts> so we
+    // don't clobber the canonical mix_songs_only with a tweaked variant.
+    var isDefaultSliders = (
+        groupGains.vocals === 1 && groupGains.guitars === 1 && groupGains.bass === 1 &&
+        groupGains.drums === 1 && groupGains.keys === 1 && masterReverbWet === 0
+    );
+    var renderId;
+    if (songsOnly && isDefaultSliders) {
+        renderId = 'mix_songs_only';
+    } else {
+        renderId = 'custom-' + Date.now();
+    }
     var recipe = {
         tracks: tracksRecipe,
         masterReverbWet: masterReverbWet,
         outputFormat: 'mp3',  // always MP3 for in-browser playback
-        outputName: 'rehearsal-mix-' + (p.session && p.session.date || p.sessionId) + '-custom.mp3',
+        outputName: 'rehearsal-mix-' + (p.session && p.session.date || p.sessionId) + (songsOnly ? '-songs' : '-custom') + '.mp3',
     };
+    if (songsOnly) {
+        recipe.segments = songSegs;
+    }
     var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
     var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
 
@@ -1978,14 +2063,44 @@ window._mtCustomMixRender = async function() {
 // R2 link; recipient taps it to play in their messaging app.
 window._mtShareCurrentMix = async function() {
     var p = _mtState.player;
-    if (!p || !p.renderInfo || !p.renderInfo.url) {
-        if (typeof showToast === 'function') showToast('No mix to share yet — wait for the render to finish');
-        return;
-    }
+    if (!p || !p.sessionId) return;
     if (typeof GLSms === 'undefined' || !GLSms.notifyBand) {
         if (typeof showToast === 'function') showToast('SMS pipeline unavailable');
         return;
     }
+    // Share-preference policy:
+    //   1. mix_songs_only (analyzed) — the bandmate-friendly default
+    //   2. Whatever Review Mode is currently playing (with a warning if
+    //      it's the full timeline since that's full of dead air)
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var shareUrl = null;
+    var shareKind = '';   // 'songs' | 'full' | 'custom'
+    var songsOnlyUrl = null;
+    try {
+        var sr = await fetch(workerBase + '/multitrack/render/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(p.sessionId));
+        if (sr.ok) {
+            var sj = await sr.json();
+            (sj && sj.renders ? sj.renders : []).forEach(function(r) {
+                if (!songsOnlyUrl && r.renderId === 'mix_songs_only') {
+                    songsOnlyUrl = r.url;
+                }
+            });
+        }
+    } catch (e) { /* fall through to current renderInfo */ }
+
+    if (songsOnlyUrl) {
+        shareUrl = songsOnlyUrl;
+        shareKind = 'songs';
+    } else if (p.renderInfo && p.renderInfo.url) {
+        shareUrl = p.renderInfo.url;
+        // Differentiate full timeline vs custom mix for the warning copy.
+        shareKind = (p.renderInfo.renderId === 'mix_default') ? 'full' : 'custom';
+    } else {
+        if (typeof showToast === 'function') showToast('No mix to share yet — wait for the render to finish');
+        return;
+    }
+
     // Sender name from band roster, fallback to "A bandmate".
     var memberKey = (typeof getCurrentMemberKey === 'function') ? getCurrentMemberKey() : null;
     var senderName = 'A bandmate';
@@ -1994,19 +2109,23 @@ window._mtShareCurrentMix = async function() {
             senderName = bandMembers[memberKey].name.split(' ')[0];
         }
     } catch (e) {}
-    // Rehearsal date label (matches the Review Mode header)
+    // Rehearsal date label
     var dateLabel = '';
     try {
         if (p.session && p.session.date) {
             dateLabel = new Date(p.session.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         }
     } catch (e) {}
-    var bodyLead = 'GrooveLinx: ' + senderName + ' shared the' + (dateLabel ? ' ' + dateLabel : '') + ' rehearsal mix: ' + p.renderInfo.url;
+    var labelTail = shareKind === 'songs' ? ' rehearsal mix (songs only)' : ' rehearsal mix';
+    var bodyLead = 'GrooveLinx: ' + senderName + ' shared the' + (dateLabel ? ' ' + dateLabel : '') + labelTail + ': ' + shareUrl;
     var body = bodyLead + '. Reply STOP to opt out, HELP for help. Message and data rates may apply.';
 
-    // Show preview + recipient count, confirm before sending.
     var preview = body.length > 280 ? body.slice(0, 280) + '…' : body;
-    if (!confirm('Send this SMS to opted-in band members?\n\n' + preview)) {
+    var warnPrefix = '';
+    if (shareKind === 'full') {
+        warnPrefix = '⚠️ This will share the FULL REHEARSAL (~3 hours, includes silence, chatter, and dead time between songs).\n\nFor a tight songs-only mix, cancel here and open 🎛 Mix → check "Render songs only" → Render Mix → try Text again.\n\n';
+    }
+    if (!confirm(warnPrefix + 'Send this SMS to opted-in band members?\n\n' + preview)) {
         return;
     }
     var btn = document.getElementById('mtShareBtn');

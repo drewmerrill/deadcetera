@@ -171,6 +171,43 @@ def render_mix(
     if not isinstance(raw_tracks, dict):
         return {"success": False, "error": "bad_recipe_tracks"}
 
+    # Optional segment list — when present, each stem is trimmed to these
+    # time ranges and concatenated, skipping silence/chatter/dead air between
+    # songs. Shape: [{ "start": <sec>, "end": <sec>, "title"?: str, "id"?: str }, ...]
+    # Ranges must be in ascending order, non-overlapping, with end > start.
+    raw_segments = recipe.get("segments")
+    segments = []
+    if raw_segments is not None:
+        if not isinstance(raw_segments, list):
+            return {"success": False, "error": "bad_recipe_segments"}
+        last_end = -1.0
+        for idx, s in enumerate(raw_segments):
+            if not isinstance(s, dict):
+                return {"success": False, "error": f"bad_segment_at_{idx}"}
+            try:
+                start = float(s.get("start", 0))
+                end = float(s.get("end", 0))
+            except (TypeError, ValueError):
+                return {"success": False, "error": f"bad_segment_time_at_{idx}"}
+            if not (end > start and start >= 0):
+                continue  # silently drop invalid ranges
+            if start < last_end:
+                # Out-of-order or overlapping; clamp start to keep concat
+                # deterministic. Empirically the analyzer emits sorted
+                # non-overlapping ranges, but defend against tampering.
+                start = last_end
+                if start >= end:
+                    continue
+            segments.append({
+                "start": start,
+                "end": end,
+                "title": str(s.get("title") or "")[:120],
+                "id": str(s.get("id") or "")[:64],
+            })
+            last_end = end
+        if not segments:
+            return {"success": False, "error": "no_valid_segments"}
+
     # Solo semantics — match the browser: if any track is soloed, mute every
     # non-soloed track in the output (mute=true still overrides solo).
     any_solo = any(bool(v.get("solo")) for v in raw_tracks.values() if isinstance(v, dict))
@@ -241,10 +278,15 @@ def render_mix(
             "sessionId": sessionId,
         }
 
+    seg_summary = ""
+    if segments:
+        total_song_sec = sum(s["end"] - s["start"] for s in segments)
+        seg_summary = f", songs-only ({len(segments)} segs, ~{total_song_sec:.0f}s)"
     print(
         f"[render] {bandSlug}/{sessionId}/{renderId}: "
         f"{len(active)}/{len(stem_files)} active stems, "
         f"format={out_format}, masterReverbWet={master_reverb_wet:.2f}"
+        f"{seg_summary}"
     )
 
     # Stage files locally — ffmpeg can stream from URLs but R2 public URLs
@@ -315,40 +357,86 @@ def render_mix(
         # stereo — even if a stem was somehow mistakenly exported at a
         # different rate, soxr will resample it cleanly.
         # Per-branch filter chain:
-        #   aresample=48000 (uniform sample rate across all branches)
-        #   aformat=channel_layouts=stereo (mono → duplicate to L+R;
-        #     stereo passes through unchanged — handles both stem types
-        #     without us guessing which is which)
-        #   volume=… (per-track gain × any reverb-send weighting)
-        #   aecho=… (only on wet branches)
+        #   1. aresample=48000 (uniform sample rate across all branches)
+        #   2. aformat=channel_layouts=stereo (mono → L+R duplicate;
+        #      stereo passes through unchanged)
+        #   3. If segments: atrim/asetpts each range → concat → continuous
+        #      "songs-only" stream. Otherwise pass through.
+        #   4. asplit into dry/wet
+        #   5. dry: volume=gain
+        #   6. wet (only when master reverb > 0 and send > 0):
+        #      aecho → volume=wet_gain
+        # The pre-segment work happens BEFORE the dry/wet split so we don't
+        # duplicate the segment-trim work on each branch.
         filter_parts = []
         amix_inputs = []
+        n_segs = len(segments)
         for i, t in enumerate(local_paths):
             gain = t["gain"]
             send = t["reverbSend"]
-            dry_label = f"d{i}"
+            has_wet = master_reverb_wet > 0 and send > 0
+            wet_gain = gain * send * master_reverb_wet if has_wet else 0.0
+            need_wet_branch = has_wet and wet_gain > 0
+
+            # ── Stage 1: resample + channel format ──
+            base_label = f"b{i}"
             filter_parts.append(
                 f"[{i}:a]aresample=48000:resampler=soxr,"
-                f"aformat=channel_layouts=stereo,"
-                f"volume={gain:.4f}[{dry_label}]"
+                f"aformat=channel_layouts=stereo[{base_label}]"
             )
-            amix_inputs.append(dry_label)
-            if master_reverb_wet > 0 and send > 0:
-                wet_gain = gain * send * master_reverb_wet
-                if wet_gain > 0:
-                    wet_label = f"w{i}"
-                    # aecho is a cheap reverb stand-in. For higher quality
-                    # we'd want a convolution reverb (afir + an IR file),
-                    # but aecho is built into ffmpeg, runs fast, and matches
-                    # the browser's "review reverb, not mastering reverb"
-                    # intent.
+
+            # ── Stage 2: optional segment trim + concat ──
+            # Emits a single label per stem (post_label) ready to be split
+            # into dry/wet downstream.
+            if n_segs > 0:
+                # Split the base stream into N copies, one per segment.
+                split_outs = [f"sg{i}_{k}" for k in range(n_segs)]
+                filter_parts.append(
+                    f"[{base_label}]asplit={n_segs}"
+                    + "".join(f"[{lbl}]" for lbl in split_outs)
+                )
+                trim_outs = []
+                for k, seg in enumerate(segments):
+                    trim_lbl = f"tr{i}_{k}"
                     filter_parts.append(
-                        f"[{i}:a]aresample=48000:resampler=soxr,"
-                        f"aformat=channel_layouts=stereo,"
-                        f"aecho=0.7:0.5:60|110|180:0.5|0.35|0.2,"
-                        f"volume={wet_gain:.4f}[{wet_label}]"
+                        f"[{split_outs[k]}]atrim=start={seg['start']:.3f}:end={seg['end']:.3f},"
+                        f"asetpts=PTS-STARTPTS[{trim_lbl}]"
                     )
-                    amix_inputs.append(wet_label)
+                    trim_outs.append(trim_lbl)
+                post_label = f"c{i}"
+                filter_parts.append(
+                    "".join(f"[{lbl}]" for lbl in trim_outs)
+                    + f"concat=n={n_segs}:v=0:a=1[{post_label}]"
+                )
+            else:
+                post_label = base_label
+
+            # ── Stage 3: dry/wet split (only if we need a wet branch) ──
+            if need_wet_branch:
+                dry_in = f"pre_d{i}"
+                wet_in = f"pre_w{i}"
+                filter_parts.append(
+                    f"[{post_label}]asplit=2[{dry_in}][{wet_in}]"
+                )
+                dry_label = f"d{i}"
+                wet_label = f"w{i}"
+                filter_parts.append(
+                    f"[{dry_in}]volume={gain:.4f}[{dry_label}]"
+                )
+                # aecho is a cheap stand-in for a convolution reverb. Good
+                # enough for "review reverb"; not a mastering reverb.
+                filter_parts.append(
+                    f"[{wet_in}]aecho=0.7:0.5:60|110|180:0.5|0.35|0.2,"
+                    f"volume={wet_gain:.4f}[{wet_label}]"
+                )
+                amix_inputs.append(dry_label)
+                amix_inputs.append(wet_label)
+            else:
+                dry_label = f"d{i}"
+                filter_parts.append(
+                    f"[{post_label}]volume={gain:.4f}[{dry_label}]"
+                )
+                amix_inputs.append(dry_label)
 
         # amix takes all branches into a single stereo output, then we apply
         # one final gentle peak limiter (alimiter) to avoid digital clipping
