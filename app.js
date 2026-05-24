@@ -13524,7 +13524,23 @@ async function checkForAppUpdate() {
 // banner even if the prior one was dismissed.
 var _bannerShownForVersion = null;
 
-function showUpdateBanner(serverVersion) {
+async function showUpdateBanner(serverVersion) {
+    // 2026-05-24: SW-lifecycle paths (reg.waiting, updatefound, controllerchange)
+    // call this with NO argument, so version defaulted to 'unknown' — which
+    // didn't collide with the polling-path's real-version gate. Result: the
+    // banner could fire TWICE for the same deploy (once with 'unknown', once
+    // with the real version). Fix: when no version supplied, fetch
+    // version.json so the gate has the real key.
+    if (!serverVersion) {
+        try {
+            var _vbase = location.hostname.indexOf('github.io') !== -1 ? '/deadcetera' : '';
+            var _vres = await fetch(_vbase + '/version.json?t=' + Date.now(), { cache: 'no-store' });
+            if (_vres && _vres.ok) {
+                var _vdata = await _vres.json();
+                if (_vdata && _vdata.version) serverVersion = _vdata.version;
+            }
+        } catch(_ve) {}
+    }
     serverVersion = serverVersion || 'unknown';
     if (_bannerShownForVersion === serverVersion) return;
     if (document.getElementById('dc-update-banner')) {
