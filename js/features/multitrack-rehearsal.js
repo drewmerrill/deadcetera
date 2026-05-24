@@ -1548,6 +1548,14 @@ window._mtSaveSessionHeader = async function() {
         var modal = document.getElementById('mtHeaderEditModal');
         if (modal) modal.remove();
         if (typeof showToast === 'function') showToast('✓ Saved');
+        // Refresh the rehearsal-page list in the background so the sidebar
+        // history card picks up the new date/venue. Best-effort — if the
+        // refresh fn isn't available (e.g., user opened player from another
+        // page), the list updates on next manual navigation.
+        try {
+            if (typeof window._rhRefreshRehearsalPage === 'function') window._rhRefreshRehearsalPage();
+            else if (typeof renderRehearsalPage === 'function') renderRehearsalPage();
+        } catch (e) {}
     } catch (e) {
         if (status) status.textContent = '✗ ' + (e.message || 'save failed');
         if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }

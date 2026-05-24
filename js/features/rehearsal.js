@@ -2714,7 +2714,10 @@ async function _rhRenderSessionHistory() {
 
     clean.forEach(function(s, _si) {
         var isLatest = _si === 0;
-        var d = s.date ? new Date(s.date) : null;
+        // Anchor at LOCAL noon so timezone shifts don't bump the displayed
+        // date back a day. Stored dates are YYYY-MM-DD; new Date('2026-05-18')
+        // is UTC midnight which is 2026-05-17 8 PM EDT — wrong card title.
+        var d = s.date ? new Date(s.date + 'T12:00:00') : null;
         var dateStr = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
         var totalActual = s.totalActualMin || 0;
 
@@ -2726,13 +2729,21 @@ async function _rhRenderSessionHistory() {
             html += '<div class="app-card" style="padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:8px' + (isLatest ? ';border-left:3px solid #fbbf24;background:rgba(245,158,11,0.04)' : '') + '">'
                 + (_rhBulkMode ? '<input type="checkbox" id="rhBulkCb_' + s.sessionId + '" onchange="_rhBulkToggle(\'' + s.sessionId + '\')"' + (_rhBulkSelected[s.sessionId] ? ' checked' : '') + ' style="accent-color:#ef4444;width:14px;height:14px;cursor:pointer;flex-shrink:0">' : '')
                 + '<div style="flex:1;min-width:0">'
+                // Top line: emoji + date + track count + Multitrack badge.
+                // Each piece is short; no overflow risk.
                 + '<div style="display:flex;align-items:center;gap:6px">'
                 + '<span style="font-size:0.78em">🎚</span>'
                 + '<span style="font-weight:700;font-size:0.82em;color:var(--text)">' + dateStr + '</span>'
-                + (s.venue ? '<span style="font-size:0.72em;color:var(--text-muted)">· ' + escHtml(s.venue) + '</span>' : '')
                 + '<span style="font-size:0.72em;color:var(--text-muted)">· ' + trackCount + ' tracks</span>'
+                + '<span style="font-size:0.58em;font-weight:800;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase">Multitrack</span>'
                 + '</div>'
-                + '<div style="font-size:0.6em;font-weight:700;color:#fbbf24;letter-spacing:0.05em;text-transform:uppercase;margin-top:1px">Multitrack</div>'
+                // Bottom line: venue, with strict single-line ellipsis so a
+                // long string can\'t break the card layout (the previous
+                // multitrack card had the venue text wrapping into the Open
+                // button position — visual jumble).
+                + (s.venue
+                    ? '<div style="font-size:0.7em;color:var(--text-muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(s.venue) + '">📍 ' + escHtml(s.venue) + '</div>'
+                    : '')
                 + '</div>'
                 + '<button onclick="_mtOpenPlayer(\'' + s.sessionId + '\')" style="font-size:0.65em;font-weight:600;padding:3px 10px;border-radius:5px;cursor:pointer;border:1px solid rgba(245,158,11,0.3);background:rgba(245,158,11,0.08);color:#fbbf24;white-space:nowrap;flex-shrink:0">▶ Open</button>'
                 + (_rhBulkMode ? '' : '<button onclick="_rhDeleteSessionUI(\'' + s.sessionId + '\')" style="font-size:0.6em;padding:3px 6px;border-radius:4px;cursor:pointer;border:1px solid rgba(239,68,68,0.12);background:none;color:#64748b;flex-shrink:0">🗑️</button>')
@@ -2850,7 +2861,10 @@ async function _rhRenderLastRehearsalTimeline() {
 
     var _toArr = function(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; };
     var segments = _toArr(latest.audio_segments);
-    var dateStr = latest.date ? new Date(latest.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    // Anchor at local noon to avoid timezone shift bumping the displayed
+    // date back a day (UTC midnight on Drew's stored "2026-05-18" is May 17
+    // 8 PM EDT).
+    var dateStr = latest.date ? new Date(latest.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
     var durMin = latest.totalActualMin || 0;
     var durLabel = durMin >= 60 ? Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm' : durMin + 'm';
 
@@ -3569,7 +3583,8 @@ window._rhJumpToTime = function(timeSec) {
 var _rhFmt = function(sec) { if (!sec && sec !== 0) return '0:00'; var m = Math.floor(sec / 60); var s = Math.floor(sec % 60); return m + ':' + (s < 10 ? '0' : '') + s; };
 
 function _rhPrepareSegmentData(session, segments) {
-    var dateStr = session.date ? new Date(session.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
+    // Anchor at local noon (avoids timezone shift; see _rhRenderPastList)
+    var dateStr = session.date ? new Date(session.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '';
     var totalDur = session.totalActualMin || 0;
     var durLabel = totalDur >= 60 ? Math.floor(totalDur / 60) + 'h ' + (totalDur % 60) + 'm' : totalDur + 'm';
 
