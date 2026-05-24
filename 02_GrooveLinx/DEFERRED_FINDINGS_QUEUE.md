@@ -39,6 +39,42 @@ work item — graduate it to a GitHub issue and link from here.
 Dead listeners, no-op toggles, stale render paths, async race risks,
 orphan helpers, broken fallbacks.
 
+- **Finding:** Server-side analysis phase markers — replace the
+  current heuristic phase narrator (browser maps elapsed-seconds → fake
+  phase label) with ground-truth phase emission from `segment_audio` in
+  Modal. The user prefers seeing what's actually computing, not a
+  decorative simulation. Per Drew (2026-05-24): "I would much rather
+  know what is going on then just a flashy front."
+  - **Why deferred:** Heuristic narrator shipped in `ea72808f` works
+    well enough for the impressive-feel UX and was the smallest
+    deliverable change. Ground truth requires Modal-side state
+    plumbing.
+  - **Trigger:** When we're touching `services/rehearsal-segment/segment.py`
+    again, OR when other long-running Modal jobs (render, stem
+    separation) need the same treatment and we want one consistent
+    pattern.
+  - **Implementation sketch:**
+    1. `segment_audio` writes to a Firebase doc at
+       `rehearsal_sessions/{sid}/_analyzeProgress/{callId}` between
+       phases — each write is `{phase, label, startedAt}`. Needs
+       Modal to authenticate to Firebase (firebase-admin SDK + service
+       account secret already in the `groovelinx-stems` Modal secret).
+    2. Browser polls that doc each tick alongside `/rehearsal-segment/check`
+       (or replaces the elapsed-time check entirely — the doc gives
+       phase + timestamp so the browser can compute elapsed locally).
+    3. Replace `_mtCurrentAnalyzePhaseIdx(elapsedSec)` heuristic with
+       a direct read of the phase id from the Firebase doc.
+    4. Pattern can extend to the multitrack `render_mix` and
+       `separate_stems` Modal functions for unified progress UX.
+    5. Mark the existing heuristic clearly when deprecating —
+       `_MT_ANALYZE_PHASES` thresholds become a fallback used only
+       when the Firebase doc is absent or stale.
+  - **See also:** new memory `feedback_ground_truth_over_theater.md`
+    captures the principle: prefer real-time truth over decorative
+    simulation, log a deferred finding when shipping a heuristic.
+  - **Discovered:** 2026-05-24 · `ea72808f`
+  - **Status:** open
+
 - **Finding:** Per-song share — one shareable URL per analyzed song
   segment instead of one URL for the whole mix. Useful for narrow
   bandmate workflows ("send Brian the new Sugaree arrangement").
