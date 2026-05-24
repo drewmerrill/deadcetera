@@ -1084,13 +1084,21 @@ window._mtOpenPlayer = async function(sessionId) {
         var subTail = mName
             ? ' <span style="color:var(--text-dim);font-size:0.85em">· ' + escHtml(mName) + '</span>'
             : ' <span style="color:var(--text-dim);font-size:0.78em;font-style:italic;opacity:0.7">· ambient</span>';
-        return '<div class="mt-track-row" data-track-id="' + escHtml(t.trackId) + '" style="display:grid;grid-template-columns:130px 50px 50px 1fr 45px;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.78em">'
+        return '<div class="mt-track-row" data-track-id="' + escHtml(t.trackId) + '" style="display:grid;grid-template-columns:130px 38px 38px 38px 1fr 45px;gap:6px;align-items:center;padding:6px 10px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.78em">'
             + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-weight:700;color:var(--text)">' + escHtml(t.label) + '</span>' + subTail + '</div>'
-            + '<button onclick="_mtToggleMute(\'' + t.trackId + '\')" id="mtMute_' + escHtml(t.trackId) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:3px 6px;cursor:pointer;font-size:0.78em">M</button>'
-            + '<button onclick="_mtToggleSolo(\'' + t.trackId + '\')" id="mtSolo_' + escHtml(t.trackId) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:3px 6px;cursor:pointer;font-size:0.78em">S</button>'
+            + '<button onclick="_mtToggleMute(\'' + t.trackId + '\')" id="mtMute_' + escHtml(t.trackId) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:3px 4px;cursor:pointer;font-size:0.78em">M</button>'
+            + '<button onclick="_mtToggleSolo(\'' + t.trackId + '\')" id="mtSolo_' + escHtml(t.trackId) + '" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:3px 4px;cursor:pointer;font-size:0.78em">S</button>'
+            + '<button onclick="_mtToggleTrackFx(\'' + t.trackId + '\')" id="mtFx_' + escHtml(t.trackId) + '" title="Send this track to reverb (master 💧 slider controls overall wet level)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:3px 4px;cursor:pointer;font-size:0.78em">💧</button>'
             + '<input type="range" id="mtVol_' + escHtml(t.trackId) + '" min="0" max="200" value="100" step="1" oninput="_mtSetTrackVolume(\'' + t.trackId + '\', this.value)" title="Volume — 100% = unity gain, 200% = +6 dB boost" style="width:100%;accent-color:#a5b4fc;cursor:pointer">'
             + '<div id="mtVolLabel_' + escHtml(t.trackId) + '" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);text-align:right">100%</div>'
-            + '<audio preload="metadata" src="' + escHtml(t.stemUrl) + '" data-track-id="' + escHtml(t.trackId) + '"></audio>'
+            // crossorigin=anonymous is REQUIRED for Web Audio API
+            // (createMediaElementSource) to receive audio samples from
+            // cross-origin URLs. Without it, MediaElementAudioSource
+            // outputs silence per spec. R2's bucket CORS policy already
+            // allows GET from any origin → CORS preflight succeeds → audio
+            // flows. Symptom of forgetting this: playback "works" (the
+            // audio element progresses) but no sound comes out.
+            + '<audio preload="metadata" crossorigin="anonymous" src="' + escHtml(t.stemUrl) + '" data-track-id="' + escHtml(t.trackId) + '"></audio>'
             + '</div>';
     }).join('');
 
@@ -1100,8 +1108,9 @@ window._mtOpenPlayer = async function(sessionId) {
             '<span style="font-size:1.25em">🎚</span>' +
             '<div style="flex:1">' +
               '<div style="font-size:1em;font-weight:800;color:#f1f5f9">Multitrack rehearsal</div>' +
-              '<div style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + escHtml(dateLabel) + (session.venue ? ' · ' + escHtml(session.venue) : '') + ' · ' + tracks.length + ' tracks</div>' +
+              '<div id="mtHeaderMeta" style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + escHtml(dateLabel) + (session.venue ? ' · ' + escHtml(session.venue) : '') + ' · ' + tracks.length + ' tracks</div>' +
             '</div>' +
+            '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
           '</div>' +
           '<div style="display:flex;align-items:center;gap:12px;padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
@@ -1159,7 +1168,8 @@ window._mtOpenPlayer = async function(sessionId) {
         if (_mtState.player && _mtState.player.sessionId === sessionId && saved) {
             _mtState.player.mixState = {
                 volumes: saved.volumes || {},
-                reverbWet: saved.reverbWet || 0
+                reverbWet: saved.reverbWet || 0,
+                reverbSends: saved.reverbSends || {}
             };
             // Restore mute/solo state too — these affect audio.muted directly
             // even before Web Audio init.
@@ -1193,6 +1203,19 @@ window._mtOpenPlayer = async function(sessionId) {
                     btn.style.color = '#fbbf24';
                 }
             });
+            // Reflect per-track reverb sends in the FX button styling.
+            // Default is ON (send=1) for tracks never touched; OFF only if
+            // explicitly set to 0 in saved state.
+            (_mtState.player.tracks || []).forEach(function(t) {
+                var sendVal = (saved.reverbSends && saved.reverbSends[t.trackId] !== undefined)
+                    ? saved.reverbSends[t.trackId] : 1;
+                var on = sendVal !== 0;
+                var btn = document.getElementById('mtFx_' + t.trackId);
+                if (btn) {
+                    btn.style.background = on ? 'rgba(6,182,212,0.18)' : 'rgba(255,255,255,0.04)';
+                    btn.style.color = on ? '#67e8f9' : 'var(--text-dim)';
+                }
+            });
         }
     });
     _mtLoadMixPresets(sessionId).then(function(presets) {
@@ -1201,6 +1224,19 @@ window._mtOpenPlayer = async function(sessionId) {
             _mtRenderMixPresetBar();
         }
     });
+    // FX buttons default to ON visual (cyan tint) since the underlying
+    // reverbSend GainNode defaults to 1.0. If saved state later toggles
+    // any off, the load callback above repaints those individually.
+    setTimeout(function() {
+        if (!_mtState.player || _mtState.player.sessionId !== sessionId) return;
+        (_mtState.player.tracks || []).forEach(function(t) {
+            var btn = document.getElementById('mtFx_' + t.trackId);
+            if (btn) {
+                btn.style.background = 'rgba(6,182,212,0.18)';
+                btn.style.color = '#67e8f9';
+            }
+        });
+    }, 0);
     // Load any prior analysis segments so the seek bar markers show on open.
     _mtLoadSegments(sessionId).then(function() {
         if (_mtState.player && _mtState.player.sessionId === sessionId) {
@@ -1382,10 +1418,13 @@ function _mtInitWebAudio() {
                 gain.gain.value = (p.mixState && p.mixState.volumes && p.mixState.volumes[id] != null)
                     ? p.mixState.volumes[id] : 1.0;
                 var reverbSend = ctx.createGain();
-                // Send level mirrors trackGain — when a track is loud, more of it
-                // goes to reverb. The master wet knob controls overall reverb
-                // amount. Simpler than per-track sends; covers 90% of use cases.
-                reverbSend.gain.value = 1.0;
+                // Per-track reverb routing: each track has its own send level
+                // (0 = no reverb on this track, 1 = full send). Default ON for
+                // first-time players; user can disable per track via the 💧
+                // button. The master wet knob controls overall reverb return.
+                var savedSend = (p.mixState && p.mixState.reverbSends && p.mixState.reverbSends[id] !== undefined)
+                    ? p.mixState.reverbSends[id] : 1;
+                reverbSend.gain.value = savedSend;
                 src.connect(gain);
                 gain.connect(p.masterDry);
                 gain.connect(reverbSend);
@@ -1439,6 +1478,108 @@ window._mtSetTrackVolume = function(trackId, pct) {
     _mtSaveMixStateDebounced();
 };
 
+// Edit the session header (date + venue) inline. Persists to
+// rehearsal_sessions/{sid}/{date,venue} and re-renders the header strip.
+window._mtEditSessionHeader = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') {
+        if (typeof showToast === 'function') showToast('Firebase not ready');
+        return;
+    }
+    // Pull current values fresh from Firebase so the edit form reflects truth
+    var session;
+    try {
+        var snap = await db.ref(bandPath('rehearsal_sessions/' + p.sessionId)).once('value');
+        session = snap.val() || {};
+    } catch (e) { session = {}; }
+
+    var curDate = session.date || '';
+    var curVenue = session.venue || '';
+
+    var existing = document.getElementById('mtHeaderEditModal');
+    if (existing) existing.remove();
+    var modal = document.createElement('div');
+    modal.id = 'mtHeaderEditModal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)';
+    modal.innerHTML = '<div style="max-width:440px;width:100%;background:#0f172a;border-radius:12px;padding:20px;border:1px solid rgba(255,255,255,0.08)">'
+        + '<div style="font-weight:800;font-size:1em;color:#f1f5f9;margin-bottom:12px">✏️ Edit rehearsal details</div>'
+        + '<label style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Date</label>'
+        + '<input type="date" id="mtEditDate" value="' + escHtml(curDate) + '" class="app-input" style="width:100%;font-size:0.9em;margin-bottom:12px">'
+        + '<label style="display:block;font-size:0.74em;font-weight:700;color:var(--text-dim);margin-bottom:4px">Venue</label>'
+        + '<input type="text" id="mtEditVenue" value="' + escHtml(curVenue) + '" class="app-input" style="width:100%;font-size:0.9em;margin-bottom:14px" placeholder="e.g. Drew\'s House (DeadCetera Rehearsal)">'
+        + '<div id="mtEditStatus" style="font-size:0.78em;color:var(--text-dim);min-height:16px;margin-bottom:10px"></div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+        + '<button onclick="document.getElementById(\'mtHeaderEditModal\').remove()" class="btn btn-ghost btn-sm">Cancel</button>'
+        + '<button id="mtEditSaveBtn" onclick="_mtSaveSessionHeader()" class="btn btn-primary btn-sm">💾 Save</button>'
+        + '</div>'
+        + '</div>';
+    document.body.appendChild(modal);
+};
+
+window._mtSaveSessionHeader = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    var dateEl = document.getElementById('mtEditDate');
+    var venueEl = document.getElementById('mtEditVenue');
+    var status = document.getElementById('mtEditStatus');
+    var btn = document.getElementById('mtEditSaveBtn');
+    var date = dateEl ? dateEl.value : '';
+    var venue = venueEl ? (venueEl.value || '').trim() : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving…'; }
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') {
+        if (status) status.textContent = 'Firebase not ready';
+        return;
+    }
+    try {
+        await db.ref(bandPath('rehearsal_sessions/' + p.sessionId)).update({
+            date: date,
+            venue: venue,
+            updatedAt: new Date().toISOString()
+        });
+        // Refresh the visible header strip
+        var meta = document.getElementById('mtHeaderMeta');
+        if (meta) {
+            var dateLabel = date ? new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+            meta.innerHTML = escHtml(dateLabel) + (venue ? ' · ' + escHtml(venue) : '') + ' · ' + (p.tracks || []).length + ' tracks';
+        }
+        var modal = document.getElementById('mtHeaderEditModal');
+        if (modal) modal.remove();
+        if (typeof showToast === 'function') showToast('✓ Saved');
+    } catch (e) {
+        if (status) status.textContent = '✗ ' + (e.message || 'save failed');
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+    }
+};
+
+// Toggle whether a single track is routed through the master reverb. The
+// reverbSend GainNode per track was already in the graph from initial setup;
+// this just flips its gain between 0 and 1. The master 💧 slider controls
+// the wet return level. Default = ALL tracks send (1.0); typical use is to
+// turn off drums/bass and keep vocals/keys going to reverb.
+window._mtToggleTrackFx = function(trackId) {
+    var p = _mtState.player;
+    if (!p) return;
+    if (!p.mixState) p.mixState = { volumes: {}, reverbWet: 0, reverbSends: {} };
+    if (!p.mixState.reverbSends) p.mixState.reverbSends = {};
+    // Treat undefined as ON (default behavior on first interaction); flip from there
+    var curr = (p.mixState.reverbSends[trackId] !== 0); // default true if not set
+    var nextOn = !curr;
+    p.mixState.reverbSends[trackId] = nextOn ? 1 : 0;
+    var chain = p.trackChains && p.trackChains[trackId];
+    if (chain && p.audioCtx && chain.reverbSend) {
+        chain.reverbSend.gain.setTargetAtTime(nextOn ? 1 : 0, p.audioCtx.currentTime, 0.02);
+    }
+    var btn = document.getElementById('mtFx_' + trackId);
+    if (btn) {
+        btn.style.background = nextOn ? 'rgba(6,182,212,0.18)' : 'rgba(255,255,255,0.04)';
+        btn.style.color = nextOn ? '#67e8f9' : 'var(--text-dim)';
+    }
+    _mtSaveMixStateDebounced();
+};
+
 window._mtSetReverbWet = function(pct) {
     var p = _mtState.player;
     if (!p) return;
@@ -1468,6 +1609,7 @@ async function _mtSaveMixState() {
     var state = {
         volumes: (p.mixState && p.mixState.volumes) || {},
         reverbWet: (p.mixState && p.mixState.reverbWet) || 0,
+        reverbSends: (p.mixState && p.mixState.reverbSends) || {},
         mute: p.muted || {},
         solo: p.soloed || {},
         updatedAt: new Date().toISOString()
