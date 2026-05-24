@@ -1224,7 +1224,12 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
           '<div id="mtComposerArea"></div>' +
         '</div>';
     document.body.appendChild(ov);
-    ov.addEventListener('click', function(e) { if (e.target === ov) _mtClosePlayer(); });
+    // Intentionally NOT wiring backdrop-click-to-close. The player runs
+    // multi-minute server-side workflows (auto-render on session open,
+    // 📤 Export Mix, 📦 Stems zip) — an accidental click on the dim
+    // backdrop should never silently nuke a 5-minute render in progress.
+    // Use the explicit × button or the 🎚/👁 mode toggles to leave.
+    // (Drew, 2026-05-24: lost a 150s render to an accidental backdrop tap.)
 
     // Wire up player state
     var audios = Array.from(ov.querySelectorAll('audio[data-track-id]'));
@@ -1426,7 +1431,12 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo) {
           '<div id="mtComposerArea"></div>' +
         '</div>';
     document.body.appendChild(ov);
-    ov.addEventListener('click', function(e) { if (e.target === ov) _mtClosePlayer(); });
+    // Intentionally NOT wiring backdrop-click-to-close. The player runs
+    // multi-minute server-side workflows (auto-render on session open,
+    // 📤 Export Mix, 📦 Stems zip) — an accidental click on the dim
+    // backdrop should never silently nuke a 5-minute render in progress.
+    // Use the explicit × button or the 🎚/👁 mode toggles to leave.
+    // (Drew, 2026-05-24: lost a 150s render to an accidental backdrop tap.)
 
     var reviewAudio = document.getElementById('mtReviewAudio');
     _mtState.player = {
