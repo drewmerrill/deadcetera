@@ -39,6 +39,41 @@ work item — graduate it to a GitHub issue and link from here.
 Dead listeners, no-op toggles, stale render paths, async race risks,
 orphan helpers, broken fallbacks.
 
+- **Finding:** Multitrack browser playback architecture cannot meet the
+  product requirement (17 stems × 3 hours, no audible drift, fast seek,
+  responsive). Confirmed via thorough audit at
+  `02_GrooveLinx/audits/MULTITRACK_BROWSER_PLAYBACK_AUDIT.md`. Dominant
+  cause is the 6-connection-per-origin browser cap colliding with 17
+  simultaneous FLAC range fetches on far seeks; secondary cause is the
+  independent-clock-per-element semantics of HTML5 `<audio>`. Three
+  browser-only patch attempts on 2026-05-24 (builds `153606`, `155054`,
+  `160224`) all failed in different ways.
+  - **Why deferred:** Audit is analysis-only; no code change in this pass
+    per the audit-scope instructions. Strategic fix (R1–R3 server-side
+    render pipeline) needs explicit go-ahead from Drew before next
+    session.
+  - **Trigger:** Drew confirms the audit's recommendation in §12. Then
+    next session builds R1 (Modal `render_mix`) + R2 (worker
+    `/multitrack/render`) + R3 (player "Export Rehearsal Mix" button)
+    per `specs/rehearsal_render_pipeline.md`. ~5 hours of work.
+  - **Discovered:** 2026-05-24 · `50a36ec3`
+  - **Status:** open
+
+- **Finding:** FLAC stems' source-alignment is theoretical — REAPER
+  "Entire project" bounds + FLAC's zero codec delay should guarantee
+  sample-aligned cross-stem playback, but this has never been empirically
+  verified. If REAPER is misconfigured (different sample rate per track,
+  trim region not honored, etc.) it could be contributing to drift
+  alongside the connection-pool issue.
+  - **Why deferred:** Audit proposes an ffprobe/sox/metaflac script
+    (see §4 of `MULTITRACK_BROWSER_PLAYBACK_AUDIT.md`) but doesn't run
+    it without Drew's confirmation — needs a downloaded session ZIP.
+  - **Trigger:** Run the script against the 5/18 session's `📦 Stems`
+    ZIP once Drew greenlights. If misalignment found, file as separate
+    upstream bug; if not, dismiss this finding.
+  - **Discovered:** 2026-05-24 · `50a36ec3`
+  - **Status:** open
+
 - **Finding:** `sdToggleAnon` (Anonymous mode toggle in song-detail.js)
   is a no-op on the current rendered surface — it targets a
   `.sd-readiness-inner` inside `#sd-readiness-card`, but the card is now

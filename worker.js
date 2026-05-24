@@ -195,6 +195,19 @@ export default {
     // page to short-circuit the Modal build when the user re-visits.
     if (path === '/multitrack/zip/status' && request.method === 'GET')
       return handleMultitrackZipStatus(request, env);
+    // Multitrack render — server-side mixdown of stems into one stereo
+    // stream. Solves the 17-streams-on-6-connections playback architecture
+    // problem (see audits/MULTITRACK_BROWSER_PLAYBACK_AUDIT.md). All three
+    // routes proxy a SINGLE Modal endpoint that dispatches on action:
+    //   /multitrack/render/start  → POST { bandSlug, sessionId, renderId, recipe } → { call_id }
+    //   /multitrack/render/check  → POST { call_id } → { status, publicUrl?, ... }
+    //   /multitrack/render/status → GET ?bandSlug=&sessionId= → existing mix_default check
+    if (path === '/multitrack/render/start' && request.method === 'POST')
+      return handleMultitrackRenderStart(request, env);
+    if (path === '/multitrack/render/check' && request.method === 'POST')
+      return handleMultitrackRenderCheck(request, env);
+    if (path === '/multitrack/render/status' && request.method === 'GET')
+      return handleMultitrackRenderStatus(request, env);
     // Rehearsal segmenter — server-side analysis of long rehearsal MP3s.
     // Replaces the in-browser decodeAudioData + RehearsalSegmentationEngine
     // path for multi-hour files that exceed browser AudioBuffer limits.
@@ -2095,14 +2108,14 @@ async function handleMultitrackZipStatus(request, env) {
 }
 
 // POST /multitrack/zip/start — body: { bandSlug, sessionId }
-// Forwards to Modal zip_start (which spawns zip_session and returns call_id).
+// Proxies to the consolidated zip_endpoint Modal URL with action='start'.
 async function handleMultitrackZipStart(request, env) {
   if (!env.STEMS_SHARED_SECRET) {
     return cors(jsonError('multitrack_not_configured: STEMS_SHARED_SECRET required', 500));
   }
-  var startUrl = env.MULTITRACK_ZIP_START_URL;
-  if (!startUrl) {
-    return cors(jsonError('multitrack_not_configured: MULTITRACK_ZIP_START_URL secret required', 500));
+  var zipUrl = env.MULTITRACK_ZIP_URL;
+  if (!zipUrl) {
+    return cors(jsonError('multitrack_not_configured: MULTITRACK_ZIP_URL secret required', 500));
   }
   var body;
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
@@ -2114,10 +2127,11 @@ async function handleMultitrackZipStart(request, env) {
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 60000);
   try {
-    var modalRes = await fetch(startUrl, {
+    var modalRes = await fetch(zipUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'start',
         bandSlug: bandSlug,
         sessionId: sessionId,
         token: env.STEMS_SHARED_SECRET,
@@ -2142,9 +2156,9 @@ async function handleMultitrackZipCheck(request, env) {
   if (!env.STEMS_SHARED_SECRET) {
     return cors(jsonError('multitrack_not_configured: STEMS_SHARED_SECRET required', 500));
   }
-  var checkUrl = env.MULTITRACK_ZIP_CHECK_URL;
-  if (!checkUrl) {
-    return cors(jsonError('multitrack_not_configured: MULTITRACK_ZIP_CHECK_URL secret required', 500));
+  var zipUrl = env.MULTITRACK_ZIP_URL;
+  if (!zipUrl) {
+    return cors(jsonError('multitrack_not_configured: MULTITRACK_ZIP_URL secret required', 500));
   }
   var body;
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
@@ -2154,10 +2168,14 @@ async function handleMultitrackZipCheck(request, env) {
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
-    var modalRes = await fetch(checkUrl, {
+    var modalRes = await fetch(zipUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      body: JSON.stringify({
+        action: 'check',
+        call_id: callId,
+        token: env.STEMS_SHARED_SECRET,
+      }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
@@ -2171,6 +2189,168 @@ async function handleMultitrackZipCheck(request, env) {
     var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
     return cors(jsonError(msg, 504));
   }
+}
+
+// ── Multitrack render (Modal proxy) ───────────────────────────────────────
+// Server-side mixdown of per-track stems into a single stereo stream. The
+// proxy targets a SINGLE Modal endpoint that dispatches on `action` —
+// keeps us under Modal's web-endpoint quota (was hitting 8 cap previously).
+// See services/multitrack-render/render.py for the Modal side.
+
+function _renderModalUrl(env) {
+  return env.MULTITRACK_RENDER_URL || '';
+}
+
+// POST /multitrack/render/start — body: { bandSlug, sessionId, renderId, recipe }
+async function handleMultitrackRenderStart(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('render_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var url = _renderModalUrl(env);
+  if (!url) {
+    return cors(jsonError('render_not_configured: MULTITRACK_RENDER_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var bandSlug  = String(body.bandSlug  || '').trim();
+  var sessionId = String(body.sessionId || '').trim();
+  var renderId  = String(body.renderId  || '').trim();
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(renderId))  return cors(jsonError('bad_render_id', 400));
+  var recipe = body.recipe || {};
+  if (typeof recipe !== 'object' || Array.isArray(recipe)) {
+    return cors(jsonError('bad_recipe', 400));
+  }
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 60000);
+  try {
+    var modalRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'start',
+        bandSlug: bandSlug,
+        sessionId: sessionId,
+        renderId: renderId,
+        recipe: recipe,
+        token: env.STEMS_SHARED_SECRET,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// POST /multitrack/render/check — body: { call_id }
+async function handleMultitrackRenderCheck(request, env) {
+  if (!env.STEMS_SHARED_SECRET) {
+    return cors(jsonError('render_not_configured: STEMS_SHARED_SECRET required', 500));
+  }
+  var url = _renderModalUrl(env);
+  if (!url) {
+    return cors(jsonError('render_not_configured: MULTITRACK_RENDER_URL secret required', 500));
+  }
+  var body;
+  try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
+  var callId = String(body.call_id || body.callId || '').trim();
+  if (!callId) return cors(jsonError('missing_call_id', 400));
+
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+  try {
+    var modalRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'check',
+        call_id: callId,
+        token: env.STEMS_SHARED_SECRET,
+      }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    var text = await modalRes.text();
+    return cors(new Response(text, {
+      status: modalRes.ok ? 200 : (modalRes.status >= 500 ? 502 : modalRes.status),
+      headers: { 'Content-Type': 'application/json' },
+    }));
+  } catch (e) {
+    clearTimeout(timer);
+    var msg = e && e.name === 'AbortError' ? 'modal_timeout' : ('modal_fetch_failed: ' + (e && e.message));
+    return cors(jsonError(msg, 504));
+  }
+}
+
+// GET /multitrack/render/status?bandSlug=X&sessionId=Y
+// Lists existing renders for a session by scanning R2 under
+// multitrack/{slug}/{sid}/renders/. Browser uses this on player open to
+// short-circuit auto-render when a mix_default already exists.
+async function handleMultitrackRenderStatus(request, env) {
+  if (!env.STEMS_BUCKET || !env.STEMS_R2_PUBLIC_BASE) {
+    return cors(jsonError('render_not_configured', 500));
+  }
+  var url = new URL(request.url);
+  var bandSlug  = String(url.searchParams.get('bandSlug')  || '').trim();
+  var sessionId = String(url.searchParams.get('sessionId') || '').trim();
+  if (!/^[a-z0-9_-]{1,64}$/i.test(bandSlug))  return cors(jsonError('bad_band_slug', 400));
+  if (!/^[a-z0-9_-]{1,64}$/i.test(sessionId)) return cors(jsonError('bad_session_id', 400));
+
+  var prefix = 'multitrack/' + bandSlug + '/' + sessionId + '/renders/';
+  var renders = [];
+  try {
+    var cursor = undefined;
+    do {
+      var page = await env.STEMS_BUCKET.list({ prefix: prefix, cursor: cursor });
+      for (var i = 0; i < page.objects.length; i++) {
+        var obj = page.objects[i];
+        // Skip directory-marker rows (no trailing filename).
+        var rest = obj.key.substring(prefix.length);
+        if (!rest || rest.endsWith('/')) continue;
+        // We expect renders/{renderId}/{filename}.{ext}; bail on any other shape.
+        var parts = rest.split('/');
+        if (parts.length < 2) continue;
+        var renderId = parts[0];
+        var fileName = parts.slice(1).join('/');
+        var ext = (fileName.split('.').pop() || '').toLowerCase();
+        if (ext !== 'wav' && ext !== 'mp3' && ext !== 'flac') continue;
+        renders.push({
+          renderId: renderId,
+          fileName: fileName,
+          format: ext,
+          size: obj.size,
+          uploaded: obj.uploaded,
+          url: env.STEMS_R2_PUBLIC_BASE.replace(/\/+$/, '') + '/' + obj.key,
+          key: obj.key,
+        });
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  } catch (e) {
+    return cors(jsonError('r2_list_failed: ' + (e && e.message), 502));
+  }
+  renders.sort(function(a, b) {
+    // Newest first by uploaded timestamp.
+    var au = a.uploaded ? new Date(a.uploaded).getTime() : 0;
+    var bu = b.uploaded ? new Date(b.uploaded).getTime() : 0;
+    return bu - au;
+  });
+  return jsonResp({
+    bandSlug: bandSlug,
+    sessionId: sessionId,
+    count: renders.length,
+    renders: renders,
+  });
 }
 
 // ── Rehearsal Segmenter (Modal proxy) ────────────────────────────────────────
@@ -2190,9 +2370,9 @@ async function handleRehearsalSegmentStart(request, env) {
   if (!env.STEMS_SHARED_SECRET) {
     return cors(jsonError('rehearsal_segment_not_configured: STEMS_SHARED_SECRET required', 500));
   }
-  var startUrl = env.REHEARSAL_SEGMENT_START_URL;
-  if (!startUrl) {
-    return cors(jsonError('rehearsal_segment_not_configured: REHEARSAL_SEGMENT_START_URL secret required', 500));
+  var segmentUrl = env.REHEARSAL_SEGMENT_URL;
+  if (!segmentUrl) {
+    return cors(jsonError('rehearsal_segment_not_configured: REHEARSAL_SEGMENT_URL secret required', 500));
   }
   let body;
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
@@ -2217,10 +2397,11 @@ async function handleRehearsalSegmentStart(request, env) {
   const ctrl = new AbortController();
   const timer = setTimeout(function() { ctrl.abort(); }, 60000);
   try {
-    var modalRes = await fetch(startUrl, {
+    var modalRes = await fetch(segmentUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'start',
         token: env.STEMS_SHARED_SECRET,
         songId: songId,
         sourceUrl: sourceUrl,
@@ -2248,9 +2429,9 @@ async function handleRehearsalSegmentCheck(request, env) {
   if (!env.STEMS_SHARED_SECRET) {
     return cors(jsonError('rehearsal_segment_not_configured: STEMS_SHARED_SECRET required', 500));
   }
-  var checkUrl = env.REHEARSAL_SEGMENT_CHECK_URL;
-  if (!checkUrl) {
-    return cors(jsonError('rehearsal_segment_not_configured: REHEARSAL_SEGMENT_CHECK_URL secret required', 500));
+  var segmentUrl = env.REHEARSAL_SEGMENT_URL;
+  if (!segmentUrl) {
+    return cors(jsonError('rehearsal_segment_not_configured: REHEARSAL_SEGMENT_URL secret required', 500));
   }
   var body;
   try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
@@ -2260,10 +2441,14 @@ async function handleRehearsalSegmentCheck(request, env) {
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
-    var modalRes = await fetch(checkUrl, {
+    var modalRes = await fetch(segmentUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      body: JSON.stringify({
+        action: 'check',
+        call_id: callId,
+        token: env.STEMS_SHARED_SECRET,
+      }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
@@ -2351,31 +2536,17 @@ async function _stemsResolveSource(body, env, request) {
   return { sourceUrl: sourceUrl };
 }
 
-// Tries STEMS_MODAL_START_URL first, then falls back to deriving it from
-// STEMS_MODAL_URL by swapping the function-name slug. The legacy URL points
-// at -separate; the async start endpoint is published at -separate-start.
-function _stemsStartUrl(env) {
-  if (env.STEMS_MODAL_START_URL) return env.STEMS_MODAL_START_URL;
-  if (!env.STEMS_MODAL_URL) return '';
-  // Modal URL pattern: https://<workspace>--<app>-<func>.modal.run
-  // Swap the trailing -separate (with optional -http suffix) to -separate-start.
-  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-separate-start$2');
-}
-
-function _stemsCheckUrl(env) {
-  if (env.STEMS_MODAL_CHECK_URL) return env.STEMS_MODAL_CHECK_URL;
-  if (!env.STEMS_MODAL_URL) return '';
-  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-separate-check$2');
-}
-
-// Stab #14 — Modal cancel endpoint. Optional; if STEMS_MODAL_CANCEL_URL is set
-// the worker forwards the cancel call. Otherwise the worker still returns
-// success so the client can stop polling — the GPU job will complete on its
-// own (wasted, but the client UI is no longer lying about the state).
-function _stemsCancelUrl(env) {
-  if (env.STEMS_MODAL_CANCEL_URL) return env.STEMS_MODAL_CANCEL_URL;
-  if (!env.STEMS_MODAL_URL) return '';
-  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-separate-cancel$2');
+// Consolidation 2026-05-24: separator.py now exposes ONE web endpoint
+// `stems_endpoint(action="start"|"check"|"analyze")` that dispatches on
+// the action field. STEMS_MODAL_URL points at it directly. Worker routes
+// keep their public paths but thread `action` into the JSON body.
+//
+// Cancellation: there is no separate cancel endpoint anymore. The cancel
+// path returns client_only — the GPU job completes on its own; the client
+// stops polling. This is operationally honest and well-precedented in the
+// prior implementation (cancel was always best-effort).
+function _stemsModalUrl(env) {
+  return env.STEMS_MODAL_URL || '';
 }
 
 // POST /stems/start
@@ -2405,19 +2576,20 @@ async function handleStemsStart(request, env) {
   if (resolved.error) return cors(jsonError(resolved.error, resolved.status || 400));
   const sourceUrl = resolved.sourceUrl;
 
-  const startUrl = _stemsStartUrl(env);
-  if (!startUrl) {
-    return cors(jsonError('stems_not_configured: STEMS_MODAL_START_URL secret (or STEMS_MODAL_URL fallback) required', 500));
+  const stemsUrl = _stemsModalUrl(env);
+  if (!stemsUrl) {
+    return cors(jsonError('stems_not_configured: STEMS_MODAL_URL secret required', 500));
   }
 
   // Spawn-only call; should return in <2s.
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   try {
-    const modalRes = await fetch(startUrl, {
+    const modalRes = await fetch(stemsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'start',
         source_url: sourceUrl,
         song_id: songId,
         model_name: modelName,
@@ -2458,48 +2630,15 @@ async function handleStemsCancel(request, env) {
   const callId = String(body.callId || body.call_id || '').trim();
   if (!callId) return cors(jsonError('missing callId', 400));
 
-  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
-    // Worker not configured for stems at all — still return success so the
-    // client UI can stop spinning. Logs the misconfig once for ops visibility.
-    console.warn('[stems/cancel] worker not configured — returning client_only success for callId=' + callId);
-    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }));
-  }
-
-  const cancelUrl = _stemsCancelUrl(env);
-  if (!cancelUrl) {
-    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }));
-  }
-
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 10000);
-  try {
-    const modalRes = await fetch(cancelUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
-      signal: ctrl.signal
-    });
-    clearTimeout(timer);
-    // 2xx / 404 (job already done or unknown) both treated as cancelled-remote
-    // since the result for the caller is identical: nothing to poll anymore.
-    if (modalRes.ok || modalRes.status === 404 || modalRes.status === 410) {
-      console.log('[stems/cancel] callId=' + callId + ' status=' + modalRes.status);
-      return cors(new Response(JSON.stringify({ success: true, cancelled: 'remote', callId: callId }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }));
-    }
-    // Modal returned a real error — still tell the client success so the UI
-    // doesn't hang, but flag client_only so ops can see the orphaned job in logs.
-    console.warn('[stems/cancel] modal returned ' + modalRes.status + ' for callId=' + callId);
-    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId, modalStatus: modalRes.status }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }));
-  } catch (e) {
-    clearTimeout(timer);
-    console.warn('[stems/cancel] fetch failed for callId=' + callId + ' err=' + (e && e.message));
-    return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId, error: 'modal_unreachable' }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }));
-  }
+  // After the 2026-05-24 endpoint consolidation, separator.py no longer
+  // publishes a cancel HTTP endpoint (the dispatcher only handles start,
+  // check, analyze). Cancel semantics are preserved as client_only: the
+  // GPU job runs to completion but the client stops polling. This was
+  // already the well-precedented fallback behavior; it just becomes the
+  // permanent path.
+  console.log('[stems/cancel] client_only (no remote cancel after consolidation) callId=' + callId);
+  return cors(new Response(JSON.stringify({ success: true, cancelled: 'client_only', callId: callId }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }));
 }
 
 // POST /stems/check
@@ -2514,18 +2653,19 @@ async function handleStemsCheck(request, env) {
   const callId = String(body.callId || body.call_id || '').trim();
   if (!callId) return cors(jsonError('missing callId', 400));
 
-  const checkUrl = _stemsCheckUrl(env);
-  if (!checkUrl) {
-    return cors(jsonError('stems_not_configured: STEMS_MODAL_CHECK_URL secret (or STEMS_MODAL_URL fallback) required', 500));
+  const stemsUrl = _stemsModalUrl(env);
+  if (!stemsUrl) {
+    return cors(jsonError('stems_not_configured: STEMS_MODAL_URL secret required', 500));
   }
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   try {
-    const modalRes = await fetch(checkUrl, {
+    const modalRes = await fetch(stemsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'check',
         call_id: callId,
         token: env.STEMS_SHARED_SECRET
       }),
@@ -2545,43 +2685,36 @@ async function handleStemsCheck(request, env) {
 }
 
 // ── Phase 2: Spatial separation (pan + fingerprint) ──────────────────────────
-// All four legacy endpoints now proxy to consolidated Modal endpoints to stay
-// under the Modal web-endpoint cap (the rehearsal-segmenter needs 2 of the
-// 8 slots, so we merged):
-//   pan-analyze-http + tone-fingerprint-http → stems-analyze-http (task param)
-//   spatial-separate-start → separate-start (mode='spatial')
-//   spatial-separate-check → separate-check (already generic to call_id)
-// Worker keeps the public /stems/* paths unchanged so browser code is unmodified.
+// All these public routes proxy to the SAME stems_endpoint Modal URL with
+// different action / task / mode values in the body:
+//   /stems/pan-analyze  → action='analyze', task='pan'
+//   /stems/fingerprint  → action='analyze', task='fingerprint'
+//   /stems/spatial/start → action='start',  mode='spatial'
+//   /stems/spatial/check → action='check'
+// This keeps separator.py at 2 web endpoints (stems_endpoint + lalal_endpoint)
+// + embed_serve = 3 total in that service, well under the Modal Starter cap.
 
-function _spatialUrl(env, slug, secretName) {
-  if (env[secretName]) return env[secretName];
-  if (!env.STEMS_MODAL_URL) return '';
-  return env.STEMS_MODAL_URL.replace(/-separate(-http)?(\.modal\.run.*)$/, '-' + slug + '$2');
-}
-
-// Merged sync analysis URL. Prefer the new explicit secret; fall back to
-// deriving from STEMS_MODAL_URL by slug substitution.
-function _stemsAnalyzeUrl(env) {
-  return _spatialUrl(env, 'stems-analyze-http', 'STEMS_MODAL_ANALYZE_URL');
-}
-
-// Shared helper for the two merged sync-analysis paths.
+// Shared helper for the two analysis paths.
 async function _proxyStemsAnalyze(request, env, task) {
-  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+  const stemsUrl = _stemsModalUrl(env);
+  if (!stemsUrl || !env.STEMS_SHARED_SECRET) {
     return cors(jsonError('stems_not_configured', 500));
   }
   let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   const sourceUrl = String(body.sourceUrl || '').trim();
   if (!sourceUrl) return cors(jsonError('missing sourceUrl', 400));
-  const url = _stemsAnalyzeUrl(env);
-  if (!url) return cors(jsonError('STEMS_MODAL_ANALYZE_URL not set', 500));
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90000);
   try {
-    const r = await fetch(url, {
+    const r = await fetch(stemsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ task: task, source_url: sourceUrl, token: env.STEMS_SHARED_SECRET }),
+      body: JSON.stringify({
+        action: 'analyze',
+        task: task,
+        source_url: sourceUrl,
+        token: env.STEMS_SHARED_SECRET,
+      }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
@@ -2596,21 +2729,21 @@ async function _proxyStemsAnalyze(request, env, task) {
   }
 }
 
-// POST /stems/pan-analyze  Body: { sourceUrl } — proxies to /stems-analyze task=pan
+// POST /stems/pan-analyze  Body: { sourceUrl }
 async function handlePanAnalyze(request, env) {
   return _proxyStemsAnalyze(request, env, 'pan');
 }
 
-// POST /stems/fingerprint  Body: { sourceUrl } — proxies to /stems-analyze task=fingerprint
+// POST /stems/fingerprint  Body: { sourceUrl }
 async function handleToneFingerprint(request, env) {
   return _proxyStemsAnalyze(request, env, 'fingerprint');
 }
 
 // POST /stems/spatial/start
 // Body: { songId, sourceUrl, panWindows, references?, fpStrength?, pathPrefix? }
-// Proxies to the merged /stems/start endpoint with mode='spatial'.
 async function handleSpatialStart(request, env) {
-  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+  const stemsUrl = _stemsModalUrl(env);
+  if (!stemsUrl || !env.STEMS_SHARED_SECRET) {
     return cors(jsonError('stems_not_configured', 500));
   }
   let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
@@ -2623,15 +2756,14 @@ async function handleSpatialStart(request, env) {
   if (!songId || !sourceUrl || panWindows.length === 0) {
     return cors(jsonError('missing songId, sourceUrl, or panWindows', 400));
   }
-  const url = _stemsStartUrl(env);  // separate-start handles both modes now
-  if (!url) return cors(jsonError('STEMS_MODAL_START_URL not set', 500));
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   try {
-    const r = await fetch(url, {
+    const r = await fetch(stemsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        action: 'start',
         mode: 'spatial',
         source_url: sourceUrl, song_id: songId,
         pan_windows: panWindows, references: references,
@@ -2653,23 +2785,25 @@ async function handleSpatialStart(request, env) {
 }
 
 // POST /stems/spatial/check  Body: { callId }
-// Proxies to the merged /stems/check endpoint (call_id polling is mode-agnostic).
 async function handleSpatialCheck(request, env) {
-  if (!env.STEMS_MODAL_URL || !env.STEMS_SHARED_SECRET) {
+  const stemsUrl = _stemsModalUrl(env);
+  if (!stemsUrl || !env.STEMS_SHARED_SECRET) {
     return cors(jsonError('stems_not_configured', 500));
   }
   let body; try { body = await request.json(); } catch (e) { return cors(jsonError('invalid_json', 400)); }
   const callId = String(body.callId || body.call_id || '').trim();
   if (!callId) return cors(jsonError('missing callId', 400));
-  const url = _stemsCheckUrl(env);  // separate-check is generic to any call_id
-  if (!url) return cors(jsonError('STEMS_MODAL_CHECK_URL not set', 500));
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60000);
   try {
-    const r = await fetch(url, {
+    const r = await fetch(stemsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ call_id: callId, token: env.STEMS_SHARED_SECRET }),
+      body: JSON.stringify({
+        action: 'check',
+        call_id: callId,
+        token: env.STEMS_SHARED_SECRET,
+      }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);

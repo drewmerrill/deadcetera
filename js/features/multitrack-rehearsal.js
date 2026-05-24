@@ -1040,13 +1040,23 @@ function _mtAbortAllUploads(reason) {
 
 // ── Multitrack player ────────────────────────────────────────────────────────
 
-window._mtOpenPlayer = async function(sessionId) {
+// ── Player entry router (Review Mode default, Isolate Mode opt-in) ──────────
+// Per the multitrack browser playback audit (2026-05-24):
+//   - Review Mode (default): play one server-rendered stereo stream.
+//     Sample-accurate, fast seek, no drift. Built from a recipe via
+//     services/multitrack-render/render.py + worker /multitrack/render/*.
+//   - Isolate Stems Mode: the legacy 17-stream player. Useful for short
+//     A/B comparisons; honest banner warns about drift on long sessions.
+// On first open we hit /multitrack/render/status. If a render exists,
+// play it. If not, auto-trigger a render and show "Preparing review mix…"
+// while it builds (~30-60s for a 3-hour rehearsal).
+window._mtOpenPlayer = async function(sessionId, opts) {
+    opts = opts || {};
     var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
     if (!db || typeof bandPath !== 'function') {
         if (typeof showToast === 'function') showToast('Firebase not ready');
         return;
     }
-    // C2 Phase 2: route through canonical loadById when available.
     var session = null;
     try {
         if (typeof GLStore !== 'undefined' && GLStore.RehearsalSession && GLStore.RehearsalSession.loadById) {
@@ -1060,13 +1070,49 @@ window._mtOpenPlayer = async function(sessionId) {
         if (typeof showToast === 'function') showToast('Session not found or not multitrack');
         return;
     }
-
-    // Sort tracks by role order, group by group label
     var tracks = session.tracks.slice().sort(function(a, b) {
         var ao = (_MT_ROLES[a.role] && _MT_ROLES[a.role].order) || 999;
         var bo = (_MT_ROLES[b.role] && _MT_ROLES[b.role].order) || 999;
         return ao - bo;
     });
+
+    // Explicit-mode entry (used by the mode toggle to bypass the auto-pick).
+    if (opts.mode === 'isolate') {
+        return _mtOpenIsolateMode(session, tracks, sessionId);
+    }
+    if (opts.mode === 'review') {
+        return _mtOpenReviewMode(session, tracks, sessionId, opts.render || null);
+    }
+
+    // Auto-pick: check for an existing render. If one exists, use Review.
+    // If not, still open Review (with "Preparing…") and auto-trigger render.
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var existingRender = null;
+    try {
+        var sr = await fetch(workerBase + '/multitrack/render/status?bandSlug=' + encodeURIComponent(slug) + '&sessionId=' + encodeURIComponent(sessionId));
+        if (sr.ok) {
+            var sj = await sr.json();
+            if (sj && Array.isArray(sj.renders) && sj.renders.length) {
+                // Newest first (worker sorts by uploaded desc). Use the most recent.
+                existingRender = sj.renders[0];
+            }
+        }
+    } catch (e) {
+        console.warn('[Multitrack] render status check failed (will continue in Review without auto-render):', e && e.message);
+    }
+    return _mtOpenReviewMode(session, tracks, sessionId, existingRender);
+};
+
+// ── Isolate Mode (legacy 17-stream player) ──────────────────────────────────
+// Opt-in from Review Mode via the 🎚 Isolate stems toggle. Honest banner
+// warns the user that browser playback drifts on long sessions.
+async function _mtOpenIsolateMode(session, tracks, sessionId) {
+    // Read durationSec from session if known (used to gate the long-session
+    // banner). Falls back to 0; banner only shows when we know the value
+    // exceeds 30 min, so a missing value just hides the banner.
+    var durHint = parseFloat(session.durationSec || session.duration || 0) || 0;
+    var showLongBanner = durHint >= 30 * 60;
 
     var existing = document.getElementById('mtPlayerOverlay');
     if (existing) existing.remove();
@@ -1117,9 +1163,21 @@ window._mtOpenPlayer = async function(sessionId) {
             // 📦 Download stems — kicks off the existing /multitrack/zip
             // pipeline, polls, and surfaces the download link when ready.
             '<button onclick="_mtDownloadStems()" id="mtDownloadBtn" title="Download original FLAC stems as a zip — for ProTools / other DAWs" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📦 Stems</button>' +
+            // 👁 Review mode — switches the player to single-stream playback
+            // against the server-rendered mix. Sample-accurate, fast seek.
+            '<button onclick="_mtSwitchToReview()" title="Switch to Review Mode — single stereo mix, fast seek, no drift" style="background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.35);border-radius:5px;color:#a5b4fc;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">👁 Review</button>' +
             '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
             '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
           '</div>' +
+          // §8.1 Long-session banner — honest warning for sessions where the
+          // browser-side sync is known to drift. Only shows when duration ≥
+          // 30 min. Hidden once Drew opts out via setting localStorage flag.
+          (showLongBanner ? ('<div id="mtLongSessionBanner" style="background:rgba(245,158,11,0.10);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78em;color:#fbbf24;flex-shrink:0;display:flex;align-items:center;gap:8px">'
+            + '<span style="font-size:1em">⚠️</span>'
+            + '<span style="flex:1">Long-session multi-stream playback may drift on far seeks. '
+            + '<button onclick="_mtSwitchToReview()" style="background:none;border:none;color:#fcd34d;text-decoration:underline;cursor:pointer;font:inherit;padding:0">Switch to Review Mode</button> for one stable rendered stream.</span>'
+            + '<button onclick="_mtDismissLongBanner()" title="Don\'t show again this session" style="background:none;border:none;color:#fbbf24;cursor:pointer;padding:0 4px;font-size:1.1em">×</button>'
+            + '</div>') : '') +
           // Transport bar — two rows. Row 1: action buttons + time.
           // Row 2: full-width seek bar (Drew 2026-05-24: "need slider full
           // length of screen, below everything").
@@ -1171,7 +1229,9 @@ window._mtOpenPlayer = async function(sessionId) {
     // Wire up player state
     var audios = Array.from(ov.querySelectorAll('audio[data-track-id]'));
     _mtState.player = {
+        mode: 'isolate',             // 'isolate' = 17-stream; 'review' = 1-stream
         sessionId: sessionId,
+        session: session,            // retained for cross-mode rendering
         tracks: tracks,
         audios: audios,
         masterPlaying: false,
@@ -1297,6 +1357,331 @@ window._mtOpenPlayer = async function(sessionId) {
             if (btn) btn.textContent = '▶ Play';
         });
     });
+}
+
+// ── Review Mode — single rendered stereo stream ─────────────────────────────
+// The default playback path per the multitrack browser playback audit.
+// One <audio> element points at the server-rendered mix (R2 URL). Sample-
+// accurate, fast seek, no drift. If no render exists yet, this UI shows
+// "Preparing review mix…" and triggers /multitrack/render/start in the
+// background; on success it swaps the <audio> src.
+async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo) {
+    var existing = document.getElementById('mtPlayerOverlay');
+    if (existing) existing.remove();
+    var ov = document.createElement('div');
+    ov.id = 'mtPlayerOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(6px)';
+
+    var dateLabel = session.date ? new Date(session.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    var renderUrl = renderInfo && renderInfo.url ? renderInfo.url : '';
+    var renderLabel = renderUrl
+        ? ('Playing ' + escHtml(renderInfo.fileName || 'rendered mix') + ' · ' + (renderInfo.format || 'mix').toUpperCase())
+        : '⏳ Preparing review mix… (~30-60s on first open)';
+
+    ov.innerHTML =
+        '<div style="max-width:880px;width:100%;background:#0f172a;border-radius:14px;padding:20px;border:1px solid rgba(255,255,255,0.08);max-height:92vh;display:flex;flex-direction:column">' +
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0">' +
+            '<span style="font-size:1.25em">👁</span>' +
+            '<div style="flex:1">' +
+              '<div style="font-size:1em;font-weight:800;color:#f1f5f9">Review Mode <span style="font-size:0.7em;font-weight:600;color:#a5b4fc;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);border-radius:4px;padding:2px 6px;margin-left:6px">single stream</span></div>' +
+              '<div id="mtHeaderMeta" style="font-size:0.72em;color:var(--text-dim);margin-top:2px">' + escHtml(dateLabel) + (session.venue ? ' · ' + escHtml(session.venue) : '') + ' · ' + tracks.length + ' tracks</div>' +
+            '</div>' +
+            // ⭐ Keeper, 📤 Export, 🎚 Isolate, ✏️ Edit, × Close
+            '<button onclick="_mtToggleKeeper()" id="mtKeeperBtn" title="Mark this rehearsal as a Keeper" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">' + (session.keeper ? '⭐ Keeper' : '☆ Keeper') + '</button>' +
+            '<button onclick="_mtExportRehearsalMix()" id="mtExportBtn" title="Render and download a stereo mix of this rehearsal" style="background:rgba(34,197,94,0.18);border:1px solid rgba(34,197,94,0.35);border-radius:5px;color:#86efac;padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📤 Export Mix</button>' +
+            '<button onclick="_mtSwitchToIsolate()" title="Switch to Isolate Stems Mode for per-track mute/solo (may drift on long sessions)" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">🎚 Isolate</button>' +
+            '<button onclick="_mtDownloadStems()" id="mtDownloadBtn" title="Download original FLAC stems as a zip" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:4px">📦 Stems</button>' +
+            '<button onclick="_mtEditSessionHeader()" title="Edit date + venue" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:4px 8px;cursor:pointer;font-size:0.78em;margin-right:6px">✏️ Edit</button>' +
+            '<button onclick="_mtClosePlayer()" style="background:none;border:none;color:#64748b;font-size:1.4em;cursor:pointer;padding:0 6px">×</button>' +
+          '</div>' +
+          // Render-status banner — shows progress while a render is in flight,
+          // or the active render's name once playing.
+          '<div id="mtReviewStatusBanner" style="background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78em;color:#cbd5e1;flex-shrink:0">' +
+            renderLabel +
+          '</div>' +
+          // Transport bar — same 2-row layout as Isolate Mode, but no
+          // mute/solo/volume/reverb (those are mix-time decisions baked
+          // into the render). Single <audio> element drives everything.
+          '<div style="padding:10px 8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-bottom:10px;flex-shrink:0">' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+              '<button onmousedown="_mtHoldStart(-30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-30)" ontouchend="_mtHoldStop()" title="Back 30s" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 30</button>' +
+              '<button onmousedown="_mtHoldStart(-5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(-5)" ontouchend="_mtHoldStop()" title="Back 5s" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">⏪ 5</button>' +
+              '<button onclick="_mtTogglePlayAll()" id="mtPlayAll" style="padding:8px 14px;border-radius:7px;border:none;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-weight:800;cursor:pointer;font-size:0.92em;min-width:78px">▶ Play</button>' +
+              '<button onmousedown="_mtHoldStart(5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(5)" ontouchend="_mtHoldStop()" title="Forward 5s" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">5 ⏩</button>' +
+              '<button onmousedown="_mtHoldStart(30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(30)" ontouchend="_mtHoldStop()" title="Forward 30s" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">30 ⏩</button>' +
+              '<button onclick="_mtAnalyzeRehearsal()" title="Run the segmentation engine" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(99,102,241,0.3);background:rgba(99,102,241,0.12);color:#a5b4fc;cursor:pointer;font-size:0.74em;flex-shrink:0;font-weight:700">🎯 Analyze</button>' +
+              '<button onclick="_mtExportDigest()" title="Copy a markdown digest of all comments" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);cursor:pointer;font-size:0.74em;flex-shrink:0">📋 Digest</button>' +
+              '<div id="mtTimeLabel" style="font-family:ui-monospace,monospace;font-size:0.82em;color:var(--text);min-width:90px;text-align:right;margin-left:auto">0:00 / 0:00</div>' +
+            '</div>' +
+            '<div style="position:relative;margin-top:10px;padding-top:4px">' +
+              '<div id="mtSeekMarkers" style="position:absolute;left:0;right:0;top:0;height:8px;pointer-events:none"></div>' +
+              '<input type="range" id="mtMasterSeek" min="0" max="100" value="0" step="0.1" oninput="_mtSeekPreview(this.value)" onchange="_mtSeekMaster(this.value)" style="width:100%;accent-color:#a5b4fc">' +
+            '</div>' +
+          '</div>' +
+          // Single rendered audio — only created when we have a URL. While
+          // waiting for the render, this slot is empty and play() is a no-op.
+          '<audio id="mtReviewAudio" preload="metadata" crossorigin="anonymous"' + (renderUrl ? (' src="' + escHtml(renderUrl) + '"') : '') + '></audio>' +
+          // Comments panel + composer — same as Isolate Mode.
+          '<div id="mtCommentPanel" style="margin-top:10px;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow-y:auto;flex:1;min-height:160px"></div>' +
+          '<div id="mtComposerArea"></div>' +
+        '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e) { if (e.target === ov) _mtClosePlayer(); });
+
+    var reviewAudio = document.getElementById('mtReviewAudio');
+    _mtState.player = {
+        mode: 'review',
+        sessionId: sessionId,
+        session: session,
+        tracks: tracks,
+        audios: reviewAudio ? [reviewAudio] : [],
+        masterPlaying: false,
+        soloed: {},
+        muted: {},
+        comments: [],
+        anchorTrackId: '',
+        commentFilterToSoloed: false,
+        commentFilterMember: '',
+        renderInfo: renderInfo || null,
+    };
+
+    // Wire the single audio element's events the same way Isolate Mode does
+    // (loadedmetadata → duration; timeupdate → position label; ended → flip
+    // the play button).
+    if (reviewAudio) {
+        reviewAudio.addEventListener('loadedmetadata', function() {
+            _mtMaybeUpdateDuration();
+            _mtRenderSeekMarkers();
+        });
+        reviewAudio.addEventListener('timeupdate', _mtMaybeUpdateMasterPosition);
+        reviewAudio.addEventListener('ended', function() {
+            if (_mtState.player) _mtState.player.masterPlaying = false;
+            var btn = document.getElementById('mtPlayAll');
+            if (btn) btn.textContent = '▶ Play';
+        });
+    }
+
+    // Load comments + segments (same logic as Isolate Mode).
+    _mtLoadSegments(sessionId).then(function() {
+        if (_mtState.player && _mtState.player.sessionId === sessionId) {
+            _mtRenderSegmentMarkers();
+        }
+    });
+    _mtLoadComments(sessionId).then(function(comments) {
+        if (_mtState.player && _mtState.player.sessionId === sessionId) {
+            _mtState.player.comments = comments;
+            _mtRefreshCommentPanel();
+            if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
+            _mtState.player._timeTicker = setInterval(function() {
+                var t = _mtCurrentPlayhead();
+                var el = document.getElementById('mtComposerTime');
+                if (el) el.textContent = _mtFmtTime(t);
+                _mtHighlightActiveComment();
+            }, 500);
+        }
+    });
+
+    // If no render yet, trigger one. The render-complete handler swaps
+    // the <audio> src in place, updates the banner, and the player picks
+    // up the duration on the next loadedmetadata event.
+    if (!renderUrl) {
+        _mtKickAutoRender(session, sessionId);
+    }
+}
+
+// Internal helper — fires off a fresh render and polls until it lands.
+// Used by Review Mode when no render exists for the session yet.
+async function _mtKickAutoRender(session, sessionId) {
+    var p = _mtState.player;
+    if (!p || p.sessionId !== sessionId) return;
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+    var banner = document.getElementById('mtReviewStatusBanner');
+    function setBanner(text) {
+        if (banner) banner.innerHTML = text;
+    }
+    try {
+        setBanner('⏳ Preparing review mix on the server… (typically ~30-60s for a 3-hour rehearsal)');
+        // Build a default recipe — every track at unity, no mute/solo, default
+        // reverb send. The render service fills the same defaults if we omit
+        // tracks; we pass an empty recipe for simplicity.
+        var renderId = 'auto-' + Date.now();
+        var startRes = await fetch(workerBase + '/multitrack/render/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bandSlug: slug,
+                sessionId: sessionId,
+                renderId: renderId,
+                recipe: {
+                    tracks: {},                  // empty = every stem unity gain
+                    masterReverbWet: 0,          // no reverb on auto-render
+                    outputFormat: 'mp3',         // small + universally supported
+                    outputName: 'rehearsal-mix-' + (session.date || sessionId) + '.mp3'
+                }
+            })
+        });
+        var startJson = await startRes.json();
+        if (!startRes.ok || !startJson || !startJson.call_id) {
+            throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+        }
+        var callId = startJson.call_id;
+        // Poll every 5s, up to 5 min (60 attempts).
+        for (var attempt = 0; attempt < 60; attempt++) {
+            if (!_mtState.player || _mtState.player.sessionId !== sessionId) return;
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            setBanner('⏳ Rendering on the server… (' + ((attempt + 1) * 5) + 's elapsed)');
+            var checkRes = await fetch(workerBase + '/multitrack/render/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: callId })
+            });
+            var checkJson = await checkRes.json();
+            if (checkJson && checkJson.status === 'done' && checkJson.publicUrl) {
+                if (!_mtState.player || _mtState.player.sessionId !== sessionId) return;
+                var audio = document.getElementById('mtReviewAudio');
+                if (audio) {
+                    audio.src = checkJson.publicUrl;
+                    audio.load();
+                }
+                _mtState.player.renderInfo = {
+                    url: checkJson.publicUrl,
+                    fileName: checkJson.fileName,
+                    format: checkJson.format,
+                    renderId: checkJson.renderId,
+                };
+                setBanner('✓ Rendered ' + escHtml(checkJson.fileName || 'mix') + ' — playing single stream · seek anywhere instantly');
+                if (typeof showToast === 'function') showToast('✓ Review mix ready');
+                return;
+            }
+            if (checkJson && (checkJson.success === false || checkJson.status === 'error')) {
+                throw new Error((checkJson.error || checkJson.detail || 'render_error'));
+            }
+        }
+        throw new Error('render timed out after 5 minutes');
+    } catch (e) {
+        console.warn('[Multitrack] auto-render failed:', e);
+        setBanner('⚠️ Auto-render failed: ' + escHtml(String(e && e.message || e)) + '. <button onclick="_mtSwitchToIsolate()" style="background:none;border:none;color:#a5b4fc;text-decoration:underline;cursor:pointer;font:inherit;padding:0">Open Isolate Mode instead</button>');
+    }
+}
+
+// ── Mode switches ───────────────────────────────────────────────────────────
+window._mtSwitchToReview = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p.mode === 'review') return;
+    var sid = p.sessionId;
+    _mtClosePlayer();
+    window._mtOpenPlayer(sid, { mode: 'review' });
+};
+window._mtSwitchToIsolate = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p.mode === 'isolate') return;
+    var sid = p.sessionId;
+    _mtClosePlayer();
+    window._mtOpenPlayer(sid, { mode: 'isolate' });
+};
+window._mtDismissLongBanner = function() {
+    var b = document.getElementById('mtLongSessionBanner');
+    if (b) b.style.display = 'none';
+};
+
+// ── 📤 Export Rehearsal Mix ─────────────────────────────────────────────────
+// Builds a mix recipe from the current Isolate-mode state (volumes, mutes,
+// solos, reverb sends, master reverb) — or defaults if user is in Review
+// Mode — and kicks off a fresh server-side render. Surface the download
+// link when complete.
+window._mtExportRehearsalMix = async function() {
+    var p = _mtState.player;
+    if (!p || !p.sessionId) return;
+    // Format picker — simple confirm prompt with 3 options. Defaults to MP3.
+    var fmt = (prompt('Export format? (wav / mp3 / flac)', 'mp3') || 'mp3').toLowerCase().trim();
+    if (fmt !== 'wav' && fmt !== 'mp3' && fmt !== 'flac') {
+        if (typeof showToast === 'function') showToast('Cancelled — pick wav, mp3, or flac');
+        return;
+    }
+    var btn = document.getElementById('mtExportBtn');
+    var orig = btn ? btn.textContent : '';
+    function setLabel(text, disable) {
+        if (!btn) return;
+        btn.textContent = text;
+        btn.disabled = !!disable;
+        btn.style.opacity = disable ? '0.6' : '1';
+    }
+    var workerBase = (typeof WORKER_URL !== 'undefined' ? WORKER_URL : 'https://deadcetera-proxy.drewmerrill.workers.dev');
+    var slug = (typeof currentBandSlug !== 'undefined') ? currentBandSlug : 'deadcetera';
+
+    // Build the recipe from current mix state.
+    // In Isolate Mode we have full per-track state; in Review Mode we have
+    // none, so the recipe ends up empty (= server applies unity defaults).
+    var anySolo = Object.keys(p.soloed || {}).some(function(k) { return p.soloed[k]; });
+    var tracksRecipe = {};
+    (p.tracks || []).forEach(function(t) {
+        var tid = t.trackId;
+        var vol = (p.mixState && p.mixState.volumes && p.mixState.volumes[tid] != null) ? p.mixState.volumes[tid] : 1.0;
+        var send = (p.mixState && p.mixState.reverbSends && p.mixState.reverbSends[tid] !== undefined) ? p.mixState.reverbSends[tid] : 1;
+        tracksRecipe[tid] = {
+            gain: vol,
+            mute: !!(p.muted && p.muted[tid]),
+            solo: !!(p.soloed && p.soloed[tid]),
+            reverbSend: send,
+        };
+    });
+    var masterWet = (p.mixState && typeof p.mixState.reverbWet === 'number') ? p.mixState.reverbWet : 0;
+    var renderId = 'export-' + Date.now();
+    var recipe = {
+        tracks: tracksRecipe,
+        masterReverbWet: masterWet,
+        outputFormat: fmt,
+        outputName: 'rehearsal-mix-' + (p.session && p.session.date || p.sessionId) + '.' + fmt,
+    };
+    void anySolo; // documented; recipe carries explicit solo flags so server can mirror
+
+    setLabel('⏳ Starting export…', true);
+    try {
+        var startRes = await fetch(workerBase + '/multitrack/render/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                bandSlug: slug,
+                sessionId: p.sessionId,
+                renderId: renderId,
+                recipe: recipe,
+            })
+        });
+        var startJson = await startRes.json();
+        if (!startRes.ok || !startJson || !startJson.call_id) {
+            throw new Error((startJson && startJson.error) || ('HTTP ' + startRes.status));
+        }
+        var callId = startJson.call_id;
+        for (var attempt = 0; attempt < 60; attempt++) {
+            await new Promise(function(r) { setTimeout(r, 5000); });
+            setLabel('⏳ Rendering (' + ((attempt + 1) * 5) + 's)…', true);
+            var checkRes = await fetch(workerBase + '/multitrack/render/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ call_id: callId })
+            });
+            var checkJson = await checkRes.json();
+            if (checkJson && checkJson.status === 'done' && checkJson.publicUrl) {
+                setLabel('📥 Downloading…', true);
+                window.location.href = checkJson.publicUrl;
+                setTimeout(function() { setLabel(orig || '📤 Export Mix', false); }, 2000);
+                if (typeof showToast === 'function') showToast('✓ Mix ready — download starting');
+                return;
+            }
+            if (checkJson && (checkJson.success === false || checkJson.status === 'error')) {
+                throw new Error((checkJson.error || checkJson.detail || 'render_error'));
+            }
+        }
+        throw new Error('render timed out after 5 minutes');
+    } catch (e) {
+        console.warn('[Multitrack] export render failed:', e);
+        setLabel('✗ ' + (e.message || 'failed'), false);
+        if (typeof showToast === 'function') showToast('Export failed: ' + (e.message || ''));
+        setTimeout(function() { setLabel(orig || '📤 Export Mix', false); }, 4000);
+    }
 };
 
 window._mtClosePlayer = function() {
@@ -2179,6 +2564,33 @@ window._mtSeekMaster = function(pct) {
     var dur = p.audios[0].duration;
     if (!isFinite(dur) || dur <= 0) return;
     var t = (parseFloat(pct) / 100) * dur;
+
+    // §8.2 Concurrent-seek debounce (interim fix from the multitrack
+    // playback audit). In Isolate Mode a far seek can take 20-30s of
+    // buffer-fill across 17 streams. If the user scrubs again during
+    // that wait, the prior 17 range fetches are still in flight and
+    // serializing through the 6-connection-per-origin cap. Suppress
+    // duplicate seeks within 750ms (leading-edge debounce) so only
+    // the LATEST scrub target is applied. Review Mode has 1 stream
+    // so this is harmless there.
+    var now = Date.now();
+    if (p._lastSeekAt && (now - p._lastSeekAt) < 750) {
+        // Stash the latest desired position; when the active seek's
+        // settle timer fires it will re-apply the most recent value.
+        p._pendingSeekPct = pct;
+        if (!p._pendingSeekTimer) {
+            p._pendingSeekTimer = setTimeout(function() {
+                p._pendingSeekTimer = null;
+                var lastPct = p._pendingSeekPct;
+                p._pendingSeekPct = null;
+                if (lastPct != null && _mtState.player === p) {
+                    window._mtSeekMaster(lastPct);
+                }
+            }, 750);
+        }
+        return;
+    }
+    p._lastSeekAt = now;
 
     var wasPlaying = p.masterPlaying;
     if (wasPlaying) {

@@ -449,20 +449,40 @@ def separate_stems(
 
 @app.function(
     image=image,
-    timeout=120,
+    timeout=180,
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
 @modal.fastapi_endpoint(method="POST")
-def separate_start(item: dict):
-    """HTTP entry: spawn a stems-separation job, return Modal call_id.
+def stems_endpoint(item: dict):
+    """Consolidated stem-separation HTTP entry — dispatches on action.
 
-    Supports two modes (merged from formerly-separate endpoints to stay
-    under the Modal web-endpoint cap):
-      mode='standard' (default) — htdemucs_6s on GPU. Original behavior.
-        Body: { source_url, song_id, model_name?, token }
-      mode='spatial' — pan-aware + tone-fingerprint two-pass separation.
-        Body: { source_url, song_id, pan_windows, references?, fp_strength?,
-                path_prefix?, token, mode:'spatial' }
+    Combines the former separate_start + separate_check + stems_analyze_http
+    endpoints into one web endpoint to stay under Modal Starter's 8-webhook
+    cap. The underlying Modal functions (separate_stems, spatial_separate,
+    pan_analyze, tone_fingerprint) are unchanged and still spawnable via
+    .remote() / .spawn() from other code paths — only their HTTP shims
+    collapsed.
+
+    Body shapes (action determines which):
+      action='start'   — Body: { action, source_url, song_id, model_name?,
+                                 mode?='standard'|'spatial', pan_windows?,
+                                 references?, fp_strength?, path_prefix?,
+                                 token }
+                         Returns: { success, call_id, song_id, mode, model? }
+      action='check'   — Body: { action, call_id, token }
+                         Returns: { success, status: 'processing' } OR
+                                  { success, status: 'done', stems, ... }
+      action='analyze' — Body: { action, task: 'pan'|'fingerprint',
+                                 source_url, token }
+                         Returns: whatever the analyzer returns
+
+    Worker.js routes:
+      /stems/start            → action='start'
+      /stems/check            → action='check'
+      /stems/spatial/start    → action='start', mode='spatial'
+      /stems/spatial/check    → action='check'  (same as /stems/check)
+      /stems/pan-analyze      → action='analyze', task='pan'
+      /stems/fingerprint      → action='analyze', task='fingerprint'
     """
     expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
     if not expected_token:
@@ -470,93 +490,85 @@ def separate_start(item: dict):
     if item.get("token", "") != expected_token:
         return {"success": False, "error": "unauthorized"}
 
-    mode = item.get("mode", "standard")
-    source_url = item.get("source_url", "")
-    song_id = item.get("song_id", "")
-    if not source_url or not song_id:
-        return {"success": False, "error": "missing source_url or song_id"}
+    action = (item.get("action") or "").strip().lower()
 
-    try:
-        if mode == "spatial":
-            pan_windows = item.get("pan_windows", [])
-            references = item.get("references", None)
-            fp_strength = float(item.get("fp_strength", 0.5))
-            path_prefix = item.get("path_prefix", "spatial")
-            if not pan_windows:
-                return {"success": False, "error": "missing pan_windows for spatial mode"}
-            call = spatial_separate.spawn(
-                source_url, song_id, pan_windows, references, fp_strength, path_prefix,
-            )
-            return {
-                "success": True,
-                "call_id": call.object_id,
-                "song_id": song_id,
-                "mode": "spatial",
-            }
-        else:
-            model_name = item.get("model_name", "htdemucs_6s")
-            call = separate_stems.spawn(source_url, song_id, model_name)
-            return {
-                "success": True,
-                "call_id": call.object_id,
-                "song_id": song_id,
-                "model": model_name,
-                "mode": "standard",
-            }
-    except Exception as e:
-        return {"success": False, "error": f"spawn_failed: {e}"}
+    if action == "start":
+        mode = item.get("mode", "standard")
+        source_url = item.get("source_url", "")
+        song_id = item.get("song_id", "")
+        if not source_url or not song_id:
+            return {"success": False, "error": "missing source_url or song_id"}
+        try:
+            if mode == "spatial":
+                pan_windows = item.get("pan_windows", [])
+                references = item.get("references", None)
+                fp_strength = float(item.get("fp_strength", 0.5))
+                path_prefix = item.get("path_prefix", "spatial")
+                if not pan_windows:
+                    return {"success": False, "error": "missing pan_windows for spatial mode"}
+                call = spatial_separate.spawn(
+                    source_url, song_id, pan_windows, references, fp_strength, path_prefix,
+                )
+                return {
+                    "success": True,
+                    "call_id": call.object_id,
+                    "song_id": song_id,
+                    "mode": "spatial",
+                }
+            else:
+                model_name = item.get("model_name", "htdemucs_6s")
+                call = separate_stems.spawn(source_url, song_id, model_name)
+                return {
+                    "success": True,
+                    "call_id": call.object_id,
+                    "song_id": song_id,
+                    "model": model_name,
+                    "mode": "standard",
+                }
+        except Exception as e:
+            return {"success": False, "error": f"spawn_failed: {e}"}
 
+    if action == "check":
+        call_id = item.get("call_id", "")
+        if not call_id:
+            return {"success": False, "error": "missing call_id"}
+        try:
+            call = modal.FunctionCall.from_id(call_id)
+        except Exception as e:
+            return {"success": False, "error": f"bad_call_id: {e}"}
+        try:
+            result = call.get(timeout=0)
+        except modal.exception.OutputExpiredError:
+            return {"success": False, "error": "output_expired"}
+        except TimeoutError:
+            return {"success": True, "status": "processing"}
+        except Exception as e:
+            return {"success": False, "error": f"call_failed: {e}"}
+        if isinstance(result, dict):
+            out = dict(result)
+            out["status"] = "done"
+            out["success"] = out.get("success", True)
+            return out
+        return {"success": True, "status": "done", "result": result}
 
-@app.function(
-    image=image,
-    timeout=60,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def separate_check(item: dict):
-    """HTTP entry: poll a separate_stems call. Returns processing or done.
+    if action == "analyze":
+        task = (item.get("task") or "").strip().lower()
+        source_url = item.get("source_url", "")
+        if not source_url:
+            return {"success": False, "error": "missing source_url"}
+        try:
+            if task == "fingerprint":
+                return tone_fingerprint.remote(source_url)
+            if task == "pan":
+                return pan_analyze.remote(source_url)
+            return {"success": False, "error": f"unknown task: {task!r} (expected 'pan' or 'fingerprint')"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
-    Body: { call_id, token }
-    Returns one of:
-      { success: true, status: 'processing' }
-      { success: true, status: 'done', stems: {...}, sample_rate, model, elapsed_sec, ... }
-      { success: false, error: '...' }
-    """
-    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected_token:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-    if item.get("token", "") != expected_token:
-        return {"success": False, "error": "unauthorized"}
-
-    call_id = item.get("call_id", "")
-    if not call_id:
-        return {"success": False, "error": "missing call_id"}
-
-    try:
-        call = modal.FunctionCall.from_id(call_id)
-    except Exception as e:
-        return {"success": False, "error": f"bad_call_id: {e}"}
-
-    # timeout=0 → poll. Raises TimeoutError if the call hasn't finished yet.
-    try:
-        result = call.get(timeout=0)
-    except modal.exception.OutputExpiredError:
-        return {"success": False, "error": "output_expired"}
-    except TimeoutError:
-        return {"success": True, "status": "processing"}
-    except Exception as e:
-        # Function raised on the GPU side
-        return {"success": False, "error": f"call_failed: {e}"}
-
-    # Got a result. separate_stems returns a dict with success/stems/etc — just
-    # surface it with status='done' tacked on so the worker can route uniformly.
-    if isinstance(result, dict):
-        out = dict(result)
-        out["status"] = "done"
-        # Preserve the dict's own success flag if present, otherwise default true
-        out["success"] = out.get("success", True)
-        return out
-    return {"success": True, "status": "done", "result": result}
+    return {
+        "success": False,
+        "error": f"bad_action: {action!r} (expected 'start', 'check', or 'analyze')",
+    }
 
 
 # ============================================================================
@@ -913,47 +925,19 @@ def spatial_separate(
     }
 
 
-# ─── HTTP endpoints (synchronous) ───────────────────────────────────────────
-
-@app.function(
-    image=image,
-    timeout=180,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def stems_analyze_http(item: dict):
-    """Merged sync analysis dispatch. Replaces former tone_fingerprint_http
-    and pan_analyze_http endpoints (consolidated to stay under the Modal
-    web-endpoint cap — see the rehearsal-segment migration notes).
-
-    Body: { task: 'pan'|'fingerprint', source_url, token }
-    Returns: whatever the underlying analyzer returns. Errors as
-      { success: false, error: '...' }.
-    """
-    expected = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected: return {"success": False, "error": "server misconfigured"}
-    if item.get("token", "") != expected: return {"success": False, "error": "unauthorized"}
-    task = (item.get("task") or "").strip().lower()
-    source_url = item.get("source_url", "")
-    if not source_url: return {"success": False, "error": "missing source_url"}
-    try:
-        if task == "fingerprint":
-            return tone_fingerprint.remote(source_url)
-        if task == "pan":
-            return pan_analyze.remote(source_url)
-        return {"success": False, "error": f"unknown task: {task!r} (expected 'pan' or 'fingerprint')"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# Spatial separation polling: separate_check (above) already handles any
+# Spatial separation polling: stems_endpoint(action='check') handles any
 # modal.FunctionCall regardless of which inner function spawned it, so a
 # dedicated spatial_separate_check endpoint is redundant. Worker routes
-# /stems/spatial/check → /stems/check uniformly.
+# /stems/spatial/check → stems_endpoint(action='check') uniformly.
 #
-# Spatial separation spawning: separate_start now accepts mode='spatial'
-# and dispatches to spatial_separate internally. Worker routes
-# /stems/spatial/start → /stems/start with mode='spatial' in the body.
+# Spatial separation spawning: stems_endpoint(action='start') accepts
+# mode='spatial' and dispatches to spatial_separate internally. Worker
+# routes /stems/spatial/start → stems_endpoint(action='start',
+# mode='spatial').
+#
+# Sync analysis (pan + tone fingerprint): stems_endpoint(action='analyze')
+# dispatches on task='pan'|'fingerprint'. Replaces the former
+# stems_analyze_http endpoint.
 
 
 # ============================================================================
@@ -1848,47 +1832,54 @@ def lalal_check(task_id: str, song_id: str, lalal_key: str, path_prefix: str = "
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
 @modal.fastapi_endpoint(method="POST")
-def lalal_start_http(item: dict):
-    """HTTP entry for lalal_start. Body: { source_url, song_id, lalal_key, token }."""
+def lalal_endpoint(item: dict):
+    """Consolidated LALAL.AI HTTP entry — dispatches on action.
+
+    Combines lalal_start_http + lalal_check_http into one web endpoint to
+    stay under Modal Starter's 8-webhook cap. The underlying functions
+    lalal_start, lalal_check, lalal_lead_back, lalal_finish_task all
+    remain available via .remote() / .spawn() from other code paths.
+
+    Body shapes:
+      action='start' — Body: { action, source_url, song_id, lalal_key, token }
+      action='check' — Body: { action, task_id, song_id, lalal_key,
+                               path_prefix?, token }
+    """
     expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
     if not expected_token:
         return {"success": False, "error": "server misconfigured: no shared secret"}
     if item.get("token", "") != expected_token:
         return {"success": False, "error": "unauthorized"}
-    source_url = item.get("source_url", "")
-    song_id = item.get("song_id", "")
-    lalal_key = item.get("lalal_key", "")
-    if not source_url or not song_id or not lalal_key:
-        return {"success": False, "error": "missing source_url, song_id, or lalal_key"}
-    try:
-        return lalal_start.remote(source_url, song_id, lalal_key)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
+    action = (item.get("action") or "").strip().lower()
 
-@app.function(
-    image=image,
-    timeout=600,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def lalal_check_http(item: dict):
-    """HTTP entry for lalal_check. Body: { task_id, song_id, lalal_key, token, path_prefix? }."""
-    expected_token = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected_token:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-    if item.get("token", "") != expected_token:
-        return {"success": False, "error": "unauthorized"}
-    task_id = item.get("task_id", "")
-    song_id = item.get("song_id", "")
-    lalal_key = item.get("lalal_key", "")
-    path_prefix = item.get("path_prefix") or "lalal"
-    if not task_id or not song_id or not lalal_key:
-        return {"success": False, "error": "missing task_id, song_id, or lalal_key"}
-    try:
-        return lalal_check.remote(task_id, song_id, lalal_key, path_prefix)
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    if action == "start":
+        source_url = item.get("source_url", "")
+        song_id = item.get("song_id", "")
+        lalal_key = item.get("lalal_key", "")
+        if not source_url or not song_id or not lalal_key:
+            return {"success": False, "error": "missing source_url, song_id, or lalal_key"}
+        try:
+            return lalal_start.remote(source_url, song_id, lalal_key)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    if action == "check":
+        task_id = item.get("task_id", "")
+        song_id = item.get("song_id", "")
+        lalal_key = item.get("lalal_key", "")
+        path_prefix = item.get("path_prefix") or "lalal"
+        if not task_id or not song_id or not lalal_key:
+            return {"success": False, "error": "missing task_id, song_id, or lalal_key"}
+        try:
+            return lalal_check.remote(task_id, song_id, lalal_key, path_prefix)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    return {
+        "success": False,
+        "error": f"bad_action: {action!r} (expected 'start' or 'check')",
+    }
 
 
 @app.function(

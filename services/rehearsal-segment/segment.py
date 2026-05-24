@@ -605,50 +605,19 @@ def segment_audio(source_url: str, setlist: list = None):
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
 @modal.fastapi_endpoint(method="POST")
-def segment_start(item: dict):
-    """HTTP entry — spawn segment_audio, return Modal call_id."""
-    expected = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-    if item.get("token", "") != expected:
-        return {"success": False, "error": "unauthorized"}
+def segment_endpoint(item: dict):
+    """Consolidated rehearsal-segmenter HTTP entry — dispatches on action.
 
-    source_url = str(item.get("sourceUrl", "")).strip()
-    if not source_url:
-        return {"success": False, "error": "missing sourceUrl"}
+    Combines former segment_start + segment_check into one web endpoint
+    to stay under Modal Starter's 8-webhook cap. The underlying
+    segment_audio function is unchanged.
 
-    setlist = item.get("setlist") or []
-    if not isinstance(setlist, list):
-        return {"success": False, "error": "setlist must be an array"}
-
-    # Soft-limit setlist size to keep request bodies reasonable.
-    if len(setlist) > 200:
-        setlist = setlist[:200]
-
-    try:
-        call = segment_audio.spawn(source_url, setlist)
-        return {
-            "success": True,
-            "call_id": call.object_id,
-            "songId": item.get("songId", ""),
-        }
-    except Exception as e:
-        return {"success": False, "error": f"spawn_failed: {e}"}
-
-
-@app.function(
-    image=image,
-    timeout=60,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def segment_check(item: dict):
-    """HTTP entry — poll a segment_audio call.
-    Body: { call_id, token }
-    Returns one of:
-      { success: true, status: 'processing' }
-      { success: true, status: 'done', duration_sec, segments[], summary{} }
-      { success: false, error: '...' }
+    Body shapes:
+      action='start' — Body: { action, sourceUrl, setlist?, songId?, token }
+                       Returns: { success, call_id, songId }
+      action='check' — Body: { action, call_id, token }
+                       Returns: { success, status: 'processing' } OR
+                                { success, status: 'done', segments, summary, ... }
     """
     expected = os.environ.get("STEMS_SHARED_SECRET", "")
     if not expected:
@@ -656,22 +625,46 @@ def segment_check(item: dict):
     if item.get("token", "") != expected:
         return {"success": False, "error": "unauthorized"}
 
-    call_id = item.get("call_id", "")
-    if not call_id:
-        return {"success": False, "error": "missing call_id"}
+    action = (item.get("action") or "").strip().lower()
 
-    try:
-        call = modal.FunctionCall.from_id(call_id)
-    except Exception as e:
-        return {"success": False, "error": f"bad_call_id: {e}"}
+    if action == "start":
+        source_url = str(item.get("sourceUrl", "")).strip()
+        if not source_url:
+            return {"success": False, "error": "missing sourceUrl"}
+        setlist = item.get("setlist") or []
+        if not isinstance(setlist, list):
+            return {"success": False, "error": "setlist must be an array"}
+        if len(setlist) > 200:
+            setlist = setlist[:200]
+        try:
+            call = segment_audio.spawn(source_url, setlist)
+            return {
+                "success": True,
+                "call_id": call.object_id,
+                "songId": item.get("songId", ""),
+            }
+        except Exception as e:
+            return {"success": False, "error": f"spawn_failed: {e}"}
 
-    try:
-        result = call.get(timeout=0)
-    except modal.exception.OutputExpiredError:
-        return {"success": False, "error": "output_expired"}
-    except TimeoutError:
-        return {"success": True, "status": "processing"}
-    except Exception as e:
-        return {"success": False, "error": f"call_failed: {e}"}
+    if action == "check":
+        call_id = item.get("call_id", "")
+        if not call_id:
+            return {"success": False, "error": "missing call_id"}
+        try:
+            call = modal.FunctionCall.from_id(call_id)
+        except Exception as e:
+            return {"success": False, "error": f"bad_call_id: {e}"}
+        try:
+            result = call.get(timeout=0)
+        except modal.exception.OutputExpiredError:
+            return {"success": False, "error": "output_expired"}
+        except TimeoutError:
+            return {"success": True, "status": "processing"}
+        except Exception as e:
+            return {"success": False, "error": f"call_failed: {e}"}
+        return result
 
-    return result
+    return {
+        "success": False,
+        "error": f"bad_action: {action!r} (expected 'start' or 'check')",
+    }

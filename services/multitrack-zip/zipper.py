@@ -14,19 +14,21 @@ a typical rehearsal session is well under $0.10 per build.
 Deploy:
     modal deploy services/multitrack-zip/zipper.py
 
-After deploy, Modal prints two URLs (one for `zip_start`, one for `zip_check`).
-Add them as Cloudflare Worker secrets:
-    wrangler secret put MULTITRACK_ZIP_START_URL
-    wrangler secret put MULTITRACK_ZIP_CHECK_URL
+This service exposes a SINGLE web endpoint `zip_endpoint` that dispatches
+on `item.action` — `"start"` to spawn a zip job, `"check"` to poll one.
+The single-endpoint pattern keeps us under Modal Starter's 8-webhook cap.
 
-Uses the SAME `groovelinx-stems` Modal secret that the stems separator
-uses — same R2 credentials, same STEMS_SHARED_SECRET. No new secret
+After deploy, Modal prints ONE URL. Add it as a Cloudflare Worker secret:
+    wrangler secret put MULTITRACK_ZIP_URL
+
+Uses the SAME `groovelinx-stems` Modal secret as the stems separator —
+same R2 credentials, same STEMS_SHARED_SECRET. No new secret
 configuration needed.
 
-Smoke test (after deploy, replacing URLs + secret):
-    curl -X POST https://<workspace>--groovelinx-multitrack-zip-zip-start.modal.run \\
+Smoke test (start a zip):
+    curl -X POST https://<workspace>--groovelinx-multitrack-zip-zip-endpoint.modal.run \\
          -H "Content-Type: application/json" \\
-         -d '{"bandSlug":"deadcetera","sessionId":"smoke-test","token":"<STEMS_SHARED_SECRET>"}'
+         -d '{"action":"start","bandSlug":"deadcetera","sessionId":"smoke-test","token":"<STEMS_SHARED_SECRET>"}'
 
 If the session has no files yet, returns status=no_files immediately
 without spawning the worker function.
@@ -183,51 +185,20 @@ def zip_session(bandSlug: str, sessionId: str):
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
 @modal.fastapi_endpoint(method="POST")
-def zip_start(item: dict):
-    """HTTP entry: spawn zip_session, return Modal call_id."""
-    expected = os.environ.get("STEMS_SHARED_SECRET", "")
-    if not expected:
-        return {"success": False, "error": "server misconfigured: no shared secret"}
-    if item.get("token", "") != expected:
-        return {"success": False, "error": "unauthorized"}
+def zip_endpoint(item: dict):
+    """Consolidated multitrack-zip HTTP entry — dispatches on action.
 
-    band_slug = str(item.get("bandSlug", "")).strip()
-    session_id = str(item.get("sessionId", "")).strip()
+    Combines former zip_start + zip_check into one web endpoint to stay
+    under Modal Starter's 8-webhook cap. The underlying zip_session
+    function is unchanged.
 
-    if not band_slug or not session_id:
-        return {"success": False, "error": "missing bandSlug or sessionId"}
-    if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", band_slug):
-        return {"success": False, "error": "bad_band_slug"}
-    if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", session_id):
-        return {"success": False, "error": "bad_session_id"}
-
-    try:
-        call = zip_session.spawn(band_slug, session_id)
-        return {
-            "success": True,
-            "call_id": call.object_id,
-            "bandSlug": band_slug,
-            "sessionId": session_id,
-        }
-    except Exception as e:
-        return {"success": False, "error": f"spawn_failed: {e}"}
-
-
-@app.function(
-    image=image,
-    timeout=60,
-    secrets=[modal.Secret.from_name("groovelinx-stems")],
-)
-@modal.fastapi_endpoint(method="POST")
-def zip_check(item: dict):
-    """HTTP entry: poll a zip_session call. Returns processing or done.
-
-    Body: { call_id, token }
-    Returns one of:
-      { success: true, status: 'processing' }
-      { success: true, status: 'done', fileCount, zipSize, publicUrl, ... }
-      { success: true, status: 'no_files', fileCount: 0, ... }
-      { success: false, error: '...' }
+    Body shapes:
+      action='start' — Body: { action, bandSlug, sessionId, token }
+                       Returns: { success, call_id, bandSlug, sessionId }
+      action='check' — Body: { action, call_id, token }
+                       Returns: { success, status: 'processing' } OR
+                                { success, status: 'done', publicUrl, ... } OR
+                                { success, status: 'no_files', ... }
     """
     expected = os.environ.get("STEMS_SHARED_SECRET", "")
     if not expected:
@@ -235,23 +206,47 @@ def zip_check(item: dict):
     if item.get("token", "") != expected:
         return {"success": False, "error": "unauthorized"}
 
-    call_id = item.get("call_id", "")
-    if not call_id:
-        return {"success": False, "error": "missing call_id"}
+    action = (item.get("action") or "").strip().lower()
 
-    try:
-        call = modal.FunctionCall.from_id(call_id)
-    except Exception as e:
-        return {"success": False, "error": f"bad_call_id: {e}"}
+    if action == "start":
+        band_slug = str(item.get("bandSlug", "")).strip()
+        session_id = str(item.get("sessionId", "")).strip()
+        if not band_slug or not session_id:
+            return {"success": False, "error": "missing bandSlug or sessionId"}
+        if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", band_slug):
+            return {"success": False, "error": "bad_band_slug"}
+        if not re.match(r"^[a-zA-Z0-9_-]{1,64}$", session_id):
+            return {"success": False, "error": "bad_session_id"}
+        try:
+            call = zip_session.spawn(band_slug, session_id)
+            return {
+                "success": True,
+                "call_id": call.object_id,
+                "bandSlug": band_slug,
+                "sessionId": session_id,
+            }
+        except Exception as e:
+            return {"success": False, "error": f"spawn_failed: {e}"}
 
-    # timeout=0 → poll. Raises TimeoutError if the call hasn't finished yet.
-    try:
-        result = call.get(timeout=0)
-    except modal.exception.OutputExpiredError:
-        return {"success": False, "error": "output_expired"}
-    except TimeoutError:
-        return {"success": True, "status": "processing"}
-    except Exception as e:
-        return {"success": False, "error": f"call_failed: {e}"}
+    if action == "check":
+        call_id = item.get("call_id", "")
+        if not call_id:
+            return {"success": False, "error": "missing call_id"}
+        try:
+            call = modal.FunctionCall.from_id(call_id)
+        except Exception as e:
+            return {"success": False, "error": f"bad_call_id: {e}"}
+        try:
+            result = call.get(timeout=0)
+        except modal.exception.OutputExpiredError:
+            return {"success": False, "error": "output_expired"}
+        except TimeoutError:
+            return {"success": True, "status": "processing"}
+        except Exception as e:
+            return {"success": False, "error": f"call_failed: {e}"}
+        return result
 
-    return result
+    return {
+        "success": False,
+        "error": f"bad_action: {action!r} (expected 'start' or 'check')",
+    }

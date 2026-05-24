@@ -1,10 +1,31 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260524-160224
+**Build Under Test:** 20260524-170407
 
 ## Open
 
-### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH)
+### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH — FIX SHIPPED IN BUILD, AWAITING DEPLOY + IN-BROWSER VERIFICATION)
+
+**Build shipping the fix:** `20260524-170407`
+**Status:** Architectural fix shipped — Review Mode (single stream) becomes the default playback path; 17-stream sync is now an opt-in "Isolate Stems" toggle behind a honest banner. The drift problem is **structurally eliminated** for the >99% review use case because there's only one stream and one clock. Awaiting (a) Drew running the `modal deploy` + `wrangler` deploy sequence per `specs/multitrack_render_deploy_runbook.md`, and (b) in-browser verification per the runbook's smoke-test section.
+
+**What was shipped (code-only, deploy pending):**
+- **R1** `services/multitrack-render/render.py` — Modal endpoint that pulls per-track FLACs from R2, applies a mix recipe (gain/mute/solo/reverbSend/master wet) via ffmpeg, renders WAV/MP3/FLAC, uploads back to R2.
+- **R2** `worker.js` — 3 new routes (`/multitrack/render/start|check|status`) proxying the Modal dispatcher.
+- **R3** `js/features/multitrack-rehearsal.js` — Review Mode is now the default. Single `<audio>` element. On open, GET `/multitrack/render/status`; if a render exists, play it. If not, auto-trigger a render with "⏳ Preparing review mix…" banner; on completion, swap source. 🎚 Isolate toggle reaches the 17-stream UI with a §8.1 honest banner. 📤 Export Mix button builds a recipe from current mix state, renders server-side, surfaces the download.
+- **Interim §8.1** — Long-session banner on Isolate Mode when duration ≥ 30 min, pointing to Review Mode.
+- **Interim §8.2** — 750 ms leading-edge debounce in `_mtSeekMaster` so rapid scrub-storms don't compound the 17-stream range-fetch serialization.
+- **Modal endpoint consolidation** — 9 → 6 web endpoints across `groovelinx-stem-separator`, `groovelinx-rehearsal-segment`, `groovelinx-multitrack-zip` (re-deployed), `groovelinx-multitrack-render` (new). All start/check pairs collapsed into single `*_endpoint(action="start"|"check")` dispatchers. **Zero feature loss** — every underlying Python function is preserved; only the HTTP shims consolidated. 2 slots reserve under Modal Starter's 8 cap.
+
+**Why this is the architectural fix (not another patch):** Three browser-side patches in the prior session all failed because the problem is structural — 17 streams × 6-connection-per-origin cap = 20-30s tail latency on far seeks, plus HTML5 `<audio>` elements with independent clocks. Single-stream playback has 1 clock and 1 range request. Drift is impossible.
+
+**Acceptance criteria (Drew, after deploy):**
+1. Open a multitrack rehearsal that has no render yet → expect "⏳ Preparing review mix…" → ~30-60s later flips to "✓ Rendered" → ▶ Play works.
+2. Seek to 90:00 → lands in <1s.
+3. 🎚 Isolate → 17-stream player opens with §8.1 banner → seek may still take 20-30s (acknowledged trade-off; the user is in opt-in territory).
+4. 📤 Export Mix → pick mp3 → ~30-60s wait → file downloads.
+
+### Bug #17 (legacy entry — superseded by the fix above)
 
 **Build first seen:** `20260524-153606` (and persisted through `20260524-155054` + `20260524-160224`)
 **Reporter:** Drew, in-session UAT 2026-05-24 PM
