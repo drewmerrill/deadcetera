@@ -3061,6 +3061,16 @@ window._mtAnalyzeRun = async function() {
             setlist = _chopBuildSetlistContext() || [];
         }
     } catch (e) {}
+    // Phase 3 — fingerprint priors. Fetch the band's confirmed-segment
+    // corpus from bands/{slug}/song_fingerprints/* and shape into priors
+    // the analyzer can use to bias matching. Failure = priors stay empty,
+    // analyzer falls back to setlist-only matching.
+    var fingerprintPriors = [];
+    try {
+        fingerprintPriors = await _mtFetchFingerprintPriors();
+    } catch (e) {
+        console.warn('[Multitrack] fingerprint priors fetch failed (continuing without):', e && e.message);
+    }
 
     // Generate a short opaque progress_id so Modal can stash per-phase
     // markers in a shared Dict keyed by this ID. The browser polls /check
@@ -3077,7 +3087,8 @@ window._mtAnalyzeRun = async function() {
                 songId: p.sessionId,
                 sourceUrl: sourceUrl,
                 setlist: setlist,
-                progressId: progressId
+                progressId: progressId,
+                fingerprintPriors: fingerprintPriors,
             })
         });
         var startJson = await startRes.json();
@@ -3170,6 +3181,8 @@ window._mtAnalyzeRun = async function() {
                 key: s.key || null,
                 likelySong: s.likely_song || null,
                 likelyRestart: !!s.likely_restart,
+                // Phase 3 — provenance from analyzer: how this match was found.
+                provenance: s.provenance || null,
             };
         });
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
@@ -3805,10 +3818,11 @@ function _mtRenderSegmentsPanel() {
             + '<div style="font-family:ui-monospace,monospace;color:var(--text-dim);font-size:0.95em">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</div>'
             // Waveform strip
             + '<canvas id="' + canvasId + '" width="78" height="20" style="display:block;background:rgba(0,0,0,0.15);border-radius:3px"></canvas>'
-            // Title (autocomplete) + state chip + confidence chip
+            // Title (autocomplete) + state chip + confidence chip + provenance chip
             + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
             + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" style="flex:1;min-width:80px;font-size:0.92em;padding:3px 6px;background:transparent;border:1px solid transparent;border-radius:4px">'
             + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
+            + (function() { var pc = _mtProvenanceChipHtml(s); return pc ? '<div style="flex-shrink:0">' + pc + '</div>' : ''; })()
             + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
             + '</div>'
             // Actions — Jump, Split, Merge, Trim, Confirm, Exclude
@@ -4063,6 +4077,20 @@ window._mtSegmentConfirm = async function(idx) {
             if (typeof showToast === 'function') showToast('Confirm save failed: ' + (e && e.message));
         }
     }
+    // Phase 3 — Tier 3 learning loop. When a segment is confirmed AND
+    // resolved to a canonical songId, write its BPM/key/duration to the
+    // band's fingerprint corpus. When un-confirmed, remove the sample.
+    // No-op when no songId (free-text titles don't train the corpus —
+    // user has to pick from autocomplete or the matching is skipped).
+    try {
+        if (next === 'confirmed') {
+            await _mtWriteFingerprintSample(seg);
+        } else {
+            await _mtRemoveFingerprintSample(seg);
+        }
+    } catch (e) {
+        console.warn('[Multitrack] fingerprint update failed (segment state still saved):', e && e.message);
+    }
     _mtRenderSegmentsPanel();
     _mtRenderSegmentMarkers();
 };
@@ -4165,6 +4193,134 @@ window._mtSegmentSplit = async function(idx) {
 // handlers delegate to it where new code touches them. Full extraction
 // from the legacy handlers is a follow-up — current shape doesn't require
 // a rewrite to land Phase 2.
+// ── Phase 3 / Tier 3 — Learning loop: fingerprint corpus ─────────────────
+// Each ✓-confirmed segment becomes a training sample under
+//   bands/{slug}/song_fingerprints/{songId}/{sampleId}
+// With fields:
+//   { bpm, key, duration, sourceSessionId, sourceSegmentId,
+//     confirmedAt, confirmedBy }
+// On Analyze, the browser fetches the full corpus, reduces by songId
+// into priors with median bpm/key/duration + sample count, and passes
+// to the Modal analyzer. Analyzer treats fingerprint priors as virtual
+// setlist entries with a 1.3x match boost. Over time the band's
+// confirmed history makes the analyzer recognize their actual sound
+// rather than only doing generic BPM/key matching.
+
+async function _mtFetchFingerprintPriors() {
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return [];
+    var snap;
+    try {
+        snap = await db.ref(bandPath('song_fingerprints')).once('value');
+    } catch (e) {
+        console.warn('[Multitrack] fingerprint corpus read failed:', e && e.message);
+        return [];
+    }
+    var val = snap && snap.val();
+    if (!val) return [];
+    var priors = [];
+    var titleLookup = {};
+    // Build songId → canonical title lookup from allSongs once.
+    try {
+        var songs = (typeof allSongs !== 'undefined' && Array.isArray(allSongs)) ? allSongs : [];
+        songs.forEach(function(s) {
+            var sid = s && (s.id || s.songId);
+            if (sid && s.title) titleLookup[sid] = s.title;
+        });
+    } catch (e) {}
+    Object.keys(val).forEach(function(songId) {
+        var samplesNode = val[songId] || {};
+        var samples = [];
+        Object.keys(samplesNode).forEach(function(sampleId) {
+            var s = samplesNode[sampleId];
+            if (!s || typeof s !== 'object') return;
+            samples.push({
+                bpm: (typeof s.bpm === 'number') ? s.bpm : null,
+                key: s.key || null,
+                duration: (typeof s.duration === 'number') ? s.duration : null,
+            });
+        });
+        if (!samples.length) return;
+        priors.push({
+            songId: songId,
+            songTitle: titleLookup[songId] || songId,
+            samples: samples,
+        });
+    });
+    if (priors.length) {
+        var totalSamples = priors.reduce(function(n, p) { return n + p.samples.length; }, 0);
+        console.log('[Multitrack] fingerprint priors: ' + priors.length + ' songs · ' + totalSamples + ' total samples');
+    }
+    return priors;
+}
+
+// Write a confirmed segment to the fingerprint corpus. Called from the
+// Confirm handler after Firebase persistence succeeds. Sample is keyed
+// by sourceSessionId + sourceSegmentId so re-confirming overwrites the
+// same record (idempotent).
+async function _mtWriteFingerprintSample(seg) {
+    if (!seg || !seg.songId) return;  // need canonical songId to file under
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var p = _mtState.player;
+    if (!p) return;
+    var sampleId = (p.sessionId || 'session') + '__' + (seg.id || 'seg');
+    // Sanitize sampleId for Firebase path constraints (no . # $ [ ] /).
+    sampleId = sampleId.replace(/[.#$\[\]/]/g, '_');
+    var sample = {
+        bpm: (typeof seg.bpm === 'number') ? seg.bpm : null,
+        key: seg.key || null,
+        duration: (typeof seg.durationSec === 'number') ? seg.durationSec
+                : (typeof seg.duration_sec === 'number') ? seg.duration_sec
+                : null,
+        sourceSessionId: p.sessionId || null,
+        sourceSegmentId: seg.id || null,
+        confirmedAt: seg.confirmedAt || new Date().toISOString(),
+        confirmedBy: seg.confirmedBy || (typeof currentUserEmail !== 'undefined' ? currentUserEmail : null),
+    };
+    try {
+        await db.ref(bandPath('song_fingerprints/' + seg.songId + '/' + sampleId)).set(sample);
+        console.log('[Multitrack] fingerprint sample written: ' + seg.songId + '/' + sampleId);
+    } catch (e) {
+        console.warn('[Multitrack] fingerprint write failed:', e && e.message);
+    }
+}
+
+// Remove a previously-written fingerprint sample (called when user
+// un-confirms a segment). Idempotent if the sample doesn't exist.
+async function _mtRemoveFingerprintSample(seg) {
+    if (!seg || !seg.songId) return;
+    var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;
+    if (!db || typeof bandPath !== 'function') return;
+    var p = _mtState.player;
+    if (!p) return;
+    var sampleId = ((p.sessionId || 'session') + '__' + (seg.id || 'seg'))
+        .replace(/[.#$\[\]/]/g, '_');
+    try {
+        await db.ref(bandPath('song_fingerprints/' + seg.songId + '/' + sampleId)).remove();
+        console.log('[Multitrack] fingerprint sample removed: ' + seg.songId + '/' + sampleId);
+    } catch (e) {
+        console.warn('[Multitrack] fingerprint remove failed:', e && e.message);
+    }
+}
+
+// Tier 3C — Provenance chip HTML. Shows where the match came from:
+// 'fingerprint' (training corpus), 'setlist' (band setlist match),
+// 'kind_only' (no match, just kind-classified), or missing (no analyzer
+// data — pre-Phase-3 segment).
+function _mtProvenanceChipHtml(seg) {
+    if (!seg || !seg.provenance) return '';
+    var src = seg.provenance.matchSource;
+    if (!src || src === 'kind_only') return '';
+    if (src === 'fingerprint') {
+        return '<span title="Matched against your band\'s confirmed-segment fingerprint corpus" style="background:rgba(168,85,247,0.18);border:1px solid rgba(168,85,247,0.4);color:#d8b4fe;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">🧠 FINGERPRINT</span>';
+    }
+    if (src === 'setlist') {
+        return '<span title="Matched against the rehearsal\'s setlist by BPM/key/duration" style="background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.35);color:#a5b4fc;border-radius:3px;padding:1px 5px;font-size:0.7em;font-weight:700">📋 SETLIST</span>';
+    }
+    return '';
+}
+
 var _mtSegOps = (function() {
     function _ref(p, segId) {
         var db = (typeof firebaseDB !== 'undefined' && firebaseDB) ? firebaseDB : null;

@@ -2397,6 +2397,13 @@ async function handleRehearsalSegmentStart(request, env) {
   // server-side phase tracker (modal.Dict). Forward unchanged; Modal-side
   // validates the shape.
   const progressId = String(body.progressId || body.progress_id || '').trim();
+  // Phase 3 — Tier 3: fingerprint priors from the band's confirmed-segment
+  // corpus. Browser fetches bands/{slug}/song_fingerprints/* and shapes
+  // into [{songId, songTitle, samples:[{bpm,key,duration}]}]. Forward
+  // unchanged; Modal-side validates + caps + reduces to virtual setlist.
+  const fingerprintPriors = Array.isArray(body.fingerprintPriors)
+    ? body.fingerprintPriors
+    : (Array.isArray(body.fingerprint_priors) ? body.fingerprint_priors : []);
 
   const ctrl = new AbortController();
   const timer = setTimeout(function() { ctrl.abort(); }, 60000);
@@ -2411,6 +2418,7 @@ async function handleRehearsalSegmentStart(request, env) {
         sourceUrl: sourceUrl,
         setlist: setlist,
         progress_id: progressId,
+        fingerprint_priors: fingerprintPriors,
       }),
       signal: ctrl.signal,
     });

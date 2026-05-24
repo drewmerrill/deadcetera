@@ -380,9 +380,17 @@ def _extract_chord_skeleton(clip, sr, window_sec: float = 10.0):
 
 def _match_segment_to_setlist(seg, setlist):
     """Score each setlist entry against the segment; return best match if
-    confidence > 0.55. Heuristic: weighted similarity of duration / BPM / key /
+    confidence > 0.40. Heuristic: weighted similarity of duration / BPM / key /
     chord-pattern overlap. Setlist entries with missing metadata can still
-    match on whatever is present (weights renormalize)."""
+    match on whatever is present (weights renormalize).
+
+    Tier 3 (Phase 3 — 2026-05-24): each setlist entry may carry a
+    `prior_boost` multiplier (1.0 by default, 1.3 for fingerprint-derived
+    priors). Fingerprint priors are virtual setlist entries built from
+    confirmed user samples — they should beat raw setlist entries when
+    both match comparably. Also emits the matched entry's `source`
+    ('setlist' or 'fingerprint') into the result so the browser can
+    show provenance per segment."""
     if not setlist:
         return None
 
@@ -451,6 +459,10 @@ def _match_segment_to_setlist(seg, setlist):
 
         if weight_total > 0:
             normalized = score / weight_total
+            # Phase 3 — fingerprint priors get a multiplicative boost so
+            # they edge out raw setlist entries when both match comparably.
+            boost = float(entry.get("prior_boost", 1.0))
+            normalized = min(1.0, normalized * boost)
             if normalized > best_score:
                 best_score = normalized
                 best_match = entry
@@ -464,6 +476,8 @@ def _match_segment_to_setlist(seg, setlist):
             "title": best_match.get("title", "Unknown"),
             "confidence": round(best_score, 2),
             "matched_on": best_evidence.get("matched_on", []),
+            "source": best_match.get("source", "setlist"),
+            "song_id": best_match.get("song_id") or best_match.get("songId"),
         }
     return None
 
@@ -506,7 +520,8 @@ def _detect_restarts(segments):
     memory=8192,
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
-def segment_audio(source_url: str, setlist: list = None, progress_id: str = ""):
+def segment_audio(source_url: str, setlist: list = None, progress_id: str = "",
+                  fingerprint_priors: list = None):
     """Analyze a full rehearsal recording. Returns
     { success, status, duration_sec, segments[], summary{} }.
 
@@ -515,6 +530,14 @@ def segment_audio(source_url: str, setlist: list = None, progress_id: str = ""):
     browser can poll segment_endpoint(action='check', progress_id=...)
     for ground-truth status. The dict entry is cleaned up in the
     finally block regardless of success/error.
+
+    fingerprint_priors (Phase 3 / Tier 3): optional list of
+        {songId, songTitle, samples: [{bpm, key, duration}, ...]}
+    Each prior is reduced to a virtual setlist entry with median
+    bpm/key/duration from its samples and a 1.3x boost in matching.
+    These are the band's confirmed-segment corpus from prior
+    rehearsals, learned over time. Sources match-result.source =
+    'fingerprint' for provenance display.
     """
     import time
     import numpy as np
@@ -532,6 +555,45 @@ def segment_audio(source_url: str, setlist: list = None, progress_id: str = ""):
             print(f"[segment] progress mark write failed: {e}")
 
     setlist = setlist or []
+    fingerprint_priors = fingerprint_priors or []
+
+    # Phase 3 — turn fingerprint priors into virtual setlist entries with
+    # median bpm/key/duration from their samples, source='fingerprint',
+    # prior_boost=1.3. Merged into the setlist for unified matching.
+    if fingerprint_priors:
+        try:
+            import statistics
+            for prior in fingerprint_priors:
+                samples = (prior.get("samples") or []) if isinstance(prior, dict) else []
+                if not samples:
+                    continue
+                bpms = [s.get("bpm") for s in samples if s.get("bpm")]
+                durs = [s.get("duration") for s in samples if s.get("duration")]
+                # Key: most common (mode). Falls back to first if all distinct.
+                keys = [str(s.get("key") or "").strip() for s in samples if s.get("key")]
+                try:
+                    key_mode = statistics.mode(keys) if keys else ""
+                except statistics.StatisticsError:
+                    key_mode = keys[0] if keys else ""
+                virtual = {
+                    "title": prior.get("songTitle") or prior.get("title") or "(unknown)",
+                    "source": "fingerprint",
+                    "prior_boost": 1.3,
+                    "song_id": prior.get("songId") or prior.get("song_id"),
+                    "_sample_count": len(samples),
+                }
+                if bpms:
+                    virtual["bpm"] = round(statistics.median(bpms), 1)
+                if durs:
+                    virtual["duration"] = round(statistics.median(durs), 1)
+                if key_mode:
+                    virtual["key"] = key_mode
+                setlist.append(virtual)
+            print(f"[segment] Fingerprint priors merged: {len(fingerprint_priors)} songs → "
+                  f"setlist now {len(setlist)} entries")
+        except Exception as e:
+            print(f"[segment] fingerprint priors merge failed (continuing without): {e}")
+
     temp_dir = tempfile.mkdtemp(prefix="gl_segment_")
     try:
         _mark("download", "Downloading rendered mix from R2 to Modal worker")
@@ -615,13 +677,32 @@ def segment_audio(source_url: str, setlist: list = None, progress_id: str = ""):
               f"{setlist_with_bpm} have BPM, {setlist_with_key} have key, "
               f"{setlist_with_dur} have duration. Matching against music segments…")
         matched_count = 0
+        fingerprint_matched = 0
         for seg in segments:
             if seg["kind"] != "music":
                 continue
             match = _match_segment_to_setlist(seg, setlist)
             if match:
                 seg["likely_song"] = match
+                # Phase 3 — provenance: how this song-id was determined.
+                # 'fingerprint' (from confirmed corpus), 'setlist' (band
+                # setlist BPM/key/duration), or absent (no match → kind only).
+                src = match.get("source") or "setlist"
+                seg["provenance"] = {
+                    "matchSource": src,
+                    "matchScore": match.get("confidence"),
+                    "matchedOn": match.get("matched_on", []),
+                }
+                if src == "fingerprint":
+                    fingerprint_matched += 1
                 matched_count += 1
+            else:
+                # No match — only kind-based classification.
+                seg["provenance"] = {
+                    "matchSource": "kind_only",
+                    "matchScore": seg.get("confidence"),
+                    "matchedOn": [],
+                }
                 print(f"[segment]   {seg['id']} ({seg['duration_sec']:.0f}s, "
                       f"{seg.get('bpm') or '?'}bpm, {seg.get('key') or '?'}) "
                       f"→ {match['title']} (conf {match['confidence']}, "
@@ -638,7 +719,9 @@ def segment_audio(source_url: str, setlist: list = None, progress_id: str = ""):
             "speech_segments": sum(1 for s in segments if s["kind"] == "speech"),
             "silence_segments": sum(1 for s in segments if s["kind"] == "silence"),
             "matched_to_setlist": matched_count,
+            "matched_via_fingerprint": fingerprint_matched,
             "likely_restarts": restart_count,
+            "fingerprint_priors_used": len(fingerprint_priors),
         }
         print(f"[segment] Summary: {summary}")
 
@@ -751,13 +834,18 @@ def segment_endpoint(item: dict):
             return {"success": False, "error": "setlist must be an array"}
         if len(setlist) > 200:
             setlist = setlist[:200]
+        # Phase 3 — fingerprint priors (confirmed-segment corpus from
+        # prior rehearsals). Optional. Capped at 500 priors.
+        fingerprint_priors = item.get("fingerprint_priors") or []
+        if not isinstance(fingerprint_priors, list):
+            return {"success": False, "error": "fingerprint_priors must be an array"}
+        if len(fingerprint_priors) > 500:
+            fingerprint_priors = fingerprint_priors[:500]
         progress_id = str(item.get("progress_id", "")).strip()
-        # Validate progress_id shape — alnum/_- only, max 80 chars. Keeps
-        # the Modal Dict key space tight in case of malicious input.
         if progress_id and not re.match(r"^[a-zA-Z0-9_-]{1,80}$", progress_id):
-            progress_id = ""  # silently drop bad ID; analysis still runs
+            progress_id = ""
         try:
-            call = segment_audio.spawn(source_url, setlist, progress_id)
+            call = segment_audio.spawn(source_url, setlist, progress_id, fingerprint_priors)
             return {
                 "success": True,
                 "call_id": call.object_id,
