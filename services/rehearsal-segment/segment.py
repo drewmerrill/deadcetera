@@ -521,7 +521,7 @@ def _detect_restarts(segments):
     secrets=[modal.Secret.from_name("groovelinx-stems")],
 )
 def segment_audio(source_url: str, setlist: list = None, progress_id: str = "",
-                  fingerprint_priors: list = None):
+                  fingerprint_priors: list = None, plan_priors: list = None):
     """Analyze a full rehearsal recording. Returns
     { success, status, duration_sec, segments[], summary{} }.
 
@@ -538,6 +538,14 @@ def segment_audio(source_url: str, setlist: list = None, progress_id: str = "",
     These are the band's confirmed-segment corpus from prior
     rehearsals, learned over time. Sources match-result.source =
     'fingerprint' for provenance display.
+
+    plan_priors (Phase 4C / Tier 4): optional list of
+        {songTitle, songId, bpm?, key?, duration?}
+    Songs the band explicitly scheduled for today's rehearsal plan or
+    has on the upcoming gig setlist. Each prior becomes a virtual
+    setlist entry with prior_boost=1.5 (stronger than fingerprint
+    priors because the user has explicitly signalled intent). Sources
+    match-result.source = 'plan'.
     """
     import time
     import numpy as np
@@ -556,6 +564,41 @@ def segment_audio(source_url: str, setlist: list = None, progress_id: str = "",
 
     setlist = setlist or []
     fingerprint_priors = fingerprint_priors or []
+    plan_priors = plan_priors or []
+
+    # Phase 4C — turn plan priors into virtual setlist entries. These
+    # are songs from today's rehearsal plan + the next upcoming gig
+    # setlist. Boost 1.5x (stronger than fingerprint's 1.3x) because the
+    # user has explicitly told us these songs are on deck. Source='plan'
+    # surfaces a "🎯 ON PLAN" provenance chip in the browser.
+    if plan_priors:
+        try:
+            for prior in plan_priors:
+                if not isinstance(prior, dict):
+                    continue
+                title = prior.get("songTitle") or prior.get("title")
+                if not title:
+                    continue
+                virtual = {
+                    "title": title,
+                    "source": "plan",
+                    "prior_boost": 1.5,
+                    "song_id": prior.get("songId") or prior.get("song_id"),
+                }
+                bpm = prior.get("bpm")
+                if isinstance(bpm, (int, float)) and bpm > 0:
+                    virtual["bpm"] = float(bpm)
+                key = prior.get("key")
+                if key:
+                    virtual["key"] = str(key)
+                dur = prior.get("duration")
+                if isinstance(dur, (int, float)) and dur > 0:
+                    virtual["duration"] = float(dur)
+                setlist.append(virtual)
+            print(f"[segment] Plan priors merged: {len(plan_priors)} songs → "
+                  f"setlist now {len(setlist)} entries")
+        except Exception as e:
+            print(f"[segment] plan priors merge failed (continuing without): {e}")
 
     # Phase 3 — turn fingerprint priors into virtual setlist entries with
     # median bpm/key/duration from their samples, source='fingerprint',
@@ -720,8 +763,10 @@ def segment_audio(source_url: str, setlist: list = None, progress_id: str = "",
             "silence_segments": sum(1 for s in segments if s["kind"] == "silence"),
             "matched_to_setlist": matched_count,
             "matched_via_fingerprint": fingerprint_matched,
+            "matched_via_plan": sum(1 for s in segments if (s.get("provenance") or {}).get("matchSource") == "plan"),
             "likely_restarts": restart_count,
             "fingerprint_priors_used": len(fingerprint_priors),
+            "plan_priors_used": len(plan_priors),
         }
         print(f"[segment] Summary: {summary}")
 
@@ -841,11 +886,21 @@ def segment_endpoint(item: dict):
             return {"success": False, "error": "fingerprint_priors must be an array"}
         if len(fingerprint_priors) > 500:
             fingerprint_priors = fingerprint_priors[:500]
+        # Phase 4C — plan priors (today's rehearsal plan setlist + next
+        # upcoming gig setlist). Optional. Capped at 200 (a single
+        # session shouldn't need more). Each entry: {songTitle, songId,
+        # bpm?, key?, duration?}. Forwarded to segment_audio which
+        # converts to virtual setlist entries with prior_boost=1.5.
+        plan_priors = item.get("plan_priors") or []
+        if not isinstance(plan_priors, list):
+            return {"success": False, "error": "plan_priors must be an array"}
+        if len(plan_priors) > 200:
+            plan_priors = plan_priors[:200]
         progress_id = str(item.get("progress_id", "")).strip()
         if progress_id and not re.match(r"^[a-zA-Z0-9_-]{1,80}$", progress_id):
             progress_id = ""
         try:
-            call = segment_audio.spawn(source_url, setlist, progress_id, fingerprint_priors)
+            call = segment_audio.spawn(source_url, setlist, progress_id, fingerprint_priors, plan_priors)
             return {
                 "success": True,
                 "call_id": call.object_id,

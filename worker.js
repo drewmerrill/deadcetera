@@ -2412,6 +2412,15 @@ async function handleRehearsalSegmentStart(request, env) {
     ? body.fingerprintPriors
     : (Array.isArray(body.fingerprint_priors) ? body.fingerprint_priors : []);
 
+  // Phase 4C — Tier 4: rehearsal-plan + next-gig priors. Songs the band
+  // explicitly scheduled for today's rehearsal or has on the upcoming
+  // gig setlist. Each entry: {songTitle, songId, bpm, key, duration}.
+  // Modal converts to virtual setlist with prior_boost=1.5,
+  // source='plan'. Forward unchanged.
+  const planPriors = Array.isArray(body.planPriors)
+    ? body.planPriors
+    : (Array.isArray(body.plan_priors) ? body.plan_priors : []);
+
   const ctrl = new AbortController();
   const timer = setTimeout(function() { ctrl.abort(); }, 60000);
   try {
@@ -2426,6 +2435,7 @@ async function handleRehearsalSegmentStart(request, env) {
         setlist: setlist,
         progress_id: progressId,
         fingerprint_priors: fingerprintPriors,
+        plan_priors: planPriors,
       }),
       signal: ctrl.signal,
     });
