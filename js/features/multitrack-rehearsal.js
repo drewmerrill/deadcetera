@@ -2948,6 +2948,29 @@ window._mtAnalyzeRehearsal = async function() {
     var div = document.createElement('div');
     div.innerHTML = pickerHtml;
     document.body.appendChild(div.firstChild);
+
+    // If an analysis is already running (user reopened the modal mid-run),
+    // reflect that state: disable Run button, relabel Cancel → "Close
+    // (keeps running)", populate the status div with the live progress
+    // narrative, and disable the source picker (changing source mid-run
+    // wouldn't affect the in-flight job).
+    if (p._analyzeInFlight && p._analyzeInFlight.startedAt) {
+        var goBtnEl = document.getElementById('mtAnalyzeGo');
+        if (goBtnEl) { goBtnEl.disabled = true; goBtnEl.textContent = '⏳ Already analyzing…'; goBtnEl.style.opacity = '0.6'; }
+        var cancelBtnEl = document.getElementById('mtAnalyzeCancelBtn');
+        if (cancelBtnEl) cancelBtnEl.textContent = 'Close (keeps running)';
+        // Replace the simple text status with the rich phase timeline.
+        var statusEl = document.getElementById('mtAnalyzeStatus');
+        if (statusEl) {
+            statusEl.style.minHeight = '0';
+            statusEl.innerHTML = _mtRenderAnalyzeProgressHtml(p._analyzeInFlight);
+        }
+        // Disable both source radios + the stem select so they're not
+        // accidentally toggled (they have no effect on the in-flight job).
+        document.querySelectorAll('input[name="mtAnalyzeSrcKind"]').forEach(function(r) { r.disabled = true; });
+        var stemSelEl = document.getElementById('mtAnalyzeStem');
+        if (stemSelEl) stemSelEl.disabled = true;
+    }
 };
 
 // Toggle the stem-select enabled state based on which radio is checked.
@@ -3057,16 +3080,15 @@ window._mtAnalyzeRun = async function() {
                 console.log('[Multitrack] analyze: player gone, abandoning polling');
                 return;
             }
-            var elapsed = (attempt + 1) * 5;
-            // Update modal status if it's still open AND the empty
-            // Segments panel banner regardless. Both surfaces show the
-            // same elapsed counter so the user has visible progress
-            // wherever they look.
+            // Update modal status if it's still open. If the modal was
+            // reopened mid-run, the status div holds the rich phase
+            // timeline — re-render it. Otherwise replace plain text.
             var statusEl = document.getElementById('mtAnalyzeStatus');
-            if (statusEl) {
-                statusEl.textContent = 'Server analyzing (' + elapsed + 's elapsed)… you can close this modal; analysis keeps running.';
+            if (statusEl && _mtState.player && _mtState.player._analyzeInFlight) {
+                statusEl.innerHTML = _mtRenderAnalyzeProgressHtml(_mtState.player._analyzeInFlight);
+                statusEl.style.minHeight = '0';
             }
-            // Re-render segments panel so its "Analyzing…" banner ticks.
+            // Re-render segments panel so its in-flight banner ticks.
             if (typeof _mtRenderSegmentsPanel === 'function') _mtRenderSegmentsPanel();
 
             var checkRes = await fetch(workerBase + '/rehearsal-segment/check', {
@@ -3531,8 +3553,22 @@ function _mtRenderSegmentsPanel() {
             + '</div>'
         : '';
 
+    // In-flight banner — ALSO shows when segments already exist (e.g.,
+    // user re-analyzing on top of a prior run). Tells them new results
+    // are coming, what's currently computing, and that the existing
+    // segments below will be replaced when done.
+    var inFlightBannerHtml = '';
+    if (p._analyzeInFlight && p._analyzeInFlight.startedAt) {
+        inFlightBannerHtml =
+            '<div style="margin-bottom:8px">'
+            + _mtRenderAnalyzeProgressHtml(p._analyzeInFlight)
+            + '<div style="margin-top:4px;font-size:0.72em;color:var(--text-dim);font-style:italic;text-align:center">Existing segments below will be replaced when this analysis completes.</div>'
+            + '</div>';
+    }
+
     host.innerHTML =
-        '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;background:rgba(255,255,255,0.02)">'
+        inFlightBannerHtml
+        + '<div style="border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;background:rgba(255,255,255,0.02)">'
         + '<div onclick="_mtToggleSegmentsPanel()" style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;user-select:none;background:rgba(255,255,255,0.03)">'
         + '<span id="mtSegmentsCaret" style="color:var(--text-dim);font-size:0.85em">' + (collapsed ? '▸' : '▾') + '</span>'
         + '<span style="font-weight:700;font-size:0.82em;color:#f1f5f9">🎯 Segments</span>'
