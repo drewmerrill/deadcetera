@@ -1,6 +1,6 @@
 # CURRENT UAT STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 16:41 UTC · **Build under test:** `20260524-193407`
+**Last updated:** 2026-05-25 17:10 UTC · **Build under test:** `20260524-193407`
 
 > **What this doc is.** A compact, rolling, operational snapshot of GrooveLinx UAT/stabilization state — designed for AI sync without conversational replay. Re-validate before quoting if last-updated > 14 days old.
 >
@@ -69,15 +69,15 @@ Plus the 5 Phase 4D items deferred from 2026-05-24 (Review Queue mode toggle, J=
 - **Test sign-in pattern:** `localStorage.deadcetera_google_email` + `deadcetera_current_band` then reload (no real Google OAuth required for E2E)
 - **MCP servers wired (`.mcp.json`):** `playwright` (`@playwright/mcp@latest`) + `groovelinx-firebase` (scoped to `deadcetera`)
 - **Operational limits:** Widevine missing → Spotify SDK blocked; no auth carryover between Playwright sessions; engine gates Connect on `isIOSPlatform()` (memory `reference_playwright_mcp_limits`)
-- **UAT Lab v1:** proposal complete (revised v2 2026-05-25); awaiting Drew go-signal for Phase 1 (`songs.triage.desktop` lead flow)
+- **UAT Lab v1 Phase 1:** ✅ **LIVE 2026-05-25.** Minimal harness shipped: `tests/uat-lab/runner.js` (contract-driven Playwright runner, ~220 LOC), `tests/uat-lab/contracts/songs.triage.desktop.js` (first flow contract), `scripts/uat-lab/run.js` (CLI). First real run produced PASS in 5.5s, 2 screenshots, 0 findings, 1 expected `[UX] rapid_nav` warning. Inject-failure test confirmed finding shape is stable. Songs page entry added to `KNOWN_STABLE_FLOWS.md` at **Experimental** — awaiting Drew approval per `uat_lab_v1.md` §11.4 before promotion to Stable.
 
 ---
 
 ## 6. Screenshot harvesting status
 
-- **Convention started 2026-05-25:** `02_GrooveLinx/uat/screenshots/YYYY-MM-DD/<flow-slug>/<build>/NN-<step>.png` + `_manifest.json`
-- **Existing artifacts:** `2026-05-25/` (4 PNGs from multitrack UAT — `mt-review-modal`, `mt-row-expanded`, `isolate-mode`, `export-after`); files presently sit at the date-folder root pending Phase 1 of UAT Lab formalizing the per-flow subfolder structure
-- **Formal protocol:** documented in `specs/uat_lab_v1.md` §3; awaits Phase 1 commit
+- **Convention now operational** (Phase 1 of UAT Lab, 2026-05-25): `02_GrooveLinx/uat/screenshots/YYYY-MM-DD/<flow-slug>/<build>/NN-<step>.png` + `_manifest.json` + `_founder_review.md` (Founder Experience Summary template) + `_findings.md` (when findings surface)
+- **First per-flow harvest:** `02_GrooveLinx/uat/screenshots/2026-05-25/songs.triage.desktop/20260524-193407/` (2 PNGs + manifest + founder review template)
+- **Multitrack UAT screenshots from earlier today** still at the date-folder root (`2026-05-25/{mt-review-modal,mt-row-expanded,isolate-mode,export-after}.png`) — pre-convention artifacts; leave in place
 
 ---
 

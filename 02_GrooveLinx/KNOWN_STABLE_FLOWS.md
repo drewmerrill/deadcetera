@@ -354,6 +354,23 @@ This table shows which surfaces participate in `GLPlayerContract.pauseAll()`.
 
 ---
 
+## UAT Lab — automated harness flows (2026-05-25, Phase 1)
+
+### Songs page triage (`songs.triage.desktop`)
+**Status:** **Experimental — proposed at Experimental trust level by UAT Lab v1 Phase 1; awaiting Drew approval per `specs/uat_lab_v1.md` §11.4.**
+
+- Contract: `tests/uat-lab/contracts/songs.triage.desktop.js`
+- Runner: `tests/uat-lab/runner.js`
+- CLI: `node scripts/uat-lab/run.js songs.triage.desktop`
+- Steps: boot → signIn → wait-app-ready → nav-songs (waits `GL_PAGE_READY === 'songs'`) → settle 800ms → 2 screenshots (viewport + fullpage)
+- Expectations (Tier A QA): no console errors · `GL_PAGE_READY === 'songs'` · body text ≥ 200 chars · `GLStore.getSongs().length > 0`
+- Empirical baseline (2026-05-25, build `20260524-193407`): PASS in ~5.5s · 2 screenshots · 0 findings · 1 console warning (`[UX] rapid_nav` — expected from rapid showPage)
+- Artifacts: `02_GrooveLinx/uat/screenshots/<date>/songs.triage.desktop/<build>/` containing `_manifest.json` + `_founder_review.md` (Founder Experience Summary template for Drew's async review) + screenshots; `_findings.md` only when findings surface
+
+**Promotion criteria** (Drew approves): run produces stable PASS across 3+ consecutive builds AND Drew has filled in `_founder_review.md` at least once with empirical Tier B observations.
+
+---
+
 ## Cross-references
 
 - **Player contract:** `js/core/gl-player-contract.js`

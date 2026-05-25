@@ -3,6 +3,32 @@ Critical
 
 High
 
+**Canonical-system readiness threshold divergence** (filed 2026-05-25)
+
+Songs-that-need-work has at least **3 contradictory definitions** in active code, with at least a 4th color-tier threshold layered on top. This is governance debt becoming visible in UX: every "count disagreement" tester observation (the kind Pierce was reacting to emotionally) traces back to this divergence. Treat as **canonical-system fix (C7 candidate), NOT a local patch** — patching at one site moves the contradiction rather than resolving it.
+
+Concrete divergences:
+- `js/core/gl-focus.js:92` — `if (avg < 4)` — focus-engine "songs that need work" candidates
+- `js/features/home-dashboard.js:439, 454` — `belowReadyCount = avg > 0 && avg < 3` (used by home-dashboard sites B/D/E)
+- `js/features/home-dashboard.js:2084, 2321` — `lowReady = avg <= 2` (scorecard headline). The code at `:2321` even contains an explicit comment: `"lowReady = avg<=2 differs from belowReadyCount"` — the authors knew.
+- `js/features/home-dashboard.js:1111` — `s.avg <= 2 ? red : s.avg <= 3 ? amber : grey` — urgency color tier (4th threshold)
+- `js/features/home-dashboard.js:1835-1836` — `avg < 2` = "needs work", `avg <= 3.5` = "getting there" — status text yet another threshold
+- `js/features/home-dashboard.js:1952` — `avg >= 3.5` / `avg >= 2.5` — bar color (yet another)
+- `js/core/gl-focus.js:108-110` — `avg < 2` / `avg < 3` — focus engine messaging tiers
+
+User-visible symptom: homepage may say "3 songs need work" while another panel says "5" and a third says "2" — all reading the same underlying readiness data, all "correct" by their own threshold, but the band has no way to know which number to trust. Per Drew 2026-05-25: _"if the product stops feeling authoritative, it stops being a Band Operating System."_
+
+Recommended posture (per Drew 2026-05-25 and the AI Synchronization Layer's `system/CURRENT_ARCHITECTURE_STATE.md` §2 candidates list):
+1. Promote to **Convergence Initiative C7 — Readiness Canonicalization** (governance decision; Drew + ChatGPT formalize the number in `STABILIZATION_DASHBOARD.md`)
+2. Declare a canonical readiness model (proposal: `GLReadinessModel` from Audit #10) in `00_Governance/CANONICAL_SYSTEMS.md` with semantic labels (`lockedIn`, `inProgress`, `needsWork`, `unrated`) and a single threshold authority
+3. Migrate the 8 sites above to consume the canonical model via `GLReadinessModel.classify(avg)` instead of inline arithmetic
+4. Add a SYSTEM LOCK note to `CLAUDE.md` §7 prohibiting new inline `avg < N` comparisons in feature files
+
+Surfaced by: System Intelligence + Governance Mapping (2026-05-25, commit `0b3f9c84`, `02_GrooveLinx/system/AI_SYSTEMS_MAP.md` + `SYSTEM_MAP.md` §4). Reinforced by: Audit #10 Home Hierarchy root-cause C.
+
+
+Medium
+
 
 Medium
 When I first log on to home page, 4 blank rectangle frames flash for a second or two before homepage loads

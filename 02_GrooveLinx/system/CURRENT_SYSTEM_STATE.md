@@ -1,6 +1,6 @@
 # CURRENT SYSTEM STATE — Rolling Snapshot
 
-**Last updated:** 2026-05-25 16:41 UTC · **Build under test:** `20260524-193407` · **HEAD commit:** `0b3f9c84`
+**Last updated:** 2026-05-25 17:10 UTC · **Build under test:** `20260524-193407` · **HEAD commit:** `be3ed592` (sync layer)
 
 > **What this doc is.** A compact, rolling, operational export of GrooveLinx state — designed for AI synchronization (esp. ChatGPT ↔ Claude) without massive conversational replay. Not a journal. Re-validate before quoting if last-updated > 14 days old.
 >
@@ -17,7 +17,8 @@
 - **Cloudflare Worker:** `deadcetera-proxy` — last redeployed 2026-05-24 (Phase 4C `plan_priors` passthrough)
 - **Modal services:** 6 web endpoints live — `groovelinx-stem-separator`, `groovelinx-rehearsal-segment`, `groovelinx-multitrack-zip`, `groovelinx-multitrack-render`, `groovelinx-lalal`, `groovelinx-audio-embeddings`
 - **Firebase RTDB:** `deadcetera-35424-default-rtdb.firebaseio.com` · `bands/{slug}/*` open-read rule still in effect
-- **Doc-only sessions since `87ec930b`:** `a7c5cb64` (UAT Lab + Bugs #18/#19 filed) · `af79ac0e` (Bug #15 re-verification) · `0ac0f4ee` (UAT Lab v1 draft) · `ad9a2ea6` (UAT Lab v2 + Operational Visibility v1) · `7ffd7800` (Competitive Positioning Reframe) · `0b3f9c84` (System Mapping)
+- **Doc-only sessions since `87ec930b`:** `a7c5cb64` (UAT Lab + Bugs #18/#19 filed) · `af79ac0e` (Bug #15 re-verification) · `0ac0f4ee` (UAT Lab v1 draft) · `ad9a2ea6` (UAT Lab v2 + Operational Visibility v1) · `7ffd7800` (Competitive Positioning Reframe) · `0b3f9c84` (System Mapping) · `be3ed592` (AI Synchronization Layer)
+- **First code-shipping session since `87ec930b`:** UAT Lab Phase 1 harness (~220 LOC across `tests/uat-lab/` + `scripts/uat-lab/`) — not user-facing code, no build bump
 
 ---
 
@@ -76,7 +77,7 @@ C7 + C8 numbering is **proposed**; Drew + ChatGPT formalize.
 
 ## 5. Active experiments
 
-- **UAT Lab v1** — proposal stage; Phase 1 (lead flow `songs.triage.desktop`) awaiting Drew go-signal. `specs/uat_lab_v1.md`.
+- **UAT Lab v1 Phase 1** — ✅ **LIVE 2026-05-25.** First flow `songs.triage.desktop` shipped (`tests/uat-lab/runner.js` + contract + `scripts/uat-lab/run.js`). Baseline PASS in 5.5s. Songs page added to `KNOWN_STABLE_FLOWS.md` at Experimental — awaiting Drew approval per `uat_lab_v1.md` §11.4.
 - **Operational Visibility v1** — proposal stage. `specs/operational_visibility_v1.md`.
 - **Competitive Positioning Reframe** — strategic clarity doc; awaiting Drew + ChatGPT strategic review. `specs/competitive_positioning_reframe.md`.
 - **System Intelligence + Governance Mapping** — discovery complete (8 docs, 1,541 lines under `system/`). No new architecture proposed.
