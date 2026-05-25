@@ -1,6 +1,9 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260524-193407
+**Build Under Test:** 20260525-195215 (post-recovery sync — was 20260524-193407 in the prior block)
+
+> **2026-05-25 19:52 UTC post-MacBook-crash recovery sync.** Build advanced through `20260525-194951` (Phase A.5 ship) → `20260525-195215` (Calendar M1+M2). **Bug #19 now MITIGATED** by `e764c74f` — the new `gl-multitrack-renders.js` persistence module treats non-JSON `/check` responses as transient blips within the poll budget and surfaces a Retry affordance on terminal failure, replacing the silent button revert documented below. Persisted job state means modal close + reload no longer drops the in-flight render. The structural worker-side improvement (wrap Modal HTTP errors as JSON envelopes) is still recommended but no longer urgent. **Two new mobile-calendar bugs (M1 + M2) were filed AND closed within the same session** via `6c84c52c` — see Recently Closed entries below. **M3** closed naturally after M1 (mobile Edit-button onclick calls `_calCloseMobileCard` first).
+
 
 > **2026-05-25 UAT pass (Playwright MCP).** All 5 Phase 4B+4C visual checks + all 4 Bug #17 acceptance criteria were driven against the 5/18 multitrack session (`rsess_mt_mpju4yyn_7pko`) on the live `app.groovelinx.com` build. **Net: 5 clean passes** (Phase 4B+4C #1/#2/#3/#5, Bug #17 AC2), **1 architecture pass** (Bug #17 AC1 — Review Mode default + render exists, cold-start UI not exercised), **2 feature-deployed-but-data-gapped** (Phase 4B+4C #4 ON PLAN chip — plan_priors not in pre-4C analyses; Bug #17 AC3 §8.1 banner — gated on missing `session.durationSec`), **1 real bug found** (Bug #17 AC4 Export Mix surfaced new Bug #19). Two new bugs opened (#18, #19); one item added to the Deferred Findings Queue (Phase 4C plan_priors re-analyze for old sessions). See Bug #17 entry below for per-AC verdict + screenshots in `02_GrooveLinx/uat/screenshots/2026-05-25/` (`mt-review-modal.png`, `mt-row-expanded.png`, `isolate-mode.png`, `export-after.png`).
 

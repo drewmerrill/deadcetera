@@ -4,7 +4,117 @@
 
 ---
 
+# 🛑 SESSION CLOSE — 2026-05-25 19:52 UTC (REVISED — post-MacBook-crash recovery)
+
+**Final build:** `20260525-195215` (commit `6c84c52c`) — live on `app.groovelinx.com` via Vercel auto-deploy.
+
+**Recovery context:** The MacBook crashed shortly after commit `6c84c52c`. The previous "SESSION CLOSE 19:10 UTC" block below was written at commit `f58e38b8` and **3 commits + 2 build bumps shipped after** before the crash. This top block is the authoritative final state; the 19:10 block is preserved verbatim below for trace.
+
+## Three commits shipped after the 19:10 close
+
+| # | Commit | Build | What |
+|---|---|---|---|
+| 14 | `e764c74f` | `20260525-194951` | **Phase A.5 render-job persistence SHIPPED.** New `js/core/gl-multitrack-renders.js` (461 LOC) — sibling to GLStems (Stab #14), localStorage-backed, boot-resume of in-flight renders, `glRenderJobUpdated` event. Wires into `_mtCustomMixRunRender` / `_mtRenderCustomMixStatus` / `_mtOpenCustomMixModal` (recipe restoration). Added Renders section to `gl-runtime-health.js` overlay. Mitigates Bug #19 by treating non-JSON `/check` responses as transient blips rather than `SyntaxError`-then-silent-revert. **Closed the "GLMultitrack-renders persistence module (~300 LOC)" queued follow-up.** |
+| 15 | `18ac633c` | (same build — Modal-side only) | **Phase A.5 reverb audibility fix SHIPPED.** Root cause re-identified: not the `alimiter` line previously suspected, but the structural `amix=normalize=0` imbalance — 17 dry vs 4 wet branches gave ~7% wet contribution at full master. Fix: per-wet-branch volume boost `min(8.0, n_dry/n_wet)` pre-mix in `render.py`. Expected wet_pct at master=1.0 climbs from ~7% → ~26% on Deadcetera 17/4 case. Deferred aecho→afir convolution swap + dry-duck attenuation + per-branch limiter pending in-the-wild verification. **Requires `modal deploy services/multitrack-render/render.py`** to take effect. |
+| 16 | `6c84c52c` | `20260525-195215` | **Calendar Bug M1 + M2 SHIPPED.** M1 (HIGH for trust): mobile bottom-sheet re-opened after user dismissal because `_calCloseMobileCard` didn't clear `_calSelectedRailKey`; 1-LOC fix. M2 (MED): `_calOnEventsChanged` ran unconditionally on every `calendarEventsChanged`, causing cross-page side-effects when background SWR refreshes fired while user was on Songs/Practice; gated on `GL_PAGE_READY === 'calendar'` (reads SYSTEM LOCK 7.a flag without mutating it). M3 (mobile Edit selection state) closes naturally after M1. **Closed the "Mobile calendar bottom-sheet stale-panel" queued follow-up.** |
+
+## Revised session totals
+
+**16 ship-commits over ~14.75 hours.** Build chain: `20260524-193407` → `20260525-173406` → `20260525-183202` → `20260525-185925` → `20260525-191011` → `20260525-194951` → `20260525-195215` (6 atomic build bumps).
+
+## Revised queued follow-ups (post-recovery)
+
+| Task | Status | Spec |
+|---|---|---|
+| ~~GLMultitrack-renders persistence module (~300 LOC)~~ | ✅ **SHIPPED** `e764c74f` (461 LOC actual) | `specs/custom_mix_hybrid_architecture_v1.md` §6 |
+| ~~Mobile calendar bottom-sheet stale-panel (~30 LOC)~~ | ✅ **SHIPPED** `6c84c52c` as M1 (1 LOC clear + M2 page gate) | `specs/calendar_stale_selected_event_v1.md` §9 |
+| **C7 Phase 2** — 7 remaining inline-threshold sites | OPEN (~80 LOC) | `00_Governance/CANONICAL_SYSTEMS.md` Song Readiness § Phase 2 |
+| **UAT Lab calendar contract** — `calendar.stale-panel.desktop.js` | OPEN (~100 LOC) | `specs/calendar_stale_selected_event_v1.md` §7 |
+| **Recurrence EXDATE/RECURRENCE-ID bug** in `gl-calendar-sync.js:1591-1593` | OPEN (~150 LOC) | `specs/calendar_stale_selected_event_v1.md` §9.2 |
+
+## Revised open product decisions
+
+| # | Decision | Status |
+|---|---|---|
+| 1 | Formalize Stab #15 + GLPriority numbering | Still open |
+| 2 | Calendar Model B (soft-cancel) | Still open |
+| 3 | ~~Custom Mix reverb routing fix (alimiter)~~ | **Superseded** — Phase A.5 ratio-boost fix `18ac633c` ships an alternative root-cause approach. UAT verifies which dominates. Verification pending Modal redeploy + Drew audio listen. |
+| 4 | ~~Custom Mix Phase 1 render-job persistence~~ | ✅ **SHIPPED** as Phase A.5 (`e764c74f`) |
+| 5 | Operational Prioritization Phase 2 scope | Still open |
+
+## Revised open-bugs table
+
+| # | Severity | Title | Status |
+|---|---|---|---|
+| #17 | HIGH | Multitrack player far-seek sync collapse | Architecture verified 2026-05-25 (169 ms seek) |
+| #18 | MED | Multitrack session missing `durationSec` | OPEN |
+| #19 | HIGH | Export Mix `/render/check` 502 silently abandons polling | **MITIGATED** in `e764c74f` — persistent record + transient-blip handling; structural worker-side JSON envelope still recommended |
+
+## Outstanding deploy steps before next test
+
+1. **`modal deploy services/multitrack-render/render.py`** — the wet-branch ratio boost is a Modal-side change and won't take effect until redeployed. The browser code already ships the expected recipe shape; no browser action required.
+2. **Drew audio listen** — Custom Mix Phase A.5 reverb fix needs in-the-wild verification on Deadcetera stems. Compare master_reverb_wet=0 vs =0.75 vs =1.0 on the same session; if still subjectively flat, escalate to the deferred convolution swap.
+
+## Restart prompt for next session
+
+```
+GrooveLinx is at build 20260525-195215 (commit 6c84c52c) live on
+app.groovelinx.com.
+
+Session 2026-05-25 shipped 16 commits across recovery → UAT pass →
+governance arc → canonical-system convergence → Phase A.5 ship
+(render-job persistence + reverb ratio fix) → calendar mobile
+follow-ups (M1 + M2). A MacBook crash interrupted post-A.5 work;
+docs were synced after recovery.
+
+READ FIRST (in order):
+  1. 02_GrooveLinx/CLAUDE_HANDOFF.md top "SESSION CLOSE 19:52 UTC
+     (REVISED)" entry — authoritative final state
+  2. 02_GrooveLinx/system/CURRENT_SYSTEM_STATE.md (may still
+     reference build 191011 — trust the handoff revised block)
+  3. 02_GrooveLinx/system/CURRENT_ARCHITECTURE_STATE.md
+  4. 02_GrooveLinx/system/CURRENT_UAT_STATE.md
+  5. 02_GrooveLinx/system/AI_OPERATING_MODEL.md
+  6. 02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md
+  7. 02_GrooveLinx/CURRENT_PHASE.md top entries
+
+OUTSTANDING DEPLOY (before next test):
+  - `modal deploy services/multitrack-render/render.py` for the
+    Phase A.5 reverb ratio boost to take effect on `app.groovelinx.com`
+  - Drew audio listen on Custom Mix master_reverb_wet=0/0.5/0.75/1.0
+    to verify the ratio fix is dominant; if flat, escalate to
+    deferred aecho→afir convolution swap
+
+3 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
+  1. Formalize Stab #15 + GLPriority numbering
+  2. Calendar Model B (soft-cancel with status:'cancelled')
+  3. Operational Prioritization Phase 2 scope
+
+3 QUEUED FOLLOW-UPS (Claude can ship when prioritized):
+  - C7 Phase 2 (7 remaining inline-threshold sites, ~80 LOC)
+  - UAT Lab calendar.stale-panel.desktop contract (~100 LOC)
+  - Pre-existing recurrence EXDATE/RECURRENCE-ID bug (~150 LOC)
+
+OPEN BUGS: #17 architecture-verified · #18 (MED, durationSec
+missing) · #19 (HIGH → MITIGATED by Phase A.5; worker-side JSON
+envelope improvement still recommended)
+
+DO NOT:
+  - Assign Stab #N numbers yourself (Drew + ChatGPT own)
+  - Declare new canonical owners (Drew owns CANONICAL_SYSTEMS.md)
+  - Touch SYSTEM LOCKs from CLAUDE.md §7
+  - Add new governance docs (extend existing)
+
+UAT loop: `node scripts/uat-lab/run.js songs.triage.desktop` should
+PASS in <10s with 10 expectations (4 Tier A + 3 C7 + 3 GLPriority
+anti-drift). If it fails, that's the first thing to investigate.
+```
+
+---
+
 # 🛑 SESSION CLOSE — 2026-05-25 19:10 UTC
+
+> **NOTE:** This block is **preserved verbatim** but **superseded** by the 19:52 revised block above. The 19:10 close was written at commit `f58e38b8`; three more commits + two build bumps shipped after, and the MacBook crashed shortly after `6c84c52c`. Read this block for the 13-commit narrative; trust the revised block above for final-state truth.
 
 **Final build:** `20260525-191011` (commit `f58e38b8`) — live on `app.groovelinx.com` via Vercel auto-deploy.
 
