@@ -9,6 +9,7 @@ For current session state, build numbers, and in-flight work, see:
 - `02_GrooveLinx/CLAUDE_HANDOFF.md` — cumulative session-by-session history
 - `02_GrooveLinx/notes/uat_bug_log.md` — resolved-bug ledger
 - `02_GrooveLinx/uat/bug_queue.md` — open/in-progress/resolved bug queue
+- `02_GrooveLinx/specs/uat_lab_v1.md` — UAT Lab proposal (Product Operations phase, awaiting Phase 1 approval)
 
 ---
 
