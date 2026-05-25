@@ -1,13 +1,15 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260524-170407
+**Build Under Test:** 20260524-193407
+
+> **2026-05-25 recovery update.** Between the original Bug #17 fix at build `20260524-170407` and the current build `20260524-193407`, six commits shipped the Rehearsal Intelligence Convergence sprint (Phases 2 → 4B+4C) on top of the multitrack render pipeline. Modal `segment.py` + `render.py` were redeployed during the sprint; worker was redeployed for Phase 4C plan-priors passthrough. The Bug #17 architectural fix (Review Mode as default + Isolate Mode as opt-in) is still in effect and was extended by Custom Mix UX (commit `48a697ab`: 🔊 30s preview, phase progress timeline, "Close (keeps running)" relabel). The "Awaiting deploy" status below is **superseded** — deploys happened during the sprint. Visual verification of Phase 4B+4C is what's outstanding now; see `CLAUDE_HANDOFF.md` top entry. The original Bug #17 acceptance criteria (4 items) remain valid.
 
 ## Open
 
-### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH — FIX SHIPPED IN BUILD, AWAITING DEPLOY + IN-BROWSER VERIFICATION)
+### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH — FIX SHIPPED + DEPLOYED, AWAITING IN-BROWSER VERIFICATION)
 
-**Build shipping the fix:** `20260524-170407`
-**Status:** Architectural fix shipped — Review Mode (single stream) becomes the default playback path; 17-stream sync is now an opt-in "Isolate Stems" toggle behind a honest banner. The drift problem is **structurally eliminated** for the >99% review use case because there's only one stream and one clock. Awaiting (a) Drew running the `modal deploy` + `wrangler` deploy sequence per `specs/multitrack_render_deploy_runbook.md`, and (b) in-browser verification per the runbook's smoke-test section.
+**Build shipping the fix:** `20260524-170407` (architectural fix); extended through `20260524-193407` (Custom Mix UX + Phase 4 trust engineering)
+**Status:** Architectural fix shipped AND deployed — Review Mode (single stream) is the default playback path; 17-stream sync is now an opt-in "Isolate Stems" toggle behind a honest banner. Drift is **structurally eliminated** for the >99% review use case (one stream, one clock). Modal `services/multitrack-render/render.py` and worker.js were deployed during the 2026-05-24 evening sprint. Custom Mix UX (commit `48a697ab`) added per-render phase progress + 🔊 30s preview so users can A/B mixes without committing to a full render. **What's left:** Drew's in-browser verification per the 4 acceptance criteria below.
 
 **What was shipped (code-only, deploy pending):**
 - **R1** `services/multitrack-render/render.py` — Modal endpoint that pulls per-track FLACs from R2, applies a mix recipe (gain/mute/solo/reverbSend/master wet) via ffmpeg, renders WAV/MP3/FLAC, uploads back to R2.

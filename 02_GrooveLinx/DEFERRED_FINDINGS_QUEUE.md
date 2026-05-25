@@ -344,6 +344,87 @@ vocabulary mismatches, fragmented flows, naming drift.
   - **Discovered:** 2026-05-15 · bb594402
   - **Status:** open
 
+- **Finding:** Multitrack Review Mode — Review Queue mode toggle
+  ("show only needs-review + unnamed segments") not yet built. Drew
+  has filter pills (Phase 4A) but no one-click "give me only the
+  rows I have to fix" toggle for triage workflow.
+  - **Why deferred:** Phase 4B+4C had a coherent 2-slice scope (trust
+    engineering + plan-aware matching). Adding the queue toggle would
+    have diluted the focus. Pills already approximate it (Needs Review
+    + Unnamed both ON, everything else OFF).
+  - **Trigger:** Phase 4D pickup; or if Drew finds himself toggling
+    pills the same way every session.
+  - **Discovered:** 2026-05-24 · 87ec930b
+  - **Status:** open
+
+- **Finding:** Multitrack Review Mode — `J` keyboard shortcut for
+  "jump to next unresolved segment" not yet wired. `S`/`C`/`T`/`X`/
+  `Enter`/`↑`/`↓` already work (Phase 2D).
+  - **Why deferred:** Same Phase 4B+4C scope discipline as the
+    Review Queue toggle. The two pair naturally as Phase 4D.
+  - **Trigger:** Phase 4D pickup.
+  - **Discovered:** 2026-05-24 · 87ec930b
+  - **Status:** open
+
+- **Finding:** Multitrack Review Mode — large row layout restructure
+  was in Drew's original Phase 4B request but ChatGPT's reframe
+  dropped it in favor of the trust-engineering slice.
+  - **Why deferred:** "Incremental convergence" frame — better to
+    ship trust signals (4B-1/2/3/4) that the user feels immediately
+    than to reshape rows in a way that costs UAT cycles.
+  - **Trigger:** If Phase 4B+4C UAT surfaces row-density complaints,
+    or if the Review Queue toggle (above) ends up needing different
+    row formatting.
+  - **Discovered:** 2026-05-24 · 87ec930b
+  - **Status:** open
+
+- **Finding:** Multitrack Review Mode — "Human-corrected" badge per
+  segment (visually distinguish user-edited rows from analyzer-only
+  rows) deferred from Phase 4B.
+  - **Why deferred:** Same incremental-convergence reasoning. The
+    confirmed-state green wash + ✓ chip already partially conveys
+    this; a dedicated badge is the polish pass.
+  - **Trigger:** Phase 4D or when cross-rehearsal analytics need to
+    distinguish human-validated vs analyzer-only training data.
+  - **Discovered:** 2026-05-24 · 87ec930b
+  - **Status:** open
+
+- **Finding:** Multitrack Review Mode — Excluded rows still rendered
+  with red-tinted "danger" semantics; Drew's instinct was that
+  Excluded is more of a "set aside" amber than a "broken" red.
+  - **Why deferred:** Color-vocabulary change touches multiple chip
+    and stripe paths; held until other Phase 4B color decisions
+    landed first (solid confidence chips, red wash for needs-review).
+  - **Trigger:** Phase 4D color audit; or if confirmed-state
+    green vs needs-review red vs excluded amber feels inconsistent
+    in UAT.
+  - **Discovered:** 2026-05-24 · 87ec930b
+  - **Status:** open
+
+- **Finding:** Multitrack Review Mode — segment-row waveform
+  rendering could be simplified (server-rendered peaks already
+  exist; consider eliding the per-row mini-waveform when row is
+  collapsed).
+  - **Why deferred:** Performance is currently fine; simplification
+    is an opportunistic cleanup, not a needed fix.
+  - **Trigger:** If row-render perf degrades on long rehearsals
+    (~150+ segments) OR Phase 4D row restructure makes it natural.
+  - **Discovered:** 2026-05-24 · 87ec930b
+  - **Status:** open
+
+- **Finding:** Multitrack Review Mode — comments/annotations
+  embedding per segment (band member notes, "fix this take", etc.)
+  was on Drew's wish list but not in Phase 4B scope.
+  - **Why deferred:** Cross-cutting feature — needs schema
+    decisions (per-segment vs per-song threads), auth model, and
+    Practice/Workbench integration. Not a UI tweak; it's a
+    feature.
+  - **Trigger:** When the band starts asking "where do I record my
+    note about Pierce's solo in song X take 2?" — currently they
+    use external tools.
+  - **Discovered:** 2026-05-24 · 87ec930b
+  - **Status:** open
+
 ## 3. Architecture Convergence Debt
 
 Duplicated intelligence systems, legacy/new render overlap, model

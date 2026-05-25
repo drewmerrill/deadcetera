@@ -2,7 +2,77 @@
 
 # GrooveLinx AI Handoff
 
-_Last updated: 2026-05-24 20:22 UTC (build `20260524-202212`) — **Rehearsal Intelligence Convergence Phase 1 (Tier 1: Trust + Usability) shipped.** Per Drew's convergence directive 2026-05-24 ("create the definitive GrooveLinx rehearsal review workflow"), the Segments panel is now the canonical rehearsal-review surface — confidence visibility, safe fallback naming, canonical Song DNA autocomplete, color-coded type hierarchy, explicit review states, active-segment auto-highlight, sticky transport. Seven items A-G all in one focused commit. **Convergence rules honored:** ONE analyzer engine (existing `segment_endpoint`), ONE canonical segment storage path (`rehearsal_sessions/{sid}/analysis/story/segments` + `multitrackSegments/{segId}` overlay for user edits), zero browser waveform decoding, zero playback architecture changes, zero new analyzer or duplicate schema. Tier 2 (merge/trim/keyboard) NOT shipped yet — held until Drew visually verifies Phase 1. Tier 3 (learning loop) NOT shipped — Phase 3 territory. Tier 4 (waveforms) already covered by prior lightweight server-rendered peaks work. Tier 5 (advanced) deferred. **Schema additions to `multitrackSegments/{segId}` overlay:** `reviewState` ('confirmed'\|'needs-review'\|'excluded'\|null), `confirmedAt` (ISO), `confirmedBy` (email), `songId` (canonical Song DNA ID from `allSongs`). All optional; absence = derived from kind + confidence. Existing fields unchanged. **Songs-only render respects Excluded** via `_mtCollectSongSegments` filter; **Confirmed is UI-only in Phase 1** (no matching effect — Phase 3 territory); **autocomplete writes both `songTitle` (display) AND `songId` (canonical, exact-match resolution)** so Phase 3 training can key off songId. **Files this commit:** `js/features/multitrack-rehearsal.js` (~330 LOC of new helpers, handlers, row-template rewrite). Build bump 20260524-192317 → 20260524-202212. No Modal redeploy required. No SYSTEM LOCK touches. **NEXT SESSION OR DREW:** verify Phase 1 in browser → say "go" → ship Phase 2 (Tier 2 edit primitives: merge with next, trim ±5s/±0.5s, keyboard shortcuts S/C/T/X/Enter). Then Phase 3 (Tier 3 learning loop)._
+_Last updated: 2026-05-25 (recovery session after MacBook crash) — handoff reconstructed from git commits `68f09b83` → `87ec930b`. Build under test: `20260524-193407`._
+
+_**RECOVERY CONTEXT.** Drew's MacBook crashed late in the 2026-05-24 evening session, after a 6-commit sprint that shipped Rehearsal Intelligence Convergence Phase 2, Phase 3, Custom Mix UX, three UX nits, Phase 4A, and Phase 4B+4C. The repo is the source of truth — every commit pushed to `origin/main` before the crash. The Phase 1 handoff (below) is stale: Drew's "go" green-lit Phase 2; Phase 2 led to Phase 3 (Drew said proceed); a UAT pass produced the Custom Mix UX + UX-nit bundles; Phase 4A landed; Drew said "still feels analyzer-centric" → memory `feedback_rehearsal_review_centric` → ChatGPT reframe → Phase 4B+4C. Build went `20260524-202212 → 20260524-193407` across six commits with Modal redeploys for `segment.py` (Phase 3) + `render.py` (Custom Mix), and a worker redeploy for Phase 4C. See `CURRENT_PHASE.md` top entry for the full per-commit breakdown — it carries the canonical narrative of what landed._
+
+_**LIVING DOCS STATUS POST-RECOVERY:**_
+- _`CURRENT_PHASE.md`: ✓ Updated 2026-05-25 — top entry reconstructs all 6 commits._
+- _`CLAUDE_HANDOFF.md` (this file): ✓ Updated 2026-05-25 — this header + restart prompt below._
+- _`uat/bug_queue.md`: ✓ Build header bumped to `20260524-193407`; Bug #17 status note appended._
+- _`DEFERRED_FINDINGS_QUEUE.md`: ✓ Appended Phase 4D backlog (Review Queue mode toggle, J shortcut, large row restructure, Human-corrected badge, Excluded-as-amber, waveform simplification, comments embedding)._
+
+_**WHAT'S DEPLOYED vs CODE-ONLY:**_
+- _Browser bundle (`20260524-193407`): pushed to `origin/main` → Cloudflare Pages auto-deploys → live._
+- _Modal `services/rehearsal-segment/segment.py`: redeployed (Phase 3 fingerprint + Phase 4C plan-priors)._
+- _Modal `services/multitrack-render/render.py`: redeployed (Custom Mix preview + progress)._
+- _Cloudflare Worker (`worker.js`): redeployed (Phase 4C `plan_priors` passthrough)._
+- _If Drew is hitting the live app and seeing old behavior on hard-reload, the build cache or SW staleness is the suspect — service worker `CACHE_NAME` did bump with the build, so a hard-reload should pick up the new bundle within one SW cycle._
+
+_**SUGGESTED NEXT ACTIONS (in order):**_
+1. _Drew visually verifies Phase 4B+4C in the live app: solid confidence chips (no tint, high contrast), progressive disclosure on row actions (▶ ⋯ ✓ ⊘ default; click ⋯ to expand ✂ ⛓ ↕), sticky "Now Reviewing" header reading e.g. `🎵 Reviewing: Franklin's Tower · 8:39–9:24 · 54%`, 🎯 ON PLAN chip on segments matched against today's rehearsal plan or next gig setlist._
+2. _If verified, decide whether Phase 4D ships next (Review Queue mode toggle + J shortcut) or whether the queued deferred-but-not-trivial items take priority (large row restructure, Human-corrected badge, excluded-as-amber)._
+3. _If anything in 4B/4C misbehaves, fix-forward on top of `87ec930b` — no need to roll back the Phase 3 fingerprint corpus path._
+
+## Restart prompt for next session (paste into a new Claude Code session)
+
+```
+Drew's MacBook crashed late on 2026-05-24 after a 6-commit sprint shipped
+Rehearsal Intelligence Convergence Phases 2 → 4B+4C. Build under test is
+20260524-193407 (commit 87ec930b). The 6 commits in order:
+
+  68f09b83  Phase 2 — Tier 2 segment correction (merge/trim/keyboard + transition kind)
+  ceaa78c9  Phase 3 — Tier 3 learning loop (fingerprint corpus + provenance)
+  48a697ab  Custom Mix UX — phase narrative + 🔊 30s preview + Close label
+  dcb0637d  UX nits — h:mm:ss time, sticky highlight, Jump auto-play
+  e87688b7  Phase 4A — filter pills + collapsible groups
+  87ec930b  Phase 4B + 4C — trust engineering + plan-aware matching (CURRENT)
+
+Modal `segment.py` + `render.py` redeployed during the sprint. Worker
+redeployed for Phase 4C plan_priors passthrough. Everything is on
+origin/main.
+
+READ FIRST (in order):
+  1. 02_GrooveLinx/CURRENT_PHASE.md (top entry — full per-commit narrative)
+  2. 02_GrooveLinx/uat/bug_queue.md (Bug #17 status note)
+  3. 02_GrooveLinx/DEFERRED_FINDINGS_QUEUE.md (Phase 4D backlog)
+  4. memory/feedback_rehearsal_review_centric.md (the framing for 4A+4B+4C)
+
+DREW'S NEXT MOVE: visually verify Phase 4B+4C in the live app —
+  - Solid (not tinted) confidence chips — green/amber/red
+  - Row actions collapsed to ▶ ⋯ ✓ ⊘; click ⋯ expands ✂ ⛓ ↕ on that row
+  - Sticky "🎵 Reviewing: <title> · <range> · <conf>" header in transport
+  - 🎯 ON PLAN chip on segments matched against today's rehearsal plan
+    or next gig setlist
+  - _MT_SAFE_TITLE_THRESHOLD now 0.75 (was 0.65) — 65-74% matches surface
+    as "Possible: ..." placeholders, not auto-asserted titles
+
+THEN one of:
+  (a) Ship Phase 4D — Review Queue mode toggle + J=next-unresolved shortcut
+  (b) Tackle a deferred row-layout / badge item from the queue
+  (c) Drew's call
+
+DO NOT:
+  - Create a new analyzer engine (we have ONE: segment_endpoint)
+  - Duplicate segment schema (overlay path: multitrackSegments/{segId})
+  - Add browser-side waveform decoding (server-rendered peaks only)
+  - Change playback architecture (Review Mode = single render; Isolate = 17-stream)
+  - Build per-song share or Take Review parity (Tier 5 deferred)
+
+If Drew reports anything off, fix forward on top of 87ec930b.
+```
+
+_Previous: 2026-05-24 20:22 UTC (build `20260524-202212`) — **Rehearsal Intelligence Convergence Phase 1 (Tier 1: Trust + Usability) shipped.** Per Drew's convergence directive 2026-05-24 ("create the definitive GrooveLinx rehearsal review workflow"), the Segments panel is now the canonical rehearsal-review surface — confidence visibility, safe fallback naming, canonical Song DNA autocomplete, color-coded type hierarchy, explicit review states, active-segment auto-highlight, sticky transport. Seven items A-G all in one focused commit. **Convergence rules honored:** ONE analyzer engine (existing `segment_endpoint`), ONE canonical segment storage path (`rehearsal_sessions/{sid}/analysis/story/segments` + `multitrackSegments/{segId}` overlay for user edits), zero browser waveform decoding, zero playback architecture changes, zero new analyzer or duplicate schema. Tier 2 (merge/trim/keyboard) NOT shipped yet — held until Drew visually verifies Phase 1. Tier 3 (learning loop) NOT shipped — Phase 3 territory. Tier 4 (waveforms) already covered by prior lightweight server-rendered peaks work. Tier 5 (advanced) deferred. **Schema additions to `multitrackSegments/{segId}` overlay:** `reviewState` ('confirmed'\|'needs-review'\|'excluded'\|null), `confirmedAt` (ISO), `confirmedBy` (email), `songId` (canonical Song DNA ID from `allSongs`). All optional; absence = derived from kind + confidence. Existing fields unchanged. **Songs-only render respects Excluded** via `_mtCollectSongSegments` filter; **Confirmed is UI-only in Phase 1** (no matching effect — Phase 3 territory); **autocomplete writes both `songTitle` (display) AND `songId` (canonical, exact-match resolution)** so Phase 3 training can key off songId. **Files this commit:** `js/features/multitrack-rehearsal.js` (~330 LOC of new helpers, handlers, row-template rewrite). Build bump 20260524-192317 → 20260524-202212. No Modal redeploy required. No SYSTEM LOCK touches. **NEXT SESSION OR DREW:** verify Phase 1 in browser → say "go" → ship Phase 2 (Tier 2 edit primitives: merge with next, trim ±5s/±0.5s, keyboard shortcuts S/C/T/X/Enter). Then Phase 3 (Tier 3 learning loop)._
 
 ## Phase 1 verification checklist for Drew
 
