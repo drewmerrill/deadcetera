@@ -1284,8 +1284,12 @@ async function _mtOpenIsolateMode(session, tracks, sessionId) {
               '<button onmousedown="_mtHoldStart(5)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(5)" ontouchend="_mtHoldStop()" title="Forward 5s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">5 ⏩</button>' +
               // Skip+30s forward
               '<button onmousedown="_mtHoldStart(30)" onmouseup="_mtHoldStop()" onmouseleave="_mtHoldStop()" ontouchstart="_mtHoldStart(30)" ontouchend="_mtHoldStop()" title="Forward 30s (hold for continuous fast-forward)" style="padding:6px 8px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:var(--text-dim);font-weight:700;cursor:pointer;font-size:0.7em">30 ⏩</button>' +
-              // Reverb — master wet/dry knob
-              '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0" title="Reverb wet/dry — playback only, never baked to stems">' +
+              // Reverb — master amount knob. Per-instrument routing is binary
+              // (the 💧 button on each track row toggles whether that track is
+              // routed to the reverb bus); this slider controls how much reverb
+              // is mixed back into the master output. Playback only — never
+              // baked to stems.
+              '<div style="display:flex;align-items:center;gap:5px;flex-shrink:0" title="Reverb amount — controls how much reverb is heard. Per-track routing is binary (💧 on/off per row). Playback only, never baked to stems.">' +
                 '<span style="font-size:0.74em;color:var(--text-dim);font-weight:700">💧</span>' +
                 '<input type="range" id="mtReverbSlider" min="0" max="100" value="0" step="1" oninput="_mtSetReverbWet(this.value)" style="width:90px;accent-color:#06b6d4;cursor:pointer">' +
                 '<div id="mtReverbLabel" style="font-family:ui-monospace,monospace;font-size:0.7em;color:var(--text-dim);min-width:32px;text-align:right">0%</div>' +
@@ -1630,6 +1634,16 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
           '<div id="mtReviewStatusBanner" style="background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78em;color:#cbd5e1;flex-shrink:0">' +
             renderLabel +
           '</div>' +
+          // Pass 2 of mobile_review_mode_convergence_v1 / render persistence
+          // continuity — when the user has a Custom Mix render in flight for
+          // this session (started from the Custom Mix modal, then the user
+          // closed the modal to keep listening), this chip surfaces the
+          // server-side status inside Review Mode itself. Subscribed to
+          // glRenderJobUpdated from GLMultitrackRenders. Hidden by default.
+          // When a render completes, the chip becomes a "Play new mix" CTA
+          // that swaps the audio source — closes the "I hope the render
+          // worked" emotional failure mode Drew flagged.
+          '<div id="mtCustomRenderChip" style="display:none;background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.25);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:0.78em;color:#cbd5e1;flex-shrink:0"></div>' +
           // Transport bar — same 2-row layout as Isolate Mode, but no
           // mute/solo/volume/reverb (those are mix-time decisions baked
           // into the render). Single <audio> element drives everything.
@@ -1711,6 +1725,21 @@ async function _mtOpenReviewMode(session, tracks, sessionId, renderInfo, inFligh
             if (btn) btn.textContent = '▶ Play';
         });
     }
+
+    // Subscribe to GLMultitrackRenders for Custom Mix render visibility
+    // INSIDE Review Mode. Closes Drew's "I hope the render worked" emotional
+    // failure: the user starts a Custom Mix render, closes the modal to keep
+    // listening, and now sees the render's progress + completion inline.
+    _mtRefreshCustomRenderChip(sessionId);
+    var _renderUpdHandler = function(ev) {
+        if (!_mtState.player || _mtState.player.sessionId !== sessionId) return;
+        var d = ev && ev.detail;
+        if (!d || d.sessionId !== sessionId) return;
+        if (d.isPreview) return;  // only full Custom Mix renders surface here
+        _mtRefreshCustomRenderChip(sessionId);
+    };
+    try { document.addEventListener('glRenderJobUpdated', _renderUpdHandler); } catch (e) {}
+    if (_mtState.player) _mtState.player._renderUpdHandler = _renderUpdHandler;
 
     // Load comments + segments (same logic as Isolate Mode).
     _mtLoadSegments(sessionId).then(function() {
@@ -2678,6 +2707,12 @@ window._mtClosePlayer = function() {
     }
     if (_mtState.player) {
         if (_mtState.player._timeTicker) clearInterval(_mtState.player._timeTicker);
+        // Pass 2 mobile + render-continuity — detach the render-status
+        // subscriber so the closed player doesn't leak listeners.
+        if (_mtState.player._renderUpdHandler) {
+            try { document.removeEventListener('glRenderJobUpdated', _mtState.player._renderUpdHandler); } catch (e) {}
+            _mtState.player._renderUpdHandler = null;
+        }
         _mtStopSyncWatchdog(_mtState.player);
         if (_mtState.player._holdTimer) { clearInterval(_mtState.player._holdTimer); _mtState.player._holdTimer = null; }
         _mtState.player.audios.forEach(function(a) { try { a.pause(); a.src = ''; } catch (e) {} });
@@ -2692,6 +2727,90 @@ window._mtClosePlayer = function() {
         _mtState.player = null;
     }
     _mtState.composerTags = {};
+};
+
+// Refresh the inline Custom Mix render-status chip inside Review Mode.
+// Reads GLMultitrackRenders state (single source of truth — no per-player
+// duplicate state) and sets the chip text + visibility accordingly. Idempotent;
+// safe to call on every glRenderJobUpdated event or once on player open.
+function _mtRefreshCustomRenderChip(sessionId) {
+    var chip = document.getElementById('mtCustomRenderChip');
+    if (!chip) return;
+    if (typeof GLMultitrackRenders === 'undefined' || !GLMultitrackRenders.getJobsForSession) {
+        chip.style.display = 'none';
+        return;
+    }
+    var jobs = GLMultitrackRenders.getJobsForSession(sessionId)
+        .filter(function(j) { return !j.isPreview; });
+    // Prefer most-recent processing, else most-recent terminal (completed/failed)
+    // within the last 60s so a just-completed render lingers as a "Play it" CTA.
+    var processing = jobs.filter(function(j) { return j.status === 'processing'; })
+        .sort(function(a, b) { return (b.startedAt || 0) - (a.startedAt || 0); })[0];
+    var recentDone = jobs.filter(function(j) {
+        if (j.status !== 'completed') return false;
+        var t = j.completedAt || j.updatedAt || 0;
+        return (Date.now() - t) < 120000;  // 2-min lingering CTA
+    }).sort(function(a, b) { return (b.completedAt || 0) - (a.completedAt || 0); })[0];
+    var recentFail = jobs.filter(function(j) { return j.status === 'failed'; })
+        .sort(function(a, b) { return (b.updatedAt || 0) - (a.updatedAt || 0); })[0];
+
+    if (processing) {
+        var elapsedSec = Math.max(0, Math.round((Date.now() - (processing.startedAt || Date.now())) / 1000));
+        var phaseLabel = '';
+        if (processing.serverPhase && processing.serverPhase.label) {
+            phaseLabel = ' · ' + escHtml(processing.serverPhase.label);
+        }
+        chip.style.background = 'rgba(99,102,241,0.10)';
+        chip.style.borderColor = 'rgba(99,102,241,0.25)';
+        chip.style.color = '#cbd5e1';
+        chip.innerHTML = '🎬 <b>Custom mix rendering</b>'
+            + phaseLabel
+            + ' · <span style="font-family:ui-monospace,monospace">' + Math.floor(elapsedSec/60) + ':' + String(elapsedSec%60).padStart(2,'0') + '</span>'
+            + ' <span style="opacity:0.7;font-size:0.9em">— keeps running if you close this</span>';
+        chip.style.display = 'block';
+        return;
+    }
+    if (recentDone) {
+        chip.style.background = 'rgba(34,197,94,0.12)';
+        chip.style.borderColor = 'rgba(34,197,94,0.35)';
+        chip.style.color = '#86efac';
+        chip.innerHTML = '✓ <b>New custom mix ready</b> · ' + escHtml(recentDone.fileName || 'rendered mix')
+            + ' <button onclick="_mtSwitchToCustomRender(\'' + escHtml(recentDone.publicUrl || '') + '\',\'' + escHtml(recentDone.fileName || '') + '\',\'' + escHtml(recentDone.format || 'mp3') + '\',\'' + escHtml(recentDone.jobId || '') + '\')" '
+            + 'style="margin-left:8px;background:rgba(34,197,94,0.25);border:1px solid rgba(34,197,94,0.5);color:#86efac;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:0.92em;font-weight:700;font-family:inherit">▶ Play it</button>';
+        chip.style.display = 'block';
+        return;
+    }
+    if (recentFail && (Date.now() - (recentFail.updatedAt || 0)) < 60000) {
+        chip.style.background = 'rgba(239,68,68,0.10)';
+        chip.style.borderColor = 'rgba(239,68,68,0.35)';
+        chip.style.color = '#fca5a5';
+        chip.innerHTML = '⚠ <b>Custom mix render failed</b> · ' + escHtml(String(recentFail.failReason || 'unknown error').slice(0, 80))
+            + ' <button onclick="_mtOpenCustomMixModal()" style="margin-left:8px;background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);color:#fca5a5;border-radius:5px;padding:3px 10px;cursor:pointer;font-size:0.92em;font-weight:700;font-family:inherit">Try again</button>';
+        chip.style.display = 'block';
+        return;
+    }
+    chip.style.display = 'none';
+}
+
+// Swap Review Mode's <audio> source to a freshly completed Custom Mix render.
+// Wired by the "Play it" button in _mtRefreshCustomRenderChip. Updates
+// player.renderInfo so the status banner reflects the new playback source.
+window._mtSwitchToCustomRender = function(publicUrl, fileName, format, jobId) {
+    if (!publicUrl) return;
+    var audio = document.getElementById('mtReviewAudio');
+    if (audio) {
+        try { audio.pause(); } catch (e) {}
+        audio.src = publicUrl;
+        try { audio.load(); } catch (e) {}
+    }
+    if (_mtState.player) {
+        _mtState.player.renderInfo = { url: publicUrl, fileName: fileName, format: format, renderId: jobId };
+        var banner = document.getElementById('mtReviewStatusBanner');
+        if (banner) banner.innerHTML = '✓ Playing ' + escHtml(fileName || 'custom mix') + ' · ' + escHtml((format || 'mix').toUpperCase());
+    }
+    var chip = document.getElementById('mtCustomRenderChip');
+    if (chip) chip.style.display = 'none';
+    if (typeof showToast === 'function') showToast('Now playing the new custom mix');
 };
 
 window._mtTogglePlayAll = function() {
@@ -4292,61 +4411,166 @@ function _mtRenderSegmentRow(s, idx, p) {
     // the main row content instead of grid-spanning (flex doesn't support
     // grid-column:1/-1).
     if (_mtIsMobile()) {
-        var mobileProvHtml = (function() { var pc = _mtProvenanceChipHtml(s); return pc ? '<span style="flex-shrink:0">' + pc + '</span>' : ''; })();
-        var mobileMarkerSumHtml = (function() {
-            var sum = _mtSegmentMarkerSummary(s);
-            if (!sum) return '';
-            return '<span title="Marked moments — tap ⋯ to edit" style="flex-shrink:0;font-size:0.95em;letter-spacing:1px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:4px;padding:1px 4px">' + sum + '</span>';
-        })();
-        // Marker panel — same buttons as desktop, simpler container (no grid).
-        var mobileMarkerPanelHtml = moreOpen ? (
-            '<div style="padding:6px 10px;background:rgba(255,255,255,0.02);border-top:1px dashed rgba(255,255,255,0.06);display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:0.78em">'
-            + '<span style="color:var(--text-dim);font-weight:700;margin-right:4px">Mark:</span>'
+        // Pass 2 of mobile_review_mode_convergence_v1.md — focus-based mobile row.
+        // Default (NOT focused): clean recognition row — emoji + title (display
+        //   NOT input) + confidence; row 2: duration. NO actions visible.
+        //   Per Drew: "Collapsed rows optimize for recognition, NOT metadata density."
+        // Focused (tap row): rename / ▶ / ✓ / ⊘ / marker grid / + Add note
+        //   contextual composer trigger / × unfocus. Per Drew: "visually elevate
+        //   current segment, dim nonessential UI, reduce simultaneous noise."
+        // Rename (tap "Rename" inside focused): inline input replaces display.
+        // Note open (tap "+ Add note" inside focused): inline composer with
+        //   anchor pre-set to this segment.
+        // All other rows fade to opacity 0.5 when any row is focused.
+
+        var isFocused = (p._mobileFocusedIdx === idx);
+        var renameOpen = isFocused && (p._mobileRenameIdx === idx);
+        var noteOpen = isFocused && (p._mobileNoteOpenIdx === idx);
+        var hasFocusElsewhere = (p._mobileFocusedIdx != null && p._mobileFocusedIdx !== idx);
+
+        // Duration in human-musical form (e.g. "8m 36s" instead of "0:00–8:36"
+        // on the default row — Drew's "musician language" principle).
+        function _humanDuration(sec) {
+            if (!isFinite(sec) || sec <= 0) return '0s';
+            var m = Math.floor(sec / 60);
+            var s = Math.round(sec - m * 60);
+            if (m === 0) return s + 's';
+            if (s === 0) return m + 'm';
+            return m + 'm ' + s + 's';
+        }
+        var dur = Math.max(0, endSec - startSec);
+        var durStr = _humanDuration(dur);
+        var startStr = _mtFmtTimeShort(startSec);
+
+        // Single one-issue indicator on collapsed mobile rows — per Drew "maybe
+        // one issue indicator". Order: excluded > needs-review > confirmed.
+        var collapsedStateHtml = '';
+        if (reviewState === 'excluded')          collapsedStateHtml = '<span title="Excluded" style="color:#fbbf24;flex-shrink:0;font-size:0.95em">⊘</span>';
+        else if (reviewState === 'needs-review') collapsedStateHtml = '<span title="Needs review" style="color:#fca5a5;flex-shrink:0;font-size:0.95em">⚠</span>';
+        else if (reviewState === 'confirmed')    collapsedStateHtml = '<span title="Confirmed" style="color:#86efac;flex-shrink:0;font-size:0.95em">✓</span>';
+
+        var displayTitle = display.title || display.placeholder;
+        var titleColor = display.title ? '#f1f5f9' : 'var(--text-dim)';
+        var titleStyleAttr = display.title
+            ? 'font-weight:600;color:#f1f5f9'
+            : 'font-style:italic;color:var(--text-dim)';
+
+        // Container opacity: dim non-focused rows when another row is focused.
+        // Excluded rows stay extra-dim regardless.
+        var containerOpacity = (reviewState === 'excluded')
+            ? (hasFocusElsewhere ? '0.25' : '0.45')
+            : (hasFocusElsewhere ? '0.5' : '1');
+
+        // Focus chrome: elevate focused row with a subtle ring + slightly
+        // brighter bg. Not a different layout — just visual lift.
+        var focusedRing = isFocused
+            ? 'box-shadow:0 0 0 2px rgba(99,102,241,0.35);border-radius:8px;background:rgba(99,102,241,0.06);'
+            : '';
+
+        // ── Collapsed (default) row ──────────────────────────────────────
+        if (!isFocused) {
+            return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" '
+                + 'onclick="_mtMobileFocusRow(' + idx + ')" '
+                + 'style="display:flex;gap:8px;padding:10px;border-bottom:1px solid rgba(255,255,255,0.04);background:' + rowBg + ';opacity:' + containerOpacity + ';transition:opacity 150ms,background 150ms;outline:none;cursor:pointer">'
+                + '<div style="background:' + leftStripeColor + ';width:4px;flex-shrink:0;border-radius:2px;align-self:stretch"></div>'
+                + '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">'
+                // Row 1: emoji + title (DISPLAY not input) + one-issue indicator + confidence
+                + '<div style="display:flex;align-items:center;gap:7px;min-width:0">'
+                + '<span title="' + escHtml(meta.name) + '" style="color:' + meta.color + ';font-size:1.05em;opacity:' + kindOpa + ';flex-shrink:0">' + meta.emoji + '</span>'
+                + '<span style="flex:1;min-width:0;font-size:0.96em;' + titleStyleAttr + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(displayTitle) + '</span>'
+                + collapsedStateHtml
+                + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
+                + '</div>'
+                // Row 2: duration only (human "8m 36s" framing, NOT "0:00–8:36" timestamps).
+                // Hidden waveform canvas so _mtPaintSegmentStrips doesn't error.
+                + '<div style="display:flex;align-items:center;gap:6px;font-size:0.74em;color:var(--text-dim)">'
+                + '<span>' + durStr + '</span>'
+                + '<canvas id="' + canvasId + '" width="78" height="20" style="display:none"></canvas>'
+                + '</div>'
+                + '</div>'
+                + '</div>';
+        }
+
+        // ── Focused row — actions visible inline + optional rename + note ──
+        var focusedActionsHtml =
+            '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'
+            + '<button onclick="event.stopPropagation();_mtSegmentJump(' + idx + ')" title="Play this segment" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:5px;color:#fff;padding:6px 12px;cursor:pointer;font-size:0.86em;font-weight:700;flex-shrink:0">▶ Play</button>'
+            + (renameOpen
+                ? '<button onclick="event.stopPropagation();_mtMobileToggleRename(' + idx + ')" style="background:rgba(99,102,241,0.22);border:1px solid rgba(99,102,241,0.45);border-radius:5px;color:#a5b4fc;padding:6px 10px;cursor:pointer;font-size:0.82em;font-family:inherit">✏ Cancel rename</button>'
+                : '<button onclick="event.stopPropagation();_mtMobileToggleRename(' + idx + ')" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:5px;color:var(--text-dim);padding:6px 10px;cursor:pointer;font-size:0.82em;font-family:inherit">✏ Rename</button>'
+            )
+            + '<button onclick="event.stopPropagation();_mtSegmentConfirm(' + idx + ')" title="' + (reviewState === 'confirmed' ? 'Confirmed — tap to unconfirm' : 'Confirm') + '" style="background:' + confirmBg + ';border:1px solid ' + confirmBorder + ';border-radius:5px;color:' + confirmColor + ';padding:6px 12px;cursor:pointer;font-size:0.86em;font-family:inherit">✓ Confirm</button>'
+            + '<button onclick="event.stopPropagation();_mtSegmentToggleBetween(' + idx + ')" title="' + (reviewState === 'excluded' ? 'Excluded — tap to unflag' : 'Exclude from songs-only mix') + '" style="background:' + excludeBg + ';border:1px solid ' + excludeBorder + ';border-radius:5px;color:' + excludeColor + ';padding:6px 12px;cursor:pointer;font-size:0.86em;font-family:inherit">⊘ Exclude</button>'
+            + '</div>';
+
+        var focusedMarkerGridHtml =
+            '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:0.78em">'
+            + '<span style="color:var(--text-dim);font-weight:700;margin-right:4px;flex-shrink:0">Mark:</span>'
             + _MT_MARKER_DEFS.map(function(def) {
                 var on = !!activeMarkers[def.key];
                 var bg = on ? def.bg : 'rgba(255,255,255,0.04)';
                 var border = on ? def.border : 'rgba(255,255,255,0.1)';
                 var color = on ? def.color : 'var(--text-dim)';
-                return '<button onclick="_mtSegmentToggleMarker(' + idx + ',\'' + def.key + '\')" title="' + escHtml(def.label) + (on ? ' — tap to remove' : '') + '" '
-                    + 'style="background:' + bg + ';border:1px solid ' + border + ';border-radius:4px;color:' + color + ';padding:4px 12px;cursor:pointer;font-size:1em;font-family:inherit">'
+                return '<button onclick="event.stopPropagation();_mtSegmentToggleMarker(' + idx + ',\'' + def.key + '\')" title="' + escHtml(def.label) + (on ? ' — tap to remove' : '') + '" '
+                    + 'style="background:' + bg + ';border:1px solid ' + border + ';border-radius:5px;color:' + color + ';padding:6px 12px;cursor:pointer;font-size:1.05em;font-family:inherit">'
                     + def.emoji + '</button>';
             }).join('')
+            + '</div>';
+
+        var renamePanelHtml = renameOpen ? (
+            '<div style="display:flex;gap:6px;align-items:center;padding:6px 0">'
+            + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" onclick="event.stopPropagation()" class="app-input" '
+            + 'style="flex:1;min-width:0;font-size:1em;padding:8px 10px;background:#1e293b;border:1px solid rgba(99,102,241,0.4);border-radius:5px;color:#f1f5f9" autofocus>'
             + '</div>'
         ) : '';
+
+        var noteAffordanceHtml = noteOpen ? '' : (
+            '<button onclick="event.stopPropagation();_mtMobileToggleNote(' + idx + ')" '
+            + 'style="display:block;width:100%;text-align:left;background:rgba(99,102,241,0.08);border:1px dashed rgba(99,102,241,0.4);border-radius:6px;color:#a5b4fc;padding:9px 12px;cursor:pointer;font-size:0.88em;font-family:inherit;margin-top:2px">'
+            + '+ Add note at ' + escHtml(startStr) + (display.title ? ' · ' + escHtml(display.title) : '')
+            + '</button>'
+        );
+
+        // Inline contextual composer — only when user has explicitly tapped
+        // "+ Add note". Anchor pre-set to this segment's trackId-less moment
+        // (just a time anchor). Tag chips quieted to 5 visible + "+ more".
+        var noteComposerHtml = noteOpen
+            ? _mtRenderMobileNoteComposer(idx, startSec, display.title)
+            : '';
+
         return '<div data-seg-idx="' + idx + '" data-seg-start="' + startSec + '" data-seg-end="' + endSec + '" tabindex="0" '
-            + 'style="display:flex;flex-direction:column;background:' + rowBg + ';opacity:' + rowAlpha + ';border-bottom:1px solid rgba(255,255,255,0.04);transition:background 150ms;outline:none;' + ringStyle + '">'
-            // Inner two-row stack with 4px stripe on the left, content on the right.
-            + '<div style="display:flex;gap:8px;padding:8px 10px">'
+            + 'style="background:' + rowBg + ';opacity:1;border-bottom:1px solid rgba(255,255,255,0.04);' + focusedRing + 'transition:opacity 150ms,background 150ms;outline:none">'
+            // Top — collapsed-style header but × unfocus on the right
+            + '<div style="display:flex;gap:8px;padding:10px 10px 4px 10px">'
             + '<div style="background:' + leftStripeColor + ';width:4px;flex-shrink:0;border-radius:2px;align-self:stretch"></div>'
-            + '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">'
-            // Row 1: kind emoji + title input + state/conf chips
-            + '<div style="display:flex;align-items:center;gap:6px;min-width:0">'
-            + '<span title="' + escHtml(meta.name) + '" style="color:' + meta.color + ';font-size:1.1em;opacity:' + kindOpa + ';flex-shrink:0">' + meta.emoji + '</span>'
-            + '<input id="' + titleId + '" type="text" value="' + escHtml(display.title) + '" placeholder="' + escHtml(display.placeholder) + '" list="' + _MT_SONGS_DATALIST_ID + '" autocomplete="off" oninput="_mtSegmentTitleDirty(' + idx + ')" onblur="_mtSegmentTitleSave(' + idx + ')" onkeydown="if(event.key===\'Enter\')this.blur()" class="app-input" '
-            + 'style="flex:1;min-width:0;font-size:0.94em;padding:5px 6px;background:transparent;border:1px solid transparent;border-radius:4px;' + titleStyle + '">'
+            + '<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">'
+            + '<div style="display:flex;align-items:center;gap:7px;min-width:0">'
+            + '<span title="' + escHtml(meta.name) + '" style="color:' + meta.color + ';font-size:1.05em;opacity:' + kindOpa + ';flex-shrink:0">' + meta.emoji + '</span>'
+            + (renameOpen
+                ? '<span style="flex:1;color:var(--text-dim);font-size:0.82em;font-style:italic">Renaming…</span>'
+                : '<span style="flex:1;min-width:0;font-size:0.96em;' + titleStyleAttr + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(displayTitle) + '</span>'
+            )
             + (stateChip ? '<div style="flex-shrink:0">' + stateChip + '</div>' : '')
             + (confChip ? '<div style="flex-shrink:0">' + confChip + '</div>' : '')
+            + '<button onclick="event.stopPropagation();_mtMobileUnfocusRow()" title="Close focus" style="background:none;border:none;color:#94a3b8;font-size:1.3em;cursor:pointer;padding:0 4px;line-height:1;flex-shrink:0">×</button>'
             + '</div>'
-            // Row 2: time + provenance + marker summary + actions (actions right-aligned)
-            + '<div style="display:flex;align-items:center;gap:6px;font-size:0.78em;color:var(--text-dim)">'
-            + '<span style="font-family:ui-monospace,monospace;flex-shrink:0">' + _mtFmtTimeShort(startSec) + '–' + _mtFmtTimeShort(endSec) + '</span>'
-            + mobileProvHtml
-            + mobileMarkerSumHtml
-            // Waveform canvas kept in DOM (paint logic finds it by id) but hidden on mobile.
+            + '<div style="display:flex;align-items:center;gap:6px;font-size:0.74em;color:var(--text-dim)">'
+            + '<span style="font-family:ui-monospace,monospace">' + startStr + '</span>'
+            + '<span>·</span>'
+            + '<span>' + durStr + '</span>'
+            + (function() { var pc = _mtProvenanceChipHtml(s); return pc ? '<span style="flex-shrink:0">' + pc + '</span>' : ''; })()
             + '<canvas id="' + canvasId + '" width="78" height="20" style="display:none"></canvas>'
-            + '<div style="margin-left:auto;display:flex;gap:4px;flex-shrink:0">'
-            + _mtRenderRowActions(idx, reviewState, confirmBg, confirmBorder, confirmColor, excludeBg, excludeBorder, excludeColor, trimOpen, p)
             + '</div>'
             + '</div>'
             + '</div>'
+            // Bottom — focus action surface (rename / play / confirm / exclude / markers / + note)
+            + '<div style="padding:4px 10px 12px 22px;display:flex;flex-direction:column;gap:8px">'
+            + renamePanelHtml
+            + focusedActionsHtml
+            + focusedMarkerGridHtml
+            + noteAffordanceHtml
+            + noteComposerHtml
             + '</div>'
-            // Expansion panels render below the main row content (full-width).
-            // Trim panel is desktop-only per spec §11; the ↕ button is hidden
-            // on mobile in _mtRenderRowActions so trimOpen should always be
-            // false here on mobile, but we render it defensively anyway in
-            // case a session opened in trim mode on desktop is then resized.
-            + mobileMarkerPanelHtml
-            + (trimOpen ? trimPanelHtml : '')
             + '</div>';
     }
 
@@ -4416,6 +4640,180 @@ window._mtSegmentToggleMore = function(idx) {
     p._moreOpenIdx = (p._moreOpenIdx === idx) ? null : idx;
     _mtRenderSegmentsPanel();
 };
+
+// ── Pass 2 mobile focus + contextual note handlers ──────────────────────
+// Focus model: tap a default mobile row → it becomes focused; controls
+// (rename, play, confirm, exclude, marker grid, + note) appear inline.
+// Other rows dim to 0.5. Only one row focused at a time. Tap × to unfocus.
+// Rename + Note are separate sub-states of focus, mutually exclusive.
+
+window._mtMobileFocusRow = function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p._mobileFocusedIdx === idx) return;  // already focused, no-op
+    // Tapping a different row while one is focused: switch focus + close any
+    // sub-state (rename/note) on the previous row.
+    p._mobileFocusedIdx = idx;
+    p._mobileRenameIdx = null;
+    p._mobileNoteOpenIdx = null;
+    _mtRenderSegmentsPanel();
+    // Auto-scroll the focused row into view so the user doesn't lose orientation
+    // if the row was bottom-of-list and the focus content pushed it offscreen.
+    setTimeout(function() {
+        var row = document.querySelector('#mtSegmentsList [data-seg-idx="' + idx + '"]');
+        if (row && row.scrollIntoView) {
+            try { row.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {}
+        }
+    }, 50);
+};
+
+window._mtMobileUnfocusRow = function() {
+    var p = _mtState.player;
+    if (!p) return;
+    p._mobileFocusedIdx = null;
+    p._mobileRenameIdx = null;
+    p._mobileNoteOpenIdx = null;
+    _mtRenderSegmentsPanel();
+};
+
+window._mtMobileToggleRename = function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p._mobileFocusedIdx !== idx) p._mobileFocusedIdx = idx;
+    if (p._mobileRenameIdx === idx) {
+        p._mobileRenameIdx = null;
+    } else {
+        p._mobileRenameIdx = idx;
+        p._mobileNoteOpenIdx = null;  // can't rename + note at once
+    }
+    _mtRenderSegmentsPanel();
+    // Focus the input on next tick so the keyboard pops up.
+    setTimeout(function() {
+        var inp = document.getElementById('mtSegTitle_' + idx);
+        if (inp && inp.focus) { try { inp.focus(); inp.select(); } catch (e) {} }
+    }, 60);
+};
+
+window._mtMobileToggleNote = function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    if (p._mobileFocusedIdx !== idx) p._mobileFocusedIdx = idx;
+    if (p._mobileNoteOpenIdx === idx) {
+        p._mobileNoteOpenIdx = null;
+    } else {
+        p._mobileNoteOpenIdx = idx;
+        p._mobileRenameIdx = null;  // can't rename + note at once
+        // Reset composer tag state for a fresh note.
+        _mtState.composerTags = {};
+    }
+    _mtRenderSegmentsPanel();
+    setTimeout(function() {
+        var inp = document.getElementById('mtMobileNoteText_' + idx);
+        if (inp && inp.focus) { try { inp.focus(); } catch (e) {} }
+    }, 60);
+};
+
+// Toggle a tag in the composer state from the mobile contextual composer.
+// Mirrors _mtToggleComposerTag but re-renders the segments panel (not the
+// session-wide composer area) so the chip state reflects in the row UI.
+window._mtMobileToggleNoteTag = function(tag) {
+    if (!_mtState.composerTags) _mtState.composerTags = {};
+    _mtState.composerTags[tag] = !_mtState.composerTags[tag];
+    _mtRenderSegmentsPanel();
+};
+
+window._mtMobileToggleMoreNoteTags = function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    p._mobileNoteMoreTagsOpen = !p._mobileNoteMoreTagsOpen;
+    _mtRenderSegmentsPanel();
+};
+
+// Submit a note from the mobile contextual composer. Constructs the comment
+// object directly + calls _mtSaveComment (same path as window._mtAddComment),
+// but anchors to the SEGMENT'S start time rather than the live playhead so
+// the note attaches to "Music Never Stopped @ 0:00" even if the user has
+// scrubbed elsewhere. Closes the note panel + clears tag state on success.
+window._mtMobileSubmitNote = async function(idx) {
+    var p = _mtState.player;
+    if (!p) return;
+    var input = document.getElementById('mtMobileNoteText_' + idx);
+    if (!input) return;
+    var text = (input.value || '').trim();
+    var seg = (p.segments || [])[idx];
+    if (!seg) return;
+    var anchorTime = (typeof seg.startSec === 'number') ? seg.startSec : 0;
+    var tags = Object.keys(_mtState.composerTags || {}).filter(function(k) { return _mtState.composerTags[k]; });
+    if (!text && !tags.length) {
+        // Empty submit — close the panel silently rather than save junk.
+        p._mobileNoteOpenIdx = null;
+        _mtRenderSegmentsPanel();
+        return;
+    }
+    var comment = {
+        commentId: _mtGenCommentId(),
+        timestampSec: anchorTime,
+        text: text,
+        trackId: null,
+        tags: tags,
+        createdAt: new Date().toISOString(),
+        createdBy: (typeof currentUserEmail !== 'undefined') ? currentUserEmail : ''
+    };
+    var ok = await _mtSaveComment(p.sessionId, comment);
+    if (!ok) {
+        if (typeof showToast === 'function') showToast('⚠ Save failed');
+        return;
+    }
+    p.comments = (p.comments || []).concat([comment]).sort(function(a, b) {
+        return (a.timestampSec || 0) - (b.timestampSec || 0);
+    });
+    _mtState.composerTags = {};
+    p._mobileNoteOpenIdx = null;
+    p._mobileNoteMoreTagsOpen = false;
+    _mtRenderSegmentsPanel();
+    _mtRefreshCommentPanel();
+    if (typeof showToast === 'function') showToast('Note saved at ' + _mtFmtTimeShort(anchorTime));
+};
+
+// Render the inline contextual composer that appears below a focused row's
+// action surface when the user taps "+ Add note". Tag density: 5 visible
+// chips + "+ more tags ▾" disclosure per Drew's Pass 2 emotional-density
+// audit ("Keep lightweight — do not overbuild. Pass 4 has full 6-category
+// categorization; Pass 2 just quiets density.").
+function _mtRenderMobileNoteComposer(idx, atSec, songTitle) {
+    var p = _mtState.player;
+    if (!p) return '';
+    var tagState = _mtState.composerTags || {};
+    var moreOpen = !!p._mobileNoteMoreTagsOpen;
+    // 5 most-likely tags up front. Remaining 6 behind disclosure.
+    var primaryTags = _MT_TAGS.slice(0, 5);
+    var overflowTags = _MT_TAGS.slice(5);
+    function chipHtml(tag) {
+        var on = !!tagState[tag];
+        var bg = on ? 'rgba(99,102,241,0.22)' : 'rgba(255,255,255,0.04)';
+        var border = on ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.12)';
+        var color = on ? '#a5b4fc' : 'var(--text-dim)';
+        return '<button onclick="event.stopPropagation();_mtMobileToggleNoteTag(\'' + tag.replace(/'/g, "\\'") + '\')" '
+            + 'style="background:' + bg + ';border:1px solid ' + border + ';color:' + color + ';border-radius:12px;padding:4px 11px;cursor:pointer;font-size:0.78em;font-family:inherit">'
+            + escHtml(tag) + '</button>';
+    }
+    var primaryChipsHtml = primaryTags.map(chipHtml).join(' ');
+    var overflowDisclosure = moreOpen
+        ? overflowTags.map(chipHtml).join(' ')
+            + ' <button onclick="event.stopPropagation();_mtMobileToggleMoreNoteTags(' + idx + ')" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-size:0.78em;font-family:inherit;text-decoration:underline">fewer tags</button>'
+        : '<button onclick="event.stopPropagation();_mtMobileToggleMoreNoteTags(' + idx + ')" style="background:rgba(255,255,255,0.04);border:1px dashed rgba(255,255,255,0.15);color:var(--text-dim);border-radius:12px;padding:4px 11px;cursor:pointer;font-size:0.78em;font-family:inherit">+ more tags ▾</button>';
+
+    return '<div style="background:rgba(0,0,0,0.25);border:1px solid rgba(99,102,241,0.25);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px">'
+        + '<div style="font-size:0.78em;color:var(--text-dim);font-family:ui-monospace,monospace">📝 at ' + escHtml(_mtFmtTimeShort(atSec)) + (songTitle ? ' · ' + escHtml(songTitle) : '') + '</div>'
+        + '<textarea id="mtMobileNoteText_' + idx + '" placeholder="What did you notice?" rows="2" '
+        + 'onclick="event.stopPropagation()" style="width:100%;background:#1e293b;color:#f1f5f9;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px 10px;font-size:0.94em;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea>'
+        + '<div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">' + primaryChipsHtml + ' ' + overflowDisclosure + '</div>'
+        + '<div style="display:flex;gap:8px;align-items:center;margin-top:2px">'
+        + '<button onclick="event.stopPropagation();_mtMobileToggleNote(' + idx + ')" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);color:var(--text-dim);border-radius:5px;padding:7px 12px;cursor:pointer;font-size:0.86em;font-family:inherit">Cancel</button>'
+        + '<button onclick="event.stopPropagation();_mtMobileSubmitNote(' + idx + ')" style="margin-left:auto;background:linear-gradient(135deg,#667eea,#764ba2);border:none;color:#fff;font-weight:700;border-radius:5px;padding:7px 14px;cursor:pointer;font-size:0.88em;font-family:inherit">Save note</button>'
+        + '</div>'
+        + '</div>';
+}
 
 // Phase 4A — filter pill bar HTML. Each pill is an independent toggle.
 // Active pill = filled bg + colored border. Inactive = outline only.
@@ -4751,7 +5149,19 @@ function _mtRenderSegmentsPanel() {
     }
 
     // Header summary + ? help icon when hint is dismissed.
-    var summaryStr = totalVisible + ' shown' + (hiddenCount ? ' · ' + hiddenCount + ' filtered out' : '');
+    // Pass 2 of mobile_review_mode_convergence_v1 — musician-oriented language
+    // on mobile. Desktop keeps the operator-accounting framing ("31 shown ·
+    // 110 filtered out") because desktop users are doing triage/analysis work
+    // and want exact counts. Mobile users are listening + lightly annotating;
+    // they care that there's stuff hidden, not the exact count of what.
+    var songsVisible = (buckets.music || []).length + (buckets.needsReview || []).length;
+    var summaryStr;
+    if (_mtIsMobile()) {
+        summaryStr = songsVisible + (songsVisible === 1 ? ' song' : ' songs');
+        if (hiddenCount > 0) summaryStr += ' · ' + hiddenCount + ' more in filters';
+    } else {
+        summaryStr = totalVisible + ' shown' + (hiddenCount ? ' · ' + hiddenCount + ' filtered out' : '');
+    }
     var helpIconHtml = hintDismissed
         ? '<button onclick="event.stopPropagation();_mtSegmentsHintShow()" title="Show review workflow help" style="background:none;border:1px solid rgba(255,255,255,0.15);color:var(--text-dim);border-radius:50%;width:18px;height:18px;line-height:14px;padding:0;cursor:pointer;font-size:0.7em;font-weight:700;margin-left:6px">?</button>'
         : '';
