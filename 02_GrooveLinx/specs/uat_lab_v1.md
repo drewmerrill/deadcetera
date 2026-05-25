@@ -1,8 +1,25 @@
 # GrooveLinx UAT Lab v1 — Proposal + Implementation Plan
 
-_Authored 2026-05-25 — entering the **GrooveLinx Product Operations** phase. Status: **proposal awaiting Drew approval**; nothing in this spec is implemented yet (no `tests/` files added, no harness scripts, no new queues). The goal is to formalize a disciplined, AI-assisted UAT operating system that extends existing GrooveLinx operational infrastructure — not a parallel governance layer._
+_Authored 2026-05-25, revised 2026-05-25 (post-feedback) — entering the **GrooveLinx Product Operations** phase. Status: **proposal awaiting Drew approval**; nothing in this spec is implemented yet (no `tests/` files added, no harness scripts, no new queues). The goal is to formalize a disciplined, AI-assisted UAT operating system that extends existing GrooveLinx operational infrastructure — not a parallel governance layer._
+
+> **🔧 Errata note (2026-05-25 v2).** The v1 draft of this proposal claimed two named docs did not exist (`STABILIZATION_QUEUE.md`, `ACTIVE_WORKSTREAMS.md`). They both exist in `02_GrooveLinx/00_Governance/` — a directory the original inventory missed entirely. All claims about missing docs in §0 / §7 / §11.1 of the v1 draft are corrected below. Drew also locked in directional decisions: §11.1 = Option A (extend existing patterns), §11.2 = Phase 1 lead flow is `songs.triage.desktop`, §11.4 = no autonomous `KNOWN_STABLE_FLOWS` promotion (Claude recommends + attaches evidence; founder approves). Plus an explicit Founder Experience layer (§4.5) was added.
 
 > **Anti-goal.** This is NOT chaos-driven autonomous testing. The v1 perimeter is **deterministic scripted flows + screenshot harvesting + structured findings + stable operational loops**. Broad autonomous exploration is explicitly out of scope until v2.
+
+> **What this is FOR + what this is NOT FOR** (verbatim per Drew, 2026-05-25):
+>
+> _UAT Lab exists to improve:_
+> - _workflow trust_
+> - _product coherence_
+> - _navigation clarity_
+> - _operational stability_
+>
+> _UAT Lab does NOT exist to:_
+> - _maximize automation_
+> - _maximize testing breadth_
+> - _replace founder intuition_
+>
+> _Founder intuition remains a first-class input. Playwright + screenshots + telemetry **support** product judgment. They **do not replace** it._
 
 ---
 
@@ -40,6 +57,36 @@ Before proposing anything new, here's the existing infrastructure this spec must
 - **`?beta=true`** query enables the beta surface generally
 - **Direct Firebase RTDB reads** via the open `bands/.read: true` rule work fine for inspection scripts (no Firebase Auth required — see memory `reference_playwright_mcp_limits`)
 
+### Existing governance docs (`02_GrooveLinx/00_Governance/` — 16 docs, **all already in the repo**)
+Corrects the v1 draft which incorrectly claimed `STABILIZATION_QUEUE.md` and `ACTIVE_WORKSTREAMS.md` were missing. They exist — here's the full set:
+
+| Doc | Role | Update cadence |
+|---|---|---|
+| `ReadMe.md` | Index defining each gov doc's purpose | Rare |
+| `AI_WORKFLOW.MD` | **Canonical AI-roles definition** — ChatGPT (strategy/architecture/review/sequencing), Claude (implementation/refactors/repo ops), GitHub Projects (execution tracking), Governance docs (continuity). 6-phase Idea→Spec→Ready→Build→Review→Ship. UAT Lab MUST honor this split. | Rare |
+| `CHATGPT_THREAD_RULES.md` | Thread-hygiene rules (1 thread = 1 purpose; chat types: Drew Command Center / Strategy / Tactical Build / Scratchpad) | Rare |
+| `ARCHITECTURE_DECISIONS.md` | Durable architectural decisions (state mgmt direction, mobile perf, Spotify "reliability > polish", AI workflow direction) | When architecture changes |
+| `CURRENT_STATE.md` | What GrooveLinx currently is (platform snapshot) | When capabilities materially change |
+| `CURRENT_PRIORITIES.md` | P0/P1/P2/P3 (currently P0 = Spotify Reliability) | When priorities shift |
+| `ACTIVE_WORKSTREAMS.md` | 6 workstreams: Spotify Reliability / Rehearsal Intelligence / Mobile Performance / AI Guidance / Scheduling Intelligence / Product Simplification | When workstreams begin/end |
+| `CANONICAL_SYSTEMS.md` | Canonical owners + permitted/prohibited patterns. **CRITICAL for UAT Lab:** explicit prohibition on "adding new monkey-patches of global browser APIs for instrumentation purposes. New observability metrics belong inside existing canonical modules behind a `getStats()` getter." | When new canonical owner declared |
+| `DATA_OWNERSHIP_RULES.md` | Tier 1/2/3 data ownership: every write must route through canonical owners (GLStore.RehearsalSession, GLBandFeedStore, saveBandArrayDataSafe, etc.). **UAT Lab findings must follow this rule** — writes go through `GLFeedbackService.submitExplicit()` to `bands/{slug}/feedback_reports/{reportId}`. | When new domain added |
+| `KNOWN_STABLE_FLOWS.md` (in 00_Governance) | Short stub list (Rehearsal create/save, Setlist playback, Song Detail chart, Harmony playback, Spotify connect, Calendar sync, Pocket Meter, Live Gig, Feed updates) marked Stable/Experimental/Needs verification/iPhone risky. The richer top-level `02_GrooveLinx/KNOWN_STABLE_FLOWS.md` is the canonical version. | After every stabilization fix |
+| `KNOWN_TECHNICAL_DEBT.md` | Acknowledged technical debt | When discovered/resolved |
+| `STABILIZATION_DASHBOARD.md` | **Stab #N completion ledger + Reality Audits + Convergence Initiatives** (currently at Stab #14, Reality Audits #01-09, Convergence Initiatives C1-C6) | After every Stab ship |
+| `STABILIZATION_QUEUE.md` | Tester-feedback priority queue: Critical / High / Medium / Nice-to-have (currently mostly Medium + Nice-to-have UX observations) | After every Drew triage pass |
+| `BETA_READINESS_CHECKLIST.md` | Beta launch readiness | When beta posture changes |
+| `LAUNCH_BLOCKERS.md` | Active launch blockers | When discovered/resolved |
+| `LAUNCH_READINESS.md` | Launch readiness scoring | When readiness changes |
+
+**Why this matters for UAT Lab:**
+1. **CANONICAL_SYSTEMS.md prohibits new monkey-patched instrumentation** → UAT Lab findings flow through existing surfaces (`GLFeedbackService`, `GLUXTracker`, `GLRuntimeHealth` snapshots), not new global handlers.
+2. **DATA_OWNERSHIP_RULES.md mandates canonical-owner writes** → UAT Lab finding storage uses the existing `bands/{slug}/feedback_reports/{reportId}` path via `GLFeedbackService.submitExplicit()`.
+3. **AI_WORKFLOW.MD defines the AI-roles split** → UAT Lab is a Claude-executed system; specifications + sequencing decisions remain ChatGPT/Drew. UAT findings inform strategy but don't make strategy.
+4. **STABILIZATION_QUEUE.md is the tester-friction triage surface** (not a Stab #N registry) → UAT Lab user-facing UX findings land here under the appropriate priority bucket.
+5. **STABILIZATION_DASHBOARD.md is the Stab #N completion ledger** → Stab #N fixes triggered by UAT Lab findings get stamped here when shipped.
+6. **ACTIVE_WORKSTREAMS.md is the workstream registry** → UAT Lab itself is part of "Workstream 6 — Product Simplification" (no new workstream needed).
+
 ### Existing UAT / operational documentation
 - **`02_GrooveLinx/uat/bug_queue.md`** — canonical open bug queue (open + in-flight + resolved sections, severity column, ~545 lines)
 - **`02_GrooveLinx/uat/screenshots/`** — screenshot evidence, organized by date (`2026-05-25/` started by the multitrack UAT pass)
@@ -64,12 +111,8 @@ Before proposing anything new, here's the existing infrastructure this spec must
 - **Auth bypass for tests:** the `helpers.js` `signIn(page, band)` pattern stamps `localStorage.deadcetera_google_email` + `deadcetera_current_band` and reloads — **no real Google OAuth required for E2E tests** because the app routes auth through `GLStore.isReady('firebase')` + `_glCheckBandMembership` (which honors the localStorage email). Firebase RTDB reads use the open `bands/.read: true` rule.
 - **Auth in Playwright MCP (interactive sessions):** does require real OAuth — see `reference_playwright_mcp_limits` memory for the recipe.
 
-### Doc-name reality check (IMPORTANT)
-The original requirements list named:
-- **`STABILIZATION_QUEUE.md`** — **does not exist** in the repo. Stabilization work is tracked as `Stab #N` entries inside `CURRENT_PHASE.md`, with the origin pattern in `specs/groovelinx-stabilization-audit.md`.
-- **`ACTIVE_WORKSTREAMS.md`** — **does not exist** in the repo. The top entry of `CURRENT_PHASE.md` already serves as the active-workstream view.
-
-This proposal does **not** create these two files (per the "extend, don't invent" rule). Section 8 lists two options for Drew's decision: (a) standardize on the existing `CURRENT_PHASE.md` pattern, or (b) create the named files if the existing pattern is insufficient.
+### Doc-name reality check — CORRECTED 2026-05-25 v2
+The v1 draft claimed two docs were missing. **They both exist in `02_GrooveLinx/00_Governance/`** (see the table above). My v1 inventory only checked the top level of `02_GrooveLinx/` and missed the governance subdirectory entirely. Inventory now includes the full set. UAT Lab integrates directly with the existing docs — no new governance files proposed, no Option A/B alternatives needed.
 
 ---
 
@@ -244,17 +287,35 @@ iPad is out of v1 scope. Add it only when a flow specifies a tablet variant.
 
 Findings are classified at intake by the UAT Lab runner. Each finding has exactly one **category** and is routed to **exactly one existing queue** — no new queues created.
 
-### 4.1 Seven canonical categories + routing rule
+### 4.1 Canonical categories + routing rule
+
+GrooveLinx is not generic productivity software — it succeeds or fails on **trust, musical momentum, confidence, clarity, emotional coherence, and workflow intuition**. The category set is therefore explicitly bigger than technical QA. Two tiers:
+
+**Tier A — Technical QA categories (7):**
 
 | Category | Definition | Lands in | Severity guidance |
 |---|---|---|---|
 | **Bug** | Concrete behavior broken (error, wrong result, crash, silent fail) | `uat/bug_queue.md` → Open section | HIGH if blocks a critical flow; MED if recoverable; LOW if cosmetic |
-| **UX Issue** | Behavior is "correct" but confusing, mistitled, mis-hierarchized, or trust-eroding | `DEFERRED_FINDINGS_QUEUE.md` § 2 UX Coherence Debt | n/a (queue is by category) |
-| **Stabilization** | Listener lifecycle, race, orphan, dead listener, broken fallback — survives across builds | `DEFERRED_FINDINGS_QUEUE.md` § 1 Stabilization Debt; promoted to `Stab #N` in `CURRENT_PHASE.md` when fixed | n/a |
+| **UX Issue** | Behavior is "correct" but confusing, mistitled, mis-hierarchized, or trust-eroding | `DEFERRED_FINDINGS_QUEUE.md` § 2 UX Coherence Debt | n/a |
+| **Stabilization** | Listener lifecycle, race, orphan, dead listener, broken fallback — survives across builds | `DEFERRED_FINDINGS_QUEUE.md` § 1 Stabilization Debt; promoted to `Stab #N` in `STABILIZATION_DASHBOARD.md` + `CURRENT_PHASE.md` when fixed | n/a |
 | **Architecture Drift** | Symbol drift, duplicate render pipeline, parallel governance, broken abstraction boundary | `DEFERRED_FINDINGS_QUEUE.md` § 3 Architecture Convergence Debt | n/a |
-| **Regression** | A previously-verified flow now fails | `uat/bug_queue.md` → Open section, title prefixed `REGRESSION:` | HIGH by default (regressions are always high-priority) |
+| **Regression** | A previously-verified flow now fails | `uat/bug_queue.md` → Open section, title prefixed `REGRESSION:` | HIGH by default |
 | **Performance** | SLA violation (e.g., music-use surface > 1s, far-seek > 1s, render > 5min) | `uat/bug_queue.md` → Open section if blocking; otherwise `DEFERRED_FINDINGS_QUEUE.md` § 1 | MED unless gating a real user task |
-| **Trust/Clarity** | Confidence chip wrong, naming auto-asserted at low conf, system-state UI doesn't match real state | `DEFERRED_FINDINGS_QUEUE.md` § 2 UX Coherence Debt; tag with `[trust]` | n/a |
+| **Trust/Clarity** | Confidence chip wrong, naming auto-asserted at low conf, system-state UI doesn't match real state | `DEFERRED_FINDINGS_QUEUE.md` § 2 UX Coherence Debt; tag `[trust]` | n/a |
+
+**Tier B — Founder Experience / Emotional UX categories (7, NEW per Drew 2026-05-25):**
+
+| Category | Definition | Lands in | Examples from existing GrooveLinx context |
+|---|---|---|---|
+| **Trust issue** | A user-facing claim, badge, or signal does not match reality (or feels uncertain when it shouldn't) | `STABILIZATION_QUEUE.md` (priority bucket per impact) + `DEFERRED_FINDINGS_QUEUE.md` § 2 with `[trust]` tag | "47/63 songs locked" but actually 46. "Loading..." sentinel persists. Confidence chip color doesn't match data. Auto-asserted titles below 0.75. |
+| **Cognitive overload** | Too many panels / CTAs / decisions visible at once for the canonical job of the page | `STABILIZATION_QUEUE.md` Medium → Nice-to-have + `DEFERRED_FINDINGS_QUEUE.md` § 2 | Homepage rendering 13-15 panels (per `founder_ux_review_2026-05-22.md`). Schedule tab with 4 competing buttons. |
+| **Navigation confusion** | User cannot answer "what now?" or "how do I get back?" in <2 seconds | `STABILIZATION_QUEUE.md` + `DEFERRED_FINDINGS_QUEUE.md` § 2 | Versions tab buried under tab → tab → tab. Right rail Play tab too narrow to be useful. |
+| **Musical context loss** | The band's musical reality (current readiness, BPM, key, recent rehearsal) is not visible when the user needs it | `DEFERRED_FINDINGS_QUEUE.md` § 2 | Song Detail tab not showing "where everyone is" without scrolling. Rehearsal review not linking back to the song's prep state. |
+| **Emotional friction** | Workflow makes the user feel uncertain, ignored, or like the system is fighting them | `STABILIZATION_QUEUE.md` (often High priority) + `DEFERRED_FINDINGS_QUEUE.md` § 2 | "Schedule" + "Schedule rehearsal" + "Block" buttons all near each other with unclear differences. Onboarding stalls that don't recover. |
+| **Recommendation confusion** | Suggested action / focus song / next step does not justify itself | `DEFERRED_FINDINGS_QUEUE.md` § 2 (link to AI Guidance workstream) | Focus engine top-5 picks not explained. "Quick practice →" CTA without showing what it'll practice. GrooveMate suggestions lacking source citation. |
+| **Workflow momentum break** | A flow that should be one continuous gesture requires the user to back out and re-enter | `DEFERRED_FINDINGS_QUEUE.md` § 2 + `STABILIZATION_QUEUE.md` if blocking | "back out and re-enter" pattern from founder review §1. Song Detail → Versions → realize you wanted Chart → back → tab swap. Setlist mid-edit interrupted by overlay close. |
+
+**De-dupe + routing rule (applies to both tiers):** A finding with the same `flow + category + title` as an existing open queue entry is appended as a "seen again on build X" stamp inside the existing entry — NOT filed as a new entry. Tier B findings additionally try to attach to the matching workstream from `ACTIVE_WORKSTREAMS.md` (e.g., "Recommendation confusion" findings ping Workstream 4 — AI Guidance Layer).
 
 ### 4.2 Required finding fields (machine + human readable)
 
@@ -299,7 +360,26 @@ Findings are also appended (one-line) to the run's `_manifest.json` so the manif
 
 ### 4.3 De-dupe rule
 
-A finding with the same `flow + category + title` as an existing open queue entry is appended as a "seen again on build X" stamp inside the existing entry — NOT filed as a new entry. This prevents queue churn from re-runs.
+(See "De-dupe + routing rule" inline at end of §4.1.)
+
+### 4.4 Founder intuition stays first-class
+
+Per Drew 2026-05-25: _"Founder intuition remains a first-class input. Playwright + screenshots + telemetry **support** product judgment. They **do not replace** it."_ Practically:
+
+- **Claude does not file Tier B findings autonomously without screenshot + flow context.** A Tier B finding requires the visual evidence + a 1-line description of the specific reproducible step where the friction was observed. No "the homepage feels overloaded" without saying which panel + which step.
+- **Tier B findings are recommendations, not bug reports.** The queue note explicitly says `(UAT Lab recommendation — founder review needed)` until Drew triages.
+- **Drew can dismiss any Tier B finding with one line.** `Status: dismissed — founder calls this correct/intentional` is a valid resolution that requires no further investigation.
+- **Disagreement is signal.** If Claude flags a Trust issue Drew dismisses, the dismissal context goes into the finding's evidence trail so the same finding doesn't recur. Memory `feedback_layered_ia_no_deletes` reminds us: low usage of a feature is NOT evidence that the feature should be removed.
+
+### 4.5 Founder Experience review cadence
+
+In addition to per-flow finding intake (§4.1), the UAT Lab supports a **structured Founder Experience review** that runs against a multi-flow snapshot:
+
+- Cadence: weekly (during high-velocity phases) → monthly (during stabilization phases)
+- Output: `specs/ux_review_YYYY-MM-DD.md` (see §5)
+- Format: structured snapshot across the v1 flow set with Tier B categories scored 1-5 per flow
+- Anchored to existing UI principles: `specs/groovelinx-ui-principles.md` (3-pane Band Command Center, One Job Per Screen, <1s music-surface SLA, layered IA, no new destinations) + the existing `founder_ux_review_2026-05-22.md` synthesis pattern
+- Reviewed jointly: Claude assembles evidence + recommendations; Drew (and optionally ChatGPT acting in its strategic role per `AI_WORKFLOW.MD`) decides priority + sequencing
 
 ---
 
@@ -415,15 +495,48 @@ This is where "do NOT invent a parallel governance system" gets enforced. Every 
 | Active workstream view | `CURRENT_PHASE.md` top entry (no new file) | Existing pattern serves this role |
 | Stabilization queue view | `Stab #N` entries inside `CURRENT_PHASE.md` (no new file) | Existing pattern serves this role |
 
-### 7.2 The two doc names that don't exist (decision needed)
+### 7.2 Governance doc integration — CORRECTED 2026-05-25 v2
 
-The original requirements listed `STABILIZATION_QUEUE.md` + `ACTIVE_WORKSTREAMS.md`. Neither exists in the repo. Two options:
+The v1 draft offered "Option A or B" because I incorrectly believed `STABILIZATION_QUEUE.md` and `ACTIVE_WORKSTREAMS.md` didn't exist. Per the §0 inventory correction, both DO exist in `02_GrooveLinx/00_Governance/`. **Drew has confirmed Option A is the right posture** anyway: extend existing patterns, do NOT create new governance files. This section now describes the integration with the real docs.
 
-**Option A — Standardize on existing pattern (recommended).** Treat `CURRENT_PHASE.md`'s top entry as the active-workstream view, and `Stab #N` entries inside it as the stabilization queue. No new files. UAT Lab tooling references `CURRENT_PHASE.md` for both. **Pros:** zero new governance docs. **Cons:** need to grep `Stab #` to see the full open-stab list; no dedicated active-workstream surface.
+**Routing matrix updated for the real governance landscape:**
 
-**Option B — Create the two named files.** `STABILIZATION_QUEUE.md` would be a thin index pointing at `Stab #N` entries in `CURRENT_PHASE.md` (no duplicate content; just a registry of open Stab numbers + status). `ACTIVE_WORKSTREAMS.md` would be a thin "what's in flight right now" surface, refreshed on session close. **Pros:** dedicated surfaces for queue inspection. **Cons:** two more files to keep in sync; could drift from `CURRENT_PHASE.md` if not disciplined.
+| UAT Lab artifact | Existing doc it lands in (canonical) | Note |
+|---|---|---|
+| Tier A Bug, severe | `02_GrooveLinx/uat/bug_queue.md` → Open section | Drew triages; severe ones may be promoted to `Stab #N` |
+| Tier A Bug, light | `02_GrooveLinx/uat/bug_queue.md` → Open section, LOW severity | |
+| Resolved bug | Move to `02_GrooveLinx/notes/uat_bug_log.md` per `feedback_bug_queue_workflow` | Drew or Claude on his behalf |
+| Tier A UX Issue | `02_GrooveLinx/DEFERRED_FINDINGS_QUEUE.md` § 2 UX Coherence Debt | |
+| Tier A Stabilization | `02_GrooveLinx/DEFERRED_FINDINGS_QUEUE.md` § 1 Stabilization Debt | Promoted to `Stab #N` in `00_Governance/STABILIZATION_DASHBOARD.md` when shipped |
+| Tier A Architecture Drift | `02_GrooveLinx/DEFERRED_FINDINGS_QUEUE.md` § 3 Architecture Convergence Debt | May trigger a new Convergence Initiative (C-series) — Drew calls |
+| Tier A Regression | `uat/bug_queue.md` (title `REGRESSION:`) + regression artifact under `uat/regressions/` | HIGH severity default |
+| Tier A Performance | `uat/bug_queue.md` (if blocking) or `DEFERRED_FINDINGS_QUEUE.md` § 1 | SLA reference: `feedback_music_surface_sla` |
+| Tier A Trust/Clarity | `DEFERRED_FINDINGS_QUEUE.md` § 2 with `[trust]` tag | Often dual-routes to Tier B Trust issue |
+| Tier B Trust issue | `00_Governance/STABILIZATION_QUEUE.md` (priority bucket per impact) + `DEFERRED_FINDINGS_QUEUE.md` § 2 with `[trust]` | Tester-priority queue; Drew triages Critical/High/Med/Nice-to-have |
+| Tier B Cognitive overload | `STABILIZATION_QUEUE.md` (usually Medium → Nice-to-have) + `DEFERRED_FINDINGS_QUEUE.md` § 2 | Often links to `Workstream 6 — Product Simplification` |
+| Tier B Navigation confusion | `STABILIZATION_QUEUE.md` + `DEFERRED_FINDINGS_QUEUE.md` § 2 | |
+| Tier B Musical context loss | `DEFERRED_FINDINGS_QUEUE.md` § 2 | Often links to `Workstream 2 — Rehearsal Intelligence` or `Workstream 4 — AI Guidance Layer` |
+| Tier B Emotional friction | `STABILIZATION_QUEUE.md` (often High priority) + `DEFERRED_FINDINGS_QUEUE.md` § 2 | |
+| Tier B Recommendation confusion | `DEFERRED_FINDINGS_QUEUE.md` § 2 (link to Workstream 4) | |
+| Tier B Workflow momentum break | `DEFERRED_FINDINGS_QUEUE.md` § 2 + `STABILIZATION_QUEUE.md` if blocking | |
+| Screenshots | `02_GrooveLinx/uat/screenshots/YYYY-MM-DD/<flow>/<build>/` | Extends today's pattern |
+| UX Review export | `02_GrooveLinx/specs/ux_review_YYYY-MM-DD.md` | Extends `founder_ux_review_2026-05-22.md` |
+| Run manifest | `_manifest.json` inside the per-build screenshot dir | New leaf file, not a new queue |
+| External tester feedback | `02_GrooveLinx/BETA_FEEDBACK_QUEUE.md` (unchanged) | Tester intake stays separate from automation |
+| Stab #N completion | `00_Governance/STABILIZATION_DASHBOARD.md` (chronological) + narrative in `CURRENT_PHASE.md` | Existing pattern — UAT Lab never writes Stab numbers itself |
+| New canonical owner declared | `00_Governance/CANONICAL_SYSTEMS.md` | Drew authors; UAT Lab respects the prohibitions inside |
+| Workstream assignment | `00_Governance/ACTIVE_WORKSTREAMS.md` references | UAT Lab is part of Workstream 6 (Product Simplification); does NOT create a new workstream |
+| Strategic priority shift | `00_Governance/CURRENT_PRIORITIES.md` (P0/P1/P2/P3) | Drew authors; UAT Lab does NOT |
+| Architectural decision | `00_Governance/ARCHITECTURE_DECISIONS.md` | Drew/ChatGPT author per `AI_WORKFLOW.MD` |
+| Active in-flight work | `CURRENT_PHASE.md` top entry (no new file) | Existing pattern |
+| Findings actionable as work items | **GitHub Projects** (per `AI_WORKFLOW.MD` "GitHub Projects is the official task board") | Markdown queues are continuity; GitHub Projects is execution |
 
-Drew chooses. The proposal works either way; Option A is the default in §7.1 above.
+**Cross-doc invariants UAT Lab enforces:**
+1. Never writes to `CANONICAL_SYSTEMS.md`, `DATA_OWNERSHIP_RULES.md`, `ARCHITECTURE_DECISIONS.md`, `CURRENT_PRIORITIES.md` — these are Drew/ChatGPT-owned strategic surfaces.
+2. Never adds a new top-level governance doc — uses existing 16 in `00_Governance/`.
+3. Stab numbering is **never assigned by UAT Lab** — only by the human-led stabilization cycle when a finding is promoted to a Stab #N fix; that promotion is recorded in `STABILIZATION_DASHBOARD.md`.
+4. Convergence Initiatives (C1-C6) are similarly human-assigned; UAT Lab can flag Architecture Drift but does not declare new Convergence Initiatives.
+5. KNOWN_STABLE_FLOWS.md promotions require founder approval (per §11.4 lock-in below). Claude may add at `Experimental` only if Drew has pre-approved that flow's addition.
 
 ### 7.3 Session-close discipline
 
@@ -452,11 +565,14 @@ Files added:
 tests/uat-lab/
   runner.js                              ← shared contract → Playwright runner
   contracts/
-    home.morning-glance.desktop.js       ← FIRST FLOW
+    songs.triage.desktop.js              ← FIRST FLOW (Drew-selected, HIGH-drift target)
   helpers/
     screenshot-store.js                  ← writes to uat/screenshots/<date>/<flow>/<build>/
     manifest.js                          ← writes _manifest.json
     finding-router.js                    ← classifies + routes to existing queues
+  schemas/
+    manifest.schema.json                 ← JSON schema for _manifest.json validation
+    finding.schema.json                  ← JSON schema for finding records
 scripts/uat-lab/
   run.js                                 ← `node scripts/uat-lab/run.js <flow-slug>`
   list.js                                ← `node scripts/uat-lab/list.js` → all flow slugs
@@ -464,16 +580,19 @@ scripts/uat-lab/
 ```
 
 Acceptance for Phase 1:
-1. `node scripts/uat-lab/run.js home.morning-glance.desktop` produces a directory of screenshots + `_manifest.json` with `expectations: all pass` against the current build.
-2. The run takes < 30 seconds.
-3. Manually inject one expectation failure (e.g., expect a non-existent selector) → finding is filed in `uat/bug_queue.md` Open section with a stable shape.
-4. `KNOWN_STABLE_FLOWS.md` updated with the new "Home dashboard" entry at Stable trust level.
-5. `_manifest.json` validates against a JSON schema (added under `tests/uat-lab/schemas/`).
+1. `node scripts/uat-lab/run.js songs.triage.desktop` produces a directory of screenshots + `_manifest.json` with `expectations: all pass` (or honest fail) against the current build.
+2. The run takes < 30 seconds for the Songs page (it's a heavy load — `Songs=586+`).
+3. Manually inject one expectation failure (e.g., expect a non-existent selector) → finding is filed in `uat/bug_queue.md` Open section with a stable shape (per §4.2 schema).
+4. **`KNOWN_STABLE_FLOWS.md` updated with the new "Songs page triage" entry at `Experimental` trust level — Drew explicitly approves the entry before commit** (per §11.4 lock-in).
+5. `_manifest.json` validates against the schema added under `tests/uat-lab/schemas/`.
+6. **One Tier B finding surfaces honestly** — given the founder review flagged Songs as HIGH-drift, Phase 1 should produce at least one Cognitive Overload or Navigation Confusion finding routed to `STABILIZATION_QUEUE.md` at the appropriate priority. If zero Tier B findings surface, Drew + Claude review whether the Tier B sensors are calibrated correctly.
+7. Manifest run-record is committed alongside screenshots; the Phase 1 commit explicitly notes "recommended at Experimental — pending Drew approval" in the PR/commit message per §11.4.
 
 ### Phase 2 — Expand to first wave of v1 flows (~300 LOC, ~1-2 days)
 Add contracts for:
+- `home.morning-glance.desktop`
 - `home.morning-glance.iphone`
-- `songs.triage.desktop`
+- `songs.triage.iphone`  (mobile variant of the Phase 1 lead)
 - `practice.pick-one-song.desktop`
 - `setlist.lock-and-share.desktop`
 - `rehearsal.review-last.desktop`
@@ -534,13 +653,15 @@ So this proposal doesn't grow into something it isn't:
 
 ---
 
-## 11. Open questions for Drew (to resolve before Phase 1)
+## 11. Decisions locked in by Drew 2026-05-25 (was: open questions)
 
-1. **§7.2 — Option A or B?** Standardize on `CURRENT_PHASE.md` for active workstream + Stab queue (default), or create `STABILIZATION_QUEUE.md` + `ACTIVE_WORKSTREAMS.md` as named files?
-2. **Phase 1 first flow — `home.morning-glance.desktop` (proposed)?** Or do you want to lead with a flow that's more likely to surface a real finding (e.g., `songs.triage.desktop` which is HIGH-drift per the founder review)?
-3. **Screenshot storage — do we eventually commit screenshots to the repo, or move them to a separate evidence store?** Today they go in `02_GrooveLinx/uat/screenshots/` and are committed (the 4 from 2026-05-25 already are). Long-term this could bloat the repo; we may want LFS or an external evidence bucket. Not blocking Phase 1.
-4. **`KNOWN_STABLE_FLOWS.md` registration — does adding a new flow require your approval, or can Claude add it autonomously when needed?** Recommend: Claude adds at `Experimental` trust level; Drew promotes to `Stable` after manual verification.
-5. **Replay-against-old-builds (§6.3)** — do you want this in Phase 4 or push to v2? It requires `git stash` + `git checkout` discipline that can collide with in-flight work.
+1. **§7.2 — DECISION: Option A.** Standardize on existing governance pattern. Note: the v1 draft framed this incorrectly as "two docs don't exist"; they both exist in `00_Governance/`. §0 + §7.2 now reflect the real landscape. Reason given by Drew: _"canonical governance consolidation > decomposition at current scale."_
+2. **Phase 1 lead flow — DECISION: `songs.triage.desktop`.** Drew's reasoning: _"higher operational density and more likely to surface meaningful findings than homepage-first review. Better candidate for screenshot harvesting, regression structure, cognitive-load review, convergence pressure testing, metadata cleanup workflow validation."_ Aligns with `founder_ux_review_2026-05-22.md` HIGH-drift assessment of the Songs page.
+3. **Screenshot storage — DEFERRED.** Today they commit to `02_GrooveLinx/uat/screenshots/` (the 4 from 2026-05-25 already are). Long-term this could bloat the repo. Not blocking Phase 1; revisit when repo size or churn becomes a real cost.
+4. **§11.4 — DECISION: No autonomous KNOWN_STABLE_FLOWS promotion.** Drew's lock-in: _"Claude may recommend / propose / attach evidence. Founder approval still required for KNOWN_STABLE_FLOWS promotion during this phase."_ Reason: _"trust calibration and operational semantics still evolving."_ Practical implication for Phase 1: when Claude adds a flow, the PR/commit must explicitly state "recommended at Experimental — pending Drew approval" and Drew applies the actual line in `KNOWN_STABLE_FLOWS.md` (top-level, the canonical version, not the 00_Governance stub).
+5. **Replay-against-old-builds (§6.3) — DEFERRED to v2.** Phase 4 stays focused on current-build regression and pixel-diff against the previous run within the same build epoch. Cross-build git-checkout replay is out of scope until v2.
+
+**Net for Phase 1:** all blockers cleared. Lead flow is `songs.triage.desktop`. Phase 1 implementation can begin when Drew gives the explicit go signal.
 
 ---
 
@@ -565,6 +686,6 @@ So this proposal doesn't grow into something it isn't:
 
 ## 13. Sign-off
 
-This document is the proposal. No code is added by this commit. Phase 1 implementation requires explicit Drew approval after he reads §11 and resolves the open questions.
+This document is the proposal. No code is added by this commit. **§11 decisions are now locked** (Option A, `songs.triage.desktop` lead flow, no autonomous KNOWN_STABLE_FLOWS promotion, screenshots-in-repo deferred, cross-build replay deferred). Phase 1 implementation begins on Drew's explicit go signal.
 
-When Drew approves: Phase 1 lands as a single commit that adds `tests/uat-lab/`, `scripts/uat-lab/`, and one entry to `KNOWN_STABLE_FLOWS.md` — no other doc changes — and produces the first artifact in `02_GrooveLinx/uat/screenshots/<date>/home.morning-glance.desktop/<build>/`.
+When Drew gives the go: Phase 1 lands as a single commit that adds `tests/uat-lab/`, `scripts/uat-lab/`, one proposed-Experimental entry in `KNOWN_STABLE_FLOWS.md` (awaiting Drew approval before promotion), and produces the first artifact in `02_GrooveLinx/uat/screenshots/<date>/songs.triage.desktop/<build>/`.
