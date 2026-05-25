@@ -21,6 +21,8 @@ _**Deferred Findings Queue addition:** Phase 4C plan_priors not visible on pre-4
 
 _**Screenshots (Playwright MCP, in `02_GrooveLinx/uat/screenshots/2026-05-25/`):** `mt-review-modal.png`, `mt-row-expanded.png`, `isolate-mode.png`, `export-after.png`._
 
+_**Bug #15 (Spotify→YouTube cross-source teardown) re-verified same session.** Drove the synthetic-queue test via Playwright MCP after the multitrack UAT: `play(0)` started Sugaree by Jerry Garcia on Drew's Desktop in 892 ms; `play(1)` advance → Spotify went **silent in 659 ms**; spies confirmed `GLSpotifyConnect.pause(deviceId)` + `stopPolling()` both fired. The May 20 `_activeMethod`-based gate is still working. Bug #15 entry in `uat/bug_queue.md` updated with the re-verification stamp + Playwright workaround notes (Widevine missing, `isIOSPlatform` override). New memory `reference_playwright_mcp_limits` codifies the recipe for future Spotify/YouTube UAT passes._
+
 _**Playwright MCP operational notes worth remembering:**_
 - _Playwright launches its own Chrome with `--no-sandbox` (the yellow Chromium banner is cosmetic — it's the MCP-launched browser, not GrooveLinx)._
 - _The MCP Chrome profile carries NO cookies from Drew's normal browser. First UAT session requires Drew to complete Google OAuth once in the Playwright window before band data becomes reachable._
