@@ -12,7 +12,9 @@ For current session state, build numbers, and in-flight work, see:
 - `02_GrooveLinx/specs/uat_lab_v1.md` — UAT Lab v1 proposal (Product Operations phase, revised v2 after inventory correction, awaiting Phase 1 approval)
 - `02_GrooveLinx/specs/operational_visibility_v1.md` — Operational Visibility + AI-Assisted UAT Architecture v1 (companion strategic spec, awaiting Drew + ChatGPT review)
 - `02_GrooveLinx/specs/competitive_positioning_reframe.md` — strategic clarity analysis testing the "operational continuity for bands" moat hypothesis (awaiting Drew + ChatGPT strategic review)
-- `02_GrooveLinx/system/` — System Intelligence + Governance Mapping (7 maps + ReadMe, 1,541 lines, discovery-only — read `system/ReadMe.md` first). Maps: SYSTEM_MAP, CANONICAL_IMPLEMENTATIONS_MAP (extends 00_Governance/CANONICAL_SYSTEMS.md), DATA_OWNERSHIP_MAP (extends 00_Governance/DATA_OWNERSHIP_RULES.md), UX_SURFACE_MAP, AI_SYSTEMS_MAP, STABILITY_CLASSIFICATION, FEATURE_LINEAGE.
+- `02_GrooveLinx/system/` — **two doc classes** (read `system/ReadMe.md` first):
+  - **7 Discovery Maps** (1,541 lines, written-once): SYSTEM_MAP, CANONICAL_IMPLEMENTATIONS_MAP (extends 00_Governance/CANONICAL_SYSTEMS.md), DATA_OWNERSHIP_MAP (extends 00_Governance/DATA_OWNERSHIP_RULES.md), UX_SURFACE_MAP, AI_SYSTEMS_MAP, STABILITY_CLASSIFICATION, FEATURE_LINEAGE
+  - **5 Rolling Sync Surfaces** (compact, continuously updated): CURRENT_SYSTEM_STATE, CURRENT_UX_STATE, CURRENT_ARCHITECTURE_STATE, CURRENT_UAT_STATE, AI_OPERATING_MODEL — designed for fast ChatGPT ↔ Claude synchronization without conversational replay
 - `02_GrooveLinx/00_Governance/` — 16 canonical governance docs (AI workflow, canonical systems, data ownership, current state/priorities, stabilization dashboard/queue, architecture decisions, etc.). Read `00_Governance/ReadMe.md` first.
 
 ---

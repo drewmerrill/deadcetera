@@ -1,6 +1,10 @@
-# GrooveLinx System Maps — Index
+# GrooveLinx System Maps + Sync Surfaces — Index
 
-_Authored 2026-05-25 by the **GrooveLinx System Intelligence + Governance Mapping initiative**. These docs are discovery-only — they map the existing system, they do NOT propose new architecture. Drew + ChatGPT make convergence calls._
+_Authored 2026-05-25. This directory contains **two doc classes**:_
+- _**Discovery Maps (7 docs)** — produced by the **System Intelligence + Governance Mapping initiative**. Anchored, evidence-based, written once + updated when canonical owners or convergence initiatives change. Discovery-only — do NOT propose new architecture._
+- _**Rolling Sync Surfaces (5 docs)** — produced by the **AI Synchronization Layer initiative**. Compact, rolling, operational snapshots designed for fast AI sync (esp. ChatGPT ↔ Claude) without conversational replay. Re-validated periodically; cross-reference governance docs as source of truth._
+
+_Drew + ChatGPT make convergence calls. Claude maintains both classes per `00_Governance/AI_WORKFLOW.MD`._
 
 ---
 
@@ -37,6 +41,35 @@ SYSTEM_MAP.md                       ← anchor: every system + responsibilities 
 
 ---
 
+## The 5 Rolling Sync Surfaces
+
+```
+CURRENT_SYSTEM_STATE.md            ← live operational export of GrooveLinx state
+CURRENT_UX_STATE.md                ← canonical UX/product direction snapshot
+CURRENT_ARCHITECTURE_STATE.md      ← canonical architecture/convergence snapshot
+CURRENT_UAT_STATE.md               ← canonical UAT/stabilization snapshot
+AI_OPERATING_MODEL.md              ← GrooveLinx AI collaboration model (snapshot view of AI_WORKFLOW.MD + extensions)
+```
+
+| Sync Surface | What it answers | Re-validate when |
+|---|---|---|
+| `CURRENT_SYSTEM_STATE.md` | What is GrooveLinx doing right now? Build truth, priorities, workstreams, open convergence, unstable areas, recent decisions | Every meaningful build / priority shift / convergence change |
+| `CURRENT_UX_STATE.md` | What is GrooveLinx's UX direction right now? Hero principles, simplification efforts, unresolved debates, emotional UX goals | Every UX synthesis / founder review |
+| `CURRENT_ARCHITECTURE_STATE.md` | What is the current architecture/convergence state? Canonical systems, deprecated, active migrations, SYSTEM LOCKs | Every Stab / Convergence ship / canonical declaration |
+| `CURRENT_UAT_STATE.md` | What is the current UAT/stabilization state? Stable flows, open bugs, Playwright maturity, telemetry, high-risk surfaces | Every UAT pass / bug filing / regression event |
+| `AI_OPERATING_MODEL.md` | How do ChatGPT + Claude + Playwright + MCP + sub-agents collaborate? Canonical truth hierarchy, escalation rules | When AI workflow extends / new tooling lands |
+
+**Goal of the sync surfaces:** allow ChatGPT (or any new AI session) to read 5 compact docs and have full operational truth without replaying days of conversation. Per Drew 2026-05-25: _"These are NOT historical journals. They are concise, rolling, operational, continuously updated, canonical synchronization surfaces."_
+
+**Authoritative source ranking** for sync surfaces (per `AI_OPERATING_MODEL.md` §3):
+1. Live code + Live Firebase data
+2. `CLAUDE.md` SYSTEM LOCKs
+3. `00_Governance/CANONICAL_SYSTEMS.md` + `DATA_OWNERSHIP_RULES.md` + `ARCHITECTURE_DECISIONS.md` + `CURRENT_PRIORITIES.md` + `ACTIVE_WORKSTREAMS.md` + `STABILIZATION_DASHBOARD.md`
+4. `CURRENT_PHASE.md` (narrative) + `CLAUDE_HANDOFF.md` (tactical)
+5. These sync surfaces are **derived views**, not new authority — they distill the above
+
+---
+
 ## Filename collision rule (applied here)
 
 `02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md` already exists as the authoritative ownership declaration. This directory's version is named **`CANONICAL_IMPLEMENTATIONS_MAP.md`** to avoid the parallel-governance anti-pattern. Same pattern was checked for `DATA_OWNERSHIP_RULES.md` (existing) → renamed to `DATA_OWNERSHIP_MAP.md` (this directory).
@@ -62,6 +95,13 @@ For Drew + ChatGPT (strategic):
 - `AI_SYSTEMS_MAP.md` §X (AI Sprawl Risks) — the largest convergence opportunity surface
 - `FEATURE_LINEAGE.md` §X (Lineage Gaps) — features whose "why" needs Drew clarification
 
+For **fast AI sync** (the 5 sync surfaces):
+- Start with `CURRENT_SYSTEM_STATE.md` (1 doc covers build truth + priorities + workstreams + open convergence + unstable areas + recent decisions)
+- Then `CURRENT_ARCHITECTURE_STATE.md` if convergence-related
+- Then `CURRENT_UX_STATE.md` if UX-related
+- Then `CURRENT_UAT_STATE.md` if testing/regression-related
+- Reference `AI_OPERATING_MODEL.md` to know who owns what + canonical truth hierarchy + escalation rules
+
 ---
 
 ## Hard constraints honored
@@ -77,13 +117,22 @@ All maps respect:
 
 ## Update cadence
 
-These maps are LIVING DOCS but should NOT be updated on every Stab. Update when:
+**Discovery Maps (7 docs):** LIVING DOCS but should NOT be updated on every Stab. Update when:
 - A new canonical owner is declared (`CANONICAL_SYSTEMS.md` gains a row) → reflect in `CANONICAL_IMPLEMENTATIONS_MAP.md`
 - A Convergence Initiative ships (C7, C8, ...) → reflect in `STABILITY_CLASSIFICATION.md` + `AI_SYSTEMS_MAP.md` + `DATA_OWNERSHIP_MAP.md`
 - A new major feature ships → reflect in `SYSTEM_MAP.md` + `FEATURE_LINEAGE.md` + `UX_SURFACE_MAP.md`
 - A Reality Audit produces new findings → reflect in the relevant map's "Risks" or "Sprawl" section
 
-Avoid drift: if these maps contradict `00_Governance/`, the governance docs win. Then update the map to match.
+**Rolling Sync Surfaces (5 docs):** updated proactively per change-trigger:
+- `CURRENT_SYSTEM_STATE.md` → after every meaningful build, priority shift, or convergence change
+- `CURRENT_UX_STATE.md` → after every UX synthesis or founder review
+- `CURRENT_ARCHITECTURE_STATE.md` → after every Stab ship, Convergence ship, or canonical declaration
+- `CURRENT_UAT_STATE.md` → after every UAT pass, bug filing, or regression event
+- `AI_OPERATING_MODEL.md` → when AI workflow extends (new tool, new MCP, new sub-agent pattern)
+
+Each sync surface stamps **"Last updated: YYYY-MM-DD HH:MM UTC · Build under test: XXXXXXXX-XXXXXX"** at the top. Re-validate before quoting if last-updated > 14 days old.
+
+Avoid drift: if these docs contradict `00_Governance/`, the governance docs win. Then update the doc to match.
 
 ---
 
