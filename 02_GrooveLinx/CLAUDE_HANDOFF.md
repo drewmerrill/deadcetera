@@ -6,26 +6,35 @@
 
 # 🚀 Operational Restart Prompt
 
-_Last refreshed: 2026-05-25 23:25 UTC · Build under test: `20260525-225157` (unchanged) · Branch: `main` · Mode: **OBSERVATION + SPEC** (Pass 2 mobile awaiting in-the-wild evidence; Recording Ingestion Architecture v1 spec landed at `02_GrooveLinx/specs/recording_ingestion_architecture_v1.md` — design only, awaiting Drew + ChatGPT review before any implementation phase)_
+_Last refreshed: 2026-05-26 00:10 UTC · Build under test: `20260525-225157` (unchanged) · Branch: `main` · Mode: **PASS 2.5 SCOPED — OVERNIGHT FRICTION HARVEST COMPLETE.** 30 findings filed (4 HIGH, 11 MED, 7 LOW, 8 INFO/positive). Bugs #20-#27 opened in `uat/bug_queue.md`. Drew deployed `services/multitrack-render/render.py` to Modal (Phase A.5 reverb fix LIVE). **Smallest/highest-leverage next fix:** hide desktop session composer on mobile (Bug #22, ~5-10 LOC) — cascading positive side effects on 5 other findings._
 
 **Paste this verbatim into a new chat to resume safely:**
 
 ```
 GrooveLinx is at build 20260525-225157 (commit 9adcb4c3), branch main,
-live on app.groovelinx.com via Vercel.
+live on app.groovelinx.com via Vercel. Modal services/multitrack-render/
+render.py was DEPLOYED by Drew during overnight harvest — Phase A.5
+reverb wet-branch ratio boost is now LIVE in production.
+
+OVERNIGHT FRICTION HARVEST (2026-05-25 23:28 - 2026-05-26 00:10 UTC)
+SHIPPED FINDINGS ONLY (no code). Full evidence in:
+  02_GrooveLinx/uat/findings/mobile-pass2-friction-harvest-2026-05-25.md
+30 findings filed. 9 iPhone screenshots at
+  02_GrooveLinx/uat/screenshots/2026-05-25/mobile-friction-harvest/
 
 READ FIRST (in order — repo docs win over chat memory):
   1. 02_GrooveLinx/CLAUDE_HANDOFF.md top "SESSION UPDATE" entry
-     (5-section operational handoff package)
-  2. 02_GrooveLinx/00_Governance/AI_WORKFLOW.md §Session Continuity
+     (5-section operational handoff package — includes harvest TL;DR)
+  2. 02_GrooveLinx/uat/findings/mobile-pass2-friction-harvest-2026-05-25.md
+     (full top-10 + emotional UX observations + recommended next fix)
+  3. 02_GrooveLinx/uat/bug_queue.md — new Bugs #20-#27 from harvest
+  4. 02_GrooveLinx/00_Governance/STABILIZATION_QUEUE.md — Medium tier
+     gained 8 Pass 2.5 candidates from harvest
+  5. 02_GrooveLinx/00_Governance/AI_WORKFLOW.md §Session Continuity
      Protocol (how to run / close this and every future session)
-  3. 02_GrooveLinx/00_Governance/CURRENT_STATE.md
-  4. 02_GrooveLinx/00_Governance/CURRENT_PRIORITIES.md
-  5. 02_GrooveLinx/00_Governance/STABILIZATION_QUEUE.md
-  6. 02_GrooveLinx/00_Governance/CANONICAL_SYSTEMS.md
-  7. 02_GrooveLinx/CURRENT_PHASE.md top entry
-  8. 02_GrooveLinx/uat/bug_queue.md (triage at session start per
-     feedback_bug_queue_workflow memory)
+  6. 02_GrooveLinx/00_Governance/CURRENT_STATE.md
+  7. 02_GrooveLinx/00_Governance/CURRENT_PRIORITIES.md
+  8. 02_GrooveLinx/CURRENT_PHASE.md top entry
 
 AUTHORITATIVE (when sources conflict, the LATER item wins):
   - CLAUDE.md (project rules; SYSTEM LOCKs §7 are absolute)
@@ -68,14 +77,19 @@ MUST NEVER DRIFT:
   - Session Continuity Protocol (this file's pinned prompt is part of it)
 
 NEXT RECOMMENDED ACTION:
-  Drew open the live build on actual iPhone Safari and visually verify
-  Pass 2 against
-  02_GrooveLinx/uat/screenshots/2026-05-25/mobile-review-pass2/20260525-225157/.
-  Specifically test: tap a song row → focus state, tap "+ Add note" →
-  inline composer, save a real note, verify it lands in Firebase. Also
-  run `modal deploy services/multitrack-render/render.py` so the
-  Phase A.5 reverb wet-branch ratio boost activates, then A/B listen on
-  Custom Mix wet=0 vs wet=0.5 vs wet=1.0 to verify perceptual audibility.
+  Ship Bug #22 fix (hide desktop session composer on mobile) — ~5-10 LOC,
+  smallest/highest-leverage move from the overnight harvest. Closes Bug #22
+  directly + closes F08 (empty-comments panel real-estate) + F15 (mobile
+  keyboard copy) + F20 (composerTags cross-contamination) + F30 (17-track
+  dropdown overflow) as cascading side effects. After landing, next ship
+  is Bug #20 (composer Save below the fold) + Bug #21 (silent data loss
+  autosave on focus-switch). Those 3 together = Pass 2.5 must-fix package
+  per the friction harvest.
+
+  Drew should also A/B Custom Mix reverb wet=0/0.5/1.0 on the live build
+  to verify the now-deployed Phase A.5 ratio boost is perceptually
+  dominant. Ingestion Architecture v1 spec review still open for
+  Drew + ChatGPT in parallel.
 
 OPEN PRODUCT DECISIONS still queued for Drew + ChatGPT:
   1. Formalize Stab #15 + GLPriority numbering
@@ -106,6 +120,120 @@ that's the first thing to investigate.
 ⚠️ Every code-shipping session ALSO refreshes the pinned restart prompt above.
 
 # GrooveLinx AI Handoff
+
+---
+
+# 📍 SESSION UPDATE — 2026-05-26 00:10 UTC — Overnight Mobile Friction Harvest COMPLETE
+
+**No code change this turn.** Build still `20260525-225157`. Drew DEPLOYED `services/multitrack-render/render.py` to Modal before sleep (Phase A.5 reverb fix now LIVE; awaits A/B verification). Mission per Drew's 23:28 UTC directive: labor-intensive UAT + friction-harvest pass focused on MOBILE REVIEW MODE + PLAYBACK CONTINUITY. Filed evidence into existing systems only — no new governance.
+
+> _Formatted per `00_Governance/AI_WORKFLOW.md §Session Continuity Protocol`._
+
+## 1. CURRENT RUNTIME STATE
+
+* **Build:** `20260525-225157` (unchanged this turn)
+* **Branch:** `main`
+* **Mode:** **PASS 2.5 SCOPED** — harvest complete, 8 Pass 2.5 candidates identified, next ship is Bug #22 (smallest/highest-leverage)
+* **Deployed systems:** browser live, Modal **NOW INCLUDES Phase A.5 reverb ratio boost** (Drew deployed during harvest), worker unchanged, R2 unchanged, Firebase unchanged
+* **Active convergence work:** Mobile Convergence v1 — Pass 2 friction harvest closed; Pass 2.5 scoped from harvest evidence. Recording Ingestion Architecture v1 spec still in design phase awaiting Drew + ChatGPT review.
+* **Open bugs:** **9 open** — pre-existing #17/#18/#19 + 8 NEW from harvest:
+  - **Bug #20** (HIGH) — Composer Save below the fold on default mobile open
+  - **Bug #21** (HIGH) — Silent data loss on focus-switch with unsaved composer text
+  - **Bug #22** (HIGH) — Desktop session composer ALSO rendered on mobile (double composer)
+  - **Bug #23** (HIGH but orthogonal) — Rehearsal-plan onboarding card blocks Rehearsal page on every cold mobile open
+  - **Bug #24** (MED) — Bottom navigation tabbar visible over Review Mode overlay
+  - **Bug #25** (MED) — Floating chatbot avatar overlaps player UI on mobile
+  - **Bug #26** (MED) — Auto-active-segment highlight fires on cold open with no audio playing
+  - **Bug #27** (MED) — Bug #18 also surfaces as "Last rehearsal · 0m" on home page
+* **Stabilization items in flight:** STABILIZATION_QUEUE.md Medium tier gained 8 Pass 2.5 candidates (now-reviewing label collapse, focus dim vs auto-highlight competition, comments empty state, keyboard hint footer, overflow tag visibility, player state survival, composerTags sharing, "Possible:" placeholder confidence duplication)
+* **Active initiatives:** Pass 2.5 friction fixes (scoped from harvest); Ingestion spec review (Drew + ChatGPT); Reverb A/B verification (Drew, post-Modal-deploy)
+
+## 2. CURRENT PRIORITIES
+
+* **NOW** — (a) Drew A/B Custom Mix reverb wet=0/0.5/1.0 on the live build to verify Phase A.5 ratio boost is perceptually dominant; (b) Drew + ChatGPT review the harvest findings doc + the Ingestion Architecture spec.
+* **NEXT** — Ship Bug #22 fix (~5-10 LOC, hide desktop session composer on mobile). Cascading positive side effects close F08 + F15 + F20 + F30. After Bug #22 lands: Bug #20 (composer Save below fold, ~30 LOC scroll-into-view) + Bug #21 (autosave / per-row draft persistence, ~30-50 LOC). These 3 together = Pass 2.5 must-fix.
+* **LATER** — Bug #24 (tabbar over player), Bug #25 (chatbot over player), Bug #26 (auto-highlight cold-open), Bug #27 (Bug #18 home-page surface), STABILIZATION_QUEUE Pass 2.5 candidates; Pass 3 mobile tabs; Pass 4 6-category tags; Ingestion Phase 1 (Recording Import Assistant + REAPER bundle).
+* **DEFERRED** — Progressive disclosure inside focus mode (Drew explicitly said "Do NOT implement immediately. Observe real user behavior first." Harvest does NOT yet produce conclusive Level-1/Level-2 grouping evidence); mobile coachmark + musician-dropdown overlays (orthogonal global shell); Firebase-backed render persistence cross-device; Stab #N formalization; non-mobile follow-ups (C7 Phase 2, UAT calendar contract, EXDATE bug).
+
+## 3. OPEN PRODUCT DECISIONS
+
+| # | Decision | Owner | Status |
+|---|---|---|---|
+| 1 | Formalize Stab #15 + GLPriority numbering | Drew + ChatGPT | Still open |
+| 2 | Calendar Model B (soft-cancel) | Drew + ChatGPT | Still open |
+| 3 | Operational Prioritization Phase 2 scope | Drew + ChatGPT | Still open |
+| 4 | Firebase-backed cross-device render sync | Drew | Still open |
+| 5 | Pass 3 vs Pass 4 vs non-mobile sequencing | Drew | Pending Pass 2.5 ship |
+| 6 | Adoption-metric instrumentation for Pass 2 surfaces | Drew | Still open (harvest used existing GLUXTracker friction net only) |
+| 7 | Recording Ingestion Architecture v1 scope + Phase 1 vs Phase 2 sequencing | Drew + ChatGPT | Spec landed; review pending |
+| 8 | Bug #21 fix mechanism — autosave vs confirm-dialog vs per-row localStorage drafts | Drew | **NEW** — recommendation = (c) per-row drafts |
+| 9 | Bug #23 ownership (global-shell, not multitrack-rehearsal) | Drew | **NEW** — needs assignment |
+
+## 4. OPERATIONAL RISKS
+
+* **Modal deploy debt RESOLVED.** Drew deployed `render.py` before sleep — Phase A.5 reverb ratio boost is now LIVE. Verification A/B still pending Drew.
+* **Bug #21 silent data loss is highest-trust failure in Pass 2.** Worse than Bug #20 (Save invisible) because the user thinks they saved + walked away + nothing exists. Must-fix before any in-the-wild rollout to non-Drew users.
+* **Bug #14 double-composer + Bug #20 Save-below-fold + Bug #21 silent-loss compound.** The composite mobile note-save flow has 3 stacking issues. Bug #22 fix (eliminate desktop composer on mobile) cuts the surface area in half on its own, making the other two easier to verify.
+* **GLUXTracker is live and instrumenting Pass 2 surfaces.** During harvest's M1.3 rage-tap test, 10 rage_click + 5 dead_click events fired correctly. Any real-world rage taps on Bug #20 (invisible Save), Bug #14 (double composer confusion), or Bug #21 (data loss) would accumulate in `bands/deadcetera/ux_events/`. Drew can read these tomorrow.
+* **Test comment cleanup completed.** UAT-HARVEST comment written to Firebase during M1.5 was cleaned up at end of mission (verified `cmt_mplukf8w_q1gc` removed from `bands/deadcetera/rehearsal_sessions/rsess_mt_mpju4yyn_7pko/comments`). Drew's morning Firebase shouldn't see any UAT pollution.
+* **Bug #23 (rehearsal-plan onboarding) is orthogonal but high-impact.** Even though it's not multitrack-rehearsal code, it blocks the mobile entry path to Review Mode on every cold open. Should be assigned to global-shell owner urgently.
+
+## 5. RECOMMENDED NEXT ACTION
+
+**Ship Bug #22 fix as the smallest/highest-leverage Pass 2.5 first move.** ~5-10 LOC change in `js/features/multitrack-rehearsal.js`: gate `_mtRefreshCommentPanel` + `_mtRenderComposer` invocations (or render-target) on `!_mtIsMobile()`. Hides the desktop session composer + the 17-track anchor dropdown + the 11-chip tag wall + the empty-comments header on mobile. All mobile note flows route through the Pass 2 contextual composer (design intent). Cascading closes Bug #22 + F08 + F15 + F20 + F30 simultaneously.
+
+After Bug #22 ships:
+1. Bug #20 (composer Save below fold) — scroll-into-view on note-open, ~30 LOC.
+2. Bug #21 (silent data loss) — per-row localStorage draft persistence, ~30-50 LOC.
+
+That 3-fix package = Pass 2.5 must-fix. Estimated ~100 LOC total. Single commit, single build bump, atomic ship.
+
+In parallel: Drew + ChatGPT review the Recording Ingestion Architecture v1 spec + the friction harvest findings doc.
+
+---
+
+## Overnight Harvest Summary (supplementary)
+
+**Mission:** 42 minutes of Playwright-MCP-driven UAT at iPhone 14 Pro viewport (390×844). 8 simulated personas + render persistence stress + hierarchy audit.
+
+**Findings filed:** 30 total in `02_GrooveLinx/uat/findings/mobile-pass2-friction-harvest-2026-05-25.md`. 4 HIGH severity (all multitrack-rehearsal scope), 11 MED, 7 LOW, 8 INFO/positive.
+
+**Most ignored control:** Keyboard shortcut hint footer (D8 leak from spec — irrelevant on touch, ~25px noise on every player open).
+
+**Most confusing interaction:** Bug #20 + Bug #21 in combination — Save invisible below fold + silent data loss on focus-switch = singer's worst-case "I typed a note, can't see Save, tap somewhere, note gone, no warning."
+
+**Most successful interactions** (3-way tie):
+- F22 — Focus state machine clean across rapid transitions
+- F24 — Reopen idempotency clean across 5 cycles (Pass 2 `_renderUpdHandler` cleanup correct)
+- F28 — Render persistence integration works end-to-end in all 3 chip states. Drew's "I hope the render worked" emotional failure mode IS genuinely addressed.
+
+**Emotional UX observations** captured in detail in harvest doc TL;DR. Notable: Pass 2 focus model genuinely creates "musical attention direction" when nothing else competes. Contextual "+ Add note at HH:MM" feels rehearsal-native. Render chip closes the trust gap. BUT — Pass 2 still feels like a workstation in 3 specific ways: now-reviewing label collapse (Bug #29 territory), desktop session composer ALSO rendering (Bug #22), keyboard shortcut hint always visible (F07). Fixing Bug #22 + F07 closes 2 of the 3.
+
+**Filed into existing systems** (no new governance):
+- `uat/bug_queue.md` — Bugs #20-#27 added at top + summary banner
+- `00_Governance/STABILIZATION_QUEUE.md` Medium tier — 8 Pass 2.5 candidates added
+- `DEFERRED_FINDINGS_QUEUE.md` §2 UX Coherence Debt — 8 deferred items added
+- `uat/findings/mobile-pass2-friction-harvest-2026-05-25.md` (NEW, ~30 findings + TL;DR)
+- `uat/screenshots/2026-05-25/mobile-friction-harvest/` — 9 iPhone-viewport screenshots
+
+### Files touched this session
+
+- `02_GrooveLinx/uat/findings/mobile-pass2-friction-harvest-2026-05-25.md` (NEW)
+- `02_GrooveLinx/uat/bug_queue.md` (8 new bug entries)
+- `02_GrooveLinx/00_Governance/STABILIZATION_QUEUE.md` (8 Medium-tier entries)
+- `02_GrooveLinx/DEFERRED_FINDINGS_QUEUE.md` (8 §2 UX Coherence entries)
+- `02_GrooveLinx/CLAUDE_HANDOFF.md` (this entry + pinned restart prompt refresh)
+- `02_GrooveLinx/uat/screenshots/2026-05-25/mobile-friction-harvest/` (9 PNGs)
+- Firebase: 1 test comment written + cleaned up (no leftover pollution)
+
+### What's NOT in this turn
+
+- No code changes to the app
+- No build bump
+- No Vercel deploy
+- No worker/Firebase schema changes
+- No SYSTEM LOCK touches
+- No new governance docs (filed into existing queues only, per Drew's directive)
 
 ---
 

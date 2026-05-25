@@ -340,6 +340,58 @@ orphan helpers, broken fallbacks.
 Inconsistent terminology, duplicate interaction models, source
 vocabulary mismatches, fragmented flows, naming drift.
 
+- **Finding:** Multiple entry points to mobile Review Mode from the Rehearsal
+  page — "Review Last Rehearsal" button, "Last rehearsal · 0m" row,
+  "Listen back to each song" text, scrolled "RECORDINGS" section. First-time
+  mobile user doesn't know which to tap.
+  - **Why deferred:** Single-entry-point consolidation is a navigation
+    simplification; Pass 3 mobile tabs territory. Filed 2026-05-25 (harvest F03).
+
+- **Finding:** Page title "Rehearsal" appears twice on mobile — once in the
+  topbar overlay, once as a big heading below. Two title sources, ~80px of
+  redundant vertical real estate.
+  - **Why deferred:** Mobile-shell concern, not multitrack-rehearsal scope.
+    Filed 2026-05-25 (harvest F05).
+
+- **Finding:** Empty-comments-state copy says "No comments yet — scrub to a
+  moment, type a note, hit Enter." References desktop keyboard ("hit Enter")
+  on mobile.
+  - **Why deferred:** One-line copy change for mobile branch. Filed
+    2026-05-25 (harvest F15). Closes when Bug #22 ships (session composer hidden).
+
+- **Finding:** Right-side context panel ("DeadCetera · Song context panel")
+  still in DOM on mobile even though hidden visually.
+  - **Why deferred:** Mobile-shell DOM/perf optimization, not Pass 2 scope.
+    Filed 2026-05-25 (harvest F16).
+
+- **Finding:** Now-reviewing label text "🎵 Reviewing: Music Never Stopped ·
+  0:00–8:36 · 96%" renders in full (60+ chars) and contributes to viewport
+  pressure on mobile. Mobile-friendly label could be just "🎵 Music Never
+  Stopped" (verb implied, timestamps + conf already on the row).
+  - **Why deferred:** Linked to Bug #29-territory; will be touched when the
+    now-reviewing label gets a mobile-specific layout. Filed 2026-05-25
+    (harvest F19).
+
+- **Finding:** 5/18 rehearsal has 31 music segments with heavy duplication
+  (Music Never Stopped × 6, Green-Eyed Lady × 4, Life During Wartime × 3,
+  Sugaree × 2, etc.). Real rehearsal behavior (band practiced same songs
+  multiple times) but visually reads as "analyzer made same call repeatedly."
+  No indicator of "different take of the same song."
+  - **Why deferred:** Future surface: group repeated segments under
+    expandable parent OR add "take 1 / take 2" labels. Pass 4+. Filed
+    2026-05-25 (harvest F18).
+
+- **Finding:** Tools menu rage-tap shows visual flicker — 6 taps = 3 open + 3
+  close, bottom-sheet appearing and disappearing rapidly.
+  - **Why deferred:** Debounce the toggle handler (60ms minimum gap) to
+    prevent rage-tap flicker. Cosmetic. Filed 2026-05-25 (harvest F27).
+
+- **Finding:** Inner `<div>` elements inside the focused mobile row don't
+  propagate click handlers usefully — GLUXTracker flags them as `dead_click`.
+  Row container has onclick, inner divs don't.
+  - **Why deferred:** Pass 3+ row-redesign territory. Filed 2026-05-25
+    (harvest F26 follow-on).
+
 - **Finding:** Player `_sourceLabels.url` renders as "Link" in the
   lower-right "Playing on X" footer. Could be clearer as "URL" or
   the actual hostname.

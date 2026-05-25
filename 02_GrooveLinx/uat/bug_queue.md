@@ -1,6 +1,10 @@
 # GrooveLinx Bug Queue
 
-**Build Under Test:** 20260525-195215 (post-recovery sync — was 20260524-193407 in the prior block)
+**Build Under Test:** 20260525-225157 (Pass 2 mobile + render visibility live)
+
+> **2026-05-25 23:55 UTC overnight friction harvest update.** 30 findings filed in `uat/findings/mobile-pass2-friction-harvest-2026-05-25.md`. Net new bugs surfaced: **Bug #20** (composer Save below the fold on mobile, HIGH), **Bug #21** (silent data loss on focus-switch with unsaved composer text, HIGH), **Bug #22** (desktop session composer ALSO rendered on mobile = double composer, HIGH), **Bug #23** (rehearsal-plan onboarding card auto-shows + blocks page on mobile, HIGH but orthogonal global-shell), **Bug #24** (bottom navigation tabbar visible over Review Mode overlay, MED), **Bug #25** (chatbot avatar overlaps player UI on mobile, MED), **Bug #26** (Music Never Stopped renders with active-segment highlight on cold open with no audio playing, MED visual trust), **Bug #27** (Bug #18 also surfaces as "Last rehearsal · 0m" on home Rehearsal page — extends #18 with new surface). Pass 2 architectural successes also documented (focus state machine, reopen idempotency, render persistence integration). Most-successful interaction: render persistence chip in all 3 states. Most-confusing: composer Save invisible + unsaved-text data loss combination. Recommended smallest/highest-leverage next fix: hide desktop session composer on mobile (Bug #22, ~5-10 LOC) — has cascading positive side effects on Bug #20, Bug #28, F08, F30. See full harvest doc for severity ranking + emotional UX observations.
+
+
 
 > **2026-05-25 19:52 UTC post-MacBook-crash recovery sync.** Build advanced through `20260525-194951` (Phase A.5 ship) → `20260525-195215` (Calendar M1+M2). **Bug #19 now MITIGATED** by `e764c74f` — the new `gl-multitrack-renders.js` persistence module treats non-JSON `/check` responses as transient blips within the poll budget and surfaces a Retry affordance on terminal failure, replacing the silent button revert documented below. Persisted job state means modal close + reload no longer drops the in-flight render. The structural worker-side improvement (wrap Modal HTTP errors as JSON envelopes) is still recommended but no longer urgent. **Two new mobile-calendar bugs (M1 + M2) were filed AND closed within the same session** via `6c84c52c` — see Recently Closed entries below. **M3** closed naturally after M1 (mobile Edit-button onclick calls `_calCloseMobileCard` first).
 
@@ -10,6 +14,149 @@
 > **2026-05-25 recovery update.** Between the original Bug #17 fix at build `20260524-170407` and the current build `20260524-193407`, six commits shipped the Rehearsal Intelligence Convergence sprint (Phases 2 → 4B+4C) on top of the multitrack render pipeline. Modal `segment.py` + `render.py` were redeployed during the sprint; worker was redeployed for Phase 4C plan-priors passthrough. The Bug #17 architectural fix (Review Mode as default + Isolate Mode as opt-in) is still in effect and was extended by Custom Mix UX (commit `48a697ab`: 🔊 30s preview, phase progress timeline, "Close (keeps running)" relabel). The "Awaiting deploy" status below is **superseded** — deploys happened during the sprint. Visual verification of Phase 4B+4C is what's outstanding now; see `CLAUDE_HANDOFF.md` top entry. The original Bug #17 acceptance criteria (4 items) remain valid.
 
 ## Open
+
+### Bug #20 — Mobile contextual composer Save button below the fold on default open (HIGH — OPEN, Pass 2.5 must-fix)
+
+**Build first observed:** `20260525-225157` (Pass 2 mobile + render visibility live)
+**Reporter:** overnight friction harvest 2026-05-25 (M1.5 singer persona)
+**Surface:** focused mobile segment row, contextual composer (`+ Add note at HH:MM`)
+
+**Symptom:** User taps "+ Add note at 38:40 · Sugaree" on a focused mobile row. Composer opens with textarea visible. But the 5 primary tag chips + "+ more tags ▾" disclosure + Cancel + **Save note** button are pushed BELOW the visible viewport on iPhone 14 Pro (390×844). User has to scroll to find Save. Compounds when iOS soft keyboard pops up (consumes ~270px more vertical space).
+
+**Root cause:** Focused row + composer combined render at ~530-580px height. Segments list visible area is ~430-450px on 390×844 viewport with current header/transport/comments-panel chrome. Composer opens BELOW the existing focused-row chrome (Play/Rename/Confirm/Exclude buttons + marker grid) rather than ABOVE or REPLACING them.
+
+**Fix options:**
+- (a) Auto-scroll the composer-opening row to top-align on focus when composer opens
+- (b) Sticky Save bar pinned to viewport bottom while composer is open
+- (c) Compress upstream chrome (transport + comments panel) to claw back vertical space
+
+**Evidence:** `02_GrooveLinx/uat/screenshots/2026-05-25/mobile-friction-harvest/05-composer-open.png` (Save NOT visible) vs `06-composer-scrolled.png` (Save after scroll). DOM measurement: composer total height ~250-300px below the row chrome ~280px = ~530-580px total focused state, visible area ~430-450px.
+
+**Filing:** Pass 2.5 must-fix. Recommended (a) — minimum LOC and naturally surfaces Save without keyboard collision.
+
+---
+
+### Bug #21 — SILENT DATA LOSS: switching focus with unsaved composer text destroys text (HIGH — OPEN, Pass 2.5 must-fix)
+
+**Build first observed:** `20260525-225157`
+**Reporter:** overnight friction harvest 2026-05-25 (M1.6 rapid switching persona)
+**Surface:** mobile contextual composer textarea
+
+**Symptom:** User opens "+ Add note" on row A, types text (e.g. "harmony came in flat at the bridge"), then taps row B to focus a different segment. Row A's composer textarea is destroyed during re-render. The typed text is GONE with no warning, no autosave, no "you have unsaved work" dialog.
+
+**Reproduction confirmed:** Programmatic test set textarea on row 0 to "IMPORTANT NOTE the user was typing this!" → called `_mtMobileFocusRow(10)` → row 0 textarea no longer in DOM, no Save fired, no console warning.
+
+**Why this is worst-class friction:** The natural user recovery (tap another row to come back later) is destructive. Trust failure compounds across the session. Worse than visible breakage because user doesn't know they lost work.
+
+**Fix options:**
+- (a) Autosave on focus-switch when text is non-empty
+- (b) Confirmation dialog "Discard unsaved note?" before clearing
+- (c) Per-row draft persistence in localStorage `gl_mt_composer_drafts/{sessionId}/{segId}` so unsaved text re-appears when the row is re-focused
+
+**Filing:** Pass 2.5 must-fix. Recommended (c) — survives reload AND focus switch AND player close/reopen with one mechanism.
+
+---
+
+### Bug #22 — Desktop session composer ALSO rendered on mobile (HIGH — OPEN, double-composer competition)
+
+**Build first observed:** `20260525-225157`
+**Reporter:** overnight friction harvest 2026-05-25 (M1.5 singer persona; M3 hierarchy audit)
+**Surface:** mobile player overlay, below segments panel
+
+**Symptom:** Below the mobile contextual composer (inside focused row), the desktop session-wide composer is STILL fully rendered: "Comments (0)" header + 17-option anchor dropdown (Kick · Jay / Snare · Jay / Tom 1-3 / OH L/R / Bongos / Bass / Guitar Brian / Guitar Drew / Keys L/R / 4 Vocals) + textarea "What did you notice? (Enter to add)" + Add button + ALL 11 tag chips (no overflow disclosure).
+
+**Why this matters:** Pass 2's design intent was that mobile notes flow through the contextual composer (inside focused row). But the session composer continues to render below, creating:
+- TWO composer surfaces simultaneously visible on mobile
+- Cognitive split — which one do I use?
+- 17-track dropdown unusable on mobile (510px wanted vs 332px container)
+- 11-chip wall returns the density Pass 2 was supposed to quiet
+- Empty comments panel still claims ~120px below segments
+
+**Fix:** Hide `#mtCommentPanel` + `#mtComposerArea` entirely on mobile via `_mtIsMobile()` guard in `_mtOpenReviewMode` (or in `_mtRefreshCommentPanel` / `_mtRenderComposer`). Comments panel surface migrates to Pass 3 Comments tab.
+
+**Estimated:** ~5-10 LOC. Side effects close ~5 other findings simultaneously (F08 empty-comments-state, F15 keyboard-only copy, F30 17-track dropdown, F20 composerTags cross-contamination, partial F07 keyboard hint context).
+
+**Filing:** Pass 2.5 must-fix. **THIS IS THE SMALLEST / HIGHEST-LEVERAGE NEXT FIX** identified by the harvest.
+
+---
+
+### Bug #23 — Rehearsal-plan onboarding card auto-shows + blocks Rehearsal page on every cold mobile open (HIGH — OPEN, orthogonal to Pass 2, global-shell concern)
+
+**Build first observed:** `20260525-225157`
+**Reporter:** overnight friction harvest 2026-05-25 (M1.1 first-time mobile user)
+**Surface:** Rehearsal page (#rehearsal), full-screen onboarding overlay on cold load
+
+**Symptom:** Landing on #rehearsal on a fresh session shows a full-screen "Rehearsals — Build a plan, run the session, stay focused" onboarding card. Even with `gl_onboard_rehearsal_done` set to '1' in localStorage, the card returns on each cold load. Blocks the entry to Multitrack Ingest / Review Mode entirely on mobile until dismissed.
+
+**Why this matters:** Every cold open on a phone forces the user through an onboarding card BEFORE they can do anything. For a returning user (anyone after first day), this is pure friction. For a first-time user, the card claims most of the viewport and pushes real content off-screen.
+
+**Filing:** bug_queue. NOT multitrack-rehearsal scope — global-shell / onboarding system concern. Owner: whichever module manages `gl-spot-box` / rehearsal-plan tutorial state.
+
+---
+
+### Bug #24 — Bottom navigation tabbar visible over the Review Mode overlay on mobile (MED — OPEN)
+
+**Build first observed:** `20260525-225157`
+**Reporter:** overnight friction harvest 2026-05-25 (M1.1)
+**Surface:** mobile player overlay, bottom edge of viewport
+
+**Symptom:** Mobile bottom tabbar (HOME / SONGS / PRACTICE / REHEARSAL / SCHEDULE / SETLISTS / MORE) renders at viewport bottom on top of the Review Mode segment list. Player is at z-index 5000; tabbar is presumably higher.
+
+**Why this matters:** Player is conceptually a full-screen experience. Tabbar competes for ~50px of vertical real estate. Enables accidental tap-out-of-player when user is interacting with bottom segments / Comments panel.
+
+**Fix options:** (a) Hide tabbar when `#mtPlayerOverlay` is present; (b) Raise player z-index above tabbar.
+
+**Filing:** Pass 2.5 candidate.
+
+---
+
+### Bug #25 — Floating chatbot avatar (bottom-right) overlaps player UI on mobile (MED — OPEN)
+
+**Build first observed:** `20260525-225157`
+**Reporter:** overnight friction harvest 2026-05-25 (M1.1)
+**Surface:** mobile player overlay, bottom-right of viewport
+
+**Symptom:** Persistent floating purple chatbot icon overlaps the "All members ▾" dropdown + bottom-right of segments panel. Hit-target collision potential. Visual clutter on what should be a focused-attention surface.
+
+**Fix:** Hide chatbot avatar while `#mtPlayerOverlay` is open.
+
+**Filing:** Pass 2.5 candidate.
+
+---
+
+### Bug #26 — Auto-active-segment highlight fires on cold player open with no audio playing (MED — OPEN, visual trust)
+
+**Build first observed:** `20260525-225157`
+**Reporter:** overnight friction harvest 2026-05-25 (M1.1; verified DOM inspection)
+**Surface:** segments panel, first music segment row on cold player open
+
+**Symptom:** Open the player; the first music segment ("Music Never Stopped") immediately gets the indigo bg-tint applied by `_mtUpdateActiveSegmentHighlight` (line ~4514). But the play button still says ▶ Play (not playing), the audio is at 0:00, and the user has done nothing.
+
+**Why this matters:** Musician reads the highlight as "this song is currently playing" — a trust signal in an attention-direction system. When nothing is playing, the signal is dishonest. On mobile, compounds with Pass 2 focus dim: when user focuses a different row, they see TWO "lit" rows (the focused row + the auto-highlighted-but-dimmed Music Never Stopped). Drew flagged exactly this in his 2026-05-25 23:00 UTC Pass 2 reception.
+
+**Confirmation:** DOM inspection showed `mnsRow.style.background = rgba(99,102,241,0.1)` + `masterPlaying = false` simultaneously. Behavior is intentional per Phase 4B Drew request ("keep highlight on pause") but the cold-open case wasn't anticipated.
+
+**Fix options:** (a) Suppress auto-highlight when `audio.currentTime === 0 && masterPlaying === false`; (b) On mobile, when ANY row is in `_mobileFocusedIdx`, force auto-highlight to use lower-contrast or no bg-tint on the non-focused row.
+
+**Filing:** Pass 2.5 candidate. Related to F11 in harvest doc.
+
+---
+
+### Bug #27 — Bug #18 also surfaces as "Last rehearsal · 0m" on home Rehearsal page (MED — OPEN, extends Bug #18)
+
+**Build first observed:** `20260525-225157`
+**Reporter:** overnight friction harvest 2026-05-25 (M1.1)
+**Surface:** `#rehearsal` page, "Latest Rehearsal Review" section
+
+**Symptom:** Home Rehearsal page displays the most-recent multitrack rehearsal as "Mon, May 18 · 0m" — duration zero. This is Bug #18 (`durationSec` missing from Firebase session) surfacing OUTSIDE the multitrack player.
+
+**Why this matters:** Musician glances at the page expecting "Mon May 18, 3h 8m." Sees "0m." Reads as "broken" or "empty rehearsal." Trust damage on first scan.
+
+**Fix:** Pre-existing Bug #18 fix proposals apply (browser-side `audio.duration` fallback on player open + persistence write back to Firebase + one-shot backfill for existing sessions). With Bug #27 surfacing the same data gap to the home page, the fix urgency rises.
+
+**Filing:** Extends Bug #18 — fix the root cause, both surfaces resolve.
+
+---
 
 ### Bug #17 — Multitrack player playback sync collapses on far seek (HIGH — ARCHITECTURE VERIFIED 2026-05-25, AC3/AC4 SURFACED FOLLOW-ON BUGS)
 
